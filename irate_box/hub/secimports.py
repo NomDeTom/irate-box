@@ -18,6 +18,8 @@ import time
 from pathlib import Path
 
 from irate_box import confine
+from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 DIR = STATE / "security-imports"
@@ -26,6 +28,7 @@ KINDS = ("openvas", "nmap")
 MAX_RESULTS = 1000
 CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,7}$")
 TEXT = {"name": 200, "service": 60, "summary": 600, "solution": 600, "host": 64}
+KIND_BAD = M("secimport.kind.invalid", "Scan data invalid. The kind must be one of: {values}.", values=", ".join(KINDS))
 
 
 def _text(v, n):
@@ -36,28 +39,29 @@ def validate(report):
     """The report as kept, or ValueError: a known kind, at most MAX_RESULTS results, each field of
     the right type and length."""
     if not isinstance(report, dict) or report.get("kind") not in KINDS:
-        raise ValueError(f"Scan data invalid. kind must be one of {', '.join(KINDS)}")
+        raise Refused(KIND_BAD)
     results = report.get("results")
     if not isinstance(results, list) or len(results) > MAX_RESULTS:
-        raise ValueError(f"Scan data invalid. results must be a list of at most {MAX_RESULTS} items")
+        raise Refused(M("secimport.results.invalid", "Scan data invalid. The results must be a list of at most {most} items.", most=MAX_RESULTS))
     ran = report.get("ran")
     if ran is not None and (not isinstance(ran, (int, float)) or not 946684800 <= ran <= time.time() + 86400):
-        raise ValueError("Scan data invalid. ran must be the time of the scan as a Unix time")
+        raise Refused(M("secimport.ran.invalid", "Scan data invalid. The time of the scan must be a Unix time."))
     out = []
     for r in results:
         if not isinstance(r, dict):
-            raise ValueError("Scan data invalid. Each result must be an object")
+            raise Refused(M("secimport.result.invalid", "Scan data invalid. Each result must be an object."))
         port, proto = r.get("port"), r.get("proto", "tcp")
         if not (port in (None, "general") or (isinstance(port, int) and 0 < port < 65536)) or proto not in ("tcp", "udp"):
-            raise ValueError("Scan data invalid. port must be 1 to 65535 or general, and proto must be tcp or udp")
+            raise Refused(M("secimport.port.invalid", "Scan data invalid. The port must be 1 to 65535 or general, "
+                                                      "and the protocol must be tcp or udp."))
         item = {"port": port, "proto": proto, "host": _text(r.get("host"), TEXT["host"]), "service": _text(r.get("service"), TEXT["service"])}
         if report["kind"] == "openvas":
             cvss = r.get("cvss", 0)
             if not isinstance(cvss, (int, float)) or not 0 <= cvss <= 10:
-                raise ValueError("Scan data invalid. cvss must be 0 to 10")
+                raise Refused(M("secimport.cvss.invalid", "Scan data invalid. The CVSS score must be 0 to 10."))
             cves = r.get("cves") or []
             if not isinstance(cves, list) or not all(isinstance(c, str) and CVE_RE.match(c) for c in cves[:50]):
-                raise ValueError("Scan data invalid. cves must be a list of CVE ids")
+                raise Refused(M("secimport.cves.invalid", "Scan data invalid. The CVEs must be a list of CVE IDs (CVE-YYYY-NNNN)."))
             item.update(cvss=float(cvss), name=_text(r.get("name"), TEXT["name"]), summary=_text(r.get("summary"), TEXT["summary"]),
                         solution=_text(r.get("solution"), TEXT["solution"]), cves=cves[:50])
         else:
@@ -88,5 +92,5 @@ def save(report):
 
 def remove(kind):
     if kind not in KINDS:
-        raise ValueError(f"Scan data invalid. kind must be one of {', '.join(KINDS)}")
+        raise Refused(KIND_BAD)
     confine.under(DIR, f"{kind}.json").unlink(missing_ok=True)

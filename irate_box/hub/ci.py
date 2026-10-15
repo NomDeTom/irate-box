@@ -39,8 +39,10 @@ import time
 from pathlib import Path
 
 from irate_box import confine
+from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
-ROOT = Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
+ROOT =Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
 # Builds come only from here: the queue is writable by the hub, and guests may push to public repos.
 PRIVATE = Path(os.environ.get("HUB_GIT_PRIVATE", ROOT.parent / "git" / "private"))
 # The librarian's mirrors (mirrors.py): upstream URL -> the local repository. Builds fetch from
@@ -57,6 +59,7 @@ TIME_LIMIT = int(os.environ.get("HUB_CI_TIME_LIMIT", 12 * 3600))
 ZERO = "0" * 40
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[0-9]{1,6}$")
+NEED_PRIVATE = M("ci.build.not-private", "Builds require a private repository with administrator-only push access.")
 
 
 # The newest KEEP_RUNS per repository are kept, but runs marked keep; the owner sets the number
@@ -219,22 +222,23 @@ def queue_build(repo, branch=None):
     queue it, with the same refusals: public, switched off, no .irate-ci.sh at that commit."""
     repo = Path(repo).resolve()
     if repo.parent != PRIVATE.resolve() or not NAME_RE.match(repo.name[:-4]):
-        raise ValueError("Builds need a private repository.")
+        raise Refused(NEED_PRIVATE)
     repo = confine.under(PRIVATE.resolve(), repo.name)
     if not (repo / "HEAD").exists():
-        raise ValueError("Builds need a private repository.")
+        raise Refused(NEED_PRIVATE)
     off = _git("config", "--get", "irate-box.ci", cwd=repo)
     if off.returncode == 0 and off.stdout.strip() == "off":
-        raise ValueError("Builds are off for this repository. Turn them on in Manage, Access.")
+        raise Refused(M("ci.build.off", "Builds are off for this repository. Turn them on in Manage, Access."))
     if branch is None:
         branch = _git("symbolic-ref", "--short", "HEAD", cwd=repo).stdout.strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}", branch or "") or ".." in branch:
-        raise ValueError("Select a valid branch.")
+        raise Refused(M("ci.branch.invalid", "Select a valid branch."))
     commit = _git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}", cwd=repo).stdout.strip()
     if not commit:
-        raise ValueError(f"Branch {branch} not found in {repo.name}.")
+        raise Refused(M("ci.branch.not-found", "Branch not found. {repo} has no branch {branch}.", repo=repo.name, branch=branch))
     if _git("cat-file", "-e", f"{commit}:{SCRIPT}", cwd=repo).returncode != 0:
-        raise ValueError(f"Build script missing. The newest commit of {branch} has no {SCRIPT} at its top.")
+        raise Refused(M("ci.script.missing", "Build script missing. The newest commit of {branch} has no {script} at its top.",
+                        branch=branch, script=SCRIPT))
     QUEUE.mkdir(parents=True, exist_ok=True)
     _put({"repo": str(repo), "branch": branch, "commit": commit, "queued": time.time(), "by": "build-now"})
     return {"branch": branch, "commit": commit}
@@ -244,7 +248,7 @@ def queue_run_change(run, what):
     """Keep or delete a run: the runs are hubci's, so the change goes through the queue, done by
     the builder (after the build in progress, if one is)."""
     if not RUN_RE.match(run or "") or what not in ("keep", "unkeep", "delete"):
-        raise ValueError("Select a run and one action: keep, unkeep or delete.")
+        raise Refused(M("ci.run.change", "Select a run and one action: keep, unkeep or delete."))
     QUEUE.mkdir(parents=True, exist_ok=True)
     _put({"run": run, "change": what, "queued": time.time()})
 
@@ -686,7 +690,7 @@ def build_firmware(job):
             if offline:
                 probe = subprocess.run([*OFFLINE, "true"], capture_output=True, text=True)
                 if probe.returncode != 0:
-                    raise RuntimeError(f"cannot run without the network here (unshare: {probe.stderr.strip()[:200]})")
+                    raise RuntimeError(f"Environment check failed. This box cannot build without the network (unshare: {probe.stderr.strip()[:200]}).")
                 say("offline: no network at all (a network namespace of its own), from the submodules on")
             out = subprocess.run([*netns, "git", "submodule", "update", "--init", "--recursive", "--depth", "1"], cwd=src,
                                  capture_output=True, text=True, timeout=3600)

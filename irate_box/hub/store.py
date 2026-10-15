@@ -36,6 +36,8 @@ from pathlib import Path
 
 from irate_box import confine
 from irate_box.hub import hubclock
+from irate_box.hub.refused import Said, Refused, answer, say
+from irate_box.msg import M
 
 # Namespaces the Excalidraw frontend uses. Scenes are shared drawings, rooms are
 # collaboration state, files are pasted images.
@@ -70,6 +72,25 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_NAME = 64
 MAX_KIND = 32
 
+# What the store and the drop refuse, said in more than one place (refused.py: {"error": English, "message": message}).
+BAD_ID = M("store.id.invalid", "Invalid file identifier.")
+NOT_FOUND = M("store.not-found", "Not found. It was deleted, or it expired.")
+DROP_GONE = M("drop.not-found", "File not found. It was deleted, or it expired.")
+BAD_METHOD = M("store.method.invalid", "Invalid request. The store does not answer this method here.")
+BAD_JSON = M("store.json.invalid", "Invalid request. The body is not a JSON object.")
+NAME_REQUIRED = M("store.name.required", "Enter a name.")
+NO_LENGTH = M("drop.length.none", "Send the file with a Content-Length header.")
+NO_SPACE = M("drop.storage.full", "Insufficient free storage. Delete files from the box, then upload again.")
+INTERRUPTED = M("drop.upload.interrupted", "Upload interrupted. Upload the file again.")
+
+
+def body_too_large():
+    return M("store.body.large", "The request body is missing or too large. The limit is {mb} MB.", mb=MAX_BODY >> 20)
+
+
+def file_too_large():
+    return M("drop.file.large", "File exceeds the {mb} MB limit.", mb=DROP_MAX_FILE >> 20)
+
 
 # --- locks ---------------------------------------------------------------------------
 # A guest can lock a save or a dropped file so that nobody else can change or remove it (it
@@ -90,12 +111,12 @@ LOCK_MAX_N = 65536
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
-class LockError(Exception):
+class LockError(Said):
     """A change to a locked item without a valid proof."""
 
     def __init__(self, lock, pinned=False):
-        super().__init__("This file belongs to the box. Only an administrator can remove it." if pinned
-                         else "This item is locked. Only the browser that locked it can change it.")
+        super().__init__(M("drop.pinned", "This file belongs to the box. Only an administrator can remove it.") if pinned
+                         else M("store.locked", "This item is locked. Only the browser that locked it can change it."))
         self.lock = lock
         self.pinned = pinned
 
@@ -341,7 +362,7 @@ class Store:
     def clear_namespace(self, namespace):
         """Delete every blob in one of BLOB_NAMESPACES (shared scenes, rooms, files)."""
         if namespace not in BLOB_NAMESPACES:
-            raise ValueError(f"not a blob namespace: {namespace}")
+            raise Refused(M("store.namespace.invalid", "Invalid request. {namespace} is not a storage area of the store.", namespace=str(namespace)))
         removed = 0
         with self._lock:
             for path in self._dir(namespace).iterdir():
@@ -444,7 +465,7 @@ class Drop:
         the same id; it never expires, is never evicted, and guests cannot remove it (the
         admin can). install.sh pins the box's own source this way (the AGPL's offer)."""
         if not ID_RE.match(key):
-            raise ValueError("Invalid file identifier.")
+            raise Refused(BAD_ID)
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = confine.under(self.dir, key + ".tmp")
         shutil.copyfile(src, tmp)
@@ -470,10 +491,10 @@ class Drop:
         """Stream `length` bytes from `stream` into a new drop. Returns its meta; raises
         ValueError (too large, not enough free storage) or OSError (the body stopped short)."""
         if length > DROP_MAX_FILE:
-            raise ValueError(f"File exceeds the {DROP_MAX_FILE >> 20} MB limit.")
+            raise Refused(file_too_large())
         self.dir.mkdir(parents=True, exist_ok=True)
         if shutil.disk_usage(self.dir).free < length + DROP_MIN_FREE:
-            raise ValueError("Insufficient free storage. Delete files from the box, then upload again.")
+            raise Refused(NO_SPACE)
         key = secrets.token_urlsafe(12)
         tmp = confine.under(self.dir, key + ".tmp")
         try:
@@ -556,19 +577,19 @@ def _handle_drop(handler, method, path, drop):
         return True
     if path == "/api/drop" and method == "POST":
         if handler.headers.get("Transfer-Encoding", "").lower() == "chunked":
-            _send_json(handler, 411, {"error": "Send the file with a Content-Length header."})
+            _send_json(handler, 411, say(NO_LENGTH))
             return True
         try:
             length = int(handler.headers.get("Content-Length", ""))
         except ValueError:
-            _send_json(handler, 411, {"error": "Send the file with a Content-Length header."})
+            _send_json(handler, 411, say(NO_LENGTH))
             return True
         if length <= 0:
-            _send_json(handler, 400, {"error": "The file is empty."})
+            _send_json(handler, 400, say(M("drop.file.empty", "The file is empty. Select another file.")))
             return True
         if length > DROP_MAX_FILE:
             handler.close_connection = True  # the body is not read
-            _send_json(handler, 413, {"error": f"File exceeds the {DROP_MAX_FILE >> 20} MB limit."})
+            _send_json(handler, 413, say(file_too_large()))
             return True
         name = unquote(handler.headers.get("X-Drop-Name", "") or "file")
         by = unquote(handler.headers.get("X-Drop-By", "") or "")
@@ -577,11 +598,11 @@ def _handle_drop(handler, method, path, drop):
                                 marks=_author_marks(handler, "drop"))
         except ValueError as exc:
             handler.close_connection = True
-            _send_json(handler, 507 if "storage" in str(exc) else 413, {"error": str(exc)})
+            _send_json(handler, 507 if getattr(exc, "message", None) == NO_SPACE else 413, answer(exc))
             return True
         except OSError:
             handler.close_connection = True
-            _send_json(handler, 400, {"error": "Upload interrupted."})
+            _send_json(handler, 400, say(INTERRUPTED))
             return True
         _send_json(handler, 201, {**{k: meta[k] for k in ("id", "name", "size")}, "locked": bool(meta.get("lock"))})
         return True
@@ -591,14 +612,14 @@ def _handle_drop(handler, method, path, drop):
             gone = drop.delete(key, proof=handler.headers.get("X-Lock"))
         except LockError as exc:
             if exc.pinned:
-                _send_json(handler, 403, {"error": str(exc), "pinned": True})
+                _send_json(handler, 403, {**answer(exc), "pinned": True})
             elif exc.lock is None:
-                _send_json(handler, 403, {"error": "Only an administrator can remove a file that nobody locked. The box deletes it when it expires.",
-                                          "locked": False})
+                _send_json(handler, 403, {**say(M("drop.unlocked", "Only an administrator can remove a file that nobody locked. "
+                                                    "The box deletes it when it expires.")), "locked": False})
             else:
                 _send_locked(handler, exc)
             return True
-        _send_json(handler, 200, {"id": key}) if gone else _send_json(handler, 404, {"error": "File not found. It possibly expired."})
+        _send_json(handler, 200, {"id": key}) if gone else _send_json(handler, 404, say(DROP_GONE))
         return True
     if path.startswith("/api/drop/") and method in ("GET", "HEAD"):
         found = drop.open(path[len("/api/drop/"):])
@@ -607,7 +628,7 @@ def _handle_drop(handler, method, path, drop):
             found[1].close()
             found = None
         if not found:
-            _send_json(handler, 404, {"error": "File not found. It possibly expired."})
+            _send_json(handler, 404, say(DROP_GONE))
             return True
         meta, fh = found
         with fh:
@@ -623,7 +644,7 @@ def _handle_drop(handler, method, path, drop):
             if method == "GET":
                 shutil.copyfileobj(fh, handler.wfile, DROP_CHUNK)
         return True
-    _send_json(handler, 405, {"error": "method not allowed"})
+    _send_json(handler, 405, say(BAD_METHOD))
     return True
 
 
@@ -663,7 +684,7 @@ def _lock_headers(handler):
 
 def _send_locked(handler, exc):
     lock = exc.lock or {}
-    _send_json(handler, 403, {"error": str(exc), "locked": True, **({"lock_n": lock["n"]} if "n" in lock else {})})
+    _send_json(handler, 403, {**answer(exc), "locked": True, **({"lock_n": lock["n"]} if "n" in lock else {})})
 
 
 def _read_body(handler):
@@ -684,7 +705,7 @@ def _read_body(handler):
 def _blob_get(handler, store, namespace, key):
     data = store.get(namespace, key)
     if data is None:
-        _send_json(handler, 404, {"error": "not found"})
+        _send_json(handler, 404, say(NOT_FOUND))
         return
     tag = _etag(data)
     if handler.headers.get("If-None-Match") == tag:
@@ -768,7 +789,7 @@ def _handle_blob(handler, method, rest, store):
     key = parts[1] if len(parts) > 1 and parts[1] else None
 
     if key is not None and not ID_RE.match(key):
-        _send_json(handler, 400, {"error": "Invalid file identifier."})
+        _send_json(handler, 400, say(BAD_ID))
         return True
 
     if method == "GET" and key:
@@ -779,7 +800,7 @@ def _handle_blob(handler, method, rest, store):
     if method == "POST" and namespace == "scenes" and key is None:
         data = _read_body(handler)
         if data is None:
-            _send_json(handler, 413, {"error": "The request body is missing or too large."})
+            _send_json(handler, 413, say(body_too_large()))
             return True
         _send_json(handler, 201, {"id": store.create_scene(data)})
         return True
@@ -787,13 +808,13 @@ def _handle_blob(handler, method, rest, store):
     if method == "PUT" and key and namespace in ("rooms", "files"):
         data = _read_body(handler)
         if data is None:
-            _send_json(handler, 413, {"error": "The request body is missing or too large."})
+            _send_json(handler, 413, say(body_too_large()))
             return True
         store.put(namespace, key, data)
         _send_json(handler, 200, {"id": key})
         return True
 
-    _send_json(handler, 405, {"error": "method not allowed"})
+    _send_json(handler, 405, say(BAD_METHOD))
     return True
 
 
@@ -830,13 +851,13 @@ def _handle_saves(handler, method, path, store):
         if method == "POST":
             _create_save(handler, store)
             return True
-        _send_json(handler, 405, {"error": "method not allowed"})
+        _send_json(handler, 405, say(BAD_METHOD))
         return True
 
     rest = path[len("/api/saves/"):].split("/")
     key = rest[0]
     if not ID_RE.match(key):
-        _send_json(handler, 400, {"error": "Invalid file identifier."})
+        _send_json(handler, 400, say(BAD_ID))
         return True
 
     wants_thumb = len(rest) > 1 and rest[1] == "thumb"
@@ -844,7 +865,7 @@ def _handle_saves(handler, method, path, store):
     if method == "GET" and wants_thumb:
         thumb = store.get_thumb(key)
         if thumb is None:
-            _send_json(handler, 404, {"error": "not found"})
+            _send_json(handler, 404, say(NOT_FOUND))
         else:
             # Thumbnails are whatever the browser uploaded. Served as an opaque
             # download rather than inline: everything on this hub shares one origin,
@@ -857,7 +878,7 @@ def _handle_saves(handler, method, path, store):
     if method == "GET":
         meta = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
         if meta is None or not can_see(meta, VIEWER(handler) if VIEWER else None):
-            _send_json(handler, 404, {"error": "not found"})
+            _send_json(handler, 404, say(NOT_FOUND))
             return True
         payload = public_meta(_with_state(store, meta))
         payload["now"] = store.clock.ticks()
@@ -876,14 +897,14 @@ def _handle_saves(handler, method, path, store):
         unlock = body.get("unlock") is True
         proof, _, nxt = _lock_headers(handler)
         if not name and not unlock and not nxt:
-            _send_json(handler, 400, {"error": "Name is required."})
+            _send_json(handler, 400, say(NAME_REQUIRED))
             return True
         try:
             meta = store.rename_save(key, name, proof=proof, lock_next=nxt, unlock=unlock, force=_owns_save(store, key, handler))
         except LockError as exc:
             _send_locked(handler, exc)
             return True
-        _send_json(handler, 200, public_meta(meta)) if meta else _send_json(handler, 404, {"error": "not found"})
+        _send_json(handler, 200, public_meta(meta)) if meta else _send_json(handler, 404, say(NOT_FOUND))
         return True
 
     if method == "DELETE":
@@ -895,30 +916,30 @@ def _handle_saves(handler, method, path, store):
         if gone:
             _send_json(handler, 200, {"id": key})
         else:
-            _send_json(handler, 404, {"error": "not found"})
+            _send_json(handler, 404, say(NOT_FOUND))
         return True
 
-    _send_json(handler, 405, {"error": "method not allowed"})
+    _send_json(handler, 405, say(BAD_METHOD))
     return True
 
 
 def _create_save(handler, store):
     raw = _read_body(handler)
     if raw is None:
-        _send_json(handler, 413, {"error": "The request body is missing or too large."})
+        _send_json(handler, 413, say(body_too_large()))
         return
     try:
         payload = json.loads(raw)
     except ValueError:
-        _send_json(handler, 400, {"error": "Invalid JSON."})
+        _send_json(handler, 400, say(BAD_JSON))
         return
     if not isinstance(payload, dict):
-        _send_json(handler, 400, {"error": "Invalid JSON."})
+        _send_json(handler, 400, say(BAD_JSON))
         return
 
     state = payload.get("state")
     if state is None:
-        _send_json(handler, 400, {"error": "State is required."})
+        _send_json(handler, 400, say(M("store.state.required", "Invalid save. The request has no drawing state.")))
         return
 
     kind = str(payload.get("kind", "unknown")).strip()[:MAX_KIND] or "unknown"
@@ -928,7 +949,7 @@ def _create_save(handler, store):
     if key is not None:
         key = str(key)
         if not ID_RE.match(key):
-            _send_json(handler, 400, {"error": "Invalid file identifier."})
+            _send_json(handler, 400, say(BAD_ID))
             return
 
     thumb = None
@@ -977,7 +998,7 @@ if __name__ == "__main__":
         def _dispatch(self, method):
             path = self.path.split("?")[0]
             if not handle(self, method, path, STORE):
-                _send_json(self, 404, {"error": "not found"})
+                _send_json(self, 404, say(M("hub.not-found", "Not found.")))
 
         def do_GET(self):
             self._dispatch("GET")

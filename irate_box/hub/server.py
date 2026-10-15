@@ -52,6 +52,7 @@ from irate_box.hub import meshbridge
 from irate_box.hub import memhistory
 from irate_box.hub import jsonlog
 from irate_box.hub import notebooks
+from irate_box.hub import refused
 from irate_box.hub import store
 from irate_box.hub import pagehistory
 from irate_box.hub import svchistory
@@ -1422,7 +1423,7 @@ def library_start(action, fn):
         try:
             result = fn()
         except librarian.LibrarianError as exc:
-            result = {"error": str(exc)}
+            result = refused.answer(exc)
         with _library_lock:
             _library_job["result"] = result
     with _library_lock:
@@ -1459,20 +1460,20 @@ def library_action(payload):
             have = {s["name"] for s in librarian.load_config()["sources"]}
             for app in names or librarian.default_apps():
                 if not librarian.APPS.get(app, {}).get("source"):
-                    raise librarian.LibrarianError(f"{app} is not an app the hub keeps current")
+                    raise librarian.LibrarianError(M("library.app.not-kept", "The hub does not keep {app} current.", app=app))
                 if app not in have:
                     librarian.add_source(librarian.default_app_source(app))
         elif action in ("check", "fetch", "update"):
             if not library_start(action, lambda: librarian.update(names or None, mode=action, **quiet)):
-                return 409, {"error": "the librarian is already running"}
+                return 409, refused.say(librarian.BUSY)
         elif action == "rollback":
             name, version = str(payload.get("name", "")), payload.get("version") or None
             if not library_start(action, lambda: {name: librarian.rollback(name, version)}):
-                return 409, {"error": "the librarian is already running"}
+                return 409, refused.say(librarian.BUSY)
         else:
-            return 400, {"error": "unknown action"}
+            return 400, refused.say(UNKNOWN_ACTION)
     except librarian.LibrarianError as exc:
-        return 400, {"error": str(exc)}
+        return _busy_or(400, exc)
     return 200, library_snapshot()
 
 
@@ -1517,11 +1518,11 @@ def git_action(payload):
                 with librarian.Lock():
                     return {"mirrors": mirrors.sync_all(names, check_only=(action == "mirror-check"), log=lambda *_: None)}
             if not library_start(action, run):
-                return 409, {"error": "the librarian is already running"}
+                return 409, refused.say(librarian.BUSY)
         else:
-            return 400, {"error": "action must be mirror-add, mirror-change, mirror-remove, mirror-check or mirror-update"}
+            return 400, refused.say(UNKNOWN_ACTION)
     except librarian.LibrarianError as exc:
-        return 400, {"error": str(exc)}
+        return _busy_or(400, exc)
     return 200, git_snapshot()
 
 
@@ -1537,13 +1538,13 @@ def firmware_action(payload):
                 with librarian.Lock():
                     return {"firmware": firmware.sync(check_only=(action == "check"), log=lambda *_: None)}
             if not library_start(f"firmware-{action}", run):
-                return 409, {"error": "the librarian is already running"}
+                return 409, refused.say(librarian.BUSY)
         elif action == "flush-cache":
             firmware.flush_cache(log=lambda *_: None)
         else:
-            return 400, {"error": "action must be settings, check, update or flush-cache"}
+            return 400, refused.say(UNKNOWN_ACTION)
     except librarian.LibrarianError as exc:
-        return 400, {"error": str(exc)}
+        return _busy_or(400, exc)
     snap = firmware.snapshot()
     snap.update(running=librarian.is_running(), progress=librarian.progress())
     return 200, snap
@@ -1737,10 +1738,33 @@ def admin_box(proxied):
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 
 
-def refusal(exc):
-    """An account refused (accounts.AccountError), as the pages read it: error, its English, as every page expects;
-    message, the message itself (its ID and arguments), for a page that says it in the reader's language."""
-    return {"error": str(exc), "message": exc.message}
+# A refusal, as the pages read it (refused.py): error, its English, as every page expects; message, the message
+# itself (its ID and arguments), for a page that says it in the reader's language.
+refusal = refused.answer
+
+# Refusals said in more than one place. A request no page of this version makes (an unknown action, a malformed
+# body) is still refused in a sentence: an older page open in a tab can make one.
+UNKNOWN_ACTION = M("hub.action.unknown", "Unknown action. Reload the page and try again.")
+BAD_REQUEST = M("hub.request.invalid", "Invalid request. Reload the page and try again.")
+NOT_SHOWN = M("hub.not-shown", "Not found. The administrator does not show this page.")
+NO_THREAD = M("board.thread.not-found", "Thread not found. It was deleted, or you cannot see it.")
+CONSENT_FIRST = M("addons.consent.first", "Read the consent text of the add-on and agree to it first.")
+CROSS_SITE = M("hub.cross-site", "Refused. A change must come from a page of this box.")
+SETUP_FIRST = M("setup.first", "The box is in its first use. Select Set up this box and make the first administrator account.")
+
+
+def password_length():
+    return M("hub.password.length", "The password must be {min} to {max} characters, on one line.", min=MIN_PASSWORD, max=128)
+
+
+def _already_added(addon):
+    return M("addons.added", "The add-on {addon} is already added.", addon=addon)
+
+
+def _busy_or(code, exc):
+    """A librarian's failure: 409 when the librarian is already running (or the add-on is already added), else code."""
+    m = getattr(exc, "message", None)
+    return (409 if isinstance(m, dict) and m.get("id") in (librarian.BUSY["id"], "addons.added") else code), refused.answer(exc)
 
 
 UPDATE_STATE = CONTROL_DIR / "update.json"
@@ -1857,7 +1881,7 @@ SECURITY_STATE = CONTROL_DIR / "security.json"
 
 
 def setup_blocked():
-    """Why "Finish setup" is refused: the Security page's last scan says a passwordless sudo rule
+    """Why "Finish setup" is refused (a message): the Security page's last scan says a passwordless sudo rule
     names an account sshd lets in by password, the one state an image leaves that makes a guessed
     password root. None when it does not, or no scan has run."""
     try:
@@ -1867,8 +1891,8 @@ def setup_blocked():
         return None
     for f in scan.get("findings", []) if isinstance(scan, dict) else []:
         if isinstance(f, dict) and f.get("id") == "sudo-nopasswd" and f.get("status") == "problem":
-            return render(M("setup.blocked", "Not finished yet. {reason} The Security page offers the fixes. Then finish here.",
-                            reason=f.get("summary") or f.get("detail", "")))
+            return M("setup.blocked", "Not finished yet. {reason} The Security page offers the fixes. Then finish here.",
+                     reason=f.get("summary") or f.get("detail", ""))
     return None
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
@@ -1892,7 +1916,7 @@ def security_accepted():
 
 def security_accept(key, title, yes):
     if not isinstance(key, str) or not ACCEPT_KEY_RE.match(key):
-        raise ValueError("key: an item's key from the report")
+        raise refused.Refused(M("accept.key.invalid", "Invalid item. Reload the page and try again."))
     return _accept(SECURITY_ACCEPTED, security_accepted(), key, title, yes)
 
 
@@ -1900,7 +1924,7 @@ def _accept(path, data, key, title, yes):
     """One doctor's accepted list, a key accepted (with when and its title) or taken back; written whole."""
     if yes:
         if len(data) >= 500 and key not in data:
-            raise ValueError("500 accepted already: take some back first")
+            raise refused.Refused(M("accept.full", "The list already has 500 accepted items. Reopen some items first."))
         data[key] = {"at": time.time(), "title": str(title or "")[:200]}
     else:
         data.pop(key, None)
@@ -1926,7 +1950,7 @@ def health_accepted():
 
 def health_accept(key, title, yes):
     if not isinstance(key, str) or not HEALTH_KEY_RE.match(key):
-        raise ValueError("key: a finding's id from the report")
+        raise refused.Refused(M("accept.key.invalid", "Invalid item. Reload the page and try again."))
     return _accept(HEALTH_ACCEPTED, health_accepted(), key, title, yes)
 
 
@@ -2410,7 +2434,7 @@ def _local_add(m, how):
     i = m["id"]
     path = confine.under(manifests.LOCAL_D, f"{i}.json")
     if path.exists():
-        raise ValueError(f"{i} is already added")
+        raise refused.Refused(_already_added(i))
     _write_atomic(path, json.dumps(m, indent=2) + "\n")
     consents = _read_consents()
     consents[i] = {"at": int(time.time()), "how": how, "consent": m["addon"]["consent"]}
@@ -2433,16 +2457,16 @@ def local_addons_action(payload):
             i = str(payload.get("id", ""))
             cat = manifests.catalogue()
             if i not in cat:
-                return 400, {"error": "id must name an add-on in the catalogue"}
+                return 400, refused.say(M("addons.catalogue.unknown", "Add-on not found in the catalogue. Reload the page and try again."))
             if payload.get("agree") is not True:
-                return 400, {"error": "agree to its consent text first"}
+                return 400, refused.say(CONSENT_FIRST)
             return 202, _local_add(cat[i], "catalogue")
         if action == "paste":
             m = payload.get("manifest")
             # Pasted: anyone's manifest, not one this hub's code offers. The page shows the
             # heavy warning; the request must say it was read.
             if payload.get("understood") != "I understand this runs someone else's code on this box's address":
-                return 400, {"error": "a pasted add-on needs its warning acknowledged"}
+                return 400, refused.say(M("addons.paste.warning", "Read the warning about pasted add-ons and confirm it first."))
             manifests.check_local(m, "the pasted manifest", {x["id"] for x in manifests.load()})
             return 202, _local_add(m, "pasted")
         if action == "accept":
@@ -2451,10 +2475,10 @@ def local_addons_action(payload):
             i = str(payload.get("id", ""))
             cat = manifests.catalogue()
             if not LOCAL_ID_RE.match(i) or i not in cat or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
-                return 400, {"error": "id must name an add-on added from the catalogue"}
+                return 400, refused.say(M("addons.catalogue.not-added", "This add-on was not added from the catalogue. Reload the page and try again."))
             path = confine.under(manifests.LOCAL_D, f"{i}.json")
             if payload.get("agree") is not True:
-                return 400, {"error": "agree to its consent text first"}
+                return 400, refused.say(CONSENT_FIRST)
             entry = cat[i]
             _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
             consents = _read_consents()
@@ -2467,7 +2491,7 @@ def local_addons_action(payload):
         if action == "remove":
             i = str(payload.get("id", ""))
             if not LOCAL_ID_RE.match(i) or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
-                return 400, {"error": "id must name an added add-on"}
+                return 400, refused.say(M("addons.not-added", "Add-on not found. It is not added on this box."))
             try:
                 librarian.remove_source(i)
             except librarian.LibrarianError:
@@ -2482,11 +2506,11 @@ def local_addons_action(payload):
             _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
             refresh_manifests()
             return 200, {"removed": i}
-        return 400, {"error": "action: add, paste, accept or remove"}
+        return 400, refused.say(UNKNOWN_ACTION)
     except manifests.ManifestError as exc:
-        return 400, {"error": str(exc)}
+        return 400, refused.say(M("addons.manifest.invalid", "Invalid manifest: {reason}.", reason=str(exc)))
     except (ValueError, librarian.LibrarianError) as exc:
-        return 409 if "already" in str(exc) else 400, {"error": str(exc)}
+        return _busy_or(400, exc)
 
 
 def kit_snapshot():
@@ -2589,7 +2613,7 @@ def moderation_action(payload):
         if ok:
             forget_report(f"drop:{payload['id']}")
     else:
-        return 400, {"error": "unknown action"}
+        return 400, refused.say(UNKNOWN_ACTION)
     return (200 if ok else 404), moderation_snapshot()
 
 
@@ -2665,20 +2689,20 @@ def report_key(app, ref):
 
 
 def report(app, ref, reason, addr):
-    """One visitor's report. (status, message)."""
+    """One visitor's report. (status, message), the message a msg.M."""
     st = settings_snapshot()
     key = report_key(app, ref)
     if key is None or reason not in st["report_reasons"]:
-        return 400, "app, the post, and one of the reasons offered"
+        return 400, M("report.invalid", "Invalid report. Select one of the reasons offered.")
     who = hmac.new(_report_salt, addr.encode(), hashlib.sha256).digest()[:16]
     mine = hmac.new(_report_salt, who + key.encode(), hashlib.sha256).digest()[:16]
     now = time.monotonic()
     with _reports_lock:
         recent = [t for t in _report_times.get(who, []) if now - t < 3600]
         if len(recent) >= REPORTS_PER_HOUR:
-            return 429, "Too many reports. Try again later."
+            return 429, M("report.too-many", "Too many reports. Try again later.")
         if mine in _reported:
-            return 200, "already reported, thank you"
+            return 200, M("report.again", "You reported this already. Thank you.")
         _reported.add(mine)
         _report_times[who] = recent + [now]
         data = reports()
@@ -2687,7 +2711,7 @@ def report(app, ref, reason, addr):
         r["reasons"][reason] = r["reasons"].get(reason, 0) + 1
         r["last"] = CLOCK.ticks()
         save_reports(data)
-    return 200, "Reported. Thank you. An administrator will review it."
+    return 200, M("report.done", "Reported. Thank you. An administrator will review it.")
 
 
 def hidden_by_reports():
@@ -2738,20 +2762,22 @@ def store_snapshot():
 def store_action(payload):
     action, key = payload.get("action"), str(payload.get("id", ""))
     if action in ("rename", "delete") and not store.ID_RE.match(key):
-        return 400, {"error": "bad id"}
+        return 400, refused.say(store.BAD_ID)
     try:
         if action == "rename":
             name = str(payload.get("name", "")).strip()[:store.MAX_NAME]
-            if not name or STORE.rename_save(key, name, force=True) is None:
-                return 404, {"error": "no such save, or no name"}
+            if not name:
+                return 400, refused.say(store.NAME_REQUIRED)
+            if STORE.rename_save(key, name, force=True) is None:
+                return 404, refused.say(store.NOT_FOUND)
         elif action == "delete":
             STORE.delete_save(key, force=True)
         elif action == "clear":
             STORE.clear_namespace(str(payload.get("namespace", "")))
         else:
-            return 400, {"error": "unknown action"}
+            return 400, refused.say(UNKNOWN_ACTION)
     except ValueError as exc:
-        return 400, {"error": str(exc)}
+        return 400, refused.answer(exc)
     return 200, store_snapshot()
 
 
@@ -3045,7 +3071,7 @@ class Handler(BaseHTTPRequestHandler):
         if hmac.compare_digest(self.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode()):
             return False
         self._discard_body()
-        self.send_json(403, {"error": "/admin only through the web server in front"})
+        self.send_json(403, refused.say(M("hub.admin.front", "Refused. Open /admin through the web server of the box.")))
         return True
 
     # --- accounts (accounts.py): the session cookie, and whether the request came over HTTPS
@@ -3106,7 +3132,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
         else:
-            self.send_json(401, {"error": "Administrator sign-in required" if path == "/_irate/admin" else "Sign in first"})
+            self.send_json(401, refused.say(M("hub.admin.sign-in", "Administrator access required. Sign in as an administrator.")
+                                            if path == "/_irate/admin" else accounts.SIGN_IN_FIRST))
 
     def _signed_in(self):
         return accounts.session(self._session_token()) is not None if self._session_token() else False
@@ -3165,7 +3192,7 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if self.headers.get("X-Irate-Account") != "1" or (site and site not in ("same-origin", "none")) \
                 or (origin and urlparse(origin).netloc != self.headers.get("Host", "")):
-            self.send_json(403, {"error": "this must come from the box's own account page"})
+            self.send_json(403, refused.say(M("accounts.cross-site", "Refused. Use the account page of this box.")))
             return
         action, addr = payload.get("action"), self._client_addr()
         if action == "logout":
@@ -3176,7 +3203,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"me": None}, [self._session_cookie("", 0)])
             return
         if action in ("signup", "login", "password", "code") and not self._https() and accounts.settings()["http"] == "prevented":
-            self.send_json(403, {"error": "this box takes passwords only over HTTPS: open this page with https://", "https": False})
+            self.send_json(403, dict(refused.say(M("accounts.https-only", "This box accepts passwords only over HTTPS. Open this page with https://.")),
+                                     https=False))
             return
         try:
             if action == "signup":
@@ -3200,7 +3228,7 @@ class Handler(BaseHTTPRequestHandler):
                 # A person's own settings: theirs alone, through their own session.
                 self.send_json(200, {"prefs": accounts.set_prefs(self._session_token(), payload.get("prefs"))})
             else:
-                self.send_json(400, {"error": "action must be signup, login, logout, password, code or prefs"})
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
         except accounts.Wait as exc:
             self.send_json(429, refusal(exc))
         except accounts.AccountError as exc:
@@ -3229,7 +3257,7 @@ class Handler(BaseHTTPRequestHandler):
             ok = False
         if not ok:
             self._discard_body()
-            self.send_json(403, {"error": "An /admin change must come from the /admin page itself."})
+            self.send_json(403, refused.say(M("hub.admin.cross-site", "Refused. An /admin change must come from the /admin page itself.")))
         return not ok
 
     def _admin_locked(self, path):
@@ -3238,7 +3266,7 @@ class Handler(BaseHTTPRequestHandler):
         made on /admin/setup or at the console."""
         if path == "/admin/password" and unclaimed():
             self._discard_body()
-            self.send_json(403, {"error": "The box is in its first use. Select Set up this box and make the administrator account first."})
+            self.send_json(403, refused.say(SETUP_FIRST))
             return True
         return False
 
@@ -3262,13 +3290,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_notes(self):
         """The shared notes (SilverBullet's space) as a zip."""
-        self._send_zip(STATE_DIR / "notes", "notes", "no notes yet: SilverBullet is not installed, or nothing has been written")
+        self._send_zip(STATE_DIR / "notes", "notes",
+                       M("notes.download.none", "No notes yet. SilverBullet is not installed, or nobody has written a note."))
 
     def _send_zip(self, base, stem, missing):
         """A SilverBullet space as a zip: its pages and attachments, without its own hidden files (a
-        dot at any level) and never past a link out of the folder."""
+        dot at any level) and never past a link out of the folder. missing: a message, when there is none."""
         if not base.is_dir():
-            self.send_json(404, {"error": missing})
+            self.send_json(404, refused.say(missing))
             return
         root = base.resolve()
         with tempfile.SpooledTemporaryFile(max_size=32 << 20) as buf:
@@ -3303,7 +3332,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError(name)
             fh = open(KITS_DIR / name, "rb")
         except (OSError, ValueError, KeyError, TypeError):
-            self.send_json(404, {"error": "no offline kit yet: make one first"})
+            self.send_json(404, refused.say(M("kit.download.none", "No offline kit yet. Make one first.")))
             return
         with fh:
             size = os.fstat(fh.fileno()).st_size
@@ -3323,8 +3352,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = SOURCE_TARBALL.read_bytes()
         except OSError:
-            self.send_json(404, {"error": "the source tarball is made when irate-box is installed; "
-                                          "this one was not (a development checkout?)"})
+            self.send_json(404, refused.say(M("hub.source.none", "No source archive. The installer makes it, and this copy of irate-box was not installed.")))
             return
         try:  # the name install.sh gave it, the same as on the git server and in the drop
             name = (SOURCE_TARBALL.parent / "name").read_text().strip()
@@ -3383,9 +3411,9 @@ class Handler(BaseHTTPRequestHandler):
             me = accounts.session(self._session_token())
             k = notebooks.key(me["name"]) if me else None
             if k is None:
-                self.send_json(401, {"error": "sign in to download your notebook"})
+                self.send_json(401, refused.say(M("notebook.download.sign-in", "Sign in to download your notebook.")))
                 return
-            self._send_zip(NOTEBOOKS.folder(k), f"notebook-{k}", "no notebook yet: open it once first")
+            self._send_zip(NOTEBOOKS.folder(k), f"notebook-{k}", M("notebook.download.none", "No notebook yet. Open your notebook once first."))
             return
 
         if path == "/admin/notebooks":
@@ -3404,7 +3432,7 @@ class Handler(BaseHTTPRequestHandler):
             # or a user, is refused here, not merely not shown the triangle), and the samples alone, never the processes.
             me = accounts.session(self._session_token()) if self._session_token() else None
             if not me or me.get("role") != "admin":
-                self.send_json(403, {"error": "Only administrators can see the trends."})
+                self.send_json(403, refused.say(M("hub.trends.admin", "Only administrators can see the trends.")))
                 return
             snap = memhistory.snapshot()
             self.send_json(200, {"now": snap["now"], "every": snap["every"], "samples": snap["samples"]})
@@ -3491,9 +3519,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, librarian.catalogue_search(q=query.get("q", ""), language=query.get("language", ""),
                                                                category=query.get("category", ""), start=int(query.get("start") or 0)))
             except ValueError:
-                self.send_json(400, {"error": "start is a number"})
+                self.send_json(400, refused.say(BAD_REQUEST))
             except librarian.LibrarianError as exc:
-                self.send_json(502, {"error": f"Kiwix's catalogue could not be read ({exc}). It needs the internet."})
+                self.send_json(502, refused.say(M("library.catalogue.failed", "The box cannot read the Kiwix catalogue: {reason} The catalogue needs the internet.",
+                                                  reason=getattr(exc, "message", None) or str(exc))))
             return
 
         if path == "/admin/books":
@@ -3505,7 +3534,7 @@ class Handler(BaseHTTPRequestHandler):
                                                          page=int(query.get("page") or 1), per_page=int(query.get("per_page") or librarian.PER_PAGE),
                                                          names_only=query.get("names") == "1"))
             except ValueError:
-                self.send_json(400, {"error": "page and per_page are numbers"})
+                self.send_json(400, refused.say(BAD_REQUEST))
             return
 
         if path == "/admin/box":
@@ -3631,7 +3660,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/mesh":
             # The decoder bridge: everything it heard, the messages too, and the channels
             # by name (never their keys).
-            self.send_json(200, dict(MESH.heard.view(texts=True), state=MESH.state, error=MESH.error,
+            self.send_json(200, dict(MESH.heard.view(texts=True), state=MESH.state, error=MESH.error, error_message=MESH.error_message,
                                      channels=meshbridge.channels_view()))
             return
 
@@ -3655,7 +3684,7 @@ class Handler(BaseHTTPRequestHandler):
                     out["suggested"] = factory.suggested(out["targets"], factory._flasher_boards())
                 self.send_json(200, out)
             except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refused.answer(exc))
             return
 
         if path == "/admin/ci/run":
@@ -3665,7 +3694,7 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 offset = 0
             view = ci.run_view(unquote(query.get("run", "")), offset)
-            self.send_json(*((200, view) if view else (404, {"error": "no such build"})))
+            self.send_json(*((200, view) if view else (404, refused.say(M("ci.run.not-found", "Build not found. It was deleted.")))))
             return
 
         if path == "/admin/ci/file":
@@ -3674,7 +3703,7 @@ class Handler(BaseHTTPRequestHandler):
             name = unquote(query.get("name", ""))
             f = ci.run_file(unquote(query.get("run", "")), name)
             if not f:
-                self.send_json(404, {"error": "no such build file"})
+                self.send_json(404, refused.say(M("ci.file.not-found", "File not found. The build was deleted, or it did not make this file.")))
                 return
             body = f.read_bytes()
             self.send_response(200)
@@ -3770,7 +3799,7 @@ class Handler(BaseHTTPRequestHandler):
             # The mesh heard through the box's broker (meshbridge.py): nodes and traffic, never the
             # messages; only while the MQTT app is public (/admin → Access).
             if access.mode_of(access.read(ACCESS_STATE), "mqtt") != "public":
-                self.send_json(404, {"error": "not shown"})
+                self.send_json(404, refused.say(NOT_SHOWN))
                 return
             self.send_json(200, dict(MESH.heard.view(texts=False), state=MESH.state))
             return
@@ -3797,7 +3826,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 body = (CONTROL_DIR / "tls" / "ca.crt").read_bytes()
             except OSError:
-                self.send_json(404, {"error": "no certificate yet"})
+                self.send_json(404, refused.say(M("tls.ca.none", "No certificate yet. The administrator has not set up HTTPS.")))
                 return
             self.send_response(200)
             self.send_header("Content-Type", "application/x-x509-ca-cert")
@@ -3812,7 +3841,7 @@ class Handler(BaseHTTPRequestHandler):
             # The Firmware Factory's tile (factory.py public_view): only while the owner shows it,
             # and only its downloadable files (ESP32 images and zips, UF2s), never logs or sources.
             if not settings_snapshot()["factory_tile"]:
-                self.send_json(404, {"error": "not shown"})
+                self.send_json(404, refused.say(NOT_SHOWN))
                 return
             if path == "/factory.json":
                 self.send_json(200, factory.public_view())
@@ -3821,7 +3850,7 @@ class Handler(BaseHTTPRequestHandler):
             name = unquote(query.get("name", ""))
             f = factory.public_file(unquote(query.get("run", "")), name)
             if not f:
-                self.send_json(404, {"error": "no such file"})
+                self.send_json(404, refused.say(M("factory.file.not-found", "File not found. The firmware was unpublished.")))
                 return
             body = f.read_bytes()
             self.send_response(200)
@@ -3918,11 +3947,11 @@ class Handler(BaseHTTPRequestHandler):
         if tid is not None:
             result = BOARD.get_thread(tid)
             if result is None:
-                self.send_json(404, {"error": "no such thread"})
+                self.send_json(404, refused.say(NO_THREAD))
             else:
                 me = accounts.session(self._session_token())
                 if result["thread"]["posts"] and not store.can_see(result["thread"]["posts"][0], me):
-                    self.send_json(404, {"error": "no such thread"})
+                    self.send_json(404, refused.say(NO_THREAD))
                     return
                 result = dict(result, thread=dict(result["thread"], posts=[p for p in result["thread"]["posts"] if store.can_see(p, me)]))
                 hide = hidden_by_reports()
@@ -4011,9 +4040,9 @@ class Handler(BaseHTTPRequestHandler):
         payload = self._read_payload()
         if not isinstance(payload, dict):  # None, or a JSON array or string
             if self._too_large:
-                self.send_json(413, {"error": f"a request to the hub is at most {MAX_JSON >> 10} KB"})
+                self.send_json(413, refused.say(M("hub.request.large", "Request too large. The hub reads at most {kb} KB.", kb=MAX_JSON >> 10)))
                 return
-            self.send_json(400, {"error": "bad request"})
+            self.send_json(400, refused.say(BAD_REQUEST))
             return
 
         if path == "/api/account":
@@ -4024,7 +4053,7 @@ class Handler(BaseHTTPRequestHandler):
             # Open (start) this login's own notebook; only from the hub's own pages, as /api/account.
             site = self.headers.get("Sec-Fetch-Site")
             if self.headers.get("X-Irate-Account") != "1" or (site and site not in ("same-origin", "none")):
-                self.send_json(403, {"error": "this must come from the box's own pages"})
+                self.send_json(403, refused.say(CROSS_SITE))
                 return
             me = accounts.session(self._session_token())
             if payload.get("action") == "close":
@@ -4042,7 +4071,7 @@ class Handler(BaseHTTPRequestHandler):
             before = accounts.admin_ready()
             if unclaimed() and (action == "admin" or (action == "make" and payload.get("role") == "admin")):
                 # The first admin is the first use's: made on the set-up page (HTTPS, or HTTP by choice) or at the console.
-                self.send_json(403, {"error": "The box is in its first use. Select Set up this box and make the first administrator account."})
+                self.send_json(403, refused.say(SETUP_FIRST))
                 return
             try:
                 keep = not admin_login_on()
@@ -4051,7 +4080,7 @@ class Handler(BaseHTTPRequestHandler):
                     # root's (the web server's login files), checked there too. "on" as before.
                     reach = payload.get("reach")
                     if reach is not None and reach not in ("off", "local", "network"):
-                        self.send_json(400, {"error": "reach: off, local or network"})
+                        self.send_json(400, refused.say(BAD_REQUEST))
                         return
                     req = {"action": "admin-login", "reach": reach} if reach is not None else {"action": "admin-login", "on": payload.get("on") is True}
                     self.send_json(202, {"id": control_request(req)})
@@ -4075,13 +4104,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/setup":
             pw, name = payload.get("password"), payload.get("name")
             if not unclaimed():
-                self.send_json(403, {"error": "The administrator password is already set."})
+                self.send_json(403, refused.say(M("setup.done", "The administrator password is already set.")))
             elif not self._https() and payload.get("over_http") is not True:
                 # The first password over plain HTTP only when the owner chooses it, having been told.
-                self.send_json(403, {"error": "Over plain HTTP, others on the network can read the password. "
-                                     "Use HTTPS or the console, or select the option to set it over HTTP", "https": False})
+                self.send_json(403, dict(refused.say(M("setup.http", "Over plain HTTP, others on the network can read the password. "
+                                                          "Use HTTPS or the console, or select the option to set it over HTTP.")), https=False))
             elif not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
-                self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
+                self.send_json(400, refused.say(password_length()))
             elif name is None:
                 # A script's first use (no name): the box's own login, as before.
                 self.send_json(202, {"id": control_request({"action": "password", "password": pw, "setup": True})})
@@ -4105,7 +4134,7 @@ class Handler(BaseHTTPRequestHandler):
             if payload.get("setup_done") is True:
                 why = setup_blocked()
                 if why:
-                    self.send_json(409, {"error": why})
+                    self.send_json(409, refused.say(why))
                     return
             with _settings_lock:
                 was_counting = _settings.get("visitor_counts")
@@ -4123,7 +4152,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/picture":
             name = payload.get("which")
             if name not in PICTURES:
-                self.send_json(400, {"error": f"which: one of {', '.join(PICTURES)}"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             pic = PICTURES[name]
             if payload.get("remove") is True:
@@ -4135,7 +4164,9 @@ class Handler(BaseHTTPRequestHandler):
             except (binascii.Error, TypeError, ValueError):
                 data = b""
             if not data or len(data) > pic["max"] or not picture_kind(name, data):
-                self.send_json(400, {"error": f"{pic['says']} of at most {pic['max'] >> 10} KB"})
+                self.send_json(400, refused.say(M("hub.picture.favicon", "Select a PNG or .ico file of at most {kb} KB.", kb=pic["max"] >> 10)
+                                                if name == "favicon" else
+                                                M("hub.picture.art", "Select a PNG, JPEG or WebP picture of at most {kb} KB.", kb=pic["max"] >> 10)))
                 return
             tmp = pic["file"].with_name(pic["file"].name + ".tmp")
             tmp.write_bytes(data)
@@ -4147,7 +4178,7 @@ class Handler(BaseHTTPRequestHandler):
             mode, hours = payload.get("mode"), payload.get("hours")
             if mode not in ("off", "on", "timed") or (mode == "timed" and not (
                     type(hours) is int and 1 <= hours <= TAILSCALE_MAX_HOURS)):  # not bool
-                self.send_json(400, {"error": f"mode off, on, or timed with hours 1-{TAILSCALE_MAX_HOURS}"})
+                self.send_json(400, refused.say(M("tailscale.hours", "Select off, on, or on for 1 to {max} hours.", max=TAILSCALE_MAX_HOURS)))
                 return
             write_tailscale_want(mode, hours)
             self._send_tailscale()
@@ -4160,7 +4191,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/control":
             unit, op = payload.get("unit"), payload.get("op")
             if op not in CONTROL_OPS.get(unit, []):
-                self.send_json(400, {"error": f"{op} is not offered for {unit}"})
+                self.send_json(400, refused.say(M("hub.control.not-offered", "The hub does not offer {op} for {unit}.", op=str(op), unit=str(unit))))
                 return
             self.send_json(202, {"id": control_request({"action": "service", "unit": unit, "op": op})})
             return
@@ -4168,10 +4199,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/password":
             pw = payload.get("password")
             if not self._https():
-                self.send_json(403, {"error": "An administrator password can change only over HTTPS or at the console over SSH.", "https": False})
+                self.send_json(403, dict(refused.say(M("hub.password.https", "An administrator password can change only over HTTPS or at the console over SSH.")),
+                                         https=False))
                 return
             if not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
-                self.send_json(400, {"error": f"the password must be {MIN_PASSWORD}-128 characters"})
+                self.send_json(400, refused.say(password_length()))
                 return
             self.send_json(202, {"id": control_request({"action": "password", "password": pw})})
             return
@@ -4184,7 +4216,7 @@ class Handler(BaseHTTPRequestHandler):
             # How far an update must be vouched for (root/signing.py): root checks and keeps it.
             level, signers = payload.get("level"), payload.get("signers", "")
             if level not in ("off", "github", "tags") or not isinstance(signers, str) or len(signers) > 20000:
-                self.send_json(400, {"error": "level is off, github or tags; signers, allowed_signers lines"})
+                self.send_json(400, refused.say(M("update.signing.invalid", "Invalid signing settings. Select a level, and enter the signers as allowed_signers lines.")))
                 return
             self.send_json(202, {"id": control_request({"action": "update-signing", "level": level, "signers": signers})})
             return
@@ -4192,7 +4224,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/update":
             action = UPDATE_ACTIONS.get(payload.get("action"))
             if not action:
-                self.send_json(400, {"error": f"action must be one of {', '.join(UPDATE_ACTIONS)}"})
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
                 return
             self.send_json(202, {"id": control_request({"action": action})})
             return
@@ -4217,9 +4249,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif action == "remove-channel":
                     meshbridge.remove_channel(str(payload.get("name", "")))
                 else:
-                    raise ValueError("action must be add-channel or remove-channel")
+                    raise refused.Refused(UNKNOWN_ACTION)
             except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refused.answer(exc))
                 return
             self.send_json(200, {"channels": meshbridge.channels_view()})
             return
@@ -4234,7 +4266,7 @@ class Handler(BaseHTTPRequestHandler):
                 # which checks and installs them and removes these copies.
                 chain, key = payload.get("chain"), payload.get("key")
                 if not isinstance(chain, str) or not isinstance(key, str) or len(chain) > 64 << 10 or len(key) > 16 << 10:
-                    self.send_json(400, {"error": "chain and key: the PEM text of each"})
+                    self.send_json(400, refused.say(M("tls.import.invalid", "Paste the certificate chain and the key, each as PEM text.")))
                     return
                 staged = STATE_DIR / "tls-import"
                 staged.mkdir(mode=0o700, exist_ok=True)
@@ -4254,12 +4286,13 @@ class Handler(BaseHTTPRequestHandler):
                 # Only from a page that came over HTTPS: proof the owner's device trusts the box,
                 # so turning it on can't lock them out of /admin.
                 if on and self.headers.get("X-Forwarded-Proto") != "https":
-                    self.send_json(409, {"error": "Open /admin over HTTPS first (https://<this box>/admin/). Then make it HTTPS only. Otherwise you can lose access to /admin."})
+                    self.send_json(409, refused.say(M("tls.admin-only.http", "Open /admin over HTTPS first (https://<this box>/admin/). Then make it HTTPS only. "
+                                                      "Otherwise you can lose access to /admin.")))
                     return
                 self.send_json(202, {"id": control_request({"action": "tls-admin-only", "on": on})})
                 return
             if action not in ("make", "renew"):
-                self.send_json(400, {"error": "action must be make, renew, on, off, import, box or admin-only"})
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
                 return
             self.send_json(202, {"id": control_request({"action": f"tls-{action}", "again": payload.get("again") is True})})
             return
@@ -4286,9 +4319,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif action in ("pause", "resume"):
                     factory.pause(action == "pause")
                 else:
-                    raise ValueError("action must be queue, tools, offline, publish, unpublish, cancel, up, pause or resume")
+                    raise refused.Refused(UNKNOWN_ACTION)
             except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refused.answer(exc))
                 return
             self.send_json(200, factory.snapshot())
             return
@@ -4300,7 +4333,7 @@ class Handler(BaseHTTPRequestHandler):
                 if action == "build":
                     name = str(payload.get("repo", ""))
                     if not gitrepos.NAME_RE.match(name):
-                        raise ValueError("repo: a private repository's name")
+                        raise refused.Refused(M("ci.repo.invalid", "Invalid repository name. Select a private repository."))
                     branch = payload.get("branch")
                     out = ci.queue_build(confine.under(gitrepos.ROOT, "private", f"{name}.git"), str(branch) if branch else None)
                     self.send_json(202, dict(out, queued=True, snapshot=ci.snapshot()))
@@ -4310,14 +4343,14 @@ class Handler(BaseHTTPRequestHandler):
                 elif action == "settings":
                     keep = payload.get("keep_runs")
                     if type(keep) is not int or not 1 <= keep <= 50:
-                        raise ValueError("keep_runs: 1 to 50")
+                        raise refused.Refused(M("ci.keep.range", "Enter a number of builds to keep from 1 to 50."))
                     ci.SETTINGS.parent.mkdir(parents=True, exist_ok=True)
                     ci.SETTINGS.write_text(json.dumps({"keep_runs": keep}))
                     self.send_json(200, ci.snapshot())
                 else:
-                    raise ValueError("action must be build, keep, unkeep, delete or settings")
+                    raise refused.Refused(UNKNOWN_ACTION)
             except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refused.answer(exc))
             return
 
         if path == "/admin/kits":
@@ -4325,7 +4358,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 rid = toolkits.action(payload)
             except librarian.LibrarianError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(*_busy_or(400, exc))
                 return
             snap = toolkits.snapshot()
             if rid:
@@ -4354,8 +4387,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "image" and USB_DEVICE_RE.match(device):
                 self.send_json(202, {"id": control_request({"action": "backup-image", "device": device})})
             else:
-                self.send_json(400, {"error": "action must be scan, import (device, file), export (device, book), kit-import or kit-export "
-                                              "(device, kit), export-many (device, books, kits) or image (device)"})
+                self.send_json(400, refused.say(BAD_REQUEST))
             return
 
         if path == "/admin/kit":
@@ -4369,8 +4401,7 @@ class Handler(BaseHTTPRequestHandler):
                                                             "repos": payload.get("repos", []), "state": payload.get("state", "none"),
                                                             "budget_mb": budget})})
             else:
-                self.send_json(400, {"error": "action must be make (books: true, false or names; kits; repos; state: none, settings "
-                                              "or data; budget_mb)"})
+                self.send_json(400, refused.say(BAD_REQUEST))
             return
 
         if path == "/admin/tiles":
@@ -4381,8 +4412,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict) or not isinstance(data.get("order", []), list) or not set(data.get("order", [])) <= ids \
                     or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES) \
                     or not isinstance(icon, dict) or not set(icon) <= ids or not all(valid_icon(v) for v in icon.values()):
-                self.send_json(400, {"error": "state: order, a list of the apps row's tiles; size, wide or large by tile; "
-                                              "icon, emoji or up to four letters and digits by tile"})
+                self.send_json(400, refused.say(M("tiles.invalid", "Invalid tile arrangement. An icon is an emoji, or up to four letters and digits.")))
                 return
             tmp = TILES_FILE.parent / (TILES_FILE.name + ".tmp")
             STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -4398,7 +4428,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list) and set(data.get(k, [])) <= ids
                                                      for k in ("order", "hidden", "double")) \
                     or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES):
-                self.send_json(400, {"error": "state: order and hidden, each a list of the box row's tiles; size, wide or large by tile"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             tmp = STATUS_TILES_FILE.parent / (STATUS_TILES_FILE.name + ".tmp")
             STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -4413,7 +4443,7 @@ class Handler(BaseHTTPRequestHandler):
             # The folders' arrangement: the whole of folders.json, checked, at once.
             data = valid_folders(payload.get("state"))
             if data is None:
-                self.send_json(400, {"error": "state: per folder, hidden, order and extra: entries some folder lists"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             save_folders(data)
             self.send_json(200, folders_snapshot())
@@ -4423,7 +4453,7 @@ class Handler(BaseHTTPRequestHandler):
             # What its tile does for one who sees it but may not open it.
             app, how = str(payload.get("app", "")), payload.get("locked")
             if app not in _switched() or how not in LOCKED_AS:
-                self.send_json(400, {"error": "app must name an app with a switch, and locked be signin, signup, padlock or grey"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             data = locked_as()
             if how == "signin":
@@ -4438,7 +4468,7 @@ class Handler(BaseHTTPRequestHandler):
             # Who sees an app's tile: the hub's own, at once; no root, no web server change.
             app, v = str(payload.get("app", "")), payload.get("visible")
             if (app not in _switched() and app not in PAGE_APPS and app not in seen_only()) or v not in VISIBLE:
-                self.send_json(400, {"error": "app must name an app on /admin, and visible be auto, guests, users or hidden"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             data = visibility()
             if v == "auto":
@@ -4453,7 +4483,7 @@ class Handler(BaseHTTPRequestHandler):
             app, mode = str(payload.get("app", "")), payload.get("mode")
             if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES \
                     or (mode == "users" and not access.users_allowed(app)):
-                self.send_json(400, {"error": "app must name an app on /admin, and mode be public, private or off (or users, where it is possible)"})
+                self.send_json(400, refused.say(M("access.invalid", "This app does not offer this access. Reload the page and try again.")))
             else:
                 self.send_json(202, {"id": control_request({"action": "access", "app": app, "mode": mode})})
             return
@@ -4466,7 +4496,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/addons":
             aid = str(payload.get("addon", ""))
             if not ADDON_ID_RE.match(aid) or aid not in manifests.addons(MANIFESTS) or type(payload.get("on")) is not bool:
-                self.send_json(400, {"error": "addon must name an add-on, and on be true or false"})
+                self.send_json(400, refused.say(BAD_REQUEST))
             else:
                 self.send_json(202, {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})})
             return
@@ -4481,11 +4511,11 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     data = health_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
                 except ValueError as exc:
-                    self.send_json(400, {"error": str(exc)})
+                    self.send_json(400, refused.answer(exc))
                     return
                 self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Reopened."})
             else:
-                self.send_json(400, {"error": "action must be scan, accept, unaccept, or fix with a choice the doctor offered"})
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
         if path == "/admin/network":
@@ -4497,7 +4527,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     settings = uplink.validate(payload.get("settings"))
                 except (ValueError, TypeError) as exc:
-                    self.send_json(400, {"error": str(exc)})
+                    self.send_json(400, refused.answer(exc))
                     return
                 settings.pop("hold_until", None)
                 self.send_json(202, {"id": control_request({"action": "uplink-set", "settings": settings})})
@@ -4517,7 +4547,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     changes = nmconf.validate(payload["changes"], iface)
                 except ValueError as exc:
-                    self.send_json(400, {"error": str(exc)})
+                    self.send_json(400, refused.answer(exc))
                     return
                 self.send_json(202, {"id": control_request({"action": "nm-defaults", "iface": iface,
                                                             "changes": {k: ("default" if v is None else v) for k, v in changes.items()}})})
@@ -4545,14 +4575,14 @@ class Handler(BaseHTTPRequestHandler):
             elif act == "forget" and isinstance(payload.get("uuid"), str):
                 self.send_json(202, {"id": control_request({"action": "wifi-forget", "uuid": payload["uuid"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, settings, do (with a step), hold, profile, join or forget"})
+                self.send_json(400, refused.say(BAD_REQUEST))
             return
 
         if path == "/admin/packages":
             # Root checks each of these again (pkgwatch.py); here only their shapes.
             act, pkg = payload.get("action"), payload.get("package")
             if not isinstance(pkg, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", pkg) and not (act == "check" and pkg == ""):
-                self.send_json(400, {"error": "package: a watched package's name"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             if act == "check":
                 req = {"action": "pkg-check", **({"package": pkg} if pkg else {})}
@@ -4568,7 +4598,7 @@ class Handler(BaseHTTPRequestHandler):
                 req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"],
                        "every": payload.get("every", 24)}
             else:
-                self.send_json(400, {"error": "action: check, fetch, install (with version), rollback, or settings (channel, mode, days)"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             self.send_json(202, {"id": control_request(req)})
             return
@@ -4577,7 +4607,7 @@ class Handler(BaseHTTPRequestHandler):
             # The owner's level (root/share.py), on Network → The hotspot.
             level = payload.get("level")
             if level not in SHARE_LEVELS:
-                self.send_json(400, {"error": f"level is one of {', '.join(SHARE_LEVELS)}"})
+                self.send_json(400, refused.say(BAD_REQUEST))
                 return
             self.send_json(202, {"id": control_request({"action": "share-set", "level": level})})
             return
@@ -4597,7 +4627,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 saved = hotspot.save(payload.get("settings"))
             except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refused.answer(exc))
                 return
             self.send_json(200, {"settings": saved, "message": f"Saved: {hotspot.LABEL[saved['mode']]}. "
                                  "It takes effect the next time the hotspot is switched on (Network)."})
@@ -4617,7 +4647,7 @@ class Handler(BaseHTTPRequestHandler):
                     msg = secimports.save(payload.get("report")) if payload["action"] == "import" else \
                         (secimports.remove(str(payload.get("kind", ""))) or "Removed.")
                 except ValueError as exc:
-                    self.send_json(400, {"error": str(exc)})
+                    self.send_json(400, refused.answer(exc))
                     return
                 self.send_json(202, {"id": control_request({"action": "security-audit"}), "message": msg})
             elif payload.get("action") in ("accept", "unaccept"):
@@ -4625,13 +4655,13 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     data = security_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
                 except ValueError as exc:
-                    self.send_json(400, {"error": str(exc)})
+                    self.send_json(400, refused.answer(exc))
                     return
                 self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Reopened."})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:
-                self.send_json(400, {"error": "action must be scan, audit, deep, import, accept, unaccept, or fix with a choice"})
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
         if path == "/messages":
@@ -4642,16 +4672,16 @@ class Handler(BaseHTTPRequestHandler):
             # A guest taps through the sheet (or, at users-web, is signed in): root lets the device out.
             level, addr = share_level(), self._client_addr()
             if level not in SHARE_LET_OUT:
-                self.send_json(409, {"error": "this box does not let devices out one by one now"})
+                self.send_json(409, refused.say(M("share.not-per-device", "The administrator does not share the internet connection one device at a time now.")))
                 return
             if not on_hotspot(addr):
-                self.send_json(400, {"error": "only a device on the box's hotspot is let out"})
+                self.send_json(400, refused.say(M("share.not-hotspot", "Only a device on the hotspot of the box can use the shared connection.")))
                 return
             if level == "users-web" and not self._signed_in():
-                self.send_json(403, {"error": "Sign in first. The administrator shares this connection with users only."})
+                self.send_json(403, refused.say(M("share.users-only", "Sign in first. The administrator shares this connection with users only.")))
                 return
             if payload.get("agree") is not True:
-                self.send_json(400, {"error": "agree: true, after reading what sharing means"})
+                self.send_json(400, refused.say(M("share.agree", "Read what sharing means, and agree to it first.")))
                 return
             with _let_out_lock:
                 if _let_out.get(addr, 0) > time.time() + SHARE_HOURS * 3600 - 60:
@@ -4665,7 +4695,8 @@ class Handler(BaseHTTPRequestHandler):
             fwd = self.headers.get("X-Forwarded-For", "")
             addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
             code, message = report(str(payload.get("app", "")), payload.get("ref"), payload.get("reason"), addr)
-            self.send_json(code, {"message": message} if code == 200 else {"error": message})
+            # report.js reads message (the thanks) or error as text: the English, with the message itself as msg.
+            self.send_json(code, {"message" if code == 200 else "error": render(message), "msg": message})
             return
 
         if path == "/board/threads":
@@ -4678,7 +4709,7 @@ class Handler(BaseHTTPRequestHandler):
                                              payload.get("text"),
                                              self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
             except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refused.answer(exc))
                 return
             self.send_json(201, result)
             return
@@ -4692,10 +4723,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = BOARD.reply(tid, poster[0], payload.get("text"),
                                      self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
             except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refused.answer(exc))
                 return
             if result is None:
-                self.send_json(404, {"error": "no such thread"})
+                self.send_json(404, refused.say(NO_THREAD))
             else:
                 self.send_json(201, result)
             return
@@ -4711,7 +4742,7 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if (site and site not in ("same-origin", "none")) or (origin and urlparse(origin).netloc != self.headers.get("Host", "")):
             self._discard_body()
-            self.send_json(403, {"error": "a change must come from the box's own pages"})
+            self.send_json(403, refused.say(CROSS_SITE))
             return True
         return False
 
@@ -4768,7 +4799,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/flasher/flasher.html":
             body = flasher.page(self.headers.get("Host", ""))
             if body is None:
-                self.send_json(404, {"error": "the web flasher is not installed on this hub"})
+                self.send_json(404, refused.say(M("flasher.none", "The web flasher is not installed on this hub.")))
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -4792,25 +4823,28 @@ class Handler(BaseHTTPRequestHandler):
             if self.command != "HEAD":
                 self.wfile.write(body)
             return
-        self.send_json(404, {"error": "not found"})
+        self.send_json(404, refused.say(M("hub.not-found", "Not found.")))
 
     def _poster(self, kind, name):
         """Who is posting to the shoutbox or forum (kind "shout" or "board"), as the admin allows:
         (name, account), or None once the refusal is sent. A logged-in user posts under their
         account's name; a guest (where guests may) under any name but an account's."""
-        what = "shoutbox" if kind == "shout" else "forum"
+        shout = kind == "shout"
         who = settings_snapshot()[f"{kind}_who"]
         if who == "off":
-            self.send_json(403, {"error": f"the {what} is closed"})
+            self.send_json(403, refused.say(M("shoutbox.closed", "The shoutbox is closed.") if shout else
+                                            M("board.closed", "The forum is closed.")))
             return None
         me = accounts.session(self._session_token())
         if me:
             return me["name"], me["name"]
         if who == "users":
-            self.send_json(403, {"error": f"Sign in to post on the {what} (/account.html).", "login": True})
+            self.send_json(403, dict(refused.say(M("shoutbox.sign-in", "Sign in to post on the shoutbox (/account.html).") if shout else
+                                                 M("board.sign-in", "Sign in to post on the forum (/account.html).")), login=True))
             return None
         if accounts.exists(name):
-            self.send_json(403, {"error": f"{name.strip()} is the name of an account. Sign in to post with that name."})
+            self.send_json(403, refused.say(M("posting.name.account", "{name} is the name of an account. Sign in to post with that name.",
+                                              name=name.strip())))
             return None
         return name, None
 
@@ -4828,7 +4862,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         name, account = poster
         if not name or not text:
-            self.send_json(400, {"error": "name and text required"})
+            self.send_json(400, refused.say(M("shoutbox.empty", "Enter a name and a message.")))
             return
 
         # Optional author colour, stored as a hue only (0-359) -- the client's palette

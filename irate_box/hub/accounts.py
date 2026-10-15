@@ -33,7 +33,8 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box.msg import M, render
+from irate_box.msg import M
+from irate_box.hub.refused import Refused
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 FILE = STATE / "accounts.json"
@@ -68,13 +69,9 @@ _fails = {}                 # ("name" | "addr", key) -> [times]
 _signups = {}               # addr -> [times]
 
 
-class AccountError(ValueError):
+class AccountError(Refused):
     """Refused, with a reason fit to show the person: a message (msg.M) with a stable ID, so the page can say it in
     the reader's language and a test can read which refusal it was. Its English is the exception's text."""
-
-    def __init__(self, message):
-        super().__init__(render(message))
-        self.message = message
 
 
 class Wait(AccountError):

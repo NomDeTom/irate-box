@@ -75,6 +75,8 @@ from pathlib import Path
 
 from irate_box import confine
 from irate_box.hub import manifests
+from irate_box.hub.refused import Said
+from irate_box.msg import M, is_message
 from irate_box.library import zimcheck
 
 CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/library/librarian.py → the checkout
@@ -129,8 +131,23 @@ USER_AGENT = "irate-box-librarian"
 CHUNK = 1 << 20
 
 
-class LibrarianError(Exception):
-    """A failure worth showing the operator as-is."""
+class LibrarianError(Said):
+    """A failure fit to show the administrator: a message (msg.M), its English the exception's text."""
+
+
+# Refusals said in several places, and the ones other modules say too (server.py: BUSY).
+BUSY = M("library.busy", "The librarian is already running. Wait for it to finish, then try again.")
+BRANCH_INVALID = M("library.source.branch-invalid",
+                   "Invalid branch name. Use letters, digits, '_', '.', '/' and '-', and do not start with '-'.")
+NOT_ZIP = M("library.archive.not-zip", "Archive unsupported or damaged. The download is not a valid zip file.")
+
+
+def _unknown_app(names):
+    return M("library.app.unknown", "Unknown app. Use one of these apps: {apps}.", apps=list(names))
+
+
+def _no_rollback(name):
+    return M("library.rollback.none", "No cached rollback version of {name}.", name=name)
 
 
 # --- config and status -------------------------------------------------------
@@ -211,7 +228,7 @@ class Lock:
             fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             self.fh.close()
-            raise LibrarianError("The librarian is already running.")
+            raise LibrarianError(BUSY)
         return self
 
     def __exit__(self, *exc):
@@ -234,48 +251,54 @@ def validate_source(src):
     out = {"name": str(src.get("name", "")).strip(), "type": str(src.get("type", "")).strip()}
     if src.get("kind") == "app":
         if out["name"] not in APPS or not APPS[out["name"]].get("source"):
-            raise LibrarianError(f"app must be one of {', '.join(n for n in APPS if APPS[n].get('source'))}")
+            raise LibrarianError(_unknown_app(n for n in APPS if APPS[n].get("source")))
         out["kind"] = "app"
         if APPS[out["name"]]["source"]["type"] == "git":
             # A git app comes from the repository its manifest names, and nowhere else: the
             # adapt script runs on whatever is cloned.
             if out["type"] != "git":
-                raise LibrarianError(f"{out['name']} comes from git")
+                raise LibrarianError(M("library.app.git-only", "The app {name} comes from git only. Set the type to git.",
+                                          name=out["name"]))
             spec = APPS[out["name"]]["source"]
             branch = str(src.get("branch") or spec.get("branch", "main")).strip()
             if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
-                raise LibrarianError("Enter a branch name.")
+                raise LibrarianError(BRANCH_INVALID)
             follow = str(src.get("follow") or _default_follow(out["name"]))
             if follow not in ("latest", "pinned") or (follow == "pinned" and not spec.get("pin")):
-                raise LibrarianError("Select follow: latest, or pinned for an app whose manifest pins a commit.")
+                raise LibrarianError(M("library.app.follow-invalid",
+                                          "Invalid follow setting. Select latest, or pinned for an app whose manifest pins a commit."))
             out.update(repo=spec["repo"], branch=branch, follow=follow, enabled=bool(src.get("enabled", True)))
             return out
         if out["type"] not in ("actions", "nightly-link"):
-            raise LibrarianError("An app bundle comes from actions or nightly-link.")
+            raise LibrarianError(M("library.app.type-invalid", "Invalid source type for an app bundle. Use actions or nightly-link."))
         # A bundle app comes from the repository, workflow and artifact its manifest names, and
         # nowhere else: a request may choose only the branch. Otherwise a forged request
         # could repoint draw, the flasher or the room relay at someone else's build.
         spec = APPS[out["name"]]["source"]
         branch = str(src.get("branch") or spec.get("branch", "main")).strip()
         if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
-            raise LibrarianError("Enter a branch name.")
+            raise LibrarianError(BRANCH_INVALID)
         out.update(repo=spec["repo"], workflow=spec["workflow"], pattern=spec["pattern"], branch=branch,
                    enabled=bool(src.get("enabled", True)))
         return out
     if not NAME_RE.match(out["name"]) or out["name"] == "library":
-        raise LibrarianError("Invalid source name. Use letters, digits, '.', '_' and '-' only. The name becomes <name>.zim.")
+        raise LibrarianError(M("library.source.name-invalid",
+                                "Invalid source name. Use letters, digits, '.', '_' and '-' only. The name becomes <name>.zim."))
     if out["type"] not in TYPES:
-        raise LibrarianError(f"Invalid source settings. Type must be one of: {', '.join(TYPES)}.")
+        raise LibrarianError(M("library.source.type-invalid", "Invalid source type. Use one of these types: {types}.",
+                                types=list(TYPES)))
     pattern = str(src.get("pattern", "")).strip()
     if out["type"] == "kiwix":
         # A book from Kiwix's catalogue (library.kiwix.org), kept current by its catalogue name:
         # each release has a new file name, so a plain url source would never move on.
         kname = str(src.get("kiwix_name", "")).strip()
         if not KIWIX_NAME_RE.match(kname):
-            raise LibrarianError("Invalid source settings. Enter kiwix_name, the name of the book in the Kiwix catalogue, for example wikipedia_en_top_mini.")
+            raise LibrarianError(M("library.source.kiwix-name-invalid", "Invalid source settings. Enter the name of the book "
+                                    "in the Kiwix catalogue, for example wikipedia_en_top_mini."))
         flavour = str(src.get("flavour", "")).strip()
         if flavour and not KIWIX_NAME_RE.match(flavour):
-            raise LibrarianError("Invalid source settings. Use letters, digits, '_' and '-' for flavour.")
+            raise LibrarianError(M("library.source.flavour-invalid",
+                                    "Invalid source settings. Use letters, digits, '_' and '-' for the flavour."))
         out.update(kiwix_name=kname, flavour=flavour, enabled=bool(src.get("enabled", True)))
         return out
     if out["type"] == "url":
@@ -283,12 +306,12 @@ def validate_source(src):
         if urllib.parse.urlparse(url).scheme != "https":
             # A book over plain HTTP can be swapped on the way, and its pages are served on the
             # hub's own origin.
-            raise LibrarianError("Invalid source settings. The URL must start with https://.")
+            raise LibrarianError(M("library.source.url-not-https", "Invalid source settings. The URL must start with https://."))
         out["url"] = url
     else:
         repo = str(src.get("repo", "")).strip()
         if not REPO_RE.match(repo):
-            raise LibrarianError("Invalid source settings. Enter the repository as OWNER/REPO.")
+            raise LibrarianError(M("library.source.repo-invalid", "Invalid source settings. Enter the repository as account/repository, for example meshtastic/firmware."))
         out["repo"] = repo
         out["pattern"] = pattern or ("*.zim" if out["type"] == "release" else "*")
     if out["type"] == "release":
@@ -296,7 +319,8 @@ def validate_source(src):
     if out["type"] in ("actions", "nightly-link"):
         workflow = str(src.get("workflow", "")).strip()
         if not re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", workflow):
-            raise LibrarianError("Invalid source settings. Enter the file name of the workflow, for example docs-zim.yml.")
+            raise LibrarianError(M("library.source.workflow-invalid",
+                                    "Invalid source settings. Enter the file name of the workflow, for example docs-zim.yml."))
         out["workflow"] = workflow
         branch = str(src.get("branch", "")).strip()
         if branch:
@@ -398,26 +422,29 @@ def check_bundle(zip_path, name):
             for info in zf.infolist():
                 parts = Path(info.filename).parts
                 if info.filename.startswith(("/", "\\")) or ".." in parts or ":" in info.filename:
-                    raise LibrarianError(f"Bundle rejected. It has an unsafe path: {info.filename}")
+                    raise LibrarianError(M("library.bundle.unsafe-path", "Bundle rejected. It has an unsafe path: {path}", path=info.filename))
                 if (info.external_attr >> 16) & 0o170000 == 0o120000:
-                    raise LibrarianError(f"Bundle rejected. It has a symbolic link: {info.filename}")
+                    raise LibrarianError(M("library.bundle.symlink", "Bundle rejected. It has a symbolic link: {path}", path=info.filename))
                 total += info.file_size
                 names.add(info.filename)
             if total > APP_MAX_BYTES:
-                raise LibrarianError(f"Bundle rejected. It unpacks to {total >> 20} MB. The limit is {APP_MAX_BYTES >> 20} MB.")
+                raise LibrarianError(M("library.bundle.too-large", "Bundle rejected. It unpacks to {size} MB. The limit is {limit} MB.",
+                                        size=total >> 20, limit=APP_MAX_BYTES >> 20))
             if BUNDLE_JSON not in names:
-                raise LibrarianError(f"Archive unsupported. It is not an Irate-Box bundle: {BUNDLE_JSON} is missing.")
+                raise LibrarianError(M("library.bundle.marker-missing", "Archive unsupported. It is not an Irate-Box bundle: {file} is missing.",
+                                        file=BUNDLE_JSON))
             meta = json.loads(zf.read(BUNDLE_JSON))
             if meta.get("app") != name:
-                raise LibrarianError(f"Archive unsupported. This is a bundle of {meta.get('app')!r}, not {name}.")
+                raise LibrarianError(M("library.bundle.wrong-app", "Archive unsupported. This is a bundle of {got}, not {name}.",
+                                        got=str(meta.get("app")), name=name))
             needs = APPS[name]["install"]["needs"]
             if not _has_needed(names, needs):
-                raise LibrarianError(f"Archive unsupported. The bundle has no {needs}.")
+                raise LibrarianError(M("library.bundle.incomplete", "Archive unsupported. The bundle has no {needs}.", needs=needs))
             return meta
     except zipfile.BadZipFile:
-        raise LibrarianError("Archive unsupported or damaged. The download is not a valid zip file.")
+        raise LibrarianError(NOT_ZIP)
     except (ValueError, KeyError) as exc:
-        raise LibrarianError(f"Archive damaged. {BUNDLE_JSON} cannot be read: {exc}")
+        raise LibrarianError(M("library.bundle.unreadable", "Archive damaged. The box cannot read {file}: {error}", file=BUNDLE_JSON, error=str(exc)))
 
 
 def _queue_root(req):
@@ -440,7 +467,7 @@ def _git(*args, timeout=300):
     if out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
         what = args[2] if args[0] == "-C" and len(args) > 2 else args[0]
-        raise LibrarianError(f"git {what}: {lines[-1] if lines else 'failed'}")
+        raise LibrarianError(M("library.git.failed", "Git {what} failed: {output}", what=what, output=lines[-1] if lines else ""))
     return out.stdout
 
 
@@ -449,7 +476,7 @@ def _resolve_git(src, auth):
     branch = src.get("branch", "main")
     head = _git("ls-remote", src["repo"], f"refs/heads/{branch}", timeout=60).split()
     if not head:
-        raise LibrarianError(f"{src['repo']} has no branch {branch}")
+        raise LibrarianError(M("library.git.no-branch", "Source not found. {repo} has no branch {branch}.", repo=src["repo"], branch=branch))
     sha = head[0]
     return {"version": f"git-{sha}", "url": src["repo"], "size": 0, "zip": False, "commit": sha,
             "label": f"{branch} at {sha[:7]}", "auth": None}
@@ -470,7 +497,8 @@ def _pack_git(src, cand, part):
             _git("clone", "-q", "--depth", "1", "--branch", src.get("branch", "main"), src["repo"], str(tree))
         commit = _git("-C", str(tree), "rev-parse", "HEAD").strip()
         if want and commit != want:
-            raise LibrarianError(f"asked {src['repo']} for {want[:7]} and got {commit[:7]}")
+            raise LibrarianError(M("library.git.wrong-commit", "Download failed. The box asked {repo} for commit {want} and got {got}. "
+                                    "The existing version is unchanged.", repo=src["repo"], want=want[:7], got=commit[:7]))
         shutil.rmtree(tree / ".git")
         # No links from the repository survive: the adapt script and the zip below would
         # follow them, writing or packing files of the hub's own.
@@ -482,7 +510,8 @@ def _pack_git(src, cand, part):
             out = subprocess.run([str(CHECKOUT / "irate-box"), Path(adapt).stem, str(tree), str(CHECKOUT / "web")],
                                  capture_output=True, text=True, timeout=300)
             if out.returncode != 0:
-                raise LibrarianError(f"{adapt} failed: {(out.stderr or out.stdout).strip()[-300:]}")
+                raise LibrarianError(M("library.app.adapt-failed", "The adapt script {script} failed: {output}",
+                                        script=adapt, output=(out.stderr or out.stdout).strip()[-300:]))
         (tree / BUNDLE_JSON).write_text(json.dumps({
             "app": name, "repository": src["repo"], "ref": "pinned" if cand.get("pinned") else src.get("branch", "main"),
             "commit": commit, "built": now_iso(), "source": "git"}))
@@ -499,8 +528,10 @@ def fetch_app(src, cand):
     name = src["name"]
     APP_STAGING.mkdir(parents=True, exist_ok=True)
     need = cand["size"] * 3 + 64 * 2**20
-    if _free_bytes(APP_STAGING) < need:
-        raise LibrarianError(f"Insufficient storage for the {name} bundle.")
+    free = _free_bytes(APP_STAGING)
+    if free < need:
+        raise LibrarianError(M("library.app.no-space", "Insufficient storage for the {name} bundle. {free} MB are free and {need} MB are needed.",
+                               name=name, free=free >> 20, need=need >> 20))
     dest = APP_STAGING / f"{name}.zip"
     part = APP_STAGING / f"{name}.zip.download"
     try:
@@ -595,7 +626,7 @@ def rollback_local(name):
     target = app_dir(name)
     prev = target.parent / f".{name}.prev"
     if not prev.is_dir():
-        raise LibrarianError(f"No cached rollback version of {name}.")
+        raise LibrarianError(_no_rollback(name))
     swap = target.parent / f".{name}.swap"
     shutil.rmtree(swap, ignore_errors=True)
     if target.exists():
@@ -608,12 +639,13 @@ def rollback_local(name):
 
 def update_app_source(src, cand, entry, mode, latest_error=None):
     """An app source's part of update(): update_app() on the build the source follows. cand is
-    the newest (None if it could not be resolved: latest_error says why). With a pin, the
+    the newest (None if it could not be resolved: latest_error, the LibrarianError, says why). With a pin, the
     status records both, and following latest falls back as the comment above says."""
     pin = APPS[src["name"]]["source"].get("pin") if src["type"] == "git" else None
     if not pin:
         if cand is None:
-            raise LibrarianError(latest_error)
+            raise latest_error if isinstance(latest_error, LibrarianError) else LibrarianError(
+                M("library.app.latest-unknown", "The newest version is not known: {error}", error=str(latest_error)))
         return update_app(src, cand, entry, mode)
     pinned = _pinned_candidate(src)
     entry["pinned"] = {"version": pinned["version"], "label": pinned["label"]}
@@ -675,7 +707,7 @@ def add_source(src):
 def remove_source(name, delete_book=False):
     cfg = load_config()
     if not any(s["name"] == name for s in cfg["sources"]):
-        raise LibrarianError(f"Source not found: {name}")
+        raise LibrarianError(M("library.source.not-found", "Source not found: {name}.", name=name))
     cfg["sources"] = [s for s in cfg["sources"] if s["name"] != name]
     save_config(cfg)
     status = load_status()
@@ -696,7 +728,7 @@ def set_policy(**changes):
         if value is None:
             continue
         if key not in DEFAULT_POLICY or not isinstance(value, int) or not 0 <= value <= POLICY_MAX.get(key, value):
-            raise LibrarianError(f"Invalid policy value: {key}={value!r}")
+            raise LibrarianError(M("library.policy.invalid", "Invalid policy value {value} for {key}.", key=key, value=repr(value)))
         cfg["policy"][key] = value
     save_config(cfg)
     return cfg["policy"]
@@ -733,7 +765,8 @@ class _Answer:
         try:
             return self._resp.read(*args)
         except (http.client.HTTPException, OSError) as exc:
-            raise LibrarianError(f"Download failed. The answer from {self._host} ended early: {exc!r}"[:300]) from exc
+            raise LibrarianError(M("library.download.cut-short", "Download failed. The answer from {host} ended early: {error}",
+                                   host=self._host, error=repr(exc)[:200])) from exc
 
     def __getattr__(self, name):
         return getattr(self._resp, name)
@@ -758,14 +791,16 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
         if exc.headers is not None:
             _note_rate(exc.headers)
         if exc.code == 401:
-            raise LibrarianError(f"{url}: HTTP 401. Enter a valid GitHub token.")
+            raise LibrarianError(M("library.github.token-refused", "GitHub refused the token for {url} (HTTP 401). Enter a valid GitHub token.", url=url))
         if exc.code == 429 or (exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0"):
             _pace_fail()
-            raise LibrarianError("GitHub API rate limit reached. Without a token the limit is 60 requests per hour.")
-        raise LibrarianError(f"{url}: HTTP {exc.code}")
+            raise LibrarianError(M("library.github.rate-limited", "GitHub API rate limit reached. The limit depends on authentication: "
+                                     "60 requests per hour without a token, more with a token."))
+        raise LibrarianError(M("library.download.http-error", "Download failed. {url} answered HTTP {code}.", url=url, code=exc.code))
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         reason = getattr(exc, "reason", exc)
-        raise LibrarianError(f"Download failed. The box cannot reach {urllib.parse.urlparse(url).hostname}: {reason}")
+        raise LibrarianError(M("library.download.unreachable", "Download failed. The box cannot reach {host}: {reason}",
+                                 host=urllib.parse.urlparse(url).hostname, reason=str(reason)))
 
 
 # GitHub's API at hundreds of sources. Without a token it allows 60 requests
@@ -848,7 +883,7 @@ def adapt_rate():
         with _open(f"{API}/rate_limit", token(), timeout=20) as resp:
             core = json.load(resp)["resources"]["core"]
     except (ValueError, KeyError, TypeError):
-        raise LibrarianError("The GitHub rate limit could not be read.")
+        raise LibrarianError(M("library.github.rate-unreadable", "The box cannot read the GitHub rate limit."))
     limit = int(core["limit"])
     p = {k: v for k, v in pace().items() if k == "hits"}
     p.update(budget=max(PACE_FLOOR, limit - RESERVE), limit=limit, failures=0, adapted=int(time.time()))
@@ -887,7 +922,8 @@ def _api(path, auth=None):
             try:
                 body = json.load(resp)
             except ValueError as exc:
-                raise LibrarianError(f"{urllib.parse.urlparse(url).hostname} answered with something that is not JSON: {exc}"[:300]) from exc
+                raise LibrarianError(M("library.download.not-json", "Download failed. {host} answered with something that is not JSON: {error}",
+                                           host=urllib.parse.urlparse(url).hostname, error=str(exc)[:200])) from exc
             etag = resp.headers.get("ETag")
     except _NotModified as nm:
         _note_rate(nm.headers)
@@ -926,7 +962,8 @@ def _resolve_release(src, auth):
                     "label": f"release {rel['tag_name']} ({asset['name']})",
                     "auth": None,
                 }
-    raise LibrarianError(f"Source not found. No release of {src['repo']} has an asset matching {src['pattern']}.")
+    raise LibrarianError(M("library.release.not-found", "Source not found. No release of {repo} has an asset matching {pattern}.",
+                           repo=src["repo"], pattern=src["pattern"]))
 
 
 # Which runs' artifacts a book or an app may come from: a push to the repository, a run
@@ -951,16 +988,24 @@ def _newest_artifact(src, auth):
         for art in arts.get("artifacts", []):
             if not art.get("expired") and fnmatch.fnmatch(art["name"], src["pattern"]):
                 return run, art
-    where = f" on {src['branch']}" if src.get("branch") else ""
-    raise LibrarianError(
-        f"Source not found. No successful {src['workflow']} run{where} in {src['repo']} has an unexpired "
-        f"artifact matching {src['pattern']}. GitHub deletes artifacts after their retention period, 90 days by default."
-        + (f" The box skipped {passed_over} run{'s' if passed_over != 1 else ''} from a pull request or a fork." if passed_over else ""))
+    args = dict(workflow=src["workflow"], repo=src["repo"], pattern=src["pattern"])
+    if src.get("branch"):
+        why = M("library.artifact.not-found-branch", "Source not found. No successful {workflow} run on {branch} in {repo} has an "
+                "unexpired artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.",
+                branch=src["branch"], **args)
+    else:
+        why = M("library.artifact.not-found", "Source not found. No successful {workflow} run in {repo} has an unexpired "
+                "artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.", **args)
+    if passed_over:
+        why = M("library.artifact.not-found-skipped", {
+            "one": "{why} The box skipped {n} run from a pull request or a fork.",
+            "other": "{why} The box skipped {n} runs from a pull request or a fork."}, why=why, n=passed_over)
+    raise LibrarianError(why)
 
 
 def _resolve_actions(src, auth):
     if not auth:
-        raise LibrarianError("Actions sources need a GitHub token. Enter a token or use nightly-link instead.")
+        raise LibrarianError(M("library.actions.no-token", "An actions source needs a GitHub token. Enter a token, or use nightly-link."))
     run, art = _newest_artifact(src, auth)
     return {
         "version": f"run-{run['id']}/{art['id']}",
@@ -995,7 +1040,8 @@ def _resolve_url(src, auth):
         final = resp.geturl()
     version = headers.get("ETag") or headers.get("Last-Modified")
     if not version:
-        raise LibrarianError(f"{src['url']} sends neither ETag nor Last-Modified. The box cannot detect updates.")
+        raise LibrarianError(M("library.url.no-version", "The box cannot detect updates of {url}. It sends neither ETag nor Last-Modified.",
+                               url=src["url"]))
     return {
         "version": version.strip('"'),
         "url": src["url"],
@@ -1022,7 +1068,7 @@ def _opds(params):
     try:
         root = ET.fromstring(data)
     except ET.ParseError:
-        raise LibrarianError("Download failed. The Kiwix catalogue is unreadable.")
+        raise LibrarianError(M("library.kiwix.catalogue-unreadable", "Download failed. The box cannot read the Kiwix catalogue."))
     out = []
     for e in root.findall(f"{_ATOM}entry"):
         g = lambda tag: (e.findtext(f"{_ATOM}{tag}") or "").strip()  # noqa: E731
@@ -1059,7 +1105,10 @@ def _resolve_kiwix(src, auth):
     entries, _ = _opds({"name": src["kiwix_name"], "count": 20})
     entries = [e for e in entries if e["name"] == src["kiwix_name"] and (e["flavour"] or "") == (src.get("flavour") or "")]
     if not entries:
-        raise LibrarianError(f"Kiwix's catalogue has no {src['kiwix_name']}" + (f" ({src['flavour']})" if src.get("flavour") else ""))
+        if src.get("flavour"):
+            raise LibrarianError(M("library.kiwix.not-found-flavour", "Source not found. The Kiwix catalogue has no {name} with the flavour {flavour}.",
+                                   name=src["kiwix_name"], flavour=src["flavour"]))
+        raise LibrarianError(M("library.kiwix.not-found", "Source not found. The Kiwix catalogue has no {name}.", name=src["kiwix_name"]))
     e = max(entries, key=lambda x: x["updated"])
     file = e["url"].rsplit("/", 1)[-1]
     return {"version": file, "url": e["url"], "size": e["size"], "zip": False,
@@ -1109,7 +1158,8 @@ def _verify_sha256(path, expected, what):
             h.update(chunk)
     if h.hexdigest() != expected.lower():
         Path(path).unlink(missing_ok=True)
-        raise LibrarianError(f"Digest mismatch. The SHA-256 of {what} differs from the one the source names. The existing version is unchanged.")
+        raise LibrarianError(M("library.download.digest-mismatch", "Digest mismatch. The SHA-256 of {what} differs from the one "
+                               "the source names. The existing version is unchanged.", what=what))
 
 
 def _download(url, dest, auth=None, name=None, expected=0, resume=False):
@@ -1125,7 +1175,8 @@ def _download(url, dest, auth=None, name=None, expected=0, resume=False):
         resp = _open(url, auth, timeout=120, extra={"Range": f"bytes={have}-"} if have else None)
         if urllib.parse.urlparse(url).scheme == "https" and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https":
             resp.close()  # a book is never taken over plain HTTP, even on a redirect
-            raise LibrarianError(f"{urllib.parse.urlparse(url).hostname} redirected to plain HTTP: not taken")
+            raise LibrarianError(M("library.download.http-redirect", "Download rejected. {host} redirected to plain HTTP. "
+                                   "The existing version is unchanged.", host=urllib.parse.urlparse(url).hostname))
         go_on = have and getattr(resp, "status", None) == 206  # a server that ignores Range sends it all (200)
         done = have if go_on else 0
         with resp, open(dest, "ab" if go_on else "wb") as out:
@@ -1159,19 +1210,25 @@ def _extract_zim(zip_path, name, dest):
             pick = next((i for i in zims if Path(i.filename).name == f"{name}.zim"), None)
             if pick is None:
                 if len(zims) != 1:
-                    raise LibrarianError(f"Archive unsupported. The zip holds {len(zims)} .zim files and none is {name}.zim.")
+                    raise LibrarianError(M("library.archive.no-zim", {
+                        "one": "Archive unsupported. The zip holds {n} .zim file and it is not {name}.zim.",
+                        "other": "Archive unsupported. The zip holds {n} .zim files and none is {name}.zim."}, n=len(zims), name=name))
                 pick = zims[0]
             with zf.open(pick) as src, open(dest, "wb") as out:
                 shutil.copyfileobj(src, out, CHUNK)
     except zipfile.BadZipFile:
-        raise LibrarianError("Archive unsupported or damaged. The download is not a valid zip file.")
+        raise LibrarianError(NOT_ZIP)
 
 
-def _check_zim(path, what="the download"):
-    """A book replaces the one in use only once it is whole and Kiwix can read it (zimcheck)."""
+def _check_zim(path, archived=None):
+    """A book replaces the one in use only once it is whole and Kiwix can read it (zimcheck). archived: the
+    name of the archived version being put back, if that is what this is."""
     why = zimcheck.problem(path)
+    if why and archived:
+        raise LibrarianError(M("library.book.archived-unreadable", "The archived version {version} was not installed. {why} "
+                               "The book in use is unchanged.", version=archived, why=why))
     if why:
-        raise LibrarianError(f"{what} was not put in place. {why} The book in use is unchanged.")
+        raise LibrarianError(M("library.book.unreadable", "The download was not installed. {why} The book in use is unchanged.", why=why))
 
 
 def _free_bytes(path):
@@ -1195,7 +1252,7 @@ KIWIX_BATCH = 100
 def _kiwix(*args):
     manage = shutil.which("kiwix-manage")
     if not manage:
-        raise LibrarianError("Cache dependencies missing. Install kiwix-tools to get kiwix-manage.")
+        raise LibrarianError(M("library.kiwix.manage-missing", "Cache dependencies missing. Install kiwix-tools to get kiwix-manage."))
     return subprocess.run([manage, *map(str, args)], check=False, stdout=subprocess.DEVNULL,
                           stderr=subprocess.DEVNULL).returncode
 
@@ -1298,7 +1355,7 @@ def books_bytes():
 
 
 def over_budget(name, size, policy):
-    """Why a book of `size` bytes would not fit the books' budget (it replaces <name>.zim), or None.
+    """Why a book of `size` bytes would not fit the books' budget (it replaces <name>.zim), as a message, or None.
     Says which books are largest: what the owner would remove first to make room."""
     budget = policy.get("books_budget_mb", 0) << 20
     if not budget or not size:
@@ -1308,8 +1365,10 @@ def over_budget(name, size, policy):
     if after <= budget:
         return None
     largest = sorted(ZIM_DIR.glob("*.zim"), key=lambda p: p.stat().st_size, reverse=True)[:3]
-    return (f"Book storage limit exceeded. The books would use {after >> 20} MB of the {budget >> 20} MB limit. Largest books now: "
-            + ", ".join(f"{p.stem} ({p.stat().st_size >> 20} MB)" for p in largest))
+    return M("library.book.over-limit", "Book storage limit exceeded. With this book, the books would use {after} MB of the "
+             "{limit} MB limit. They use {now} MB now. To make room, remove a book or increase the limit. The largest books now: {largest}.",
+             after=after >> 20, limit=budget >> 20, now=books_bytes() >> 20,
+             largest=[M("library.book.size", "{name} ({size} MB)", name=p.stem, size=p.stat().st_size >> 20) for p in largest])
 
 
 def fetch_book(src, cand, policy, status_entry):
@@ -1318,7 +1377,8 @@ def fetch_book(src, cand, policy, status_entry):
     need = cand["size"] * (2 if cand["zip"] else 1) + policy["min_free_mb"] * 2**20
     free = _free_bytes(ZIM_DIR)
     if cand["size"] and free < need:
-        raise LibrarianError(f"Insufficient storage: {free >> 20} MB free, {need >> 20} MB needed.")
+        raise LibrarianError(M("library.book.no-space", "Insufficient storage. {free} MB are free and {need} MB are needed.",
+                               free=free >> 20, need=need >> 20))
     over = over_budget(name, cand["size"], policy)
     if over:
         raise LibrarianError(over)
@@ -1388,7 +1448,7 @@ def rollback(name, version=None):
     src = next((s for s in load_config()["sources"] if s["name"] == name), {})
     if src.get("kind") == "app":
         if not (installed_app(name) or {}).get("has_previous"):
-            raise LibrarianError(f"No cached rollback version of {name}.")
+            raise LibrarianError(_no_rollback(name))
         if APPS.get(name, {}).get("local"):
             return rollback_local(name)
         return "queued: " + _queue_root({"action": "app-rollback", "app": name})
@@ -1397,7 +1457,8 @@ def rollback(name, version=None):
     if version:
         choices = [p for p in choices if p.stem == _safe(version)]
     if not choices:
-        raise LibrarianError(f"No cached rollback version of {name}" + (f" called {version}" if version else "") + ".")
+        raise LibrarianError(M("library.rollback.version-none", "No cached rollback version of {name} called {version}.",
+                                 name=name, version=version) if version else _no_rollback(name))
     pick = choices[0]
     with Lock():
         status = load_status()
@@ -1411,7 +1472,7 @@ def rollback(name, version=None):
         tmp = ZIM_DIR / f".{name}.zim.new"
         shutil.copyfile(pick, tmp)
         try:
-            _check_zim(tmp, f"the archived version {pick.stem}")
+            _check_zim(tmp, archived=pick.stem)
         except LibrarianError:
             tmp.unlink(missing_ok=True)
             raise
@@ -1515,7 +1576,7 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                         cand, latest_error = resolve(src), None
                         entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
                     except LibrarianError as exc:
-                        cand, latest_error = None, str(exc)
+                        cand, latest_error = None, exc
                     log(f"{name}: checking the app bundle")
                     outcome = update_app_source(src, cand, entry, mode, latest_error)
                 else:
@@ -1523,8 +1584,13 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                     entry["latest"] = {"version": cand["version"], "label": cand["label"], "size": cand["size"]}
                     outcome = update_book(src, cand, entry, mode, policy, log)
                 entry.pop("error", None)
+                entry.pop("error_message", None)
             except (LibrarianError, OSError) as exc:
                 entry["error"] = str(exc)
+                if is_message(getattr(exc, "message", None)):
+                    entry["error_message"] = exc.message
+                else:
+                    entry.pop("error_message", None)
                 outcome = f"error: {exc}"
             entry["outcome"] = outcome
             results[name] = outcome
@@ -1835,7 +1901,7 @@ def main(argv=None):
                 rebuild_library()
         elif args.cmd == "app-fetch":
             if args.app not in APPS:
-                raise LibrarianError(f"app must be one of {', '.join(APPS)}")
+                raise LibrarianError(_unknown_app(APPS))
             src = next((s for s in load_config()["sources"] if s["name"] == args.app),
                        validate_source(default_app_source(args.app)))
             with Lock():

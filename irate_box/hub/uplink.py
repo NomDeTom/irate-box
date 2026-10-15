@@ -92,6 +92,8 @@ from collections import deque
 from pathlib import Path
 
 from irate_box.hub import jsonlog, linkhistory, netinv, watchlog
+from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -233,6 +235,74 @@ FIELDS = {
 # Custom fields there were before sensitivity: dropped when settings load, not refused.
 FIELDS_WAS = ("misses", "grace", "flap_count", "flap_window", "flap_action", "guests")
 IFACE_RE = re.compile(r"^(auto|[A-Za-z0-9_][A-Za-z0-9._-]{0,14})$")  # no leading "-"
+# Refusals said in several places. A BSSID: also roaming.py's, for a lock asked by hand.
+BAD_BSSID = M("roaming.bssid.invalid", "Invalid BSSID. Enter six pairs of hexadecimal digits separated by colons, "
+              "for example aa:bb:cc:dd:ee:ff.")
+NO_NM = M("uplink.profile.not-nm", "NetworkManager does not run the box's link, so the box has no connection profile to change.")
+
+
+def _bad_iface(name):
+    return M("uplink.iface.invalid", "Invalid network interface name: {iface}.", iface=str(name))
+
+
+def _sensitivity_range():
+    return M("uplink.sensitivity.range", "The sensitivity must be a whole number from {low} to {high} missed checks.",
+             low=SENSITIVITY[0], high=SENSITIVITY[1])
+
+
+# A setting that is not one of its allowed values, in the words the Network page uses for it.
+_NOT_ONE_OF = {
+    "pace": lambda v: M("uplink.pace.unknown", "The recovery timing (Pace) must be one of these values: {values}.", values=v),
+    "reach": lambda v: M("uplink.reach.unknown", "The maximum recovery action (Reach) must be one of these values: {values}.", values=v),
+    "guests": lambda v: M("uplink.guests.unknown", "The setting for guests on the hotspot must be one of these values: {values}.", values=v),
+    "on_wedge": lambda v: M("uplink.on-wedge.unknown", "The setting for a failed radio must be one of these values: {values}.", values=v),
+    "retry": lambda v: M("uplink.retry.unknown", "The retry interval for an unavailable network must be one of these values: {values}.",
+                         values=v),
+    "give_up": lambda v: M("uplink.give-up.unknown", "The retry period for an unavailable network must be one of these values: {values}.",
+                           values=v),
+    "roaming": lambda v: M("uplink.roaming.unknown", "The roaming setting must be one of these values: {values}.", values=v),
+    "watch_new": lambda v: M("uplink.watch-new.unknown", "The setting for new network interfaces must be one of these values: {values}.",
+                             values=v),
+    "box_steps": lambda v: M("uplink.box-steps.unknown", "The setting for system-wide recovery actions must be one of these values: {values}.",
+                             values=v),
+    "cable_out": lambda v: M("uplink.cable-out.unknown", "The setting for a disconnected cable must be one of these values: {values}.",
+                             values=v),
+    "cable_reach": lambda v: M("uplink.cable-reach.unknown", "The wired-link recovery limit must be one of these values: {values}.", values=v),
+}
+
+
+def _not_one_of(key, allowed):
+    return _NOT_ONE_OF[key](list(allowed))
+
+
+# A Custom field out of its range, in the words of its label on the Network page.
+_OUT_OF_RANGE = {
+    "check": lambda lo, hi: M("uplink.custom.check", "The check interval must be from {low} to {high} seconds.", low=lo, high=hi),
+    "window": lambda lo, hi: M("uplink.custom.window", "The failure-count window must be from {low} to {high} seconds.",
+                               low=lo, high=hi),
+    "repeat": lambda lo, hi: M("uplink.custom.repeat", "The reconnect interval must be from {low} to {high} seconds.",
+                               low=lo, high=hi),
+    "backoff": lambda lo, hi: M("uplink.custom.backoff", "The retry backoff multiplier must be from {low} to {high}.",
+                                low=lo, high=hi),
+    "max_repeat": lambda lo, hi: M("uplink.custom.max-repeat", "The maximum retry interval must be from {low} to {high} seconds.",
+                                   low=lo, high=hi),
+    "relapse": lambda lo, hi: M("uplink.custom.relapse", "The outage grouping window must be from {low} to {high} seconds.",
+                                low=lo, high=hi),
+    "reboots_per_day": lambda lo, hi: M("uplink.custom.reboots-per-day",
+                                        "The maximum number of reboots per day must be from {low} to {high}.", low=lo, high=hi),
+    "reboot_gap": lambda lo, hi: M("uplink.custom.reboot-gap", "The minimum reboot interval must be from {low} to {high} seconds.",
+                                   low=lo, high=hi),
+    "blip": lambda lo, hi: M("uplink.custom.blip", "The short-roam limit must be from {low} to {high} seconds.", low=lo, high=hi),
+    "steps.reconnect": lambda lo, hi: M("uplink.custom.step-reconnect",
+                                        "The time to reconnect must be from {low} to {high} seconds, or off.", low=lo, high=hi),
+    "steps.restart": lambda lo, hi: M("uplink.custom.step-restart",
+                                      "The time to restart the network service must be from {low} to {high} seconds, or off.",
+                                      low=lo, high=hi),
+    "steps.radio": lambda lo, hi: M("uplink.custom.step-radio",
+                                    "The time to reset the radio must be from {low} to {high} seconds, or off.", low=lo, high=hi),
+    "steps.reboot": lambda lo, hi: M("uplink.custom.step-reboot",
+                                     "The time to reboot must be from {low} to {high} seconds, or off.", low=lo, high=hi),
+}
 
 
 def effective(chosen, iface=None):
@@ -297,7 +367,7 @@ def migrate(raw):
     if "eagerness" in raw and "pace" not in raw:
         old = raw.pop("eagerness")
         if old not in EAGERNESS_WAS:
-            raise ValueError("unknown eagerness")
+            raise Refused(M("uplink.eagerness.unknown", "Unknown eagerness level: {value}.", value=str(old)))
         pace, reach, guests = EAGERNESS_WAS[old]
         raw.update(pace=pace, reach=reach)
         raw.setdefault("guests", guests)
@@ -310,7 +380,7 @@ def migrate(raw):
     if "forgiveness" in raw and "sensitivity" not in raw:
         old = raw.pop("forgiveness")
         if old not in FORGIVENESS_WAS:
-            raise ValueError("unknown forgiveness")
+            raise Refused(M("uplink.forgiveness.unknown", "Unknown forgiveness level: {value}.", value=str(old)))
         raw["sensitivity"] = FORGIVENESS_WAS[old]
     raw.pop("forgiveness", None)
     over = raw.get("overrides")
@@ -329,125 +399,146 @@ def migrate(raw):
 def validate(raw):
     """A settings dict as /admin sent it → a clean one, or ValueError."""
     if not isinstance(raw, dict):
-        raise ValueError("settings must be an object")
+        raise Refused(M("uplink.settings.not-object", "The network recovery settings must be a JSON object."))
     raw = migrate(raw)
     out = dict(DEFAULT)
     pace, reach = raw.get("pace", out["pace"]), raw.get("reach", out["reach"])
-    if pace not in PACE or reach not in REACH:
-        raise ValueError("unknown pace or reach")
+    if pace not in PACE:
+        raise Refused(_not_one_of("pace", PACE))
+    if reach not in REACH:
+        raise Refused(_not_one_of("reach", REACH))
     try:
         sens = int(raw.get("sensitivity", out["sensitivity"]))
     except (TypeError, ValueError):
-        raise ValueError("sensitivity must be a number of missed checks") from None
+        raise Refused(_sensitivity_range()) from None
     if not SENSITIVITY[0] <= sens <= SENSITIVITY[1]:
-        raise ValueError(f"sensitivity must be between {SENSITIVITY[0]} and {SENSITIVITY[1]} missed checks")
+        raise Refused(_sensitivity_range())
     guests = raw.get("guests", "protect")
     if guests not in GUESTS:
-        raise ValueError(f"guests must be one of {', '.join(GUESTS)}")
+        raise Refused(_not_one_of("guests", GUESTS))
     iface = str(raw.get("iface", "auto"))
     if not IFACE_RE.match(iface):
-        raise ValueError("invalid interface name")
+        raise Refused(_bad_iface(iface))
     w = raw.get("on_wedge", "ladder")
     if w not in ON_WEDGE:
-        raise ValueError(f"on_wedge must be one of {', '.join(ON_WEDGE)}")
+        raise Refused(_not_one_of("on_wedge", ON_WEDGE))
     retry, give_up = raw.get("retry", DEFAULT["retry"]), raw.get("give_up", DEFAULT["give_up"])
     if retry not in RETRY:
-        raise ValueError(f"retry must be one of {', '.join(RETRY)}")
+        raise Refused(_not_one_of("retry", RETRY))
     if give_up not in GIVE_UP:
-        raise ValueError(f"give_up must be one of {', '.join(GIVE_UP)}")
+        raise Refused(_not_one_of("give_up", GIVE_UP))
     roaming, ignore = raw.get("roaming", "roam"), raw.get("ignore_roams", False)
     if roaming in ROAMING_WAS:
         roaming, ignore = ROAMING_WAS[roaming][0], ignore or ROAMING_WAS[roaming][1]
     if not isinstance(ignore, bool):
-        raise ValueError("ignore_roams must be true or false")
+        raise Refused(M("uplink.ignore-roams.not-bool", "The setting for short roams must be true or false."))
     if roaming not in ROAMING:
-        raise ValueError(f"roaming must be one of {', '.join(ROAMING)}")
+        raise Refused(_not_one_of("roaming", ROAMING))
     lock = raw.get("lock_bssid")
     lock = lock.lower() if isinstance(lock, str) else None
     if roaming == "lock" and not (lock and BSSID_RE.match(lock)):
-        raise ValueError("invalid BSSID: a lock needs the BSSID of the access point, for example aa:bb:cc:dd:ee:ff")
+        raise Refused(M("uplink.lock.no-bssid", "Invalid or missing BSSID. To lock the link to one access point, "
+                        "select that access point."))
     watch = raw.get("watch") or {}
     if not isinstance(watch, dict) or len(watch) > 16:
-        raise ValueError("watch must be an object of links")
+        raise Refused(M("uplink.watch.not-object", "The watched network interfaces must be a JSON object "
+                        "of at most 16 interfaces."))
     for name, on in watch.items():
         if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(on, bool):
-            raise ValueError(f"watch: {name} must be the name of a link, with the value true or false")
+            raise Refused(M("uplink.watch.entry", "The watch entry {name} must name a network interface, "
+                            "with the value true or false.", name=str(name)))
     hw = raw.get("watch_hw") or {}
     if not isinstance(hw, dict) or len(hw) > 16:
-        raise ValueError("watch_hw must be an object of links")
+        raise Refused(M("uplink.watch-hw.not-object", "The hardware of the watched network interfaces must be "
+                        "a JSON object of at most 16 interfaces."))
     clean_hw = {}
     for name, h in hw.items():
         if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(h, dict):
-            raise ValueError(f"watch_hw: {name} must be the name of a link, with its hardware")
+            raise Refused(M("uplink.watch-hw.entry", "The hardware entry {name} must name a network interface, "
+                            "with its hardware.", name=str(name)))
         mac, path = h.get("mac"), h.get("path")
         if mac is not None and not (isinstance(mac, str) and BSSID_RE.match(mac)):
-            raise ValueError(f"watch_hw.{name}.mac: enter an address such as aa:bb:cc:dd:ee:ff")
+            raise Refused(M("uplink.watch-hw.mac", "The hardware address of {name} must have the form "
+                            "aa:bb:cc:dd:ee:ff.", name=name))
         if path is not None and not (isinstance(path, str) and HW_PATH_RE.match(path)):
-            raise ValueError(f"watch_hw.{name}.path: enter a bus and a device")
+            raise Refused(M("uplink.watch-hw.path", "The hardware path of {name} must name a bus and a device.", name=name))
         clean_hw[name] = {"mac": mac, "path": path}
     choices = {k: raw.get(k, DEFAULT[k]) for k in ("watch_new", "box_steps", "cable_out", "cable_reach")}
     for k, allowed in (("watch_new", WATCH_NEW), ("box_steps", BOX_STEPS), ("cable_out", CABLE_OUT), ("cable_reach", REACH)):
         if choices[k] not in allowed:
-            raise ValueError(f"{k} must be one of {', '.join(allowed)}")
+            raise Refused(_not_one_of(k, allowed))
     out.update(pace=pace, reach=reach, guests=guests, sensitivity=sens, iface=iface, overrides={}, on_wedge=w,
                retry=retry, give_up=give_up, roaming=roaming, lock_bssid=lock if roaming == "lock" else None, ignore_roams=ignore,
                watch=dict(watch), watch_hw=clean_hw, **choices)
     over = raw.get("overrides") or {}
     if not isinstance(over, dict):
-        raise ValueError("overrides must be an object")
+        raise Refused(M("uplink.custom.not-object", "The custom values must be a JSON object."))
     for k, v in over.items():
         rule = FIELDS.get(k)
         if rule is None:
-            raise ValueError(f"{k} is not a known setting")
+            raise Refused(M("uplink.custom.unknown", "Unknown custom value: {name}.", name=str(k)))
         if k == "steps":
             if not isinstance(v, dict):
-                raise ValueError("steps must be an object")
+                raise Refused(M("uplink.custom.steps-not-object", "The custom times of the recovery actions must be "
+                                "a JSON object."))
             steps = {}
             for s, t in v.items():
                 if s not in STEPS:
-                    raise ValueError(f"{s} is not a known step")
+                    raise Refused(M("uplink.step.unknown-name", "Unknown recovery action: {name}. "
+                                    "The recovery actions are: {values}.", name=str(s), values=list(STEPS)))
                 if t is not None:
                     t = int(t)
-                    if not 0 <= t <= 86400:
-                        raise ValueError(f"steps.{s} is out of range")
+                    lo, hi = rule[s]
+                    if not lo <= t <= hi:
+                        raise Refused(_OUT_OF_RANGE["steps." + s](lo, hi))
                 steps[s] = t
             out["overrides"]["steps"] = steps
         elif isinstance(rule[0], str):
             if v not in rule:
-                raise ValueError(f"{k} must be one of {', '.join(rule)}")
+                raise Refused(M("uplink.custom.choice", "The custom value {name} must be one of these values: {values}.",
+                                name=k, values=list(rule)))
             out["overrides"][k] = v
         else:
             v = float(v) if isinstance(rule[0], float) else int(v)
             if not rule[0] <= v <= rule[1]:
-                raise ValueError(f"{k} must be between {rule[0]} and {rule[1]}")
+                raise Refused(_OUT_OF_RANGE[k](rule[0], rule[1]) if k in _OUT_OF_RANGE else
+                              M("uplink.custom.range", "The custom value {name} must be from {low} to {high}.",
+                                name=k, low=rule[0], high=rule[1]))
             out["overrides"][k] = v
     off = raw.get("steps_off") or {}
     if not isinstance(off, dict) or len(off) > 16:
-        raise ValueError("steps_off must be an object of connections")
+        raise Refused(M("uplink.steps-off.not-object", "The recovery actions for each connection must be "
+                        "a JSON object of at most 16 interfaces."))
     out["steps_off"] = {}
     for name, steps in off.items():
         if not IFACE_RE.match(str(name)) or name == "auto":
-            raise ValueError(f"steps_off: {name} is not a valid interface name")
+            raise Refused(_bad_iface(name))
         if not isinstance(steps, list) or any(x not in STEPS for x in steps):
-            raise ValueError(f"steps_off.{name}: a list of steps ({', '.join(STEPS)})")
+            raise Refused(M("uplink.steps-off.list", "The recovery actions switched off for {iface} must be a list "
+                            "of some of: {values}.", iface=name, values=list(STEPS)))
         if steps:
             out["steps_off"][name] = [x for x in STEPS if x in steps]
     per = raw.get("per_iface") or {}
     if not isinstance(per, dict) or len(per) > 16:
-        raise ValueError("per_iface must be an object of connections")
+        raise Refused(M("uplink.per-iface.not-object", "The settings for each connection must be a JSON object "
+                        "of at most 16 interfaces."))
     out["per_iface"] = {}
     for name, own in per.items():
         if not IFACE_RE.match(str(name)) or name == "auto":
-            raise ValueError(f"per_iface: {name} is not a valid interface name")
+            raise Refused(_bad_iface(name))
         if not isinstance(own, dict) or any(k not in PER_IFACE for k in own):
-            raise ValueError(f"per_iface.{name}: only {', '.join(PER_IFACE)}")
+            raise Refused(M("uplink.per-iface.keys", "The settings for {iface} must be some of: {values}.",
+                            iface=name, values=list(PER_IFACE)))
         clean = {}
         for k, v in own.items():
+            allowed = {"pace": PACE, "reach": REACH, "guests": GUESTS, "on_wedge": ON_WEDGE, "retry": RETRY, "give_up": GIVE_UP}
             if k == "sensitivity":
                 if type(v) is not int or not SENSITIVITY[0] <= v <= SENSITIVITY[1]:
-                    raise ValueError(f"per_iface.{name}.sensitivity: {SENSITIVITY[0]} to {SENSITIVITY[1]}")
-            elif v not in {"pace": PACE, "reach": REACH, "guests": GUESTS, "on_wedge": ON_WEDGE, "retry": RETRY, "give_up": GIVE_UP}[k]:
-                raise ValueError(f"per_iface.{name}.{k}: not an allowed value")
+                    raise Refused(M("uplink.per-iface.sensitivity", "The sensitivity for {iface} must be a whole number "
+                                    "from {low} to {high} missed checks.", iface=name, low=SENSITIVITY[0], high=SENSITIVITY[1]))
+            elif v not in allowed[k]:
+                raise Refused(M("uplink.per-iface.value", "The setting {name} for {iface} must be one of these values: {values}.",
+                                name=k, iface=name, values=list(allowed[k])))
             if v != out[k]:
                 clean[k] = v   # the same as for every connection is not kept as its own
         if clean:
@@ -1586,7 +1677,7 @@ def nap(wake, secs, mtime):
 def request_step(step):
     """For hub_control's uplink-do: ask the running watchdog to take one step now."""
     if step not in STEPS:
-        raise ValueError(f"step must be one of {', '.join(STEPS)}")
+        raise Refused(M("uplink.step.unknown", "The recovery action must be one of these values: {values}.", values=list(STEPS)))
     ETC.mkdir(parents=True, exist_ok=True)
     tmp = NOW.with_name(NOW.name + ".tmp")
     tmp.write_text(json.dumps({"step": step, "at": time.time()}))
@@ -2065,10 +2156,11 @@ def _uplink_profile():
     chosen = load_settings()
     iface = main_link(chosen)
     if not iface or backend_of(iface) != "networkmanager":
-        raise ValueError("NetworkManager does not run the box's link, so the box has no connection profile to change")
+        raise Refused(NO_NM)
     prof = nm_connection(iface)
     if not prof:
-        raise ValueError(f"{iface} is not connected, so the box does not know its connection profile. Try again when {iface} is connected")
+        raise Refused(M("uplink.profile.not-connected", "The network interface {iface} is not connected, so the box does not "
+                        "know its connection profile. When {iface} is connected, try again.", iface=iface))
     return prof
 
 
@@ -2080,7 +2172,8 @@ def profile(on):
                         "con", "show", "uuid", prof["uuid"])
         vals = [v.strip().split(" ")[0] for v in out.splitlines()] if code == 0 else []
         if len(vals) != 2 or not all(re.fullmatch(r"-?\d+", v) for v in vals):
-            raise ValueError(f"Box could not read the settings of the connection profile {prof['name']}: {out}")
+            raise Refused(M("uplink.profile.unreadable", "The box could not read the settings of the connection profile {name}. "
+                            "NetworkManager reported: {output}", name=prof["name"], output=out.strip()))
         if rec and rec["uuid"] == prof["uuid"]:
             # Decided by what the profile holds, not by the record: a profile written afresh (netplan's,
             # at boot) has lost the change, and gets it again; the record keeps the values from before.
@@ -2092,7 +2185,8 @@ def profile(on):
         code, out = run("nmcli", "con", "modify", "uuid", prof["uuid"],
                         "connection.autoconnect-retries", "0", "connection.auth-retries", "0")
         if code:
-            raise ValueError(f"nmcli: {out}")
+            raise Refused(M("uplink.profile.change-failed", "The box could not change the connection profile {name}. "
+                            "NetworkManager reported: {output}", name=prof["name"], output=out.strip()))
         RECORD.write_text(json.dumps({"uuid": prof["uuid"], "name": prof["name"], "at": time.time(),
                                       "old": {"connection.autoconnect-retries": vals[0],
                                               "connection.auth-retries": vals[1]}}, indent=2))
@@ -2104,7 +2198,8 @@ def profile(on):
     args = [x for k, v in rec["old"].items() for x in (k, v)]
     code, out = run("nmcli", "con", "modify", "uuid", rec["uuid"], *args)
     if code and "not exist" not in out and "unknown connection" not in out.lower():
-        raise ValueError(f"nmcli: {out}")
+        raise Refused(M("uplink.profile.undo-failed", "The box could not restore the earlier values of the connection profile "
+                        "{name}. NetworkManager reported: {output}", name=rec["name"], output=out.strip()))
     RECORD.unlink(missing_ok=True)
     return f"{rec['name']}: back to " + ", ".join(f"{k.split('.')[1]} {v}" for k, v in rec["old"].items())
 
