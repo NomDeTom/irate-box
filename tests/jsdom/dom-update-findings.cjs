@@ -95,7 +95,7 @@ setTimeout(() => {
 
   const src = row('sources');
   check('apt failing: the source as evidence, the recommended action, then the command to copy, exactly, from the finding',
-    src && [...src.querySelectorAll('.fevidence li')].map(t).includes('https://dl.example.org/deb')
+    src && [...src.querySelectorAll('.fevidence li')].map(t).some((e) => e === 'https://dl.example.org/deb')
     && /Recommended action: Find the list file of the failing source/.test(t(src.querySelector('.fhow')))
     && [...src.querySelectorAll('.fdo-cmd code')].map(t).join() === 'grep -rlF dl.example.org /etc/apt/sources.list /etc/apt/sources.list.d/'
     && [...src.querySelectorAll('.fnote')].map(t).join() === 'The installer repairs the Caddy package source itself.', src && t(src));

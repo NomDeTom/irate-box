@@ -5,6 +5,7 @@ each case said by its message ID, its commands, what it saw and the place to go 
 not fine; then the checks of a downloaded version and the update actions' answers as messages, the result file
 keeping the English for every reader that expects text. python3 tests/sim_update_doctor.py"""
 import io, json, os, ssl, subprocess, sys, tempfile, time
+import urllib.parse
 from email.utils import formatdate
 from pathlib import Path
 from unittest import mock
@@ -49,7 +50,7 @@ def world(*, addrs=("140.82.121.3",), mine=(), connect=True, date=None, tls_erro
         return io.BytesIO()
 
     def tls_get(url, timeout=15):
-        if url.startswith("https://github.com"):
+        if urllib.parse.urlsplit(url).hostname == "github.com":
             if tls_error:
                 raise tls_error
             return Resp(headers={"Date": formatdate(date or time.time(), usegmt=True)})
