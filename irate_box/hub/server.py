@@ -34,6 +34,7 @@ import html
 from irate_box import confine, finding
 from irate_box.msg import M, render
 from irate_box.hub import access
+from irate_box.hub import kitauto
 from irate_box.hub import accounts
 from irate_box.hub import backup
 from irate_box.hub import board
@@ -2535,7 +2536,9 @@ def kit_snapshot():
     except (OSError, ValueError, KeyError, TypeError):
         progress = None
     books = sorted((STATE_DIR / "zim").glob("*.zim")) if (STATE_DIR / "zim").is_dir() else []
+    auto = kitauto.load(STATE_DIR)
     return {"kit": kit, "progress": progress, "pending": _pending_actions("offline-kit") + _pending_actions("content-export"),
+            "auto": {"when": auto["when"], "can_refresh": bool(auto["request"])},
             "books": {"count": len(books), "bytes": sum(b.stat().st_size for b in books)},
             "results": control_results(5)}
 
@@ -4402,11 +4405,22 @@ class Handler(BaseHTTPRequestHandler):
             if payload.get("action") == "make" and (type(books) is bool or _str_list(books)) and _str_list(payload.get("kits", []))  \
                     and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data") \
                     and (budget is None or (type(budget) is int and budget > 0)):
-                # A new box's kit with what the owner chose; root checks each again (kit_choices).
-                self.send_json(202, {"id": control_request({"action": "offline-kit" if payload.get("hub", True) is not False else "content-export",
-                                                            "books": books, "kits": payload.get("kits", []),
-                                                            "repos": payload.get("repos", []), "state": payload.get("state", "none"),
-                                                            "budget_mb": budget})})
+                # A new box's kit with what the owner chose; root checks each again (kit_choices). Kept, so Refresh and
+                # the schedule (kitauto) make the same kit again.
+                req = {"action": "offline-kit" if payload.get("hub", True) is not False else "content-export",
+                       "books": books, "kits": payload.get("kits", []), "repos": payload.get("repos", []),
+                       "state": payload.get("state", "none"), "budget_mb": budget}
+                kitauto.remember(STATE_DIR, req)
+                self.send_json(202, {"id": control_request(req)})
+            elif payload.get("action") == "refresh":
+                req = kitauto.load(STATE_DIR)["request"]
+                if not req:
+                    self.send_json(400, refused.say(M("kit.refresh.none", "No export was made yet. Create an export first.")))
+                else:
+                    self.send_json(202, {"id": control_request(req)})
+            elif payload.get("action") == "schedule" and payload.get("when") in kitauto.WHEN:
+                kitauto.set_when(STATE_DIR, payload["when"])
+                self.send_json(200, kit_snapshot())
             else:
                 self.send_json(400, refused.say(BAD_REQUEST))
             return

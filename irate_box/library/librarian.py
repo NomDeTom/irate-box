@@ -1632,6 +1632,24 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             if line:
                 results["toolkits"] = line
                 log(f"toolkits: {line}")
+        # The offline kit made again, as the owner chose (kitauto: after each hub update, or weekly): the last export's
+        # choices, asked of root when due and no export is waiting.
+        if scheduled and not names:
+            from irate_box.hub import kitauto
+            try:
+                kit = json.loads((STATE_DIR / "kits" / "kit.json").read_text())
+            except (OSError, ValueError):
+                kit = None
+            try:
+                installed = (CHECKOUT / "VERSION").read_text().split()[0]
+            except (OSError, IndexError):
+                installed = None
+            req = kitauto.due(STATE_DIR, kit, installed)
+            if req:
+                _queue_root(req)
+                kitauto.asked(STATE_DIR)
+                results["kit"] = "making the offline kit again"
+                log("kit: making the offline kit again")
         # Packages from their makers (root/pkgwatch.py: meshtasticd on its channel): root asked to check each
         # as often as its owner chose (6 hours, a day, a week, or only by hand), so "after N days"
         # counts from when a build first appeared.

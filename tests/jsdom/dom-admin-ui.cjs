@@ -91,7 +91,7 @@ w.fetch = async (u, opts = {}) => {
     queue: [{ key: 'shoutbox:1790949000:Moth', by: 'Moth', text: 'buy cheap things', where: 'Shoutbox', count: 3, reasons: { spam: 3 } }] }), { status: 200 });
   if (u.startsWith('/admin/library')) return new Response(JSON.stringify(library), { status: 200 });
   if (u === '/admin/update') return new Response(JSON.stringify(update), { status: 200 });
-  if (u === '/admin/kit') return new Response(JSON.stringify({ kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
+  if (u === '/admin/kit') return new Response(JSON.stringify({ auto: { when: 'update', can_refresh: true }, kit: { name: 'irate-box-kit-abc1234-aarch64.tar', size: 95000000, at: 1790950000, books: [], contents: ['draw: from /usr/share/hub/apps/draw'] },
     progress: null, pending: 0, books: { count: 2, bytes: 3000000000 }, results: [] }), { status: 200 });
   if (u === '/admin/addons') return new Response(JSON.stringify(addons), { status: 200 });
   // The backup offers with their sizes (hub/backup.py plan), and one stick plugged in.
@@ -343,6 +343,8 @@ setTimeout(() => {
       && t('#library-access-says')[0] === '(no token, not adapting)', t('#library-access-says')[0]);
     check('  the work now: a state line at the top', !!d.querySelector('#library-now .library-state'));
   }
+  check('offline kit: Refresh export on (an export to repeat), Make the export again as saved (after each hub update)',
+    !d.getElementById('kit-refresh').disabled && d.getElementById('kit-when').value === 'update');
   check('offline kit: the download offered, with its size', /Download irate-box-kit-abc1234-aarch64\.tar/.test(t('#kit-state')[0]) && d.querySelector('#kit-state a').getAttribute('href') === '/admin/kit/download', t('#kit-state'));
   // Backup: settings only, settings and data, or a full image, each with an estimated size.
   const lv = [...d.querySelectorAll('#backup-level .choice-tile')];
