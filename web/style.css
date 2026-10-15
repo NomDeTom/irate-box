@@ -1508,7 +1508,7 @@ html:has(> body.admin) { background: var(--bg); }
 .finding { --f: var(--muted); background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--f);
   border-radius: 6px; padding: 0.55rem 0.8rem 0.6rem; font-size: 0.88rem; }
 .finding-problem { --f: var(--bad); } .finding-warn { --f: var(--warn); } .finding-ok, .finding-fixed { --f: var(--ok); }
-.finding-suggest { --f: var(--accent); } .finding-not-here, .finding-accepted { --f: var(--border); }
+.finding-suggest { --f: var(--accent); } .finding-info, .finding-not-here, .finding-accepted { --f: var(--border); }
 /* The Box doctor's overview: a two-column list, one column on a phone. */
 .hl-glance { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.4rem 0 0; }
 .hl-glance dt { font-weight: 600; }
@@ -1551,6 +1551,7 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
   padding: 0.05rem 0.4rem; border-radius: 3px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
 .fstate-problem { color: var(--bad); } .fstate-warn { color: var(--warn); } .fstate-ok, .fstate-fixed { color: var(--ok); }
 .fstate-suggest { color: var(--accent); }
+.fstate-info { color: var(--muted); }
 .sec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.5rem 0; }
 .sec-head > p { margin: 0; flex: 1 1 18rem; }
 .sec-counts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.6rem 0; }

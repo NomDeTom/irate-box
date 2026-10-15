@@ -2155,13 +2155,17 @@ def joint(steps, freshness=None):
                 label = f["title"]
             it = items.setdefault(key, {"key": key, "about": a, "title": label, "sources": [], "status": "ok", "titles": [], "lines": [],
                                         "detail": "", "fix": "", "cmd": "", "do": None, "area": st.get("title", ""), "tiers": [],
-                                        "checks": []})
+                                        "checks": [], "info": ""})
             if src not in it["sources"]:
                 it["sources"].append(src)
             it["titles"].append(f"{src}: {f['title']}")
             it["lines"].append({"source": src, "id": f["id"], "title": f["title"], "status": f["status"], "detail": f["detail"], "fix": f["fix"]})
             if f["status"] != "ok":
-                it["tiers"].append(f.get("tier") or "")
+                # Information only (secdoctor_xref.INFO): nothing the owner can change puts it right.
+                why = secdoctor_xref.info(src, f["id"])
+                if why:
+                    it["info"] = it["info"] or why
+                it["tiers"].append(f.get("tier") or ("info" if why else ""))
                 # The deep audit's checks one by one, each with its own fix (deepaudit.cis_findings).
                 it["checks"] += [dict(c, source=src) for c in f.get("checks") or []]
                 # A finding with one check of its own: that check's command, or its words, are the item's.
@@ -2191,7 +2195,7 @@ def joint(steps, freshness=None):
         it["page"] = [l["id"].removeprefix("page-") for l in it["lines"] if l["source"] == "security-page"]
         # A tier only when every line not fine has one: a CIS suggestion merged with a real finding is real.
         tiers = it.pop("tiers")
-        it["tier"] = ("not-here" if all(t == "not-here" for t in tiers) else "suggest") if tiers and all(tiers) else None
+        it["tier"] = ((tiers[0] if len(set(tiers)) == 1 else "suggest") if tiers and all(tiers) else None)
     # Together a problem (secdoctor_xref.COMPOUND): each named finding present and not ok.
     present = {(f.get("source", "doctor"), f["id"]): f for s in steps for f in s["findings"]}
     for c in secdoctor_xref.COMPOUND:
@@ -2203,14 +2207,15 @@ def joint(steps, freshness=None):
                                             "titles": [f"{s}: {present[(s, i)]['title']}" for s, i in c["needs"]], "lines": lines,
                                             "fix": c["fix"], "detail": c["detail"], "do": None, "area": "Together", "tier": None,
                                             "page": [i.removeprefix("page-") for _, i in c["needs"]], "alone": False, "could_see": [],
-                                            "checks": []}
-    tier_rank = {None: 0, "suggest": 1, "not-here": 2}
+                                            "checks": [], "info": ""}
+    tier_rank = {None: 0, "suggest": 1, "info": 2, "not-here": 3}
     merged = sorted((i for i in items.values() if i["status"] != "ok"),
                     key=lambda i: (tier_rank[i["tier"]], -rank[i["status"]], i["area"], i["title"]))
     agreed = [i for i in items.values() if i["status"] == "ok" and len(i["sources"]) > 1]
     real = [i for i in merged if not i["tier"]]
     after = {"problem": sum(1 for i in real if i["status"] == "problem"), "warn": sum(1 for i in real if i["status"] == "warn"),
-             "suggest": sum(1 for i in merged if i["tier"] == "suggest"), "not_here": sum(1 for i in merged if i["tier"] == "not-here")}
+             "suggest": sum(1 for i in merged if i["tier"] == "suggest"), "info": sum(1 for i in merged if i["tier"] == "info"),
+             "not_here": sum(1 for i in merged if i["tier"] == "not-here")}
     return {"items": merged, "agreed_ok": len(agreed), "sources": sources, "after": after,
             "coverage": {s: secdoctor_xref.COVERAGE.get(s, "") for s in sources}, "freshness": freshness or {}}
 
