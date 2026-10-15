@@ -2682,13 +2682,13 @@ function renderClockSources(c, busy) {
   if (clkDraft && box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // typing: left alone
   // What is saved: the choice made here, else the image's own service as it runs (its servers its own).
   const saved = { service: c.service || (c.daemon === 'chrony' ? 'chrony' : 'image'), pool: c.service ? !!c.pool : true,
-    gps: !!c.gps, local: c.local || '' };
+    gps: !!c.gps, serve: !!c.serve, local: c.local || '' };
   const savedKey = JSON.stringify(saved);
   if (savedKey !== clkSaved) { clkSaved = savedKey; clkDraft = null; }
   const d = clkDraft || { ...saved };
   const set = (k, v) => {
     clkDraft = { ...d, ...(clkDraft || {}), [k]: v };
-    if (k === 'service' && v === 'image') clkDraft.gps = false;
+    if (k === 'service' && v === 'image') { clkDraft.gps = false; clkDraft.serve = false; }
     renderClockSources(c, busy);
   };
   const tick = (key, label, desc, disabled) => el('label', { className: 'setting inline' },
@@ -2730,6 +2730,9 @@ function renderClockSources(c, busy) {
     tick('gps', 'GPS', d.service === 'chrony'
       ? `${c.gps_device ? 'A receiver is connected.' : 'No receiver is connected now: connect one on USB or the UART.'} Selecting GPS installs the GPS time toolkit (gpsd).`
       : 'Only with chrony.', d.service !== 'chrony'),
+    tick('serve', 'Serve the time to the hotspot', d.service === 'chrony'
+      ? "Guests' devices can ask the box for the time (NTP). The hotspot firewall opens UDP port 123 to guests while this is on."
+      : 'Only with chrony.', d.service !== 'chrony'),
     states.length ? el('div', { className: 'clock-states' }, el('span', { className: 'aw-label', textContent: 'How each selected source stands' }),
       el('ul', { className: 'net-facts' }, ...states)) : null,
     el('div', { className: 'aw-foot' }, note, footBox));
@@ -2740,11 +2743,13 @@ function saveClock(cur, c) {
   if (cur.service === 'chrony' && !c.chrony_installed) words.push('chrony is installed and systemd-timesyncd removed');
   if (cur.service === 'image' && c.service === 'chrony') words.push('chrony is removed if this page installed it, and systemd-timesyncd installed again');
   if (cur.gps && !c.gps) words.push('the GPS time toolkit (gpsd) is installed');
+  if (cur.serve && !c.serve) words.push('the box answers time requests from the hotspot, and its firewall opens UDP port 123 to guests');
+  if (!cur.serve && c.serve) words.push('the hotspot firewall closes UDP port 123 again');
   const what = [cur.gps ? 'GPS' : '', cur.local ? `the server ${cur.local}` : '', cur.pool ? "the internet's pool" : ''].filter(Boolean).join(', ');
   if (!confirm(`Use ${cur.service === 'chrony' ? 'chrony' : "the image's own time service"}, asking ${what}?`
     + `${words.length ? ` ${words.join('. ')}.` : ''} Restore puts everything back as the image had it.`)) return;
   clkDraft = null;
-  hlRequest({ action: 'fix', choice: `clock-sources:${cur.service}:${cur.pool ? 1 : 0}:${cur.gps ? 1 : 0}:${cur.local || '-'}` }, 'clock-sources');
+  hlRequest({ action: 'fix', choice: `clock-sources:${cur.service}:${cur.pool ? 1 : 0}:${cur.gps ? 1 : 0}:${cur.serve ? 1 : 0}:${cur.local || '-'}` }, 'clock-sources');
 }
 
 async function hlRequest(body, fid) {

@@ -11,6 +11,8 @@ Two ways, the owner's choice:
            on or off, each with its own state from `chronyc sources`. Our own files in chrony's sources.d and
            conf.d; the pool line of chrony.conf turned off only when the pool is not chosen. Installing chrony
            removes timesyncd (Debian's packages conflict); both come from Debian or, offline, the toolkits' cache.
+           chrony can also serve the time to the hotspot's guests: an `allow` for the hotspot's network, and the
+           hotspot firewall opens UDP 123 to guests while it does (firewall.services_here asks serving()).
 
 The clock module (rtc.py) is not one of these: it sets the time at boot and keeps it, whichever service runs.
 
@@ -47,8 +49,8 @@ POOL = ("0.debian.pool.ntp.org", "1.debian.pool.ntp.org", "2.debian.pool.ntp.org
 GPS_KIT = "gpstime"
 # A server on the local network: an IPv4 or IPv6 address, or a host name.
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
-# The page's choice: clock-sources:SERVICE:POOL:GPS:LOCAL (LOCAL "-" for none), and clock-undo.
-CHOICE_RE = re.compile(r"^clock-sources:(image|chrony):([01]):([01]):(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$")
+# The page's choice: clock-sources:SERVICE:POOL:GPS:SERVE:LOCAL (LOCAL "-" for none), and clock-undo.
+CHOICE_RE = re.compile(r"^clock-sources:(image|chrony):([01]):([01]):([01]):(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$")
 STATE_WORDS = {"in-use": "In use", "answering": "Answering, not used", "not-answering": "Not answering",
                "not-found": "Not found", "unknown": "Not reported"}
 
@@ -103,19 +105,46 @@ def _image_as_it_was():
 
 
 def parse(choice):
-    """('chrony'|'image', pool, gps, local or '') from the page's choice, or ValueError."""
+    """('chrony'|'image', pool, gps, serve, local or '') from the page's choice, or ValueError."""
     m = CHOICE_RE.match(choice or "")
     if not m:
-        raise ValueError("a clock choice: clock-sources:image|chrony:POOL:GPS:LOCAL")
-    service, pool, gps, local = m.group(1), m.group(2) == "1", m.group(3) == "1", m.group(4)
+        raise ValueError("a clock choice: clock-sources:image|chrony:POOL:GPS:SERVE:LOCAL")
+    service, pool, gps, serve, local = m.group(1), m.group(2) == "1", m.group(3) == "1", m.group(4) == "1", m.group(5)
     local = "" if local == "-" else local
     if gps and service != "chrony":
         raise ValueError("GPS needs chrony: systemd-timesyncd takes no reference clock")
+    if serve and service != "chrony":
+        raise ValueError("Serving the time needs chrony: systemd-timesyncd only asks, it does not answer")
     if local and not _host_ok(local):
         raise ValueError(f"{local} is not an address or a host name")
     if not (pool or gps or local):
         raise ValueError("Select at least one source: with none, nothing sets the clock")
-    return service, pool, gps, local
+    return service, pool, gps, serve, local
+
+
+def hotspot_net():
+    """The hotspot's network, from the hub's address on it (apmode.ADDRESS, a /24)."""
+    from irate_box.hub import apmode
+    return str(ipaddress.ip_network(f"{apmode.ADDRESS}/24", strict=False))
+
+
+def serving():
+    """Is the box serving the time to the hotspot (chrony, by the owner's choice)? The firewall opens UDP 123 for it."""
+    rec = load()
+    return rec.get("service") == "chrony" and bool(rec.get("serve"))
+
+
+def _firewall_refresh():
+    """The hotspot firewall loaded again, if it is on, so UDP 123 opens or closes with serving()."""
+    try:
+        from irate_box.root import security
+        fw = security.load_record().get("firewall")
+        if fw:
+            security._firewall_apply(fw)
+            return True
+    except Exception:  # noqa: BLE001 - the clock is set either way; the firewall's own finding says how it is
+        return False
+    return False
 
 
 def _host_ok(host):
@@ -148,9 +177,12 @@ def chrony_sources_text(local):
             + (f"server {local} iburst\n" if local else ""))
 
 
-def chrony_conf_text(gps):
+def chrony_conf_text(gps, serve=False, net=None):
     lines = ["# Written by irate-box's Clock page (/admin). Change it there.",
              "# The kernel's clock kept in step, so other tools see the time as synchronised.", "rtcsync"]
+    if serve:
+        lines += ["# The time served to the hotspot's guests (the hotspot firewall opens UDP 123 for it).",
+                  f"allow {net or hotspot_net()}"]
     if gps:
         lines += ["# GPS through gpsd: its time from the receiver's sentences (shared memory 0),",
                   "refclock SHM 0 refid GPS precision 1e-1 offset 0.0 delay 0.2"]
@@ -170,7 +202,7 @@ def _write(path, text):
     safeio.write(path, text)
 
 
-def _chrony_on(rec, pool, gps, local, said):
+def _chrony_on(rec, pool, gps, serve, local, said):
     img = rec["image"]
     if not _installed("chrony"):
         said.append(_install("chrony", "the GPS time toolkit's cache, which holds it"))
@@ -195,11 +227,12 @@ def _chrony_on(rec, pool, gps, local, said):
     # With no chrony.conf at all (a chrony without Debian's file), the pool goes in our sources instead.
     _write(CHRONY_SOURCES, chrony_sources_text(local)
            + ("".join(f"pool {p} iburst\n" for p in POOL[2:3]) if pool and img.get("chrony_conf") is None else ""))
-    _write(CHRONY_D, chrony_conf_text(gps))
+    _write(CHRONY_D, chrony_conf_text(gps, serve))
     # A toolkit install leaves the units it brought disabled: chrony is wanted here.
     run("systemctl", "enable", "chrony.service")
     run("systemctl", "restart", "chrony.service", timeout=120)
-    said.append("chrony keeps the time: " + _sources_words(pool, gps, local))
+    said.append("chrony keeps the time: " + _sources_words(pool, gps, local)
+                + (f", and serves it to the hotspot ({hotspot_net()})" if serve else ""))
 
 
 def _chrony_off(rec, said):
@@ -240,22 +273,25 @@ def _sources_words(pool, gps, local):
 
 def apply(choice):
     """The page's choice applied; what was done, in a sentence."""
-    service, pool, gps, local = parse(choice)
+    service, pool, gps, serve, local = parse(choice)
     rec = load()
     if "image" not in rec:
         rec["image"] = _image_as_it_was()
     said = []
     if service == "chrony":
         TIMESYNCD_D.unlink(missing_ok=True)
-        _chrony_on(rec, pool, gps, local, said)
+        _chrony_on(rec, pool, gps, serve, local, said)
     else:
         if rec.get("service") == "chrony" or rec.get("installed_chrony"):
             _chrony_off(rec, said)
         if not _installed("systemd-timesyncd"):
             said.append(_install("systemd-timesyncd", "the System toolkit's cache, which holds it"))
         _timesyncd(pool, local, said)
-    rec.update(service=service, pool=pool, gps=gps, local=local, at=time.time())
+    was_serving = serving()
+    rec.update(service=service, pool=pool, gps=gps, serve=serve, local=local, at=time.time())
     _save(rec)
+    if serve != was_serving and _firewall_refresh():
+        said.append("the hotspot firewall " + ("opens UDP 123 to guests" if serve else "closes UDP 123 again"))
     return ". ".join(s[0].upper() + s[1:] for s in said) + "."
 
 
@@ -273,7 +309,10 @@ def undo():
             run("systemctl", "enable", "systemd-timesyncd.service")
         if img.get("daemon") == "systemd-timesyncd":
             run("systemctl", "restart", "systemd-timesyncd.service", timeout=120)
+    was_serving = serving()
     RECORD.unlink(missing_ok=True)
+    if was_serving and _firewall_refresh():
+        said.append("the hotspot firewall closes UDP 123 again")
     said.append("the clock's sources put back as the image had them")
     return ". ".join(s[0].upper() + s[1:] for s in said) + "."
 
@@ -357,7 +396,8 @@ def source_states(rec, chronyc_text=None, timesync=None):
 
 def status():
     rec = load()
-    return {"service": rec.get("service"), "pool": rec.get("pool"), "gps": rec.get("gps"), "local": rec.get("local") or "",
+    return {"service": rec.get("service"), "pool": rec.get("pool"), "gps": rec.get("gps"), "serve": bool(rec.get("serve")),
+            "local": rec.get("local") or "",
             "changed": "image" in rec, "daemon": image_daemon(), "chrony_installed": _installed("chrony"),
             "gps_device": gps_device(), "sources": source_states(rec) if rec.get("service") else []}
 

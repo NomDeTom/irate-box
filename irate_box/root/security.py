@@ -1240,6 +1240,8 @@ def firewall_findings(rec):
         switches.append({"choice": f"firewall-svc-{'off' if is_open else 'on'}:{s['id']}",
                          "label": f"{'Close' if is_open else 'Open'} {s['name']} to the hotspot",
                          "confirm": None if is_open else f"Let guests on the hotspot reach {s['name']} ({ports})? {s['says']}"})
+    if "time" in firewall.services_here(wanted):
+        said.append("The time (UDP 123) open to guests: the Clock page serves it")
     for w in wanted:
         if firewall.PORT_SERVICE.match(w):
             said.append(f"{w[5:].replace('/', ' ').upper()} open to guests, by your choice")

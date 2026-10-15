@@ -62,18 +62,18 @@ def fake_run(*cmd, timeout=120):
 clock.run = fake_run
 
 # --- the page's choice --------------------------------------------------------------------------------------
-check("a choice read: service, pool, GPS, a server", clock.parse("clock-sources:chrony:1:1:192.168.1.1") == ("chrony", True, True, "192.168.1.1"))
-check("  '-' for no server", clock.parse("clock-sources:image:1:0:-") == ("image", True, False, ""))
-for bad, why in (("clock-sources:image:1:1:-", "GPS needs chrony"), ("clock-sources:chrony:0:0:-", "at least one source"),
-                 ("clock-sources:chrony:1:0:a..b", "not an address"), ("clock-sources:ntpd:1:0:-", "a clock choice"),
-                 ("clock-sources:chrony:1:0:x;rm", "a clock choice")):
+check("a choice read: service, pool, GPS, a server", clock.parse("clock-sources:chrony:1:1:0:192.168.1.1") == ("chrony", True, True, False, "192.168.1.1"))
+check("  '-' for no server", clock.parse("clock-sources:image:1:0:0:-") == ("image", True, False, False, ""))
+for bad, why in (("clock-sources:image:1:1:0:-", "GPS needs chrony"), ("clock-sources:chrony:0:0:0:-", "at least one source"),
+                 ("clock-sources:chrony:1:0:0:a..b", "not an address"), ("clock-sources:ntpd:1:0:0:-", "a clock choice"),
+                 ("clock-sources:chrony:1:0:0:x;rm", "a clock choice"), ("clock-sources:image:1:0:1:-", "Serving the time needs chrony")):
     try:
         clock.parse(bad); check(f"refused: {bad}", False)
     except ValueError as exc:
         check(f"refused: {bad} ({why})", why in str(exc), exc)
 
 # --- the image's own service, its servers chosen ----------------------------------------------------------
-said = clock.apply("clock-sources:image:0:0:192.168.1.1")
+said = clock.apply("clock-sources:image:0:0:0:192.168.1.1")
 drop = T / "root/etc/systemd/timesyncd.conf.d/52irate-box.conf"
 check("the image's own: a drop-in naming the local server, no pool", drop.read_text().endswith("NTP=192.168.1.1\nFallbackNTP=\n")
       and "the server 192.168.1.1" in said, (drop.read_text(), said))
@@ -81,12 +81,12 @@ rec = clock.load()
 check("  what the image had kept the first time (timesyncd, installed and enabled, no chrony)", rec["image"]["daemon"] == "systemd-timesyncd"
       and rec["image"]["timesyncd"] and rec["image"]["timesyncd_enabled"] and not rec["image"]["chrony"], rec["image"])
 check("  timesyncd restarted to read it", ["systemctl", "restart", "systemd-timesyncd.service"] in calls)
-clock.apply("clock-sources:image:1:0:-")
+clock.apply("clock-sources:image:1:0:0:-")
 check("  the pool: Debian's four servers as the fallback", "FallbackNTP=0.debian.pool.ntp.org" in drop.read_text() and "NTP=\n" in drop.read_text())
 
 # --- chrony in its place -----------------------------------------------------------------------------------
 calls.clear()
-said = clock.apply("clock-sources:chrony:0:0:192.168.1.1")
+said = clock.apply("clock-sources:chrony:0:0:0:192.168.1.1")
 conf = T / "root/etc/chrony/chrony.conf"
 src = T / "root/etc/chrony/sources.d/52irate-box.sources"
 confd = T / "root/etc/chrony/conf.d/52irate-box.conf"
@@ -100,7 +100,7 @@ check("  the pool not chosen: Debian's pool line off (commented, so Restore is e
 check("  chrony enabled and restarted (a toolkit install would leave it disabled)", ["systemctl", "enable", "chrony.service"] in calls
       and ["systemctl", "restart", "chrony.service"] in calls)
 check("  said in a sentence", said.startswith("Chrony installed.") and "the server 192.168.1.1" in said, said)
-clock.apply("clock-sources:chrony:1:0:-")
+clock.apply("clock-sources:chrony:1:0:0:-")
 check("  the pool chosen again: chrony.conf as it came", conf.read_text() == DEBIAN_CONF and "server" not in src.read_text().split("\n", 1)[1])
 check("  the image as it was is kept from the first change, not overwritten", clock.load()["image"]["daemon"] == "systemd-timesyncd")
 check("chrony's own lines: rtcsync; no refclock without GPS", "rtcsync" in confd.read_text() and "refclock" not in confd.read_text())
@@ -116,15 +116,35 @@ sys.modules["irate_box.root.kits"] = fake_kits
 import irate_box.root as root_pkg
 root_pkg.kits = fake_kits
 try:
-    clock.apply("clock-sources:chrony:1:1:-"); check("GPS with no toolkit cached: refused", False)
+    clock.apply("clock-sources:chrony:1:1:0:-"); check("GPS with no toolkit cached: refused", False)
 except ValueError as exc:
     check("GPS with no toolkit cached: refused, saying where to get it", "GPS time toolkit" in str(exc), exc)
 got = []
 fake_kits.manifest = lambda k: {"id": k}
 fake_kits.install = lambda k, hours, log=None: got.append(("install", k, hours))
 fake_kits.remove = lambda k, log=None: got.append(("remove", k))
-said = clock.apply("clock-sources:chrony:1:1:-")
+said = clock.apply("clock-sources:chrony:1:1:0:-")
 check("  cached: installed, kept (no removal time), said", got == [("install", "gpstime", None)] and "GPS time toolkit installed" in said, (got, said))
+
+# --- serving the time to the hotspot: chrony's allow, and the hotspot firewall's UDP 123 ---------------------
+check("serving: chrony allows the hotspot's network", "allow 192.168.4.0/24" in clock.chrony_conf_text(False, True)
+      and "allow" not in clock.chrony_conf_text(False, False))
+refreshed = []
+fake_security = types.SimpleNamespace(load_record=lambda: {"firewall": {"level": "apps", "services": ["mqtt"]}},
+                                      _firewall_apply=lambda fw: refreshed.append(fw))
+sys.modules["irate_box.root.security"] = fake_security
+root_pkg.security = fake_security
+said = clock.apply("clock-sources:chrony:1:1:1:-")
+check("  turned on: the allow written, the firewall loaded again, said", "allow 192.168.4.0/24" in confd.read_text() and len(refreshed) == 1
+      and "serves it to the hotspot (192.168.4.0/24)" in said and "opens UDP 123 to guests" in said, (refreshed, said))
+from irate_box.root import firewall  # noqa: E402
+check("  the firewall opens the time to guests while it serves (UDP 123), by the Clock page's switch", "time" in firewall.services_here([])
+      and 123 in firewall.ports(firewall.services_here([]))[1])
+clock.apply("clock-sources:chrony:1:1:0:-")
+check("  turned off: the allow gone, the firewall loaded again, the time closed", "allow" not in confd.read_text() and len(refreshed) == 2
+      and "time" not in firewall.services_here([]) and 123 not in firewall.ports(firewall.services_here([]))[1])
+clock.apply("clock-sources:chrony:1:1:1:-")
+n = len(refreshed)
 
 # --- Restore: everything back as the image had it ---------------------------------------------------------
 calls.clear()
@@ -135,6 +155,8 @@ check("  chrony removed and timesyncd installed again", "chrony" not in pkgs and
 check("  timesyncd enabled and running, as the image had it", "systemd-timesyncd.service" in enabled
       and ["systemctl", "restart", "systemd-timesyncd.service"] in calls)
 check("  the record gone, and said", not clock.RECORD.exists() and "as the image had them" in said, said)
+check("  serving stopped: the firewall loaded again, UDP 123 closed", len(refreshed) == n + 1 and "closes UDP 123 again" in said
+      and "time" not in firewall.services_here([]), said)
 try:
     clock.undo(); check("Restore again: refused", False)
 except ValueError as exc:
@@ -172,9 +194,9 @@ check("  in use fine; chosen but not answering a problem; chosen but not found a
       fs["clock-source:gps"]["status"] == "ok" and fs["clock-source:local"]["status"] == "problem" and fs["clock-source:pool"]["status"] == "warn"
       and "UDP port 123" in fs["clock-source:local"]["fix"] and fs["clock-source:gps"]["fix"] == "", fs)
 from irate_box.hub import server  # noqa: E402
-for c in ("clock-sources:chrony:1:1:192.168.1.1", "clock-sources:image:0:0:router.lan", "clock-undo"):
+for c in ("clock-sources:chrony:1:1:1:192.168.1.1", "clock-sources:image:0:0:0:router.lan", "clock-undo"):
     check(f"accepted by the doctor and the hub: {c}", bool(health.CHOICE_RE.match(c)) and bool(server.HEALTH_CHOICE_RE.match(c)))
-for c in ("clock-sources:chrony:1:1:$(reboot)", "clock-sources:chrony:2:0:-", "clock-undo:x"):
+for c in ("clock-sources:chrony:1:1:0:$(reboot)", "clock-sources:chrony:2:0:0:-", "clock-undo:x"):
     check(f"refused by both: {c}", not health.CHOICE_RE.match(c) and not server.HEALTH_CHOICE_RE.match(c))
 
 print(f"failures: {fails}")
