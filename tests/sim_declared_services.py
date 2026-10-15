@@ -61,7 +61,7 @@ check("  in the firewall's ports", 8087 in tcp and 6969 in udp, (tcp, udp))
 lf = security.listener_findings([{"proto": "tcp", "port": 8087, "addr": "0.0.0.0", "unit": "takserver.service", "pid": 7,
                                   "process": "java", "name": "TAK server"}], {})[0]
 check("the Security page: its listener rated and said as its manifest says, no stop offered (an add-on)", lf["status"] == "warn"
-      and "TAK apps send their positions here" in lf["detail"] and not lf.get("actions"), lf)
+      and "TAK apps send their positions here" in lf["summary"] and not lf.get("actions"), lf)   # the manifest's own words
 
 # --- the security doctor's cross-reference --------------------------------------------------------
 check("the doctor's add-on finding and the page's port: the same service", xref.about("doctor", "addon-tak") == {"kind": "service", "key": "tcp/8087"}

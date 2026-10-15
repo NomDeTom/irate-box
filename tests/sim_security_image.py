@@ -69,6 +69,8 @@ os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_PROC_SYS=str(PROC), HUB_GROUP_
                   PATH=f"{BIN}:{os.environ['PATH']}")
 sys.path.insert(0, str(REPO))
 from irate_box.root import security  # noqa: E402
+from irate_box.finding import message_ids as said  # noqa: E402
+from irate_box import msg  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -85,7 +87,7 @@ check("links off: a problem, with a button", f["kernel-links"]["status"] == "pro
 check("addresses and log: a warning, with a button", f["kernel-info"]["status"] == "warn"
       and f["kernel-info"]["actions"][0]["choice"] == "kernel-info-on")
 check("docker: lyra listed, not the nologin service account", f["group-docker"]["status"] == "warn"
-      and "lyra" in f["group-docker"]["detail"] and "svc" not in f["group-docker"]["detail"]
+      and f["group-docker"]["evidence"] == ["lyra"] and said(f["group-docker"]) == {"group.members", "group-docker.why", "group.fix"}
       and [a["choice"] for a in f["group-docker"]["actions"]] == ["group-drop:lyra@docker"], f["group-docker"])
 check("disk: lyra listed", f["group-disk"]["status"] == "warn")
 check("sudo is not a group this page touches", "group-sudo" not in f)
@@ -106,7 +108,8 @@ check("links undone: the old values back, the file keeps the other set",
 f = findings()
 check("links off, Debian's defaults to be had: offered first, the hub's own two beside it",
       [a["choice"] for a in f["kernel-links"]["actions"]] == ["kernel-links-debian", "kernel-links-on"]
-      and "linux-sysctl-defaults" in f["kernel-links"]["fix"] and f["kernel-links"]["actions"][0].get("confirm"), f["kernel-links"])
+      and "kernel-links.debian.fix" in said(f["kernel-links"]) and f["kernel-links"]["notes"][0]["args"]["package"] == "linux-sysctl-defaults"
+      and f["kernel-links"]["actions"][0].get("confirm"), f["kernel-links"])
 print(security.fix("kernel-links-debian", None))
 check("Debian's defaults: installed, applied, on now", (T / "installed").exists() and sysctl("fs.protected_symlinks") == "1"
       and "install -y --no-install-recommends linux-sysctl-defaults" in (T / "apt-log").read_text())
@@ -125,8 +128,8 @@ def rootf():
     return {f["id"]: f for f in security.root_findings(security.load_record())}
 f = rootf()
 check("root with a password and Armbian's first login never run: a problem (the image's own), lock offered (lyra has sudo)",
-      f["root-password"]["status"] == "problem" and "1234" in f["root-password"]["detail"]
-      and [a["choice"] for a in f["root-password"]["actions"]] == ["root-lock"] and "lyra" in f["root-password"]["actions"][0]["confirm"], f["root-password"])
+      f["root-password"]["status"] == "problem" and "root-password.image" in said(f["root-password"])
+      and [a["choice"] for a in f["root-password"]["actions"]] == ["root-lock"] and f["root-password"]["actions"][0]["confirm"]["args"]["accounts"] == ["lyra"], f["root-password"])
 check("  first login never run: a problem, with the marker put aside offered", f["root-firstrun"]["status"] == "problem"
       and f["root-firstrun"]["actions"][0]["choice"] == "firstrun-off")
 (T / "etc").mkdir(exist_ok=True)
@@ -143,10 +146,10 @@ check("  undone: the password as it was, the marker back", (T / "root-pw").read_
 check("root with a password of its own (first login done): a warning, lock offered", rootf()["root-password"]["status"] == "warn"
       and "root-firstrun" not in rootf())
 (T / "root-pw").write_text("NP")
-check("root with no password: a problem", rootf()["root-password"]["status"] == "problem" and "no password" in rootf()["root-password"]["detail"])
+check("root with no password: a problem", rootf()["root-password"]["status"] == "problem" and "root-password.none" in said(rootf()["root-password"]))
 grp = (T / "group").read_text(); (T / "group").write_text(grp.replace("sudo:x:27:lyra", "sudo:x:27:"))
 check("  nobody else with sudo: no lock offered, and said why", rootf()["root-password"]["actions"] == []
-      and "Add one first" in rootf()["root-password"]["fix"])
+      and "root-lock.no-sudo" in said(rootf()["root-password"]))
 try:
     security.fix("root-lock", None); refused_ = False
 except ValueError:
@@ -182,12 +185,12 @@ check("the hub passes these choices to the helper", all(rx.match(c) for c in
 uf = security.unattended_finding
 nf = uf(False, {}, None)
 check("not chosen: a warning saying the choices, no buttons (the chips are on Updates), no toolkit in sight", nf["status"] == "warn"
-      and nf["actions"] == [] and "every 6 hours" in nf["detail"] and "oolkit" not in nf["detail"] + nf["fix"], nf)
+      and nf["actions"] == [] and said(nf) == {"unattended.unset", "unattended.unset.fix", "unattended.unset.can"}, nf)
 on_by_image = uf(True, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, 2)
 check("  not chosen here but already running (Debian's own package can switch it on): said so, fine",
-      on_by_image["status"] == "ok" and "not chosen on this page" in on_by_image["detail"], on_by_image)
+      on_by_image["status"] == "ok" and "unattended.by-image" in said(on_by_image), on_by_image)
 check("manual, chosen: fine, an Undo offered", uf(False, {}, None, (0, 0))["status"] == "ok"
-      and [a["choice"] for a in uf(False, {}, None, (0, 0))["actions"]] == ["autoupdate-undo"] and "Check now" in uf(False, {}, None, (0, 1))["detail"])
+      and [a["choice"] for a in uf(False, {}, None, (0, 0))["actions"]] == ["autoupdate-undo"] and said(uf(False, {}, None, (0, 1))) == {"pattern.manual-fetch"})
 check("daily fetch, chosen and apt's periodic work on: fine; off again (another file wins): a warning",
       uf(False, {"APT::Periodic::Enable": "1"}, None, (24, 1))["status"] == "ok"
       and uf(False, {"APT::Periodic::Enable": "0"}, None, (24, 1))["status"] == "warn")
@@ -198,10 +201,10 @@ check("  running: fine; not run in a fortnight: a warning", uf(True, {"APT::Peri
       and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, (24, 2))["status"] == "warn")
 ran = uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 0.5, (24, 2), time.time() - 43200)
 check("  said in whole sentences, with when it last ran (apt's stamp, as the log in RAM is gone after a reboot)",
-      ran["detail"].startswith("The box looks for security updates every day and installs what it finds. It last ran on ") and ";" not in ran["detail"], ran)
-check("  never run: said so, and when it runs", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None, (24, 2))["detail"].endswith(
-      "It has not run yet. It runs when the box has internet."))
-check("  the restore button in plain words", [a["label"] for a in ran["actions"]] == ["Restore the image's settings"])
+      said(ran) == {"pattern.day-install", "unattended.last-ran-at"} and ran["notes"][0]["args"]["n"] == 0
+      and "time" in ran["notes"][0]["args"]["when"], ran)
+check("  never run: said so, and when it runs", "unattended.not-run" in said(uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None, (24, 2))))
+check("  the restore button in plain words", [msg.render(a["label"]) for a in ran["actions"]] == ["Restore the image's settings"])
 check("the old three choices read as the pattern's", security.chosen_pattern({"autoupdate": {"level": "download"}}) == (24, 1)
       and security.chosen_pattern({"autoupdate": {"level": "off"}}) == (0, 0) and security.chosen_pattern({}) is None)
 for bad in ("12-1", "24-3", "x", "24"):
@@ -272,7 +275,7 @@ check("the root helper takes the pattern's choices without a scan offering them,
 sf = lambda s, rec={}: {f["id"]: f for f in security.ssh_findings(s, ["lyra"], rec)}  # noqa: E731
 on = sf({"permitrootlogin": "no", "passwordauthentication": "no", "allowtcpforwarding": "yes", "allowagentforwarding": "no", "x11forwarding": "yes"})
 check("ssh forwarding on (the image's default): a warning naming which, with the offer",
-      on["ssh-forwarding"]["status"] == "warn" and "TCP, X11" in on["ssh-forwarding"]["detail"]
+      on["ssh-forwarding"]["status"] == "warn" and on["ssh-forwarding"]["evidence"] == ["allowtcpforwarding yes", "x11forwarding yes"]
       and on["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-off", on["ssh-forwarding"])
 off = sf({"permitrootlogin": "no", "passwordauthentication": "no", "allowtcpforwarding": "no", "allowagentforwarding": "no", "x11forwarding": "no"}, {"ssh": {"forwarding": "2026-10-08"}})
 check("  off by this page: ok, with Undo", off["ssh-forwarding"]["status"] == "ok" and off["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-undo")
@@ -289,7 +292,8 @@ def gate():
     return {f["id"]: f for f in security.sudo_findings(rec) + security.apt_findings(rec) + security.log_findings(rec)}
 g = gate()
 check("sudo: a NOPASSWD rule for a login account while sshd takes passwords: a problem, the file offered",
-      g["sudo-nopasswd"]["status"] == "problem" and "claude-temp: lyra" in g["sudo-nopasswd"]["detail"]
+      g["sudo-nopasswd"]["status"] == "problem" and g["sudo-nopasswd"]["evidence"] == ["claude-temp: lyra"]
+      and said(g["sudo-nopasswd"]) == {"sudo.rules", "sudo.rules.why-ssh", "sudo.fix-ssh"}
       and g["sudo-nopasswd"]["actions"][0]["choice"] == "sudo-drop:claude-temp", g["sudo-nopasswd"])
 (T / "pw-off").touch()
 check("  with passwords off: a warning", gate()["sudo-nopasswd"]["status"] == "warn")
@@ -307,7 +311,8 @@ check("keys where sshd looks (AuthorizedKeysFile with %h and %u): none yet", sec
 (T / "home" / "lyra" / ".ssh" / "keys_lyra").write_text("ssh-ed25519 AAAA test\n")
 check("  a key in the file sshd names: found", security.keys_on_box() == ["lyra"])
 check("apt: a key in trusted.gpg.d with a source of its name: warned, the tie offered",
-      g["apt-trust"]["status"] == "warn" and "home_mPWRD_OS.gpg" in g["apt-trust"]["detail"] and "debian-archive" not in g["apt-trust"]["detail"]
+      g["apt-trust"]["status"] == "warn" and "home_mPWRD_OS.gpg" in g["apt-trust"]["evidence"]
+      and not any(e.startswith("debian-archive") for e in g["apt-trust"]["evidence"])
       and [(a["group"], a["choice"], a["on"]) for a in g["apt-trust"]["actions"]][:2] == [
           ("home_mPWRD_OS.gpg", "apt-any:home_mPWRD_OS.gpg", True), ("home_mPWRD_OS.gpg", "apt-signedby:home_mPWRD_OS.gpg", False)], g["apt-trust"])
 print(security.fix("apt-signedby:home_mPWRD_OS.gpg", None))
@@ -322,7 +327,7 @@ check("  undone: both back as they were", (T / "apt" / "sources.list.d" / "home:
       and (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists() and not (T / "keyrings" / "home_mPWRD_OS.gpg").exists())
 opt = lambda f, choice: next((a for a in f["actions"] if a["choice"] == choice), None)  # noqa: E731
 check("logs in RAM (zram on /var/log): warned, In RAM the choice now, the card offered", g["logs-ram"]["status"] == "warn"
-      and [(a["label"], a["on"]) for a in g["logs-ram"]["actions"]] == [("In RAM", True), ("On the card", False)] and opt(g["logs-ram"], "logs-card"))
+      and [(a["label"]["id"], a["on"]) for a in g["logs-ram"]["actions"]] == [("logs.ram", True), ("logs.card", False)] and opt(g["logs-ram"], "logs-card"))
 print(security.fix("logs-card", None))
 check("  ramlog off and the journal kept, from the next boot", "ENABLED=false" in (T / "ramlog").read_text() and "Storage=persistent" in (T / "journald.conf.d" / "irate-box.conf").read_text()
       and [(a["choice"], a["on"]) for a in gate()["logs-ram"]["actions"]] == [("logs-undo", False), ("logs-card", True)])

@@ -17,6 +17,36 @@ const AW = (() => {
   const FILTER_AT = 12;   // 3f: more than this many entries get a filter
   const BOUND_AT = 20;    // a short list longer than this scrolls in its own box
 
+  // Messages from the box (irate_box/msg.py): {id, en, args}, shown in the reader's language. Only English
+  // exists yet: a catalogue for another language is {id: {text}} under the same IDs, and falls back to the English.
+  // A plural is a set of whole sentences by CLDR category, selected by the argument n; a list argument is joined
+  // for the language; {time} is a moment said as people say it. Placeholders are named: {reason}.
+  const LANG = 'en-GB';
+  const CATALOGUE = {};
+  const isMessage = (v) => !!v && typeof v === 'object' && typeof v.id === 'string' && 'en' in v;
+  function sayArg(v) {
+    if (isMessage(v)) return say(v);
+    if (Array.isArray(v)) return new Intl.ListFormat(LANG, { type: 'conjunction' }).format(v.map(sayArg));
+    if (v && typeof v === 'object' && 'time' in v) {
+      return new Date(v.time * 1000).toLocaleString(LANG, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+    }
+    return v == null ? '' : String(v);
+  }
+  function say(m) {
+    if (!isMessage(m)) return sayArg(m);   // a plain string: from code not converted yet, or an add-on's own words
+    const args = m.args || {};
+    let text = (CATALOGUE[m.id] && CATALOGUE[m.id].text) || m.en;
+    if (text && typeof text === 'object') text = text[new Intl.PluralRules(LANG).select(Number(args.n))] || text.other;
+    return String(text).replace(/\{([a-z_][a-z0-9_]*)\}/g, (whole, k) => (k in args ? sayArg(args[k]) : whole));
+  }
+  // A report from the box with every message in it said: the panes then draw plain strings.
+  function localise(v) {
+    if (isMessage(v)) return say(v);
+    if (Array.isArray(v)) return v.map(localise);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, localise(x)]));
+    return v;
+  }
+
   // An element: h('div', {class, text, onclick, 'aria-x': …}, ...children). Children may nest in arrays.
   function h(tag, props, ...kids) {
     const node = document.createElement(tag);
@@ -515,7 +545,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

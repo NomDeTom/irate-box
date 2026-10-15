@@ -63,3 +63,9 @@ SPDX-License-Identifier = "CC-BY-SA-4.0"
 path = "config/guide-zim.json"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
+
+# The box's words: the glossary and the words to avoid (docs/dev/writing.md; JSON carries no comment).
+[[annotations]]
+path = "docs/dev/terms.json"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "CC-BY-SA-4.0"

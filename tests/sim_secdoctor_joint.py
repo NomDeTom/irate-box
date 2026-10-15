@@ -108,7 +108,7 @@ check("sudo-nopasswd and ssh-password both warn: one compound problem, with deta
       and jc["after"]["problem"] == 1, comp)
 jc = sd.joint([{"findings": [pg("sudo-nopasswd", "warn"), pg("ssh-password", "ok")]}])
 check("  one of them fine: no compound item", not [i for i in jc["items"] if i["about"]["kind"] == "compound"])
-check("every compound rule names findings that exist", all(f'finding("{i.removeprefix("page-")}"' in page_src or (i.startswith("page-group-") and '_finding(f"group-{group}"' in page_src) for c in xref.COMPOUND for s, i in c["needs"] if s == "security-page"),
+check("every compound rule names findings that exist", all(f'finding("{i.removeprefix("page-")}"' in page_src or (i.startswith("page-group-") and 'finding(f"group-{group}"' in page_src) for c in xref.COMPOUND for s, i in c["needs"] if s == "security-page"),
       [i for c in xref.COMPOUND for s, i in c["needs"]])
 
 # Lynis's tests met on the Lyra, each placed: HTTPS with the doctor's own step; the rest in a CIS section that says why.

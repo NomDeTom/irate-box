@@ -31,7 +31,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 import html
-from irate_box import confine
+from irate_box import confine, finding
 from irate_box.hub import access
 from irate_box.hub import accounts
 from irate_box.hub import backup
@@ -1859,7 +1859,7 @@ def setup_blocked():
         return None
     for f in scan.get("findings", []) if isinstance(scan, dict) else []:
         if isinstance(f, dict) and f.get("id") == "sudo-nopasswd" and f.get("status") == "problem":
-            return f"Not finished yet: {f.get('detail', '')} The Security page (System) offers the fixes; then finish here."
+            return f"Not finished yet: {finding.legacy(f)['detail']} The Security page (System) offers the fixes; then finish here."
     return None
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"

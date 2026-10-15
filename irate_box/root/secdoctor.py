@@ -39,6 +39,7 @@ import sys
 import time
 from pathlib import Path
 
+from irate_box.finding import legacy
 from irate_box.root import secdoctor_xref
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -2025,7 +2026,8 @@ def step_security_page(ctx):
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(scan.get("at") or 0))
     out = []
     for f in scan.get("findings", []):
-        out.append(F(f"page-{f['id']}", f["title"], f["status"], f"{f['detail']} (scan of {when})", f.get("fix", ""), "",
+        said = legacy(f) if "summary" in f else f   # the Security page reports in the shared shape (finding.py)
+        out.append(F(f"page-{f['id']}", said["title"], f["status"], f"{said['detail']} (scan of {when})", said.get("fix", ""), "",
                      source="security-page", about=secdoctor_xref.about("security-page", f["id"])))
     return out
 

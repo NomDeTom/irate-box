@@ -83,6 +83,8 @@ run sim_pin.py
 run sim_local_addons.py
 run api_admin_gate.py
 run doctor_guard.py
+run msg_guard.py
+run terms_guard.py
 run sim_netinv.py
 run sim_apmode.py
 run sim_syncthing_gui.py

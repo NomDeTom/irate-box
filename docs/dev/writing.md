@@ -9,7 +9,7 @@ These rules apply to every word a person reads: page text, labels and buttons, m
 1. **Write to the reader as "you".** Call the device "the box". Use "administrator" only for someone other than the reader, for example on a page that guests read.
 2. **One idea per sentence.** Aim for 15 words. Stop at 25.
 3. **Start an instruction with its verb.** Put any condition first: "If the hotspot is off, select Start."
-4. **Use the words on the screen, and one name for each thing.** Quote a control by its exact label. The [glossary](../user/glossary.md) decides the name of a thing.
+4. **Use the words on the screen, and one name for each thing.** Quote a control by its exact label. The [glossary](../user/glossary.md) decides the name of a thing. The glossary is made from [terms.json](terms.json), which also lists the words to avoid. `tests/terms_guard.py` checks them.
 5. **When something goes wrong, say what happened, then what to do.** Do not write "invalid", "error" or "failed" on their own.
 6. **Use plain words.** can, use, select, need, sign in. Avoid may, ensure, utilise, and negative contractions such as "can't" and "don't".
 7. **Sentence case everywhere.** No semicolons. No "e.g." or "i.e.". Explain an abbreviation the first time it appears.
@@ -50,3 +50,7 @@ f"{n} link{'s' if n != 1 else ''} {'is' if n == 1 else 'are'} outside its folder
 ```
 
 Keep commands, paths and log lines out of sentences: show them on their own, so they can be copied.
+
+## Messages in the code
+
+What the box says to a person is a message (`irate_box/msg.py`): a whole sentence in English with a stable ID, `M("updates.waiting", …)`. Write each case as its own sentence and select one in the code. Do not build a sentence from parts. A plural is the whole sentence for each number (`one`, `other`). Names, files and packages go in as arguments or as a finding's evidence, never into the English. A doctor's finding (`irate_box/finding.py`) keeps what it found, why that matters and what to do apart, so that the page can show each one in its place. `tests/msg_guard.py` checks every message.
