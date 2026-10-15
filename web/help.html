@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quick help · Hub</title>
+  <title data-i18n="help.head.title">Quick help · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛟</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,36 +13,36 @@
 </head>
 <body class="help">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>🛟 Quick help</h1>
-    <p class="subtitle">What this is, and how to get around.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="help.header.tip-back-hub" data-i18n="help.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="help.header.heading">🛟 Quick help</h1>
+    <p class="subtitle" data-i18n="help.header.subtitle">What this is, and how to get around.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="help.header.aria-theme"></div>
   </header>
 
   <section class="help-lead">
-    <p>
+    <p data-i18n="help.body.connected-irate-box-small">
       You are connected to an <strong>Irate-Box</strong>. It is a small computer that serves these
       pages over its own network. It does not need internet access. Some apps can need it.
     </p>
-    <p>
+    <p data-i18n="help.body.administrator-sets-apps-accounts">
       The administrator sets which apps and accounts you can use. You can use many apps
       without an account. If an app asks for a sign-in, go to <a href="/account.html">Account</a>.
     </p>
-    <p>
+    <p data-i18n="help.body.use-https-see-box">
       To use HTTPS, see <a href="/certificate">the box's certificate page</a>.
     </p>
-    <p>
+    <p data-i18n="help.body.guide-explains-how-set">
       📖 <a href="/guide/index.html">The guide</a> explains how to set up and look after this box.
     </p>
   </section>
 
-  <h2>What is on the box</h2>
+  <h2 data-i18n="help.body.heading-box">What is on the box</h2>
   <div class="help-list">
     <div class="help-item" data-service="/draw/">
       <span class="icon">✏️</span>
       <div>
-        <strong>Excalidraw — whiteboard</strong>
-        <p>Sketch diagrams by hand. To draw together, use <em>Live collaboration</em> (the
+        <strong data-i18n="help.body.excalidraw-whiteboard">Excalidraw — whiteboard</strong>
+        <p data-i18n="help.body.sketch-diagrams-hand-draw">Sketch diagrams by hand. To draw together, use <em>Live collaboration</em> (the
           people icon) and share the room link. <em>Save to hub gallery</em> in the menu keeps
           a copy on the box. <em>Export</em> downloads one to your device.</p>
       </div>
@@ -50,8 +50,8 @@
     <div class="help-item" data-service="/mermaid/">
       <span class="icon">📈</span>
       <div>
-        <strong>Mermaid — diagrams as text</strong>
-        <p>Type a flowchart, sequence diagram or chart and see it drawn. The <em>Hub</em> tab
+        <strong data-i18n="help.body.mermaid-diagrams-text">Mermaid — diagrams as text</strong>
+        <p data-i18n="help.body.type-flowchart-sequence-diagram">Type a flowchart, sequence diagram or chart and see it drawn. The <em>Hub</em> tab
           in History saves to the box. <em>Load note</em> pulls a diagram out of a Notes page.
           The docs buttons open the Mermaid book in the library.</p>
       </div>
@@ -59,8 +59,8 @@
     <div class="help-item" data-service="/wiki/">
       <span class="icon">📚</span>
       <div>
-        <strong>Kiwix — the offline library</strong>
-        <p>Whole reference books on the box: a selection of Wikipedia, the Meshtastic and
+        <strong data-i18n="help.body.kiwix-offline-library">Kiwix — the offline library</strong>
+        <p data-i18n="help.body.whole-reference-books-box">Whole reference books on the box: a selection of Wikipedia, the Meshtastic and
           Mermaid documentation, and other books that the administrator adds. Search covers
           every book at once.</p>
       </div>
@@ -68,16 +68,16 @@
     <div class="help-item" data-service="/notes/">
       <span class="icon">📝</span>
       <div>
-        <strong>Notes — a shared notebook</strong>
-        <p>Markdown pages everyone here can read and edit. Good for agendas, lists, and
-          anything worth keeping after the room empties.</p>
+        <strong data-i18n="help.body.notes-shared-notebook">Notes — a shared notebook</strong>
+        <p data-i18n="help.body.markdown-pages-everyone-notes">Markdown pages that everyone with Notes access can read and edit. Use them for
+          agendas, lists and other notes to keep.</p>
       </div>
     </div>
     <div class="help-item" data-service="/git/">
       <span class="icon">🔀</span>
       <div>
-        <strong>Git — repositories</strong>
-        <p>Browse the box's repositories and clone them over the network:
+        <strong data-i18n="help.body.git-repositories">Git — repositories</strong>
+        <p data-i18n="help.body.browse-box-repositories-clone">Browse the box's repositories and clone them over the network:
           <code>git clone http://&lt;this box&gt;/git/&lt;name&gt;.git</code>. Pushing needs
           permission. The administrator sets who can push.</p>
       </div>
@@ -85,27 +85,27 @@
     <div class="help-item">
       <span class="icon">📡</span>
       <div>
-        <strong>Meshtastic</strong>
-        <p>A log analyser for Meshtastic radios, their documentation, and tools. Saved logs
-          work in any browser, here. Reading a radio live over USB needs Chrome or Edge on a
-          laptop, and the <em>downloaded</em> copy (Meshtastic → "Serial terminal, as a
-          download"): browsers let USB serial work only on a page opened from your own machine,
-          not on one served over this box's plain connection. Save it once, open it from your
-          downloads, and plug the radio in.</p>
+        <strong translate="no">Meshtastic</strong>
+        <p data-i18n="help.body.log-analyser-meshtastic-radios">A log analyser for Meshtastic radios, their documentation, and tools. Saved logs
+          work in any browser, here. To read a radio live over USB, use Chrome or Edge on a
+          laptop. Browsers let a page use USB serial only over HTTPS, or when the page is a file on
+          your own computer. Without HTTPS, use the <em>downloaded</em> copy (Meshtastic → "Serial
+          terminal, as a download"). Save it once, open it from your downloads, and connect the radio.</p>
       </div>
     </div>
     <div class="help-item">
       <span class="icon">🧮</span>
       <div>
-        <strong>Calculators</strong>
-        <p>RF and LoRa, electronics, and general converters — all working offline.</p>
+        <strong data-i18n="help.body.calculators">Calculators</strong>
+        <p data-i18n="help.body.calculators-rf-lora-electronics">Calculators for RF and LoRa, electronics and general conversions. They work without
+          internet access.</p>
       </div>
     </div>
     <div class="help-item">
       <span class="icon">💬</span>
       <div>
-        <strong>Shoutbox and board</strong>
-        <p>On the front page. The shoutbox is quick chat. The box deletes shoutbox messages after one day.
+        <strong data-i18n="help.body.shoutbox-board">Shoutbox and board</strong>
+        <p data-i18n="help.body.front-page-shoutbox-quick">On the front page. The shoutbox is quick chat. The box deletes shoutbox messages after one day.
           The board holds threads. The box deletes a thread one week after its last reply. Both
           periods count the time that the box is switched on.</p>
       </div>
@@ -113,64 +113,65 @@
     <div class="help-item" data-service="/irc.html">
       <span class="icon">🗨️</span>
       <div>
-        <strong>IRC chat</strong>
-        <p>Live chat in any IRC app, if the administrator has added it. <a href="/irc.html">How to
-          connect</a>: the app has to be on your device already, as there is no internet here
-          to get one.</p>
+        <strong data-i18n="help.body.irc-chat">IRC chat</strong>
+        <p data-i18n="help.body.live-chat-any-irc">Live chat in any IRC app, if the administrator has added it. <a href="/irc.html">How to
+          connect</a>. Install an IRC app on your device before you use chat offline.</p>
       </div>
     </div>
     <div class="help-item">
       <span class="icon">📥</span>
       <div>
-        <strong>File drop</strong>
-        <p>Leave a file for other people here, up to 25 MB, and pick up their files. The box deletes
-          a file after one day of box on-time. Anyone on this network can download a file.</p>
+        <strong data-i18n="help.body.file-drop">File drop</strong>
+        <p data-i18n="help.body.leave-file-other-people">Leave a file for other people here, and pick up their files. The File drop page shows the
+          size limit and the retention period. The retention period counts the time that the box is
+          switched on. Everyone who can open File drop can download a file.</p>
       </div>
     </div>
   </div>
 
-  <h2>Getting around</h2>
+  <h2 data-i18n="help.body.heading-getting-around">Getting around</h2>
   <ul class="help-points">
-    <li>The tiles on the <a href="/">front page</a> open each app in a new tab, under a thin
-      hub bar: <strong>🏠 Hub</strong> brings you back, <strong>🛟</strong> shows a short
-      reminder of all this, ☀️ 🌙 sets light or dark for everything, and <strong>↗</strong>
-      opens the app on its own. The bar slides away as you scroll down.</li>
-    <li>A greyed-out tile is a service that is not running now, or that is not installed on
-      this box.</li>
-    <li>If a button inside an app says it cannot connect, the feature usually needs
+    <li data-i18n="help.body.tiles-front-page-open">The tiles on the <a href="/">front page</a> open each app in a new tab, under a thin
+      hub bar. <strong>🏠 Hub</strong> brings you back. <strong>🛟</strong> shows a short
+      reminder of this help. ☀️ 🌙 sets light or dark for every page. <strong>↗</strong>
+      opens the app without the hub bar. The bar hides when you scroll down.</li>
+    <li data-i18n="help.body.greyed-out-tile-app">A greyed-out tile is an app that is not running, is not installed on this box, or
+      needs a sign-in that you do not have.</li>
+    <li data-i18n="help.body.button-inside-app-says">If a button inside an app says it cannot connect, the feature can need
       internet access. The box has no internet access unless the administrator connects it.</li>
-    <li>To bring someone else in, show them the <strong>Join</strong> QR code on the front
+    <li data-i18n="help.body.bring-someone-else-show">To bring someone else in, show them the <strong>Join</strong> QR code on the front
       page.</li>
   </ul>
 
-  <h2>Your work</h2>
+  <h2 data-i18n="help.body.heading-work">Your work</h2>
   <ul class="help-points">
-    <li>Most apps keep what you are doing in <em>your</em> browser. It is still there next time
-      you come back on the same device, and nobody else sees it.</li>
-    <li>Saving to the hub (the gallery, Notes, a shared drawing) puts it on the box, where
-      everyone connected can see it.</li>
-    <li>Space on the box is limited, and the oldest shared work makes room for new. Download
-      anything you want to keep.</li>
+    <li data-i18n="help.body.most-apps-keep-doing">Most apps keep what you are doing in <em>your</em> browser. It is still there next time
+      you come back on the same device. Other devices do not see it. If you clear the browser
+      data, it is deleted.</li>
+    <li data-i18n="help.body.saving-hub-gallery-notes">Saving to the hub (the gallery, Notes, a shared drawing) puts it on the box. Other
+      people who can open that app can see it.</li>
+    <li data-i18n="help.body.space-box-limited-space">Space on the box is limited. When the space is full, the box deletes the oldest shared
+      work. Download anything you want to keep.</li>
   </ul>
 
-  <h2>Privacy and manners</h2>
+  <h2 data-i18n="help.body.heading-privacy-manners">Privacy and manners</h2>
   <ul class="help-points">
-    <li>Without an account, a page asks for any name. The box does not check that name. With an
+    <li data-i18n="help.body.without-account-page-asks">Without an account, a page asks for any name. The box does not check that name. With an
       account, your username identifies you.</li>
-    <li>Anyone on this network can read what you share here, unless the app limits who can open it.
+    <li data-i18n="help.body.anyone-network-read-share">Anyone on this network can read what you share here, unless the app limits who can open it.
       Share only what you accept that other people can read.</li>
-    <li>The administrator can remove posts and saved work.</li>
+    <li data-i18n="help.body.administrator-remove-posts-saved">The administrator can remove posts and saved work.</li>
   </ul>
 
-  <h2>Why times look odd</h2>
-  <p class="help-note">
-    The box has no clock battery. It does not always know the date. Ages such as "5 min ago"
+  <h2 data-i18n="help.body.heading-why-times-look-odd">Why times look odd</h2>
+  <p class="help-note" data-i18n="help.body.many-boxes-no-clock">
+    Many boxes have no clock battery. Such a box does not always know the date. Ages such as "5 min ago"
     count the time that the box has been switched on. A message from yesterday can look newer
     when the box was off overnight.
   </p>
 
-  <h2>HTTPS: the padlock</h2>
-  <p class="help-note">
+  <h2 data-i18n="help.body.heading-https-padlock">HTTPS: the padlock</h2>
+  <p class="help-note" data-i18n="help.body.box-serve-pages-over">
     The box can serve its pages over HTTPS. HTTPS prevents other people on the same WiFi from
     reading or changing what you send, such as a password. Your phone or computer must trust the
     box first. Install the box's certificate once. The <a href="/certificate">certificate page</a>
@@ -179,23 +180,24 @@
     warning appear. Without the certificate, the pages still work over plain HTTP.
   </p>
 
-  <h2>For the administrator</h2>
-  <p class="help-note">
+  <h2 data-i18n="help.body.heading-administrator">For the administrator</h2>
+  <p class="help-note" data-i18n="help.body.new-box-setting-up">
     New box? <a href="/guide/first-use.html">Setting up a new box</a> takes you from the install to signing in as the administrator.<br>
     <a href="/admin/">Administration</a> (sign in with an administrator account) has the services, the library, moderation, saved
     work and settings.<br>
     <a href="/services.html">Services</a> shows what is running.
   </p>
 
-  <h2>Licences</h2>
-  <p class="help-note">
-    Everything here is free software, run from its own source: each app says where its source is and lists what it includes, with their
+  <h2 data-i18n="help.body.heading-licences">Licences</h2>
+  <p class="help-note" data-i18n="help.body.box-own-software-apps">
+    The box's own software and its apps are free software. Each app says where its source is and lists what it includes, with their
     licences: <a href="/draw/THIRD-PARTY-NOTICES.txt">Excalidraw</a>,
     <a href="/mermaid/THIRD-PARTY-NOTICES.txt">Mermaid</a>,
     <a href="/serial/THIRD-PARTY-NOTICES.txt">serial terminal</a>. Each calculator states its
     own licence on its page.
   </p>
 
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
 </body>
 </html>

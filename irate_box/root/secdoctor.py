@@ -1103,13 +1103,9 @@ SANDBOX_EXEMPT = {
         "ProtectHome": M("units.exempt.control-home", "The root helper sets up the accounts of the box, their home folders included.")},
     "ttyd.service": {line: M("units.exempt.ttyd", "It is the administrator's terminal: a sign-in shell that must see and reach the whole "
                                                   "box, sudo included.") for line in ALL_LINES},
-    "irate-box-secdoctor.service": {
-        "ProtectProc=invisible": M("units.exempt.secdoctor", "The audit looks at every process: what listens, and as which account.")},
     "irate-box-uplink.service": {
         "ProtectSystem=strict": M("units.exempt.uplink", "Its repairs start the network's own tools (ifup, the DHCP client), which "
                                                          "write /run, /var/lib and /etc/resolv.conf.")},
-    "irate-box-crashwatch.service": {
-        "ProtectProc=invisible": M("units.exempt.crashwatch", "It keeps a record of every process for after a hang.")},
 }
 
 
@@ -1658,7 +1654,9 @@ def step_cmdlines(ctx):
                 hits.append(f"{name} (pid {pid}) password set …")
             elif SECRET_KV.match(a) and not a.startswith("/"):
                 hits.append(f"{name} (pid {pid}) {a.split('=', 1)[0]}=…")
-    mount = _read(PROC / "mounts") or ""
+    # The box's own /proc, as PID 1 has it: under ProtectProc (this unit's and the root helper's) /proc/mounts is the
+    # unit's own instance, always with hidepid set.
+    mount = _read(PROC / "1" / "mounts") or ""
     m = re.search(r"^\S+ /proc proc (\S+)", mount, re.M)
     hidepid = bool(m and re.search(r"hidepid=(1|2|invisible|noaccess|ptraceable)\b", m.group(1)))
     out = []
@@ -3163,7 +3161,7 @@ def step_internet(ctx):
                            M("reach.web.why", "Something lets the internet reach the box's pages: a port forward or DMZ host on the "
                                               "router, or a proxy. Its sign-in forms can then be reached from the internet too."),
                            M("reach.web.fix", "If you did not mean that, remove the port forward or DMZ host from your router. To reach "
-                                              "the box from afar, use Tailscale on Access, Remote access."),
+                                              "the box from outside its network, use Tailscale on Access → Remote access."),
                            evidence=_some(f"{n} ×{e.get('count', '?')} {time.strftime('%Y-%m-%d %H:%M', time.localtime(e['last']))}"
                                           for n, e in recent)))
     else:

@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Locks on this device · Hub</title>
+  <title data-i18n="locks.head.title">Locks on this device · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔒</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,34 +13,35 @@
 </head>
 <body class="drop">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>🔒 Locks on this device</h1>
-    <p class="subtitle">The saved work and files that this browser has locked on the box.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="locks.header.tip-quick-help" data-i18n="locks.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="locks.header.tip-back-hub" data-i18n="locks.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="locks.header.heading">🔒 Locks on this device</h1>
+    <p class="subtitle" data-i18n="locks.header.subtitle">The saved work and files that this browser has locked on the box.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="locks.header.aria-theme"></div>
   </header>
 
   <section>
-    <p class="setting-desc">
+    <p class="setting-desc" data-i18n="locks.body.lock-lets-devices-hold">
       A lock lets only devices that hold its key change or delete the item. The administrator can
       also delete it. A lock does not restrict downloads. There is no password. This browser keeps
       the key. To use a lock on another device, show the key here. Then scan or copy it on the other
       device. Anyone who has a key can change or delete the item. Keep keys secret. A lock expires
       when the item expires.
     </p>
-    <h2>Device keys</h2>
-    <ul class="drop-list" id="locks-list"><li class="setting-desc">Loading…</li></ul>
+    <h2 data-i18n="locks.body.heading-device-keys">Device keys</h2>
+    <ul class="drop-list" id="locks-list"><li class="setting-desc" data-i18n="locks.body.loading">Loading…</li></ul>
   </section>
 
   <section>
-    <h2>Add key from another device</h2>
-    <p class="setting-desc">Paste the key text that the other device shows. It starts with <code>hublock:</code>.</p>
+    <h2 data-i18n="locks.body.heading-add-key-another-device">Add key from another device</h2>
+    <p class="setting-desc" data-i18n="locks.body.paste-key-text-other">Paste the key text that the other device shows. It starts with <code>hublock:</code>.</p>
     <div class="library-buttons">
-      <input id="locks-import" size="40" spellcheck="false" autocomplete="off" placeholder="hublock:…">
-      <button type="button" id="locks-add">Add key</button>
+      <input id="locks-import" size="40" spellcheck="false" autocomplete="off" placeholder="hublock:…" translate="no">
+      <button type="button" id="locks-add" data-i18n="locks.body.locks-add">Add key</button>
     </div>
     <p class="setting-desc action-note" id="locks-note" role="status" hidden></p>
   </section>
 
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/qrcode.js"></script>
   <script src="/lock.js"></script>

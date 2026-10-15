@@ -46,6 +46,8 @@ import sys
 import time
 from pathlib import Path
 
+from irate_box.msg import M, Refused, duration
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
@@ -60,9 +62,11 @@ UPLINK_RUN = Path(os.environ.get("HUB_UPLINK_RUN", "/run/irate-box-uplink")) / "
 FLASH = RUN_DIR / "flash.json"     # an LED to blink fast for a while, to find it
 
 SHOW = ("leave", "alive", "network", "all")
-SHOW_WORDS = {"leave": "not changed by the box: the image set it", "alive": "blinks while the hub server runs",
-              "network": "blinks while the hub server runs and its link is up",
-              "all": "blinks while the hub server runs, its link is up and Box doctor finds no problem"}
+# What a choice of what the light shows does, said when it is made.
+SHOW_SAID = {"alive": lambda led: M("led-set.show.alive", "{led} now blinks while the hub server runs.", led=led),
+             "network": lambda led: M("led-set.show.network", "{led} now blinks while the hub server runs and its link is up.", led=led),
+             "all": lambda led: M("led-set.show.all", "{led} now blinks while the hub server runs, its link is up and the Box doctor "
+                                                      "finds no problem.", led=led)}
 # (on?, seconds) steps, repeated. Each state the same on every board.
 PATTERNS = {
     "ok": [(1, 1.0), (0, 1.0)],
@@ -197,15 +201,24 @@ def set_option(key, value):
         s["show"] = value
         save_settings(s)
         name = pick(found, s["led"])
-        if value != "leave" and not name:
-            return f"status light: {SHOW_WORDS[value]}, once there is an LED to use (none found on this board)"
-        return f"status light{f' ({name})' if name else ''}: {SHOW_WORDS[value]}"
+        if value == "leave":
+            return (M("led-set.leave", "The box no longer drives {led}. It stays as the image set it.", led=name) if name else
+                    M("led-set.leave.none", "The box does not drive a status light. Each LED stays as the image set it."))
+        if not name:
+            return M("led-set.show.no-led", "The setting is saved. This board has no LED that the box can use, so it applies "
+                                            "once there is one.")
+        return SHOW_SAID[value](name)
     if key == "led" and (value == "auto" or value in found):
         s["led"] = value
         save_settings(s)
         name = pick(found, value)
-        return f"status light: {name or 'none found'}" + (" (selected by the box)" if value == "auto" else "")
-    raise ValueError(f"Unknown setting: {key} {value}")
+        if not name:
+            return M("led-set.led.none", "The box found no LED that it can use as the status light.")
+        return (M("led-set.led.auto", "The box selected {led} as the status light.", led=name) if value == "auto" else
+                M("led-set.led", "The status light is now {led}.", led=name))
+    if key == "led":
+        raise Refused(M("led-set.not-a-light", "No LED called {led} can be a status light.", led=value))
+    raise Refused(M("led-set.unknown", "The status light has no setting {key} {value}.", key=key, value=value))
 
 
 def effective(s=None, found=None):
@@ -403,10 +416,11 @@ def run(sleep=time.sleep, clock=time.time, rounds=None):
 
 def flash(name, secs=8):
     if name not in leds():
-        raise ValueError(f"No LED called {name} can be a status light")
+        raise Refused(M("led-set.not-a-light", "No LED called {led} can be a status light.", led=name))
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     FLASH.write_text(json.dumps({"led": name, "until": time.time() + max(2, min(int(secs), 30))}))
-    return f"{name} flashes fast for {max(2, min(int(secs), 30))} s, within {LOOK} s"
+    return M("led-set.flash", "{led} starts to flash fast within {wait}, for {time}.", led=name, wait=duration(LOOK),
+             time=duration(max(2, min(int(secs), 30))))
 
 
 def status():

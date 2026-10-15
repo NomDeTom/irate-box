@@ -65,6 +65,7 @@ from pathlib import Path
 
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
+from irate_box.msg import M
 
 ROOT = Path(os.environ.get("HUB_FIRMWARE_ROOT", librarian.STATE_DIR / "firmware"))
 SETTINGS = librarian.LIB_DIR / "firmware.json"
@@ -77,6 +78,8 @@ RELEASE_BASE = "https://release.meshtastic.org"
 DEFAULTS = {"enabled": True, "boards": "all", "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True}
 CONFIGS = ROOT / "config.d.json"
 CONFIGS_MAX = 4 << 20  # the whole folder's text; a few hundred KB in 2026
+CONFIGS_TOO_LARGE = M("firmware.configs.too-large", "The folder bin/config.d is larger than {mb} MB. The box does not keep it.",
+                      mb=CONFIGS_MAX >> 20)
 CACHES = ("discard", "native", "whole")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,}$")
 BOARD_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -111,17 +114,17 @@ def set_settings(**changes):
     if "boards" in changes:
         b = changes["boards"]
         if b != "all" and not (isinstance(b, list) and all(isinstance(x, str) and BOARD_RE.match(x) for x in b)):
-            raise LibrarianError('Invalid boards setting. Enter "all" or a list of board names.')
+            raise LibrarianError(M("firmware.boards.invalid", 'Invalid boards setting. Enter "all" or a list of board names.'))
         cfg["boards"] = b if b == "all" else sorted(set(b))
     for key in ("keep_alpha", "keep_beta"):
         if key in changes:
             n = changes[key]
             if type(n) is not int or not 0 <= n <= 5:
-                raise LibrarianError(f"{key} must be from 0 to 5.")
+                raise LibrarianError(M("firmware.keep.invalid", "Invalid setting. {key} must be from 0 to 5.", key=key))
             cfg[key] = n
     if "cache" in changes:
         if changes["cache"] not in CACHES:
-            raise LibrarianError(f"Cache must be one of: {', '.join(CACHES)}.")
+            raise LibrarianError(M("firmware.cache.invalid", "Invalid build cache setting. Use one of these: {caches}.", caches=list(CACHES)))
         cfg["cache"] = changes["cache"]
     librarian._write_json(SETTINGS, cfg)
     return cfg
@@ -236,19 +239,21 @@ def _mirror_board(base, vdir, version, mt, policy):
             if not _have(dest, entry):
                 need = entry.get("bytes", 0) + policy["min_free_mb"] * 2**20
                 if librarian._free_bytes(ROOT) < need:
-                    raise LibrarianError(f"Insufficient storage for {name}. The box keeps {policy['min_free_mb']} MB free.")
+                    raise LibrarianError(M("firmware.file.no-space", "Insufficient storage for {name}. The box keeps {reserve} MB free.",
+                                           name=name, reserve=policy["min_free_mb"]))
                 tmp = dest.with_name(dest.name + ".part")
                 try:
                     librarian._download(f"{base}/{name}", tmp, name=f"firmware {version}: {name}",
                                         expected=entry.get("bytes", 0))
                 except LibrarianError as exc:
                     tmp.unlink(missing_ok=True)
-                    if "cannot reach" in str(exc) or "ended early" in str(exc):
+                    if isinstance(exc.message, dict) and exc.message.get("id") in ("library.download.unreachable", "library.download.cut-short"):
                         raise  # the network, not this board: the whole run stops
-                    raise _Unavailable(str(exc))
+                    raise _Unavailable(exc.message)
                 if not _have(tmp, entry):
                     tmp.unlink(missing_ok=True)
-                    raise _Unavailable(f"Digest mismatch. The size or MD5 of {name} does not match the manifest.")
+                    raise _Unavailable(M("firmware.file.digest-mismatch", "Digest mismatch. The size or MD5 of {name} does not match the manifest.",
+                                         name=name))
                 os.replace(tmp, dest)
             files += 1
             size += entry.get("bytes", 0)
@@ -292,8 +297,10 @@ def _carry_cache(rel, cfg, policy, log):
     if stamp.is_file() and stamp.read_text().strip() == cfg["cache"]:
         return {"version": rel["version"], "mode": cfg["cache"], "bytes": _du(dest)}
     deps = rel["deps"]
-    if librarian._free_bytes(ROOT) < deps["size"] * 3 + policy["min_free_mb"] * 2**20:
-        raise LibrarianError(f"Insufficient storage for the build cache ({deps['size'] >> 20} MB zipped).")
+    need, free = deps["size"] * 3 + policy["min_free_mb"] * 2**20, librarian._free_bytes(ROOT)
+    if free < need:
+        raise LibrarianError(M("firmware.cache.no-space", "Insufficient storage for the build cache. It needs {need} MB and {free} MB are free.",
+                               need=need >> 20, free=free >> 20))
     tmp = librarian.TMP_DIR / deps["name"]
     tmp.parent.mkdir(parents=True, exist_ok=True)
     log(f"firmware {rel['version']}: downloading the build cache ({deps['size'] >> 20} MB)")
@@ -307,20 +314,23 @@ def _carry_cache(rel, cfg, policy, log):
             wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"], i.file_size) and not i.is_dir())
             free = shutil.disk_usage(ROOT).free
             if wanted > free - DEPS_RESERVE:
-                raise LibrarianError(f"Insufficient storage. {deps['name']} unpacks to {wanted >> 20} MB. {free >> 20} MB are free. "
-                                     f"{DEPS_RESERVE >> 20} MB must stay free.")
+                raise LibrarianError(M("firmware.cache.unpack-no-space", "Insufficient storage. {name} unpacks to {size} MB. "
+                                       "{free} MB are free. {reserve} MB must stay free.", name=deps["name"], size=wanted >> 20,
+                                       free=free >> 20, reserve=DEPS_RESERVE >> 20))
             for info in zf.infolist():
                 rel_path = _subset(info.filename, cfg["cache"], info.file_size)
                 if not rel_path or info.is_dir():
                     continue
                 target = work / rel_path
                 if not target.resolve().is_relative_to(work.resolve()):
-                    raise LibrarianError(f"Archive rejected. {deps['name']} names a file outside its folder: {info.filename[:80]}")
+                    raise LibrarianError(M("firmware.cache.unsafe-path", "Archive rejected. {name} names a file outside its folder: {path}",
+                                           name=deps["name"], path=info.filename[:80]))
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)
     except zipfile.BadZipFile:
-        raise LibrarianError(f"Archive damaged or incomplete. {deps['name']} is not a complete zip file.")
+        raise LibrarianError(M("firmware.cache.incomplete", "Archive damaged or incomplete. {name} is not a complete zip file.",
+                               name=deps["name"]))
     finally:
         tmp.unlink(missing_ok=True)
     (work / ".irate-box-cache").write_text(cfg["cache"] + "\n")
@@ -390,11 +400,12 @@ def _configs_from_package(open_at):
     bytes from there (a file, or a ranged request)."""
     head = open_at(0).read(30)
     if head[:4] != b"PK\x03\x04":
-        raise LibrarianError("Archive unsupported. The source package is not a zip file.")
+        raise LibrarianError(M("firmware.package.not-zip", "Archive unsupported. The source package is not a zip file."))
     method = struct.unpack("<H", head[8:10])[0]
     n, m = struct.unpack("<HH", head[26:30])
     if method not in (0, 8):
-        raise LibrarianError("Archive unsupported. The source package uses a compression that the box cannot read.")
+        raise LibrarianError(M("firmware.package.compression",
+                               "Archive unsupported. The source package uses a compression that the box cannot read."))
     files, inside, total = [], False, 0
     with tarfile.open(fileobj=io.BufferedReader(_Inflate(open_at(30 + n + m), method), 1 << 16), mode="r|") as tf:
         for ti in tf:
@@ -405,7 +416,7 @@ def _configs_from_package(open_at):
                     text = tf.extractfile(ti).read().decode("utf-8", "replace")
                     total += len(text)
                     if total > CONFIGS_MAX:
-                        raise LibrarianError("bin/config.d is larger than expected. The box does not keep it.")
+                        raise LibrarianError(CONFIGS_TOO_LARGE)
                     files.append({"path": rel[len("bin/config.d/"):], "text": text})
             elif inside:
                 break
@@ -427,12 +438,12 @@ def _configs_from_mirror(rel):
     from irate_box.library import mirrors
     m = source_mirror()
     if not m:
-        raise LibrarianError("Source not found. This box has no mirror of meshtastic/firmware.")
+        raise LibrarianError(M("firmware.mirror.none", "Source not found. This box has no mirror of meshtastic/firmware."))
     path = str(mirrors.repo_path(m))
     try:
         librarian._git("-C", path, "rev-parse", "--verify", "--quiet", f"refs/tags/{rel['tag']}^{{commit}}")
     except LibrarianError:
-        raise LibrarianError(f"The mirror {m['name']} does not hold {rel['tag']}.")
+        raise LibrarianError(M("firmware.mirror.no-tag", "The mirror {name} does not have the tag {tag}.", name=m["name"], tag=rel["tag"]))
     files, total = [], 0
     for line in librarian._git("-C", path, "ls-tree", "-r", "-z", f"refs/tags/{rel['tag']}", "--", "bin/config.d/").split("\0"):
         if not line:
@@ -444,7 +455,7 @@ def _configs_from_mirror(rel):
         text = librarian._git("-C", path, "cat-file", "blob", sha)
         total += len(text)
         if total > CONFIGS_MAX:
-            raise LibrarianError("bin/config.d is larger than expected. The box does not keep it.")
+            raise LibrarianError(CONFIGS_TOO_LARGE)
         files.append({"path": name[len("bin/config.d/"):], "text": text})
     return sorted(files, key=lambda f: f["path"]), m["name"]
 
@@ -460,7 +471,7 @@ def _configs_from_git(rel, work):
             text = f.read_text(encoding="utf-8", errors="replace")
             total += len(text)
             if total > CONFIGS_MAX:
-                raise LibrarianError("bin/config.d is larger than expected. The box does not keep it.")
+                raise LibrarianError(CONFIGS_TOO_LARGE)
             files.append({"path": f.relative_to(top).as_posix(), "text": text})
     return files
 
@@ -470,6 +481,11 @@ def _ranged(url):
                                   timeout=60).url
     return lambda off: urllib.request.urlopen(urllib.request.Request(
         real, headers={"Range": f"bytes={off}-", "User-Agent": librarian.USER_AGENT}), timeout=120)
+
+
+def _said(exc):
+    """An error as an argument: its message, or its text (an OSError's, a tarfile's)."""
+    return getattr(exc, "message", None) or str(exc)
 
 
 def sync_configs(rel, log=print):
@@ -487,13 +503,13 @@ def sync_configs(rel, log=print):
         files, name = _configs_from_mirror(rel)
         method = f"the mirror {name}.git, at the tag {rel['tag']}"
     except LibrarianError as exc:
-        tried.append(f"the mirror: {exc}")
+        tried.append(M("firmware.configs.tried-mirror", "the mirror ({error})", error=_said(exc)))
     if not files and held and held.is_file():
         try:
             files = _configs_from_package(lambda off: _seek(open(held, "rb"), off))
             method = "the release's source package, cached on this box"
         except (LibrarianError, OSError, tarfile.TarError, lzma.LZMAError, zlib.error) as exc:
-            tried.append(f"the cached source package: {exc}")
+            tried.append(M("firmware.configs.tried-cached", "the cached source package ({error})", error=_said(exc)))
     if not files:
         work = Path(librarian.tempfile.mkdtemp(prefix="config.d-", dir=librarian.LIB_DIR))
         try:
@@ -501,7 +517,7 @@ def sync_configs(rel, log=print):
             files = _configs_from_git(rel, work)
             method = f"git, at the tag {rel['tag']}"
         except (LibrarianError, OSError) as exc:
-            tried.append(f"git: {exc}")
+            tried.append(M("firmware.configs.tried-git", "git ({error})", error=_said(exc)))
         finally:
             shutil.rmtree(work, ignore_errors=True)
     if not files and src:
@@ -510,9 +526,11 @@ def sync_configs(rel, log=print):
             files = _configs_from_package(_ranged(src["url"]))
             method = "the release's source package, streamed"
         except (LibrarianError, OSError, tarfile.TarError, lzma.LZMAError, zlib.error) as exc:
-            tried.append(f"the release's source package: {exc}")
+            tried.append(M("firmware.configs.tried-release", "the source package of the release ({error})", error=_said(exc)))
     if not files:
-        raise LibrarianError("No configuration files. " + (". ".join(tried) or f"None in bin/config.d at {rel['tag']}") + ".")
+        if tried:
+            raise LibrarianError(M("firmware.configs.none", "No configuration files. The box tried {tried}.", tried=tried))
+        raise LibrarianError(M("firmware.configs.empty", "No configuration files. The folder bin/config.d at {tag} has none.", tag=rel["tag"]))
     ROOT.mkdir(parents=True, exist_ok=True)
     _publish(CONFIGS, {"repo": REPO, "tag": rel["tag"], "version": rel["version"], "from": method,
                        "fetched": librarian.now_iso(), "files": files})

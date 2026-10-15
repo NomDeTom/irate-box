@@ -11,7 +11,7 @@ j() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 get() { curl -s -u "admin:$PW" "http://$H/admin/health"; }
 post() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" -w '\n%{http_code}' "http://$H/admin/health"; }
 result() { local f=/var/lib/hub/control/results/$1.json; for _ in $(seq ${2:-120}); do [ -s "$f" ] && break; sleep 1; done
-	[ -s "$f" ] && python3 -c "import json; d=json.load(open('$f')); print(('OK ' if d['ok'] else 'ERR ') + d['message'])" || echo "NO ANSWER"; }
+	[ -s "$f" ] && python3 -c "import json; d=json.load(open('$f')); print(('OK ' if d['ok'] else 'ERR ') + ((d.get('msg') or {}).get('id', '') + ' ' if d.get('msg') else '') + d['message'])" || echo "NO ANSWER"; }
 idof() { head -1 | j 'd["id"]'; }
 
 # The page and the doctor should report a stopped install: unless the last one really stopped,
@@ -34,7 +34,7 @@ s="$(get)"
 [ "$(echo "$s" | j 'd["install"]["aborted"]')" = True ] && ok "last install shown as stopped: $(echo "$s" | j 'd["install"]["step"]')" || bad "install record"
 [ "$(echo "$s" | j 'len(d["log"]) > 3')" = True ] && ok "install log tail readable by the hub" || bad "log"
 c="$(post '{"action":"fix","choice":"unit-restart:sshd.service;x"}' | tail -1)"; [ "$c" = 400 ] && ok "bad choice refused (400)" || bad "bad choice -> $c"
-id="$(post '{"action":"fix","choice":"unit-restart:ssh.service"}' | idof)"; r="$(result "$id")"; [[ "$r" == ERR*"not irate-box"* ]] && ok "not ours refused: $r" || bad "ssh restart: $r"
+id="$(post '{"action":"fix","choice":"unit-restart:ssh.service"}' | idof)"; r="$(result "$id")"; [[ "$r" == "ERR repair.unit.not-ours "* ]] && ok "not ours refused: $r" || bad "ssh restart: $r"
 
 echo "== scan through the page"
 id="$(post '{"action":"scan"}' | idof)"; r="$(result "$id")"; echo "    $r"

@@ -60,12 +60,14 @@ check("only a power LED: nothing to use", led.leds() == {} and led.effective() =
 # --- the owner's choices ---
 board(["raspberrypi,3-model-b-plus"], "Raspberry Pi 3 Model B Plus Rev 1.3", {"ACT": (["mmc0", "none"], "platform"),
                                                                            "led-user": (["none"], "platform")})
-check("set show all: kept, said", "Box doctor finds no problem" in led.set_option("show", "all") and led.effective()[1] == "all")
-check("set led: one of those found only", "led-user" in led.set_option("led", "led-user") and led.effective()[0] == "led-user")
+said = led.set_option("show", "all")
+check("set show all: kept, said", said["id"] == "led-set.show.all" and led.effective()[1] == "all", said)
+said = led.set_option("led", "led-user")
+check("set led: one of those found only", said["id"] == "led-set.led" and said["args"] == {"led": "led-user"} and led.effective()[0] == "led-user")
 try:
     led.set_option("led", "PWR"); check("a power LED or one not there refused", False)
-except ValueError:
-    check("a power LED or one not there refused", True)
+except ValueError as exc:
+    check("a power LED or one not there refused", exc.message["id"] == "led-set.not-a-light")
 led.set_option("led", "auto")
 
 # --- the box's state, for each choice ---
@@ -181,7 +183,7 @@ for good in ("led-show:network", "led-led:auto", "led-led:green:status", "led-fl
 for bad in ("led-show:blink", "led-led:../x", "led-flash:a b", "armbian-led:remove"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
 said = health.fix("led-show:alive")
-check("  a choice saved: the setting changed, and said", led.load_settings()["show"] == "alive" and "hub server runs" in said)
+check("  a choice saved: the setting changed, and said", led.load_settings()["show"] == "alive" and said["id"] == "led-set.show.alive", said)
 from irate_box.hub import server  # noqa: E402
 check("the hub passes the same choices on", all(server.HEALTH_CHOICE_RE.match(c) for c in ("led-show:all", "led-flash:ACT", "armbian-led:on"))
       and not server.HEALTH_CHOICE_RE.match("led-show:x"))

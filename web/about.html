@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>About · Hub</title>
+  <title data-i18n="about.head.title">About · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>ℹ️</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,15 +13,15 @@
 </head>
 <body class="drop about" data-art="doctor" data-art-side="left">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>ℹ️ About this box</h1>
-    <p class="subtitle">Irate-Box: an offline hub, in the spirit of PirateBox.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="about.header.tip-quick-help" data-i18n="about.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="about.header.tip-back-hub" data-i18n="about.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="about.header.heading">ℹ️ About this box</h1>
+    <p class="subtitle" data-i18n="about.header.subtitle">Irate-Box: an offline hub, in the spirit of PirateBox.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="about.header.aria-theme"></div>
   </header>
 
   <section>
-    <h2>What it is</h2>
-    <p class="setting-desc">
+    <h2 data-i18n="about.body.heading-what-it-is">What it is</h2>
+    <p class="setting-desc" data-i18n="about.body.irate-box-offline-hub">
       Irate-Box is an offline hub. It serves these pages over its own network. The administrator
       selects which apps are enabled. Apps can include a shoutbox, a board, a file drop, drawing
       and diagram tools, and an offline library. Some apps can need internet access.
@@ -30,88 +30,89 @@
   </section>
 
   <section class="about-thanks">
-    <h2>With thanks to</h2>
+    <h2 data-i18n="about.body.heading-thanks">With thanks to</h2>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">Krab and neonx</span><span class="setting-desc"> Artwork: the krabs, credited to Krab, courtesy of neonx (<a href="http://canadaverse.org" rel="noopener">canadaverse.org</a>). Use of their LLM resource.</span></li>
-      <li class="drop-item"><span class="setting-name">WillP (willp618)</span><span class="setting-desc"> Tested this box. Added the Cybercore theme. Added the ngIRC chat, its tile and its guide.</span></li>
-      <li class="drop-item"><span class="setting-name">The PirateBox team</span><span class="setting-desc"> David Darts built the first PirateBox. Matthias Strubel and others continued the project. This box is based on their idea: a small network of its own, for sharing with the people nearby.</span></li>
+      <li class="drop-item" data-i18n="about.body.krab-neonx-artwork-krabs"><span class="setting-name">Krab and neonx</span><span class="setting-desc"> Artwork: the krabs, credited to Krab, courtesy of neonx (<a href="http://canadaverse.org" rel="noopener">canadaverse.org</a>). This project used their LLM resource.</span></li>
+      <li class="drop-item" data-i18n="about.body.willp-willp618-tested-box"><span class="setting-name">WillP (willp618)</span><span class="setting-desc"> Tested this box. Added the Cybercore theme. Added the ngIRC chat, its tile and its guide.</span></li>
+      <li class="drop-item" data-i18n="about.body.piratebox-team-david-darts"><span class="setting-name">The PirateBox team</span><span class="setting-desc"> David Darts built the first PirateBox. Matthias Strubel and others continued the project. This box is based on their idea: a small network of its own, for sharing with the people nearby.</span></li>
     </ul>
   </section>
 
   <section>
-    <h2>Licences</h2>
-    <p class="setting-desc">
+    <h2 data-i18n="about.body.heading-licences">Licences</h2>
+    <p class="setting-desc" data-i18n="about.body.original-piratebox-was-free">
       The original PirateBox was free software under the GPL. This box follows it. Every file
       names its licence in its first lines (SPDX). The full texts are in the
       <code>LICENSES/</code> folder of the source.
     </p>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">GNU AGPL-3.0-or-later</span>
+      <li class="drop-item" data-i18n="about.body.hub-itself-server-pages"><span class="setting-name" translate="no">GNU AGPL-3.0-or-later</span>
         <span class="setting-desc"> The hub itself: its server, pages, root helper, doctors, librarian and installer. Anyone who uses the hub over a network can get its source. See below.</span></li>
-      <li class="drop-item"><span class="setting-name">GNU GPL-3.0-or-later</span>
+      <li class="drop-item" data-i18n="about.body.git-servers-page-builds"><span class="setting-name" translate="no">GNU GPL-3.0-or-later</span>
         <span class="setting-desc"> The git servers' page, builds on push, and books from USB drives.</span></li>
-      <li class="drop-item"><span class="setting-name">MIT</span>
+      <li class="drop-item" data-i18n="about.body.small-self-contained-pieces"><span class="setting-name" translate="no">MIT</span>
         <span class="setting-desc"> Small, self-contained pieces that others can reuse: the network inventory, the clock-module driver, the device locks, configuration files and app manifests. Also the QR-code library (Kazuhiko Arase).</span></li>
-      <li class="drop-item"><span class="setting-name">CC BY-SA 4.0</span>
+      <li class="drop-item" data-i18n="about.body.documentation-including-page-help"><span class="setting-name" translate="no">CC BY-SA 4.0</span>
         <span class="setting-desc"> The documentation, including this page and the help page.</span></li>
     </ul>
   </section>
 
   <section>
-    <h2>This box's own source</h2>
-    <p class="setting-desc">This is the exact code that runs on this box. There are three routes. None of them needs internet access.</p>
+    <h2 data-i18n="about.body.heading-box-own-source">This box's own source</h2>
+    <p class="setting-desc" data-i18n="about.body.exact-code-runs-box">This is the exact code that runs on this box. There are three routes. None of them needs internet access.</p>
     <ul class="drop-list">
-      <li class="drop-item"><a href="/source">Download source archive</a><span class="setting-desc"> One .tar.gz file.</span></li>
-      <li class="drop-item"><a href="/git/irate-box-source.git/">Browse source</a>
+      <li class="drop-item" data-i18n="about.body.download-source-archive-one"><a href="/source">Download source archive</a><span class="setting-desc"> One .tar.gz file.</span></li>
+      <li class="drop-item" data-i18n="about.body.browse-source-box-git"><a href="/git/irate-box-source.git/">Browse source</a>
         <span class="setting-desc"> On the box's git server. To clone it, run:</span>
         <code id="about-clone">git clone http://…/git/irate-box-source.git</code></li>
-      <li class="drop-item"><a href="/drop.html">File drop</a><span class="setting-desc"> If File drop is enabled, it holds a copy (📌). An administrator can delete that copy.</span></li>
+      <li class="drop-item" data-i18n="about.body.file-drop-file-drop"><a href="/drop.html">File drop</a><span class="setting-desc"> If File drop is enabled, it holds a copy (📌). An administrator can delete that copy.</span></li>
     </ul>
-    <p class="setting-desc">The project is online at <code>github.com/NomDeTom/irate-box</code>.</p>
+    <p class="setting-desc" data-i18n="about.body.project-online">The project is online at <code>github.com/NomDeTom/irate-box</code>.</p>
   </section>
 
   <section>
-    <h2>Included programs</h2>
-    <p class="setting-desc">
+    <h2 data-i18n="about.body.heading-included-programs">Included programs</h2>
+    <p class="setting-desc" data-i18n="about.body.separate-programs-own-licences">
       These are separate programs with their own licences. They run beside the hub. Each can be
       installed or not installed on a box. If an app came as a bundle, its THIRD-PARTY-NOTICES file
       is next to it. That file lists the licences of everything inside the bundle and names the
       exact source.
     </p>
-    <h3>The apps</h3>
+    <h3 data-i18n="about.body.h-apps">The apps</h3>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">Excalidraw</span><span class="setting-desc"> Drawing, when installed. MIT: <a href="/draw/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">Mermaid live editor</span><span class="setting-desc"> Diagrams, when installed. MIT: <a href="/mermaid/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">ESP Web Tools</span><span class="setting-desc"> The web flasher's install button (ESPHome, with Espressif's esptool-js and Lit inside), when installed. Apache-2.0, with the parts inside it under their own licences: <a href="/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
-      <li class="drop-item"><span class="setting-name">FreeOCD WebDebugger</span><span class="setting-desc"> The flashing tools' ARM flasher (FreeOCD, with Arm's DAP.js inside), when installed. BSD-3-Clause, with DAP.js under MIT: <a href="/flasher/freeocd/THIRD-PARTY-NOTICES.txt">its notices</a>.</span></li>
-      <li class="drop-item"><span class="setting-name">Meshtastic web flasher</span><span class="setting-desc"> Flashing radios over USB, as a download, when installed. GPL-3.0: <a href="/flasher/THIRD-PARTY-NOTICES.txt">notices and its source</a></span></li>
-      <li class="drop-item"><span class="setting-name">Meshtastic firmware</span><span class="setting-desc"> In the flasher's mirror, if an administrator keeps one. GPL-3.0. The source is at <code>github.com/meshtastic/firmware</code>, tagged with each version.</span></li>
-      <li class="drop-item"><span class="setting-name">Kiwix</span><span class="setting-desc"> The offline library, when the box has books. GPL-3.0</span></li>
+      <li class="drop-item" data-i18n="about.body.drawing-installed-mit-notices"><span class="setting-name" translate="no">Excalidraw</span><span class="setting-desc"> Drawing, when installed. MIT: <a href="/draw/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item" data-i18n="about.body.diagrams-installed-mit-notices"><span class="setting-name" translate="no">Mermaid live editor</span><span class="setting-desc"> Diagrams, when installed. MIT: <a href="/mermaid/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item" data-i18n="about.body.web-flasher-install-button"><span class="setting-name" translate="no">ESP Web Tools</span><span class="setting-desc"> The web flasher's install button (ESPHome, with Espressif's esptool-js and Lit inside), when installed. Apache-2.0, with the parts inside it under their own licences: <a href="/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt">notices</a></span></li>
+      <li class="drop-item" data-i18n="about.body.flashing-tools-arm-flasher"><span class="setting-name" translate="no">FreeOCD WebDebugger</span><span class="setting-desc"> The flashing tools' ARM flasher (FreeOCD, with Arm's DAP.js inside), when installed. BSD-3-Clause, with DAP.js under MIT: <a href="/flasher/freeocd/THIRD-PARTY-NOTICES.txt">its notices</a>.</span></li>
+      <li class="drop-item" data-i18n="about.body.flashing-radios-over-usb"><span class="setting-name" translate="no">Meshtastic web flasher</span><span class="setting-desc"> Flashing radios over USB, as a download, when installed. GPL-3.0: <a href="/flasher/THIRD-PARTY-NOTICES.txt">notices and its source</a></span></li>
+      <li class="drop-item" data-i18n="about.body.flasher-mirror-administrator-keeps"><span class="setting-name" translate="no">Meshtastic firmware</span><span class="setting-desc"> In the flasher's mirror, if an administrator keeps one. GPL-3.0. The source is at <code>github.com/meshtastic/firmware</code>, tagged with each version.</span></li>
+      <li class="drop-item" data-i18n="about.body.offline-library-box-books"><span class="setting-name" translate="no">Kiwix</span><span class="setting-desc"> The offline library, when the box has books. GPL-3.0</span></li>
     </ul>
-    <h3>Programs that run the apps</h3>
+    <h3 data-i18n="about.body.h-programs-run-apps">Programs that run the apps</h3>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">nginx</span><span class="setting-desc"> The web server in front of everything. The box uses it unless an administrator selected Caddy. BSD-2-Clause</span></li>
-      <li class="drop-item"><span class="setting-name">Caddy</span><span class="setting-desc"> The other web server. The box uses it only if an administrator selected it or nginx could not be installed. Apache-2.0</span></li>
-      <li class="drop-item"><span class="setting-name">Python</span><span class="setting-desc"> Runs the hub itself. PSF-2.0</span></li>
-      <li class="drop-item"><span class="setting-name">git</span><span class="setting-desc"> Behind the git servers (git http-backend). GPL-2.0</span></li>
-      <li class="drop-item"><span class="setting-name">cgit</span><span class="setting-desc"> The git servers' web pages. GPL-2.0</span></li>
-      <li class="drop-item"><span class="setting-name">fcgiwrap</span><span class="setting-desc"> Runs git and cgit for the web server. MIT</span></li>
+      <li class="drop-item" data-i18n="about.body.web-server-front-everything"><span class="setting-name" translate="no">nginx</span><span class="setting-desc"> The web server in front of everything. The box uses it unless an administrator selected Caddy. BSD-2-Clause</span></li>
+      <li class="drop-item" data-i18n="about.body.other-web-server-box"><span class="setting-name" translate="no">Caddy</span><span class="setting-desc"> The other web server. The box uses it only if an administrator selected it or nginx could not be installed. Apache-2.0</span></li>
+      <li class="drop-item" data-i18n="about.body.runs-hub-itself-psf"><span class="setting-name" translate="no">Python</span><span class="setting-desc"> Runs the hub itself. PSF-2.0</span></li>
+      <li class="drop-item" data-i18n="about.body.behind-git-servers-git"><span class="setting-name" translate="no">git</span><span class="setting-desc"> Behind the git servers (git http-backend). GPL-2.0</span></li>
+      <li class="drop-item" data-i18n="about.body.git-servers-web-pages"><span class="setting-name" translate="no">cgit</span><span class="setting-desc"> The git servers' web pages. GPL-2.0</span></li>
+      <li class="drop-item" data-i18n="about.body.runs-git-cgit-web"><span class="setting-name" translate="no">fcgiwrap</span><span class="setting-desc"> Runs git and cgit for the web server. MIT</span></li>
     </ul>
-    <h3>Add-ons, when an administrator adds them</h3>
+    <h3 data-i18n="about.body.h-add-ons-administrator-adds">Add-ons, when an administrator adds them</h3>
     <ul class="drop-list">
-      <li class="drop-item"><span class="setting-name">ttyd</span><span class="setting-desc"> The terminal (a shell in the browser), behind the administrator sign-in. The installer always installs it. It runs only after an administrator adds it. MIT</span></li>
-      <li class="drop-item"><span class="setting-name">SilverBullet</span><span class="setting-desc"> Notes. MIT</span></li>
-      <li class="drop-item"><span class="setting-name">Syncthing</span><span class="setting-desc"> Synchronizes folders with the administrator's devices. MPL-2.0</span></li>
-      <li class="drop-item"><span class="setting-name">Mosquitto</span><span class="setting-desc"> The MQTT broker for Meshtastic nodes. EPL-2.0 / EDL-1.0</span></li>
-      <li class="drop-item"><span class="setting-name">ngIRCd</span><span class="setting-desc"> The IRC server for chat. GPL-2.0-or-later</span></li>
-      <li class="drop-item"><span class="setting-name">excalidraw-room</span><span class="setting-desc"> Live collaboration on the whiteboard. MIT</span></li>
-      <li class="drop-item"><span class="setting-name">Node.js</span><span class="setting-desc"> Runs the collaboration relay. MIT</span></li>
+      <li class="drop-item" data-i18n="about.body.terminal-shell-browser-behind"><span class="setting-name" translate="no">ttyd</span><span class="setting-desc"> The terminal (a shell in the browser), behind the administrator sign-in. The installer always installs it. It runs only after an administrator adds it. MIT</span></li>
+      <li class="drop-item" data-i18n="about.body.notes-mit"><span class="setting-name" translate="no">SilverBullet</span><span class="setting-desc"> Notes. MIT</span></li>
+      <li class="drop-item" data-i18n="about.body.synchronizes-folders-administrator-devices"><span class="setting-name" translate="no">Syncthing</span><span class="setting-desc"> Synchronizes folders with the administrator's devices. MPL-2.0</span></li>
+      <li class="drop-item" data-i18n="about.body.mqtt-broker-meshtastic-nodes"><span class="setting-name" translate="no">Mosquitto</span><span class="setting-desc"> The MQTT broker for Meshtastic nodes. EPL-2.0 / EDL-1.0</span></li>
+      <li class="drop-item" data-i18n="about.body.irc-server-chat-gpl"><span class="setting-name" translate="no">ngIRCd</span><span class="setting-desc"> The IRC server for chat. GPL-2.0-or-later</span></li>
+      <li class="drop-item" data-i18n="about.body.live-collaboration-whiteboard-mit"><span class="setting-name" translate="no">excalidraw-room</span><span class="setting-desc"> Live collaboration on the whiteboard. MIT</span></li>
+      <li class="drop-item" data-i18n="about.body.runs-collaboration-relay-mit"><span class="setting-name" translate="no">Node.js</span><span class="setting-desc"> Runs the collaboration relay. MIT</span></li>
     </ul>
   </section>
 
 
   <!-- The doctor in the bottom-left corner (style.css: data-art, data-art-side). -->
   <div class="admin-art" aria-hidden="true"></div>
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/about.js"></script>
 </body>

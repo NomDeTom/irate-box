@@ -23,7 +23,7 @@ from pathlib import Path
 
 from irate_box.finding import action, finding, english
 from irate_box.hub import services
-from irate_box.msg import M, is_message, named, render, when
+from irate_box.msg import M, Refused, is_message, named, render, sentences, when
 from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -482,9 +482,9 @@ def parse_pattern(arg):
     try:
         often, act = (int(x) for x in arg.split("-"))
     except ValueError:
-        raise ValueError("how often and what to do, as hours-act") from None
+        raise Refused(M("security-fix.pattern.bad", "This is not a choice of how often to check and what to do: {choice}.", choice=arg)) from None
     if often not in OFTEN or act not in ACTS:
-        raise ValueError(f"how often one of {OFTEN}, what to do one of {ACTS}")
+        raise Refused(M("security-fix.pattern.bad", "This is not a choice of how often to check and what to do: {choice}.", choice=arg))
     return often, act
 
 
@@ -512,7 +512,7 @@ def lists_age_days():
 
 UNATTENDED_LOG = Path(os.environ.get("HUB_UNATTENDED_LOG", "/var/log/unattended-upgrades/unattended-upgrades.log"))
 # apt's own record of the last run, on the card: the log is in /var/log, which Armbian keeps in RAM, so it is gone after
-# a reboot (on the Lyra, 2026-10-15: "it has not run yet" a day after it ran).
+# a reboot (a board said "it has not run yet" a day after it ran).
 UNATTENDED_STAMP = Path(os.environ.get("HUB_UNATTENDED_STAMP", "/var/lib/apt/periodic/unattended-upgrades-stamp"))
 
 
@@ -631,7 +631,7 @@ def _autoupdate(rec, how):
     cur = rec.get("autoupdate")
     if how == "undo":
         if not cur:
-            raise ValueError("automatic updates were not set from this page")
+            raise Refused(M("security-fix.autoupdate.not-set", "Automatic security updates were not set from this page. There is nothing to restore."))
         if cur.get("conf") is not None:
             AUTOUPDATE_CONF.write_text(cur["conf"])
         else:
@@ -643,7 +643,7 @@ def _autoupdate(rec, how):
         if cur.get("installed"):
             run("apt-get", "remove", "-y", "unattended-upgrades", timeout=600)
         rec.pop("autoupdate")
-        return "automatic security updates put back as the image had them"
+        return M("security-fix.autoupdate.restored", "Automatic security updates are back as the image had them.")
     often, act = LEVELS_WAS[how] if how in LEVELS_WAS else parse_pattern(how)
     if not cur:
         cur = {"date": time.strftime("%Y-%m-%d"), "conf": AUTOUPDATE_CONF.read_text() if AUTOUPDATE_CONF.is_file() else None,
@@ -657,11 +657,11 @@ def _autoupdate(rec, how):
             debs = sorted(KIT_POOL.glob("unattended-upgrades_*.deb")) if KIT_POOL.is_dir() else []
             if not debs or subprocess.run(["apt-get", "install", "-y", str(debs[-1])], capture_output=True, env=env,
                                           stdin=subprocess.DEVNULL, timeout=1200).returncode != 0:
-                raise ValueError("unattended-upgrades could not be installed: it needs the internet once "
-                                 "(or the System toolkit's cache, which holds it)")
-            said.append("unattended-upgrades installed from the toolkits' cache")
+                raise Refused(M("security-fix.unattended.failed", "The box could not install unattended-upgrades. Connect the box to the "
+                                                               "internet once, or refresh the cache of the System toolkit on Toolkits."))
+            said.append(M("security-fix.unattended.installed-cache", "The box installed unattended-upgrades from the toolkits' cache."))
         else:
-            said.append("unattended-upgrades installed")
+            said.append(M("security-fix.unattended.installed", "The box installed unattended-upgrades."))
         cur["installed"] = True
     AUTOUPDATE_CONF.parent.mkdir(parents=True, exist_ok=True)
     AUTOUPDATE_CONF.write_text("// Written by irate-box's Updates page (/admin): "
@@ -678,7 +678,7 @@ def _autoupdate(rec, how):
     cur.pop("level", None)
     cur["often"], cur["act"] = often, act
     rec["autoupdate"] = cur
-    return " ".join([f"{x}." for x in said] + [render(PATTERN_SAYS.get((often, act)) or MANUAL_SAYS[act])])
+    return sentences(*said, PATTERN_SAYS.get((often, act)) or MANUAL_SAYS[act])
 
 
 def fetched_debs(simulated):
@@ -833,7 +833,7 @@ def _write_sysctl_dropin(kernel):
 
 def _kernel(rec, name, on):
     if name not in KERNEL:
-        raise ValueError(f"{name} is not a kernel setting this page changes")
+        raise Refused(M("security-fix.kernel.unknown", "{name} is not a kernel setting that this page changes.", name=name))
     kernel = rec.setdefault("kernel", {})
     if on:
         old = kernel.get(name, {}).get("old") or {key: _sysctl(key) for key in KERNEL[name]["keys"]}
@@ -841,22 +841,24 @@ def _kernel(rec, name, on):
             _sysctl_path(key).write_text(want + "\n")
         kernel[name] = {"old": old, "at": time.strftime("%Y-%m-%d")}
         _write_sysctl_dropin(kernel)
-        return f"{render(KERNEL[name]['title'])}: on, now and at every boot"
+        return M("security-fix.kernel.on", "{setting}: on now and at every boot.", setting=KERNEL[name]["title"])
     entry = kernel.pop(name, None)
     if entry is None:
-        raise ValueError(f"{render(KERNEL[name]['title'])} were not changed from this page")
+        raise Refused(M("security-fix.kernel.not-changed", "{setting}: not changed from this page. There is nothing to restore.",
+                     setting=KERNEL[name]["title"]))
     if entry.get("by") == DEBIAN_SYSCTL:
         out = run("apt-get", "remove", "-y", DEBIAN_SYSCTL, timeout=600)
         if out.returncode != 0:
             kernel[name] = entry
-            raise ValueError(f"apt-get remove {DEBIAN_SYSCTL}: {(out.stderr or out.stdout).strip()[-200:]}")
+            raise Refused(M("security-fix.kernel.remove-failed", "apt-get could not remove {package}: {detail}", package=DEBIAN_SYSCTL,
+                         detail=(out.stderr or out.stdout).strip()[-200:]))
     for key, v in (entry.get("old") or {}).items():
         if v is not None:
             _sysctl_path(key).write_text(v + "\n")
     _write_sysctl_dropin(kernel)
     if not kernel:
         rec.pop("kernel")
-    return f"{render(KERNEL[name]['title'])}: back as they were"
+    return M("security-fix.kernel.restored", "{setting}: restored to the previous values.", setting=KERNEL[name]["title"])
 
 
 def _kernel_debian(rec):
@@ -867,17 +869,20 @@ def _kernel_debian(rec):
     out = subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
                          capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, timeout=600)
     if out.returncode != 0:
-        raise ValueError(f"apt-get install {DEBIAN_SYSCTL}: {(out.stderr or out.stdout).strip()[-200:]} "
-                         "(Just these two works without it)")
+        raise Refused(M("security-fix.kernel.install-failed", "apt-get could not install {package}: {detail} "
+                                                           "To set just these two without the package, select Set just these two.", package=DEBIAN_SYSCTL,
+                     detail=(out.stderr or out.stdout).strip()[-200:]))
     kernel["links"] = {"old": old, "at": time.strftime("%Y-%m-%d"), "by": DEBIAN_SYSCTL}
     _write_sysctl_dropin(kernel)   # the hub's own file no longer carries these two
     save_record(rec)               # installed: Undo must be possible even if what follows fails
     _systemctl("restart", "systemd-sysctl.service")
     now = {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
     if any(now[key] != want for key, want in KERNEL["links"]["keys"].items()):
-        raise ValueError(f"{DEBIAN_SYSCTL} is installed but the link protections are still off "
-                         f"({', '.join(f'{k}={v}' for k, v in now.items())}): something later in sysctl.d sets them back")
-    return f"{render(KERNEL['links']['title'])}: on, from Debian's own defaults ({DEBIAN_SYSCTL}), now and at every boot"
+        raise Refused(M("security-fix.kernel.still-off", "{package} is installed, but the link protections are still off: {values}. "
+                                                      "A later file in sysctl.d sets them back.", package=DEBIAN_SYSCTL,
+                     values=[f"{k}={v}" for k, v in now.items()]))
+    return M("security-fix.kernel.debian", "{setting}: on now and at every boot, from the Debian defaults ({package}).",
+             setting=KERNEL["links"]["title"], package=DEBIAN_SYSCTL)
 
 
 # Groups that are root by another name: docker runs containers as root with any folder mounted;
@@ -941,25 +946,26 @@ def group_findings(rec):
 def _group(rec, arg, on):
     user, _, group = arg.partition("@")
     if group not in ROOTISH_GROUPS or not NAME_RE.match(user):
-        raise ValueError(f"{arg} is not an account and group this page changes")
+        raise Refused(M("security-fix.group.unknown", "{choice} is not an account and group that this page changes.", choice=arg))
     groups = rec.setdefault("groups", {})
     if on:
         if user not in _group_members().get(group, set()):
-            raise ValueError(f"{user} is not in the {group} group")
+            raise Refused(M("security-fix.group.not-member", "{account} is not in the {group} group.", account=user, group=group))
         r = run("gpasswd", "-d", user, group)
         if r.returncode:
-            raise ValueError(f"gpasswd: {(r.stderr or r.stdout).strip()[:160]}")
+            raise Refused(M("security-fix.gpasswd-failed", "gpasswd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
         groups[arg] = time.strftime("%Y-%m-%d")
-        return f"{user} is out of the {group} group (from its next sign-in)"
+        return M("security-fix.group.removed", "Account removed from privileged group: {account} is out of the {group} group from its "
+                                              "next sign-in.", account=user, group=group)
     if arg not in groups:
-        raise ValueError(f"{user} was not taken out of {group} from this page")
+        raise Refused(M("security-fix.group.not-removed", "{account} was not removed from the {group} group on this page.", account=user, group=group))
     r = run("gpasswd", "-a", user, group)
     if r.returncode:
-        raise ValueError(f"gpasswd: {(r.stderr or r.stdout).strip()[:160]}")
+        raise Refused(M("security-fix.gpasswd-failed", "gpasswd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
     groups.pop(arg)
     if not groups:
         rec.pop("groups")
-    return f"{user} is back in the {group} group"
+    return M("security-fix.group.restored", "{account} is back in the {group} group.", account=user, group=group)
 
 
 # --- root's own login ---------------------------------------------------------------------------
@@ -1028,39 +1034,43 @@ def _root(rec, what, on):
     if what == "lock":
         if on:
             if not _sudoers():
-                raise ValueError("no other account here can use sudo: locking root would leave nobody who can be root")
+                raise Refused(M("security-fix.root.no-sudo", "No other account here can use sudo. If root's password is locked, no account "
+                                                          "can become root."))
             was = _root_password()
             r = run("passwd", "-l", "root")
             if r.returncode:
-                raise ValueError(f"passwd -l: {(r.stderr or r.stdout).strip()[:160]}")
+                raise Refused(M("security-fix.passwd-failed", "passwd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
             root["lock"] = {"was": was, "at": time.strftime("%Y-%m-%d")}
-            msg = "root's password is locked: root cannot sign in with a password. Keys for root and sudo still reach root"
+            msg = M("security-fix.root.locked", "Root password authentication disabled: root cannot sign in with a password. "
+                                                "SSH keys for root, sudo and sessions that are open still give root access.")
         else:
             entry = root.pop("lock", None)
             if entry is None:
-                raise ValueError("root's password was not locked from this page")
+                raise Refused(M("security-fix.root.not-locked", "Root's password was not locked from this page. There is nothing to restore."))
             if entry.get("was") in ("P", "NP"):
                 r = run("passwd", "-u", "root")
                 if r.returncode:
                     root["lock"] = entry
-                    raise ValueError(f"passwd -u: {(r.stderr or r.stdout).strip()[:160]}")
-            msg = "root's password is as it was"
+                    raise Refused(M("security-fix.passwd-failed", "passwd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
+            msg = M("security-fix.root.restored", "Root's password is restored to its previous state.")
     else:
         kept = ETC / "armbian-firstrun.kept"
         if on:
             if not FIRSTRUN.exists():
-                raise ValueError("there is no first sign-in marker to put aside")
+                raise Refused(M("security-fix.firstrun.none", "There is no first sign-in marker to put aside."))
             kept.write_bytes(FIRSTRUN.read_bytes())
             kept.chmod(0o600)
             FIRSTRUN.unlink()
             root["firstrun"] = time.strftime("%Y-%m-%d")
-            msg = "the first sign-in marker is put aside. A root sign-in no longer starts the Armbian setup"
+            msg = M("security-fix.firstrun.off", "First sign-in wizard disabled: the box put its marker aside. A root sign-in no longer "
+                                                 "starts the Armbian setup.")
         else:
             if root.pop("firstrun", None) is None or not kept.exists():
-                raise ValueError("the first sign-in marker was not put aside from this page")
+                raise Refused(M("security-fix.firstrun.not-off", "The first sign-in marker was not put aside from this page. "
+                                                              "There is nothing to restore."))
             FIRSTRUN.write_bytes(kept.read_bytes())
             kept.unlink()
-            msg = "the first sign-in marker is back"
+            msg = M("security-fix.firstrun.restored", "The first sign-in marker is restored.")
     if not root:
         rec.pop("root")
     return msg
@@ -1137,24 +1147,25 @@ def sudo_findings(rec, settings=None):
 
 def _sudo(rec, name, on):
     if not FILE_RE.match(name) or name == SUDOERS.name:
-        raise ValueError(f"{name} is not a sudoers.d file this page removes")
+        raise Refused(M("security-fix.sudo.unknown", "{name} is not a file in sudoers.d that this page removes.", name=name))
     ours = rec.setdefault("sudo", {})
     src, kept = SUDOERS_DIR / name, SUDOERS_KEPT / name
     if on:
         if not src.is_file():
-            raise ValueError(f"/etc/sudoers.d/{name} is not there")
+            raise Refused(M("security-fix.sudo.missing", "{file} does not exist.", file=f"/etc/sudoers.d/{name}"))
         SUDOERS_KEPT.mkdir(mode=0o700, exist_ok=True)
         shutil.move(str(src), str(kept))
         ours[name] = time.strftime("%Y-%m-%d")
-        return f"/etc/sudoers.d/{name} removed (kept under /etc/hub for Undo)"
+        return M("security-fix.sudo.removed", "Passwordless sudo rule removed: the box moved {file} to {kept}, for Undo.",
+                 file=f"/etc/sudoers.d/{name}", kept=str(SUDOERS_KEPT))
     if name not in ours or not kept.is_file():
-        raise ValueError(f"{name} was not removed from this page")
+        raise Refused(M("security-fix.sudo.not-removed", "{name} was not removed from this page. There is nothing to restore.", name=name))
     shutil.move(str(kept), str(src))
     os.chmod(src, 0o440)
     ours.pop(name)
     if not ours:
         rec.pop("sudo")
-    return f"/etc/sudoers.d/{name} is back"
+    return M("security-fix.sudo.restored", "{file} is restored.", file=f"/etc/sudoers.d/{name}")
 
 
 def _norm(s):
@@ -1213,13 +1224,13 @@ def apt_findings(rec):
 
 def _apt(rec, key, on):
     if not FILE_RE.match(key):
-        raise ValueError(f"{key} is not a key this page moves")
+        raise Refused(M("security-fix.apt.unknown", "{key} is not a key that this page moves.", key=key))
     ours = rec.setdefault("apt", {})
     trusted, ring, kept = APT_DIR / "trusted.gpg.d" / key, KEYRINGS / key, KEYS_KEPT / key
     if on:
         lst = next((APT_DIR / "sources.list.d" / f for f, _ in _unsigned_lists() if _key_for(f[:-len(".list")], [key])), None)
         if not trusted.is_file() or lst is None:
-            raise ValueError(f"{key} is not in trusted.gpg.d, or no source of its name lacks a key")
+            raise Refused(M("security-fix.apt.not-applicable", "{key} is not in trusted.gpg.d, or no source of its name lacks a key.", key=key))
         text = lst.read_text()
         new = re.sub(r"(?m)^(\s*deb(?:-src)?)\s+(?!\[)", rf"\1 [signed-by={ring}] ", text)
         new = re.sub(r"(?m)^(\s*deb(?:-src)?\s+\[)(?![^\]]*signed-by=)", rf"\1signed-by={ring} ", new)
@@ -1231,9 +1242,10 @@ def _apt(rec, key, on):
         lst.write_text(new)
         shutil.move(str(trusted), str(kept))
         ours[key] = {"source": lst.name, "date": time.strftime("%Y-%m-%d")}
-        return f"{key} vouches for {lst.name} alone now (apt-get update reads it at the next refresh)"
+        return M("security-fix.apt.restricted", "Repository signing key restricted: apt now trusts {key} for {source} only (signed-by). "
+                                                "apt-get update reads it at the next refresh.", key=key, source=lst.name)
     if key not in ours or not kept.is_file():
-        raise ValueError(f"{key} was not moved from this page")
+        raise Refused(M("security-fix.apt.not-moved", "{key} was not moved from this page. There is nothing to restore.", key=key))
     lst = APT_DIR / "sources.list.d" / ours[key]["source"]
     saved = KEYS_KEPT / f"{key}.list"
     if saved.is_file():
@@ -1244,7 +1256,8 @@ def _apt(rec, key, on):
     ours.pop(key)
     if not ours:
         rec.pop("apt")
-    return f"{key} is back in trusted.gpg.d, and {lst.name} as it was"
+    return M("security-fix.apt.restored", "Global key trust restored: {key} is back in trusted.gpg.d, and {source} is as it was.",
+             key=key, source=lst.name)
 
 
 def _log_in_ram():
@@ -1300,19 +1313,26 @@ def _logs(rec, on):
         JOURNALD_DROPIN.write_text("# Written by irate-box's Security page (/admin): logs on the card. Undo there, or delete this file.\n"
                                    "[Journal]\nStorage=persistent\nSystemMaxUse=32M\n")
         rec["logs"] = {"date": time.strftime("%Y-%m-%d"), "ramlog": was}
-        return "logs on the card from the next boot (ramlog off, the journal kept, 32 MB cap)"
+        return M("security-fix.logs.card", "Persistent logs: from the next boot, the journal is kept on the card, with a limit of {limit}. "
+                                           "Armbian's ramlog is off.", limit="32 MB")
     if "logs" not in rec:
-        raise ValueError("logs were not moved to the card from this page")
+        raise Refused(M("security-fix.logs.not-moved", "Logs were not moved to the card from this page. There is nothing to restore."))
     if rec["logs"].get("ramlog") is not None and RAMLOG_DEFAULT.is_file():
         RAMLOG_DEFAULT.write_text(rec["logs"]["ramlog"])
     JOURNALD_DROPIN.unlink(missing_ok=True)
     rec.pop("logs")
-    return "logs back in RAM from the next boot, as the image had them"
+    return M("security-fix.logs.ram", "In-memory logs: from the next boot, logs are in RAM again, as the image had them.")
 
 
 # --- the hotspot firewall: what a guest on the hotspot can reach -------------------------------------
 
-FIREWALL_WORDS = {"hub": "the hub's pages, DNS and DHCP", "apps": "the hub, its apps, DNS and DHCP"}
+# The hotspot firewall's level, said when it is set: (just turned on?, level).
+FIREWALL_SAID = {
+    (True, "apps"): M("security-fix.firewall.on-apps", "Hotspot firewall on: devices on the hotspot reach the hub, its apps, DNS and DHCP."),
+    (True, "hub"): M("security-fix.firewall.on-hub", "Hotspot firewall on: devices on the hotspot reach the hub's pages, DNS and DHCP only."),
+    (False, "apps"): M("security-fix.firewall.apps", "Hotspot firewall: devices on the hotspot reach the hub, its apps, DNS and DHCP."),
+    (False, "hub"): M("security-fix.firewall.hub", "Hotspot firewall: devices on the hotspot reach the hub's pages, DNS and DHCP only."),
+}
 # What the hotspot firewall opens to guests besides the hub when first turned on, where each is installed (firewall.services_here):
 # MQTT and Syncthing, and every declared service whose manifest says hotspot "open".
 def firewall_default():
@@ -1430,17 +1450,18 @@ def _firewall(rec, what):
     from irate_box.hub import services as declared_services
     if what == "off":
         if "firewall" not in rec:
-            raise ValueError("The hotspot firewall was not turned on from this page.")
+            raise Refused(M("security-fix.firewall.not-on", "The hotspot firewall was not enabled from this page. There is nothing to restore."))
         _firewall_apply(None)
         rec.pop("firewall")
-        return "Hotspot firewall off: every service on the box is reachable from the hotspot again."
+        return M("security-fix.firewall.off", "Hotspot firewall off: the hub no longer limits what devices on the hotspot can reach "
+                                              "on the box.")
     act, _, arg = what.partition(":")
     if act in ("svc-on", "svc-off") and not declared_services.by_id(arg):
-        raise ValueError(f"{arg} is not a service an add-on declares")
+        raise Refused(M("security-fix.firewall.unknown-service", "{service} is not a service that an add-on declares.", service=arg))
     if act in ("port-on", "port-off") and not (firewall.PORT_SERVICE.match(f"port:{arg}") and 0 < int(arg.split("/")[1]) < 65536):
-        raise ValueError("a port is tcp/N or udp/N, N from 1 to 65535")
+        raise Refused(M("security-fix.firewall.bad-port", "A port is tcp/N or udp/N, with N from 1 to 65535."))
     if act not in ("on", "apps", "hub", "ssh-on", "ssh-off", "svc-on", "svc-off", "port-on", "port-off"):
-        raise ValueError(f"{what} is not a hotspot firewall setting")
+        raise Refused(M("security-fix.firewall.unknown", "{setting} is not a hotspot firewall setting.", setting=what))
     cur = rec.get("firewall") or {"services": firewall_default(), "level": "apps"}
     services = set(cur.get("services", []))
     level = {"on": "apps", "apps": "apps", "hub": "hub"}.get(act, cur.get("level", "apps"))
@@ -1451,11 +1472,16 @@ def _firewall(rec, what):
     _firewall_apply(fw)
     rec["firewall"] = fw
     label = (declared_services.by_id(arg) or {}).get("name", arg) if act.startswith("svc") else arg.replace("/", " ").upper()
-    return {"on": f"Hotspot firewall on: guests on the hotspot reach {FIREWALL_WORDS[level]}" + (", and the services opened with it where installed" if services - {"ssh"} else ""),
-            "apps": f"Hotspot firewall: guests on the hotspot reach {FIREWALL_WORDS['apps']}", "hub": f"Hotspot firewall: guests on the hotspot reach {FIREWALL_WORDS['hub']} only",
-            "ssh-on": "SSH open from the hotspot", "ssh-off": "SSH closed from the hotspot",
-            "svc-on": f"{label} open to the hotspot", "svc-off": f"{label} closed to the hotspot",
-            "port-on": f"{label} open to the hotspot", "port-off": f"{label} closed to the hotspot"}[act]
+    if act in ("on", "apps", "hub"):
+        return sentences(FIREWALL_SAID[(act == "on", level)],
+                         M("security-fix.firewall.services", "The services that it opens are open too, where they are installed.")
+                         if act == "on" and services - {"ssh"} else None)
+    return {"ssh-on": M("security-fix.firewall.ssh-on", "SSH is open to the hotspot."),
+            "ssh-off": M("security-fix.firewall.ssh-off", "SSH is closed to the hotspot."),
+            "svc-on": M("security-fix.firewall.opened", "{name} is open to the hotspot.", name=label),
+            "svc-off": M("security-fix.firewall.closed", "{name} is closed to the hotspot.", name=label),
+            "port-on": M("security-fix.firewall.opened", "{name} is open to the hotspot.", name=label),
+            "port-off": M("security-fix.firewall.closed", "{name} is closed to the hotspot.", name=label)}[act]
 
 
 # Guest internet access: each level said whole, and each part of the containment by its heading and what it stops.
@@ -1521,14 +1547,15 @@ def _share_contain(what):
     from irate_box.root import firewall, share
     k, _, onoff = what.rpartition("-")
     if k not in share.CONTAIN or onoff not in ("on", "off"):
-        raise ValueError(f"share-contain-{what} is not something the Security page does")
+        raise Refused(M("security-fix.unknown", "The Security page has no action called {choice}.", choice=f"share-contain-{what}"))
     st = share.load()
     st["contain"][k] = onoff == "on"
     if share.on(st):
         fw = load_record().get("firewall")
         firewall.apply_all(dict(fw, services=firewall.services_here(fw.get("services", []))) if fw else None, st)
     share.save(st)
-    return f"{'Turned on' if onoff == 'on' else 'Turned off'}: {share.CONTAIN_WORDS[k]}"
+    return (M("security-fix.contain.on", "Enabled: {name}.", name=CONTAIN_HEADING[k]) if onoff == "on" else
+            M("security-fix.contain.off", "Disabled: {name}.", name=CONTAIN_HEADING[k]))
 
 
 def scan():
@@ -1555,7 +1582,8 @@ def scan():
 def _systemctl(*args):
     out = run("systemctl", *args)
     if out.returncode != 0:
-        raise ValueError(f"systemctl {' '.join(args)}: {(out.stderr or out.stdout).strip().splitlines()[-1:] or ['failed']}")
+        raise Refused(M("security-fix.systemctl-failed", "The command systemctl {command} failed: {detail}", command=" ".join(args),
+                     detail=((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1]))
 
 
 def _write_sshd_dropin(ssh):
@@ -1576,23 +1604,31 @@ def _write_sshd_dropin(ssh):
     check = run(sshd, "-t")
     if check.returncode != 0:
         SSHD_DROPIN.unlink(missing_ok=True)
-        raise ValueError(f"sshd rejected the change, so it was not made: {check.stderr.strip()[:200]}")
+        raise Refused(M("security-fix.sshd.rejected", "sshd rejected the change, so the box did not make it: {detail}", detail=check.stderr.strip()[:200]))
     for unit in ("ssh.service", "sshd.service"):
         if run("systemctl", "reload", unit).returncode == 0:
             return
-    raise ValueError("the setting is written, but sshd could not be reloaded. It applies at the next restart")
+    raise Refused(M("security-fix.sshd.not-reloaded", "The setting is saved, but sshd did not reload. The setting applies when sshd restarts."))
+
+
+SSH_SAID = {("root", True): M("security-fix.ssh.root-off", "SSH sign-in as root disabled."),
+            ("root", False): M("security-fix.ssh.root-restored", "SSH sign-in as root is restored to its previous state."),
+            ("password", True): M("security-fix.ssh.password-off", "SSH password sign-in disabled."),
+            ("password", False): M("security-fix.ssh.password-restored", "SSH password sign-in is restored to its previous state."),
+            ("forwarding", True): M("security-fix.ssh.forwarding-off", "SSH forwarding disabled: TCP, agent and X11."),
+            ("forwarding", False): M("security-fix.ssh.forwarding-restored", "SSH forwarding is restored to its previous state.")}
 
 
 def _ssh(rec, what, on):
     ssh = set(rec.get("ssh", {}))
     if on and what == "password" and not keys_on_box():
-        raise ValueError("no account has an SSH key on the box; turning passwords off would lock out every account")
+        raise Refused(M("security-fix.ssh.no-keys", "No account has an SSH key on the box. Without passwords, no account could sign in over SSH."))
     (ssh.add if on else ssh.discard)(what)
     _write_sshd_dropin(ssh)
     rec["ssh"] = {k: rec.get("ssh", {}).get(k, time.strftime("%Y-%m-%d")) for k in ssh}
     if not rec["ssh"]:
         rec.pop("ssh")
-    return {"root": "SSH sign-in as root", "password": "SSH password sign-in", "forwarding": "SSH forwarding"}[what] + (" turned off" if on else ": back as it was")
+    return SSH_SAID[(what, on)]
 
 
 def _cockpit(rec, mode):
@@ -1605,7 +1641,7 @@ def _cockpit(rec, mode):
             _systemctl("enable", "cockpit.socket")
         # A restart, not a start: a socket still bound to loopback must rebind as it was.
         _systemctl("restart", "cockpit.socket")
-        return "Cockpit: back as it was"
+        return M("security-fix.cockpit.restored", "Cockpit is restored to its previous state.")
     was_enabled = run("systemctl", "is-enabled", "cockpit.socket").stdout.strip() == "enabled"
     if mode == "loopback":
         dropin.parent.mkdir(parents=True, exist_ok=True)
@@ -1617,7 +1653,8 @@ def _cockpit(rec, mode):
         _systemctl("disable", "--now", "cockpit.socket")
         run("systemctl", "stop", "cockpit.service")
     rec["cockpit"] = {"mode": mode, "was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d")}
-    return "Cockpit: loopback only" if mode == "loopback" else "Cockpit: switched off"
+    return (M("security-fix.cockpit.loopback", "Cockpit now listens on loopback only.") if mode == "loopback" else
+            M("security-fix.cockpit.off", "Cockpit is stopped and disabled."))
 
 
 def _llmnr(rec, on):
@@ -1630,7 +1667,8 @@ def _llmnr(rec, on):
         RESOLVED_DROPIN.unlink(missing_ok=True)
         rec.pop("llmnr", None)
     _systemctl("restart", "systemd-resolved.service")
-    return "LLMNR turned off" if on else "LLMNR: back as it was"
+    return (M("security-fix.llmnr.off", "LLMNR is off.") if on else
+            M("security-fix.llmnr.restored", "LLMNR is restored to its previous state."))
 
 
 def _hub_on_80():
@@ -1643,24 +1681,24 @@ UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*\.(service|socket)$")  # no
 
 def _unit(rec, unit, on, reason="from this page"):
     if not UNIT_RE.match(unit) or PROTECTED.match(unit):
-        raise ValueError(f"{unit} is not a unit this page switches off")
+        raise Refused(M("security-fix.unit.unknown", "{unit} is not a unit that this page switches off.", unit=unit))
     units = rec.setdefault("units", {})
     if on:
         was_enabled = run("systemctl", "is-enabled", unit).stdout.strip() == "enabled"
         _systemctl("disable", "--now", unit)
         units[unit] = {"was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d"), "reason": reason}
-        return f"{unit}: stopped and disabled"
+        return M("security-fix.unit.off", "{unit} is stopped and disabled.", unit=unit)
     old = units.get(unit)
     if old is None:
-        raise ValueError(f"{unit} was not switched off from this page")
+        raise Refused(M("security-fix.unit.not-off", "{unit} was not disabled from this page. There is nothing to restore.", unit=unit))
     if "take-port-80" in old.get("reason", "") and _hub_on_80():
-        raise ValueError(f"{unit} gave port 80 to the hub, which still has it. Move the hub first "
-                         "(rerun install.sh --port 8080), or uninstall, which hands the port back")
+        raise Refused(M("security-fix.unit.port-80", "{unit} gave port 80 to the hub, which still has it. First move the hub: run "
+                                                  "install.sh --port 8080 again. Or uninstall the hub, which gives the port back.", unit=unit))
     units.pop(unit)
     _systemctl("enable" if old.get("was_enabled") else "start", *(["--now"] if old.get("was_enabled") else []), unit)
     if not units:
         rec.pop("units")
-    return f"{unit}: back as it was"
+    return M("security-fix.unit.restored", "{unit} is restored to its previous state.", unit=unit)
 
 
 APT_ENV = {"DEBIAN_FRONTEND": "noninteractive"}
@@ -1682,27 +1720,33 @@ def _waiting():
 
 def _lists(log):
     if _apt_logged(log, ["apt-get", "update"], 900) != 0:
-        raise ValueError("apt-get update failed (no internet?). See the log on Updates")
-    return "the package lists are fresh"
+        raise Refused(M("security-fix.lists.failed", "apt-get update failed. The box can be without internet access. Read the log on Updates."))
+    return M("security-fix.lists.done", "The box refreshed the package lists.")
+
+
+NONE_WAITING = M("security-fix.updates.none", "No security updates are waiting.")
 
 
 def _take(log, pkgs, install):
     """The waiting security updates downloaded (the pattern's Fetch) or installed."""
     if not pkgs:
-        return "no security updates waiting"
-    n = f"{len(pkgs)} security update{'s' if len(pkgs) != 1 else ''}"
+        return NONE_WAITING
     argv = ["apt-get", "install", "-y", "--only-upgrade"] + (["-o", "Dpkg::Options::=--force-confold"] if install else ["--download-only"])
     code = _apt_logged(log, argv + pkgs, 3600)
     if code != 0:
-        raise ValueError(f"apt-get exited with {code}; see the log on Updates")
-    return f"installed {n}" if install else f"downloaded {n}, ready to install"
+        raise Refused(M("security-fix.updates.failed", "apt-get stopped with exit code {code}. Read the log on Updates.", code=code))
+    if install:
+        return M("security-fix.updates.installed", {"one": "The box installed {n} security update.",
+                                                    "other": "The box installed {n} security updates."}, n=len(pkgs))
+    return M("security-fix.updates.downloaded", {"one": "The box downloaded {n} security update. It is ready to install.",
+                                                 "other": "The box downloaded {n} security updates. They are ready to install."}, n=len(pkgs))
 
 
 def install_security_updates(log_path):
     """Upgrade only the packages whose new version is from a security archive; output to log_path."""
     pkgs = _waiting()
     if not pkgs:
-        return "no security updates waiting"
+        return NONE_WAITING
     with safeio.open_new(log_path) as log:  # in control/, which the hub can change
         return _take(log, pkgs, True)
 
@@ -1711,7 +1755,7 @@ def fetch_security_updates(log_path):
     """Download the waiting security updates without installing them (the pattern's Fetch)."""
     pkgs = _waiting()
     if not pkgs:
-        return "no security updates waiting"
+        return NONE_WAITING
     with safeio.open_new(log_path) as log:
         return _take(log, pkgs, False)
 
@@ -1727,8 +1771,9 @@ def check_security_updates(rec, log_path):
         if act and pkgs:
             said.append(_take(log, pkgs, act == 2))
         else:
-            said.append(f"{len(pkgs)} security update{'s' if len(pkgs) != 1 else ''} waiting" if pkgs else "no security updates waiting")
-    return "; ".join(said)
+            said.append(M("security-fix.updates.waiting", {"one": "{n} security update is waiting.", "other": "{n} security updates are waiting."},
+                          n=len(pkgs)) if pkgs else NONE_WAITING)
+    return sentences(*said)
 
 
 def refresh_lists(log_path):
@@ -1785,7 +1830,7 @@ def fix(choice, updates_log):
     elif choice == "apt-lists":
         return refresh_lists(updates_log)
     else:
-        raise ValueError(f"{choice} is not something the Security page does")
+        raise Refused(M("security-fix.unknown", "The Security page has no action called {choice}.", choice=choice))
     save_record(rec)
     return msg
 
@@ -1806,7 +1851,7 @@ def undo_all():
                   (["logs-undo"] if "logs" in rec else []) + (["firewall-off"] if "firewall" in rec else []) + \
                   (["autoupdate-undo"] if "autoupdate" in rec else []):
         try:
-            done.append(fix(choice, None))
+            done.append(render(fix(choice, None)))   # for uninstall.sh's terminal
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             done.append(f"{choice}: {exc}")
     RECORD.unlink(missing_ok=True)

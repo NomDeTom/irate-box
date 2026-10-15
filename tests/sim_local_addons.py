@@ -92,7 +92,7 @@ check("roll back swaps them", (d / "index.html").read_text() == "one" and (T / "
 try:
     L.install_local("demo", bundle("3" * 40, {"index.html": "x"}, link=True)); check("a bundle with a link is refused", False)
 except L.LibrarianError as exc:
-    check("a bundle with a link is refused", "symbolic link" in str(exc), str(exc))
+    check("a bundle with a link is refused", exc.message["id"] == "library.bundle.symlink", str(exc))
 check("and what was installed stays", (d / "index.html").read_text() == "one")
 
 # --- the hub: add from the catalogue, paste, remove (the fetch stood in)
@@ -100,7 +100,7 @@ from irate_box.hub import server as S  # noqa: E402
 started = []
 S.library_start = lambda action, fn: started.append(action) or True
 code, body = S.local_addons_action({"action": "add", "id": "eliza"})
-check("add without agreeing is refused", code == 400 and "agree" in body["error"], body)
+check("add without agreeing is refused", code == 400 and body["message"]["id"] == "addons.consent.first", body)
 code, body = S.local_addons_action({"action": "add", "id": "eliza", "agree": True})
 check("add from the catalogue: manifest written, fetch started", code == 202 and (T / "apps.d" / "eliza.json").exists() and started, body)
 check("its consent recorded", json.loads((T / "addons-consent.json").read_text())["eliza"]["how"] == "catalogue")
@@ -117,10 +117,11 @@ check("switched public, its tile shows", 'href="/eliza.html"' in S.render_tiles(
 code, body = S.local_addons_action({"action": "add", "id": "eliza", "agree": True})
 check("added twice is refused", code == 409, body)
 code, body = S.local_addons_action({"action": "paste", "manifest": dict(good, id="pasted")})
-check("a paste without the acknowledgement is refused", code == 400 and "warning" in body["error"], body)
+check("a paste without the acknowledgement is refused", code == 400 and body["message"]["id"] == "addons.paste.warning", body)
 code, body = S.local_addons_action({"action": "paste", "manifest": dict(good, id="draw"),
                                     "understood": "I understand this runs someone else's code on this box's address"})
-check("a pasted manifest is checked like any other", code == 400 and "already used by the hub server" in body["error"], body)
+check("a pasted manifest is checked like any other", code == 400 and body["message"]["id"] == "addons.manifest.invalid"
+      and "already used by the hub server" in body["message"]["args"]["reason"], body)
 code, body = S.local_addons_action({"action": "paste", "manifest": dict(good, id="pasted"),
                                     "understood": "I understand this runs someone else's code on this box's address"})
 check("a pasted manifest, acknowledged, is added", code == 202 and json.loads((T / "addons-consent.json").read_text())["pasted"]["how"] == "pasted", body)

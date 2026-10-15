@@ -15,6 +15,7 @@ os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"), HU
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.hub import netinv  # noqa: E402
 from irate_box.root import otherap as O  # noqa: E402
+from irate_box.msg import Refused, args_of, ids  # noqa: E402
 
 fails = 0
 
@@ -57,45 +58,46 @@ O.run = fake_run
 said = O.remove(SETUP)
 rec = O.record()
 check("remove: gone from NetworkManager, its profile kept", SETUP not in loaded and not (T / "nm/Hotspot.nmconnection").exists()
-      and Path(rec[SETUP]["kept"]).read_text().startswith("[connection]\nid=Hotspot"), said)
+      and Path(rec[SETUP]["kept"]).read_text().startswith("[connection]\nid=Hotspot") and said["id"] == "other-ap.removed"
+      and said["args"] == {"name": "Hotspot", "ssid": rec[SETUP]["ssid"], "kept": rec[SETUP]["kept"]}, said)
 check("  the record: names and the choice, nothing else", set(rec[SETUP]) == {"name", "ssid", "choice", "kept", "file", "at"} and rec[SETUP]["choice"] == "removed")
 said = O.undo(SETUP)
-check("undo: brought back and loaded", SETUP in loaded and (T / "nm/Hotspot.nmconnection").exists() and O.record() == {}, said)
+check("undo: brought back and loaded", SETUP in loaded and (T / "nm/Hotspot.nmconnection").exists() and O.record() == {} and said["id"] == "other-ap.restored", said)
 said = O.remove(SETUP)
 kept = Path(O.record()[SETUP]["kept"])
 said = O.forget(SETUP)
-check("forget: a deleted profile's kept copy deleted too, the record cleared", not kept.exists() and O.record() == {}, said)
+check("forget: a deleted profile's kept copy deleted too, the record cleared", not kept.exists() and O.record() == {} and said["id"] == "other-ap.forgotten", said)
 try:
     O.forget(SETUP)
     check("  forget with nothing deleted: refused", False)
-except ValueError:
-    check("  forget with nothing deleted: refused", True)
+except Refused as exc:
+    check("  forget with nothing deleted: refused", exc.message["id"] == "other-ap.forget.none", exc.message)
 O.undo.__globals__["run"]("nmcli", "con", "load", "x")   # the stand-in: the profile known to NetworkManager again
 (T / "nm/Hotspot.nmconnection").write_text("[connection]\nid=Hotspot\n")
 said = O.leave(SETUP)
-check("leave: kept as it is, recorded as left", SETUP in loaded and O.record()[SETUP]["choice"] == "left", said)
-for bad, why in ((OURS, "irate-box's own"), (HOME, "only the profile of another hotspot"), ("x", "invalid connection id")):
+check("leave: kept as it is, recorded as left", SETUP in loaded and O.record()[SETUP]["choice"] == "left" and said["id"] == "other-ap.ignored", said)
+for bad, why in ((OURS, "other-ap.ours"), (HOME, "other-ap.not-hotspot"), ("x", "other-ap.request.uuid")):
     try:
         O.remove(bad)
         check(f"refused: {why}", False)
-    except ValueError as exc:
-        check(f"refused: {why}", why in str(exc), str(exc))
+    except Refused as exc:
+        check(f"refused: {why}", exc.message["id"] == why, exc.message)
 
 
 def found(autoconnect, chosen, active=False):
     p = {"uuid": SETUP, "name": "Hotspot", "ssid": "armbiansetup-lyra", "mode": "ap", "autoconnect": autoconnect, "iface": "wlan0", "active": active}
     inv = {"radios": [], "country": "GB", "other_ap": chosen, "stacks": {"networkmanager": {"running": True, "wifi_profiles": [p]}}}
-    return [h for h in netinv.hazards(inv) if h["id"] == f"other-ap:{SETUP}"]
+    return [h for h in netinv.findings(inv) if h["id"] == f"other-ap:{SETUP}"]
 
 
 check("inventory: one not chosen for, listed with what to do", [h["status"] for h in found(False, {})] == ["warn"]
-      and "delete it" in found(False, {})[0]["fix"])
+      and found(False, {})[0]["summary"]["id"] == "netinv.other-ap.idle" and found(False, {})[0]["fix"]["id"] == "netinv.other-ap.idle.fix")
 check("  left: no longer listed", found(False, {SETUP: {"choice": "left"}}) == [])
 check("  set to start by itself: warned, left or not", [h["status"] for h in found(True, {SETUP: {"choice": "left"}})] == ["warn"]
-      and "start by itself" in found(True, {})[0]["title"])
+      and found(True, {})[0]["summary"]["id"] == "netinv.other-ap.autoconnect")
 check("  running now (a fresh image's setup hotspot): a problem, left or not, said as running",
       [h["status"] for h in found(True, {SETUP: {"choice": "left"}}, active=True)] == ["problem"]
-      and "running" in found(False, {}, active=True)[0]["title"])
+      and found(False, {}, active=True)[0]["summary"]["id"] == "netinv.other-ap.active")
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

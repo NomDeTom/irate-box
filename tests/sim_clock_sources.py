@@ -13,6 +13,7 @@ os.environ.update(HUB_ETC_DIR=str(T / "etc-hub"), HUB_CLOCK_SYSROOT=str(T / "roo
                   HUB_STATE_DIR=str(T / "state"))
 (T / "etc-hub").mkdir()
 sys.path.insert(0, str(REPO))
+from irate_box import msg  # noqa: E402
 from irate_box.root import clock  # noqa: E402
 
 fails = 0
@@ -64,20 +65,20 @@ clock.run = fake_run
 # --- the page's choice --------------------------------------------------------------------------------------
 check("a choice read: service, pool, GPS, a server", clock.parse("clock-sources:chrony:1:1:0:0:192.168.1.1") == ("chrony", True, True, False, False, "192.168.1.1"))
 check("  '-' for no server", clock.parse("clock-sources:image:1:0:0:0:-") == ("image", True, False, False, False, ""))
-for bad, why in (("clock-sources:image:1:1:0:0:-", "GPS needs chrony"), ("clock-sources:chrony:0:0:0:0:-", "at least one source"),
-                 ("clock-sources:chrony:1:0:0:0:a..b", "not an address"), ("clock-sources:ntpd:1:0:0:0:-", "a clock choice"),
-                 ("clock-sources:chrony:1:0:0:0:x;rm", "a clock choice"), ("clock-sources:image:1:0:0:1:-", "Serving the time needs chrony"),
-                 ("clock-sources:image:1:0:1:0:-", "needs chrony"), ("clock-sources:chrony:1:0:1:0:-", "No clock module is set up")):
+for bad, why in (("clock-sources:image:1:1:0:0:-", "gps-needs-chrony"), ("clock-sources:chrony:0:0:0:0:-", "none"),
+                 ("clock-sources:chrony:1:0:0:0:a..b", "bad-host"), ("clock-sources:ntpd:1:0:0:0:-", "not-a-choice"),
+                 ("clock-sources:chrony:1:0:0:0:x;rm", "not-a-choice"), ("clock-sources:image:1:0:0:1:-", "serve-needs-chrony"),
+                 ("clock-sources:image:1:0:1:0:-", "module-needs-chrony"), ("clock-sources:chrony:1:0:1:0:-", "no-module")):
     try:
         clock.parse(bad); check(f"refused: {bad}", False)
     except ValueError as exc:
-        check(f"refused: {bad} ({why})", why in str(exc), exc)
+        check(f"refused: {bad} ({why})", exc.message["id"] == f"clock-sources.{why}", exc)
 
 # --- the image's own service, its servers chosen ----------------------------------------------------------
 said = clock.apply("clock-sources:image:0:0:0:0:192.168.1.1")
 drop = T / "root/etc/systemd/timesyncd.conf.d/52irate-box.conf"
 check("the image's own: a drop-in naming the local server, no pool", drop.read_text().endswith("NTP=192.168.1.1\nFallbackNTP=\n")
-      and "the server 192.168.1.1" in said, (drop.read_text(), said))
+      and msg.args_of(said, "clock-sources.local") == {"host": "192.168.1.1"} and "clock-sources.timesyncd" in msg.ids(said), (drop.read_text(), said))
 rec = clock.load()
 check("  what the image had kept the first time (timesyncd, installed and enabled, no chrony)", rec["image"]["daemon"] == "systemd-timesyncd"
       and rec["image"]["timesyncd"] and rec["image"]["timesyncd_enabled"] and not rec["image"]["chrony"], rec["image"])
@@ -100,7 +101,9 @@ check("  the pool not chosen: Debian's pool line off (commented, so Restore is e
       and "\npool " not in conf.read_text())
 check("  chrony enabled and restarted (a toolkit install would leave it disabled)", ["systemctl", "enable", "chrony.service"] in calls
       and ["systemctl", "restart", "chrony.service"] in calls)
-check("  said in a sentence", said.startswith("Chrony installed.") and "the server 192.168.1.1" in said, said)
+check("  said a step a sentence: installed, then what keeps the time", msg.ids(said)[1:3] == ["clock-sources.installed", "clock-sources.chrony"]
+      and msg.args_of(said, "clock-sources.installed") == {"package": "chrony"}
+      and msg.args_of(said, "clock-sources.local") == {"host": "192.168.1.1"}, said)
 clock.apply("clock-sources:chrony:1:0:0:0:-")
 check("  the pool chosen again: chrony.conf as it came", conf.read_text() == DEBIAN_CONF and "server" not in src.read_text().split("\n", 1)[1])
 check("  the image as it was is kept from the first change, not overwritten", clock.load()["image"]["daemon"] == "systemd-timesyncd")
@@ -119,13 +122,13 @@ root_pkg.kits = fake_kits
 try:
     clock.apply("clock-sources:chrony:1:1:0:0:-"); check("GPS with no toolkit cached: refused", False)
 except ValueError as exc:
-    check("GPS with no toolkit cached: refused, saying where to get it", "GPS time toolkit" in str(exc), exc)
+    check("GPS with no toolkit cached: refused, saying where to get it", exc.message["id"] == "clock-sources.gps-kit-missing", exc)
 got = []
 fake_kits.manifest = lambda k: {"id": k}
 fake_kits.install = lambda k, hours, log=None: got.append(("install", k, hours))
 fake_kits.remove = lambda k, log=None: got.append(("remove", k))
 said = clock.apply("clock-sources:chrony:1:1:0:0:-")
-check("  cached: installed, kept (no removal time), said", got == [("install", "gpstime", None)] and "GPS time toolkit installed" in said, (got, said))
+check("  cached: installed, kept (no removal time), said", got == [("install", "gpstime", None)] and "clock-sources.gps-kit-installed" in msg.ids(said), (got, said))
 
 # --- serving the time to the hotspot: chrony's allow, and the hotspot firewall's UDP 123 ---------------------
 check("serving: chrony allows the hotspot's network", "allow 192.168.4.0/24" in clock.chrony_conf_text(False, True)
@@ -137,7 +140,7 @@ sys.modules["irate_box.root.security"] = fake_security
 root_pkg.security = fake_security
 said = clock.apply("clock-sources:chrony:1:1:0:1:-")
 check("  turned on: the allow written, the firewall loaded again, said", "allow 192.168.4.0/24" in confd.read_text() and len(refreshed) == 1
-      and "serves it to the hotspot (192.168.4.0/24)" in said and "opens UDP 123 to guests" in said, (refreshed, said))
+      and msg.args_of(said, "clock-sources.chrony-serves")["net"] == "192.168.4.0/24" and "clock-sources.firewall-opens" in msg.ids(said), (refreshed, said))
 from irate_box.root import firewall  # noqa: E402
 check("  the firewall opens the time to guests while it serves (UDP 123), by the Clock page's switch", "time" in firewall.services_here([])
       and 123 in firewall.ports(firewall.services_here([]))[1])
@@ -156,7 +159,7 @@ unit = T / "units" / clock.FEED_UNIT
 check("the module: chrony's SOCK refclock (refid RTC, a large delay), the feed service written and started",
       f"refclock SOCK {clock.FEED_SOCK} refid RTC precision 1 delay 2" in confd.read_text() and unit.exists()
       and "irate-box clock feed" in unit.read_text() and ["systemctl", "enable", "--now", clock.FEED_UNIT] in calls
-      and "the clock module" in said, (said, unit.exists()))
+      and "clock-sources.module" in msg.ids(said), (said, unit.exists()))
 import struct  # noqa: E402
 smp = clock.sample(1792040000.25, -0.5, "<qqdiiii")
 check("a SOCK sample: 40 bytes with a 64-bit time_t, the time, the offset and chrony's magic last",
@@ -203,13 +206,13 @@ check("  the GPS toolkit removed (this page added it)", ("remove", "gpstime") in
 check("  chrony removed and timesyncd installed again", "chrony" not in pkgs and "systemd-timesyncd" in pkgs, pkgs)
 check("  timesyncd enabled and running, as the image had it", "systemd-timesyncd.service" in enabled
       and ["systemctl", "restart", "systemd-timesyncd.service"] in calls)
-check("  the record gone, and said", not clock.RECORD.exists() and "as the image had them" in said, said)
-check("  serving stopped: the firewall loaded again, UDP 123 closed", len(refreshed) == n + 1 and "closes UDP 123 again" in said
+check("  the record gone, and said", not clock.RECORD.exists() and "clock-sources.restored" in msg.ids(said), said)
+check("  serving stopped: the firewall loaded again, UDP 123 closed", len(refreshed) == n + 1 and "clock-sources.firewall-closes" in msg.ids(said)
       and "time" not in firewall.services_here([]), said)
 try:
     clock.undo(); check("Restore again: refused", False)
 except ValueError as exc:
-    check("Restore again: refused, nothing to put back", "not changed" in str(exc))
+    check("Restore again: refused, nothing to put back", exc.message["id"] == "clock-sources.undo.nothing")
 check("undo-all with nothing changed says so", clock.undo_all() == ["the clock's sources: not changed from the Clock page"])
 
 # --- how each source stands ----------------------------------------------------------------------------------

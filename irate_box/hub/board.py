@@ -26,6 +26,9 @@ import os
 import threading
 from pathlib import Path
 
+from irate_box.hub.refused import Refused
+from irate_box.msg import M
+
 MAX_THREADS = 50
 MAX_POSTS_PER_THREAD = 200
 THREAD_TTL = 7 * 24 * 3600  # powered-on seconds since last activity
@@ -160,7 +163,7 @@ class Board:
                                _clean(text, MAX_TEXT))
         hue = _clean_hue(hue)
         if not author or not title or not text:
-            raise ValueError("Author, title and message are required.")
+            raise Refused(M("board.thread.incomplete", "Author, title and message are required."))
 
         with self._lock:
             now = self.clock.ticks()
@@ -183,7 +186,7 @@ class Board:
         author, text = _clean(author, MAX_AUTHOR), _clean(text, MAX_TEXT)
         hue = _clean_hue(hue)
         if not author or not text:
-            raise ValueError("Author and message are required.")
+            raise Refused(M("board.reply.incomplete", "Author and message are required."))
 
         with self._lock:
             now = self.clock.ticks()

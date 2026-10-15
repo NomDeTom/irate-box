@@ -14,9 +14,15 @@ CLDR category (English: one, other), selected by the argument n. A list argument
 joined for the reader's language when shown. An argument can be another message.
 
 Nothing renders a message until it reaches the reader: the page in the reader's language (admin-widgets.js,
-AW.say), the terminal in English (render). tests/msg_guard.py checks every M(...) in the source.
+AW.say), the terminal in English (render). tests/msg_guard.py checks every M(...) in the source. A moment is
+an argument made by when(epoch), a length of time one made by duration(seconds): each said as the reader's
+language says it.
+
+A module refuses with Refused(M(...)): a ValueError whose English is its text, and whose message the root helper's
+answer keeps beside it (hub_control.answer).
 """
 
+import math
 import re
 import time
 
@@ -32,6 +38,23 @@ class M(dict):
         super().__init__(id=mid, en=en)
         if args:
             self["args"] = args
+
+    def __str__(self):
+        # Put into an English string (a log line, code not converted yet), a message reads as its English.
+        return render(self)
+
+
+class Said(Exception):
+    """A failure with the reason as a message: str() is its English, and .message the message itself, which an
+    answer keeps for the page."""
+
+    def __init__(self, message):
+        super().__init__(render(message))
+        self.message = message
+
+
+class Refused(Said, ValueError):
+    """A request refused, with the reason as a message: a ValueError, so the callers that catch one still do."""
 
 
 def is_message(v):
@@ -62,11 +85,43 @@ def when(epoch):
     return {"time": epoch}
 
 
+# A length of time: said in the largest unit that holds it whole ("5 minutes", "36 hours", "90 seconds"), or else
+# rounded in the unit its size suits ("67 minutes", "1.5 hours"). AW.say in admin-widgets.js picks the same.
+UNITS = ((86400, "day", 172800, 1), (3600, "hour", 5400, 1), (60, "minute", 90, 0), (1, "second", 0, 0))
+
+
+def sentences(*ms):
+    """Several messages as one result, each a sentence or more, said one after the other (None left out): what an
+    action did, step by step. A message itself, so a result or a refusal can be one."""
+    return M("text.sentences", "{all}", all={"sentences": [m for m in ms if m]})
+
+
+def duration(seconds):
+    """A length of time as an argument: shown in the reader's language, in a unit that suits it ("5 minutes")."""
+    return {"seconds": seconds}
+
+
+def duration_unit(seconds):
+    """(value, unit) for a length of time: the value rounded as it is said."""
+    s = abs(seconds)
+    for size, unit, _, _ in UNITS:
+        if s >= size and s % size == 0 and s // size < 100:
+            return int(s // size), unit
+    size, unit, _, places = next(u for u in UNITS if s >= u[2])
+    v = math.floor(s / size * 10 ** places + 0.5) / 10 ** places
+    return (int(v) if v == int(v) else v), unit
+
+
 def _arg(v):
     if is_message(v):
         return render(v)
     if isinstance(v, dict) and "time" in v:
         return time.strftime("%-d %B at %H:%M", time.localtime(v["time"]))
+    if isinstance(v, dict) and "sentences" in v:
+        return " ".join(t for t in map(_arg, v["sentences"]) if t)
+    if isinstance(v, dict) and "seconds" in v:
+        value, unit = duration_unit(v["seconds"])
+        return f"{value:,} {unit}{'' if value == 1 else 's'}"
     if isinstance(v, (list, tuple)):
         return listing([_arg(x) for x in v])
     return str(v)
@@ -83,6 +138,31 @@ def render(m):
     if isinstance(text, dict):
         text = text.get(plural_en(args.get("n")), text["other"])
     return PLACEHOLDER_RE.sub(lambda mo: _arg(args[mo.group(1)]) if mo.group(1) in args else mo.group(0), text)
+
+
+def held(m):
+    """A message and every message in it (its arguments, the sentences of a result), outermost first: what a test
+    reads (their IDs and arguments), so a change of wording needs no change of test."""
+    if is_message(m):
+        yield m
+        for v in (m.get("args") or {}).values():
+            yield from held(v)
+    elif isinstance(m, dict) and "sentences" in m:
+        for v in m["sentences"]:
+            yield from held(v)
+    elif isinstance(m, (list, tuple)):
+        for v in m:
+            yield from held(v)
+
+
+def ids(m):
+    """The IDs of a message and of the messages in it."""
+    return [x["id"] for x in held(m)]
+
+
+def args_of(m, mid):
+    """The arguments of the message with this ID, in a message or in it; None if it is not there."""
+    return next((x.get("args", {}) for x in held(m) if x["id"] == mid), None)
 
 
 def text(*ms):

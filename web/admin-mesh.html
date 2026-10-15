@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Received mesh data · Hub administration</title>
+  <title data-i18n="admin-mesh.head.title">Received mesh data · Hub administration</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,19 +13,20 @@
 </head>
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>Received mesh data</h1>
-    <p class="subtitle">Decoded packets and messages. Administrators only. <a href="/mesh.html">Node map</a> <a href="/admin/#page-mesh">Channel settings</a></p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-mesh.header.tip-quick-help" data-i18n="admin-mesh.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="admin-mesh.header.tip-back-hub" data-i18n="admin-mesh.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-mesh.header.heading">Received mesh data</h1>
+    <p class="subtitle" data-i18n="admin-mesh.header.subtitle">Decoded packets and messages. Administrators only. <a href="/mesh.html">Node map</a> <a href="/admin/#page-mesh">Channel settings</a></p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-mesh.header.aria-theme"></div>
   </header>
 
   <main class="admin-main">
-    <section class="admin-pane" id="mesh-heard" aria-label="Received mesh data">
-      <p class="setting-desc" id="mesh-heard-state">Loading mesh data</p>
+    <section class="admin-pane" id="mesh-heard" aria-label="Received mesh data" data-i18n-aria-label="admin-mesh.main.aria-received-mesh-data">
+      <p class="setting-desc" id="mesh-heard-state" data-i18n="admin-mesh.mesh-heard.state">Loading mesh data</p>
       <p class="setting-desc" id="mesh-heard-counts"></p>
       <ol class="mesh-packets" id="mesh-heard-packets"></ol>
     </section>
   </main>
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/mesh-heard.js"></script>
 </body>

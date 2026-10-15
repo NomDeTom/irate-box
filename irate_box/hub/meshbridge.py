@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 
 from irate_box.hub import meshdecode
+from irate_box.hub.refused import Refused, Said
+from irate_box.msg import M
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 DIR = STATE / "mesh"
@@ -36,6 +38,13 @@ TOPIC = "msh/#"
 KEEP_PACKETS = 300
 NODE_DAYS = 7
 SAVE_EVERY = 60
+MAX_CHANNELS = 16
+BROKER_GONE = M("mesh.broker.disconnected", "Broker disconnected. The MQTT broker closed the connection.")
+BROKER_REFUSED = M("mesh.broker.refused", "Broker refused connection. The MQTT broker did not accept the box.")
+
+
+class BrokerError(Said, ConnectionError):
+    """The broker went or said no: a ConnectionError, with a message (Bridge.error_message)."""
 
 
 # --- the owner's channels ---------------------------------------------------------------------------
@@ -70,14 +79,16 @@ def _save_channels(chs):
 def add_channel(name, key):
     name = str(name or "").strip()
     if not (1 <= len(name) <= 11) or any(c in name for c in "/#+\0"):
-        raise ValueError("Invalid channel name: enter the name as Meshtastic shows it, 1 to 11 characters, without / # + or null characters")
+        raise Refused(M("mesh.channel.name-invalid", "Invalid channel name. Enter the name as Meshtastic shows it: "
+                                                     "1 to 11 characters, without /, #, + or null characters."))
     try:
         meshdecode.expand_key(key)
-    except (ValueError, TypeError) as exc:
-        raise ValueError(f"Invalid channel key: enter the key in base64 as Meshtastic shows it ({exc})")
+    except (ValueError, TypeError):
+        raise Refused(M("mesh.channel.key-invalid", "Invalid channel key. Enter the key in base64 as Meshtastic shows it. "
+                                                    "The key must have 0, 1, 16 or 32 bytes."))
     chs = [c for c in channels() if c["name"] != name] + [{"name": name, "key": key}]
-    if len(chs) > 16:
-        raise ValueError("Channel limit reached: the box keeps at most 16 channels")
+    if len(chs) > MAX_CHANNELS:
+        raise Refused(M("mesh.channel.limit", "Channel limit reached. The box keeps at most {most} channels.", most=MAX_CHANNELS))
     _save_channels(chs)
 
 
@@ -177,12 +188,12 @@ def _packet(kind, body):
 def _read_packet(sock):
     head = sock.recv(1)
     if not head:
-        raise ConnectionError("Broker disconnected: the MQTT broker closed the connection")
+        raise BrokerError(BROKER_GONE)
     length = mult = 0
     for _ in range(4):
         b = sock.recv(1)
         if not b:
-            raise ConnectionError("Broker disconnected: the MQTT broker closed the connection")
+            raise BrokerError(BROKER_GONE)
         length += (b[0] & 127) * (128 ** mult)
         mult += 1
         if not b[0] & 128:
@@ -191,7 +202,7 @@ def _read_packet(sock):
     while len(body) < length:
         chunk = sock.recv(length - len(body))
         if not chunk:
-            raise ConnectionError("Broker disconnected: the MQTT broker closed the connection")
+            raise BrokerError(BROKER_GONE)
         body += chunk
     return head[0], body
 
@@ -211,6 +222,7 @@ class Bridge(threading.Thread):
         self.heard = heard or Heard()
         self.state = "starting"
         self.error = None
+        self.error_message = None  # the error as a message, when it has one
         self.stopping = threading.Event()
 
     def handle(self, topic, payload):
@@ -228,9 +240,9 @@ class Bridge(threading.Thread):
             sock.sendall(_packet(0x10, _string("MQTT") + bytes([4, 0x02]) + struct.pack(">H", 60) + _string(f"irate-box-bridge-{os.getpid()}")))
             kind, body = _read_packet(sock)
             if kind >> 4 != 2 or len(body) < 2 or body[1] != 0:
-                raise ConnectionError("Broker refused connection: the MQTT broker did not accept the box")
+                raise BrokerError(BROKER_REFUSED)
             sock.sendall(_packet(0x82, struct.pack(">H", 1) + _string(TOPIC) + b"\0"))
-            self.state, self.error = "listening", None
+            self.state, self.error, self.error_message = "listening", None, None
             sock.settimeout(30)
             last_ping = time.time()
             while not self.stopping.is_set():
@@ -253,5 +265,5 @@ class Bridge(threading.Thread):
             except (OSError, ConnectionError, ValueError) as exc:
                 # After a connection that worked, start the back-off again from the shortest wait.
                 wait = 5 if self.state == "listening" else min(wait * 2, 300)
-                self.state, self.error = "waiting", str(exc)
+                self.state, self.error, self.error_message = "waiting", str(exc), getattr(exc, "message", None)
             self.stopping.wait(wait)

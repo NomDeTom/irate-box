@@ -29,7 +29,8 @@ What it looks at:
     repairs the uplink's stack supports
 
 Root sees more (netplan's files, meshtasticd's config); without it those show as unknown.
-Stdlib only, and no other irate-box module, so it can be copied to a board on its own.
+Stdlib only. It uses irate_box.msg and finding when they are there, and the few lines of each it needs when
+it is copied to a board on its own.
 """
 
 import functools
@@ -41,6 +42,35 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+try:
+    from irate_box.finding import english, finding
+    from irate_box.msg import M, named
+except ImportError:  # copied to a board on its own: the same shapes, said in English
+    def M(mid, en, **args):
+        return {"id": mid, "en": en, **({"args": args} if args else {})}
+
+    def named(name, role=None):
+        return M("title.named", "{name}", name=name) if role is None else M("title.named-role", "{name} ({role})", name=name, role=role)
+
+    def _say(m):
+        if isinstance(m, list):
+            return ", ".join(_say(x) for x in m)
+        if not isinstance(m, dict) or "en" not in m:
+            return "" if m is None else str(m)
+        args, text = m.get("args") or {}, m["en"]
+        text = text if isinstance(text, str) else text["one" if args.get("n") == 1 else "other"]
+        return re.sub(r"\{([a-z_]+)\}", lambda mo: _say(args.get(mo.group(1), mo.group(0))), text)
+
+    def finding(fid, title, status, summary, why=None, fix=None, *, notes=(), commands=(), evidence=(), actions=(), **extra):
+        return {"id": fid, "title": title, "status": status, "summary": summary, "why": why, "fix": fix, "notes": list(notes),
+                "commands": list(commands), "evidence": [str(e) for e in evidence], "actions": list(actions), **extra}
+
+    def english(f):
+        detail = " ".join(t for t in (_say(m) for m in (f["summary"], f["why"], *f["notes"])) if t)
+        detail += f" ({', '.join(f['evidence'])})" if f["evidence"] else ""
+        fix = " ".join(t for t in (_say(f["fix"]), *(f"`{c}`" for c in f["commands"])) if t)
+        return {"title": _say(f["title"]), "detail": detail, "fix": fix}
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 OUT = STATE / "control" / "netinv.json"
@@ -754,6 +784,7 @@ def scan(focus=None):
             inv["handover"] = nmhandover.candidates()
         except (OSError, ValueError, ImportError) as exc:
             inv["handover"] = {"error": str(exc)[:200]}
+    inv["findings"] = findings(inv)
     inv["hazards"] = hazards(inv)
     inv["uplink"] = uplink_verdict(inv)
     inv["ap"] = ap_verdicts(inv)
@@ -767,27 +798,35 @@ def _os_name():
     return (m.group(1) if m else None) if not rel else f"mPWRD-OS ({m.group(1) if m else 'Debian'})"
 
 
-def _h(hid, status, title, detail, fix="", iface=None):
-    """A finding; iface: the device it is about, so /admin shows it on that device's card."""
-    out = {"id": hid, "status": status, "title": title, "detail": detail, "fix": fix}
-    if iface:
-        out["iface"] = iface
-    return out
+def _h(hid, title, status, summary, why=None, fix=None, iface=None, **parts):
+    """A finding in the shared shape (finding.py); iface: the device it is about, so /admin shows it on that device's card."""
+    return finding(hid, title, status, summary, why, fix, **parts, **({"iface": iface} if iface else {}))
 
 
+def _english(f):
+    """A finding as the Network page and install.sh's summary still read it: title, detail and fix in English."""
+    return {"id": f["id"], "status": f["status"], **english(f), **({"iface": f["iface"]} if f.get("iface") else {})}
+
+
+# What a finding names, beside the thing's own name (msg.named).
+NETWORK = M("netinv.role.network", "WiFi network")
+RADIO = M("netinv.role.radio", "WiFi radio")
+POWERSAVE_WHY = M("netinv.powersave.why", "Power saving makes the link slower to answer, and some drivers disconnect.")
+OTHER_AP_IMAGE = M("netinv.other-ap.image", "It is not from irate-box. It is probably the setup hotspot of the image, often with the password of the image.")
+OTHER_AP_FIX = M("netinv.other-ap.fix", "On the Network page, select Delete profile. The box keeps a copy, and Restore profile brings it back.")
 NM_RETRIES = {"auth_retries": 3, "autoconnect_retries": 4}
 
 
 def effective_retries(profile, key, defaults):
-    """(the retries NetworkManager uses for this profile: 0 forever, else a count; where that is set)."""
+    """(the retries NetworkManager uses for this profile: 0 forever, else a count; where that is set, a message)."""
     own = profile.get(key)
     if own not in (None, -1):
-        return own, "this network's own profile"
+        return own, M("netinv.retries.where.own", "The settings of this network set this.")
     d = ((defaults or {}).get("settings") or {}).get(key) or {}
     v = d.get("value")
     if v is not None and re.fullmatch(r"-?\d+", str(v)) and int(v) >= 0:
-        return int(v), f"the box default ({d.get('file')})"
-    return NM_RETRIES[key], "NetworkManager's own default"
+        return int(v), M("netinv.retries.where.box", "A box default sets this, in {file}.", file=str(d.get("file")))
+    return NM_RETRIES[key], M("netinv.retries.where.nm", "This is the default of NetworkManager.")
 
 
 MODULES_DIR = Path(os.environ.get("HUB_MODULES_DIR", "/lib/modules"))
@@ -833,147 +872,199 @@ def link_findings(inv):
     dflt = (nm.get("defaults") or {})
     if p:
         name, iface = p.get("ssid") or p["name"], r["iface"]
+        title = named(name, NETWORK)
         if p.get("autoconnect") is False:
-            out.append(_h(f"autoconnect-off:{p['uuid']}", "warn", f"{name}: not set to join by itself",
-                          "After a drop or a reboot the box does not join its own network again unless someone asks it to.",
-                          "Network page, WiFi: its own settings, Join it by itself.", iface=iface))
-        locks = [x for x in (f"the access point {p['bssid_lock']}" if p.get("bssid_lock") else None,
-                             {"a": "5 GHz", "bg": "2.4 GHz"}.get(p.get("band_lock") or "", None) and f"the {({'a': '5 GHz', 'bg': '2.4 GHz'})[p['band_lock']]} band",
-                             f"channel {p['channel']}" if p.get("channel") else None) if x]
+            out.append(_h(f"autoconnect-off:{p['uuid']}", title, "warn",
+                          M("netinv.autoconnect-off", "Autoconnect is disabled for this network."),
+                          M("netinv.autoconnect-off.why", "After a drop or a reboot, the box does not join this network again until someone connects it."),
+                          M("netinv.autoconnect-off.fix", "On the Network page, open the settings of this network and set Autoconnect to yes."),
+                          iface=iface))
+        band = {"a": "5 GHz", "bg": "2.4 GHz"}.get(p.get("band_lock") or "")
+        locks = [x for x in (M("netinv.lock.bssid", "the access point {bssid}", bssid=p["bssid_lock"]) if p.get("bssid_lock") else None,
+                             M("netinv.lock.band", "the {band} band", band=band) if band else None,
+                             M("netinv.lock.channel", "channel {channel}", channel=p["channel"]) if p.get("channel") else None) if x]
         if locks:
-            roam = (r.get("roaming") or {})
-            out.append(_h(f"locked:{p['uuid']}", "warn", f"{name}: locked to {' and '.join(locks)}",
-                          "The box cannot move to another access point or band of the same network. If that one goes, the box "
-                          "stays off the network" + (f" ({len(roam['aps'])} access points share its name)." if len(roam.get("aps") or []) > 1 else "."),
-                          "Network page, WiFi: its own settings, the locks; or Network recovery, roaming.", iface=iface))
+            aps = len((r.get("roaming") or {}).get("aps") or [])
+            out.append(_h(f"locked:{p['uuid']}", title, "warn",
+                          M("netinv.locked", "This network is locked to {locks}.", locks=locks),
+                          M("netinv.locked.why-aps", "The box cannot move to another access point or band of this network. "
+                                                     "{n} access points share its name.", n=aps) if aps > 1 else
+                          M("netinv.locked.why", "The box cannot move to another access point or band of this network. "
+                                                 "If this one stops, the box stays off the network."),
+                          M("netinv.locked.fix", "On the Network page, remove the locks in the settings of this network, "
+                                                 "or set up roaming under Network recovery."),
+                          iface=iface))
         ps_box = ((dflt.get("ifaces") or {}).get(iface, {}).get("powersave") or {}).get("value") or ((dflt.get("settings") or {}).get("powersave") or {}).get("value")
         if p.get("powersave") == 3 or (p.get("powersave") in (0, None) and ps_box == "3"):
-            out.append(_h(f"powersave-set:{p['uuid']}", "warn", f"{name}: WiFi power save on",
-                          "Set " + ("for this connection" if p.get("powersave") == 3 else "as a default") + ": the link is slower to answer, "
-                          "and some drivers drop.", "Network page: power save off (its own settings, or Box defaults).", iface=iface))
+            out.append(_h(f"powersave-set:{p['uuid']}", title, "warn",
+                          M("netinv.powersave-set.own", "Power saving is enabled for this network.") if p.get("powersave") == 3 else
+                          M("netinv.powersave-set.default", "Power saving is enabled as a box default."),
+                          POWERSAVE_WHY,
+                          M("netinv.powersave-set.fix", "On the Network page, set Power saving to disabled, in the settings of this network "
+                                                        "or in Default connection settings."),
+                          iface=iface))
         mac_box = ((dflt.get("ifaces") or {}).get(iface, {}).get("cloned_mac") or {}).get("value") or ((dflt.get("settings") or {}).get("cloned_mac") or {}).get("value")
         if p.get("cloned") == "random" or (not p.get("cloned") and mac_box == "random"):
-            out.append(_h(f"mac-random:{p['uuid']}", "warn", f"{name}: a new random MAC address each time it connects",
-                          "Your router sees a new device each time: an address reserved for the box, a MAC filter or a "
-                          "'known devices' list stops matching it.", "Network page: MAC address, the board's own or stable.", iface=iface))
+            out.append(_h(f"mac-random:{p['uuid']}", title, "warn",
+                          M("netinv.mac-random", "The box uses a new random MAC address each time it connects to this network."),
+                          M("netinv.mac-random.why", "Your router sees a new device each time. An address reserved for the box, a MAC filter "
+                                                     "or a list of known devices stops matching it."),
+                          M("netinv.mac-random.fix", "On the Network page, set Randomised MAC to the hardware address of the board, or to a stable address."),
+                          iface=iface))
     for d in inv.get("duplicate_profiles") or []:
-        out.append(_h(f"duplicate:{d['uuid']}", "warn", f"Two files for one connection ({d['name']})",
-                      f"{', '.join(d['files'])} have the same uuid: NetworkManager uses one of them, and which one can change.",
-                      "Keep the one in use; move the other out of /etc/NetworkManager/system-connections."))
+        out.append(_h(f"duplicate:{d['uuid']}", named(d["name"], M("netinv.role.profile", "connection profile")), "warn",
+                      M("netinv.duplicate", "Two files hold this connection profile, with the same UUID."),
+                      M("netinv.duplicate.why", "NetworkManager uses one of them, and which one can change."),
+                      M("netinv.duplicate.fix", "Keep the file in use. Move the other file out of /etc/NetworkManager/system-connections."),
+                      evidence=d["files"]))
     np = inv["stacks"].get("netplan") or {}
     if np.get("error"):
-        out.append(_h("netplan-broken", "problem", "The box cannot read netplan's configuration",
-                      f"{np['error']} netplan stops at the first error, so none of its connections are made afresh, and "
-                      "netplan apply fails.", "Fix or move aside the file it names (in /etc/netplan)."))
+        out.append(_h("netplan-broken", M("netinv.netplan.title", "netplan configuration"), "problem",
+                      M("netinv.netplan-broken", "The box cannot read the netplan configuration."),
+                      M("netinv.netplan-broken.why", "netplan stops at the first error. It makes none of its connections again, and netplan apply fails."),
+                      M("netinv.netplan-broken.fix", "Correct the file that the error names in /etc/netplan, or move it out of that folder."),
+                      evidence=[np["error"]]))
     for f in dflt.get("broken") or []:
-        out.append(_h(f"nmconf-broken:{f}", "warn", "The box cannot read a NetworkManager configuration file",
-                      f"{f}: NetworkManager can ignore it, or refuse to start.", "Fix or move it aside."))
+        out.append(_h(f"nmconf-broken:{f}", named(f, M("netinv.role.nm-file", "NetworkManager configuration")), "warn",
+                      M("netinv.nmconf-broken", "The box cannot read this NetworkManager configuration file."),
+                      M("netinv.nmconf-broken.why", "NetworkManager can ignore the file, or not start."),
+                      M("netinv.nmconf-broken.fix", "Correct the file, or move it out of its folder.")))
     for rr in inv["radios"]:
         if rr.get("driver") == "aic8800_fdrv" and not resets_itself(rr["driver"]):
-            out.append(_h(f"driver-wedge:{rr['iface']}", "warn", f"{rr['iface']}: a WiFi driver known to wedge",
-                          "This AIC8800 driver stops answering after one late reply from its firmware, until it is loaded "
-                          "again; the box's watchdog resets the radio then. A patched driver resets the chip itself.",
-                          "A patched aic8800 driver resets the chip itself on a command timeout.", iface=rr["iface"]))
+            out.append(_h(f"driver-wedge:{rr['iface']}", named(rr["iface"], RADIO), "warn",
+                          M("netinv.driver-wedge", "This AIC8800 driver stops answering after one late reply from its firmware."),
+                          M("netinv.driver-wedge.why", "The radio stays unusable until the driver loads again. The watchdog of the box then resets the radio."),
+                          M("netinv.driver-wedge.fix", "Install a patched aic8800 driver. It resets the chip itself on a command timeout."),
+                          evidence=[rr["driver"]], iface=rr["iface"]))
             break
     return out
 
 
-def hazards(inv):
+def findings(inv):
+    """What could take the radio away, or the box off its network, in the shared shape (finding.py): the Box
+    doctor shows the warnings and problems (as net:<id>), the Network page every one."""
     out = []
     radios = [r for r in inv["radios"] if r.get("type") in ("managed", "AP")]
     ws = enabled("wifisync.service")
     if ws:
         mesh = mesh_wifi_enabled()
         on = ws == "enabled"
-        status = "problem" if on and mesh is False else "warn" if on else "ok"
-        title = {"problem": "mPWRD-OS's wifisync is switching the WiFi off",
-                 "warn": "mPWRD-OS's wifisync can switch the WiFi off",
-                 "ok": "mPWRD-OS's wifisync is disabled: it cannot switch the WiFi off"}[status]
-        out.append(_h("wifisync", status, title,
-                      f"{'Enabled' if on else 'Installed, disabled'}: it switches the WiFi radio off (rfkill) whenever "
-                      f"meshtasticd's WiFi setting is off. meshtasticd's WiFi is "
-                      f"{'on' if mesh else 'off' if mesh is False else 'unknown (needs root)'}.",
-                      "Keep Meshtastic's WiFi setting on while the box uses its WiFi (client link or hotspot)."
-                      if on else ""))
+        title = M("netinv.wifisync.title", "mPWRD-OS wifisync")
+        if not on:
+            out.append(_h("wifisync", title, "ok", M("netinv.wifisync.disabled", "wifisync is installed and disabled. It cannot switch the WiFi off.")))
+        else:
+            out.append(_h("wifisync", title, "problem" if mesh is False else "warn",
+                          M("netinv.wifisync.off", "wifisync is enabled, and the WiFi setting of meshtasticd is off. wifisync switches the WiFi radio off.")
+                          if mesh is False else
+                          M("netinv.wifisync.on", "wifisync is enabled. The WiFi setting of meshtasticd is on now.") if mesh else
+                          M("netinv.wifisync.unknown", "wifisync is enabled. Without root, the box cannot read the WiFi setting of meshtasticd."),
+                          M("netinv.wifisync.why", "wifisync switches the WiFi radio off (rfkill) when the WiFi setting of meshtasticd is off."),
+                          M("netinv.wifisync.fix", "Keep the WiFi setting of Meshtastic on while the box uses its WiFi, for its network link or its hotspot.")))
     nm = inv["stacks"].get("networkmanager") or {}
     for p in nm.get("wifi_profiles", []) if nm.get("running") else []:
         if p.get("mode") == "ap" and p["name"] != AP_PROFILE:
             left = (inv.get("other_ap") or {}).get(p["uuid"], {}).get("choice") == "left"
+            title, where = named(p["name"], M("netinv.role.other-ap", "other hotspot profile")), [p["iface"]] if p.get("iface") else []
             if p.get("active"):
-                out.append(_h(f"other-ap:{p['uuid']}", "problem", f"Another hotspot running: {p['name']}",
-                              f"SSID {p['ssid']!r} on {p.get('iface') or 'a WiFi device'}, up now: probably the image's setup hotspot "
-                              "(a fresh Armbian or Raspberry Pi OS may start one), often with the image's own password. It holds the "
-                              "radio, so the box's own network link and irate-box's hotspot cannot use it. Not irate-box's.",
-                              "Network page, Changes made here: delete it (a copy is kept, to restore it)."))
+                out.append(_h(f"other-ap:{p['uuid']}", title, "problem",
+                              M("netinv.other-ap.active", "Another hotspot is running, with the name {ssid}.", ssid=p["ssid"]),
+                              M("netinv.other-ap.active.why", "It holds the radio. The network link of the box and the irate-box hotspot cannot use it."),
+                              OTHER_AP_FIX, notes=[OTHER_AP_IMAGE], evidence=where))
             elif p["autoconnect"]:
-                out.append(_h(f"other-ap:{p['uuid']}", "warn", f"Another hotspot profile set to start by itself: {p['name']}",
-                              f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}: at boot it could take the radio, and the "
-                              "box off its own network. Not irate-box's.",
-                              "Network page, Changes made here: delete it (a copy is kept, to restore it)."))
+                out.append(_h(f"other-ap:{p['uuid']}", title, "warn",
+                              M("netinv.other-ap.autoconnect", "Another hotspot profile, with the name {ssid}, is set to start automatically.", ssid=p["ssid"]),
+                              M("netinv.other-ap.autoconnect.why", "At boot it can take the radio and disconnect the box from its own network."),
+                              OTHER_AP_FIX, notes=[OTHER_AP_IMAGE], evidence=where))
             elif not left:
-                out.append(_h(f"other-ap:{p['uuid']}", "warn", f"Another hotspot profile: {p['name']}",
-                              f"SSID {p['ssid']!r} on {p.get('iface') or 'any WiFi device'}, not set to start by itself. Not irate-box's: "
-                              "probably the image's setup hotspot, often with the image's own password. Started, it would take the box "
-                              "off its own network; irate-box's hotspot runs beside the link instead.",
-                              "Network page, Changes made here: delete it (a copy is kept, to restore it), or ignore it."))
+                out.append(_h(f"other-ap:{p['uuid']}", title, "warn",
+                              M("netinv.other-ap.idle", "Another hotspot profile, with the name {ssid}, is not set to start automatically.", ssid=p["ssid"]),
+                              M("netinv.other-ap.idle.why", "If someone starts it, it disconnects the box from its own network. "
+                                                            "The irate-box hotspot runs beside the network link instead."),
+                              M("netinv.other-ap.idle.fix", "On the Network page, select Delete profile or Ignore profile. "
+                                                            "The box keeps a copy of a deleted profile."),
+                              notes=[OTHER_AP_IMAGE], evidence=where))
         if p.get("mode") in (None, "infrastructure"):
-            for key, field, gives_up in (
-                    ("auth_retries", "auth-retries",
-                     "After 3 failed handshakes (a flaky link looks like a wrong password) NetworkManager stops trying "
-                     "until someone reconnects it by hand, which a headless box cannot ask for."),
-                    ("autoconnect_retries", "autoconnect-retries",
-                     "After 4 failed tries NetworkManager stops trying this network for 5 minutes.")):
+            auth = M("netinv.retries.auth.why", "A weak link looks like a wrong password. NetworkManager then waits until someone connects it again, "
+                                                "and a box without a screen cannot ask.")
+            for key, field, gives_up in (("auth_retries", "auth-retries", auth),
+                                         ("autoconnect_retries", "autoconnect-retries",
+                                          M("netinv.retries.autoconnect.why", "NetworkManager then stops trying this network for 5 minutes."))):
                 value, where = effective_retries(p, key, nm.get("defaults"))
                 if value != 0:
-                    out.append(_h(f"{field}:{p['uuid']}", "warn",
-                                  f"WiFi network {p['ssid'] or p['name']}: stops trying after {value} failure{'s' if value != 1 else ''}"
-                                  if value and value > 0 else f"WiFi network {p['ssid'] or p['name']}: gives up after repeated failures",
-                                  f"{gives_up} Set by {where}.",
-                                  "Network page, Default connection settings: set Keep trying to connect to forever, for every network.",
-                                  iface=p.get("iface")))
+                    if not value or value < 0:
+                        said = M("netinv.retries.gives-up", "NetworkManager stops trying this network after repeated failures.")
+                    elif key == "auth_retries":
+                        said = M("netinv.retries.auth", {"one": "NetworkManager stops trying this network after {n} failed handshake.",
+                                                         "other": "NetworkManager stops trying this network after {n} failed handshakes."}, n=value)
+                    else:
+                        said = M("netinv.retries.autoconnect", {"one": "NetworkManager stops trying this network after {n} failed attempt.",
+                                                                "other": "NetworkManager stops trying this network after {n} failed attempts."}, n=value)
+                    out.append(_h(f"{field}:{p['uuid']}", named(p["ssid"] or p["name"], NETWORK), "warn", said, gives_up,
+                                  M("netinv.retries.fix", "On the Network page, in Default connection settings, set the retries to without limit for every network."),
+                                  notes=[where], iface=p.get("iface")))
     for r in radios:
         rf = r.get("rfkill")
         if rf and (rf["soft"] or rf["hard"]):
-            out.append(_h(f"rfkill:{r['iface']}", "problem", f"{r['iface']}: radio switched off",
-                          f"rfkill: {'hard' if rf['hard'] else 'soft'} blocked.",
-                          "A hard block is a switch or the board; a soft one: rfkill unblock wifi (and see wifisync).",
-                          iface=r["iface"]))
+            if rf["hard"]:
+                out.append(_h(f"rfkill:{r['iface']}", named(r["iface"], RADIO), "problem",
+                              M("netinv.rfkill.hard", "A hard block (rfkill) switches this radio off."),
+                              None, M("netinv.rfkill.hard.fix", "Find the radio switch on the board or its case, and switch the radio on."),
+                              iface=r["iface"]))
+            else:
+                out.append(_h(f"rfkill:{r['iface']}", named(r["iface"], RADIO), "problem",
+                              M("netinv.rfkill.soft", "A soft block (rfkill) switches this radio off."),
+                              None, M("netinv.rfkill.soft.fix", "Run this command. If wifisync is enabled, read its finding too."),
+                              commands=["rfkill unblock wifi"], iface=r["iface"]))
         usb = r.get("usb") or {}
         if usb.get("autosuspend"):
-            out.append(_h(f"autosuspend:{r['iface']}", "warn", f"{r['iface']}: USB autosuspend on",
-                          "The kernel can suspend the USB radio when idle. Some drivers do not survive this.",
-                          f"echo on > /sys/bus/usb/devices/{usb.get('port')}/power/control (a udev rule keeps it).",
-                          iface=r["iface"]))
+            out.append(_h(f"autosuspend:{r['iface']}", named(r["iface"], RADIO), "warn",
+                          M("netinv.autosuspend", "USB autosuspend is enabled for this radio."),
+                          M("netinv.autosuspend.why", "The kernel can suspend the USB radio when it is idle. Some drivers do not recover from this."),
+                          M("netinv.autosuspend.fix", "Run this command to keep the radio awake. A udev rule keeps the setting after a reboot."),
+                          commands=[f"echo on > /sys/bus/usb/devices/{usb.get('port')}/power/control"], iface=r["iface"]))
         if r.get("power_save") == "on":
-            out.append(_h(f"powersave:{r['iface']}", "warn", f"{r['iface']}: power save on",
-                          "Power save makes a link slower to answer and, on some drivers, drop.",
-                          "NetworkManager: wifi.powersave = 2; otherwise iw dev IFACE set power_save off.",
-                          iface=r["iface"]))
+            out.append(_h(f"powersave:{r['iface']}", named(r["iface"], RADIO), "warn",
+                          M("netinv.powersave.on", "Power saving is enabled on this radio."), POWERSAVE_WHY,
+                          M("netinv.powersave.fix", "Disable power saving. With NetworkManager, set wifi.powersave to 2. Otherwise, run this command."),
+                          commands=[f"iw dev {r['iface']} set power_save off"], iface=r["iface"]))
         params = r.get("params") or {}
         if r.get("power_save") == "off" and params.get("ps_on") in ("Y", "1"):
-            out.append(_h(f"driver-ps:{r['iface']}", "ok", f"{r['iface']}: the driver's own power saving is on",
-                          f"{r.get('driver')} was loaded with ps_on, while NetworkManager's power save is off. The driver's "
-                          "setting is read only when it loads, so trying it off means loading the driver with ps_on=0 and "
-                          "counting the drops over some days.", iface=r["iface"]))
+            out.append(_h(f"driver-ps:{r['iface']}", named(r["iface"], RADIO), "ok",
+                          M("netinv.driver-ps", "The driver {driver} has its own power saving enabled (ps_on). The power saving of NetworkManager is disabled.",
+                            driver=str(r.get("driver"))),
+                          notes=[M("netinv.driver-ps.note", "The driver reads this setting only when it loads. To test it disabled, load the driver "
+                                                            "with ps_on=0 and count the drops over some days.")],
+                          iface=r["iface"]))
         p = r.get("profile") or {}
         if p.get("netplan"):
             ho = inv.get("handover") or {}
             if not ho.get("integrated"):
-                out.append(_h(f"netplan:{r['iface']}", "warn", f"{r['iface']}: its connection is written afresh by netplan at every boot",
-                              f"{p['name']} comes from /etc/netplan, and this NetworkManager cannot write changes back there: a "
-                              "setting made for this connection alone is lost at the next boot. Box defaults still apply.",
-                              "Network page, WiFi: transfer the profile to NetworkManager, so its own settings last. Undo restores the earlier state.",
+                out.append(_h(f"netplan:{r['iface']}", named(r["iface"], RADIO), "warn",
+                              M("netinv.netplan", "netplan writes the connection {name} again at every boot.", name=p["name"]),
+                              M("netinv.netplan.why", "This NetworkManager cannot write changes back to /etc/netplan. A setting for this connection alone "
+                                                      "is lost at the next boot. Box defaults still apply."),
+                              M("netinv.netplan.fix", "On the Network page, transfer the profile to NetworkManager, so that its own settings stay. "
+                                                      "Undo restores the earlier state."),
                               iface=r["iface"]))
     out += link_findings(inv)
     if inv.get("country") in ("00", None) and radios:
-        out.append(_h("regdom", "warn", "No WiFi country set",
-                      "The radio uses the world regulatory channel set, which limits the channels and power of a hotspot.",
-                      "Set it in the OS (netplan regulatory-domain, raspi-config, or iw reg set XX)."))
+        out.append(_h("regdom", M("netinv.regdom.title", "WiFi country"), "warn",
+                      M("netinv.regdom", "No WiFi country is set."),
+                      M("netinv.regdom.why", "The radio uses the world regulatory channels. This limits the channels and the power of a hotspot."),
+                      M("netinv.regdom.fix", "Set the WiFi country in the operating system: in netplan (regulatory-domain), with raspi-config, "
+                                             "or with iw reg set and the country code.")))
     hap = inv["stacks"].get("hostapd") or {}
     if hap.get("running"):
-        out.append(_h("hostapd", "warn", "hostapd is already running",
-                      "Something on the box already runs an access point with hostapd. The irate-box hotspot would compete for the radio."))
+        out.append(_h("hostapd", M("netinv.hostapd.title", "hostapd"), "warn",
+                      M("netinv.hostapd", "hostapd is already running on the box."),
+                      M("netinv.hostapd.why", "Something on the box already runs an access point with hostapd. "
+                                              "The irate-box hotspot would compete with it for the radio.")))
     return out
+
+
+def hazards(inv):
+    """The findings in English, as the Network page and install.sh's summary read them: title, detail, fix."""
+    return [_english(f) for f in inv.get("findings") or findings(inv)]
 
 
 def uplink_verdict(inv):

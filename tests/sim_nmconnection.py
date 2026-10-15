@@ -16,6 +16,7 @@ T = Path(tempfile.mkdtemp(prefix="nmconnection-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.root import nmconnection as C  # noqa: E402
+from irate_box.msg import Refused  # noqa: E402
 
 fails = 0
 
@@ -61,7 +62,8 @@ C.run = fake_run
 said = C.change(HOME, {"auth_retries": "0", "metered": "yes", "cloned_mac": "stable"})
 rec = json.loads(C.RECORD.read_text())
 check("set: written to the profile, said, and taking effect next time", values[HOME]["connection.auth-retries"] == "0"
-      and values[HOME]["connection.metered"] == "yes" and "applies on the next connection" in said, said)
+      and values[HOME]["connection.metered"] == "yes" and said["id"] == "nm-conn.changed"
+      and said["args"] == {"changes": ["auth_retries 0", "metered yes", "cloned_mac stable"], "name": "Home"}, said)
 check("  the values from before recorded", rec[HOME]["old"] == {"auth_retries": "-1", "metered": "unknown", "cloned_mac": ""}, rec)
 C.change(HOME, {"auth_retries": "5"})
 check("  changed again: the value from before still the first one", json.loads(C.RECORD.read_text())[HOME]["old"]["auth_retries"] == "-1")
@@ -71,27 +73,29 @@ check("  set back to NetworkManager's own: no longer counted as changed", "clone
 check("  public: names only, nothing secret", C.public() == {HOME: {"name": "Home", "changed": ["auth_retries", "metered"]}}, C.public())
 said = C.undo(HOME)
 check("undo: put back as they were, the record gone", values[HOME]["connection.auth-retries"] == "-1"
-      and values[HOME]["connection.metered"] == "unknown" and not C.RECORD.exists(), said)
+      and values[HOME]["connection.metered"] == "unknown" and not C.RECORD.exists() and said["id"] == "nm-conn.undo.done", said)
 
-for bad, why in ((NP, "netplan writes"), (AP, "hotspot")):
+for bad, why in ((NP, "nm-conn.netplan"), (AP, "nm-conn.hotspot")):
     try:
         C.change(bad, {"metered": "yes"})
         check(f"refused: {why}", False)
-    except ValueError as exc:
-        check(f"refused: {why}", why in str(exc), str(exc))
+    except Refused as exc:
+        check(f"refused: {why}", exc.message["id"] == why, exc.message)
 C.change(NP, {"metered": "yes"}, integrated=True)
 check("a netplan connection where NetworkManager keeps it in netplan: allowed", values[NP]["connection.metered"] == "yes")
-for changes, why in (({"band": "c"}, "one of"), ({"priority": "1000"}, "from -999"), ({"bssid": "nope"}, "access point"),
-                     ({"channel": "6"}, "needs a band"), ({"bogus": "1"}, "not a setting"), ({}, "nothing")):
+for changes, why, args in (({"band": "c"}, "nm-conn.setting.one-of", {"setting": "band", "values": ["(none)", "a", "bg"]}),
+                           ({"priority": "1000"}, "nm-conn.setting.range", {"lo": -999, "hi": 999, "setting": "priority"}),
+                           ({"bssid": "nope"}, "nm-conn.setting.bssid", None), ({"channel": "6"}, "nm-conn.channel-band", None),
+                           ({"bogus": "1"}, "nm-conn.request.setting", {"setting": "bogus"}), ({}, "nm-conn.request.empty", None)):
     try:
         C.change(HOME, changes)
         check(f"refused: {changes}", False)
-    except ValueError as exc:
-        check(f"refused: {changes}", why in str(exc), str(exc))
+    except Refused as exc:
+        check(f"refused: {changes}", exc.message["id"] == why and (args is None or exc.message["args"] == args), exc.message)
 C.change(HOME, {"band": "bg", "channel": "6", "bssid": "04:95:E6:72:B6:D1"})
 check("a channel with its band; an access point's address in lower case", values[HOME]["802-11-wireless.channel"] == "6"
       and values[HOME]["802-11-wireless.bssid"] == "04:95:e6:72:b6:d1")
-check("undo-all", "restored" in C.undo_all() and not C.RECORD.exists() and values[HOME]["802-11-wireless.band"] == "")
+check("undo-all, in English for uninstall.sh", "restored the earlier settings of Home" in C.undo_all() and not C.RECORD.exists() and values[HOME]["802-11-wireless.band"] == "")
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

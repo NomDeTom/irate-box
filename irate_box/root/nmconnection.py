@@ -18,6 +18,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box.msg import M, Refused
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RECORD = ETC / "nm-connection-changes.json"
 NETPLAN_PROFILES = "/run/NetworkManager/system-connections/netplan-"
@@ -25,25 +27,28 @@ UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 MAC_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 
 
+# Each check: (setting, value) -> the value as nmcli takes it, or Refused saying what the setting takes.
 def _int(lo, hi):
-    def check(v):
+    def check(n, v):
         if not re.fullmatch(r"-?\d{1,4}", v) or not lo <= int(v) <= hi:
-            raise ValueError(f"a whole number from {lo} to {hi}")
+            raise Refused(M("nm-conn.setting.range", "Enter a whole number from {lo} to {hi} for {setting}.", lo=lo, hi=hi, setting=n))
         return str(int(v))
     return check
 
 
 def _one_of(*allowed):
-    def check(v):
+    def check(n, v):
         if v not in allowed:
-            raise ValueError(f"one of {', '.join(a or '(none)' for a in allowed)}")
+            raise Refused(M("nm-conn.setting.one-of", "Select one of these values for {setting}: {values}.", setting=n,
+                         values=[a or "(none)" for a in allowed]))
         return v
     return check
 
 
-def _mac_or_empty(v):
+def _mac_or_empty(n, v):
     if v and not MAC_RE.match(v):
-        raise ValueError("Invalid BSSID: enter the BSSID of an access point, for example aa:bb:cc:dd:ee:ff, or leave it empty")
+        raise Refused(M("nm-conn.setting.bssid", "The BSSID is not valid. Enter the BSSID of an access point, "
+                     "for example {example}, or leave it empty.", example="aa:bb:cc:dd:ee:ff"))
     return v.lower()
 
 
@@ -96,13 +101,13 @@ def _current(uuid):
     keys = ",".join(k for k, _c, _d in SETTINGS.values())
     code, out = run("nmcli", "-t", "-f", "connection.id," + keys + ",802-11-wireless.mode", "con", "show", "uuid", uuid)
     if code != 0:
-        raise ValueError("Connection profile not found in NetworkManager")
+        raise Refused(NOT_FOUND)
     kv = {}
     for line in out.splitlines():
         k, _, v = line.partition(":")
         kv[k] = v.replace("\\:", ":")
     if kv.get("802-11-wireless.mode", "infrastructure") not in ("", "infrastructure"):
-        raise ValueError("only a connection the box joins can be set here (the hotspot has its own settings)")
+        raise Refused(M("nm-conn.hotspot", "You can change only a connection that the box joins here. The hotspot has its own settings."))
     out_ = {"name": kv.get("connection.id")}
     for n, (key, _c, _d) in SETTINGS.items():
         v = kv.get(key, "")
@@ -114,64 +119,64 @@ def _current(uuid):
     return out_
 
 
+NOT_FOUND = M("nm-conn.not-found", "NetworkManager has no connection profile with this ID.")
+
+
 def lasts(uuid, integrated):
-    """Whether a change to this connection survives a boot: (bool, why not)."""
+    """Whether a change to this connection survives a boot: (bool, why not, a message)."""
     code, out = run("nmcli", "-t", "-f", "UUID,FILENAME", "con", "show")
     for line in out.splitlines() if code == 0 else []:
         u, _, f = line.partition(":")
         if u == uuid:
             if f.startswith(NETPLAN_PROFILES) and not integrated:
-                return False, ("netplan writes this connection afresh at every boot, so a setting made for it alone "
-                               "would be lost: hand it over to NetworkManager first (Network page, WiFi)")
-            return True, ""
-    return False, "Connection profile not found in NetworkManager"
+                return False, M("nm-conn.netplan", "netplan writes this connection again at every boot, so the box would lose a setting "
+                                "made for it alone. Transfer the profile to NetworkManager first, on the Network page, under WiFi.")
+            return True, None
+    return False, NOT_FOUND
 
 
 def change(uuid, changes, integrated=False):
-    """Set one connection's own settings ({name: value | "default"}). One line saying what was done."""
+    """Set one connection's own settings ({name: value | "default"}). A message saying what was done."""
     if not isinstance(uuid, str) or not UUID_RE.match(uuid):
-        raise ValueError("invalid connection id")
+        raise Refused(M("nm-conn.request.uuid", "The request is not valid: the connection ID is not a UUID."))
     if not isinstance(changes, dict) or not changes:
-        raise ValueError("nothing to change")
+        raise Refused(M("nm-conn.request.empty", "The request is not valid: it changes no setting."))
     ok, why = lasts(uuid, integrated)
     if not ok:
-        raise ValueError(why)
+        raise Refused(why)
     now = _current(uuid)
     args, said = [], []
     for n, v in changes.items():
         if n not in SETTINGS:
-            raise ValueError(f"not a setting offered: {n}")
+            raise Refused(M("nm-conn.request.setting", "The request is not valid: this page does not set {setting}.", setting=n))
         key, check, nm_default = SETTINGS[n]
-        v = nm_default if v == "default" else str(v).strip()
-        try:
-            v = check(v)
-        except ValueError as exc:
-            raise ValueError(f"{n}: {exc}")
+        v = check(n, nm_default if v == "default" else str(v).strip())
         args += [key, v]
         said.append(f"{n} {v or '(none)'}")
     band = changes.get("band", now["band"]) if changes.get("band") != "default" else ""
     if changes.get("channel") not in (None, "default", "0") and not band:
-        raise ValueError("a channel needs a band: select 2.4 or 5 GHz with it")
+        raise Refused(M("nm-conn.channel-band", "A channel needs a band. Select 2.4 GHz or 5 GHz with it."))
     rec = record()
     old = rec.setdefault(uuid, {"name": now["name"], "old": {}, "at": time.time()})
     for n in changes:
         old["old"].setdefault(n, now[n])   # the value from before irate-box first changed it
     code, out = run("nmcli", "con", "modify", "uuid", uuid, *args)
     if code != 0:
-        raise ValueError(f"nmcli: {out[-200:]}")
+        raise Refused(M("nm-conn.nmcli", "nmcli did not change the profile: {detail}", detail=out[-200:]))
     # A value back where it was before is no longer irate-box's change.
     after = _current(uuid)
     old["old"] = {n: v for n, v in old["old"].items() if after.get(n) != v}
     if not old["old"]:
         rec.pop(uuid)
     _save(rec)
-    return f"{now['name']}: {', '.join(said)}. The setting applies on the next connection"
+    return M("nm-conn.changed", "The box set {changes} on {name}. The change applies the next time the connection starts.",
+             changes=said, name=now["name"])
 
 
 def undo(uuid):
     rec = record()
     if uuid not in rec:
-        raise ValueError("nothing was changed on this connection here")
+        raise Refused(M("nm-conn.undo.none", "The box has changed nothing on this connection."))
     entry = rec.pop(uuid)
     args = [x for n, v in entry["old"].items() if n in SETTINGS for x in (SETTINGS[n][0], v)]
     if args:
@@ -179,16 +184,17 @@ def undo(uuid):
         if code != 0 and "not exist" not in out and "unknown connection" not in out.lower():
             rec[uuid] = entry
             _save(rec)
-            raise ValueError(f"nmcli: {out[-200:]}")
+            raise Refused(M("nm-conn.undo.nmcli", "nmcli did not restore the earlier settings: {detail}", detail=out[-200:]))
     _save(rec)
-    return f"{entry['name']}: its own settings are restored to the earlier values"
+    return M("nm-conn.undo.done", "The box restored the earlier settings of {name}.", name=entry["name"])
 
 
 def undo_all():
+    """For uninstall.sh: each connection's settings put back, a line each, in English."""
     said = []
     for uuid in list(record()):
         try:
-            said.append(undo(uuid))
+            said.append(str(undo(uuid)))
         except ValueError as exc:
             said.append(f"{uuid}: {exc}")
     return "\n".join(said)

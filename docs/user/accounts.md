@@ -51,7 +51,7 @@ Open **Accounts → Notebooks** on the administration pages. These settings are 
 - The number of notebooks that can run at once (5 by default).
 - The free memory that must remain. Below this amount, no more notebooks start.
 
-The pages of a notebook stay on the box when the notebook stops, when notebooks are switched off, and when the account is deleted. The Settings only and Settings and data backups do not include notebooks. Each user keeps a copy with the download. The Full image backup includes them.
+The pages of a notebook stay on the box when the notebook stops, when private notebooks are disabled, and when the account is deleted. The Settings only and Settings and data backups do not include notebooks. Each user keeps a copy with the download. The Full image backup includes them.
 
 ## Script login
 

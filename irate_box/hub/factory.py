@@ -35,6 +35,8 @@ from pathlib import Path
 
 from irate_box import confine
 from irate_box.hub import ci, gitrepos
+from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 CACHE = STATE / "factory-targets"            # {commit}.json: the targets at that commit
@@ -81,7 +83,7 @@ def source(name):
     for s in sources():
         if s["name"] == name:
             return s
-    raise ValueError("Select a mirror or a private repository on this box.")
+    raise Refused(M("factory.source.invalid", "Select a mirror or a private repository on this box."))
 
 
 def refs(src):
@@ -101,12 +103,12 @@ def refs(src):
 
 def resolve(src, ref):
     if not REF_RE.match(ref or "") or ".." in ref:
-        raise ValueError("Select a tag or a branch.")
+        raise Refused(M("factory.ref.invalid", "Select a valid branch or tag."))
     for kind in ("tags", "heads"):
         out = _git("rev-parse", "--verify", "--quiet", f"refs/{kind}/{ref}^{{commit}}", cwd=src["path"])
         if out.returncode == 0:
             return out.stdout.decode().strip()
-    raise ValueError(f"Tag or branch {ref} not found in {src['name']}.")
+    raise Refused(M("factory.ref.not-found", "Branch or tag not found. {source} has no branch or tag {ref}.", source=src["name"], ref=ref))
 
 
 def _seg_match(pattern, path):
@@ -152,7 +154,7 @@ def targets(src, ref):
         pass
     names = _git("ls-tree", "-r", "--name-only", commit, cwd=src["path"]).stdout.decode("utf-8", "replace").splitlines()
     if "platformio.ini" not in names:
-        raise ValueError(f"Build script missing. {src['name']} has no platformio.ini at {ref}.")
+        raise Refused(M("factory.script.missing", "Build script missing. {source} has no platformio.ini at {ref}.", source=src["name"], ref=ref))
     root = _read_blobs(src["path"], commit, ["platformio.ini"]).get("platformio.ini", "")
     top = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
     top.read_string(root)
@@ -257,16 +259,17 @@ def queue(name, ref, envs, floor_mb=512):
     """Queue each of envs from source `name` at `ref`: one job per target, ordered by family."""
     src = source(name)
     if not isinstance(envs, list) or not envs:
-        raise ValueError("Select one or more targets.")
+        raise Refused(M("factory.targets.none", "Select one or more targets."))
     if len(envs) > MAX_PER_REQUEST:
-        raise ValueError(f"Select up to {MAX_PER_REQUEST} targets in one request.")
+        raise Refused(M("factory.targets.too-many", "Select up to {most} targets in one request.", most=MAX_PER_REQUEST))
     data = targets(src, ref)
     known = {t["env"]: t for t in data["targets"]}
     bad = [e for e in envs if e not in known]
     if bad:
-        raise ValueError(f"Not targets of {name} at {ref}: {', '.join(map(str, bad[:5]))}.")
+        raise Refused(M("factory.targets.unknown", "Target not found. {source} has no targets {envs} at {ref}.",
+                        source=name, envs=[str(e) for e in bad[:5]], ref=ref))
     if free_bytes() < floor_mb << 20:
-        raise ValueError(f"Not enough storage to queue a build. The box needs {floor_mb} MB free.")
+        raise Refused(M("factory.storage.low", "Not enough storage to queue a build. The box needs {mb} MB free.", mb=floor_mb))
     ci.QUEUE.mkdir(parents=True, exist_ok=True)
     batch, now = secrets.token_hex(4), time.time()
     picked = sorted(dict.fromkeys(envs), key=lambda e: (known[e]["family"], e))
@@ -317,11 +320,13 @@ def queue_tools(name, ref, family, offline=False, env=None):
     data = targets(src, ref)
     fam = [t for t in data["targets"] if t["family"] == family]
     if not fam:
-        raise ValueError(f"Family {family} not found in {name} at {ref}.")
+        raise Refused(M("factory.family.not-found", "Family not found. {source} has no family {family} at {ref}.",
+                        source=name, family=family, ref=ref))
     if env:
         pick = next((t for t in fam if t["env"] == env), None)
         if pick is None:
-            raise ValueError(f"{env} is not a {family} target in {name} at {ref}.")
+            raise Refused(M("factory.family.no-target", "Target not found. {source} has no {family} target {env} at {ref}.",
+                            source=name, family=family, env=env, ref=ref))
     else:
         want = suggested(fam, _flasher_boards())[family]
         pick = next(t for t in fam if t["env"] == want)
@@ -335,15 +340,15 @@ def queue_tools(name, ref, family, offline=False, env=None):
 
 def _job_path(job_id):
     if not re.fullmatch(r"[0-9]{6,24}-[0-9a-f]{6}", job_id or ""):
-        raise ValueError("This is not a waiting build.")
+        raise Refused(M("factory.job.not-waiting", "This is not a waiting build."))
     p = next((confine.under(d, f"{job_id}.json") for d in (ci.QUEUE, HELD) if (d / f"{job_id}.json").exists()),
              confine.under(ci.QUEUE, f"{job_id}.json"))
     try:
         j = json.loads(p.read_text())
     except (OSError, ValueError):
-        raise ValueError("Build already started, or it is not a waiting build.")
+        raise Refused(M("factory.job.started", "Build already started. You can change only a waiting build."))
     if j.get("kind") != "firmware":
-        raise ValueError("This is not a firmware build.")
+        raise Refused(M("factory.job.not-firmware", "This is not a firmware build."))
     return p, j
 
 
@@ -413,7 +418,7 @@ def estimates(history):
 
 
 def readiness(history):
-    """Per family: "offline ready" when its newest build with no network at all (Test offline)
+    """Per family, a message: "offline ready" when its newest build with no network at all (Test offline)
     passed; else "built here" once one has passed, saying whether it was tried offline; else whether
     its tools were fetched (with PlatformIO's folder then) or could not be."""
     tools, built, last_offline = {}, set(), {}
@@ -424,18 +429,24 @@ def readiness(history):
         if s.get("tools_only"):
             if f not in tools:
                 res = s.get("resources") or {}
-                tools[f] = (f"Tools downloaded (PlatformIO tools {round((res.get('tools_bytes') or 0) / 2 ** 20)} MB). Build not tested."
-                            if state == "passed" else "Tools download failed. See the log.")
+                tools[f] = (M("factory.ready.tools", "Tools downloaded (PlatformIO tools {mb} MB). Build not tested.",
+                                mb=round((res.get("tools_bytes") or 0) / 2 ** 20))
+                            if state == "passed" else M("factory.ready.tools-failed", "Tools download failed. See the log."))
         elif s.get("offline"):
-            last_offline.setdefault(f, state)
+            last_offline.setdefault(f, s)
         elif state == "passed":
             built.add(f)
     out = dict(tools)
     for f in built | set(last_offline):
-        off = last_offline.get(f)
-        out[f] = "Offline build passed for the test target" if off == "passed" else \
-            ("Build passed. Offline build failed. See the log." if off else "Build passed. Offline build not tested.") if f in built else \
-            "Offline build failed. See the log."
+        last = last_offline.get(f) or {}
+        off = last.get("state")
+        # A pass proves the target and revision it built, not the whole family at every revision.
+        out[f] = (M("factory.ready.offline", "Offline build passed for {env} at {ref}.", env=last["env"], ref=last["ref"])
+                  if last.get("env") and last.get("ref")
+                  else M("factory.ready.offline-test", "Offline build passed for the test target.")) if off == "passed" else \
+            (M("factory.ready.offline-failed-built", "Build passed. Offline build failed. See the log.") if off
+             else M("factory.ready.built", "Build passed. Offline build not tested.")) if f in built else \
+            M("factory.ready.offline-failed", "Offline build failed. See the log.")
     return out
 
 
@@ -536,12 +547,12 @@ FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")
 
 def _run(run_number):
     if not re.fullmatch(r"[0-9]{1,6}", str(run_number or "")):
-        raise ValueError("Enter the number of a factory run.")
+        raise Refused(M("factory.run.invalid", "Enter the number of a factory run."))
     run = confine.under(ci.RUNS, RUNS_NAME, str(run_number))
     try:
         return run, json.loads((run / "status.json").read_text())
     except (OSError, ValueError):
-        raise ValueError("Run not found.")
+        raise Refused(M("factory.run.not-found", "Run not found."))
 
 
 def _write(path, data):
@@ -562,18 +573,19 @@ def publish(run_number):
     """Offer one passed build in the web flasher. Returns {version (the flasher's release), env}."""
     run, st = _run(run_number)
     if st.get("state") != "passed" or st.get("tools_only"):
-        raise ValueError("Only successful firmware builds can be published.")
+        raise Refused(M("factory.publish.not-passed", "Only successful firmware builds can be published."))
     arts = set(st.get("artifacts") or [])
     names = [n for n in arts if n.endswith(".mt.json")]
     if len(names) != 1:
-        raise ValueError("This build kept no manifest (.mt.json). Native builds and builds from before the factory kept manifests cannot be published.")
+        raise Refused(M("factory.publish.no-manifest", "This build kept no manifest (.mt.json). Native builds and builds from before "
+                                                       "the factory kept manifests cannot be published."))
     try:
         mt = json.loads(confine.under(run, "artifacts", names[0]).read_text())
     except (OSError, ValueError):
-        raise ValueError("The manifest cannot be read.")
+        raise Refused(M("factory.publish.manifest-unreadable", "The manifest cannot be read."))
     env, version = st.get("env"), str(mt.get("version", ""))
     if not VERSION_RE.match(version) or mt.get("platformioTarget") != env or not ENV_RE.match(env or ""):
-        raise ValueError("The manifest does not belong to this build.")
+        raise Refused(M("factory.publish.manifest-other", "The manifest does not belong to this build."))
     # Each file the manifest names, as kept: the nRF52 update zip is named -ota.zip in the manifest
     # (bin/platformio-custom.py) but built as .zip. The .elf (debug only) and the bare program are
     # never kept, and leave the manifest.
@@ -585,11 +597,11 @@ def publish(run_number):
             continue
         data = confine.under(run, "artifacts", kept).read_bytes()
         if entry.get("md5") and hashlib.md5(data).hexdigest() != entry["md5"]:
-            raise ValueError(f"Digest mismatch. {kept} does not match the MD5 in the manifest.")
+            raise Refused(M("factory.publish.digest", "Digest mismatch. {file} does not match the MD5 in the manifest.", file=kept))
         files.append(entry)
         plan.append((name, data))
     if not files:
-        raise ValueError("The build kept none of the files that the manifest names.")
+        raise Refused(M("factory.publish.no-files", "The build kept none of the files that the manifest names."))
     folder = confine.under(FIRMWARE, version + BUILT)
     folder.mkdir(parents=True, exist_ok=True)
     os.chmod(folder, 0o755)
@@ -612,13 +624,13 @@ def unpublish(version, env):
     """Take one target out of a release built here; the release goes with its last target. A file
     another target's manifest also names (an ESP32's shared OTA loader) stays."""
     if not (version.endswith(BUILT) and VERSION_RE.match(version[:-len(BUILT)])) or not ENV_RE.match(env or ""):
-        raise ValueError("This release was not built on this box.")
+        raise Refused(M("factory.unpublish.not-built", "This release was not built on this box."))
     folder = confine.under(FIRMWARE, version)
     mt_path = confine.under(folder, f"firmware-{env}-{version}.mt.json")
     try:
         mine = {f.get("name") for f in json.loads(mt_path.read_text()).get("files", [])}
     except (OSError, ValueError):
-        raise ValueError(f"{env} is not in {version}.")
+        raise Refused(M("factory.unpublish.not-found", "Target not found. Release {version} has no target {env}.", version=version, env=env))
     mt_path.unlink()
     others = set()
     for m in folder.glob(f"firmware-*-{version}.mt.json"):

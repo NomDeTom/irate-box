@@ -22,6 +22,7 @@ os.environ.update(HUB_ETC_DIR=str(T / "hub-etc"), HUB_STATE_DIR=str(T / "state")
                   HUB_MODPROBE_DIR=str(T / "modprobe.d"), HUB_UDEV_RULES_DIR=str(T / "udev"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.root import nmhandover as H  # noqa: E402
+from irate_box.msg import Refused, args_of, ids  # noqa: E402
 
 fails = 0
 
@@ -141,7 +142,7 @@ check("candidates: the WiFi file can be handed over, with its connection and cou
       by["30-wifis-dhcp.yaml"]["ok"] and by["30-wifis-dhcp.yaml"]["regdom"] == "GB"
       and by["30-wifis-dhcp.yaml"]["connections"] == [{"name": "netplan-wlan0-Home", "uuid": HOME}], by)
 check("  a file that makes something besides NetworkManager connections: refused, saying why",
-      not by["40-mixed.yaml"]["ok"] and "more than NetworkManager connections" in by["40-mixed.yaml"]["why"], by["40-mixed.yaml"])
+      not by["40-mixed.yaml"]["ok"] and "more than NetworkManager connections" in by["40-mixed.yaml"]["why"], by["40-mixed.yaml"])  # the page reads why as text
 check("  a file that makes no connection (the renderer default) is not listed", "00-default-use-network-manager.yaml" not in by)
 
 said = H.handover("30-wifis-dhcp.yaml", sleep=lambda s: None)
@@ -159,23 +160,24 @@ check("  the WiFi country kept as cfg80211's option, and set at once",
 check("  netplan's line having NetworkManager manage wlan0, kept in irate-box's own rule file",
       'ENV{ID_NET_NAME}=="wlan0", ENV{NM_UNMANAGED}="0"' in H.UDEV_RULES.read_text() and ("udevadm", "control", "--reload") in ran)
 check("  the record holds no secret", "s3cret" not in H.RECORD.read_text())
-check("  said what was done, and where the file is kept", "transferred to NetworkManager" in said and "30-wifis-dhcp.yaml kept in" in said, said)
+check("  said what was done, and where the file is kept", said["id"] == "nm-handover.done-regdom" and said["args"]["connections"] == ["netplan-wlan0-Home"]
+      and said["args"]["name"] == "30-wifis-dhcp.yaml" and said["args"]["backup"] == rec[0]["backup"] and said["args"]["country"] == "GB", said)
 check("  listed as done, not as a candidate", [d["name"] for d in H.candidates()["done"]] == ["30-wifis-dhcp.yaml"]
       and "30-wifis-dhcp.yaml" not in {f["name"] for f in H.candidates()["files"]})
 
 said = H.undo("30-wifis-dhcp.yaml")
 check("undo: the netplan file back, the keyfile gone, netplan's profile in use again, the country file gone",
       (T / "etc/netplan/30-wifis-dhcp.yaml").exists() and not key.exists() and winning()[HOME].parent == T / "run/nm"
-      and not H.REGDOM_CONF.exists() and not H.UDEV_RULES.exists() and H.record() == [], said)
+      and not H.REGDOM_CONF.exists() and not H.UDEV_RULES.exists() and H.record() == [] and said["id"] == "nm-handover.undo.done", said)
 check("  the older second copy stays aside (it is what made the trouble)", not (T / "etc/nm/netplan-wlan0-Home-0c3bb1fa.nmconnection").exists())
 
 state["settings_drift"] = True
 try:
     H.handover("30-wifis-dhcp.yaml", sleep=lambda s: None)
     check("NetworkManager's view changing: refused", False)
-except ValueError as exc:
+except Refused as exc:
     check("NetworkManager's view changing: everything put back at once, saying what changed",
-          "restored" in str(exc) and "wifi.cloned-mac-address" in str(exc) and (T / "etc/netplan/30-wifis-dhcp.yaml").exists()
+          ids(exc.message) == ["nm-handover.failed", "nm-handover.changed"] and any("wifi.cloned-mac-address" in k for k in args_of(exc.message, "nm-handover.changed")["keys"]) and (T / "etc/netplan/30-wifis-dhcp.yaml").exists()
           and not key.exists() and not H.REGDOM_CONF.exists() and H.record() == [] and winning()[HOME].parent == T / "run/nm", str(exc))
 state["settings_drift"] = False
 
@@ -183,16 +185,16 @@ for bad in ("../etc/passwd", "x.yml", "a b.yaml", ""):
     try:
         H.handover(bad, sleep=lambda s: None)
         check(f"a name like {bad!r} refused", False)
-    except ValueError:
-        check(f"a name like {bad!r} refused", True)
+    except Refused as exc:
+        check(f"a name like {bad!r} refused", exc.message["id"] == "nm-handover.request.name", exc.message)
 
 state["unmanage"] = True
 try:
     H.handover("30-wifis-dhcp.yaml", sleep=lambda s: None)
     check("NetworkManager no longer managing an interface: refused", False)
-except ValueError as exc:
+except Refused as exc:
     check("NetworkManager no longer managing an interface afterwards: everything put back",
-          "stopped managing wlan0" in str(exc) and (T / "etc/netplan/30-wifis-dhcp.yaml").exists() and not H.UDEV_RULES.exists(), str(exc))
+          args_of(exc.message, "nm-handover.unmanaged") == {"devices": ["wlan0"]} and (T / "etc/netplan/30-wifis-dhcp.yaml").exists() and not H.UDEV_RULES.exists(), str(exc))
 state["unmanage"] = state["unmanaged_now"] = False
 state["integrated"] = True
 c = H.candidates()
@@ -200,8 +202,8 @@ check("a NetworkManager with netplan's integration: nothing offered, said why", 
 try:
     H.handover("30-wifis-dhcp.yaml", sleep=lambda s: None)
     check("  and handing over refused", False)
-except ValueError as exc:
-    check("  and handing over refused", "already last" in str(exc), str(exc))
+except Refused as exc:
+    check("  and handing over refused", exc.message["id"] == "nm-handover.integrated", exc.message)
 state["integrated"] = False
 
 H.handover("30-wifis-dhcp.yaml", sleep=lambda s: None)

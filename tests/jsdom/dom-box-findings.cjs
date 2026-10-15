@@ -25,9 +25,20 @@ fs = h.check_install()
 fs += h.link_findings({"inventory": {"wlan0": {"kind": "wifi", "up": False, "autoconnect": ["Home"]}}, "links": {}, "chosen": {},
                        "watching": "eth0"})
 fs += h.check_led({"found": {"ACT": {"triggers": True}}, "settings": {}, "led": "ACT", "show": "leave"})
-print(json.dumps(fs))
+from irate_box import msg
+said = [msg.M("test.duration", "It took {took}.", took=msg.duration(s)) for s in (1, 45, 90, 300, 3725, 5400, 7200, 86400, 129600, 200000, 604800)]
+said.append(msg.sentences(msg.M("test.one", "One."), None, msg.M("test.two", "Two {n}.", n=2)))
+from irate_box import finding as F
+from irate_box.hub import netinv
+net = [netinv._h("locked:u1", msg.named("Home", netinv.NETWORK), "warn", msg.M("test.locked", "Home is locked to one access point."),
+                 msg.M("test.why", "The box cannot roam."), msg.M("test.fix", "Unlock it."), iface="wlan0",
+                 notes=[msg.M("test.note", "Seen {n} times.", n=3)], evidence=["bssid=aa:bb"], commands=["nmcli c modify Home 802-11-wireless.bssid ''"]),
+       netinv._h("plain", msg.M("test.plain", "Plain"), "ok", msg.M("test.fine", "Fine."))]
+print(json.dumps({"findings": fs, "said": [[m, msg.render(m)] for m in said],
+                  "net": net, "net_english": [{"id": f["id"], **F.english(f)} for f in net]}))
 `;
-const findings = JSON.parse(execFileSync('python3', ['-c', py], { encoding: 'utf8', env: { ...process.env, HUB_LOG_DIR: logdir } }));
+const made = JSON.parse(execFileSync('python3', ['-c', py], { encoding: 'utf8', env: { ...process.env, HUB_LOG_DIR: logdir } }));
+const findings = made.findings;
 fs.rmSync(logdir, { recursive: true, force: true });
 const data = JSON.parse(fs.readFileSync(`${__dirname}/health-fixture.json`, 'utf8'));
 data.report = { at: Math.floor(Date.now() / 1000), findings, settings: null };
@@ -64,6 +75,16 @@ setTimeout(() => {
     lk && /^wlan0 is down\. NetworkManager has a connection for it/.test(t(lk.querySelector('.fdetail')))
     && [...lk.querySelectorAll('button')].some((b) => t(b) === 'Reconnect wlan0')
     && [...lk.querySelectorAll('a.go-btn')].some((a) => t(a) === 'Go to Network → Network recovery →'), lk && t(lk));
+
+  // A length of time and several sentences as one result: the page says them as the terminal does (msg.render).
+  const differ = made.said.filter(([m, en]) => w.AW.say(m) !== en).map(([m, en]) => `${w.AW.say(m)} ≠ ${en}`);
+  check('durations and sentences said on the page as msg.py says them in English', !differ.length, differ.join(' | '));
+
+  // The Network page reads the inventory's findings as the installer's summary reads them (finding.english).
+  const cards = w.netHazards({ findings: made.net }).map((h) => ({ id: h.id, title: h.title, detail: h.detail, fix: h.fix }));
+  check('the network inventory\'s findings, said on the Network page as finding.english says them', JSON.stringify(cards) === JSON.stringify(made.net_english),
+    JSON.stringify(cards) + ' ≠ ' + JSON.stringify(made.net_english));
+  check('  an inventory from before them: its hazards as they are', w.netHazards({ hazards: [{ id: 'x' }] })[0].id === 'x');
 
   const all = d.getElementById('health-findings').textContent + d.getElementById('health-fine').textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),

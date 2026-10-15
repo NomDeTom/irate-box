@@ -196,9 +196,10 @@ check("a start that fails says why (for the Network page)", failed and "no suita
 ap.TRIED.write_text(json.dumps({"phy0": False}))
 inv2, v2 = box([radio(lyra, "wlan0", "phy0", 6)], wifi_up); inv2["ap"] = v2
 calls.clear()
-out = ap.follow(fake_run, inv2, settings, "wlan0")
-check("follow: the link came up on channel 6, the hotspot moves there", "moved to channel 6" in out and json.loads(ap.RECORD.read_text())["plan"]["channel"] == 6, out)
-check("  the same channel again: nothing done", "still on channel 6" in ap.follow(fake_run, inv2, settings, "wlan0"))
+moved, out = ap.follow(fake_run, inv2, settings, "wlan0")
+check("follow: the link came up on channel 6, the hotspot moves there, and says it moved", moved and "moved to channel 6" in out and json.loads(ap.RECORD.read_text())["plan"]["channel"] == 6, out)
+again = ap.follow(fake_run, inv2, settings, "wlan0")
+check("  the same channel again: nothing done, and not said as moved", again[0] is False and "still on channel 6" in again[1], again)
 inv3, v3 = box([radio(lyra, "wlan0", "phy0", 11, ap_beside_client=False)], wifi_up); inv3["ap"] = v3
 calls.clear()
 p4 = ap.start(fake_run, inv3, settings, {"take_radio": True}, keyfile_path=T / "kf", conf_path=T / "dns.conf")

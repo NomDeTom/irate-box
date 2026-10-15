@@ -25,6 +25,9 @@ import os
 import re
 from pathlib import Path
 
+from irate_box.msg import M
+from irate_box.hub.refused import Refused
+
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 SETTINGS = STATE / "hotspot.json"
 NETINV = STATE / "control" / "netinv.json"
@@ -32,12 +35,18 @@ MODES = ("open", "owe", "sae", "two")
 DEFAULT = {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"}
 PASSWORD_RE = re.compile(r"^[\x20-\x7e]{8,63}$")  # what WPA accepts as a passphrase
 
-LABEL = {
-    "open": "Open: no password",
-    "owe": "Enhanced Open (OWE): no password, encrypted",
-    "sae": "WPA3 with a published password",
-    "two": "Two networks: one open, one encrypted",
+# Refusals said in several places.
+NO_WPA3 = M("hotspot.wpa3.unsupported", "The radio does not report WPA3 (SAE) support. Select a different security mode.")
+BAD_PASSWORD = M("hotspot.password.invalid", "The WPA3 password must have 8 to 63 characters. "
+                 "Use letters, digits, spaces or punctuation.")
+
+LABEL_SAID = {
+    "open": M("hotspot.label.open", "Open: no password"),
+    "owe": M("hotspot.label.owe", "Enhanced Open (OWE): no password, encrypted"),
+    "sae": M("hotspot.label.sae", "WPA3 with a published password"),
+    "two": M("hotspot.label.two", "Two networks: one open, one encrypted"),
 }
+LABEL = {mode: m["en"] for mode, m in LABEL_SAID.items()}   # the page's choices, in English (data-says)
 WHAT = {
     "open": "Guests join with no password. Every WiFi device can join. The WiFi link is not encrypted.",
     "owe": "Guests join with no password. The WiFi link is encrypted with a separate key for each device. "
@@ -124,24 +133,39 @@ def available(caps):
     return out
 
 
+def unavailable(caps, mode):
+    """Why a mode cannot be selected on this box, as a refusal (the same cases as available), or None."""
+    if not caps["known"]:
+        return None if mode == "open" else M("hotspot.mode.radios-unchecked",
+                                              "The box has not checked its radios yet. On the Network page, select Look again.")
+    if not caps["ap_radios"]:
+        return M("hotspot.mode.no-radio", "No radio in this box can run a hotspot.")
+    if mode == "sae" and not caps["sae"]:
+        return NO_WPA3
+    if mode == "two" and caps["ap_slots"] < 2:
+        return M("hotspot.mode.one-interface", "This box has one access-point interface, so it cannot run two networks. "
+                 "To run two networks, add a second radio, for example a USB WiFi dongle.")
+    return None
+
+
 def validate(raw, caps):
     if not isinstance(raw, dict):
-        raise ValueError("settings must be an object")
+        raise Refused(M("hotspot.settings.not-object", "The hotspot settings must be a JSON object."))
     mode = raw.get("mode")
     if mode not in MODES:
-        raise ValueError("unknown mode")
-    why = available(caps).get(mode)
+        raise Refused(M("hotspot.mode.unknown", "The hotspot security mode must be one of these values: {values}.", values=list(MODES)))
+    why = unavailable(caps, mode)
     if why:
-        raise ValueError(f"{LABEL[mode]} cannot be selected on this box: {why}")
+        raise Refused(why)
     second = raw.get("second", "owe")
     if second not in ("owe", "sae"):
-        raise ValueError("the encrypted network must be OWE or WPA3")
+        raise Refused(M("hotspot.second.unknown", "The encrypted network must use OWE or WPA3."))
     if mode == "two" and second == "sae" and not caps["sae"]:
-        raise ValueError("the radio does not report WPA3 (SAE) support")
+        raise Refused(NO_WPA3)
     password = str(raw.get("password", ""))
     needs_pw = mode == "sae" or (mode == "two" and second == "sae")
     if needs_pw and not PASSWORD_RE.match(password):
-        raise ValueError("the WPA3 password must have 8 to 63 characters: letters, digits, spaces or punctuation")
+        raise Refused(BAD_PASSWORD)
     return {"mode": mode, "password": password if needs_pw else "", "allow_wpa2": bool(raw.get("allow_wpa2")) and needs_pw,
             "second": second}
 
@@ -192,7 +216,8 @@ def snapshot():
 
 def _ssid_ok(ssid):
     if not ssid or len(ssid.encode()) > 32 or any(c in ssid for c in "\n\r\0"):
-        raise ValueError("an SSID must have 1 to 32 bytes on one line")
+        raise Refused(M("hotspot.ssid.invalid", "The hotspot name (SSID) must have 1 to 32 bytes on one line. "
+                        "A letter with an accent or an emoji uses more than 1 byte."))
     return ssid
 
 
@@ -222,10 +247,11 @@ def nm_properties(settings, kind):
     if kind == "sae":
         if settings.get("allow_wpa2"):
             # NetworkManager has no WPA2/WPA3 transition mode for an access point.
-            raise ValueError("WPA2 devices with WPA3 (transition mode) need the hostapd backend")
+            raise Refused(M("hotspot.wpa2.needs-hostapd", "WPA3 transition mode needs the hostapd backend. NetworkManager runs the hotspot "
+                            "on this box. To start the hotspot, clear the option that lets older WPA2 devices join."))
         return {"802-11-wireless-security.key-mgmt": "sae", "802-11-wireless-security.psk": settings["password"],
                 "802-11-wireless-security.pmf": "3"}
-    raise ValueError(f"unknown security {kind}")
+    raise Refused(M("hotspot.security.unknown", "Unknown hotspot security mode {kind}.", kind=kind))
 
 
 def hostapd_lines(settings, kind, ssid):
@@ -239,8 +265,8 @@ def hostapd_lines(settings, kind, ssid):
     if kind == "sae":
         pw = settings["password"]
         if not PASSWORD_RE.match(pw):
-            raise ValueError("the WPA3 password must have 8 to 63 characters")
+            raise Refused(BAD_PASSWORD)
         if settings.get("allow_wpa2"):
             return lines + ["wpa_key_mgmt=WPA-PSK SAE", f"wpa_passphrase={pw}", f"sae_password={pw}", "ieee80211w=1"]
         return lines + ["wpa_key_mgmt=SAE", f"sae_password={pw}", "ieee80211w=2", "sae_require_mfp=1"]
-    raise ValueError(f"unknown security {kind}")
+    raise Refused(M("hotspot.security.unknown", "Unknown hotspot security mode {kind}.", kind=kind))

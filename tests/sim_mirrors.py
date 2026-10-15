@@ -150,7 +150,7 @@ check("a mirror with tag groups only keeps no release list", mirrors._releases(b
 # The Git page's ordinary actions leave a mirror alone.
 for body in ({"action": "delete"}, {"action": "preset", "preset": "public-everything"}, {"action": "move", "to": "private"}):
     code, out = gitrepos.action(dict(body, area="public", name="fw"))
-    check(f"a mirror refuses {body['action']} from the Git page", code == 400 and "is a mirror" in out.get("error", ""), out)
+    check(f"a mirror refuses {body['action']} from the Git page", code == 400 and out["message"]["id"] == "git.repo.mirror" and out["message"]["args"]["name"] == "fw.git", out)
 check("gitrepos lists it as a mirror of its upstream", next(r for r in gitrepos.snapshot()["repos"] if r["name"] == "fw")["mirror_of"] == URL)
 
 # Submodules: each kept ref's submodule commits, mirrored; a build then needs no upstream.

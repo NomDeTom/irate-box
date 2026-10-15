@@ -41,9 +41,9 @@ try:
     check("the page is told the reasons offered", msgs.get("report_reasons") == ["spam", "unkind", "personal details", "other"], msgs.get("report_reasons"))
     ref = {"created": spam["created"], "name": "Moth"}
     st, r = go("POST", "/api/report", {"app": "shoutbox", "ref": ref, "reason": "spam"})
-    check("anyone may report a message", st == 200 and "thank" in r.get("message", "").lower(), (st, r))
+    check("anyone may report a message", st == 200 and r["msg"]["id"] == "report.done" and r["message"].startswith("Reported."), (st, r))
     st, r = go("POST", "/api/report", {"app": "shoutbox", "ref": ref, "reason": "spam"})
-    check("  once per visitor", st == 200 and "already" in r.get("message", ""), r)
+    check("  once per visitor", st == 200 and r["msg"]["id"] == "report.again", r)
     st, _ = go("POST", "/api/report", {"app": "shoutbox", "ref": ref, "reason": "illegal"})
     check("a reason the owner doesn't offer: refused", st == 400, st)
     st, _ = go("POST", "/api/report", {"app": "notes", "ref": ref, "reason": "spam"})

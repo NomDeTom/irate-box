@@ -48,6 +48,8 @@ import re
 from pathlib import Path
 
 from irate_box import confine
+from irate_box.hub.refused import say
+from irate_box.msg import M
 
 ROOT = Path(os.environ.get("HUB_FLASHER_ROOT", "/usr/share/hub/apps/flasher"))
 EWT = Path(os.environ.get("HUB_EWT_ROOT", "/usr/share/hub/apps/esp-web-tools"))
@@ -209,10 +211,10 @@ def api(path):
     m = re.fullmatch(r"/flasher/api/esp/([^/]+)/([^/]+)/manifest\.json", path)
     if m:
         man = esp_manifest(m.group(1), m.group(2))
-        return (200, json.dumps(man).encode()) if man else (404, b'{"error": "ESP32 build not found on this box."}')
+        return (200, json.dumps(man).encode()) if man else (404, _refused(M("flasher.esp.not-found", "ESP32 build not found on this box.")))
     if path in API_FILES:
         f = ROOT / API_FILES[path]
-        return (200, f.read_bytes()) if f.is_file() else (404, b'{"error": "The flasher is not installed."}')
+        return (200, f.read_bytes()) if f.is_file() else (404, _refused(M("flasher.not-installed", "The flasher is not installed.")))
     if path == "/flasher/api/github/firmware/list":
         try:
             out = json.loads((FIRMWARE / "index.json").read_text())
@@ -226,4 +228,9 @@ def api(path):
             out.setdefault("releases", {}).setdefault("alpha", [])[:0] = built
         return 200, json.dumps(out).encode()
     # Pull-request builds and anything else the hosted API has: not offline.
-    return 404, b'{"error": "Not available on this box."}'
+    return 404, _refused(M("flasher.offline", "Not available on this box. The box has only the releases it downloaded and its own builds."))
+
+
+def _refused(m):
+    """A refusal as the flasher's API answers it: JSON bytes, {"error": English, "message": message}."""
+    return json.dumps(say(m)).encode()

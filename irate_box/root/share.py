@@ -30,6 +30,8 @@ import os
 import re
 from pathlib import Path
 
+from irate_box.msg import M, Refused
+
 LEVELS = ("off", "users-web", "sheet-web", "sheet-all", "open")
 LET_OUT = ("users-web", "sheet-web", "sheet-all")     # the levels where a device is let out one by one
 WEB_ONLY = ("users-web", "sheet-web")
@@ -108,7 +110,7 @@ def guest_dns_unit(iface):
     only, no DHCP, answering from the box's own resolv.conf. The hotspot's own dnsmasq keeps its
     catch-all; firewall.py sends only those let out here."""
     if not re.match(r"^[A-Za-z0-9_.-]{1,15}$", iface):
-        raise ValueError(f"{iface!r} is not a valid interface name")
+        raise Refused(M("guest-share.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface)))
     return "\n".join([
         "[Unit]", "Description=Irate-Box: DNS for guests let out to the internet (root/share.py)",
         "After=network-online.target", "",

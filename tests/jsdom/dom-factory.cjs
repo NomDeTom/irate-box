@@ -9,9 +9,9 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
-// The Factory's own page: /admin/factory.html, its code in factory.js.
+// The Factory's own page: /admin/factory.html, its code in factory.js (after admin-widgets.js, as the page loads them).
 const html = fs.readFileSync(`${WEB}/admin-factory.html`, 'utf8');
-const js = ['factory.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['admin-widgets.js', 'factory.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const now = Math.floor(Date.now() / 1000);
 const snap = (over = {}) => Object.assign({
   sources: [{ name: 'meshtastic-firmware', area: 'public', mirror: true, upstream: 'https://github.com/meshtastic/firmware' },
@@ -26,7 +26,7 @@ const snap = (over = {}) => Object.assign({
       resources: { cpu: 9400, peak_memory: 300 * 2 ** 20, work_bytes: 700 * 2 ** 20, hottest: 61.5, received: 5 * 2 ** 20 },
       artifacts: ['meshtasticd'] },
     { run: 'firmware-factory/5', state: 'failed', env: 'tbeam', name: 'T-Beam', family: 'esp32', source: 'my-fork', ref: 'main', commit: 'abc', finished: now - 9000, duration: 60, artifacts: [] }],
-  estimates: { native: { seconds: 9801 } }, readiness: { native: 'offline ready' },
+  estimates: { native: { seconds: 9801 } }, readiness: { native: { id: 'factory.ready.offline-test', en: 'Offline build passed for the test target.' } },
 }, over);
 const targets = { source: 'meshtastic-firmware', ref: 'v2.8.1.8e6a88d', commit: '8e6a88d', families: { esp32s3: 2, native: 1, nrf52840: 1 },
   suggested: { esp32s3: 'heltec-v3', native: 'native', nrf52840: 'rak4631' },
@@ -71,7 +71,7 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   check('refs: releases, then branches', [...d.querySelectorAll('#factory-ref optgroup')].map((g) => `${g.label}: ${[...g.children].map((o) => o.value).join(',')}`).join(' | ')
     === 'Releases and tags: v2.8.1.8e6a88d,v2.7.26.54e0d8d | Branches: develop');
   const fams = [...d.querySelectorAll('.factory-family')];
-  check('targets by family, with readiness and estimates', fams.length === 3 && /native 1 target\. Offline ready\. About 2\.7 h a target here\./.test(t(fams[1].querySelector('summary')))
+  check('targets by family, with readiness and estimates', fams.length === 3 && /native 1 target\. Offline build passed for the test target\. About 2\.7 h a target here\./.test(t(fams[1].querySelector('summary')))
     && /esp32s3 2 targets\. 1 selected\. Not tested on this box\. Its first build downloads its toolchain\. No build estimate\./.test(t(fams[0].querySelector('summary'))),
     fams.map((f) => t(f.querySelector('summary'))).join(' | '));
   check('  the flasher\'s boards ticked to start with, their family open', d.querySelector('input[value="heltec-v3"]').checked && fams[0].open && !fams[1].open);

@@ -61,8 +61,9 @@ try:
     # The hub's name, the line under it, and the accent colour.
     _, _, home = go("GET", "/")
     _, _, css = go("GET", "/layout.css")
-    check("the hub's words by default: Hub, and the connected line; no accent in /layout.css",
-          "<h1>Hub</h1>" in home and "<title>Hub</title>" in home and "connected to the network of the box" in home and "--accent" not in css)
+    check("the hub's words by default: Hub, and the connected line, with their message IDs; no accent in /layout.css",
+          '<h1 data-i18n="index.header.heading">Hub</h1>' in home and '<title data-i18n="index.head.title">Hub</title>' in home
+          and "connected to the network of the box" in home and "--accent" not in css)
     st, _, _ = go("POST", "/admin/settings", page, json.dumps({"hub_title": "Camp <Krab>", "hub_subtitle": "", "accent": "#ffd400"}).encode())
     _, _, home = go("GET", "/")
     check("  a name set: the heading and the tab, escaped; an empty line under it left out", st == 200

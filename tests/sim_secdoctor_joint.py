@@ -53,11 +53,11 @@ check("the Security page's findings, from it, about what they are about", page["
 for bad, why in (({"kind": "qualys", "results": []}, "kind"), ({"kind": "nmap", "results": [{"port": 70000}]}, "port"),
                  ({"kind": "openvas", "results": [{"port": 80, "cvss": 11}]}, "cvss"), ({"kind": "openvas", "results": [{"port": 80, "cvss": 5, "cves": ["x"]}]}, "cves"),
                  ({"kind": "nmap", "results": [{"port": 80}] * 1001}, "results"), ({"kind": "nmap", "ran": "yesterday", "results": []}, "ran"),
-                 ({"kind": "nmap", "results": ["80"]}, "object")):
+                 ({"kind": "nmap", "results": ["80"]}, "result")):
     try:
         secimports.validate(bad); check(f"an import refused: {why}", False)
     except ValueError as exc:
-        check(f"an import refused: {why}", why in str(exc), str(exc))
+        check(f"an import refused: {why}", exc.message["id"] == f"secimport.{why}.invalid", exc.message)
 v = secimports.validate({"kind": "openvas", "results": [{"port": 80, "cvss": 5, "name": "x\x00y" * 200, "cves": ["CVE-2026-1234"]}]})
 check("text is trimmed and control characters go", 190 <= len(v["results"][0]["name"]) <= 200 and "\x00" not in v["results"][0]["name"])
 msg = secimports.save({"kind": "nmap", "ran": time.time() - 3600, "name": "scan.xml", "results": [
@@ -65,6 +65,7 @@ msg = secimports.save({"kind": "nmap", "ran": time.time() - 3600, "name": "scan.
     {"port": 9999, "proto": "tcp", "state": "open", "service": ""}, {"port": 23, "proto": "tcp", "state": "closed"}]})
 kept = json.loads((T / "security-imports" / "nmap.json").read_text())
 check("kept: open ports only, with the box's ports at the time", [r["port"] for r in kept["results"]] == [80, 22, 9999] and kept["box_ports"] == ["tcp/22", "tcp/80"], kept)
+check("  said as a message: the kind and how many were kept", msg["id"] == "secimports.saved" and msg["args"] == {"kind": "nmap", "n": 3}, msg)
 secimports.save({"kind": "openvas", "ran": time.time() - 3600, "results": [
     {"port": 80, "proto": "tcp", "cvss": 7.5, "name": "nginx old", "solution": "Update nginx", "cves": ["CVE-2026-1234"]},
     {"port": 80, "proto": "tcp", "cvss": 5.0, "name": "TLS missing"}, {"port": 22, "proto": "tcp", "cvss": 2.1, "name": "SSH weak MAC"},

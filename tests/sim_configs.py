@@ -56,12 +56,13 @@ rel2 = dict(rel, source=None)
 try:
     firmware.sync_configs(rel2, log=lambda *a: None); check("nothing works: an error", False)
 except librarian.LibrarianError as exc:
-    check(f"nothing works: says what was tried ({exc})", "git" in str(exc) and calls)
+    check(f"nothing works: says what was tried ({exc})", exc.message["id"] == "firmware.configs.none"
+          and any(t["id"] == "firmware.configs.tried-git" for t in exc.message["args"]["tried"]) and calls)
 bad = firmware.ROOT / V / "bad-src.zip"; bad.write_bytes(b"not a zip at all")
 try:
     firmware._configs_from_package(lambda off: firmware._seek(open(bad, "rb"), off)); check("a broken package: refused", False)
 except librarian.LibrarianError as exc:
-    check(f"a broken package: refused ({exc})", "not a zip" in str(exc))
+    check(f"a broken package: refused ({exc})", exc.message["id"] == "firmware.package.not-zip")
 
 # From a mirror of meshtastic/firmware on the box: read with git at the tag, no network,
 # tried before everything else.
@@ -102,7 +103,8 @@ with mock.patch.object(mirrors, "load", return_value=[other, fw_mirror]):
     try:
         firmware.sync_configs(r2, log=lambda *a: None)
     except librarian.LibrarianError as exc:
-        check("a tag the mirror lacks: falls through to the next source, and says why", "does not hold v9.9.8.0000000" in str(exc)
+        check("a tag the mirror lacks: falls through to the next source, and says why", any(t["args"]["error"]["id"] == "firmware.mirror.no-tag" and t["args"]["error"]["args"]["tag"] == "v9.9.8.0000000"
+                  for t in exc.message["args"]["tried"] if t["id"] == "firmware.configs.tried-mirror")
               and any(c[0] == "clone" for c in calls), str(exc))
     librarian._git = real_git
 with mock.patch.object(mirrors, "load", return_value=[other]):
@@ -132,10 +134,11 @@ def gj(url):
 net = {"down": False}
 def dl(url, dest, auth=None, name=None, expected=0, resume=False):
     if net["down"]:
-        raise librarian.LibrarianError("cannot reach release.meshtastic.org: down")
+        raise librarian.LibrarianError(librarian.M("library.download.unreachable", "Download failed. The box cannot reach {host}: {reason}",
+                                                    host="release.meshtastic.org", reason="down"))
     fname = url.rsplit("/", 1)[1]
     if fname not in files:
-        raise librarian.LibrarianError(f"{url}: HTTP 404")
+        raise librarian.LibrarianError(librarian.M("library.download.http-error", "Download failed. {url} answered HTTP {code}.", url=url, code=404))
     dest.write_bytes(files[fname])
 policy = {"min_free_mb": 1}
 with _m.patch.object(firmware, "_get_json", gj), _m.patch.object(librarian, "_download", dl), _m.patch.object(firmware, "_publish", lambda p, d: p.write_text(json.dumps(d))):
@@ -149,7 +152,7 @@ with _m.patch.object(firmware, "_get_json", gj), _m.patch.object(librarian, "_do
         firmware._mirror_version({"version": FV, "channel": "alpha"}, {"boards": "all"}, policy, lambda *a: None)
         check("the network gone: the run stops", False)
     except librarian.LibrarianError as exc:
-        check("the network gone: the run stops", "cannot reach" in str(exc) and not isinstance(exc, firmware._Unavailable), str(exc))
+        check("the network gone: the run stops", exc.message["id"] == "library.download.unreachable" and not isinstance(exc, firmware._Unavailable), str(exc))
 (firmware.ROOT / FV / "pio-deps").mkdir(parents=True, exist_ok=True); (firmware.ROOT / FV / "pio-deps" / "x").write_text("cache")
 gone = firmware._drop_flash_files()
 check("flash files off: those held go, the build cache stays", gone > 0 and (firmware.ROOT / FV / "pio-deps" / "x").exists()

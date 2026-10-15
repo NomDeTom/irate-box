@@ -71,6 +71,7 @@ sys.path.insert(0, str(REPO))
 from irate_box.root import security  # noqa: E402
 from irate_box.finding import message_ids as said  # noqa: E402
 from irate_box import msg  # noqa: E402
+from irate_box.msg import args_of, ids as msg_ids  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -221,11 +222,11 @@ conf = T / "apt.conf.d" / "52irate-box-autoupdate"
 security.TIMER_DROPIN = T / "systemd"
 six = T / "systemd" / "apt-daily.timer.d" / "52irate-box.conf"
 (T / "systemctl-log").unlink(missing_ok=True); (T / "apt-log").unlink(missing_ok=True)
-msg = security.fix("autoupdate-set:6-2", None)
+said_ = security.fix("autoupdate-set:6-2", None)
 check("every 6 hours, install: unattended-upgrades installed, apt's periodic work on in our own file, the timers every 6 h",
-      "unattended-upgrades installed" in msg and 'APT::Periodic::Enable "1";' in conf.read_text() and 'APT::Periodic::Unattended-Upgrade "always";' in conf.read_text()
+      msg_ids(said_)[1:] == ["security-fix.unattended.installed", "pattern.6h-install"] and 'APT::Periodic::Enable "1";' in conf.read_text() and 'APT::Periodic::Unattended-Upgrade "always";' in conf.read_text()
       and "install -y unattended-upgrades" in (T / "apt-log").read_text() and "enable --now apt-daily-upgrade.timer" in (T / "systemctl-log").read_text()
-      and "OnCalendar=*-*-* 00/6:00" in six.read_text() and (T / "systemd" / "apt-daily-upgrade.timer.d" / "52irate-box.conf").exists(), msg)
+      and "OnCalendar=*-*-* 00/6:00" in six.read_text() and (T / "systemd" / "apt-daily-upgrade.timer.d" / "52irate-box.conf").exists(), said_)
 msg = security.fix("autoupdate-set:24-1", None)
 rec = security.load_record()["autoupdate"]
 check("  every day, fetch: downloads only; the 6-hour drop-ins gone", 'APT::Periodic::Download-Upgradeable-Packages "1";' in conf.read_text()
@@ -250,16 +251,20 @@ real_run, real_sub = security.run, security.subprocess.run
 security.run = lambda *c, **k: calls.append(c) or __import__("types").SimpleNamespace(stdout=sim if "-s" in c else "", returncode=0, stderr="")
 security.subprocess.run = lambda argv, **k: calls.append(tuple(argv)) or __import__("types").SimpleNamespace(returncode=0)
 log = T / "control-log"
-msg = security.fix("security-check", log)
+got = security.fix("security-check", log)
 check("Check now, manual with Fetch: the lists afresh, then the one security update downloaded, not vim",
-      msg == "the package lists are fresh; downloaded 1 security update, ready to install"
-      and ("apt-get", "install", "-y", "--only-upgrade", "--download-only", "libssl3") in calls and "$ apt-get update" in log.read_text(), msg)
+      msg_ids(got)[1:] == ["security-fix.lists.done", "security-fix.updates.downloaded"] and args_of(got, "security-fix.updates.downloaded") == {"n": 1}
+      and ("apt-get", "install", "-y", "--only-upgrade", "--download-only", "libssl3") in calls and "$ apt-get update" in log.read_text(), got)
 calls.clear()
-check("  Fetch by hand", security.fix("security-fetch", log) == "downloaded 1 security update, ready to install")
-check("  Install by hand", security.fix("security-updates", log) == "installed 1 security update"
+got = security.fix("security-fetch", log)
+check("  Fetch by hand", got["id"] == "security-fix.updates.downloaded" and got["args"] == {"n": 1}, got)
+got = security.fix("security-updates", log)
+check("  Install by hand", got["id"] == "security-fix.updates.installed" and got["args"] == {"n": 1}
       and any("--force-confold" in " ".join(c) for c in calls if isinstance(c, tuple)))
 security.fix("autoupdate-set:24-0", None)
-check("  Check now with Flag: only says what waits", security.fix("security-check", log) == "the package lists are fresh; 1 security update waiting")
+got = security.fix("security-check", log)
+check("  Check now with Flag: only says what waits", msg_ids(got)[1:] == ["security-fix.lists.done", "security-fix.updates.waiting"]
+      and args_of(got, "security-fix.updates.waiting") == {"n": 1}, got)
 apt_arch = T / "archives"; apt_arch.mkdir()
 security.APT_ARCHIVES = apt_arch
 check("  fetched counted from apt's archives", security.fetched_debs(sim) == 0)

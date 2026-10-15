@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Services · Hub</title>
+  <title data-i18n="services.head.title">Services · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚥</text></svg>">
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
@@ -15,26 +15,27 @@
   <!-- Read-only and public: the same facts /status gives every page. Starting and
        stopping stays with ttyd and hubctl, behind the admin login. -->
   <header class="sub-header">
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>Services</h1>
-    <p class="subtitle">Installed services and current state.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="services.header.tip-quick-help" data-i18n="services.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="services.header.tip-back-hub" data-i18n="services.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="services.header.heading">Services</h1>
+    <p class="subtitle" data-i18n="services.header.subtitle">Installed services and current state.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="services.header.aria-theme"></div>
   </header>
 
   <section class="item-section">
     <ul class="item-list service-list" id="service-list">
-      <li class="services-note">Loading service status</li>
+      <li class="services-note" data-i18n="services.body.loading-service-status">Loading service status</li>
     </ul>
     <p class="services-note" id="services-note" hidden></p>
   </section>
 
   <section class="item-section" id="system-section" hidden>
-    <h2>Box</h2>
+    <h2 data-i18n="services.system-section.heading-box">Box</h2>
     <ul class="item-list" id="system-list"></ul>
   </section>
 
   <!-- The controller at its desk, as on /admin's Box and System panes (style.css). -->
   <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
+  <script src="i18n.js"></script>
   <script src="hub.js"></script>
   <script src="krab-loop.js"></script>
   <script src="services.js"></script>

@@ -22,6 +22,8 @@ import re
 import time
 
 from irate_box.hub import uplink
+from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 RECORD = uplink.ETC / "uplink-roaming.json"
 
@@ -53,7 +55,7 @@ def lock(bssid, run=None):
     run = run or uplink.run
     bssid = (bssid or "").lower()
     if not uplink.BSSID_RE.match(bssid):
-        raise ValueError("invalid BSSID: enter six hexadecimal pairs separated by colons")
+        raise Refused(uplink.BAD_BSSID)
     prof = _profile()
     rec = record()
     cur = rec.get("lock")
@@ -66,20 +68,26 @@ def lock(bssid, run=None):
     if not cur:
         code, out = run("nmcli", "-g", "802-11-wireless.bssid", "con", "show", "uuid", prof["uuid"])
         if code:
-            raise ValueError(f"Box could not read the connection profile {prof['name']}: {out}")
+            raise Refused(M("roaming.profile.unreadable", "The box could not read the connection profile {name}. "
+                            "NetworkManager reported: {output}", name=prof["name"], output=out.strip()))
         old = out.strip().replace("\\:", ":")
     else:
         old = cur["old"]
     code, out = run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", bssid)
     if code:
-        raise ValueError(f"nmcli: {out}")
+        raise Refused(M("roaming.lock.failed", "The box could not lock the connection profile {name} to the access point "
+                        "{bssid}. NetworkManager reported: {output}", name=prof["name"], bssid=bssid, output=out.strip()))
     code, out = run("nmcli", "-w", "45", "con", "up", "uuid", prof["uuid"], timeout=60)
     if code:
         # Back to what was in force before this call: the lock there was, or the profile's own value.
         run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", cur["bssid"] if cur else old)
         run("nmcli", "-w", "45", "con", "up", "uuid", prof["uuid"], timeout=60)
-        raise ValueError(f"The access point {bssid} did not answer ({out[-160:]}). " + (f"The profile is still locked to {cur['bssid']}." if cur
-                         else "The box removed the lock.") + " The box restored the WiFi link settings.")
+        if cur:
+            raise Refused(M("roaming.lock.no-answer-kept", "The access point {bssid} did not answer. The connection profile is "
+                            "still locked to {old}. The box restored the WiFi link settings. NetworkManager reported: {output}",
+                            bssid=bssid, old=cur["bssid"], output=out.strip()[-160:]))
+        raise Refused(M("roaming.lock.no-answer", "The access point {bssid} did not answer. The box removed the lock and restored "
+                        "the WiFi link settings. NetworkManager reported: {output}", bssid=bssid, output=out.strip()[-160:]))
     rec["lock"] = {"uuid": prof["uuid"], "name": prof["name"], "bssid": bssid, "old": old, "at": time.time()}
     _save(rec)
     return f"{prof['name']}: locked to {bssid}. The box does not roam and does not scan in the background until you unlock it"
@@ -93,7 +101,8 @@ def unlock(run=None):
         return "not locked"
     code, out = run("nmcli", "con", "modify", "uuid", cur["uuid"], "802-11-wireless.bssid", cur.get("old") or "")
     if code and "not exist" not in out and "unknown connection" not in out.lower():
-        raise ValueError(f"nmcli: {out}")
+        raise Refused(M("roaming.unlock.failed", "The box could not unlock the connection profile {name}. "
+                        "NetworkManager reported: {output}", name=cur["name"], output=out.strip()))
     _save(rec)
     # Not reconnected here: the next connection is free to roam again; the page says so.
     return f"{cur['name']}: unlocked from {cur['bssid']} (the link can roam again from its next connection)"

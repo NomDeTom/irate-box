@@ -28,7 +28,9 @@ const reportButton = (() => {
         try {
           const res = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app, ref, reason: r }) });
           const d = await res.json().catch(() => ({}));
-          menu.replaceChildren(document.createTextNode(d.message || d.error || (res.ok ? 'Report sent.' : 'Report could not be sent.')));
+          // The answer as a message (msg), said in the reader's language where the page has AW; else its English.
+          const said = d.msg && window.AW ? window.AW.say(d.msg) : d.message || d.error;
+          menu.replaceChildren(document.createTextNode(said || (res.ok ? 'Report sent.' : 'Report could not be sent.')));
         } catch (_) { menu.replaceChildren(document.createTextNode('Report could not be sent.')); }
       });
       menu.append(b);

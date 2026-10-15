@@ -258,7 +258,7 @@ U.link_hw = lambda i, run=None: {"mac": {"eth0": "b8:27:eb:1e:3a:13"}.get(i), "p
 said = HC.uplink_set({"settings": dict(S(), watch={"eth0": True, "gone0": True, "wlan0": False})})
 check("saved: each link named, its hardware as it is now; one not here keeps what was recorded",
       kept["watch_hw"] == {"eth0": {"mac": "b8:27:eb:1e:3a:13", "path": "usb:eth0"}, "gone0": {"mac": "aa:bb:cc:dd:ee:01", "path": None},
-                           "wlan0": {"mac": None, "path": "usb:wlan0"}} and "watching the link holding the box's route, eth0 and gone0 (never wlan0)" in said,
+                           "wlan0": {"mac": None, "path": "usb:wlan0"}} and said["id"] == "control.uplink.saved" and said["args"]["links"] == "the link holding the box's route, eth0 and gone0 (never wlan0)",
       (kept.get("watch_hw"), said))
 
 # --- resetting a PCI card and a device on the SoC (root/radio.py) ---

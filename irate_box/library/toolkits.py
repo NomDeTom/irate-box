@@ -18,6 +18,7 @@ import zlib
 
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
+from irate_box.msg import M
 from irate_box.hub import kitdefs
 
 SETTINGS = librarian.LIB_DIR / "toolkits.json"
@@ -54,23 +55,24 @@ def set_settings(changes):
     if "budget_mb" in changes:
         b = changes["budget_mb"]
         if type(b) is not int or not 10 <= b <= 1 << 16:
-            raise LibrarianError("Invalid setting. budget_mb must be from 10 to 65536.")
+            raise LibrarianError(M("toolkits.budget.invalid", "Invalid storage limit. Enter a number of MB from 10 to 65536."))
         cfg["budget_mb"] = b
     if "deep_audit_days" in changes:
         d = changes["deep_audit_days"]
         if type(d) is not int or not 0 <= d <= 90:
-            raise LibrarianError("Invalid setting. deep_audit_days must be from 0 (never on its own) to 90.")
+            raise LibrarianError(M("toolkits.deep-audit.invalid", "Invalid deep audit interval. Enter a number of days from 0 to 90. 0 means never on its own."))
         cfg["deep_audit_days"] = d
     for kid, ch in (changes.get("kits") or {}).items():
         if kid not in cfg["kits"] or not isinstance(ch, dict):
-            raise LibrarianError(f"Source not found: toolkit {kid}")
+            raise LibrarianError(M("toolkits.kit.not-found", "Source not found: toolkit {kit}.", kit=str(kid)))
         if "keep_current" in ch:
             if type(ch["keep_current"]) is not bool:
-                raise LibrarianError("Invalid setting. keep_current must be true or false.")
+                raise LibrarianError(M("toolkits.keep-current.invalid", "Invalid setting. keep_current must be true or false."))
             cfg["kits"][kid]["keep_current"] = ch["keep_current"]
         if "remove_after" in ch:
             if not _hours_ok(ch["remove_after"]):
-                raise LibrarianError(f"Invalid setting. remove_after must be from 1 to {MAX_HOURS} hours, or null for never.")
+                raise LibrarianError(M("toolkits.remove-after.invalid", "Invalid setting. remove_after must be from 1 to {max} hours, or null for never.",
+                                         max=MAX_HOURS))
             cfg["kits"][kid]["remove_after"] = ch["remove_after"]
     librarian._write_json(SETTINGS, cfg)
     return cfg
@@ -106,13 +108,14 @@ def refresh_feed(log=print):
     """debsecan's data for this box's suite (and GENERIC), checked before it replaces the last."""
     s = suite()
     if not s or not re.match(r"^[a-z]{2,20}$", s):
-        raise LibrarianError("Download failed. The Debian suite of this box is unknown (/etc/os-release).")
+        raise LibrarianError(M("toolkits.suite.unknown", "Download failed. The Debian suite of this box is unknown (/etc/os-release)."))
     FEED.mkdir(parents=True, exist_ok=True)
     for name in (s, "GENERIC"):
         with librarian._open(FEED_URL + name, timeout=120) as resp:
             raw = resp.read(64 << 20)
         if not zlib.decompress(raw)[:10] == b"VERSION 1\n":
-            raise LibrarianError(f"Download failed. The debsecan data for {name} is not in a format that the box can read.")
+            raise LibrarianError(M("toolkits.debsecan.unreadable", "Download failed. The debsecan data for {name} is not in a format that the box can read.",
+                                     name=name))
         tmp = FEED / f".{name}.tmp"
         tmp.write_bytes(raw)
         os.replace(tmp, FEED / name)
@@ -150,7 +153,7 @@ def action(payload):
     if what == "define":
         spec = payload.get("kit")
         if not isinstance(spec, dict):
-            raise LibrarianError("Invalid kit. Enter {title, packages, ...}.")
+            raise LibrarianError(M("toolkits.kit.invalid", "Invalid kit. Enter an object with a title and a list of packages."))
         kid = spec.get("id") or re.sub(r"[^a-z0-9]+", "-", str(spec.get("title", "")).lower()).strip("-")[:32]
         if kid in kitdefs.shipped() or kid == "extras":
             kid = f"my-{kid}"[:32]
@@ -162,13 +165,13 @@ def action(payload):
             "packages": [p for p in (pkgs or []) if p], "remove_after_hours": spec.get("remove_after_hours", 24)}})
     kid = payload.get("kit")
     if what != "status" and kid not in definitions():
-        raise LibrarianError("Select a kit: " + ", ".join(definitions()))
+        raise LibrarianError(M("toolkits.kit.unknown", "Unknown kit. Select one of these kits: {kits}.", kits=list(definitions())))
     if what == "fetch":
         return librarian._queue_root({"action": "kit-fetch", "kit": kid, "budget_mb": settings()["budget_mb"]})
     if what in ("install", "keep"):
         hours = payload.get("hours", settings()["kits"][kid]["remove_after"]) if what == "install" else payload.get("hours")
         if not _hours_ok(hours):
-            raise LibrarianError(f"Invalid hours. Enter 1 to {MAX_HOURS}, or null for never.")
+            raise LibrarianError(M("toolkits.hours.invalid", "Invalid hours. Enter 1 to {max}, or null for never.", max=MAX_HOURS))
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid, "hours": hours})
     if what in ("remove", "rollback", "drop-previous"):
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid})
@@ -177,11 +180,12 @@ def action(payload):
     if what == "extra":
         pkgs = payload.get("packages")
         if not isinstance(pkgs, list) or len(pkgs) > 20:
-            raise LibrarianError("Select a list of up to 20 package names.")
+            raise LibrarianError(M("toolkits.extra.invalid", "Invalid package list. Enter up to 20 package names."))
         return librarian._queue_root({"action": "kit-extra", "kit": kid, "packages": [str(p) for p in pkgs]})
     if what == "undefine":
         return librarian._queue_root({"action": "kit-undefine", "kit": kid})
-    raise LibrarianError("Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, status, define, undefine or extra.")
+    raise LibrarianError(M("toolkits.action.invalid", "Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, status, "
+                         "define, undefine or extra."))
 
 
 def step(policy, now=None, log=print):

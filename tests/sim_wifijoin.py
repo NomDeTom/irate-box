@@ -11,6 +11,7 @@ T = Path(tempfile.mkdtemp(prefix="wifijoin-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_NM_CONNECTIONS=str(T / "nm"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import wifijoin as W  # noqa: E402
+from irate_box.msg import Refused, args_of, ids  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -33,8 +34,8 @@ for bad, why in ((("", "wpa-psk", "password1", False), "no name"), (("x" * 33, "
                  (("Home", "open", "password1", False), "a password on an open network"), (("Home", "sae", "password1", "yes"), "hidden not a bool")):
     try:
         W.validate(*bad); check(f"refused: {why}", False)
-    except ValueError as exc:
-        check(f"refused: {why}", "password1" not in str(exc))
+    except Refused as exc:
+        check(f"refused: {why}", "password1" not in str(exc) and "password1" not in json.dumps(exc.message), exc.message)
 W.validate("Café Wi-Fi ☕", "wpa-psk", "a" * 64 if False else "correct horse", False)
 check("a name in any language, with spaces inside", True)
 msg = W.join("Home Net", "wpa-psk", "s3cret-pass;x", hidden=True)
@@ -45,7 +46,7 @@ check("added: one keyfile, root's alone (0600), the network, its password, hidde
       and "hidden=true" in text and "key-mgmt=wpa-psk" in text and "autoconnect-priority=-10" in text)
 check("  loaded into NetworkManager, the password on no command line", any(c[:3] == ("nmcli", "connection", "load") for c in calls)
       and not any("s3cret" in " ".join(c) for c in calls))
-check("  said, without the password; not joined now", "Home Net added" in msg and "s3cret" not in msg and not any(c[:3] == ("nmcli", "connection", "up") for c in calls))
+check("  said, without the password; not joined now", msg["id"] == "wifi-join.added" and msg["args"] == {"ssid": "Home Net"} and "s3cret" not in json.dumps(msg) and not any(c[:3] == ("nmcli", "connection", "up") for c in calls))
 rec = W.record()
 uid = next(iter(rec))
 check("  recorded (root's, 0600), without the password", rec[uid]["ssid"] == "Home Net" and "s3cret" not in json.dumps(rec)
@@ -53,8 +54,8 @@ check("  recorded (root's, 0600), without the password", rec[uid]["ssid"] == "Ho
 check("  the page's list has no password", "s3cret" not in json.dumps(W.public()) and W.public()[0]["ssid"] == "Home Net")
 try:
     W.join("Home Net", "wpa-psk", "another-pass"); check("the same name again: refused (forget it first)", False)
-except ValueError:
-    check("the same name again: refused (forget it first)", True)
+except Refused as exc:
+    check("the same name again: refused (forget it first)", exc.message["id"] == "wifi-join.exists", exc.message)
 calls.clear()
 up_fails.clear()
 import uuid as _u
@@ -65,20 +66,20 @@ msg = W.join("Cafe", "sae", "wrong-password", now=True, sleep=lambda s: None)
 _u.uuid4 = real
 ups = [c[4] for c in calls if c[:3] == ("nmcli", "connection", "up")]
 check("join now, and it fails: back up on the network it was on, said so, kept to join when in reach",
-      ups == ["33333333-3333-4333-8333-333333333333", "1111aaaa-0000-4000-8000-000000000001"] and "back on the network it was on" in msg
-      and "wrong-password" not in msg, ups)
+      ups == ["33333333-3333-4333-8333-333333333333", "1111aaaa-0000-4000-8000-000000000001"] and msg["id"] == "wifi-join.failed-back"
+      and msg["args"]["ssid"] == "Cafe" and "wrong-password" not in json.dumps(msg), (ups, msg))
 up_fails.clear()
 msg = W.join("Open Cafe", "open", "", now=True)
 check("open, joined now: no security section, on it", "[wifi-security]" not in [f.read_text() for f in (T / "nm").glob("*.nmconnection") if "Open Cafe" in f.read_text()][0]
-      and "on it now" in msg)
+      and msg["id"] == "wifi-join.joined", msg)
 try:
     W.forget("1111aaaa-0000-4000-8000-000000000001"); check("forget the owner's own network: refused", False)
-except ValueError as exc:
-    check("forget the owner's own network: refused", "added on this page" in str(exc))
+except Refused as exc:
+    check("forget the owner's own network: refused", exc.message["id"] == "wifi-join.forget.not-ours", exc.message)
 calls.clear()
 msg = W.forget(uid)
 check("forget one added here: deleted in NetworkManager, its keyfile gone, off the record", ("nmcli", "connection", "delete", "uuid", uid) in calls
-      and not any("Home Net" in f.read_text() for f in (T / "nm").glob("*.nmconnection")) and uid not in W.record())
+      and not any("Home Net" in f.read_text() for f in (T / "nm").glob("*.nmconnection")) and uid not in W.record() and msg == {"id": "wifi-join.forgotten", "en": msg["en"], "args": {"ssid": "Home Net"}}, msg)
 check("uninstall keeps the rest, and says how to remove them", "Cafe" in W.kept_on_uninstall() and "nmcli connection delete uuid" in W.kept_on_uninstall())
 os.environ["HUB_ETC_DIR"] = str(T / "etc2")
 srv = (REPO / "irate_box/hub/server.py").read_text()

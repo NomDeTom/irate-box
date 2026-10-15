@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 
 from irate_box.library import zimcheck
+from irate_box.msg import M, Refused, render
 from irate_box.root import safeio
 
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
@@ -94,7 +95,7 @@ def candidates(lsblk_json, probe=_probe):
 def devices():
     out = run("lsblk", "-J", "-b", "-o", "NAME,PATH,TYPE,RM,TRAN,FSTYPE,SIZE,LABEL,MOUNTPOINT")
     if out.returncode != 0:
-        raise ValueError("lsblk failed: " + (out.stderr.strip() or "no output"))
+        raise Refused(M("usb.lsblk-failed", "The box could not list the USB drives. lsblk said: {detail}", detail=out.stderr.strip() or "no output"))
     return candidates(out.stdout)
 
 
@@ -108,7 +109,7 @@ class Mounted:
         if self.dev.get("mountpoint"):
             return Path(self.dev["mountpoint"])
         if not re.fullmatch(r"[A-Za-z0-9_-]+", self.dev["name"]):
-            raise ValueError("unexpected device name")
+            raise Refused(M("usb.device.bad-name", "The device name {name} is not valid.", name=self.dev["name"]))
         self.path = MOUNT_ROOT / self.dev["name"]
         self.path.mkdir(parents=True, exist_ok=True)
         # nosymfollow: a stick's own links (ext4 can hold them) lead nowhere root follows.
@@ -116,7 +117,8 @@ class Mounted:
         out = run("mount", "-o", opts, self.dev["path"], str(self.path))
         if out.returncode != 0:
             self.path.rmdir()
-            raise ValueError(f"could not mount {self.dev['name']}: {out.stderr.strip()[:200]}")
+            raise Refused(M("usb.device.mount-failed", "The box could not mount {name}. mount said: {detail}", name=self.dev["name"],
+                         detail=out.stderr.strip()[:200]))
         self.ours = True
         return self.path
 
@@ -157,8 +159,13 @@ def scan():
         fs = (dev.get("fstype") or "").lower()
         if not can.get(fs, True):
             dev["zims"], dev["kits"] = [], []
-            dev["error"] = (f"Filesystem unsupported: this box cannot read {FS_WORDS.get(fs, fs)} because its kernel has no driver for it. "
-                            "Most boxes and computers read FAT and exFAT. Format the USB drive as FAT or exFAT to use it here.")
+            # Only what this box can read is suggested: no filesystem is readable on every box. error, the English, for
+            # a reader of control/usb.json that expects text; error_message, the message, for the page.
+            ok = list(dict.fromkeys(FS_WORDS[n] for n in FS_WORDS if can.get(n)))
+            said = M("usb.fs.unsupported", "This box cannot read {fs}: its kernel has no driver for it. "
+                     "This box can read {names}. Format the USB drive with one of them to use it here.",
+                     fs=FS_WORDS.get(fs, fs), names=ok)
+            dev["error"], dev["error_message"] = render(said), said
             out.append(dev)
             continue
         try:
@@ -176,7 +183,7 @@ def _find(scan_state, name):
     for dev in devices():  # as the box sees it now, not as the last scan did
         if dev["name"] == name:
             return dev
-    raise ValueError(f"USB device unavailable: {name} is not connected now. Scan again")
+    raise Refused(M("usb.device.gone", "USB device unavailable: {name} is not connected now. Scan again.", name=name))
 
 
 def _copy(src, dest, report=None, out=None):
@@ -199,25 +206,26 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
     dev = _find(None, device)
     rel = Path(file)
     if rel.is_absolute() or ".." in rel.parts or rel.suffix.lower() != ".zim":
-        raise ValueError("That file is not a book on the USB drive")
+        raise Refused(M("usb.import.not-a-book", "{file} is not a book on the USB drive.", file=file))
     name = rel.stem
     if not NAME_RE.match(name):
-        raise ValueError(f"{rel.name}: rename the file on the USB drive. Use only letters, digits, '-', '_' and '.'")
+        raise Refused(M("usb.import.bad-name", "The box cannot use the name {file}. On the USB drive, rename the file with only letters, digits, '-', '_' and '.'.",
+                     file=rel.name))
     dest = Path(zim_dir) / f"{name}.zim"
     if dest.exists():
-        raise ValueError(f"Book already exists: the box already has a book called {name}. The box did not change it")
+        raise Refused(M("usb.import.exists", "Book already exists: the box already has a book called {name}. The box did not change it.", name=name))
     with Mounted(dev) as root:
         src = root / rel
         if not src.is_file() or src.is_symlink():
-            raise ValueError("USB device unavailable: the book is not on the USB drive now. Scan again")
+            raise Refused(M("usb.import.book-gone", "USB device unavailable: the book is not on the USB drive now. Scan again."))
         why = zimcheck.header_problem(src)
         if why:
-            raise ValueError(f"Book failed integrity check: the box did not copy {rel.name}. {why}")
+            raise Refused(M("usb.import.check-failed", "Book failed integrity check: the box did not copy {file}. {why}", file=rel.name, why=why))
         size = src.stat().st_size
         free = shutil.disk_usage(zim_dir).free
         if free - size < min_free:
-            raise ValueError(f"Not enough space. The book needs {size >> 20} MB. The box has {free >> 20} MB free. "
-                             f"The box must keep {min_free >> 20} MB free (set in the librarian)")
+            raise Refused(M("usb.import.no-space", "Not enough space. The book needs {need} MB. The box has {free} MB free. "
+                         "The box must keep {keep} MB free (set in the librarian).", need=size >> 20, free=free >> 20, keep=min_free >> 20))
         tmp = Path(zim_dir) / f".{name}.zim.usb"
         try:
             # In the hub's folder: a new file, never through a link, the hub's through its fd.
@@ -226,8 +234,9 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
             _copy(src, tmp, report, out=safeio.create(tmp, 0o644, hub.pw_uid, hub.pw_gid))
             why = zimcheck.problem(tmp, user=hub_user)  # libzim as the hub, not root
             if why:
-                raise ValueError(f"Book failed integrity check: the copy of {rel.name} failed the check. {why} The file looked complete on the USB drive. "
-                                 "The cause can be a failing USB drive, a removed USB drive or a box storage fault. The box added nothing.")
+                raise Refused(M("usb.import.copy-failed", "Book failed integrity check: the copy of {file} failed the check. {why} The file looked complete "
+                             "on the USB drive. The cause can be a failing USB drive, a removed USB drive or a box storage fault. The box added nothing.",
+                             file=rel.name, why=why))
             os.replace(tmp, dest)
         finally:
             tmp.unlink(missing_ok=True)
@@ -235,16 +244,18 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
                           *librarian_cmd, "rebuild-library"],
                          capture_output=True, text=True, timeout=300)
     if out.returncode != 0:
-        raise ValueError(f"Book copied. The library index rebuild failed for {name}: {out.stderr.strip()[-200:]}")
+        raise Refused(M("usb.import.index-failed", "Book copied. The library index rebuild failed for {name}: {detail}", name=name,
+                     detail=out.stderr.strip()[-200:]))
     return name
 
 
 def export_kit(device, kit, budget_report=None):
-    """A toolkit onto the stick's irate-box/kits/ (kits.export_usb), mounted read-write for it."""
+    """A toolkit onto the stick's irate-box/kits/ (kits.export_usb), mounted read-write for it. Returns kits.export_usb's
+    line, in English."""
     from irate_box.root import kits
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
+        raise Refused(M("usb.device.disc", "USB device read-only: this device is a disc. The box cannot write to it."))
     with Mounted(dev, writable=True) as root:
         folder = root / "irate-box" / "kits"
         folder.mkdir(parents=True, exist_ok=True)
@@ -256,7 +267,7 @@ def export_with(device, write):
     from irate_box.root import safeio
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
+        raise Refused(M("usb.device.disc", "USB device read-only: this device is a disc. The box cannot write to it."))
     with Mounted(dev, writable=True) as root:
         folder = root / "irate-box"
         safeio.mkdir(folder, mode=0o755)
@@ -275,20 +286,21 @@ def import_kit(device, kit, budget_mb, report=None):
 def export_zim(device, book, zim_dir, report=None):
     """Copy the hub's <book>.zim to the stick's irate-box/ folder; returns where it went."""
     if not NAME_RE.match(book):
-        raise ValueError("not a book name")
+        raise Refused(M("usb.export.bad-book", "The request is not valid: {book} is not a book name.", book=book))
     src = Path(zim_dir) / f"{book}.zim"
     # A plain file, not a link: zim/ is the hub's, and a link there would have root copy
     # any file it can read onto the stick.
     if src.is_symlink() or not src.is_file():
-        raise ValueError(f"The box has no book called {book}")
+        raise Refused(M("usb.export.no-book", "The box has no book called {book}.", book=book))
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
+        raise Refused(M("usb.device.disc", "USB device read-only: this device is a disc. The box cannot write to it."))
     with Mounted(dev, writable=True) as root:
         folder = root / "irate-box"
         folder.mkdir(exist_ok=True)
         if shutil.disk_usage(folder).free < src.stat().st_size:
-            raise ValueError("Not enough space on the USB drive for this book")
+            raise Refused(M("usb.export.no-space", "Not enough space on the USB drive for {book}. The book needs {need} MB. The USB drive has {free} MB free.",
+                         book=book, need=src.stat().st_size >> 20, free=shutil.disk_usage(folder).free >> 20))
         tmp = folder / f".{book}.zim.part"
         try:
             tmp.unlink(missing_ok=True)
@@ -309,24 +321,26 @@ def root_disk(run_=None):
     """The whole disk holding / (/dev/mmcblk1, /dev/sda …), or ValueError."""
     run_ = run_ or run
     src = run_("findmnt", "-no", "SOURCE", "/").stdout.strip()
+    if not src:
+        raise Refused(M("usb.image.no-source", "The box cannot make an image: it cannot find the device that holds its root filesystem."))
     if not src.startswith("/dev/"):
-        raise ValueError(f"the root filesystem is on {src or 'nothing known'}, not a disk to image")
+        raise Refused(M("usb.image.not-disk", "The box cannot make an image: its root filesystem is on {source}, not on a disk.", source=src))
     parent = run_("lsblk", "-no", "PKNAME", src).stdout.strip()
     disk = f"/dev/{parent}" if parent else src
     if not re.fullmatch(r"/dev/[A-Za-z0-9]+", disk):
-        raise ValueError("unexpected disk name")
+        raise Refused(M("usb.image.bad-disk", "The box cannot make an image: the disk name {disk} is not valid.", disk=disk))
     return disk
 
 
 def export_image(device, report=None, disk=None, stamp=None):
-    """The card, gzipped, onto the stick's irate-box/images/ (parts of 3.9 GB on FAT). Returns where."""
+    """The card, gzipped, onto the stick's irate-box/images/ (parts of 3.9 GB on FAT). Returns where, as a message."""
     import zlib
     dev = _find(None, device)
     if dev["fstype"] == "iso9660":
-        raise ValueError("USB device read-only: this device is a disc. The box cannot write to it")
+        raise Refused(M("usb.device.disc", "USB device read-only: this device is a disc. The box cannot write to it."))
     disk = disk or root_disk()
     if dev["path"].startswith(disk):
-        raise ValueError("This USB device is the disk that the box runs from. Select a different USB drive")
+        raise Refused(M("usb.image.own-disk", "This USB device is the disk that the box runs from. Select a different USB drive."))
     total = int(run("blockdev", "--getsize64", disk).stdout.strip() or 0) if not Path(disk).is_file() else Path(disk).stat().st_size
     used = shutil.disk_usage("/").used
     stamp = stamp or time.strftime("%Y%m%d-%H%M")
@@ -336,8 +350,8 @@ def export_image(device, report=None, disk=None, stamp=None):
         folder = root / "irate-box" / "images"
         folder.mkdir(parents=True, exist_ok=True)
         if shutil.disk_usage(folder).free < used:
-            raise ValueError(f"Not enough space on the USB drive. The image needs at least about {used >> 20} MB (the used space on the box). "
-                             f"The USB drive has {shutil.disk_usage(folder).free >> 20} MB free")
+            raise Refused(M("usb.image.no-space", "Not enough space on the USB drive. The image needs at least about {need} MB (the used space on the box). "
+                         "The USB drive has {free} MB free.", need=used >> 20, free=shutil.disk_usage(folder).free >> 20))
         split = dev["fstype"] in FAT
         parts, out, written, n = [], None, 0, 0
         gz = zlib.compressobj(1, zlib.DEFLATED, 31)
@@ -372,7 +386,8 @@ def export_image(device, report=None, disk=None, stamp=None):
                 out.close()
             for p in parts:
                 (folder / p).unlink(missing_ok=True)
-            raise ValueError(f"Full image incomplete ({exc.strerror or exc}). The box removed the partial files") from None
+            raise Refused(M("usb.image.incomplete", "Full image incomplete ({detail}). The box removed the partial files.",
+                         detail=str(exc.strerror or exc))) from None
         (folder / f"{base}.README.txt").write_text(
             f"A full image of {disk} ({total >> 20} MB), taken {stamp} while the box ran. It is like the state after a power cut.\n"
             + (f"Step 1. Join the {len(parts)} parts: cat {base}.part* > {base}\n" if split else "Step 1. The image is one file. Do not join it.\n")
@@ -380,4 +395,9 @@ def export_image(device, report=None, disk=None, stamp=None):
               "Step 3. Check the device name. The next command erases everything on that device.\n"
             + f"Step 4. Write the image: gunzip -c {base} | sudo dd of=/dev/YOURCARD bs=4M\n"
               "Or open the .img.gz file in an image writer such as Etcher.\n")
-    return f"irate-box/images/{base}" + (f" in {len(parts)} parts" if split else "") + f", from {disk} ({total >> 20} MB)"
+    if split:
+        return M("usb.image.done-parts", {"one": "The box wrote a full image of {disk} ({mb} MB) to irate-box/images/{file} on the USB drive, in {n} part.",
+                                          "other": "The box wrote a full image of {disk} ({mb} MB) to irate-box/images/{file} on the USB drive, in {n} parts."},
+                 disk=disk, mb=total >> 20, file=base, n=len(parts))
+    return M("usb.image.done", "The box wrote a full image of {disk} ({mb} MB) to irate-box/images/{file} on the USB drive.",
+             disk=disk, mb=total >> 20, file=base)

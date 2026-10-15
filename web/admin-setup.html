@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Set up the hub</title>
+  <title data-i18n="admin-setup.head.title">Set up the hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -15,48 +15,49 @@
      are free to anyone on the network until this account is made. -->
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>Set up</h1>
-    <p class="subtitle">Step 1 of 5: create the administrator account for this box.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-setup.header.tip-quick-help" data-i18n="admin-setup.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="admin-setup.header.tip-back-hub" data-i18n="admin-setup.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-setup.header.heading">Set up</h1>
+    <p class="subtitle" data-i18n="admin-setup.header.subtitle">Step 1 of 5: create the administrator account for this box.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-setup.header.aria-theme"></div>
   </header>
 
   <section>
     <div class="help-lead">
-      <p><strong>This box has no administrator account yet.</strong> The person who creates the administrator
+      <p data-i18n="admin-setup.body.box-no-administrator-account"><strong>This box has no administrator account yet.</strong> The person who creates the administrator
         account here controls the box. The account opens the administration pages, the terminal at /term and
         Syncthing at /sync. Later, sign in with it where everyone signs in (👤 Sign in, at the top of the hub).</p>
-      <p>Until the account exists, anyone on this network can use the administration pages. Create the account
+      <p data-i18n="admin-setup.body.until-account-exists-anyone">Until the account exists, anyone on this network can use the administration pages. Create the account
         now. If you are a guest and not the administrator, do not use this page.</p>
-      <p>After this step, the administration pages guide you through the rest: how guests reach the box,
+      <p data-i18n="admin-setup.body.after-step-administration-pages">After this step, the administration pages guide you through the rest: how guests reach the box,
         what the box exposes, add-ons and books. You can skip each step and do it later.</p>
     </div>
     <!-- Over HTTP: the safer ways first, and the form only when selected (setup-http). -->
     <div class="settings-note admin-note bad" id="setup-http" hidden>
-      <p><strong>This page is open over HTTP.</strong> Other devices on this network can read a password that
+      <p data-i18n="admin-setup.body.page-open-over-http"><strong>This page is open over HTTP.</strong> Other devices on this network can read a password that
         you type here. Use one of these safer ways:</p>
       <ul>
-        <li>If this box has HTTPS enabled, open <a id="setup-https-link" href="#">the same page over HTTPS</a>.</li>
-        <li>At the box console over SSH, run: <code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code></li>
+        <li data-i18n="admin-setup.body.box-https-enabled-open">If this box has HTTPS enabled, open <a id="setup-https-link" href="#">the same page over HTTPS</a>.</li>
+        <li data-i18n="admin-setup.body.box-console-over-ssh">At the box console over SSH, run: <code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code></li>
       </ul>
-      <label><input type="checkbox" id="setup-http-ok"> Set the password over HTTP anyway. I understand that
+      <label data-i18n="admin-setup.body.label-set-password-over-http"><input type="checkbox" id="setup-http-ok"> Set the password over HTTP anyway. I understand that
         other devices on this network can read it. The box accepts this only for the first administrator password.
         After that, an administrator password can change only over HTTPS or at the console.</label>
     </div>
     <p class="settings-note admin-note" id="setup-note" hidden></p>
     <form id="setup-form" class="library-form">
-      <label>Username (3–32 letters, digits, dots, dashes or underscores) <input name="name" minlength="3" maxlength="32" pattern="[A-Za-z0-9._-]{3,32}" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
-      <label>Password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
-      <label>Confirm password <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
-      <button type="submit" class="action-btn primary">Create administrator account</button>
+      <label data-i18n="admin-setup.body.label-username-3-32-letters">Username (3–32 letters, digits, dots, dashes or underscores) <input name="name" minlength="3" maxlength="32" pattern="[A-Za-z0-9._-]{3,32}" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label data-i18n="admin-setup.body.label-password">Password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+      <label data-i18n="admin-setup.body.label-confirm-password">Confirm password <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
+      <button type="submit" class="action-btn primary" data-i18n="admin-setup.body.btn-create-administrator-account">Create administrator account</button>
     </form>
-    <p class="setting-desc">
+    <p class="setting-desc" data-i18n="admin-setup.body.lose-password-run-command">
       If you lose the password, run this command at the box console over SSH:
       <code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>
       It sets a new password for the same username or for a new administrator.
     </p>
   </section>
 
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script>
   (function () {

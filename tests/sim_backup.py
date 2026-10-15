@@ -106,11 +106,12 @@ H._du = lambda *paths: sum(B.du(p) for p in paths)
 try:
     H.offline_kit({"books": ["book"], "state": "data", "budget_mb": 1}); check("over the budget: refused before anything is made", False)
 except ValueError as exc:
-    check("over the budget: refused before anything is made, the size said", "size limit is 1 MB" in str(exc)
-          and not list((S / "kits").glob(".kit-*")), str(exc))
+    check("over the budget: refused before anything is made, the size said", exc.message["id"] == "control.kit.too-large"
+          and exc.message["args"]["limit"] == 1 and not list((S / "kits").glob(".kit-*")), str(exc))
 
 # The full image onto a "stick": a file standing for the card, written in parts on FAT, joined and read back whole.
 from irate_box.root import usbstick as U  # noqa: E402
+from irate_box.msg import args_of  # noqa: E402
 card = T / "card.img"
 card.write_bytes(os.urandom(300_000) + b"\0" * 700_000)
 stick = T / "stick"; stick.mkdir()
@@ -123,7 +124,7 @@ msg = U.export_image("sdz1", lambda d, t: seen.append((d, t)), disk=str(card), s
 parts = sorted((stick / "irate-box" / "images").glob("*.part*"))
 whole = gzip.decompress(b"".join(p.read_bytes() for p in parts))
 check("the image: in parts on a FAT stick, joined they give back the card byte for byte, with a README", len(parts) >= 3 and whole == card.read_bytes()
-      and (stick / "irate-box" / "images" / "irate-box-image-20261009-1500.img.gz.README.txt").exists() and "parts" in msg and seen[-1][0] == 1_000_000, (len(parts), msg))
+      and (stick / "irate-box" / "images" / "irate-box-image-20261009-1500.img.gz.README.txt").exists() and (args_of(msg, "usb.image.done-parts") or {}).get("n") == len(parts) and seen[-1][0] == 1_000_000, (len(parts), msg))
 U._find = lambda _s, name: {"name": name, "path": "/dev/mmcblk0p2", "fstype": "ext4", "mountpoint": str(stick)}
 try:
     U.export_image("x", disk="/dev/mmcblk0"); check("the box's own disk as the stick: refused", False)
@@ -147,17 +148,17 @@ for bad in ({}, {"books": []}):
     try:
         H.content_export(bad); check("content export with nothing chosen: refused", False)
     except ValueError as exc:
-        check("content export with nothing chosen: refused", "Export selection is empty" in str(exc), str(exc))
+        check("content export with nothing chosen: refused", exc.message["id"] == "control.export.empty", str(exc))
 U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": str(stick)}
 H._kits_status = lambda: None
 msg = H.usb_export_many({"device": "sdz1", "repos": ["public/mine", "private/secret"], "state": "data"})
 check("onto a stick: the repositories and the state in its irate-box/, with import.sh", (stick / "irate-box/git/private/secret.git/HEAD").is_file()
       and (stick / "irate-box/state-backup.tar.gz").is_file() and (stick / "irate-box/import.sh").is_file()
-      and "2 repositories and this box's state on the USB drive" in msg, msg)
+      and msg["id"] == "control.usb.many.done-state" and msg["args"]["items"] == ["public/mine", "private/secret"], msg)
 try:
     H.usb_export_many({"device": "sdz1"}); check("onto a stick with nothing chosen: refused", False)
-except ValueError:
-    check("onto a stick with nothing chosen: refused", True)
+except ValueError as exc:
+    check("onto a stick with nothing chosen: refused", exc.message["id"] == "control.export.empty", str(exc))
 box = T / "otherbox"; (box / "git/public").mkdir(parents=True)
 run = lambda *a: subprocess.run(["sh", str(stick / "irate-box/import.sh"), *a], capture_output=True, text=True,  # noqa: E731
                                 env=dict(os.environ, IRATE_BOX_CLI="/bin/true", HUB_STATE_DIR=str(box)))
@@ -184,7 +185,8 @@ msg = H.content_export({"books": ["book"], "repos": ["public/mine"], "state": "s
 meta = json.loads((H.KITS / "kit.json").read_text())
 out = tarfile.open(H.KITS / meta["name"])
 names = out.getnames()
-check("content export, the download: made, the last kit replaced, its record kept", "Download ready: irate-box-content-abc1234.tar" in msg
+check("content export, the download: made, the last kit replaced, its record kept",
+      msg["id"] == "control.kit.ready" and msg["args"]["name"] == "irate-box-content-abc1234.tar"
       and sorted(p.name for p in H.KITS.iterdir()) == ["irate-box-content-abc1234.tar", "kit.json"] and meta["kind"] == "content"
       and meta["size"] == (H.KITS / meta["name"]).stat().st_size, (msg, sorted(p.name for p in H.KITS.iterdir())))
 check("  its layout: the book at the top of irate-box/, the repository, the state, import.sh",

@@ -15,6 +15,7 @@ T = Path(tempfile.mkdtemp(prefix="radiotests-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_SYSFS=str(T / "sys"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.root import radiotests as R  # noqa: E402
+from irate_box.msg import Refused, args_of, ids  # noqa: E402
 
 fails = 0
 
@@ -73,23 +74,27 @@ nap = lambda s: None  # noqa: E731
 st["guests"] = 1
 try:
     R.check_ready(inv, "wlan0", "radio-reset"); check("refused with guests on the hotspot", False)
-except ValueError as exc:
-    check("refused with guests on the hotspot", "Devices are connected to the hotspot" in str(exc), str(exc))
+except Refused as exc:
+    check("refused with guests on the hotspot", exc.message["id"] == "radio-test.guests", exc.message)
 st["guests"] = 0
 alone = {"radios": [dict(radio, roaming={"aps": [radio["roaming"]["aps"][0]]}), inv["radios"][1]]}
-for i, exp, why in ((alone, "follows-roam", "no access point on another channel"), ({"radios": [radio]}, "follows-roam", "no hotspot"),
-                    (inv, "warp", "not a known experiment"), (inv, "radio-reset", None)):
+for i, exp, why in ((alone, "follows-roam", "radio-test.no-roam"), ({"radios": [radio]}, "follows-roam", "radio-test.no-hotspot"),
+                    (inv, "warp", "radio-test.unknown"), (inv, "radio-reset", None)):
     try:
         R.check_ready(i, "wlan0", exp)
         check(f"ready: {exp}" if why is None else f"refused: {why}", why is None)
-    except ValueError as exc:
-        check(f"refused: {why}", why is not None and why in str(exc), str(exc))
+    except Refused as exc:
+        check(f"refused: {why}", exc.message["id"] == why, exc.message)
 
 said = R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 key = R.radio_key(radio)
 got = R.results()[key]["follows-roam"]
 check("follows-roam: the hotspot moved with the link; kept per radio and driver version",
       got["answer"] == "follows" and "from channel 11 to 6" in got["detail"] and key == "a69c:88dc aic8800_fdrv 6.4.3.0", (key, got))
+check("  said: the question, then the answer; kept as English for the page and as a message",
+      ids(said)[1:] == ["radio-test.q.follows-roam", "text.sentences", "radio-test.roam.follows"]
+      and args_of(said, "radio-test.roam.follows")["before"] == 11 and args_of(got["msg"], "radio-test.roam.follows")["after"] == 6
+      and said["en"] == "{all}", (said, got))
 check("  the profile held to the target for the test, then given back what it had", ran_locks[-2:] == ["50:0f:f5:ad:15:e1", ""]
       and st["lock"] == "" and st["link"] == 11, ran_locks)
 st.update(ignore_lock=True)
@@ -111,7 +116,8 @@ st.update(ap_dies=False)
 radio_mod.reset = lambda *a, **k: "USB 1-1.1 (AIC8800DC) reset at its port. wlan0 is back. The hotspot started again."
 R.experiment(inv, "wlan0", "radio-reset", sleep=nap)
 got = R.results()[key]["radio-reset"]
-check("radio-reset: timed, the link and the hotspot back", got["answer"] == "works" and "The link was back" in got["detail"] and "The hotspot was back" in got["detail"], got)
+check("radio-reset: timed, the link and the hotspot back", got["answer"] == "works" and "The link was back" in got["detail"] and "The hotspot was back" in got["detail"]
+      and {"radio-test.reset.link-back", "radio-test.reset.hotspot-back"} <= set(ids(got["msg"])), got)
 
 R.experiment(inv, "wlan0", "driver-reset", sleep=nap)
 got = R.results()[key]["driver-reset"]
@@ -122,8 +128,8 @@ check("  a driver that didn't reset: said so", R.results()[key]["driver-reset"][
 (params / "fake_cmd_timeout").unlink()
 try:
     R.check_ready(inv, "wlan0", "driver-reset"); check("refused: a driver without a fake timeout", False)
-except ValueError as exc:
-    check("refused: a driver without a fake timeout", "no fake command timeout" in str(exc), str(exc))
+except Refused as exc:
+    check("refused: a driver without a fake timeout", exc.message["id"] == "radio-test.no-fake", exc.message)
 check("the answers kept: three experiments for this radio", sorted(R.results()[key]) == ["driver-reset", "follows-roam", "radio-reset"])
 
 shutil.rmtree(T, ignore_errors=True)

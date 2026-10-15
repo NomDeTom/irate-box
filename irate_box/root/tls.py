@@ -35,6 +35,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from irate_box.msg import M, Refused
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 TLS = ETC / "tls"
@@ -154,7 +156,7 @@ def _covered(rec):
 def make_cert():
     rec = _record()
     if not rec.get("ca") or not CA_KEY.exists():
-        raise RuntimeError("no CA yet")
+        raise Refused(M("https.cert.no-ca", "The box has no certificate authority yet. Create one first."))
     names, ips = _covered(rec)
     san = ",".join([f"DNS:{n}" for n in names] + [f"IP:{i}" for i in ips])
     with tempfile.TemporaryDirectory() as tmp:
@@ -236,14 +238,17 @@ def front(on):
         rec["on"] = False
         _write(RECORD, json.dumps(rec), 0o644)
         publish()
-        raise RuntimeError(f"nginx refused the HTTPS server blocks. The box removed them again: {why}")
+        raise Refused(M("https.front.refused", "{server} did not accept the HTTPS server blocks. The box removed them again and serves "
+                     "what it served before. {server} said: {detail}", server=_server(), detail=why))
     rec = _record()
     rec["on"] = on
     if not on:
         rec["admin_only"] = False
     _write(RECORD, json.dumps(rec), 0o644)
     publish()
-    return f"HTTPS enabled on port {TWINS['main']} and on the HTTPS port of each web app" if on else "HTTPS disabled. The box keeps its certificate authority and certificate"
+    if on:
+        return M("https.front.on", "HTTPS is enabled on port {port} and on the HTTPS port of each web app.", port=TWINS["main"])
+    return M("https.front.off", "HTTPS is disabled. The box keeps its certificate authority and its certificate.")
 
 
 def admin_only(on):
@@ -253,7 +258,7 @@ def admin_only(on):
     device trusts the box, so they can't lock themselves out)."""
     rec = _record()
     if on and not rec.get("on"):
-        raise ValueError("HTTPS is disabled. Enable HTTPS first")
+        raise Refused(M("https.admin-only.https-off", "HTTPS is disabled. Enable HTTPS first."))
     port = TWINS["main"]
     there = "" if port == 443 else f":{port}"
     if _server() == "caddy":
@@ -271,42 +276,62 @@ def admin_only(on):
     if not ok:
         f.unlink(missing_ok=True)
         _nginx_check_and_reload()
-        raise RuntimeError(f"nginx refused the change. The box undid the change: {why}")
+        raise Refused(M("https.admin-only.refused", "{server} did not accept the change. The box undid the change. {server} said: {detail}",
+                     server=_server(), detail=why))
     rec["admin_only"] = on
     _write(RECORD, json.dumps(rec), 0o644)
     publish()
-    return "Administrator pages require HTTPS. The box redirects plain HTTP requests to HTTPS" if on else "Administrator pages answer on plain HTTP and on HTTPS"
+    if on:
+        return M("https.admin-only.on", "Administrator pages require HTTPS. The box redirects plain HTTP requests to HTTPS.")
+    return M("https.admin-only.off", "Administrator pages answer on plain HTTP and on HTTPS.")
 
 
-def due(now=None):
-    """Why the server certificate should be re-made now, or None."""
+def _due(now=None):
+    """Why the server certificate should be re-made now, as (case, the addresses it does not cover), or None."""
     now = time.time() if now is None else now
     rec = _record()
     if not rec.get("ca"):
         return None
     c = rec.get("cert")
     if not c or not KEY.exists() or not CHAIN.exists():
-        return "no server certificate"
+        return "missing", []
     if c.get("own"):
         return None  # the owner's own: never replaced by ours
     if now >= c["made"] + (c["expires"] - c["made"]) * 2 / 3:
-        return "two-thirds of its life gone"
+        return "old", []
     _, ips = _covered(rec)
     missing = [i for i in ips if i not in c["addresses"]]
     if missing:
-        return f"the box has an address it does not cover: {', '.join(missing)}"
+        return "address", missing
     return None
 
 
+def due(now=None):
+    """Why the server certificate should be re-made now, or None: English, for status.json and the doctor."""
+    why = _due(now)
+    if not why:
+        return None
+    case, missing = why
+    return {"missing": "no server certificate", "old": "two-thirds of its life gone",
+            "address": f"the box has an address it does not cover: {', '.join(missing)}"}[case]
+
+
 def renew():
-    why = due()
+    why = _due()
     if not why:
         publish()
-        return "The certificate is current"
+        return M("https.renew.current", "The certificate is current.")
     make_cert()
     if _record().get("on"):
         front(True)  # nginx reads the new certificate on a reload
-    return f"Certificate renewed ({why})"
+    case, missing = why
+    if case == "missing":
+        return M("https.renew.missing", "The box made a server certificate, because it had none.")
+    if case == "old":
+        return M("https.renew.old", "The box renewed the certificate, because two-thirds of its life had gone.")
+    return M("https.renew.address", {"one": "The box renewed the certificate to cover its new address {addresses}.",
+                                     "other": "The box renewed the certificate to cover its new addresses {addresses}."},
+             n=len(missing), addresses=missing)
 
 
 # --- bring your own ------------------------------------------------------------------------------
@@ -331,9 +356,11 @@ def import_own(chain_pem, key_pem):
     certs = PEM_CERT.findall(chain_pem or "")
     keys = PEM_KEY.findall(key_pem or "")
     if not certs:
-        raise ValueError("The pasted text has no certificate. Paste PEM text that starts with -----BEGIN CERTIFICATE-----")
+        raise Refused(M("https.import.no-cert", "The pasted text has no certificate. Paste PEM text that starts with {begin}",
+                     begin="-----BEGIN CERTIFICATE-----"))
     if len(keys) != 1:
-        raise ValueError("Paste exactly one unencrypted private key in PEM format. It starts with -----BEGIN PRIVATE KEY-----")
+        raise Refused(M("https.import.key-count", "Paste exactly one unencrypted private key in PEM format. It starts with {begin}",
+                     begin="-----BEGIN PRIVATE KEY-----"))
     with tempfile.TemporaryDirectory() as tmp:
         leaf, rest, key = Path(tmp) / "leaf.pem", Path(tmp) / "rest.pem", Path(tmp) / "key.pem"
         leaf.write_text(certs[0] + "\n")
@@ -341,21 +368,24 @@ def import_own(chain_pem, key_pem):
         key.write_text(keys[0] + "\n")
         os.chmod(key, 0o600)
         try:
-            if openssl("x509", "-in", str(leaf), "-noout", "-pubkey") != openssl("pkey", "-in", str(key), "-pubout"):
-                raise ValueError("Certificate and key do not match. Paste the key that belongs to the first certificate")
+            matches = openssl("x509", "-in", str(leaf), "-noout", "-pubkey") == openssl("pkey", "-in", str(key), "-pubout")
         except RuntimeError as exc:
-            raise ValueError(f"The box cannot read the certificate or the key: {exc}")
+            raise Refused(M("https.import.unreadable", "The box cannot read the certificate or the key. openssl said: {detail}", detail=str(exc)))
+        if not matches:
+            raise Refused(M("https.import.mismatch", "The certificate and the key do not match. Paste the key that belongs to the first certificate."))
         if subprocess.run(["openssl", "x509", "-in", str(leaf), "-noout", "-checkend", "0"], capture_output=True).returncode != 0:
-            raise ValueError("Certificate expired. Import a certificate that is still valid")
+            raise Refused(M("https.import.expired", "The certificate has expired. Import a certificate that is still valid."))
         args = ["openssl", "verify"] + (["-CAfile", TRUST] if TRUST else []) + (["-untrusted", str(rest)] if len(certs) > 1 else []) + [str(leaf)]
         v = subprocess.run(args, capture_output=True, text=True)
         if v.returncode != 0:
             why = (v.stderr or v.stdout).strip().splitlines()[-1:] or ["openssl verify failed"]
-            raise ValueError(f"Certificate chain incomplete or not trusted by this box. Paste the intermediates after the certificate: {why[0][:200]}")
+            raise Refused(M("https.import.chain", "The certificate chain is incomplete, or this box does not trust it. "
+                         "Paste the intermediate certificates after the certificate. openssl said: {detail}", detail=why[0][:200]))
         san = subprocess.run(["openssl", "x509", "-in", str(leaf), "-noout", "-ext", "subjectAltName"], capture_output=True, text=True).stdout
         names = re.findall(r"DNS:([^,\s]+)", san)
         if not names:
-            raise ValueError("The certificate has no DNS name in its subjectAltName field. Import a certificate with at least one DNS name")
+            raise Refused(M("https.import.no-dns", "The certificate has no DNS name in its subjectAltName field. "
+                         "Import a certificate with at least one DNS name."))
         expires = _not_after(leaf)
         TLS.mkdir(parents=True, exist_ok=True)
         _write(KEY, keys[0] + "\n", 0o640, FRONT_GROUP or None)
@@ -364,17 +394,18 @@ def import_own(chain_pem, key_pem):
     rec["cert"] = {"made": int(time.time()), "expires": expires, "names": names, "addresses": [], "own": True}
     _write(RECORD, json.dumps(rec), 0o644)
     front(True)
-    return f"Your certificate for {', '.join(names)} is in use until {time.strftime('%Y-%m-%d', time.gmtime(expires))}. The box does not renew it"
+    return M("https.import.done", "Your certificate for {names} is in use until {expires}. The box does not renew it.",
+             names=names, expires=time.strftime("%Y-%m-%d", time.gmtime(expires)))
 
 
 def use_box_own():
     """Back from the owner's certificate to the box's own (its CA's)."""
     rec = _record()
     if not rec.get("ca"):
-        raise ValueError("The box has no certificate authority of its own. Create one first")
+        raise Refused(M("https.box.no-ca", "The box has no certificate authority of its own. Create one first."))
     make_cert()
     front(True)
-    return "The box certificate is in use again"
+    return M("https.box.done", "The certificate of the box is in use again.")
 
 
 def status():

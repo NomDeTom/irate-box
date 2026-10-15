@@ -39,6 +39,9 @@ import subprocess
 import time
 from pathlib import Path
 from irate_box import confine
+from irate_box.hub import refused
+from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).resolve().parents[2] / "git"))
 AREAS = {"public": "/git/", "private": "/git-private/"}
@@ -61,6 +64,7 @@ MAX_PUSH = 64 * 2**20
 # A name as typed, without ".git"; it becomes <name>.git, which is what URLs and cgit show.
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MAX_DESC = 200
+DESCRIPTION_BAD = M("git.description.invalid", "Enter a description of one line, up to {most} characters.", most=MAX_DESC)
 HOOKS = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks"
 # Public repositories' own: guests may not rewrite or delete, and a size cap.
 HOOKS_PUBLIC = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks-public"
@@ -129,7 +133,27 @@ def mirror_of(path):
 
 def _not_a_mirror(path):
     if mirror_of(path):
-        raise ValueError(f"Mirror is read-only. {path.name} is a mirror that the librarian keeps up to date. To remove it, use Mirrors.")
+        raise Refused(M("git.repo.mirror", "Mirror is read-only. The librarian keeps {name} up to date. To remove it, use Mirrors.",
+                        name=path.name))
+
+
+# A refusal that names an area is one message per area: "public" and "private" are words to translate.
+def _not_found(path):
+    if path.parent.name == "public":
+        return M("git.repo.not-found-public", "Repository not found. The public area has no repository {name}.", name=path.name)
+    return M("git.repo.not-found-private", "Repository not found. The private area has no repository {name}.", name=path.name)
+
+
+def _exists(name, area):
+    if area == "public":
+        return M("git.repo.exists-public", "Repository already exists. The public area has a repository {name}.", name=name)
+    return M("git.repo.exists-private", "Repository already exists. The private area has a repository {name}.", name=name)
+
+
+def _preset_bad(area):
+    if area == "public":
+        return M("git.preset.invalid-public", "Select a preset for public repositories: {presets}.", presets=", ".join(PRESETS["public"]))
+    return M("git.preset.invalid-private", "Select a preset for private repositories: {presets}.", presets=", ".join(PRESETS["private"]))
 
 
 def preset_of(area, level):
@@ -139,7 +163,7 @@ def preset_of(area, level):
 def set_write_level(path, level):
     """The level, and http.receivepack to match (git's own refusal, if the front ever let a push by)."""
     if level not in PRESETS[path.parent.name].values():
-        raise ValueError(f"Select a preset for {path.parent.name} repositories: {', '.join(PRESETS[path.parent.name])}.")
+        raise Refused(_preset_bad(path.parent.name))
     _git("config", "irate-box.write", level, cwd=path)
     _git("config", "http.receivepack", "false" if level == "nobody" else "true", cwd=path)
 
@@ -192,17 +216,18 @@ def snapshot():
 
 def _target(payload):
     if not isinstance(payload, dict):
-        raise ValueError("Select an area and enter a repository name.")
+        raise Refused(M("git.target.missing", "Select an area and enter a repository name."))
     area, name = payload.get("area"), payload.get("name")
     if area not in AREAS:
-        raise ValueError("Select destination area: public or private.")
+        raise Refused(M("git.area.invalid", "Select destination area: public or private."))
     if not isinstance(name, str):
-        raise ValueError("Enter a repository name.")
+        raise Refused(M("git.name.missing", "Enter a repository name."))
     name = name.strip()
     if name.endswith(".git"):
         name = name[:-4]
     if not NAME_RE.match(name):
-        raise ValueError("Invalid repository name. Use letters, digits, '.', '_' and '-', up to 64 characters. Start with a letter or digit.")
+        raise Refused(M("git.name.invalid", "Invalid repository name. Use letters, digits, '.', '_' and '-', up to 64 characters. "
+                                            "Start with a letter or digit."))
     return confine.under(ROOT, area, f"{name}.git")
 
 
@@ -214,13 +239,14 @@ def action(payload):
         if what == "create":
             path = _target(payload)
             if path.exists():
-                raise ValueError(f"Repository already exists: {path.name} in {path.parent.name}.")
+                raise Refused(_exists(path.name, path.parent.name))
             desc = payload.get("description") or ""
             if not isinstance(desc, str) or len(desc) > MAX_DESC or "\n" in desc:
-                raise ValueError(f"Enter a description of one line, up to {MAX_DESC} characters.")
+                raise Refused(DESCRIPTION_BAD)
             out = _git("init", "--quiet", "--bare", "--initial-branch=main", str(path))
             if out.returncode != 0:
-                raise ValueError((out.stderr.strip().splitlines() or ["git init failed"])[-1])
+                raise Refused(M("git.init.failed", "Git cannot make the repository ({detail}).",
+                                detail=(out.stderr.strip().splitlines() or ["git init failed"])[-1]))
             set_write_level(path, "admin")  # the area's default; the page changes it
             if path.parent.name == "private":
                 _git("config", "core.hooksPath", str(HOOKS), cwd=path)
@@ -231,28 +257,28 @@ def action(payload):
         elif what == "delete":
             path = _target(payload)
             if not (path / "HEAD").exists():
-                raise ValueError(f"Repository not found: {path.name} in {path.parent.name}.")
+                raise Refused(_not_found(path))
             _not_a_mirror(path)
             shutil.rmtree(path)
         elif what == "describe":
             path = _target(payload)
             desc = payload.get("description")
             if not (path / "HEAD").exists():
-                raise ValueError(f"Repository not found: {path.name} in {path.parent.name}.")
+                raise Refused(_not_found(path))
             if not isinstance(desc, str) or len(desc) > MAX_DESC or "\n" in desc:
-                raise ValueError(f"Enter a description of one line, up to {MAX_DESC} characters.")
+                raise Refused(DESCRIPTION_BAD)
             (path / "description").write_text(desc.strip() + "\n")
         elif what == "move":
             path = _target(payload)
             if not (path / "HEAD").exists():
-                raise ValueError(f"Repository not found: {path.name} in {path.parent.name}.")
+                raise Refused(_not_found(path))
             _not_a_mirror(path)
             to = payload.get("to")
             if to not in AREAS or to == path.parent.name:
-                raise ValueError("Select destination area: the other area.")
+                raise Refused(M("git.move.area", "Select destination area. A repository moves to the other area."))
             dest = confine.under(ROOT, to, path.name)
             if dest.exists():
-                raise ValueError(f"Repository already exists: {path.name} in {to}.")
+                raise Refused(_exists(path.name, to))
             level = write_level(path)
             os.rename(path, dest)
             # Its hooks and level as the new area has them: anyone-may-push is public-only, and
@@ -262,14 +288,14 @@ def action(payload):
         elif what == "publish":
             src, dst = _target(payload.get("from") or {}), _target(payload.get("to") or {})
             if src == dst:
-                raise ValueError("Select a different destination repository.")
+                raise Refused(M("git.publish.same", "Select a different destination repository."))
             for r in (src, dst):
                 if not (r / "HEAD").exists():
-                    raise ValueError(f"Repository not found: {r.name} in {r.parent.name}.")
+                    raise Refused(_not_found(r))
             refs = payload.get("refs") or ["main"]
             if not isinstance(refs, list) or not refs or len(refs) > 20 or not all(
                     isinstance(r, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$", r) and ".." not in r for r in refs):
-                raise ValueError("Select up to 20 references (branch or tag names).")
+                raise Refused(M("git.publish.refs", "Select up to 20 references (branch or tag names)."))
             specs = []
             for r in refs:
                 if _git("show-ref", "--verify", "--quiet", f"refs/heads/{r}", cwd=src).returncode == 0:
@@ -277,36 +303,37 @@ def action(payload):
                 elif _git("show-ref", "--verify", "--quiet", f"refs/tags/{r}", cwd=src).returncode == 0:
                     specs.append(f"+refs/tags/{r}:refs/tags/{r}")
                 else:
-                    raise ValueError(f"Reference not found: {src.name} has no branch or tag {r}.")
+                    raise Refused(M("git.publish.ref-not-found", "Reference not found. {repo} has no branch or tag {ref}.", repo=src.name, ref=r))
             # The hub's own copy between its own repositories: not a push, so the destination's
             # preset (read-only, say) does not apply; the owner chose this on /admin.
             out = _git("fetch", "--quiet", "--no-write-fetch-head", str(src), *specs, cwd=dst)
             if out.returncode != 0:
-                raise ValueError((out.stderr.strip().splitlines() or ["git fetch failed"])[-1])
+                raise Refused(M("git.publish.failed", "Git cannot copy the references ({detail}).",
+                                detail=(out.stderr.strip().splitlines() or ["git fetch failed"])[-1]))
         elif what == "preset":
             path = _target(payload)
             if not (path / "HEAD").exists():
-                raise ValueError(f"Repository not found: {path.name} in {path.parent.name}.")
+                raise Refused(_not_found(path))
             _not_a_mirror(path)
             preset = payload.get("preset")
             if preset not in PRESETS[path.parent.name]:
-                raise ValueError(f"Select a preset for {path.parent.name} repositories: {', '.join(PRESETS[path.parent.name])}.")
+                raise Refused(_preset_bad(path.parent.name))
             set_write_level(path, PRESETS[path.parent.name][preset])
         elif what == "build":
             path = _target(payload)
             if not (path / "HEAD").exists():
-                raise ValueError(f"Repository not found: {path.name} in {path.parent.name}.")
+                raise Refused(_not_found(path))
             _not_a_mirror(path)
             on = payload.get("on")
             if type(on) is not bool:
-                raise ValueError("on must be true or false.")
+                raise Refused(M("git.build.on", "The build switch must be true or false."))
             if on and (path.parent.name != "private" or write_level(path) != "admin"):
-                raise ValueError("Build access restriction: builds need a private repository where only administrators can push.")
+                raise Refused(M("git.build.access", "Build access restriction. Builds need a private repository where only administrators can push."))
             _git("config", "irate-box.ci", "on" if on else "off", cwd=path)
         else:
-            raise ValueError("Action must be create, delete, describe, preset, move, publish or build.")
+            raise Refused(M("git.action.invalid", "The action must be create, delete, describe, preset, move, publish or build."))
     except ValueError as exc:
-        return 400, {"error": str(exc)}
+        return 400, refused.answer(exc)
     except OSError as exc:
         return 500, {"error": str(exc)}
     return 200, snapshot()

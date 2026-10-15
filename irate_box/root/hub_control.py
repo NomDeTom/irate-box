@@ -147,7 +147,7 @@ from pathlib import Path
 
 from irate_box.finding import finding
 from irate_box.hub import access
-from irate_box.msg import M, is_message, render, when
+from irate_box.msg import M, Refused, duration, is_message, render, text as paragraph, when
 from irate_box.root import health
 from irate_box.root import signing
 from irate_box.hub import manifests
@@ -258,6 +258,22 @@ def run(*cmd, timeout=120, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
 
 
+# What every action answers, and why it refuses, are messages (msg.py): whole sentences with stable IDs. Names,
+# paths, commands and what a program printed are their arguments, never part of the English. The result keeps
+# the English for every reader that expects text (answer).
+
+def _why(exc):
+    """What an exception says, as an argument: its message where it has one (Refused, or another module's own),
+    else its text."""
+    said = getattr(exc, "message", None)
+    return said if is_message(said) else str(exc)
+
+
+def _last_line(text, limit=300):
+    """The last line a program printed, as evidence for a message, or "?"."""
+    return ((text or "").strip().splitlines() or ["?"])[-1][:limit]
+
+
 # Root's files in control/: safeio.write, a new file renamed into place, never through
 # a link the hub planted; left root's, 0644, which the hub reads. Nothing is chowned to the hub.
 
@@ -265,33 +281,66 @@ def run(*cmd, timeout=120, **kw):
 def service(req):
     unit, op = str(req.get("unit", "")), str(req.get("op", ""))
     if unit not in UNITS:
-        raise ValueError(f"{unit} is not a service that the administration pages control")
+        raise Refused(M("control.service.unknown", "The administration pages do not control {unit}.", unit=unit))
     if op not in UNITS[unit]:
-        raise ValueError(f"The action {op} is not available for {unit}.")
+        raise Refused(M("control.service.op-unavailable", "The action {op} is not available for {unit}.", op=op, unit=unit))
     if run("systemctl", "cat", unit).returncode != 0:
-        raise ValueError(f"{unit} is not installed")
+        raise Refused(M("control.service.not-installed", "The service {unit} is not installed.", unit=unit))
     args = {"enable": ("enable", "--now"), "disable": ("disable", "--now")}.get(op, (op,))
     if unit == "irate-box.service":
         # Restarting the hub from a request the hub made: answer first, then go.
         subprocess.Popen(["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit])
-        return f"{unit} is restarting."
+        return M("control.service.restarting", "The service {unit} is restarting.", unit=unit)
     out = run("systemctl", *args, unit)
     if out.returncode != 0:
-        raise ValueError((out.stderr or out.stdout).strip().splitlines()[-1] if (out.stderr or out.stdout).strip() else f"Service {op} failed for {unit}.")
-    return f"{unit}: {op} complete. The service is now {run('systemctl', 'is-active', unit).stdout.strip()}."
+        said = (out.stderr or out.stdout).strip()
+        if said:
+            raise Refused(M("control.service.failed", "The action {op} failed for {unit}. systemctl said: {output}",
+                            op=op, unit=unit, output=_last_line(said)))
+        raise Refused(M("control.service.failed-silent", "The action {op} failed for {unit}.", op=op, unit=unit))
+    # The state is systemd's own word (active, inactive, failed …): data.
+    return M("control.service.done", "The action {op} is complete for {unit}. The service state is now {state}.",
+             op=op, unit=unit, state=run("systemctl", "is-active", unit).stdout.strip())
+
+
+MAX_PASSWORD = 128
+PASSWORD_LENGTH = M("control.password.length", "The password must have {min} to {max} characters on one line.",
+                    min=MIN_PASSWORD, max=MAX_PASSWORD)
+# The box's own sign-in for scripts (HTTP basic auth, user admin): not a hub account, and not an account of the system.
+SCRIPT_USER = "admin"
+
+
+def _password_ok(pw):
+    return MIN_PASSWORD <= len(pw) <= MAX_PASSWORD and not any(c in pw for c in "\n\r\0")
 
 
 def password(req):
     pw = str(req.get("password", ""))
-    if len(pw) < MIN_PASSWORD or len(pw) > 128 or any(c in pw for c in "\n\r\0"):
-        raise ValueError(f"The password must have {MIN_PASSWORD} to 128 characters on one line.")
+    if not _password_ok(pw):
+        raise Refused(PASSWORD_LENGTH)
     if req.get("setup") and not UNCLAIMED.exists():
-        raise ValueError("The administrator password is already set. Sign in to change it.")
+        raise Refused(M("control.password.already-set", "The password of the user {user} is already set. Sign in to change it.",
+                        user=SCRIPT_USER))
     done = set_login(pw)
     if req.get("setup"):
         UNCLAIMED.unlink(missing_ok=True)
-        return "Administrator password set. Updated: " + done
-    return "Administrator password changed. Updated: " + done
+    return _password_saved(done)
+
+
+def _password_saved(done):
+    """set_login's record said: where the password went, and the two things that can come with it."""
+    places, on_again, failed = done["places"], done["on_again"], done["failed"]
+    if on_again and failed:
+        return M("control.password.saved.on-again.failed", "The new password of the user {user} is saved for {places}. "
+                 "Script sign-in is enabled again. {failed} did not accept the new password.",
+                 user=SCRIPT_USER, places=places, failed=failed)
+    if on_again:
+        return M("control.password.saved.on-again", "The new password of the user {user} is saved for {places}. "
+                 "Script sign-in is enabled again.", user=SCRIPT_USER, places=places)
+    if failed:
+        return M("control.password.saved.failed", "The new password of the user {user} is saved for {places}. "
+                 "{failed} did not accept the new password.", user=SCRIPT_USER, places=places, failed=failed)
+    return M("control.password.saved", "The new password of the user {user} is saved for {places}.", user=SCRIPT_USER, places=places)
 
 
 def reset_password():
@@ -300,7 +349,9 @@ def reset_password():
     set_login(secrets.token_urlsafe(24), keep=False)
     UNCLAIMED.write_text("no admin password chosen yet (hub_control.py reset-password)\n")
     UNCLAIMED.chmod(0o644)
-    return "Administrator password reset. Until someone sets a new password, the next visitor to /admin can set it and become the administrator"
+    return M("control.password.reset", "The password of the user {user} is reset, and initial setup is open again. "
+             "Until someone sets a new password, any person who can reach the box can open {page}, "
+             "set the password and become the administrator.", user=SCRIPT_USER, page="/admin")
 
 
 def _set_nginx_login(pw):
@@ -308,12 +359,12 @@ def _set_nginx_login(pw):
     request and caches nothing, and bcrypt at Caddy's cost takes seconds a check on a small
     board (this: milliseconds). nginx reads the file per request, so nothing needs reloading."""
     if not NGINX_LOGINS.exists():
-        raise ValueError(f"No script login file at {NGINX_LOGINS}")
+        raise Refused(M("control.password.no-file", "The script sign-in file {path} does not exist.", path=str(NGINX_LOGINS)))
     out = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=pw + "\n",
                          capture_output=True, text=True, timeout=30)
     hashed = out.stdout.strip()
     if out.returncode != 0 or not hashed.startswith("$6$"):
-        raise ValueError("openssl passwd failed")
+        raise Refused(_hash_failed("openssl passwd"))
     gid = NGINX_LOGINS.stat().st_gid  # nginx's group, as install.sh set it
     tmp = NGINX_LOGINS.with_name(NGINX_LOGINS.name + ".new")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -323,7 +374,7 @@ def _set_nginx_login(pw):
         os.chown(tmp, 0, gid)
     os.chmod(tmp, 0o640)
     os.replace(tmp, NGINX_LOGINS)
-    return "nginx (1 script login)"
+    return "nginx"
 
 
 def _set_caddy_login(pw):
@@ -331,27 +382,32 @@ def _set_caddy_login(pw):
     # On stdin, not the command line, which every process can read in /proc.
     hashed = run("caddy", "hash-password", input=pw + "\n")
     if hashed.returncode != 0:
-        raise ValueError("caddy hash-password failed")
-    count = _caddy_login_swap(hashed.stdout.strip())
+        raise Refused(_hash_failed("caddy hash-password"))
+    _caddy_login_swap(hashed.stdout.strip())
     # The private apps' snippets carry the hash too.
     if CADDY_ACCESS.is_dir():
         _access_files(access.read(ACCESS_FILE))
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
     subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
-    return f"Caddy ({count} script logins)"
+    return "Caddy"
+
+
+def _hash_failed(command):
+    return M("control.password.hash-failed", "The command {command} failed. Nothing changed.", command=command)
 
 
 def set_login(pw, keep=True):
     """Put pw everywhere the admin login is used. keep=False leaves /etc/hub/admin-password
     out (removed): a random placeholder nobody is meant to know. A new password turns the box's
-    own login back on if it was off (reset-password at the console is the way back in)."""
+    own login back on if it was off (reset-password at the console is the way back in).
+    Returns {"places": the programs that took it, "failed": those that did not, "on_again": whether it was off}."""
     # The web server first: if its new login cannot be written, nothing else has changed.
     web = _set_nginx_login(pw) if WEB_SERVER == "nginx" else _set_caddy_login(pw)
-    if ADMIN_LOGIN_OFF.exists():
+    on_again = ADMIN_LOGIN_OFF.exists()
+    if on_again:
         ADMIN_LOGIN_OFF.unlink()
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
-        web += ", the script login on again"
     _admin_login_record()
 
     secret = ETC / "admin-password"
@@ -369,10 +425,10 @@ def set_login(pw, keep=True):
     # ttyd has no credential of its own; an older install may still have one, the old password,
     # which is no use to anyone once it changes: it goes.
     (ETC / "ttyd.env").unlink(missing_ok=True)
-    done = [web]
+    done = {"places": [web], "failed": [], "on_again": on_again}
     if run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode == 0:
-        done.append("Syncthing" if syncthing_gui_password(pw) else "Syncthing (failed)")
-    return ", ".join(d for d in done if d)
+        done["places" if syncthing_gui_password(pw) else "failed"].append("Syncthing")
+    return done
 
 
 SYNCTHING_GUI = "http://127.0.0.1:8384"
@@ -430,28 +486,46 @@ def kit_choices(req):
         zims = [ZIM_DIR / f"{b}.zim" for b in books]
         missing = [z.stem for z in zims if not z.is_file() or z.is_symlink()]
         if missing:
-            raise ValueError(f"This box has no book named: {', '.join(missing[:3])}")
+            raise Refused(M("control.kit.no-book", {"one": "This box has no book named {names}.",
+                                                    "other": "This box has no books named {names}."},
+                            n=len(missing), names=missing[:3]))
     elif books is False or books is None:
         zims = []
     else:
-        raise ValueError("books: true, false, or a list of book names")
+        raise Refused(M("control.kit.books-bad", "The request must give the books as true, false or a list of book names."))
     kit_ids = req.get("kits") or []
     if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
-        raise ValueError("kits: a list of toolkit ids")
+        raise Refused(KITS_BAD)
     repos = req.get("repos") or []
     if not isinstance(repos, list) or not all(isinstance(r, str) and REPO_RE.match(r) for r in repos):
-        raise ValueError("repos: a list of area/name")
+        raise Refused(M("control.kit.repos-bad", "The request must give the repositories as a list of names in the form {form}.",
+                        form="area/name"))
     repo_dirs = [STATE / "git" / f"{r}.git" for r in repos]
     gone = [r for r, d in zip(repos, repo_dirs) if not d.is_dir() or d.is_symlink()]
     if gone:
-        raise ValueError(f"This box has no repository named: {', '.join(gone[:3])}")
+        raise Refused(M("control.kit.no-repo", {"one": "This box has no repository named {names}.",
+                                                "other": "This box has no repositories named {names}."},
+                        n=len(gone), names=gone[:3]))
     state = req.get("state", "none")
     if state not in ("none", "settings", "data"):
-        raise ValueError("state: none, settings or data")
+        raise Refused(M("control.kit.state-bad", "The request must give the box state as one of these values: {values}.",
+                        values=["none", "settings", "data"]))
     budget = req.get("budget_mb")
     if budget is not None and (type(budget) is not int or budget <= 0):
-        raise ValueError("budget_mb: a number of MB, or none")
+        raise Refused(M("control.kit.budget-bad", "The request must give the size limit as a whole number of MB, or no limit."))
     return zims, kit_ids, repo_dirs, state, budget
+
+
+KITS_BAD = M("control.kit.kits-bad", "The request must give the toolkits as a list of toolkit IDs.")
+EXPORT_EMPTY = M("control.export.empty", "The export selection is empty. Select at least one item.")
+
+
+def _download_ready(meta):
+    return M("control.kit.ready", "The download is ready: {name} ({size} MB).", name=meta["name"], size=meta["size"] >> 20)
+
+
+def _tar_failed(tar):
+    return Refused(M("control.kit.tar-failed", "The tar command failed: {output}", output=_last_line(tar.stderr)))
 
 
 def offline_kit(req):
@@ -470,7 +544,8 @@ def offline_kit(req):
               + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
               + (_state_size(state) if state != "none" else 0))
     if budget is not None and base + chosen > budget << 20:
-        raise ValueError(f"Estimated kit size is {(base + chosen) >> 20} MB. The size limit is {budget} MB. Select fewer items or increase the size limit.")
+        raise Refused(M("control.kit.too-large", "The estimated kit size is {size} MB. The size limit is {limit} MB. "
+                        "Select fewer items or increase the size limit.", size=(base + chosen) >> 20, limit=budget))
     need = 2 * base + chosen + (64 << 20)
     with KitRoom() as room:
         return _offline_kit(room, zims, apps, arch, need, kit_ids, repo_dirs, state)
@@ -492,7 +567,7 @@ class KitRoom:
         self.fd = safeio._dir_fd(KITS)
         if os.fstat(self.fd).st_uid != ROOT_UID:
             os.close(self.fd)
-            raise ValueError(f"{KITS} is not owned by root. The box did not use it.")
+            raise Refused(M("control.kit.not-root", "Root does not own the folder {path}, so the box did not use it.", path=str(KITS)))
         safeio.mkdir(KIT_WORK, ROOT_UID, ROOT_UID, 0o700)
         self.work = Path(tempfile.mkdtemp(prefix="kit-", dir=KIT_WORK))
         return self
@@ -585,28 +660,30 @@ def content_export(req):
     size = (sum(z.stat().st_size for z in zims) + _du(*repo_dirs) + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
             + (_state_size(state) if state != "none" else 0))
     if not size:
-        raise ValueError("Export selection is empty. Select at least one item.")
+        raise Refused(EXPORT_EMPTY)
     if budget is not None and size > budget << 20:
-        raise ValueError(f"Estimated export size is {size >> 20} MB. The size limit is {budget} MB. Select fewer items or increase the size limit.")
+        raise Refused(M("control.export.too-large", "The estimated export size is {size} MB. The size limit is {limit} MB. "
+                        "Select fewer items or increase the size limit.", size=size >> 20, limit=budget))
     with KitRoom() as room:
         books = sum(z.stat().st_size for z in zims)
         need = 2 * (size - books) + books + (16 << 20)   # the work folder (no books), then the tar (all)
         if room.free() - need < _min_free():
-            raise ValueError(f"Insufficient free storage. Free space required for the export is {need >> 20} MB. Free space available is {room.free() >> 20} MB, "
-                             f"and the box keeps {_min_free() >> 20} MB spare.")
+            raise Refused(M("control.export.no-space", "There is not enough free storage. The export needs {need} MB of free space. "
+                            "{free} MB is free, and the box keeps {spare} MB spare.",
+                            need=need >> 20, free=room.free() >> 20, spare=_min_free() >> 20))
         with Progress("kit", 2 + bool(kit_ids), path=KIT_PROGRESS) as progress:
             work = room.work
             top = work / "irate-box"
             top.mkdir()
             report = []
             if kit_ids:
-                progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
+                progress.step(_copying_kits(kit_ids))
                 (top / "kits").mkdir()
                 for k in kit_ids:
                     report.append(kits.export_usb(k, top / "kits", progress.bytes))
-            progress.step("Adding the repositories and this box's state")
+            progress.step(M("control.progress.extras", "Adding the repositories and the state of this box"))
             report += content_extras(top, repo_dirs, state)
-            progress.step("Packing it into one file")
+            progress.step(PACKING)
             ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
             name = f"irate-box-content-{ver}.tar"
             part = work / name
@@ -615,12 +692,12 @@ def content_export(req):
                 tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box/,",
                           *[z.name for z in zims], timeout=7200)
             if tar.returncode != 0:
-                raise ValueError("The tar command failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+                raise _tar_failed(tar)
             meta = room.publish(part, name, {"name": name, "kind": "content", "at": time.time(), "arch": platform.machine(),
                                              "books": [z.name for z in zims], "kits": list(kit_ids),
                                              "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs], "state": state,
                                              "contents": ([f"book: {z.stem}" for z in zims] + report)[:60]})
-    return f"Download ready: {name} ({meta['size'] >> 20} MB)."
+    return _download_ready(meta)
 
 
 def _state_size(level):
@@ -629,14 +706,26 @@ def _state_size(level):
     return sums["settings"] + (sums["data"] if level == "data" else 0)
 
 
+# What a kit or an export is doing, for its progress bar: labels, in the words the page shows.
+PACKING = M("control.progress.pack", "Packing everything into one file")
+
+
+def _copying_kits(kit_ids):
+    return M("control.progress.kits", {"one": "Copying {n} toolkit", "other": "Copying {n} toolkits"}, n=len(kit_ids))
+
+
 def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="none"):
     free = room.free()
     if free - need < _min_free():
-        raise ValueError(f"Insufficient free storage. Free space required for the kit is {need >> 20} MB. Free space available is {free >> 20} MB, "
-                         f"and the box keeps {_min_free() >> 20} MB spare." + (" Select no books to make the kit smaller." if zims else ""))
+        args = {"need": need >> 20, "free": free >> 20, "spare": _min_free() >> 20}
+        if zims:
+            raise Refused(M("control.kit.no-space.books", "There is not enough free storage. The kit needs {need} MB of free space. "
+                            "{free} MB is free, and the box keeps {spare} MB spare. Select no books to make the kit smaller.", **args))
+        raise Refused(M("control.kit.no-space", "There is not enough free storage. The kit needs {need} MB of free space. "
+                        "{free} MB is free, and the box keeps {spare} MB spare.", **args))
     with Progress("kit", 3 + bool(kit_ids) + bool(repo_dirs) + (state != "none"), path=KIT_PROGRESS) as progress:
         work = room.work
-        progress.step("Gathering the code, the apps and the downloads")
+        progress.step(M("control.progress.gather", "Gathering the code, the apps and the downloads"))
         kit = work / "irate-box-kit"
         args = ["bash", str(CODE / "install.sh"), "--make-offline-bundle", str(kit), "--apps", str(apps),
                 "--download-cache", str(DOWNLOADS), "--arch", arch]
@@ -644,16 +733,18 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
             args += ["--web", "caddy"]
         out = run(*args, timeout=3600, env=dict(os.environ, HOME=str(work)))
         if out.returncode != 0:
-            raise ValueError("The box could not make the kit: " + ((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1][:300])
+            raise Refused(M("control.kit.make-failed", "The box could not make the kit. The installer said: {output}",
+                            output=_last_line(out.stderr or out.stdout)))
         report = [l.strip() for l in out.stdout.splitlines() if l.startswith("    ")]
         if kit_ids:
             # The toolkits in the stick layout (kits.export_usb) beside the kit: unpacked on a stick,
             # the new box's setup.sh imports them, each .deb checked against Debian's signatures.
-            progress.step(f"Copying {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}")
+            progress.step(_copying_kits(kit_ids))
             for k in kit_ids:
                 report.append(kits.export_usb(k, kit / "kits", progress.bytes))
         if repo_dirs:
-            progress.step(f"Copying {len(repo_dirs)} git repositor{'ies' if len(repo_dirs) != 1 else 'y'}")
+            progress.step(M("control.progress.repos", {"one": "Copying {n} git repository", "other": "Copying {n} git repositories"},
+                            n=len(repo_dirs)))
             for d in repo_dirs:
                 dest = kit / "git" / d.parent.name / d.name
                 shutil.copytree(d, dest, symlinks=True)
@@ -661,12 +752,14 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
         if state != "none":
             from irate_box.hub import backup
             import tarfile
-            progress.step("Adding this box's settings" + (" and data" if state == "data" else ""))
+            progress.step(M("control.progress.data", "Adding the settings and data of this box") if state == "data"
+                          else M("control.progress.settings", "Adding the settings of this box"))
             with tarfile.open(kit / "state-backup.tar.gz", "w:gz") as tar:
                 tar.add(STATE, arcname="irate-box-state", filter=backup.keep_for(state, False, backup.git_mirrors(STATE)))
             report.append(f"this box's {'settings' if state == 'settings' else 'settings and data'} (restored by setup.sh)")
         if zims:
-            progress.step(f"Checksumming {len(zims)} book{'s' if len(zims) != 1 else ''}")
+            progress.step(M("control.progress.checksums", {"one": "Calculating the checksum of {n} book",
+                                                           "other": "Calculating the checksums of {n} books"}, n=len(zims)))
             with open(kit / "SHA256SUMS", "a") as fh:
                 for z in zims:
                     h = hashlib.sha256()
@@ -674,7 +767,7 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
                         for chunk in iter(lambda: zf.read(1 << 20), b""):
                             h.update(chunk)
                     fh.write(f"{h.hexdigest()}  ./zim/{z.name}\n")
-        progress.step("Packing it into one file")
+        progress.step(PACKING)
         ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
         name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
         part = work / name
@@ -683,12 +776,12 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
             tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
                       *[z.name for z in zims], timeout=7200)
         if tar.returncode != 0:
-            raise ValueError("The tar command failed: " + (tar.stderr.strip().splitlines() or ["?"])[-1][:300])
+            raise _tar_failed(tar)
         meta = room.publish(part, name, {"name": name, "at": time.time(), "arch": arch,
                                          "books": [z.name for z in zims], "kits": list(kit_ids),
                                          "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
                                          "state": state, "contents": report[:60]})
-    return f"Download ready: {name} ({meta['size'] >> 20} MB)."
+    return _download_ready(meta)
 
 
 # --- who may open each app ---------------------------------------------------------
@@ -743,7 +836,8 @@ def _access_files(state):
         return old
     login = _caddy_hash()
     if not login:
-        raise ValueError(f"No script login found in {_login_file()} for the apps that need a sign-in")
+        raise Refused(M("control.access.no-hash", "The file {path} has no script sign-in password. The apps that require sign-in need it.",
+                        path=str(_login_file())))
     # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
@@ -776,8 +870,8 @@ def _access_apply(state, reload=True):
                 path.unlink(missing_ok=True)
             else:
                 _write_root_file(path, text)
-        raise ValueError("The web server did not accept the change. Nothing changed: "
-                         + ((check.stderr or check.stdout).strip().splitlines() or [""])[-1][:200])
+        raise Refused(M("control.access.web-refused", "The web server did not accept the change, so nothing changed. It said: {output}",
+                        output=_last_line(check.stderr or check.stdout, 200)))
     _access_record(state)
     if reload:
         if WEB_SERVER == "nginx":
@@ -802,16 +896,17 @@ def access_set(req):
     # Off is always safe, so a web add-on just removed (its manifest gone) can still be switched
     # off: the hub asks that when one is added or removed.
     if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.match(app)):
-        raise ValueError(f"Access cannot be set for {app}")
+        raise Refused(M("control.access.unknown-app", "The box cannot set access for {app}.", app=app))
     if mode not in access.MODES:
-        raise ValueError("Select an access mode: public, users, private or off")
+        raise Refused(M("control.access.mode-bad", "The access mode must be one of these values: {modes}.", modes=list(access.MODES)))
     if mode == "users" and not access.users_allowed(app):
-        raise ValueError(f"Access for {app} can be public, private or off. It cannot be users")
+        raise Refused(M("control.access.no-users", "The access of {app} cannot be {mode}. Select one of these modes: {modes}.",
+                        app=app, mode=mode, modes=[m for m in access.MODES if m != "users"]))
     state = access.read(ACCESS_FILE)
     was = access.mode_of(state, app)
     state[app] = mode
     _access_apply(state)
-    done = f"App access saved: {app} is set to {mode}"
+    done = _access_saved(app, mode)
     unit = _access_unit(app)
     # Only what "off" stopped is started again: an add-on the owner never switched on stays off.
     try:
@@ -824,15 +919,31 @@ def access_set(req):
             out = run("systemctl", "disable", "--now", unit)
             if out.returncode == 0:
                 stopped.add(unit)
-                done += f". Service stopped: {unit}"
+                done = M("control.access.saved.off.stopped", "App access is saved. {app} is disabled, and the box stopped its service {unit}.",
+                         app=app, unit=unit)
             else:
-                done += f". Service stop failed: {unit}"
+                done = M("control.access.saved.off.stop-failed", "App access is saved. {app} is disabled. "
+                         "The box could not stop its service {unit}.", app=app, unit=unit)
     elif unit and was == "off" and mode != "off" and unit in stopped:
         out = run("systemctl", "enable", "--now", unit)
         stopped.discard(unit)
-        done += f". Service started again: {unit}" if out.returncode == 0 else f". Service start failed: {unit}"
+        # The access sentence, then what became of the service: two whole sentences.
+        done = M("control.access.saved.started", "{access} The box started the service {unit} again.", access=done, unit=unit) \
+            if out.returncode == 0 else \
+            M("control.access.saved.start-failed", "{access} The service {unit} did not start.", access=done, unit=unit)
     _write_root_file(ACCESS_STOPPED, json.dumps(sorted(stopped)) + "\n", 0o644)
     return done
+
+
+def _access_saved(app, mode):
+    """Who can open the app now, by its mode. Its listener and the firewalls still decide who can reach it."""
+    if mode == "public":
+        return M("control.access.saved.public", "App access is saved. Guests can open {app}.", app=app)
+    if mode == "users":
+        return M("control.access.saved.users", "App access is saved. Signed-in users can open {app}.", app=app)
+    if mode == "private":
+        return M("control.access.saved.private", "App access is saved. Only administrators can open {app}.", app=app)
+    return M("control.access.saved.off", "App access is saved. {app} is disabled.", app=app)
 
 
 def access_install():
@@ -850,7 +961,11 @@ def access_install():
     _access_files(state)
     _access_record(state)
     _admin_login_record()
-    return ", ".join(f"{k} {v}" for k, v in state.items() if v != "public") or "every app is set to public"
+    limited = [f"{k} ({v})" for k, v in state.items() if v != "public"]
+    if limited:
+        return M("control.access.installed", "App access is written. These apps are not public: {apps}.", apps=limited)
+    return M("control.access.installed.public", "App access is written. Every app has public access. "
+             "The firewalls and the address that each app listens on still apply.")
 
 
 def _login_reach():
@@ -920,8 +1035,10 @@ def admin_gate(req):
     _access_files(access.read(ACCESS_FILE))
     if any((p.read_text() if p.exists() else None) != t for p, t in old.items()):
         _reload_web()
-        return "Administrator sign-in: " + ("the standard one" if _admin_accounts_ready() else "the script login (no administrator account yet)")
-    return "Administrator sign-in: unchanged"
+        if _admin_accounts_ready():
+            return M("control.admin-gate.accounts", "Administrators now sign in with their accounts on the sign-in page of the box.")
+        return M("control.admin-gate.script", "No administrator account can sign in yet. The administration pages now ask for script sign-in.")
+    return M("control.admin-gate.unchanged", "The administrator sign-in did not change.")
 
 
 def _gate_paths():
@@ -945,17 +1062,22 @@ def _caddy_login_swap(new_hash):
     text = target.read_text()
     updated, count = HASH_LINE.subn(lambda m: m.group(1) + new_hash, text)
     if not count:
-        raise ValueError(f"No script login found in {target}")
+        raise Refused(_no_hash(target))
     candidate = target.with_name(target.name + ".new")
     candidate.write_text(updated)
     if run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate)).returncode != 0:
         candidate.unlink(missing_ok=True)
-        raise ValueError("The new Caddy configuration did not validate. Nothing changed.")
+        raise Refused(M("control.password.caddy-invalid", "Caddy did not accept the new configuration. Nothing changed."))
     os.replace(candidate, target)
     if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
         target.write_text(text)
-        raise ValueError("The Caddy configuration did not validate with the new login. Nothing changed.")
+        raise Refused(M("control.password.caddy-invalid-whole", "Caddy did not accept its whole configuration with the new password. "
+                        "Nothing changed."))
     return count
+
+
+def _no_hash(path):
+    return M("control.password.no-hash", "The file {path} has no script sign-in password.", path=str(path))
 
 
 def _caddy_login_off():
@@ -963,10 +1085,10 @@ def _caddy_login_off():
     is emptied); the real one kept in ADMIN_LOGIN_OFF to put back."""
     real = _caddy_hash()
     if not real:
-        raise ValueError(f"No script login found in {_login_file()}")
+        raise Refused(_no_hash(_login_file()))
     hashed = run("caddy", "hash-password", input=secrets.token_urlsafe(32) + "\n")
     if hashed.returncode != 0 or not hashed.stdout.strip().startswith("$2"):
-        raise ValueError("caddy hash-password failed")
+        raise Refused(_hash_failed("caddy hash-password"))
     fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(real + "\n")
@@ -987,19 +1109,19 @@ def admin_login(req):
     reach = req.get("reach")
     if reach is not None:
         if reach not in REACHES:
-            raise ValueError(f"Select a reach: {', '.join(REACHES)}")
+            raise Refused(M("control.script-sign-in.reach-bad", "The reach must be one of these values: {values}.", values=list(REACHES)))
         if reach == "off":
             return admin_login({"on": False})
         if not (ETC / "admin-password").is_file():
-            raise ValueError("The script login has no password yet. Set one at the box's console over SSH: "
-                             "(sudo /opt/irate-box/irate-box hub_control script-login)")
+            raise Refused(M("control.script-sign-in.no-password", "Script sign-in has no password yet. "
+                            "Set one at the console of the box over SSH with this command: {command}", command=SCRIPT_LOGIN_CMD))
         # From the box itself only, with no administrator account that has signed in over HTTPS, nobody on another
         # device can open /admin at all: as much a lockout as turning the login off, so the same rule (_https_admins).
         if reach == "local" and not _https_admins():
-            raise ValueError("Not changed: this box has no administrator account that has signed in over HTTPS. With "
-                             "script sign-in limited to the box itself, no other device could open the administration "
-                             "pages. Create an administrator account and sign in with it over HTTPS first (Accounts, or "
-                             "at the console: sudo /opt/irate-box/irate-box hub_control set-admin NAME).")
+            raise Refused(M("control.script-sign-in.local-refused", "Nothing changed. No administrator account of this box has signed in "
+                            "over HTTPS. If script sign-in works only from the box itself, no other device can open the "
+                            "administration pages. Create an administrator account on Accounts, and sign in with it over HTTPS. "
+                            "At the console, this command creates one: {command}", command=SET_ADMIN_CMD))
         _write_reach(reach)
         if ADMIN_LOGIN_OFF.exists():
             _switch_login(True)
@@ -1007,17 +1129,33 @@ def admin_login(req):
             _access_files(access.read(ACCESS_FILE))
             _reload_web()
             _admin_login_record()
-        return "The script login accepts requests " + ("from the box itself only" if reach == "local" else "from every device on the box's network")
+        return _reach_said(reach)
     on = req.get("on") is True
     if on == (not ADMIN_LOGIN_OFF.exists()):
-        return f"The script login is already {'on' if on else 'off'}"
+        return ALREADY_ON if on else ALREADY_OFF
     admins = []
     if not on:
         admins = _https_admins()
         if not admins:
-            raise ValueError("Create an administrator account and sign in with it over HTTPS first. Then the account can replace the script login.")
+            raise Refused(M("control.script-sign-in.off-refused", "Create an administrator account and sign in with it over HTTPS first. "
+                            "Then the account can replace script sign-in."))
     _switch_login(on)
-    return "The script login is " + ("on again" if on else f"off. Administrator accounts ({', '.join(admins)}) open /admin")
+    if on:
+        return M("control.script-sign-in.on-again", "Script sign-in is enabled again.")
+    return M("control.script-sign-in.off.accounts", "Script sign-in is disabled. Administrators open {page} with their accounts: {names}.",
+             page="/admin", names=admins)
+
+
+SCRIPT_LOGIN_CMD = "sudo /opt/irate-box/irate-box hub_control script-login"
+SET_ADMIN_CMD = "sudo /opt/irate-box/irate-box hub_control set-admin NAME"
+ALREADY_ON = M("control.script-sign-in.already-on", "Script sign-in is already enabled.")
+ALREADY_OFF = M("control.script-sign-in.already-off", "Script sign-in is already disabled.")
+
+
+def _reach_said(reach):
+    if reach == "local":
+        return M("control.script-sign-in.reach.local", "Script sign-in now accepts requests only from the box itself.")
+    return M("control.script-sign-in.reach.network", "Script sign-in now accepts requests from every device on the network of the box.")
 
 
 def _switch_login(on):
@@ -1066,7 +1204,7 @@ def claim(req):
     """The first use ended by the owner's admin account (the hub made it): no longer free, and no
     login of the box's own (no password made for scripts: script-login at the console makes one)."""
     if not UNCLAIMED.exists():
-        raise ValueError("Initial setup is already complete")
+        raise Refused(M("control.setup.already", "Initial setup is already complete."))
     UNCLAIMED.unlink()
     (ETC / "admin-password").unlink(missing_ok=True)
     if not ADMIN_LOGIN_OFF.exists():
@@ -1074,7 +1212,8 @@ def claim(req):
     else:
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
-    return "Initial setup complete. Administrators sign in on the box's sign-in page. The script login is off, so scripts have no password"
+    return M("control.setup.done", "Initial setup is complete. Administrators sign in on the sign-in page of the box. "
+             "Script sign-in is disabled, so scripts have no password.")
 
 
 def _ask_password(prompt="Password: "):
@@ -1082,10 +1221,10 @@ def _ask_password(prompt="Password: "):
     import getpass
     ask = getpass.getpass if sys.stdin.isatty() else (lambda _p: sys.stdin.readline().rstrip("\n"))
     pw = ask(prompt)
-    if len(pw) < MIN_PASSWORD or len(pw) > 128 or any(c in pw for c in "\n\r\0"):
-        sys.exit(f"The password must have {MIN_PASSWORD} to 128 characters on one line.")
+    if not _password_ok(pw):
+        sys.exit(render(PASSWORD_LENGTH))
     if ask("Again: ") != pw:
-        sys.exit("Passwords do not match. Nothing changed.")
+        sys.exit(render(M("control.password.mismatch", "The passwords do not match. Nothing changed.")))
     return pw
 
 
@@ -1098,13 +1237,14 @@ def console_set_admin(name):
                          input=pw + "\n", capture_output=True, text=True, timeout=60)
     if out.returncode != 0:
         sys.exit(out.stderr.strip() or out.stdout.strip() or "accounts: failed")
+    # The accounts command's own line, then what the helper did: for the terminal, in English.
     said = [out.stdout.strip()]
     if UNCLAIMED.exists():
         said.append(claim({}))
     else:
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
-    return ". ".join(said)
+    return paragraph(*said)
 
 
 def console_script_login(on):
@@ -1114,30 +1254,21 @@ def console_script_login(on):
     if not on:
         (ETC / "admin-password").unlink(missing_ok=True)
         if ADMIN_LOGIN_OFF.exists():
-            return "The script login is already off"
+            return render(ALREADY_OFF)
         if not _admin_accounts_ready():
-            sys.exit("No administrator account can sign in yet. Create one with set-admin first, or this would lock you out of /admin.")
+            sys.exit(render(M("control.script-sign-in.off-lockout", "No administrator account can sign in yet. "
+                              "Create one with this command first: {command}. Otherwise nobody can open {page}.",
+                              command=SET_ADMIN_CMD, page="/admin")))
         _switch_login(False)
-        return "The script login is off"
+        return render(M("control.script-sign-in.off", "Script sign-in is disabled."))
     if not ADMIN_LOGIN_REACH.exists():
         _write_reach("local")  # the safer reach to start; widened on Accounts if wanted
-    said = set_login(_ask_password("Password for the script login (user admin): "))
-    return (f"Script login (user admin) saved. It accepts requests {'from the box itself only' if _login_reach() == 'local' else 'from every device on the box\'s network'}."
-            f" Change this on the Accounts page. {said}")
+    said = set_login(_ask_password(f"Password for script sign-in (user {SCRIPT_USER}): "))
+    return paragraph(_reach_said(_login_reach()), M("control.script-sign-in.change-reach", "To change this, open Accounts."), _password_saved(said))
 
 
 # --- updates ---------------------------------------------------------------------
-# What the update actions answer, and the checks a downloaded version passes, are messages (msg.py): whole
-# sentences with stable IDs. The result keeps the English for every reader that expects text (answer).
-
-class Refused(ValueError):
-    """A request refused, with the reason as a message (msg.M): its English is the exception's text, and the
-    result keeps the message too (answer)."""
-
-    def __init__(self, message):
-        super().__init__(render(message))
-        self.message = message
-
+# The checks a downloaded version passes are messages too (msg.py).
 
 NO_REPO = M("update.options.no-repo", "The install options name no repository. Run the installer once by hand to record one.")
 OPTIONS_MISSING = M("update.options.missing", "This box has no record of its install options. It was installed before updates "
@@ -1159,8 +1290,9 @@ def _option(opts, name, default=None):
 def _git(*args):
     out = run("git", *args, timeout=600)
     if out.returncode != 0:
-        lines = (out.stderr or out.stdout).strip().splitlines()
-        raise ValueError(f"git {args[0] if args[0] != '-C' else args[2]}: {lines[-1] if lines else 'failed'}")
+        # What git printed is evidence, never translated: an argument of the sentence around it.
+        raise Refused(M("update.git.failed", "The command {command} failed: {output}",
+                        command=f"git {args[0] if args[0] != '-C' else args[2]}", output=_last_line(out.stderr or out.stdout)))
     return out.stdout.strip()
 
 
@@ -1303,6 +1435,10 @@ def _have_version(cmd, version):
         return False
 
 
+def _downloading(name, version):
+    return M("update.progress.download", "Downloading {name} {version}", name=name, version=version)
+
+
 def prefetch(src, opts, progress=None):
     """Download into DOWNLOADS the release files the new install.sh will want and the box
     does not already have, each checked against its published checksum. Returns checks.
@@ -1326,7 +1462,7 @@ def prefetch(src, opts, progress=None):
                               evidence=[name])
             except OSError as exc:
                 return _check("download:ttyd", False, _download_title("ttyd", ttyd), DOWNLOAD_FAILED, evidence=[exc])
-        jobs.append((f"Downloading ttyd {ttyd}", get_ttyd))
+        jobs.append((_downloading("ttyd", ttyd), get_ttyd))
 
     sb = _var(script, "SB_VERSION")
     if sb and "--with-notes" in opts and arch["sb"] and \
@@ -1347,7 +1483,7 @@ def prefetch(src, opts, progress=None):
                               evidence=[name])
             except OSError as exc:
                 return _check("download:silverbullet", False, _download_title("SilverBullet", sb), DOWNLOAD_FAILED, evidence=[exc])
-        jobs.append((f"Downloading SilverBullet {sb}", get_sb))
+        jobs.append((_downloading("SilverBullet", sb), get_sb))
 
     # Caddy from its GitHub release, on a box served by Caddy whose apt repository failed
     # verification.
@@ -1372,7 +1508,7 @@ def prefetch(src, opts, progress=None):
             except (OSError, ValueError, KeyError) as exc:
                 return _check("download:caddy", False, M("update.download.caddy.title", "Download of Caddy's latest release"),
                               DOWNLOAD_FAILED, evidence=[exc])
-        jobs.append(("Downloading Caddy's latest release", get_caddy))
+        jobs.append((M("update.progress.caddy", "Downloading the latest release of Caddy"), get_caddy))
 
     if progress:
         progress.add_steps(len(jobs))
@@ -1586,7 +1722,7 @@ def _check_for_update(progress):
         # Code that root will run, over a transport anyone on the way can rewrite.
         raise Refused(M("update.check.unencrypted", "Updates come from {repo} over an unencrypted link. "
                                                     "Run the installer again with an https:// address for the repository.", repo=repo))
-    progress.step(f"Fetching {branch} from {repo}")
+    progress.step(M("update.progress.branch", "Downloading the branch {branch} from {repo}", branch=branch, repo=repo))
     src = str(UPDATE_SRC)
     if (UPDATE_SRC / ".git").is_dir():
         _git("-C", src, "remote", "set-url", "origin", repo)
@@ -1622,7 +1758,7 @@ def _check_for_update(progress):
         if not tag:
             raise Refused(M("update.check.no-tags", "Updates require signed releases, and {repo} has no release tag yet.", repo=repo))
         _git("-C", src, "checkout", "-q", "--detach", f"refs/tags/{tag}")
-    progress.step("Reading the changes")
+    progress.step(M("update.progress.changes", "Reading the changes"))
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
     full = _git("-C", src, "rev-parse", "HEAD")
     installed = _installed_commit()
@@ -1692,7 +1828,7 @@ def update_fetch(req):
         if state["up_to_date"]:
             _write_update_state(state)
             return _up_to_date(state)
-        progress.step("Checking the new version")
+        progress.step(M("update.progress.verify", "Checking the new version"))
         checks = verify_update(UPDATE_SRC, state["installed"], opts, progress, tag=state.get("tag"))
     head = state["available"]
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
@@ -1730,6 +1866,7 @@ def _follow_install(proc, progress):
             m = STEP_LINE.search(line)
             if m:
                 seen += 1
+                # The installer's own heading: its words, as data.
                 progress.step(m.group(1).decode(errors="replace"))
         if code is not None:
             return code, seen
@@ -1830,12 +1967,14 @@ def addon(req):
     aid = str(req.get("addon", ""))
     spec = manifests.addons(MANIFESTS).get(aid)
     if not spec:
-        raise ValueError(f"{aid} is not an add-on")
+        raise Refused(M("control.addon.unknown", "{addon} is not an add-on.", addon=aid))
     on = req.get("on") is True
     option = spec["addon"]["option"]
+    title = spec["addon"]["title"]
     opts = _install_options()
     if (option in opts) == on:
-        raise ValueError(f"{spec['addon']['title']} is already {'added' if on else 'removed'}")
+        raise Refused(M("control.addon.already-added", "The add-on {title} is already added.", title=title) if on else
+                      M("control.addon.already-removed", "The add-on {title} is already removed.", title=title))
     args = [o for o in opts if o != option] + ([option] if on else ["--remove", option.removeprefix("--with-")])
     shutil.rmtree(ADDON_SRC, ignore_errors=True)
     ADDON_SRC.parent.mkdir(parents=True, exist_ok=True)
@@ -1848,7 +1987,9 @@ def addon(req):
     if state:  # the next run's step count: the same script, near enough the same steps
         state["install_steps"] = seen
         _write_update_state(state)
-    return f"{spec['addon']['title']}: {'added' if on else 'removed'}"
+    if on:
+        return M("control.addon.added", "The add-on {title} is added.", title=title)
+    return M("control.addon.removed", "The add-on {title} is removed.", title=title)
 
 
 # --- the update doctor ---------------------------------------------------------------
@@ -1966,14 +2107,14 @@ def doctor():
                 server = parsedate_to_datetime(resp.headers["Date"]).timestamp()
             skew = now - server
             if abs(skew) > 600:
-                hours = f"{abs(skew) / 3600:.1f}"
+                gap = duration(round(abs(skew)))
                 findings.append(finding("clock", clock, "problem",
-                                        M("update.clock.ahead", "The box's clock is {hours} h ahead of {host}.", hours=hours, host=host) if skew > 0 else
-                                        M("update.clock.behind", "The box's clock is {hours} h behind {host}.", hours=hours, host=host),
+                                        M("update.clock.ahead", "The box's clock is {gap} ahead of {host}.", gap=gap, host=host) if skew > 0 else
+                                        M("update.clock.behind", "The box's clock is {gap} behind {host}.", gap=gap, host=host),
                                         CLOCK_WHY, CLOCK_FIX, commands=[CLOCK_SET], go=GO_CLOCK))
             else:
-                findings.append(finding("clock", clock, "ok", M("update.clock.ok", "The clock is within {seconds} s of {host}.",
-                                                                seconds=round(abs(skew)), host=host)))
+                findings.append(finding("clock", clock, "ok", M("update.clock.ok", "The clock is within {gap} of {host}.",
+                                                                gap=duration(round(abs(skew))), host=host)))
             findings.append(finding("tls", tls, "ok", M("update.tls.ok", "The certificate of {url} is valid.", url=url)))
         except ssl.SSLError as exc:
             findings.append(finding("tls", tls, "problem", M("update.tls.failed", "Certificate validation failed for {url}.", url=url),
@@ -2273,14 +2414,16 @@ def security_scan(req):
     bad = sum(1 for f in data["findings"] if f["status"] == "problem")
     look = sum(1 for f in data["findings"] if f["status"] == "warn")
     # "nothing to fix" with warnings reads as all clear: both counts, always.
-    return f"Security scan: {bad} to repair, {look} to review"
+    return M("control.security.scanned", "The security scan is complete. Findings that require repair: {repair}. "
+             "Findings that require review: {review}.", repair=bad, review=look)
 
 
 def security_audit(req):
     report = secdoctor.audit()
     secdoctor.write_report(report, AUDIT_STATE)
     c = report["counts"]
-    return f"Security doctor: {c['problem']} to repair, {c['warn']} to review"
+    return M("control.security.audited", "The Security doctor is complete. Findings that require repair: {repair}. "
+             "Findings that require review: {review}.", repair=c["problem"], review=c["warn"])
 
 
 def security_deep_audit(req):
@@ -2294,7 +2437,7 @@ def security_deep_audit(req):
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?", choice):
-        raise ValueError("This is not a Security page action")
+        raise Refused(M("control.security.not-action", "This is not an action of the Security page."))
     # Only what root's own last scan offered: a forged request could otherwise switch off
     # any unit not on the protected list (a firewall, auditd, a getty). The scan is root's file,
     # read only if it still is; every fix ends with a new one, so the page's buttons stay valid.
@@ -2308,7 +2451,8 @@ def security_fix(req):
     if pattern and choice.startswith("autoupdate-set:"):
         security.parse_pattern(choice.split(":", 1)[1])
     if choice not in offered and not pattern:
-        raise ValueError("Action no longer available. Run the checks again, then select an action from the new results.")
+        raise Refused(M("control.security.stale", "This action is no longer available. Run the checks again. "
+                        "Then select an action from the new results."))
     if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
@@ -2331,7 +2475,8 @@ def _tls_answer(fn):
         try:
             return fn(req)
         except RuntimeError as exc:
-            raise ValueError(str(exc))
+            said = _why(exc)
+            raise Refused(said) if is_message(said) else ValueError(said)
     run_it.__name__ = fn.__name__
     return run_it
 
@@ -2342,9 +2487,11 @@ def tls_make(req):
     device that installed the first would have to install the new one."""
     from irate_box.root import tls
     if tls.status().get("set_up") and req.get("again") is not True:
-        return "HTTPS is already set up. To replace the CA, confirm the replacement: every device that trusts the old CA must install the new CA again."
+        return M("control.https.already", "HTTPS is already set up. Nothing changed. To replace the certificate authority (CA), "
+                 "select Make a new CA and confirm. Then every device that trusts the old CA must install the new CA.")
     rec = tls.make_ca()
-    return f"Box CA and certificate created (CA fingerprint {rec['ca']['fingerprint'][:23]}…)"
+    return M("control.https.made", "The box made its certificate authority (CA) and its certificate. "
+             "The CA fingerprint starts with {fingerprint}.", fingerprint=rec["ca"]["fingerprint"][:23])
 
 
 @_tls_answer
@@ -2363,14 +2510,15 @@ def tls_import(req):
         chain = safeio.read_request(staged / "chain.pem", 64 << 10)
         key = safeio.read_request(staged / "key.pem", 16 << 10)
     except OSError as exc:
-        return f"No certificate available for import ({exc})"
+        raise Refused(M("control.https.import.none", "No certificate is available for import. Nothing changed. "
+                        "Paste the certificate and the key again: {reason}", reason=str(exc)))
     finally:
         for f in ("chain.pem", "key.pem"):
             (staged / f).unlink(missing_ok=True)
     try:
         return tls.import_own(chain, key)
     except ValueError as exc:
-        raise ValueError(f"Certificate not imported: {exc}")
+        raise Refused(M("control.https.import.refused", "The box did not import the certificate: {reason}", reason=_why(exc)))
 
 
 @_tls_answer
@@ -2390,7 +2538,7 @@ def tls_switch(req):
     """HTTPS on or off at the front, the CA and certificate kept either way."""
     from irate_box.root import tls
     if not tls.status().get("set_up"):
-        return "HTTPS is not set up yet. Create the box certificate first."
+        raise Refused(M("control.https.not-set-up", "HTTPS is not set up yet. Nothing changed. Select Make the box's certificate first."))
     return tls.front(req.get("on") is True)
 
 
@@ -2398,8 +2546,9 @@ def usb_scan(req):
     data = usbstick.scan()
     _write_usb(data)
     books = sum(len(d["zims"]) for d in data["devices"])
-    return (f"{len(data['devices'])} USB drive{'s' if len(data['devices']) != 1 else ''}, "
-            f"{books} book{'s' if books != 1 else ''}") if data["devices"] else "No USB drive found"
+    if not data["devices"]:
+        return M("control.usb.scan.none", "No USB drive found.")
+    return M("control.usb.scan.found", "USB drives found: {drives}. Books on them: {books}.", drives=len(data["devices"]), books=books)
 
 
 def _min_free():
@@ -2413,37 +2562,51 @@ def _min_free():
 def usb_import(req):
     device, file = str(req.get("device", "")), str(req.get("file", ""))
     with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
-        progress.step(f"Copying {Path(file).name} from the USB drive")
+        progress.step(M("control.progress.usb-import", "Copying {file} from the USB drive", file=Path(file).name))
         name = usbstick.import_zim(device, file, ZIM_DIR, HUB_USER, _min_free(),
                                    [str(CODE / "irate-box"), "librarian"], STATE, progress.bytes)
-    return f"{name}: added to the library"
+    return M("control.usb.import.done", "The book {name} is added to the library.", name=name)
 
 
 def usb_export(req):
     device, book = str(req.get("device", "")), str(req.get("book", ""))
     with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
-        progress.step(f"Copying {book} to the USB drive")
+        progress.step(_copying_to_usb(book))
         where = usbstick.export_zim(device, book, ZIM_DIR, progress.bytes)
     try:
         _write_usb(usbstick.scan())
     except (ValueError, OSError):
         pass
-    return f"USB transfer complete: {book} is on the USB drive as {where}. Eject the drive before you unplug it."
+    # The drive is synced and unmounted when the box mounted it, but not one mounted already: hence the eject.
+    return M("control.usb.export.done", "The USB transfer is complete. The book {book} is on the USB drive as {path}. "
+             "Eject the drive before you remove it.", book=book, path=where)
+
+
+def _copying_to_usb(book):
+    return M("control.progress.usb-book", "Copying {book} to the USB drive", book=book)
+
+
+def _copying_kit_to_usb(kit):
+    return M("control.progress.usb-kit", "Copying the toolkit {kit} to the USB drive", kit=kit)
+
+
+KIT_BAD = M("control.kit.kit-bad", "The request must give a toolkit ID.")
 
 
 def usb_kit_export(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
     if not kits.ID_RE.match(kit):
-        raise ValueError("kit: a toolkit's id")
+        raise Refused(KIT_BAD)
     try:
         with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
-            progress.step(f"Copying the {kit} kit to the USB drive")
+            progress.step(_copying_kit_to_usb(kit))
             line = usbstick.export_kit(device, kit, progress.bytes)
         try:
             _write_usb(usbstick.scan())
         except (ValueError, OSError):
             pass
-        return f"USB transfer complete: {line}. Eject the drive before you unplug it."
+        return M("control.usb.kit-export.done", "The USB transfer of the toolkit {kit} is complete: {details}. "
+                 "Eject the drive before you remove it.", kit=kit, details=line)
     finally:
         _kits_status()
 
@@ -2455,24 +2618,24 @@ def usb_export_many(req):
     device = str(req.get("device", ""))
     books, kit_ids = req.get("books") or [], req.get("kits") or []
     if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
-        raise ValueError("books: a list of book names")
+        raise Refused(M("control.kit.book-list-bad", "The request must give the books as a list of book names."))
     if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
-        raise ValueError("kits: a list of toolkit ids")
+        raise Refused(KITS_BAD)
     _, _, repo_dirs, state, _ = kit_choices({"repos": req.get("repos") or [], "state": req.get("state", "none")})
     if not books and not kit_ids and not repo_dirs and state == "none":
-        raise ValueError("Export selection is empty. Select at least one item.")
+        raise Refused(EXPORT_EMPTY)
     said = []
     try:
         extras = bool(repo_dirs) or state != "none"
         with Progress("usb-export", len(books) + len(kit_ids) + extras, path=USB_PROGRESS) as progress:
             for b in books:
-                progress.step(f"Copying {b} to the USB drive")
+                progress.step(_copying_to_usb(b))
                 said.append(usbstick.export_zim(device, b, ZIM_DIR, progress.bytes))
             for k in kit_ids:
-                progress.step(f"Copying the {k} kit to the USB drive")
+                progress.step(_copying_kit_to_usb(k))
                 said.append(usbstick.export_kit(device, k, progress.bytes))
             if extras:
-                progress.step("Copying the repositories and this box's state to the USB drive")
+                progress.step(M("control.progress.usb-extras", "Copying the repositories and the state of this box to the USB drive"))
                 usbstick.export_with(device, lambda top: said.extend(content_extras(top, repo_dirs, state)))
     finally:
         _kits_status()
@@ -2480,9 +2643,16 @@ def usb_export_many(req):
             _write_usb(usbstick.scan())
         except (ValueError, OSError):
             pass
-    return (f"{len(books)} book{'s' if len(books) != 1 else ''}, {len(kit_ids)} toolkit{'s' if len(kit_ids) != 1 else ''}"
-            + (f", {len(repo_dirs)} repositor{'ies' if len(repo_dirs) != 1 else 'y'}" if repo_dirs else "")
-            + (" and this box's state" if state != "none" else "") + " on the USB drive. USB transfer complete. Eject the drive before you unplug it.")
+    # What is on the drive now, by name: the books, the toolkits and the repositories; the box's state said apart.
+    items = [*books, *kit_ids, *(f"{d.parent.name}/{d.name.removesuffix('.git')}" for d in repo_dirs)]
+    if state == "none":
+        return M("control.usb.many.done", "The USB transfer is complete. The USB drive now holds {items}. "
+                 "Eject the drive before you remove it.", items=items)
+    if items:
+        return M("control.usb.many.done-state", "The USB transfer is complete. The USB drive now holds {items}, "
+                 "and the state of this box with import.sh. Eject the drive before you remove it.", items=items)
+    return M("control.usb.many.done-state-only", "The USB transfer is complete. The USB drive now holds the state of this box "
+             "with import.sh. Eject the drive before you remove it.")
 
 
 def backup_image(req):
@@ -2491,21 +2661,21 @@ def backup_image(req):
     half-written. Restored by writing it back with any image writer (gunzip, then dd or Etcher)."""
     device = str(req.get("device", ""))
     with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
-        progress.step("Writing the card's image to the USB drive")
+        progress.step(M("control.progress.usb-image", "Writing an image of the memory card to the USB drive"))
         return usbstick.export_image(device, progress.bytes)
 
 
 def usb_kit_import(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
     if not kits.ID_RE.match(kit):
-        raise ValueError("kit: a toolkit's id")
+        raise Refused(KIT_BAD)
     try:
         budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
     except (OSError, ValueError, TypeError, AttributeError):
         budget = 500
     try:
         with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
-            progress.step(f"Checking and copying the {kit} kit from the USB drive")
+            progress.step(M("control.progress.usb-kit-import", "Checking and copying the toolkit {kit} from the USB drive", kit=kit))
             return usbstick.import_kit(device, kit, budget, progress.bytes)
     finally:
         _kits_status()
@@ -2535,29 +2705,37 @@ def _has_needed(names, pattern):
 def _checked_bundle(app, zip_path):
     """The bundle's metadata, or ValueError: the same rules as librarian.check_bundle."""
     if app not in APPS:
-        raise ValueError(f"{app} is not an app the hub installs")
+        raise Refused(_not_an_app(app))
     path = Path(zip_path)  # root's own copy (_take_staged), not the hub's staged file
     if path.is_symlink() or not path.is_file():
-        raise ValueError("the bundle must be a file the librarian staged")
+        raise Refused(NOT_STAGED)
     try:
         with zipfile.ZipFile(path) as zf:
             names, total = set(), 0
             for info in zf.infolist():
                 parts = Path(info.filename).parts
                 if info.filename.startswith(("/", "\\")) or ".." in parts or ":" in info.filename:
-                    raise ValueError(f"unsafe path in the bundle: {info.filename}")
+                    raise Refused(M("control.app.unsafe-path", "The bundle has an unsafe path: {path}", path=info.filename))
                 if (info.external_attr >> 16) & 0o170000 == 0o120000:
-                    raise ValueError(f"symlink in the bundle: {info.filename}")
+                    raise Refused(M("control.app.symlink", "The bundle has a symbolic link: {path}", path=info.filename))
                 total += info.file_size
                 names.add(info.filename)
             if total > APP_MAX_BYTES:
-                raise ValueError("the bundle is too large")
+                raise Refused(TOO_LARGE)
             meta = json.loads(zf.read("irate-box-bundle.json"))
             if meta.get("app") != app or not _has_needed(names, APPS[app]["install"]["needs"]):
-                raise ValueError(f"not a bundle of {app}")
+                raise Refused(M("control.app.wrong-app", "This is not a bundle of {app}.", app=app))
             return meta
     except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as exc:
-        raise ValueError(f"not a valid bundle: {exc}")
+        raise Refused(M("control.app.invalid", "This is not a valid bundle: {reason}", reason=str(exc)))
+
+
+def _not_an_app(app):
+    return M("control.app.unknown", "{app} is not an app that the hub installs.", app=app)
+
+
+NOT_STAGED = M("control.app.not-staged", "The bundle must be a file that the librarian staged.")
+TOO_LARGE = M("control.app.too-large", "The bundle is larger than {max} MB.", max=APP_MAX_BYTES >> 20)
 
 
 # Root's copy of a bundle while it is checked and extracted: the staged zip is in the hub's
@@ -2571,12 +2749,12 @@ def _staged_dir_fd(zip_path):
     path = Path(zip_path)
     staging = APP_STAGING.resolve()
     if not path.resolve().is_relative_to(staging):
-        raise ValueError("the bundle must be a file the librarian staged")
+        raise Refused(NOT_STAGED)
     dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     owner = pwd.getpwnam(HUB_USER).pw_uid if os.geteuid() == 0 else os.geteuid()
     if os.fstat(dfd).st_uid != owner:
         os.close(dfd)
-        raise ValueError("the bundle's folder is not the librarian's")
+        raise Refused(M("control.app.folder-owner", "The folder of the bundle does not belong to the librarian."))
     return dfd
 
 
@@ -2587,13 +2765,13 @@ def _take_staged(zip_path):
     try:
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd)
     except OSError:
-        raise ValueError("the bundle must be a file the librarian staged")
+        raise Refused(NOT_STAGED)
     finally:
         os.close(dfd)
     with os.fdopen(fd, "rb") as src:
         st = os.fstat(src.fileno())
         if not stat.S_ISREG(st.st_mode) or st.st_size > APP_MAX_BYTES:
-            raise ValueError("the bundle must be a plain file, and not too large")
+            raise Refused(M("control.app.not-plain", "The bundle must be a plain file of at most {max} MB.", max=APP_MAX_BYTES >> 20))
         APP_TAKEN.mkdir(parents=True, exist_ok=True)
         os.chmod(APP_TAKEN, 0o700)
         copy = APP_TAKEN / f"{secrets.token_hex(8)}.zip"
@@ -2605,7 +2783,7 @@ def _take_staged(zip_path):
                     break
         if copy.stat().st_size > APP_MAX_BYTES:
             copy.unlink()
-            raise ValueError("the bundle is too large")
+            raise Refused(TOO_LARGE)
     return copy
 
 
@@ -2662,7 +2840,8 @@ def _install_taken(app, zip_path, staged):
     _drop_staged(staged)
     if APPS[app]["install"].get("restart"):
         run("systemctl", "try-restart", APPS[app]["install"]["restart"])
-    return f"{app}: installed {str(meta.get('commit', ''))[:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
+    return M("control.app.installed", "The app {app} is installed: version {commit} from {ref}, built on {built}.",
+             app=app, commit=str(meta.get("commit", ""))[:7], ref=str(meta.get("ref")), built=str(meta.get("built", ""))[:10])
 
 
 def app_install(req):
@@ -2672,11 +2851,11 @@ def app_install(req):
 def app_rollback(req):
     app = str(req.get("app", ""))
     if app not in APPS:
-        raise ValueError(f"{app} is not an app the hub installs")
+        raise Refused(_not_an_app(app))
     target = _app_dir(app)
     prev = target.parent / f".{target.name}.prev"
     if not prev.is_dir():
-        raise ValueError(f"no previous {app} to go back to")
+        raise Refused(M("control.app.no-previous", "There is no earlier version of {app} to roll back to.", app=app))
     swap = target.parent / f".{target.name}.swap"
     shutil.rmtree(swap, ignore_errors=True)
     if target.exists():
@@ -2687,7 +2866,9 @@ def app_rollback(req):
     if APPS[app]["install"].get("restart"):
         run("systemctl", "try-restart", APPS[app]["install"]["restart"])
     meta = json.loads((target / "irate-box-bundle.json").read_text()) if (target / "irate-box-bundle.json").exists() else {}
-    return f"{app}: rolled back to {str(meta.get('commit', 'the previous build'))[:7]}"
+    if meta.get("commit"):
+        return M("control.app.rolled-back", "The app {app} is rolled back to version {commit}.", app=app, commit=str(meta["commit"])[:7])
+    return M("control.app.rolled-back-unknown", "The app {app} is rolled back to its earlier version.", app=app)
 
 
 # --- the box doctor ----------------------------------------------------------------------
@@ -2705,7 +2886,9 @@ def _write_health():
 def health_scan(req):
     data = _write_health()
     bad = [f for f in data["findings"] if f["status"] == "problem"]
-    return f"doctor: {len(bad)} problem{'s' if len(bad) != 1 else ''}" if bad else "doctor: nothing wrong found"
+    if not bad:
+        return M("control.health.scanned.none", "The Box doctor found no problems.")
+    return M("control.health.scanned", {"one": "The Box doctor found {n} problem.", "other": "The Box doctor found {n} problems."}, n=len(bad))
 
 
 def rerun_install():
@@ -2719,7 +2902,7 @@ def rerun_install():
         _run_install(ADDON_SRC, opts, "repair", state.get("install_steps"))
     finally:
         shutil.rmtree(ADDON_SRC, ignore_errors=True)
-    return "the installer ran again and finished"
+    return M("control.health.rerun.done", "The installer ran again and finished.")
 
 
 def health_fix(req):
@@ -2747,16 +2930,23 @@ IFACE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")  # no leading "-": 
 def net_scan(req):
     iface = req.get("iface") or None
     if iface is not None and not IFACE_RE.match(str(iface)):
-        raise ValueError("not an interface name")
+        raise Refused(NOT_IFACE)
     if req.get("rescan") is True:
         # A fresh WiFi scan first (NetworkManager's list is otherwise its last one); a moment's work for the radio.
         run("nmcli", "dev", "wifi", "rescan", timeout=30)
         time.sleep(5)
     inv = netinv.scan(iface)
     netinv.write(inv, CONTROL / "netinv.json")
-    radios = len(inv["radios"])
-    return (f"{radios} radio{'s' if radios != 1 else ''}"
-            + (f", link {inv['uplink']['iface']} run by {inv['uplink']['backend']}" if inv["uplink"].get("iface") else ", no link"))
+    radios, up = len(inv["radios"]), inv["uplink"]
+    if up.get("iface"):
+        return M("control.net.scanned", {"one": "The network scan found {n} radio. {backend} runs the network link {iface}.",
+                                         "other": "The network scan found {n} radios. {backend} runs the network link {iface}."},
+                 n=radios, backend=up.get("backend"), iface=up["iface"])
+    return M("control.net.scanned.no-link", {"one": "The network scan found {n} radio. The box has no network link.",
+                                             "other": "The network scan found {n} radios. The box has no network link."}, n=radios)
+
+
+NOT_IFACE = M("control.net.iface-bad", "This is not an interface name.")
 
 
 # --- the hotspot (root/ap.py does the work, hub/apmode.py the plan) -------------------------------
@@ -2783,13 +2973,13 @@ def _ap_owner(req):
     out = {}
     if req.get("radio"):
         if not IFACE_RE.match(str(req["radio"])):
-            raise ValueError("not an interface name")
+            raise Refused(NOT_IFACE)
         out["radio"] = str(req["radio"])
     if req.get("band") in ("2.4 GHz", "5 GHz"):
         out["band"] = req["band"]
     if req.get("channel") is not None:
         if type(req["channel"]) is not int or not 1 <= req["channel"] <= 196:
-            raise ValueError("channel: a channel number")
+            raise Refused(M("control.hotspot.channel-bad", "The channel must be a channel number from {min} to {max}.", min=1, max=196))
         out["channel"] = req["channel"]
     if req.get("take_radio") is True:
         out["take_radio"] = True
@@ -2797,6 +2987,8 @@ def _ap_owner(req):
 
 
 def _ap_record_status(plan=None, note=""):
+    """ap.json, for the Network page: the note in English (a message said there as it is)."""
+    note = render(note)
     rec = ap._load(ap.RECORD, {})
     safeio.write(AP_STATUS, json.dumps({"up": bool(rec.get("up")), "plan": rec.get("plan") if rec.get("up") else plan,
                                         "confirmed": rec.get("confirmed", True), "since": rec.get("since"),
@@ -2812,9 +3004,9 @@ def _ap_inventory():
 
 def _ap_failed(exc):
     """A step that failed (ap.start has undone what it did): said on the Network page and to the hub."""
-    note = f"The hotspot did not start: {exc}"
+    note = M("control.hotspot.failed", "The hotspot did not start: {reason}", reason=_why(exc))
     _ap_record_status(None, note)
-    return ValueError(note)
+    return Refused(note)
 
 
 # --- guests' onward internet (share.py) ------------------------------------------------------------
@@ -2883,11 +3075,11 @@ def share_set(req):
     with it; off takes all of it back. The containment stays as the owner set it (Security page)."""
     level = str(req.get("level", ""))
     if level not in share.LEVELS:
-        raise ValueError(f"Select a level: {', '.join(share.LEVELS)}")
+        raise Refused(M("control.share.level-bad", "The level must be one of these values: {levels}.", levels=list(share.LEVELS)))
     rec = share.load()
     rec["level"] = level
     share_apply(rec)
-    return f"Guest internet sharing: {share.WORDS[level]}."
+    return M("control.share.set", "Guest internet sharing is saved: {level}.", level=share.WORDS[level])
 
 
 def share_allow(req):
@@ -2896,33 +3088,43 @@ def share_allow(req):
     signs in, at users-web)."""
     rec = share.load()
     if rec["level"] not in share.LET_OUT:
-        raise ValueError(f"At level {rec['level']}, the box does not let devices through one by one")
+        raise Refused(M("control.share.not-one-by-one", "At the level {level}, the box does not let devices through one at a time.",
+                        level=rec["level"]))
     addr = share.guest_address(req.get("ip"))
     if not addr:
-        raise ValueError("This is not an address on the hotspot")
+        raise Refused(M("control.share.not-hotspot", "This is not an address on the hotspot."))
     key = addr
     if rec["contain"]["by_mac"]:
         r = run("ip", "neigh", "show", addr)
         key = share.mac_of(addr, r.stdout if r.returncode == 0 else "")
         if not key:
-            raise ValueError(f"The box has no hardware address for {addr}. Check that the device is still on the hotspot.")
+            raise Refused(M("control.share.no-mac", "The box has no hardware address for {address}. "
+                            "Check that the device is still on the hotspot.", address=addr))
     r = run(*share.allow_command(key))
     if r.returncode != 0:
-        raise ValueError("The box could not let the device through: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
-    return f"{addr} ({key}) can reach the internet through the box for {share.OUT_HOURS} hours." if key != addr else f"{addr} can reach the internet through the box for {share.OUT_HOURS} hours."
+        raise Refused(M("control.share.let-failed", "The box could not let the device through: {output}", output=_last_line(r.stderr, 200)))
+    if key != addr:
+        return M("control.share.let.mac", {"one": "{address} ({mac}) can reach the internet through the box for {n} hour.",
+                                           "other": "{address} ({mac}) can reach the internet through the box for {n} hours."},
+                 address=addr, mac=key, n=share.OUT_HOURS)
+    return M("control.share.let", {"one": "{address} can reach the internet through the box for {n} hour.",
+                                   "other": "{address} can reach the internet through the box for {n} hours."}, address=addr, n=share.OUT_HOURS)
 
 
-def _guest_policy_follows():
+def _guest_policy_follows(note):
     """After the hotspot comes up (its interface may be ap0 or a radio of its own): the hotspot firewall and
-    guests' internet rewritten for it, when either is on. Said, not raised: the hotspot is up."""
+    guests' internet rewritten for it, when either is on. Refused, not raised: the hotspot is up. Returns note, or note
+    with why the rules were not rewritten."""
     from irate_box.root import security
     if not security.load_record().get("firewall") and not share.on():
-        return ""
+        return note
     try:
         share_apply(share.load())
-        return ""
+        return note
     except (ValueError, OSError) as exc:
-        return f" The guests' rules were not rewritten for it: {exc}"
+        # The hotspot's sentence, then this one: two whole sentences.
+        return M("control.hotspot.rules-failed", "{said} The box could not rewrite the guest rules for the hotspot: {reason}",
+                 said=note, reason=_why(exc))
 
 
 # --- packages from their makers, watched (pkgwatch.py) ----------------------------------------------
@@ -2932,7 +3134,10 @@ def pkg_check(req):
     cached, installed if the owner's mode says so."""
     from irate_box.root import pkgwatch
     ids = [str(req["package"])] if req.get("package") else pkgwatch.watched()
-    return "; ".join(pkgwatch.check(i, log=lambda *a: None) for i in ids) or "no watched package is on this box"
+    said = [pkgwatch.check(i, log=lambda *a: None) for i in ids]
+    if not said:
+        return M("control.pkg.none", "No watched package is on this box.")
+    return said[0] if len(said) == 1 else said
 
 
 def pkg_fetch(req):
@@ -2964,13 +3169,20 @@ def ap_on(req):
         plan = ap.start(run, _ap_inventory(), _ap_settings(), _ap_owner(req))
     except RuntimeError as exc:
         raise _ap_failed(exc) from exc
+    # The plan's own words (hub/apmode.py) are its sentences, said inside these.
     if plan.get("needs_choice") or plan["kind"] == "none":
         _ap_record_status(plan, plan["text"])
-        return plan["text"] + (f" ({plan['why']})" if plan.get("why") else "")
-    note = f"Hotspot enabled on {ap.ap_iface(plan)}, channel {plan['channel']}. {plan['text']}"
+        if plan.get("why"):
+            return M("control.hotspot.not-started", "{plan} Reason: {why}", plan=plan["text"], why=plan["why"])
+        return plan["text"]
+    where = {"iface": ap.ap_iface(plan), "channel": plan["channel"], "plan": plan["text"]}
     if plan.get("drops_uplink"):
-        note += f" Your WiFi link is off. Open the hub from the hotspot within {ap.DEADMAN // 60} minutes and confirm. Otherwise the box restores the WiFi link."
-    note += _guest_policy_follows()
+        note = M("control.hotspot.on.drops-uplink", "The hotspot is enabled on {iface}, channel {channel}. {plan} "
+                 "Your WiFi link is off. Open the hub from the hotspot within {minutes} minutes and confirm. "
+                 "Otherwise the box restores the WiFi link.", minutes=ap.DEADMAN // 60, **where)
+    else:
+        note = M("control.hotspot.on", "The hotspot is enabled on {iface}, channel {channel}. {plan}", **where)
+    note = _guest_policy_follows(note)
     _ap_record_status(plan, note)
     return note
 
@@ -2987,11 +3199,12 @@ def ap_try(req):
     except RuntimeError as exc:
         raise _ap_failed(exc) from exc
     if worked is None:
-        note = "There is nothing to try. " + plan["text"]
+        note = M("control.hotspot.try.nothing", "There is nothing to try. {plan}", plan=plan["text"])
     else:
-        note = ("The hotspot holds a channel of its own beside your WiFi. Guests do not notice when your WiFi roams." if worked
-                else "The hotspot cannot hold a channel of its own here, so it follows the channel of your WiFi.")
-        note += _guest_policy_follows()
+        note = _guest_policy_follows(
+            M("control.hotspot.try.own", "The hotspot holds a channel of its own beside your WiFi. Guests do not notice when your WiFi roams.")
+            if worked else
+            M("control.hotspot.try.follows", "The hotspot cannot hold a channel of its own here, so it follows the channel of your WiFi."))
     _ap_record_status(plan, note)
     return note
 
@@ -3025,17 +3238,25 @@ def uplink_set(req):
     try:
         moved = roaming.apply(s, old, iface)
     except ValueError as exc:
-        raise ValueError(f"Not saved: {exc}") from None
+        raise Refused(M("control.uplink.not-saved", "The watchdog settings are not saved: {reason}", reason=_why(exc))) from None
     s = uplink.save_settings(s)
     _uplink_running()
-    return (f"Uplink: {uplink.words(s)}" + (", custom values" if s["overrides"] else "")
-            + f", watching {uplink.watching_words(s)}. Acting again in {uplink.COMMON['pause_after_change'] // 60} min at the earliest."
-            + (f" {moved[:1].upper()}{moved[1:]}." if moved else ""))
+    # The settings and the links in uplink.py's own words, as arguments.
+    args = {"settings": uplink.words(s), "links": uplink.watching_words(s), "minutes": uplink.COMMON["pause_after_change"] // 60}
+    if s["overrides"]:
+        said = M("control.uplink.saved.custom", "The watchdog settings are saved, with custom values: {settings}. The watchdog watches {links}. "
+                 "Its next repair comes after {minutes} minutes at the earliest.", **args)
+    else:
+        said = M("control.uplink.saved", "The watchdog settings are saved: {settings}. The watchdog watches {links}. "
+                 "Its next repair comes after {minutes} minutes at the earliest.", **args)
+    if moved:
+        return M("control.uplink.saved.roaming", "{said} Changes to the WiFi connection: {changes}.", said=said, changes=moved)
+    return said
 
 
 def uplink_do(req):
     if req.get("step") not in uplink.STEPS:
-        raise ValueError(f"step must be one of {', '.join(uplink.STEPS)}")
+        raise Refused(M("control.uplink.step-bad", "The step must be one of these values: {steps}.", steps=list(uplink.STEPS)))
     _uplink_running()
     return uplink.request_step(req["step"])
 
@@ -3043,16 +3264,19 @@ def uplink_do(req):
 def uplink_hold(req):
     minutes = req.get("minutes")
     if type(minutes) is not int or not 0 <= minutes <= 1440:
-        raise ValueError("minutes must be 0 to 1440")
+        raise Refused(M("control.uplink.hold-bad", "The hold must be from {min} to {max} minutes.", min=0, max=1440))
     s = uplink.load_settings()
     s["hold_until"] = time.time() + minutes * 60 if minutes else 0
     uplink.save_settings(s)
-    return f"Repairs held for {minutes} min." if minutes else "Hold ended: repairs as set."
+    if not minutes:
+        return M("control.uplink.hold-ended", "The hold has ended. The watchdog repairs as its settings say.")
+    return M("control.uplink.held", {"one": "The watchdog makes no repairs for {n} minute.",
+                                     "other": "The watchdog makes no repairs for {n} minutes."}, n=minutes)
 
 
 def uplink_profile(req):
     if type(req.get("on")) is not bool:
-        raise ValueError("on must be true or false")
+        raise Refused(M("control.request.on-bad", "The request must give on as true or false."))
     msg = uplink.profile(req["on"])
     try:
         netinv.write(netinv.scan(), CONTROL / "netinv.json")
@@ -3088,11 +3312,18 @@ def nm_defaults(req):
         netinv.write(netinv.scan(), CONTROL / "netinv.json")
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
-    said = (f"On {iface}: " if iface else "") + "; ".join(
-        f"{nmconf.SETTINGS[k]['label']}: "
-        + (("as the box default" if iface else "NetworkManager's own") if v is None else nmconf.SETTINGS[k]["values"].get(v, v))
-        for k, v in clean.items())
-    return said + ("" if code == 0 else f" (NetworkManager did not reload: {out[-160:]}; it reads them at its next start)")
+    # Each change: the setting's label and value in nmconf.py's words, or back to a default.
+    changes = [M("control.nm.change.box-default", "{setting}: the box default", setting=nmconf.SETTINGS[k]["label"]) if v is None and iface
+               else M("control.nm.change.nm-default", "{setting}: the NetworkManager default", setting=nmconf.SETTINGS[k]["label"])
+               if v is None else
+               M("control.nm.change", "{setting}: {value}", setting=nmconf.SETTINGS[k]["label"], value=nmconf.SETTINGS[k]["values"].get(v, v))
+               for k, v in clean.items()]
+    said = M("control.nm.saved.iface", "The NetworkManager settings for {iface} are saved: {changes}.", iface=iface, changes=changes) \
+        if iface else M("control.nm.saved", "The NetworkManager settings of the box are saved: {changes}.", changes=changes)
+    if code == 0:
+        return said
+    return M("control.nm.not-reloaded", "{said} NetworkManager did not reload, so it reads the settings at its next start. "
+             "It said: {output}", said=said, output=out[-160:])
 
 
 def nm_connection(req):
@@ -3116,7 +3347,7 @@ WIFISYNC = "wifisync.service"
 def wifisync(req):
     do = req.get("do")
     if do not in ("off", "on", "undo"):
-        raise ValueError("do: off, on or undo")
+        raise Refused(_do_bad(("off", "on", "undo")))
     rec_path = CONTROL / "wifisync.json"
     try:
         rec = json.loads(rec_path.read_text())
@@ -3124,10 +3355,10 @@ def wifisync(req):
         rec = {}
     now = netinv.enabled(WIFISYNC)
     if now is None:
-        raise ValueError("wifisync is not installed on this box")
+        raise Refused(M("control.wifisync.missing", "The service {unit} is not installed on this box.", unit="wifisync"))
     if do == "undo":
         if not rec.get("was"):
-            raise ValueError("Nothing to undo. wifisync was not changed on this box.")
+            raise Refused(M("control.wifisync.nothing-to-undo", "There is nothing to undo. The box did not change {unit}.", unit="wifisync"))
         want = rec["was"] == "enabled"
     else:
         want = do == "on"
@@ -3135,7 +3366,8 @@ def wifisync(req):
             rec["was"] = now   # the image's own state, before the first change made here
     r = subprocess.run(["systemctl", "enable" if want else "disable", "--now", WIFISYNC], capture_output=True, text=True, timeout=60)
     if r.returncode:
-        raise ValueError(f"systemctl: {(r.stderr or r.stdout).strip()[:200]}")
+        raise Refused(M("control.wifisync.failed", "The command {command} failed: {output}",
+                        command=f"systemctl {'enable' if want else 'disable'} --now {WIFISYNC}", output=(r.stderr or r.stdout).strip()[:200]))
     if do == "undo":
         rec = {}
     else:
@@ -3146,17 +3378,22 @@ def wifisync(req):
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     if do == "undo":
-        return "wifisync is back as it was."
+        return M("control.wifisync.undone", "{unit} is back in its state before the box changed it.", unit="wifisync")
     if want:
-        return "wifisync is on. It switches the WiFi off whenever the WiFi of meshtasticd is off."
-    return "wifisync is off. It no longer changes the WiFi radio."
+        return M("control.wifisync.on", "{unit} is enabled. It disables the WiFi whenever the WiFi setting of {daemon} is off.",
+                 unit="wifisync", daemon="meshtasticd")
+    return M("control.wifisync.off", "{unit} is disabled. It no longer changes the WiFi radio.", unit="wifisync")
+
+
+def _do_bad(values):
+    return M("control.request.do-bad", "The request must give do as one of these values: {values}.", values=list(values))
 
 
 def other_ap(req):
     from irate_box.root import otherap
     do, uuid = req.get("do"), req.get("uuid")
     if do not in ("remove", "leave", "undo", "forget"):
-        raise ValueError("do: remove, leave, undo or forget")
+        raise Refused(_do_bad(("remove", "leave", "undo", "forget")))
     try:
         return getattr(otherap, do)(uuid)
     finally:
@@ -3225,7 +3462,7 @@ def _kits_status():
 def _kit_hours(req):
     hours = req.get("hours", 24)
     if hours is not None and (type(hours) is not int or not 1 <= hours <= 24 * 365):
-        raise ValueError("hours: 1 to 8760, or null for never")
+        raise Refused(M("control.kit.hours-bad", "The removal time must be from {min} to {max} hours, or never.", min=1, max=24 * 365))
     return hours
 
 
@@ -3239,21 +3476,22 @@ def _kit_req(fn):
             finally:
                 _kits_status()
         if fn is not kits.expire and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
-            raise ValueError("kit: a toolkit's id")
+            raise Refused(KIT_BAD)
         try:
             if fn is kits.set_extra:
                 return kits.set_extra(kit, req.get("packages"))
             if fn is kits.fetch:
                 budget = req.get("budget_mb", 500)
                 if type(budget) is not int or not 10 <= budget <= 1 << 16:
-                    raise ValueError("budget_mb: 10 to 65536")
+                    raise Refused(M("control.kit.budget-range", "The cache budget must be from {min} to {max} MB.", min=10, max=1 << 16))
                 return kits.fetch(kit, budget_mb=budget, log=lambda *_: None)
             if fn is kits.install:
                 return kits.install(kit, _kit_hours(req), log=lambda *_: None)
             if fn is kits.set_removal:
                 return kits.set_removal(kit, _kit_hours(req))
             if fn is kits.expire:
-                return "; ".join(kits.expire()) or "nothing due"
+                # One answer per toolkit removed, said one after another.
+                return kits.expire() or M("control.kit.expire.none", "No toolkit is due for removal.")
             return fn(kit, log=lambda *_: None)
         finally:
             _kits_status()
@@ -3272,13 +3510,19 @@ ACTIONS = {"service": service, "password": password, "claim": claim,
            "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "other-ap": other_ap, "wifisync": wifisync, "radio-test": radio_test, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback), "kit-drop-previous": _kit_req(kits.drop_previous),
-           "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
+           "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), KITS_STATUS)[1]}
+
+KITS_STATUS = M("control.kit.status", "The toolkit status is up to date.")
 
 
 def answer(rid, ok, message):
     """The result the hub reads: message in English, as every reader of results expects; a message (msg.M) also as
-    itself (msg), for a page that says it in the reader's language and a test that reads its ID."""
-    said = {"message": render(message), "msg": message} if is_message(message) else {"message": message}
+    itself (msg), for a page that says it in the reader's language and a test that reads its ID. Several answers
+    (a check of every watched package, every toolkit due removed) are a list, said one after another."""
+    if isinstance(message, list):
+        said = {"message": paragraph(*message), "msg": message} if any(is_message(m) for m in message) else {"message": paragraph(*message)}
+    else:
+        said = {"message": render(message), "msg": message} if is_message(message) else {"message": message}
     safeio.mkdir(RESULTS)
     safeio.write(RESULTS / f"{rid}.json", json.dumps({"id": rid, "ok": ok, **said, "at": time.time()}))
     # Keep the last 50 answers; the page only ever looks at recent ones.
@@ -3304,21 +3548,21 @@ def main():
                 path.unlink(missing_ok=True)
                 req = json.loads(text)
                 if not isinstance(req, dict):
-                    raise ValueError("not a request")
+                    raise Refused(M("control.request.bad", "The request is not valid."))
                 what = req.get("action")
                 action = ACTIONS.get(what)
                 if not action:
-                    raise ValueError("unknown action")
+                    raise Refused(M("control.request.unknown", "The root helper does not know the action {action}.", action=str(what)[:40]))
                 detail = next((str(req[k])[:60] for k in ("kit", "app", "choice", "name") if isinstance(req.get(k), str)), "")
                 safeio.write(HELPER_DOING, json.dumps({"action": str(what)[:40], "detail": detail, "started": time.time()}))
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 path.unlink(missing_ok=True)
-                said = getattr(exc, "message", None)
-                answer(rid, False, said if is_message(said) else str(exc))
+                answer(rid, False, _why(exc))
             except Exception as exc:  # a handler's own bug: answered, and the queue goes on
                 path.unlink(missing_ok=True)
-                answer(rid, False, f"{type(exc).__name__}: {exc}")
+                answer(rid, False, M("control.request.crashed", "The root helper stopped with an error: {error}",
+                                     error=f"{type(exc).__name__}: {exc}"))
             finally:
                 HELPER_DOING.unlink(missing_ok=True)
             if what in UPDATES:
@@ -3368,8 +3612,8 @@ if __name__ == "__main__":
         if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink"):
             sys.exit(0)   # every link change calls this (ap0's own too): leave the last note alone
         try:
-            note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
-            if note.startswith("moved"):
+            moved, note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
+            if moved:
                 _ap_record_status(None, note)
         except RuntimeError as exc:
             sys.exit(str(_ap_failed(exc)))
@@ -3395,12 +3639,13 @@ if __name__ == "__main__":
             sys.exit("run as root")
         rec = ap._load(ap.RECORD, {})
         if rec.get("up") and not rec.get("confirmed"):
-            _ap_record_status(None, ap.stop(run) + ": not confirmed in time, so the box's WiFi link is back")
+            _ap_record_status(None, M("control.hotspot.reverted", "{stopped} Nobody confirmed the hotspot in time, "
+                                      "so the box restored its WiFi link.", stopped=ap.stop(run)))
         sys.exit(0)
     if len(sys.argv) == 3 and sys.argv[1] == "set-admin":
         if os.geteuid() != 0:
             sys.exit("run as root: sudo /opt/irate-box/irate-box hub_control set-admin NAME")
-        print(console_set_admin(sys.argv[2]))
+        print(render(console_set_admin(sys.argv[2])))
         sys.exit(0)
     if sys.argv[1:2] == ["script-login"] and sys.argv[2:] in ([], ["--off"]):
         if os.geteuid() != 0:
@@ -3410,7 +3655,7 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["reset-password"]:
         if os.geteuid() != 0:
             sys.exit("run as root: sudo ./irate-box hub_control reset-password")
-        print(reset_password())
+        print(render(reset_password()))
         sys.exit(0)
     if sys.argv[1:] == ["syncthing-gui-password"]:
         # For install.sh: the password on stdin.
@@ -3427,7 +3672,7 @@ if __name__ == "__main__":
         if os.geteuid() != 0:
             sys.exit("run as root")
         try:
-            print(access_install())
+            print(render(access_install()))
         except (ValueError, OSError) as exc:
             sys.exit(f"access-install: {exc}")
         sys.exit(0)
@@ -3435,7 +3680,7 @@ if __name__ == "__main__":
         if os.geteuid() != 0:
             sys.exit("run as root")
         try:
-            print(install_app(sys.argv[2], sys.argv[3]))
+            print(render(install_app(sys.argv[2], sys.argv[3])))
         except (ValueError, OSError) as exc:
             sys.exit(f"install-app: {exc}")
         sys.exit(0)

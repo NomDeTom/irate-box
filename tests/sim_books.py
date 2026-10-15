@@ -207,14 +207,16 @@ for bad in ({"kiwix_name": "../x"}, {"kiwix_name": ""}, {"kiwix_name": "a", "fla
 L._open = real_open
 pol = dict(L.load_config()["policy"], books_budget_mb=1)
 why = L.over_budget("newbig", 2 << 20, pol)
-check("the books' budget: refused, saying how far over and what is largest", why and "of the 1 MB" in why and "Largest books now:" in why, why)
+check("the books' budget: refused, saying how far over and what is largest",
+      why and why["id"] == "library.book.over-limit" and why["args"]["limit"] == 1 and why["args"]["after"] >= 2
+      and why["args"]["largest"], why)
 check("  a book that fits, or no budget: no objection", L.over_budget("x", 10, dict(pol, books_budget_mb=0)) is None
       and L.over_budget("x", 10, dict(pol, books_budget_mb=10 ** 6)) is None)
 try:
     L.fetch_book({"name": "newbig"}, {"size": 2 << 20, "zip": False, "url": "https://x/y.zim", "auth": None, "version": "v"}, pol, {})
     check("  fetching refuses it before downloading", False)
 except L.LibrarianError as exc:
-    check("  fetching refuses it before downloading", "Book storage limit exceeded" in str(exc), str(exc))
+    check("  fetching refuses it before downloading", exc.message["id"] == "library.book.over-limit", str(exc))
 class Redirected(io.BytesIO):
     status = 200; headers = {"Content-Length": "3"}
     def geturl(self): return "http://mirror.example/y.zim"
@@ -222,7 +224,7 @@ L._open = lambda *a, **k: Redirected(b"abc")
 try:
     L._download("https://lb.download.kiwix.org/y.zim", T / "y.part"); check("a redirect to plain HTTP: not taken", False)
 except L.LibrarianError as exc:
-    check("a redirect to plain HTTP: not taken, and said", "plain HTTP" in str(exc), str(exc))
+    check("a redirect to plain HTTP: not taken, and said", exc.message["id"] == "library.download.http-redirect", str(exc))
 L._open = real_open
 # A book checked against its metalink's sha256, a nightly.link
 # bundle against GitHub's artifact digest.
@@ -240,7 +242,7 @@ check("a download that matches, or a source that names no hash: kept", (T / "abc
 try:
     L._verify_sha256(T / "abc", "0" * 64, "abc"); check("one that does not match: refused and gone", False)
 except L.LibrarianError as exc:
-    check("one that does not match: refused and gone", "SHA-256" in str(exc) and not (T / "abc").exists(), str(exc))
+    check("one that does not match: refused and gone", exc.message["id"] == "library.download.digest-mismatch" and not (T / "abc").exists(), str(exc))
 real_newest = L._newest_artifact
 L._newest_artifact = lambda s, a: ({"id": 7, "head_branch": "main", "created_at": "2026-10-08T00:00:00Z"}, {"id": 9, "name": "bundle", "size_in_bytes": 5, "digest": "sha256:" + "A" * 64})
 check("nightly.link: GitHub's artifact digest carried to the download's check", L._resolve_nightly({"repo": "o/r"}, None)["sha256"] == "a" * 64)

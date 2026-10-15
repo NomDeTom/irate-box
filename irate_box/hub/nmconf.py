@@ -20,6 +20,9 @@ import os
 import re
 from pathlib import Path
 
+from irate_box.msg import M
+from irate_box.hub.refused import Refused
+
 ETC = Path(os.environ.get("HUB_NM_ETC", "/etc/NetworkManager"))
 RUN = Path(os.environ.get("HUB_NM_RUN", "/run/NetworkManager"))
 LIB = Path(os.environ.get("HUB_NM_LIB", "/usr/lib/NetworkManager"))
@@ -55,6 +58,14 @@ SETTINGS = {
         "label": "WiFi power save", "nm_default": "the driver's choice",
         "values": {"2": "off", "3": "on", "1": "leave to the driver (ignore)"},
     },
+}
+# Each setting's label as a message, for a refusal that names it (the same words as "label").
+LABEL_SAID = {
+    "autoconnect_retries": M("nmconf.label.autoconnect-retries", "Keep trying to connect"),
+    "auth_retries": M("nmconf.label.auth-retries", "Keep trying after a failed password check"),
+    "cloned_mac": M("nmconf.label.cloned-mac", "MAC address on WiFi"),
+    "scan_mac": M("nmconf.label.scan-mac", "MAC address while scanning"),
+    "powersave": M("nmconf.label.powersave", "WiFi power save"),
 }
 # What NetworkManager allows per device (match-device sections); the connect retries are box-wide only.
 PER_IFACE = ("auth_retries", "cloned_mac", "powersave", "scan_mac")
@@ -131,16 +142,17 @@ def effective():
 def validate(changes, iface=None):
     """{name: value or "default"} as asked (for one interface when iface is given), or ValueError."""
     if not isinstance(changes, dict) or not changes:
-        raise ValueError("nothing to change")
+        raise Refused(M("nmconf.changes.none", "No change to save. Change a network default first."))
     if iface is not None and not IFACE_RE.match(str(iface)):
-        raise ValueError("invalid interface name")
+        raise Refused(M("nmconf.iface.invalid", "Invalid network interface name: {iface}.", iface=str(iface)))
     clean = {}
     for n, v in changes.items():
         s = SETTINGS.get(n)
         if s is None:
-            raise ValueError(f"unknown box default: {n}")
+            raise Refused(M("nmconf.setting.unknown", "Unknown network default: {name}.", name=n))
         if iface is not None and n not in PER_IFACE:
-            raise ValueError(f"{s['label']}: NetworkManager applies it to the whole box, not to one interface")
+            raise Refused(M("nmconf.setting.box-wide", "NetworkManager applies the setting {setting} to the whole box. "
+                            "You cannot set it for one network interface.", setting=LABEL_SAID[n]))
         v = str(v).strip()
         if v == "default":
             clean[n] = None
@@ -149,7 +161,8 @@ def validate(changes, iface=None):
         elif s["kind"] == "choice" and v in s["values"]:
             clean[n] = v
         else:
-            raise ValueError(f"{s['label']}: {v!r} is not an allowed value")
+            raise Refused(M("nmconf.value.not-allowed", "The setting {setting} cannot have the value {value}.",
+                            value=v, setting=LABEL_SAID[n]))
     return clean
 
 

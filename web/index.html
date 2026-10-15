@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hub</title>
+  <title data-i18n="index.head.title">Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏴‍☠️</text></svg>">
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
@@ -13,17 +13,17 @@
 </head>
 <body class="home">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><!-- account nav --></nav>
-    <h1>Hub</h1>
-    <p class="subtitle">The hub for this box.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="index.header.tip-quick-help" data-i18n="index.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><!-- account nav --></nav>
+    <h1 data-i18n="index.header.heading">Hub</h1>
+    <p class="subtitle" data-i18n="index.header.subtitle">You are connected to the network of the box.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="index.header.aria-theme"></div>
   </header>
   <!-- first use -->
 
   <div id="guest-net" class="guest-net" hidden></div>
 
   <details class="services" open>
-    <summary><h2>Services</h2></summary>
+    <summary><h2 data-i18n="index.body.heading-services">Services</h2></summary>
     <div class="service-grid">
       <!-- The app tiles come from apps.d/ (one manifest per app), put in here by server.py.
            Apps open inside app.html's hub bar in a new tab; data-service is the path /status
@@ -40,9 +40,9 @@
        The fragment picks the tab (#board, or a thread as #t12); ?full shows just the open tab
        as a full page (home.js). board.html redirects here. -->
   <nav class="tabs home-tabs">
-    <a href="#shout" data-tab="shout">Shoutbox</a>
-    <a href="#board" data-tab="board">Board</a>
-    <button type="button" class="tab-expand" id="tab-expand" title="Full-page view of this tab">⤢ Expand tab</button>
+    <a href="#shout" data-tab="shout" data-i18n="index.nav.shoutbox">Shoutbox</a>
+    <a href="#board" data-tab="board" data-i18n="index.nav.board">Board</a>
+    <button type="button" class="tab-expand" id="tab-expand" title="Full-page view of this tab" data-i18n-title="index.nav.tip-full-page-view-tab" data-i18n="index.nav.tab-expand">⤢ Expand tab</button>
   </nav>
 
   <div id="tab-shout">
@@ -50,12 +50,12 @@
       <div id="messages"></div>
       <form id="shout-form">
         <span class="name-wrap">
-          <input id="name-input" type="text" placeholder="Display name" maxlength="32" required>
-          <button type="button" id="hue-swatch" class="hue-swatch" title="Name colour" aria-label="Select your name colour"><span class="dot"></span></button>
-          <button type="button" id="name-roll" title="Generate name" aria-label="Generate name">🎲</button>
+          <input id="name-input" type="text" placeholder="Display name" maxlength="32" required data-i18n-placeholder="index.body.placeholder-display-name">
+          <button type="button" id="hue-swatch" class="hue-swatch" title="Name colour" aria-label="Select your name colour" data-i18n-aria-label="index.body.aria-select-name-colour" data-i18n-title="index.body.tip-name-colour"><span class="dot"></span></button>
+          <button type="button" id="name-roll" title="Generate name" aria-label="Generate name" data-i18n-aria-label="index.body.aria-generate-name" data-i18n-title="index.body.tip-generate-name">🎲</button>
         </span>
-        <input id="msg-input" data-emoji type="text" placeholder="Message" maxlength="200" required>
-        <button type="submit">Send</button>
+        <input id="msg-input" data-emoji type="text" placeholder="Message" maxlength="200" required data-i18n-placeholder="index.body.placeholder-message">
+        <button type="submit" data-i18n="index.body.btn-send">Send</button>
       </form>
     </section>
     <p class="decay-note" id="shout-decay-note"></p>
@@ -66,36 +66,37 @@
       <div id="threads"></div>
   
       <details id="new-thread">
-        <summary>Start a thread</summary>
+        <summary data-i18n="index.list-view.summary-start-thread">Start a thread</summary>
         <form id="thread-form">
           <span class="name-wrap">
-            <input id="t-name" type="text" placeholder="Display name" maxlength="32" required>
-            <button type="button" id="t-hue" class="hue-swatch" title="Name colour" aria-label="Select your name colour"><span class="dot"></span></button>
+            <input id="t-name" type="text" placeholder="Display name" maxlength="32" required data-i18n-placeholder="index.list-view.placeholder-display-name">
+            <button type="button" id="t-hue" class="hue-swatch" title="Name colour" aria-label="Select your name colour" data-i18n-aria-label="index.list-view.aria-select-name-colour" data-i18n-title="index.list-view.tip-name-colour"><span class="dot"></span></button>
           </span>
-          <input id="t-title" type="text" placeholder="Thread title" maxlength="80" required>
-          <textarea id="t-text" data-emoji="#t-send" placeholder="Message" maxlength="1000" rows="4" required></textarea>
-          <div class="form-actions"><button type="submit" id="t-send">Post thread</button></div>
+          <input id="t-title" type="text" placeholder="Thread title" maxlength="80" required data-i18n-placeholder="index.list-view.placeholder-thread-title">
+          <textarea id="t-text" data-emoji="#t-send" placeholder="Message" maxlength="1000" rows="4" required data-i18n-placeholder="index.list-view.placeholder-message"></textarea>
+          <div class="form-actions"><button type="submit" id="t-send" data-i18n="index.list-view.t-send">Post thread</button></div>
         </form>
       </details>
     </section>
   
     <section id="thread-view" hidden>
-      <h2><a class="back" href="#board">&larr; All threads</a></h2>
+      <h2 data-i18n="index.thread-view.heading-all-threads"><a class="back" href="#board">&larr; All threads</a></h2>
       <h3 id="thread-title"></h3>
       <div id="posts"></div>
       <form id="reply-form">
         <span class="name-wrap">
-          <input id="r-name" type="text" placeholder="Display name" maxlength="32" required>
-          <button type="button" id="r-hue" class="hue-swatch" title="Name colour" aria-label="Select your name colour"><span class="dot"></span></button>
+          <input id="r-name" type="text" placeholder="Display name" maxlength="32" required data-i18n-placeholder="index.thread-view.placeholder-display-name">
+          <button type="button" id="r-hue" class="hue-swatch" title="Name colour" aria-label="Select your name colour" data-i18n-aria-label="index.thread-view.aria-select-name-colour" data-i18n-title="index.thread-view.tip-name-colour"><span class="dot"></span></button>
         </span>
-        <textarea id="r-text" data-emoji="#r-send" placeholder="Reply" maxlength="1000" rows="3" required></textarea>
-        <div class="form-actions"><button type="submit" id="r-send">Reply</button></div>
+        <textarea id="r-text" data-emoji="#r-send" placeholder="Reply" maxlength="1000" rows="3" required data-i18n-placeholder="index.thread-view.placeholder-reply"></textarea>
+        <div class="form-actions"><button type="submit" id="r-send" data-i18n="index.thread-view.r-send">Reply</button></div>
       </form>
     </section>
   
     <p class="decay-note" id="board-decay-note"></p>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="qrcode.js"></script>
   <script src="hub.js"></script>
   <script src="age.js"></script>
