@@ -19,6 +19,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box.msg import M, Refused
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 RECORD = ETC / "other-ap.json"
@@ -56,17 +58,17 @@ def _save(rec):
 
 
 def _profile(uuid):
-    """(name, ssid, file) of an access-point profile that is not irate-box's, or ValueError."""
+    """(name, ssid, file) of an access-point profile that is not irate-box's, or Refused saying why not."""
     if not isinstance(uuid, str) or not UUID_RE.match(uuid):
-        raise ValueError("invalid connection id")
+        raise Refused(M("other-ap.request.uuid", "The request is not valid: the connection ID is not a UUID."))
     code, out = run("nmcli", "-t", "-f", "connection.id,802-11-wireless.mode,802-11-wireless.ssid", "con", "show", "uuid", uuid)
     if code != 0:
-        raise ValueError("Connection profile not found in NetworkManager")
+        raise Refused(M("other-ap.not-found", "NetworkManager has no connection profile with this ID."))
     kv = dict(line.partition(":")[::2] for line in out.splitlines())
     if kv.get("802-11-wireless.mode") != "ap":
-        raise ValueError("only the profile of another hotspot can be removed or ignored here")
+        raise Refused(M("other-ap.not-hotspot", "You can remove or ignore only the profile of another hotspot here."))
     if kv.get("connection.id") == OURS:
-        raise ValueError("that is irate-box's own hotspot. Switch it off on the Hotspot tab")
+        raise Refused(M("other-ap.ours", "This profile is the hotspot of irate-box. Switch it off on the Hotspot tab."))
     code, out = run("nmcli", "-t", "-f", "UUID,FILENAME", "con", "show")
     f = next((l.partition(":")[2] for l in out.splitlines() if l.startswith(uuid + ":")), "")
     return kv.get("connection.id"), kv.get("802-11-wireless.ssid"), f
@@ -76,7 +78,8 @@ def remove(uuid):
     name, ssid, f = _profile(uuid)
     src = Path(f)
     if not f or not src.is_relative_to(KEYFILES) or not src.is_file():
-        raise ValueError(f"{name} is not a profile file in {KEYFILES}, so the box cannot keep a copy for undo. The box removed nothing")
+        raise Refused(M("other-ap.remove.no-file", "{name} is not a profile file in {folder}, so the box cannot keep a copy to restore it. "
+                     "The box removed nothing.", name=name, folder=str(KEYFILES)))
     KEPT.mkdir(parents=True, exist_ok=True)
     os.chmod(KEPT, 0o700)
     kept = KEPT / f"{time.strftime('%Y%m%d-%H%M%S')}-{src.name}"
@@ -84,11 +87,12 @@ def remove(uuid):
     code, out = run("nmcli", "con", "delete", "uuid", uuid)
     if code != 0:
         kept.unlink(missing_ok=True)
-        raise ValueError(f"nmcli: {out[-200:]}")
+        raise Refused(M("other-ap.remove.nmcli", "nmcli did not delete the profile: {detail}", detail=out[-200:]))
     rec = record()
     rec[uuid] = {"name": name, "ssid": ssid, "choice": "removed", "kept": str(kept), "file": str(src), "at": time.time()}
     _save(rec)
-    return f"{name} ({ssid}) removed; the box keeps a copy of its profile in {kept}. Undo restores it"
+    return M("other-ap.removed", "The box deleted the profile {name} ({ssid}). It keeps a copy in {kept}. Restore profile brings it back.",
+             name=name, ssid=ssid, kept=str(kept))
 
 
 def leave(uuid):
@@ -96,7 +100,8 @@ def leave(uuid):
     rec = record()
     rec[uuid] = {"name": name, "ssid": ssid, "choice": "left", "at": time.time()}
     _save(rec)
-    return f"{name} ({ssid}) ignored and no longer listed. The doctor still warns if the profile starts by itself"
+    return M("other-ap.ignored", "The box ignores {name} ({ssid}) and no longer lists it. The doctor still warns if the profile starts by itself.",
+             name=name, ssid=ssid)
 
 
 def forget(uuid):
@@ -104,30 +109,32 @@ def forget(uuid):
     rec = record()
     r = rec.get(uuid)
     if not r or r.get("choice") != "removed":
-        raise ValueError("no removed profile has a kept copy for that id")
+        raise Refused(M("other-ap.forget.none", "No deleted profile with this ID has a retained copy."))
     kept = Path(r["kept"])
     if kept.is_relative_to(KEPT):
         kept.unlink(missing_ok=True)
     rec.pop(uuid)
     _save(rec)
-    return f"{r['name']}'s kept copy deleted. Restore is not possible now"
+    return M("other-ap.forgotten", "The box deleted the retained copy of {name}. You cannot restore the profile now.", name=r["name"])
 
 
 def undo(uuid):
     rec = record()
     r = rec.get(uuid)
     if not r:
-        raise ValueError("nobody removed or ignored that profile here")
+        raise Refused(M("other-ap.undo.none", "The box did not remove or ignore this profile."))
     if r["choice"] == "removed":
         dest = Path(r["file"])
         if dest.exists():
-            raise ValueError(f"{dest} exists already, so the box did not restore the profile")
+            raise Refused(M("other-ap.undo.exists", "{file} exists already, so the box did not restore the profile.", file=str(dest)))
         shutil.copy2(r["kept"], dest)
         os.chmod(dest, 0o600)
         code, out = run("nmcli", "con", "load", str(dest))
         if code != 0:
             dest.unlink(missing_ok=True)
-            raise ValueError(f"nmcli: {out[-200:]}")
+            raise Refused(M("other-ap.undo.nmcli", "nmcli did not load the profile: {detail}", detail=out[-200:]))
     rec.pop(uuid)
     _save(rec)
-    return f"{r['name']} " + ("restored" if r["choice"] == "removed" else "listed again")
+    if r["choice"] == "removed":
+        return M("other-ap.restored", "The box restored the profile {name}.", name=r["name"])
+    return M("other-ap.listed", "The box lists {name} again.", name=r["name"])

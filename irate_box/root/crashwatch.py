@@ -48,6 +48,8 @@ import time
 from collections import Counter, deque
 from pathlib import Path
 
+from irate_box.msg import M, Refused, duration, render
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 SETTINGS = ETC / "crashwatch.json"
@@ -608,14 +610,14 @@ def _board_watchdog(on):
         return
     node = _dt_watchdog()
     if not node:
-        raise ValueError("The device tree has no disabled watchdog to enable")
+        raise Refused(M("crashwatch-set.no-dt-watchdog", "The device tree has no disabled watchdog to enable."))
     src = ("/dts-v1/;\n/plugin/;\n/ {\n\tfragment@0 {\n\t\ttarget-path = \"%s\";\n"
            "\t\t__overlay__ { status = \"okay\"; };\n\t};\n};\n" % node)
     dtbo.parent.mkdir(parents=True, exist_ok=True)
     r = subprocess.run(["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(dtbo), "-"], input=src, capture_output=True, text=True)
     if r.returncode:
         dtbo.unlink(missing_ok=True)
-        raise ValueError(f"dtc: {r.stderr.strip()[:160]}")
+        raise Refused(M("crashwatch-set.dtc-failed", "The device tree compiler (dtc) failed: {detail}", detail=r.stderr.strip()[:160]))
     _boot_env_overlays(add=OVERLAY_NAME)
 
 
@@ -636,11 +638,12 @@ def set_panic(on):
                      + "".join(f"{k} = {v}\n" for k, v in HANG_SYSCTL.items()))
         for k, v in HANG_SYSCTL.items():
             subprocess.run(["sysctl", "-q", "-w", f"{k}={v}"], capture_output=True)
-        return "the box restarts 10 s after a kernel panic, oops or lockup"
+        return M("crashwatch-set.panic.on", "Restart after kernel fault enabled: the box restarts {wait} after a kernel panic, oops "
+                                            "or lockup.", wait=duration(int(HANG_SYSCTL["kernel.panic"])))
     SYSCTL.unlink(missing_ok=True)
     for k in HANG_SYSCTL:
         subprocess.run(["sysctl", "-q", "-w", f"{k}=0"], capture_output=True)
-    return "a kernel panic or lockup no longer restarts the box"
+    return M("crashwatch-set.panic.off", "Restart after kernel fault disabled: a kernel panic or lockup no longer restarts the box.")
 
 
 def set_watchdog(on):
@@ -648,7 +651,7 @@ def set_watchdog(on):
     if on:
         kind = watchdog_device()
         if not kind:
-            raise ValueError("This kernel has no watchdog, neither the board's own nor softdog")
+            raise Refused(M("crashwatch-set.no-watchdog", "This kernel has no watchdog: neither the board's own nor softdog."))
         if kind == "switched-off":
             _board_watchdog(True)
         if kind == "softdog":
@@ -657,22 +660,27 @@ def set_watchdog(on):
             p = subprocess.run(["modprobe", "softdog"], capture_output=True, text=True)
             if p.returncode:
                 MODULES.unlink(missing_ok=True)
-                raise ValueError(f"modprobe softdog: {p.stderr.strip()[:160]}")
+                raise Refused(M("crashwatch-set.softdog-failed", "The kernel did not load softdog: {detail}", detail=p.stderr.strip()[:160]))
         SYSTEMD_CONF.parent.mkdir(parents=True, exist_ok=True)
         safeio.write(SYSTEMD_CONF, "# Written by irate-box (root/crashwatch.py): systemd feeds the watchdog; a frozen\n"
                      f"# system stops feeding it and the box restarts.\n[Manager]\nRuntimeWatchdogSec={WATCHDOG_SEC}\nRebootWatchdogSec=5min\n")
         subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
+        wait = duration(WATCHDOG_SEC)
         if kind == "switched-off":
-            return f"Watchdog enabled after reboot: the board's own watchdog starts at the next restart. Then it restarts the box if the system freezes for {WATCHDOG_SEC} s"
-        which = "the board's own" if kind == "hardware" else "the kernel's softdog"
-        return f"Watchdog enabled: {which} watchdog restarts the box if the system freezes for {WATCHDOG_SEC} s"
+            return M("crashwatch-set.watchdog.after-restart", "Watchdog enabled after restart: the board's own watchdog starts at the next "
+                                                              "restart. Then it restarts the box if the system freezes for {wait}.", wait=wait)
+        if kind == "hardware":
+            return M("crashwatch-set.watchdog.board", "Watchdog enabled: the board's own watchdog restarts the box if the system freezes "
+                                                      "for {wait}.", wait=wait)
+        return M("crashwatch-set.watchdog.softdog", "Watchdog enabled: the kernel's softdog restarts the box if the system freezes for {wait}.",
+                 wait=wait)
     SYSTEMD_CONF.unlink(missing_ok=True)
     _board_watchdog(False)
     subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
     if MODULES.exists():
         MODULES.unlink()
         subprocess.run(["modprobe", "-r", "softdog"], capture_output=True)
-    return "Watchdog disabled: a frozen box waits for an administrator to restart it"
+    return M("crashwatch-set.watchdog.off", "Watchdog disabled: a frozen box waits for an administrator to restart it.")
 
 
 def set_option(key, value):
@@ -680,7 +688,9 @@ def set_option(key, value):
     s = load_settings()
     if key == "snapshots" and value in ("on", "off"):
         s["snapshots"] = value == "on"
-        msg = "Crash snapshots enabled: the box saves a snapshot to its storage every 30 s" if s["snapshots"] else "Crash snapshots disabled: a crash leaves only the last journal sync"
+        msg = (M("crashwatch-set.snapshots.on", "Crash snapshots enabled: the box saves a snapshot to its storage every {every}.",
+                 every=duration(TICK)) if s["snapshots"] else
+               M("crashwatch-set.snapshots.off", "Crash snapshots disabled: after a crash, only what the journal last wrote is kept."))
     elif key == "panic" and value in ("on", "off"):
         msg = set_panic(value == "on")
         s["panic"] = value == "on"
@@ -688,7 +698,7 @@ def set_option(key, value):
         msg = set_watchdog(value == "on")
         s["watchdog"] = value == "on"
     else:
-        raise ValueError(f"{key} {value} is not a crash watch setting")
+        raise Refused(M("crashwatch-set.unknown", "Crash watch has no setting {key} {value}.", key=key, value=value))
     save_settings(s)
     return msg
 
@@ -697,9 +707,9 @@ def undo_all():
     done = []
     s = load_settings()
     if s["panic"] or SYSCTL.exists():
-        done.append(set_panic(False))
+        done.append(render(set_panic(False)))   # for uninstall.sh's terminal
     if s["watchdog"] or SYSTEMD_CONF.exists() or (BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo").exists():
-        done.append(set_watchdog(False))
+        done.append(render(set_watchdog(False)))
     return done
 
 

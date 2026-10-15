@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 from irate_box.finding import finding
-from irate_box.msg import M, named
+from irate_box.msg import M, duration, named
 from irate_box.root import secdoctor_xref
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -218,7 +218,7 @@ def cis_findings(checks, summary, took=None, info=None):
     out.append(finding("cis-summary", M("cis.summary.title", "CIS benchmark (debian-cis --audit-all)"), "ok",
                        M("cis.summary", "{passed} of {run} checks pass ({percent} %).", passed=summary.get("PASSED_CHECKS", "?"),
                          run=summary.get("RUN_CHECKS", "?"), percent=summary.get("CONFORMITY_PERCENTAGE", "?")),
-                       notes=[M("deep.took", "It took {minutes} min.", minutes=round(took / 60, 1))] if took else [],
+                       notes=[M("deep.took", "It took {took}.", took=duration(round(took)))] if took else [],
                        source="debian-cis"))
     return out
 
@@ -385,7 +385,7 @@ def lynis_findings(rep, took=None):
                        notes=[M("lynis.warnings", {"one": "Lynis gave {n} warning.", "other": "Lynis gave {n} warnings."},
                                 n=len(rep["warnings"])),
                               M("lynis.suggestions", {"one": "Lynis made {n} suggestion.", "other": "Lynis made {n} suggestions."}, n=n)]
-                       + ([M("deep.took", "It took {minutes} min.", minutes=round(took / 60, 1))] if took else [])
+                       + ([M("deep.took", "It took {took}.", took=duration(round(took)))] if took else [])
                        + ([M("lynis.listed", {"one": "{n} result matches no item. It is listed, not counted.",
                                               "other": "{n} results match no item. They are listed, not counted."}, n=len(listed))]
                           if listed else []),

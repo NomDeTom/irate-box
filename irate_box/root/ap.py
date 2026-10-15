@@ -15,6 +15,7 @@ Pure functions here (the files and the steps, tested offline); the root helper r
 import ipaddress
 
 from irate_box.hub import apmode, hotspot
+from irate_box.msg import M, Refused
 
 CONNECTION = "irate-box-ap"
 SHARED_IFACE = "ap0"
@@ -100,14 +101,14 @@ def up_steps(plan):
     """The commands that bring the hotspot up, in order (the files written first). Refuses a plan
     that waits on the owner, or has no channel."""
     if plan.get("needs_choice") or plan["kind"] == "none" or not plan.get("channel"):
-        raise ValueError("This plan does not start a hotspot. " + plan.get("text", ""))
+        raise Refused(M("ap.plan.no-start", "This plan does not start a hotspot. {plan}", plan=plan.get("text", "")))
     steps, iface = [], ap_iface(plan)
     if iface == SHARED_IFACE:
         steps.append(["iw", "dev", plan["iface"], "interface", "add", SHARED_IFACE, "type", "__ap"])
     if plan.get("backend") == "hostapd":
         # No NetworkManager: the address set by hand, hostapd runs the access point.
         if plan.get("drops_uplink") and plan.get("uplink"):
-            raise ValueError("The hotspot can take the WiFi link only if NetworkManager runs the link on this box.")
+            raise Refused(M("ap.plan.needs-nm", "The hotspot can take the WiFi link only if NetworkManager runs the link on this box."))
         steps += [["ip", "addr", "replace", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", iface],
                   ["ip", "link", "set", iface, "up"], ["systemctl", "restart", HOSTAPD_UNIT],
                   ["systemctl", "restart", DNSMASQ_UNIT]]

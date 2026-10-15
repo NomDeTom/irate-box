@@ -38,6 +38,7 @@ import sys
 import time
 from pathlib import Path
 
+from irate_box.msg import M, Refused, render, sentences
 from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -127,22 +128,24 @@ def parse(choice):
     """('chrony'|'image', pool, gps, module, serve, local or '') from the page's choice, or ValueError."""
     m = CHOICE_RE.match(choice or "")
     if not m:
-        raise ValueError("a clock choice: clock-sources:image|chrony:POOL:GPS:MODULE:SERVE:LOCAL")
+        raise Refused(M("clock-sources.not-a-choice", "This is not a choice of clock sources that the Clock page makes."))
     service, pool, gps, module, serve, local = (m.group(1), m.group(2) == "1", m.group(3) == "1", m.group(4) == "1",
                                                 m.group(5) == "1", m.group(6))
     local = "" if local == "-" else local
     if gps and service != "chrony":
-        raise ValueError("GPS needs chrony: systemd-timesyncd takes no reference clock")
+        raise Refused(M("clock-sources.gps-needs-chrony", "GPS needs chrony. systemd-timesyncd takes no reference clock."))
     if serve and service != "chrony":
-        raise ValueError("Serving the time needs chrony: systemd-timesyncd only asks, it does not answer")
+        raise Refused(M("clock-sources.serve-needs-chrony", "Serving the time needs chrony. systemd-timesyncd only asks for the time, "
+                                                         "and does not answer."))
     if module and service != "chrony":
-        raise ValueError("The clock module as a source needs chrony (with the image's own service it sets the time at boot only)")
+        raise Refused(M("clock-sources.module-needs-chrony", "The clock module as a source needs chrony. With the image's own service, "
+                                                          "the module sets the time at boot only."))
     if module and not module_ready():
-        raise ValueError("No clock module is set up: scan for one on the Clock page first")
+        raise Refused(M("clock-sources.no-module", "No clock module is set up. Scan for one on the Clock page first."))
     if local and not _host_ok(local):
-        raise ValueError(f"{local} is not an address or a host name")
+        raise Refused(M("clock-sources.bad-host", "{host} is not an address or a host name.", host=local))
     if not (pool or gps or module or local):
-        raise ValueError("Select at least one source: with none, nothing sets the clock")
+        raise Refused(M("clock-sources.none", "Select at least one source. With none, nothing sets the clock."))
     return service, pool, gps, module, serve, local
 
 
@@ -181,14 +184,22 @@ def _host_ok(host):
 
 # --- applying ----------------------------------------------------------------------------------------------
 
-def _install(pkg, why):
-    """A package from Debian, or offline from the toolkits' cache (its newest .deb there)."""
+# Where a package comes from offline: the toolkit whose cache holds it.
+FROM_GPS_KIT = M("clock-sources.install.failed.gps-kit", "The box could not install {package}. Connect the box to the internet "
+                                                         "once, or refresh the cache of the GPS time toolkit on Toolkits.", package="chrony")
+FROM_SYSTEM_KIT = M("clock-sources.install.failed.system-kit", "The box could not install {package}. Connect the box to the internet "
+                                                               "once, or refresh the cache of the System toolkit on Toolkits.",
+                    package="systemd-timesyncd")
+
+
+def _install(pkg, failed):
+    """A package from Debian, or offline from the toolkits' cache (its newest .deb there); failed: the refusal if neither."""
     if run("apt-get", "install", "-y", pkg, timeout=1200).returncode == 0:
-        return f"{pkg} installed"
+        return M("clock-sources.installed", "The box installed {package}.", package=pkg)
     debs = sorted(KIT_POOL.glob(f"{pkg}_*.deb")) if KIT_POOL.is_dir() else []
     if debs and run("apt-get", "install", "-y", str(debs[-1]), timeout=1200).returncode == 0:
-        return f"{pkg} installed from the toolkits' cache"
-    raise ValueError(f"{pkg} could not be installed: it needs the internet once, or {why}")
+        return M("clock-sources.installed-cache", "The box installed {package} from the toolkits' cache.", package=pkg)
+    raise Refused(failed)
 
 
 def timesyncd_text(pool, local):
@@ -233,7 +244,7 @@ def _write(path, text):
 def _chrony_on(rec, pool, gps, module, serve, local, said):
     img = rec["image"]
     if not _installed("chrony"):
-        said.append(_install("chrony", "the GPS time toolkit's cache, which holds it"))
+        said.append(_install("chrony", FROM_GPS_KIT))
         rec["installed_chrony"] = True
         if img.get("timesyncd") and not _installed("systemd-timesyncd"):
             rec["removed_timesyncd"] = True
@@ -241,10 +252,11 @@ def _chrony_on(rec, pool, gps, module, serve, local, said):
         from irate_box.root import kits
         if GPS_KIT not in kits.installed_state():
             if not kits.manifest(GPS_KIT):
-                raise ValueError("GPS needs the GPS time toolkit: refresh its cache on Toolkits while the box has internet")
+                raise Refused(M("clock-sources.gps-kit-missing", "GPS needs the GPS time toolkit. Refresh its cache on Toolkits while the box "
+                                                              "has internet access."))
             kits.install(GPS_KIT, None, log=lambda *_: None)
             rec["installed_gps_kit"] = True
-            said.append("the GPS time toolkit installed (gpsd)")
+            said.append(M("clock-sources.gps-kit-installed", "The box installed the GPS time toolkit (gpsd)."))
     # The image's own pool line off only when the pool is not chosen; back as it was when it is.
     if img.get("chrony_conf") is None and CHRONY_CONF.is_file():
         img["chrony_conf"] = CHRONY_CONF.read_text()
@@ -260,8 +272,10 @@ def _chrony_on(rec, pool, gps, module, serve, local, said):
     run("systemctl", "enable", "chrony.service")
     run("systemctl", "restart", "chrony.service", timeout=120)
     _feed(module)
-    said.append("chrony keeps the time: " + _sources_words(pool, gps, local, module)
-                + (f", and serves it to the hotspot ({hotspot_net()})" if serve else ""))
+    sources = _sources(pool, gps, local, module)
+    said.append(M("clock-sources.chrony-serves", "chrony now keeps the time from {sources}. It also serves the time to the hotspot ({net}).",
+                  sources=sources, net=hotspot_net()) if serve else
+                M("clock-sources.chrony", "chrony now keeps the time from {sources}.", sources=sources))
 
 
 def _chrony_off(rec, said):
@@ -276,14 +290,14 @@ def _chrony_off(rec, said):
         from irate_box.root import kits
         try:
             kits.remove(GPS_KIT, log=lambda *_: None)
-            said.append("the GPS time toolkit removed")
+            said.append(M("clock-sources.gps-kit-removed", "The box removed the GPS time toolkit."))
         except ValueError:
             pass
     if rec.pop("installed_chrony", False):
         run("apt-get", "remove", "-y", "chrony", timeout=1200)
-        said.append("chrony removed")
+        said.append(M("clock-sources.chrony-removed", "The box removed chrony."))
     if rec.pop("removed_timesyncd", False):
-        said.append(_install("systemd-timesyncd", "the System toolkit's cache, which holds it"))
+        said.append(_install("systemd-timesyncd", FROM_SYSTEM_KIT))
     if img.get("daemon") == "chrony":
         run("systemctl", "restart", "chrony.service", timeout=120)
 
@@ -292,17 +306,22 @@ def _timesyncd(pool, local, said):
     _write(TIMESYNCD_D, timesyncd_text(pool, local))
     run("systemctl", "enable", "systemd-timesyncd.service")
     run("systemctl", "restart", "systemd-timesyncd.service", timeout=120)
-    said.append("systemd-timesyncd asks " + _sources_words(pool, False, local))
+    said.append(M("clock-sources.timesyncd", "systemd-timesyncd now gets the time from {sources}.", sources=_sources(pool, False, local)))
 
 
-def _sources_words(pool, gps, local, module=False):
-    parts = (["GPS"] if gps else []) + (["the clock module"] if module else []) + ([f"the server {local} on the local network"] if local else []) \
-        + (["the internet's pool"] if pool else [])
-    return ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1] if parts else "nothing"
+def _sources(pool, gps, local, module=False):
+    """The sources chosen, as a list (parse lets no choice have none)."""
+    return (([M("clock-sources.gps", "GPS")] if gps else []) + ([M("clock-sources.module", "the clock module")] if module else [])
+            + ([M("clock-sources.local", "the server {host} on the local network", host=local)] if local else [])
+            + ([M("clock-sources.pool", "the internet's pool")] if pool else []))
+
+
+FIREWALL_OPENS = M("clock-sources.firewall-opens", "The hotspot firewall now opens UDP port 123 to guests.")
+FIREWALL_CLOSES = M("clock-sources.firewall-closes", "The hotspot firewall closes UDP port 123 again.")
 
 
 def apply(choice):
-    """The page's choice applied; what was done, in a sentence."""
+    """The page's choice applied; what was done, a sentence a step."""
     service, pool, gps, module, serve, local = parse(choice)
     rec = load()
     if "image" not in rec:
@@ -315,21 +334,21 @@ def apply(choice):
         if rec.get("service") == "chrony" or rec.get("installed_chrony"):
             _chrony_off(rec, said)
         if not _installed("systemd-timesyncd"):
-            said.append(_install("systemd-timesyncd", "the System toolkit's cache, which holds it"))
+            said.append(_install("systemd-timesyncd", FROM_SYSTEM_KIT))
         _timesyncd(pool, local, said)
     was_serving = serving()
     rec.update(service=service, pool=pool, gps=gps, module=module, serve=serve, local=local, at=time.time())
     _save(rec)
     if serve != was_serving and _firewall_refresh():
-        said.append("the hotspot firewall " + ("opens UDP 123 to guests" if serve else "closes UDP 123 again"))
-    return ". ".join(s[0].upper() + s[1:] for s in said) + "."
+        said.append(FIREWALL_OPENS if serve else FIREWALL_CLOSES)
+    return sentences(*said)
 
 
 def undo():
     """Everything back as the image had it."""
     rec = load()
     if "image" not in rec:
-        raise ValueError("The clock's sources were not changed from this page")
+        raise Refused(M("clock-sources.undo.nothing", "The clock's sources were not changed from the Clock page. There is nothing to restore."))
     said = []
     _chrony_off(rec, said)
     TIMESYNCD_D.unlink(missing_ok=True)
@@ -342,16 +361,16 @@ def undo():
     was_serving = serving()
     RECORD.unlink(missing_ok=True)
     if was_serving and _firewall_refresh():
-        said.append("the hotspot firewall closes UDP 123 again")
-    said.append("the clock's sources put back as the image had them")
-    return ". ".join(s[0].upper() + s[1:] for s in said) + "."
+        said.append(FIREWALL_CLOSES)
+    said.append(M("clock-sources.restored", "The clock's sources are back as the image had them."))
+    return sentences(*said)
 
 
 def undo_all():
     if "image" not in load():
         return ["the clock's sources: not changed from the Clock page"]
     try:
-        return [undo()]
+        return [render(undo())]   # the uninstaller's terminal
     except ValueError as exc:
         return [f"the clock's sources: {exc}"]
 

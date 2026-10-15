@@ -20,15 +20,32 @@ const AW = (() => {
   // Messages from the box (irate_box/msg.py): {id, en, args}, shown in the reader's language. Only English
   // exists yet: a catalogue for another language is {id: {text}} under the same IDs, and falls back to the English.
   // A plural is a set of whole sentences by CLDR category, selected by the argument n; a list argument is joined
-  // for the language; {time} is a moment said as people say it. Placeholders are named: {reason}.
+  // for the language; {time} is a moment said as people say it, {seconds} a length of time in a unit that suits it.
+  // Placeholders are named: {reason}.
   const LANG = 'en-GB';
   const CATALOGUE = {};
   const isMessage = (v) => !!v && typeof v === 'object' && typeof v.id === 'string' && 'en' in v;
+  // A length of time: in the largest unit that holds it whole ("5 minutes", "36 hours"), or else rounded in the unit
+  // its size suits ("67 minutes", "1.5 hours"). msg.py's duration_unit picks the same, for the terminal.
+  const UNITS = [[86400, 'day', 172800, 1], [3600, 'hour', 5400, 1], [60, 'minute', 90, 0], [1, 'second', 0, 0]];
+  function durationUnit(seconds) {
+    const s = Math.abs(Number(seconds) || 0);
+    const whole = UNITS.find(([size]) => s >= size && s % size === 0 && s / size < 100);
+    if (whole) return [s / whole[0], whole[1]];
+    const [size, unit, , places] = UNITS.find((u) => s >= u[2]);
+    return [Math.floor((s / size) * 10 ** places + 0.5) / 10 ** places, unit];
+  }
   function sayArg(v) {
     if (isMessage(v)) return say(v);
     if (Array.isArray(v)) return new Intl.ListFormat(LANG, { type: 'conjunction' }).format(v.map(sayArg));
     if (v && typeof v === 'object' && 'time' in v) {
       return new Date(v.time * 1000).toLocaleString(LANG, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+    }
+    // Several messages as one result (msg.sentences): said one after the other.
+    if (v && typeof v === 'object' && Array.isArray(v.sentences)) return v.sentences.map(sayArg).filter(Boolean).join(' ');
+    if (v && typeof v === 'object' && 'seconds' in v) {
+      const [value, unit] = durationUnit(v.seconds);
+      return new Intl.NumberFormat(LANG, { style: 'unit', unit, unitDisplay: 'long', maximumFractionDigits: 1 }).format(value);
     }
     return v == null ? '' : String(v);
   }

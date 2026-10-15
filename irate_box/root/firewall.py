@@ -29,6 +29,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from irate_box.msg import M, Refused
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RULES = ETC / "firewall.nft"
 RECORD_AP = ETC / "ap.json"
@@ -104,7 +106,7 @@ def ruleset(iface, fw=None, sharing=None, kept=()):
     kept: [(address, seconds left)] already let out, carried into the new set (kept_out)."""
     from irate_box.root import share
     if not IFACE_RE.match(iface):
-        raise ValueError(f"{iface!r} is not a valid interface name")
+        raise Refused(M("fw-rules.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface)))
     q = f'iifname "{iface}"'
     sharing = sharing if sharing and sharing.get("level") in share.LEVELS[1:] else None
     lv = sharing["level"] if sharing else "off"
@@ -273,17 +275,20 @@ def apply_all(fw, sharing, iface=None):
         r = run("nft", "-c", "-f", str(tmp))
     except OSError as exc:
         tmp.unlink(missing_ok=True)
-        raise ValueError(f"Rules rejected: nft is not installed ({exc}). Run apt-get install nftables, or update the box. The box kept the previous rules.")
+        raise Refused(M("fw-rules.no-nft", "The box did not change the rules, because nft is not installed ({detail}). "
+                     "Run {command}, or update the box. The box kept the previous rules.", detail=str(exc), command="apt-get install nftables"))
+    last = lambda r: (r.stderr.strip().splitlines() or ["?"])[-1][:200]  # noqa: E731
     if r.returncode != 0:
         tmp.unlink(missing_ok=True)
-        raise ValueError("Rules rejected. The box kept the previous rules. nft rejected the ruleset: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+        raise Refused(M("fw-rules.rejected", "nft rejected the rules. The box kept the previous rules. nft said: {detail}", detail=last(r)))
     os.replace(tmp, RULES)
     r = run("nft", "-f", str(RULES))
     if r.returncode != 0:
-        raise ValueError("Rules saved but not loaded. nft did not load the ruleset: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+        raise Refused(M("fw-rules.not-loaded", "The box saved the rules, but nft did not load them. nft said: {detail}", detail=last(r)))
     r = run("systemctl", "enable", UNIT)   # loads the file at every boot
     if r.returncode != 0:
-        raise ValueError(f"Rules active but startup service not enabled. The ruleset is loaded, but {UNIT} is not enabled for the next boot: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+        raise Refused(M("fw-rules.not-enabled", "The rules are active, but {unit} is not enabled, so the rules do not load at the next boot. "
+                     "systemctl said: {detail}", unit=UNIT, detail=last(r)))
 
 
 def remove():

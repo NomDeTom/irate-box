@@ -35,6 +35,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from irate_box.msg import M, Refused
+
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 RECORD = ETC / "netplan-handover.json"
@@ -116,7 +118,7 @@ def _generate(files):
             os.chmod(dest, 0o600)
         code, out = run("netplan", "generate", "--root-dir", str(root), timeout=60)
         if code != 0:
-            raise ValueError(f"netplan generate failed: {out[-200:]}")
+            raise Refused(M("nm-handover.generate", "netplan generate failed: {detail}", detail=out[-200:]))
         made = {}
         run_dir = root / "run"
         if run_dir.is_dir():
@@ -148,16 +150,20 @@ def _with_uuid(keyfile_bytes, uuid):
     return b"\n".join(out)
 
 
+def _no_connection(name):
+    return Refused(M("nm-handover.no-connection", "{name} makes no NetworkManager connection.", name=name))
+
+
 def plan(name):
-    """What handing over the netplan file `name` would do, or ValueError saying why not."""
+    """What handing over the netplan file `name` would do, or Refused saying why not."""
     files = _netplan_files()
     if name not in files:
-        raise ValueError(f"netplan file {name} not found")
+        raise Refused(M("nm-handover.not-found", "The netplan file {name} does not exist.", name=name))
     if not re.search(r"^\s+(ethernets|wifis|bridges|bonds|vlans|modems|nm-devices):", files[name].read_text(errors="replace"), re.M):
-        raise ValueError(f"{name} makes no NetworkManager connection")
+        raise _no_connection(name)
     if integrated():
-        raise ValueError("this box's NetworkManager keeps its settings in netplan itself, so changes to a "
-                         "connection already last: there is nothing to transfer")
+        raise Refused(M("nm-handover.integrated", "The NetworkManager of this box keeps its settings in netplan itself, so a change to a "
+                     "connection already lasts. There is nothing to transfer."))
     before = _generate(files)
     without = _generate({n: p for n, p in files.items() if n != name})
     gone = sorted(set(before) - set(without))
@@ -179,10 +185,10 @@ def plan(name):
     regdom = [k for k in gone if "netplan-regdom" in k]
     other = [k for k in gone if k not in profiles and k not in regdom]
     if changed or added or other:
-        raise ValueError(f"{name} makes more than NetworkManager connections, or changes what other files make "
-                         f"({', '.join((changed + added + other)[:4])}), so the box leaves it unchanged")
+        raise Refused(M("nm-handover.mixed", "{name} makes more than NetworkManager connections, or changes what other files make "
+                     "({files}). The box leaves it unchanged.", name=name, files=(changed + added + other)[:4]))
     if not profiles:
-        raise ValueError(f"{name} makes no NetworkManager connection")
+        raise _no_connection(name)
     # netplan's profiles carry no uuid line: NetworkManager makes one up from the file's path in /run, and a
     # copy elsewhere would get another. The uuid in use now is written into the keyfile.
     in_use = {p["file"]: p["uuid"] for p in _profiles()}
@@ -206,7 +212,7 @@ def candidates():
         try:
             pl = plan(name)
         except ValueError as exc:
-            if "makes no NetworkManager connection" not in str(exc):
+            if (getattr(exc, "message", None) or {}).get("id") != "nm-handover.no-connection":
                 out.append({"name": name, "ok": False, "why": str(exc), "connections": []})
             continue
         out.append({"name": name, "ok": True, "regdom": pl["regdom"],
@@ -230,17 +236,18 @@ def _settings(uuid):
 
 
 def handover(name, sleep=time.sleep):
-    """Hand the netplan file `name` over to NetworkManager. One line saying what was done."""
+    """Hand the netplan file `name` over to NetworkManager. A message saying what was done."""
     if not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}\.yaml", str(name or "")):
-        raise ValueError("invalid netplan file name")
+        raise Refused(M("nm-handover.request.name", "The request is not valid: the name is not the name of a netplan file."))
     pl = plan(name)
     BACKUP.mkdir(parents=True, exist_ok=True)
     back = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%d-%H%M%S-"), dir=BACKUP))   # 0700, unique
+    not_shown = M("nm-handover.not-shown", "NetworkManager does not show every connection this file makes. The box changed nothing.")
     if any(not p["uuid"] for p in pl["profiles"]):
-        raise ValueError("NetworkManager does not show every connection this file makes. The box changed nothing")
+        raise Refused(not_shown)
     before = {p["uuid"]: _settings(p["uuid"]) for p in pl["profiles"]}
     if any(v is None for v in before.values()):
-        raise ValueError("NetworkManager does not show every connection this file makes. The box changed nothing")
+        raise Refused(not_shown)
     src = Path(pl["file"])
     entry = {"at": time.time(), "name": name, "file": str(src), "backup": str(back), "regdom": pl["regdom"],
              "connections": [], "moved_etc": [], "regdom_written": False, "udev_written": False}
@@ -278,33 +285,39 @@ def handover(name, sleep=time.sleep):
             entry["udev_written"] = True
         code, out = run("netplan", "generate", timeout=90)
         if code != 0:
-            raise ValueError(f"netplan generate: {out[-160:]}")
+            raise Refused(M("nm-handover.generate", "netplan generate failed: {detail}", detail=out[-160:]))
         if pl["udev"]:
             run("udevadm", "control", "--reload", timeout=30)
         code, out = run("nmcli", "con", "reload", timeout=60)
         if code != 0:
-            raise ValueError(f"nmcli con reload: {out[-160:]}")
+            raise Refused(M("nm-handover.reload", "nmcli con reload failed: {detail}", detail=out[-160:]))
         sleep(2)
         for p in pl["profiles"]:
             now = _settings(p["uuid"])
             if now != before[p["uuid"]]:
                 diff = sorted(set(before[p["uuid"]] or []) ^ set(now or []))
                 keys = sorted({d.split(":", 1)[0] for d in diff})
-                raise ValueError(f"NetworkManager's view of the connection changed ({', '.join(keys[:5])})")
+                raise Refused(M("nm-handover.changed", "The settings that NetworkManager shows for the connection changed ({keys}).",
+                             keys=keys[:5]))
         lost = sorted(set(managed_before) - set(_managed()))
         if lost:
-            raise ValueError(f"NetworkManager stopped managing {', '.join(lost)}")
+            raise Refused(M("nm-handover.unmanaged", "NetworkManager stopped managing {devices}.", devices=lost))
         if pl["regdom"]:
             run("iw", "reg", "set", pl["regdom"], timeout=15)
     except (OSError, ValueError) as exc:
         _put_back(entry, written)
-        raise ValueError(f"The transfer failed. The box restored the netplan file and every setting: {exc}")
+        raise Refused(M("nm-handover.failed", "The transfer failed. The box restored the netplan file and every setting. {reason}",
+                     reason=getattr(exc, "message", None) or str(exc)))
     rec = record()
     rec.append(entry)
     _save(rec)
-    names = ", ".join(sorted(x["generated"].removesuffix(".nmconnection") for x in pl["profiles"]))
-    return (f"{names} transferred to NetworkManager: {name} kept in {back}"
-            + (f". The box keeps the WiFi country ({pl['regdom']}) in {REGDOM_CONF}" if entry["regdom_written"] else ""))
+    names = sorted(x["generated"].removesuffix(".nmconnection") for x in pl["profiles"])
+    if entry["regdom_written"]:
+        return M("nm-handover.done-regdom", "The box transferred {connections} to NetworkManager. It keeps {name} in {backup}. "
+                 "It keeps the WiFi country ({country}) in {conf}.", connections=names, name=name, backup=str(back),
+                 country=pl["regdom"], conf=str(REGDOM_CONF))
+    return M("nm-handover.done", "The box transferred {connections} to NetworkManager. It keeps {name} in {backup}.",
+             connections=names, name=name, backup=str(back))
 
 
 def _put_back(entry, written):
@@ -346,16 +359,18 @@ def undo(name):
     rec = record()
     entry = next((r for r in reversed(rec) if r["name"] == name), None)
     if entry is None:
-        raise ValueError(f"{name} was not transferred to NetworkManager here")
+        raise Refused(M("nm-handover.undo.none", "The box did not transfer {name} to NetworkManager.", name=name))
     if Path(entry["file"]).exists():
-        raise ValueError(f"{entry['file']} exists again, so the box did not restore the netplan file")
+        raise Refused(M("nm-handover.undo.exists", "{file} exists again, so the box did not restore the netplan file.", file=entry["file"]))
     if not (Path(entry["backup"]) / Path(entry["file"]).name).exists():
-        raise ValueError(f"Restore netplan file failed: the kept copy of {name} is missing from {entry['backup']}")
+        raise Refused(M("nm-handover.undo.missing", "The box cannot restore the netplan file, because the kept copy of {name} "
+                     "is missing from {backup}.", name=name, backup=entry["backup"]))
     entry = {**entry, "moved_etc": []}   # a second copy kept aside stays aside: it is what made the trouble
     _put_back(entry, [c["keyfile"] for c in entry["connections"]])
     rec.remove(next(r for r in reversed(rec) if r["name"] == name))
     _save(rec)
-    return f"{name} restored: netplan makes its connections again (the box kept them in {entry['backup']})"
+    return M("nm-handover.undo.done", "The box restored {name}. netplan makes its connections again. "
+             "The box keeps its copies in {backup}.", name=name, backup=entry["backup"])
 
 
 def kept_on_uninstall():

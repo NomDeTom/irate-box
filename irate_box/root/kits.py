@@ -38,6 +38,7 @@ import time
 from pathlib import Path
 
 from irate_box.hub import kitdefs
+from irate_box.msg import M, Refused, duration, sentences, when
 
 ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
 DPKG_STATUS = Path(os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status"))
@@ -67,7 +68,10 @@ def run(cmd, timeout=1800, check=True, env=None):
         # "[no choices]".
         why = [l.strip() for l in lines if l.startswith("E: ") or "Depends:" in l][:3] or lines[-1:]
         verb = next((a for a in cmd[1:] if not a.startswith("-") and "=" not in a and "::" not in a), "")
-        raise ValueError(f"{Path(cmd[0]).name} {verb}: {'; '.join(why)[:400] if why else 'failed'}")
+        tool = f"{Path(cmd[0]).name} {verb}".strip()
+        if not why:
+            raise Refused(M("kits.command.failed", "{tool} failed.", tool=tool))
+        raise Refused(M("kits.command.failed-said", "{tool} failed: {detail}", tool=tool, detail="; ".join(why)[:400]))
     return out
 
 
@@ -120,7 +124,7 @@ def _codename():
                 return line.split("=", 1)[1].strip().strip('"')
     except OSError:
         pass
-    raise ValueError("this box's Debian release is not known (VERSION_CODENAME in /etc/os-release)")
+    raise Refused(M("kits.codename.unknown", "The box does not know its Debian release: /etc/os-release has no VERSION_CODENAME."))
 
 
 def _debug_apt():
@@ -142,7 +146,9 @@ def _debug_apt():
 def _kit(kit_id):
     kits = definitions()
     if kit_id not in kits:
-        raise ValueError(f"no toolkit {kit_id!r}: one of {', '.join(kits) or 'none'}")
+        if not kits:
+            raise Refused(M("kits.kit.unknown-none", "The box has no toolkit called {kit}. It has no toolkits.", kit=kit_id))
+        raise Refused(M("kits.kit.unknown", "The box has no toolkit called {kit}. Its toolkits are {kits}.", kit=kit_id, kits=list(kits)))
     return kits[kit_id]
 
 
@@ -227,12 +233,12 @@ def _fetch_wheels(kit_id, pip_pkgs, stage, log):
          "-o", f"Dir::Cache::archives={pipstage}", "python3-pip"], timeout=300)
     deb = next(iter(sorted(pipstage.glob("python3-pip_*.deb"))), None)
     if not deb:
-        raise ValueError(f"{kit_id}: could not fetch python3-pip, needed once to build the wheelhouse")
+        raise Refused(M("kits.wheels.no-pip", "{kit}: the box could not download python3-pip. It needs it once to build the wheelhouse.", kit=kit_id))
     extract = pipstage / "root"
     run(["dpkg-deb", "-x", str(deb), str(extract)], timeout=120)
     site = next(iter(sorted(extract.glob("usr/lib/python3*/dist-packages"))), None)
     if not site:
-        raise ValueError(f"{kit_id}: python3-pip's .deb did not hold a usable pip")
+        raise Refused(M("kits.wheels.bad-pip", "{kit}: the python3-pip package did not hold a usable pip.", kit=kit_id))
     log(f"{kit_id}: downloading {len(pip_pkgs)} Python package(s) and what they need")
     run(["python3", "-m", "pip", "download", "--dest", str(wstage), "--no-input", *pip_pkgs],
         timeout=1800, env={"PYTHONPATH": str(site)})
@@ -276,7 +282,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         on_box = sorted(p for p in packages if p in base)
         missing = sorted(set(packages) - {p["name"] for p in pkgs} - set(on_box))
         if missing:
-            raise ValueError(f"apt fetched no {', '.join(missing)}")
+            raise Refused(M("kits.fetch.missing", "apt did not download these packages: {packages}.", packages=missing))
         wheels = _fetch_wheels(kit_id, kit["pip"], stage, log) if kit.get("pip") else []
         # The budget: the pool and wheelhouse as they would be, with this kit's new sets current
         # and its current ones previous (if they differ), every other kit's sets as they are.
@@ -302,8 +308,9 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
                 if total(drop) <= budget_mb << 20:
                     break
             if total(drop) > budget_mb << 20:
-                raise ValueError(f"The toolkit cache would be {total(drop) >> 20} MB with {kit_id}, even without the older sets kept for "
-                                 f"Roll back. This is over its {budget_mb} MB budget. Delete a toolkit cache or raise the budget")
+                raise Refused(M("kits.fetch.over-limit", "With {kit}, the toolkit cache would be {mb} MB, even without the older sets kept for Roll back. "
+                             "This is more than its storage limit of {limit} MB. Delete a toolkit cache or increase the storage limit.",
+                             kit=kit_id, mb=total(drop) >> 20, limit=budget_mb))
         for n in drop:
             (MANIFESTS / n).unlink(missing_ok=True)
         for p in pkgs:
@@ -327,11 +334,16 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         _write(MANIFESTS / f"{kit_id}.json", new)
         prune()
         write_index()
-        changed = "unchanged" if same else f"{len(pkgs)} packages, {new['bytes'] >> 20} MB"
         dropped = [n[:-len(".previous.json")] for n in drop]
-        return f"{kit['title']}: {changed}" + (f". Already on the box: {', '.join(on_box)}" if on_box else "") + \
-            (f". To keep within the budget, the older sets of {', '.join(dropped)} were removed: Roll back is gone for them" if dropped else "") + \
-            (f". Left out on this {new['arch']} board: {kitdefs.why_left_out(kit, left_out)}" if left_out else "")
+        return sentences(
+            M("kits.fetch.unchanged", "{title}: the cache is unchanged.", title=kit["title"]) if same else
+            M("kits.fetch.done", {"one": "{title}: the cache holds {n} package, {mb} MB.", "other": "{title}: the cache holds {n} packages, {mb} MB."},
+              title=kit["title"], n=len(pkgs), mb=new["bytes"] >> 20),
+            on_box and M("kits.fetch.on-box", "Already on the box: {packages}.", packages=on_box),
+            dropped and M("kits.fetch.dropped", "To keep within the storage limit, the box removed the older sets of {kits}. "
+                          "Roll back is not available for them now.", kits=dropped),
+            # why: kitdefs' English phrase ("gdb (64-bit only); pciutils (no PCI)").
+            left_out and M("kits.fetch.left-out", "Left out on this {arch} board: {why}.", arch=new["arch"], why=kitdefs.why_left_out(kit, left_out)))
     finally:
         shutil.rmtree(stage, ignore_errors=True)
 
@@ -381,7 +393,7 @@ def _apt_offline():
 
 def verify(kit_id=None):
     """Problems with the cache: a file missing or not what its manifest says, or the folder not
-    root's alone. [] when all is well."""
+    root's alone. [] when all is well. English lines: the doctors read the file name off the front of each."""
     problems = []
     if ROOT.exists():
         st = ROOT.stat()
@@ -410,18 +422,18 @@ def install(kit_id, hours=24, log=print):
     """The kit from the pool, with no internet. hours: when it is removed again (None: never)."""
     kit = _kit(kit_id)
     if hours is not None and (type(hours) is not int or not 1 <= hours <= 24 * 365):
-        raise ValueError("Hours: enter 1 hour to 1 year, or never")
+        raise Refused(M("kits.hours.invalid", "Hours: enter 1 hour to 1 year, or never."))
     man = manifest(kit_id)
     if not man:
-        raise ValueError(f"{kit['title']} is not in the cache. Download it while the box has internet")
+        raise Refused(M("kits.install.not-cached", "{title} is not in the cache. Download it while the box has internet.", title=kit["title"]))
     bad = verify(kit_id)
     if bad:
-        raise ValueError("Cache verification failed. The box installed no package: " + ", ".join(bad[:5]))
+        raise Refused(M("kits.install.cache-bad", "Cache verification failed. The box installed no package. The problems: {problems}.", problems=bad[:5]))
     state = installed_state()
     before = _installed_versions()
     # Services stay stopped: Debian starts a package's service on install unless this says no.
     if POLICY_RC.exists():
-        raise ValueError(f"{POLICY_RC} exists already. Another install is running, or the box has its own file")
+        raise Refused(M("kits.install.policy-rc", "{path} exists already. Another install is running, or the box has its own file.", path=str(POLICY_RC)))
     POLICY_RC.write_text("#!/bin/sh\n# irate-box: a toolkit is being installed; its services stay stopped.\nexit 101\n")
     os.chmod(POLICY_RC, 0o755)
     try:
@@ -433,7 +445,7 @@ def install(kit_id, hours=24, log=print):
     after = _installed_versions()
     added = sorted(set(after) - set(before))
     # A package the box had, brought up to the cached version because a new one needs exactly
-    # that (libc6 for libc6-dev, after Debian's security updates). Said, and
+    # that (libc6 for libc6-dev, after Debian's security updates). Refused, and
     # recorded: removing the kit does not take it back down.
     upgraded = sorted(f"{p} {before[p]} → {after[p]}" for p in before if p in after and after[p] != before[p])
     # A service the kit is for (the debug kit's core dumps: systemd-coredump.socket) runs; every
@@ -447,10 +459,14 @@ def install(kit_id, hours=24, log=print):
                      "remove_at": None if hours is None else time.time() + hours * 3600, "units": units,
                      "upgraded": prev.get("upgraded", []) + upgraded}
     _write(INSTALLED, state)
-    when = "kept until removed" if hours is None else f"removed after {hours} h"
-    return f"{kit['title']}: installed {len(added)} packages from the cache. {when[0].upper() + when[1:]}." + \
-        (f" Services left stopped: {', '.join(units)}." if units else "") + \
-        (f" The new packages needed these packages to be brought up to date. Removing the toolkit does not undo this: {', '.join(upgraded)}." if upgraded else "")
+    return sentences(
+        M("kits.install.done", {"one": "Install from cache: {title}. The box installed {n} package.",
+                                "other": "Install from cache: {title}. The box installed {n} packages."}, title=kit["title"], n=len(added)),
+        M("kits.install.keep", "The box keeps the toolkit until you remove it.") if hours is None else
+        M("kits.install.remove-after", "The box removes the toolkit after {wait}.", wait=duration(hours * 3600)),
+        units and M("kits.install.stopped", "Services left stopped: {units}.", units=units),
+        upgraded and M("kits.install.upgraded", "The new packages needed these packages to be brought up to date: {packages}. "
+                       "Removing the toolkit does not undo this.", packages=upgraded))
 
 
 def _disable_units(packages, keep=()):
@@ -467,12 +483,14 @@ def _disable_units(packages, keep=()):
 def set_removal(kit_id, hours):
     state = installed_state()
     if kit_id not in state:
-        raise ValueError(f"{kit_id} is not installed")
+        raise Refused(M("kits.kit.not-installed", "{kit} is not installed.", kit=kit_id))
     if hours is not None and (type(hours) is not int or not 1 <= hours <= 24 * 365):
-        raise ValueError("Hours: enter 1 hour to 1 year, or never")
+        raise Refused(M("kits.hours.invalid", "Hours: enter 1 hour to 1 year, or never."))
     state[kit_id]["remove_at"] = None if hours is None else time.time() + hours * 3600
     _write(INSTALLED, state)
-    return f"{kit_id}: " + ("keep installed until removed" if hours is None else f"removal scheduled in {hours} h")
+    if hours is None:
+        return M("kits.removal.keep", "Keep installed: the box keeps {kit} until you remove it.", kit=kit_id)
+    return M("kits.removal.scheduled", "Removal scheduled: the box removes {kit} in {wait}.", kit=kit_id, wait=duration(hours * 3600))
 
 
 def _purgeable(go, keep):
@@ -500,7 +518,7 @@ def remove(kit_id, log=print):
     overlap: Recovery and System both have smartmontools), and nothing another kit's packages need."""
     state = installed_state()
     if kit_id not in state:
-        raise ValueError(f"{kit_id} is not installed")
+        raise Refused(M("kits.kit.not-installed", "{kit} is not installed.", kit=kit_id))
     present = _installed_packages()
     defs = definitions()
     listed_by = {k: set(_packages(defs[k])[0]) for k in state if k != kit_id and k in defs}
@@ -526,7 +544,10 @@ def remove(kit_id, log=print):
         state[k]["added"] = sorted(set(state[k].get("added", [])) | kept)
     del state[kit_id]
     _write(INSTALLED, state)
-    return f"{kit_id}: removed {len(go)} packages" + (f". The box kept {len(kept)} packages that another toolkit requires" if kept else "")
+    return sentences(
+        M("kits.remove.done", {"one": "{kit}: the box removed {n} package.", "other": "{kit}: the box removed {n} packages."}, kit=kit_id, n=len(go)),
+        kept and M("kits.remove.kept", {"one": "Package required by another toolkit: the box kept {n} package.",
+                                        "other": "Packages required by another toolkit: the box kept {n} packages."}, n=len(kept)))
 
 
 # --- the owner's own kits, and extra tools in a shipped kit ----------------------------------
@@ -538,33 +559,34 @@ def _checked_packages(pkgs, most):
     """Package names the page typed: Debian's rules, no repeats, and each one this box's package
     lists know (apt-cache), so a typo is refused now rather than at the next fetch."""
     if not isinstance(pkgs, list) or len(pkgs) > most or not all(isinstance(p, str) and PKG_RE.match(p) for p in pkgs):
-        raise ValueError(f"packages: up to {most} Debian package names (lowercase letters, digits, + - .)")
+        raise Refused(M("kits.packages.invalid", "Enter up to {most} Debian package names. Use lowercase letters, digits, '+', '-' and '.'.", most=most))
     pkgs = list(dict.fromkeys(pkgs))
     unknown = [p for p in pkgs if not run(["apt-cache", "show", "--no-all-versions", p], check=False, timeout=120).stdout.strip()]
     if unknown:
-        raise ValueError(f"not in this box's package lists: {', '.join(unknown)} (check the name, or refresh the lists while online)")
+        raise Refused(M("kits.packages.unknown", "These packages are not in this box's package lists: {packages}. "
+                     "Check the names, or refresh the lists while the box has internet.", packages=unknown))
     return pkgs
 
 
 def define(spec):
     """A kit of the owner's own, new or changed. spec: {id, title, summary, packages, remove_after_hours}."""
     if not isinstance(spec, dict):
-        raise ValueError("kit: an object")
+        raise Refused(M("kits.define.not-object", "The request is not valid: the kit must be an object."))
     kid = str(spec.get("id", ""))
     if not ID_RE.match(kid) or kid == "extras":
-        raise ValueError("id: lowercase letters, digits and -, up to 32")
+        raise Refused(M("kits.define.bad-id", "The ID is not valid. Use up to 32 lowercase letters, digits and '-'."))
     if kid in kitdefs.shipped():
-        raise ValueError(f"{kid} is one of the box's own kits: add tools to it instead")
+        raise Refused(M("kits.define.shipped", "{kit} is one of the box's own toolkits. Add tools to it instead.", kit=kid))
     title = str(spec.get("title", "")).strip()
     summary = str(spec.get("summary", "")).strip()
     if not 1 <= len(title) <= 60 or len(summary) > 200 or any(c in title + summary for c in "\n\r<>"):
-        raise ValueError("title: 1 to 60 characters; summary up to 200; one line each")
+        raise Refused(M("kits.define.bad-title", "Enter a title of 1 to 60 characters and a summary of up to 200 characters, one line each."))
     hours = spec.get("remove_after_hours", 24)
     if hours is not None and (type(hours) is not int or not 1 <= hours <= 24 * 365):
-        raise ValueError("remove_after_hours: 1 to 8760, or null for never")
+        raise Refused(M("kits.define.bad-hours", "The request is not valid: remove_after_hours must be 1 to 8760, or null for never."))
     pkgs = _checked_packages(spec.get("packages"), MAX_OWN)
     if not pkgs:
-        raise ValueError("packages: at least one")
+        raise Refused(M("kits.define.no-packages", "Enter at least one package."))
     kitdefs.OWNER.mkdir(parents=True, exist_ok=True)
     os.chmod(kitdefs.OWNER, 0o755)
     new = not (kitdefs.OWNER / f"{kid}.json").exists()
@@ -574,29 +596,35 @@ def define(spec):
                                                       "need root to use. They are removed again after the time you choose.",
                                            "notes": ["One of your own: added on this box's Library → Toolkits."]})
     os.chmod(kitdefs.OWNER / f"{kid}.json", 0o644)
-    return f"Custom toolkit {'created' if new else 'changed'}: {title}, {len(pkgs)} packages. Download it while the box has internet to cache it"
+    if new:
+        return M("kits.define.created", {"one": "Custom toolkit created: {title}, {n} package. To cache it, download it while the box has internet.",
+                                         "other": "Custom toolkit created: {title}, {n} packages. To cache it, download it while the box has internet."},
+                 title=title, n=len(pkgs))
+    return M("kits.define.changed", {"one": "Custom toolkit changed: {title}, {n} package. To cache it, download it while the box has internet.",
+                                     "other": "Custom toolkit changed: {title}, {n} packages. To cache it, download it while the box has internet."},
+             title=title, n=len(pkgs))
 
 
 def undefine(kit_id, log=print):
     """One of the owner's own kits, gone: its definition, its cache (its manifests; the pool
     keeps what another kit still names)."""
     if kit_id not in definitions() or not definitions()[kit_id].get("owner"):
-        raise ValueError(f"{kit_id} is not one of your own kits")
+        raise Refused(M("kits.undefine.not-own", "{kit} is not one of your own toolkits.", kit=kit_id))
     if kit_id in installed_state():
-        raise ValueError(f"{kit_id} is installed. Remove its installed packages first")
+        raise Refused(M("kits.undefine.installed", "{kit} is installed. Remove the toolkit before you delete it.", kit=kit_id))
     (kitdefs.OWNER / f"{kit_id}.json").unlink(missing_ok=True)
     for m in (f"{kit_id}.json", f"{kit_id}.previous.json"):
         (MANIFESTS / m).unlink(missing_ok=True)
     if POOL.is_dir():
         prune()
         write_index()
-    return f"{kit_id}: custom toolkit deleted, with its cached packages"
+    return M("kits.undefine.done", "Custom toolkit deleted: {kit}. The box also deleted its cached packages.", kit=kit_id)
 
 
 def set_extra(kit_id, packages):
     """Extra tools tracked in a shipped kit ([] clears them)."""
     if kit_id not in kitdefs.shipped():
-        raise ValueError(f"{kit_id} is not one of the box's own kits")
+        raise Refused(M("kits.extra.not-shipped", "{kit} is not one of the box's own toolkits.", kit=kit_id))
     base = set(kitdefs.shipped()[kit_id]["packages"])
     pkgs = [p for p in _checked_packages(packages, 20) if p not in base]
     kitdefs.OWNER.mkdir(parents=True, exist_ok=True)
@@ -608,7 +636,9 @@ def set_extra(kit_id, packages):
         extras.pop(kit_id, None)
     _write(kitdefs.OWNER / "extras.json", extras)
     os.chmod(kitdefs.OWNER / "extras.json", 0o644)
-    return f"{kit_id}: " + (f"also tracks {', '.join(pkgs)}. The next download gets them" if pkgs else "no extra tools")
+    if pkgs:
+        return M("kits.extra.set", "{kit} also tracks {packages}. The next download gets them.", kit=kit_id, packages=pkgs)
+    return M("kits.extra.none", "{kit} has no extra tools.", kit=kit_id)
 
 
 def rollback(kit_id, log=print):
@@ -617,13 +647,15 @@ def rollback(kit_id, log=print):
     kit = _kit(kit_id)
     cur, prev = manifest(kit_id), manifest(kit_id, "previous")
     if not prev:
-        raise ValueError(f"{kit['title']} has no previous version to go back to")
+        raise Refused(M("kits.rollback.none", "{title} has no previous version to go back to.", title=kit["title"]))
     bad = verify(kit_id)
     if bad:
-        raise ValueError("Cache verification failed. The box changed nothing: " + ", ".join(bad[:5]))
+        raise Refused(M("kits.rollback.cache-bad", "Cache verification failed. The box changed nothing. The problems: {problems}.", problems=bad[:5]))
     _write(MANIFESTS / f"{kit_id}.json", prev)
     _write(MANIFESTS / f"{kit_id}.previous.json", cur)
     write_index()
+    restored = M("kits.rollback.restored", "Restore cached package versions: {title}. The cache now holds the set downloaded on {date}.",
+                 title=kit["title"], date=when(prev["fetched"]))
     if kit_id in installed_state():
         present = _installed_versions()
         pins = [f"{p['name']}={p['version']}" for p in prev["packages"] if p["name"] in present and present[p["name"]] != p["version"]]
@@ -636,9 +668,10 @@ def rollback(kit_id, log=print):
                 run(["apt-get", *_apt_offline(), "install", "-y", "-q", "--no-install-recommends", "--allow-downgrades", *pins], timeout=3600)
             finally:
                 POLICY_RC.unlink(missing_ok=True)
-        return f"{kit['title']}: cache restored to the set downloaded {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}" + \
-            (f". The box also installed the previous versions of {len(pins)} installed packages" if pins else "")
-    return f"{kit['title']}: cache restored to the set downloaded {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}. The toolkit is not installed, so no installed package changed"
+        return sentences(restored, pins and M("kits.rollback.downgraded", {
+            "one": "The box also installed the previous version of {n} installed package.",
+            "other": "The box also installed the previous versions of {n} installed packages."}, n=len(pins)))
+    return sentences(restored, M("kits.rollback.not-installed", "The toolkit is not installed, so no installed package changed."))
 
 
 def drop_previous(kit_id, log=print):
@@ -646,13 +679,13 @@ def drop_previous(kit_id, log=print):
     kit = _kit(kit_id)
     prev = manifest(kit_id, "previous")
     if not prev:
-        raise ValueError(f"{kit['title']} has no older set to remove")
+        raise Refused(M("kits.drop.none", "{title} has no older set to remove.", title=kit["title"]))
     freed = _trailing(manifest(kit_id), prev)["extra_bytes"]
     (MANIFESTS / f"{kit_id}.previous.json").unlink(missing_ok=True)
     prune()
     write_index()
-    return (f"{kit['title']}: older set removed, {freed >> 20} MB freed. Roll back is available again after a refresh "
-            "brings new versions")
+    return M("kits.drop.done", "{title}: the box removed the older set and freed {mb} MB. Roll back is available again after a refresh "
+             "brings new versions.", title=kit["title"], mb=freed >> 20)
 
 
 # --- by USB stick --------------------------------------------------------------------------------
@@ -705,7 +738,7 @@ def _stick_index(path):
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             n += len(chunk)
             if n > INDEX_MAX:
-                raise ValueError(f"{path.name} unpacks to more than {INDEX_MAX >> 20} MB: refused")
+                raise Refused(M("kits.usb.index-too-big", "{file} unpacks to more than {mb} MB. Import refused.", file=path.name, mb=INDEX_MAX >> 20))
             h.update(chunk)
             *whole, rest = (rest + chunk).split(b"\n")
             for line in whole:
@@ -717,7 +750,7 @@ def _stick_index(path):
         with (lzma.open if path.suffix == ".xz" else open)(path, "rb") as fh:
             hashes = _hashes_in(lines(fh))
     except (lzma.LZMAError, EOFError, OSError) as e:
-        raise ValueError(f"{path.name} could not be read: {e}") from None
+        raise Refused(M("kits.usb.index-unreadable", "The box could not read {file}: {detail}. Import refused.", file=path.name, detail=str(e))) from None
     return h.hexdigest(), hashes
 
 
@@ -741,19 +774,19 @@ def _vouching(want):
 
 def export_usb(kit_id, dest, report=None):
     """The kit's current set onto a stick folder (`dest`, its irate-box/kits/), with the signed
-    indexes that vouch for it. Returns where it went."""
+    indexes that vouch for it. Returns what went, in English: the offline kit's list of contents holds it as text."""
     kit = _kit(kit_id)
     man = manifest(kit_id)
     if not man:
-        raise ValueError(f"{kit['title']} is not in the cache. Download it while the box has internet first")
+        raise Refused(M("kits.export.not-cached", "{title} is not in the cache. Download it while the box has internet, then export it.", title=kit["title"]))
     if verify(kit_id):
-        raise ValueError("Cache verification failed. The box did not export the toolkit. Download it again first")
+        raise Refused(M("kits.export.cache-bad", "Cache verification failed. The box did not export the toolkit. Download it again, then export it."))
     want = {p["file"]: p["sha256"] for p in man["packages"]}
     lists, vouched = _vouching(want)
     unvouched = sorted(set(want) - vouched)
     if unvouched:
-        raise ValueError("Signed index unavailable for these packages, so another box could not verify them. Export refused: "
-                         + ", ".join(unvouched[:5]) + ". Refresh the package lists and then download the toolkit again while online")
+        raise Refused(M("kits.export.unvouched", "Signed index unavailable: another box could not verify {packages}. Export refused. "
+                     "While the box has internet, refresh the package lists and then download the toolkit again.", packages=unvouched[:5]))
     folder = Path(dest) / man.get("arch", arch()) / kit_id
     shutil.rmtree(folder, ignore_errors=True)
     (folder / "debs").mkdir(parents=True)
@@ -765,7 +798,8 @@ def export_usb(kit_id, dest, report=None):
     total = sum(src.stat().st_size // (INDEX_XZ_RATIO if dst.suffix == ".xz" else 1) for src, dst in files)
     if shutil.disk_usage(folder).free < total:
         shutil.rmtree(folder, ignore_errors=True)
-        raise ValueError(f"Not enough space on the USB drive. The export needs {total >> 20} MB")
+        raise Refused(M("kits.export.no-space", "Not enough space on the USB drive. The export needs {need} MB. The USB drive has {free} MB free.",
+                     need=total >> 20, free=shutil.disk_usage(Path(dest)).free >> 20))
     done = 0
     for src, dst in files:
         if dst.suffix == ".xz":
@@ -809,7 +843,7 @@ def _verified_release(inrelease, work):
     out = work / f"{inrelease.name}.verified"
     r = run(["gpgv", *_keyrings(), "--output", str(out), str(inrelease)], check=False, timeout=120)
     if r.returncode != 0 or not out.exists():
-        raise ValueError(f"Signature invalid for {inrelease.name}. This box's keys do not verify it. Import refused")
+        raise Refused(M("kits.usb.signature", "Signature invalid for {file}. This box's keys do not verify it. Import refused.", file=inrelease.name))
     return out.read_text(errors="replace")
 
 
@@ -831,15 +865,15 @@ def _not_stale(text, name):
     ValueError if not."""
     until = _release_date(text, "Valid-Until")
     if until is not None and until < time.time():
-        raise ValueError(f"Release metadata expired for {name} on {time.strftime('%Y-%m-%d', time.gmtime(until))}. Import refused. "
-                         "Export the toolkit again from a box that has been online since")
+        raise Refused(M("kits.usb.expired", "Release metadata expired for {file} on {date}. Import refused. "
+                     "Export the toolkit again from a box that has had internet since then.", file=name, date=when(until)))
     date = _release_date(text, "Date")
     mine = APT_LISTS / name
     if date is not None and mine.is_file() and not mine.is_symlink():
         own = _release_date(mine.read_text(errors="replace"), "Date")
         if own is not None and date < own:
-            raise ValueError(f"Imported metadata older than local copy for {name}: the USB drive has {time.strftime('%Y-%m-%d', time.gmtime(date))}. "
-                             f"This box has {time.strftime('%Y-%m-%d', time.gmtime(own))}. Import refused")
+            raise Refused(M("kits.usb.older", "Imported metadata older than local copy for {file}: the USB drive has the release of {theirs}. "
+                         "This box has the release of {ours}. Import refused.", file=name, theirs=when(date), ours=when(own)))
 
 
 def _sha256_section(release_text):
@@ -865,10 +899,11 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
     here = arch()
     folder = Path(src_root) / here / kit_id
     if not (folder / "manifest.json").is_file():
-        raise ValueError(f"Wrong architecture: the USB drive has no {kit_id} toolkit for this box's architecture ({here}). Import refused")
+        raise Refused(M("kits.usb.arch", "Wrong architecture: the USB drive has no {kit} toolkit for this box's architecture ({arch}). Import refused.",
+                     kit=kit_id, arch=here))
     man = _read(folder / "manifest.json", None)
     if not isinstance(man, dict) or not isinstance(man.get("packages"), list):
-        raise ValueError("Signed index unavailable: the toolkit manifest on the USB drive is unreadable. Import refused")
+        raise Refused(M("kits.usb.manifest", "The toolkit manifest on the USB drive is unreadable. Import refused."))
     work = Path(tempfile.mkdtemp(prefix="kit-usb-"))
     try:
         vouch = set()
@@ -883,22 +918,27 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
             path = m.group("path").replace("_", "/")
             digest, hashes = _stick_index(pk)
             if listed.get(path) != digest:
-                raise ValueError(f"Signature invalid: {pk.name} does not match the index that its signed release lists. Import refused")
+                raise Refused(M("kits.usb.index-mismatch", "Signature invalid: {file} does not match the index that its signed release lists. Import refused.",
+                             file=pk.name))
             vouch |= set(hashes.values())
         pkgs = []
         for p in man["packages"]:
             name = str(p.get("file", ""))
             deb = folder / "debs" / name
             if not DEB_RE.match(name) or deb.is_symlink() or not deb.is_file():
-                raise ValueError(f"{name or 'A package'} is missing from the USB drive. Import refused")
+                if not name:
+                    raise Refused(M("kits.usb.unnamed", "The toolkit manifest on the USB drive lists a package with no file. Import refused."))
+                raise Refused(M("kits.usb.missing", "{file} is missing from the USB drive. Import refused.", file=name))
             h = sha256(deb)
             if h not in vouch:
-                raise ValueError(f"Package hash mismatch for {name}: no signed index on the USB drive lists its hash. Import refused. The box imported nothing")
+                raise Refused(M("kits.usb.hash", "Package hash mismatch for {file}: no signed index on the USB drive lists its hash. Import refused. "
+                             "The box imported nothing.", file=name))
             pkgs.append({"name": str(p["name"]), "version": str(p["version"]), "arch": str(p.get("arch", "")), "source": str(p.get("source", "")),
                          "file": name, "size": deb.stat().st_size, "sha256": h})
         total = sum(q["size"] for q in pkgs) + pool_bytes()
         if total > budget_mb << 20:
-            raise ValueError(f"The toolkit cache would be {total >> 20} MB. This is over its {budget_mb} MB budget. Import refused")
+            raise Refused(M("kits.usb.over-limit", "The toolkit cache would be {mb} MB. This is more than its storage limit of {limit} MB. Import refused.",
+                         mb=total >> 20, limit=budget_mb))
         for d in (ROOT, POOL, MANIFESTS):
             d.mkdir(parents=True, exist_ok=True)
         done = 0
@@ -909,7 +949,8 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
                 shutil.copyfile(folder / "debs" / q["file"], tmp, follow_symlinks=False)
                 if sha256(tmp) != q["sha256"]:
                     tmp.unlink()
-                    raise ValueError(f"Copy changed during transfer: {q['file']} differs after copying. Import refused. Try again or use another USB drive")
+                    raise Refused(M("kits.usb.copy-changed", "Copy changed during transfer: {file} differs after copying. Import refused. "
+                                 "Try again or use another USB drive.", file=q["file"]))
                 os.chmod(tmp, 0o644)
                 os.replace(tmp, dest)
             done += q["size"]
@@ -923,15 +964,17 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
                                               "bytes": sum(q["size"] for q in pkgs), "from_usb": time.time()})
         prune()
         write_index()
-        return f"{kit['title']}: {len(pkgs)} packages imported. The box checked each package hash against Debian's signed indexes on the USB drive"
+        return M("kits.usb.imported", {"one": "{title}: {n} package imported. The box checked its hash against Debian's signed indexes on the USB drive.",
+                                       "other": "{title}: {n} packages imported. The box checked each package hash against Debian's signed indexes "
+                                                "on the USB drive."}, title=kit["title"], n=len(pkgs))
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
 def expire(now=None):
-    """Remove every kit whose time is up. Returns the lines."""
+    """Remove every kit whose time is up. Returns the lines, in English: the root helper's kit-expire joins them."""
     now = now or time.time()
-    return [remove(k) for k, v in installed_state().items() if v.get("remove_at") and v["remove_at"] <= now]
+    return [str(remove(k)) for k, v in installed_state().items() if v.get("remove_at") and v["remove_at"] <= now]
 
 
 def _trailing(cur, prev):
