@@ -1113,6 +1113,16 @@ UNIT_PROPS = ("LoadState", "User", "DynamicUser", "ProtectSystem", "NoNewPrivile
               "ProtectProc", "IPAddressDeny", "PrivateNetwork", "RestrictAddressFamilies", "CapabilityBoundingSet")
 
 
+def _ci_nft():
+    """The rule that keeps builds off loopback (install.sh's inet irate_box_ci), as nft lists it, or None when it is not
+    loaded. IPAddressDeny does not work on vendor kernels that cannot attach systemd's cgroup programs."""
+    try:
+        r = subprocess.run(("nft", "list", "table", "inet", "irate_box_ci"), capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 and re.search(r'skuid "?hubci"? oif "?lo"? drop', r.stdout) else None
+
+
 def step_units(ctx):
     """F8, F19: build unit's reach to loopback; sandboxing of root and hub units."""
     units = ctx["units"]
@@ -1173,12 +1183,14 @@ def step_units(ctx):
         deny = ci.get("IPAddressDeny", "").strip()
         private = ci.get("PrivateNetwork") == "yes"
         families = ci.get("RestrictAddressFamilies", "")
-        blocks_loopback = private or any(x in deny for x in ("127.", "localhost", "::1", "any"))
+        nft = None if private or any(x in deny for x in ("127.", "localhost", "::1", "any")) else _ci_nft()
+        blocks_loopback = private or nft is not None or any(x in deny for x in ("127.", "localhost", "::1", "any"))
         ci_t = M("units.ci.title", "Build isolation from the hub")
         deny_line = ["IPAddressDeny=localhost"]
         if blocks_loopback:
             out.append(finding("units-ci-loopback", ci_t, "ok", M("units.ci.closed", "Builds cannot connect to the loopback address."),
-                               evidence=["PrivateNetwork=yes" if private else f"IPAddressDeny={deny}"], ref="F8"))
+                               evidence=["PrivateNetwork=yes" if private else "nft: inet irate_box_ci (hubci to lo: DNS only)" if nft
+                                         else f"IPAddressDeny={deny}"], ref="F8"))
         elif _hub_ask("GET", "/admin/settings", {"Host": "127.0.0.1"}) == 403:
             # The hub refuses /admin without the front's secret (step admin-gate), so what builds
             # reach on loopback is what any guest reaches.

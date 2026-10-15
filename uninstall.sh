@@ -168,6 +168,8 @@ rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-gi
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
 	"$UNITDIR/syncthing@$HUB_USER.service.d/irate-box.conf" "$UNITDIR/ngircd.service.d/irate-box.conf"
 rmdir "$UNITDIR/caddy.service.d" "$UNITDIR/syncthing@$HUB_USER.service.d" "$UNITDIR/ngircd.service.d" 2>/dev/null || true
+# The builds' loopback rule (install.sh ci-loopback.nft): its table out of the kernel; the file goes with /etc/hub.
+nft delete table inet irate_box_ci 2>/dev/null || true
 
 say "Removing service config"
 rm -f /etc/mosquitto/conf.d/irate-box.conf /etc/mosquitto/irate-box.acl

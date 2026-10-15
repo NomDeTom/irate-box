@@ -30,6 +30,8 @@ uninst = (Path(__file__).resolve().parents[1] / "uninstall.sh").read_text()
 check("install.sh writes and enables irate-box-secdoctor.timer, running `secdoctor run` as a hardened oneshot",
       "irate-box-secdoctor.timer" in inst and "ExecStart=$CODE/irate-box secdoctor run" in inst
       and "irate-box-secdoctor.timer irate-box-control.path" in inst and "ProtectSystem=strict\nReadWritePaths=$STATE/control" in inst)
+check("install.sh keeps silverbullet.env root's alone (it can hold the notes' sign-in), an existing one too (item 133)",
+      re.search(r'(?m)^EOF\n\t# .*\n\tchown root:root "\$ETC/silverbullet.env"\n\tchmod 600 "\$ETC/silverbullet.env"$', inst) is not None)
 check("uninstall.sh takes the timer and its unit away", "irate-box-secdoctor.timer irate-box-secdoctor.service" in uninst and 'irate-box-secdoctor.{service,timer}' in uninst)
 check("secdoctor.py has the `run` command the timer calls", '"run"' in src and "write_report(rep)" in src)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

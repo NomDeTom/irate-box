@@ -1702,6 +1702,23 @@ Unit=irate-box-ci.service
 [Install]
 WantedBy=multi-user.target
 EOF
+# Builds off the hub on loopback (the security doctor's units-ci-loopback): an nftables table that drops what hubci
+# sends to lo, but DNS to systemd-resolved's stub. IPAddressDeny would do it, but vendor kernels can't attach it (below).
+# Offline builds have a network namespace of their own, which this does not touch. Loaded before each run; if nft
+# fails, builds still run and the doctor says so.
+cat >"$ETC/ci-loopback.nft" <<'NFT'
+# Written by irate-box install.sh: builds (hubci) reach nothing on loopback but DNS.
+add table inet irate_box_ci
+delete table inet irate_box_ci
+table inet irate_box_ci {
+	chain out {
+		type filter hook output priority 0; policy accept;
+		meta skuid "hubci" oif "lo" ip daddr 127.0.0.53 meta l4proto { tcp, udp } th dport 53 accept
+		meta skuid "hubci" oif "lo" drop
+	}
+}
+NFT
+chmod 644 "$ETC/ci-loopback.nft"
 cat >/etc/systemd/system/irate-box-ci.service <<EOF
 [Unit]
 Description=Irate-Box builds on push: run what is queued (ci.py), as hubci
@@ -1711,6 +1728,7 @@ Type=oneshot
 User=hubci
 Group=hubci
 Environment=HOME=$STATE/ci/home HUB_CI_ROOT=$STATE/ci HUB_FIRMWARE_ROOT=$STATE/firmware
+ExecStartPre=-+/usr/sbin/nft -f $ETC/ci-loopback.nft
 ExecStart=$CODE/irate-box ci run
 # Each build has its own limit (ci.py, HUB_CI_TIME_LIMIT: 12 h); this unit runs every queued
 # build in turn, so it gets none of its own.
@@ -1752,6 +1770,9 @@ if [ "$WITH_NOTES" = 1 ]; then
 #SB_READ_ONLY=true
 #SB_USER=user:password
 EOF
+	# It can hold the notes' sign-in (SB_USER): root's alone, mended on every run. systemd reads it as root.
+	chown root:root "$ETC/silverbullet.env"
+	chmod 600 "$ETC/silverbullet.env"
 	# The socket's group: the web server's, so it (and the hub, its owner) can connect, and
 	# nothing else can.
 	if [ "$WEB" = nginx ]; then sb_group="$ngx_group"; else sb_group="$(id -gn caddy 2>/dev/null || echo root)"; fi

@@ -106,7 +106,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
   {"id": ..., "action": "kit-fetch", "kit": "<a shipped toolkit>", "budget_mb": 500}
   {"id": ..., "action": "kit-install", "kit": ..., "hours": 24|null}
-  {"id": ..., "action": "kit-remove" | "kit-keep" | "kit-rollback" | "kit-drop-previous", "kit": ...[, "hours": ...]}   {"action": "kit-expire"}
+  {"id": ..., "action": "kit-remove" | "kit-keep" | "kit-rollback" | "kit-drop-previous", "kit": ...[, "hours": ...]}   {"action": "kit-expire" | "kit-drop-all-previous"}
       Toolkits (kits.py): fetch a shipped kit's packages into the local repository (online),
       install it from there with no internet (removed again after "hours"; null: never),
       remove what it added, change when it goes, or remove every kit whose time is up. A
@@ -3466,6 +3466,17 @@ def _kit_hours(req):
     return hours
 
 
+def _kit_sweep(req):
+    """The librarian's sweep by age: older sets past their days removed, control/kits.json written after it."""
+    days = req.get("days")
+    if type(days) is not int or not 1 <= days <= 365:
+        raise Refused(M("control.kit.days-range", "The days for older sets must be from {min} to {max}.", min=1, max=365))
+    try:
+        return kits.drop_old_previous(days, log=lambda *_: None)
+    finally:
+        _kits_status()
+
+
 def _kit_req(fn):
     """A toolkit action, and control/kits.json written after it, whatever happened."""
     def action(req):
@@ -3475,7 +3486,7 @@ def _kit_req(fn):
                 return kits.define(kit)
             finally:
                 _kits_status()
-        if fn is not kits.expire and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+        if fn not in (kits.expire, kits.drop_all_previous) and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
             raise Refused(KIT_BAD)
         try:
             if fn is kits.set_extra:
@@ -3489,6 +3500,8 @@ def _kit_req(fn):
                 return kits.install(kit, _kit_hours(req), log=lambda *_: None)
             if fn is kits.set_removal:
                 return kits.set_removal(kit, _kit_hours(req))
+            if fn is kits.drop_all_previous:
+                return kits.drop_all_previous(log=lambda *_: None)
             if fn is kits.expire:
                 # One answer per toolkit removed, said one after another.
                 return kits.expire() or M("control.kit.expire.none", "No toolkit is due for removal.")
@@ -3510,6 +3523,7 @@ ACTIONS = {"service": service, "password": password, "claim": claim,
            "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "other-ap": other_ap, "wifisync": wifisync, "radio-test": radio_test, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback), "kit-drop-previous": _kit_req(kits.drop_previous),
+           "kit-drop-all-previous": _kit_req(kits.drop_all_previous), "kit-drop-old-previous": _kit_sweep,
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), KITS_STATUS)[1]}
 
 KITS_STATUS = M("control.kit.status", "The toolkit status is up to date.")
