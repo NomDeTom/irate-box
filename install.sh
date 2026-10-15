@@ -534,6 +534,18 @@ make_bundle() {
 	echo "==> The apps (downloaded and checked as the librarian does)"
 	tmp="$(mktemp -d)"; install -d "$tmp/library"
 	for app in draw mermaid serial tools room flasher; do
+		# A box making a kit of itself (--apps): its installed copy, with no download and no GitHub request; the room
+		# relay lives apart ($ROOM). Only an app the box does not have is downloaded.
+		src=""
+		if [ "$app" = room ] && [ -n "$APPS_SRC" ] && [ -f "$ROOM/dist/index.js" ]; then src="$ROOM"
+		elif [ -n "$APPS_SRC" ] && [ -d "$APPS_SRC/$app" ]; then src="$APPS_SRC/$app"; fi
+		if [ -n "$src" ]; then
+			rm -rf "${kit:?}/apps/$app"; install -d "$kit/apps"
+			cp -a "$src" "$kit/apps/$app"
+			rm -rf "$kit/apps/$app/.git"
+			echo "    $app: this box's installed copy ($src)"
+			continue
+		fi
 		if zip="$(HUB_STATE_DIR="$tmp" "$here/irate-box" librarian app-fetch "$app" 2>"$tmp/err")"; then
 			install -d "$kit/apps/$app"
 			unzip -q -o "$zip" -d "$kit/apps/$app"
@@ -544,20 +556,6 @@ make_bundle() {
 		fi
 	done
 	rm -rf "$tmp"
-	if [ -n "$APPS_SRC" ]; then
-		for app in mermaid draw tools serial flasher room; do
-			[ -d "$APPS_SRC/$app" ] || continue
-			rm -rf "${kit:?}/apps/$app"
-			cp -a "$APPS_SRC/$app" "$kit/apps/$app"
-			rm -rf "$kit/apps/$app/.git"
-			echo "    $app: from $APPS_SRC/$app"
-		done
-	fi
-	# A box making a kit of itself: its installed collaboration relay too (it lives apart).
-	if [ ! -f "$kit/apps/room/dist/index.js" ] && [ -f "$ROOM/dist/index.js" ]; then
-		rm -rf "${kit:?}/apps/room"; cp -a "$ROOM" "$kit/apps/room"
-		echo "    room: from $ROOM"
-	fi
 	echo "==> Release downloads for: $BUNDLE_ARCHS"
 	KIT_DL="$kit/downloads"
 	for a in ${BUNDLE_ARCHS//,/ }; do
