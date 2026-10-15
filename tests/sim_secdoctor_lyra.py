@@ -46,9 +46,11 @@ check("every item ends in something to do: a button, a place, a command or the w
 tiers = {k.removeprefix("setting:cis-"): i["tier"] for k, i in items.items() if k.startswith("setting:cis-")}
 check("every CIS section tiered; the ones this board can't do said so", all(tiers.values())
       and {s for s, t in tiers.items() if t == "not-here"} == {"1.5", "1.7", "4.1", "99.1", "99.3", "99.4"}, tiers)
-check("the counts after merging (the badge): 1 to fix, 15 to look at, 19 suggestions, 5 for information (irate-box's own "
+check("the counts after merging (the badge): 1 to fix, 16 to look at, 19 suggestions, 4 for information (irate-box's own "
       "work, the board's limits), 6 not for this board",
-      j["after"] == {"problem": 1, "warn": 15, "suggest": 19, "info": 5, "not_here": 6}, j["after"])
+      j["after"] == {"problem": 1, "warn": 16, "suggest": 19, "info": 4, "not_here": 6}, j["after"])
+check("  process visibility is one to look at, not for information: the Security page has its fix",
+      items["setting:proc-hidden"]["status"] == "warn" and not items["setting:proc-hidden"]["tier"], items.get("setting:proc-hidden"))
 check("the one to fix is the firewall", [k for k, i in items.items() if i["status"] == "problem" and not i["tier"]] == ["setting:firewall"])
 
 # A real board's deep audit (tests/fixtures/lyra-security-deep-2026-10-09.json): its
@@ -78,8 +80,8 @@ nothing2 = [k for k, i in it2.items() if not (i["do"] or i["fix"] or i["cmd"] or
 check("every item ends in something to do: a check's own command is the item's (ASLR, core dumps)", not nothing2
       and it2["setting:aslr"]["do"]["cmd"].startswith("echo kernel.randomize_va_space=2"), nothing2)
 check("the CIS checks keep a command each where their script says one plainly", sum(1 for i in it2.values() for c in i["checks"] if c.get("cmd")) >= 40)
-check("the counts with the deep audit: 1 to fix, 15 to look at, the rest suggestions, for information or not for this board",
-      (j2["after"]["problem"], j2["after"]["warn"], j2["after"]["info"]) == (1, 15, 5), j2["after"])
+check("the counts with the deep audit: 1 to fix, 16 to look at, the rest suggestions, for information or not for this board",
+      (j2["after"]["problem"], j2["after"]["warn"], j2["after"]["info"]) == (1, 16, 4), j2["after"])
 
 # Each saved board audit, read the same way: nothing lost, every item ends in something to do, the counts add up.
 for day in ("2026-10-09", "2026-10-12"):
