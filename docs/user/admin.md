@@ -25,11 +25,11 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
   - **Appearance**: the name of the hub, its colours, its page widths and its emoji.
   - **Colours**: the box has one light palette and one dark palette. Presets set both.
   - The box checks the text and background pairs of each palette against the 4.5:1 contrast ratio of the accessibility guidelines. A pair below the ratio is listed with its ratio. The box saves it only after you confirm.
-  - Visitors select light, dark or Auto for themselves. They see your colours as the **Box preset**. They can select **Standard**, **Increased contrast**, E-ink or Cybercore in the 🎨 menu.
+  - Visitors select light, dark or Auto for themselves. They see your colours as the **Box palette**. They can select **Standard palette**, **Increased contrast**, E-ink or Cybercore in the 🎨 menu.
 - **Moderation**: **Reports** (content that users reported) and **User data**. Look at them and remove items.
 - **System**: Accounts, Network, Security, the librarian, Toolkits, Clock, **Recovery and monitoring**, Updates, and Backup and transfer.
   - The librarian page shows what the librarian is doing and the schedule for books and apps. It shows the storage limit for books and apps. It links to the schedules of other updates and holds the GitHub token.
-  - **Recovery and monitoring** sets what crash watch keeps, what restarts a frozen box, and **SD card write frequency**.
+  - **Recovery and monitoring** sets what crash watch keeps, what restarts a frozen box, and **SD card writes**.
 - **Doctors**: the Box doctor, the Security doctor and the Updates doctor. Each doctor checks one part of the box and lists the problems in plain words. Where a repair exists, the doctor shows a button for it.
 
 Where more than one answer is sensible, a page shows the answers from the most restrictive to the least restrictive. The most restrictive answer is selected by default. Changes that need an optional risky setting need your approval.

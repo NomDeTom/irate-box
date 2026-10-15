@@ -74,11 +74,11 @@ If the board has more than one LED, **Which light** selects the LED. The **Flash
 
 An SD card wears with each write. The box writes a file only when it changed. It keeps its live reports in memory. It adds to its histories and does not rewrite them.
 
-Select the write level in **Recovery and monitoring → Writing to the card**. A lower level writes less and can lose more after a crash:
+Select the write level in **Recovery and monitoring → SD card writes**. A lower level writes less and can lose more after a crash:
 
-- **Record everything**: crash watch snapshots are written and synced every 30 seconds. The clock is saved every minute.
-- **Thrifty** (the default): the snapshots are the same. The clock is saved every 10 minutes and when the hub stops. After a crash, the clock can be up to 10 minutes behind.
-- **Gentle**: the snapshots are written without a sync. A hang loses the last two minutes of snapshots. The clock is saved every 30 minutes.
-- **Card saver**: the snapshots are kept in memory. The box writes them every 15 minutes, or at once when crash watch sees a problem. The clock is saved every hour. A hang loses up to 15 minutes of snapshots.
+- **Frequent writes**: crash watch snapshots are written and synced every 30 seconds. The clock is saved every minute.
+- **Reduced clock writes** (the default): the snapshots are the same. The clock is saved every 10 minutes and when the hub stops. After a crash, the clock can be up to 10 minutes behind.
+- **Buffered writes**: the snapshots are written without a sync. A hang loses the last two minutes of snapshots. The clock is saved every 30 minutes.
+- **In-memory snapshots**: the snapshots are kept in memory. The box writes them every 15 minutes, or at once when crash watch sees a problem. The clock is saved every hour. A hang loses up to 15 minutes of snapshots.
 
 User data is written when it changes, at every level. The page shows how much the box has written since the last boot.

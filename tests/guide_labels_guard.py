@@ -32,7 +32,7 @@ NOT_LABELS = {
     "Two short flashes": "an LED pattern, described",
     "The theme picker": "names the control, which shows an icon and no words",
     "A script calls the administration pages": "a case in a list (first-use.md), not a control",
-    "The shoutbox and the board": "a list item naming two apps (for-guests.md)",
+    "Settings links": "a part of the Box doctor page, described (troubleshooting.md), not a control",
 }
 
 
@@ -42,7 +42,7 @@ def source_text():
         if p.is_file():
             parts.append(html.unescape(p.read_text(errors="ignore")))
     # Labels in HTML can wrap across lines and carry inline tags: one space, no tags.
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", " ".join(parts)))
+    return re.sub(r"\s+", " ", re.sub(r"</?[A-Za-z][^<>]*>", "", " ".join(parts)))
 
 
 def labels(md):
@@ -58,7 +58,7 @@ def labels(md):
 
 
 text = source_text()
-pages = sorted((REPO / "docs" / "guide").glob("*.md"))
+pages = sorted((REPO / "docs" / "user").glob("*.md"))
 check("the guide has pages to read", len(pages) > 5, [p.name for p in pages])
 for md in pages:
     if md.name == "glossary.md":

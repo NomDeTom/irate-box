@@ -11,7 +11,7 @@ While the box is online, it downloads the packages of each toolkit into a local 
 On the card of each toolkit:
 
 - **Install** installs the toolkit.
-- **Remove it again after** removes it after an hour, a day, a week or never. This is the default removal period.
+- **Remove after** removes it after an hour, a day, a week or never. This is the default removal period.
 - **Keep current** refreshes the cache automatically.
 - **Roll back** returns to an earlier copy.
 
