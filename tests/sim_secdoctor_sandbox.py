@@ -77,6 +77,18 @@ for box, want in (("rw,nosuid,nodev,noexec,relatime", "warn"), ("rw,nosuid,nodev
     (proc / "1" / "mounts").write_text(f"proc /proc proc {box} 0 0\n")
     f = next(f for f in sd.step_cmdlines({}) if f["id"] == "cmdlines-proc")
     check(f"process visibility read from PID 1's mounts, not the unit's own: {box.rpartition(',')[2]} is {want}", f["status"] == want, f)
+# Builds off the hub on loopback: install.sh's nft table counts, since IPAddressDeny does nothing on vendor kernels.
+ci = {"irate-box-ci.service": {"LoadState": "loaded", "User": "hubci", "IPAddressDeny": "", "PrivateNetwork": "no"}}
+sd._hub_ask = lambda *a, **k: 403
+sd._ci_nft = lambda: None
+check("builds can reach the hub on loopback (no rule loaded): a warning", run(ci)["units-ci-loopback"]["status"] == "warn")
+sd._ci_nft = lambda: 'table inet irate_box_ci {\n\tchain out {\n\t\tmeta skuid "hubci" oif "lo" drop\n\t}\n}\n'
+f = run(ci)["units-ci-loopback"]
+check("  with the nft rule loaded: ok, said so in the evidence", f["status"] == "ok" and f["evidence"] == ["nft: inet irate_box_ci (hubci to lo: DNS only)"], f)
+inst_ci = (REPO / "install.sh").read_text()
+check("  install.sh writes the rule (hubci to lo dropped, DNS to the stub kept) and loads it before each build",
+      'meta skuid "hubci" oif "lo" ip daddr 127.0.0.53 meta l4proto { tcp, udp } th dport 53 accept' in inst_ci
+      and 'meta skuid "hubci" oif "lo" drop' in inst_ci and "ExecStartPre=-+/usr/sbin/nft -f $ETC/ci-loopback.nft" in inst_ci)
 from irate_box.root import secdoctor_xref as xr  # noqa: E402
 check("  the doctor's finding joins the Security page's fix (proc-hidden), and is no longer information only",
       xr.about("doctor", "cmdlines-proc") == {"kind": "setting", "key": "proc-hidden"}
