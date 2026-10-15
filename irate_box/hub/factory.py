@@ -418,7 +418,7 @@ def estimates(history):
 
 
 def readiness(history):
-    """Per family: "offline ready" when its newest build with no network at all (Test offline)
+    """Per family, a message: "offline ready" when its newest build with no network at all (Test offline)
     passed; else "built here" once one has passed, saying whether it was tried offline; else whether
     its tools were fetched (with PlatformIO's folder then) or could not be."""
     tools, built, last_offline = {}, set(), {}
@@ -429,8 +429,9 @@ def readiness(history):
         if s.get("tools_only"):
             if f not in tools:
                 res = s.get("resources") or {}
-                tools[f] = (f"Tools downloaded (PlatformIO tools {round((res.get('tools_bytes') or 0) / 2 ** 20)} MB). Build not tested."
-                            if state == "passed" else "Tools download failed. See the log.")
+                tools[f] = (M("factory.ready.tools", "Tools downloaded (PlatformIO tools {mb} MB). Build not tested.",
+                                mb=round((res.get("tools_bytes") or 0) / 2 ** 20))
+                            if state == "passed" else M("factory.ready.tools-failed", "Tools download failed. See the log."))
         elif s.get("offline"):
             last_offline.setdefault(f, s)
         elif state == "passed":
@@ -440,10 +441,12 @@ def readiness(history):
         last = last_offline.get(f) or {}
         off = last.get("state")
         # A pass proves the target and revision it built, not the whole family at every revision.
-        out[f] = (f"Offline build passed for {last['env']} at {last['ref']}." if last.get("env") and last.get("ref")
-                  else "Offline build passed for the test target.") if off == "passed" else \
-            ("Build passed. Offline build failed. See the log." if off else "Build passed. Offline build not tested.") if f in built else \
-            "Offline build failed. See the log."
+        out[f] = (M("factory.ready.offline", "Offline build passed for {env} at {ref}.", env=last["env"], ref=last["ref"])
+                  if last.get("env") and last.get("ref")
+                  else M("factory.ready.offline-test", "Offline build passed for the test target.")) if off == "passed" else \
+            (M("factory.ready.offline-failed-built", "Build passed. Offline build failed. See the log.") if off
+             else M("factory.ready.built", "Build passed. Offline build not tested.")) if f in built else \
+            M("factory.ready.offline-failed", "Offline build failed. See the log.")
     return out
 
 

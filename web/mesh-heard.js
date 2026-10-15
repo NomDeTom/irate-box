@@ -16,7 +16,7 @@
 
   function render(d) {
     view.state.textContent = d.state === 'listening' ? `Connected to the broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
-      : `Reconnecting to the broker${d.error ? ` (${d.error})` : ''}. This happens automatically.`;
+      : `Reconnecting to the broker${d.error ? ` (${d.error_message && window.AW ? window.AW.say(d.error_message) : d.error})` : ''}. This happens automatically.`;
     const names = Object.fromEntries(d.nodes.map((n) => [n.id, n.long_name || n.id]));
     const counts = Object.entries(d.counts || {}).map(([k, n]) => `${n} ${k}`);
     view.counts.textContent = counts.length ? `Decoded packets since the hub server started: ${counts.join(', ')}.` : 'No packets received';

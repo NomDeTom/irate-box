@@ -20,6 +20,11 @@ def answer(exc):
     return {"error": str(exc), "message": m} if is_message(m) else {"error": str(exc)}
 
 
+def done(m, **rest):
+    """A request done, as the pages read it: message, the English, and msg, the message itself (as /api/report)."""
+    return {**rest, "message": render(m), "msg": m}
+
+
 def say(m):
     """A refusal made in place, as the pages read it."""
     return {"error": render(m), "message": m}

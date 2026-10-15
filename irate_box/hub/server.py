@@ -1745,6 +1745,8 @@ refusal = refused.answer
 # Refusals said in more than one place. A request no page of this version makes (an unknown action, a malformed
 # body) is still refused in a sentence: an older page open in a tab can make one.
 UNKNOWN_ACTION = M("hub.action.unknown", "Unknown action. Reload the page and try again.")
+ACCEPTED = M("hub.accept.done", "Accepted. The finding is no longer in the review list.")
+REOPENED = M("hub.accept.reopened", "Reopened. The finding is in the review list again.")
 BAD_REQUEST = M("hub.request.invalid", "Invalid request. Reload the page and try again.")
 NOT_SHOWN = M("hub.not-shown", "Not found. The administrator does not show this page.")
 NO_THREAD = M("board.thread.not-found", "Thread not found. It was deleted, or you cannot see it.")
@@ -4513,7 +4515,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     self.send_json(400, refused.answer(exc))
                     return
-                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Reopened."})
+                self.send_json(200, refused.done(ACCEPTED if payload["action"] == "accept" else REOPENED, accepted=data))
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
@@ -4629,8 +4631,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 self.send_json(400, refused.answer(exc))
                 return
-            self.send_json(200, {"settings": saved, "message": f"Saved: {hotspot.LABEL[saved['mode']]}. "
-                                 "It takes effect the next time the hotspot is switched on (Network)."})
+            self.send_json(200, refused.done(M("hotspot.saved", "Saved: {mode}. The setting applies the next time you enable the hotspot (Network).",
+                                               mode=hotspot.LABEL_SAID[saved["mode"]]), settings=saved))
             return
 
         if path == "/admin/security":
@@ -4645,11 +4647,11 @@ class Handler(BaseHTTPRequestHandler):
                 from irate_box.hub import secimports
                 try:
                     msg = secimports.save(payload.get("report")) if payload["action"] == "import" else \
-                        (secimports.remove(str(payload.get("kind", ""))) or "Removed.")
+                        secimports.remove(str(payload.get("kind", "")))
                 except ValueError as exc:
                     self.send_json(400, refused.answer(exc))
                     return
-                self.send_json(202, {"id": control_request({"action": "security-audit"}), "message": msg})
+                self.send_json(202, refused.done(msg, id=control_request({"action": "security-audit"})))
             elif payload.get("action") in ("accept", "unaccept"):
                 # The owner's own: looked at, and accepted as it is (or taken back). The hub's file; no root.
                 try:
@@ -4657,7 +4659,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     self.send_json(400, refused.answer(exc))
                     return
-                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Reopened."})
+                self.send_json(200, refused.done(ACCEPTED if payload["action"] == "accept" else REOPENED, accepted=data))
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:

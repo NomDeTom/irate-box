@@ -152,7 +152,7 @@ envs = [s["env"] for s in factory.runs()]
 check("each target's two newest runs kept", envs.count("heltec-v3") == 2 and envs.count("native") == 2, envs)
 snap = factory.snapshot()
 check("estimates from the last build of each family; readiness from what it needed", snap["estimates"]["esp32s3"]["seconds"] >= 0
-      and snap["readiness"]["native"].startswith("Build passed") and "nrf52840" not in snap["readiness"], (snap["estimates"], snap["readiness"]))
+      and snap["readiness"]["native"]["id"] == "factory.ready.built" and "nrf52840" not in snap["readiness"], (snap["estimates"], snap["readiness"]))
 factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", ["native", "rak4631"])
 w = factory.snapshot()["waiting"]
 check("  a waiting build's start and finish, while every one before it has an estimate", w[0]["env"] == "native" and w[0]["start"] and w[0]["finish"]
@@ -207,16 +207,16 @@ check("  the build script told so (FW_TOOLS_ONLY=1), the run marked tools-only, 
       (ci.RUNS / st["run"] / "tools-only.txt").read_text().strip() == "1" and st["tools_only"] and "tools_bytes" in (st.get("resources") or {}), st)
 sn = factory.snapshot()
 check("  a family already built here stays built (a build says more); no estimate taken from the tools run",
-      sn["readiness"]["esp32s3"].startswith("Build passed") and sn["estimates"]["esp32s3"]["built"] != st["finished"], (sn["readiness"], sn["estimates"]))
+      sn["readiness"]["esp32s3"]["id"] == "factory.ready.built" and sn["estimates"]["esp32s3"]["built"] != st["finished"], (sn["readiness"], sn["estimates"]))
 r = factory.readiness([{"family": "rp2040", "tools_only": True, "state": "passed", "resources": {"tools_bytes": 300 * 2 ** 20}},
                        {"family": "stm32", "tools_only": True, "state": "failed"}])
-check("  one not built: tools fetched with their size, or could not be", r == {"rp2040": "Tools downloaded (PlatformIO tools 300 MB). Build not tested.",
-      "stm32": "Tools download failed. See the log."}, r)
+check("  one not built: tools fetched with their size, or could not be", r["rp2040"]["id"] == "factory.ready.tools" and r["rp2040"]["args"] == {"mb": 300}
+      and r["stm32"]["id"] == "factory.ready.tools-failed" and len(r) == 2, r)
 r = factory.readiness([{"family": "a", "state": "passed", "offline": True}, {"family": "a", "state": "passed"},
                        {"family": "b", "state": "passed"}, {"family": "b", "state": "failed", "offline": True},
                        {"family": "c", "state": "failed", "offline": True}, {"family": "d", "state": "passed"}])
-check("readiness: offline ready only from a build with no network; a build with it says so", r == {"a": "Offline build passed for the test target.",
-      "b": "Build passed. Offline build failed. See the log.", "c": "Offline build failed. See the log.", "d": "Build passed. Offline build not tested."}, r)
+check("readiness: offline ready only from a build with no network; a build with it says so", {f: m["id"] for f, m in r.items()} == {
+      "a": "factory.ready.offline-test", "b": "factory.ready.offline-failed-built", "c": "factory.ready.offline-failed", "d": "factory.ready.built"}, r)
 
 # Test offline: the same target, built with no network at all (ci.OFFLINE, stood in here).
 for f in ci.QUEUE.glob("*.json"):
@@ -231,7 +231,7 @@ ci.run_queue()
 st = factory.runs()[0]
 check("  the build ran inside it, the run says offline", (ci.RUNS / st["run"] / "netns.txt").read_text().strip() == "1" and st["offline"] is True
       and "offline: no network at all" in (ci.RUNS / st["run"] / "log.txt").read_text(), st)
-check("  and the family is offline ready", factory.snapshot()["readiness"]["nrf52840"] == "Offline build passed for rak4631 at v2.8.1.abcdef0.",
+check("  and the family is offline ready", factory.snapshot()["readiness"]["nrf52840"]["args"] == {"env": "rak4631", "ref": "v2.8.1.abcdef0"},
       factory.snapshot()["readiness"]["nrf52840"])
 ci.OFFLINE = ["false"]
 factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", offline=True)

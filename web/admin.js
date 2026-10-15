@@ -430,7 +430,7 @@ function renderLibrary(snap) {
     } else parts.push(every ? 'Idle. Not checked yet.' : 'Idle. It checks only when you ask.');
   }
   if (snap.free_mb !== null && snap.free_mb !== undefined) parts.push(`${snap.free_mb} MB free on the card.`);
-  if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${job.result.error}`);
+  if (!busy && job.result && job.result.error) parts.push(`Last action failed: ${hubError(job.result).message}`);
   lib.states.forEach((n) => { n.textContent = parts.join(' '); });
 
   // The books themselves are a page at a time (loadBooks): reread when the librarian finishes.
@@ -2273,7 +2273,7 @@ document.getElementById('import-form').addEventListener('submit', async (e) => {
     });
     const report = parseScanReport(text, file.name);
     const r = await postJSON('/admin/security', { action: 'import', report });
-    say(`${report.kind === 'nmap' ? 'nmap' : 'OpenVAS'}: ${report.results.length} results read. ${r.message || ''}`, true, importNote);
+    say(`${report.kind === 'nmap' ? 'nmap' : 'OpenVAS'}: ${report.results.length} results read. ${resultSaid(r) || ''}`, true, importNote);
     secWaiting = { id: r.id, fid: 'audit' };
     loadSecurity();
   } catch (err) { say(err.message, false, importNote); }
@@ -3330,6 +3330,16 @@ function uptimeSection(iface, data = netData) {
   return fold;
 }
 
+// The inventory's findings (netinv.py) in the reader's language, as the cards draw them: title, detail (summary,
+// why, notes and evidence) and fix (with its commands), as finding.english says them. An inventory from before
+// netinv wrote findings has only its English hazards.
+function netHazards(inv) {
+  if (!inv.findings) return inv.hazards || [];
+  return AW.localise(inv.findings).map((f) => ({ ...f,
+    detail: [f.summary, f.why, ...(f.notes || [])].filter(Boolean).join(' ') + ((f.evidence || []).length ? ` (${f.evidence.join(', ')})` : ''),
+    fix: [f.fix, ...(f.commands || []).map((c) => `\`${c}\``)].filter(Boolean).join(' ') }));
+}
+
 function deviceCard(inv, d, wifi, hazards) {
   const line = (label, text) => el('p', { className: 'net-line' }, el('span', { className: 'net-label', textContent: label }), el('span', { textContent: text }));
   // Each labelled part a section of its own, a hairline between them, so the parts don't run together.
@@ -3540,7 +3550,7 @@ function renderNetwork(data) {
   const shownIfaces = new Set(inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : []);
   // A review item accepted (on this page or the Box doctor's, one list: "net:<id>") is said as that and sorts with the passed.
   const accNet = data.accepted || {};
-  const hz = inv ? inv.hazards.map((h) => (h.status === 'warn' && accNet[`net:${h.id}`] ? { ...h, status: 'accepted' } : h))
+  const hz = inv ? netHazards(inv).map((h) => (h.status === 'warn' && accNet[`net:${h.id}`] ? { ...h, status: 'accepted' } : h))
     .sort((x, y) => (RANK[x.status] ?? 2) - (RANK[y.status] ?? 2)) : [];
   net.devices.replaceChildren(...(inv ? [...inv.radios.map((r) => deviceCard(inv, r, true, hz)), ...inv.wired.map((w) => deviceCard(inv, w, false, hz))] : []));
   drawNetTabs(data, inv, u);
@@ -3590,7 +3600,7 @@ function renderNetwork(data) {
   renderWifisync(inv, data, busy);
   const change = u && u.profile_change;
   const prof = inv && inv.uplink && inv.uplink.backend === 'networkmanager' ? inv.uplink.profile : null;
-  const trap = inv && inv.hazards.find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
+  const trap = inv && netHazards(inv).find((h) => h.id.startsWith('auth-retries:') || h.id.startsWith('autoconnect-retries:'));
   if (change && trap) {
     net.profile.replaceChildren(el('p', { className: 'setting-desc' },
       `Your WiFi connection ${change.name} was set to retry without limit. netplan wrote the connection again at boot, and the setting was lost. `
@@ -3731,7 +3741,7 @@ net.defaultsSave.addEventListener('click', () => {
 // undo back to how the image had it. Shown only where it is installed.
 function renderWifisync(inv, data, busy) {
   const box = document.getElementById('net-wifisync');
-  const h = inv && (inv.hazards || []).find((x) => x.id === 'wifisync');
+  const h = inv && netHazards(inv).find((x) => x.id === 'wifisync');
   const rec = data.wifisync || {};
   if (!h) { box.replaceChildren(); return; }
   const on = h.status !== 'ok';
@@ -4252,7 +4262,7 @@ hs.save.addEventListener('click', async () => {
   try {
     const r = await postJSON('/admin/hotspot', { settings: { mode, second: hs.second.value, password: hs.password.value, allow_wpa2: hs.wpa2.checked } });
     hsDirty = false;
-    say(r.message, true, hs.note);
+    say(resultSaid(r), true, hs.note);
     loadHotspot();
   } catch (err) { say(err.message, false, hs.note); }
 });
@@ -5163,7 +5173,7 @@ function renderUsb(data) {
       ...data.books.map((b) => el('option', { value: b, textContent: `${b}.zim` })));
     return el('div', { className: 'setting library-source' }, el('span', {},
       el('span', { className: 'setting-name', textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }),
-      d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
+      d.error ? el('span', { className: 'setting-desc bad', textContent: errorSaid(d) }) : null,
       ...(d.zims.length ? d.zims.map((z) => el('span', { className: 'usb-book' },
         el('span', { className: 'setting-desc', textContent: `${z.file} · ${size(z.size)}${z.zim ? '' : ` · Cannot import: ${z.problem || 'not a ZIM file'}`}` }),
         z.zim ? el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy book to library', disabled: busy,
@@ -5929,7 +5939,7 @@ async function loadKitsUsb() {
       const pick = el('select', { disabled: busy || !cached.length }, ...cached.map(([kid]) => el('option', { value: kid, textContent: ((kitsData.kits || {})[kid] || {}).title || kid })));
       return el('div', { className: 'setting library-source' }, el('span', {},
         el('span', { className: 'setting-name', textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})` }),
-        d.error ? el('span', { className: 'setting-desc bad', textContent: d.error }) : null,
+        d.error ? el('span', { className: 'setting-desc bad', textContent: errorSaid(d) }) : null,
         ...((d.kits || []).length ? d.kits.map((k) => el('span', { className: 'usb-book' },
           el('span', { className: 'setting-desc', textContent: `${k.title}: ${k.packages} packages, ${size(k.bytes)}, ${k.arch}` +
             (here && k.arch !== here ? ` (Architecture mismatch: this board is ${here})` : '') }),

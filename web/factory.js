@@ -49,7 +49,11 @@
   let facFlasher = null; // the boards the Firmware pane keeps for the flasher: ticked to start with
   const facDur = (s) => (s == null ? '?' : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
   const facClock = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-  const facReady = (f) => (facData && facData.readiness[f]) || 'Not tested on this box. Its first build downloads its toolchain';
+  // A family's readiness: a message from the hub (factory.readiness), said in the reader's language.
+  const facReady = (f) => {
+    const r = facData && facData.readiness[f];
+    return (r && typeof r === 'object' ? AW.say(r) : r) || 'Not tested on this box. Its first build downloads its toolchain';
+  };
   const sentence = (s) => { const x = String(s).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
   const facEst = (f) => { const e = facData && facData.estimates[f]; return e ? `about ${facDur(e.seconds)} a target here` : 'no build estimate'; };
 

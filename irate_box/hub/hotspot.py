@@ -40,12 +40,13 @@ NO_WPA3 = M("hotspot.wpa3.unsupported", "The radio does not report WPA3 (SAE) su
 BAD_PASSWORD = M("hotspot.password.invalid", "The WPA3 password must have 8 to 63 characters. "
                  "Use letters, digits, spaces or punctuation.")
 
-LABEL = {
-    "open": "Open: no password",
-    "owe": "Enhanced Open (OWE): no password, encrypted",
-    "sae": "WPA3 with a published password",
-    "two": "Two networks: one open, one encrypted",
+LABEL_SAID = {
+    "open": M("hotspot.label.open", "Open: no password"),
+    "owe": M("hotspot.label.owe", "Enhanced Open (OWE): no password, encrypted"),
+    "sae": M("hotspot.label.sae", "WPA3 with a published password"),
+    "two": M("hotspot.label.two", "Two networks: one open, one encrypted"),
 }
+LABEL = {mode: m["en"] for mode, m in LABEL_SAID.items()}   # the page's choices, in English (data-says)
 WHAT = {
     "open": "Guests join with no password. Every WiFi device can join. The WiFi link is not encrypted.",
     "owe": "Guests join with no password. The WiFi link is encrypted with a separate key for each device. "

@@ -87,10 +87,13 @@ def save(report):
     tmp = confine.under(DIR, f".{kept['kind']}.json.tmp")
     tmp.write_text(json.dumps(kept))
     os.replace(tmp, confine.under(DIR, f"{kept['kind']}.json"))
-    return f"{kept['kind']}: {len(kept['results'])} results kept; the next run of the doctor includes them"
+    return M("secimports.saved", {"one": "{kind}: {n} result kept. The next run of the doctor includes it.",
+                                  "other": "{kind}: {n} results kept. The next run of the doctor includes them."},
+             kind=kept["kind"], n=len(kept["results"]))
 
 
 def remove(kind):
     if kind not in KINDS:
         raise Refused(KIND_BAD)
     confine.under(DIR, f"{kind}.json").unlink(missing_ok=True)
+    return M("secimports.removed", "The box removed the imported {kind} report.", kind=kind)
