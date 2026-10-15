@@ -1544,7 +1544,7 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 .fchecks li { margin: 0.35rem 0; }
 .fchecks .fdo-cmd { margin-top: 0.2rem; }
 .fchecks .fdo-cmd code { font-size: 0.75rem; }
-.faccept { display: flex; justify-content: flex-end; margin-top: 0.2rem; font-size: 0.8rem; }
+.faccept { display: flex; justify-content: flex-end; margin-top: 0.4rem; }
 .findings.compact .finding { padding: 0.35rem 0.7rem; }
 .findings.compact .fdetail { color: var(--muted); }
 .fstate { display: inline-block; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;

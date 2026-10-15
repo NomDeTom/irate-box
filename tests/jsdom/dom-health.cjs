@@ -80,9 +80,9 @@ setTimeout(async () => {
   check('  then out of the review count and the open list, under Passed and accepted as Accepted', reviewN() === 0 && d.getElementById('health-fine').contains(led())
     && /Accepted/.test(led().querySelector('.fstate').textContent) && /Passed and accepted/.test(d.querySelector('#health-fine-fold summary').textContent), reviewN());
   check('  the Summary\'s Health line counts it no more', /0 to review|Nothing to fix or review|1 to fix, 0 to review/.test(t('#health-glance dd')[0]), t('#health-glance dd')[0]);
-  [...led().querySelectorAll('button')].find((b) => b.textContent === 'Take back').click();
+  [...led().querySelectorAll('button')].find((b) => b.textContent === 'Reopen').click();
   await new Promise((r) => setTimeout(r, 200));
-  check('  Take back: in the review list again', posted.some((b) => b.action === 'unaccept') && d.getElementById('health-findings').contains(led()) && reviewN() === 1, reviewN());
+  check('  Reopen: in the review list again', posted.some((b) => b.action === 'unaccept') && d.getElementById('health-findings').contains(led()) && reviewN() === 1, reviewN());
   w.renderHealth({ ...fx, report: { ...fx.report, findings: fx.report.findings.map((f) => (f.id === 'other-failed:armbian-led-state.service' ? { ...f, status: 'problem' } : f)) },
     accepted: { 'other-failed:armbian-led-state.service': { at: 1 } } });
   check('  accepted, but now a problem: shown as one', d.getElementById('health-findings').contains(led()) && led().classList.contains('finding-problem'));

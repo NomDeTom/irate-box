@@ -472,8 +472,9 @@ const AW = (() => {
       const take = () => { if (!snap) snap = fields(f).map((e) => [e, e.value, e.checked]); };
       f.addEventListener('pointerdown', take, true);
       f.addEventListener('focusin', (e) => { if (e.target !== discard) take(); }, true);
+      // Nothing to save: the button unfilled and off (it looked like one to press, and pressing it did nothing new).
       const set = (dirty) => {
-        btns().forEach((b) => b.classList.toggle('idle', !dirty));
+        btns().forEach((b) => { b.classList.toggle('idle', !dirty); b.disabled = !dirty; });
         if (discard) discard.disabled = !dirty || !snap;
         if (!dirty) snap = null;
       };

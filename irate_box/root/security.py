@@ -410,8 +410,22 @@ def periodic_conf(often, act):
             f'APT::Periodic::Unattended-Upgrade "{iv if act >= 2 else "0"}";\n')
 
 
+# What the box does with the security updates it finds, as the end of a sentence.
+ACT_DOES = {0: "flags what it finds", 1: "downloads what it finds, for you to install", 2: "installs what it finds"}
+
+
 def pattern_words(often, act):
-    return f"looked for {OFTEN_WORDS[often]}; what is found is {ACT_WORDS[act]}"
+    """The pattern as a clause: "the box looks for security updates every day and installs what it finds"."""
+    return f"the box looks for security updates {OFTEN_WORDS[often]} and {ACT_DOES[act]}"
+
+
+def _sentence(clause):
+    return clause[0].upper() + clause[1:]
+
+
+def _when(at):
+    """A run's time as people say it: "14 October, 06:29"."""
+    return time.strftime("%-d %B, %H:%M", time.localtime(at))
 
 
 def chosen_pattern(rec):
@@ -456,6 +470,9 @@ def lists_age_days():
 
 
 UNATTENDED_LOG = Path(os.environ.get("HUB_UNATTENDED_LOG", "/var/log/unattended-upgrades/unattended-upgrades.log"))
+# apt's own record of the last run, on the card: the log is in /var/log, which Armbian keeps in RAM, so it is gone after
+# a reboot (on the Lyra, 2026-10-15: "it has not run yet" a day after it ran).
+UNATTENDED_STAMP = Path(os.environ.get("HUB_UNATTENDED_STAMP", "/var/lib/apt/periodic/unattended-upgrades-stamp"))
 
 
 def _apt_periodic():
@@ -467,46 +484,48 @@ def _apt_periodic():
     return dict(l.split("=", 1) for l in out.stdout.splitlines() if "=" in l)
 
 
-def unattended_finding(installed, periodic, log_age_days, chosen=None):
+def unattended_finding(installed, periodic, log_age_days, chosen=None, last_at=None):
     """Automatic security updates: the owner's choice on the Updates page (how often to look, what to do
     with what is found: the update pattern) and, once installing, whether it really runs (Armbian
     images ship APT::Periodic::Enable "0", which switches the whole of apt's
     periodic work off whatever Unattended-Upgrade says, so the binary being there meant nothing).
     chosen: (often, act) or None. The choice itself is made with the chips on Updates, not buttons here."""
     title = "Automatic security updates"
-    acts = [{"choice": "autoupdate-undo", "label": "Put back as the image had it"}] if chosen else []
+    acts = [{"choice": "autoupdate-undo", "label": "Restore the image's settings"}] if chosen else []
     running = installed and periodic.get("APT::Periodic::Enable", "1") != "0" and periodic.get("APT::Periodic::Unattended-Upgrade", "0") not in ("0", "")
     if not chosen and running:
         # Debian's own package can switch it on when installed (20auto-upgrades): it runs, but was not chosen here.
-        return _finding("unattended", title, "ok", "On, but not chosen here (Debian's own package or the image switched it on): "
-                        "security updates are installed every day while the box has internet. Select below to keep it or change it.",
+        return _finding("unattended", title, "ok", "On, but not chosen on this page: Debian's own package or the image switched it on. "
+                        "The box installs security updates every day while it has internet. Select below to keep this or change it.",
                         "", acts)
     if not chosen:
         return _finding("unattended", title, "warn",
-                        "Not chosen yet: security updates wait until someone looks for them and installs them. "
+                        "Not chosen yet. Security updates wait until someone looks for them and installs them. "
                         "The box can look every 6 hours, every day or every week, and flag, download or install what it finds.",
                         "Select how often and what to do, below. You can restore the previous setting.", acts)
     often, act = chosen
-    said = pattern_words(often, act)
+    said = _sentence(pattern_words(often, act))
     if not often:
-        return _finding("unattended", title, "ok", f"By hand, as you chose: press Check now; what it finds is {ACT_WORDS[act]}.", "", acts)
+        return _finding("unattended", title, "ok", f"By hand, as you chose. Select Check now: the box then {ACT_DOES[act]}.", "", acts)
     enabled = periodic.get("APT::Periodic::Enable", "1") != "0"
     if not enabled:
-        return _finding("unattended", title, "warn", f"Set to be {said}, but apt's periodic work is off again (another file "
-                        "in /etc/apt/apt.conf.d wins).", "Save the choice again below.", acts)
+        return _finding("unattended", title, "warn", f"Chosen: {said}. But it is off again: another file in "
+                        "/etc/apt/apt.conf.d switches apt's daily work off.", "Save the choice again below.", acts)
     if act < 2:
-        return _finding("unattended", title, "ok", f"Security updates are {said}, while the box has internet.", "", acts)
+        return _finding("unattended", title, "ok", f"{said}. It does this while it has internet.", "", acts)
     if not installed or periodic.get("APT::Periodic::Unattended-Upgrade", "0") in ("0", ""):
-        return _finding("unattended", title, "warn", f"Set to be {said}, but unattended-upgrades "
+        return _finding("unattended", title, "warn", f"Chosen: {said}. But unattended-upgrades, which installs them, "
                         + ("is not installed." if not installed else "would not run "
                            f"(APT::Periodic::Unattended-Upgrade {periodic.get('APT::Periodic::Unattended-Upgrade', 'unset')})."),
                         "Save the choice again below.", acts)
     if log_age_days is None:
-        return _finding("unattended", title, "ok", f"Security updates are {said}; it has not run yet (it runs while online).", "", acts)
+        return _finding("unattended", title, "ok", f"{said}. It has not run yet. It runs when the box has internet.", "", acts)
     if log_age_days > max(14, often / 24 * 2):
-        return _finding("unattended", title, "warn", f"Security updates are {said}, but it last ran {log_age_days:.0f} days ago.",
-                        "It runs when the box is online. An offline box needs the updates installed here.", acts)
-    return _finding("unattended", title, "ok", f"Security updates are {said}; it last ran {log_age_days:.0f} day(s) ago.", "", acts)
+        return _finding("unattended", title, "warn", f"{said}. But it last ran " + (f"on {_when(last_at)}, " if last_at else "")
+                        + f"{log_age_days:.0f} days ago.",
+                        "It runs only when the box has internet. On a box with no internet, install the updates here.", acts)
+    return _finding("unattended", title, "ok", f"{said}. It last ran " + (f"on {_when(last_at)}." if last_at else
+                    f"{log_age_days:.0f} day{'s' if round(log_age_days) != 1 else ''} ago."), "", acts)
 
 
 def _timers_six(rec_timers, on):
@@ -569,7 +588,7 @@ def _autoupdate(rec, how):
             said.append("unattended-upgrades installed")
         cur["installed"] = True
     AUTOUPDATE_CONF.parent.mkdir(parents=True, exist_ok=True)
-    AUTOUPDATE_CONF.write_text("// Written by irate-box's Updates page (/admin): security updates "
+    AUTOUPDATE_CONF.write_text("// Written by irate-box's Updates page (/admin): "
                                f"{pattern_words(often, act)}. Change it there.\n" + periodic_conf(often, act))
     _timers_six(cur["timers"], often == 6)
     if often:
@@ -583,7 +602,7 @@ def _autoupdate(rec, how):
     cur.pop("level", None)
     cur["often"], cur["act"] = often, act
     rec["autoupdate"] = cur
-    return "; ".join(said + [f"security updates {pattern_words(often, act)}"])
+    return " ".join([f"{x}." for x in said] + [_sentence(pattern_words(often, act)) + "."])
 
 
 def fetched_debs(simulated):
@@ -603,10 +622,15 @@ def update_findings():
     out = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180)
     pkgs = pending_security(out.stdout)
     fetched = fetched_debs(out.stdout) if pkgs else 0
-    try:
-        log_age = (time.time() - UNATTENDED_LOG.stat().st_mtime) / 86400
-    except OSError:
-        log_age = None
+    # The last run: apt's stamp (kept on the card), else unattended-upgrades' own log.
+    last_at = None
+    for f in (UNATTENDED_STAMP, UNATTENDED_LOG):
+        try:
+            last_at = f.stat().st_mtime
+            break
+        except OSError:
+            continue
+    log_age = (time.time() - last_at) / 86400 if last_at else None
     age = lists_age_days()
     fresh = ("The package lists are from today." if age is not None and age < 1 else
              f"The package lists are {round(age)} day{'s' if round(age) != 1 else ''} old. Newer fixes can be available." if age is not None else "The package lists' age is unknown.")
@@ -624,7 +648,7 @@ def update_findings():
     findings[-1]["lists_age_days"] = age  # the page's badge: how recently "none waiting" was looked for
     findings[-1]["waiting"], findings[-1]["fetched"] = len(pkgs), fetched  # the pattern's Fetch and Install
     chosen = chosen_pattern(load_record())
-    findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age, chosen))
+    findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age, chosen, last_at))
     findings[-1]["pattern"] = {"often": (chosen or DEFAULT_PATTERN)[0], "act": (chosen or DEFAULT_PATTERN)[1], "chosen": bool(chosen)}
     return findings, pkgs
 
