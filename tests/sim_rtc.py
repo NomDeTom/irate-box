@@ -43,6 +43,17 @@ got = sorted((x["bus"], x["addr"], x["chip"], x["ambiguous"]) for x in f["found"
 check("find: DS3231, RV-8803, RX8130, PCF8563; the MPU-6050 left out",
       got == [(1, "0x32", "rv8803", False), (1, "0x68", "ds3231", False), (2, "0x32", "rx8130", False), (2, "0x51", "pcf8563", False)], got)
 check("find: all supported (own driver)", all(x["supported"] and not x["kernel"] for x in f["found"]))
+# An RX-8900 (an RV-8803 by its registers) that lost power, as found on a board: its date day 0, its low-voltage
+# flag (VLF) set, the seconds ticking. Found all the same, said as not valid yet.
+lost = regs(); lost[0:0x20] = [0x19, 0x02, 0x00, 0x40, 0x00, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0x07, 0,
+                              0x60, 0x19, 0x02, 0x00, 0x40, 0x00, 0x01, 0, 0, 0, 0, 0, 0, 0, 0x07, 0]
+fake({"2": {"0x32": lost}})
+f = rtc.find()
+check("find: an RV-8803 / RX-8900 that lost power (day 0, VLF set) is found, its time said as not valid yet",
+      [(x["chip"], x["bus"]) for x in f["found"]] == [("rv8803", 2)] and "low-voltage flag" in (f["found"][0]["time_lost"] or ""), f["found"])
+nolost = list(lost); nolost[0x0E] = 0x00
+fake({"2": {"0x32": nolost}})
+check("  …but not a date that is not valid with no low-voltage flag (not a clock, or not one of these)", rtc.find()["found"] == [])
 fake({"4": {"0x32": both}})
 f = rtc.find()
 check("find: a 0x32 pattern that fits both is offered as both", sorted(x["chip"] for x in f["found"]) == ["rv8803", "rx8130"]
@@ -135,6 +146,17 @@ fake({"1": {"0x68": ds}})
 print("   auto (one module):", rtc.auto())
 check("auto: one module → set up", (T / "etc/rtc.json").exists())
 rtc.remove()
+# An RX-8900 (an RV-8803 by its registers) that lost power, as found on a board: its date day 0, its low-voltage
+# flag (VLF) set, the seconds ticking. Found all the same, said as not valid yet.
+lost = regs(); lost[0:0x20] = [0x19, 0x02, 0x00, 0x40, 0x00, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0x07, 0,
+                              0x60, 0x19, 0x02, 0x00, 0x40, 0x00, 0x01, 0, 0, 0, 0, 0, 0, 0, 0x07, 0]
+fake({"2": {"0x32": lost}})
+f = rtc.find()
+check("find: an RV-8803 / RX-8900 that lost power (day 0, VLF set) is found, its time said as not valid yet",
+      [(x["chip"], x["bus"]) for x in f["found"]] == [("rv8803", 2)] and "low-voltage flag" in (f["found"][0]["time_lost"] or ""), f["found"])
+nolost = list(lost); nolost[0x0E] = 0x00
+fake({"2": {"0x32": nolost}})
+check("  …but not a date that is not valid with no low-voltage flag (not a clock, or not one of these)", rtc.find()["found"] == [])
 fake({"4": {"0x32": both}})
 r = rtc.auto(); print("   auto (ambiguous):", r)
 check("auto: two possibilities → nothing set up, owner asked", not (T / "etc/rtc.json").exists() and "Select which" in r)
