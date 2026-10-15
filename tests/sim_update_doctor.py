@@ -162,7 +162,8 @@ check("  a branch that is not there: Branch not found, with the repository and t
       msg_args(fs["repo"], "update.repo.no-branch") == {"repo": "https://example.invalid/irate-box", "branch": "main"}, fs["repo"])
 fs = doctor(date=time.time() - 7200)
 check("a clock two hours ahead: said with how far, the command to set it to copy, Clock the place",
-      msg_args(fs["clock"], "update.clock.ahead") == {"hours": "2.0", "host": "github.com"} and fs["clock"]["commands"] == [H.CLOCK_SET]
+      msg_args(fs["clock"], "update.clock.ahead")["host"] == "github.com"
+      and abs(msg_args(fs["clock"], "update.clock.ahead")["gap"]["seconds"] - 7200) < 60 and fs["clock"]["commands"] == [H.CLOCK_SET]
       and fs["clock"]["go"]["section"] == "clock", fs["clock"])
 
 # No install options, and no names at all.

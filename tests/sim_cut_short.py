@@ -4,7 +4,7 @@
 fails that source with a LibrarianError, as a refused connection does, so the run goes on to the next source; and a
 mirror whose release listing is cut short is recorded as that mirror's error. The network is stood in for.
 python3 tests/sim_cut_short.py"""
-import http.client, io, os, re, sys, tempfile
+import http.client, io, os, sys, tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="cutshort-"))
@@ -37,7 +37,7 @@ for label, exc in (("a chunked body that stops", http.client.IncompleteRead(b"{\
         L._api("/repos/a/b/releases")
         check(f"{label}: a LibrarianError", False, "no error")
     except L.LibrarianError as e:
-        check(f"{label}: a LibrarianError, saying it was cut short", re.match(r"Download failed\. The answer from api\.github\.com ended early: ", str(e)) is not None, str(e))
+        check(f"{label}: a LibrarianError, saying it was cut short", e.message["id"] == "library.download.cut-short" and e.message["args"]["host"] == "api.github.com", str(e))
     except Exception as e:  # noqa: BLE001
         check(f"{label}: a LibrarianError", False, repr(e))
 
@@ -49,7 +49,7 @@ try:
     L._api("/repos/a/b/releases")
     check("an answer that is not JSON: a LibrarianError", False, "no error")
 except L.LibrarianError as e:
-    check("an answer that is not JSON: a LibrarianError", "not JSON" in str(e), str(e))
+    check("an answer that is not JSON: a LibrarianError", e.message["id"] == "library.download.not-json", str(e))
 
 # A download read in chunks: cut short is the download's error, not a crash.
 answer["resp"] = Cut(http.client.IncompleteRead(b"", 100))
@@ -57,7 +57,7 @@ try:
     L._download("https://example.org/a.zim", T / "a.zim")
     check("a download cut short: a LibrarianError", False, "no error")
 except L.LibrarianError as e:
-    check("a download cut short: a LibrarianError", "ended early" in str(e), str(e))
+    check("a download cut short: a LibrarianError", e.message["id"] == "library.download.cut-short", str(e))
 except TypeError as e:
     check("a download cut short: a LibrarianError", False, f"_download's signature: {e}")
 

@@ -82,17 +82,21 @@ check("  families counted, and cached by commit", data["families"] == {"esp32s3"
       and (factory.CACHE / f"{data['commit']}.json").exists())
 
 # The queue.
-for bad, why in ((["nope"], "Not targets"), ([], "one or more"), (["native"] * 60, "Select up to")):
+for bad, why in ((["nope"], "factory.targets.unknown"), ([], "factory.targets.none"), (["native"] * 60, "factory.targets.too-many")):
     try:
         factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", bad); check(f"queue refused: {why}", False)
     except ValueError as exc:
-        check(f"queue refused: {why}", why in str(exc), str(exc))
+        check(f"queue refused: {why}", exc.message["id"] == why, exc.message)
+try:
+    factory.queue("meshtastic-firmware", "v2.8.1.abcdef0", ["nope", "native"])
+except ValueError as exc:
+    check("  the unknown targets named, as a list", exc.message["args"]["envs"] == ["nope"] and "nope" in str(exc), exc.message)
 real_free = factory.free_bytes
 factory.free_bytes = lambda: 100 << 20
 try:
     factory.queue("meshtastic-firmware", "main", ["native"]); check("queue refused: the card nearly full", False)
 except ValueError as exc:
-    check("queue refused: the card nearly full", "free" in str(exc), str(exc))
+    check("queue refused: the card nearly full", exc.message["id"] == "factory.storage.low" and exc.message["args"]["mb"] == 512, exc.message)
 factory.free_bytes = real_free
 out = factory.queue("meshtastic-firmware", "main", ["rak4631", "heltec-v3", "native", "rak4631-inkhud"])
 jobs = factory._jobs()
@@ -211,7 +215,7 @@ check("  one not built: tools fetched with their size, or could not be", r == {"
 r = factory.readiness([{"family": "a", "state": "passed", "offline": True}, {"family": "a", "state": "passed"},
                        {"family": "b", "state": "passed"}, {"family": "b", "state": "failed", "offline": True},
                        {"family": "c", "state": "failed", "offline": True}, {"family": "d", "state": "passed"}])
-check("readiness: offline ready only from a build with no network; a build with it says so", r == {"a": "Offline build passed for the test target",
+check("readiness: offline ready only from a build with no network; a build with it says so", r == {"a": "Offline build passed for the test target.",
       "b": "Build passed. Offline build failed. See the log.", "c": "Offline build failed. See the log.", "d": "Build passed. Offline build not tested."}, r)
 
 # Test offline: the same target, built with no network at all (ci.OFFLINE, stood in here).
@@ -227,13 +231,14 @@ ci.run_queue()
 st = factory.runs()[0]
 check("  the build ran inside it, the run says offline", (ci.RUNS / st["run"] / "netns.txt").read_text().strip() == "1" and st["offline"] is True
       and "offline: no network at all" in (ci.RUNS / st["run"] / "log.txt").read_text(), st)
-check("  and the family is offline ready", factory.snapshot()["readiness"]["nrf52840"] == "Offline build passed for the test target")
+check("  and the family is offline ready", factory.snapshot()["readiness"]["nrf52840"] == "Offline build passed for rak4631 at v2.8.1.abcdef0.",
+      factory.snapshot()["readiness"]["nrf52840"])
 ci.OFFLINE = ["false"]
 factory.queue_tools("meshtastic-firmware", "v2.8.1.abcdef0", "nrf52840", offline=True)
 ci.run_queue()
 st = factory.runs()[0]
 check("  where the network can't be cut off: failed, and said, nothing built", st["state"] == "failed"
-      and "cannot run without the network here" in (ci.RUNS / st["run"] / "log.txt").read_text())
+      and "Environment check failed. This box cannot build without the network" in (ci.RUNS / st["run"] / "log.txt").read_text())
 
 # The kept workspace (PLATFORMIO_WORKSPACE_DIR, as Meshtastic's build containers): a target's
 # libraries stay for its next build; an offline test compiles all of it again.
@@ -340,16 +345,17 @@ check("the flasher's list: the release built here, first among the alphas, with 
       and lst["releases"]["alpha"][0]["title"] == "Meshtastic Firmware 2.8.1.abcdef0 built on this box (heltec-v3, rak4631)", lst)
 check("  the factory page lists it, with the run each target came from", [(t["board"], t["run"]) for t in factory.snapshot()["flasher"][0]["targets"]]
       == [("heltec-v3", by_env["heltec-v3"]["run"]), ("rak4631", by_env["rak4631"]["run"])])
-for bad, why in ((by_env["native"]["run"].split("/")[1], "no manifest"), ("../1", "not a run"), ("999", "Run not found")):
+for bad, why in ((by_env["native"]["run"].split("/")[1], "factory.publish.no-manifest"), ("../1", "factory.run.invalid"), ("999", "factory.run.not-found")):
     try:
         factory.publish(bad); check(f"  refused: {why}", False)
-    except ValueError:
-        check(f"  refused: {why}", True)
+    except ValueError as exc:
+        check(f"  refused: {why}", exc.message["id"] == why, exc.message)
 (ci.RUNS / by_env["rak4631"]["run"] / "artifacts" / "firmware-rak4631-2.8.1.abcdef0.uf2").write_text("changed")
 try:
     factory.publish(by_env["rak4631"]["run"].split("/")[1]); check("  refused: a file changed since its manifest (MD5)", False)
 except ValueError as exc:
-    check("  refused: a file changed since its manifest (MD5)", "MD5" in str(exc), exc)
+    check("  refused: a file changed since its manifest (MD5)", exc.message["id"] == "factory.publish.digest"
+          and exc.message["args"]["file"] == "firmware-rak4631-2.8.1.abcdef0.uf2", exc.message)
 factory.unpublish("2.8.1.abcdef0-built", "rak4631")
 check("unpublish: the target's files and manifest gone, the board list without it",
       not list(rel.glob("firmware-rak4631*")) and [t["board"] for t in json.loads((rel / "firmware-2.8.1.abcdef0-built.json").read_text())["targets"]] == ["heltec-v3"])

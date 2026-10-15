@@ -64,7 +64,7 @@ try:
     check("  a device not on the hotspot: refused", st == 400, (st, d))
     level("users-web")
     st, d = go("POST", "/api/guest-net", {"agree": True}, addr="192.168.4.30")
-    check("users only: a guest not signed in is refused, and told to sign in", st == 403 and "sign in" in d.get("error", "").lower(), (st, d))
+    check("users only: a guest not signed in is refused, and told to sign in", st == 403 and d["message"]["id"] == "share.users-only", (st, d))
     level("open")
     check("open: nobody captive", go("GET", "/api/captive", addr="192.168.4.99")[1]["captive"] is False)
     st, d = go("POST", "/admin/hotspot", {"action": "share", "level": "sheet-all"}, admin=True)

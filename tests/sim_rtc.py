@@ -18,6 +18,7 @@ os.environ.update(PATH=f"{T}/bin:" + os.environ["PATH"], HUB_RTC_FAKE=str(T / "f
 REPO = str(__import__("pathlib").Path(__file__).resolve().parents[1])
 sys.path.insert(0, REPO)
 from irate_box.root import rtc  # noqa: E402
+from irate_box.msg import args_of, ids as msg_ids  # noqa: E402
 
 fails = 0
 def check(name, cond, info=""):
@@ -114,7 +115,9 @@ check("setup: after a search, a bus it did not find the clock on is still refuse
 msg = rtc.setup("ds3231", 1, "0x68")
 print("   setup:", msg)
 check("setup: config and units written", (T / "etc/rtc.json").exists() and (T / "units/irate-box-rtc.service").exists())
-check("setup: untrusted clock, valid module → the system clock is set from the module (as at boot)", "System clock set from the module" in msg, msg)
+check("setup: untrusted clock, valid module → the system clock is set from the module (as at boot)",
+      msg_ids(msg)[1:] == ["rtc-module.set-up.own", "rtc-module.set-up.set"]
+      and args_of(msg, "rtc-module.set-up.own") == {"chip": rtc.CHIPS["ds3231"][0], "bus": 1, "addr": "0x68"}, msg)
 unit = (T / "units/irate-box-rtc.service").read_text()
 check("unit: before fake-hwclock, no default dependencies", "Before=fake-hwclock-load.service" in unit and "DefaultDependencies=no" in unit)
 check("unit: runs the module through the launcher", f"ExecStart={REPO}/irate-box rtc boot" in unit, unit)
@@ -122,7 +125,7 @@ check("unit: runs the module through the launcher", f"ExecStart={REPO}/irate-box
 print("   boot:", rtc.boot())
 dl = (T / "date.log").read_text() if (T / "date.log").exists() else ""
 check("boot: system clock set from the module", "-u -s @" in dl, dl)
-check("save: refused while the clock is not trusted", "not changed" in rtc.save())
+check("save: refused while the clock is not trusted", rtc.save()["id"] == "rtc-module.not-saved")
 (T / "ntp").write_text("yes\n")
 print("   save:", rtc.save())
 e, _ = rtc.read_user("ds3231", rtc.open_i2c(1, 0x68))
@@ -172,8 +175,10 @@ msg = health.set_clock(target); print("   set_clock:", msg)
 check("set_clock: date called with the browser's time", f"@{target}" in (T / "date.log").read_text())
 check("set_clock: clock marked trusted for this boot", rtc.TRUSTED.exists())
 e, _ = rtc.read_user("ds3231", rtc.open_i2c(1, 0x68))
-check("set_clock: the module written too", "clock module is set too" in msg and abs(e - time.time()) < 3, (msg, e - time.time()))
-check("save: allowed now (set by an administrator)", "set by an administrator" in rtc.save())
+check("set_clock: the module written too", "repair.clock.module-set" in msg_ids(msg) and abs(e - time.time()) < 3, (msg, e - time.time()))
+check("  said: moved forward, by how much and to when", args_of(msg, "repair.clock.forward")["time"] == {"time": target}
+      and 7190 < args_of(msg, "repair.clock.forward")["gap"]["seconds"] <= 7200, msg)
+check("save: allowed now (set by an administrator)", rtc.save()["id"] == "rtc-module.saved.administrator")
 try:
     health.set_clock(1600000000); check("set_clock refuses a time before what the box has written", False)
 except ValueError as exc:

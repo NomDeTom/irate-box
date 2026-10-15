@@ -108,14 +108,16 @@ check("  forwarding on (a sysctl.d file, and now), the resolver's unit written a
       and ["systemctl", "enable", share.GUEST_DNS_UNIT] in ran)
 check("  the level and the containment for /admin; contained by default", public == {"level": "sheet-web", "contain": ALL}
       and share.load()["forward_was"] is not None, public)
-check("  said plainly", "through the welcome page" in msg, msg)
+check("  said plainly: the level in share.py's words", msg["id"] == "control.share.set" and msg["args"]["level"] == share.WORDS["sheet-web"], msg)
 ran.clear()
-check("share-allow: a guest let out by its hardware address, for 12 h", "aa:bb:cc:00:11:22" in hub_control.share_allow({"ip": "192.168.4.23"})
+let = hub_control.share_allow({"ip": "192.168.4.23"})
+check("share-allow: a guest let out by its hardware address, for 12 h", let["id"] == "control.share.let.mac"
+      and let["args"] == {"address": "192.168.4.23", "mac": "aa:bb:cc:00:11:22", "n": 12}
       and ["nft", "add", "element", "inet", "irate_box", "out", "{ aa:bb:cc:00:11:22 timeout 12h }"] in ran, ran)
 try:
     hub_control.share_allow({"ip": "192.168.4.99"}); ok = False
 except ValueError as exc:
-    ok = "no hardware address" in str(exc)
+    ok = getattr(exc, "message", {}).get("id") == "control.share.no-mac"
 check("  no hardware address known: refused, said", ok)
 for bad in ({"ip": "192.168.1.9"}, {"ip": "192.168.4.1"}, {"ip": "1.2.3.4; reboot"}):
     try:

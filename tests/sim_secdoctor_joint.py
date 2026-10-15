@@ -53,11 +53,11 @@ check("the Security page's findings, from it, about what they are about", page["
 for bad, why in (({"kind": "qualys", "results": []}, "kind"), ({"kind": "nmap", "results": [{"port": 70000}]}, "port"),
                  ({"kind": "openvas", "results": [{"port": 80, "cvss": 11}]}, "cvss"), ({"kind": "openvas", "results": [{"port": 80, "cvss": 5, "cves": ["x"]}]}, "cves"),
                  ({"kind": "nmap", "results": [{"port": 80}] * 1001}, "results"), ({"kind": "nmap", "ran": "yesterday", "results": []}, "ran"),
-                 ({"kind": "nmap", "results": ["80"]}, "object")):
+                 ({"kind": "nmap", "results": ["80"]}, "result")):
     try:
         secimports.validate(bad); check(f"an import refused: {why}", False)
     except ValueError as exc:
-        check(f"an import refused: {why}", why in str(exc), str(exc))
+        check(f"an import refused: {why}", exc.message["id"] == f"secimport.{why}.invalid", exc.message)
 v = secimports.validate({"kind": "openvas", "results": [{"port": 80, "cvss": 5, "name": "x\x00y" * 200, "cves": ["CVE-2026-1234"]}]})
 check("text is trimmed and control characters go", 190 <= len(v["results"][0]["name"]) <= 200 and "\x00" not in v["results"][0]["name"])
 msg = secimports.save({"kind": "nmap", "ran": time.time() - 3600, "name": "scan.xml", "results": [

@@ -120,8 +120,8 @@ check("undo-all: both taken away", not cw.SYSCTL.exists() and not cw.SYSTEMD_CON
 for bad in (("preempt", "radio"), ("snapshots", "maybe"), ("rm", "-rf")):
     try:
         cw.set_option(*bad); ok = False
-    except ValueError:
-        ok = True
+    except ValueError as exc:
+        ok = exc.message["id"] == "crashwatch-set.unknown"
     check(f"set {bad}: refused", ok)
 
 # --- the box doctor ---
@@ -155,7 +155,7 @@ for good in ("crashwatch-panic:on", "crashwatch-snapshots:off"):
 for bad in ("crashwatch-preempt:reboot", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
 said = health.fix("crashwatch-snapshots:off")
-check("  a switch pressed: the setting changed, and said", cw.load_settings()["snapshots"] is False and said.startswith("Crash snapshots disabled"))
+check("  a switch pressed: the setting changed, and said", cw.load_settings()["snapshots"] is False and said["id"] == "crashwatch-set.snapshots.off")
 cw.set_option("snapshots", "on")
 # Crash watch's old radio setting, carried over to the uplink watchdog once and dropped.
 from irate_box.hub import uplink
@@ -200,7 +200,7 @@ check("  on: the overlay compiled for the first switched-off node, added to user
       'target-path = "/watchdog@ff260000"' in dtc_in[-1] and 'status = "okay"' in dtc_in[-1]
       and (BOOTD / "overlay-user/irate-box-watchdog.dtbo").exists() and "user_overlays=irate-box-watchdog\n" in env
       and "overlays=luckfox-lyra-zero-w-spi0-1cs-spidev\n" in env and "RuntimeWatchdogSec=60" in cw.SYSTEMD_CONF.read_text()
-      and "next restart" in said, (said, env))
+      and said["id"] == "crashwatch-set.watchdog.after-restart" and said["args"] == {"wait": {"seconds": 60}}, (said, env))
 check("  until the restart, it waits, and the doctor says so", cw.board_watchdog_pending()
       and "crash-hang.pending" in msg_ids({x["id"]: x for x in health.check_crashwatch(now=now)}["crash-hang"]))
 (BOOTD / "armbianEnv.txt").write_text(env.replace("user_overlays=irate-box-watchdog", "user_overlays=mine irate-box-watchdog"))

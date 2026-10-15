@@ -70,20 +70,21 @@ check("the doctor takes idle-off and idle-on for these only", health.CHOICE_RE.m
 msg = health.fix("idle-off:meshtasticd.service")
 rec = json.loads(health.IDLE_OFF.read_text())
 check("switched off: disabled and stopped, what it was kept", units["meshtasticd.service"]["UnitFileState"] == "disabled"
-      and rec["meshtasticd.service"]["enabled"] is True and rec["meshtasticd.service"]["active"] is False and "switched off" in msg, (msg, rec))
+      and rec["meshtasticd.service"]["enabled"] is True and rec["meshtasticd.service"]["active"] is False and msg["id"] == "repair.idle.off", (msg, rec))
 f = {x["id"]: x for x in health.check_idle()}
 check("  then: listed as switched off here, with a button to switch it back on; no longer offered off",
       "idle-off:meshtasticd.service" in f and f["idle-off:meshtasticd.service"]["actions"][0]["choice"] == "idle-on:meshtasticd.service"
       and "idle:meshtasticd.service" not in f, list(f))
 msg = health.fix("idle-on:meshtasticd.service")
 check("switched back on as it was: enabled again, not started (it wasn't running)", units["meshtasticd.service"]["UnitFileState"] == "enabled"
-      and units["meshtasticd.service"]["ActiveState"] == "inactive" and "meshtasticd.service" not in json.loads(health.IDLE_OFF.read_text()), msg)
+      and units["meshtasticd.service"]["ActiveState"] == "inactive" and "meshtasticd.service" not in json.loads(health.IDLE_OFF.read_text())
+      and msg["id"] == "repair.idle.on", msg)
 health.fix("idle-off:bluetooth.service"); health.fix("idle-on:bluetooth.service")
 check("  one that was running: started again", units["bluetooth.service"]["ActiveState"] == "active")
 for bad in ("idle-on:meshtasticd.service",):
     try:
         health.fix(bad); check(f"{bad} when it wasn't switched off here: refused", False)
-    except ValueError:
-        check(f"{bad} when it wasn't switched off here: refused", True)
+    except ValueError as exc:
+        check(f"{bad} when it wasn't switched off here: refused", exc.message["id"] == "repair.idle.not-off", exc)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

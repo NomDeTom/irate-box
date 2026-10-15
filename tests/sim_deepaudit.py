@@ -54,7 +54,7 @@ check("the box's design accepted, not counted: one partition, the web server, no
       and all(f["accepted"]["id"] in msg_ids(f) for f in acc)
       and all(f["status"] == "ok" for f in acc) and not any(k in fs for k in ("cis-1.1", "cis-2.2", "cis-3.5")), [(f["accepted"], f["evidence"]) for f in acc])
 check("the passes counted, and the time", msg_args(fs["cis-summary"], "cis.summary") == {"passed": "2", "run": "9", "percent": "22.22"}
-      and msg_args(fs["cis-summary"], "deep.took") == {"minutes": 3.0}, fs["cis-summary"])
+      and msg_args(fs["cis-summary"], "deep.took") == {"took": {"seconds": 180}}, fs["cis-summary"])
 
 LYNIS = """# Lynis Report
 lynis_version=3.1.4
@@ -74,7 +74,7 @@ check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["s
 check("a suggestion the table knows: about that, as a suggestion; the rest listed, not counted; the hardening index said",
       lf["lynis-SSH-7408-2"]["about"]["key"] == "cis-5.2" and lf["lynis-SSH-7408-2"]["tier"] == "suggest"
       and lf["lynis-summary"]["status"] == "ok" and msg_args(lf["lynis-summary"], "lynis.index") == {"index": "64"}
-      and msg_args(lf["lynis-summary"], "lynis.suggestions") == {"n": 2} and msg_args(lf["lynis-summary"], "deep.took") == {"minutes": 4.7}
+      and msg_args(lf["lynis-summary"], "lynis.suggestions") == {"n": 2} and msg_args(lf["lynis-summary"], "deep.took") == {"took": {"seconds": 281}}
       and msg_args(lf["lynis-summary"], "lynis.listed") == {"n": 1}
       and any(e.startswith("DEB-0280: Install libpam-tmpdir") for e in lf["lynis-summary"]["evidence"]), lf["lynis-summary"])
 

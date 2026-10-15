@@ -16,10 +16,15 @@ os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"), HU
                   HUB_APT_PREFS_DIR=str(T / "prefs.d"), HUB_OS_RELEASE=str(T / "os-release"), HUB_IMAGE_ROOT=str(IMG))
 sys.path.insert(0, str(REPO))
 from irate_box.root import hub_control, pkgwatch  # noqa: E402
+from irate_box.msg import args_of, ids  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+def installed_said(m, version):
+    """The version an install's result says it installed (with the one before, or without)."""
+    a = args_of(m, "pkgwatch.install.done-from") or args_of(m, "pkgwatch.install.done") or {}
+    return a.get("package") == "meshtasticd" and a.get("version") == version
 
 # --- a stand-in apt: each channel's newest build; dpkg's record of what is installed ---
 CHANNEL = {"beta": "2.7.26.61~obs54e0d8d~beta", "alpha": "2.8.1.64~obs8e6a88d~alpha", "daily": "2.8.1.752~obs790944a~unstable"}
@@ -107,7 +112,7 @@ check("Update: installed from the cache, the one before remembered, the daemon r
 try:
     pkgwatch.rollback("meshtasticd", log=lambda *a: None); ok = False
 except ValueError as exc:
-    ok = "not in the cache" in str(exc)
+    ok = exc.message["id"] == "pkgwatch.rollback.not-cached"
 check("  Roll back: refused when the build before was never cached (installed before watching)", ok)
 
 # --- the owner's channel and mode, the mpwrd-menu way ---
@@ -116,7 +121,7 @@ check("a channel chosen: mpwrd-menu's lists and keys for the others gone, alpha'
       sorted(p.name for p in lists.iterdir()) == ["network:Meshtastic:alpha.list"]
       and (lists / "network:Meshtastic:alpha.list").read_text() == "deb https://download.opensuse.org/repositories/network:/Meshtastic:/alpha/Debian_13/ /\n"
       and (IMG / "etc/apt/trusted.gpg.d/network_Meshtastic_alpha.gpg").read_bytes().startswith(b"binary keyring of -----BEGIN")
-      and "mpwrd-menu (mPWRD-OS) and the box's apt now use alpha too" in said, said)
+      and args_of(said, "pkgwatch.settings.image-switched") == {"tool": "mpwrd-menu (mPWRD-OS)", "channel": "alpha"}, said)
 check("  automatic: apt left alone (one channel listed, apt upgrade gives the newest)", not (T / "prefs.d/irate-box-meshtasticd.pref").exists())
 msg = pkgwatch.check("meshtasticd", now=T0 + 3600, log=lambda *a: None)
 check("automatic, onto a channel behind what is installed (alpha 2.8.1.64 < nightly 2.8.1.752): no downgrade by itself",
@@ -124,7 +129,7 @@ check("automatic, onto a channel behind what is installed (alpha 2.8.1.64 < nigh
 CHANNEL["alpha"] = "2.8.2.10~obsddddddd~alpha"
 msg = pkgwatch.check("meshtasticd", now=T0 + 7200, log=lambda *a: None)
 check("  alpha passing it: its new build installed as it's seen", state["installed"] == CHANNEL["alpha"] and "installed" in msg, msg)
-check("  and the one before cached, so Roll back works", pkgwatch.rollback("meshtasticd", log=lambda *a: None).startswith(f"meshtasticd {CHANNEL['daily']} installed")
+check("  and the one before cached, so Roll back works", installed_said(pkgwatch.rollback("meshtasticd", log=lambda *a: None), CHANNEL["daily"])
       and state["installed"] == CHANNEL["daily"])
 
 # --- after a while ---
@@ -145,7 +150,7 @@ check("back to watch: apt's hold taken away", not (T / "prefs.d/irate-box-meshta
 
 # --- flag: said, nothing downloaded; Fetch keeps it; Install fetches first ---
 said = pkgwatch.set_settings("meshtasticd", "daily", "flag", 7)
-check("flag chosen: said as downloading nothing", "Nothing is downloaded" in said, said)
+check("flag chosen: said as downloading nothing", "pkgwatch.settings.flag" in ids(said), said)
 V1 = CHANNEL["daily"] = "2.8.1.950~obseeeeeee~unstable"
 ran.clear()
 msg = pkgwatch.check("meshtasticd", now=T0 + 10 * 86400, log=lambda *a: None)
@@ -164,7 +169,7 @@ check("Fetch: downloaded and kept, its first sighting carried over, no longer fl
 V2 = CHANNEL["daily"] = "2.8.1.960~obsfffffff~unstable"
 pkgwatch.check("meshtasticd", now=T0 + 12 * 86400, log=lambda *a: None)
 check("  the next build flagged; Install of it fetches first, then installs",
-      V2 in pkgwatch.flagged("meshtasticd") and pkgwatch.install("meshtasticd", V2, log=lambda *a: None).startswith(f"meshtasticd {V2} installed")
+      V2 in pkgwatch.flagged("meshtasticd") and installed_said(pkgwatch.install("meshtasticd", V2, log=lambda *a: None), V2)
       and state["installed"] == V2 and V2 in pkgwatch.seen("meshtasticd") and not pkgwatch.flagged("meshtasticd"))
 pkgwatch.set_settings("meshtasticd", "daily", "auto", 7)
 V3 = CHANNEL["daily"] = "2.8.1.970~obsggggggg~unstable"
@@ -189,7 +194,7 @@ CHANNEL["daily"] = "2.9.0.1~obscccccc~unstable"; state["bad_sha"] = True
 try:
     pkgwatch.check("meshtasticd", now=T0 + 9 * 86400, log=lambda *a: None); ok = False
 except ValueError as exc:
-    ok = "download incomplete" in str(exc)
+    ok = exc.message["id"] == "pkgwatch.check.download-incomplete"
 check("a download that doesn't match its index: refused, not cached", ok and "2.9.0.1~obscccccc~unstable" not in pkgwatch.seen("meshtasticd"))
 state["bad_sha"] = False
 
@@ -197,7 +202,8 @@ state["bad_sha"] = False
 ran.clear()
 check("pkg-check through the root helper (by \"package\", every one on the box without)", "meshtasticd" in hub_control.ACTIONS["pkg-check"]({"action": "pkg-check"})
       or "Package downloaded" in hub_control.ACTIONS["pkg-check"]({"action": "pkg-check"}))
-check("pkg-settings through it", "on beta" in hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3}))
+check("pkg-settings through it", (args_of(hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3}),
+                                         "pkgwatch.settings.saved") or {}).get("channel") == "beta")
 # How often (the update pattern): kept per package, published for the librarian, the old settings without it as 24 h.
 check("how often: 24 h when never chosen, kept when a save leaves it out", pkgwatch.settings("meshtasticd")["every"] == 24)
 hub_control.ACTIONS["pkg-settings"]({"package": "meshtasticd", "channel": "beta", "mode": "watch", "days": 3, "every": 6})
@@ -229,7 +235,7 @@ check("  then again", L.packages_step(now=T0 + 13.5 * 3600) is not None and len(
 try:
     pkgwatch.suite(); ok = False
 except ValueError as exc:
-    ok = "Ubuntu" in str(exc)
+    ok = args_of(exc.message, "pkgwatch.suite.not-debian") == {"system": "Ubuntu 24.04"}
 check("not Debian: said, nothing read", ok)
 
 shutil.rmtree(T, ignore_errors=True)

@@ -419,10 +419,22 @@ L2.misses(1800, 0, 5, "wlan0"); L2.misses(2100, 0, 5, "wlan0")
 check("  a quiet slot is kept when the line moved", [(r["at"], r["n"], r["th"]) for r in __import__("irate_box.hub.jsonlog", fromlist=["read"]).read(L2.path)][-1] == (1800, 0, 5))
 
 # 8. validate()
-for bad in [{"eagerness": "max"}, {"forgiveness": "lax"}, {"sensitivity": 21}, {"sensitivity": "many"}, {"overrides": {"check": 5}},
-            {"overrides": {"rm": 1}}, {"iface": "a;b"}, {"overrides": {"steps": {"nuke": 1}}}, {"overrides": {"window": 10}}]:
+for bad, mid in [({"eagerness": "max"}, "uplink.eagerness.unknown"), ({"forgiveness": "lax"}, "uplink.forgiveness.unknown"),
+                 ({"sensitivity": 21}, "uplink.sensitivity.range"), ({"sensitivity": "many"}, "uplink.sensitivity.range"),
+                 ({"overrides": {"check": 5}}, "uplink.custom.check"), ({"overrides": {"rm": 1}}, "uplink.custom.unknown"),
+                 ({"iface": "a;b"}, "uplink.iface.invalid"), ({"overrides": {"steps": {"nuke": 1}}}, "uplink.step.unknown-name"),
+                 ({"overrides": {"window": 10}}, "uplink.custom.window"),
+                 ({"overrides": {"steps": {"radio": 90000}}}, "uplink.custom.step-radio"),
+                 ({"roaming": "lock", "lock_bssid": "aa:bb"}, "uplink.lock.no-bssid"),
+                 ({"per_iface": {"wlan0": {"sensitivity": 0}}}, "uplink.per-iface.sensitivity"),
+                 ({"cable_out": "never"}, "uplink.cable-out.unknown")]:
     try: U.validate(bad); check(f"validate rejects {bad}", False)
-    except ValueError: check(f"validate rejects {bad}", True)
+    except ValueError as exc: check(f"validate rejects {bad}: {mid}", exc.message["id"] == mid, exc.message)
+try:
+    U.validate({"overrides": {"check": 5}})
+except ValueError as exc:
+    check("  a Custom field out of range: its limits and unit in the sentence", exc.message["args"] == {"low": 10, "high": 600}
+          and str(exc) == "The check interval must be from 10 to 600 seconds.", str(exc))
 v = U.validate({"eagerness": "stubborn", "forgiveness": "strict", "overrides": {"check": "45", "steps": {"reboot": None}}})
 check("validate accepts and coerces", v["overrides"] == {"check": 45, "steps": {"reboot": None}}, v)
 
@@ -664,7 +676,7 @@ U.SETTINGS = Path(_tf2.mkdtemp()) / "uplink.json"; U.ETC = U.SETTINGS.parent
 U.save_settings(U.validate({"pace": "steady", "steps_off": {"eth0": ["radio"]}}))
 said = HL.fix("uplink-skip:wlan0:restart")
 check("the doctor's fix: the step left out on that connection, the others kept", U.load_settings()["steps_off"] == {"eth0": ["radio"], "wlan0": ["restart"]}
-      and "wlan0" in said, (U.load_settings()["steps_off"], said))
+      and said["args"]["iface"] == "wlan0", (U.load_settings()["steps_off"], said))
 
 # A connection's own pace, reach, sensitivity, guests and wedge choice (per_iface), before everything else.
 v = U.validate({"pace": "steady", "reach": "reboot", "per_iface": {"wlan0": {"reach": "radio", "sensitivity": 5, "pace": "steady"}}})

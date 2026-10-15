@@ -12,6 +12,7 @@ T = Path(tempfile.mkdtemp(prefix="tls-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import tls, safeio  # noqa: E402
+from irate_box.msg import Refused  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -60,7 +61,8 @@ check("fresh: nothing due", tls.due() is None)
 now = time.time()
 check("two-thirds of its life gone: due", tls.due(now + 265 * 86400) == "two-thirds of its life gone" and tls.due(now + 260 * 86400) is None)
 ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.77", "network": "192.168.1.0/24"}
-check("a new address in the subnet: due, and re-made to cover it", "192.168.1.77" in (tls.due() or "") and "renewed" in tls.renew()
+check("a new address in the subnet: due, and re-made to cover it", "192.168.1.77" in (tls.due() or "")
+      and (said := tls.renew())["id"] == "https.renew.address" and said["args"]["addresses"] == ["192.168.1.77"]
       and "192.168.1.77" in json.loads(tls.RECORD.read_text())["cert"]["addresses"])
 ADDRS[0] = {"iface": "wlan0", "address": "10.0.0.5", "network": "10.0.0.0/24"}
 st = tls.status()
@@ -87,8 +89,9 @@ check("off: the twins gone, nginx reloaded, the CA and certificate kept", not li
 nginx_ok["ok"] = False
 try:
     tls.front(True); check("nginx refusing the twins: undone, and said", False)
-except RuntimeError as exc:
-    check("nginx refusing the twins: undone, and said", not list(tls.FRONT.glob("*.conf")) and "removed them again" in str(exc) and not tls.status()["on"], str(exc))
+except Refused as exc:
+    check("nginx refusing the twins: undone, and said", not list(tls.FRONT.glob("*.conf")) and exc.message["id"] == "https.front.refused"
+          and exc.message["args"] == {"server": "nginx", "detail": "stood in"} and not tls.status()["on"], str(exc))
 nginx_ok["ok"] = True
 # Under Caddy: a site of its own per twin, importing the plain site's snippet (Caddy refuses TLS on a
 # block whose other port is plain); the admin redirect by a protocol matcher. With $CADDY naming
@@ -207,24 +210,25 @@ r = lambda f: (P / f).read_text()  # noqa: E731
 def refused(chain, k, why):
     try:
         tls.import_own(chain, k); check(f"own certificate refused: {why}", False)
-    except ValueError as exc:
-        check(f"own certificate refused: {why}", True, str(exc))
-        return str(exc)
+    except Refused as exc:
+        check(f"own certificate refused: {why}", exc.message["id"] == f"https.import.{why}", exc.message)
+        return exc.message
 before = tls.CHAIN.read_text()
-msg = refused(r("leaf.crt"), r("leaf.key"), "the intermediate missing")
-check("  saying to paste the intermediates", "intermediates" in msg, msg)
-refused(r("leaf.crt") + r("inter.crt"), r("other.key"), "a key that isn't its own")
+m = refused(r("leaf.crt"), r("leaf.key"), "chain")
+check("  saying what openssl said", bool(m["args"]["detail"]), m)
+refused(r("leaf.crt") + r("inter.crt"), r("other.key"), "mismatch")
 refused(r("expired.crt") + r("inter.crt"), r("leaf.key"), "expired")
-refused("not a certificate", r("leaf.key"), "no certificate")
-refused(r("leaf.crt") + r("inter.crt"), "", "no key")
+refused("not a certificate", r("leaf.key"), "no-cert")
+refused(r("leaf.crt") + r("inter.crt"), "", "key-count")
 check("  and the box's own still in use after each", tls.CHAIN.read_text() == before)
 reloads.clear()
 out = tls.import_own(r("leaf.crt") + r("inter.crt"), r("leaf.key"))
 c = tls.status()["cert"]
 check("a good chain: in use, its names, its expiry, marked the owner's, nginx reloaded", c["own"] and c["names"] == ["box.example.org", "*.box.example.org"]
-      and 89 < (c["expires"] - time.time()) / 86400 < 91 and "box.example.org" in out and reloads and r("leaf.crt").strip() in tls.CHAIN.read_text(), (out, c))
+      and 89 < (c["expires"] - time.time()) / 86400 < 91 and out["id"] == "https.import.done" and out["args"]["names"] == ["box.example.org", "*.box.example.org"]
+      and reloads and r("leaf.crt").strip() in tls.CHAIN.read_text(), (out, c))
 check("  the key private to root and the front", stat.S_IMODE(tls.KEY.stat().st_mode) == 0o640)
-check("  never replaced by the box: not due, renew leaves it", tls.due(time.time() + 80 * 86400) is None and "current" in tls.renew()
+check("  never replaced by the box: not due, renew leaves it", tls.due(time.time() + 80 * 86400) is None and tls.renew()["id"] == "https.renew.current"
       and tls.status()["cert"]["own"])
 print(tls.use_box_own())
 check("back to the box's own: its CA's certificate again", not tls.status()["cert"]["own"] and "irate.home.arpa" in tls.status()["cert"]["names"])
@@ -241,8 +245,8 @@ tls.front(False)
 check("  HTTPS off takes it away too (never a redirect to a dead port)", not (tls.FRONT / "nginx-admin.conf").exists() and not tls.status()["admin_only"])
 try:
     tls.admin_only(True); check("  not while HTTPS is off", False)
-except ValueError:
-    check("  not while HTTPS is off", True)
+except Refused as exc:
+    check("  not while HTTPS is off", exc.message["id"] == "https.admin-only.https-off", exc.message)
 tls.front(True)
 # The hub: turned on only from an admin page that came over HTTPS; the own-certificate upload staged privately.
 import http.client  # noqa: E402

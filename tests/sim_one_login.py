@@ -92,11 +92,11 @@ try:
     check("  the set-up page at /admin/setup, its HTTP warning and the console's way", code == 200 and 'id="setup-http"' in page
           and "set-admin NAME" in page, code)
     code, d, _ = req("/admin/password", {"password": "pw-for-scripts"})
-    check("  the box's own login not set from the free pages", code == 403 and "first use" in d.get("error", ""), (code, d))
+    check("  the box's own login not set from the free pages", code == 403 and d["message"]["id"] == "setup.first", (code, d))
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "mallory", "role": "admin"})
     check("  nor an admin made on Accounts (the first admin is the set-up page's)", code == 403, (code, d))
     code, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner"})
-    check("the first password over plain HTTP, not chosen: refused, said why", code == 403 and d.get("https") is False and "HTTP" in d.get("error", ""), (code, d))
+    check("the first password over plain HTTP, not chosen: refused, said why", code == 403 and d.get("https") is False and d["message"]["id"] == "setup.http", (code, d))
     code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner", "over_http": True})
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
     reqs = queued()

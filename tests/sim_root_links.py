@@ -159,7 +159,7 @@ def bundle(path, app="draw", extra=None):
             zf.writestr(k, v)
 good = staging / "draw-1.zip"; bundle(good)
 msg = hub_control.install_app("draw", str(good))
-check("a staged bundle installs", "installed abc1234" in msg and (T / "share/apps/draw/index.html").exists(), msg)
+check("a staged bundle installs", msg["id"] == "control.app.installed" and msg["args"]["commit"] == "abc1234" and (T / "share/apps/draw/index.html").exists(), msg)
 check("the staged zip is removed, and root's copy too", not good.exists() and not any((T / "taken").iterdir()))
 v = victim(); link = staging / "draw-2.zip"; os.symlink(v, link)
 try:

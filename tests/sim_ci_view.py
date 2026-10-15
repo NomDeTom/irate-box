@@ -32,17 +32,17 @@ jobs = lambda: [json.loads(p.read_text()) for p in sorted(ci.QUEUE.glob("*.json"
 out = ci.queue_build(fw)
 check("Build now: the default branch's newest commit, queued as a push would be", out["branch"] == "main" and len(out["commit"]) == 40
       and jobs()[-1]["repo"] == str(fw.resolve()) and jobs()[-1]["by"] == "build-now", jobs())
-for bad, why, args in ((repo("public", "pub"), "need a private", ()), (repo("private", "noscript", script=False), "has no .irate-ci.sh", ()),
-                       (fw, "Branch nope not found", ("nope",)), (fw, "Select a valid branch", ("--upload-pack=x",))):
+for bad, why, args in ((repo("public", "pub"), "ci.build.not-private", ()), (repo("private", "noscript", script=False), "ci.script.missing", ()),
+                       (fw, "ci.branch.not-found", ("nope",)), (fw, "ci.branch.invalid", ("--upload-pack=x",))):
     try:
         ci.queue_build(bad, *args); check(f"Build now refused: {why}", False)
     except ValueError as exc:
-        check(f"Build now refused: {why}", why in str(exc), str(exc))
+        check(f"Build now refused: {why}", exc.message["id"] == why, exc.message)
 subprocess.run(["git", "config", "irate-box.ci", "off"], cwd=fw, check=True)
 try:
     ci.queue_build(fw); check("Build now refused: switched off", False)
 except ValueError as exc:
-    check("Build now refused: switched off", "Builds are off" in str(exc))
+    check("Build now refused: switched off", exc.message["id"] == "ci.build.off", exc.message)
 subprocess.run(["git", "config", "--unset", "irate-box.ci"], cwd=fw, check=True)
 
 # Runs: keep, delete, pruning, the view.

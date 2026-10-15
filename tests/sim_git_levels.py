@@ -31,7 +31,9 @@ check("a new private repository is private-to-admin", cfg("private", "secret", "
 check("public-everything", act(action="preset", area="public", name="open", preset="public-everything")[0] == 200)
 check("public-read-only", act(action="preset", area="public", name="ro", preset="public-read-only")[0] == 200)
 check("read-only turns http.receivepack off", cfg("public", "ro", "http.receivepack") == "false")
-check("a private repository cannot be public-everything", act(action="preset", area="private", name="secret", preset="public-everything")[0] == 400)
+code, body = act(action="preset", area="private", name="secret", preset="public-everything")
+check("a private repository cannot be public-everything", code == 400 and body["message"]["id"] == "git.preset.invalid-private"
+      and "public-everything" not in body["message"]["args"]["presets"] and body["error"].startswith("Select a preset for private repositories"), body)
 check("an unknown preset is refused", act(action="preset", area="public", name="open", preset="everyone-and-their-dog")[0] == 400)
 
 D = gitrepos.decide

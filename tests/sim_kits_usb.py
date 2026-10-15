@@ -16,6 +16,7 @@ os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_KITS_ROOT=str(T / "cache")
                   HUB_APT_LISTS=str(T / "lists"), HUB_APT_KEYRINGS=str(T / "keys"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import kits  # noqa: E402
+from irate_box.msg import args_of  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -74,7 +75,7 @@ def fresh():
 fresh()
 line = kits.import_usb(stick, "small", 500)
 check("import: every .deb vouched for, into the pool, the kit cached", kits.manifest("small") and len(kits.manifest("small")["packages"]) == 2
-      and (kits.POOL / "gdb_16.3-1_armhf.deb").exists() and kits.verify() == [] and "checked each package hash against Debian's signed indexes" in line, line)
+      and (kits.POOL / "gdb_16.3-1_armhf.deb").exists() and kits.verify() == [] and args_of(line, "kits.usb.imported") == {"title": "Small", "n": 2}, line)
 check("  the signature checked with the box's keys, never the removed ones", gpgv_calls and all("removed" not in a for a in gpgv_calls[-1]))
 check("  and apt can install it: the index written", "Package: gdb" in (kits.POOL / "Packages").read_text())
 def refused(mutate, why):
@@ -105,7 +106,7 @@ fresh()
 old = T / "old-stick"; shutil.copytree(T / "stick", old)
 ol = old / "irate-box" / "kits" / "armhf" / "small" / "lists"
 (ol / XZ.removesuffix(".xz")).write_bytes(lzma.decompress((ol / XZ).read_bytes())); (ol / XZ).unlink()
-check("a stick with plain indexes (an older export) still imports", "checked each package hash" in kits.import_usb(old / "irate-box" / "kits", "small", 500))
+check("a stick with plain indexes (an older export) still imports", args_of(kits.import_usb(old / "irate-box" / "kits", "small", 500), "kits.usb.imported") is not None)
 def resign(k):
     p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
     p.write_text(p.read_text().replace("SIGNED BY: good key", "SIGNED BY: someone else"))
@@ -137,13 +138,13 @@ fresh()
 try:
     kits.import_usb(stick, "small", 0); check("over the budget: refused", False)
 except ValueError as exc:
-    check("over the budget: refused", "budget" in str(exc))
+    check("over the budget: refused", (args_of(exc.message, "kits.usb.over-limit") or {}).get("limit") == 0, exc)
 fresh()
 os.rename(stick / "armhf", stick / "arm64")
 try:
     kits.import_usb(stick, "small", 500); check("a kit for another architecture: refused, and says so", False)
 except ValueError as exc:
-    check("a kit for another architecture: refused, and says so", "for this box's architecture (armhf)" in str(exc), str(exc))
+    check("a kit for another architecture: refused, and says so", args_of(exc.message, "kits.usb.arch") == {"kit": "small", "arch": "armhf"}, str(exc))
 os.rename(stick / "arm64", stick / "armhf")
 # Export refuses what no signed index vouches for (the lists moved on since the fetch).
 fresh(); kits.import_usb(stick, "small", 500)
@@ -151,7 +152,7 @@ fresh(); kits.import_usb(stick, "small", 500)
 try:
     kits.export_usb("small", T / "stick2"); check("export refuses a .deb no signed index lists", False)
 except ValueError as exc:
-    check("export refuses a .deb no signed index lists", "libgdb_1%3a16.3-1_armhf.deb" in str(exc), str(exc))
+    check("export refuses a .deb no signed index lists", args_of(exc.message, "kits.export.unvouched") == {"packages": ["libgdb_1%3a16.3-1_armhf.deb"]}, str(exc))
 # A kit from Debian's debug archive (the symbols kit): its signed index is in the kits' own lists.
 (L / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages").write_text(packages)
 kits.DEBUG_LISTS.mkdir(parents=True, exist_ok=True)

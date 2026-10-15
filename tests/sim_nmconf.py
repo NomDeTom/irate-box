@@ -16,6 +16,7 @@ T = Path(tempfile.mkdtemp(prefix="nmconf-"))
 os.environ.update(HUB_NM_ETC=str(T / "etc"), HUB_NM_RUN=str(T / "run"), HUB_NM_LIB=str(T / "lib"),
                   HUB_NM_INTERN=str(T / "intern.conf"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from irate_box import finding  # noqa: E402
 from irate_box.hub import netinv, nmconf  # noqa: E402
 
 fails = 0
@@ -65,12 +66,13 @@ check("a file in /etc shadows one of the same name in /run", nmconf.effective()[
 # The owner's choices: validated, written, read back, and taken out.
 try:
     nmconf.validate({"cloned_mac": "sometimes"}); check("validate refuses a value not offered", False)
-except ValueError:
-    check("validate refuses a value not offered", True)
+except ValueError as exc:
+    check("validate refuses a value not offered", exc.message["id"] == "nmconf.value.not-allowed"
+          and exc.message["args"]["value"] == "sometimes", str(exc))
 try:
     nmconf.validate({"bogus": "1"}); check("validate refuses a setting not offered", False)
-except ValueError:
-    check("validate refuses a setting not offered", True)
+except ValueError as exc:
+    check("validate refuses a setting not offered", exc.message["id"] == "nmconf.setting.unknown", str(exc))
 check("validate: counts as numbers, 'default' as taking it out",
       nmconf.validate({"auth_retries": "0", "autoconnect_retries": "default"}) == {"auth_retries": "0", "autoconnect_retries": None})
 text = nmconf.dropin_text({"autoconnect_retries": "0", "auth_retries": "0", "cloned_mac": None})
@@ -106,7 +108,7 @@ check("nothing of irate-box's left: the file goes", not nmconf.DROPIN.exists())
 try:
     nmconf.validate({"autoconnect_retries": "0"}, "wlan0"); check("per interface: the connect retries refused (box-wide only)", False)
 except ValueError as exc:
-    check("per interface: the connect retries refused (box-wide only)", "whole box" in str(exc), str(exc))
+    check("per interface: the connect retries refused (box-wide only)", exc.message["id"] == "nmconf.setting.box-wide", str(exc))
 hub_control.nm_defaults({"changes": {"auth_retries": "0"}})
 hub_control.nm_defaults({"changes": {"cloned_mac": "random", "scan_mac": "yes"}, "iface": "wlan1"})
 text = nmconf.DROPIN.read_text()
@@ -133,22 +135,26 @@ hub_control.nm_defaults({"changes": {"auth_retries": "default"}})
 # The doctor's retry findings: the value in use, and where it is set.
 prof = {"uuid": "u1", "name": "netplan-wlan0-Home", "ssid": "Home", "mode": "infrastructure", "iface": "wlan0",
         "auth_retries": -1, "autoconnect_retries": -1, "autoconnect": True}
-check("effective: the profile's own value first", netinv.effective_retries({**prof, "auth_retries": 2}, "auth_retries", None) == (2, "this network's own profile"))
+own = netinv.effective_retries({**prof, "auth_retries": 2}, "auth_retries", None)
+check("effective: the profile's own value first", own[0] == 2 and own[1]["id"] == "netinv.retries.where.own", own)
 dflt = {"settings": {"auth_retries": {"value": "0", "file": "/etc/NetworkManager/conf.d/zz-90-irate-box-network.conf"}}}
 v, where = netinv.effective_retries(prof, "auth_retries", dflt)
-check("  then the box default", v == 0 and "box default" in where, (v, where))
-check("  then NetworkManager's own", netinv.effective_retries(prof, "auth_retries", None) == (3, "NetworkManager's own default"))
+check("  then the box default, naming its file", v == 0 and where["id"] == "netinv.retries.where.box" and where["args"]["file"] == dflt["settings"]["auth_retries"]["file"],
+      (v, where))
+nm_own = netinv.effective_retries(prof, "auth_retries", None)
+check("  then NetworkManager's own", nm_own[0] == 3 and nm_own[1]["id"] == "netinv.retries.where.nm", nm_own)
 
 
 def findings(defaults):
     i = {"radios": [], "stacks": {"networkmanager": {"running": True, "wifi_profiles": [prof], "defaults": defaults}}, "country": "GB"}
-    return [h for h in netinv.hazards(i) if h["id"].endswith(":u1")]
+    return [h for h in netinv.findings(i) if h["id"].endswith(":u1")]
 
 
 h = findings(None)
 check("no box default: both retries found, saying where they are set",
       sorted(x["id"].split(":")[0] for x in h) == ["auth-retries", "autoconnect-retries"]
-      and all("NetworkManager's own default" in x["detail"] for x in h), h)
+      and all(x["notes"][0]["id"] == "netinv.retries.where.nm" for x in h)
+      and [finding.message_args(x, "netinv.retries.auth") for x in h][0] == {"n": 3}, h)
 both = {"settings": {"auth_retries": {"value": "0", "file": "x"}, "autoconnect_retries": {"value": "0", "file": "x"}}}
 check("the box default forever: nothing found", findings(both) == [], findings(both))
 

@@ -6,6 +6,7 @@ python3 tests/sim_netinv.py"""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from irate_box import finding  # noqa: E402
 from irate_box.hub import netinv  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
@@ -40,8 +41,8 @@ two["radios"].insert(0, dict(two["radios"][0], iface="ap0", type="AP"))   # the 
 v = netinv.ap_verdicts(two)[0]
 check("the hotspot's interface listed before the link's on the same radio: still the link's radio (not \"its own radio\")",
       v["mode"] == "beside-client", v["mode"])
-h = netinv._h("x", "warn", "t", "d", iface="wlan0")
-check("a finding can name its device", h["iface"] == "wlan0" and "iface" not in netinv._h("y", "ok", "t", "d"))
+h = netinv._h("x", "t", "warn", "d", iface="wlan0")
+check("a finding can name its device", h["iface"] == "wlan0" and "iface" not in netinv._h("y", "t", "ok", "d"))
 
 # Roaming: the access points sharing the network, the background scan, the choices that work.
 # nmcli's and wpa_cli's own output from a real board, the addresses and names changed.
@@ -87,8 +88,11 @@ check("a plain connection: nothing found", ids(link_inv(base)) == [], netinv.lin
 check("not joining by itself, locked to an access point and a band: both found",
       ids(link_inv({**base, "autoconnect": False, "bssid_lock": "aa:bb:cc:dd:ee:ff", "band_lock": "bg"})) == ["autoconnect-off", "locked"])
 h = [x for x in netinv.link_findings(link_inv({**base, "bssid_lock": "aa:bb:cc:dd:ee:ff", "band_lock": "bg"})) if x["id"].startswith("locked")][0]
-check("  the lock says what and how many access points share the name", "the access point aa:bb:cc:dd:ee:ff and the 2.4 GHz band" in h["title"]
-      and "3 access points" in h["detail"], h)
+locks = finding.message_args(h, "netinv.locked")["locks"]
+check("  the lock says what and how many access points share the name",
+      [(m["id"], m["args"]) for m in locks] == [("netinv.lock.bssid", {"bssid": "aa:bb:cc:dd:ee:ff"}), ("netinv.lock.band", {"band": "2.4 GHz"})]
+      and finding.message_args(h, "netinv.locked.why-aps") == {"n": 3}
+      and "the access point aa:bb:cc:dd:ee:ff and the 2.4 GHz band" in netinv._english(h)["detail"], h)
 check("power save on for the connection: found", ids(link_inv({**base, "powersave": 3})) == ["powersave-set"])
 check("power save on as the box default, the connection leaving it: found",
       ids(link_inv(base, {"settings": {"powersave": {"value": "3"}}})) == ["powersave-set"])
@@ -123,6 +127,7 @@ check("  two of three files share one: that pair", len(dup) == 1 and dup[0]["fil
 
 # The box doctor shows the inventory's warnings and problems, with the look's age when it's old.
 import json as _json, os as _os, time as _time  # noqa: E402
+from irate_box.msg import M  # noqa: E402
 _os.environ["HUB_STATE_DIR"] = str(d)
 from irate_box.root import health  # noqa: E402
 health.CONTROL = d
@@ -136,6 +141,13 @@ inv["at"] = _time.time() - 2 * 86400
 f = health.check_inventory()
 check("  an old look: its age said, and a finding to look again", f[0]["notes"][0]["id"] == "netinv.age" and f[0]["notes"][0]["args"]["n"] == 48
       and f[-1]["id"] == "netinv", f)
+fs = [netinv._h("locked:u1", netinv.named("Home"), "warn", M("t.locked", "Home is locked."), M("t.why", "It cannot roam."), M("t.fix", "Unlock it.")),
+      netinv._h("ok-thing", netinv.named("fine"), "ok", M("t.ok", "Fine."))]
+inv = {"at": _time.time() - 2 * 86400, "hazards": [], "findings": fs}
+(d / "netinv.json").write_text(_json.dumps(inv))
+f = health.check_inventory()
+check("  the inventory's findings, where it has them: the warnings, as messages, with the look's age",
+      [x["id"] for x in f] == ["net:locked:u1", "netinv"] and f[0]["fix"]["id"] == "t.fix" and f[0]["notes"][-1]["id"] == "netinv.age", f)
 
 # The networks NetworkManager has seen, one per name, for picking one to join.
 scan_out = "\n".join([

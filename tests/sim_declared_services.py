@@ -101,12 +101,13 @@ check("a watched package's failed service (meshtasticd): said as itself, with wh
 calls.clear()
 said = health.fix("other-restart:homeassistant.service")
 check("  Start it again: its failed mark cleared, then started", ("systemctl", "reset-failed", "homeassistant.service") in calls
-      and ("systemctl", "start", "homeassistant.service") in calls and "started" in said, (calls, said))
+      and ("systemctl", "start", "homeassistant.service") in calls and said["id"] == "repair.unit.started"
+      and said["args"] == {"unit": "homeassistant.service"}, (calls, said))
 for bad in ("other-restart:sshd.service", "other-restart:irate-box.service", "other-restart:x; reboot"):
     try:
         health.fix(bad); check(f"{bad}: refused", False)
-    except ValueError:
-        check(f"{bad}: refused", True)
+    except ValueError as exc:
+        check(f"{bad}: refused", exc.message["id"] in ("repair.other.not-failed", "repair.unknown"), exc)
 
 # --- the manifest format a manifest was written for ("api") ------------------------------------------------
 cat = json.loads(sorted((REPO / "addons").glob("*.json"))[0].read_text())

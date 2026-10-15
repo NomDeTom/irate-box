@@ -179,7 +179,7 @@ check("  and the one no longer for users removed", sorted(p.name for p in gd.ite
 try:
     H.access_set({"app": "flasher", "mode": "users"}); check("  the flasher for users: refused", False)
 except ValueError as exc:
-    check("  the flasher for users: refused", "cannot be users" in str(exc), exc)
+    check("  the flasher for users: refused", exc.message["id"] == "control.access.no-users" and exc.message["args"]["app"] == "flasher", exc)
 
 # The box's own admin login switched off and on (stage 3).
 (T / "etc" / "htpasswd").write_text("admin:$6$hash\n")
@@ -190,13 +190,13 @@ A.set_settings(signup="apply")
 try:
     H.admin_login({"on": False}); check("off: refused until an admin account has logged in over HTTPS", False)
 except ValueError as exc:
-    check("off: refused until an admin account has logged in over HTTPS", "over HTTPS" in str(exc), exc)
+    check("off: refused until an admin account has logged in over HTTPS", exc.message["id"] == "control.script-sign-in.off-refused", exc)
 A.login("carol", "password6", https=True)
 out = H.admin_login({"on": False})
 check("  then off: the login file emptied, its hash kept aside, the gates send people to log in, the hub told",
       "admin:" not in (T / "etc" / "htpasswd").read_text() and (T / "etc" / "admin-login.off").read_text() == "admin:$6$hash\n"
       and "error_page 401" in (gd / "gate-admin.conf").read_text() and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
-      and "carol" in out, out)
+      and out["id"] == "control.script-sign-in.off.accounts" and out["args"]["names"] == ["carol"], out)
 check("  while it is off: the last admin account can't be switched off, made a user or deleted; sign-up can't go off",
       refused(A.change, "carol", "user", True, says="accounts.last-admin") and refused(A.change, "carol", "delete", True, says="accounts.last-admin")
       and refused(A.set_settings, "off", None, True, says="accounts.settings.keep-admin"))
@@ -223,11 +223,11 @@ out = H.claim({})
 check("claim: the first use over, no login of the box's own (the file emptied, none saved), the gates send people to sign in",
       not H.UNCLAIMED.exists() and not (T / "etc" / "admin-password").exists() and "admin:" not in (T / "etc" / "htpasswd").read_text()
       and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and "error_page 401" in (gd / "gate-admin.conf").read_text()
-      and "script login is off" in out, out)
+      and out["id"] == "control.setup.done", out)
 try:
     H.claim({}); check("  a second claim: refused", False)
 except ValueError as exc:
-    check("  a second claim: refused", "already complete" in str(exc), exc)
+    check("  a second claim: refused", exc.message["id"] == "control.setup.already", exc)
 H.set_login("pw-for-scripts")
 check("  script-login at the console afterwards: the login on, its password root's", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
       and (T / "etc" / "admin-password").read_text() == "pw-for-scripts\n" and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True)
@@ -238,7 +238,8 @@ net = T / "etc" / "htpasswd.net"
 try:
     H.admin_login({"reach": "local"}); check("reach without a password: refused, the console named", False)
 except ValueError as exc:
-    check("reach without a password: refused, the console named", "script-login" in str(exc), exc)
+    check("reach without a password: refused, the console named", exc.message["id"] == "control.script-sign-in.no-password"
+          and "script-login" in exc.message["args"]["command"], exc)
 H.set_login("pw-for-scripts")
 ready = H._https_admins
 H._https_admins = lambda: []
@@ -246,7 +247,7 @@ try:
     H.admin_login({"reach": "local"}); check("from the box itself with no administrator account: refused (a lockout)", False)
 except ValueError as exc:
     check("from the box itself with no administrator account: refused (a lockout), set-admin named",
-          "set-admin" in str(exc) and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] != "local", exc)
+          exc.message["id"] == "control.script-sign-in.local-refused" and "set-admin" in exc.message["args"]["command"] and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] != "local", exc)
 H._https_admins = ready
 H.admin_login({"reach": "local"})
 rec = json.loads(H.ADMIN_LOGIN_STATE.read_text())
@@ -296,7 +297,7 @@ try:
           REAL not in CF.read_text() and CF.read_text().count("$2a$14$" + "u" * 53) == 2
           and (T / "etc" / "admin-login.off").read_text().strip() == REAL and "redirect=1" in gate
           and any(c[-2:] == ["restart", "caddy"] for c in caddy_calls if isinstance(c, list))
-          and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and "carol" in out, (out, CF.read_text()))
+          and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and out["args"]["names"] == ["carol"], (out, CF.read_text()))
     H.admin_login({"on": True})
     check("  on again: the real hash back everywhere; an admin account ready, so a browser goes to sign in, a script's login passes on",
           CF.read_text().count(REAL) == 2 and not (T / "etc" / "admin-login.off").exists()
@@ -341,7 +342,7 @@ try:
     code, d, _ = req("/admin/accounts", {"action": "settings", "signup": "open", "http": "prevented"}, {"X-Irate-Admin": "1"})
     check("  the admin sets the levels", code == 200 and d["settings"] == {"signup": "open", "http": "prevented"}, d)
     code, d, _ = req("/api/account", {"action": "signup", "name": "erin", "password": "password1"})
-    check("  prevented: no password over plain HTTP", code == 403 and "HTTPS" in d["error"], d)
+    check("  prevented: no password over plain HTTP", code == 403 and d["message"]["id"] == "accounts.https-only", d)
     code, d, h = req("/api/account", {"action": "signup", "name": "erin", "password": "password1"}, https=True)
     cookie = h.get("Set-Cookie", "")
     check("  over HTTPS: made and logged in; the cookie HttpOnly, SameSite=Strict, Secure", code == 200 and d["me"]["name"] == "erin"
@@ -447,7 +448,7 @@ try:
     # The shoutbox and forum (stage 5): who may post, and the users' marks.
     utok = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})[2].get("Set-Cookie", "").split(";")[0]
     code, d, _ = req("/messages", {"name": "Erin", "text": "hello"}, {"X-Irate-Account": ""})
-    check("shoutbox: a guest can't post under an account's name (any case)", code == 403 and "is the name of an account" in d["error"], d)
+    check("shoutbox: a guest can't post under an account's name (any case)", code == 403 and d["message"]["id"] == "posting.name.account", d)
     code, d, _ = req("/messages", {"name": "Someone Else", "text": "as erin"}, {"Cookie": utok})
     check("  a user posts under their account's name, marked as theirs", code == 201 and d["name"] == "erin" and d["account"] == "erin", d)
     code, d, _ = req("/messages", {"name": "Salty Parrot", "text": "ahoy"})
@@ -460,7 +461,7 @@ try:
     code, d, _ = req("/messages", {"name": "x", "text": "still here"}, {"Cookie": utok})
     check("  a user posts", code == 201)
     code, d, _ = req("/board/threads", {"name": "erin", "title": "t", "text": "x"}, {"Cookie": utok})
-    check("forum off: no one posts, users neither", code == 403 and "closed" in d["error"], d)
+    check("forum off: no one posts, users neither", code == 403 and d["message"]["id"] == "board.closed", d)
     code, d, _ = req("/board/threads")
     check("  marks off told to the page; a setting that isn't one left as it was", d["posting"]["who"] == "off" and d["posting"]["marks"] is False
           and req("/messages")[1]["posting"]["marks"] is True, d["posting"])
