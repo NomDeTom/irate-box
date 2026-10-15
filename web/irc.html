@@ -5,33 +5,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IRC chat · Hub</title>
+  <title data-i18n="irc.head.title">IRC chat · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
 </head>
 <body class="help">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
-    <h1>💬 IRC chat</h1>
-    <p class="subtitle">Real-time chat in any IRC app, for devices that can reach this box.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="irc.header.tip-back-hub" data-i18n="irc.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="irc.header.tip-quick-help" data-i18n="irc.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a></nav>
+    <h1 data-i18n="irc.header.heading">💬 IRC chat</h1>
+    <p class="subtitle" data-i18n="irc.header.subtitle">Real-time chat in any IRC app, for devices that can reach this box.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="irc.header.aria-theme"></div>
   </header>
 
   <section class="help-lead">
-    <p>
+    <p data-i18n="irc.body.box-runs-small-irc">
       The box runs a small IRC server. This page is not the chat. It shows the connection details
       for your IRC app. Install an IRC client on your device before you use chat offline.
     </p>
   </section>
 
-  <h2>Connect</h2>
+  <h2 data-i18n="irc.body.heading-connect">Connect</h2>
   <div class="help-list">
     <div class="help-item" data-service="/irc.html">
       <span class="icon">🖧</span>
       <div>
-        <strong>Server: <code id="irc-host">this box</code></strong>
-        <p>Port <code id="irc-port">6667</code>. This server does not encrypt traffic. Other devices on the
+        <strong data-i18n="irc.body.server">Server: <code id="irc-host">this box</code></strong>
+        <p data-i18n="irc.body.port-server-not-encrypt">Port <code id="irc-port">6667</code>. This server does not encrypt traffic. Other devices on the
           network can read it. Disable TLS/SSL in your app, because the server does not support it.
           Enter no password.</p>
       </div>
@@ -39,38 +39,39 @@
     <div class="help-item" data-service="/irc.html">
       <span class="icon">#️⃣</span>
       <div>
-        <strong>Channel: <code>#lobby</code></strong>
-        <p>Select a nickname. Join <code>#lobby</code>. Your app can open the channel from this link:
+        <strong data-i18n="irc.body.channel">Channel: <code>#lobby</code></strong>
+        <p data-i18n="irc.body.select-nickname-join-app">Select a nickname. Join <code>#lobby</code>. Your app can open the channel from this link:
           <a id="irc-link" href="irc://this-box:6667/lobby">irc://<span id="irc-link-host">this box</span>:6667/lobby</a>.
           If nothing happens, enter the server and the channel in the app.</p>
       </div>
     </div>
   </div>
 
-  <h2>Example IRC apps</h2>
+  <h2 data-i18n="irc.body.heading-example-irc-apps">Example IRC apps</h2>
   <ul class="help-points">
-    <li>Android: Goguma, Revolution IRC</li>
-    <li>iPhone and iPad: an IRC app from the App Store</li>
-    <li>Windows, Mac and Linux: HexChat, Halloy</li>
-    <li>In a terminal: WeeChat, irssi</li>
+    <li data-i18n="irc.body.android-goguma-revolution-irc">Android: Goguma, Revolution IRC</li>
+    <li data-i18n="irc.body.iphone-ipad-irc-app">iPhone and iPad: an IRC app from the App Store</li>
+    <li data-i18n="irc.body.windows-mac-linux-hexchat">Windows, Mac and Linux: HexChat, Halloy</li>
+    <li data-i18n="irc.body.terminal-weechat-irssi">In a terminal: WeeChat, irssi</li>
   </ul>
 
-  <h2>Privacy and message history</h2>
+  <h2 data-i18n="irc.body.heading-privacy-message-history">Privacy and message history</h2>
   <ul class="help-points">
-    <li>This IRC server has no accounts. A nickname is yours only while you are connected.
+    <li data-i18n="irc.body.irc-server-no-accounts">This IRC server has no accounts. A nickname is yours only while you are connected.
       Anyone can use it afterwards.</li>
-    <li>The server does not encrypt traffic. Anyone who can reach the server can read the chat.
+    <li data-i18n="irc.body.server-not-encrypt-traffic">The server does not encrypt traffic. Anyone who can reach the server can read the chat.
       Normally this is every device on this box's network. Remote access or routing can add
       other devices. Do not send anything that must stay secret.</li>
-    <li>The server keeps no message history. You see only what people say while you are connected.</li>
-    <li>Other people in the chat see a made-up name for your device, not its address. The same
+    <li data-i18n="irc.body.server-keeps-no-message">The server keeps no message history. You see only what people say while you are connected.</li>
+    <li data-i18n="irc.body.other-people-chat-see">Other people in the chat see a made-up name for your device, not its address. The same
       device keeps the same name until the box restarts. This does not make you anonymous.</li>
-    <li><code>#lobby</code> always exists. A channel that you create is removed when the
+    <li data-i18n="irc.body.always-exists-channel-create"><code>#lobby</code> always exists. A channel that you create is removed when the
       last person leaves it.</li>
-    <li>This server has no moderators. An administrator can disable the chat in
+    <li data-i18n="irc.body.server-no-moderators-administrator">This server has no moderators. An administrator can disable the chat in
       <a href="/admin/">Administration</a>.</li>
   </ul>
 
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/irc.js"></script>
 </body>

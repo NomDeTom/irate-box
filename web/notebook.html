@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My notebook · Hub</title>
+  <title data-i18n="notebook.head.title">My notebook · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📔</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,15 +13,16 @@
 </head>
 <body class="help account">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>📔 My notebook</h1>
-    <p class="subtitle">Your private account notebook. In the notebook application, no other account can open it. It is not encrypted. An administrator can read its files on the box. The shared notes are separate.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="notebook.header.tip-back-hub" data-i18n="notebook.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="notebook.header.heading">📔 My notebook</h1>
+    <p class="subtitle" data-i18n="notebook.header.subtitle">Your private account notebook. In the notebook application, no other account can open it. It is not encrypted. An administrator can read its files on the box. The shared notes are separate.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="notebook.header.aria-theme"></div>
   </header>
   <main>
-    <p id="nb-state" role="status" aria-live="polite">Loading notebook status</p>
+    <p id="nb-state" role="status" aria-live="polite" data-i18n="notebook.main.nb-state">Loading notebook status</p>
     <p id="nb-actions"></p>
   </main>
+  <script src="/i18n.js"></script>
   <script src="/notebook.js"></script>
 </body>
 </html>

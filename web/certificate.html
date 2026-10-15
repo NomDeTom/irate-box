@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The box's certificate · Hub</title>
+  <title data-i18n="certificate.head.title">The box's certificate · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔐</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,25 +13,25 @@
 </head>
 <body class="help certificate">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>🔐 The box's certificate</h1>
-    <p class="subtitle">Install the box's certificate. Then your device can trust the box's HTTPS pages.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="certificate.header.tip-back-hub" data-i18n="certificate.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="certificate.header.heading">🔐 The box's certificate</h1>
+    <p class="subtitle" data-i18n="certificate.header.subtitle">Install the box's certificate. Then your device can trust the box's HTTPS pages.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="certificate.header.aria-theme"></div>
   </header>
 
   <section>
-    <p id="cert-state">Loading certificate details</p>
+    <p id="cert-state" data-i18n="certificate.body.cert-state">Loading certificate details</p>
     <p id="cert-check" role="status"></p>
   </section>
 
   <section id="cert-about" hidden>
-    <h2>What installing it does</h2>
-    <p>
+    <h2 data-i18n="certificate.cert-about.heading-installing">What installing it does</h2>
+    <p data-i18n="certificate.cert-about.box-made-own-certificate">
       The box made its own certificate authority (CA). If you install the CA, your device trusts
       the box's HTTPS pages. Other devices on the same network then cannot read or change what
       you send to the box over HTTPS. This includes the administrator password.
     </p>
-    <p>
+    <p data-i18n="certificate.cert-about.ca-box-covers-box">
       The CA is for <strong>this box only</strong>. It covers the box's names
       (<span id="cert-names"></span>). It also covers the addresses the box had when the certificate
       was made, on the hotspot network and on the home or office network. The certificate itself
@@ -40,22 +40,23 @@
       box can use the CA to impersonate another device on those networks. Install the CA only if you
       trust this box and its administrator.
     </p>
-    <p>
+    <p data-i18n="certificate.cert-about.not-need-certificate-use">
       You do not need the certificate to use the box. If an administrator has not disabled HTTP,
       every page also works over HTTP. Other devices on the same network can read HTTP traffic.
     </p>
-    <p><a class="head-btn labelled" id="cert-download" href="/certificate/ca.crt" download="irate-box-ca.crt">⬇ Download certificate</a></p>
-    <p>SHA-256 fingerprint. Compare it with the fingerprint that your device shows:</p>
+    <p data-i18n="certificate.cert-about.download-certificate"><a class="head-btn labelled" id="cert-download" href="/certificate/ca.crt" download="irate-box-ca.crt">⬇ Download certificate</a></p>
+    <p data-i18n="certificate.cert-about.sha-256-fingerprint-compare">SHA-256 fingerprint. Compare it with the fingerprint that your device shows:</p>
     <p><code id="cert-fingerprint" class="cert-fingerprint"></code></p>
 
-    <h2>Installing it</h2>
+    <h2 data-i18n="certificate.cert-about.heading-installing-it">Installing it</h2>
     <div id="cert-steps"></div>
-    <p>
+    <p data-i18n="certificate.cert-about.open-hub-over-https">
       Then open <a id="cert-https" href="#">the hub over HTTPS</a>. If your browser shows a warning,
       do not go past it. The certificate is not installed, or your device does not trust it yet.
     </p>
   </section>
 
+  <script src="/i18n.js"></script>
   <script src="/certificate.js"></script>
 </body>
 </html>

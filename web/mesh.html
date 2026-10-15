@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mesh · Hub</title>
+  <title data-i18n="mesh.head.title">Mesh · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,34 +13,35 @@
 </head>
 <body class="help mesh">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>📡 Mesh</h1>
-    <p class="subtitle">Meshtastic nodes that this box received.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="mesh.header.tip-back-hub" data-i18n="mesh.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="mesh.header.heading">📡 Mesh</h1>
+    <p class="subtitle" data-i18n="mesh.header.subtitle">Meshtastic nodes that this box received.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="mesh.header.aria-theme"></div>
   </header>
   <section>
-    <p id="mesh-state" role="status">Loading mesh data</p>
+    <p id="mesh-state" role="status" data-i18n="mesh.body.mesh-state">Loading mesh data</p>
     <p class="setting-desc" id="mesh-counts"></p>
   </section>
   <section>
-    <h2>Node positions</h2>
-    <p class="setting-desc" id="mesh-map-note">Positions are shown without a background map. No internet access is needed.</p>
-    <svg id="mesh-map" class="mesh-map" viewBox="0 0 600 360" role="img" aria-label="Node positions"></svg>
+    <h2 data-i18n="mesh.body.heading-node-positions">Node positions</h2>
+    <p class="setting-desc" id="mesh-map-note" data-i18n="mesh.body.mesh-map-note">Positions are shown without a background map. No internet access is needed.</p>
+    <svg id="mesh-map" class="mesh-map" viewBox="0 0 600 360" role="img" aria-label="Node positions" data-i18n-aria-label="mesh.body.aria-node-positions"></svg>
   </section>
   <section>
-    <h2>Nodes</h2>
+    <h2 data-i18n="mesh.body.heading-nodes">Nodes</h2>
     <div class="scroll-x">
       <table class="admin-table mesh-nodes" id="mesh-nodes">
-        <thead><tr><th>Node</th><th>Last received</th><th>Battery</th><th>Position</th><th>Hops and signal</th><th>Received packets</th></tr></thead>
+        <thead><tr><th data-i18n="mesh.body.col-node">Node</th><th data-i18n="mesh.body.col-last-received">Last received</th><th data-i18n="mesh.body.col-battery">Battery</th><th data-i18n="mesh.body.col-position">Position</th><th data-i18n="mesh.body.col-hops-signal">Hops and signal</th><th data-i18n="mesh.body.col-received-packets">Received packets</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
   <section>
-    <h2>Recent traffic</h2>
-    <p class="setting-desc">Each line shows the packet type, the sender and the channel. This page does not show message content.</p>
+    <h2 data-i18n="mesh.body.heading-recent-traffic">Recent traffic</h2>
+    <p class="setting-desc" data-i18n="mesh.body.each-line-shows-packet">Each line shows the packet type, the sender and the channel. This page does not show message content.</p>
     <ol class="mesh-packets" id="mesh-packets"></ol>
   </section>
+  <script src="/i18n.js"></script>
   <script src="/mesh.js"></script>
 </body>
 </html>

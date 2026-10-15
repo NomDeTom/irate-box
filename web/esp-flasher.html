@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Web flasher · Hub</title>
+  <title data-i18n="esp-flasher.head.title">Web flasher · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,33 +13,34 @@
 </head>
 <body class="drop">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>⚡ Web flasher</h1>
-    <p class="subtitle">Install Meshtastic on an ESP32 radio from this browser over USB.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="esp-flasher.header.tip-quick-help" data-i18n="esp-flasher.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="esp-flasher.header.tip-back-hub" data-i18n="esp-flasher.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="esp-flasher.header.heading">⚡ Web flasher</h1>
+    <p class="subtitle" data-i18n="esp-flasher.header.subtitle">Install Meshtastic on an ESP32 radio from this browser over USB.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="esp-flasher.header.aria-theme"></div>
   </header>
 
   <section>
     <!-- Whether this browser can flash here, and if not, what would (esp-flasher.js). -->
-    <p class="setting-desc" id="flash-can" role="status">Loading firmware list</p>
+    <p class="setting-desc" id="flash-can" role="status" data-i18n="esp-flasher.body.flash-can">Loading firmware list</p>
     <ul class="drop-list flash-list" id="flash-list"></ul>
-    <p class="setting-desc">
+    <p class="setting-desc" data-i18n="esp-flasher.body.connect-radio-usb-data">
       Connect the radio with a USB data cable. Select Install. Select the serial port. A first
       install erases the radio. This deletes the settings and messages on the radio. The installer
       asks for confirmation before it erases the radio.
     </p>
-    <p class="setting-desc">
+    <p class="setting-desc" data-i18n="esp-flasher.body.some-nrf52-rp2040-radios">
       Some nRF52 and RP2040 radios use a UF2 file. Put the radio in its bootloader mode. The radio
       then shows a USB drive. Copy the UF2 file onto that drive. Some of the Firmware Factory
       downloads on the hub page are UF2 files.
     </p>
-    <p class="setting-desc" id="flash-download" hidden>
+    <p class="setting-desc" id="flash-download" hidden data-i18n="esp-flasher.body.flash-download">
       The Meshtastic web flasher is also available as one file. Download it, save it, and open it
       from your downloads folder: <a href="/flasher/flasher.html">Download Meshtastic web flasher</a>.
     </p>
-    <p class="setting-desc">The built-in flasher uses ESP Web Tools (ESPHome, Apache-2.0).
+    <p class="setting-desc" data-i18n="esp-flasher.body.built-flasher-uses-esp">The built-in flasher uses ESP Web Tools (ESPHome, Apache-2.0).
       <a href="/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt">Its notices</a>.</p>
   </section>
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/esp-flasher.js"></script>
 </body>

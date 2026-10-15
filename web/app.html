@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hub</title>
+  <title data-i18n="app.head.title">Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏴‍☠️</text></svg>">
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
@@ -15,28 +15,29 @@
   <!-- Hub bar around every app on the hub. The app's path is the fragment:
        /app.html#/wiki/… The bar slides away while the app scrolls down (app.js). -->
   <nav class="app-bar" id="app-bar">
-    <a href="/" class="app-home" target="_top">🏠 Hub</a>
+    <a href="/" class="app-home" target="_top" data-i18n="app.nav.hub">🏠 Hub</a>
     <!-- Back up to the list page the app was opened from (app.js: ?from=<list>). -->
     <a href="/" class="app-up" id="app-up" target="_top" hidden></a>
     <!-- Git only (app.js): back to the repository list, which cgit's own origin cannot link to. -->
-    <a href="/git/" class="app-up" id="app-repos" hidden>📚 Repositories</a>
-    <button type="button" class="app-help" id="app-help" aria-expanded="false" aria-controls="help-pop" title="What is this?"><span aria-hidden="true">🛟</span> Help</button>
+    <a href="/git/" class="app-up" id="app-repos" hidden data-i18n="app.nav.app-repos">📚 Repositories</a>
+    <button type="button" class="app-help" id="app-help" aria-expanded="false" aria-controls="help-pop" title="What is this?" data-i18n-title="app.nav.tip-what-is-this" data-i18n="app.nav.app-help"><span aria-hidden="true">🛟</span> Help</button>
     <span class="app-title" id="app-title"></span>
     <!-- A notes page: report it to the box's owner (app.js), as a shoutbox message can be. -->
     <span class="app-report" id="app-report" hidden></span>
     <!-- One theme for the hub and every app in it: app.js writes each app's own
          setting to match, so the choice here wins over one made inside an app. -->
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
-    <a class="app-out" id="app-out" href="/" target="_top" title="Open app without hub navigation">↗</a>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="app.nav.aria-theme"></div>
+    <a class="app-out" id="app-out" href="/" target="_top" title="Open app without hub navigation" data-i18n-title="app.nav.tip-open-app-without-hub">↗</a>
   </nav>
-  <div class="help-pop" id="help-pop" role="dialog" aria-label="What is this?" hidden>
-    <p>The box hosts this app over its own network.</p>
-    <p>Select 🏠 Hub to return to the hub page. Some app features can need internet access.</p>
-    <a href="/help.html" target="_top">Quick help →</a>
+  <div class="help-pop" id="help-pop" role="dialog" aria-label="What is this?" hidden data-i18n-aria-label="app.body.aria-what-is-this">
+    <p data-i18n="app.body.box-hosts-app-over">The box hosts this app over its own network.</p>
+    <p data-i18n="app.body.select-hub-return-hub">Select 🏠 Hub to return to the hub page. Some app features can need internet access.</p>
+    <a href="/help.html" target="_top" data-i18n="app.body.quick-help">Quick help →</a>
   </div>
   <!-- Same origin, so storage and cookies are the app's own. What a frame loses by
        default is fullscreen and the async clipboard, which Excalidraw uses. -->
-  <iframe id="app" title="App" allow="fullscreen; clipboard-read; clipboard-write"></iframe>
+  <iframe id="app" title="App" allow="fullscreen; clipboard-read; clipboard-write" data-i18n-title="app.body.tip-app"></iframe>
+  <script src="i18n.js"></script>
   <script src="hub.js"></script>
   <script src="report.js"></script>
   <script src="app.js"></script>

@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>File drop · Hub</title>
+  <title data-i18n="drop.head.title">File drop · Hub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📥</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,24 +13,24 @@
 </head>
 <body class="drop">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>📥 File drop</h1>
-    <p class="subtitle">Upload files for other people to download.</p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="drop.header.tip-quick-help" data-i18n="drop.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="drop.header.tip-back-hub" data-i18n="drop.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="drop.header.heading">📥 File drop</h1>
+    <p class="subtitle" data-i18n="drop.header.subtitle">Upload files for other people to download.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="drop.header.aria-theme"></div>
   </header>
 
   <section>
-    <p class="setting-desc" id="drop-limits">Everyone who can open this page can download these files.</p>
-    <label class="drop-name">Display name <input id="drop-by" maxlength="64" placeholder="optional"></label>
-    <label class="drop-zone" id="drop-zone">
+    <p class="setting-desc" id="drop-limits" data-i18n="drop.body.drop-limits">Everyone who can open this page can download these files.</p>
+    <label class="drop-name" data-i18n="drop.body.label-display-name">Display name <input id="drop-by" maxlength="64" placeholder="optional" data-i18n-placeholder="drop.body.placeholder-optional"></label>
+    <label class="drop-zone" id="drop-zone" data-i18n="drop.body.drop-zone">
       <input type="file" id="drop-files" multiple>
       <span><strong>Select files</strong>, or drop them here.</span>
     </label>
     <div class="drop-capture">
-      <label class="drop-capture-btn">📷 Take a photo <input type="file" id="drop-photo" accept="image/*" capture="environment"></label>
-      <label class="drop-capture-btn">🎙️ Record a voice note <input type="file" id="drop-voice" accept="audio/*" capture></label>
+      <label class="drop-capture-btn" data-i18n="drop.body.label-take-photo">📷 Take a photo <input type="file" id="drop-photo" accept="image/*" capture="environment"></label>
+      <label class="drop-capture-btn" data-i18n="drop.body.label-record-voice-note">🎙️ Record a voice note <input type="file" id="drop-voice" accept="audio/*" capture></label>
     </div>
-    <label class="setting drop-lock">
+    <label class="setting drop-lock" data-i18n="drop.body.label-lock-upload-devices-key">
       <input type="checkbox" id="drop-lock">
       <span>
         <span class="setting-name">🔒 Lock what I upload</span>
@@ -44,10 +44,11 @@
   </section>
 
   <section>
-    <h2>Uploaded files</h2>
-    <ul class="drop-list" id="drop-list"><li class="setting-desc">Loading files</li></ul>
+    <h2 data-i18n="drop.body.heading-uploaded-files">Uploaded files</h2>
+    <ul class="drop-list" id="drop-list"><li class="setting-desc" data-i18n="drop.body.loading-files">Loading files</li></ul>
   </section>
 
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/age.js"></script>
   <script src="/lock.js"></script>

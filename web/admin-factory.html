@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Firmware Factory · Hub administration</title>
+  <title data-i18n="admin-factory.head.title">Firmware Factory · Hub administration</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏭</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -13,37 +13,38 @@
 </head>
 <body class="admin">
   <header>
-    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
-    <h1>Firmware Factory</h1>
-    <p class="subtitle">Builds Meshtastic firmware on the box. <a href="/admin/#page-app-box-factory">Firmware Factory settings</a></p>
-    <div class="theme-picker" role="group" aria-label="Theme"></div>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-factory.header.tip-quick-help" data-i18n="admin-factory.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="admin-factory.header.tip-back-hub" data-i18n="admin-factory.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-factory.header.heading">Firmware Factory</h1>
+    <p class="subtitle" data-i18n="admin-factory.header.subtitle">Builds Meshtastic firmware on the box. <a href="/admin/#page-app-box-factory">Firmware Factory settings</a></p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-factory.header.aria-theme"></div>
   </header>
 
   <main class="admin-main factory-app" data-art="factory">
     <!-- The production line behind the page, played by krab-loop.js, as on /admin's Factory page. -->
     <div class="admin-art" aria-hidden="true"><span class="art-lamps"></span><span class="art-krab"></span></div>
-    <section class="admin-pane" id="factory" aria-label="Firmware Factory">
-      <p class="setting-desc bad" id="factory-paused" hidden>Queue paused. The current build finishes. No new build starts until you resume the queue.</p>
-        <h3>Build</h3>
+    <section class="admin-pane" id="factory" aria-label="Firmware Factory" data-i18n-aria-label="admin-factory.main.aria-firmware-factory">
+      <p class="setting-desc bad" id="factory-paused" hidden data-i18n="admin-factory.factory.paused">Queue paused. The current build finishes. No new build starts until you resume the queue.</p>
+        <h3 data-i18n="admin-factory.factory.h-build">Build</h3>
         <form id="factory-form" class="factory-form">
-          <label>Select firmware source <select name="source" id="factory-source"></select></label>
-          <label>Select release or branch <select name="ref" id="factory-ref"></select></label>
-          <label>Search targets <input type="search" id="factory-search" placeholder="board or target" aria-label="Search targets"></label>
+          <label data-i18n="admin-factory.factory.label-select-firmware-source">Select firmware source <select name="source" id="factory-source"></select></label>
+          <label data-i18n="admin-factory.factory.label-select-release-branch">Select release or branch <select name="ref" id="factory-ref"></select></label>
+          <label data-i18n="admin-factory.factory.label-search-targets">Search targets <input type="search" id="factory-search" placeholder="board or target" aria-label="Search targets" data-i18n-aria-label="admin-factory.factory.aria-search-targets" data-i18n-placeholder="admin-factory.factory.placeholder-board-target"></label>
           <div id="factory-targets" class="factory-targets"></div>
           <p class="setting-desc" id="factory-chosen"></p>
-          <button class="action-btn primary" type="submit" id="factory-queue" disabled>Add to queue</button>
+          <button class="action-btn primary" type="submit" id="factory-queue" disabled data-i18n="admin-factory.factory.queue">Add to queue</button>
           <p class="setting-desc action-note" id="factory-note" role="status" hidden></p>
         </form>
-        <h3>Build queue</h3>
-        <p class="library-buttons"><button class="action-btn" type="button" id="factory-pause">Pause queue</button></p>
+        <h3 data-i18n="admin-factory.factory.h-build-queue">Build queue</h3>
+        <p class="library-buttons"><button class="action-btn" type="button" id="factory-pause" data-i18n="admin-factory.factory.pause">Pause queue</button></p>
         <div id="factory-waiting" class="admin-list"></div>
-        <h3>Completed builds</h3>
+        <h3 data-i18n="admin-factory.factory.h-completed-builds">Completed builds</h3>
         <div id="factory-runs" class="admin-list"></div>
-        <h3>Published firmware</h3>
-        <p class="setting-desc">Firmware that you publish from the completed builds. The web flasher offers it as a release built on this box. It also offers the upstream releases that the librarian has cached (<a href="/admin/#firmware">Firmware</a>).</p>
+        <h3 data-i18n="admin-factory.factory.h-published-firmware">Published firmware</h3>
+        <p class="setting-desc" data-i18n="admin-factory.factory.firmware-publish-completed-builds">Firmware that you publish from the completed builds. The web flasher offers it as a release built on this box. It also offers the upstream releases that the librarian has cached (<a href="/admin/#firmware">Firmware</a>).</p>
         <div id="factory-flasher" class="admin-list"></div>
     </section>
   </main>
+  <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/krab-loop.js"></script>
   <script src="/admin-widgets.js"></script>

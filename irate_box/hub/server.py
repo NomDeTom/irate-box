@@ -748,12 +748,15 @@ def home_page(signed_in=False):
         # A tab its visitor isn't to see: its link and its pane left out of the page.
         for app, tab in PAGE_APPS.items():
             if page_app_hidden(app, signed_in):
-                text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}">[^<]*</a>', "", text)
+                text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}"[^>]*>[^<]*</a>', "", text)
                 text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
         text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked, admin_only=admin_only)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(FIRST_USE_MARK, _first_use_note())
         title, sub = html.escape(words["hub_title"].strip()), html.escape(words["hub_subtitle"].strip())
-        text = text.replace("<title>Hub</title>", f"<title>{title}</title>", 1).replace("<h1>Hub</h1>", f"<h1>{title}</h1>", 1)
+        # The keeper's own name for the hub is theirs, not the page's words: no message ID on it.
+        if title != html.escape(DEFAULT_SETTINGS["hub_title"]):
+            text = re.sub(r"<title[^>]*>Hub</title>", f"<title>{title}</title>", text, count=1)
+            text = re.sub(r"<h1[^>]*>Hub</h1>", f"<h1>{title}</h1>", text, count=1)
         notice, keeper = words["notice_text"].strip(), words["keeper_contact"].strip()
         if notice and not notice_over:
             text = text.replace("</header>", f'</header>\n  <p class="hub-notice" role="status">{html.escape(notice)}</p>', 1)
@@ -762,8 +765,9 @@ def home_page(signed_in=False):
                                 '  <script src="qrcode.js">', 1)
         art = picture_mtime("hub-art")
         if art:
-            text = text.replace(f"<h1>{title}</h1>", f'<img class="hub-art" src="/hub-art?{int(art)}" alt=""><h1>{title}</h1>', 1)
-        text = re.sub(r'<p class="subtitle">[^<]*</p>', (f'<p class="subtitle">{sub}</p>' if sub else ""), text, count=1)
+            text = re.sub(r"<h1[^>]*>", lambda m: f'<img class="hub-art" src="/hub-art?{int(art)}" alt="">{m.group(0)}', text, count=1)
+        if sub != html.escape(DEFAULT_SETTINGS["hub_subtitle"]):
+            text = re.sub(r'<p class="subtitle"[^>]*>[^<]*</p>', (f'<p class="subtitle">{sub}</p>' if sub else ""), text, count=1)
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
