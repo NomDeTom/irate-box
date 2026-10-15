@@ -599,6 +599,8 @@ check("  no reconnect on a connection: no repeats either", U.effective(c2, "wlan
 
 # The doctor reads how well each step works per connection from the ladder record (health.step_record).
 from irate_box.root import health as HL  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.msg import render  # noqa: E402
 now = 2_000_000_000
 rows = []
 def outage(t, steps, back_after, wedge_after=None, iface="wlan0"):
@@ -619,15 +621,19 @@ check("step record: outages in the 14 days, each step's tries and mends", rec["o
       and rec["steps"]["reconnect"] == {"tries": 8, "mended": 4, "wedged": 0}
       and rec["steps"]["restart"] == {"tries": 4, "mended": 0, "wedged": 2} and rec["steps"]["radio"] == {"tries": 4, "mended": 4, "wedged": 0}, rec)
 fs = {f["id"]: f for f in HL.step_findings(rows, {}, now)}
-check("  said for the flaky connection", "uplink-steps-wlan0" in fs and "restarting the network service mended 0 of 4" in fs["uplink-steps-wlan0"]["detail"],
+check("  said for the flaky connection", "uplink-steps-wlan0" in fs
+      and any(render(n) == "Restart the network service: mended 0 of 4. The radio's driver wedged soon after it 2 times."
+              for n in fs["uplink-steps-wlan0"]["notes"]),
       fs.get("uplink-steps-wlan0"))
 sk = fs.get("uplink-skip-wlan0-restart")
 check("  a finding for the restart, with the wedges, and a link to where it is left out", sk and sk["status"] == "warn"
-      and "wedged right after it 2 times" in sk["detail"] and not sk["actions"] and sk["go"]["section"] == "up-steps" and sk["go"]["mark"] == "up-step-wlan0-restart", sk)
+      and msg_args(sk, "uplink-skip.wedged")["n"] == 2 and not sk["actions"] and sk["go"]["section"] == "up-steps" and sk["go"]["mark"] == "up-step-wlan0-restart", sk)
 check("  none for the steps that work", "uplink-skip-wlan0-reconnect" not in fs and "uplink-skip-wlan0-radio" not in fs)
 check("  none once it is left out", "uplink-skip-wlan0-restart" not in {f["id"] for f in HL.step_findings(rows, {"steps_off": {"wlan0": ["restart"]}}, now)})
-check("  its words name the action to clear", "clear Restart the network service for wlan0" in sk["fix"], sk["fix"])
-check("  its link lands on that tick", sk.get("go") == {"section": "up-steps", "where": "Network → Recovery actions", "mark": "up-step-wlan0-restart"}, sk.get("go"))
+check("  its words name the action to clear", render(msg_args(sk, "uplink-skip.fix")["step"]) == "Restart the network service"
+      and msg_args(sk, "uplink-skip.fix")["iface"] == "wlan0", sk["fix"])
+check("  its link lands on that tick", (sk["go"]["section"], render(sk["go"]["where"]), sk["go"]["mark"])
+      == ("up-steps", "Network → Recovery actions", "up-step-wlan0-restart"), sk.get("go"))
 # One wedge charged to one step; a repeat of a step on the same evidence, a flap with no misses, and steps
 # taken while the network was at fault are not held against a step.
 r2 = []

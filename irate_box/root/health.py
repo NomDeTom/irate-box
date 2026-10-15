@@ -44,7 +44,9 @@ import time
 import urllib.request
 from pathlib import Path
 
+from irate_box.finding import action, finding, legacy
 from irate_box.hub import jsonlog
+from irate_box.msg import M, named, render, when
 from irate_box.root import rtc
 from irate_box.library import zimcheck
 
@@ -97,29 +99,28 @@ def run(*cmd, timeout=60, **kw):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
-def _f(fid, check, status, detail, fix="", actions=(), go=None, glance=None):
-    """status: ok | warn | problem. actions: [{choice, label, confirm?}]. go: where it is changed, for the page's
-    link: {section: an element id that is always there, mark: the very setting inside it (drawn later, perhaps),
-    where: the words}; the page opens the section and highlights the mark. glance: the finding in a few words, for
-    the doctor's Summary (detail is the whole of it, below)."""
-    out = {"id": fid, "check": check, "status": status, "detail": detail, "fix": fix, "actions": list(actions)}
-    if go:
-        out["go"] = go
-    if glance:
-        out["glance"] = glance
-    return out
-
-
 def _go(section, where, mark=None):
+    """Where a finding's setting is changed, for the page's link: an element id that is always there, the words for
+    the button (a message), and the very setting inside it (drawn later, perhaps), which the page highlights."""
     return {"section": section, "where": where, **({"mark": mark} if mark else {})}
 
 
-def _act(choice, label, confirm=None):
-    return {"choice": choice, "label": label, **({"confirm": confirm} if confirm else {})}
+# The places a finding sends the reader, by the words on its button.
+RECOVERY = M("go.recovery", "Recovery and monitoring")
+NET_RECOVERY = M("go.net-recovery", "Network → Network recovery")
+GO_BOOKS = _go("books", M("go.books", "Books"))
+GO_UPDATES = _go("updates", M("go.updates", "Updates"))
+GO_HOTSPOT = _go("network/hotspot", M("go.hotspot", "Network → Hotspot"))
+GO_NETWORK = _go("network", M("go.network", "Network"))
+GO_FACTORY = _go("factory", M("go.factory", "Firmware Factory"))
+GO_BUILDS = _go("git", M("go.git", "Git"))
+GO_CLOCK = _go("clock", M("go.clock", "Clock"))
 
-
-RERUN = _act("rerun-install", "Run the installer again",
-             "Run install.sh again with this box's recorded options? The installer can repair, upgrade and restart services.")
+RERUN = action("rerun-install", M("install.rerun", "Run the installer again"),
+               M("install.rerun.confirm", "Run install.sh again with this box's recorded options? "
+                                          "The installer can repair, upgrade and restart services."))
+RESTART = M("unit.restart", "Start it again")
+RUN_NOW = M("unit.run-now", "Run it now")
 
 
 def install_options():
@@ -143,32 +144,40 @@ def install_state():
 
 
 def check_install():
+    title = M("install.title", "Last install")
     st = install_state()
     if not st:
-        return [_f("install", "Last install", "warn", "No record of an install (older installs kept none).",
-                   "The next run of install.sh records one.")]
-    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.get("started", 0)))
+        return [finding("install", title, "warn", M("install.none", "There is no record of an install. Installs before this version kept none."),
+                        notes=[M("install.none.next", "The next run of the installer makes one.")])]
+    started = when(st.get("started", 0))
     if st.get("running") and _pid_alive(st.get("pid")):
-        return [_f("install", "Last install", "warn", f"install.sh is running now (started {when}), at: {st.get('step')}.")]
+        return [finding("install", title, "warn", M("install.running", "The installer is running now. It started on {when}.", when=started),
+                        evidence=[st.get("step") or ""])]
     if st.get("running") or st.get("aborted"):
-        where = st.get("step") or "an early step"
+        step = st.get("step") or M("install.early-step", "an early step")
         if st.get("running"):
-            cmd = " It was cut off (a power cut, a lost SSH session, or it was killed), so it left no reason."
+            why = M("install.cut-off", "It left no exit record. A power cut, a lost SSH session or a stopped process can do this.")
+            evidence = [str(INSTALL_LOG)]
         else:
-            cmd = (f" What failed: {st['failed_command']}" + (f" (line {st['failed_line']})" if st.get("failed_line") else "")
-                   + f", exit {st.get('exit')}.")
-        return [_f("install", "Last install", "problem",
-                   f"install.sh (started {when}) stopped during \"{where}\" and did not finish: the steps after it "
-                   f"were not done.{cmd}",
-                   f"The full output is in {INSTALL_LOG}. Fix what it says (the findings below can name it), then run "
-                   "the installer again: this button, Updates → Install update, or sudo ./install.sh from the checkout.",
-                   [RERUN])]
+            why = M("install.failed-command", "A command failed, with exit code {code}.", code=st.get("exit"))
+            evidence = [st.get("failed_command") or ""] + ([f"install.sh:{st['failed_line']}"] if st.get("failed_line") else []) + [str(INSTALL_LOG)]
+        return [finding("install", title, "problem",
+                        M("install.stopped", "The installer started on {when} and stopped during this step: {step}. "
+                                             "It did not do the steps after it.", when=started, step=step),
+                        why,
+                        M("install.stopped.fix", "Read the installer's log and correct what it names. The findings below can name it too. "
+                                                 "Then run the installer again."),
+                        notes=[M("install.rerun.ways", "You can also run it again from Updates, with Install update, or with sudo ./install.sh "
+                                                       "in the checkout.")],
+                        commands=[f"sudo tail -n 50 {INSTALL_LOG}"], evidence=evidence, actions=[RERUN])]
     problems = st.get("problems") or []
     if problems:
-        return [_f("install", "Last install", "warn",
-                   f"Finished {when}. At the time, {len(problems)} problem{'s' if len(problems) != 1 else ''}: " + "; ".join(problems)[:600],
-                   f"History: the findings below say which are still there. The run's output is in {INSTALL_LOG}.")]
-    return [_f("install", "Last install", "ok", f"Finished {when} with no problems.")]
+        return [finding("install", title, "warn",
+                        M("install.problems", {"one": "The installer finished on {when} with {n} problem.",
+                                               "other": "The installer finished on {when} with {n} problems."}, n=len(problems), when=started),
+                        notes=[M("install.problems.now", "The findings below say which ones are still there.")],
+                        evidence=[p[:200] for p in problems[:12]])]
+    return [finding("install", title, "ok", M("install.ok", "The installer finished on {when} with no problems.", when=started))]
 
 
 def _pid_alive(pid):
@@ -192,25 +201,27 @@ def journal_tail(unit, n=6):
 
 
 def expected_units():
-    """(unit, why) for everything install.sh would have set running."""
+    """(unit, role) for everything install.sh would have set running; the role a message."""
     opts = install_options()
     web = option(opts, "--web", "nginx") or "nginx"
-    units = [("irate-box.service", "the hub itself"), (f"{web}.service", "the web server in front"),
-             ("irate-box-git.socket", "the git servers"), ("irate-box-control.path", "the root helper /admin depends on"),
-             ("irate-box-librarian.timer", "the librarian's schedule"), ("irate-box-ci.path", "builds on push")]
+    units = [("irate-box.service", M("unit.role.hub", "hub server")), (f"{web}.service", M("unit.role.web", "web server")),
+             ("irate-box-git.socket", M("unit.role.git", "git servers")),
+             ("irate-box-control.path", M("unit.role.helper", "root helper")),
+             ("irate-box-librarian.timer", M("unit.role.librarian", "the librarian's schedule")),
+             ("irate-box-ci.path", M("unit.role.ci", "builds on push"))]
     if (UNIT_DIR / "irate-box-uplink.service").exists() or "irate-box-uplink" in _installed_text():
-        units.append(("irate-box-uplink.service", "the uplink watchdog"))
+        units.append(("irate-box-uplink.service", M("unit.role.uplink", "uplink watchdog")))
     if (UNIT_DIR / "irate-box-crashwatch.service").exists() or "irate-box-crashwatch" in _installed_text():
-        units.append(("irate-box-crashwatch.service", "crash watch"))
+        units.append(("irate-box-crashwatch.service", M("unit.role.crashwatch", "crash watch")))
     if (UNIT_DIR / "irate-box-led.service").exists() or "irate-box-led" in _installed_text():
-        units.append(("irate-box-led.service", "the status light"))
+        units.append(("irate-box-led.service", M("unit.role.led", "status light")))
     from irate_box.hub import services
     declared = {s["option"]: s["unit"] for s in services.declared() if s["option"] and s["unit"]}
     for opt, unit in {**declared, **ADDON_UNITS}.items():
         if opt in opts:
-            units.append((unit, f"the {opt.removeprefix('--with-')} add-on"))
+            units.append((unit, M("unit.role.addon", "the {name} add-on", name=opt.removeprefix("--with-"))))
     if (UNIT_DIR / "kiwix.service").exists() or _books():
-        units.append(("kiwix.service", "Kiwix (/wiki/)"))
+        units.append(("kiwix.service", M("unit.role.kiwix", "Kiwix, /wiki/")))
     return units
 
 
@@ -221,43 +232,57 @@ def _installed_text():
         return ""
 
 
+# Why a unit failed, from systemd's Result: each a sentence of its own.
+FAILED_BECAUSE = {
+    "start-limit-hit": M("unit.failed.start-limit", "It failed several times in a row, and systemd stopped trying to start it."),
+    "exit-code": M("unit.failed.exit-code", "It stopped with an error."),
+    "signal": M("unit.failed.signal", "A signal stopped it."),
+    "timeout": M("unit.failed.timeout", "It did not start in time."),
+    "core-dump": M("unit.failed.core-dump", "It crashed."),
+    "watchdog": M("unit.failed.watchdog", "It stopped answering systemd's watchdog."),
+    "unit-start-limit-hit": M("unit.failed.trigger-limit", "The unit that it starts hit its start limit, so this unit stopped too."),
+}
+
+
 def check_units():
     out = []
-    for unit, why in expected_units():
+    for unit, role in expected_units():
         p = unit_props(unit)
         load, active, sub, result = p.get("LoadState"), p.get("ActiveState"), p.get("SubState"), p.get("Result")
         enabled = p.get("UnitFileState")
-        title = f"{unit} ({why})"
-        restart = _act(f"unit-restart:{unit}", "Start it again")
+        title = named(unit, role)
+        restart = action(f"unit-restart:{unit}", RESTART)
         if load == "not-found":
-            out.append(_f(f"unit:{unit}", title, "problem", "The unit is not on the box any more.",
-                          "install.sh writes it: run the installer again.", [RERUN]))
+            out.append(finding(f"unit:{unit}", title, "problem", M("unit.missing", "The unit is not on the box any more."),
+                               fix=M("unit.missing.fix", "Run the installer again. It writes the unit."), actions=[RERUN]))
             continue
         if unit == "kiwix.service":
             continue  # check_kiwix looks at Kiwix in layers, the unit included
         if active == "failed" or result not in ("success", None, ""):
-            why_failed = {"start-limit-hit": "it failed several times in a row and systemd stopped trying (the start limit)",
-                          "exit-code": "it exited with an error", "signal": "it was killed",
-                          "timeout": "it did not start in time", "core-dump": "it crashed",
-                          "watchdog": "it stopped answering systemd's watchdog",
-                          "unit-start-limit-hit": "the unit it starts hit its start limit, so this stopped too"}.get(result, result)
             tail = journal_tail(unit if not unit.endswith(".path") else unit.replace(".path", ".service"))
-            out.append(_f(f"unit:{unit}", title, "problem", f"Failed: {why_failed}."
-                          + (f" Last lines of its log: {' | '.join(tail)}" if tail else ""),
-                          f"See why: journalctl -u {unit} -n 50. Then: systemctl reset-failed {unit}; systemctl "
-                          f"{'start' if unit.endswith(('.path', '.timer', '.socket')) else 'restart'} {unit}. "
-                          "If it fails again at once, the log says what it needs.", [restart]))
+            verb = "start" if unit.endswith((".path", ".timer", ".socket")) else "restart"
+            out.append(finding(f"unit:{unit}", title, "problem",
+                               FAILED_BECAUSE.get(result) or M("unit.failed.other", "It failed: {result}.", result=result),
+                               fix=M("unit.failed.fix", "Read its log to find the cause. Then clear the failure and start it again. "
+                                                        "If it fails again at once, the log says what it needs."),
+                               commands=[f"journalctl -u {unit} -n 50", f"systemctl reset-failed {unit}", f"systemctl {verb} {unit}"],
+                               evidence=tail, actions=[restart]))
         elif active != "active":
-            out.append(_f(f"unit:{unit}", title, "warn", f"Not running ({active}{'/' + sub if sub else ''}).",
-                          f"systemctl start {unit}", [restart]))
+            out.append(finding(f"unit:{unit}", title, "warn", M("unit.stopped", "It is not running."),
+                               fix=M("unit.stopped.fix", "Start it."), commands=[f"systemctl start {unit}"],
+                               evidence=[f"{active}/{sub}" if sub else str(active)], actions=[restart]))
         elif enabled not in ("enabled", "static", "indirect", "generated", "alias") and unit != "irate-box-uplink.service":
-            out.append(_f(f"unit:{unit}", title, "warn", f"Running, but not started at boot ({enabled}).",
-                          f"systemctl enable {unit}", [_act(f"unit-enable:{unit}", "Start it at boot")]))
+            out.append(finding(f"unit:{unit}", title, "warn", M("unit.not-enabled", "It is running, but it does not start at boot."),
+                               fix=M("unit.not-enabled.fix", "Enable it at boot."), commands=[f"systemctl enable {unit}"],
+                               evidence=[str(enabled)], actions=[action(f"unit-enable:{unit}", M("unit.enable", "Enable at boot"))]))
         else:
-            out.append(_f(f"unit:{unit}", title, "ok", f"Running{', restarted ' + p['NRestarts'] + ' times' if p.get('NRestarts', '0') not in ('0', '') else ''}."))
+            restarts = int(p.get("NRestarts") or 0) if str(p.get("NRestarts") or "0").isdigit() else 0
+            out.append(finding(f"unit:{unit}", title, "ok", M("unit.running", "Running.") if not restarts else
+                               M("unit.running-restarted", {"one": "Running. systemd restarted it {n} time.",
+                                                            "other": "Running. systemd restarted it {n} times."}, n=restarts)))
     # A timer's service: the timer stays "running" while every run of it fails, and a one-shot
     # service's failure shows only in its result.
-    for unit, why in expected_units():
+    for unit, _ in expected_units():
         if not unit.endswith(".timer"):
             continue
         svc = unit[:-len(".timer")] + ".service"
@@ -265,61 +290,77 @@ def check_units():
         result = p.get("Result")
         if p.get("LoadState") == "not-found" or result in ("success", None, ""):
             continue
-        tail = journal_tail(svc, 8)
-        out.append(_f(f"unit:{svc}", f"{svc} (each run of {why})", "problem",
-                      f"Its last run failed ({result})." + (f" Last lines of its log: {' | '.join(tail)}" if tail else ""),
-                      f"See why: journalctl -u {svc} -n 80. The timer starts it again within the hour; "
-                      f"systemctl reset-failed {svc} clears the mark once fixed.", [_act(f"unit-restart:{svc}", "Run it now")]))
+        out.append(finding(f"unit:{svc}", named(svc, M("unit.role.timer-run", "run by {timer}", timer=unit)), "problem",
+                           M("unit.timer-failed", "Its last run failed."),
+                           fix=M("unit.timer-failed.fix", "Read its log to find the cause. The timer runs it again within the hour. "
+                                                          "When it works again, clear its failure mark."),
+                           commands=[f"journalctl -u {svc} -n 80", f"systemctl reset-failed {svc}"],
+                           evidence=[str(result)] + journal_tail(svc, 8), actions=[action(f"unit-restart:{svc}", RUN_NOW)]))
     # The root helper: a request nobody has answered means /admin buttons go nowhere.
     reqs = sorted((CONTROL / "requests").glob("*.json"), key=lambda q: q.stat().st_mtime) if (CONTROL / "requests").is_dir() else []
     me = os.environ.get("HUB_CONTROL_RUNNING") == "1"
     if reqs and not me:
         age = time.time() - reqs[0].stat().st_mtime
         if age > 90:
-            out.append(_f("helper-queue", "Root helper queue", "problem",
-                          f"{len(reqs)} /admin request{'s' if len(reqs) != 1 else ''} waiting, the oldest for {int(age // 60)} min.",
-                          "systemctl reset-failed irate-box-control.service irate-box-control.path; "
-                          "systemctl start irate-box-control.path",
-                          [_act("unit-restart:irate-box-control.path", "Start the root helper again")]))
+            out.append(finding("helper-queue", M("helper-queue.title", "Root helper queue"), "problem",
+                               M("helper-queue.waiting", {"one": "{n} request from the administration pages is waiting. It has waited {minutes} min.",
+                                                          "other": "{n} requests from the administration pages are waiting. "
+                                                                   "The oldest has waited {minutes} min."}, n=len(reqs), minutes=int(age // 60)),
+                               M("helper-queue.why", "Until the root helper answers, the buttons on the administration pages do nothing."),
+                               M("helper-queue.fix", "Restart the root helper."),
+                               commands=["systemctl reset-failed irate-box-control.service irate-box-control.path",
+                                         "systemctl start irate-box-control.path"],
+                               actions=[action("unit-restart:irate-box-control.path", M("helper-queue.restart", "Restart the root helper"))]))
     unit_text = (UNIT_DIR / "irate-box-control.service").read_text() if (UNIT_DIR / "irate-box-control.service").exists() else ""
     if unit_text and "StartLimitIntervalSec=0" not in unit_text:
-        out.append(_f("helper-limit", "Root helper start limit", "warn",
-                      "Installed by an older version: a burst of /admin clicks can trip systemd's start limit and leave "
-                      "the root helper stopped until a reboot.", "Run the installer again (or update): it writes the fixed unit.",
-                      [RERUN]))
+        out.append(finding("helper-limit", M("helper-limit.title", "Root helper start limit"), "warn",
+                           M("helper-limit.old", "An older version installed the root helper's unit."),
+                           M("helper-limit.why", "Many requests at once from the administration pages can trip systemd's start limit. "
+                                                 "The root helper then stays stopped until a reboot."),
+                           M("helper-limit.fix", "Run the installer again, or update the box. Either one writes the corrected unit."),
+                           actions=[RERUN]))
     # Anything else that failed on the box: not ours to restart, but worth knowing when troubleshooting.
     failed = [l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()]
     # Each failed unit that isn't irate-box's (the image's, or the owner's own), with its options, from the least
-    # done: see why; accept it (often harmless on these images); start it again, asked first, as it isn't ours.
+    # done: see why; accept it; start it again, asked first, as it isn't ours.
     # A package the box watches (Updates → Packages from their makers): known, so said as itself.
     watched = watched_units()
     idle = {i["unit"] for i in idle_units()}   # said by check_idle, with switching it off as the choice
     failed = [u for u in failed if u not in idle]
     for u in [u for u in failed if u in watched]:
-        out.append(_f(f"watched-failed:{u}", f"{watched[u]}: its service failed", "warn",
-                      f"{u} stopped with an error. The box watches this package's updates; whether it runs is the "
-                      "package's own business. A build can fail on a board without the hardware it expects.",
-                      f"See why: journalctl -u {u} -n 50. Then start it again, try another build on Updates → Packages "
-                      "from their makers (Roll back, or another channel), or accept it if the board does not use it.",
-                      [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? The doctor clears its failed mark "
-                            "and starts it.")]))
+        out.append(finding(f"watched-failed:{u}", M("watched-failed.title", "{package}: its service failed", package=watched[u]), "warn",
+                           M("watched-failed.stopped", "{unit} stopped with an error.", unit=u),
+                           M("watched-failed.why", "The box watches this package's updates. Whether it runs is the package's own business. "
+                                                   "A build can fail on a board that lacks the hardware it expects."),
+                           M("watched-failed.fix", "Read its log. Then start it again, or try another build on Updates, Packages from their "
+                                                   "makers, with Roll back or another channel. If the board does not use it, accept it."),
+                           commands=[f"journalctl -u {u} -n 50"],
+                           actions=[action(f"other-restart:{u}", RESTART, M("watched-failed.restart.confirm",
+                                                                            "Start {unit} again? The doctor clears its failed mark and starts it.",
+                                                                            unit=u))],
+                           go=GO_UPDATES))
     # The image's LED service: it fails on boards whose light has no trigger file, and the box has a switch for it
     # (Recovery and monitoring, The image's LED service). Said as that, with that switch, not as a stranger to debug.
     if ARMBIAN_LED in failed and not ours(ARMBIAN_LED):
         failed = [u for u in failed if u != ARMBIAN_LED]
-        out.append(_f(f"other-failed:{ARMBIAN_LED}", "The image's LED service failed", "warn",
-                      f"{ARMBIAN_LED} puts the LEDs back as they were at the last shutdown. On this board it fails at every start: "
-                      "the light has no trigger file, so the state it saved is one it then refuses. The box's own status light "
-                      "does not need it.", "Switch it off: it stops failing. The same switch is on Recovery and monitoring.",
-                      [_act("armbian-led:off", "Switch it off", f"Switch {ARMBIAN_LED} off (mask it)? You can switch it on again "
-                            "on Recovery and monitoring.")],
-                      go=_go("health-settings", "Recovery and monitoring", "hs-armbian-led")))
+        out.append(finding(f"other-failed:{ARMBIAN_LED}", M("armbian-led.title", "The image's LED service failed"), "warn",
+                           M("armbian-led.failed", "{unit} fails at every start on this board.", unit=ARMBIAN_LED),
+                           ARMBIAN_LED_WHY,
+                           M("armbian-led.fix", "Switch it off, so that it stops failing. The same switch is on Recovery and monitoring."),
+                           actions=[action("armbian-led:off", M("armbian-led.off", "Switch it off"),
+                                           M("armbian-led.off.confirm", "Switch {unit} off (mask it)? You can switch it on again on "
+                                                                        "Recovery and monitoring.", unit=ARMBIAN_LED))],
+                           go=_go("health-settings", RECOVERY, "hs-armbian-led")))
     for u in [u for u in failed if not ours(u) and u not in watched][:12]:
-        out.append(_f(f"other-failed:{u}", f"{u} failed (not irate-box's)", "warn",
-                      "A service of the image's or of your own stopped with an error. The hub does not use it.",
-                      f"See why: journalctl -u {u} -n 50. Often harmless on these images: start it again, or select Accept to leave it.",
-                      [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? It is not part of irate-box. The doctor "
-                            "only clears its failed mark and starts it.")]))
+        out.append(finding(f"other-failed:{u}", M("other-failed.title", "{unit} failed", unit=u), "warn",
+                           M("other-failed.stopped", "A service of the image, or one of your own, stopped with an error. The hub does not use it."),
+                           M("other-failed.why", "On these images, that can be harmless, or it can be something that you need."),
+                           M("other-failed.fix", "Read its log. Then start it again, or select Accept to leave it as it is. "
+                                                 "Accept does not repair it."),
+                           commands=[f"journalctl -u {u} -n 50"],
+                           actions=[action(f"other-restart:{u}", RESTART,
+                                           M("other-failed.restart.confirm", "Start {unit} again? It is not part of irate-box. "
+                                                                             "The doctor only clears its failed mark and starts it.", unit=u))]))
     return out
 
 
@@ -340,29 +381,34 @@ def _idle_off():
 
 
 def idle_units():
-    """[{unit, title, why}]: services here that do nothing for this box, as far as it can tell."""
+    """[{unit, title, summary, why, evidence}]: services here that, as far as the box can tell, do nothing for it."""
     out = []
     p = unit_props("meshtasticd.service")
     if p.get("LoadState") == "loaded" and p.get("UnitFileState") == "enabled":
         log = run("journalctl", "-u", "meshtasticd.service", "-b", "--no-pager", "-o", "cat", "-n", "300").stdout
         if NO_LORA.search(log) and p.get("ActiveState") != "active":
-            out.append({"unit": "meshtasticd.service", "title": "meshtasticd, with no LoRa radio",
-                        "why": f"It finds no LoRa radio on this box ({NO_LORA.search(log).group(0)}) and stops, at every boot"
-                               + (", until systemd gives up on it" if p.get("Result") == "start-limit-hit" else "") + "."})
+            out.append({"unit": "meshtasticd.service", "title": M("idle.meshtasticd.title", "meshtasticd: no supported radio detected"),
+                        "summary": M("idle.meshtasticd.gave-up", "It finds no LoRa radio on this box and stops at every boot, "
+                                                                 "until systemd stops trying.") if p.get("Result") == "start-limit-hit" else
+                        M("idle.meshtasticd", "It finds no LoRa radio on this box and stops at every boot."),
+                        "why": None, "evidence": [NO_LORA.search(log).group(0)]})
     p = unit_props("ModemManager.service")
     if p.get("ActiveState") == "active":
         r = run("mmcli", "-L")
         if r.returncode == 0 and "No modems were found" in r.stdout:
-            out.append({"unit": "ModemManager.service", "title": "ModemManager, with no modem",
-                        "why": "It looks for mobile-data modems, and this box has none. It also probes serial ports, which can upset "
-                               "a radio or a device on one."})
+            out.append({"unit": "ModemManager.service", "title": M("idle.modemmanager.title", "ModemManager: no modem detected"),
+                        "summary": M("idle.modemmanager", "It looks for mobile-data modems, and it found none on this box."),
+                        "why": M("idle.modemmanager.why", "It also probes serial ports, which can disturb a radio or another device on one."),
+                        "evidence": ["mmcli -L: No modems were found"]})
     p = unit_props("bluetooth.service")
     if p.get("ActiveState") == "active":
         r = run("bluetoothctl", "devices", "Paired", timeout=10)
         if r.returncode == 0 and not r.stdout.strip():
-            out.append({"unit": "bluetooth.service", "title": "Bluetooth, with nothing paired",
-                        "why": "Nothing is paired with the box, and nothing on the hub uses Bluetooth. On a radio that does WiFi and "
-                               "Bluetooth both (as the AIC8800 does), it shares the chip with the WiFi."})
+            out.append({"unit": "bluetooth.service", "title": M("idle.bluetooth.title", "Bluetooth: no paired devices"),
+                        "summary": M("idle.bluetooth", "Nothing is paired with the box, and nothing on the hub uses Bluetooth."),
+                        "why": M("idle.bluetooth.why", "On a radio that does both WiFi and Bluetooth, as the AIC8800 does, "
+                                                       "Bluetooth shares the chip with the WiFi."),
+                        "evidence": []})
     return out
 
 
@@ -372,15 +418,17 @@ def check_idle():
     for i in idle_units():
         if i["unit"] in off:
             continue
-        out.append(_f(f"idle:{i['unit']}", f"{i['title']}: adds nothing here", "warn", i["why"],
-                      "Switch it off if this box does not need it. It stops and does not start at boot. If you switch it off here, you can "
-                      "switch it on again here.",
-                      [_act(f"idle-off:{i['unit']}", "Switch it off", f"Switch {i['unit']} off, now and at boot? The doctor lists it "
-                            "afterwards with a button to switch it back on.")]))
+        out.append(finding(f"idle:{i['unit']}", i["title"], "warn", i["summary"], i["why"],
+                           M("idle.fix", "If this box does not need it, switch it off. You can switch it on again here."),
+                           evidence=i["evidence"],
+                           actions=[action(f"idle-off:{i['unit']}", M("idle.off", "Switch it off"),
+                                           M("idle.off.confirm", "Switch {unit} off? It stops now and does not start at boot. "
+                                                                 "The doctor then lists it with a button to switch it on again.", unit=i["unit"]))]))
     for unit, rec in sorted(off.items()):
-        out.append(_f(f"idle-off:{unit}", f"{unit}: switched off here", "ok",
-                      f"Switched off on {time.strftime('%Y-%m-%d', time.localtime(rec.get('at', 0)))} because it added nothing here.",
-                      "", [_act(f"idle-on:{unit}", "Switch it back on", f"Switch {unit} back on, as it was?")]))
+        out.append(finding(f"idle-off:{unit}", M("idle-off.title", "{unit}: switched off here", unit=unit), "ok",
+                           M("idle-off.when", "Switched off here on {at}.", at=when(rec.get("at", 0))),
+                           actions=[action(f"idle-on:{unit}", M("idle.on", "Switch it back on"),
+                                           M("idle.on.confirm", "Switch {unit} back on? This restores its previous state.", unit=unit))]))
     return out
 
 
@@ -449,68 +497,92 @@ def check_kiwix():
         return []
     out = []
     if not shutil.which("kiwix-serve") or not shutil.which("kiwix-manage"):
-        out.append(_f("kiwix-package", "Kiwix package", "problem", "kiwix-tools is not installed, so /wiki/ cannot run.",
-                      "apt-get install kiwix-tools, or run the installer again (it installs it when there are books).", [RERUN]))
+        out.append(finding("kiwix-package", M("kiwix-package.title", "Kiwix package"), "problem",
+                           M("kiwix-package.missing", "kiwix-tools is not installed, so /wiki/ cannot run."),
+                           fix=M("kiwix-package.fix", "Install kiwix-tools, or run the installer again. The installer installs it when there are books."),
+                           commands=["apt-get install kiwix-tools"], actions=[RERUN]))
     good, bad = [], []
     for b in books:
         why = zim_header_problem(b) or kiwix_reads(b)
         (bad if why else good).append((b, why))
     for b, why in bad:
-        out.append(_f(f"zim:{b.name}", f"Book {b.name}", "problem", f"{b.stat().st_size >> 20} MB. {why}",
-                      f"Download or copy it again (Books keeps its sources current), or set it aside: "
-                      f"mv {b} {QUARANTINE}/ — then rebuild the library.",
-                      [_act(f"kiwix-quarantine:{b.name}", "Set it aside",
-                            f"Move {b.name} to {QUARANTINE}/ and rebuild the library without it?")]))
+        out.append(finding(f"zim:{b.name}", M("zim.title", "Book: {name}", name=b.name), "problem",
+                           M("zim.unreadable", "Kiwix cannot read this book ({mb} MB).", mb=b.stat().st_size >> 20),
+                           fix=M("zim.unreadable.fix", "Download or copy it again. Books keeps its sources up to date. "
+                                                       "Or quarantine it: the box moves it to {folder} and rebuilds the library without it.",
+                                 folder=str(QUARANTINE)),
+                           evidence=[why, str(b)],
+                           actions=[action(f"kiwix-quarantine:{b.name}", M("zim.quarantine", "Quarantine the book"),
+                                           M("zim.quarantine.confirm", "Move {name} to {folder} and rebuild the library without it?",
+                                             name=b.name, folder=str(QUARANTINE)))],
+                           go=GO_BOOKS))
     if good:
-        out.append(_f("zim-ok", "Books", "ok", f"{len(good)} readable: " + ", ".join(b.name for b, _ in good[:6])
-                      + ("…" if len(good) > 6 else "")))
+        names = [b.name for b, _ in good]
+        out.append(finding("zim-ok", M("zim-ok.title", "Books"), "ok",
+                           M("zim-ok.count", {"one": "{n} book can be read.", "other": "{n} books can be read."}, n=len(good)),
+                           evidence=names[:6] + (["…"] if len(names) > 6 else [])))
     listed = library_paths()
-    rebuild = _act("kiwix-rebuild", "Rebuild the library")
+    rebuild = action("kiwix-rebuild", M("library.rebuild", "Rebuild the library"))
+    lib_title = M("library.title", "Kiwix library")
     if listed is None:
         if good:
-            out.append(_f("library", "Kiwix library", "problem", f"No {LIBRARY.name}, though {len(good)} readable books are there.",
-                          "Rebuild it.", [rebuild]))
+            out.append(finding("library", lib_title, "problem",
+                               M("library.missing", {"one": "There is no {file}, though {n} readable book is there.",
+                                                     "other": "There is no {file}, though {n} readable books are there."}, n=len(good), file=LIBRARY.name),
+                               fix=M("library.rebuild.fix", "Rebuild the library from the books on disk."), actions=[rebuild]))
     else:
         on_disk = {b.resolve() for b, _ in good}
         gone = [p for p in listed if not p.exists()]
         missing = [b for b in on_disk if b not in {p.resolve() for p in listed if p.exists()}]
         if gone or missing:
-            out.append(_f("library", "Kiwix library", "problem",
-                          (f"Lists {len(gone)} book{'s' if len(gone) != 1 else ''} no longer on disk ({', '.join(p.name for p in gone[:4])}). " if gone else "")
-                          + (f"Leaves out {len(missing)} readable book{'s' if len(missing) != 1 else ''} ({', '.join(p.name for p in missing[:4])})." if missing else ""),
-                          "Rebuild it from the books on disk.", [rebuild]))
+            said = [M("library.gone", {"one": "It lists {n} book that is no longer on disk.",
+                                       "other": "It lists {n} books that are no longer on disk."}, n=len(gone))] if gone else []
+            said += [M("library.left-out", {"one": "It leaves out {n} readable book.", "other": "It leaves out {n} readable books."},
+                       n=len(missing))] if missing else []
+            out.append(finding("library", lib_title, "problem", said[0],
+                               fix=M("library.rebuild.fix", "Rebuild the library from the books on disk."), notes=said[1:],
+                               evidence=[p.name for p in gone[:4]] + [p.name for p in missing[:4]], actions=[rebuild]))
         else:
-            out.append(_f("library", "Kiwix library", "ok", f"Lists the {len(listed)} books on disk."))
+            out.append(finding("library", lib_title, "ok", M("library.ok", {"one": "It lists the {n} book on disk.",
+                                                                            "other": "It lists the {n} books on disk."}, n=len(listed))))
+    kiwix = M("kiwix.title", "Kiwix (/wiki/)")
+    add_book = M("kiwix.empty.fix", "Add a book from Books, from a USB drive or with install.sh --zim. "
+                                    "Then rebuild the library, which starts Kiwix again.")
     if unit.exists():
         p = unit_props("kiwix.service")
         if not good:
             if p.get("UnitFileState") != "enabled" and p.get("ActiveState") in ("inactive", "failed"):
-                out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "warn",
-                              "Stopped until there is a readable book (the installer or this page stopped it, so it does not loop).",
-                              "Add a book (Books, a USB drive, or install.sh --zim). Then rebuild the library. "
-                              "that starts it again.", [_act("kiwix-rebuild", "Rebuild the library")]))
+                out.append(finding("kiwix-empty", kiwix, "warn",
+                                   M("kiwix.empty-stopped", "Kiwix is stopped until there is a readable book. The installer or this page "
+                                                            "stopped it, so that it does not restart in a loop."),
+                                   fix=add_book, actions=[rebuild], go=GO_BOOKS))
             else:
-                out.append(_f("kiwix-empty", "Kiwix (/wiki/)", "problem",
-                              "There is no readable book, so kiwix-serve cannot start: systemd keeps trying and then gives up "
-                              f"({p.get('Result') or p.get('ActiveState')}).",
-                              "Add a book (Books, a USB drive, or install.sh --zim). Then rebuild the library. "
-                              "Until then, stop Kiwix so it does not loop: systemctl disable --now kiwix.",
-                              [_act("kiwix-off", "Stop Kiwix until there are books")]))
+                out.append(finding("kiwix-empty", kiwix, "problem",
+                                   M("kiwix.empty-looping", "There is no readable book, so kiwix-serve cannot start. "
+                                                            "systemd tries again and again, and then stops."),
+                                   fix=add_book,
+                                   notes=[M("kiwix.empty.stop", "Until then, stop Kiwix, so that it does not restart in a loop.")],
+                                   commands=["systemctl disable --now kiwix"], evidence=[p.get("Result") or p.get("ActiveState") or ""],
+                                   actions=[action("kiwix-off", M("kiwix.off", "Stop Kiwix until there are books"))], go=GO_BOOKS))
         elif p.get("ActiveState") != "active" and p.get("Result") in ("success", "", None):
-            out.append(_f("kiwix-down", "Kiwix (/wiki/)", "warn",
-                          f"Stopped (not failed), with {len(good)} readable books"
-                          + (", not started at boot" if p.get("UnitFileState") != "enabled" else "") + ".",
-                          "Kiwix was stopped from this page or by hand. To bring /wiki/ back, rebuild the library (it starts Kiwix) "
-                          "or systemctl enable --now kiwix.", [rebuild]))
+            out.append(finding("kiwix-down", kiwix, "warn",
+                               M("kiwix.stopped", {"one": "Kiwix is stopped, not failed, with {n} readable book.",
+                                                   "other": "Kiwix is stopped, not failed, with {n} readable books."}, n=len(good)),
+                               M("kiwix.stopped.why", "Someone stopped it, from this page or by hand."),
+                               M("kiwix.stopped.fix", "To bring /wiki/ back, rebuild the library. That starts Kiwix."),
+                               notes=[M("kiwix.not-at-boot", "It does not start at boot.")] if p.get("UnitFileState") != "enabled" else [],
+                               commands=["systemctl enable --now kiwix"], actions=[rebuild]))
         elif p.get("ActiveState") != "active":
-            out.append(_f("kiwix-down", "Kiwix (/wiki/)", "problem",
-                          f"Not running ({p.get('Result') or p.get('ActiveState')}), with {len(good)} readable books."
-                          + (" Log: " + " | ".join(journal_tail("kiwix.service", 4)) if journal_tail("kiwix.service", 1) else ""),
-                          "Rebuild the library, then start it: systemctl reset-failed kiwix; systemctl restart kiwix.",
-                          [rebuild, _act("unit-restart:kiwix.service", "Start it again")]))
+            out.append(finding("kiwix-down", kiwix, "problem",
+                               M("kiwix.down", {"one": "Kiwix is not running, with {n} readable book.",
+                                                "other": "Kiwix is not running, with {n} readable books."}, n=len(good)),
+                               fix=M("kiwix.down.fix", "Rebuild the library, then start Kiwix again."),
+                               commands=["systemctl reset-failed kiwix", "systemctl restart kiwix"],
+                               evidence=[p.get("Result") or p.get("ActiveState") or ""] + journal_tail("kiwix.service", 4),
+                               actions=[rebuild, action("unit-restart:kiwix.service", RESTART)]))
     elif good:
-        out.append(_f("kiwix-unit", "Kiwix (/wiki/)", "problem", "Books are there but Kiwix is not set up (no kiwix.service).",
-                      "Run the installer again: it sets Kiwix up whenever there are books.", [RERUN]))
+        out.append(finding("kiwix-unit", kiwix, "problem", M("kiwix.no-unit", "Books are there, but Kiwix is not set up: there is no kiwix.service."),
+                           fix=M("kiwix.no-unit.fix", "Run the installer again. It sets up Kiwix whenever there are books."), actions=[RERUN]))
     return out
 
 
@@ -549,47 +621,58 @@ def kiwix_rebuild():
 
 # --- the rest -------------------------------------------------------------------------------------
 
+UPLINK_STATE = {"up": M("uplink.state.up", "Up"), "checking": M("uplink.state.checking", "Checking"), "down": M("uplink.state.down", "Down"),
+                "stalled": M("uplink.state.stalled", "Down, with nothing left to try")}
+NM_WAITS = M("uplink.nm-waits", "After a password check fails, NetworkManager stops trying and waits for someone.")
+NOTHING_HELPS = M("uplink.nothing-helps", "Nothing that the box can do by itself would help. Reach it by its console or a cable.")
+
+
 def check_uplink():
     if not (UNIT_DIR / "irate-box-uplink.service").exists():
         return []
+    title = M("uplink-report.title", "Uplink watchdog report")
+    restart = action("unit-restart:irate-box-uplink.service", RESTART)
     try:
         st = json.loads(uplink_report().read_text())
     except (OSError, ValueError):
-        return [_f("uplink-report", "Uplink watchdog report", "warn", "The watchdog has not written a report yet.",
-                   "journalctl -u irate-box-uplink -n 30", [_act("unit-restart:irate-box-uplink.service", "Start it again")],
-                   glance="No report yet.")]
+        none = M("uplink-report.none", "The watchdog has not written a report yet.")
+        return [finding("uplink-report", title, "warn", none, commands=["journalctl -u irate-box-uplink -n 30"], actions=[restart],
+                        glance=M("uplink-report.none.glance", "No report yet."))]
     age = time.time() - st.get("at", 0)
     limit = 3 * max(st.get("settings", {}).get("check", 60), 60)
     if age > limit:
-        return [_f("uplink-report", "Uplink watchdog report", "problem", f"Last report {int(age // 60)} min ago: it has stopped looking.",
-                   "journalctl -u irate-box-uplink -n 30; systemctl restart irate-box-uplink",
-                   [_act("unit-restart:irate-box-uplink.service", "Start it again")], glance=f"Stopped: last report {int(age // 60)} min ago.")]
+        mins = int(age // 60)
+        return [finding("uplink-report", title, "problem", M("uplink-report.old", "Its last report is {minutes} min old.", minutes=mins),
+                        M("uplink-report.old.why", "The watchdog has probably stopped checking the link."),
+                        M("uplink-report.old.fix", "Read its log, then restart it."),
+                        commands=["journalctl -u irate-box-uplink -n 30", "systemctl restart irate-box-uplink"], actions=[restart],
+                        glance=M("uplink-report.old.glance", "Its last report is {minutes} min old.", minutes=mins))]
     from irate_box.hub import uplink
     try:
         said = uplink.words(uplink.validate(st.get("chosen") or {}))
     except (ValueError, TypeError, KeyError):
-        said = "settings not readable"
-    state = {"up": "Up", "checking": "Checking", "down": "Down", "stalled": "Down, nothing left to try"}.get(st.get("state"), str(st.get("state")).capitalize())
-    out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, {said}.",
-              glance=f"{state} on {st.get('iface')}.")]
+        said = None
+    state = UPLINK_STATE.get(st.get("state")) or named(str(st.get("state")))
+    now = M("uplink-report.ok", "{state} on {iface}.", state=state, iface=st.get("iface"))
+    out = [finding("uplink-report", title, "ok", now,
+                   notes=[M("uplink-report.settings", "Its settings: {settings}.", settings=said) if said else
+                          M("uplink-report.settings-unreadable", "Its settings cannot be read.")],
+                   glance=now)]
     # Stalled: down, with nothing left the level allows that could help.
     stall = st.get("stall") if st.get("state") == "stalled" else None
     if stall:
         down = int((st.get("at", 0) - ((st.get("outage") or {}).get("since") or st.get("at", 0))) // 60)
-        out.append(_f("uplink-stalled", "The link is down and the watchdog has stalled", "problem",
-                      f"{st.get('iface')} down for {down} min. {stall.get('text', '')}",
-                      (f"Network → Network recovery: {stall['label'][:1].upper() + stall['label'][1:]} now, "
-                       "or select a level that goes that far." if stall.get("needs")
-                       else "Look at the box by its console or a cable: nothing it can do by itself would help."),
-                      go=_go("net-watchdog-card", "Network → Network recovery", "up-stall" if stall.get("needs") else "up-reach")))
+        out.append(finding("uplink-stalled", M("uplink-stalled.title", "The link is down and the watchdog has stalled"), "problem",
+                           M("uplink-stalled.down", "{iface} has been down for {minutes} min.", iface=st.get("iface"), minutes=down),
+                           fix=M("uplink-stalled.fix", "The step that could help is to {step}. On Network, Network recovery, run it now, "
+                                                       "or select a maximum action that goes that far.", step=stall["label"]) if stall.get("needs") else NOTHING_HELPS,
+                           notes=[stall["text"]] if stall.get("text") else [],
+                           go=_go("net-watchdog-card", NET_RECOVERY, "up-stall" if stall.get("needs") else "up-reach")))
     out += link_findings(st)
     out += roaming_findings(st, _json_or(CONTROL / "netinv.json"))
     out += metered_findings()
     out += step_findings(jsonlog.read(CONTROL / "uplink-ladder.json"), st.get("chosen") or {})
     return out
-
-
-LINK_KIND = {"wifi": "WiFi", "ethernet": "cable", "other": "a link of another kind"}
 
 
 def link_findings(st):
@@ -602,46 +685,53 @@ def link_findings(st):
     links, chosen = st.get("links") or {}, st.get("chosen") or {}
     off = {i for i, v in (chosen.get("watch") or {}).items() if v is False}
     watched = sorted(i for i, lk in links.items() if lk.get("watched"))
-    go = lambda mark: _go("net-watchdog-card", "Network → Network recovery", mark)  # noqa: E731
+    go = lambda mark: _go("net-watchdog-card", NET_RECOVERY, mark)  # noqa: E731
+    reconnect = lambda i: action(f"uplink-reconnect:{i}", M("uplink.reconnect", "Reconnect {iface}", iface=i))  # noqa: E731
     out = []
     if not watched and inv:
-        out.append(_f("uplink-none-watched", "No link is watched", "problem",
-                      f"The watchdog is watching {st.get('watching') or 'nothing'}. If the box's network fails, nothing will notice or "
-                      "try again.", "Network → Network recovery: select which links it watches.", go=go("up-watch")))
+        out.append(finding("uplink-none-watched", M("uplink-none.title", "No link is watched"), "problem",
+                           M("uplink-none.watched", "The watchdog watches no link."),
+                           M("uplink-none.why", "If the box's network fails, the watchdog does not notice it or try again. "
+                                                "NetworkManager can still try again by itself."),
+                           M("uplink-none.fix", "On Network, Network recovery, select which links the watchdog watches."),
+                           evidence=[st["watching"]] if st.get("watching") else [], go=go("up-watch")))
     for i, lk in sorted(inv.items()):
-        what = f"{i} ({LINK_KIND.get(lk.get('kind'), lk.get('kind'))}, {', '.join(lk.get('autoconnect') or []) or 'no connection set to start'})"
+        evidence = [i, str(lk.get("kind"))] + list(lk.get("autoconnect") or [])
         if lk.get("look") and not lk.get("up") and lk.get("autoconnect"):
-            out.append(_f(f"uplink-look-{i}", f"{i} is down, and only looked at", "warn",
-                          f"{what} is down. The watchdog looks at it but does nothing for it, as set (every other link looked at "
-                          "only). After a password check fails, NetworkManager stops and waits for someone.",
-                          f"Reconnect it now; or on Network → Network recovery, watch {i} in full.",
-                          [_act(f"uplink-reconnect:{i}", "Reconnect it")], go=go(f"up-watch-{i}")))
+            out.append(finding(f"uplink-look-{i}", M("uplink-look.title", "{iface} is down, and only looked at", iface=i), "warn",
+                               M("uplink-look.down", "{iface} is down. The watchdog looks at it but does nothing for it, as set.", iface=i),
+                               NM_WAITS, M("uplink-look.fix", "Reconnect it now. Or, on Network, Network recovery, watch {iface} in full.", iface=i),
+                               evidence=evidence, actions=[reconnect(i)], go=go(f"up-watch-{i}")))
             continue
         if lk.get("watched") or (lk.get("as") or i) in off or not lk.get("autoconnect"):
             continue
         if lk.get("up"):
-            out.append(_f(f"uplink-uncovered-{i}", f"{i} is not watched", "warn",
-                          f"{what} is up, but nothing watches it: if it fails, nothing will notice or try again.",
-                          f"Network → Network recovery: watch {i}, or set it not to be watched to say that is meant.",
-                          go=go(f"up-watch-{i}")))
+            out.append(finding(f"uplink-uncovered-{i}", M("uplink-uncovered.title", "{iface} is not watched", iface=i), "warn",
+                               M("uplink-uncovered.up", "{iface} is up, but the watchdog does not watch it.", iface=i),
+                               M("uplink-uncovered.why", "If it fails, the watchdog does not notice it or try again."),
+                               M("uplink-uncovered.up.fix", "On Network, Network recovery, watch {iface}. Or set it not to be watched, "
+                                                            "to say that this is intended.", iface=i),
+                               evidence=evidence, go=go(f"up-watch-{i}")))
         else:
-            out.append(_f(f"uplink-uncovered-{i}", f"{i} is down, and not watched", "problem",
-                          f"{what} is down. NetworkManager has a connection for it set to start by itself, but nothing watches "
-                          f"{i}, so nothing tries again. After a password check fails, NetworkManager stops and waits for someone.",
-                          f"Reconnect it now; and on Network → Network recovery, watch {i}.",
-                          [_act(f"uplink-reconnect:{i}", "Reconnect it")], go=go(f"up-watch-{i}")))
+            out.append(finding(f"uplink-uncovered-{i}", M("uplink-uncovered-down.title", "{iface} is down, and not watched", iface=i), "problem",
+                               M("uplink-uncovered.down", "{iface} is down. NetworkManager has a connection for it that starts by itself, "
+                                                          "but the watchdog does not watch {iface}, so it does not try again.", iface=i),
+                               NM_WAITS, M("uplink-uncovered.down.fix", "Reconnect it now. Then, on Network, Network recovery, watch {iface}.", iface=i),
+                               evidence=evidence, actions=[reconnect(i)], go=go(f"up-watch-{i}")))
     for i in watched:
         lk = links[i]
         if lk.get("kind") == "other":
-            out.append(_f(f"uplink-kind-{i}", f"{i}: watched, no repair known", "ok",
-                          f"{i} is a link of a kind the watchdog knows no repair for (not WiFi, not a cable): its failures are logged, "
-                          "and nothing more is done."))
+            out.append(finding(f"uplink-kind-{i}", M("uplink-kind.title", "{iface}: watched, no repair known", iface=i), "ok",
+                               M("uplink-kind.other", "{iface} is not WiFi and not a cable. The watchdog knows no repair for it, so it only "
+                                                "records its failures.", iface=i)))
         stall = lk.get("stall") if lk.get("state") == "stalled" and i != st.get("iface") else None
         if stall:
-            out.append(_f(f"uplink-stalled-{i}", f"{i} is down and its watchdog has stalled", "problem" if stall.get("needs") else "warn",
-                          f"{i}: {stall.get('text', '')}",
-                          (f"Network → Network recovery: select a reach that goes as far as to {stall['label']}."
-                           if stall.get("needs") else "Nothing the box can do by itself would help."), go=go("up-reach")))
+            out.append(finding(f"uplink-stalled-{i}", M("uplink-stalled-link.title", "{iface} is down and its watchdog has stalled", iface=i),
+                               "problem" if stall.get("needs") else "warn",
+                               M("uplink-stalled-link.down", "{iface} is down, and the steps that you selected for it are used up.", iface=i),
+                               fix=M("uplink-stalled-link.fix", "The step that could help is to {step}. On Network, Network recovery, "
+                                                                "select a maximum action that goes that far.", step=stall["label"]) if stall.get("needs") else NOTHING_HELPS,
+                               notes=[stall["text"]] if stall.get("text") else [], go=go("up-reach")))
     return out
 
 
@@ -662,6 +752,12 @@ NET_CAUSES = ("absent", "join", "gateway")   # uplink.NET_CAUSES: the network at
 STEP_SAID = {"reconnect": "reconnecting", "restart": "restarting the network service", "radio": "resetting the radio",
              "reboot": "rebooting"}
 STEP_TICK = {"reconnect": "Reconnect", "restart": "Restart the network service", "radio": "Reset the radio", "reboot": "Reboot the box"}
+# The same steps for the page: their checkbox labels on Network's recovery actions, and a finding's title for each.
+STEP_LABEL = {"reconnect": M("step.reconnect", "Reconnect"), "restart": M("step.restart", "Restart the network service"),
+              "radio": M("step.radio", "Reset the radio"), "reboot": M("step.reboot", "Reboot the box")}
+STEP_POOR = {"reconnect": lambda i: M("uplink-skip.reconnect.title", "{iface}: reconnecting does not help", iface=i),
+             "restart": lambda i: M("uplink-skip.restart.title", "{iface}: restarting the network service does not help", iface=i),
+             "radio": lambda i: M("uplink-skip.radio.title", "{iface}: resetting the radio does not help", iface=i)}
 
 
 def _no_misses(row):
@@ -723,23 +819,31 @@ def step_findings(rows, chosen, now=None):
         if rec["outages"] < FLAKY_OUTAGES:
             continue
         steps = rec["steps"]
-        said = "; ".join(f"{STEP_SAID.get(s, s)} mended {v['mended']} of {v['tries']}" + (f", a wedged driver after it {v['wedged']} time{'s' if v['wedged'] != 1 else ''}" if v["wedged"] else "")
-                         for s, v in sorted(steps.items(), key=lambda kv: list(STEP_SAID).index(kv[0]) if kv[0] in STEP_SAID else 9))
-        out.append(_f(f"uplink-steps-{iface}", f"How well each step works on {iface}", "ok",
-                      f"{rec['outages']} outages in {STEP_DAYS} days. " + (said + "." if said else "No step taken.")))
+        order = sorted(steps.items(), key=lambda kv: list(STEP_SAID).index(kv[0]) if kv[0] in STEP_SAID else 9)
+        lines = [M("steps.line-wedged", {"one": "{step}: mended {mended} of {tries}. The radio's driver wedged soon after it {n} time.",
+                                         "other": "{step}: mended {mended} of {tries}. The radio's driver wedged soon after it {n} times."},
+                   n=v["wedged"], step=STEP_LABEL.get(s, s), mended=v["mended"], tries=v["tries"]) if v["wedged"] else
+                 M("steps.line", "{step}: mended {mended} of {tries}.", step=STEP_LABEL.get(s, s), mended=v["mended"], tries=v["tries"])
+                 for s, v in order]
+        out.append(finding(f"uplink-steps-{iface}", M("steps.title", "How well each step works on {iface}", iface=iface), "ok",
+                           M("steps.outages", {"one": "{n} outage in the last {days} days.", "other": "{n} outages in the last {days} days."},
+                             n=rec["outages"], days=STEP_DAYS),
+                           notes=lines or [M("steps.none", "The watchdog took no step.")]))
         for s, v in steps.items():
-            if s in off.get(iface, []) or v["tries"] < STEP_TRIES or s == "reboot":
+            if s in off.get(iface, []) or v["tries"] < STEP_TRIES or s not in STEP_POOR:
                 continue
             poor = v["mended"] / v["tries"] <= 0.2
             if not poor and v["wedged"] < 2:
                 continue
-            why = f"{STEP_SAID.get(s, s)[:1].upper() + STEP_SAID.get(s, s)[1:]} mended {v['mended']} of the {v['tries']} outages it was tried on"
-            if v["wedged"] >= 2:
-                why += f", and the radio's driver wedged right after it {v['wedged']} times"
-            out.append(_f(f"uplink-skip-{iface}-{s}", f"{iface}: {STEP_SAID.get(s, s)} isn't helping", "warn",
-                          f"{why} (the last {STEP_DAYS} days). The watchdog could leave it out on {iface} and go on to the next step sooner.",
-                          f"Network → Connection settings → Recovery actions: clear {STEP_TICK.get(s, s)} for {iface}.",
-                          go=_go("up-steps", "Network → Recovery actions", f"up-step-{iface}-{s}")))
+            out.append(finding(f"uplink-skip-{iface}-{s}", STEP_POOR[s](iface), "warn",
+                               M("uplink-skip.mended", "It mended {mended} of the {tries} outages that it was tried on, in the last {days} days.",
+                                 mended=v["mended"], tries=v["tries"], days=STEP_DAYS),
+                               M("uplink-skip.why", "The watchdog could leave it out on {iface} and go on to the next step sooner.", iface=iface),
+                               M("uplink-skip.fix", "On Network, Connection settings, Recovery actions, clear {step} for {iface}.",
+                                 step=STEP_LABEL[s], iface=iface),
+                               notes=[M("uplink-skip.wedged", "The radio's driver wedged soon after it {n} times. That can be a coincidence.",
+                                        n=v["wedged"])] if v["wedged"] >= 2 else [],
+                               go=_go("up-steps", M("go.recovery-actions", "Network → Recovery actions"), f"up-step-{iface}-{s}")))
     return out
 
 
@@ -761,12 +865,17 @@ def roaming_findings(st, inv):
     n, chosen = st.get("roams_hour") or 0, (st.get("chosen") or {}).get("roaming", "roam")
     if not f.get("hotspot_shares") or len(f.get("aps", [])) < 2 or chosen != "roam" or n <= ROAMS_AN_HOUR:
         return []
-    return [_f("uplink-roaming", "Roaming often, with the hotspot on the same radio", "warn",
-               f"{st.get('iface')} moved between access points {n} times in the last hour ({len(f['aps'])} share {f.get('ssid')}, "
-               f"channels {', '.join(map(str, f.get('channels', [])))}); each move takes the hotspot's guests along, and is a moment off "
-               "the network on a radio that copes worst with that.",
-               "Network → Network recovery: select no background scans while the hotspot shares the radio, a lock to one access "
-               "point, or do not count short roams as missed checks. Or, on your router, put the access points on one channel.")]
+    return [finding("uplink-roaming", M("roaming.title", "Roaming often, with the hotspot on the same radio"), "warn",
+                    M("roaming.often", "{iface} moved between access points {n} times in the last hour.", iface=st.get("iface"), n=n),
+                    M("roaming.why", "Each move takes the hotspot's guests along, and is a moment off the network on a radio "
+                                     "that copes worst with that."),
+                    M("roaming.fix", "On Network, Network recovery, select No background scans while the hotspot shares the radio, "
+                                     "or Lock to one access point. You can also select Do not count short roams as missed checks."),
+                    notes=[M("roaming.aps", "{count} access points share {ssid}, on channels {channels}.", count=len(f["aps"]),
+                             ssid=f.get("ssid"), channels=list(f.get("channels", []))),
+                           M("roaming.router", "On your router, you can also put the access points on one channel. "
+                                               "That can help, but it does not suit every network.")],
+                    go=_go("net-watchdog-card", NET_RECOVERY))]
 
 
 def metered_findings(now=None):
@@ -777,28 +886,38 @@ def metered_findings(now=None):
     if not w or w.get("since") is None or now - float(w["since"]) < 3 * 86400:
         return []
     days = int((now - float(w["since"])) // 86400)
-    return [_f("metered-wait", "Updates waiting for another network", "warn",
-               f"For {days} days the box has been on a metered network ({w.get('connection') or w.get('iface')}, {w.get('how')}), "
-               "so its scheduled updates and downloads (the hub's own, books, mirrors, toolkits) have waited.",
-               "Updates: run one by hand, or on Network → WiFi set this network not metered (its own settings) if its data is not limited.")]
+    return [finding("metered-wait", M("metered.title", "Updates waiting for another network"), "warn",
+                    M("metered.waiting", {"one": "The box has been on a metered network for {n} day.",
+                                  "other": "The box has been on a metered network for {n} days."}, n=days),
+                    M("metered.why", "Its scheduled updates and downloads wait: the hub's own, books, mirrors and toolkits."),
+                    M("metered.fix", "Run an update by hand on Updates. Or, if this network's data is not limited, set it as not metered "
+                                     "in its own settings on Network."),
+                    evidence=[str(x) for x in (w.get("connection") or w.get("iface"), w.get("how")) if x], go=GO_UPDATES)]
 
 
 def check_inventory():
     """The network inventory's findings that lower the chance of the box staying on its network (its
     warnings and problems), each with its fix, and how old the look is when that matters."""
     p = CONTROL / "netinv.json"
+    title = M("netinv.title", "Network inventory")
     if not p.exists():
-        return [_f("netinv", "Network inventory", "warn", "Not looked yet.", "", [_act("net-scan", "Look now")])]
+        return [finding("netinv", title, "warn", M("netinv.none", "The box has not scanned the network yet."),
+                        actions=[action("net-scan", M("netinv.scan", "Scan the network"))])]
     inv = _json_or(p)
     if not isinstance(inv, dict):
-        return [_f("netinv", "Network inventory", "warn", "The last scan cannot be read.", "", [_act("net-scan", "Look again")])]
+        return [finding("netinv", title, "warn", M("netinv.unreadable", "The last scan cannot be read."),
+                        actions=[action("net-scan", M("netinv.scan-again", "Scan again"))])]
     age = time.time() - float(inv.get("at") or 0)
-    when = f" (as of a look {int(age // 3600)} h ago)" if age > 6 * 3600 else ""
-    out = [_f(f"net:{h['id']}", h["title"], h["status"], h["detail"] + when, h.get("fix", ""))
+    old = [M("netinv.age", {"one": "This is from a scan {n} hour ago.", "other": "This is from a scan {n} hours ago."},
+             n=int(age // 3600))] if age > 6 * 3600 else []
+    # The inventory's own words (netinv.py), passed on as they are.
+    out = [finding(f"net:{h['id']}", h["title"], h["status"], h["detail"], fix=h.get("fix") or None, notes=old)
            for h in inv.get("hazards") or [] if h.get("status") in ("warn", "problem")]
     if age > 24 * 3600:
-        out.append(_f("netinv", "Network inventory", "warn", f"The last look at the network was {int(age // 86400)} days ago.", "",
-                      [_act("net-scan", "Look again")]))
+        out.append(finding("netinv", title, "warn",
+                           M("netinv.old", {"one": "The last scan of the network was {n} day ago.",
+                                            "other": "The last scan of the network was {n} days ago."}, n=int(age // 86400)),
+                           actions=[action("net-scan", M("netinv.scan-again", "Scan again"))]))
     return out
 
 
@@ -814,72 +933,95 @@ def check_hotspot():
     out = []
     chans = ap.channels_now(run)
     want = chans.get(plan.get("uplink")) if plan.get("follows_uplink") else plan.get("channel")
+    title = M("hotspot-iface.title", "Hotspot interface")
+    again = M("hotspot.toggle.fix", "On Network, Hotspot, switch the hotspot off and on again.")
     if iface not in chans:
-        out.append(_f("hotspot-iface", "Hotspot interface", "problem", f"The hotspot should be on {iface}, but {iface} is not on the box.",
-                      "Network → the hotspot: switch it off and on again"))
+        out.append(finding("hotspot-iface", title, "problem",
+                           M("hotspot-iface.missing", "The hotspot should be on {iface}, but {iface} is not on the box.", iface=iface),
+                           fix=again, go=GO_HOTSPOT))
     elif chans.get(iface) != want:
-        out.append(_f("hotspot-iface", "Hotspot interface", "warn",
-                      f"{iface} is on channel {chans.get(iface)}, not {want}" + (" (the WiFi link's)" if plan.get("follows_uplink") else "") + ".",
-                      "Network → the hotspot: switch it off and on again"))
+        out.append(finding("hotspot-iface", title, "warn",
+                           M("hotspot-iface.channel-follows", "{iface} is on channel {now}, not on the WiFi link's channel {want}.",
+                             iface=iface, now=chans.get(iface), want=want) if plan.get("follows_uplink") else
+                           M("hotspot-iface.channel", "{iface} is on channel {now}, not {want}.", iface=iface, now=chans.get(iface), want=want),
+                           fix=again, go=GO_HOTSPOT))
     else:
-        out.append(_f("hotspot-iface", "Hotspot interface", "ok", f"{iface} on channel {want}: {plan.get('text', '')}"))
+        out.append(finding("hotspot-iface", title, "ok", M("hotspot-iface.ok", "{iface} is on channel {channel}.", iface=iface, channel=want),
+                           notes=[plan["text"]] if plan.get("text") else []))
     if plan.get("backend") == "hostapd":
         if run("systemctl", "is-active", "--quiet", ap.HOSTAPD_UNIT).returncode:
-            out.append(_f("hotspot-ap", "Hotspot access point (hostapd)", "problem", "hostapd is not running.",
-                          f"journalctl -u {ap.HOSTAPD_UNIT} -n 30", [_act(f"unit-restart:{ap.HOSTAPD_UNIT}", "Start it again")]))
+            out.append(finding("hotspot-ap", M("hotspot-ap.title-hostapd", "Hotspot access point (hostapd)"), "problem",
+                               M("hotspot-ap.hostapd", "hostapd is not running."), M("hotspot-ap.why", "Devices cannot join the hotspot."),
+                               commands=[f"journalctl -u {ap.HOSTAPD_UNIT} -n 30"],
+                               actions=[action(f"unit-restart:{ap.HOSTAPD_UNIT}", RESTART)]))
     else:
         act = run("nmcli", "-t", "-f", "NAME", "connection", "show", "--active").stdout or ""
         if ap.CONNECTION not in act.split():
-            out.append(_f("hotspot-ap", "Hotspot access point (NetworkManager)", "problem", f"The connection {ap.CONNECTION} is not active.",
-                          f"nmcli connection up {ap.CONNECTION}"))
+            out.append(finding("hotspot-ap", M("hotspot-ap.title-nm", "Hotspot access point (NetworkManager)"), "problem",
+                               M("hotspot-ap.nm", "The connection {name} is not active.", name=ap.CONNECTION),
+                               M("hotspot-ap.why", "Devices cannot join the hotspot."),
+                               M("hotspot-ap.nm.fix", "Bring the connection up."), commands=[f"nmcli connection up {ap.CONNECTION}"]))
     if run("systemctl", "is-active", "--quiet", ap.DNSMASQ_UNIT).returncode:
-        out.append(_f("hotspot-dns", "Hotspot DHCP and names", "problem", "dnsmasq is not running. New guests get no address.",
-                      f"journalctl -u {ap.DNSMASQ_UNIT} -n 30", [_act(f"unit-restart:{ap.DNSMASQ_UNIT}", "Start it again")]))
+        out.append(finding("hotspot-dns", M("hotspot-dns.title", "Hotspot DHCP and names"), "problem",
+                           M("hotspot-dns.stopped", "dnsmasq is not running."),
+                           M("hotspot-dns.why", "New guests get no address. A device that has one already can keep it until it expires."),
+                           commands=[f"journalctl -u {ap.DNSMASQ_UNIT} -n 30"], actions=[action(f"unit-restart:{ap.DNSMASQ_UNIT}", RESTART)]))
     if not rec.get("confirmed", True):
-        out.append(_f("hotspot-confirm", "Hotspot waiting to be kept", "warn",
-                      "It took the box's WiFi link: press Keep it from the hotspot, or the link comes back by itself.", ""))
+        out.append(finding("hotspot-confirm", M("hotspot-confirm.title", "Hotspot waiting to be kept"), "warn",
+                           M("hotspot-confirm.waiting", "The hotspot took the box's WiFi link."),
+                           fix=M("hotspot-confirm.fix", "From a device on the hotspot, select Keep it. If nobody does, "
+                                                        "the box's WiFi link comes back by itself.")))
     return out
 
 
 def check_web():
     web = option(install_options(), "--web", "nginx") or "nginx"
+    title = M("web-config.title", "Web server configuration")
     if web == "nginx" and shutil.which("nginx"):
         r = run("nginx", "-t")
     elif web == "caddy" and shutil.which("caddy"):
         r = run("caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile",
                 env=dict(os.environ, HOME=os.environ.get("HOME", "/root")))
     else:
-        return [_f("web-config", "Web server config", "problem", f"{web} is not installed.",
-                   "Run the installer again (--web nginx or --web caddy).", [RERUN])]
+        return [finding("web-config", title, "problem", M("web-config.missing", "{web} is not installed.", web=web),
+                        fix=M("web-config.missing.fix", "Run the installer again, with --web nginx or --web caddy."), actions=[RERUN])]
     if r.returncode:
-        lines = [l for l in (r.stderr + r.stdout).splitlines() if re.search(r"emerg|error|Error", l)][:3]
-        return [_f("web-config", "Web server config", "problem", f"{web} rejects its configuration: " + " | ".join(lines)[:400],
-                   "If the error is in irate-box's site, the installer rewrites it. If the error is in an administrator's own configuration, "
-                   "correct that file and reload.", [RERUN])]
-    return [_f("web-config", "Web server config", "ok", f"{web} accepts its configuration.")]
+        lines = [l[:200] for l in (r.stderr + r.stdout).splitlines() if re.search(r"emerg|error|Error", l)][:3]
+        return [finding("web-config", title, "problem", M("web-config.rejected", "{web} rejects its configuration.", web=web),
+                        fix=M("web-config.rejected.fix", "If the error is in irate-box's site, run the installer again, which writes the "
+                                                         "site again. If the error is in your own configuration, correct that file and "
+                                                         "reload {web}.", web=web),
+                        evidence=lines, actions=[RERUN])]
+    return [finding("web-config", title, "ok", M("web-config.ok", "{web} accepts its configuration.", web=web))]
 
 
 def check_hub():
+    title = M("hub.title", "Hub server")
     try:
         with urllib.request.urlopen("http://127.0.0.1:8000/status", timeout=8) as r:
             json.load(r)
-        return [_f("hub", "The hub", "ok", "Answers on 127.0.0.1:8000.")]
+        return [finding("hub", title, "ok", M("hub.ok", "It answers on 127.0.0.1:8000."))]
     except (OSError, ValueError) as exc:
-        return [_f("hub", "The hub", "problem", f"Does not answer on 127.0.0.1:8000 ({exc}).",
-                   "journalctl -u irate-box -n 50; systemctl restart irate-box",
-                   [_act("unit-restart:irate-box.service", "Start it again")])]
+        return [finding("hub", title, "problem", M("hub.down", "It does not answer on 127.0.0.1:8000."),
+                        M("hub.down.why", "The hub and the administration pages cannot open while it does not answer."),
+                        M("hub.down.fix", "Read its log, then start it again."),
+                        commands=["journalctl -u irate-box -n 50", "systemctl restart irate-box"], evidence=[str(exc)[:200]],
+                        actions=[action("unit-restart:irate-box.service", RESTART)])]
 
 
 def check_space():
     out = []
-    for label, path, need in (("Space on the system card", Path("/"), 300), ("Space for the hub's state", STATE, 200)):
+    for fid_title, path, need in ((M("space.system.title", "Space on the system card"), Path("/"), 300),
+                                  (M("space.state.title", "Space for the hub's state"), STATE, 200)):
         if not path.exists():
             continue
         free = shutil.disk_usage(path).free >> 20
         if free < need:
-            out.append(_f(f"space:{path}", label, "problem", f"{free} MB free in {path}.",
-                          "Free some: old books (Books), saved work, build runs (Git → Builds), "
-                          "journalctl --vacuum-size=16M."))
+            out.append(finding(f"space:{path}", fid_title, "problem", M("space.low", "Only {mb} MB is free.", mb=free),
+                               M("space.low.why", "With less than {need} MB free, installs, updates and logs can fail.", need=need),
+                               M("space.low.fix", "Delete what is no longer needed: old books on Books, saved work, or build runs on Git, Builds. "
+                                                  "You can also make the journal smaller."),
+                               commands=["journalctl --vacuum-size=16M"], evidence=[str(path)], go=GO_BOOKS))
     return out
 
 
@@ -899,11 +1041,14 @@ def check_builds(now=None):
                 waiting.append(job)
     if waiting:
         held = (STATE / "factory-paused").exists()
-        out.append(_f("builds-waiting", "Builds waiting", "warn",
-                      f"{len(waiting)} build{'s have' if len(waiting) != 1 else ' has'} waited over a day"
-                      + (" (the Firmware Factory is paused)." if held else "."),
-                      "Firmware Factory: resume, or cancel what is no longer wanted." if held else
-                      "Is the builder running (irate-box-ci)? A long build delays the rest: Git → Builds and the Firmware Factory say what is under way."))
+        out.append(finding("builds-waiting", M("builds-waiting.title", "Builds waiting"), "warn",
+                           M("builds-waiting.count", {"one": "{n} build has waited for more than a day.",
+                                                "other": "{n} builds have waited for more than a day."}, n=len(waiting)),
+                           fix=M("builds.paused.fix", "On the Firmware Factory, resume the queue, or cancel what is no longer wanted.") if held else
+                           M("builds-waiting.fix", "Check that the builder, irate-box-ci, is running. A long build delays the rest. "
+                                                   "Git, Builds and the Firmware Factory show what is running."),
+                           notes=[M("builds.paused", "The Firmware Factory is paused.")] if held else [],
+                           commands=[] if held else ["systemctl status irate-box-ci"], go=GO_FACTORY if held else GO_BUILDS))
     families = {}
     runs = ci_root / "runs" / "firmware-factory"
     for st in sorted(runs.glob("*/status.json"), key=lambda p: int(p.parent.name) if p.parent.name.isdigit() else 0) if runs.is_dir() else []:
@@ -915,11 +1060,13 @@ def check_builds(now=None):
             families.setdefault(r["family"], []).append(r["state"])
     failing = {fam: len(states) for fam, states in sorted(families.items()) if len(states) >= 2 and "passed" not in states}
     if failing:
-        said = ", ".join(f"{fam} ({n})" for fam, n in failing.items())
-        out.append(_f("builds-families", "Firmware builds that always fail", "warn",
-                      f"Every build here has failed for {'this family' if len(failing) == 1 else 'these families'}: {said}.",
-                      "Open a failed one's log (Firmware Factory, Built): a toolchain PlatformIO has no build of for this board's "
-                      "processor, or one it could not download, fails every target of the family."))
+        out.append(finding("builds-families", M("builds-families.title", "Firmware builds that always fail"), "warn",
+                           M("builds-families.failing", {"one": "Every build here has failed for this family.",
+                                                 "other": "Every build here has failed for these families."}, n=len(failing)),
+                           M("builds-families.why", "A possible cause: PlatformIO has no toolchain for this board's processor, or could not "
+                                                    "download one. That fails every target of the family. Only the log can confirm it."),
+                           M("builds-families.fix", "On the Firmware Factory, under Built, open the log of a failed build."),
+                           evidence=[f"{fam} ({n})" for fam, n in failing.items()], go=GO_FACTORY))
     used = 0
     for f in ci_root.rglob("*") if ci_root.is_dir() else []:
         try:
@@ -930,10 +1077,14 @@ def check_builds(now=None):
     total = shutil.disk_usage(STATE).total if STATE.exists() else 0
     if used and total:
         share = used / total
-        out.append(_f("builds-disk", "Space used by firmware builds", "warn" if share > 0.2 else "ok",
-                      f"{used >> 20} MB ({share:.0%} of the card): runs, and the builder's tools and caches.",
-                      "Git → Builds: delete old runs (the Firmware Factory keeps each target's two newest). "
-                      "The builder's PlatformIO tools are in /var/lib/hub/ci/home." if share > 0.2 else ""))
+        big = share > 0.2
+        out.append(finding("builds-disk", M("builds-disk.title", "Space used by firmware builds"), "warn" if big else "ok",
+                           M("builds-disk.used", "Builds use {mb} MB, {share} of the card: runs, and the builder's tools and caches.",
+                             mb=used >> 20, share=f"{share:.0%}"),
+                           fix=M("builds-disk.fix", "On Git, Builds, delete old runs. The Firmware Factory keeps the two newest of each target.")
+                           if big else None,
+                           notes=[M("builds-disk.tools", "The builder's PlatformIO tools are in {folder}.", folder=str(ci_root / "home"))] if big else [],
+                           go=GO_BUILDS if big else None))
     return out
 
 
@@ -1014,8 +1165,12 @@ def latest_known_time():
     return max(marks) if marks else (None, None)
 
 
-SET_CLOCK = _act("clock-set", "Set the clock from this browser",
-                 "Set the box's clock to this device's time? Use it only if this device's own clock is right.")
+SET_CLOCK = action("clock-set", M("clock.set", "Set the clock from this browser"),
+                   M("clock.set.confirm", "Set the box's clock to this device's time? Use it only if this device's own clock is right."))
+# What latest_known_time() names, for the page.
+KNOWN_TIME = {"the last install": M("clock.mark.install", "the last install"), "the installed code": M("clock.mark.code", "the installed code"),
+              "the last health check": M("clock.mark.health", "the last health check"),
+              "the watchdog's report": M("clock.mark.uplink", "the watchdog's report")}
 
 
 SOURCE_STATUS = {"in-use": "ok", "answering": "ok", "not-answering": "problem", "not-found": "warn", "unknown": "ok"}
@@ -1032,145 +1187,171 @@ def check_sources():
         rows = clock.source_states(rec)
     except Exception:  # noqa: BLE001 - the clock's own finding still goes out
         return []
-    said = {"in-use": "in use", "answering": "answering, but not used now (another source is better)",
-            "not-answering": "selected, but not answering", "not-found": "selected, but not found",
-            "unknown": "selected (systemd-timesyncd says only the server it uses now, and it is another)"}
-    fixes = {"gps": "Connect the GPS receiver (USB or the UART), and give it a view of the sky.",
-             "module": "Check the module on the Clock page (its finding above), and that irate-box-rtc-feed.service runs.",
-             "local": "Check that the server is on, on this network, and serves the time (UDP port 123). Or change it on the Clock page.",
-             "pool": "The box needs the internet for the pool. Or select another source on the Clock page."}
+    said = {"in-use": M("clock-source.in-use", "In use."),
+            "answering": M("clock-source.answering", "It answers, but the box does not use it now, because another source is better."),
+            "not-answering": M("clock-source.not-answering", "Selected, but it does not answer."),
+            "not-found": M("clock-source.not-found", "Selected, but not found."),
+            "unknown": M("clock-source.unknown", "Selected. systemd-timesyncd names only the server that it uses now, and that is another one.")}
+    fixes = {"gps": M("clock-source.gps.fix", "Connect the GPS receiver, by USB or the UART, and give it a view of the sky."),
+             "module": M("clock-source.module.fix", "Check the clock module's finding above, and that irate-box-rtc-feed.service runs."),
+             "local": M("clock-source.local.fix", "Check that the server is on, on this network, and serves the time on UDP port 123. "
+                                                  "Or change it on the Clock page."),
+             "pool": M("clock-source.pool.fix", "The box needs the internet for the pool. Or select another source on the Clock page.")}
     out = []
     for r in rows:
         st = SOURCE_STATUS[r["state"]]
-        out.append(_f(f"clock-source:{r['source']}", f"Time source: {r['name']}", st, f"{r['name'][0].upper() + r['name'][1:]}: "
-                      f"{said[r['state']]}.", fixes[r["source"]] if st != "ok" else ""))
+        out.append(finding(f"clock-source:{r['source']}", M("clock-source.title", "Time source: {name}", name=r["name"]), st, said[r["state"]],
+                           fix=fixes[r["source"]] if st != "ok" else None, go=GO_CLOCK if st != "ok" else None))
     return out
 
 
 def check_clock():
     c = clock_facts()
     now = time.time()
-    tz = c["timezone"] or "unknown"
+    tz = M("clock.tz", "Time zone: {tz}.", tz=c["timezone"] or "unknown")
+    title = M("clock.title", "Clock")
     out = []
-    # Certainly wrong: earlier than something irate-box wrote with this same clock.
+    # Probably wrong: earlier than something irate-box wrote with this same clock.
     newest, what = latest_known_time()
     if newest and now < newest - 300:
-        out.append(_f("clock-behind", "Clock", "problem",
-                      f"It says {time.strftime('%Y-%m-%d %H:%M', time.localtime(now))}, which is {_human_secs(newest - now)} "
-                      f"before {what} was written, so the clock is behind.",
-                      "Use the button to set it from this browser's clock. Or run sudo date -s 'YYYY-MM-DD HH:MM'. "
-                      "If the box is online, the network time service sets the clock.", [SET_CLOCK]))
-    boot = ""
+        out.append(finding("clock-behind", title, "problem",
+                           M("clock.behind", "The clock says {now}. That is {gap} before {what} was written, so the clock is probably behind.",
+                             now=when(now), gap=_human_secs(newest - now), what=KNOWN_TIME.get(what, what)),
+                           fix=M("clock.behind.fix", "Set it from this browser's clock with the button, or with sudo date -s and the right time. "
+                                                     "If the box is online, the network time service sets it."),
+                           actions=[SET_CLOCK]))
+    boot = []
     if c["steps"]:
         total = sum(c["steps"])
-        boot = (f" At this boot it started {_human_secs(total)} {'behind' if total > 0 else 'ahead'}"
-                + (" (restored from fake-hwclock's last save: the box keeps no time while off)" if c["fake"] and not c["rtcs"] else "")
-                + " and was put right once the network was reached.")
+        boot.append(M("clock.boot-behind", "At this boot it started {gap} behind, and was corrected when the box reached the network.",
+                      gap=_human_secs(total)) if total > 0 else
+                    M("clock.boot-ahead", "At this boot it started {gap} ahead, and was corrected when the box reached the network.",
+                      gap=_human_secs(total)))
+        if c["fake"] and not c["rtcs"]:
+            boot.append(M("clock.boot.fake", "It came from fake-hwclock's last save, because the box keeps no time while it is off."))
     out += check_module()
     out += check_sources()
+    daemon_idle = [M("clock.daemon-offline", "{daemon} runs, but it has no time server to ask.", daemon=c["daemon"])] if c["daemon"] else []
     if c["synced"]:
-        by = (f"Set by {c['daemon']}" + (f" from {c['sources']} time servers" if c["sources"] else "") if c["daemon"]
-              else "Synchronised, according to the kernel (no time service seen here. A host or container can keep the time)")
-        out.append(_f("clock", "Clock", "ok", f"{by}. Time zone {tz}.{boot}"))
+        by = (M("clock.synced-by-n", {"one": "{daemon} sets it from {n} time server.", "other": "{daemon} sets it from {n} time servers."},
+                n=c["sources"], daemon=c["daemon"]) if c["daemon"] and c["sources"] else
+              M("clock.synced-by", "{daemon} sets it.", daemon=c["daemon"]) if c["daemon"] else
+              M("clock.synced-kernel", "The kernel says that it is synchronised. No time service runs here. A host or a container can keep the time."))
+        out.append(finding("clock", title, "ok", by, notes=[tz] + boot))
         return out
     if rtc.FROM_RTC.exists():
-        out.append(_f("clock", "Clock", "ok", f"Set from the clock module at this boot (no network time to check it "
-                      f"against); time zone {tz}."))
+        out.append(finding("clock", title, "ok", M("clock.from-module", "The clock module set it at this boot. No network time was available "
+                                                                        "to check it against."), notes=[tz]))
         return out
     if c["rtcs"]:
-        r = c["rtcs"][0]
-        out.append(_f("clock", "Clock", "warn",
-                      f"Kept by the hardware clock ({r['name']}), not checked against the network"
-                      + (f" ({c['daemon']} has no server)" if c["daemon"] else " (no network time service)")
-                      + f"; time zone {tz}. A hardware clock drifts, and a flat battery resets it.",
-                      "If it looks wrong: the button sets it from this browser's clock.", [SET_CLOCK]))
+        out.append(finding("clock", title, "warn",
+                           M("clock.hw", "The hardware clock ({name}) keeps it. Nothing checks it against the network.", name=c["rtcs"][0]["name"]),
+                           M("clock.hw.why", "A hardware clock drifts, and a flat battery resets it."),
+                           M("clock.hw.fix", "If it looks wrong, set it from this browser's clock with the button."),
+                           notes=(daemon_idle or [M("clock.no-daemon", "No network time service runs.")]) + [tz], actions=[SET_CLOCK]))
         return out
-    since = ""
-    if c["fake_saved"]:
-        since = f" fake-hwclock last saved it at {time.strftime('%Y-%m-%d %H:%M', time.localtime(c['fake_saved']))}."
     if c["fake"]:
-        out.append(_f("clock", "Clock", "warn",
-                      "Not set since this boot, and the box has no clock that runs while it is off. The time was restored from "
-                      "the last fake-hwclock save, so it is behind by the time that the box was off."
-                      + since + (f" {c['daemon']} is running but has no time server to ask (offline)." if c["daemon"] else "")
-                      + ("" if c["fake_saver"] else " fake-hwclock is not saving the time regularly, so even that is old.")
-                      + f" Time zone {tz}.",
-                      "If the box is online, it sets the clock. If it is offline, use the button to set it from this browser's clock "
-                      "(your phone or laptop knows the time). Or run sudo date -s 'YYYY-MM-DD HH:MM'.", [SET_CLOCK]))
+        notes = ([M("clock.fake.saved", "fake-hwclock last saved it on {at}.", at=when(c["fake_saved"]))] if c["fake_saved"] else []) + daemon_idle
+        if not c["fake_saver"]:
+            notes.append(M("clock.fake.no-saver", "fake-hwclock does not save the time regularly, so even that time is old."))
+        out.append(finding("clock", title, "warn",
+                           M("clock.fake", "Nothing has set the clock since this boot, and the box has no clock that runs while it is off. "
+                                           "The time came from the last fake-hwclock save."),
+                           M("clock.fake.why", "So it is behind by the time that the box was off."),
+                           M("clock.fake.fix", "If the box is online, it sets the clock. If it is offline, set it from this browser's clock "
+                                               "with the button. Your phone or laptop knows the time."),
+                           notes=notes + [tz], actions=[SET_CLOCK]))
     else:
-        out.append(_f("clock", "Clock", "problem",
-                      "No clock that runs while the box is off, no fake-hwclock to restore the last time, and not set from "
-                      "the network: a boot can start at the image's build date or at 1970."
-                      + (f" {c['daemon']} is running but has no time server to ask." if c["daemon"] else ""),
-                      "Install fake-hwclock (apt-get install fake-hwclock) so a boot at least starts where the last one "
-                      "stopped. Until then, use the button to set the clock from this browser.", [SET_CLOCK]))
+        out.append(finding("clock", title, "problem",
+                           M("clock.none", "The box has no clock that runs while it is off, no fake-hwclock to restore the last time, "
+                                           "and no network time."),
+                           M("clock.none.why", "A boot can start at an old time, such as the image's build date."),
+                           M("clock.none.fix", "Install fake-hwclock, so that a boot starts at least where the last one stopped. "
+                                               "Until then, set the clock from this browser with the button."),
+                           notes=daemon_idle, commands=["apt-get install fake-hwclock"], actions=[SET_CLOCK]))
     return out
 
 
 def check_module():
     """The I2C clock module (rtc.py): the one set up, or what a search found, or the offer to look."""
     st = rtc.status()
+    title = M("rtc.title", "Clock module")
     if st:
         cfg = st["config"]
-        where = f"{cfg['label']} on bus {cfg['bus']} at {cfg['addr']} ({'kernel driver' if cfg['mode'] == 'kernel' else 'own driver'})"
-        remove = _act("rtc-remove", "Stop using it", "Stop using the clock module? The box goes back to fake-hwclock.")
+        at = {"chip": cfg["label"], "bus": cfg["bus"], "addr": cfg["addr"]}
+        driver = M("rtc.driver-kernel", "It runs through the kernel driver.") if cfg["mode"] == "kernel" else \
+            M("rtc.driver-own", "It runs through irate-box's own driver.")
+        remove = action("rtc-remove", M("rtc.remove", "Stop using it"),
+                        M("rtc.remove.confirm", "Stop using the clock module? The box goes back to fake-hwclock."))
         if st.get("unreachable"):
-            return [_f("rtc", "Clock module", "problem", f"{where} does not answer: {st['why']}.",
-                       "Check the module is seated and wired to that bus. If it was taken off on purpose, stop using it.",
-                       [remove])]
+            return [finding("rtc", title, "problem", M("rtc.unreachable", "The {chip} on bus {bus} at {addr} does not answer.", **at),
+                            fix=M("rtc.unreachable.fix", "Check that the module is seated and wired to that bus. "
+                                                         "If someone removed it on purpose, stop using it."),
+                            notes=[driver], evidence=[st["why"]], actions=[remove])]
         out = []
         if st["why"]:
-            out.append(_f("rtc", "Clock module", "problem", f"{where}: {st['why']}.",
-                          "Replace the battery if it keeps happening, then set the box's clock (it sets the module too).",
-                          [SET_CLOCK, remove]))
+            out.append(finding("rtc", title, "problem", M("rtc.problem", "The {chip} on bus {bus} at {addr} has a problem.", **at),
+                               fix=M("rtc.problem.fix", "If it keeps happening, check the battery and replace it. "
+                                                        "Then set the box's clock, which sets the module too."),
+                               notes=[driver], evidence=[st["why"]], actions=[SET_CLOCK, remove]))
         else:
             drift = st["drift"] or 0
             if abs(drift) > 5 and st["trusted"]:
-                out.append(_f("rtc", "Clock module", "warn",
-                              f"{where} is {_human_secs(drift)} {'behind' if drift > 0 else 'ahead'} of the system clock "
-                              f"({st['trusted']}).", "Write the system time to it.",
-                              [_act("rtc-save", "Set the module from the system clock")]))
+                out.append(finding("rtc", title, "warn",
+                                   M("rtc.drift-behind", "The {chip} on bus {bus} at {addr} is {gap} behind the system clock.",
+                                     gap=_human_secs(drift), **at) if drift > 0 else
+                                   M("rtc.drift-ahead", "The {chip} on bus {bus} at {addr} is {gap} ahead of the system clock.",
+                                     gap=_human_secs(drift), **at),
+                                   fix=M("rtc.save.fix", "Write the system time to it."), notes=[driver], evidence=[str(st["trusted"])],
+                                   actions=[action("rtc-save", M("rtc.save", "Set the module from the system clock"))]))
             else:
-                out.append(_f("rtc", "Clock module", "ok", f"{where}: within {_human_secs(drift)} of the system clock; it keeps "
-                              "the time while the box is off."))
+                out.append(finding("rtc", title, "ok",
+                                   M("rtc.ok", "The {chip} on bus {bus} at {addr} is within {gap} of the system clock. It keeps the time "
+                                               "while the box is off.", gap=_human_secs(drift), **at), notes=[driver]))
         for n in st.get("notes", []):
-            out.append(_f("rtc-note", "Clock module", "warn", n.capitalize() + ".",
-                          "Setting it up again turns on the battery switch. This page never changes charging."
-                          if "INIEN" in n or "EOSC" in n else "Check which kind of cell the module has."))
+            out.append(finding("rtc-note", title, "warn", M("rtc.note", "The module reports a setting to check."),
+                               fix=M("rtc.note.battery-switch", "Setting it up again turns on the battery switch. This page never changes charging.")
+                               if "INIEN" in n or "EOSC" in n else M("rtc.note.cell", "Check which kind of cell the module has."),
+                               evidence=[n]))
         if st["units"].get("irate-box-rtc.service") != "active":
-            out.append(_f("rtc-unit", "Clock module", "warn", "Its boot unit has not run, so the next boot can fail to read it.",
-                          "systemctl start irate-box-rtc", [_act("unit-restart:irate-box-rtc.service", "Run it now")]))
+            out.append(finding("rtc-unit", title, "warn", M("rtc-unit.not-run", "Its boot unit has not run, so the next boot can fail to read the module."),
+                               commands=["systemctl start irate-box-rtc"], actions=[action("unit-restart:irate-box-rtc.service", RUN_NOW)]))
         return out
-    look = _act("rtc-find", "Look for a clock module")
+    look = action("rtc-find", M("rtc.find", "Look for a clock module"))
     try:
         found = json.loads(rtc.FOUND.read_text())
     except (OSError, ValueError):
         if list(Path("/sys/class/rtc").glob("rtc*")):
             return []  # the kernel has a hardware clock already; nothing to offer unless asked
-        return [_f("rtc", "Clock module", "warn", "No clock module set up. A battery-backed module on I2C (DS3231, RV-8803, "
-                   "RX8130 and others) lets the box keep its time while it is off.", "", [look])]
-    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(found["at"]))
+        return [finding("rtc", title, "warn", M("rtc.none", "No clock module is set up."),
+                        notes=[M("rtc.none.what", "A battery-backed module on I2C, such as a DS3231, RV-8803 or RX8130, lets the box keep "
+                                                  "its time while it is off.")], actions=[look])]
     if not found["found"]:
-        return [_f("rtc", "Clock module", "warn", f"None found on I2C (scanned {when}"
-                   + (")." if found["buses"] else ". No I2C bus is enabled on this board. An administrator can change this board setting, such as "
-                      "an Armbian overlay)."), "", [look])]
+        return [finding("rtc", title, "warn", M("rtc.not-found", "The box found no clock module on I2C. It looked on {at}.", at=when(found["at"])),
+                        notes=[] if found["buses"] else [M("rtc.no-bus", "No I2C bus is enabled on this board. An administrator can enable one "
+                                                                         "with a board setting, such as an Armbian overlay.")],
+                        actions=[look])]
     out = []
     for x in found["found"]:
-        what = f"{x['label']} on bus {x['bus']} at {x['addr']}"
+        at = {"chip": x["label"], "bus": x["bus"], "addr": x["addr"]}
         if not x["supported"]:
-            out.append(_f(f"rtc-found:{x['chip']}", "Clock module found", "warn",
-                          f"{what}, but this kernel has no driver for it and irate-box has no driver of its own yet.", "", [look]))
+            out.append(finding(f"rtc-found:{x['chip']}", M("rtc-found.title", "Clock module found"), "warn",
+                               M("rtc-found.unsupported", "There is a {chip} on bus {bus} at {addr}. This kernel has no driver for it, "
+                                                          "and irate-box has no driver of its own for it yet.", **at), actions=[look]))
             continue
-        how = f"the kernel driver {x['kernel']}" if x["kernel"] else "irate-box's own driver (this kernel has none for it)"
-        detail = f"{what}, not set up yet. It would run through {how}."
+        notes = [M("rtc-found.kernel", "It would run through the kernel driver {driver}.", driver=x["kernel"]) if x["kernel"] else
+                 M("rtc-found.own", "It would run through irate-box's own driver, because this kernel has none for it.")]
         if x["ambiguous"]:
-            detail += " Both chips that use this address fit what it answered. Select the one that is fitted."
+            notes.append(M("rtc-found.ambiguous", "Both chips that use this address fit its answer. Select the one that is fitted."))
         if x.get("time_lost"):
-            detail += f" Its time is not valid yet: {x['time_lost']}. Setting it up sets its time from the system clock."
-        out.append(_f(f"rtc-found:{x['chip']}:{x['bus']}", "Clock module found", "warn", detail,
-                      "Setting it up adds a boot unit that sets the clock from it, and an hourly save.",
-                      [_act(f"rtc-setup:{x['chip']}:{x['bus']}:{x['addr']}", f"Set it up as {x['label']}",
-                            f"Use the {x['label']} on bus {x['bus']} at {x['addr']} as the box's clock?")]))
+            notes.append(M("rtc-found.time-lost", "Its time is not valid yet. Setting it up sets its time from the system clock."))
+        out.append(finding(f"rtc-found:{x['chip']}:{x['bus']}", M("rtc-found.title", "Clock module found"), "warn",
+                           M("rtc-found.supported", "There is a {chip} on bus {bus} at {addr}. It is not set up yet.", **at),
+                           fix=M("rtc-found.fix", "Setting it up adds a boot unit that sets the clock from the module, and saves the time "
+                                                  "to it every hour."),
+                           notes=notes, evidence=[x["time_lost"]] if x.get("time_lost") else [],
+                           actions=[action(f"rtc-setup:{x['chip']}:{x['bus']}:{x['addr']}", M("rtc-found.setup", "Set it up as {chip}", chip=x["label"]),
+                                           M("rtc-found.setup.confirm", "Use the {chip} on bus {bus} at {addr} as the box's clock?", **at))]))
     return out
 
 
@@ -1218,12 +1399,15 @@ def check_usb_filesystems():
     """Which filesystems a USB stick may have for this box to read it (books, toolkits, imports)."""
     from irate_box.root import usbstick
     can = usbstick.readable()
-    words = lambda names: ", ".join(dict.fromkeys(usbstick.FS_WORDS[n] for n in sorted(names, key=lambda n: list(usbstick.FS_WORDS).index(n))))  # noqa: E731
+    words = lambda names: list(dict.fromkeys(usbstick.FS_WORDS[n] for n in sorted(names, key=lambda n: list(usbstick.FS_WORDS).index(n))))  # noqa: E731
     yes = [n for n, ok in can.items() if ok]
-    no = [n for n, ok in can.items() if not ok and not (n == "ntfs3" and can.get("ntfs")) and not (n == "ntfs" and can.get("ntfs3"))]
-    return [_f("usb-filesystems", "USB drives this box can read", "ok",
-               f"{words(yes)}." + (f" Not {words(no)}: this kernel has no driver for {'them' if len(no) > 1 else 'it'}." if no else ""),
-               "Use a drive formatted with one of the filesystems above." if no else "")]
+    no = words([n for n, ok in can.items() if not ok and not (n == "ntfs3" and can.get("ntfs")) and not (n == "ntfs" and can.get("ntfs3"))])
+    return [finding("usb-filesystems", M("usb-fs.title", "USB drives this box can read"), "ok",
+                    M("usb-fs.can", "This box can read {names}.", names=words(yes)),
+                    fix=M("usb-fs.fix", "Use a drive formatted with one of the filesystems that it can read.") if no else None,
+                    notes=[M("usb-fs.cannot", {"one": "It cannot read {names}: this kernel has no driver for it.",
+                                               "other": "It cannot read {names}: this kernel has no driver for them."},
+                             n=len(no), names=no)] if no else [])]
 
 
 def check_crashwatch(now=None):
@@ -1235,96 +1419,136 @@ def check_crashwatch(now=None):
     st = cw.status()
     s, out = st["settings"], []
     week = [c for c in st["crashes"] if c.get("detected", 0) > now - 7 * 86400]
+    title = M("crash-last.title", "The box stopped without shutting down")
     if week:
         last = week[-1]
-        ago = _human_secs(now - last["detected"])
-        lines = [l.strip() for l in last.get("last", "").splitlines()[:4] if l.strip()]
-        ev = "; ".join(f"{e['kind']}: {e['text']}" for e in last.get("events", [])[-2:])
-        out.append(_f("crash-last", "The box stopped without shutting down", "warn" if now - last["detected"] < 86400 else "ok",
-                      f"{len(week)} time{'s' if len(week) != 1 else ''} this week, the last found {ago} ago (a hang, a crash or the "
-                      f"power going). Its last snapshot: " + (" | ".join(lines) or "none: snapshots were off") + (f". Before it: {ev}." if ev else "."),
-                      f"sudo ls {cw.CRASHES}/{last['dir']}/  (snapshots.log, journal-previous-boot.log)"
-                      + ("" if s["watchdog"] or s["panic"] else ". If it froze, the hang settings below restart it by itself next time.")))
+        lines = [l.strip()[:200] for l in last.get("last", "").splitlines()[:4] if l.strip()]
+        ev = [f"{e['kind']}: {e['text']}"[:200] for e in last.get("events", [])[-2:]]
+        notes = [M("crash-last.files", "Its folder holds snapshots.log and journal-previous-boot.log.")]
+        if not lines:
+            notes.insert(0, M("crash-last.no-snapshot", "There is no snapshot: snapshots were off."))
+        out.append(finding("crash-last", title, "warn" if now - last["detected"] < 86400 else "ok",
+                           M("crash-last.count", {"one": "{n} time this week. The box found the last one {ago} ago.",
+                                            "other": "{n} times this week. The box found the last one {ago} ago."},
+                             n=len(week), ago=_human_secs(now - last["detected"])),
+                           M("crash-last.why", "A hang, a crash or a loss of power can each cause this."),
+                           None if s["watchdog"] or s["panic"] else
+                           M("crash-last.fix", "If it froze, the settings for a frozen box can restart it by itself next time."),
+                           notes=notes, commands=[f"sudo ls {cw.CRASHES}/{last['dir']}/"], evidence=lines + ev,
+                           go=None if s["watchdog"] or s["panic"] else _go("health-settings", RECOVERY, "hs-panic")))
     else:
-        out.append(_f("crash-last", "The box stopped without shutting down", "ok", "Not in the last week."))
+        out.append(finding("crash-last", title, "ok", M("crash-last.none", "Not in the last week.")))
     run = st["running"]
     fl = run.get("floods") or {}
     if fl:
         k, n = max(fl.items(), key=lambda x: x[1])
-        rate = n / max(run.get("flood_window", 3600), 30)
-        out.append(_f("crash-flood", "The kernel log", "warn",
-                      f"Flooded: {n} lines like \"{k}\" in the last {_human_secs(run.get('flood_window', 3600))}, about {rate:.1f} a second. "
-                      "A driver that logs this much wears the storage that the log is synced to and hides the lines that matter. Crash watch "
-                      "counts them and does not copy them.",
-                      "Often a driver's debug output: look for its module's debug parameter, or a newer driver. "
-                      "sudo dmesg | tail -50"))
-    radios = ", ".join(f"{i} ({r.get('product') or r.get('driver') or '?'})" for i, r in (run.get("radios") or {}).items()) or "none found"
+        window = run.get("flood_window", 3600)
+        out.append(finding("crash-flood", M("crash-flood.title", "The kernel log"), "warn",
+                           M("crash-flood.lines", "Flooded: {n} lines like this one in the last {window}, about {rate} a second.",
+                             n=n, window=_human_secs(window), rate=f"{n / max(window, 30):.1f}"),
+                           M("crash-flood.why", "A driver that logs this much wears the storage that the log is written to, and hides the "
+                                                "lines that matter. Crash watch counts them and does not copy them."),
+                           M("crash-flood.fix", "This is often a driver's debug output. Look for its module's debug parameter, or a newer driver."),
+                           commands=["sudo dmesg | tail -50"], evidence=[k[:200]]))
+    radios = [f"{i} ({r.get('product') or r.get('driver') or '?'})" for i, r in (run.get("radios") or {}).items()]
     # What crash watch saw; the old events of its own resets and reboots, from before it only recorded, said as they were.
     day = [e for e in st["events"] if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "driver-reset", "recovered", "reset", "reboot")]
-    detail = f"Watching: {radios}. Crash watch notes and files a failing radio; the uplink watchdog does the repairing."
-    if day:
-        detail += " In the last day: " + "; ".join(f"{time.strftime('%H:%M', time.localtime(e['at']))} {e['iface']} {e['kind']}: {e['text']}" for e in day[-4:]) + "."
     kept = [i for i in st.get("incidents", []) if i.get("at", 0) > now - 7 * 86400]
-    if kept:
-        detail += f" Kept as it happened: {len(kept)} this week, the last in {cw.CRASHES}/{kept[-1]['dir']}/ (snapshots.log, kernel.log)."
     failed = any(e.get("kind") in ("failed", "driver-reset") for e in day)
-    glance = (f"Watching {', '.join(run.get('radios') or {}) or 'no radio'}" + ("; it failed in the last day" if failed else "")
-              + (f"; {len(kept)} failure{'s' if len(kept) != 1 else ''} kept this week" if kept else "") + ".")
-    out.append(_f("crash-radio", "The WiFi radio", "warn" if failed else "ok", detail,
-                  "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver. "
-                  "What is done when it fails: Network → Connection settings → Failed radio." if failed else "",
-                  go=_go("net-watchdog-card", "Network → Failed radio", "up-wedge") if failed else None, glance=glance))
+    notes = [M("crash-radio.role", "Crash watch records a failing radio. The uplink watchdog does the repairs.")]
+    if kept:
+        notes.append(M("crash-radio.kept", {"one": "This week, {n} failure is kept as it happened. The last one is in {folder}.",
+                                            "other": "This week, {n} failures are kept as they happened. The last one is in {folder}."},
+                       n=len(kept), folder=f"{cw.CRASHES}/{kept[-1]['dir']}/"))
+    names = list(run.get("radios") or {}) or [M("crash-radio.no-radio", "no radio")]
+    glance = {(False, False): M("crash-radio.glance", "Watching {radios}.", radios=names),
+              (True, False): M("crash-radio.glance-failed", "Watching {radios}. It failed in the last day.", radios=names),
+              (False, True): M("crash-radio.glance-kept", {"one": "Watching {radios}. {n} failure kept this week.",
+                                                           "other": "Watching {radios}. {n} failures kept this week."}, n=len(kept), radios=names),
+              (True, True): M("crash-radio.glance-failed-kept", {"one": "Watching {radios}. It failed in the last day. {n} failure kept this week.",
+                                                                 "other": "Watching {radios}. It failed in the last day. {n} failures kept this week."},
+                              n=len(kept), radios=names)}[(failed, bool(kept))]
+    out.append(finding("crash-radio", M("crash-radio.title", "The WiFi radio"), "warn" if failed else "ok",
+                       M("crash-radio.watching", "Crash watch watches {radios}.", radios=radios) if radios else
+                       M("crash-radio.none", "Crash watch finds no radio to watch."),
+                       M("crash-radio.why", "A radio that keeps failing often has a power problem, such as a weak supply or a long USB lead, "
+                                            "or a driver problem.") if failed else None,
+                       M("crash-radio.fix", "Set what the box does when the radio fails on Network, Connection settings, Failed radio.")
+                       if failed else None,
+                       notes=notes,
+                       evidence=[f"{time.strftime('%H:%M', time.localtime(e['at']))} {e['iface']} {e['kind']}: {e['text']}"[:200] for e in day[-4:]],
+                       go=_go("net-watchdog-card", M("go.failed-radio", "Network → Failed radio"), "up-wedge") if failed else None, glance=glance))
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
-    on = [w for w, v in (("restarts after a kernel panic or lockup", s["panic"]), ("a watchdog restarts it if it freezes", s["watchdog"])) if v]
-    said = "; ".join(on).capitalize() + "." if on else "Nothing restarts it: a frozen box waits for someone to pull the plug."
+    said = ([M("crash-hang.panic", "The box restarts after a kernel panic or lockup.")] if s["panic"] else []) + \
+        ([M("crash-hang.watchdog", "A watchdog restarts the box if it freezes.")] if s["watchdog"] else [])
     if s["watchdog"] and pending:
-        said += " The board's watchdog starts working after the next restart."
+        said.append(M("crash-hang.pending", "The board's watchdog starts working after the next restart."))
     elif wd == "switched-off" and not s["watchdog"]:
-        said += " The board has its own watchdog, switched off in its device tree. Turning the watchdog on switches it on."
+        said.append(M("crash-hang.switched-off", "The board has its own watchdog, switched off in its device tree. "
+                                                 "Turning on the watchdog switches it on."))
     elif not wd:
-        said += " This kernel has no watchdog (neither the board's nor softdog)."
-    out.append(_f("crash-hang", "A frozen box", "warn" if week and not on else "ok", said,
-                  "Each restart is filed as a crash, with what the box was doing, as far as the box can record it. "
-                  "An automatic restart can lose unsaved data and stop running jobs. Set on Recovery and monitoring.", go=_go("health-settings", "Recovery and monitoring", "hs-panic")))
-    out.append(_f("crash-snapshots", "Crash watch's snapshots", "ok" if s["snapshots"] else "warn",
-                  f"Every 30 s to {cw.SNAP}, synced: what a crash is explained by." if s["snapshots"] else
-                  "Off: a crash leaves only what the journal synced last (on this image's RAM log, up to an hour gone).",
-                  "Set on Recovery and monitoring.", go=_go("health-settings", "Recovery and monitoring", "hs-snapshots")))
+        said.append(M("crash-hang.no-watchdog", "This kernel has no watchdog: neither the board's own nor softdog."))
+    on = s["panic"] or s["watchdog"]
+    out.append(finding("crash-hang", M("crash-hang.title", "A frozen box"), "warn" if week and not on else "ok",
+                       said[0] if on else M("crash-hang.none", "Nothing restarts it. A frozen box waits until someone switches it off and on."),
+                       M("crash-hang.why", "An automatic restart can lose unsaved data and stop running jobs. The box files each restart as a "
+                                           "crash, with what it was doing, as far as it could record it."),
+                       M("crash-hang.fix", "Set it on Recovery and monitoring."),
+                       notes=said[1:] if on else said, go=_go("health-settings", RECOVERY, "hs-panic")))
+    out.append(finding("crash-snapshots", M("crash-snap.title", "Crash watch's snapshots"), "ok" if s["snapshots"] else "warn",
+                       M("crash-snap.on", "Every 30 s, to {path}, written to storage at once. They can explain a crash.", path=str(cw.SNAP))
+                       if s["snapshots"] else M("crash-snap.off", "Off. A crash leaves only what the journal last wrote to storage."),
+                       None if s["snapshots"] else M("crash-snap.off.why", "This image keeps its journal in RAM, so that can be up to an hour old."),
+                       None if s["snapshots"] else M("crash-snap.fix", "Turn them on on Recovery and monitoring."),
+                       go=_go("health-settings", RECOVERY, "hs-snapshots")))
     return out
 
 
-WD_WORDS = {"hardware": "the board's", "softdog": "the kernel's softdog", "switched-off": "the board's, from the next restart"}
+WD_WORDS = {"hardware": M("wd.hardware", "the board's own"), "softdog": M("wd.softdog", "the kernel's softdog"),
+            "switched-off": M("wd.switched-off", "the board's own, from the next restart")}
+ON, OFF = M("chip.on", "On"), M("chip.off", "Off")
+STAY_STOPPED = M("hs.stay-stopped", "Stay stopped")
 
 
 def setting_groups(s, wd):
     """The doctor's own settings as choice groups for its settings card: {key, label, desc, current, options:
     [{value, label, choice (health.fix's), confirm?}]}, the safest first. The watchdog only where there is one."""
     groups = [
-        {"key": "snapshots", "label": "Crash watch's snapshots", "desc": "Every 30 s, what the box was doing, kept on its own storage: what explains a crash.",
+        {"key": "snapshots", "label": M("hs.snapshots", "Crash watch's snapshots"),
+         "desc": M("hs.snapshots.desc", "Every 30 s, what the box was doing, kept on its own storage. It can explain a crash."),
          "current": "on" if s["snapshots"] else "off", "options": [
-             {"value": "on", "label": "On", "choice": "crashwatch-snapshots:on"},
-             {"value": "off", "label": "Off", "choice": "crashwatch-snapshots:off"}]},
-        {"key": "panic", "label": "A kernel panic, oops or lockup", "desc": "Nothing in user space can act on a frozen kernel.",
+             {"value": "on", "label": ON, "choice": "crashwatch-snapshots:on"},
+             {"value": "off", "label": OFF, "choice": "crashwatch-snapshots:off"}]},
+        {"key": "panic", "label": M("hs.panic", "A kernel panic, oops or lockup"),
+         "desc": M("hs.panic.desc", "Nothing in user space can act on a frozen kernel. An automatic restart can lose unsaved data "
+                                    "and stop running jobs."),
          "current": "on" if s["panic"] else "off", "options": [
-             {"value": "off", "label": "Stay stopped", "choice": "crashwatch-panic:off"},
-             {"value": "on", "label": "Restart after 10 s", "choice": "crashwatch-panic:on",
-              "confirm": "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen?"}]}]
+             {"value": "off", "label": STAY_STOPPED, "choice": "crashwatch-panic:off"},
+             {"value": "on", "label": M("hs.panic.on", "Restart after 10 s"), "choice": "crashwatch-panic:on",
+              "confirm": M("hs.panic.confirm", "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen? "
+                                               "A restart loses unsaved data and stops running jobs.")}]}]
     if wd or s["watchdog"]:
-        groups.append({"key": "watchdog", "label": "A box that stops answering", "desc": f"A watchdog ({WD_WORDS.get(wd, 'the board' + chr(39) + 's')}) "
-                       "that systemd keeps fed: a frozen system stops feeding it, and the box restarts.",
+        groups.append({"key": "watchdog", "label": M("hs.watchdog", "A box that stops answering"),
+                       "desc": M("hs.watchdog.desc", "A watchdog ({which}) that systemd keeps fed. A frozen system stops feeding it, "
+                                                     "and the box restarts.", which=WD_WORDS.get(wd, WD_WORDS["hardware"])),
                        "current": "on" if s["watchdog"] else "off", "options": [
-                           {"value": "off", "label": "Stay stopped", "choice": "crashwatch-watchdog:off"},
-                           {"value": "on", "label": "Restart after a minute", "choice": "crashwatch-watchdog:on",
-                            "confirm": "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy work that "
-                                       "starves systemd for that long would restart too." + (
-                                " The board's watchdog is switched off in its device tree: this switches it on with a boot overlay, so it "
-                                "starts working after the next restart." if wd == "switched-off" else "")}]})
+                           {"value": "off", "label": STAY_STOPPED, "choice": "crashwatch-watchdog:off"},
+                           {"value": "on", "label": M("hs.watchdog.on", "Restart after a minute"), "choice": "crashwatch-watchdog:on",
+                            "confirm": M("hs.watchdog.confirm-overlay", "Let a watchdog restart the box when it stops answering for a minute? "
+                                                                        "A box doing heavy work that starves systemd for that long would "
+                                                                        "restart too. The board's watchdog is switched off in its device tree. "
+                                                                        "This switches it on with a boot overlay. It starts working after "
+                                                                        "the next restart.") if wd == "switched-off" else
+                            M("hs.watchdog.confirm", "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy "
+                                                     "work that starves systemd for that long would restart too.")}]})
     return groups
 
 
-LED_SHOW_LABEL = {"leave": "Leave it", "alive": "The box is alive", "network": "Alive and on its network",
-                  "all": "Alive, on its network, nothing wrong"}
+LED_SHOW_LABEL = {"leave": M("led.show.leave", "Leave it"), "alive": M("led.show.alive", "The box is alive"),
+                  "network": M("led.show.network", "Alive and on its network"), "all": M("led.show.all", "Alive, on its network, nothing wrong")}
 ARMBIAN_LED = "armbian-led-state.service"
+ARMBIAN_LED_WHY = M("armbian-led.why", "It puts the LEDs back as they were at the last shutdown. This board's light has no trigger file, "
+                                       "so the service refuses the state that it saved. The box's own status light does not need it.")
 
 
 def led_groups(ls, armbian=None):
@@ -1334,28 +1558,34 @@ def led_groups(ls, armbian=None):
         return []
     found, chosen = ls["found"], ls["settings"]
     show = ls["settings"].get("show") or ls.get("suggested") or "leave"
-    groups = [{"key": "led-show", "label": "The status light",
-               "desc": f"What {ls.get('led') or 'the light'} shows: 1 s on, 1 s off while all it reports is well; off when not; "
-                       "quick flashes while the network is being repaired, two short flashes when the Box doctor has a problem "
-                       "to read, steady on while the box starts or updates."
-                       + (" Left alone by default: on this board it shows the SD card working." if ls.get("suggested") == "leave" else ""),
+    led = ls.get("led") or M("led.the-light", "the light")
+    groups = [{"key": "led-show", "label": M("hs.led-show", "The status light"),
+               "desc": M("hs.led-show.desc-leave", "When all that it reports is well, {led} is on for 1 s and off for 1 s. When something "
+                                                   "is not well, it is off. While the network is being repaired, it flashes quickly. When the "
+                                                   "Box doctor has a problem to read, it gives two short flashes. While the box starts or "
+                                                   "updates, it stays on. By default the box leaves it alone, because on this board it shows "
+                                                   "the SD card working.", led=led) if ls.get("suggested") == "leave" else
+               M("hs.led-show.desc", "When all that it reports is well, {led} is on for 1 s and off for 1 s. When something is not "
+                                     "well, it is off. While the network is being repaired, it flashes quickly. When the Box doctor has "
+                                     "a problem to read, it gives two short flashes. While the box starts or updates, it stays on.", led=led),
                "current": show, "options": [{"value": v, "label": LED_SHOW_LABEL[v], "choice": f"led-show:{v}"}
                                             for v in ("leave", "alive", "network", "all")]}]
     if len(found) > 1 or chosen.get("led", "auto") != "auto":
-        groups.append({"key": "led-which", "label": "Which light", "desc": "The board's LEDs that could be the status light "
-                       "(never a power LED). The Box doctor's \"Flash it\" shows which is which.",
+        groups.append({"key": "led-which", "label": M("hs.led-which", "Which light"),
+                       "desc": M("hs.led-which.desc", "The board's LEDs that could be the status light, never a power LED. "
+                                                      "The Box doctor's Flash buttons show which is which."),
                        "current": chosen.get("led", "auto"),
-                       "options": [{"value": "auto", "label": f"The box's pick ({ls.get('led') or 'none'})" if chosen.get("led", "auto") == "auto"
-                                    else "The box's pick", "choice": "led-led:auto"}]
+                       "options": [{"value": "auto", "label": M("hs.led-which.auto-named", "The box's pick ({led})", led=ls.get("led") or
+                                                                M("led.none-picked", "none")) if chosen.get("led", "auto") == "auto"
+                                    else M("hs.led-which.auto", "The box's pick"), "choice": "led-led:auto"}]
                        + [{"value": n, "label": n, "choice": f"led-led:{n}"} for n in found]})
     if armbian:
-        groups.append({"key": "armbian-led", "label": "The image's LED service",
-                       "desc": f"{ARMBIAN_LED} puts the LEDs back as they were at the last shutdown. On this board it "
-                               "fails at every start: the light has no trigger file, so the state it saved is one it then refuses. "
-                               "Switching it off stops the failure. Switching it on again restores the failure.",
+        groups.append({"key": "armbian-led", "label": M("hs.armbian-led", "The image's LED service"),
+                       "desc": M("hs.armbian-led.desc", "{unit} fails at every start on this board. Switching it off stops the failure. "
+                                                        "Switching it on again brings the failure back.", unit=ARMBIAN_LED),
                        "current": "off" if armbian == "masked" else "on", "options": [
-                           {"value": "on", "label": "As the image has it", "choice": "armbian-led:on"},
-                           {"value": "off", "label": "Switched off", "choice": "armbian-led:off"}]})
+                           {"value": "on", "label": M("hs.armbian-led.on", "As the image has it"), "choice": "armbian-led:on"},
+                           {"value": "off", "label": M("hs.armbian-led.off", "Switched off"), "choice": "armbian-led:off"}]})
     return groups
 
 
@@ -1382,25 +1612,33 @@ def check_led(ls=None, active=None):
     ls = led_status() if ls is None else ls
     if not ls:
         return []
+    title = M("led.title", "Status light")
     if not ls.get("found"):
-        return [_f("led", "Status light", "ok", "This board has no LED the box could use as a status light (power LEDs are "
-                   "never taken).", glance="No LED on this board.")]
+        return [finding("led", title, "ok", M("led.none", "This board has no LED that the box can use as a status light. "
+                                                          "The box never takes a power LED."),
+                        glance=M("led.none.glance", "No LED on this board."))]
     name, show, run_ = ls.get("led"), ls.get("show"), ls.get("running") or {}
-    flash = [_act(f"led-flash:{n}", f"Flash {n}") for n in list(ls["found"])[:4]]
+    flash = [action(f"led-flash:{n}", M("led.flash", "Flash {led}", led=n)) for n in list(ls["found"])[:4]]
+    go = _go("health-settings", RECOVERY, "hs-led-show")
+    set_there = M("led.set.fix", "Set it on Recovery and monitoring.")
     if show == "leave":
-        return [_f("led", "Status light", "ok", f"Left as the image set it ({name or 'no LED picked'}). The box can blink it while "
-                   "everything is well.", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"),
-                   glance=f"Left as the image set it ({name or 'no LED picked'}).")]
+        picked = name or M("led.no-pick", "no LED selected")
+        return [finding("led", title, "ok", M("led.leave", "Left as the image set it: {led}.", led=picked),
+                        notes=[M("led.leave.can", "The box can blink it while everything is well.")], fix=set_there, actions=flash, go=go,
+                        glance=M("led.leave.glance", "Left as the image set it ({led}).", led=picked))]
     unit_on = (active or unit_props)("irate-box-led.service").get("ActiveState") == "active"
     if not unit_on:
-        return [_f("led", "Status light", "problem", f"{name} should show the state of the box, but its service is not running: the "
-                   "light says nothing.", "journalctl -u irate-box-led -n 30",
-                   [_act("unit-restart:irate-box-led.service", "Start it again")], glance=f"{name}: its service is not running.")]
-    how = ("driven by the box: this kernel has no LED triggers, so nothing else can blink it" if not (ls["found"].get(name) or {}).get("triggers")
-           else "driven by the box, so it stops when the box does")
-    return [_f("led", "Status light", "ok", f"{name}: {LED_SHOW_LABEL.get(show, show).lower()}; now {run_.get('words', 'not reported yet')} "
-               f"({how}).", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"),
-               glance=f"{name}: {LED_SHOW_LABEL.get(show, show).lower()}.")]
+        return [finding("led", title, "problem",
+                        M("led.unit-down", "The status light's service is not running, so {led} does not report the state of the box.", led=name),
+                        fix=M("led.unit-down.fix", "Read its log, then start it again."), commands=["journalctl -u irate-box-led -n 30"],
+                        actions=[action("unit-restart:irate-box-led.service", RESTART)],
+                        glance=M("led.unit-down.glance", "{led}: its service is not running.", led=name))]
+    how = (M("led.driven-no-triggers", "The box drives it. This kernel has no LED triggers, so nothing else can blink it.")
+           if not (ls["found"].get(name) or {}).get("triggers") else M("led.driven", "The box drives it, so it stops when the box stops."))
+    shows = LED_SHOW_LABEL.get(show) or show
+    return [finding("led", title, "ok", M("led.ok", "{led} is set to: {show}.", led=name, show=shows),
+                    notes=[M("led.now", "Now: {now}.", now=run_["words"]) if run_.get("words") else M("led.not-reported", "It has not reported yet."), how],
+                    fix=set_there, actions=flash, go=go, glance=M("led.ok.glance", "{led}: {show}.", led=name, show=shows))]
 
 
 def check_watchers(now=None):
@@ -1410,15 +1648,18 @@ def check_watchers(now=None):
     from irate_box.hub import watchlog
     now = now or time.time()
     day = watchlog.read(since=now - 86400, kinds=watchlog.NOTABLE)
+    title = M("watchers.title", "What the watchers did")
     if not day:
-        return [_f("watchers", "What the watchers did", "ok", "Nothing in the last day: no outage, no radio failure, no restart.")]
+        return [finding("watchers", title, "ok", M("watchers.none", "Nothing recorded in the last day: no outage, no radio failure and no restart."))]
     boots = [e for e in day if e.get("kind") == "boot"]
     steps = [e for e in day if e.get("kind") == "repair"]
-    lines = [watchlog.line(e).split(" ", 1)[1] for e in day[-12:]]
-    head = (f"In the last day: {len(boots)} start{'s' if len(boots) != 1 else ''} of the box, "
-            f"{len(steps)} repair{'s' if len(steps) != 1 else ''} by the watchdog. The latest, oldest first: ")
-    return [_f("watchers", "What the watchers did", "ok", head + " | ".join(lines),
-               f"All of it, every watcher in one place: sudo tail -n 100 {watchlog.LOG}")]
+    return [finding("watchers", title, "ok",
+                    M("watchers.boots", {"one": "In the last day, the box started {n} time.", "other": "In the last day, the box started {n} times."},
+                      n=len(boots)),
+                    notes=[M("watchers.repairs", {"one": "The watchdog made {n} repair.", "other": "The watchdog made {n} repairs."}, n=len(steps)),
+                           M("watchers.latest", "The latest events, oldest first, are below. Every watcher writes to one log.")],
+                    commands=[f"sudo tail -n 100 {watchlog.LOG}"],
+                    evidence=[watchlog.line(e).split(" ", 1)[1][:200] for e in day[-12:]])]
 
 
 def scan():
@@ -1428,8 +1669,8 @@ def scan():
         try:
             findings += check()
         except Exception as exc:  # one broken check must not hide the others
-            findings.append(_f(f"check:{check.__name__}", check.__name__.replace("check_", "Check: "), "warn",
-                               f"The check itself failed: {exc!r}"))
+            findings.append(finding(f"check:{check.__name__}", M("check-failed.title", "Check: {name}", name=check.__name__.removeprefix("check_")),
+                                    "warn", M("check-failed.error", "The check itself failed."), evidence=[repr(exc)[:300]]))
     return {"at": time.time(), "findings": findings, "settings": doctor_settings(), "clock": clock_choice()}
 
 
@@ -1597,14 +1838,15 @@ def report(data, problems_only=False):
     for f in data["findings"]:
         if problems_only and f["status"] == "ok":
             continue
-        lines.append(f"{MARK[f['status']]}  {f['check']}: {f['detail']}")
-        if f["fix"] and f["status"] != "ok":
-            lines.append(f"         what to do: {f['fix']}")
+        said = legacy(f)
+        lines.append(f"{MARK[f['status']]}  {said['title']}: {said['detail']}")
+        if said["fix"] and f["status"] != "ok":
+            lines.append(f"         what to do: {said['fix']}")
         for a in f["actions"]:
             if a["choice"] == "clock-set":
                 lines.append(f"         or: sudo {CODE}/irate-box health fix clock-set:$(date -d 'YYYY-MM-DD HH:MM' +%s)   (from a terminal: give the right time)")
             elif a["choice"] != "rerun-install":
-                lines.append(f"         or: sudo {CODE}/irate-box health fix {a['choice']}   ({a['label']})")
+                lines.append(f"         or: sudo {CODE}/irate-box health fix {a['choice']}   ({render(a['label'])})")
     return "\n".join(lines)
 
 

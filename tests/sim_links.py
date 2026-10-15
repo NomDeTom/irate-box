@@ -208,6 +208,8 @@ check("  healthy: up with a gateway that answers", le.healthy() and not lw.healt
 
 # --- the box doctor: the links nobody watches ---
 from irate_box.root import health  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.msg import render  # noqa: E402
 pi = {"iface": "eth0", "chosen": S(), "watching": "the link holding the box's route",
       "links": {"eth0": {"watched": True, "kind": "ethernet", "state": "up"}},
       "inventory": {"eth0": {"kind": "ethernet", "watched": True, "up": True, "autoconnect": ["netplan-eth0"]},
@@ -215,24 +217,24 @@ pi = {"iface": "eth0", "chosen": S(), "watching": "the link holding the box's ro
 f = health.link_findings(pi)
 check("the Pi's case: wlan0 down and nobody watching it, a problem, with a reconnect and the way to watch it",
       len(f) == 1 and f[0]["id"] == "uplink-uncovered-wlan0" and f[0]["status"] == "problem"
-      and f[0]["actions"] == [{"choice": "uplink-reconnect:wlan0", "label": "Reconnect it"}] and f[0]["go"]["mark"] == "up-watch-wlan0"
-      and "netplan-wlan0-SKYTB1H1" in f[0]["detail"], f)
+      and [(a["choice"], render(a["label"])) for a in f[0]["actions"]] == [("uplink-reconnect:wlan0", "Reconnect wlan0")]
+      and f[0]["go"]["mark"] == "up-watch-wlan0" and "netplan-wlan0-SKYTB1H1" in f[0]["evidence"], f)
 up = dict(pi, inventory={**pi["inventory"], "wlan0": dict(pi["inventory"]["wlan0"], up=True)})
 f = health.link_findings(up)
-check("  up but not watched: worth a look, no button", f[0]["status"] == "warn" and not f[0]["actions"] and "if it fails, nothing will notice" in f[0]["detail"], f)
+check("  up but not watched: worth a look, no button", f[0]["status"] == "warn" and not f[0]["actions"] and "uplink-uncovered.why" in msg_ids(f[0]), f)
 check("  set not to be watched: the owner's, not said", health.link_findings(dict(pi, chosen=S(watch={"wlan0": False}))) == [])
 check("  a link with nothing set to start on it (a spare port): not said", health.link_findings(dict(pi, inventory={"eth0": pi["inventory"]["eth0"],
       "usb0": {"kind": "ethernet", "watched": False, "up": False, "autoconnect": []}})) == [])
 f = health.link_findings({"iface": None, "state": "no-link", "chosen": S(watch_new="none"), "watching": "nothing: no link is set to be watched",
                           "links": {}, "inventory": pi["inventory"]})
 check("none watched: a problem, said with what it is watching", f[0]["id"] == "uplink-none-watched" and f[0]["status"] == "problem"
-      and "no link is set to be watched" in f[0]["detail"], f)
+      and f[0]["evidence"] == ["nothing: no link is set to be watched"], f)
 check("  a report from before links: nothing said", health.link_findings({"iface": "wlan0", "state": "up"}) == [])
 two = dict(pi, links={**pi["links"], "wlan0": {"watched": True, "kind": "wifi", "state": "stalled",
                                                 "stall": {"needs": "reboot", "label": "reboot", "text": "Stalled: what could help now is to reboot."}}},
            inventory={**pi["inventory"], "wlan0": dict(pi["inventory"]["wlan0"], watched=True)})
 f = health.link_findings(two)
-check("a second watched link stalled: said for it, as the first link's is", [x["id"] for x in f] == ["uplink-stalled-wlan0"] and "reboot" in f[0]["fix"], f)
+check("a second watched link stalled: said for it, as the first link's is", [x["id"] for x in f] == ["uplink-stalled-wlan0"] and msg_args(f[0], "uplink-stalled-link.fix")["step"] == "reboot", f)
 look = dict(pi, inventory={**pi["inventory"], "wlan0": dict(pi["inventory"]["wlan0"], watched=True, look=True)})
 f = health.link_findings(look)
 check("looked at only and down: said, with a reconnect, and the way to watch it in full", [x["id"] for x in f] == ["uplink-look-wlan0"]

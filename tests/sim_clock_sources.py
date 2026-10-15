@@ -241,7 +241,7 @@ fs = {f["id"]: f for f in health.check_sources()}
 check("the doctor: a finding per chosen source, on the Clock page (its id starts clock)", set(fs) == {"clock-source:gps", "clock-source:local", "clock-source:pool"})
 check("  in use fine; chosen but not answering a problem; chosen but not found a warning, each with what to do",
       fs["clock-source:gps"]["status"] == "ok" and fs["clock-source:local"]["status"] == "problem" and fs["clock-source:pool"]["status"] == "warn"
-      and "UDP port 123" in fs["clock-source:local"]["fix"] and fs["clock-source:gps"]["fix"] == "", fs)
+      and fs["clock-source:local"]["fix"]["id"] == "clock-source.local.fix" and fs["clock-source:gps"]["fix"] is None, fs)
 from irate_box.hub import server  # noqa: E402
 for c in ("clock-sources:chrony:1:1:1:1:192.168.1.1", "clock-sources:image:0:0:0:0:router.lan", "clock-undo"):
     check(f"accepted by the doctor and the hub: {c}", bool(health.CHOICE_RE.match(c)) and bool(server.HEALTH_CHOICE_RE.match(c)))

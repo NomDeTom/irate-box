@@ -134,7 +134,8 @@ check("doctor: the warnings shown, with their fix; the fine ones not", [x["id"] 
 inv["at"] = _time.time() - 2 * 86400
 (d / "netinv.json").write_text(_json.dumps(inv))
 f = health.check_inventory()
-check("  an old look: its age said, and a finding to look again", "48 h ago" in f[0]["detail"] and f[-1]["id"] == "netinv", f)
+check("  an old look: its age said, and a finding to look again", f[0]["notes"][0]["id"] == "netinv.age" and f[0]["notes"][0]["args"]["n"] == 48
+      and f[-1]["id"] == "netinv", f)
 
 # The networks NetworkManager has seen, one per name, for picking one to join.
 scan_out = "\n".join([

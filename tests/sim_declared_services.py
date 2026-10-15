@@ -87,12 +87,12 @@ TAK["addon"] = {"option": "--with-tak", "title": "TAK", "summary": "x"}
 out = health.check_units()
 other = [f for f in out if f["id"].startswith("other-failed:")]
 check("  a failed service of the owner's: its own finding, why, and Start it again (asked first)",
-      [f["id"] for f in other] == ["other-failed:homeassistant.service"] and "journalctl -u homeassistant.service" in other[0]["fix"]
+      [f["id"] for f in other] == ["other-failed:homeassistant.service"] and "journalctl -u homeassistant.service -n 50" in other[0]["commands"]
       and other[0]["actions"][0]["choice"] == "other-restart:homeassistant.service" and other[0]["actions"][0].get("confirm"), other)
 check("  the hub's own failed unit is not among them", not any("irate-box.service" in f["id"] for f in other))
 watched = [f for f in out if f["id"].startswith("watched-failed:")]
 check("a watched package's failed service (meshtasticd): said as itself, with where its builds are chosen, and Start it again",
-      [f["id"] for f in watched] == ["watched-failed:meshtasticd.service"] and "Packages from their makers" in watched[0]["fix"]
+      [f["id"] for f in watched] == ["watched-failed:meshtasticd.service"] and watched[0]["fix"]["id"] == "watched-failed.fix" and watched[0]["go"]["section"] == "updates"
       and watched[0]["actions"][0]["choice"] == "other-restart:meshtasticd.service" and not any("meshtasticd" in f["id"] for f in other), watched)
 calls.clear()
 said = health.fix("other-restart:homeassistant.service")
