@@ -27,6 +27,8 @@ function page(running) {
     if (u === '/admin/hotspot') return json({ running: running() });
     return json({}, 404);
   };
+  // Separate evals do not share top-level consts, so heatmap.js comes in as a var (as dom-uptime does).
+  dom.window.eval(fs.readFileSync(`${WEB}/heatmap.js`, 'utf8').replace(/^const Heatmap =/m, 'var Heatmap ='));
   dom.window.eval(fs.readFileSync(`${WEB}/admin-widgets.js`, 'utf8'));
   dom.window.eval(fs.readFileSync(`${WEB}/admin-layout.js`, 'utf8'));
   dom.window.eval(fs.readFileSync(`${WEB}/admin.js`, 'utf8'));
@@ -69,6 +71,25 @@ function page(running) {
   d.getElementById('ap-confirm').click(); await wait();
   check('  Keep it: asked', p.posted.some((b) => b.action === 'confirm'));
   check('no page errors', !p.errors.length, p.errors.join(' | '));
+
+  // The Hotspot status card: switched on with no radio serving it is said as down, not as "Not running"; switched off
+  // says so; its watchdog record (by hour and day) is drawn as the Overview's is.
+  const hotspotUptime = Object.assign({}, Object.values(JSON.parse(fs.readFileSync(require('path').resolve(__dirname, 'uptime-fixture.json'), 'utf8')).uptime)[0], { kind: 'hotspot' });
+  const netWith = (radios2) => JSON.stringify({ inventory: { radios: radios2, wired: [], hazards: [] }, uptime: { ap0: hotspotUptime } });
+  run = { up: true, plan: Object.assign({}, preview, { iface: 'ap0' }), radios, owner: {}, confirmed: true, note: '' };
+  p = page(() => run); await wait(400); d = p.d;
+  p.w.drawApHealth(JSON.parse(netWith([{ iface: 'wlan0', type: 'managed', phy: 'phy0' }])));
+  const card = t(d.getElementById('ap-health'));
+  check('status card, switched on but no radio serving it: Down, said as a fault', /^Down: the hotspot is switched on, but no radio is serving it\. Guests cannot join\./.test(card)
+    && !!d.querySelector('#ap-health .bad'), card);
+  check('  with its record by hour and day (the Overview\'s heatmap)', !!d.querySelector('#ap-health .net-uptime') && /Up means the hotspot was running/.test(card), card);
+  p.w.drawApHealth(JSON.parse(netWith([{ iface: 'wlan0', type: 'managed', phy: 'phy0' }, { iface: 'ap0', type: 'AP', phy: 'phy0', channel: 6, freq: 2437, stations: [{}] }])));
+  check('  running: its channel and guests, and no fault', /ap0\s*Running, channel 6/.test(t(d.getElementById('ap-health'))) && !d.querySelector('#ap-health > .bad'), t(d.getElementById('ap-health')));
+  run = { up: false, preview, radios, owner: {}, confirmed: true, note: '' };
+  p = page(() => run); await wait(400); d = p.d;
+  p.w.drawApHealth(JSON.parse(netWith([{ iface: 'wlan0', type: 'managed', phy: 'phy0' }])));
+  check('  switched off: said as that', /^Switched off\./.test(t(d.getElementById('ap-health'))) && !d.querySelector('#ap-health > .bad'), t(d.getElementById('ap-health')));
+  check('no page errors (status card)', !p.errors.length, p.errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 })();

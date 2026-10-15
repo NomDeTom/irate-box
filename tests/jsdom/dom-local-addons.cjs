@@ -57,7 +57,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('one gone from the catalogue: said', /No longer in the catalogue/.test(rows.find((r) => /Old thing/.test(r.textContent)).textContent));
   acceptBtn.click();
   await sleep(100);
-  check('Accept asks the new consent text, with the changes', asked.some((t) => t.startsWith('ELIZA now talks to example.org.') && /What changed: now connects to wss:\/\/example\.org/.test(t)), asked.join(' | '));
+  check('Accept asks the new consent text, with the changes', asked.some((t) => t.includes('ELIZA now talks to example.org.') && /^What changed: now connects to wss:\/\/example\.org/.test(t)), asked.join(' | '));
   const acc = posted.find(([u, b]) => u === '/admin/local-addons' && b.action === 'accept');
   check('Accept posts it, agreed', acc && acc[1].id === 'eliza' && acc[1].agree === true, JSON.stringify(acc));
   asked.length = 0;
@@ -82,6 +82,47 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const paste = posted.find(([, b]) => b.action === 'paste');
   check('ticked: posts it with the acknowledgement', paste && paste[1].understood === "I understand this runs someone else's code on this box's address" && paste[1].manifest.id === 'x');
   check('no page errors', errors.length === 0, errors.join(' | '));
+
+  // Only the consent text changed (the catalogue reworded it): said as that, and the button is Review and approve. The
+  // All apps line's "Consent required" leads to the add-on's own page, where the same button answers it.
+  const reworded = JSON.parse(JSON.stringify(local));
+  reworded.added[0].catalogue = { status: 'held', at: 1791250000, held: ['its consent text'] };
+  reworded.catalogue[0] = { ...reworded.catalogue[0], consent: 'This downloads ELIZA. Reworded. Add ELIZA?', capabilities: { connect: [], storage: false } };
+  const apps = [{ id: 'eliza', name: 'ELIZA (chatbot)', icon: '🧠', sections: [], folder: false, local: true, page: false, width: null, updates: false,
+    addon: false, href: '/eliza.html', switch: true, seen: false }];
+  const errors2 = [], posted2 = [], asked2 = [];
+  const vc2 = new VirtualConsole();
+  vc2.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors2.push('jsdom: ' + e.message); });
+  const dom2 = new JSDOM(html, { url: 'http://box/admin/#all-apps', runScripts: 'outside-only', virtualConsole: vc2, pretendToBeVisual: true });
+  const w2 = dom2.window, d2 = w2.document;
+  w2.fetch = async (u, opts = {}) => {
+    if (opts.method === 'POST') { posted2.push([u, JSON.parse(opts.body)]); return new Response('{"accepted":"eliza"}', { status: 202 }); }
+    if (u === '/admin/local-addons') return new Response(JSON.stringify(reworded), { status: 200 });
+    if (u === '/admin/apps') return new Response(JSON.stringify({ apps }), { status: 200 });
+    if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
+    if (u === '/admin/addons') return new Response(JSON.stringify({ addons: [], progress: null, pending: 0, results: [], log: [] }), { status: 200 });
+    return new Response('{}', { status: 404 });
+  };
+  w2.confirm = (text) => { asked2.push(text); return true; };
+  w2.eval(js);
+  await sleep(400);
+  const row2 = [...d2.querySelectorAll('#local-added .library-source')].find((r) => /ELIZA/.test(r.textContent));
+  check('reworded only: said so, permissions, connections and source the same',
+    /The catalogue reworded the text you agreed to\. Permissions, connections and source are the same\./.test(row2.textContent)
+    && !/changes permissions, trust or source/.test(row2.textContent), row2.textContent);
+  check('  the button: Review and approve (not Approve changed permissions)', [...row2.querySelectorAll('button')].some((b) => b.textContent === 'Review and approve')
+    && ![...row2.querySelectorAll('button')].some((b) => b.textContent === 'Approve changed permissions'));
+  const line = [...d2.querySelectorAll('#inv-list a')].find((a) => /ELIZA/.test(a.textContent));
+  check('All apps: ELIZA\'s line says Consent required, leading to its own page', line && /Consent required/.test(line.parentElement.textContent)
+    && line.getAttribute('href') === '#page-app-eliza' && !!d2.getElementById('page-app-eliza'), line && line.outerHTML.slice(0, 300));
+  const pageBtn = [...d2.querySelectorAll('#page-app-eliza .head-block button')].find((b) => b.textContent === 'Review and approve');
+  check('  its page: Consent required, and beside it Review and approve', !!pageBtn && /Consent required/.test(d2.querySelector('#page-app-eliza .head-block').textContent));
+  if (pageBtn) { pageBtn.click(); await sleep(100); }
+  check('  which shows the new text and what changed before accepting', asked2.length === 1 && /^The catalogue reworded the text you agreed to\./.test(asked2[0])
+    && asked2[0].includes('This downloads ELIZA. Reworded. Add ELIZA?'), asked2.join(' | '));
+  const acc2 = posted2.find(([u, b]) => u === '/admin/local-addons' && b.action === 'accept');
+  check('  and accepts it, agreed', acc2 && acc2[1].id === 'eliza' && acc2[1].agree === true, JSON.stringify(posted2));
+  check('no page errors (reworded)', errors2.length === 0, errors2.join(' | '));
   console.log(fails ? `${fails} failure(s)` : 'ok');
   process.exit(fails ? 1 : 0);
 })();

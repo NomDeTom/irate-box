@@ -3164,8 +3164,8 @@ function signalWords(dbm) {
 // A link's uptime on its card: the last 72 hours by hour and 72 days by day (githubstatus.com's
 // format), from the watchdog's five-minute record (linkhistory.py), drawn by heatmap.js.
 // Always shown, not folded: a folded one closed itself on the pane's redraws.
-function uptimeSection(iface) {
-  const u = netData && netData.uptime && netData.uptime[iface];
+function uptimeSection(iface, data = netData) {
+  const u = data && data.uptime && data.uptime[iface];
   const fold = el('div', { className: 'net-uptime' });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
@@ -3351,14 +3351,32 @@ function drawNetTabs(data, inv, u) {
   const wired = inv ? inv.wired : [];
   netTabs.wiredCard.hidden = !!inv && !wired.length;
   netTabs.wiredNow.replaceChildren(...wired.map((w) => netLine(w.iface, linkNow(inv, w) + (up && up.iface === w.iface ? ' The box\'s link to your network.' : ''))));
-  // Hotspot: how it is doing, from the same inventory (its radio, channel, guests, and whether it follows the WiFi).
+  drawApHealth();
+}
+
+// The hotspot's status card: switched on or off (the root helper's record, apRun), against what runs (the inventory's
+// radios in AP mode), and its up and down from the watchdog's record, as the Overview draws it. Switched on but no
+// radio serving it is said as a fault, not as "Not running".
+function drawApHealth(data = netData) {
+  const inv = data && data.inventory;
+  const wifi = inv ? inv.radios.filter((r) => r.type !== 'AP') : [];
   const aps = inv ? inv.radios.filter((r) => r.type === 'AP') : [];
-  netTabs.apHealth.replaceChildren(...(aps.length ? aps.flatMap((a) => {
+  const on = apRun ? !!apRun.up : null;
+  const lines = aps.flatMap((a) => {
     const shared = wifi.find((r) => r.phy === a.phy);
     const n = (a.stations || []).length;
     return [netLine(a.iface, `Running${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` : ''}. ${n} guest device${n === 1 ? '' : 's'} joined.`),
       shared ? netLine('Its radio', `Shared with the WiFi of the box (${shared.iface}). It follows the channel of that network, so a roam or a reconnect there moves guests too.`) : null];
-  }) : [el('p', { className: 'setting-desc', textContent: inv ? 'Not running.' : 'Not checked yet.' })]));
+  });
+  if (!aps.length) {
+    lines.push(!inv ? el('p', { className: 'setting-desc', textContent: 'Not checked yet.' })
+      : on ? el('p', { className: 'setting-desc bad', textContent: 'Down: the hotspot is switched on, but no radio is serving it. Guests cannot join. '
+        + 'The Box doctor says why (hostapd, its connection, or dnsmasq). Disable and enable the hotspot below to start it again.' })
+        : el('p', { className: 'setting-desc', textContent: on === false ? 'Switched off.' : 'Not running.' }));
+  }
+  // Its record, by hour and by day: the hotspot's interface as the watchdog saw it.
+  const hist = Object.keys((data && data.uptime) || {}).filter((i) => data.uptime[i].kind === 'hotspot');
+  netTabs.apHealth.replaceChildren(...lines.filter(Boolean), ...hist.map((i) => uptimeSection(i, data)));
 }
 
 function renderNetwork(data) {
@@ -3872,6 +3890,7 @@ function apFill(sel, values, keep) {
 }
 function renderAp(run) {
   apRun = run;
+  if (netData) drawApHealth();
   const p = run.up ? run.plan : run.preview;
   const where = (q) => (q && q.channel ? ` on ${q.iface === 'ap0' || q.kind === 'own-channel' || q.kind === 'follow' ? 'a second interface beside ' + q.iface : q.iface}, channel ${q.channel}` : '');
   apEl.state.textContent = run.up
@@ -4456,6 +4475,8 @@ function fillHeadBlocks() {
       const busy = lastAddons.pending > 0 || !!adoWaiting || !!lastAddons.progress;
       buttons.push(el('button', { type: 'button', className: 'action-btn primary', textContent: 'Add', disabled: busy, onclick: () => addonSet(addon, true) }));
     }
+    const held = r && r.kind === 'local' && lastLocal && (lastLocal.added || []).find((x) => x.id === id && x.catalogue && x.catalogue.status === 'held');
+    if (held) buttons.push(approveButton(held, lastLocal, 'action-btn primary'));
     if (r && r.kind === 'local' && r.state !== 'installed') buttons.push(el('a', { className: 'action-btn', href: r.offered ? '#local-catalogue' : '#local-added', textContent: 'Add from the catalogue' }));
     if (r && r.kind === 'app' && r.state === 'available') buttons.push(el('a', { className: 'action-btn', href: `#app-updates-${id}`, textContent: 'Install…' }));
     if (svc && svc.unit && svc.state !== 'missing') {
@@ -4808,9 +4829,8 @@ function renderLocal(data) {
       el('span', { className: 'setting-desc', textContent: capsText(a.capabilities) + (a.from_catalogue ? '' : ' Added by pasting its manifest.') }),
       catalogueNote(a),
       el('span', { className: 'library-buttons' },
-        inst && inst.commit ? el('a', { className: 'head-btn', href: a.href, target: '_blank', textContent: 'Open' }) : null,
-        a.catalogue && a.catalogue.status === 'held'
-          ? el('button', { type: 'button', className: 'action-btn', textContent: 'Approve changed permissions', onclick: () => localAccept(a, data) }) : null,
+        inst && inst.commit ? el('a', { className: 'action-btn', href: a.href, target: '_blank', rel: 'noopener', textContent: 'Open' }) : null,
+        a.catalogue && a.catalogue.status === 'held' ? approveButton(a, data) : null,
         el('button', { type: 'button', className: 'action-btn', textContent: 'Remove web add-on', onclick: () => localRemove(a) })),
       note(a.id)));
   }) : [el('p', { className: 'setting-desc', textContent: 'None added yet.' })]));
@@ -4828,6 +4848,13 @@ function renderLocal(data) {
   if (fetching) locPoll = setTimeout(() => { loadLocal(); loadAccess(); }, 1500);
 }
 
+// A held catalogue update: what changed in what the administrator agreed to (server.py _agreed_changes). Only its
+// consent text: the catalogue reworded it, nothing more is allowed than before. Anything else: the permissions changed.
+const CONSENT_TEXT = 'its consent text';
+const heldTextOnly = (a) => { const h = (a.catalogue || {}).held || []; return h.length > 0 && h.every((x) => x === CONSENT_TEXT); };
+const approveLabel = (a) => (heldTextOnly(a) ? 'Review and approve' : 'Approve changed permissions');
+const approveButton = (a, data, cls = 'action-btn') => el('button', { type: 'button', className: cls, textContent: approveLabel(a), onclick: () => localAccept(a, data) });
+
 // Where an added add-on stands against the catalogue (server.py catalogue_sync).
 function catalogueNote(a) {
   const c = a.catalogue;
@@ -4837,8 +4864,10 @@ function catalogueNote(a) {
     return el('span', { className: 'setting-desc', textContent: `Updated from the catalogue on ${day}. Changes: ${(c.changed || []).join(', ') || 'none to permissions, trust or source'}.` });
   }
   if (c.status === 'held') {
-    return el('span', { className: 'setting-desc bad', textContent: `The catalogue has a newer version that changes permissions, trust or source: ${(c.held || []).join(', ')}. `
-      + 'The version that you approved keeps running until you select Approve changed permissions.' });
+    return el('span', { className: 'setting-desc bad', textContent: (heldTextOnly(a)
+      ? 'The catalogue reworded the text you agreed to. Permissions, connections and source are the same. '
+      : `The catalogue has a newer version that changes permissions, trust or source: ${(c.held || []).join(', ')}. `)
+      + `The version that you approved keeps running until you select ${approveLabel(a)}.` });
   }
   if (c.status === 'gone') return el('span', { className: 'setting-desc', textContent: 'No longer in the catalogue. It keeps working, but the catalogue no longer updates it.' });
   return null;
@@ -4846,7 +4875,9 @@ function catalogueNote(a) {
 
 function localAccept(a, data) {
   const c = (data.catalogue || []).find((x) => x.id === a.id) || {};
-  if (!confirm(`${c.consent || ''}\n\nWhat changed: ${((a.catalogue || {}).held || []).join(', ')}.\n\n${capsText(c.capabilities)}`)) return;
+  const changed = heldTextOnly(a) ? 'The catalogue reworded the text you agreed to. Permissions, connections and source are the same.'
+    : `What changed: ${((a.catalogue || {}).held || []).join(', ')}.`;
+  if (!confirm(`${changed}\n\nThe new text:\n${c.consent || ''}\n\n${capsText(c.capabilities)}\n\nApprove it?`)) return;
   localPost({ action: 'accept', id: a.id, agree: true }, a.id, `${a.title}: the changed permissions are approved. Downloading the new version…`);
 }
 
