@@ -3163,7 +3163,7 @@ def step_internet(ctx):
                            M("reach.web.why", "Something lets the internet reach the box's pages: a port forward or DMZ host on the "
                                               "router, or a proxy. Its sign-in forms can then be reached from the internet too."),
                            M("reach.web.fix", "If you did not mean that, remove the port forward or DMZ host from your router. To reach "
-                                              "the box from afar, use Tailscale on Access, Remote access."),
+                                              "the box from outside its network, use Tailscale on Access → Remote access."),
                            evidence=_some(f"{n} ×{e.get('count', '?')} {time.strftime('%Y-%m-%d %H:%M', time.localtime(e['last']))}"
                                           for n, e in recent)))
     else:

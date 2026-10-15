@@ -85,13 +85,13 @@ COMPOUND = [
      "needs": [("security-page", "page-sudo-nopasswd"), ("security-page", "page-ssh-password")],
      "summary": M("compound.sudo-ssh", "An account has a passwordless sudo rule, and SSH accepts passwords."),
      "why": M("compound.sudo-ssh.why", "One password guessed over the network gives root, with no further step."),
-     "fix": M("compound.sudo-ssh.fix", "On Security, turn SSH password sign-in off, or remove the sudo rule.")},
+     "fix": M("compound.sudo-ssh.fix", "On Security, disable SSH password sign-in, or remove the sudo rule.")},
     {"key": "disk-and-passwords", "title": M("compound.disk-ssh.title", "Disk group, with SSH passwords"),
      "needs": [("security-page", "page-group-disk"), ("security-page", "page-ssh-password")],
      "summary": M("compound.disk-ssh", "An account is in the disk group, and SSH accepts passwords."),
-     "why": M("compound.disk-ssh.why", "One guessed password lets an attacker read the raw card: the password file, the CA key and "
-                                       "the administrator password hash included."),
-     "fix": M("compound.disk-ssh.fix", "On Security, remove the account from the disk group, or turn SSH password sign-in off.")},
+     "why": M("compound.disk-ssh.why", "One guessed password lets an attacker read the raw card. This includes the password file, the CA key "
+                                       "and the hash of the administrator password."),
+     "fix": M("compound.disk-ssh.fix", "On Security, remove the account from the disk group, or disable SSH password sign-in.")},
 ]
 PORT_RE = re.compile(r"^port-(tcp|udp)-(\d+)$")
 PORT_ANY_RE = re.compile(r"^(page-)?port-(tcp|udp)-\d+$")
@@ -123,15 +123,18 @@ def title(key):
 
 # What each source covers and cannot see, said once on the report.
 COVERAGE = {
-    "doctor": M("coverage.doctor", "The box's own design, as its security review found it. It does not cover general hardening."),
-    "security-page": M("coverage.security-page", "What listens, SSH, waiting security updates, the kernel's settings and root's groups."),
-    "debsecan": M("coverage.debsecan", "Debian packages only. It cannot see the vendor kernel, ttyd, SilverBullet or the Caddy release "
-                                       "build."),
-    "debian-cis": M("coverage.debian-cis", "Settings against the CIS benchmark for general servers, not for a hotspot. It does not check "
-                                           "software versions."),
-    "lynis": M("coverage.lynis", "A second audit of settings, with its own tests. It does not check software versions."),
-    "openvas": M("coverage.openvas", "Only what the network shows, from where it ran. It includes software that debsecan cannot see."),
-    "nmap": M("coverage.nmap", "Only which ports answer, from where it ran."),
+    "doctor": M("coverage.doctor", "The Security doctor checks the design of this box against the security review of irate-box. It does not "
+                                   "check general hardening."),
+    "security-page": M("coverage.security-page", "The Security page checks what listens on the network, SSH, waiting security updates, the "
+                                                 "kernel settings and the groups of root."),
+    "debsecan": M("coverage.debsecan", "debsecan checks Debian packages only. It cannot see the vendor kernel, ttyd, SilverBullet or the "
+                                       "Caddy release build."),
+    "debian-cis": M("coverage.debian-cis", "debian-cis compares settings with the CIS benchmark for general servers, not for a hotspot. It "
+                                           "does not check software versions."),
+    "lynis": M("coverage.lynis", "Lynis is a second audit of settings, with its own tests. It does not check software versions."),
+    "openvas": M("coverage.openvas", "OpenVAS sees only what the network shows, from the computer where it ran. It can find software that "
+                                     "debsecan cannot see."),
+    "nmap": M("coverage.nmap", "nmap sees only which ports answer, from the computer where it ran."),
 }
 
 
@@ -143,25 +146,31 @@ COVERAGE = {
 CIS = {
     "1.1": (M("cis.1-1.title", "Separate partitions for /tmp, /var, /home"), "suggest",
              M("cis.1-1.what", "The benchmark wants each on a partition of its own, mounted nodev, nosuid, noexec."),
-             M("cis.1-1.here", "A board on one SD card has one partition. To change that, write the card again from a new image.")),
+             M("cis.1-1.here", "This board runs from one SD card, and the image puts the system on one partition. Separate partitions need a "
+                               "different image, written to the card from the start. The box cannot change this while it runs.")),
     "1.3": (M("cis.1-3.title", "sudo's own log"), "suggest",
              M("cis.1-3.what", "sudo can keep a log of every command that it runs, apart from the journal."),
-             M("cis.1-3.here", "Optional. The journal already records each use of sudo, and with logs on the card they stay after a power cut.")),
+             M("cis.1-3.here", "This is optional. The journal already records each use of sudo. If you keep logs on the card (Security), "
+                               "these records remain after a power cut.")),
     "1.4": (M("cis.1-4.title", "File integrity checking (Tripwire, AIDE)"), "suggest",
-             M("cis.1-4.what", "A tool that fingerprints the system's files and reports any change."),
-             M("cis.1-4.here", "It is heavy for a small board. The doctor's step \"Installed code ownership\" already checks the hub's own files.")),
+             M("cis.1-4.what", "A tool that records a checksum of each system file and reports any change."),
+             M("cis.1-4.here", "A full check of every file takes a long time and much card storage on a small board. The doctor's step "
+                               "\"Installed code ownership\" already checks the hub's own files.")),
     "1.5": (M("cis.1-5.title", "Bootloader password"), "not-here",
-             M("cis.1-5.what", "The benchmark protects GRUB's menu with a password."),
-             M("cis.1-5.here", "This board starts with U-Boot, not GRUB. Anyone who holds the SD card has the box anyway.")),
+             M("cis.1-5.what", "The benchmark sets a password on the GRUB boot menu."),
+             M("cis.1-5.here", "This board starts with U-Boot, not GRUB, so there is no GRUB menu to lock. A bootloader password also does "
+                               "not stop a person who removes the SD card. That person can read the card on another computer.")),
     "1.6": (M("cis.1-6.title", "Process hardening (NX, address randomisation, core dumps)"), "suggest",
-             M("cis.1-6.what", "Memory protections that make an exploit harder to aim, and no core dumps from privileged programs."),
+             M("cis.1-6.what", "Memory protections that make an attack on a program fault less reliable. Privileged programs also write no "
+                               "core dumps."),
              M("cis.1-6.here", "Address randomisation and core dumps are kernel settings (sysctl). NX is a feature of the processor, and the 32-bit ARM kernel reports it in an unusual way.")),
     "1.7": (M("cis.1-7.title", "AppArmor"), "not-here",
              M("cis.1-7.what", "Mandatory access control: profiles that limit what each program can touch."),
-             M("cis.1-7.here", "The vendor kernel of this board has no AppArmor. The hub's units use the sandbox of systemd instead.")),
+             M("cis.1-7.here", "The board's maker builds the kernel without AppArmor, and the box cannot add it. The hub's units use the "
+                               "sandbox of systemd instead. The Security doctor checks those sandbox lines unit by unit.")),
     "1.8": (M("cis.1-8.title", "Sign-in banners"), "suggest",
              M("cis.1-8.what", "A warning text shown before sign-in (/etc/motd, /etc/issue)."),
-             M("cis.1-8.here", "This is cosmetic. It is optional.")),
+             M("cis.1-8.here", "A banner changes only the text shown before sign-in. It does not change who can sign in. It is optional.")),
     "1.9": (M("cis.1-9.title", "Package updates"), "suggest",
              M("cis.1-9.what", "Updates waiting to be installed."),
              M("cis.1-9.here", "See Debian's security updates (Updates).")),
@@ -172,47 +181,54 @@ CIS = {
              M("cis.3-1.what", "The benchmark turns IPv6 off where it is not used."),
              M("cis.3-1.here", "Your network can use IPv6. The doctor's step \"Reached from the internet\" checks what IPv6 exposes.")),
     "3.2": (M("cis.3-2.title", "Sending ICMP redirects"), "suggest",
-             M("cis.3-2.what", "A host that is not a router should not tell others how to route."),
-             M("cis.3-2.here", "It is safe to turn off on the box, and the internet access of guests keeps working.")),
+             M("cis.3-2.what", "The benchmark stops a computer that is not a router from sending routing advice (ICMP redirects) to other "
+                               "computers."),
+             M("cis.3-2.here", "You can disable them on the box. The internet access of hotspot guests continues to work.")),
     "3.3": (M("cis.3-3.title", "Network parameters (source routing, redirects, martians, router adverts)"), "suggest",
              M("cis.3-3.what", "Kernel network settings that refuse forged routes and log impossible addresses."),
-             M("cis.3-3.here", "Most of them are safe to set with sysctl. Keep accept_ra on if your network gives IPv6 addresses by router advertisements.")),
+             M("cis.3-3.here", "You can set most of them with sysctl, with no effect on the hub or its guests. If your network gives IPv6 "
+                               "addresses by router advertisements, keep accept_ra enabled.")),
     "3.4": (M("cis.3-4.title", "Uncommon network protocols (DCCP, SCTP, RDS, TIPC)"), "suggest",
              M("cis.3-4.what", "Kernel modules for transport protocols that nothing on the box uses. A crafted packet can reach the code of each one."),
              M("cis.3-4.here", "Optional. A file in /etc/modprobe.d can stop them from loading.")),
     "4.1": (M("cis.4-1.title", "Auditing (auditd)"), "not-here",
              M("cis.4-1.what", "The kernel's audit system, recording security events in detail."),
-             M("cis.4-1.here", "The vendor kernel is built without CONFIG_AUDIT, so auditd cannot run on this board.")),
+             M("cis.4-1.here", "The board's maker builds the kernel without CONFIG_AUDIT, so auditd cannot run on this board. Only a kernel "
+                               "from the maker with that option can change this. Meanwhile, the journal records sign-ins and each use of "
+                               "sudo.")),
     "4.2": (M("cis.4-2.title", "Logging (syslog-ng, a persistent journal)"), "suggest",
              M("cis.4-2.what", "Logs kept on disk, with tight permissions, and sent to another machine."),
-             M("cis.4-2.here", "On Security, keep logs on the card. That covers what matters here. A remote log server needs a second computer.")),
+             M("cis.4-2.here", "On Security, keep logs on the card, so that the logs remain after a restart. A remote log server needs a "
+                               "second computer.")),
     "4.4": (M("cis.4-4.title", "logrotate's permissions"), "suggest",
              M("cis.4-4.what", "Rotated logs created readable by root only."),
              M("cis.4-4.here", "Change it by hand: set create 0640 in /etc/logrotate.conf.")),
     "5.1": (M("cis.5-1.title", "cron's files' permissions"), "suggest",
              M("cis.5-1.what", "/etc/crontab and /etc/cron.* readable by root only."),
-             M("cis.5-1.here", "Change the permissions by hand.")),
+             M("cis.5-1.here", "Make these files readable by root only. The command below does this.")),
     "5.2": (M("cis.5-2.title", "SSH server settings"), "suggest",
              M("cis.5-2.what", "sshd's settings: who can sign in, how, for how long, with which ciphers."),
              M("cis.5-2.here", "The settings that matter (root sign-in, passwords, forwarding) are choices on Security. The rest are fine-tuning in /etc/ssh/sshd_config.d.")),
     "5.3": (M("cis.5-3.title", "Password quality and lockout (PAM)"), "suggest",
              M("cis.5-3.what", "Rules for strong passwords and locking an account after failed tries."),
-             M("cis.5-3.here", "They matter only where a password signs in. With SSH on keys only, that is the console.")),
+             M("cis.5-3.here", "These rules apply only where a person signs in with a password. If SSH accepts keys only, that place is the "
+                               "console.")),
     "5.4": (M("cis.5-4.title", "Password ageing, umask, shell timeout"), "suggest",
              M("cis.5-4.what", "Passwords that expire, new files private by default, and idle shells that are closed."),
-             M("cis.5-4.here", "Optional on a box with one administrator. Expiring passwords often make people write them down.")),
+             M("cis.5-4.here", "This is optional on a box with one administrator. Passwords that expire often cause people to write them "
+                               "down.")),
     "5.6": (M("cis.5-6.title", "Who can use su"), "suggest",
              M("cis.5-6.what", "su limited to the members of one group."),
-             M("cis.5-6.here", "Optional: root's password is locked, so su leads nowhere anyway.")),
+             M("cis.5-6.here", "This is optional. The password of root is locked, so su cannot open a root shell with a password.")),
     "6.1": (M("cis.6-1.title", "World-writable, unowned and setuid files"), "suggest",
              M("cis.6-1.what", "Files anyone can change, files with no owning user, and programs that run as root."),
-             M("cis.6-1.here", "Look at the list from a shell.")),
+             M("cis.6-1.here", "Run the command below to list these files. Then examine each file in the list.")),
     "6.2": (M("cis.6-2.title", "Users' own files' permissions"), "suggest",
              M("cis.6-2.what", "Dot files in home folders writable by others."),
-             M("cis.6-2.here", "Remove the write permission for others from each file named.")),
+             M("cis.6-2.here", "For each file that the audit names, remove the write permission for other users (chmod o-w).")),
     "99.1": (M("cis.99-1.title", "USB devices"), "not-here",
              M("cis.99-1.what", "The benchmark blocks USB storage."),
-             M("cis.99-1.here", "The box reads books and updates from USB drives on purpose.")),
+             M("cis.99-1.here", "The box reads books, toolkits and updates from USB drives. If you block USB storage, these features stop.")),
     "99.2": (M("cis.99-2.title", "FireWire storage"), "not-here",
              M("cis.99-2.what", "The benchmark blocks FireWire storage (firewire-ohci, firewire-sbp2)."),
              M("cis.99-2.here", "The boards irate-box runs on have no FireWire port.")),
@@ -221,7 +237,8 @@ CIS = {
              M("cis.99-3.here", "The sshd of Debian 13 does not read it any more. The hotspot firewall on Security is what filters the hotspot.")),
     "99.4": (M("cis.99-4.title", "Kernel audit support"), "not-here",
              M("cis.99-4.what", "CONFIG_AUDIT in the kernel, for auditd."),
-             M("cis.99-4.here", "The vendor kernel is built without it.")),
+             M("cis.99-4.here", "The board's maker builds the kernel without it, so auditd cannot run. Only a kernel from the maker with "
+                                "CONFIG_AUDIT can change this.")),
     "99.5": (M("cis.99-5.title", "More SSH settings"), "suggest",
              M("cis.99-5.what", "Further sshd hardening: keys only, rekeying, strict modes, where keys can come from."),
              M("cis.99-5.here", "Keys only is a choice on Security. The rest are fine-tuning in /etc/ssh/sshd_config.d.")),
@@ -246,11 +263,15 @@ def cis(section):
 # a command ({cmd}; a finding may carry its own exact one), the owner's words for it ({say}), the deep audit again ({act: "deep"}), the box doctor's repair ({repair: its choice},
 # "Run the installer again"), or the hub's own work ({hub: why}): what an update of irate-box fixes. Matched by source and a pattern on the finding's id; the
 # first match wins; anything unmatched shows its fix text as it is.
-HUB_SANDBOX = M("do.hub-sandbox", "These are the hub's own units. Hardening them is the work of irate-box, one unit at a time, with a "
-                                  "restart each. Keep the hub updated.")
-HUB_SETUP = M("do.hub-setup", "The hub's own setup is not as its installer leaves it. Run the installer again, with this box's version "
-                              "and its recorded options, to put the setup back. If the setup changes again, something on the box "
-                              "changes it.")
+HUB_SANDBOX = M("do.hub-sandbox", "These units are part of irate-box, and you cannot set their sandbox lines from the administration pages. "
+                                  "irate-box adds the lines in its updates, one unit at a time, because each change needs a restart and a "
+                                  "test of that unit. Keep the hub updated, so that the box gets each change.")
+HUB_SETUP = M("do.hub-setup", "The hub's own setup differs from what its installer writes. Run the installer again, with the version of this "
+                              "box and its recorded options. The installer then writes the setup again. If this finding comes back, a program"
+                              " or a person on the box changed the setup again. Find that change first.")
+HUB_SANDBOX_TERM = M("do.hub-sandbox-term", "The terminal's unit is part of irate-box, and you cannot set its sandbox lines from the "
+                                            "administration pages. irate-box adds the lines in its updates. If you do not use the terminal, "
+                                            "remove its add-on.")
 UPDATES_DEBIAN = M("go.updates-debian", "Updates → Debian's security updates")
 DO = [
     # Bluetooth: switched off by the Box doctor's own action (health.py idle_switch), which keeps how it was, so its
@@ -272,8 +293,7 @@ DO = [
     ("*", r"^addons-", {"go": "addons", "where": M("go.addons", "Add-ons")}),
     ("*", r"^image-apt-daily$", {"go": "pkg-makers", "where": M("go.pkg-makers", "Updates → Packages from their makers")}),
     ("*", r"^reach-ssh$", {"go": "sec-ssh-password", "where": M("go.sec-ssh-password", "Security → SSH password sign-in")}),
-    ("*", r"^reach-web$", {"go": "access", "where": M("go.network-tailscale", "Access → Remote access (Tailscale, to reach the box from "
-                                                                               "afar instead)")}),
+    ("*", r"^reach-web$", {"go": "access", "where": M("go.network-tailscale", "Access → Remote access")}),
     # ASLR and core dumps, from whichever source said so (the CIS checks' own scripts state no plain
     # setting for core dumps' limits line).
     ("*", r"_enable_randomized_vm_placement$|^lynis-KRNL-6000-kernel\.randomize_va_space$",
@@ -291,20 +311,22 @@ DO = [
                                                                    "nothing to do.")}),
     ("*", r"^notes-login$", {"go": "apps", "where": M("go.apps-notes", "Apps (Notes: who can open it)")}),
     ("*", r"^addon-tailscale(-|$)", {"go": "access", "where": M("go.access-remote", "Access → Remote access"),
-                                     "say": M("do.tailscale", "Tailscale came with the image, and the sandbox of its unit is its makers' "
-                                                              "work. If you do not use it to reach the box from afar, disable it.")}),
+                                     "say": M("do.tailscale", "The image includes Tailscale. Its service settings, its sandbox too, come from"
+                                                              " Tailscale, and irate-box does not change them. If you do not use Tailscale "
+                                                              "for remote access, disable it on Access → Remote access.")}),
     ("*", r"^addon-mqtt(-|$)|^(page-)?port-tcp-1883$", {"go": "addons", "where": M("go.addons", "Add-ons"),
-                                                         "say": M("do.mqtt", "Meshtastic nodes on your network publish to the broker, so "
-                                                                             "it answers the network on purpose, with no sign-in. Its "
-                                                                             "topics are limited to msh/#. If no node of yours uses it, "
-                                                                             "remove the MQTT add-on. If nodes use it, accept it as it "
-                                                                             "is.")}),
-    ("*", r"^addon-term(-|$)", {"hub": HUB_SANDBOX, "go": "addons", "where": M("go.addons-term", "Add-ons (remove the terminal if you do "
-                                                                                                "not use it)")}),
+                                                         "say": M("do.mqtt", "Meshtastic nodes on your network publish to the broker. So the "
+                                                                             "broker that the box installs accepts connections from the "
+                                                                             "network with no sign-in. It accepts the topic msh/# only. If no"
+                                                                             " node of yours uses it, remove the MQTT add-on. If your nodes "
+                                                                             "use it, select Accept risk.")}),
+    ("*", r"^addon-term(-|$)", {"hub": HUB_SANDBOX_TERM, "go": "addons", "where": M("go.addons-term", "Add-ons")}),
     ("*", r"^units-|^cmdlines-", {"hub": HUB_SANDBOX}),
     ("*", r"^(notes-(user|shell|proxy)|admin-loopback|addons-origin|front-|git-public|folders-control|folders-ci|code-)",
      {"hub": HUB_SETUP, "repair": "rerun-install"}),
-    ("*", r"^(hub-body|admin-csrf)$", {"hub": M("do.hub-flaw", "A flaw in the hub itself. An update of irate-box fixes it."),
+    ("*", r"^(hub-body|admin-csrf)$", {"hub": M("do.hub-flaw", "This is a fault in the hub itself. You cannot correct it from the "
+                                                               "administration pages. An update of irate-box corrects it. Install it from "
+                                                               "Updates."),
                                        "go": "updates", "where": M("go.updates", "Updates")}),
 ]
 _DO = [(src, re.compile(pat), do) for src, pat, do in DO]
@@ -333,12 +355,24 @@ def _declared_about(source, fid):
 # with why. (The plan's items, for whoever fixes them: units-root 27a, units-hub 129, units-ci-loopback 130,
 # cmdlines-proc 131.)
 INFO = {
-    "units-root": M("info.units-root", "This is the work of irate-box: an update adds the missing lines to its root units."),
-    "units-hub": M("info.units-hub", "This is the work of irate-box: an update narrows what these units keep."),
-    "units-ci-loopback": M("info.units-ci", "This is the work of irate-box: an update keeps builds off the hub's loopback address."),
-    "cmdlines-proc": M("info.cmdlines-proc", "This is the work of irate-box: an update hides the processes of other accounts."),
-    "image-kernel": M("info.image-kernel", "This is a limit of the board. Its maker builds the kernel, and Debian's security tracker "
-                                           "does not cover it. New versions come from its maker, through Debian's updates."),
+    "units-root": M("info.units-root", "The root units of the hub are part of irate-box. A later update of irate-box adds the sandbox lines "
+                                       "that they are missing. Until then, a fault in one of these units runs as root with fewer limits than "
+                                       "it can have. The finding lists the missing lines for each unit. Keep the hub updated, so that the box"
+                                       " gets the change."),
+    "units-hub": M("info.units-hub", "These units are part of irate-box. A later update of irate-box removes the root capabilities that the "
+                                     "build unit does not use. Until then, a fault in one of these services can reach more of the box than it"
+                                     " needs. Keep the hub updated, so that the box gets the change."),
+    "units-ci-loopback": M("info.units-ci", "The build unit is part of irate-box. A later update of irate-box keeps builds off the loopback "
+                                            "address of the box, and still lets them download from the internet. Until then, a build can "
+                                            "connect to the hub on the box itself. The finding says what a build can reach there."),
+    "cmdlines-proc": M("info.cmdlines-proc", "A later update of irate-box hides the processes of each account from the other accounts. The "
+                                             "Box doctor and the Security doctor keep their view of every process. Until then, every account "
+                                             "on the box can read the command line of every process. Do not put a password or a token on a "
+                                             "command line."),
+    "image-kernel": M("info.image-kernel", "This is a limit of the board. The board's maker builds its kernel, and Debian's security tracker "
+                                           "does not cover vendor kernels. So debsecan cannot list the known vulnerabilities of this kernel. "
+                                           "Fixes come only from the maker, as a new kernel package or a new image. When the box is online, "
+                                           "install the maker's kernel updates with apt."),
 }
 
 def info(source, fid):
@@ -355,6 +389,6 @@ def do_for(source, fid):
         decl = None
     if decl and decl["risk"] != "ok":
         return {"go": "addons", "where": M("go.addons", "Add-ons"),
-                "say": M("do.declared", "{says} If nobody uses it, remove the add-on. If people use it, accept it as it is. The hotspot "
-                                        "firewall on Security decides if hotspot guests reach it.", says=decl["says"])}
+                "say": M("do.declared", "{says} If nobody uses it, remove the add-on. If people use it, select Accept risk. The hotspot "
+                                        "firewall on Security controls whether hotspot guests can reach it.", says=decl["says"])}
     return next((do for src, pat, do in _DO if src in ("*", source) and pat.search(fid or "")), None)
