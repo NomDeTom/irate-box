@@ -1689,8 +1689,8 @@ def step_cmdlines(ctx):
                            M("cmdlines.proc.visible", "Every account on the box can see every process and its command line."),
                            M("cmdlines.proc.visible.why", "A local process, a build or a compromised add-on for example, can read a secret "
                                                           "that another process has on its command line."),
-                           M("cmdlines.proc.fix", "Mount /proc with hidepid=2, or set ProtectProc=invisible on the units that you trust "
-                                                  "least."), ref="F9"))
+                           M("cmdlines.proc.fix", "On Security, under Process visibility, select Each account sees only its own. Root "
+                                                  "and the doctors keep their view of every process."), ref="F9"))
     return out
 
 

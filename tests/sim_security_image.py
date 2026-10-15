@@ -347,6 +347,62 @@ check("undo_all puts the three back", (T / "sudoers.d" / "claude-temp").exists()
       and not (T / "journald.conf.d" / "irate-box.conf").exists() and not security.load_record(), done)
 
 
+# Process visibility: the box's /proc (PID 1's, not this unit's own under ProtectProc), hidden by a remount there and an
+# /etc/fstab line for each boot; Undo puts the line back as it was and shows every process again.
+security.INIT_MOUNTS, security.FSTAB = T / "init-mounts", T / "fstab"
+plain = "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
+security.INIT_MOUNTS.write_text("/dev/mmcblk0p1 / ext4 rw 0 0\n" + plain)
+FSTAB0 = "UUID=abcd / ext4 defaults,noatime 0 1\ntmpfs /tmp tmpfs defaults,nosuid 0 0\n"
+security.FSTAB.write_text(FSTAB0)
+mounts, remount_rc, real_run = [], [0], security.run
+def fake_run(*c, **k):
+    if c[:4] == ("nsenter", "--target", "1", "--mount"):
+        mounts.append(c)
+        if remount_rc[0] == 0:
+            n = c[-2].split("hidepid=")[1]
+            security.INIT_MOUNTS.write_text("/dev/mmcblk0p1 / ext4 rw 0 0\n" + plain.replace("relatime", "relatime" + ("" if n == "0" else f",hidepid={n}")))
+        return __import__("types").SimpleNamespace(stdout="", stderr="" if remount_rc[0] == 0 else "mount: /proc: permission denied.", returncode=remount_rc[0])
+    return real_run(*c, **k)
+security.run = fake_run
+pf = lambda: {f["id"]: f for f in security.proc_findings(security.load_record())}.get("proc-hidden")  # noqa: E731
+f = pf()
+check("process visibility: every process shown to every account is a warning, Each account sees only its own offered with a confirmation",
+      f["status"] == "warn" and [(a["choice"], a["on"], "confirm" in a) for a in f["actions"]] == [("proc-every-now", True, False), ("proc-hide", False, True)], f)
+said_hide = security.fix("proc-hide", None)
+check("  hidden: /proc remounted in PID 1's mount namespace, with hidepid=2", mounts[-1] == ("nsenter", "--target", "1", "--mount", "mount", "-o", "remount,hidepid=2", "/proc")
+      and said_hide["id"] == "security-fix.proc.hidden", (mounts, said_hide))
+check("  and at each boot: /etc/fstab gains its line, every other line kept as it was", security.FSTAB.read_text() == FSTAB0 + security.PROC_MARK + "\n" + security.PROC_LINE + "\n",
+      security.FSTAB.read_text())
+f = pf()
+check("  ok now, said as set here, with Undo offered", f["status"] == "ok" and f["notes"][0]["id"] == "proc.set-here"
+      and [(a["choice"], a["on"]) for a in f["actions"]] == [("proc-undo", False), ("proc-hide", True)], f)
+check("  pressed again: nothing changed, said so", security.fix("proc-hide", None)["id"] == "security-fix.proc.already" and len(mounts) == 1)
+security.fix("proc-undo", None)
+check("  undone: /etc/fstab exactly as it was, every process shown again (hidepid=0)", security.FSTAB.read_text() == FSTAB0
+      and mounts[-1][-2] == "remount,hidepid=0" and pf()["status"] == "warn" and "proc" not in security.load_record(), security.FSTAB.read_text())
+withproc = FSTAB0 + "proc /proc proc defaults 0 0\n"
+security.FSTAB.write_text(withproc)
+security.fix("proc-hide", None)
+check("an /etc/fstab with its own /proc line: hidepid added to that line, no second line", security.FSTAB.read_text() == FSTAB0 + "proc /proc proc defaults,hidepid=2 0 0\n",
+      security.FSTAB.read_text())
+security.fix("proc-undo", None)
+check("  undone: the line exactly as it was", security.FSTAB.read_text() == withproc, security.FSTAB.read_text())
+remount_rc[0] = 1
+try:
+    security.fix("proc-hide", None); refused = None
+except ValueError as exc:
+    refused = exc.message["id"]
+check("a remount that fails: refused, saying what mount said; /etc/fstab and the record unchanged",
+      refused == "security-fix.proc.remount-failed" and security.FSTAB.read_text() == withproc and "proc" not in security.load_record(), refused)
+remount_rc[0] = 0
+security.fix("proc-hide", None)
+security.undo_all()
+check("undo_all puts process visibility back too", security.FSTAB.read_text() == withproc and "hidepid" not in security.INIT_MOUNTS.read_text())
+security.INIT_MOUNTS.unlink()
+check("the box's mounts unreadable: no finding (nothing said that cannot be known)", pf() is None)
+security.run = real_run
+
+
 
 # Security updates: Debian's stable fixes count, as the security archive's do; others' don't.
 SIM = """Inst base-files [26.05.0-trunk-13.8+deb13u6-trixie] (26.8.3-13.8+deb13u6-trixie Armbian:trixie [armhf])

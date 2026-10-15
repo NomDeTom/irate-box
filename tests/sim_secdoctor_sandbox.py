@@ -77,6 +77,10 @@ for box, want in (("rw,nosuid,nodev,noexec,relatime", "warn"), ("rw,nosuid,nodev
     (proc / "1" / "mounts").write_text(f"proc /proc proc {box} 0 0\n")
     f = next(f for f in sd.step_cmdlines({}) if f["id"] == "cmdlines-proc")
     check(f"process visibility read from PID 1's mounts, not the unit's own: {box.rpartition(',')[2]} is {want}", f["status"] == want, f)
+from irate_box.root import secdoctor_xref as xr  # noqa: E402
+check("  the doctor's finding joins the Security page's fix (proc-hidden), and is no longer information only",
+      xr.about("doctor", "cmdlines-proc") == {"kind": "setting", "key": "proc-hidden"}
+      and xr.about("security-page", "proc-hidden") == {"kind": "setting", "key": "proc-hidden"} and xr.info("doctor", "cmdlines-proc") is None)
 import shutil  # noqa: E402
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

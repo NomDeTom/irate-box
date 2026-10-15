@@ -35,6 +35,9 @@ SYSCTL_DROPIN = Path(os.environ.get("HUB_SYSCTL_DROPIN", "/etc/sysctl.d/60-irate
 PROC_SYS = Path(os.environ.get("HUB_PROC_SYS", "/proc/sys"))
 GROUP_FILE = Path(os.environ.get("HUB_GROUP_FILE", "/etc/group"))
 PASSWD_FILE = Path(os.environ.get("HUB_PASSWD_FILE", "/etc/passwd"))
+FSTAB = Path(os.environ.get("HUB_FSTAB", "/etc/fstab"))
+# The box's own /proc, as PID 1 has it: this unit runs under ProtectProc, so its own /proc/mounts always says hidepid.
+INIT_MOUNTS = Path(os.environ.get("HUB_INIT_MOUNTS", "/proc/1/mounts"))
 # Armbian's first-login marker: present until someone logs in as root at the console and answers its
 # setup (a root password, a user). Left on a box set up some other way, its image's defaults stand.
 FIRSTRUN = Path(os.environ.get("HUB_ARMBIAN_FIRSTRUN", "/root/.not_logged_in_yet"))
@@ -1324,6 +1327,111 @@ def _logs(rec, on):
     return M("security-fix.logs.ram", "In-memory logs: from the next boot, logs are in RAM again, as the image had them.")
 
 
+# --- process visibility: who sees which processes --------------------------------------------------------
+
+HIDEPID = re.compile(r"(?:^|,)hidepid=(1|2|invisible|noaccess|ptraceable)(?:,|$)")
+PROC_LINE = "proc /proc proc defaults,hidepid=2 0 0"
+PROC_MARK = "# Written by irate-box's Security page (/admin): each account sees only its own processes. Undo there."
+
+
+def _proc_hidden():
+    """True when the box's /proc hides each account's processes from the others (hidepid), None when unknown."""
+    try:
+        m = re.search(r"^\S+ /proc proc (\S+)", INIT_MOUNTS.read_text(), re.M)
+    except OSError:
+        return None
+    return bool(m and HIDEPID.search(m.group(1)))
+
+
+def _fstab_proc(lines):
+    """The index of /etc/fstab's line for /proc, or None."""
+    return next((i for i, line in enumerate(lines) if not line.lstrip().startswith("#") and len(line.split()) >= 4
+                 and line.split()[1] == "/proc"), None)
+
+
+def _write_fstab(text):
+    tmp = FSTAB.with_name(f".{FSTAB.name}.irate-box")
+    tmp.write_text(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, FSTAB)
+
+
+def _remount_proc(hidepid):
+    """Remount the box's /proc (PID 1's mount namespace, not this unit's own) with hidepid=N. ValueError if it fails."""
+    out = run("nsenter", "--target", "1", "--mount", "mount", "-o", f"remount,hidepid={hidepid}", "/proc")
+    if out.returncode != 0:
+        raise Refused(M("security-fix.proc.remount-failed", "The box could not remount /proc. mount said: {detail}",
+                        detail=(out.stderr or out.stdout).strip()[-200:]))
+
+
+def proc_findings(rec):
+    ours = rec.get("proc")
+    hidden = _proc_hidden()
+    if hidden is None:
+        return []
+    group = M("proc.group", "Who sees which processes")
+    every = M("proc.every", "Every account sees every process")
+    own = M("proc.own", "Each account sees only its own")
+    hide_confirm = M("proc.own.confirm", "Hide the processes of each account from the other accounts? Root and the doctors keep their "
+                                         "view of every process. Other accounts need sudo to see processes that are not their own. This "
+                                         "applies at once and at each boot.")
+    back = _chip(group, "proc-undo", M("proc.every-image", "Every account sees every process, as the image has it"), False,
+                 M("proc.every.confirm", "Show every process to every account again, as the image has it? This applies at once and at "
+                                         "each boot."))
+    title = M("proc-hidden.title", "Process visibility")
+    if hidden:
+        return [finding("proc-hidden", title, "ok",
+                        M("proc.hidden", "Each account sees only its own processes. Root sees every process."),
+                        notes=[M("proc.set-here", "Set on this page.")] if ours else [],
+                        actions=[back, _chip(group, "proc-hide", own, True)] if ours else [])]
+    return [finding("proc-hidden", title, "warn",
+                    M("proc.visible", "Every account on the box can see every process and its command line."),
+                    M("proc.visible.why", "A local process, a build or a compromised add-on, for example, can read a secret that another "
+                                          "process has on its command line."),
+                    M("proc.visible.fix", "Hide the processes of each account from the other accounts. Root and the doctors keep their "
+                                          "view of every process. This applies at once and at each boot."),
+                    actions=[_chip(group, "proc-every-now", every, True), _chip(group, "proc-hide", own, False, hide_confirm)])]
+
+
+def _proc(rec, on):
+    lines = FSTAB.read_text().splitlines() if FSTAB.exists() else []
+    i = _fstab_proc(lines)
+    if on:
+        if "proc" in rec:
+            return M("security-fix.proc.already", "Each account already sees only its own processes. Nothing changed.")
+        _remount_proc(2)
+        was = lines[i] if i is not None else None
+        if i is None:
+            lines += [PROC_MARK, PROC_LINE]
+        else:
+            f = lines[i].split()
+            opts = [o for o in f[3].split(",") if not o.startswith("hidepid=")] + ["hidepid=2"]
+            lines[i] = " ".join(f[:3] + [",".join(opts)] + f[4:])
+        try:
+            _write_fstab("\n".join(lines) + "\n")
+        except OSError as exc:
+            _remount_proc(0)
+            raise Refused(M("security-fix.proc.fstab-failed", "The box could not write {path}: {detail}. It showed every process "
+                                                              "again.", path=str(FSTAB), detail=str(exc)))
+        rec["proc"] = {"date": time.strftime("%Y-%m-%d"), "fstab": was}
+        return M("security-fix.proc.hidden", "Process visibility: each account now sees only its own processes. Root sees every process. "
+                                             "This also applies at each boot.")
+    if "proc" not in rec:
+        raise Refused(M("security-fix.proc.not-hidden", "Processes were not hidden from this page. There is nothing to restore."))
+    was = rec["proc"].get("fstab")
+    if i is not None:
+        if was is None:
+            del lines[i]
+            if i > 0 and lines[i - 1] == PROC_MARK:
+                del lines[i - 1]
+        else:
+            lines[i] = was
+    _write_fstab("\n".join(lines) + "\n" if lines else "")
+    _remount_proc(0)
+    rec.pop("proc")
+    return M("security-fix.proc.shown", "Process visibility: every account sees every process again, as the image has it.")
+
+
 # --- the hotspot firewall: what a guest on the hotspot can reach -------------------------------------
 
 # The hotspot firewall's level, said when it is set: (just turned on?, level).
@@ -1570,6 +1678,7 @@ def scan():
     findings += root_findings(rec)
     findings += apt_findings(rec)
     findings += log_findings(rec)
+    findings += proc_findings(rec)
     findings += firewall_findings(rec)
     findings += share_findings()
     upd, _ = update_findings()
@@ -1813,6 +1922,8 @@ def fix(choice, updates_log):
         msg = _apt(rec, choice.split(":", 1)[1], choice.startswith("apt-signedby:"))
     elif choice in ("logs-card", "logs-undo"):
         msg = _logs(rec, choice == "logs-card")
+    elif choice in ("proc-hide", "proc-undo"):
+        msg = _proc(rec, choice == "proc-hide")
     elif choice.startswith("firewall-"):
         msg = _firewall(rec, choice[len("firewall-"):])   # each switch checked there
     elif choice.startswith("share-contain-"):
@@ -1848,7 +1959,8 @@ def undo_all():
                   [f"unit-undo:{u}" for u in rec.get("units", {})] + \
                   [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})] + \
                   [f"sudo-undo:{f}" for f in rec.get("sudo", {})] + [f"apt-undo:{k}" for k in rec.get("apt", {})] + \
-                  (["logs-undo"] if "logs" in rec else []) + (["firewall-off"] if "firewall" in rec else []) + \
+                  (["logs-undo"] if "logs" in rec else []) + (["proc-undo"] if "proc" in rec else []) + \
+                  (["firewall-off"] if "firewall" in rec else []) + \
                   (["autoupdate-undo"] if "autoupdate" in rec else []):
         try:
             done.append(render(fix(choice, None)))   # for uninstall.sh's terminal

@@ -49,6 +49,8 @@ XREF = {
                         "debian-cis": ["remove_empty_password_field", "etc_shadow_fields_not_empty"], "lynis": ["AUTH-9283"]},
     "apt-trust": {"title": M("xref.apt-trust", "Repository keys trusted for every repository"), "doctor": ["image-apt-trust"], "security-page": ["apt-trust"]},
     "logs": {"title": M("xref.logs", "Logs kept only in memory"), "security-page": ["logs-ram"], "debian-cis": ["journald_write_persistent"]},
+    "proc-hidden": {"title": M("xref.proc-hidden", "Process visibility between accounts"), "ref": "F9", "doctor": ["cmdlines-proc"],
+                    "security-page": ["proc-hidden"]},
     "tls": {"title": M("xref.tls", "HTTPS: the certificate and the web server"), "doctor": ["tls"], "lynis": ["HTTP-6710"]},
 }
 _BY = {(src, i): key for key, e in XREF.items() for src, ids in e.items() if isinstance(ids, list) for i in ids}
@@ -352,8 +354,8 @@ def _declared_about(source, fid):
 
 # Findings nothing the owner can change on the box puts right: irate-box's own work still to do, or a limit of the
 # board or its OS. They are said, but they leave the review count for a fold of their own ("For information"), each
-# with why. (The plan's items, for whoever fixes them: units-root 27a, units-hub 129, units-ci-loopback 130,
-# cmdlines-proc 131.)
+# with why. (The plan's items, for whoever fixes them: units-root 27a, units-hub 129, units-ci-loopback 130. 131,
+# cmdlines-proc, has its fix on the Security page: the key proc-hidden.)
 INFO = {
     "units-root": M("info.units-root", "The root units of the hub are part of irate-box. A later update of irate-box adds the sandbox lines "
                                        "that they are missing. Until then, a fault in one of these units runs as root with fewer limits than "
@@ -365,10 +367,6 @@ INFO = {
     "units-ci-loopback": M("info.units-ci", "The build unit is part of irate-box. A later update of irate-box keeps builds off the loopback "
                                             "address of the box, and still lets them download from the internet. Until then, a build can "
                                             "connect to the hub on the box itself. The finding says what a build can reach there."),
-    "cmdlines-proc": M("info.cmdlines-proc", "A later update of irate-box hides the processes of each account from the other accounts. The "
-                                             "Box doctor and the Security doctor keep their view of every process. Until then, every account "
-                                             "on the box can read the command line of every process. Do not put a password or a token on a "
-                                             "command line."),
     "image-kernel": M("info.image-kernel", "This is a limit of the board. The board's maker builds its kernel, and Debian's security tracker "
                                            "does not cover vendor kernels. So debsecan cannot list the known vulnerabilities of this kernel. "
                                            "Fixes come only from the maker, as a new kernel package or a new image. When the box is online, "
