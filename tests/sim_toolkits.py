@@ -339,6 +339,27 @@ queued.clear()
 check("nothing kept current: nothing fetched", toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removal period elapsed: removing the kits")
       and not any(q["action"] == "kit-fetch" for q in queued), queued)
 
+# Older sets kept for Roll back, swept by age: off by default; a set whose newer set replaced it more than the days ago.
+check("older sets: kept until a refresh brings newer versions, by default", toolkits.settings()["previous_days"] is None)
+for bad in ({"previous_days": 0}, {"previous_days": 400}, {"previous_days": "30"}):
+    try:
+        toolkits.set_settings(bad); check(f"settings refuse {bad}", False)
+    except librarian.LibrarianError:
+        check(f"settings refuse {bad}", True)
+toolkits.set_settings({"previous_days": 30})
+now_ = time.time()
+(T / "state" / "control" / "kits.json").write_text(json.dumps({"kits": {
+    "small": {"cached": {"fetched": now_ - 40 * 86400}, "previous": {"fetched": now_ - 90 * 86400}},
+    "debug": {"cached": {"fetched": now_ - 10 * 86400}, "previous": {"fetched": now_ - 50 * 86400}}}}))
+queued.clear()
+line = toolkits.step({"check_every_hours": 24}, now=now_)
+check("  set to 30 days: the sweep queued for the older set replaced 40 days ago, said with which; not for 10 days",
+      {"action": "kit-drop-old-previous", "days": 30} in queued and "small" in line and "debug" not in line.split("days:")[-1], (queued, line))
+queued.clear()
+toolkits.step({"check_every_hours": 24}, now=now_ + 60)
+check("  not queued again within the hour", not any(q["action"] == "kit-drop-old-previous" for q in queued), queued)
+toolkits.set_settings({"previous_days": None})
+
 # Roll back: the previous set becomes current; an installed kit's packages go back.
 s_ = kits.installed_state(); s_.pop("debug", None); kits._write(kits.INSTALLED, s_)
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
@@ -633,6 +654,14 @@ check("Clear old rollback cache: every older set gone, their own files pruned, t
       and len(had) >= 2 and not any(kits.manifest(k, "previous") for k in kits.definitions())
       and (args_of(line, "kits.drop-all.done") or {}).get("n") == len(had), (had, old_files, line))
 check("  pressed again: nothing to remove, said so", kits.drop_all_previous(log=lambda *a: None)["id"] == "kits.drop-all.none")
+
+# The sweep by age, on root's side: an older set past its days goes; one within them stays.
+ARCHIVE["gdb"] = ("16.3-7", ARCHIVE["gdb"][1])
+kits.fetch("small", budget_mb=10, log=lambda *a: None)
+check("the sweep by age: an older set within its days stays", kits.drop_old_previous(30, log=lambda *a: None)["id"] == "kits.sweep.none"
+      and kits.manifest("small", "previous") is not None)
+line = kits.drop_old_previous(30, now=time.time() + 31 * 86400, log=lambda *a: None)
+check("  past them: removed, said with how many", kits.manifest("small", "previous") is None and (args_of(line, "kits.sweep.done") or {}).get("n") == 1, line)
 
 # The previous set, kept for Roll back: what it keeps beyond the current one (the Toolkits card says so).
 cur = {"packages": [{"name": "ntfs-3g", "version": "3", "file": "ntfs-3g_3.deb", "size": 400}, {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300}],

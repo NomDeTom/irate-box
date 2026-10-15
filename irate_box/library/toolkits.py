@@ -38,7 +38,10 @@ def definitions():
 
 def settings():
     raw = librarian._read_json(SETTINGS, {})
-    out = {"budget_mb": raw.get("budget_mb", 500), "deep_audit_days": raw.get("deep_audit_days", 7), "kits": {}}
+    # previous_days: how long an older set, kept for Roll back, stays after a newer set replaced it (None: until the next
+    # refresh replaces it in turn).
+    out = {"budget_mb": raw.get("budget_mb", 500), "deep_audit_days": raw.get("deep_audit_days", 7),
+           "previous_days": raw.get("previous_days"), "kits": {}}
     for kid, k in definitions().items():
         mine = (raw.get("kits") or {}).get(kid, {})
         out["kits"][kid] = {"keep_current": mine.get("keep_current", True),
@@ -62,6 +65,12 @@ def set_settings(changes):
         if type(d) is not int or not 0 <= d <= 90:
             raise LibrarianError(M("toolkits.deep-audit.invalid", "Invalid deep audit interval. Enter a number of days from 0 to 90. 0 means never on its own."))
         cfg["deep_audit_days"] = d
+    if "previous_days" in changes:
+        d = changes["previous_days"]
+        if d is not None and (type(d) is not int or not 1 <= d <= 365):
+            raise LibrarianError(M("toolkits.previous-days.invalid", "Invalid setting. Enter a number of days from 1 to 365 for older "
+                                   "sets, or null to keep them until a refresh brings newer versions."))
+        cfg["previous_days"] = d
     for kid, ch in (changes.get("kits") or {}).items():
         if kid not in cfg["kits"] or not isinstance(ch, dict):
             raise LibrarianError(M("toolkits.kit.not-found", "Source not found: toolkit {kit}.", kit=str(kid)))
@@ -202,6 +211,16 @@ def step(policy, now=None, log=print):
         out.append("removal period elapsed: removing the kits")
     cfg = settings()
     asked = librarian._read_json(STATE, {})
+    # Older sets past their days (previous_days), swept: counted from when the newer set replaced them.
+    days = cfg.get("previous_days")
+    if days and now - asked.get("sweep", 0) >= 3600:
+        due = [kid for kid, v in (st.get("kits") or {}).items()
+               if v.get("previous") and now - ((v.get("cached") or {}).get("fetched") or now) >= days * 86400]
+        if due:
+            librarian._queue_root({"action": "kit-drop-old-previous", "days": days})
+            asked["sweep"] = now
+            librarian._write_json(STATE, asked)
+            out.append(f"removing older sets past {days} days: {', '.join(due)}")
     feeding = [kid for kid, k in definitions().items() if cfg["kits"][kid]["keep_current"] and "debsecan" in k.get("feeds", [])]
     if feeding:
         try:

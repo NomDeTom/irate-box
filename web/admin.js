@@ -5759,6 +5759,8 @@ function renderKits(data) {
   if (!kitsEl.budget.contains(document.activeElement) && !kitsBudgetDirty()) {
     kitsEl.budget.elements.budget.value = cfg.budget_mb;
     kitsEl.budget.dataset.saved = cfg.budget_mb;
+    kitsEl.budget.elements.previous.value = cfg.previous_days == null ? '' : String(cfg.previous_days);
+    kitsEl.budget.dataset.previous = kitsEl.budget.elements.previous.value;
     kitsBudgetSync();
   }
   kitsEl.problems.replaceChildren(...(st.problems || []).map((p) => checkItem('problem', 'Cache integrity check failed', p,
@@ -5834,7 +5836,8 @@ function kitBody(k, st, cfg, setDirty) {
     jobs.append(el('p', { className: 'setting-desc', textContent: `Kept for rollback: the set downloaded ${dayOf(s.previous.fetched)}`
       + (older.length ? `, with older versions of ${older.length} package${older.length === 1 ? '' : 's'} (${older.slice(0, 6).join(', ')}${older.length > 6 ? ', …' : ''})` : ', the same versions as now')
       + (s.previous.extra_bytes ? `, ${size(s.previous.extra_bytes)} more in the cache` : '')
-      + '. The Security doctor checks only the newest version of each package.' }));
+      + '. The Security doctor checks only the newest version of each package.'
+      + (cfg.previous_days && c && c.fetched ? ` The box removes it on ${dayOf(c.fetched + cfg.previous_days * 86400)} (Older sets kept for Roll back).` : '') }));
   }
   jobs.append(jobRow(
     actionButton('Refresh cache', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
@@ -5971,7 +5974,8 @@ async function loadKits() {
 // The budget waits for Save; Discard puts back the saved one.
 function kitsBudgetDirty() {
   const f = kitsEl.budget;
-  return f.dataset.saved !== undefined && f.elements.budget.value !== String(f.dataset.saved);
+  return f.dataset.saved !== undefined && (f.elements.budget.value !== String(f.dataset.saved)
+    || f.elements.previous.value !== (f.dataset.previous || ''));
 }
 function kitsBudgetSync() {
   const dirty = kitsBudgetDirty();
@@ -5979,15 +5983,18 @@ function kitsBudgetSync() {
   document.getElementById('kits-budget-discard').disabled = !dirty;
 }
 kitsEl.budget.elements.budget.addEventListener('input', kitsBudgetSync);
+kitsEl.budget.elements.previous.addEventListener('change', kitsBudgetSync);
 document.getElementById('kits-budget-discard').addEventListener('click', () => {
   kitsEl.budget.elements.budget.value = kitsEl.budget.dataset.saved;
+  kitsEl.budget.elements.previous.value = kitsEl.budget.dataset.previous || '';
   kitsBudgetSync();
 });
 kitsEl.budget.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const mb = Number(kitsEl.budget.elements.budget.value);
-  await kitAct({ action: 'settings', budget_mb: mb });
+  const mb = Number(kitsEl.budget.elements.budget.value), prev = kitsEl.budget.elements.previous.value;
+  await kitAct({ action: 'settings', budget_mb: mb, previous_days: prev === '' ? null : Number(prev) });
   kitsEl.budget.dataset.saved = mb;
+  kitsEl.budget.dataset.previous = prev;
   kitsBudgetSync();
 });
 document.getElementById('kits-refresh-all').addEventListener('click', async () => {

@@ -688,6 +688,28 @@ def drop_previous(kit_id, log=print):
              "brings new versions.", title=kit["title"], mb=freed >> 20)
 
 
+def drop_old_previous(days, now=None, log=print):
+    """The sweep by age (Toolkits, Older sets kept for Roll back): each older set whose newer set replaced it more than
+    days ago is removed, as Remove older set does."""
+    now = now or time.time()
+    dropped, freed = [], 0
+    for kid in definitions():
+        prev, cur = manifest(kid, "previous"), manifest(kid)
+        if not prev or not cur or now - (cur.get("fetched") or now) < days * 86400:
+            continue
+        freed += _trailing(cur, prev)["extra_bytes"]
+        (MANIFESTS / f"{kid}.previous.json").unlink(missing_ok=True)
+        dropped.append(_kit(kid)["title"])
+    if not dropped:
+        return M("kits.sweep.none", {"one": "No older set is past {n} day. Nothing changed.",
+                                     "other": "No older set is past {n} days. Nothing changed."}, n=days)
+    prune()
+    write_index()
+    return M("kits.sweep.done", {"one": "The box removed {n} older set past its days ({kits}) and freed {mb} MB.",
+                                 "other": "The box removed {n} older sets past their days ({kits}) and freed {mb} MB."},
+             n=len(dropped), kits=dropped, mb=freed >> 20)
+
+
 def drop_all_previous(log=print):
     """Clear old rollback cache: every older set kept for Roll back removed at once. Their files go unless a current set
     still uses them."""

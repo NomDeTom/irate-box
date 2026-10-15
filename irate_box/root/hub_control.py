@@ -3466,6 +3466,17 @@ def _kit_hours(req):
     return hours
 
 
+def _kit_sweep(req):
+    """The librarian's sweep by age: older sets past their days removed, control/kits.json written after it."""
+    days = req.get("days")
+    if type(days) is not int or not 1 <= days <= 365:
+        raise Refused(M("control.kit.days-range", "The days for older sets must be from {min} to {max}.", min=1, max=365))
+    try:
+        return kits.drop_old_previous(days, log=lambda *_: None)
+    finally:
+        _kits_status()
+
+
 def _kit_req(fn):
     """A toolkit action, and control/kits.json written after it, whatever happened."""
     def action(req):
@@ -3512,7 +3523,7 @@ ACTIONS = {"service": service, "password": password, "claim": claim,
            "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "other-ap": other_ap, "wifisync": wifisync, "radio-test": radio_test, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
            "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback), "kit-drop-previous": _kit_req(kits.drop_previous),
-           "kit-drop-all-previous": _kit_req(kits.drop_all_previous),
+           "kit-drop-all-previous": _kit_req(kits.drop_all_previous), "kit-drop-old-previous": _kit_sweep,
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), KITS_STATUS)[1]}
 
 KITS_STATUS = M("control.kit.status", "The toolkit status is up to date.")

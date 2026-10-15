@@ -532,6 +532,13 @@
         <p class="setting-desc action-note" role="status" hidden></p>
         <p class="setting-desc" id="kits-summary"></p>
         <form id="kits-budget" class="library-form">
+          <label for="kits-previous-days" data-i18n="admin.toolkits.label-older-sets-kept-rollback">Older sets kept for Roll back</label>
+          <select id="kits-previous-days" name="previous">
+            <option value="" data-i18n="admin.toolkits.opt-until-refresh-brings-newer">Until a refresh brings newer versions</option>
+            <option value="7" data-i18n="admin.toolkits.opt-7-days">7 days</option>
+            <option value="30" data-i18n="admin.toolkits.opt-30-days">30 days</option>
+            <option value="90" data-i18n="admin.toolkits.opt-90-days">90 days</option>
+          </select>
           <label for="kits-budget-mb" data-i18n="admin.toolkits.label-cache-storage-limit-mb">Cache storage limit (MB)</label>
           <div class="input-row">
             <input id="kits-budget-mb" name="budget" type="number" min="10" max="65536" step="10">

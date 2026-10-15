@@ -135,7 +135,7 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   f.elements.budget.value = '800';
   f.dispatchEvent(new w.Event('submit', { cancelable: true }));
   await wait();
-  check('the budget is saved', JSON.stringify(posted[5]) === JSON.stringify({ action: 'settings', budget_mb: 800 }), JSON.stringify(posted[5]));
+  check('the budget is saved, older sets kept as they were (until a refresh)', JSON.stringify(posted[5]) === JSON.stringify({ action: 'settings', budget_mb: 800, previous_days: null }), JSON.stringify(posted[5]));
   kitsData.status.problems = ['gdb_16.3-1_armhf.deb has changed since it was fetched'];
   w.eval('loadKits()');
   await wait();
