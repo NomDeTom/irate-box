@@ -178,6 +178,17 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
   check('no stray null or undefined on the page', !stray.length, stray.join(','));
   {
+    // Save only while something differs from what is saved (Tom, 2026-10-15: active with nothing changed).
+    const c = card('Capture');
+    const save = () => [...c.querySelectorAll('.aw-foot button')].find((b) => t(b) === 'Save');
+    const keep = [...c.querySelectorAll('button')].find((b) => /^Automatic cache refresh:/.test(t(b)));
+    check('a toolkit opened: Save off, nothing changed', save() && save().disabled, save() && save().outerHTML);
+    keep.click(); await wait();
+    check('  a setting changed: Save on', !save().disabled);
+    keep.click(); await wait();
+    check('  changed back: Save off again', save().disabled);
+  }
+  {
     // Last, as it is the latest request: Remove older set on the Security card.
     card('Security').querySelector('.aw-card-head').click(); await wait();
     const drop = [...card('Security').querySelectorAll('button')].find((b) => /^Remove older set \(frees 1(\.0)? MB\)$/.test(t(b)));

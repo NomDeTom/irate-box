@@ -1749,8 +1749,8 @@ function findingRow(r) {
         el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
         l.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${l.fix}` }) : null)))) : null,
     // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request.
-    r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'link-button',
-      textContent: r.accept.on ? (r.accept.reopen || 'Reopen finding') : (r.accept.label || 'Accept risk'),
+    r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'action-btn small',
+      textContent: r.accept.on ? 'Reopen' : (r.accept.label || 'Accept risk'),
       title: r.accept.on ? 'Return this finding to the unresolved list.' : (r.accept.hint || 'Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.'),
       onclick: () => (r.accept.act || secAccept)(r.accept.key, r.accept.title, !r.accept.on) })) : null);
 }
@@ -1820,7 +1820,9 @@ function secChoiceCard(f, busy, note) {
   const buttons = rest.actions.length ? el('div', { className: 'library-buttons' }, ...scanButtons(rest, busy)) : null;
   return el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
     el('span', { className: 'setting-name' }, f.title, ' ',
-      el('span', { className: `fstate fstate-${f.status === 'ok' ? 'ok' : f.status}`, textContent: f.status === 'ok' ? 'Set' : 'Waiting for your choice' })),
+      // Said as what it offers: a choice to make (chips), one fix (a button), or something to read and decide on.
+      el('span', { className: `fstate fstate-${f.status === 'ok' ? 'ok' : f.status}`,
+        textContent: f.status === 'ok' ? 'Set' : rows.length ? 'Waiting for your choice' : rest.actions.length ? 'Fix available' : 'Needs review' })),
     el('span', { className: 'setting-desc', textContent: f.detail }),
     f.status !== 'ok' && f.fix && !rows.length && !rest.actions.length ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
     ...rows, buttons, note);
@@ -1917,7 +1919,7 @@ function renderSecurity(data) {
   const problems = waiting.filter((f) => f.status === 'problem').length;
   const ports = lines.filter((f) => /^port-/.test(f.id) && f.status !== 'ok').length;
   sec.counts.replaceChildren(...[
-    [waiting.length, `waiting for your choice`, waiting.length ? 'warn' : 'ok', 'security-findings'],
+    [waiting.length, `to review`, waiting.length ? 'warn' : 'ok', 'security-findings'],
     [ports, `port${ports === 1 ? '' : 's'} to review`, ports ? 'warn' : 'ok', 'security-ports'],
     [set.length, 'set', 'ok', 'security-findings']].map(([n, word, st, to]) =>
     el('a', { className: `sec-count sec-count-${st}`, href: `#${to}` }, el('strong', { textContent: String(n) }), ` ${word}`)));
@@ -2585,7 +2587,7 @@ function renderHealth(data) {
     const d = healthDo(f, busy || h.stuck);
     const on = accepted(f);
     return findingRow({ id: `hl-${f.id}`, state: on ? 'accepted' : f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id),
-      accept: f.status === 'warn' ? { key: f.id, title: f.check, on, act: hlAccept, label: 'Accept', reopen: 'Take back',
+      accept: f.status === 'warn' ? { key: f.id, title: f.check, on, act: hlAccept, label: 'Accept',
         hint: 'Accepting leaves it as it is and takes it out of the review count. It moves to Accepted. The doctor shows it again if it becomes a problem.' } : null });
   };
   const needle = hl.search.value.trim().toLowerCase();
@@ -2653,7 +2655,7 @@ function renderHealth(data) {
 async function hlAccept(key, title, yes) {
   try {
     const r = await postJSON('/admin/health', { action: yes ? 'accept' : 'unaccept', key, title });
-    hlNote = { fid: key, text: yes ? 'Accepted. It is under Passed and accepted, below.' : 'Taken back.', ok: true };
+    hlNote = { fid: key, text: yes ? 'Accepted. It is under Passed and accepted, below.' : 'Reopened. It is in the review list again.', ok: true };
     if (hlLast) renderHealth({ ...hlLast, accepted: r.accepted || {} });
   } catch (e) { hlNote = { fid: key, text: e.message, ok: false }; if (hlLast) renderHealth(hlLast); }
 }
@@ -3882,7 +3884,7 @@ function hazardControls(h) {
   }
   if (h.status === 'warn' || h.status === 'accepted') {
     const on = h.status === 'accepted';
-    btns.push(' ', el('button', { type: 'button', className: 'link-button', textContent: on ? 'Take back' : 'Accept',
+    btns.push(' ', el('button', { type: 'button', className: 'action-btn small', textContent: on ? 'Reopen' : 'Accept',
       title: on ? 'Return this item to the review list.' : 'Leave it as it is and take it out of the review count. The Box doctor shows it as accepted too.',
       onclick: async () => {
         try { await postJSON('/admin/health', { action: on ? 'unaccept' : 'accept', key: `net:${h.id}`, title: h.title }); loadNetwork(); }
@@ -5731,14 +5733,17 @@ function kitBody(k, st, cfg, setDirty) {
     k.owner ? actionButton('Edit', () => editKit(k, mine), { className: 'small' }) : null,
     k.owner ? actionButton('Delete toolkit', () => { if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id }); },
       { className: 'small', disabled: !!inst, title: inst ? 'Remove the toolkit first' : '' }) : null));
+  // Save is on only while the drawer differs from what is saved: changing a setting back turns it off again.
+  const saved = JSON.stringify(draft);
+  const changed = () => setDirty(JSON.stringify(draft) !== saved);
   const keepBtn = el('button', { type: 'button', className: 'chip-btn' + (draft.keep_current ? ' active' : ''), textContent: `Automatic cache refresh: ${draft.keep_current ? 'On' : 'Off'}` });
   keepBtn.setAttribute('aria-pressed', String(draft.keep_current));
   keepBtn.addEventListener('click', () => { draft.keep_current = !draft.keep_current; keepBtn.classList.toggle('active', draft.keep_current);
-    keepBtn.setAttribute('aria-pressed', String(draft.keep_current)); keepBtn.textContent = `Automatic cache refresh: ${draft.keep_current ? 'On' : 'Off'}`; setDirty(); });
+    keepBtn.setAttribute('aria-pressed', String(draft.keep_current)); keepBtn.textContent = `Automatic cache refresh: ${draft.keep_current ? 'On' : 'Off'}`; changed(); });
   const def = hoursPicker(mine.remove_after);
-  def.addEventListener('change', () => { draft.remove_after = pickedHours(def); setDirty(); });
+  def.addEventListener('change', () => { draft.remove_after = pickedHours(def); changed(); });
   const extra = k.owner ? null : el('input', { className: 'kit-extra', value: draft.extra, placeholder: 'e.g. ltrace gdbserver' });
-  if (extra) extra.addEventListener('input', () => { draft.extra = extra.value; setDirty(); });
+  if (extra) extra.addEventListener('input', () => { draft.extra = extra.value; changed(); });
   const field = (label, ...kids) => el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: label }), ...kids);
   return [
     el('p', { className: 'setting-desc', textContent: 'These actions run immediately:' }), jobs,

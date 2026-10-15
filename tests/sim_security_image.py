@@ -4,7 +4,7 @@
 protections and its addresses and log, and login accounts in the docker and disk groups. Each is
 found, fixed and undone against a fake /proc/sys, /etc/group and /etc/passwd, with a stand-in
 gpasswd; uninstall's undo_all puts everything back. python3 tests/sim_security_image.py"""
-import json, os, stat, sys, tempfile
+import json, os, stat, sys, tempfile, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="sec-image-"))
@@ -185,7 +185,7 @@ check("not chosen: a warning saying the choices, no buttons (the chips are on Up
       and nf["actions"] == [] and "every 6 hours" in nf["detail"] and "oolkit" not in nf["detail"] + nf["fix"], nf)
 on_by_image = uf(True, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, 2)
 check("  not chosen here but already running (Debian's own package can switch it on): said so, fine",
-      on_by_image["status"] == "ok" and "not chosen here" in on_by_image["detail"], on_by_image)
+      on_by_image["status"] == "ok" and "not chosen on this page" in on_by_image["detail"], on_by_image)
 check("manual, chosen: fine, an Undo offered", uf(False, {}, None, (0, 0))["status"] == "ok"
       and [a["choice"] for a in uf(False, {}, None, (0, 0))["actions"]] == ["autoupdate-undo"] and "Check now" in uf(False, {}, None, (0, 1))["detail"])
 check("daily fetch, chosen and apt's periodic work on: fine; off again (another file wins): a warning",
@@ -196,6 +196,12 @@ check("install, chosen: a warning while it would not run (not installed, or the 
       and uf(True, {"APT::Periodic::Enable": "0", "APT::Periodic::Unattended-Upgrade": "1"}, None, (6, 2))["status"] == "warn")
 check("  running: fine; not run in a fortnight: a warning", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2, (24, 2))["status"] == "ok"
       and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, (24, 2))["status"] == "warn")
+ran = uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 0.5, (24, 2), time.time() - 43200)
+check("  said in whole sentences, with when it last ran (apt's stamp, as the log in RAM is gone after a reboot)",
+      ran["detail"].startswith("The box looks for security updates every day and installs what it finds. It last ran on ") and ";" not in ran["detail"], ran)
+check("  never run: said so, and when it runs", uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None, (24, 2))["detail"].endswith(
+      "It has not run yet. It runs when the box has internet."))
+check("  the restore button in plain words", [a["label"] for a in ran["actions"]] == ["Restore the image's settings"])
 check("the old three choices read as the pattern's", security.chosen_pattern({"autoupdate": {"level": "download"}}) == (24, 1)
       and security.chosen_pattern({"autoupdate": {"level": "off"}}) == (0, 0) and security.chosen_pattern({}) is None)
 for bad in ("12-1", "24-3", "x", "24"):

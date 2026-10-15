@@ -139,8 +139,8 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   }
   check('Accept: the hub keeps it, by the item\'s key', posted.some(([, b]) => b.action === 'accept' && b.key === 'finding:doctor:image-bluetooth'));
   w.renderSecurity({ ...sec, accepted: { 'finding:doctor:image-bluetooth': { at: now, title: 'Bluetooth is on' } } });
-  check('  accepted: out of the list and the counts, in its own fold with Reopen finding', !rows().some((r) => /Bluetooth/.test(t(r)))
-    && /Bluetooth/.test(t(d.getElementById('joint-accepted'))) && /Reopen finding/.test(t(d.getElementById('joint-accepted'))) && /^2 all/.test(t(d.getElementById('joint-summary'))));
+  check('  accepted: out of the list and the counts, in its own fold with Reopen', !rows().some((r) => /Bluetooth/.test(t(r)))
+    && /Bluetooth/.test(t(d.getElementById('joint-accepted'))) && /Reopen/.test(t(d.getElementById('joint-accepted'))) && /^2 all/.test(t(d.getElementById('joint-summary'))));
   w.renderSecurity(sec);
   const pills = [...d.querySelectorAll('#joint-fresh span')];
   check('each source in one strip at the top: how fresh, what it covers in its title', pills.length === 3
@@ -174,7 +174,10 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .setting-name`)].map((n) => n.firstChild.textContent.trim()).join('|');
   check('Security: the choices by subject, in the scan\'s order', titlesIn('#security-exposure') === 'Cockpit' && titlesIn('#security-login') === 'SSH password login|Passwordless sudo',
     `${titlesIn('#security-exposure')} / ${titlesIn('#security-login')}`);
-  check('  each says whether it waits for a choice or is set', /Waiting for your choice/.test(t(d.getElementById('sec-ssh-password'))));
+  check('  each says what it offers or that it is set (one fix here: Fix available)', /Fix available/.test(t(d.getElementById('sec-ssh-password').querySelector('.fstate'))));
+  const sudoCard = d.getElementById('sec-sudo-nopasswd');
+  check('  one fix and no choice: said as Fix available, not Waiting for your choice', !!sudoCard && /Fix available/.test(t(sudoCard.querySelector('.fstate')))
+    && !/Waiting for your choice/.test(t(sudoCard)), sudoCard && t(sudoCard));
   {
     // The Security doctor: a choice is linked to where it is made; a repair with one right answer stays a button.
     const ssh = w.jointDo({ page: ['ssh-password'], do: null }, sec, false).controls;

@@ -4461,7 +4461,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     self.send_json(400, {"error": str(exc)})
                     return
-                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Taken back."})
+                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Reopened."})
             else:
                 self.send_json(400, {"error": "action must be scan, accept, unaccept, or fix with a choice the doctor offered"})
             return
@@ -4605,7 +4605,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     self.send_json(400, {"error": str(exc)})
                     return
-                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Taken back."})
+                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Reopened."})
             elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
             else:

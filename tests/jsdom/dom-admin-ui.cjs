@@ -201,11 +201,11 @@ setTimeout(() => {
     /reported ×3/.test(t('#mod-messages .admin-item')[0]) && !/reported/.test(t('#mod-messages .admin-item')[1]), t('#mod-messages .admin-item').join(' | '));
   {
     const f = d.getElementById('accounts-settings'), sb = f.querySelector('button.primary');
-    check('save buttons: unfilled while there is nothing to save', sb.classList.contains('idle'));
+    check('save buttons: unfilled and off while there is nothing to save', sb.classList.contains('idle') && sb.disabled);
     f.querySelector('.select-chips .chip:not(.selected)').click();
-    check('  a change filled it', !sb.classList.contains('idle'));
+    check('  a change filled it and turned it on', !sb.classList.contains('idle') && !sb.disabled);
     f.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    setTimeout(() => check('  saved: unfilled again', sb.classList.contains('idle')), 20);
+    setTimeout(() => check('  saved: unfilled and off again', sb.classList.contains('idle') && sb.disabled), 20);
   }
   check('GitHub token: an Adapt to rate limit button, and the state said (not adapted, no Stop button)', !!d.getElementById('library-adapt')
     && /Not adapted/.test(d.getElementById('library-pace-state').textContent) && d.getElementById('library-adapt-off').hidden);
