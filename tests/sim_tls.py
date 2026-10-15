@@ -161,7 +161,7 @@ ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.90", "network": "192.168.1.0
 f = {x["id"]: x for x in secdoctor.step_tls({})}
 check("doctor: expiry, coverage, constraints, keys, no HSTS, port 80, all fine; about the tls setting",
       [f[k]["status"] for k in ("tls-expiry", "tls-covers", "tls-constraints", "tls-keys", "tls-hsts", "tls-plain")] == ["ok"] * 6
-      and all(x["about"] == {"kind": "setting", "key": "tls"} for x in f.values()), {k: (v["status"], v["detail"]) for k, v in f.items()})
+      and all(x["about"] == {"kind": "setting", "key": "tls"} for x in f.values()), {k: (v["status"], v["summary"], v["evidence"]) for k, v in f.items()})
 answers["https"] = (200, {"Strict-Transport-Security": "max-age=1"})
 answers["http"] = None
 f = {x["id"]: x for x in secdoctor.step_tls({})}
@@ -171,7 +171,9 @@ check("  five days left: a problem", {x["id"]: x for x in secdoctor.step_tls({})
 rec["cert"]["expires"] = time.time() + 20 * 86400; tls.RECORD.write_text(json.dumps(rec))
 check("  twenty days left: a warning", {x["id"]: x for x in secdoctor.step_tls({})}["tls-expiry"]["status"] == "warn")
 ADDRS[0] = {"iface": "wlan0", "address": "10.0.0.5", "network": "10.0.0.0/24"}
-check("  moved to another subnet: a problem, saying to make a new CA", "Make a new CA" in {x["id"]: x for x in secdoctor.step_tls({})}["tls-covers"]["fix"])
+cov = {x["id"]: x for x in secdoctor.step_tls({})}["tls-covers"]
+check("  moved to another subnet: a problem, saying to make a new CA", cov["status"] == "problem" and cov["fix"]["id"] == "tls.covers.outside.fix"
+      and "10.0.0.5" in cov["evidence"], cov)
 os.chmod(tls.CA_KEY, 0o644)
 check("  a readable CA key: a problem", {x["id"]: x for x in secdoctor.step_tls({})}["tls-keys"]["status"] == "problem")
 os.chmod(tls.CA_KEY, 0o600)

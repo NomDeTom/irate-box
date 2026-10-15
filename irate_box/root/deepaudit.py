@@ -24,6 +24,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from irate_box.finding import finding
+from irate_box.msg import M, named
 from irate_box.root import secdoctor_xref
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -37,17 +39,22 @@ TIMEOUT = 40 * 60
 
 # What the box does on purpose, by source and check id (a pattern).
 # debian-cis's by the check's name whatever its number (the benchmark renumbers them).
-HOTSPOT_FIREWALL = "the box filters only the hotspot interface (the hotspot firewall on the Security page). The other interfaces belong to the administrator's network and stay as they are"
+ONE_PARTITION = M("deep.accepted.partition", "The box runs from one partition on an SD card, with no separate /var, /tmp or /home.")
+HOTSPOT_FIREWALL = M("deep.accepted.firewall", "The box filters only the hotspot interface, with the hotspot firewall on Security. The "
+                                               "other interfaces belong to the administrator's network and stay as they are.")
 ACCEPTED = [
-    ("debian-cis", r"^1\.1\.\d+(\.\d+)?_.*(partition|nodev|nosuid|noexec)$",
-     "the box runs from one partition on an SD card, with no separate /var, /tmp or /home"),
-    ("debian-cis", r"^[\d.]+_disable_http_server$", "the box is a web server, and nginx or Caddy serves the hub"),
+    ("debian-cis", r"^1\.1\.\d+(\.\d+)?_.*(partition|nodev|nosuid|noexec)$", ONE_PARTITION),
+    ("debian-cis", r"^[\d.]+_disable_http_server$", M("deep.accepted.http", "The box is a web server: nginx or Caddy serves the hub.")),
     ("debian-cis", r"^[\d.]+_net_fw_default_policy_drop$", HOTSPOT_FIREWALL),
-    ("debian-cis", r"^[\d.]+_(nftables_not_installed_with_iptables|ufw_not_installed_with_nftables)$", "the hotspot firewall uses the box's own nftables rules"),
-    ("debian-cis", r"^[\d.]+_dnsmasq_is_disabled$", "dnsmasq gives hotspot guests their addresses and names"),
+    ("debian-cis", r"^[\d.]+_(nftables_not_installed_with_iptables|ufw_not_installed_with_nftables)$",
+     M("deep.accepted.nftables", "The hotspot firewall uses the box's own nftables rules.")),
+    ("debian-cis", r"^[\d.]+_dnsmasq_is_disabled$", M("deep.accepted.dnsmasq", "dnsmasq gives hotspot guests their addresses and names.")),
     ("lynis", r"^FIRE-(4512|4590)$", HOTSPOT_FIREWALL),
-    ("lynis", r"^FILE-6310$", "the box runs from one partition on an SD card, with no separate /var, /tmp or /home"),
+    ("lynis", r"^FILE-6310$", ONE_PARTITION),
 ]
+REVIEW = M("cis.section.fix", "Review each check before you change a setting.")
+GENERAL = M("cis.general", "This benchmark is for general servers, so some checks do not suit a hotspot.")
+NOT_HARMLESS = M("cis.not-harmless", "A check that is not met can still need a repair.")
 # What the hub itself installs and uses (install.sh, the toolkits): never offered for removal.
 HUB_KEEPS = {"nftables", "dnsmasq", "dnsmasq-base", "nginx", "caddy", "rsync", "git", "curl", "syncthing", "mosquitto", "nodejs"}
 
@@ -56,12 +63,10 @@ def accepted(source, check):
     return next((why for src, pat, why in ACCEPTED if src == source and re.match(pat, check)), None)
 
 
-def _f(fid, title, status, detail, fix, source, about=None, why=None):
-    """A finding in the shape secdoctor.F gives (kept here so this runs on its own)."""
-    if why:
-        status, detail = "ok", f"{detail} Not applicable by design: {why}."
-    return {"id": fid, "title": title, "status": status, "detail": detail, "fix": fix, "ref": "", "source": source,
-            "about": about, "accepted": why}
+def _some(names, limit=8):
+    """The first names of a list, as evidence: data, with "…" when there are more."""
+    names = [str(n) for n in names]
+    return names[:limit] + (["…"] if len(names) > limit else [])
 
 
 def _progress(step, n, total):
@@ -150,14 +155,14 @@ def cis_check_info(src, check):
         info["cmd"] = f"printf '%s\\n' {lines(opts, ' ')} | sudo tee /etc/ssh/sshd_config.d/{conf} && sudo sshd -t && sudo systemctl reload ssh"
     elif opts and v.get("FILE", "").startswith("/"):
         # Another file's settings (login.defs, journald.conf…): said, as their formats differ.
-        info["say"] = f"In {v['FILE']}, set: " + ", ".join(opts) + "."
+        info["say"] = M("cis.check.file-settings", "In {file}, set {settings}.", file=v["FILE"], settings=opts)
     elif pkgs and not v.get("FILE") and all(CIS_PKG.match(p) for p in pkgs) and "apt_install" in body:
         # Only a check that is just the package: one whose package is a step before a setting is not.
         info["cmd"] = "sudo apt-get install " + " ".join(pkgs)
     elif pkgs and not v.get("FILE") and all(CIS_PKG.match(p) for p in pkgs) and re.search(r"apt-get (-y )?(purge|remove)|apt_remove", body):
         keep = sorted(HUB_KEEPS & set(pkgs))
         if keep:
-            info["say"] = f"The box uses {', '.join(keep)}. Keep it installed."
+            info["say"] = M("cis.check.keep", "The box uses {packages}. Keep them installed.", packages=keep)
         else:
             info["cmd"] = "sudo apt-get purge " + " ".join(pkgs)
     elif v.get("FILE", "").startswith("/") and re.fullmatch(r"[0-7]{3,4}", v.get("PERMISSIONS", "")):
@@ -181,33 +186,40 @@ def cis_findings(checks, summary, took=None, info=None):
             continue
         shared = secdoctor_xref.about("debian-cis", check)
         if shared:  # a question another source asks too: a finding of its own, for the joint report
-            f = _f(f"cis-{check}", f"CIS {check.split('_', 1)[0]}: {secdoctor_xref.title(shared['key'])}", "warn",
-                   "; ".join(m for m in msgs if m)[:300] or "Check not met.", "", "debian-cis", shared)
+            f = finding(f"cis-{check}", M("cis.shared.title", "CIS {check}: {topic}", check=check.split("_", 1)[0],
+                                          topic=secdoctor_xref.title(shared["key"])), "warn",
+                        M("cis.check.not-met", "debian-cis reports this check as not met."),
+                        evidence=[m for m in msgs if m][:4], source="debian-cis", about=shared)
             f["checks"] = [one(check, msgs)]
             shared_found.append(f)
             continue
         sec = ".".join(check.split("_", 1)[0].split(".")[:2])
         sections.setdefault(sec, []).append((check, [m for m in msgs if m][:2], one(check, msgs)))
     for sec, items in sorted(sections.items(), key=lambda kv: [int(x) if x.isdigit() else 0 for x in kv[0].split(".")]):
-        names = ", ".join(c.split("_", 1)[1] if "_" in c else c for c, _, _ in items[:10]) + ("…" if len(items) > 10 else "")
         first = next((m[0] for _, m, _ in items if m), "")
-        f = _f(f"cis-{sec}", f"CIS {sec}: {len(items)} check{'s' if len(items) != 1 else ''} not met", "warn",
-               f"{names}." + (f" For example: {first}." if first else ""),
-               "This benchmark is for general servers, so some checks do not suit a hotspot. Review each check before you change a setting. A check not met can still need a repair.",
-               "debian-cis", {"kind": "setting", "key": f"cis-{sec}"})
+        f = finding(f"cis-{sec}", M("cis.section.title", "CIS benchmark, section {section}", section=sec), "warn",
+                    M("cis.section.not-met", {"one": "{n} check in this section is not met.",
+                                              "other": "{n} checks in this section are not met."}, n=len(items)),
+                    fix=REVIEW,
+                    notes=[GENERAL, NOT_HARMLESS],
+                    evidence=_some([c.split("_", 1)[1] if "_" in c else c for c, _, _ in items], 10) + ([first] if first else []),
+                    source="debian-cis", about={"kind": "setting", "key": f"cis-{sec}"})
         f["checks"] = [c for _, _, c in items]
         out.append(f)
     out += shared_found
     by_why = {}
     for check, why in acc:
-        by_why.setdefault(why, []).append(check)
-    for why, cs in by_why.items():
-        out.append(_f(f"cis-accepted-{len(out)}", f"CIS: {len(cs)} check{'s' if len(cs) != 1 else ''} not applicable by design", "ok",
-                      ", ".join(c.split("_", 1)[1] for c in cs[:10]) + ("…" if len(cs) > 10 else "") + ".", "", "debian-cis", why=why))
-    out.append(_f("cis-summary", "The CIS benchmark (debian-cis --audit-all)", "ok",
-                  f"{summary.get('PASSED_CHECKS', '?')} of {summary.get('RUN_CHECKS', '?')} checks pass "
-                  f"({summary.get('CONFORMITY_PERCENTAGE', '?')} %)" + (f"; {round(took / 60, 1)} min" if took else "") + ".",
-                  "", "debian-cis"))
+        by_why.setdefault(why["id"], (why, []))[1].append(check)
+    for why, cs in by_why.values():
+        out.append(finding(f"cis-accepted-{len(out)}", M("cis.accepted.title", "CIS checks not applicable by design"), "ok",
+                           M("cis.accepted", {"one": "{n} check is not applicable by design.",
+                                              "other": "{n} checks are not applicable by design."}, n=len(cs)),
+                           notes=[why], evidence=_some([c.split("_", 1)[1] for c in cs], 10), source="debian-cis", accepted=why))
+    out.append(finding("cis-summary", M("cis.summary.title", "CIS benchmark (debian-cis --audit-all)"), "ok",
+                       M("cis.summary", "{passed} of {run} checks pass ({percent} %).", passed=summary.get("PASSED_CHECKS", "?"),
+                         run=summary.get("RUN_CHECKS", "?"), percent=summary.get("CONFORMITY_PERCENTAGE", "?")),
+                       notes=[M("deep.took", "It took {minutes} min.", minutes=round(took / 60, 1))] if took else [],
+                       source="debian-cis"))
     return out
 
 
@@ -223,25 +235,37 @@ def cis_pin():
 
 
 def run_cis(work, pin=None):
+    title = M("deep.cis.title", "debian-cis")
     repo = _cis_mirror()
     if not repo:
-        return [_f("cis-missing", "debian-cis", "warn", "Audit unavailable: the debian-cis mirror is not on the box.",
-                   "Open Library, Toolkits. Keep the Security toolkit current. The librarian mirrors debian-cis.", "debian-cis")]
+        return [finding("cis-missing", title, "warn", M("deep.cis.no-mirror", "The audit is unavailable: the debian-cis mirror is not on "
+                                                                              "the box."),
+                        fix=M("deep.cis.no-mirror.fix", "On Toolkits, keep the Security toolkit current. The librarian then mirrors "
+                                                        "debian-cis."), source="debian-cis")]
     pin = pin or cis_pin()
     if not pin:
-        return [_f("cis-unpinned", "debian-cis", "warn", "Audit unavailable: the Security toolkit names no commit of debian-cis, so the box did not run it. "
-                   "The box runs only the commit that its own code pins. It never runs other code from the mirror.", "", "debian-cis")]
+        return [finding("cis-unpinned", title, "warn", M("deep.cis.unpinned", "The audit is unavailable: the Security toolkit names no "
+                                                                              "commit of debian-cis."),
+                        M("deep.cis.pinned.why", "The box runs only the commit that its own code pins. It never runs other code from the "
+                                                 "mirror."), source="debian-cis")]
     have = subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "cat-file", "-e", f"{pin}^{{commit}}"],
                           capture_output=True, timeout=60)
     if have.returncode != 0:
-        return [_f("cis-pin-missing", "debian-cis", "warn", f"Pinned audit code missing: the debian-cis mirror does not hold commit {pin[:12]}, so the box did not run the audit.",
-                   "Open Library, Mirrors. Update debian-cis. An older mirror can need to be added again.", "debian-cis")]
+        return [finding("cis-pin-missing", title, "warn",
+                        M("deep.cis.pin-missing", "The pinned audit code is missing. The debian-cis mirror does not hold the commit that "
+                                                  "the box pins, so the box did not run the audit."),
+                        M("deep.cis.pinned.why", "The box runs only the commit that its own code pins. It never runs other code from the "
+                                                 "mirror."),
+                        M("deep.cis.pin-missing.fix", "On Mirrors, update debian-cis. An older mirror can need to be added again."),
+                        evidence=[pin[:12]], source="debian-cis")]
     src = work / "debian-cis"
     src.mkdir()
     arch = subprocess.run(["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "archive", "--format=tar", pin],
                           capture_output=True, timeout=300)
     if arch.returncode != 0:
-        return [_f("cis-error", "debian-cis", "warn", f"Audit unavailable: the box could not export debian-cis from its mirror: {arch.stderr.decode()[-200:]}", "", "debian-cis")]
+        return [finding("cis-error", title, "warn", M("deep.cis.export", "The audit is unavailable: the box could not export debian-cis "
+                                                                         "from its mirror."),
+                        evidence=[arch.stderr.decode()[-200:]], source="debian-cis")]
     subprocess.run(["tar", "-x", "-C", str(src)], input=arch.stdout, check=True, timeout=300)
     env = dict(os.environ, CIS_LIB_DIR=str(src / "lib"), CIS_CHECKS_DIR=str(src / "bin" / "hardening"), CIS_CONF_DIR=str(src / "etc"),
                CIS_TMP_DIR=str(src / "tmp"), CIS_VERSIONS_DIR=str(src / "versions"), LC_ALL="C")
@@ -251,7 +275,9 @@ def run_cis(work, pin=None):
                        capture_output=True, text=True, timeout=TIMEOUT, env=env, cwd=str(src))
     checks, summary = parse_cis(r.stdout)
     if not checks:
-        return [_f("cis-error", "debian-cis", "warn", "Audit unavailable: debian-cis ran but reported no checks: " + (r.stderr or r.stdout)[-300:], "", "debian-cis")]
+        return [finding("cis-error", title, "warn", M("deep.cis.no-checks", "The audit is unavailable: debian-cis ran but reported no "
+                                                                            "checks."),
+                        evidence=[(r.stderr or r.stdout)[-300:]], source="debian-cis")]
     return cis_findings(checks, summary, time.time() - t, info=lambda c: cis_check_info(src, c))
 
 
@@ -305,58 +331,82 @@ def lynis_findings(rep, took=None):
         ids.add(n)
         return n
 
-    def suggestion(check, title, detail, fix, about):
+    def tier(about):
         sec = about["key"].removeprefix("cis-") if about["key"].startswith("cis-") else None
-        f = _f(fid(f"lynis-{check.replace(':', '-')}"), title, "warn", detail, fix, "lynis", about)
-        f["tier"] = ((secdoctor_xref.cis(sec) or (None, "suggest"))[1]) if sec else "suggest"
-        return f
+        return ((secdoctor_xref.cis(sec) or (None, "suggest"))[1]) if sec else "suggest"
+
+    def solution(test, text):
+        return (M("lynis.solution", "Lynis suggests: {solution}", solution=text) if text else
+                M("lynis.details", "Read the notes of Lynis for the test, from a shell."))
 
     for w in rep["warnings"]:
         why = accepted("lynis", w["test"])
-        out.append(_f(fid(f"lynis-{w['test']}"), f"Lynis {w['test']}: {w['text']}", "warn",
-                      w["text"] + (f" ({w['details']})" if w["details"] else "") + ".",
-                      w["solution"] or f"See Lynis's notes for the test, from a shell: lynis show details {w['test']}",
-                      "lynis", secdoctor_xref.about("lynis", w["test"]) or {"kind": "setting", "key": f"lynis-{w['test']}"}, why))
+        out.append(finding(fid(f"lynis-{w['test']}"), M("lynis.test.title", "Lynis {test}: {text}", test=w["test"], text=w["text"]),
+                           "ok" if why else "warn", M("lynis.warning", "Lynis reports this as a warning."),
+                           fix=None if why else solution(w["test"], w["solution"]),
+                           notes=[why] if why else [], commands=[] if why or w["solution"] else [f"lynis show details {w['test']}"],
+                           evidence=[w["details"]] if w["details"] else [], source="lynis",
+                           about=secdoctor_xref.about("lynis", w["test"]) or {"kind": "setting", "key": f"lynis-{w['test']}"},
+                           accepted=why))
     for d in rep["details"]:
         if d["test"] not in LYNIS_BY_SETTING or not d.get("field"):
             continue
         check = f"{d['test']}:{d['field']}"
-        said = f"{d['field']} is {d.get('value') or 'not set'}; Lynis prefers {d.get('prefval') or '?'}"
         a = secdoctor_xref.about("lynis", check)
         if a:
-            out.append(suggestion(check, f"Lynis {d['test']}: {d.get('desc') or d['field']}", said + ".", "", a))
+            said = (M("lynis.setting", "{setting} is {value}. Lynis prefers {preferred}.", setting=d["field"], value=d["value"],
+                      preferred=d.get("prefval") or "?") if d.get("value") else
+                    M("lynis.setting.unset", "{setting} is not set. Lynis prefers {preferred}.", setting=d["field"],
+                      preferred=d.get("prefval") or "?"))
+            f = finding(fid(f"lynis-{check.replace(':', '-')}"), M("lynis.test.title", "Lynis {test}: {text}", test=d["test"],
+                                                                   text=d.get("desc") or d["field"]),
+                        "warn", said, source="lynis", about=a)
+            f["tier"] = tier(a)
+            out.append(f)
         else:
-            listed.append(f"{d['test']}: {said}")
+            listed.append(f"{d['test']} {d['field']}={d.get('value') or '-'} ({d.get('prefval') or '?'})")
     for s in rep["suggestions"]:
         if s["test"] in LYNIS_BY_SETTING and any(d["test"] == s["test"] for d in rep["details"]):
             continue  # its settings, one by one, are above
         why = accepted("lynis", s["test"])
         a = secdoctor_xref.about("lynis", s["test"])
         if why or not a:
-            listed.append(f"{s['test']}: {s['text']}" + (" (not applicable by design)" if why else ""))
+            listed.append(f"{s['test']}: {s['text']}" + (" (✓)" if why else ""))
             continue
-        out.append(suggestion(s["test"], f"Lynis {s['test']}: {s['text']}",
-                              s["text"] + (f" ({s['details']})" if s["details"] else "") + ".", s["solution"], a))
+        f = finding(fid(f"lynis-{s['test']}"), M("lynis.test.title", "Lynis {test}: {text}", test=s["test"], text=s["text"]), "warn",
+                    M("lynis.suggestion", "Lynis makes this suggestion."), fix=solution(s["test"], s["solution"]),
+                    commands=[] if s["solution"] else [f"lynis show details {s['test']}"],
+                    evidence=[s["details"]] if s["details"] else [], source="lynis", about=a)
+        f["tier"] = tier(a)
+        out.append(f)
     n = len(rep["suggestions"])
-    out.append(_f("lynis-summary", "Lynis", "ok",
-                  f"Hardening index {rep['index'] or '?'}; {len(rep['warnings'])} warning{'s' if len(rep['warnings']) != 1 else ''}, "
-                  f"{n} suggestion{'s' if n != 1 else ''}" + (f"; {round(took / 60, 1)} min" if took else "") + ". "
-                  + (f"Not matched to an item (listed, not counted): {'; '.join(listed[:8])}" + ("…" if len(listed) > 8 else "") + "." if listed else ""),
-                  "", "lynis"))
+    out.append(finding("lynis-summary", M("lynis.summary.title", "Lynis"), "ok",
+                       M("lynis.index", "The hardening index of Lynis is {index}.", index=rep["index"] or "?"),
+                       notes=[M("lynis.warnings", {"one": "Lynis gave {n} warning.", "other": "Lynis gave {n} warnings."},
+                                n=len(rep["warnings"])),
+                              M("lynis.suggestions", {"one": "Lynis made {n} suggestion.", "other": "Lynis made {n} suggestions."}, n=n)]
+                       + ([M("deep.took", "It took {minutes} min.", minutes=round(took / 60, 1))] if took else [])
+                       + ([M("lynis.listed", {"one": "{n} result matches no item. It is listed, not counted.",
+                                              "other": "{n} results match no item. They are listed, not counted."}, n=len(listed))]
+                          if listed else []),
+                       evidence=_some(listed), source="lynis"))
     out[-1]["listed"] = listed
     return out
 
 
 def _lynis_command(work):
+    """(argv, profile, plugins, cwd), or (None, why: a message, the file it is about, None)."""
     if Path("/usr/sbin/lynis").exists():
         return ["/usr/sbin/lynis"], "/etc/lynis/default.prf", "/etc/lynis/plugins", "/usr/share/lynis"
     pool = KITS_ROOT / "pool"
     found = sorted(pool.glob("lynis_*.deb")) if pool.is_dir() else []
     if not found:
-        return None, "Lynis is not on the box, and the Security toolkit cache does not hold it", None, None
+        return None, M("deep.lynis.missing", "The audit is unavailable: Lynis is not on the box, and the Security toolkit cache does not "
+                                             "hold it."), None, None
     from irate_box.root import kits
     if any(found[-1].name in p for p in kits.verify()):
-        return None, f"{found[-1].name} in the Security toolkit cache failed verification", None, None
+        return None, M("deep.lynis.damaged", "The audit is unavailable: the Lynis package in the Security toolkit cache failed its "
+                                             "check."), found[-1].name, None
     subprocess.run(["dpkg-deb", "-x", str(found[-1]), str(work / "lynis")], check=True, timeout=120)
     base = work / "lynis"
     return [str(base / "usr" / "sbin" / "lynis")], str(base / "etc" / "lynis" / "default.prf"), str(base / "etc" / "lynis" / "plugins"), \
@@ -365,9 +415,11 @@ def _lynis_command(work):
 
 def run_lynis(work):
     cmd, profile, plugins, cwd = _lynis_command(work)
+    title = M("deep.lynis.title", "Lynis")
     if cmd is None:
-        return [_f("lynis-missing", "Lynis", "warn", f"Audit unavailable: {profile}.",
-                   "Open Library, Toolkits. Download the Security toolkit while the box is online. The cache is enough.", "lynis")]
+        return [finding("lynis-missing", title, "warn", profile,
+                        fix=M("deep.lynis.fix", "On Toolkits, download the Security toolkit while the box has an internet connection. "
+                                                "The cache is enough."), evidence=[plugins] if plugins else [], source="lynis")]
     report, log = work / "lynis-report.dat", work / "lynis.log"
     t = time.time()
     subprocess.run(["nice", "-n", "19", *cmd, "audit", "system", "--quick", "--no-colors", "--profile", profile, "--plugindir", plugins,
@@ -377,7 +429,8 @@ def run_lynis(work):
         rep = parse_lynis(report.read_text(errors="replace"))
     except OSError:
         tail = (log.read_text(errors="replace")[-300:] if log.exists() else "")
-        return [_f("lynis-error", "Lynis", "warn", "Audit unavailable: Lynis ran but wrote no report. " + tail, "", "lynis")]
+        return [finding("lynis-error", title, "warn", M("deep.lynis.no-report", "The audit is unavailable: Lynis ran but wrote no report."),
+                        evidence=[tail] if tail else [], source="lynis")]
     return lynis_findings(rep, time.time() - t)
 
 
@@ -397,7 +450,8 @@ def deep(log=print):
             try:
                 found = fn(work)
             except (OSError, subprocess.SubprocessError, ValueError) as exc:
-                found = [_f(f"{name}-error", name, "warn", f"{type(exc).__name__}: {exc}"[:300], "", name)]
+                found = [finding(f"{name}-error", named(name), "warn", M("deep.failed", "The audit failed."),
+                                 evidence=[f"{type(exc).__name__}: {exc}"[:300]], source=name)]
             sources[name] = {"at": time.time(), "took": time.time() - t, "findings": found}
     finally:
         shutil.rmtree(work, ignore_errors=True)

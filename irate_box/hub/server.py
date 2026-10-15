@@ -3596,8 +3596,8 @@ class Handler(BaseHTTPRequestHandler):
                 audit = json.loads((CONTROL_DIR / "security-audit.json").read_text())
                 snap["flags"] = {i["about"]["key"]: i["titles"] for i in (audit.get("joint") or {}).get("items", [])
                                  if i["about"]["kind"] == "kit"}
-                snap["flag_details"] = {f["about"]["key"]: f["detail"] for st in audit.get("steps", []) for f in st["findings"]
-                                        if (f.get("about") or {}).get("kind") == "kit" and f["status"] != "ok"}
+                snap["flag_details"] = {f["about"]["key"]: f.get("summary") or f.get("detail") for st in audit.get("steps", [])
+                                        for f in st["findings"] if (f.get("about") or {}).get("kind") == "kit" and f["status"] != "ok"}
             except (OSError, ValueError, KeyError, TypeError):
                 snap["flags"], snap["flag_details"] = {}, {}
             self.send_json(200, snap)

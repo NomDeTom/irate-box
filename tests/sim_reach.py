@@ -10,6 +10,7 @@ os.environ.update(HUB_STATE_DIR=str(T))
 REPO = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(REPO))
 from irate_box.hub import reach  # noqa: E402
 from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -59,12 +60,14 @@ IP6[0] = ("2: wlan0    inet6 2a02:c7c:1234:5600::7/64 scope global dynamic mngtm
           "2: wlan0    inet6 fd00::7/64 scope global dynamic \\       valid_lft forever preferred_lft forever\n")
 f = step()
 check("web: public visits in the last 7 days: a problem, by network, with what to do", f["reach-web"]["status"] == "problem"
-      and "81.2.69.0/24 (12," in f["reach-web"]["detail"] and "Tailscale" in f["reach-web"]["fix"], f["reach-web"])
+      and msg_args(f["reach-web"], "reach.web.seen") == {"n": 1, "days": 7}
+      and any(e.startswith("81.2.69.0/24 ×12 ") for e in f["reach-web"]["evidence"]) and f["reach-web"]["fix"]["id"] == "reach.web.fix", f["reach-web"])
 check("ssh: public addresses heard (not the LAN's, nor Tailscale's), none let in: a problem", f["reach-ssh"]["status"] == "problem"
-      and "2 public addresses" in f["reach-ssh"]["detail"] and "none accepted" in f["reach-ssh"]["detail"]
-      and "100.101" not in f["reach-ssh"]["detail"] and "192.168" not in f["reach-ssh"]["detail"], f["reach-ssh"])
+      and msg_args(f["reach-ssh"], "reach.ssh.seen") == {"n": 2, "days": 7} and "reach.ssh.refused" in msg_ids(f["reach-ssh"])
+      and "reach.ssh.accepted" not in msg_ids(f["reach-ssh"])
+      and f["reach-ssh"]["evidence"] == ["2a00:1450:4009:81f::200e", "45.33.32.156"], f["reach-ssh"])
 check("ipv6: a public address (not the ULA): a warning, the router's firewall named", f["reach-ipv6"]["status"] == "warn"
-      and "2a02:c7c:1234:5600::7 (wlan0)" in f["reach-ipv6"]["detail"] and "fd00" not in f["reach-ipv6"]["detail"], f["reach-ipv6"])
+      and f["reach-ipv6"]["evidence"] == ["2a02:c7c:1234:5600::7 (wlan0)"] and f["reach-ipv6"]["fix"]["id"] == "reach.ipv6.fix", f["reach-ipv6"])
 reach.FILE.write_text(json.dumps({"nets": {"81.2.69.0/24": {"first": 1, "last": time.time() - 8 * 86400, "count": 3}}}))
 SSH_LOG[0] = "Accepted publickey for lyra from 192.168.1.10 port 51234 ssh2"
 IP6[0] = ""

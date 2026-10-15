@@ -12,6 +12,7 @@ os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HU
 sys.path.insert(0, str(REPO))
 from irate_box.root import secdoctor as sd  # noqa: E402
 from irate_box.hub import accounts as accmod  # noqa: E402
+from irate_box.finding import message_ids as msg_ids  # noqa: E402
 
 fails = 0
 def check(name, cond, info=""):
@@ -40,7 +41,8 @@ check("a real scrypt hash: ok", out["accounts-hash"]["status"] == "ok")
 (T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"alice": {"name": "Alice", "hash": "md5$deadbeef", "state": "user", "role": "user"}},
                                                         "settings": {"signup": "off"}}))
 out = by_id(sd.step_accounts_hub(ctx))
-check("a hash that isn't scrypt: a problem, naming the account", out["accounts-hash"]["status"] == "problem" and "alice" in out["accounts-hash"]["detail"])
+check("a hash that isn't scrypt: a problem, naming the account", out["accounts-hash"]["status"] == "problem" and "alice" in out["accounts-hash"]["evidence"]
+      and "accounts.hash.weak" in msg_ids(out["accounts-hash"]))
 
 # An account still waiting for its one-time code (hash "") is not a weak hash.
 (T / "state" / "accounts.json").write_text(json.dumps({"accounts": {"alice": {"name": "Alice", "hash": "", "state": "user", "role": "user"}},
@@ -55,8 +57,10 @@ check("sign-up off: no HTTP or gate check needed", "accounts-http" not in out an
 (T / "state" / "accounts.json").write_text(json.dumps({"accounts": {}, "settings": {"signup": "open", "http": "warning"}}))
 (T / "etc" / "access.json").write_text(json.dumps({"drop": "users"}))
 out = by_id(sd.step_accounts_hub(ctx))
-check("users mode, no HTTPS, warning stance: a problem", out["accounts-http"]["status"] == "problem" and "drop" in out["accounts-http"]["detail"])
-check("no gate file on disk: a problem, naming the app", out["accounts-gate"]["status"] == "problem" and "drop" in out["accounts-gate"]["detail"])
+check("users mode, no HTTPS, warning stance: a problem", out["accounts-http"]["status"] == "problem" and "drop" in out["accounts-http"]["evidence"]
+      and "accounts.http.open" in msg_ids(out["accounts-http"]))
+check("no gate file on disk: a problem, naming the app", out["accounts-gate"]["status"] == "problem" and "drop" in out["accounts-gate"]["evidence"]
+      and "accounts.gate.missing" in msg_ids(out["accounts-gate"]))
 
 # The gate file is there: ok.
 (T / "etc" / "nginx-access.conf.d").mkdir(parents=True)
