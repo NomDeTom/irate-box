@@ -139,7 +139,8 @@ setTimeout(() => {
   const kiwix = d.getElementById('page-app-wiki');
   const panes = (id) => [...d.querySelectorAll(`#${id} > .admin-pane`)].map((x) => x.id).join(' ');
   check('an app\'s page: its state, its own sections, then access, its tile and maintenance', panes('page-app-wiki') === 'app-head-wiki books app-access-wiki app-tile-wiki app-maint-wiki', panes('page-app-wiki'));
-  check('  access, tile and maintenance fold, closed to start', kiwix.querySelectorAll(':scope > .admin-pane > details.app-fold:not([open])').length === 3);
+  check('  access, tile and maintenance fold, open to start', kiwix.querySelectorAll(':scope > .admin-pane > details.app-fold[open]').length === 3
+    && !kiwix.querySelector(':scope > .admin-pane > details.app-fold:not([open])'));
   check('  its header: what it is, who opens it, and Open', /Built-in app/.test(t('#app-head-wiki')[0]) && /Access: administrators/.test(t('#app-head-wiki')[0])
     && (d.querySelector('#app-head-wiki a.action-btn') || {}).textContent === 'Open', t('#app-head-wiki')[0]);
   check('  who can open it: four chips, Kiwix (private) at admin; its tile is not edited here', chipsOf(kiwix, 'Access').map((c) => c.textContent).join('|') === 'Guests|Users|Administrators|Disabled'

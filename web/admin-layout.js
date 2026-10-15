@@ -165,13 +165,13 @@ const AL = (() => {
       if (g.apps && apps) {
         for (const a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page || x.addon))) {
           // An app's page, in one order: what it is and what can be done now; its own settings
-          // and content; then, folded, who can open it, its tile (a summary: Home tiles arranges
-          // tiles) and its maintenance (updates, installation, Remove). Only the parts that apply.
+          // and content; then who can open it, its tile (a summary: Home tiles arranges tiles) and its
+          // maintenance (updates, installation, Remove), each open to start and folded by its heading. Only the parts that apply.
           const made = (id, cls, title, build, fold) => {
             if (!sections.has(id)) {
               const body = build();
               sections.set(id, fold
-                ? el('section', { class: `admin-pane ${cls}`, id }, el('details', { class: 'sec-fold app-fold' }, el('summary', {}, el('h2', { text: title })), body))
+                ? el('section', { class: `admin-pane ${cls}`, id }, el('details', { class: 'sec-fold app-fold', open: true }, el('summary', {}, el('h2', { text: title })), body))
                 : el('section', { class: `admin-pane ${cls}`, id }, el('h2', { text: title }), body));
             }
             return id;
