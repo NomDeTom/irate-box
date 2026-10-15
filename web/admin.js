@@ -1723,7 +1723,13 @@ function copyBox(cmd) {
   });
   return el('span', { className: 'fdo-cmd' }, el('code', { textContent: cmd }), b);
 }
-// r: {id, state, title, detail, how, controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
+// A finding's parts (irate_box/finding.py: summary, why, notes, evidence, fix, commands), or the one paragraph of
+// a doctor that still reports in the old shape (detail).
+const findingParts = (f) => ({ detail: f.summary || f.detail || '', why: f.why || '', notes: f.notes || [],
+  evidence: f.evidence || [], commands: f.commands || [] });
+// What the check saw (names, paths, packages): data, shown as it is.
+const evidenceList = (items) => (items.length ? el('ul', { className: 'fevidence' }, ...items.map((e) => el('li', {}, el('code', { textContent: e })))) : null);
+// r: {id, state, title, detail, why, notes[], evidence[], how, commands[], controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
 function findingRow(r) {
   const state = r.state || 'warn';
   return el('article', { className: `finding finding-${state}`, id: r.id || '' },
@@ -1733,8 +1739,12 @@ function findingRow(r) {
       r.badge || null,
       r.meta ? el('span', { className: 'fmeta', textContent: r.meta }) : null),
     r.detail ? el('p', { className: 'fdetail', textContent: r.detail }) : null,
-    (r.how || (r.controls || []).length) ? el('div', { className: 'fdo' },
+    r.why ? el('p', { className: 'fdetail fwhy', textContent: r.why }) : null,
+    ...(r.notes || []).map((n) => el('p', { className: 'fdetail fnote', textContent: n })),
+    evidenceList(r.evidence || []),
+    (r.how || (r.controls || []).length || (r.commands || []).length) ? el('div', { className: 'fdo' },
       r.how ? el('p', { className: 'fhow' }, el('span', { className: 'fdo-label', textContent: state === 'ok' || state === 'fixed' ? 'Undo action: ' : 'Recommended action: ' }), r.how) : null,
+      (r.commands || []).length ? el('div', { className: 'fdo-cmds' }, ...r.commands.map(copyBox)) : null,
       (r.controls || []).length ? el('div', { className: 'fdo-controls' }, ...r.controls) : null) : null,
     r.note || null,
     // The deep audit's checks one by one (deepaudit.cis_findings): what each wants, what it found, its own fix.
@@ -1814,6 +1824,16 @@ function secSubject(f) {
   if (/^(ssh|sudo|root-|group-)/.test(f.id)) return 'login';
   return 'system';
 }
+// A finding's parts as a setting card's lines: what was found, why it matters, the notes and the evidence, then what to do.
+function findingLines(f) {
+  const p = findingParts(f);
+  return [el('span', { className: 'setting-desc', textContent: p.detail }),
+    p.why ? el('span', { className: 'setting-desc fwhy', textContent: p.why }) : null,
+    ...p.notes.map((n) => el('span', { className: 'setting-desc', textContent: n })),
+    evidenceList(p.evidence),
+    f.status !== 'ok' && f.fix ? el('span', { className: 'setting-desc fhow' }, el('span', { className: 'fdo-label', textContent: 'Recommended action: ' }), f.fix) : null,
+    f.status !== 'ok' && p.commands.length ? el('div', { className: 'fdo-cmds' }, ...p.commands.map(copyBox)) : null];
+}
 function secChoiceCard(f, busy, note) {
   const rows = secChipRows(f, busy);
   const rest = { ...f, actions: (f.actions || []).filter((a) => !a.group) };
@@ -1823,8 +1843,7 @@ function secChoiceCard(f, busy, note) {
       // Said as what it offers: a choice to make (chips), one fix (a button), or something to read and decide on.
       el('span', { className: `fstate fstate-${f.status === 'ok' ? 'ok' : f.status}`,
         textContent: f.status === 'ok' ? 'Set' : rows.length ? 'Waiting for your choice' : rest.actions.length ? 'Fix available' : 'Needs review' })),
-    el('span', { className: 'setting-desc', textContent: f.detail }),
-    f.status !== 'ok' && f.fix && !rows.length && !rest.actions.length ? el('span', { className: 'setting-desc', textContent: f.fix }) : null,
+    ...findingLines(f),
     ...rows, buttons, note);
 }
 function renderSecurity(data) {
@@ -1845,7 +1864,7 @@ function renderSecurity(data) {
   const lines = scan ? scan.findings : [];
   const shown = new Set(lines.map((f) => f.id));
   const by = (k) => lines.filter((f) => secKind(f) === k).sort((a, b) => RANK[a.status] - RANK[b.status]);
-  const row = (f, extra = {}) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, detail: f.detail,
+  const row = (f, extra = {}) => findingRow({ id: `sec-${f.id}`, state: f.status, title: f.title, ...findingParts(f),
     how: f.status === 'ok' ? '' : f.fix || (f.actions.length ? '' : 'Information only.'),
     controls: scanButtons(f, busy), note: noteUnder(f.id), ...extra });
   // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
@@ -1909,7 +1928,7 @@ function renderSecurity(data) {
         el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
       el('td', { textContent: l.addr }),
       el('td', {}, f ? el('span', { className: `fstate fstate-${f.status}`, textContent: f.status === 'ok' ? 'Yes' : STATE_WORD[f.status] }) : null,
-        f ? el('span', { className: 'setting-desc', textContent: ` ${f.detail.replace(/^(TCP|UDP) \d+ on .*?\.\s+/, '')}` }) : null,
+        f ? el('span', { className: 'setting-desc', textContent: ` ${f.summary ? [f.summary, f.why].filter(Boolean).join(' ') : f.detail.replace(/^(TCP|UDP) \d+ on .*?\.\s+/, '')}` }) : null,
         ssh ? el('a', { href: '#sec-ssh-password', textContent: 'Who can sign in, and how: SSH settings' }) : null,
         f && f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: ` ${f.fix}` }) : null,
         f && f.actions.length ? el('span', { className: 'library-buttons' }, ...scanButtons(f, busy)) : null, f ? noteUnder(f.id) : null));
@@ -2163,7 +2182,7 @@ function renderAudit(audit, busy, data) {
 }
 
 async function loadSecurity() {
-  try { renderSecurity(await getJSON('/admin/security')); } catch (err) {
+  try { renderSecurity(AW.localise(await getJSON('/admin/security'))); } catch (err) {
     console.error('security pane:', err);
     sec.when.textContent = 'Could not read the security report. Reload the page to try again.';
   }

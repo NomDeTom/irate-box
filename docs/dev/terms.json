@@ -1,0 +1,176 @@
+{
+ "_about": "The words the box uses for a person: the glossary (docs/user/glossary.md is made from it: python3 tests/terms_guard.py --write), and the words to avoid in what a person reads. tests/terms_guard.py checks the messages (M(...) in irate_box/), the guide's sources and the pages' text against it. A pattern is a Python regular expression, matched without regard to case.",
+ "terms": [
+  {
+   "term": "Access",
+   "definition": "Who can open an app or page: Guests, Users, Administrators or Disabled"
+  },
+  {
+   "term": "Account",
+   "definition": "A user or administrator account that can sign in"
+  },
+  {
+   "term": "Add-on",
+   "definition": "An extra that an administrator can add or remove: Kiwix, Notes, Syncthing and others"
+  },
+  {
+   "term": "Administrator",
+   "definition": "A person with an administrator account. An administrator can change the box settings"
+  },
+  {
+   "term": "Appearance",
+   "definition": "The icon, the label and the size of a tile, and the colours of the hub"
+  },
+  {
+   "term": "Book",
+   "definition": "An offline reference in the ZIM format. Kiwix reads it"
+  },
+  {
+   "term": "Cache",
+   "definition": "A local copy of a downloaded file that the box keeps"
+  },
+  {
+   "term": "Discard",
+   "definition": "Throw away changes that you did not save"
+  },
+  {
+   "term": "Doctor",
+   "definition": "A page that checks one part of the box, lists the problems and offers repairs"
+  },
+  {
+   "term": "Guest",
+   "definition": "A visitor without an account"
+  },
+  {
+   "term": "Hotspot",
+   "definition": "The WiFi network of the box"
+  },
+  {
+   "term": "Hotspot firewall",
+   "definition": "Limits what devices on the hotspot can reach on the box. It does not filter the home network"
+  },
+  {
+   "term": "Hub",
+   "definition": "The front page of the box and the program behind it"
+  },
+  {
+   "term": "Initial setup",
+   "definition": "The state of a new box before an administrator account exists. Until an administrator creates the account, anyone on the network can open the administration pages"
+  },
+  {
+   "term": "Install",
+   "definition": "Put a downloaded package or add-on into use"
+  },
+  {
+   "term": "Mirror",
+   "definition": "A copy of a repository from another server, kept on the box"
+  },
+  {
+   "term": "Recovery steps",
+   "definition": "The repairs of the network watchdog, from the lightest to the heaviest (also called the ladder)"
+  },
+  {
+   "term": "Retention period",
+   "definition": "The time that the box keeps an item before it deletes it"
+  },
+  {
+   "term": "Save",
+   "definition": "Keep the changes that you made"
+  },
+  {
+   "term": "Sign in",
+   "definition": "Open a session with your account"
+  },
+  {
+   "term": "Storage limit",
+   "definition": "The largest amount of storage that an item can use"
+  },
+  {
+   "term": "Toolkit",
+   "definition": "A set of packages for one kind of job. Install it without internet if all its packages are in the cache"
+  },
+  {
+   "term": "Updates",
+   "definition": "New versions of the box, apps, books and packages"
+  },
+  {
+   "term": "User",
+   "definition": "A signed-in person who has an account"
+  },
+  {
+   "term": "User data",
+   "definition": "Shared files, drawings, posts and repositories"
+  },
+  {
+   "term": "Visibility",
+   "definition": "Who can see a tile on the hub"
+  }
+ ],
+ "avoid": [
+  {
+   "words": "\\blog(?:s|ged|ging)? ?(?:in|out)\\b|\\blogins?\\b",
+   "use": "sign in, sign out, sign-in",
+   "why": "writing.md, Words; ledger, Sign in"
+  },
+  {
+   "words": "(?<![/\\w-])admins?\\b(?![/.\\w-])",
+   "use": "administrator",
+   "why": "writing.md, Words; /admin as a path is fine"
+  },
+  {
+   "words": "\\bowners?\\b",
+   "use": "administrator",
+   "why": "writing.md, Words"
+  },
+  {
+   "words": "\\bmay\\b",
+   "use": "can",
+   "why": "STE: can, not may"
+  },
+  {
+   "words": "\\ballow(?:s|ed|ing)?\\b|\\bpermit(?:s|ted)?\\b",
+   "use": "let",
+   "why": "STE: let, not allow or permit"
+  },
+  {
+   "words": "\\bchoos(?:e|es|ing)\\b|\\bchose\\b",
+   "use": "select",
+   "why": "STE: select, not choose"
+  },
+  {
+   "words": "\\bclick(?:s|ed)?\\b",
+   "use": "select",
+   "why": "writing.md, Words"
+  },
+  {
+   "words": "\\bensure\\b",
+   "use": "make sure",
+   "why": "writing.md, rule 6"
+  },
+  {
+   "words": "\\butili[sz]e[sd]?\\b",
+   "use": "use",
+   "why": "writing.md, rule 6"
+  },
+  {
+   "words": "\\be\\.g\\.|\\bi\\.e\\.",
+   "use": "for example, that is",
+   "why": "writing.md, rule 7"
+  },
+  {
+   "words": "\\b\\w+n't\\b|\\b(?:it|that|there|you|we|they|I)'(?:s|re|ll|ve|d|m)\\b",
+   "use": "the words in full",
+   "why": "STE 4.2: no contractions"
+  },
+  {
+   "words": ";",
+   "use": "two sentences",
+   "why": "STE 8.1: no semicolons"
+  },
+  {
+   "words": "\\b(?:USB )?sticks?\\b",
+   "use": "USB drive",
+   "why": "writing.md, Words"
+  }
+ ]
+}

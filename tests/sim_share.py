@@ -129,7 +129,8 @@ for bad in ({"ip": "192.168.1.9"}, {"ip": "192.168.4.1"}, {"ip": "1.2.3.4; reboo
 firewall.loaded = lambda: True
 f = security.share_findings()
 check("the doctor, contained: one ok finding naming the level and each part, a switch to turn each off",
-      [x["status"] for x in f] == ["ok"] and "through the welcome page" in f[0]["detail"]
+      [x["status"] for x in f] == ["ok"] and f[0]["summary"]["id"] == f"guest-net.level.{share.load()['level']}"
+      and f[0]["notes"][0]["args"]["n"] == len(share.CONTAIN)
       and [a["choice"] for a in f[0]["actions"]] == [f"share-contain-{k}-off" for k in share.CONTAIN] and all(a["confirm"] for a in f[0]["actions"]), f)
 ran.clear()
 print(security.fix("share-contain-lan-off", None))
@@ -173,7 +174,7 @@ security.fix("share-contain-dns_hold-off", None)
 f = security.share_findings()
 check("a part turned off while nothing is shared: kept, no rules touched, and the doctor says it will be off, with the way back",
       share.load()["contain"]["dns_hold"] is False and not any(c[0] == "nft" for c in ran) and len(f) == 1 and f[0]["status"] == "ok"
-      and "stay off" in f[0]["detail"] and f[0]["actions"][0]["choice"] == "share-contain-dns_hold-on", f)
+      and f[0]["notes"][0]["id"] == "guest-net.stay-off" and f[0]["actions"][0]["choice"] == "share-contain-dns_hold-on", f)
 security.fix("share-contain-dns_hold-on", None)
 check("  back on: the doctor says nothing again", security.share_findings() == [] and share.load()["contain"] == ALL)
 

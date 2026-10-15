@@ -1530,6 +1530,13 @@ html:has(> body.admin) { background: var(--bg); }
 .fmeta { margin-left: auto; color: var(--muted); font-size: 0.75rem; }
 .fdetail { margin: 0.3rem 0 0; }
 .fdo { margin-top: 0.4rem; }
+/* A finding's parts (finding.py): why it matters and its notes under what was found, a little quieter; what the
+   check saw as a row of data; the commands to copy, one to a line. */
+.fwhy, .fnote { color: var(--muted); }
+.fevidence { display: flex; flex-wrap: wrap; gap: 0.25rem 0.4rem; margin: 0.3rem 0 0; padding: 0; list-style: none; }
+.fevidence code { font-size: 0.75rem; padding: 0.05rem 0.35rem; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); overflow-wrap: anywhere; }
+.fdo-cmds { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; margin-top: 0.3rem; }
 .fhow { margin: 0; }
 .fdo-label { font-weight: 600; }
 .fdo-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
