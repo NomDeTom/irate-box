@@ -16,8 +16,8 @@ Two ways, the owner's choice:
 
 The clock module (rtc.py) sets the time at boot whichever service runs. With chrony it is a source as well: chrony
 has no RTC driver of its own (Debian's 4.6 has PPS, SOCK, SHM and PHC), so irate-box-rtc-feed.service (`clock feed`)
-reads the module every 16 s, by its kernel driver or irate-box's own, and sends chrony the offset over the SOCK
-driver's socket. Its delay is large, so chrony uses it only while GPS and the network are silent.
+reads the module every 4 s, by its kernel driver or irate-box's own, and sends chrony the offset over the SOCK
+driver's socket: chrony polls it every 16 s, so each poll has several samples. Its delay is large, so chrony uses it only while GPS and the network are silent.
 
 What the image had is kept in RECORD the first time anything is changed (its daemon, whether timesyncd was
 installed and enabled, chrony.conf's text), and Restore (undo) puts all of it back: our files gone, chrony.conf as it
@@ -59,7 +59,7 @@ FEED_SOCK = Path(os.environ.get("HUB_CLOCK_FEED_SOCK", "/run/chrony.irate-box-rt
 FEED_UNIT = "irate-box-rtc-feed.service"
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 CODE = Path(__file__).resolve().parents[2]
-FEED_EVERY = 16
+FEED_EVERY = 4
 SOCK_MAGIC = 0x534F434B
 STATE_WORDS = {"in-use": "In use", "answering": "Answering, not used", "not-answering": "Not answering",
                "not-found": "Not found", "unknown": "Not reported"}
