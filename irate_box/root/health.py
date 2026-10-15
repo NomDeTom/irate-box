@@ -1018,6 +1018,35 @@ SET_CLOCK = _act("clock-set", "Set the clock from this browser",
                  "Set the box's clock to this device's time? Use it only if this device's own clock is right.")
 
 
+SOURCE_STATUS = {"in-use": "ok", "answering": "ok", "not-answering": "problem", "not-found": "warn", "unknown": "ok"}
+
+
+def check_sources():
+    """Each source chosen on the Clock page, as it stands: in use (or answering) fine, chosen but not answering a
+    problem, chosen but not found (no GPS receiver, a name that does not resolve) a warning."""
+    try:
+        from irate_box.root import clock
+        rec = clock.load()
+        if not rec.get("service"):
+            return []
+        rows = clock.source_states(rec)
+    except Exception:  # noqa: BLE001 - the clock's own finding still goes out
+        return []
+    said = {"in-use": "in use", "answering": "answering, but not used now (another source is better)",
+            "not-answering": "selected, but not answering", "not-found": "selected, but not found",
+            "unknown": "selected (systemd-timesyncd says only the server it uses now, and it is another)"}
+    fixes = {"gps": "Connect the GPS receiver (USB or the UART), and give it a view of the sky.",
+             "module": "Check the module on the Clock page (its finding above), and that irate-box-rtc-feed.service runs.",
+             "local": "Check that the server is on, on this network, and serves the time (UDP port 123). Or change it on the Clock page.",
+             "pool": "The box needs the internet for the pool. Or select another source on the Clock page."}
+    out = []
+    for r in rows:
+        st = SOURCE_STATUS[r["state"]]
+        out.append(_f(f"clock-source:{r['source']}", f"Time source: {r['name']}", st, f"{r['name'][0].upper() + r['name'][1:]}: "
+                      f"{said[r['state']]}.", fixes[r["source"]] if st != "ok" else ""))
+    return out
+
+
 def check_clock():
     c = clock_facts()
     now = time.time()
@@ -1038,6 +1067,7 @@ def check_clock():
                 + (" (restored from fake-hwclock's last save: the box keeps no time while off)" if c["fake"] and not c["rtcs"] else "")
                 + " and was put right once the network was reached.")
     out += check_module()
+    out += check_sources()
     if c["synced"]:
         by = (f"Set by {c['daemon']}" + (f" from {c['sources']} time servers" if c["sources"] else "") if c["daemon"]
               else "Synchronised, according to the kernel (no time service seen here. A host or container can keep the time)")
@@ -1398,7 +1428,16 @@ def scan():
         except Exception as exc:  # one broken check must not hide the others
             findings.append(_f(f"check:{check.__name__}", check.__name__.replace("check_", "Check: "), "warn",
                                f"The check itself failed: {exc!r}"))
-    return {"at": time.time(), "findings": findings, "settings": doctor_settings()}
+    return {"at": time.time(), "findings": findings, "settings": doctor_settings(), "clock": clock_choice()}
+
+
+def clock_choice():
+    """The clock's sources as chosen on the Clock page (clock.py), for its card; None if it could not be read."""
+    try:
+        from irate_box.root import clock
+        return clock.status()
+    except Exception:  # noqa: BLE001 - the report goes out without it
+        return None
 
 
 def doctor_settings():
@@ -1422,6 +1461,7 @@ CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9
                        r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
                        r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
                        r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
+                       r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$|^clock-undo$"
                        r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
                        r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
                        r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
@@ -1432,6 +1472,12 @@ def fix(choice):
     if not CHOICE_RE.match(choice):
         raise ValueError(f"{choice} is not something the doctor does")
     kind, _, arg = choice.partition(":")
+    if kind == "clock-sources":
+        from irate_box.root import clock
+        return clock.apply(choice)
+    if kind == "clock-undo":
+        from irate_box.root import clock
+        return clock.undo()
     if kind.startswith("crashwatch-"):
         from irate_box.root import crashwatch
         return crashwatch.set_option(kind[len("crashwatch-"):], arg)

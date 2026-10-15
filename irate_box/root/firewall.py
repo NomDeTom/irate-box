@@ -63,6 +63,7 @@ SERVICES = {
     "mqtt": ((1883,), ()),             # mosquitto, for Meshtastic nodes and the phone app's proxy
     "sync": ((22000,), (22000, 21027)),  # Syncthing's protocol and local discovery
     "ssh": ((22,), ()),
+    "time": ((), (123,)),              # NTP: chrony serving the time, opened by the Clock page's own switch
 }
 
 
@@ -204,6 +205,13 @@ def services_here(wanted):
         if s["id"] in wanted and services.installed(s):
             have.append(s["id"])
     have += [w for w in wanted if PORT_SERVICE.match(w)]
+    # The time, while the Clock page serves it to the hotspot: that page's switch is its switch.
+    try:
+        from irate_box.root import clock
+        if clock.serving():
+            have.append("time")
+    except Exception:  # noqa: BLE001 - no clock record: nothing served
+        pass
     return have
 
 

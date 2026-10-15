@@ -2569,6 +2569,7 @@ function renderHealth(data) {
     }
   }
   const rep = data.report;
+  renderClockSources(rep && rep.clock, busy || h.stuck);
   // A review finding the owner accepted (data.accepted, by id) leaves the counts and the open list; one that has
   // become a problem shows again whatever was accepted.
   const acc = data.accepted || {};
@@ -2620,7 +2621,7 @@ function renderHealth(data) {
     hl.clockFindings.replaceChildren(...all.filter(isClock).map(item));
   }
   const loose = hlNote && (hlNote.fid === 'scan' || hlNote.fid === 'clock-scan' || !shown.has(hlNote.fid)) ? hlNote : null;
-  const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && loose.fid.startsWith('rtc')));
+  const inClock = loose && (loose.fid === 'clock-scan' || (!shown.has(loose.fid) && /^(rtc|clock)/.test(loose.fid)));
   say(loose && !inClock ? loose.text : '', loose ? loose.ok : true, hl.note);
   say(inClock ? loose.text : '', loose ? loose.ok : true, hl.clockNote);
   hl.when.textContent = rep ? `Last checked ${new Date(rep.at * 1000).toLocaleString()}${agoText(rep.at)}.` + (busy ? ' Working…' : '')
@@ -2667,6 +2668,92 @@ async function loadHealth() {
     clearTimeout(hlPoll);
     hlPoll = setTimeout(loadHealth, 30000);
   }
+}
+
+// The clock's sources (clock.py): the time service and what it asks, held as a draft until Save; how each chosen
+// source stands. The page's polls redraw the states, never the draft.
+const CLOCK_STATE = { 'in-use': ['ok', 'In use'], answering: ['ok', 'Answering, not used'], 'not-answering': ['problem', 'Not answering'],
+  'not-found': ['warn', 'Not found'], unknown: ['ok', 'Not reported'] };
+let clkDraft = null, clkSaved = '';
+function renderClockSources(c, busy) {
+  const box = document.getElementById('clock-sources');
+  if (!box) return;
+  if (!c) { box.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Not checked yet.' })); return; }
+  if (clkDraft && box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // typing: left alone
+  // What is saved: the choice made here, else the image's own service as it runs (its servers its own).
+  const saved = { service: c.service || (c.daemon === 'chrony' ? 'chrony' : 'image'), pool: c.service ? !!c.pool : true,
+    gps: !!c.gps, module: !!c.module, serve: !!c.serve, local: c.local || '' };
+  const savedKey = JSON.stringify(saved);
+  if (savedKey !== clkSaved) { clkSaved = savedKey; clkDraft = null; }
+  const d = clkDraft || { ...saved };
+  const set = (k, v) => {
+    clkDraft = { ...d, ...(clkDraft || {}), [k]: v };
+    if (k === 'service' && v === 'image') { clkDraft.gps = false; clkDraft.module = false; clkDraft.serve = false; }
+    renderClockSources(c, busy);
+  };
+  const tick = (key, label, desc, disabled) => el('label', { className: 'setting inline' },
+    el('input', { type: 'checkbox', checked: !!d[key], disabled: busy || disabled, onchange: (e) => set(key, e.target.checked) }),
+    el('span', {}, el('span', { className: 'setting-name', textContent: label }), desc ? el('span', { className: 'setting-desc', textContent: ` ${desc}` }) : null));
+  const addr = el('input', { type: 'text', value: d.local, placeholder: 'e.g. 192.168.1.1', size: 30, disabled: busy,
+    'aria-label': 'A time server on the local network' });
+  const note = el('p', { className: 'setting-desc' });
+  const footBox = el('div', { className: 'library-buttons' });
+  const foot = () => {
+    const cur = clkDraft || d;
+    const diff = !!clkDraft && JSON.stringify(clkDraft) !== savedKey;
+    const none = !cur.pool && !cur.gps && !cur.module && !cur.local;
+    note.textContent = diff ? (none ? 'Select at least one source: with none, nothing sets the clock.' : 'Unsaved changes.') : '';
+    footBox.replaceChildren(
+      actionButton('Discard', () => { clkDraft = null; renderClockSources(c, busy); }, { disabled: busy || !diff }), ' ',
+      actionButton('Save', () => saveClock(cur, c), { className: 'primary', disabled: busy || !diff || none }),
+      ...(c.changed ? [' ', actionButton("Restore the image's settings", () => {
+        if (confirm("Put the clock's sources back as the image had them? Anything this page installed is removed, and what it removed is installed again.")) {
+          clkDraft = null;
+          hlRequest({ action: 'fix', choice: 'clock-undo' }, 'clock-sources');
+        }
+      }, { disabled: busy })] : []));
+  };
+  addr.addEventListener('input', () => { clkDraft = { ...d, ...(clkDraft || {}), local: addr.value.trim() }; foot(); });
+  const states = (c.sources || []).map((r) => {
+    const [st, word] = CLOCK_STATE[r.state] || ['ok', r.state];
+    return el('li', {}, el('span', { className: `fstate fstate-${st}`, textContent: word }), ` ${r.name[0].toUpperCase()}${r.name.slice(1)}`);
+  });
+  const imageName = c.daemon === 'chrony' && !c.service ? 'chrony' : 'systemd-timesyncd';
+  box.replaceChildren(
+    chipRow('Time service', [['chrony', 'chrony (suggested)'], ['image', `The image's own (${imageName})`]], d.service, (v) => set('service', v), () => busy),
+    el('p', { className: 'setting-desc', textContent: d.service === 'chrony'
+      ? 'chrony asks each source you select and shows how each one stands. It can use GPS. Selecting it installs chrony and removes systemd-timesyncd. Restore puts them back.'
+      : 'The service the image came with, asking the servers you select. It cannot use GPS, and it says only which server it uses now.' }),
+    tick('pool', "The internet's pool", 'Public time servers (pool.ntp.org). Needs the internet.'),
+    el('div', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'A server on the local network' }), addr,
+      el('span', { className: 'setting-desc', textContent: 'A router or another box that serves the time. Leave it empty for none.' })),
+    tick('gps', 'GPS', d.service === 'chrony'
+      ? `${c.gps_device ? 'A receiver is connected.' : 'No receiver is connected now: connect one on USB or the UART.'} Selecting GPS installs the GPS time toolkit (gpsd).`
+      : 'Only with chrony.', d.service !== 'chrony'),
+    tick('module', 'The clock module', d.service !== 'chrony'
+      ? "With the image's own service the module sets the time at boot only."
+      : c.module_ready ? 'Its time, read every 16 s. chrony uses it while GPS and the network are silent.'
+        : 'No clock module is set up: scan for one above. It still sets the time at boot.', d.service !== 'chrony' || !c.module_ready),
+    tick('serve', 'Serve the time to the hotspot', d.service === 'chrony'
+      ? "Guests' devices can ask the box for the time (NTP). The hotspot firewall opens UDP port 123 to guests while this is on."
+      : 'Only with chrony.', d.service !== 'chrony'),
+    states.length ? el('div', { className: 'clock-states' }, el('span', { className: 'aw-label', textContent: 'How each selected source stands' }),
+      el('ul', { className: 'net-facts' }, ...states)) : null,
+    el('div', { className: 'aw-foot' }, note, footBox));
+  foot();
+}
+function saveClock(cur, c) {
+  const words = [];
+  if (cur.service === 'chrony' && !c.chrony_installed) words.push('chrony is installed and systemd-timesyncd removed');
+  if (cur.service === 'image' && c.service === 'chrony') words.push('chrony is removed if this page installed it, and systemd-timesyncd installed again');
+  if (cur.gps && !c.gps) words.push('the GPS time toolkit (gpsd) is installed');
+  if (cur.serve && !c.serve) words.push('the box answers time requests from the hotspot, and its firewall opens UDP port 123 to guests');
+  if (!cur.serve && c.serve) words.push('the hotspot firewall closes UDP port 123 again');
+  const what = [cur.gps ? 'GPS' : '', cur.module ? 'the clock module' : '', cur.local ? `the server ${cur.local}` : '', cur.pool ? "the internet's pool" : ''].filter(Boolean).join(', ');
+  if (!confirm(`Use ${cur.service === 'chrony' ? 'chrony' : "the image's own time service"}, asking ${what}?`
+    + `${words.length ? ` ${words.join('. ')}.` : ''} Restore puts everything back as the image had it.`)) return;
+  clkDraft = null;
+  hlRequest({ action: 'fix', choice: `clock-sources:${cur.service}:${cur.pool ? 1 : 0}:${cur.gps ? 1 : 0}:${cur.module ? 1 : 0}:${cur.serve ? 1 : 0}:${cur.local || '-'}` }, 'clock-sources');
 }
 
 async function hlRequest(body, fid) {

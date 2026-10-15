@@ -150,6 +150,11 @@ fi
 if [ -f "$CODE/irate_box/root/led.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" led undo-all | sed 's/^/    /' || true
 fi
+# The clock's sources chosen on the Clock page: the image's time service as it was (chrony removed and
+# systemd-timesyncd installed again if the page swapped them, chrony.conf as it came, our drop-ins gone).
+if [ -f "$ETC/clock.json" ] && [ -f "$CODE/irate_box/root/clock.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" clock undo-all | sed 's/^/    /' || true
+fi
 if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/irate_box/root/rtc.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" rtc remove | sed 's/^/    /' || true
 fi
