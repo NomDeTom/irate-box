@@ -211,12 +211,30 @@ const mb = (bytes) => (bytes ? `${Math.round(bytes / 2 ** 20)} MB` : '');
 const where = (s) => s.type === 'kiwix' ? `Kiwix's catalogue, ${s.kiwix_name}${s.flavour ? ` (${s.flavour})` : ''}` : s.type === 'url' ? s.url
   : `${s.repo}${s.workflow ? ` · ${s.workflow}` : ''}${s.branch ? ` @ ${s.branch}` : ''} · ${s.pattern}`;
 
+// A refusal from the hub as an Error: error is its English; message, when the hub sends one, the same refusal
+// as a message (irate_box/hub/refused.py), said in the reader's language.
+function hubError(data, status) {
+  const m = data && data.message && typeof data.message === 'object' ? data.message : null;
+  return Object.assign(new Error(m ? AW.say(m) : (data && data.error) || `HTTP ${status}`), { status });
+}
+
+// A result of the root helper in the reader's language: its message (msg.py), or its messages, where it has
+// them, else its English.
+function resultSaid(r) {
+  if (Array.isArray(r.msg)) return r.msg.map((m) => AW.say(m)).join(' ');
+  return r.msg ? AW.say(r.msg) : r.message;
+}
+// A progress step's label: a message from the root helper, said; text as it is.
+const said = (v) => (v && typeof v === 'object' ? AW.say(v) : v || '');
+// A status's failure: error_message, where the hub sends one, said; else error, its English.
+const errorSaid = (st) => (st.error_message ? AW.say(st.error_message) : st.error);
+
 async function libPost(body) {
   const r = await fetch('/admin/library', {
     method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { status: r.status });
+  if (!r.ok) throw hubError(data, r.status);
   return data;
 }
 
@@ -267,7 +285,7 @@ function sourceRow(src, st, busy) {
         : `Available: ${latest.label} (${mb(latest.size)})` }) : null,
       archive.length ? el('span', { className: 'setting-desc', textContent: `Retained versions: ${archive.join(', ')}` }) : null,
       st.last_check ? el('span', { className: 'setting-desc', textContent: `Checked ${st.last_check}: ${st.outcome || ''}` }) : null,
-      st.error ? el('span', { className: 'setting-desc bad', textContent: st.error }) : null,
+      st.error ? el('span', { className: 'setting-desc bad', textContent: errorSaid(st) }) : null,
       el('span', { className: 'library-buttons' },
         button('Check now', { action: 'check', names: [src.name] }),
         button('Download', { action: 'fetch', names: [src.name] }, null, {
@@ -310,14 +328,14 @@ function renderApps(snap, busy) {
       st.latest_failed && follow === 'latest' ? `The newest (${st.latest_failed.label}) failed: ${st.latest_failed.error}` : null,
       st.last_check ? `Checked ${st.last_check}: ${st.outcome || ''}` : null,
       fetched ? `Downloaded: ${fetched.commit} (${fetched.label}), ready to install.` : null,
-      res ? `${res.ok ? 'Installed' : 'Install failed'}: ${res.message}` : null,
-      st.error || null,
+      res ? `${res.ok ? 'Installed' : 'Install failed'}: ${resultSaid(res)}` : null,
+      st.error ? errorSaid(st) : null,
     ];
     return el('div', { className: 'setting library-source' }, el('span', {},
       // Only an app with a source is checked for updates; one with none is said so below.
       el('span', { className: 'setting-name' }, a.title, src ? ' ' : null, src ? AW.updatePill(st.last_check, newer, !!st.error) : null),
       withAccess ? accessSlot(name) : null,
-      ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === st.error || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
+      ...lines.filter(Boolean).map((t) => el('span', { className: `setting-desc${t === (st.error && errorSaid(st)) || (res && !res.ok && t.startsWith('Install failed')) ? ' bad' : ''}`, textContent: t })),
       src ? el('span', { className: 'library-buttons' },
         el('button', { type: 'button', className: 'action-btn', textContent: 'Check now', disabled: busy, onclick: post(`app:${name}`, { action: 'check', names: [name] }) }),
         el('button', { type: 'button', className: 'action-btn', textContent: 'Download', disabled: busy || !newer || !!fetched,
@@ -654,7 +672,7 @@ async function searchCatalogue(more) {
   try {
     const r = await fetch(`/admin/catalogue?${new URLSearchParams({ q: f.q.value.trim(), language: f.language.value.trim(), start: String(catStart) })}`);
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    if (!r.ok) throw hubError(d, r.status);
     say(`${d.total} book${d.total === 1 ? '' : 's'} in the catalogue match.`, true, cat.note);
     const rows = d.entries.map((e) => {
       const name = e.name.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 64);
@@ -728,7 +746,7 @@ async function loadPackages() {
   try { d = await getJSON('/admin/packages'); } catch (_) { box.replaceChildren(el('p', { className: 'setting-desc', textContent: 'Could not read the watched packages.' })); return; }
   if (pkgWaiting) {
     const done = (d.results || []).find((r) => r.id === pkgWaiting.id);
-    if (done) { pkgSay(pkgWaiting.pkg, done.ok ? done.message : done.error || done.message, done.ok); pkgWaiting = null; }
+    if (done) { pkgSay(pkgWaiting.pkg, done.ok || done.msg ? resultSaid(done) : done.error || done.message, done.ok); pkgWaiting = null; }
     else if (Date.now() - pkgWaiting.at < 600000) setTimeout(loadPackages, 3000);
   }
   const pkgs = Object.entries(d.packages || {});
@@ -841,7 +859,7 @@ async function postJSON(url, body) {
     method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) throw hubError(data, r.status);
   return data;
 }
 const actionButton = (label, onclick, extra = {}) =>
@@ -1109,13 +1127,13 @@ function renderBox(data) {
 
   const results = data.results || [];
   document.getElementById('control-results').replaceChildren(...results.slice(0, 4).map((r) =>
-    el('p', { className: `setting-desc${r.ok ? '' : ' bad'}`, textContent: r.message })));
+    el('p', { className: `setting-desc${r.ok ? '' : ' bad'}`, textContent: resultSaid(r) })));
   if (waitingFor) {
     const done = results.find((r) => r.id === waitingFor.id);
     if (done) {
       // A service's answer is already at the top of the list above; the password's is not.
       if (waitingFor.at === controlNote) say('', true, controlNote);
-      else say(done.message, done.ok, waitingFor.at);
+      else say(resultSaid(done), done.ok, waitingFor.at);
       waitingFor = null;
     }
   }
@@ -1400,7 +1418,7 @@ function renderUpdateProgress(p) {
   upd.bar.value = Math.min((Math.max(p.step - 1, 0) + part) / steps, 1);
   const bytes = p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round(100 * part)}%)` : p.done ? `: ${size(p.done)}` : '';
   upd.step.textContent = `${UPD_DOING[p.action] || 'Working'}, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}` +
-    (p.label ? ` — ${p.label}${bytes}` : '') + '.';
+    (p.label ? ` — ${said(p.label)}${bytes}` : '') + '.';
 }
 
 // The update doctor, in the other doctors' shape: the counters (which double as the filter), one row per
@@ -1444,8 +1462,6 @@ function meteredOk(what) {
   if (!meteredNow || !meteredNow.metered) return true;
   return confirm(`The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). ${what} can use a lot of data. Continue?`);
 }
-// A result of the root helper in the reader's language: its message (msg.py) where it has one, else its English.
-const resultSaid = (r) => (r.msg ? AW.say(r.msg) : r.message);
 function renderUpdate(data) {
   drawSigning(data.signing, data.results);
   const m = data.metered || {};
@@ -1499,7 +1515,7 @@ function renderUpdate(data) {
   if (updWaiting) {
     const done = (data.results || []).find((r) => r.id === updWaiting.id);
     if (done) {
-      const failed = !done.ok || (done.msg ? done.msg.id === 'update.fetch.failed' : /did not pass verification/.test(done.message));
+      const failed = !done.ok || (done.msg ? done.msg.id === 'update.fetch.failed' : /did not pass verification/.test(resultSaid(done)));
       // A failure says itself, with the way to its diagnosis beside it.
       updSay(updWaiting.action, resultSaid(done), !failed, failed && updWaiting.action !== 'doctor'
         ? el('a', { className: 'action-btn go-btn', href: '#updoctor', textContent: 'Show reason: Updates doctor →' }) : null);
@@ -1790,7 +1806,7 @@ function secRepairFollow(data) {
   const done = (data.results || []).find((r) => r.id === secRepair.id);
   const q = data.queue || {};
   if (done) {
-    say(`${secRepair.label}: ${done.message}`, done.ok, sec.auditNote);
+    say(`${secRepair.label}: ${resultSaid(done)}`, done.ok, sec.auditNote);
     secRepair = null;
     return;
   }
@@ -1858,7 +1874,7 @@ function renderSecurity(data) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
     if (done) {
       const all = (secWaiting.ids || [secWaiting.id]).map((id) => (data.results || []).find((r) => r.id === id)).filter(Boolean);
-      secNote = { fid: secWaiting.fid, text: [all.map((r) => r.message).join(' '), secWaiting.keepNote ? secWaiting.keepNote.text : ''].filter(Boolean).join(' '),
+      secNote = { fid: secWaiting.fid, text: [all.map(resultSaid).join(' '), secWaiting.keepNote ? secWaiting.keepNote.text : ''].filter(Boolean).join(' '),
         ok: all.every((r) => r.ok) && !secWaiting.keepNote };
       secWaiting = null;
       return renderSecurity(data);
@@ -2453,7 +2469,7 @@ function renderDoctorSettings(data, rep) {
     const done = hsSaving.ids.map((id) => (data.results || []).find((r) => r.id === id));
     if (done.every(Boolean)) {
       const bad = done.filter((r) => !r.ok);
-      say(bad.length ? bad.map((r) => r.message).join(' ') : `Saved: ${done.map((r) => r.message).join(' ')}`, !bad.length, hl.setNote);
+      say(bad.length ? bad.map(resultSaid).join(' ') : `Saved: ${done.map(resultSaid).join(' ')}`, !bad.length, hl.setNote);
       hsSaving = null;
       hsFrom = '';
       hlRequest({ action: 'scan' }, 'scan');
@@ -2522,7 +2538,7 @@ function renderHelperQueue(q) {
   wait.replaceChildren(...(q.waiting || []).map((w) => el('li', { textContent: `${helperWords(w)}: waiting ${spanOf(w.waited || 0)}` })));
   doneFold.hidden = !(q.done || []).length;
   done.replaceChildren(...(q.done || []).map((r) => el('li', { className: r.ok ? '' : 'bad',
-    textContent: `${r.ok ? '✓' : '✗'} ${r.ago != null ? ago(r.ago) : ''}: ${r.message}` })));
+    textContent: `${r.ok ? '✓' : '✗'} ${r.ago != null ? ago(r.ago) : ''}: ${resultSaid(r)}` })));
 }
 function renderHealth(data) {
   data = AW.localise(data);   // the report's messages said once, in the reader's language
@@ -2561,7 +2577,7 @@ function renderHealth(data) {
   if (hlWaiting) {
     const done = (data.results || []).find((r) => r.id === hlWaiting.id);
     if (done) {
-      hlNote = { fid: hlWaiting.fid, text: done.message, ok: done.ok };
+      hlNote = { fid: hlWaiting.fid, text: resultSaid(done), ok: done.ok };
       hlWaiting = null;
       return renderHealth(data);
     }
@@ -2632,7 +2648,7 @@ function renderHealth(data) {
   if (p) {
     const steps = Math.max(p.steps, p.step, 1);
     hl.bar.value = Math.min(Math.max(p.step - 1, 0) / steps, 1);
-    hl.step.textContent = `Running the installer again, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}${p.label ? ` — ${p.label}` : ''}.`;
+    hl.step.textContent = `Running the installer again, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}${p.label ? ` — ${said(p.label)}` : ''}.`;
   }
   hl.install.textContent = installText(data.install);
   // A cut-off or troubled install is no history to fold away: shown open.
@@ -3506,7 +3522,7 @@ function renderNetwork(data) {
   if (netWaiting) {
     const done = (data.results || []).find((r) => r.id === netWaiting.id);
     if (done) {
-      netNotes[netWaiting.where] = { text: done.message, ok: done.ok };
+      netNotes[netWaiting.where] = { text: resultSaid(done), ok: done.ok };
       if (netWaiting.where === 'up' && done.ok) upDirty = false;
       netWaiting = null;
       return renderNetwork(data);
@@ -4385,13 +4401,13 @@ async function bkSticks(scan) {
     usbSticks = (d.scan && d.scan.devices) || [];
     if (bkWaiting) {
       const done = (d.results || []).find((r) => r.id === bkWaiting.id);
-      if (done) { say(done.message, done.ok, bkWaiting.note); bkWaiting = null; }
+      if (done) { say(resultSaid(done), done.ok, bkWaiting.note); bkWaiting = null; }
     }
     const p = d.progress;
     bku.progress.hidden = !p;
     if (p) {
       bku.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
-      bku.step.textContent = `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : '…'}`;
+      bku.step.textContent = `${said(p.label)}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : '…'}`;
     }
     drawBackupGo();
     clearTimeout(bkPoll);
@@ -4418,7 +4434,7 @@ let kitPoll = null;
 function renderKit(d) {
   if (kitWaiting) {
     const done = (d.results || []).find((r) => r.id === kitWaiting);
-    if (done) { say(done.message, done.ok, kitEl.note); kitWaiting = null; }
+    if (done) { say(resultSaid(done), done.ok, kitEl.note); kitWaiting = null; }
   }
   const busy = !!kitWaiting || d.pending > 0 || !!d.progress;
   kitBusy = busy;
@@ -4427,7 +4443,7 @@ function renderKit(d) {
   if (d.progress) {
     const p = d.progress;
     kitEl.bar.value = Math.min(Math.max(p.step - 1, 0) / Math.max(p.steps, 1), 1);
-    kitEl.step.textContent = `Step ${Math.max(p.step, 1)} of ${p.steps}${p.label ? ` — ${p.label}` : ''}.`;
+    kitEl.step.textContent = `Step ${Math.max(p.step, 1)} of ${p.steps}${p.label ? ` — ${said(p.label)}` : ''}.`;
   }
   const k = d.kit;
   const held = k ? [k.books.length && `${k.books.length} book${k.books.length === 1 ? '' : 's'}`, (k.kits || []).length && `${k.kits.length} toolkit${k.kits.length === 1 ? '' : 's'}`,
@@ -4523,7 +4539,7 @@ function renderAccess(data) {
   if (accessWaiting) {
     const done = (data.results || []).find((r) => r.id === accessWaiting.id);
     if (done) {
-      accessNote = { app: accessWaiting.app, text: done.message, ok: done.ok };
+      accessNote = { app: accessWaiting.app, text: resultSaid(done), ok: done.ok };
       accessWaiting = null;
       return loadAccess();
     }
@@ -4878,14 +4894,14 @@ function renderAddons(data) {
   if (adoWaiting) {
     const done = (data.results || []).find((r) => r.id === adoWaiting.id);
     if (done) {
-      adoNote = { addon: adoWaiting.addon, text: done.message, ok: done.ok };
+      adoNote = { addon: adoWaiting.addon, text: resultSaid(done), ok: done.ok };
       adoWaiting = null;
       return renderAddons(data);
     }
   }
   const steps = p ? Math.max(p.steps, p.step, 1) : 0;
   const progressText = p ? `${UPD_DOING[p.action] || 'Working'}, step ${Math.max(p.step, 1)} of ${p.estimate ? 'about ' : ''}${steps}`
-    + (p.label ? ` — ${p.label}` : '') + '.' : '';
+    + (p.label ? ` — ${said(p.label)}` : '') + '.' : '';
   // Each add-on's card is on its own page; All apps keeps one only where no page holds it.
   const paged = new Set([...document.querySelectorAll('.addon-block[data-addon]')].map((b) => b.dataset.addon));
   ado.list.replaceChildren(...data.addons.filter((a) => !paged.has(a.id)).map((a) => addonCard(a, busy, true, progressText)));
@@ -4967,7 +4983,7 @@ function renderLocal(data) {
     const inst = a.installed;
     const st = a.status || {};
     const state = inst && inst.commit ? `Installed: ${inst.commit.slice(0, 7)} (${inst.ref === 'pinned' ? 'the pinned commit' : inst.ref}), from ${a.repo}.`
-      : st.error ? `Not installed: ${st.error}` : fetching ? 'Downloading…' : 'Not installed yet.';
+      : st.error ? `Not installed: ${errorSaid(st)}` : fetching ? 'Downloading…' : 'Not installed yet.';
     return el('div', { className: 'setting library-source' }, el('span', {},
       el('span', { className: 'setting-name', textContent: a.title }),
       accessSlot(a.id),
@@ -5131,7 +5147,7 @@ function renderUsb(data) {
   if (usbWaiting) {
     const done = (data.results || []).find((r) => r.id === usbWaiting.id);
     if (done) {
-      usbNote = { at: usbWaiting.at, text: done.message, ok: done.ok };
+      usbNote = { at: usbWaiting.at, text: resultSaid(done), ok: done.ok };
       usbWaiting = null;
       if (done.ok) loadLibrary();
       return renderUsb(data);
@@ -5165,7 +5181,7 @@ function renderUsb(data) {
   usb.progress.hidden = !p;
   if (p) {
     usb.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
-    usb.step.textContent = `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : '…'}`;
+    usb.step.textContent = `${said(p.label)}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : '…'}`;
   }
   clearTimeout(usbPoll);
   if (busy) usbPoll = setTimeout(loadUsb, 1000);
@@ -5395,7 +5411,7 @@ function renderMirrors(data) {
       ...m.groups.map((g) => `${g.keep} ${g.kind === 'tags' ? `tag${g.keep === 1 ? '' : 's'} ${g.pattern}` : g.kind + (g.keep === 1 ? '' : 's')}`),
       m.history, m.submodules ? 'with submodules' : null, `budget ${m.budget_mb} MB`].filter(Boolean).join(' · ');
     const subs = Object.entries(st.submodules || {}).map(([p, s]) => `${p} (${s.kept.length} commit${s.kept.length === 1 ? '' : 's'}, ${size(s.size)})`);
-    const state = st.error ? `error: ${st.error}` : st.outcome
+    const state = st.error ? `error: ${errorSaid(st)}` : st.outcome
       ? `${st.outcome}${st.size != null ? ` · ${size(st.size)}` : ''}${st.checked ? ` · checked ${commitDate(st.checked)}` : ''}`
       : 'not downloaded yet';
     // Release groups: revoked releases (named so by their project) are left out unless switched off.
@@ -5608,7 +5624,7 @@ function renderFirmware(data) {
     ? ` Working: ${data.progress.name} (${size(data.progress.done)}${data.progress.total ? ` of ${size(data.progress.total)}` : ''}).`
     : ' Working…') : '';
   fw.status.textContent = (st.last_check ? `Last checked ${st.last_check.replace('T', ' ').replace('Z', ' UTC')}: ${st.outcome || ''}.`
-    : 'Not checked yet.') + (st.error ? ` Error: ${st.error}` : '') + running +
+    : 'Not checked yet.') + (st.error ? ` Error: ${errorSaid(st)}` : '') + running +
     (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : '');
   const q = fw.filter.value.trim().toLowerCase();
   const targets = (data.targets || []).filter((t) => !q || t.board.includes(q) || t.platform.includes(q));
@@ -5722,7 +5738,7 @@ function renderKits(data) {
   const kits = Object.values(data.kits || {});
   // Answers to what this page asked: shown, and the waiting ends.
   for (const r of data.results || []) {
-    if (kitsWaiting.has(r.id)) { kitsWaiting.delete(r.id); say(r.message, r.ok, kitsEl.note); }
+    if (kitsWaiting.has(r.id)) { kitsWaiting.delete(r.id); say(resultSaid(r), r.ok, kitsEl.note); }
   }
   const cached = kits.filter((k) => ((st.kits || {})[k.id] || {}).cached);
   const newest = Math.max(0, ...cached.map((k) => st.kits[k.id].cached.fetched));
@@ -5899,7 +5915,7 @@ async function loadKitsUsb() {
   const note = noteEl('kits-usb-note');
   if (kitsUsbWaiting) {
     const done = (data.results || []).find((r) => r.id === kitsUsbWaiting);
-    if (done) { kitsUsbWaiting = null; say(done.message, done.ok, note); loadKits(); }
+    if (done) { kitsUsbWaiting = null; say(resultSaid(done), done.ok, note); loadKits(); }
   }
   const p = data.progress;
   const busy = !!kitsUsbWaiting || !!p || data.pending > 0;
@@ -5924,7 +5940,7 @@ async function loadKitsUsb() {
           onclick: () => kitsUsbAsk({ action: 'kit-export', device: d.name, kit: pick.value }, `Copy ${pick.value} onto ${d.label || d.name}?`) })) : null));
     }),
     // Nothing in progress: nothing (a null here showed as the word "null" under a listed stick).
-    ...(p ? [el('p', { className: 'setting-desc', textContent: `${p.label}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` })] : []));
+    ...(p ? [el('p', { className: 'setting-desc', textContent: `${said(p.label)}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : '…'}` })] : []));
   if (busy) setTimeout(loadKitsUsb, 1500);
 }
 async function kitsUsbAsk(body, confirmText) {
@@ -5985,7 +6001,7 @@ function renderTls(d) {
   tlsData = d;
   if (tlsWaiting) {
     const done = (d.results || []).find((r) => r.id === tlsWaiting);
-    if (done) { say(done.message, done.ok, tlsEl.note); tlsWaiting = null; }
+    if (done) { say(resultSaid(done), done.ok, tlsEl.note); tlsWaiting = null; }
   }
   const busy = !!tlsWaiting || d.pending > 0;
   const c = d.cert || {};
@@ -6075,7 +6091,7 @@ function renderAccounts(d) {
   const al = d.admin_login || { on: true, reach: 'network', password_set: true, https_admins: [], results: [] };
   if (acctWaiting) {
     const done = (al.results || []).find((r) => r.id === acctWaiting);
-    if (done) { acctWaiting = null; say(done.message, done.ok, acctEl.note); }
+    if (done) { acctWaiting = null; say(resultSaid(done), done.ok, acctEl.note); }
     else setTimeout(loadAccounts, 1000);
   }
   const admins = al.https_admins.join(', ');
@@ -6217,7 +6233,7 @@ async function loadMesh() {
 }
 function renderMesh(d) {
   meshEl.state.textContent = d.state === 'listening' ? `Connected to MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} heard in the last 7 days.`
-    : `Reconnecting to broker${d.error ? ` (${d.error})` : ''}. Check that the MQTT broker is installed (Add-ons, MQTT broker) and running. The box tries again automatically.`;
+    : `Reconnecting to broker${d.error ? ` (${errorSaid(d)})` : ''}. Check that the MQTT broker is installed (Add-ons, MQTT broker) and running. The box tries again automatically.`;
   meshEl.channels.replaceChildren(...(d.channels.length ? d.channels.map((c) => el('div', { className: 'admin-item' },
     el('span', { className: 'setting-name', textContent: c.name }),
     el('span', { className: 'setting-desc', textContent: c.public_key ? ' Default public key. Anyone can read this channel.' : c.no_key ? ' Unencrypted channel.' : ' Custom key (not shown).' }),

@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from irate_box.msg import M
+from irate_box.msg import M, Refused
 
 LEVELS = ("off", "github", "tags")
 FILE_NAME = "update-signing.json"
@@ -35,7 +35,7 @@ MAX_SIGNERS = 20
 
 def parse_signers(text):
     """allowed_signers lines (principal, key type, key, comment), checked one by one; '#' and blank
-    lines skipped. Raises ValueError naming the first bad line."""
+    lines skipped. Raises Refused naming the first bad line."""
     out = []
     for n, line in enumerate((text or "").splitlines(), 1):
         line = line.strip()
@@ -43,11 +43,11 @@ def parse_signers(text):
             continue
         m = SIGNER.match(line)
         if not m:
-            raise ValueError(f"Line {n} is not \"name key-type key\" (the format ssh-keygen -Y uses, for example "
-                             "owner@laptop ssh-ed25519 AAAA…)")
+            raise Refused(M("update.signing.bad-line", "Line {line} does not have the form {form}, which ssh-keygen -Y uses. "
+                            "An example: {example}", line=n, form="name key-type key", example="alice@laptop ssh-ed25519 AAAA…"))
         out.append(line)
     if len(out) > MAX_SIGNERS:
-        raise ValueError(f"Add at most {MAX_SIGNERS} keys.")
+        raise Refused(M("update.signing.too-many", "Add at most {n} keys.", n=MAX_SIGNERS))
     return out
 
 
@@ -64,10 +64,10 @@ def load(etc):
 def save(etc, level, signers_text, write):
     """Check and keep the choice; write(path, text) is the caller's root-safe writer."""
     if level not in LEVELS:
-        raise ValueError(f"Select a level: {', '.join(LEVELS)}.")
+        raise Refused(M("update.signing.level-bad", "The signing level must be one of these values: {levels}.", levels=list(LEVELS)))
     signers = parse_signers(signers_text)
     if level == "tags" and not signers:
-        raise ValueError("Add at least one trusted key to require signed releases.")
+        raise Refused(M("update.signing.no-keys", "Add at least one trusted key to require signed releases."))
     data = {"level": level, "signers": signers}
     write(Path(etc) / FILE_NAME, json.dumps(data, indent=2))
     return data
