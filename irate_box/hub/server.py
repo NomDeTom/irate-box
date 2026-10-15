@@ -2380,7 +2380,8 @@ def catalogue_sync():
                 state[i] = {"status": "gone", "at": now}
             continue
         if entry == copy:
-            if (state.get(i) or {}).get("status") == "held":
+            # Accepted, or back in the catalogue as it was (gone during an update, say): current again.
+            if (state.get(i) or {}).get("status") in ("held", "gone"):
                 state[i] = {"status": "current", "at": now}
             continue
         held = _agreed_changes(copy, entry)

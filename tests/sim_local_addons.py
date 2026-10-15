@@ -178,6 +178,8 @@ check("a pasted add-on is never touched, even when the catalogue later has one b
 st = sync()
 check("gone from the catalogue: kept, and said", (T / "apps.d" / "eliza.json").exists() and st["eliza"]["status"] == "gone", st)
 (CAT / "eliza.json").write_text(json.dumps(entry))
+st = sync()
+check("  back in the catalogue as it was: current again, no longer said as gone", st["eliza"]["status"] == "current", st.get("eliza"))
 
 # --- the add-on server's maps
 loc = [m for m in M.load_local()[0]]
