@@ -62,18 +62,19 @@ def fake_run(*cmd, timeout=120):
 clock.run = fake_run
 
 # --- the page's choice --------------------------------------------------------------------------------------
-check("a choice read: service, pool, GPS, a server", clock.parse("clock-sources:chrony:1:1:0:192.168.1.1") == ("chrony", True, True, False, "192.168.1.1"))
-check("  '-' for no server", clock.parse("clock-sources:image:1:0:0:-") == ("image", True, False, False, ""))
-for bad, why in (("clock-sources:image:1:1:0:-", "GPS needs chrony"), ("clock-sources:chrony:0:0:0:-", "at least one source"),
-                 ("clock-sources:chrony:1:0:0:a..b", "not an address"), ("clock-sources:ntpd:1:0:0:-", "a clock choice"),
-                 ("clock-sources:chrony:1:0:0:x;rm", "a clock choice"), ("clock-sources:image:1:0:1:-", "Serving the time needs chrony")):
+check("a choice read: service, pool, GPS, a server", clock.parse("clock-sources:chrony:1:1:0:0:192.168.1.1") == ("chrony", True, True, False, False, "192.168.1.1"))
+check("  '-' for no server", clock.parse("clock-sources:image:1:0:0:0:-") == ("image", True, False, False, False, ""))
+for bad, why in (("clock-sources:image:1:1:0:0:-", "GPS needs chrony"), ("clock-sources:chrony:0:0:0:0:-", "at least one source"),
+                 ("clock-sources:chrony:1:0:0:0:a..b", "not an address"), ("clock-sources:ntpd:1:0:0:0:-", "a clock choice"),
+                 ("clock-sources:chrony:1:0:0:0:x;rm", "a clock choice"), ("clock-sources:image:1:0:0:1:-", "Serving the time needs chrony"),
+                 ("clock-sources:image:1:0:1:0:-", "needs chrony"), ("clock-sources:chrony:1:0:1:0:-", "No clock module is set up")):
     try:
         clock.parse(bad); check(f"refused: {bad}", False)
     except ValueError as exc:
         check(f"refused: {bad} ({why})", why in str(exc), exc)
 
 # --- the image's own service, its servers chosen ----------------------------------------------------------
-said = clock.apply("clock-sources:image:0:0:0:192.168.1.1")
+said = clock.apply("clock-sources:image:0:0:0:0:192.168.1.1")
 drop = T / "root/etc/systemd/timesyncd.conf.d/52irate-box.conf"
 check("the image's own: a drop-in naming the local server, no pool", drop.read_text().endswith("NTP=192.168.1.1\nFallbackNTP=\n")
       and "the server 192.168.1.1" in said, (drop.read_text(), said))
@@ -81,12 +82,12 @@ rec = clock.load()
 check("  what the image had kept the first time (timesyncd, installed and enabled, no chrony)", rec["image"]["daemon"] == "systemd-timesyncd"
       and rec["image"]["timesyncd"] and rec["image"]["timesyncd_enabled"] and not rec["image"]["chrony"], rec["image"])
 check("  timesyncd restarted to read it", ["systemctl", "restart", "systemd-timesyncd.service"] in calls)
-clock.apply("clock-sources:image:1:0:0:-")
+clock.apply("clock-sources:image:1:0:0:0:-")
 check("  the pool: Debian's four servers as the fallback", "FallbackNTP=0.debian.pool.ntp.org" in drop.read_text() and "NTP=\n" in drop.read_text())
 
 # --- chrony in its place -----------------------------------------------------------------------------------
 calls.clear()
-said = clock.apply("clock-sources:chrony:0:0:0:192.168.1.1")
+said = clock.apply("clock-sources:chrony:0:0:0:0:192.168.1.1")
 conf = T / "root/etc/chrony/chrony.conf"
 src = T / "root/etc/chrony/sources.d/52irate-box.sources"
 confd = T / "root/etc/chrony/conf.d/52irate-box.conf"
@@ -100,7 +101,7 @@ check("  the pool not chosen: Debian's pool line off (commented, so Restore is e
 check("  chrony enabled and restarted (a toolkit install would leave it disabled)", ["systemctl", "enable", "chrony.service"] in calls
       and ["systemctl", "restart", "chrony.service"] in calls)
 check("  said in a sentence", said.startswith("Chrony installed.") and "the server 192.168.1.1" in said, said)
-clock.apply("clock-sources:chrony:1:0:0:-")
+clock.apply("clock-sources:chrony:1:0:0:0:-")
 check("  the pool chosen again: chrony.conf as it came", conf.read_text() == DEBIAN_CONF and "server" not in src.read_text().split("\n", 1)[1])
 check("  the image as it was is kept from the first change, not overwritten", clock.load()["image"]["daemon"] == "systemd-timesyncd")
 check("chrony's own lines: rtcsync; no refclock without GPS", "rtcsync" in confd.read_text() and "refclock" not in confd.read_text())
@@ -116,14 +117,14 @@ sys.modules["irate_box.root.kits"] = fake_kits
 import irate_box.root as root_pkg
 root_pkg.kits = fake_kits
 try:
-    clock.apply("clock-sources:chrony:1:1:0:-"); check("GPS with no toolkit cached: refused", False)
+    clock.apply("clock-sources:chrony:1:1:0:0:-"); check("GPS with no toolkit cached: refused", False)
 except ValueError as exc:
     check("GPS with no toolkit cached: refused, saying where to get it", "GPS time toolkit" in str(exc), exc)
 got = []
 fake_kits.manifest = lambda k: {"id": k}
 fake_kits.install = lambda k, hours, log=None: got.append(("install", k, hours))
 fake_kits.remove = lambda k, log=None: got.append(("remove", k))
-said = clock.apply("clock-sources:chrony:1:1:0:-")
+said = clock.apply("clock-sources:chrony:1:1:0:0:-")
 check("  cached: installed, kept (no removal time), said", got == [("install", "gpstime", None)] and "GPS time toolkit installed" in said, (got, said))
 
 # --- serving the time to the hotspot: chrony's allow, and the hotspot firewall's UDP 123 ---------------------
@@ -134,17 +135,65 @@ fake_security = types.SimpleNamespace(load_record=lambda: {"firewall": {"level":
                                       _firewall_apply=lambda fw: refreshed.append(fw))
 sys.modules["irate_box.root.security"] = fake_security
 root_pkg.security = fake_security
-said = clock.apply("clock-sources:chrony:1:1:1:-")
+said = clock.apply("clock-sources:chrony:1:1:0:1:-")
 check("  turned on: the allow written, the firewall loaded again, said", "allow 192.168.4.0/24" in confd.read_text() and len(refreshed) == 1
       and "serves it to the hotspot (192.168.4.0/24)" in said and "opens UDP 123 to guests" in said, (refreshed, said))
 from irate_box.root import firewall  # noqa: E402
 check("  the firewall opens the time to guests while it serves (UDP 123), by the Clock page's switch", "time" in firewall.services_here([])
       and 123 in firewall.ports(firewall.services_here([]))[1])
-clock.apply("clock-sources:chrony:1:1:0:-")
+clock.apply("clock-sources:chrony:1:1:0:0:-")
 check("  turned off: the allow gone, the firewall loaded again, the time closed", "allow" not in confd.read_text() and len(refreshed) == 2
       and "time" not in firewall.services_here([]) and 123 not in firewall.ports(firewall.services_here([]))[1])
-clock.apply("clock-sources:chrony:1:1:1:-")
+clock.apply("clock-sources:chrony:1:1:0:1:-")
 n = len(refreshed)
+
+# --- the clock module, fed to chrony over its SOCK socket ------------------------------------------------------
+os.environ["HUB_UNIT_DIR"] = str(T / "units"); clock.UNIT_DIR = T / "units"
+clock.module_ready = lambda: True
+calls.clear()
+said = clock.apply("clock-sources:chrony:1:1:1:1:-")
+unit = T / "units" / clock.FEED_UNIT
+check("the module: chrony's SOCK refclock (refid RTC, a large delay), the feed service written and started",
+      f"refclock SOCK {clock.FEED_SOCK} refid RTC precision 1 delay 2" in confd.read_text() and unit.exists()
+      and "irate-box clock feed" in unit.read_text() and ["systemctl", "enable", "--now", clock.FEED_UNIT] in calls
+      and "the clock module" in said, (said, unit.exists()))
+import struct  # noqa: E402
+smp = clock.sample(1792040000.25, -0.5, "<qqdiiii")
+check("a SOCK sample: 40 bytes with a 64-bit time_t, the time, the offset and chrony's magic last",
+      len(smp) == 40 and struct.unpack("<qqdiiii", smp) == (1792040000, 250000, -0.5, 0, 0, 0, 0x534F434B))
+check("  32 bytes with a 32-bit one", len(clock.sample(1792040000.25, -0.5, "<iidiiii")) == 32)
+(T / "root/etc/os-release").write_text('ID=debian\nVERSION_ID="13"\n')
+check("  the layout: 64-bit time_t on Debian 13 (its 32-bit ARM moved to it) or a 64-bit system",
+      clock.sock_layout() == "<qqdiiii")
+(T / "root/etc/os-release").write_text('ID=debian\nVERSION_ID="12"\n')
+check("  …and 32-bit before, on a 32-bit system", clock.sock_layout() == ("<qqdiiii" if struct.calcsize("P") == 8 else "<iidiiii"))
+sent = []
+class FakeSock:
+    def sendto(self, data, path): sent.append((data, path))
+import socket as socket_mod  # noqa: E402
+real_socket = clock.socket.socket
+clock.socket.socket = lambda *a: FakeSock()
+fake_rtc = types.SimpleNamespace(load_config=lambda: {"chip": "ds3231", "mode": "user"}, read_module=lambda cfg: (1792040000, None, []))
+sys.modules["irate_box.root.rtc"] = fake_rtc
+real_rtc = root_pkg.rtc
+root_pkg.rtc = fake_rtc
+clock.feed(once=True)
+root_pkg.rtc = real_rtc; sys.modules["irate_box.root.rtc"] = real_rtc
+clock.socket.socket = real_socket
+check("the feed: the module read once and its offset sent to chrony's socket (half a second added back)", len(sent) == 1
+      and sent[0][1] == str(clock.FEED_SOCK) and abs(struct.unpack(clock.sock_layout(), sent[0][0])[2] - (1792040000.5 - struct.unpack(clock.sock_layout(), sent[0][0])[0]
+      - struct.unpack(clock.sock_layout(), sent[0][0])[1] / 1e6)) < 1e-3, sent)
+st = {r["source"]: r["state"] for r in clock.source_states({"service": "chrony", "module": True}, "#? RTC  0 4 0 - +0ns[+0ns] +/- 0ns\n")}
+check("  its state from chronyc's RTC line (not GPS's)", st == {"module": "not-answering"}, st)
+from irate_box.root import rtc as real_rtc_mod  # noqa: E402
+real_rtc_mod.ntp_synced = lambda: True
+real_rtc_mod.chrony_reference = lambda: "RTC"
+check("rtc: the module's own time not written back to it as if it were network time", real_rtc_mod.trusted() is None)
+real_rtc_mod.chrony_reference = lambda: "GPS"
+check("  network or GPS time still is", real_rtc_mod.trusted() == "network time")
+clock.apply("clock-sources:chrony:1:1:0:1:-")
+check("the module off again: the feed service stopped and its unit gone", not unit.exists() and ["systemctl", "disable", "--now", clock.FEED_UNIT] in calls)
+clock.apply("clock-sources:chrony:1:1:0:1:-")
 
 # --- Restore: everything back as the image had it ---------------------------------------------------------
 calls.clear()
@@ -194,9 +243,9 @@ check("  in use fine; chosen but not answering a problem; chosen but not found a
       fs["clock-source:gps"]["status"] == "ok" and fs["clock-source:local"]["status"] == "problem" and fs["clock-source:pool"]["status"] == "warn"
       and "UDP port 123" in fs["clock-source:local"]["fix"] and fs["clock-source:gps"]["fix"] == "", fs)
 from irate_box.hub import server  # noqa: E402
-for c in ("clock-sources:chrony:1:1:1:192.168.1.1", "clock-sources:image:0:0:0:router.lan", "clock-undo"):
+for c in ("clock-sources:chrony:1:1:1:1:192.168.1.1", "clock-sources:image:0:0:0:0:router.lan", "clock-undo"):
     check(f"accepted by the doctor and the hub: {c}", bool(health.CHOICE_RE.match(c)) and bool(server.HEALTH_CHOICE_RE.match(c)))
-for c in ("clock-sources:chrony:1:1:0:$(reboot)", "clock-sources:chrony:2:0:0:-", "clock-undo:x"):
+for c in ("clock-sources:chrony:1:1:0:0:$(reboot)", "clock-sources:chrony:2:0:0:0:-", "clock-undo:x"):
     check(f"refused by both: {c}", not health.CHOICE_RE.match(c) and not server.HEALTH_CHOICE_RE.match(c))
 
 print(f"failures: {fails}")

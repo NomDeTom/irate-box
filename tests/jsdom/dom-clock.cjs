@@ -38,17 +38,19 @@ const report = (clock) => ({ report: { at: Date.now() / 1000, findings: [], sett
   check('as the image has it: its own service selected, the pool on, Save and Discard off, no Restore',
     chip("The image's own").classList.contains('selected') && tickOf("The internet's pool").checked && btn('Save').disabled && btn('Discard').disabled
     && !btn("Restore the image's settings"), t(box()));
-  check('  GPS and serving the time only with chrony', tickOf('GPS').disabled && tickOf('Serve the time').disabled && /Only with chrony/.test(t(box())));
+  check('  GPS, the module and serving the time only with chrony', tickOf('GPS').disabled && tickOf('The clock module').disabled
+    && tickOf('Serve the time').disabled && /Only with chrony/.test(t(box())) && /sets the time at boot only/.test(t(box())));
   chip('chrony').click(); await wait();
   check('chrony chosen: Save and Discard on, said as unsaved, GPS possible', !btn('Save').disabled && !btn('Discard').disabled
     && /Unsaved changes/.test(t(box())) && !tickOf('GPS').disabled && /installs chrony and removes systemd-timesyncd/.test(t(box())));
   tickOf('GPS').click(); await wait();
   tickOf('Serve the time').click(); await wait();
   check('  serving: says the firewall opens UDP 123 to guests', /opens UDP port 123 to guests/.test(t(box())));
+  check('  no module set up: its tick off, saying to scan for one', tickOf('The clock module').disabled && /No clock module is set up/.test(t(box())));
   const addr = box().querySelector('input[type=text]');
   addr.value = '192.168.1.1'; addr.dispatchEvent(new w.Event('input'));
   btn('Save').click(); await wait();
-  check('Save: one choice, every source in it', posted.some((b) => b.action === 'fix' && b.choice === 'clock-sources:chrony:1:1:1:192.168.1.1'), JSON.stringify(posted));
+  check('Save: one choice, every source in it', posted.some((b) => b.action === 'fix' && b.choice === 'clock-sources:chrony:1:1:0:1:192.168.1.1'), JSON.stringify(posted));
   // Nothing at all chosen: Save stays off.
   w.renderHealth(report({ service: 'image', pool: true, gps: false, local: '', changed: true, daemon: 'systemd-timesyncd', chrony_installed: false, gps_device: false, sources: [] }));
   tickOf("The internet's pool").click(); await wait();
@@ -56,12 +58,14 @@ const report = (clock) => ({ report: { at: Date.now() / 1000, findings: [], sett
   btn('Discard').click(); await wait();
   check('Discard: back to what is saved, Save off', tickOf("The internet's pool").checked && btn('Save').disabled);
   // Chosen here, with chrony: each source as it stands, and Restore.
-  w.renderHealth(report({ service: 'chrony', pool: true, gps: true, serve: true, local: '192.168.1.1', changed: true, daemon: 'chrony', chrony_installed: true, gps_device: true,
-    sources: [{ source: 'gps', name: 'GPS', state: 'in-use' }, { source: 'local', name: '192.168.1.1', state: 'not-answering' },
+  w.renderHealth(report({ service: 'chrony', pool: true, gps: true, module: true, module_ready: true, serve: true, local: '192.168.1.1', changed: true, daemon: 'chrony',
+    chrony_installed: true, gps_device: true,
+    sources: [{ source: 'gps', name: 'GPS', state: 'in-use' }, { source: 'module', name: 'the clock module', state: 'answering' }, { source: 'local', name: '192.168.1.1', state: 'not-answering' },
       { source: 'pool', name: "the internet's pool", state: 'not-found' }] }));
   const states = [...box().querySelectorAll('.clock-states li')].map(t);
-  check('how each chosen source stands', states.join(' | ') === "In use GPS | Not answering 192.168.1.1 | Not found The internet's pool", states.join(' | '));
-  check('  saved: chrony selected, GPS and serving ticked, the address filled', chip('chrony').classList.contains('selected') && tickOf('GPS').checked && tickOf('Serve the time').checked
+  check('how each chosen source stands', states.join(' | ') === "In use GPS | Answering, not used The clock module | Not answering 192.168.1.1 | Not found The internet's pool", states.join(' | '));
+  check('  saved: chrony selected, GPS, the module and serving ticked, the address filled', chip('chrony').classList.contains('selected') && tickOf('GPS').checked
+    && tickOf('The clock module').checked && !tickOf('The clock module').disabled && tickOf('Serve the time').checked
     && box().querySelector('input[type=text]').value === '192.168.1.1');
   const n = posted.length;
   btn("Restore the image's settings").click(); await wait();

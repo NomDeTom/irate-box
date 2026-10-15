@@ -14,7 +14,10 @@ Two ways, the owner's choice:
            chrony can also serve the time to the hotspot's guests: an `allow` for the hotspot's network, and the
            hotspot firewall opens UDP 123 to guests while it does (firewall.services_here asks serving()).
 
-The clock module (rtc.py) is not one of these: it sets the time at boot and keeps it, whichever service runs.
+The clock module (rtc.py) sets the time at boot whichever service runs. With chrony it is a source as well: chrony
+has no RTC driver of its own (Debian's 4.6 has PPS, SOCK, SHM and PHC), so irate-box-rtc-feed.service (`clock feed`)
+reads the module every 16 s, by its kernel driver or irate-box's own, and sends chrony the offset over the SOCK
+driver's socket. Its delay is large, so chrony uses it only while GPS and the network are silent.
 
 What the image had is kept in RECORD the first time anything is changed (its daemon, whether timesyncd was
 installed and enabled, chrony.conf's text), and Restore (undo) puts all of it back: our files gone, chrony.conf as it
@@ -49,8 +52,15 @@ POOL = ("0.debian.pool.ntp.org", "1.debian.pool.ntp.org", "2.debian.pool.ntp.org
 GPS_KIT = "gpstime"
 # A server on the local network: an IPv4 or IPv6 address, or a host name.
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
-# The page's choice: clock-sources:SERVICE:POOL:GPS:SERVE:LOCAL (LOCAL "-" for none), and clock-undo.
-CHOICE_RE = re.compile(r"^clock-sources:(image|chrony):([01]):([01]):([01]):(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$")
+# The page's choice: clock-sources:SERVICE:POOL:GPS:MODULE:SERVE:LOCAL (LOCAL "-" for none), and clock-undo.
+CHOICE_RE = re.compile(r"^clock-sources:(image|chrony):([01]):([01]):([01]):([01]):(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$")
+# The clock module fed to chrony: the socket chronyd makes, and the service that writes to it.
+FEED_SOCK = Path(os.environ.get("HUB_CLOCK_FEED_SOCK", "/run/chrony.irate-box-rtc.sock"))
+FEED_UNIT = "irate-box-rtc-feed.service"
+UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
+CODE = Path(__file__).resolve().parents[2]
+FEED_EVERY = 16
+SOCK_MAGIC = 0x534F434B
 STATE_WORDS = {"in-use": "In use", "answering": "Answering, not used", "not-answering": "Not answering",
                "not-found": "Not found", "unknown": "Not reported"}
 
@@ -104,22 +114,36 @@ def _image_as_it_was():
             "chrony_conf": CHRONY_CONF.read_text() if CHRONY_CONF.is_file() else None}
 
 
+def module_ready():
+    """Is a clock module set up (rtc.py's config)?"""
+    try:
+        from irate_box.root import rtc
+        return bool(rtc.load_config())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def parse(choice):
-    """('chrony'|'image', pool, gps, serve, local or '') from the page's choice, or ValueError."""
+    """('chrony'|'image', pool, gps, module, serve, local or '') from the page's choice, or ValueError."""
     m = CHOICE_RE.match(choice or "")
     if not m:
-        raise ValueError("a clock choice: clock-sources:image|chrony:POOL:GPS:SERVE:LOCAL")
-    service, pool, gps, serve, local = m.group(1), m.group(2) == "1", m.group(3) == "1", m.group(4) == "1", m.group(5)
+        raise ValueError("a clock choice: clock-sources:image|chrony:POOL:GPS:MODULE:SERVE:LOCAL")
+    service, pool, gps, module, serve, local = (m.group(1), m.group(2) == "1", m.group(3) == "1", m.group(4) == "1",
+                                                m.group(5) == "1", m.group(6))
     local = "" if local == "-" else local
     if gps and service != "chrony":
         raise ValueError("GPS needs chrony: systemd-timesyncd takes no reference clock")
     if serve and service != "chrony":
         raise ValueError("Serving the time needs chrony: systemd-timesyncd only asks, it does not answer")
+    if module and service != "chrony":
+        raise ValueError("The clock module as a source needs chrony (with the image's own service it sets the time at boot only)")
+    if module and not module_ready():
+        raise ValueError("No clock module is set up: scan for one on the Clock page first")
     if local and not _host_ok(local):
         raise ValueError(f"{local} is not an address or a host name")
-    if not (pool or gps or local):
+    if not (pool or gps or module or local):
         raise ValueError("Select at least one source: with none, nothing sets the clock")
-    return service, pool, gps, serve, local
+    return service, pool, gps, module, serve, local
 
 
 def hotspot_net():
@@ -177,9 +201,13 @@ def chrony_sources_text(local):
             + (f"server {local} iburst\n" if local else ""))
 
 
-def chrony_conf_text(gps, serve=False, net=None):
+def chrony_conf_text(gps, serve=False, net=None, module=False):
     lines = ["# Written by irate-box's Clock page (/admin). Change it there.",
              "# The kernel's clock kept in step, so other tools see the time as synchronised.", "rtcsync"]
+    if module:
+        lines += ["# The clock module, fed by irate-box-rtc-feed.service over this socket: one-second steps and a large",
+                  "# delay, so GPS and the network win whenever they answer.",
+                  f"refclock SOCK {FEED_SOCK} refid RTC precision 1 delay 2"]
     if serve:
         lines += ["# The time served to the hotspot's guests (the hotspot firewall opens UDP 123 for it).",
                   f"allow {net or hotspot_net()}"]
@@ -202,7 +230,7 @@ def _write(path, text):
     safeio.write(path, text)
 
 
-def _chrony_on(rec, pool, gps, serve, local, said):
+def _chrony_on(rec, pool, gps, module, serve, local, said):
     img = rec["image"]
     if not _installed("chrony"):
         said.append(_install("chrony", "the GPS time toolkit's cache, which holds it"))
@@ -227,17 +255,19 @@ def _chrony_on(rec, pool, gps, serve, local, said):
     # With no chrony.conf at all (a chrony without Debian's file), the pool goes in our sources instead.
     _write(CHRONY_SOURCES, chrony_sources_text(local)
            + ("".join(f"pool {p} iburst\n" for p in POOL[2:3]) if pool and img.get("chrony_conf") is None else ""))
-    _write(CHRONY_D, chrony_conf_text(gps, serve))
+    _write(CHRONY_D, chrony_conf_text(gps, serve, module=module))
     # A toolkit install leaves the units it brought disabled: chrony is wanted here.
     run("systemctl", "enable", "chrony.service")
     run("systemctl", "restart", "chrony.service", timeout=120)
-    said.append("chrony keeps the time: " + _sources_words(pool, gps, local)
+    _feed(module)
+    said.append("chrony keeps the time: " + _sources_words(pool, gps, local, module)
                 + (f", and serves it to the hotspot ({hotspot_net()})" if serve else ""))
 
 
 def _chrony_off(rec, said):
     """Back from chrony to the image's own service: our files gone, chrony.conf as it was, the packages as they were."""
     img = rec.get("image") or {}
+    _feed(False)
     for f in (CHRONY_SOURCES, CHRONY_D):
         f.unlink(missing_ok=True)
     if img.get("chrony_conf") is not None and CHRONY_CONF.is_file() and CHRONY_CONF.read_text() != img["chrony_conf"]:
@@ -265,22 +295,22 @@ def _timesyncd(pool, local, said):
     said.append("systemd-timesyncd asks " + _sources_words(pool, False, local))
 
 
-def _sources_words(pool, gps, local):
-    parts = (["GPS"] if gps else []) + ([f"the server {local} on the local network"] if local else []) \
+def _sources_words(pool, gps, local, module=False):
+    parts = (["GPS"] if gps else []) + (["the clock module"] if module else []) + ([f"the server {local} on the local network"] if local else []) \
         + (["the internet's pool"] if pool else [])
     return ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1] if parts else "nothing"
 
 
 def apply(choice):
     """The page's choice applied; what was done, in a sentence."""
-    service, pool, gps, serve, local = parse(choice)
+    service, pool, gps, module, serve, local = parse(choice)
     rec = load()
     if "image" not in rec:
         rec["image"] = _image_as_it_was()
     said = []
     if service == "chrony":
         TIMESYNCD_D.unlink(missing_ok=True)
-        _chrony_on(rec, pool, gps, serve, local, said)
+        _chrony_on(rec, pool, gps, module, serve, local, said)
     else:
         if rec.get("service") == "chrony" or rec.get("installed_chrony"):
             _chrony_off(rec, said)
@@ -288,7 +318,7 @@ def apply(choice):
             said.append(_install("systemd-timesyncd", "the System toolkit's cache, which holds it"))
         _timesyncd(pool, local, said)
     was_serving = serving()
-    rec.update(service=service, pool=pool, gps=gps, serve=serve, local=local, at=time.time())
+    rec.update(service=service, pool=pool, gps=gps, module=module, serve=serve, local=local, at=time.time())
     _save(rec)
     if serve != was_serving and _firewall_refresh():
         said.append("the hotspot firewall " + ("opens UDP 123 to guests" if serve else "closes UDP 123 again"))
@@ -324,6 +354,75 @@ def undo_all():
         return [undo()]
     except ValueError as exc:
         return [f"the clock's sources: {exc}"]
+
+
+# --- the clock module, fed to chrony ------------------------------------------------------------------------
+
+def feed_unit_text():
+    return (f"[Unit]\nDescription=Irate-Box: the clock module's time fed to chrony (the Clock page's choice)\n"
+            f"After=chrony.service\nWants=chrony.service\n\n[Service]\nExecStart={CODE}/irate-box clock feed\n"
+            f"Restart=always\nRestartSec=30\n\n[Install]\nWantedBy=multi-user.target\n")
+
+
+def _feed(on):
+    """The feeding service on (written, enabled, started) or off (stopped, disabled, its unit gone)."""
+    unit = UNIT_DIR / FEED_UNIT
+    if on:
+        _write(unit, feed_unit_text())
+        run("systemctl", "daemon-reload")
+        run("systemctl", "enable", "--now", FEED_UNIT)
+        run("systemctl", "restart", FEED_UNIT)
+    elif unit.exists():
+        run("systemctl", "disable", "--now", FEED_UNIT)
+        unit.unlink(missing_ok=True)
+        run("systemctl", "daemon-reload")
+
+
+def sock_layout():
+    """The byte layout of chrony's SOCK sample (refclock_sock.c: a struct timeval, a double offset, pulse, leap,
+    padding, the magic), as this system's chronyd was built: time_t 64 bits on 64-bit systems, and on 32-bit ARM from
+    Debian 13 on (its 64-bit time_t transition); 32 bits before. To be confirmed with a module on a board."""
+    import struct
+    if struct.calcsize("P") == 8:
+        return "<qqdiiii"
+    try:
+        release = dict(l.split("=", 1) for l in (SYS / "etc/os-release").read_text().splitlines() if "=" in l)
+        if release.get("ID") == "debian" or "debian" in release.get("ID_LIKE", ""):
+            if int(release.get("VERSION_ID", "0").strip('"').split(".")[0] or 0) >= 13:
+                return "<qqdiiii"
+    except (OSError, ValueError):
+        pass
+    return "<iidiiii"
+
+
+def sample(now, offset, layout=None):
+    """One SOCK sample: the time it was taken and the module's offset from the system clock."""
+    import struct
+    return struct.pack(layout or sock_layout(), int(now), int(round((now % 1) * 1e6)) % 1000000, float(offset), 0, 0, 0, SOCK_MAGIC)
+
+
+def feed(every=FEED_EVERY, once=False):
+    """The module read every `every` s and its offset sent to chronyd. The module counts whole seconds: read at an
+    unknown point within one, it is on average half a second behind, which is added back."""
+    from irate_box.root import rtc
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    layout = sock_layout()
+    while True:
+        cfg = rtc.load_config()
+        if cfg:
+            try:
+                epoch, _why, _notes = rtc.read_module(cfg)
+            except Exception:  # noqa: BLE001 - a module that does not answer this time may next time
+                epoch = None
+            if epoch:
+                now = time.time()
+                try:
+                    s.sendto(sample(now, epoch + 0.5 - now, layout), str(FEED_SOCK))
+                except OSError:
+                    pass  # chronyd not up yet: it makes the socket when it starts
+        if once:
+            return
+        time.sleep(every)
 
 
 # --- how each source stands -------------------------------------------------------------------------------
@@ -369,11 +468,14 @@ def source_states(rec, chronyc_text=None, timesync=None):
         rows = parse_chronyc(chronyc_text if chronyc_text is not None else run("chronyc", "-n", "sources").stdout)
         local_ips = _addresses(rec["local"]) if rec.get("local") else set()
         if rec.get("gps"):
-            refs = [r["state"] for r in rows if r["mode"] == "refclock" and r["name"] in ("GPS", "PPS")]
+            refs = [r["state"] for r in rows if r["mode"] == "refclock" and r["name"] in ("GPS", "PPS")]  # not RTC: the module
             state = _best(refs) if refs else "not-found"
             if state != "in-use" and not gps_device():
                 state = "not-found"
             out.append({"source": "gps", "name": "GPS", "state": state})
+        if rec.get("module"):
+            refs = [r["state"] for r in rows if r["mode"] == "refclock" and r["name"] == "RTC"]
+            out.append({"source": "module", "name": "the clock module", "state": _best(refs) if refs else "not-found"})
         if rec.get("local"):
             states = [r["state"] for r in rows if r["mode"] == "server" and (r["name"] in local_ips or r["name"] == rec["local"])]
             out.append({"source": "local", "name": rec["local"], "state": _best(states)})
@@ -397,6 +499,7 @@ def source_states(rec, chronyc_text=None, timesync=None):
 def status():
     rec = load()
     return {"service": rec.get("service"), "pool": rec.get("pool"), "gps": rec.get("gps"), "serve": bool(rec.get("serve")),
+            "module": bool(rec.get("module")), "module_ready": module_ready(),
             "local": rec.get("local") or "",
             "changed": "image" in rec, "daemon": image_daemon(), "chrony_installed": _installed("chrony"),
             "gps_device": gps_device(), "sources": source_states(rec) if rec.get("service") else []}
@@ -410,6 +513,8 @@ def main(argv):
         print(apply(argv[1]))
     elif cmd == "undo":
         print(undo())
+    elif cmd == "feed":
+        feed()
     elif cmd == "undo-all":
         for line in undo_all():
             print(line)

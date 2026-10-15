@@ -557,9 +557,20 @@ def boot():
     return f"system clock set from the module ({epoch - now:+.0f} s)"
 
 
+def chrony_reference():
+    """chrony's reference now (its refid, e.g. "RTC", "GPS", or a server's address), or None without chrony."""
+    try:
+        out = subprocess.run(["chronyc", "-n", "tracking"], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"^Reference ID\s*:\s*\S+\s*\(([^)]*)\)", out, re.M)
+    return m.group(1) if m else None
+
+
 def trusted():
-    """Is the system clock worth writing to the module? (network time, or the owner set it)"""
-    if ntp_synced():
+    """Is the system clock worth writing to the module? (network time, or the owner set it). Not while chrony's
+    only reference is the module itself (the Clock page's source): that would write the module's own time back."""
+    if ntp_synced() and chrony_reference() != "RTC":
         return "network time"
     if TRUSTED.exists():
         return "set by an administrator"

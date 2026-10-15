@@ -2682,13 +2682,13 @@ function renderClockSources(c, busy) {
   if (clkDraft && box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // typing: left alone
   // What is saved: the choice made here, else the image's own service as it runs (its servers its own).
   const saved = { service: c.service || (c.daemon === 'chrony' ? 'chrony' : 'image'), pool: c.service ? !!c.pool : true,
-    gps: !!c.gps, serve: !!c.serve, local: c.local || '' };
+    gps: !!c.gps, module: !!c.module, serve: !!c.serve, local: c.local || '' };
   const savedKey = JSON.stringify(saved);
   if (savedKey !== clkSaved) { clkSaved = savedKey; clkDraft = null; }
   const d = clkDraft || { ...saved };
   const set = (k, v) => {
     clkDraft = { ...d, ...(clkDraft || {}), [k]: v };
-    if (k === 'service' && v === 'image') { clkDraft.gps = false; clkDraft.serve = false; }
+    if (k === 'service' && v === 'image') { clkDraft.gps = false; clkDraft.module = false; clkDraft.serve = false; }
     renderClockSources(c, busy);
   };
   const tick = (key, label, desc, disabled) => el('label', { className: 'setting inline' },
@@ -2701,7 +2701,7 @@ function renderClockSources(c, busy) {
   const foot = () => {
     const cur = clkDraft || d;
     const diff = !!clkDraft && JSON.stringify(clkDraft) !== savedKey;
-    const none = !cur.pool && !cur.gps && !cur.local;
+    const none = !cur.pool && !cur.gps && !cur.module && !cur.local;
     note.textContent = diff ? (none ? 'Select at least one source: with none, nothing sets the clock.' : 'Unsaved changes.') : '';
     footBox.replaceChildren(
       actionButton('Discard', () => { clkDraft = null; renderClockSources(c, busy); }, { disabled: busy || !diff }), ' ',
@@ -2730,6 +2730,10 @@ function renderClockSources(c, busy) {
     tick('gps', 'GPS', d.service === 'chrony'
       ? `${c.gps_device ? 'A receiver is connected.' : 'No receiver is connected now: connect one on USB or the UART.'} Selecting GPS installs the GPS time toolkit (gpsd).`
       : 'Only with chrony.', d.service !== 'chrony'),
+    tick('module', 'The clock module', d.service !== 'chrony'
+      ? "With the image's own service the module sets the time at boot only."
+      : c.module_ready ? 'Its time, read every 16 s. chrony uses it while GPS and the network are silent.'
+        : 'No clock module is set up: scan for one above. It still sets the time at boot.', d.service !== 'chrony' || !c.module_ready),
     tick('serve', 'Serve the time to the hotspot', d.service === 'chrony'
       ? "Guests' devices can ask the box for the time (NTP). The hotspot firewall opens UDP port 123 to guests while this is on."
       : 'Only with chrony.', d.service !== 'chrony'),
@@ -2745,11 +2749,11 @@ function saveClock(cur, c) {
   if (cur.gps && !c.gps) words.push('the GPS time toolkit (gpsd) is installed');
   if (cur.serve && !c.serve) words.push('the box answers time requests from the hotspot, and its firewall opens UDP port 123 to guests');
   if (!cur.serve && c.serve) words.push('the hotspot firewall closes UDP port 123 again');
-  const what = [cur.gps ? 'GPS' : '', cur.local ? `the server ${cur.local}` : '', cur.pool ? "the internet's pool" : ''].filter(Boolean).join(', ');
+  const what = [cur.gps ? 'GPS' : '', cur.module ? 'the clock module' : '', cur.local ? `the server ${cur.local}` : '', cur.pool ? "the internet's pool" : ''].filter(Boolean).join(', ');
   if (!confirm(`Use ${cur.service === 'chrony' ? 'chrony' : "the image's own time service"}, asking ${what}?`
     + `${words.length ? ` ${words.join('. ')}.` : ''} Restore puts everything back as the image had it.`)) return;
   clkDraft = null;
-  hlRequest({ action: 'fix', choice: `clock-sources:${cur.service}:${cur.pool ? 1 : 0}:${cur.gps ? 1 : 0}:${cur.serve ? 1 : 0}:${cur.local || '-'}` }, 'clock-sources');
+  hlRequest({ action: 'fix', choice: `clock-sources:${cur.service}:${cur.pool ? 1 : 0}:${cur.gps ? 1 : 0}:${cur.module ? 1 : 0}:${cur.serve ? 1 : 0}:${cur.local || '-'}` }, 'clock-sources');
 }
 
 async function hlRequest(body, fid) {
