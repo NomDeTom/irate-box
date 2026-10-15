@@ -373,6 +373,8 @@ check("  hidden: /proc remounted in PID 1's mount namespace, with hidepid=2", mo
       and said_hide["id"] == "security-fix.proc.hidden", (mounts, said_hide))
 check("  and at each boot: /etc/fstab gains its line, every other line kept as it was", security.FSTAB.read_text() == FSTAB0 + security.PROC_MARK + "\n" + security.PROC_LINE + "\n",
       security.FSTAB.read_text())
+check("  its line keeps the options systemd mounts /proc with (nosuid, nodev, noexec), never defaults, which turn them off at boot",
+      security.PROC_LINE.split()[3].split(",") == ["nosuid", "nodev", "noexec", "hidepid=2"], security.PROC_LINE)
 f = pf()
 check("  ok now, said as set here, with Undo offered", f["status"] == "ok" and f["notes"][0]["id"] == "proc.set-here"
       and [(a["choice"], a["on"]) for a in f["actions"]] == [("proc-undo", False), ("proc-hide", True)], f)

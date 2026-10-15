@@ -1330,7 +1330,9 @@ def _logs(rec, on):
 # --- process visibility: who sees which processes --------------------------------------------------------
 
 HIDEPID = re.compile(r"(?:^|,)hidepid=(1|2|invisible|noaccess|ptraceable)(?:,|$)")
-PROC_LINE = "proc /proc proc defaults,hidepid=2 0 0"
+# The options systemd mounts /proc with, and hidepid: "defaults" would turn suid, dev and exec back on at boot, when
+# systemd-remount-fs applies this line.
+PROC_LINE = "proc /proc proc nosuid,nodev,noexec,hidepid=2 0 0"
 PROC_MARK = "# Written by irate-box's Security page (/admin): each account sees only its own processes. Undo there."
 
 
