@@ -1713,7 +1713,7 @@ async function secSavePending(page) {
 // --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
 // link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
-const STATE_WORD = { problem: 'Action required', warn: 'Needs review', ok: 'Passed', suggest: 'Suggestion', 'not-here': 'Not applicable',
+const STATE_WORD = { problem: 'Action required', warn: 'Needs review', ok: 'Passed', suggest: 'Suggestion', info: 'Information', 'not-here': 'Not applicable',
   accepted: 'Accepted', fixed: 'Repaired' };
 function copyBox(cmd) {
   const b = el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy' });
@@ -1993,8 +1993,10 @@ function jointRow(i, data, busy, accepted) {
   const meta = [i.area, i.sources.length > 1 ? `${i.sources.length} sources agree` : `from ${srcWords(i.sources)}`,
     i.alone ? `${srcWords(i.could_see)} could have seen it and did not` : '', isNew ? 'new since the last run' : ''].filter(Boolean).join(' · ');
   const said = i.lines.length > 1 || (i.lines[0] && i.lines[0].detail !== i.detail) ? i.lines : [];
+  // Information only (secdoctor_xref.INFO): said as that, with why, in place of an action there is none of.
+  const infoHow = i.tier === 'info' ? `Information only: nothing you can change on this box fixes this. ${i.info || ''}`.trim() : '';
   return findingRow({ id: `find-${i.key.replace(/[^A-Za-z0-9_-]/g, '-')}`, state: accepted ? 'accepted' : fixed ? 'fixed' : i.tier || i.status,
-    title: i.title, detail: i.detail, how: fixed ? 'Repaired here since the doctor last ran. It leaves the list at the next run.' : how,
+    title: i.title, detail: i.detail, how: fixed ? 'Repaired here since the doctor last ran. It leaves the list at the next run.' : infoHow || how,
     controls, meta, said, checks: i.checks, note: (i.page || []).map(noteUnder).find(Boolean) || null,
     accept: { key: i.key, title: i.title, on: !!accepted } });
 }
@@ -2030,6 +2032,7 @@ function renderJoint(j, data) {
     box(id).replaceChildren(...items.map(row));
   };
   fold('joint-suggest', all.filter((i) => i.tier === 'suggest' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
+  fold('joint-info', all.filter((i) => i.tier === 'info' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
   fold('joint-nothere', all.filter((i) => i.tier === 'not-here' && ok(i) && match(i)), (i) => jointRow(i, data, busy, null));
   fold('joint-accepted', all.filter((i) => !ok(i)), (i) => jointRow(i, data, busy, accepted[i.key]));
   // What the box's own scan has put right with a cure (one right answer), each with its Undo.

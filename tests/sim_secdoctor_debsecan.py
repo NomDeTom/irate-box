@@ -124,5 +124,20 @@ sd._debsecan_command = lambda work: ([sys.executable, str(fake2)], {})
 sd.step_debsecan(None)
 got_status = (T / "seen-status.txt").read_text()
 check("  and that is what debsecan is given for the cache", "deb13u2" not in got_status and got_status.count("deb13u3") == 2, got_status)
+
+# Information only (secdoctor_xref.INFO): irate-box's own work or the board's limits leave the review count for a tier
+# of their own, with why; a real finding beside them stays real.
+steps = [{"findings": [sd.F("units-root", "Root units with a sandbox line missing", "warn", "irate-box-control (missing NoNewPrivileges)"),
+                       sd.F("image-kernel", "A vendor kernel", "warn", "6.1.115-vendor-rockchip"),
+                       sd.F("notes-login", "Notes: no login", "warn", "Anyone can read the notes.")]}]
+j = sd.joint(steps)
+by = {i["lines"][0]["id"]: i for i in j["items"]}
+check("information only: its tier, and why (irate-box's own work)", by["units-root"]["tier"] == "info"
+      and by["units-root"]["info"].startswith("irate-box's own work"), by["units-root"])
+check("  the board's limit too", by["image-kernel"]["tier"] == "info" and "maker" in by["image-kernel"]["info"])
+check("  a finding the owner can act on stays a review item", by["notes-login"]["tier"] is None and by["notes-login"]["info"] == "")
+check("  counted apart, not in the review count", j["after"]["warn"] == 1 and j["after"]["info"] == 2, j["after"])
+check("  listed after the real items", [i["lines"][0]["id"] for i in j["items"]][0] == "notes-login", [i["lines"][0]["id"] for i in j["items"]])
+check("  only the doctor's own findings", sd.secdoctor_xref.info("debian-cis", "units-root") is None)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -260,6 +260,25 @@ def _declared_about(source, fid):
     return services.by_port(m.group(1), int(m.group(2))) if m else None
 
 
+# Findings nothing the owner can change on the box puts right: irate-box's own work still to do, or a limit of the
+# board or its OS. They are said, but they leave the review count for a fold of their own ("For information"), each
+# with why. (The plan's items, for whoever fixes them: units-root 27a, units-hub 129, units-ci-loopback 130,
+# cmdlines-proc 131.)
+INFO = {
+    "units-root": "irate-box's own work: an update adds the missing lines to its root units.",
+    "units-hub": "irate-box's own work: an update narrows what these units keep.",
+    "units-ci-loopback": "irate-box's own work: an update keeps builds off the hub's loopback address.",
+    "cmdlines-proc": "irate-box's own work: an update hides other users' processes.",
+    "image-kernel": "A limit of this board: its maker builds the kernel, and Debian's security tracker does not cover it. "
+                    "New versions come from its maker, through Debian's updates.",
+}
+
+
+def info(source, fid):
+    """Why a finding is information only (INFO), or None. Only the doctor's own findings are."""
+    return INFO.get(fid) if source == "doctor" else None
+
+
 def do_for(source, fid):
     """Where a finding is put right (DO), or None. A declared service's: its own words, on Add-ons."""
     decl = _declared_about(source, fid)

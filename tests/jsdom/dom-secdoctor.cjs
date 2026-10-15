@@ -50,6 +50,10 @@ const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn'
       { about: { kind: 'finding', key: 'doctor:image-bluetooth' }, title: 'Bluetooth is on', sources: ['doctor'], status: 'warn', titles: [], fix: 'Switch it off.',
         key: 'finding:doctor:image-bluetooth', area: 'The image', detail: 'bluetoothd runs.', page: [], tier: null, do: { health: { choice: 'idle-off:bluetooth.service', label: 'Switch Bluetooth off' }, say: 'Nothing on the hub uses Bluetooth. Switch it off.' },
         lines: [{ source: 'doctor', id: 'image-bluetooth', title: 'Bluetooth is on', status: 'warn', detail: 'bluetoothd runs.', fix: 'Switch it off.' }], alone: false, could_see: [] },
+      { about: { kind: 'finding', key: 'doctor:units-root' }, title: 'Root units with a sandbox line missing', sources: ['doctor'], status: 'warn', titles: [], fix: 'Add the lines.',
+        key: 'finding:doctor:units-root', area: 'Units', detail: 'irate-box-control (missing NoNewPrivileges).', page: [], tier: 'info', do: null,
+        info: "irate-box's own work: an update adds the missing lines to its root units.",
+        lines: [{ source: 'doctor', id: 'units-root', title: 'Root units with a sandbox line missing', status: 'warn', detail: 'irate-box-control (missing NoNewPrivileges).', fix: 'Add the lines.' }], alone: false, could_see: [] },
       { about: { kind: 'setting', key: 'cis-1.7' }, title: 'AppArmor (CIS 1.7)', sources: ['debian-cis'], status: 'warn', titles: [], fix: 'The vendor kernel lacks it.',
         key: 'setting:cis-1.7', area: 'CIS', detail: 'Not met.', page: [], tier: 'not-here', do: null, lines: [{ source: 'debian-cis', id: 'cis-1.7', title: 'AppArmor', status: 'warn', detail: 'Not met.', fix: '' }], alone: false, could_see: [] },
       { about: { kind: 'service', key: 'tcp/9999' }, title: 'TCP 9999', sources: ['nmap'], status: 'warn', titles: ['nmap: nmap found TCP 9999 open'], fix: '',
@@ -108,6 +112,12 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('  which asks the Box doctor to switch it off (its own action, so it can be switched back on)',
     posted.some(([u, b]) => u === '/admin/health' && b.action === 'fix' && b.choice === 'idle-off:bluetooth.service'), JSON.stringify(posted.slice(-2)));
   check('  only one source saw it: said in the item, with who could have', /the Security page could have seen it and did not/.test(t(rows().find((r) => /TCP 9999/.test(t(r))))));
+  const infoRow = d.getElementById('find-finding-doctor-units-root');
+  check('information only: folded apart under For information, not counted, said as that with why',
+    !d.getElementById('joint-info-fold').hidden && d.getElementById('joint-info').contains(infoRow) && /\(1\)/.test(t(d.getElementById('joint-info-count')))
+    && !d.getElementById('joint-items').contains(infoRow) && /^Information$/i.test(t(infoRow.querySelector('.fstate')))
+    && /Information only: nothing you can change on this box fixes this\. irate-box's own work: an update adds the missing lines/.test(t(infoRow.querySelector('.fhow'))),
+    infoRow && t(infoRow));
   check('not for this box: folded apart, not counted', !d.getElementById('joint-nothere-fold').hidden && /AppArmor/.test(t(d.getElementById('joint-nothere'))) && /\(1\)/.test(t(d.getElementById('joint-nothere-count'))));
   [...d.querySelectorAll('#joint-summary button')].find((b) => /to fix/.test(t(b))).click();
   check('a counter filters the list (to fix: one)', rows().length === 1 && /Kernel link/.test(t(rows()[0])));
