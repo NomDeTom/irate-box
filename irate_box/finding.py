@@ -35,9 +35,20 @@ def action(choice, label, confirm=None, **extra):
     return {"choice": choice, "label": label, **({"confirm": confirm} if confirm else {}), **extra}
 
 
-def legacy(f):
-    """The old shape's strings, in English, for code that still reads title, detail and fix as text (the
-    Security doctor's import of the Security page's scan; the installer's summary). It goes when they do."""
+def current(report):
+    """A report kept on disk, if its findings are in this shape; None for one an older version wrote (title,
+    detail and fix as English), which the pages then treat as not run yet until its doctor runs again."""
+    if not isinstance(report, dict):
+        return None
+    found = report.get("findings")
+    if found is None:
+        found = [f for st in report.get("steps") or [] if isinstance(st, dict) for f in st.get("findings") or []]
+    return report if all(isinstance(f, dict) and "summary" in f for f in found) else None
+
+
+def english(f):
+    """A finding in English, as three strings (title, detail, fix): for the terminal and the installer's
+    summary, which print a line or two for each."""
     detail = msg.text(f.get("summary"), f.get("why"), *f.get("notes", ()))
     if f.get("evidence"):
         detail += f" ({', '.join(f['evidence'])})"

@@ -26,8 +26,8 @@ const CSV = 'IP,Hostname,Port,Port Protocol,CVSS,Severity,QoD,Solution Type,NVT 
   '192.168.4.1,,80,tcp,7.5,High,80,VendorFix,"nginx < 1.27, ""old""",An old nginx.,,1.3.6,"CVE-2026-1111,CVE-2026-2222",t,task,2026-10-05T10:00:00Z,r,,Update nginx.\n' +
   '192.168.4.1,,,tcp,0.0,Log,80,,OS detection,,,1,,t,task,2026-10-05T10:00:00Z,r2,,\n';
 // The box's scan, one of each kind: a cure, two choices, a toggle, an update.
-const F = (id, title, status, actions) => ({ id, title, status, detail: 'd', fix: '', actions });
-const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn', detail: 'No certificate in use.', fix: 'Make the box\'s certificate.',
+const F = (id, title, status, actions) => ({ id, title, status, summary: 'd', fix: '', actions });
+const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn', summary: 'No certificate in use.', fix: 'Make the box\'s certificate.',
     actions: [], do: { go: 'security-https', where: 'Security → HTTPS' } }], accepted: {}, scan: { at: now, listeners: [{ proto: 'udp', port: 5355, addr: '0.0.0.0', name: 'LLMNR', unit: 'systemd-resolved.service' }], findings: [
     F('port-udp-5355', 'LLMNR (systemd-resolved)', 'warn', [{ choice: 'llmnr-on-now', label: 'On', group: 'LLMNR', on: true },
       { choice: 'llmnr-off', label: 'Off', group: 'LLMNR', on: false }]),
@@ -38,27 +38,27 @@ const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn'
     F('security-updates', 'Security updates', 'problem', [{ choice: 'security-updates', label: 'Install 3 security updates' }])] }, log: [], pending: 0, results: [], deep: { at: now - 3600, took: 438 },
   imports: { nmap: { name: 'scan.xml', ran: now - 86400, imported: now - 3600, results: 3 } },
   audit: { at: now, root: true, counts: { problem: 3, warn: 9, ok: 30 }, not_covered: [],
-    steps: [{ id: 'kernel', title: 'Kernel protections', ref: '', findings: [{ id: 'kernel-links', title: 'Link protections off', status: 'problem', detail: 'x', fix: 'y', ref: '' }] }],
+    steps: [{ id: 'kernel', title: 'Kernel protections', ref: '', findings: [{ id: 'kernel-links', title: 'Link protections off', status: 'problem', summary: 'x', fix: 'y', ref: '' }] }],
     joint: { after: { problem: 2, warn: 5 }, agreed_ok: 3, sources: { doctor: { problem: 1, warn: 1, ok: 27 }, 'security-page': { problem: 1, warn: 2, ok: 10 }, nmap: { problem: 0, warn: 1, ok: 2 } },
       coverage: { doctor: "The box's own design.", 'security-page': 'What listens.', nmap: 'Only which ports answer, from where it ran.' },
       freshness: { doctor: now, 'security-page': now - 600, nmap: now - 86400 },
       items: [{ about: { kind: 'setting', key: 'kernel-links' }, title: 'Kernel link protections', sources: ['doctor', 'security-page'], status: 'problem',
         titles: ['doctor: Link protections off', 'security-page: Kernel link protections'], fix: 'Turn them on', alone: false, could_see: [],
-        key: 'setting:kernel-links', area: 'Kernel protections', detail: 'Off.', page: ['kernel-links'], tier: null, do: null,
-        lines: [{ source: 'doctor', id: 'kernel-links', title: 'Link protections off', status: 'problem', detail: 'x', fix: 'y' },
-          { source: 'security-page', id: 'page-kernel-links', title: 'Kernel link protections', status: 'problem', detail: 'd', fix: '' }] },
+        key: 'setting:kernel-links', area: 'Kernel protections', summary: 'Off.', page: ['kernel-links'], tier: null, do: null,
+        lines: [{ source: 'doctor', id: 'kernel-links', title: 'Link protections off', status: 'problem', summary: 'x', fix: 'y' },
+          { source: 'security-page', id: 'page-kernel-links', title: 'Kernel link protections', status: 'problem', summary: 'd', fix: '' }] },
       { about: { kind: 'finding', key: 'doctor:image-bluetooth' }, title: 'Bluetooth is on', sources: ['doctor'], status: 'warn', titles: [], fix: 'Switch it off.',
-        key: 'finding:doctor:image-bluetooth', area: 'The image', detail: 'bluetoothd runs.', page: [], tier: null, do: { health: { choice: 'idle-off:bluetooth.service', label: 'Switch Bluetooth off' }, say: 'Nothing on the hub uses Bluetooth. Switch it off.' },
-        lines: [{ source: 'doctor', id: 'image-bluetooth', title: 'Bluetooth is on', status: 'warn', detail: 'bluetoothd runs.', fix: 'Switch it off.' }], alone: false, could_see: [] },
+        key: 'finding:doctor:image-bluetooth', area: 'The image', summary: 'bluetoothd runs.', page: [], tier: null, do: { health: { choice: 'idle-off:bluetooth.service', label: 'Switch Bluetooth off' }, say: 'Nothing on the hub uses Bluetooth. Switch it off.' },
+        lines: [{ source: 'doctor', id: 'image-bluetooth', title: 'Bluetooth is on', status: 'warn', summary: 'bluetoothd runs.', fix: 'Switch it off.' }], alone: false, could_see: [] },
       { about: { kind: 'finding', key: 'doctor:units-root' }, title: 'Root units with a sandbox line missing', sources: ['doctor'], status: 'warn', titles: [], fix: 'Add the lines.',
-        key: 'finding:doctor:units-root', area: 'Units', detail: 'irate-box-control (missing NoNewPrivileges).', page: [], tier: 'info', do: null,
+        key: 'finding:doctor:units-root', area: 'Units', summary: 'irate-box-control (missing NoNewPrivileges).', page: [], tier: 'info', do: null,
         info: "irate-box's own work: an update adds the missing lines to its root units.",
-        lines: [{ source: 'doctor', id: 'units-root', title: 'Root units with a sandbox line missing', status: 'warn', detail: 'irate-box-control (missing NoNewPrivileges).', fix: 'Add the lines.' }], alone: false, could_see: [] },
+        lines: [{ source: 'doctor', id: 'units-root', title: 'Root units with a sandbox line missing', status: 'warn', summary: 'irate-box-control (missing NoNewPrivileges).', fix: 'Add the lines.' }], alone: false, could_see: [] },
       { about: { kind: 'setting', key: 'cis-1.7' }, title: 'AppArmor (CIS 1.7)', sources: ['debian-cis'], status: 'warn', titles: [], fix: 'The vendor kernel lacks it.',
-        key: 'setting:cis-1.7', area: 'CIS', detail: 'Not met.', page: [], tier: 'not-here', do: null, lines: [{ source: 'debian-cis', id: 'cis-1.7', title: 'AppArmor', status: 'warn', detail: 'Not met.', fix: '' }], alone: false, could_see: [] },
+        key: 'setting:cis-1.7', area: 'CIS', summary: 'Not met.', page: [], tier: 'not-here', do: null, lines: [{ source: 'debian-cis', id: 'cis-1.7', title: 'AppArmor', status: 'warn', summary: 'Not met.', fix: '' }], alone: false, could_see: [] },
       { about: { kind: 'service', key: 'tcp/9999' }, title: 'TCP 9999', sources: ['nmap'], status: 'warn', titles: ['nmap: nmap found TCP 9999 open'], fix: '',
-        alone: true, could_see: ['security-page'], key: 'service:tcp/9999', area: 'Imported scans', detail: 'Open.', page: [], tier: null, do: null,
-        lines: [{ source: 'nmap', id: 'nmap-tcp-9999', title: 'nmap found TCP 9999 open', status: 'warn', detail: 'Open.', fix: '' }] }] } } };
+        alone: true, could_see: ['security-page'], key: 'service:tcp/9999', area: 'Imported scans', summary: 'Open.', page: [], tier: null, do: null,
+        lines: [{ source: 'nmap', id: 'nmap-tcp-9999', title: 'nmap found TCP 9999 open', status: 'warn', summary: 'Open.', fix: '' }] }] } } };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });

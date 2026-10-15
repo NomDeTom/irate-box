@@ -11,13 +11,14 @@ const fixture = JSON.parse(fs.readFileSync(`${__dirname}/health-fixture.json`, '
 const chip = (group, choice, label, on, confirm) => ({ choice, label, group, on, ...(confirm ? { confirm } : {}) });
 fixture.helper = { waiting: 0, oldest: 0, stuck: false, commands: [] };
 fixture.results.unshift({ id: 'x', ok: true, message: 'doctor: done', at: 1790926200 });  // each request answered at once
-fixture.report.findings.push({ id: 'crash-hang', check: 'A frozen box', status: 'ok', detail: 'Nothing restarts it.', fix: '', actions: [
+fixture.report.findings.push({ id: 'crash-hang', title: 'A frozen box', status: 'ok', summary: 'Nothing restarts it.', fix: '', actions: [
   chip('Kernel panic or lockup', 'crashwatch-panic:off', 'Stay stopped', true),
   chip('Kernel panic or lockup', 'crashwatch-panic:on', 'Restart after 10 s', false, 'Restart the box?'),
   chip('Watchdog', 'crashwatch-watchdog:off', 'Off', true),
   chip('Watchdog', 'crashwatch-watchdog:on', "On (the board's, after a restart)", false, 'Let a watchdog restart the box?')] });
-fixture.report.findings.push({ id: 'builds-families', check: 'Firmware builds that always fail', status: 'warn',
-  detail: 'Every build here has failed for this family: esp32c6 (2).', fix: "Open a failed one's log (Firmware Factory, Built).", actions: [] });
+fixture.report.findings.push({ id: 'builds-families', title: 'Firmware builds that always fail', status: 'warn',
+  summary: 'Every build here has failed for this family: esp32c6 (2).', fix: "Open a failed one's log on Firmware Factory, Built.", actions: [],
+  go: { section: 'factory', where: 'Firmware Factory' } });
 fixture.queue = { running: { action: 'kit-fetch', detail: 'build', for: 600 },
   waiting: [{ id: 'q1', action: 'health-fix', detail: 'rerun-install', waited: 300 }, { id: 'q2', action: 'update-check', detail: '', waited: 30 }],
   done: [{ id: 'r1', ok: false, message: 'no internet', ago: 120 }] };
@@ -48,7 +49,7 @@ setTimeout(() => {
   check('  what finished, a failure marked', !d.getElementById('hq-done-fold').hidden && /✗ 2 min ago: no internet/.test(txt('hq-done')), txt('hq-done'));
   const fam = d.getElementById('hl-builds-families');
   const go = fam && [...fam.querySelectorAll('a.go-btn')].map((a) => `${a.textContent} ${a.getAttribute('href')}`);
-  check('the Firmware Factory, named in a finding, gets its link', !!go && go.join() === 'Go to Firmware Factory → #factory', go);
+  check('the Firmware Factory, the place a finding names, as its link', !!go && go.join() === 'Go to Firmware Factory → #factory', go);
   const groups = row ? [...row.querySelectorAll('.chip-group')] : [];
   check('an ok finding still shows its settings: two rows of chips', groups.length === 2, groups.length);
   const labels = row ? [...row.querySelectorAll('.aw-label')].map((n) => n.textContent) : [];

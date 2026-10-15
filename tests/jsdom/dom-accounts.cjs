@@ -125,7 +125,7 @@ function page(file, url, fetcher, scripts) {
     && (!daveRow || (daveRow.querySelector('.code-box') || {}).value === 'ABCD-EFGH-JKLM-NPQR'));
   check('  the name\'s format said where it is typed', /3 to 32 characters: letters, digits, dots/.test(t(mf)) && mf.elements.name.title.includes('Do not use spaces'));
   const sform = d.getElementById('accounts-settings');
-  check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Approval/Administrator creates | Blocked/Warning/Allowed'
+  check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Approval/Administrator creates | Blocked/Warning/Accepted'
     && [...sform.querySelectorAll('.chip-says')].length === 2);
   sform.elements.signup.value = 'assigned'; sform.elements.http.value = 'prevented';
   sform.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();

@@ -67,8 +67,8 @@ setTimeout(async () => {
   // A review finding can be accepted: out of the review count and the open list, under Passed and accepted, and back.
   s.value = ''; s.dispatchEvent(new w.Event('input'));
   const fx = JSON.parse(fixture);
-  fx.report.findings.push({ id: 'other-failed:armbian-led-state.service', check: "The image's LED service failed", status: 'warn',
-    detail: 'armbian-led-state.service puts the LEDs back as they were.', fix: 'Switch it off.', actions: [{ choice: 'armbian-led:off', label: 'Switch it off' }] });
+  fx.report.findings.push({ id: 'other-failed:armbian-led-state.service', title: "The image's LED service failed", status: 'warn',
+    summary: 'armbian-led-state.service puts the LEDs back as they were.', fix: 'Switch it off.', actions: [{ choice: 'armbian-led:off', label: 'Switch it off' }] });
   w.renderHealth({ ...fx, accepted: {} });
   const reviewN = () => Number((t('#health-summary .sec-count')[2] || '').match(/\d+/)[0]);
   const led = () => d.getElementById('hl-other-failed:armbian-led-state.service');

@@ -10,10 +10,10 @@ const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const fixture = JSON.parse(fs.readFileSync(`${__dirname}/health-fixture.json`, 'utf8'));
 fixture.helper = { waiting: 0, oldest: 0, stuck: false, commands: [] };
-fixture.report.findings.push({ id: 'uplink-skip-wlan0-reconnect', check: "wlan0: reconnecting isn't helping", status: 'warn',
-  detail: 'Reconnecting mended 1 of the 9 outages it was tried on.', fix: 'Network → Connection settings → Recovery actions: clear Reconnect for wlan0.',
+fixture.report.findings.push({ id: 'uplink-skip-wlan0-reconnect', title: "wlan0: reconnecting isn't helping", status: 'warn',
+  summary: 'Reconnecting mended 1 of the 9 outages it was tried on.', fix: 'Network → Connection settings → Recovery actions: clear Reconnect for wlan0.',
   actions: [], go: { section: 'up-steps', where: 'Network → Recovery actions', mark: 'up-step-wlan0-reconnect' } });
-fixture.report.findings.push({ id: 'crash-radio', check: 'The WiFi radio', status: 'warn', detail: 'wlan0 failed.',
+fixture.report.findings.push({ id: 'crash-radio', title: 'The WiFi radio', status: 'warn', summary: 'wlan0 failed.',
   fix: 'What is done when it fails: Network → Connection settings → Failed radio.', actions: [],
   go: { section: 'net-watchdog-card', where: 'Network → Failed radio', mark: 'up-wedge' } });
 let fails = 0;

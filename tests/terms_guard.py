@@ -8,7 +8,7 @@ log lines, commands, evidence or what people write.
   docs/user/glossary.md is what terms.json makes (--write makes it; then ./irate-box guide build)
   a message uses none of the words to avoid (a failure: the messages are new text)
   a sentence of a message has at most 25 words (STE 6.3; a warning, as an instruction's 20 is not told apart)
-  the guide and the pages use none of the words to avoid (warnings, until their own pass)
+  the pages use none of the words to avoid; the guide neither (warnings while tests/guide-pending holds it back)
 
 python3 tests/terms_guard.py  [--write] [--all: every warning, not the first few]"""
 import json
@@ -86,12 +86,16 @@ for mid, (en, where) in sorted(msg_guard.messages.items()):
 check(f"the messages ({len(msg_guard.messages)}) use none of the words to avoid", not bad, bad)
 warn("sentences of messages longer than 25 words", long_)
 
+# The guide: warned while it waits for its own pass (tests/guide-pending, placeholder mode), checked after.
+guide_said = check if not (REPO / "tests" / "guide-pending").is_file() else (lambda name, cond, info="": warn(name.replace("no words", "words"), info))
 for md in sorted((REPO / "docs" / "user").glob("*.md")):
-    warn(f"docs/user/{md.name}: words to avoid", hits(markdown_prose(md.read_text())))
+    found = hits(markdown_prose(md.read_text()))
+    guide_said(f"docs/user/{md.name}: no words to avoid", not found, found)
 for page in sorted((REPO / "web").glob("*.html")):
     v = Visible()
     v.feed(page.read_text())
-    warn(f"web/{page.name}: words to avoid", hits(" ".join(v.text)))
+    found = hits(" ".join(v.text))
+    check(f"web/{page.name}: no words to avoid", not found, found)
 
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -44,7 +44,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from irate_box.finding import action, finding, legacy
+from irate_box.finding import action, finding, english
 from irate_box.hub import jsonlog
 from irate_box.msg import M, named, render, when
 from irate_box.root import rtc
@@ -1838,7 +1838,7 @@ def report(data, problems_only=False):
     for f in data["findings"]:
         if problems_only and f["status"] == "ok":
             continue
-        said = legacy(f)
+        said = english(f)
         lines.append(f"{MARK[f['status']]}  {said['title']}: {said['detail']}")
         if said["fix"] and f["status"] != "ok":
             lines.append(f"         what to do: {said['fix']}")
