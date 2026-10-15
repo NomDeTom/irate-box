@@ -1165,6 +1165,8 @@ def check_module():
         detail = f"{what}, not set up yet. It would run through {how}."
         if x["ambiguous"]:
             detail += " Both chips that use this address fit what it answered. Select the one that is fitted."
+        if x.get("time_lost"):
+            detail += f" Its time is not valid yet: {x['time_lost']}. Setting it up sets its time from the system clock."
         out.append(_f(f"rtc-found:{x['chip']}:{x['bus']}", "Clock module found", "warn", detail,
                       "Setting it up adds a boot unit that sets the clock from it, and an hourly save.",
                       [_act(f"rtc-setup:{x['chip']}:{x['bus']}:{x['addr']}", f"Set it up as {x['label']}",

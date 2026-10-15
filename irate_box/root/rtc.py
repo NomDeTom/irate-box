@@ -74,7 +74,7 @@ CHIPS = {
     "ds3231": ("DS3231 (temperature-compensated)", [("ds3231", "rtc_ds1307")], True),
     "ds1307": ("DS1307", [("ds1307", "rtc_ds1307")], True),
     "mcp7940x": ("MCP7940N", [("mcp7940x", "rtc_ds1307")], True),
-    "rv8803": ("RV-8803", [("rv8803", "rtc_rv8803")], True),
+    "rv8803": ("RV-8803 / RX-8900 (Epson RX-8803, RX-8804)", [("rv8803", "rtc_rv8803"), ("rx8900", "rtc_rv8803")], True),
     "rx8130": ("RX8130CE", [("rx8130", "rtc_ds1307")], True),  # rtc-ds1307 knows it in newer kernels only
     "pcf8563": ("PCF8563 / HYM8563", [("pcf8563", "rtc_pcf8563"), ("hym8563", "rtc_hym8563")], True),
     "pcf8523": ("PCF8523", [("pcf8523", "rtc_pcf8523")], False),
@@ -327,6 +327,13 @@ def _time_ok(regs, off, wd_style):
             and bcd_ok(mon, 1, 12) and bcd_ok(yr, 0, 99) and wd_ok)
 
 
+def _time_lost_ok(regs, off):
+    """A clock's registers after a power loss: the seconds, minutes and hours still well-formed BCD and the weekday
+    one-hot (or never set), but the date not valid (day 0, say). Only taken with the chip's own low-voltage flag."""
+    sec, mn, hr, wd = regs[off] & 0x7F, regs[off + 1] & 0x7F, regs[off + 2] & 0x3F, regs[off + 3] & 0x7F
+    return bcd_ok(sec, 0, 59) and bcd_ok(mn, 0, 59) and bcd_ok(hr, 0, 23) and (wd == 0 or onehot(wd))
+
+
 def identify(addr, read):
     """Possible chips at addr, given read(reg, n). [] if nothing there looks like a clock."""
     try:
@@ -364,6 +371,10 @@ def identify(addr, read):
     if addr == 0x32:
         found = []
         if _time_ok(r, 0x00, "onehot") and r[0x0E] & 0xC0 == 0:
+            found.append("rv8803")
+        elif r[0x0E] & 0x02 and r[0x0E] & 0xC0 == 0 and _time_lost_ok(r, 0x00):
+            # RV-8803 / RX-8900 that lost power: its low-voltage flag (V2F/VLF) set and its date not valid. Found all the
+            # same: setting it up sets its time.
             found.append("rv8803")
         if _time_ok(r, 0x10, "onehot"):
             found.append("rx8130")
@@ -408,13 +419,19 @@ def find():
                 continue
             try:
                 chips = identify(addr, dev.read)
+                lost = {}
+                for chip in chips:
+                    try:
+                        lost[chip] = integrity(chip, dev)  # its time not valid: it lost power, or never started
+                    except OSError:
+                        lost[chip] = None
             finally:
                 dev.close()
             for chip in chips:
                 drv = kernel_driver(chip)
                 out["found"].append({"bus": bus, "addr": f"{addr:#04x}", "chip": chip, "label": CHIPS[chip][0],
                                      "ambiguous": len(chips) > 1, "kernel": drv and f"{drv['module']} ({drv['kind']})",
-                                     "supported": bool(drv) or CHIPS[chip][2]})
+                                     "supported": bool(drv) or CHIPS[chip][2], "time_lost": lost.get(chip)})
     STATUS.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(FOUND, json.dumps(out, indent=2))  # control/: never through a link
     os.chmod(FOUND, 0o644)
