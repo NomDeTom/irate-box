@@ -106,7 +106,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
   {"id": ..., "action": "kit-fetch", "kit": "<a shipped toolkit>", "budget_mb": 500}
   {"id": ..., "action": "kit-install", "kit": ..., "hours": 24|null}
-  {"id": ..., "action": "kit-remove" | "kit-keep" | "kit-rollback", "kit": ...[, "hours": ...]}   {"action": "kit-expire"}
+  {"id": ..., "action": "kit-remove" | "kit-keep" | "kit-rollback" | "kit-drop-previous", "kit": ...[, "hours": ...]}   {"action": "kit-expire"}
       Toolkits (kits.py): fetch a shipped kit's packages into the local repository (online),
       install it from there with no internet (removed again after "hours"; null: never),
       remove what it added, change when it goes, or remove every kit whose time is up. A
@@ -3043,7 +3043,7 @@ ACTIONS = {"service": service, "password": password, "claim": claim,
            "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
            "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "other-ap": other_ap, "wifisync": wifisync, "radio-test": radio_test, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
            "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
-           "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback),
+           "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback), "kit-drop-previous": _kit_req(kits.drop_previous),
            "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), "ok")[1]}
 
 

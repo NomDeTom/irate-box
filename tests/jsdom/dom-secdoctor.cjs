@@ -48,7 +48,7 @@ const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn'
         lines: [{ source: 'doctor', id: 'kernel-links', title: 'Link protections off', status: 'problem', detail: 'x', fix: 'y' },
           { source: 'security-page', id: 'page-kernel-links', title: 'Kernel link protections', status: 'problem', detail: 'd', fix: '' }] },
       { about: { kind: 'finding', key: 'doctor:image-bluetooth' }, title: 'Bluetooth is on', sources: ['doctor'], status: 'warn', titles: [], fix: 'Switch it off.',
-        key: 'finding:doctor:image-bluetooth', area: 'The image', detail: 'bluetoothd runs.', page: [], tier: null, do: { cmd: 'sudo systemctl disable --now bluetooth.service' },
+        key: 'finding:doctor:image-bluetooth', area: 'The image', detail: 'bluetoothd runs.', page: [], tier: null, do: { health: { choice: 'idle-off:bluetooth.service', label: 'Switch Bluetooth off' }, say: 'Nothing on the hub uses Bluetooth. Switch it off.' },
         lines: [{ source: 'doctor', id: 'image-bluetooth', title: 'Bluetooth is on', status: 'warn', detail: 'bluetoothd runs.', fix: 'Switch it off.' }], alone: false, could_see: [] },
       { about: { kind: 'setting', key: 'cis-1.7' }, title: 'AppArmor (CIS 1.7)', sources: ['debian-cis'], status: 'warn', titles: [], fix: 'The vendor kernel lacks it.',
         key: 'setting:cis-1.7', area: 'CIS', detail: 'Not met.', page: [], tier: 'not-here', do: null, lines: [{ source: 'debian-cis', id: 'cis-1.7', title: 'AppArmor', status: 'warn', detail: 'Not met.', fix: '' }], alone: false, could_see: [] },
@@ -102,7 +102,11 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     && !d.getElementById('secdoctor-cures'));
   check('  what each source said, folded in the item', /Source results \(2\)/.test(t(kl.querySelector('.fsaid summary'))));
   const bt = rows().find((r) => /Bluetooth/.test(t(r)));
-  check('  a command to type, with Copy', bt && t(bt.querySelector('.fdo-cmd code')) === 'sudo systemctl disable --now bluetooth.service' && /Copy/.test(t(bt.querySelector('.fdo-cmd button'))));
+  const btOff = bt && [...bt.querySelectorAll('button')].find((b) => t(b) === 'Switch Bluetooth off');
+  check('  a button that puts it right, not a command to type', !!btOff && !bt.querySelector('.fdo-cmd'), bt && t(bt));
+  if (btOff) { w.confirm = () => true; btOff.click(); await wait(); }
+  check('  which asks the Box doctor to switch it off (its own action, so it can be switched back on)',
+    posted.some(([u, b]) => u === '/admin/health' && b.action === 'fix' && b.choice === 'idle-off:bluetooth.service'), JSON.stringify(posted.slice(-2)));
   check('  only one source saw it: said in the item, with who could have', /the Security page could have seen it and did not/.test(t(rows().find((r) => /TCP 9999/.test(t(r))))));
   check('not for this box: folded apart, not counted', !d.getElementById('joint-nothere-fold').hidden && /AppArmor/.test(t(d.getElementById('joint-nothere'))) && /\(1\)/.test(t(d.getElementById('joint-nothere-count'))));
   [...d.querySelectorAll('#joint-summary button')].find((b) => /to fix/.test(t(b))).click();

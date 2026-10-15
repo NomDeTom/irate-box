@@ -1970,6 +1970,11 @@ function jointDo(i, data, busy) {
     controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the installer again', disabled: busy,
       onclick: () => healthRepair('rerun-install', 'Running the installer again', 'Run the installer with this box\'s recorded options? The installer can repair, upgrade and restart services.') }));
   }
+  // A Box doctor action that puts it right (secdoctor_xref: its choice and words), as a button here.
+  if (d.health) {
+    controls.push(el('button', { type: 'button', className: 'action-btn', textContent: d.health.label, disabled: busy,
+      onclick: () => healthRepair(d.health.choice, d.health.label, `${d.health.label}? ${d.say || ''}`.trim()) }));
+  }
   if (d.act === 'deep') controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the deep audit', disabled: busy, onclick: () => sec.auditDeep.click() }));
   if (d.go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${d.go}`, textContent: `Go to ${d.where} →` }));
   if (d.cmd || i.cmd) controls.push(copyBox(d.cmd || i.cmd));
@@ -2486,7 +2491,7 @@ let hlLast = null;
 // The root helper's queue in words: its action names, as the pages that ask for them call them.
 const HELPER_WORDS = {
   'health-scan': 'Box doctor: refresh checks', 'health-fix': 'Box doctor', 'kit-fetch': 'Toolkit: download', 'kit-install': 'Toolkit: install',
-  'kit-remove': 'Toolkit: remove', 'kit-rollback': 'Toolkit: roll back', 'kit-status': 'Refresh toolkit cache', 'kit-keep': 'Toolkit: extend installation period',
+  'kit-remove': 'Toolkit: remove', 'kit-rollback': 'Toolkit: roll back', 'kit-drop-previous': 'Toolkit: remove older set', 'kit-status': 'Refresh toolkit cache', 'kit-keep': 'Toolkit: extend installation period',
   'kit-expire': 'Toolkits: remove expired installations', 'kit-define': 'Toolkit: save', 'kit-undefine': 'Toolkit: delete', 'kit-extra': 'Toolkit: extras',
   'update-check': 'Updates: check', 'update-fetch': 'Updates: download', 'update-install': 'Updates: install',
   'update-force-install': 'Updates: install anyway', 'update-doctor': 'Updates: run doctor', 'update-clear-cache': 'Updates: delete the cache',
@@ -5662,7 +5667,7 @@ function kitItem(k, st, cfg) {
   const left = inst && inst.remove_at ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600)) : null;
   const badges = [
     c ? `cached ${dayOf(c.fetched)}, ${size(c.bytes)}` : 'not cached',
-    s.previous ? '2 versions' : null,
+    s.previous ? `older set kept for rollback${s.previous.extra_bytes ? ` (${size(s.previous.extra_bytes)})` : ''}` : null,
     k.owner ? 'yours' : null,
     ((kitsData || {}).flag_details || {})[k.id] ? 'flagged by the doctor' : null,
     (k.extra || []).length ? `+${k.extra.length} extra` : null,
@@ -5703,10 +5708,22 @@ function kitBody(k, st, cfg, setDirty) {
       c ? null : el('span', { className: 'setting-desc', textContent: 'Refresh the cache while the box has internet access.' }));
     jobs.append(installRow());
   }
+  // The set before this one, kept for Roll back: what it holds beyond the current set. The Security doctor judges the
+  // cache by its newest versions only, so these older copies are not flagged.
+  if (s.previous) {
+    const older = s.previous.older || [];
+    jobs.append(el('p', { className: 'setting-desc', textContent: `Kept for rollback: the set downloaded ${dayOf(s.previous.fetched)}`
+      + (older.length ? `, with older versions of ${older.length} package${older.length === 1 ? '' : 's'} (${older.slice(0, 6).join(', ')}${older.length > 6 ? ', …' : ''})` : ', the same versions as now')
+      + (s.previous.extra_bytes ? `, ${size(s.previous.extra_bytes)} more in the cache` : '')
+      + '. The Security doctor checks only the newest version of each package.' }));
+  }
   jobs.append(jobRow(
     actionButton('Refresh cache', () => kitAct({ action: 'fetch', kit: k.id }), { className: 'small' }),
     s.previous ? actionButton(`Roll back to ${dayOf(s.previous.fetched)}`, () => {
       if (confirm(`Roll back ${k.title} to the set downloaded ${dayOf(s.previous.fetched)}?${inst ? ' The rollback can downgrade installed packages to those versions.' : ''}`)) kitAct({ action: 'rollback', kit: k.id });
+    }, { className: 'small' }) : null,
+    s.previous ? actionButton(`Remove older set${s.previous.extra_bytes ? ` (frees ${size(s.previous.extra_bytes)})` : ''}`, () => {
+      if (confirm(`Remove the older set of ${k.title}, downloaded ${dayOf(s.previous.fetched)}? This frees ${size(s.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`)) kitAct({ action: 'drop-previous', kit: k.id });
     }, { className: 'small' }) : null,
     k.owner ? actionButton('Edit', () => editKit(k, mine), { className: 'small' }) : null,
     k.owner ? actionButton('Delete toolkit', () => { if (confirm(`Delete ${k.title} and its cache?`)) kitAct({ action: 'undefine', kit: k.id }); },

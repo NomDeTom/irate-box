@@ -100,5 +100,29 @@ check("joint: one item for the package, both sources, the worst status and its f
       and j["items"][0]["status"] == "problem" and j["items"][0]["fix"] == "install updates", j)
 check("  each source's counts", j["sources"] == {"doctor": {"problem": 0, "warn": 1, "ok": 1}, "debsecan": {"problem": 1, "warn": 0, "ok": 1}}, j["sources"])
 check("the step is in the doctor's list", "debsecan" in [x[0] for x in sd.STEPS])
+
+# The kits' cache judged by its newest version of each package: an older copy kept for Roll back is not what an
+# install brings (on the Lyra, ntfs-3g deb13u2 beside deb13u3 was flagged though the fix was cached).
+order = [("1:2022.10.3-5+deb13u3", "1:2022.10.3-5+deb13u2", 1), ("1.0~rc1", "1.0", -1), ("1.0", "1.0-1", -1), ("2:1.0", "1:9.9", 1),
+         ("1.0a", "1.0+", -1), ("1.10", "1.9", 1), ("1.0-1", "1.0-1", 0), ("25.01+dfsg-1~deb13u2", "25.01+dfsg-1", -1)]
+check("Debian's version order: epochs, ~ before the end, letters before other characters, numbers as numbers",
+      all((lambda c: (c > 0) - (c < 0))(sd._deb_cmp(a, b)) == want for a, b, want in order),
+      [(a, b, sd._deb_cmp(a, b)) for a, b, want in order])
+status = "".join(f"Package: {n}\nStatus: install ok installed\nSource: ntfs-3g\nVersion: {v}\nArchitecture: armhf\n\n"
+                 for n in ("ntfs-3g", "libntfs-3g89t64") for v in ("1:2022.10.3-5+deb13u2", "1:2022.10.3-5+deb13u3")) \
+    + "Package: tcpdump\nStatus: install ok installed\nVersion: 4.99.5-2\nArchitecture: armhf\n\n"
+kept, left = sd.newest_only(status)
+check("newest_only: each package's newest version kept, the older left out, the rest as they were",
+      left == 2 and kept.count("Package: ") == 3 and "deb13u2" not in kept and kept.count("deb13u3") == 2 and "Source: ntfs-3g" in kept
+      and "Package: tcpdump" in kept, (left, kept))
+seen = {}
+fake2 = T / "debsecan2"
+fake2.write_text("import sys\nargs = sys.argv[1:]\nst = args[args.index('--status') + 1] if '--status' in args else ''\n"
+                 "open(%r, 'w').write(open(st).read() if st else '')\nprint('', end='')\n" % str(T / "seen-status.txt"))
+(T / "kits" / "kits-status").write_text(status)
+sd._debsecan_command = lambda work: ([sys.executable, str(fake2)], {})
+sd.step_debsecan(None)
+got_status = (T / "seen-status.txt").read_text()
+check("  and that is what debsecan is given for the cache", "deb13u2" not in got_status and got_status.count("deb13u3") == 2, got_status)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -25,7 +25,7 @@ const kitsData = {
         left_out: ['bpftrace', 'bpfcc-tools', 'bpftool'], arch: 'armhf' }, previous: null },
       build: { cached: null, previous: null }, radio: { cached: null, previous: null },
       capture: { cached: { fetched: now - 7200, packages: 3, bytes: 2 ** 20, on_box: [], versions: {} }, previous: null },
-      security: { cached: { fetched: now - 600, packages: 38, bytes: 29 * 2 ** 20, on_box: [], versions: {} }, previous: { fetched: now - 86400 * 3, bytes: 28 * 2 ** 20 } } },
+      security: { cached: { fetched: now - 600, packages: 38, bytes: 29 * 2 ** 20, on_box: [], versions: {} }, previous: { fetched: now - 86400 * 3, bytes: 28 * 2 ** 20, older: ['ntfs-3g', 'libntfs-3g89t64'], extra_bytes: 2 ** 20 } } },
     installed: { debug: { added: ['gdb'], at: now - 600, remove_at: now + 5 * 3600, units: [], upgraded: ['libc6 2.41-12+deb13u3 → 2.41-12+deb13u4'] } } },
   feeds: { debsecan: { suite: 'trixie', fetched: now - 1800 } }, results: [],
   flag_details: { capture: 'Cached versions of tcpdump have fixes Debian has released.' } };
@@ -76,8 +76,9 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   check('installed: what installing it upgraded, in its drawer', /also upgraded these packages\. They remain upgraded after removal: .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
   check('one open at a time, with a ✕', d.querySelectorAll('#kits-grid .aw-card.open').length === 1 && !!card('Debugging').querySelector('.aw-close'));
   check('not cached: Install is off, and says why', button(card('Building'), 'Install toolkit…').disabled && /Refresh the cache while the box has internet access/.test(t(card('Building'))));
-  check('two versions: the pill, and Roll back with its date', /2 versions/.test(pills('Security'))
-    && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to \d{4}-/.test(t(b))));
+  check('an older set kept: the pill with its size, and Roll back with its date', /older set kept for rollback \(1(\.0)? MB\)/.test(pills('Security'))
+    && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to \d{4}-/.test(t(b))), pills('Security'));
+  check('  its drawer: what the older set keeps, and that the doctor checks only the newest', /Kept for rollback: the set downloaded \d{4}-\d\d-\d\d, with older versions of 2 packages \(ntfs-3g, libntfs-3g89t64\), 1(\.0)? MB more in the cache\. The Security doctor checks only the newest version of each package\./.test(t(card('Security'))), t(card('Security')));
   check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging')))
     && /55 packages: gdb 16\.3-1\. Already on the box: strace\./.test(t(card('Debugging')))
     && /From git: debian-cis \(github\.com\/ovh\/debian-cis, a mirror\)/.test(t(card('Security'))));
@@ -176,6 +177,16 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   const stray = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
   check('no stray null or undefined on the page', !stray.length, stray.join(','));
+  {
+    // Last, as it is the latest request: Remove older set on the Security card.
+    card('Security').querySelector('.aw-card-head').click(); await wait();
+    const drop = [...card('Security').querySelectorAll('button')].find((b) => /^Remove older set \(frees 1(\.0)? MB\)$/.test(t(b)));
+    check('  Remove older set, with what it frees', !!drop, [...card('Security').querySelectorAll('button')].map(t).join(' | '));
+    if (drop) {
+      const n = posted.length; drop.click(); await wait();
+      check('  which asks the hub to drop that set', posted.length === n + 1 && posted[n].action === 'drop-previous' && posted[n].kit === 'security', JSON.stringify(posted.slice(n)));
+    }
+  }
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

@@ -1786,6 +1786,62 @@ def _debsecan_command(work):
     return [sys.executable, str(work / "usr" / "bin" / "debsecan")], {"PYTHONPATH": str(work / "usr" / "lib" / "python3" / "dist-packages")}
 
 
+def _deb_cmp(a, b):
+    """Debian's version order (deb-version(7)): epoch, then upstream and revision, each compared in
+    turns of non-digits (letters before other characters, ~ before everything, even the end) and
+    digits (as numbers). Negative, zero or positive, as cmp."""
+    def split(v):
+        epoch, _, rest = v.rpartition(":") if ":" in v else ("0", "", v)
+        up, _, rev = rest.rpartition("-") if "-" in rest else (rest, "", "0")
+        return int(epoch or 0), up, rev
+
+    def order(c):
+        return -1 if c == "~" else 0 if c == "" else ord(c) if c.isalpha() else ord(c) + 256
+
+    def part(x, y):
+        while x or y:
+            i = j = 0
+            while i < len(x) and not x[i].isdigit():
+                i += 1
+            while j < len(y) and not y[j].isdigit():
+                j += 1
+            nx, ny = x[:i], y[:j]
+            for k in range(max(len(nx), len(ny))):
+                d = order(nx[k] if k < len(nx) else "") - order(ny[k] if k < len(ny) else "")
+                if d:
+                    return d
+            x, y = x[i:], y[j:]
+            i = j = 0
+            while i < len(x) and x[i].isdigit():
+                i += 1
+            while j < len(y) and y[j].isdigit():
+                j += 1
+            d = int(x[:i] or 0) - int(y[:j] or 0)
+            if d:
+                return d
+            x, y = x[i:], y[j:]
+        return 0
+
+    (ea, ua, ra), (eb, ub, rb) = split(a), split(b)
+    return (ea > eb) - (ea < eb) or part(ua, ub) or part(ra, rb)
+
+
+def newest_only(status_text):
+    """The kits' cache as dpkg's status file lists it (kits.py: kits-status), with only the newest
+    version of each package and architecture: an older one kept beside it for rolling back is not
+    what an install would bring, so its CVEs are not the cache's. Returns (text, how many left out)."""
+    newest = {}
+    for stanza in status_text.split("\n\n"):
+        fields = dict(line.split(": ", 1) for line in stanza.splitlines() if ": " in line)
+        if "Package" not in fields or "Version" not in fields:
+            continue
+        key = (fields["Package"], fields.get("Architecture", ""))
+        if key not in newest or _deb_cmp(fields["Version"], newest[key][0]) > 0:
+            newest[key] = (fields["Version"], stanza.strip("\n"))
+    total = sum(1 for st in status_text.split("\n\n") if "Package: " in st)
+    return "".join(st + "\n\n" for _, (_, st) in sorted(newest.items())), total - len(newest)
+
+
 def _debsecan(cmd, env, suite, status=None, timeout=900):
     """{package: [(cve, {"fixed", "remote", "urgency"})]} from debsecan --format summary. Fifteen
     minutes: with a firmware build and the deep audit running (load 25 on four cores) five are not
@@ -1890,8 +1946,14 @@ def step_debsecan(ctx):
                 continue
             for p in (json.loads(_read(m) or "{}") or {}).get("packages", []):
                 kit_of.setdefault(p["name"], []).append(m.stem)
+        # Judged by the newest cached version of each package: older ones stay only for Roll back.
         status = KITS_ROOT / "kits-status"
-        cached = _debsecan(cmd, env, suite, status) if status.is_file() else {}
+        if status.is_file():
+            newest = work / "kits-status-newest"
+            newest.write_text(newest_only(_read(status) or "")[0])
+            cached = _debsecan(cmd, env, suite, newest)
+        else:
+            cached = {}
         return debsecan_findings(installed, cached, kit_of, feed.stat().st_mtime, _sources())
     finally:
         _sh.rmtree(work, ignore_errors=True)
@@ -2331,7 +2393,7 @@ def step_image(ctx):
     if _show("bluetooth.service", "ActiveState").get("ActiveState") == "active":
         out.append(F("image-bluetooth", "Bluetooth is on", "warn",
                      "bluetoothd runs, with a radio the hub does not use: a listener and a stack of its own, reachable by anyone in range.",
-                     "systemctl disable --now bluetooth.service (and rtk-bluetooth.service where there is one); enable --now puts it back."))
+                     "Switch it off, if nothing on the box uses it: it stops now and at boot, and can be switched back on."))
     else:
         out.append(F("image-bluetooth", "Bluetooth", "ok", "Not running."))
     # Access-point profiles the image left in NetworkManager, beside irate-box's own.
