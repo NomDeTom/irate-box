@@ -588,5 +588,39 @@ check("  its index kept apart from the box's own lists", all(f"Dir::State::Lists
       and all("Dir::Etc::sourceparts=-" in c for c in upd + dl))
 check("the shipped symbols kit loads, from the debug archive", __import__("irate_box.hub.kitdefs", fromlist=["x"])._ok(
       json.loads((REPO / "toolkits" / "symbols.json").read_text()), "symbols") and json.loads((REPO / "toolkits" / "symbols.json").read_text())["debug_archive"] is True)
+# Over the budget, other toolkits' older sets go first (oldest first), and the refresh says so; when even that is not
+# enough, it is refused and nothing is dropped.
+fake_prev = {"id": "cap", "fetched": 1, "bytes": 9 << 20, "packages": [{"name": "huge", "version": "1", "file": "huge_1.deb", "size": 9 << 20, "sha256": "0" * 64, "arch": "armhf"}], "wheels": []}
+(kits.MANIFESTS / "cap.previous.json").write_text(json.dumps(fake_prev))
+try:
+    kits.fetch("small", budget_mb=0, log=lambda *a: None); check("over the budget even without older sets: refused", False)
+except ValueError as exc:
+    check("over the budget even without older sets: refused, saying so, and no older set dropped",
+          "even without the older sets kept for Roll back" in str(exc) and (kits.MANIFESTS / "cap.previous.json").exists(), exc)
+line = kits.fetch("small", budget_mb=9, log=lambda *a: None)
+check("over the budget with another kit's older set: that set removed, the refresh done and saying so",
+      not (kits.MANIFESTS / "cap.previous.json").exists() and "the older sets of cap were removed: Roll back is gone for them" in line, line)
+
+# Remove older set: the set kept for Roll back goes, and its files with it unless the current sets use them.
+ARCHIVE["gdb"] = ("16.3-5", ARCHIVE["gdb"][1])
+kits.fetch("small", budget_mb=10, log=lambda *a: None)
+old_files = {p["file"] for p in kits.manifest("small", "previous")["packages"]} - {p["file"] for p in kits.manifest("small")["packages"]}
+line = kits.drop_previous("small", log=lambda *a: None)
+check("Remove older set: gone, its own files pruned, the current ones kept, said with what it freed",
+      kits.manifest("small", "previous") is None and old_files and not any((kits.POOL / f).exists() for f in old_files)
+      and all((kits.POOL / p["file"]).exists() for p in kits.manifest("small")["packages"]) and "older set removed" in line and "freed" in line, (old_files, line))
+try:
+    kits.drop_previous("small", log=lambda *a: None); check("no older set: refused", False)
+except ValueError as exc:
+    check("no older set: refused", "no older set" in str(exc), exc)
+
+# The previous set, kept for Roll back: what it keeps beyond the current one (the Toolkits card says so).
+cur = {"packages": [{"name": "ntfs-3g", "version": "3", "file": "ntfs-3g_3.deb", "size": 400}, {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300}],
+       "wheels": [{"file": "w-2.whl", "size": 50}]}
+prev = {"fetched": 1, "bytes": 999, "packages": [{"name": "ntfs-3g", "version": "2", "file": "ntfs-3g_2.deb", "size": 390},
+        {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300}], "wheels": [{"file": "w-1.whl", "size": 40}]}
+tr = kits._trailing(cur, prev)
+check("the set kept for Roll back: its date and size, the packages at another version, the bytes only it uses",
+      tr == {"fetched": 1, "bytes": 999, "older": ["ntfs-3g"], "extra_bytes": 430}, tr)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

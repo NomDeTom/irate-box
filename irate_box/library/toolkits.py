@@ -170,7 +170,7 @@ def action(payload):
         if not _hours_ok(hours):
             raise LibrarianError(f"Invalid hours. Enter 1 to {MAX_HOURS}, or null for never.")
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid, "hours": hours})
-    if what in ("remove", "rollback"):
+    if what in ("remove", "rollback", "drop-previous"):
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid})
     if what == "status":
         return librarian._queue_root({"action": "kit-status"})
@@ -181,7 +181,7 @@ def action(payload):
         return librarian._queue_root({"action": "kit-extra", "kit": kid, "packages": [str(p) for p in pkgs]})
     if what == "undefine":
         return librarian._queue_root({"action": "kit-undefine", "kit": kid})
-    raise LibrarianError("Invalid action. Use settings, fetch, install, keep, remove, rollback, status, define, undefine or extra.")
+    raise LibrarianError("Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, status, define, undefine or extra.")
 
 
 def step(policy, now=None, log=print):

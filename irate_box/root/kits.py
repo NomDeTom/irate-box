@@ -284,16 +284,28 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         same = bool(cur) and sorted((p["file"], p["sha256"]) for p in cur["packages"]) == sorted((p["file"], p["sha256"]) for p in pkgs) \
             and sorted((w["file"], w["sha256"]) for w in cur.get("wheels", [])) == sorted((w["file"], w["sha256"]) for w in wheels)
         prev = manifest(kit_id, "previous")
-        other_debs = [(_read(m, {}) or {}).get("packages", []) for m in MANIFESTS.glob("*.json")
-                      if m.name not in (f"{kit_id}.json", f"{kit_id}.previous.json")]
-        other_wheels = [(_read(m, {}) or {}).get("wheels", []) for m in MANIFESTS.glob("*.json")
-                        if m.name not in (f"{kit_id}.json", f"{kit_id}.previous.json")]
-        deb_sets = other_debs + [pkgs, (cur or {}).get("packages", []) if not same else (prev or {}).get("packages", [])]
-        wheel_sets = other_wheels + [wheels, (cur or {}).get("wheels", []) if not same else (prev or {}).get("wheels", [])]
-        total = sum(p["size"] for p in {p["file"]: p for s_ in deb_sets for p in s_}.values()) \
-            + sum(w["size"] for w in {w["file"]: w for s_ in wheel_sets for w in s_}.values())
-        if total > budget_mb << 20:
-            raise ValueError(f"The toolkit cache would be {total >> 20} MB with {kit_id}. This is over its {budget_mb} MB budget. Delete a toolkit cache or raise the budget")
+        others = {m.name: _read(m, {}) or {} for m in MANIFESTS.glob("*.json")
+                  if m.name not in (f"{kit_id}.json", f"{kit_id}.previous.json")}
+        mine = [(pkgs, wheels), ((cur or {}).get("packages", []), (cur or {}).get("wheels", [])) if not same
+                else ((prev or {}).get("packages", []), (prev or {}).get("wheels", []))]
+
+        def total(without=()):
+            sets = [(m.get("packages", []), m.get("wheels", [])) for n, m in others.items() if n not in without] + mine
+            return sum(p["size"] for p in {p["file"]: p for d, _ in sets for p in d}.values()) \
+                + sum(w["size"] for w in {w["file"]: w for _, ws in sets for w in ws}.values())
+        # Over the budget: other toolkits' older sets (kept only for Roll back) go first, oldest first, as far as
+        # needed; refused only if the cache would still not fit, and then nothing is dropped.
+        drop = []
+        if total() > budget_mb << 20:
+            for n, m in sorted(((n, m) for n, m in others.items() if n.endswith(".previous.json")), key=lambda x: x[1].get("fetched", 0)):
+                drop.append(n)
+                if total(drop) <= budget_mb << 20:
+                    break
+            if total(drop) > budget_mb << 20:
+                raise ValueError(f"The toolkit cache would be {total(drop) >> 20} MB with {kit_id}, even without the older sets kept for "
+                                 f"Roll back. This is over its {budget_mb} MB budget. Delete a toolkit cache or raise the budget")
+        for n in drop:
+            (MANIFESTS / n).unlink(missing_ok=True)
         for p in pkgs:
             dest = POOL / p["file"]
             if not (dest.exists() and sha256(dest) == p["sha256"]):
@@ -316,7 +328,9 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         prune()
         write_index()
         changed = "unchanged" if same else f"{len(pkgs)} packages, {new['bytes'] >> 20} MB"
+        dropped = [n[:-len(".previous.json")] for n in drop]
         return f"{kit['title']}: {changed}" + (f". Already on the box: {', '.join(on_box)}" if on_box else "") + \
+            (f". To keep within the budget, the older sets of {', '.join(dropped)} were removed: Roll back is gone for them" if dropped else "") + \
             (f". Left out on this {new['arch']} board: {kitdefs.why_left_out(kit, left_out)}" if left_out else "")
     finally:
         shutil.rmtree(stage, ignore_errors=True)
@@ -627,6 +641,20 @@ def rollback(kit_id, log=print):
     return f"{kit['title']}: cache restored to the set downloaded {time.strftime('%Y-%m-%d', time.gmtime(prev['fetched']))}. The toolkit is not installed, so no installed package changed"
 
 
+def drop_previous(kit_id, log=print):
+    """The older set kept for Roll back, removed to save space: its files go unless the current sets still use them."""
+    kit = _kit(kit_id)
+    prev = manifest(kit_id, "previous")
+    if not prev:
+        raise ValueError(f"{kit['title']} has no older set to remove")
+    freed = _trailing(manifest(kit_id), prev)["extra_bytes"]
+    (MANIFESTS / f"{kit_id}.previous.json").unlink(missing_ok=True)
+    prune()
+    write_index()
+    return (f"{kit['title']}: older set removed, {freed >> 20} MB freed. Roll back is available again after a refresh "
+            "brings new versions")
+
+
 # --- by USB stick --------------------------------------------------------------------------------
 # A stick's .debs are trusted only as far as Debian's own signatures vouch for them, as apt does
 # online: the export carries the signed indexes (InRelease, and each Packages file that lists the
@@ -906,6 +934,16 @@ def expire(now=None):
     return [remove(k) for k, v in installed_state().items() if v.get("remove_at") and v["remove_at"] <= now]
 
 
+def _trailing(cur, prev):
+    """The previous set, kept for Roll back: when it was fetched, its size, and what it keeps beyond the
+    current set: the packages at another version, and the bytes of the files only it uses."""
+    now = {p["name"]: p["version"] for p in (cur or {}).get("packages", [])}
+    files = {p["file"] for p in (cur or {}).get("packages", [])} | {w["file"] for w in (cur or {}).get("wheels", [])}
+    older = sorted(p["name"] for p in prev.get("packages", []) if p["name"] in now and now[p["name"]] != p["version"])
+    extra = sum(x["size"] for x in [*prev.get("packages", []), *prev.get("wheels", [])] if x["file"] not in files)
+    return {"fetched": prev["fetched"], "bytes": prev["bytes"], "older": older, "extra_bytes": extra}
+
+
 def status():
     """For the hub (control/kits.json): what is cached, installed, and what's wrong."""
     kits = {}
@@ -915,7 +953,7 @@ def status():
                                         "export_bytes": cur["bytes"] + cur.get("index_bytes", 0) // INDEX_XZ_RATIO,
                                         "wheels": len(cur.get("wheels", [])),
                                         "on_box": cur.get("on_box", []), "left_out": cur.get("left_out", []), "arch": cur.get("arch"), "versions": {p["name"]: p["version"] for p in cur["packages"]}},
-                     "previous": prev and {"fetched": prev["fetched"], "bytes": prev["bytes"]}}
+                     "previous": prev and _trailing(cur, prev)}
     return {"at": time.time(), "kits": kits, "installed": installed_state(), "pool_bytes": pool_bytes(), "wheelhouse_bytes": wheelhouse_bytes(),
             "problems": verify()}
 

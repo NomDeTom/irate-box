@@ -201,6 +201,11 @@ HUB_SANDBOX = "The hub's own units: hardening them is irate-box's work, done one
 HUB_SETUP = ("The hub's own setup is not as its installer leaves it. Run the installer again with this box's version "
              "and its recorded options. This puts the setup back. If the setup changes again, something on the box is changing it.")
 DO = [
+    # Bluetooth: switched off by the Box doctor's own action (health.py idle_switch), which keeps how it was, so its
+    # finding there offers Switch it back on.
+    ("*", r"^image-bluetooth$", {"health": {"choice": "idle-off:bluetooth.service", "label": "Switch Bluetooth off"},
+                                 "say": "Nothing on the hub uses Bluetooth. Switch it off: it stops now and at boot. The Box doctor "
+                                        "then lists it, with a button to switch it back on."}),
     ("*", r"^(page-)?firewall$", {"go": "sec-firewall", "where": "Security → What a guest on the hotspot can reach"}),
     ("*", r"^tls|^accounts-http$", {"go": "security-https", "where": "Security → HTTPS"}),
     ("*", r"^(page-)?unattended$", {"go": "updates-debian", "where": "Updates → Debian's security updates (off, download, or install them daily)"}),
@@ -224,7 +229,6 @@ DO = [
      {"cmd": "echo '* hard core 0' | sudo tee /etc/security/limits.d/60-no-core.conf && echo fs.suid_dumpable=0 | sudo tee /etc/sysctl.d/61-no-core.conf && sudo sysctl --system"}),
     ("*", r"^kernel-ptrace$", {"cmd": "echo kernel.yama.ptrace_scope=1 | sudo tee /etc/sysctl.d/61-ptrace.conf && sudo sysctl --system"}),
     ("*", r"^kernel-regular$", {"cmd": "printf 'fs.protected_regular=2\\nfs.protected_fifos=2\\n' | sudo tee /etc/sysctl.d/61-regular.conf && sudo sysctl --system"}),
-    ("*", r"^image-bluetooth$", {"cmd": "sudo systemctl disable --now bluetooth.service"}),
     ("*", r"^image-kernel$", {"cmd": "apt list --upgradable 2>/dev/null | grep linux-image"}),
     ("*", r"^(debian-cis|lynis)-old$", {"act": "deep", "where": "Run the deep audit again"}),
     # Lynis's tests met on a real board's deep audit with no answer of their own.
