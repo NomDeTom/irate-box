@@ -14,15 +14,15 @@ const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
 const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
 function page(file, url, fetcher, scripts) {
-  const errors = [];
+  const errors = [], navs = [];
   const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
+  vc.on('jsdomError', (e) => { if (/navigation/.test(e.message)) navs.push(e.message); if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
   vc.on('error', (...a) => { if (!/HTTP 404/.test(a.join(' '))) errors.push('console: ' + a.join(' ')); });
   const dom = new JSDOM(strip(fs.readFileSync(`${WEB}/${file}`, 'utf8')), { url, runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
   dom.window.fetch = fetcher;
   dom.window.confirm = () => true;
   scripts.forEach((s) => dom.window.eval(fs.readFileSync(`${WEB}/${s}`, 'utf8')));
-  return { w: dom.window, d: dom.window.document, errors };
+  return { w: dom.window, d: dom.window.document, errors, navs };
 }
 (async () => {
   const posted = [];
@@ -49,8 +49,9 @@ function page(file, url, fetcher, scripts) {
   const lf = d.getElementById('acct-login-form');
   lf.elements.name.value = 'alice'; lf.elements.password.value = 'password1';
   lf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait(300);
-  check('log in: then the account, with Change password and Log out', !d.getElementById('acct-me').hidden && d.getElementById('acct-guest').hidden
-    && /alice: a user of this box/.test(t(d.getElementById('acct-me-text'))));
+  // jsdom does not navigate; it says it was asked to. Where to is account.js's own line: next, else the hub.
+  check('sign in: on to the hub (or ?next=), where the header has their buttons, not left on this page',
+    p.navs.length === 1 && /location\.assign\(next \|\| '\/'\)/.test(fs.readFileSync(`${WEB}/account.js`, 'utf8')), p.navs);
   view = { signup: 'open', http: 'prevented', https: false, me: null };
   p = page('account.html', 'http://box.local/account.html', async () => json(view), ['account.js']);
   await wait(); d = p.d;
@@ -135,6 +136,33 @@ function page(file, url, fetcher, scripts) {
   cdBox.querySelector('.chip-btn').click();
   cdBox.querySelector('.action-btn.primary').click(); await wait();
   check('  turning it on sends the setting', sposted.some((b) => b.saves_cross_device === true), sposted);
+  // Script sign-in: a chip only selects; the page says what saving would stop; Save sends it, never with no way back in.
+  const reachChip = (doc, word) => [...doc.querySelectorAll('#accounts-admin-login-choices .chip')].find((c) => t(c) === word);
+  const reachBox = (doc) => doc.querySelector('#accounts-admin-login-choices .reach-change');
+  const sent = () => aposted.filter((b) => b.action === 'admin-login').length;
+  check('script sign-in: nothing selected, only the chips (no stray text)', !reachBox(d) && !/null/.test(t(d.getElementById('accounts-admin-login-choices'))));
+  reachChip(d, 'Local scripts only').click(); await wait();
+  check('script sign-in: a chip only selects, nothing sent', sent() === 0 && /^Selected, not saved\./.test(t(reachBox(d))));
+  check('  local, with no administrator account signed in over HTTPS: the lockout said, Save disabled',
+    /including the one you are using now/.test(t(reachBox(d))) && /no other device could open the administration pages/.test(t(reachBox(d)))
+    && [...reachBox(d).querySelectorAll('button')].find((b) => t(b) === 'Save changes').disabled);
+  [...reachBox(d).querySelectorAll('button')].find((b) => t(b) === 'Discard').click(); await wait();
+  check('  Discard: the selection gone, the chip back on the saved reach', !reachBox(d) && reachChip(d, 'Network scripts permitted').getAttribute('aria-pressed') === 'true');
+  state = Object.assign({}, state, { admin_login: { on: true, reach: 'network', password_set: true, https_admins: ['carol'], results: [] } });
+  const a2 = page('admin.html', 'http://box.local/admin/#accounts', async (u, o = {}) => {
+    if (o.method === 'POST' && u === '/admin/accounts') { const b = JSON.parse(o.body); aposted.push(b); return json({ id: 'r1' }); }
+    if (u === '/admin/accounts') return json(state);
+    if (u === '/admin/settings') return json({ saves_cross_device: false });
+    return json({}, 404);
+  }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
+  await wait(300);
+  reachChip(a2.d, 'Local scripts only').click(); await wait();
+  const save2 = [...reachBox(a2.d).querySelectorAll('button')].find((b) => t(b) === 'Save changes');
+  check('  with an administrator account: the accounts that still sign in named, Save enabled',
+    /The administrator accounts \(carol\) can still sign in from any device/.test(t(reachBox(a2.d))) && !save2.disabled && sent() === 0);
+  save2.click(); await wait();
+  check('  Save changes: the reach sent', aposted.some((b) => b.action === 'admin-login' && b.reach === 'local'));
+  check('admin, script sign-in: no errors', !a2.errors.length, a2.errors.join(' | '));
   check('admin: no errors', !a.errors.length, a.errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

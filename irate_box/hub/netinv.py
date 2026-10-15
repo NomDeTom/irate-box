@@ -886,7 +886,10 @@ def hazards(inv):
         mesh = mesh_wifi_enabled()
         on = ws == "enabled"
         status = "problem" if on and mesh is False else "warn" if on else "ok"
-        out.append(_h("wifisync", status, "mPWRD-OS wifisync",
+        title = {"problem": "mPWRD-OS's wifisync is switching the WiFi off",
+                 "warn": "mPWRD-OS's wifisync can switch the WiFi off",
+                 "ok": "mPWRD-OS's wifisync is disabled: it cannot switch the WiFi off"}[status]
+        out.append(_h("wifisync", status, title,
                       f"{'Enabled' if on else 'Installed, disabled'}: it switches the WiFi radio off (rfkill) whenever "
                       f"meshtasticd's WiFi setting is off. meshtasticd's WiFi is "
                       f"{'on' if mesh else 'off' if mesh is False else 'unknown (needs root)'}.",

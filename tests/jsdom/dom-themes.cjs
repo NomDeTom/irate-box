@@ -10,7 +10,8 @@ let fails = 0; const check = (n, c, i = '') => { console.log(`${c ? 'PASS' : 'FA
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function open(path, storage = {}) {
   const errors = [];
-  const vc = new VirtualConsole(); vc.on('jsdomError', (e) => { if (!/scrollTo|Could not load link|navigation/.test(e.message)) errors.push(e.message); });
+  // jsdom's CSS parser has no @container (style.css uses it for the admin layout): its "Could not parse" is jsdom's, not the page's.
+  const vc = new VirtualConsole(); vc.on('jsdomError', (e) => { if (!/scrollTo|Could not load link|navigation|Could not parse CSS stylesheet/.test(e.message)) errors.push(e.message); });
   const dom = await JSDOM.fromURL(BASE + path, { runScripts: 'dangerously', resources: 'usable', virtualConsole: vc, pretendToBeVisual: true,
     beforeParse(w) { for (const [k, v] of Object.entries(storage)) w.localStorage.setItem(k, v); w.fetch = (u, o) => fetch(new URL(u, BASE), o); w.EventSource = class { close() {} }; } });
   await new Promise((r) => dom.window.addEventListener('load', r)); await sleep(300);
@@ -28,7 +29,7 @@ async function open(path, storage = {}) {
   more.click();
   check('🎨 opens the menu', !menu.hidden && more.getAttribute('aria-expanded') === 'true');
   const items = [...menu.querySelectorAll('button')].map((b) => b.querySelector('.theme-menu-name').textContent);
-  check('menu lists E-ink and Cybercore', items.join('|') === '📖 E-ink|🏴‍☠️ Cybercore', items.join('|'));
+  check('menu lists the palettes, then E-ink and Cybercore', items.join('|') === '🏠 Box palette|🎨 Standard palette|🔆 Increased contrast|📖 E-ink|🏴‍☠️ Cybercore', items.join('|'));
   let announced = null; d.addEventListener('hub-theme', (e) => { announced = e.detail; });
   menu.querySelector('[data-theme-choice="eink"]').click(); await sleep(100);
   check('E-ink: data-theme', d.documentElement.dataset.theme === 'eink');

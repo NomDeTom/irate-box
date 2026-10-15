@@ -215,7 +215,7 @@
   {
    "id": "wifisync",
    "status": "ok",
-   "title": "mPWRD-OS wifisync",
+   "title": "mPWRD-OS's wifisync is disabled: it cannot switch the WiFi off",
    "detail": "Installed, disabled: it switches the WiFi radio off (rfkill) whenever meshtasticd's WiFi setting is off. meshtasticd's WiFi is off.",
    "fix": ""
   },
@@ -229,7 +229,7 @@
   },
   {
    "id": "other-ap:33564e5b-5cb3-4b45-ac5f-a092c4f7ddba",
-   "status": "ok",
+   "status": "warn",
    "title": "Another hotspot profile: Hotspot",
    "detail": "SSID 'ExampleWiFi' on wlan0, autoconnect off. Not irate-box's; left as it is.",
    "fix": ""

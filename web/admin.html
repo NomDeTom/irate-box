@@ -6,6 +6,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hub admin</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
@@ -882,7 +883,7 @@
         <p class="setting-desc">Scripts can use a separate administrator sign-in (user <code>admin</code>), for example
           <code>curl -u admin:…</code>. Set its password at the box console or over SSH:
           <code>sudo /opt/irate-box/irate-box hub_control script-login</code>. The choices below set how far this
-          sign-in reaches.</p>
+          sign-in reaches. Select one, then select Save changes. The page says what the change stops before you save it.</p>
         <div id="accounts-admin-login-choices"></div>
         <p class="setting-desc" id="accounts-admin-login">Checking…</p>
         <h3>Saves on other devices</h3>
@@ -972,7 +973,7 @@
         <div class="findings" id="health-findings"></div>
         <p class="setting-desc" id="health-empty" hidden></p>
         <details class="sec-fold" id="health-fine-fold">
-          <summary>Passed checks <span id="health-fine-count"></span>: checks that found no problem</summary>
+          <summary>Passed and accepted <span id="health-fine-count"></span>: checks that found no problem, and findings you accepted</summary>
           <div class="findings compact" id="health-fine"></div>
         </details>
         <details class="sec-fold helper-queue" id="helper-queue">
@@ -1584,7 +1585,7 @@
               <option value="settings" data-says="The settings of this box: settings, accounts, sources.">Settings</option>
               <option value="data" data-says="The settings and the user data of this box: notes, saved work, the board, its own repositories.">Settings and data</option>
             </select></label>
-          <label class="inline"><input type="checkbox" name="hub" id="kit-hub"> The hub program, <span id="kit-hub-size">its code, apps and release files</span>: for a box without irate-box</label>
+          <label class="inline"><input type="checkbox" name="hub" id="kit-hub"> <span>The hub program, <span id="kit-hub-size">its code, apps and release files</span>: for a box without irate-box</span></label>
           <label>Storage limit (MB, blank = no limit) <input name="budget" type="number" min="1" step="64" inputmode="numeric"></label>
           <label>Destination
             <select name="dest" id="kit-dest">

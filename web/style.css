@@ -119,6 +119,13 @@ h2 {
   margin-bottom: 1rem;
 }
 
+/* A sub-heading inside an admin pane: space above it, so it never sits on the buttons of the setting before it.
+   Cards (.net-card, .git-card, .net-device) set their own, later in this file. */
+.admin-pane h4 { margin: 1.75rem 0 0.4rem; font-size: 1rem; }
+.admin-pane h4:first-child { margin-top: 0; }
+/* A card straight after a pane's buttons or their note (shown or hidden): apart from them, not on them (Box doctor's Summary). */
+.admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting) { margin-top: 1rem; }
+
 /* --- Services (collapsible) --- */
 .services { margin-bottom: 2rem; }
 .services summary {
@@ -961,7 +968,7 @@ details.admin-item summary { cursor: pointer; }
 }
 .admin-checks { list-style: none; padding: 0; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; }
 .admin-checks .setting-desc { display: block; margin-left: 1.6rem; }
-.backup-keys { border-left: 3px solid #e5a000; padding-left: 0.6rem; }
+.backup-keys { display: block; margin: 0.9rem 0 0.4rem; border-left: 3px solid #e5a000; padding-left: 0.6rem; font-size: 0.9rem; line-height: 1.5; }
 .help-lead { padding: 1rem 1.25rem; margin-bottom: 2rem; background: var(--surface);
   border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; }
 .help-lead p { margin: 0.4rem 0; line-height: 1.55; }
@@ -1629,7 +1636,11 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 #ap-health-card { margin: 0.75rem 0; }
 
 /* Backup and a new box: offers with their sizes; a list of checkboxes per kind, bounded. */
-.kit-offer { max-width: 44rem; }
+/* The content export: its form apart from the words above it and its parts apart from each other; what follows it
+   (the result, Syncthing) below it, not on its button. */
+.kit-offer { max-width: 44rem; margin-top: 0.9rem; gap: 0.9rem; }
+.kit-offer + .admin-progress, #kit-state { margin-top: 0.75rem; }
+#backup > p.setting-desc:last-child { margin-top: 1.75rem; }
 .kit-pick { border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.7rem; margin: 0; }
 .kit-pick > div { display: flex; flex-direction: column; gap: 0.2rem; max-height: 12rem; overflow-y: auto; }
 .kit-total.bad { color: var(--bad); }
@@ -1694,6 +1705,16 @@ a.action-btn.go-btn { text-decoration: none; display: inline-block; }
 /* About: its sections' headings stand out above the names in its lists (the shared h2 is small and muted). */
 body.about section > h2 { font-size: 1.3rem; font-weight: 700; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 0.75rem; }
 body.about section > h3 { font-size: 1.05rem; font-weight: 600; color: var(--text); }
+/* The certificate page: plain paragraphs, so their spacing back from the reset; each platform's steps a fold. */
+body.certificate section { margin-bottom: 2rem; line-height: 1.55; }
+body.certificate section p { margin: 0 0 0.8rem; }
+body.certificate section > h2 { margin: 1.8rem 0 0.8rem; }
+body.certificate section > h2:first-child { margin-top: 0; }
+body.certificate details { margin: 0 0 0.6rem; }
+body.certificate summary { cursor: pointer; }
+body.certificate details ol { margin: 0.5rem 0 0.8rem; padding-left: 1.4rem; }
+body.certificate details li { margin-bottom: 0.35rem; }
+body.certificate .cert-fingerprint { overflow-wrap: anywhere; }
 
 /* The WiFi card: with a section open (a network's settings, adding one), its two columns stack so that section has the
    card's whole width. The networks seen, in columns. */

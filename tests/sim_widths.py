@@ -3,7 +3,7 @@
 """The page widths, against a hub it starts: /layout.css public and set from
 the owner's settings, only the offered widths taken (45, 60, 80, 90, 100), the defaults 80 for
 the pages and 45 for the shoutbox and forum. python3 tests/sim_widths.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client, json, re, os, subprocess, sys, tempfile, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="widths-")
@@ -27,6 +27,10 @@ try:
         r = c.getresponse(); return r.status, r.getheader("Content-Type") or "", r.read().decode("utf-8", "replace")
     page = {"X-Irate-Front": SECRET, "X-Irate-Admin": "1", "Content-Type": "application/json",
             "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=5); c.request("GET", "/", headers={"Host": f"127.0.0.1:{port}"})
+    r = c.getresponse(); r.read()
+    check("the home page: never kept from before signing in or out (Cache-Control: no-cache)",
+          r.status == 200 and r.getheader("Cache-Control") == "no-cache", (r.status, r.getheader("Cache-Control")))
     st, ctype, css = go("GET", "/layout.css")
     check("/layout.css is public and CSS", st == 200 and ctype.startswith("text/css"), (st, ctype))
     check("the defaults: 80rem pages, 45rem shoutbox and forum",
@@ -102,9 +106,12 @@ try:
     import base64
     st, _, _ = go("GET", "/favicon.ico")
     check("no favicon at first: 404", st == 404, st)
+    check("  and /layout.css names none: the pages keep their own emoji icons", "--favicon" not in go("GET", "/layout.css")[2])
     png = b"\x89PNG\r\n\x1a\n" + b"\0" * 40
     st, _, _ = go("POST", "/admin/picture", page, json.dumps({"which": "favicon", "data": base64.b64encode(png).decode()}).encode())
     st2, ctype, _ = go("GET", "/favicon.ico")
+    check("  uploaded: /layout.css names it, with its time (themes.js puts it over the pages' own icons)",
+          re.search(r'--favicon: "\d+"', go("GET", "/layout.css")[2]) is not None, go("GET", "/layout.css")[2])
     check("  a PNG uploaded: served as one, to anyone", st == 200 and st2 == 200 and ctype == "image/png", (st, st2, ctype))
     svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
     bad = [go("POST", "/admin/picture", page, json.dumps({"which": "favicon", "data": d}).encode())[0]
@@ -115,6 +122,7 @@ try:
     check("  another site can't remove it", st == 403 and go("GET", "/favicon.ico")[0] == 200, st)
     go("POST", "/admin/picture", page, json.dumps({"which": "favicon", "remove": True}).encode())
     check("  removed: 404 again", go("GET", "/favicon.ico")[0] == 404)
+    check("  and /layout.css names none again", "--favicon" not in go("GET", "/layout.css")[2])
     # The hub page's header picture: a WebP over the name, then gone again; not one given as a favicon's kind.
     webp = b"RIFF\x10\0\0\0WEBPVP8 " + b"\0" * 40
     st = go("POST", "/admin/picture", page, json.dumps({"which": "hub-art", "data": base64.b64encode(webp).decode()}).encode())[0]

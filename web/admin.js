@@ -1714,7 +1714,7 @@ async function secSavePending(page) {
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
 // link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
 const STATE_WORD = { problem: 'Action required', warn: 'Needs review', ok: 'Passed', suggest: 'Suggestion', 'not-here': 'Not applicable',
-  accepted: 'Accepted risk', fixed: 'Repaired' };
+  accepted: 'Accepted', fixed: 'Repaired' };
 function copyBox(cmd) {
   const b = el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy' });
   b.addEventListener('click', async () => {
@@ -1748,10 +1748,11 @@ function findingRow(r) {
       el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
         el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
         l.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${l.fix}` }) : null)))) : null,
+    // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request.
     r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'link-button',
-      textContent: r.accept.on ? 'Reopen finding' : 'Accept risk',
-      title: r.accept.on ? 'Return this finding to the unresolved list.' : 'Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.',
-      onclick: () => secAccept(r.accept.key, r.accept.title, !r.accept.on) })) : null);
+      textContent: r.accept.on ? (r.accept.reopen || 'Reopen finding') : (r.accept.label || 'Accept risk'),
+      title: r.accept.on ? 'Return this finding to the unresolved list.' : (r.accept.hint || 'Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.'),
+      onclick: () => (r.accept.act || secAccept)(r.accept.key, r.accept.title, !r.accept.on) })) : null);
 }
 const noteUnder = (fid) => (secNote && secNote.fid === fid
   ? el('p', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
@@ -2393,20 +2394,25 @@ let hlDrawn = '';    // what the findings were last drawn from: the same again l
 function renderGlance(data, rep) {
   const find = (id) => rep && rep.findings.find((f) => f.id === id);
   const first = (text) => String(text || '').split(/(?<=\.)\s/)[0];
+  // A finding in a few words: its own glance (health.py), else the first sentence of its detail (an older report).
+  const brief = (f) => f.glance || first(f.detail);
+  // Why the box last started: the reason only ("Unclean shutdown"), the explanation stays in the findings below.
+  const why = (t) => { const r = String(t || '').replace(/^Started: /, '').split(/[:.]/)[0].trim(); return r ? r[0].toUpperCase() + r.slice(1) : 'Started'; };
   const w = data.watchers || {};
   const st = rep && rep.settings;
-  const counts = rep ? ['problem', 'warn'].map((k) => rep.findings.filter((f) => f.status === k).length) : null;
+  const acc = data.accepted || {};
+  const counts = rep ? ['problem', 'warn'].map((k) => rep.findings.filter((f) => f.status === k && !(k === 'warn' && acc[f.id])).length) : null;
   const ago = (at) => { const s = Date.now() / 1000 - at; return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
   const rows = [
     ['Health', !rep ? 'Not checked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to review (below).` : 'Nothing to fix or review.'],
-    ['Network recovery', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Cause: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
-    ['The WiFi radio', find('crash-radio') ? first(find('crash-radio').detail) : 'No radio watched.'],
-    ['Last boot', w.last_boot ? `${ago(w.last_boot.at)}: ${w.last_boot.text.replace(/^Started: /, '')}` : 'Not recorded yet.'],
+    ['Network recovery', find('uplink-report') ? brief(find('uplink-report')) + (w.link && w.link.cause ? ` Cause: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
+    ['The WiFi radio', find('crash-radio') ? brief(find('crash-radio')) : 'No radio watched.'],
+    ['Last boot', w.last_boot ? `${ago(w.last_boot.at)}: ${why(w.last_boot.text)}.` : 'Not recorded yet.'],
     ['Last repair', w.last_repair ? `${ago(w.last_repair.at)}: ${w.last_repair.text}` : 'None recorded.'],
     ['Frozen-system recovery', !st ? 'Not known yet.' : st.panic || st.watchdog
-      ? `Restarts automatically (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
+      ? `Restarts by itself (${[st.panic && 'kernel panic', st.watchdog && 'watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
     ['Snapshot interval', !st ? 'Not known yet.' : st.snapshots ? 'Every 30 s.' : 'Disabled.'],
-    ['Status light', find('led') ? first(find('led').detail) : 'Not checked yet.'],
+    ['Status light', find('led') ? brief(find('led')) : 'Not checked yet.'],
     ['SD card writes', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
   ];
   const key = JSON.stringify(rows);
@@ -2553,6 +2559,10 @@ function renderHealth(data) {
     }
   }
   const rep = data.report;
+  // A review finding the owner accepted (data.accepted, by id) leaves the counts and the open list; one that has
+  // become a problem shows again whatever was accepted.
+  const acc = data.accepted || {};
+  const accepted = (f) => f.status === 'warn' && !!acc[f.id];
   renderGlance(data, rep);
   renderDoctorSettings(data, rep);
   const all = rep ? [...rep.findings].sort((a, b) => RANK[a.status] - RANK[b.status]) : [];
@@ -2565,12 +2575,15 @@ function renderHealth(data) {
   // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
   const item = (f) => {
     const d = healthDo(f, busy || h.stuck);
-    return findingRow({ id: `hl-${f.id}`, state: f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id) });
+    const on = accepted(f);
+    return findingRow({ id: `hl-${f.id}`, state: on ? 'accepted' : f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id),
+      accept: f.status === 'warn' ? { key: f.id, title: f.check, on, act: hlAccept, label: 'Accept', reopen: 'Take back',
+        hint: 'Accepting leaves it as it is and takes it out of the review count. It moves to Accepted. The doctor shows it again if it becomes a problem.' } : null });
   };
   const needle = hl.search.value.trim().toLowerCase();
   const match = (f) => !needle || `${f.check} ${f.detail} ${f.fix || ''}`.toLowerCase().includes(needle);
   const services = all.filter((f) => !isClock(f));
-  const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn').length };
+  const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn' && !accepted(f)).length };
   hl.summary.replaceChildren(...(!rep ? [] : [
     ['all', counts.problem + counts.warn, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
     ['problem', counts.problem, 'to fix', counts.problem ? 'problem' : 'ok'],
@@ -2580,15 +2593,16 @@ function renderHealth(data) {
     b.setAttribute('aria-pressed', String(hlShow === key));
     return b;
   })));
-  const open = services.filter((f) => f.status !== 'ok' && match(f) && (hlShow === 'all' || f.status === hlShow));
+  const open = services.filter((f) => f.status !== 'ok' && !accepted(f) && match(f) && (hlShow === 'all' || f.status === hlShow));
   // Redrawn only when what they show has changed: a poll that brings the same leaves a selection in them alone.
-  const drawn = JSON.stringify([rep && rep.at, all, busy, h.stuck, hlNote, hlShow, needle]);
+  const drawn = JSON.stringify([rep && rep.at, all, busy, h.stuck, hlNote, hlShow, needle, acc]);
   const redraw = drawn !== hlDrawn;
   hlDrawn = drawn;
   if (redraw) hl.findings.replaceChildren(...open.map(item));
   hl.empty.hidden = !rep || open.length > 0;
   hl.empty.textContent = counts.problem + counts.warn ? 'Nothing matches.' : 'Nothing to fix or review.';
-  const fine = services.filter((f) => f.status === 'ok' && match(f));
+  // Accepted first, then what passed: both folded under one heading.
+  const fine = [...services.filter((f) => accepted(f) && match(f)), ...services.filter((f) => f.status === 'ok' && match(f))];
   hl.fineFold.hidden = !fine.length;
   hl.fineCount.textContent = `(${fine.length})`;
   if (redraw) {
@@ -2625,6 +2639,15 @@ function renderHealth(data) {
   if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, paneShown('clock') ? 'clock-scan' : 'scan'); return; }
   clearTimeout(hlPoll);
   hlPoll = setTimeout(loadHealth, busy ? 2000 : here ? 15000 : 30000);
+}
+
+// Accept a review finding (or take it back): the hub keeps the list; the page draws it again at once.
+async function hlAccept(key, title, yes) {
+  try {
+    const r = await postJSON('/admin/health', { action: yes ? 'accept' : 'unaccept', key, title });
+    hlNote = { fid: key, text: yes ? 'Accepted. It is under Passed and accepted, below.' : 'Taken back.', ok: true };
+    if (hlLast) renderHealth({ ...hlLast, accepted: r.accepted || {} });
+  } catch (e) { hlNote = { fid: key, text: e.message, ok: false }; if (hlLast) renderHealth(hlLast); }
 }
 
 async function loadHealth() {
@@ -3164,8 +3187,8 @@ function signalWords(dbm) {
 // A link's uptime on its card: the last 72 hours by hour and 72 days by day (githubstatus.com's
 // format), from the watchdog's five-minute record (linkhistory.py), drawn by heatmap.js.
 // Always shown, not folded: a folded one closed itself on the pane's redraws.
-function uptimeSection(iface) {
-  const u = netData && netData.uptime && netData.uptime[iface];
+function uptimeSection(iface, data = netData) {
+  const u = data && data.uptime && data.uptime[iface];
   const fold = el('div', { className: 'net-uptime' });
   const sm = u && u.summary;
   const time = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
@@ -3241,9 +3264,9 @@ function deviceCard(inv, d, wifi, hazards) {
   }
   // What the box knows about this device, in words: what to review first, then what is known.
   const mine = hazards.filter((h) => h.iface === d.iface);
-  const look = mine.filter((h) => h.status !== 'ok'), known = mine.filter((h) => h.status === 'ok');
+  const look = mine.filter((h) => h.status === 'problem' || h.status === 'warn'), known = mine.filter((h) => h.status === 'ok' || h.status === 'accepted');
   const fact = (h) => el('li', {}, el('strong', { textContent: h.title }), h.detail ? `: ${h.detail}` : '',
-    h.fix ? el('span', { className: 'setting-desc', textContent: ` ${h.fix}` }) : null);
+    h.fix ? el('span', { className: 'setting-desc', textContent: ` ${h.fix}` }) : null, hazardControls(h));
   if (look.length) kids.push(section(line('Needs review', ''), el('ul', { className: 'net-facts' }, ...look.map(fact))));
   if (known.length) kids.push(section(line('Known limitations', ''), el('ul', { className: 'net-facts' }, ...known.map(fact))));
   return el('div', { className: 'net-device setting' }, ...kids);
@@ -3351,14 +3374,32 @@ function drawNetTabs(data, inv, u) {
   const wired = inv ? inv.wired : [];
   netTabs.wiredCard.hidden = !!inv && !wired.length;
   netTabs.wiredNow.replaceChildren(...wired.map((w) => netLine(w.iface, linkNow(inv, w) + (up && up.iface === w.iface ? ' The box\'s link to your network.' : ''))));
-  // Hotspot: how it is doing, from the same inventory (its radio, channel, guests, and whether it follows the WiFi).
+  drawApHealth();
+}
+
+// The hotspot's status card: switched on or off (the root helper's record, apRun), against what runs (the inventory's
+// radios in AP mode), and its up and down from the watchdog's record, as the Overview draws it. Switched on but no
+// radio serving it is said as a fault, not as "Not running".
+function drawApHealth(data = netData) {
+  const inv = data && data.inventory;
+  const wifi = inv ? inv.radios.filter((r) => r.type !== 'AP') : [];
   const aps = inv ? inv.radios.filter((r) => r.type === 'AP') : [];
-  netTabs.apHealth.replaceChildren(...(aps.length ? aps.flatMap((a) => {
+  const on = apRun ? !!apRun.up : null;
+  const lines = aps.flatMap((a) => {
     const shared = wifi.find((r) => r.phy === a.phy);
     const n = (a.stations || []).length;
     return [netLine(a.iface, `Running${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ''}` : ''}. ${n} guest device${n === 1 ? '' : 's'} joined.`),
       shared ? netLine('Its radio', `Shared with the WiFi of the box (${shared.iface}). It follows the channel of that network, so a roam or a reconnect there moves guests too.`) : null];
-  }) : [el('p', { className: 'setting-desc', textContent: inv ? 'Not running.' : 'Not checked yet.' })]));
+  });
+  if (!aps.length) {
+    lines.push(!inv ? el('p', { className: 'setting-desc', textContent: 'Not checked yet.' })
+      : on ? el('p', { className: 'setting-desc bad', textContent: 'Down: the hotspot is switched on, but no radio is serving it. Guests cannot join. '
+        + 'The Box doctor says why (hostapd, its connection, or dnsmasq). Disable and enable the hotspot below to start it again.' })
+        : el('p', { className: 'setting-desc', textContent: on === false ? 'Switched off.' : 'Not running.' }));
+  }
+  // Its record, by hour and by day: the hotspot's interface as the watchdog saw it.
+  const hist = Object.keys((data && data.uptime) || {}).filter((i) => data.uptime[i].kind === 'hotspot');
+  netTabs.apHealth.replaceChildren(...lines.filter(Boolean), ...hist.map((i) => uptimeSection(i, data)));
 }
 
 function renderNetwork(data) {
@@ -3384,13 +3425,17 @@ function renderNetwork(data) {
   // A card per device, in plain words: what it is, what it's doing, what manages it, whether it
   // can run the hotspot and on what conditions, and the warnings that are about it.
   const shownIfaces = new Set(inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : []);
-  const hz = inv ? [...inv.hazards].sort((x, y) => RANK[x.status] - RANK[y.status]) : [];
+  // A review item accepted (on this page or the Box doctor's, one list: "net:<id>") is said as that and sorts with the passed.
+  const accNet = data.accepted || {};
+  const hz = inv ? inv.hazards.map((h) => (h.status === 'warn' && accNet[`net:${h.id}`] ? { ...h, status: 'accepted' } : h))
+    .sort((x, y) => (RANK[x.status] ?? 2) - (RANK[y.status] ?? 2)) : [];
   net.devices.replaceChildren(...(inv ? [...inv.radios.map((r) => deviceCard(inv, r, true, hz)), ...inv.wired.map((w) => deviceCard(inv, w, false, hz))] : []));
   drawNetTabs(data, inv, u);
   net.hazards.replaceChildren(...hz.filter((h) => !(h.iface && shownIfaces.has(h.iface))).map((h) => el('div', { className: 'net-device setting' },
     el('h4', {}, el('span', { textContent: h.title }), el('span', { className: { problem: 'bad-pill', warn: 'warn-pill', ok: 'ok-pill' }[h.status] || 'info-pill', textContent: STATE_WORD[h.status] || h.status })),
     h.detail ? el('p', { className: 'setting-desc', textContent: h.detail }) : null,
-    h.fix ? el('p', { className: 'setting-desc', textContent: h.fix }) : null)));
+    h.fix ? el('p', { className: 'setting-desc', textContent: h.fix }) : null,
+    hazardControls(h))));
   const sn = netNotes.scan;
   say(sn ? sn.text : '', sn ? sn.ok : true, net.scanNote);
   const jn = netNotes.join;
@@ -3816,6 +3861,29 @@ function applyChangesHidden() {
   if (lead) lead.dataset.allHidden = String(hiddenNow === rows.length && !changesShowAll);
 }
 
+// What a review item on this page can do here: another hotspot profile, delete or ignore it (as under Changes made
+// here); any review item, accept it as it is (or take that back), on the Box doctor's list as "net:<id>".
+function hazardControls(h) {
+  const btns = [];
+  const ap = /^other-ap:(.+)$/.exec(h.id || '');
+  if (ap && h.status === 'warn') {
+    btns.push(actionButton('Delete profile', () => {
+      if (confirm('Delete this hotspot profile? The box keeps a copy. Restore profile, under Changes made here, brings it back.')) netRequest({ action: 'otherap', uuid: ap[1], do: 'remove' }, 'otherap');
+    }, { className: 'small' }), ' ',
+    actionButton('Ignore profile', () => netRequest({ action: 'otherap', uuid: ap[1], do: 'leave' }, 'otherap'), { className: 'small' }));
+  }
+  if (h.status === 'warn' || h.status === 'accepted') {
+    const on = h.status === 'accepted';
+    btns.push(' ', el('button', { type: 'button', className: 'link-button', textContent: on ? 'Take back' : 'Accept',
+      title: on ? 'Return this item to the review list.' : 'Leave it as it is and take it out of the review count. The Box doctor shows it as accepted too.',
+      onclick: async () => {
+        try { await postJSON('/admin/health', { action: on ? 'unaccept' : 'accept', key: `net:${h.id}`, title: h.title }); loadNetwork(); }
+        catch (e) { say(e.message, false, net.scanNote); }
+      } }));
+  }
+  return btns.length ? el('p', { className: 'library-buttons' }, ...btns) : null;
+}
+
 async function netRequest(body, where) {
   try {
     netWaiting = { id: (await postJSON('/admin/network', body)).id, where };
@@ -3872,6 +3940,7 @@ function apFill(sel, values, keep) {
 }
 function renderAp(run) {
   apRun = run;
+  if (netData) drawApHealth();
   const p = run.up ? run.plan : run.preview;
   const where = (q) => (q && q.channel ? ` on ${q.iface === 'ap0' || q.kind === 'own-channel' || q.kind === 'follow' ? 'a second interface beside ' + q.iface : q.iface}, channel ${q.channel}` : '');
   apEl.state.textContent = run.up
@@ -4456,6 +4525,8 @@ function fillHeadBlocks() {
       const busy = lastAddons.pending > 0 || !!adoWaiting || !!lastAddons.progress;
       buttons.push(el('button', { type: 'button', className: 'action-btn primary', textContent: 'Add', disabled: busy, onclick: () => addonSet(addon, true) }));
     }
+    const held = r && r.kind === 'local' && lastLocal && (lastLocal.added || []).find((x) => x.id === id && x.catalogue && x.catalogue.status === 'held');
+    if (held) buttons.push(approveButton(held, lastLocal, 'action-btn primary'));
     if (r && r.kind === 'local' && r.state !== 'installed') buttons.push(el('a', { className: 'action-btn', href: r.offered ? '#local-catalogue' : '#local-added', textContent: 'Add from the catalogue' }));
     if (r && r.kind === 'app' && r.state === 'available') buttons.push(el('a', { className: 'action-btn', href: `#app-updates-${id}`, textContent: 'Install…' }));
     if (svc && svc.unit && svc.state !== 'missing') {
@@ -4808,9 +4879,8 @@ function renderLocal(data) {
       el('span', { className: 'setting-desc', textContent: capsText(a.capabilities) + (a.from_catalogue ? '' : ' Added by pasting its manifest.') }),
       catalogueNote(a),
       el('span', { className: 'library-buttons' },
-        inst && inst.commit ? el('a', { className: 'head-btn', href: a.href, target: '_blank', textContent: 'Open' }) : null,
-        a.catalogue && a.catalogue.status === 'held'
-          ? el('button', { type: 'button', className: 'action-btn', textContent: 'Approve changed permissions', onclick: () => localAccept(a, data) }) : null,
+        inst && inst.commit ? el('a', { className: 'action-btn', href: a.href, target: '_blank', rel: 'noopener', textContent: 'Open' }) : null,
+        a.catalogue && a.catalogue.status === 'held' ? approveButton(a, data) : null,
         el('button', { type: 'button', className: 'action-btn', textContent: 'Remove web add-on', onclick: () => localRemove(a) })),
       note(a.id)));
   }) : [el('p', { className: 'setting-desc', textContent: 'None added yet.' })]));
@@ -4828,6 +4898,13 @@ function renderLocal(data) {
   if (fetching) locPoll = setTimeout(() => { loadLocal(); loadAccess(); }, 1500);
 }
 
+// A held catalogue update: what changed in what the administrator agreed to (server.py _agreed_changes). Only its
+// consent text: the catalogue reworded it, nothing more is allowed than before. Anything else: the permissions changed.
+const CONSENT_TEXT = 'its consent text';
+const heldTextOnly = (a) => { const h = (a.catalogue || {}).held || []; return h.length > 0 && h.every((x) => x === CONSENT_TEXT); };
+const approveLabel = (a) => (heldTextOnly(a) ? 'Review and approve' : 'Approve changed permissions');
+const approveButton = (a, data, cls = 'action-btn') => el('button', { type: 'button', className: cls, textContent: approveLabel(a), onclick: () => localAccept(a, data) });
+
 // Where an added add-on stands against the catalogue (server.py catalogue_sync).
 function catalogueNote(a) {
   const c = a.catalogue;
@@ -4837,8 +4914,10 @@ function catalogueNote(a) {
     return el('span', { className: 'setting-desc', textContent: `Updated from the catalogue on ${day}. Changes: ${(c.changed || []).join(', ') || 'none to permissions, trust or source'}.` });
   }
   if (c.status === 'held') {
-    return el('span', { className: 'setting-desc bad', textContent: `The catalogue has a newer version that changes permissions, trust or source: ${(c.held || []).join(', ')}. `
-      + 'The version that you approved keeps running until you select Approve changed permissions.' });
+    return el('span', { className: 'setting-desc bad', textContent: (heldTextOnly(a)
+      ? 'The catalogue reworded the text you agreed to. Permissions, connections and source are the same. '
+      : `The catalogue has a newer version that changes permissions, trust or source: ${(c.held || []).join(', ')}. `)
+      + `The version that you approved keeps running until you select ${approveLabel(a)}.` });
   }
   if (c.status === 'gone') return el('span', { className: 'setting-desc', textContent: 'No longer in the catalogue. It keeps working, but the catalogue no longer updates it.' });
   return null;
@@ -4846,7 +4925,9 @@ function catalogueNote(a) {
 
 function localAccept(a, data) {
   const c = (data.catalogue || []).find((x) => x.id === a.id) || {};
-  if (!confirm(`${c.consent || ''}\n\nWhat changed: ${((a.catalogue || {}).held || []).join(', ')}.\n\n${capsText(c.capabilities)}`)) return;
+  const changed = heldTextOnly(a) ? 'The catalogue reworded the text you agreed to. Permissions, connections and source are the same.'
+    : `What changed: ${((a.catalogue || {}).held || []).join(', ')}.`;
+  if (!confirm(`${changed}\n\nThe new text:\n${c.consent || ''}\n\n${capsText(c.capabilities)}\n\nApprove it?`)) return;
   localPost({ action: 'accept', id: a.id, agree: true }, a.id, `${a.title}: the changed permissions are approved. Downloading the new version…`);
 }
 
@@ -5855,12 +5936,28 @@ let acctWaiting = null; // the root helper's request for the box's own login
 async function loadAccounts() {
   try { renderAccounts(await getJSON('/admin/accounts')); } catch (_) { acctEl.counts.textContent = 'Could not read the accounts.'; }
 }
-// The box's own login (for scripts): its reach, from the safest. Each said plainly; the password only at the console.
+// The box's own login (for scripts): its reach, from the safest. A chip only selects; Save changes applies it,
+// after the page has said what the change stops. The password only at the console.
 const LOGIN_REACH = [
   ['off', 'Script sign-in disabled', 'Scripts cannot sign in with the box password. The administration pages open only for a signed-in administrator account.'],
   ['local', 'Local scripts only', 'Scripts that run on the box (over SSH, or on its own timers) can use the box password. From any other device, the password does not work.'],
   ['network', 'Network scripts permitted', 'Any device that has the password can use it. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.'],
 ];
+let acctReachDraft = null; // the reach selected on the page, not saved yet
+// What saving a reach stops, said before it is saved; and whether it would leave no way into /admin from another device.
+function reachChange(v, admins) {
+  const accounts = admins ? ` The administrator accounts (${admins}) can still sign in from any device.` : '';
+  const lockout = !admins;
+  if (v === 'off') {
+    return { lockout, says: 'Saving this disables the box password. Scripts that use it (for example curl -u admin) stop working, and the browser sign-in window for the administration pages stops accepting it.'
+      + (lockout ? ' This box has no administrator account that has signed in over HTTPS, so nobody could open the administration pages. Create an administrator account and sign in with it over HTTPS first.' : accounts) };
+  }
+  if (v === 'local') {
+    return { lockout, says: 'Saving this limits the box password to the box itself. On every other device, including the one you are using now, scripts and the browser sign-in window stop accepting it.'
+      + (lockout ? ' This box has no administrator account that has signed in over HTTPS, so no other device could open the administration pages. Create an administrator account and sign in with it over HTTPS first.' : accounts) };
+  }
+  return { lockout: false, says: 'Saving this lets the box password work from every device on the box\'s network. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.' };
+}
 function renderAccounts(d) {
   const al = d.admin_login || { on: true, reach: 'network', password_set: true, https_admins: [], results: [] };
   if (acctWaiting) {
@@ -5869,19 +5966,29 @@ function renderAccounts(d) {
     else setTimeout(loadAccounts, 1000);
   }
   const admins = al.https_admins.join(', ');
-  const choose = async (reach) => {
-    if (reach === al.reach || acctWaiting) return;
-    if (reach === 'network' && !confirm('Let script sign-in with the box password work from other devices? The password goes with every request. Use it over HTTPS.')) return;
-    if (reach === 'off' && !confirm(`Disable script sign-in with the box password? Only the administrator accounts (${admins}) can then open the administration pages.`)) return;
-    try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', reach })).id; loadAccounts(); }
+  if (acctReachDraft === al.reach) acctReachDraft = null;
+  const pick = (reach) => { if (!acctWaiting) { acctReachDraft = reach === al.reach ? null : reach; renderAccounts(d); } };
+  const save = async () => {
+    const reach = acctReachDraft;
+    if (!reach || acctWaiting) return;
+    if (!confirm(`${reachChange(reach, admins).says} Save this change?`)) return;
+    try { acctWaiting = (await postJSON('/admin/accounts', { action: 'admin-login', reach })).id; acctReachDraft = null; loadAccounts(); }
     catch (err) { say(err.message, false, acctEl.note); }
   };
-  // Off needs an admin account that has signed in over HTTPS (so the box can't be locked out); on needs a password.
-  const blocked = (v) => !!acctWaiting || (v === 'off' ? !admins : !al.password_set);
-  acctEl.loginChoices.replaceChildren(chipRow('Script sign-in', LOGIN_REACH.map(([v, w]) => [v, w]), al.reach, choose, blocked));
+  const discard = () => { acctReachDraft = null; renderAccounts(d); };
+  // A reach other than off needs a password, set at the console.
+  const blocked = (v) => !!acctWaiting || (v !== 'off' && !al.password_set);
+  const change = acctReachDraft && reachChange(acctReachDraft, admins);
+  acctEl.loginChoices.replaceChildren(
+    chipRow('Script sign-in', LOGIN_REACH.map(([v, w]) => [v, w]), acctReachDraft || al.reach, pick, blocked),
+    ...(change ? [el('div', { className: 'reach-change' },
+      el('p', { className: 'setting-desc', textContent: `Selected, not saved. ${change.says}` }),
+      el('span', { className: 'library-buttons' },
+        actionButton('Save changes', save, { disabled: !!acctWaiting || change.lockout, title: change.lockout ? 'Create an administrator account first.' : '' }), ' ',
+        actionButton('Discard', discard)))] : []));
   const said = (LOGIN_REACH.find(([v]) => v === al.reach) || LOGIN_REACH[0])[2];
-  acctEl.login.textContent = `${said}${!al.password_set ? ' It has no password yet: set one at the box\'s console first (above).' : ''}`
-    + (al.reach !== 'off' && !admins ? ' To disable it, first create an administrator account and sign in with it over HTTPS.' : '');
+  acctEl.login.textContent = `Now: ${said}${!al.password_set ? ' It has no password yet: set one at the box\'s console first (above).' : ''}`
+    + (al.reach !== 'off' && !admins ? ' To disable it or limit it to the box itself, first create an administrator account and sign in with it over HTTPS.' : '');
   acctEl.settings.elements.signup.value = d.settings.signup;
   acctEl.settings.elements.http.value = d.settings.http;
   const c = d.counts;
@@ -6166,14 +6273,17 @@ function pictureRow(which) {
     img.onerror = () => { remove.disabled = true; note.textContent = p.none; };
     img.src = `${p.url}?${Date.now()}`;
   };
-  const refreshTab = () => {
+  // This tab's icon follows at once: the new favicon, or once removed, the page's own emoji (themes.js keeps it in data-own).
+  const refreshTab = (removed) => {
     if (which !== 'favicon') return;
     let link = document.querySelector('link[rel="icon"]');
     if (!link) { link = el('link', { rel: 'icon' }); document.head.append(link); }
-    link.href = `/favicon.ico?${Date.now()}`;
+    if (link.dataset.own === undefined) link.dataset.own = link.getAttribute('href') || '';
+    if (removed && link.dataset.own) link.href = link.dataset.own;
+    else link.href = `/favicon.ico?${Date.now()}`;
   };
   const send = async (body) => {
-    try { await postJSON('/admin/picture', { which, ...body }); show(); refreshTab(); } catch (e) { note.textContent = e.message; }
+    try { await postJSON('/admin/picture', { which, ...body }); show(); refreshTab(!!body.remove); } catch (e) { note.textContent = e.message; }
   };
   file.addEventListener('change', async () => {
     const f = file.files[0];

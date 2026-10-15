@@ -234,6 +234,14 @@ try:
 except ValueError as exc:
     check("reach without a password: refused, the console named", "script-login" in str(exc), exc)
 H.set_login("pw-for-scripts")
+ready = H._https_admins
+H._https_admins = lambda: []
+try:
+    H.admin_login({"reach": "local"}); check("from the box itself with no administrator account: refused (a lockout)", False)
+except ValueError as exc:
+    check("from the box itself with no administrator account: refused (a lockout), set-admin named",
+          "set-admin" in str(exc) and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] != "local", exc)
+H._https_admins = ready
 H.admin_login({"reach": "local"})
 rec = json.loads(H.ADMIN_LOGIN_STATE.read_text())
 check("from the box itself: the login on, the network's copy holding none; said in the record", rec == {"on": True, "reach": "local", "password_set": True}

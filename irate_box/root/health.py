@@ -97,13 +97,16 @@ def run(*cmd, timeout=60, **kw):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
-def _f(fid, check, status, detail, fix="", actions=(), go=None):
+def _f(fid, check, status, detail, fix="", actions=(), go=None, glance=None):
     """status: ok | warn | problem. actions: [{choice, label, confirm?}]. go: where it is changed, for the page's
     link: {section: an element id that is always there, mark: the very setting inside it (drawn later, perhaps),
-    where: the words}; the page opens the section and highlights the mark."""
+    where: the words}; the page opens the section and highlights the mark. glance: the finding in a few words, for
+    the doctor's Summary (detail is the whole of it, below)."""
     out = {"id": fid, "check": check, "status": status, "detail": detail, "fix": fix, "actions": list(actions)}
     if go:
         out["go"] = go
+    if glance:
+        out["glance"] = glance
     return out
 
 
@@ -300,10 +303,21 @@ def check_units():
                       "from their makers (Roll back, or another channel), or accept it if the board does not use it.",
                       [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? The doctor clears its failed mark "
                             "and starts it.")]))
+    # The image's LED service: it fails on boards whose light has no trigger file, and the box has a switch for it
+    # (Recovery and monitoring, The image's LED service). Said as that, with that switch, not as a stranger to debug.
+    if ARMBIAN_LED in failed and not ours(ARMBIAN_LED):
+        failed = [u for u in failed if u != ARMBIAN_LED]
+        out.append(_f(f"other-failed:{ARMBIAN_LED}", "The image's LED service failed", "warn",
+                      f"{ARMBIAN_LED} puts the LEDs back as they were at the last shutdown. On this board it fails at every start: "
+                      "the light has no trigger file, so the state it saved is one it then refuses. The box's own status light "
+                      "does not need it.", "Switch it off: it stops failing. The same switch is on Recovery and monitoring.",
+                      [_act("armbian-led:off", "Switch it off", f"Switch {ARMBIAN_LED} off (mask it)? You can switch it on again "
+                            "on Recovery and monitoring.")],
+                      go=_go("health-settings", "Recovery and monitoring", "hs-armbian-led")))
     for u in [u for u in failed if not ours(u) and u not in watched][:12]:
         out.append(_f(f"other-failed:{u}", f"{u} failed (not irate-box's)", "warn",
                       "A service of the image's or of your own stopped with an error. The hub does not use it.",
-                      f"See why: journalctl -u {u} -n 50. Often harmless on these images: accept it, or start it again.",
+                      f"See why: journalctl -u {u} -n 50. Often harmless on these images: start it again, or select Accept to leave it.",
                       [_act(f"other-restart:{u}", "Start it again", f"Start {u} again? It is not part of irate-box. The doctor "
                             "only clears its failed mark and starts it.")]))
     return out
@@ -542,19 +556,22 @@ def check_uplink():
         st = json.loads(uplink_report().read_text())
     except (OSError, ValueError):
         return [_f("uplink-report", "Uplink watchdog report", "warn", "The watchdog has not written a report yet.",
-                   "journalctl -u irate-box-uplink -n 30", [_act("unit-restart:irate-box-uplink.service", "Start it again")])]
+                   "journalctl -u irate-box-uplink -n 30", [_act("unit-restart:irate-box-uplink.service", "Start it again")],
+                   glance="No report yet.")]
     age = time.time() - st.get("at", 0)
     limit = 3 * max(st.get("settings", {}).get("check", 60), 60)
     if age > limit:
         return [_f("uplink-report", "Uplink watchdog report", "problem", f"Last report {int(age // 60)} min ago: it has stopped looking.",
                    "journalctl -u irate-box-uplink -n 30; systemctl restart irate-box-uplink",
-                   [_act("unit-restart:irate-box-uplink.service", "Start it again")])]
+                   [_act("unit-restart:irate-box-uplink.service", "Start it again")], glance=f"Stopped: last report {int(age // 60)} min ago.")]
     from irate_box.hub import uplink
     try:
         said = uplink.words(uplink.validate(st.get("chosen") or {}))
     except (ValueError, TypeError, KeyError):
         said = "settings not readable"
-    out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, {said}.")]
+    state = {"up": "Up", "checking": "Checking", "down": "Down", "stalled": "Down, nothing left to try"}.get(st.get("state"), str(st.get("state")).capitalize())
+    out = [_f("uplink-report", "Uplink watchdog report", "ok", f"{st.get('state')} on {st.get('iface')}, {said}.",
+              glance=f"{state} on {st.get('iface')}.")]
     # Stalled: down, with nothing left the level allows that could help.
     stall = st.get("stall") if st.get("state") == "stalled" else None
     if stall:
@@ -913,7 +930,7 @@ def check_builds(now=None):
     total = shutil.disk_usage(STATE).total if STATE.exists() else 0
     if used and total:
         share = used / total
-        out.append(_f("builds-disk", "What builds take", "warn" if share > 0.2 else "ok",
+        out.append(_f("builds-disk", "Space used by firmware builds", "warn" if share > 0.2 else "ok",
                       f"{used >> 20} MB ({share:.0%} of the card): runs, and the builder's tools and caches.",
                       "Git → Builds: delete old runs (the Firmware Factory keeps each target's two newest). "
                       "The builder's PlatformIO tools are in /var/lib/hub/ci/home." if share > 0.2 else ""))
@@ -1219,10 +1236,12 @@ def check_crashwatch(now=None):
     if kept:
         detail += f" Kept as it happened: {len(kept)} this week, the last in {cw.CRASHES}/{kept[-1]['dir']}/ (snapshots.log, kernel.log)."
     failed = any(e.get("kind") in ("failed", "driver-reset") for e in day)
+    glance = (f"Watching {', '.join(run.get('radios') or {}) or 'no radio'}" + ("; it failed in the last day" if failed else "")
+              + (f"; {len(kept)} failure{'s' if len(kept) != 1 else ''} kept this week" if kept else "") + ".")
     out.append(_f("crash-radio", "The WiFi radio", "warn" if failed else "ok", detail,
                   "A radio that keeps failing is often power (a weak supply, a long USB lead) or its driver. "
                   "What is done when it fails: Network → Connection settings → Failed radio." if failed else "",
-                  go=_go("net-watchdog-card", "Network → Failed radio", "up-wedge") if failed else None))
+                  go=_go("net-watchdog-card", "Network → Failed radio", "up-wedge") if failed else None, glance=glance))
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
     on = [w for w, v in (("restarts after a kernel panic or lockup", s["panic"]), ("a watchdog restarts it if it freezes", s["watchdog"])) if v]
     said = "; ".join(on).capitalize() + "." if on else "Nothing restarts it: a frozen box waits for someone to pull the plug."
@@ -1333,21 +1352,23 @@ def check_led(ls=None, active=None):
         return []
     if not ls.get("found"):
         return [_f("led", "Status light", "ok", "This board has no LED the box could use as a status light (power LEDs are "
-                   "never taken).")]
+                   "never taken).", glance="No LED on this board.")]
     name, show, run_ = ls.get("led"), ls.get("show"), ls.get("running") or {}
     flash = [_act(f"led-flash:{n}", f"Flash {n}") for n in list(ls["found"])[:4]]
     if show == "leave":
         return [_f("led", "Status light", "ok", f"Left as the image set it ({name or 'no LED picked'}). The box can blink it while "
-                   "everything is well.", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"))]
+                   "everything is well.", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"),
+                   glance=f"Left as the image set it ({name or 'no LED picked'}).")]
     unit_on = (active or unit_props)("irate-box-led.service").get("ActiveState") == "active"
     if not unit_on:
         return [_f("led", "Status light", "problem", f"{name} should show the state of the box, but its service is not running: the "
                    "light says nothing.", "journalctl -u irate-box-led -n 30",
-                   [_act("unit-restart:irate-box-led.service", "Start it again")])]
+                   [_act("unit-restart:irate-box-led.service", "Start it again")], glance=f"{name}: its service is not running.")]
     how = ("driven by the box: this kernel has no LED triggers, so nothing else can blink it" if not (ls["found"].get(name) or {}).get("triggers")
            else "driven by the box, so it stops when the box does")
     return [_f("led", "Status light", "ok", f"{name}: {LED_SHOW_LABEL.get(show, show).lower()}; now {run_.get('words', 'not reported yet')} "
-               f"({how}).", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"))]
+               f"({how}).", "Set on Recovery and monitoring.", flash, go=_go("health-settings", "Recovery and monitoring", "hs-led-show"),
+               glance=f"{name}: {LED_SHOW_LABEL.get(show, show).lower()}.")]
 
 
 def check_watchers(now=None):

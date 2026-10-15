@@ -49,6 +49,7 @@ run sim_backup.py
 run sim_declared_services.py
 run sim_one_login.py
 run sim_account_nav.py
+run sim_health_accept.py
 run sim_secdoctor_accounts.py
 run sim_secdoctor_sandbox.py
 run sim_ap_refresh.py
@@ -87,6 +88,7 @@ run sim_syncthing_gui.py
 run sim_confine.py
 run sim_reach.py
 run theme_guard.py
+run link_guard.py
 run root_routes_guard.py
 run sim_root_links.py
 run cgit_guard.py

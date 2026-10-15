@@ -135,4 +135,15 @@
     palettes: PALETTES, palette: palette, showPalette: showPalette, choosePalette: choosePalette };
   show(current());
   showPalette(palette());
+
+  // The tab's icon: the page's own emoji, unless the administrator uploaded a favicon (Appearance), which /layout.css
+  // says with its time. The page's own is kept in data-own, for the Appearance page to put back when it is removed.
+  window.addEventListener('load', function () {
+    var v = getComputedStyle(document.documentElement).getPropertyValue('--favicon').trim().replace(/"/g, '');
+    if (!v) return;
+    var link = document.querySelector('link[rel="icon"]');
+    if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+    if (!link.dataset.own) link.dataset.own = link.getAttribute('href') || '';
+    link.href = '/favicon.ico?v=' + v;
+  });
 })();

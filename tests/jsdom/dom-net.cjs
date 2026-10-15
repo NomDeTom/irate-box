@@ -27,6 +27,7 @@ const w = dom.window;
 const posted = [];
 w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST' && u === '/admin/network') posted.push(JSON.parse(opts.body));
+  if (opts.method === 'POST' && u === '/admin/health') { posted.push({ health: JSON.parse(opts.body) }); return new Response(JSON.stringify({ accepted: {} }), { status: 200 }); }
   if (opts.method === 'POST' && u === '/admin/network') return new Response(JSON.stringify({ id: 'x' }), { status: 202 });
   if (u === '/admin/network') {
     // The root helper's answer to what was posted: done, so the page is not left busy.
@@ -192,6 +193,16 @@ setTimeout(() => {
       && sent.settings.guests === 'protect' && sent.settings.on_wedge === 'ladder' && sent.settings.sensitivity === 2
       && sent.settings.overrides.check === 45 && sent.settings.overrides.steps.reboot === null, JSON.stringify(posted));
     check('a bad custom value is refused on the page', posted.filter((p) => p.action === 'settings').length === 1 && /a number/.test(t('#up-note')[0] || ''), t('#up-note')[0]);
+    // A review item here can be acted on here: another hotspot profile deleted or ignored, any one accepted.
+    const apCard = [...d.querySelectorAll('#net-hazards .net-device')].find((c) => /Another hotspot profile/.test(c.textContent));
+    const apBtn = (word) => apCard && [...apCard.querySelectorAll('button')].find((b) => b.textContent === word);
+    check('another hotspot profile: Delete profile, Ignore profile and Accept on its card', !!(apBtn('Delete profile') && apBtn('Ignore profile') && apBtn('Accept')),
+      apCard && apCard.textContent);
+    if (apBtn('Ignore profile')) apBtn('Ignore profile').click();
+    check('  Ignore profile: asked of the box, for that profile', posted.some((b) => b.action === 'otherap' && b.do === 'leave' && b.uuid === '33564e5b-5cb3-4b45-ac5f-a092c4f7ddba'), JSON.stringify(posted.slice(-2)));
+    if (apBtn('Accept')) apBtn('Accept').click();
+    check('  Accept: on the Box doctor\'s list, as net:<its id>', posted.some((b) => b.health && b.health.action === 'accept' && b.health.key === 'net:other-ap:33564e5b-5cb3-4b45-ac5f-a092c4f7ddba'),
+      JSON.stringify(posted.slice(-2)));
     check('no page errors', errors.length === 0, errors.join(' | '));
     console.log(fails ? `${fails} failure(s)` : 'ok');
     process.exit(fails ? 1 : 0);

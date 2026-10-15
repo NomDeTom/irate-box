@@ -770,12 +770,25 @@ def home_page(signed_in=False):
 # The list pages (a manifest with a "menu"), at their tile's href. Rendered on each request:
 # discovered entries come from the installed apps, which an update changes.
 MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
+# A page's tab icon: its emoji drawn as an SVG in the page itself (no request). The first emoji of a tile's icon
+# ("📡📻" is 📡), with what joins to it (U+FE0F, a skin tone, a ZWJ sequence, a flag's pair).
+FIRST_EMOJI = re.compile("[\U0001F1E6-\U0001F1FF]{2}|.[\uFE0F\U0001F3FB-\U0001F3FF]*(?:\u200D.[\uFE0F]*)*")
+
+
+def emoji_icon(icon, fallback="🏴\u200d☠️"):
+    m = FIRST_EMOJI.match(icon or "")
+    e = html.escape(m.group(0) if m else fallback)
+    return ('<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22>'
+            f'<text y=%22.9em%22 font-size=%2290%22>{e}</text></svg>">')
+
+
 MENU_TEMPLATE = """<!DOCTYPE html>
 <html lang="en" class="art-page">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title} · Hub</title>
+  {icon}
   <link rel="stylesheet" href="style.css">
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
@@ -828,6 +841,7 @@ def menu_page(m, signed_in=False):
     art_html = '  <div class="admin-art" aria-hidden="true"></div>\n' if art else ""
     banner = f'  <pre class="menu-ident" aria-hidden="true">{html.escape(chr(10).join(lines))}</pre>\n' if lines else ""
     return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html, banner=banner, title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
+                                icon=emoji_icon((m.get("tile") or {}).get("icon")),
                                 about=html.escape(menu.get("about", "")).replace("--", "-"),
                                 items="\n".join(items)).encode()
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
@@ -1870,17 +1884,41 @@ def security_accepted():
 def security_accept(key, title, yes):
     if not isinstance(key, str) or not ACCEPT_KEY_RE.match(key):
         raise ValueError("key: an item's key from the report")
-    data = security_accepted()
+    return _accept(SECURITY_ACCEPTED, security_accepted(), key, title, yes)
+
+
+def _accept(path, data, key, title, yes):
+    """One doctor's accepted list, a key accepted (with when and its title) or taken back; written whole."""
     if yes:
         if len(data) >= 500 and key not in data:
             raise ValueError("500 accepted already: take some back first")
         data[key] = {"at": time.time(), "title": str(title or "")[:200]}
     else:
         data.pop(key, None)
-    tmp = SECURITY_ACCEPTED.parent / (SECURITY_ACCEPTED.name + ".tmp")
+    tmp = path.parent / (path.name + ".tmp")
     tmp.write_text(json.dumps(data))
-    os.replace(tmp, SECURITY_ACCEPTED)
+    os.replace(tmp, path)
     return data
+
+
+# The Box doctor's own accepted list: review findings (warn) the owner has looked at and leaves as they are, by the
+# finding's id. The page lists them apart and leaves them out of its counts; a finding that becomes a problem shows again.
+HEALTH_ACCEPTED = STATE_DIR / "health-accepted.json"
+HEALTH_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:/._@+-]{0,180}$")
+
+
+def health_accepted():
+    try:
+        data = json.loads(HEALTH_ACCEPTED.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def health_accept(key, title, yes):
+    if not isinstance(key, str) or not HEALTH_KEY_RE.match(key):
+        raise ValueError("key: a finding's id from the report")
+    return _accept(HEALTH_ACCEPTED, health_accepted(), key, title, yes)
 
 
 def _tls_status():
@@ -2135,7 +2173,7 @@ def health_snapshot():
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
             "ladder": jsonlog.read(uplink.LADDER), "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
             "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
-            "progress": update_progress(), "watchers": watchers_glance()}
+            "progress": update_progress(), "watchers": watchers_glance(), "accepted": health_accepted()}
 
 
 def watchers_glance():
@@ -2178,6 +2216,7 @@ def network_snapshot():
             "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
             "metered": _metered_view(),
             "other_ap": load(CONTROL_DIR / "other-ap.json") or {},   # other hotspot profiles: removed or left
+            "accepted": health_accepted(),   # review items accepted (the Box doctor's list: a network one is "net:<id>")
             "wifisync": load(CONTROL_DIR / "wifisync.json") or {},   # mPWRD-OS's wifisync: as the image had it, if changed here
             "levels": uplink.levels(),
             "pending": _pending_actions("net-") + _pending_actions("uplink-") + _pending_actions("wifi-"), "results": control_results(5)}
@@ -3800,6 +3839,10 @@ class Handler(BaseHTTPRequestHandler):
             body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
                     "body.admin { --page-width: %drem; }\n"
                     % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"]))
+            # An uploaded favicon (Appearance) over the pages' own emoji icons: themes.js reads this and swaps it in.
+            fav = picture_mtime("favicon")
+            if fav:
+                body += ':root { --favicon: "%d"; }\n' % int(fav)
             if not cur["krab_art"]:
                 body += ('.admin-art, .art-loop { display: none !important; }\n'
                          '[data-art]:not([data-art=""]) { padding-bottom: 0 !important; }\n')
@@ -3883,6 +3926,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
             self.send_header("Content-Length", len(body))
+            # Its header buttons follow who is signed in: never a copy from before signing in or out.
+            self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(body)
             return
@@ -4409,8 +4454,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "health-scan"})})
             elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "health-fix", "choice": payload["choice"]})})
+            elif payload.get("action") in ("accept", "unaccept"):
+                # The owner's own: a review finding looked at and left as it is (or taken back). The hub's file; no root.
+                try:
+                    data = health_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Taken back."})
             else:
-                self.send_json(400, {"error": "action must be scan, or fix with a choice the doctor offered"})
+                self.send_json(400, {"error": "action must be scan, accept, unaccept, or fix with a choice the doctor offered"})
             return
 
         if path == "/admin/network":
