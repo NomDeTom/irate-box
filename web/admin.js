@@ -1372,10 +1372,13 @@ const upd = {
   forceNote: document.getElementById('force-note'),
 };
 const MARK = { ok: '✅', warn: '⚠️', problem: '❌' };
-const checkItem = (status, title, detail, fix) => el('li', { className: `check check-${status}` },
+// evidence: what a check saw (an error line, a file), as data; note: what the check does not show.
+const checkItem = (status, title, detail, fix, evidence = [], note = '') => el('li', { className: `check check-${status}` },
   el('span', { textContent: `${MARK[status]} ` }), el('strong', { textContent: title }),
   detail ? el('span', { textContent: ` — ${detail}` }) : null,
-  fix ? el('span', { className: 'setting-desc', textContent: fix }) : null);
+  fix ? el('span', { className: 'setting-desc', textContent: fix }) : null,
+  note ? el('span', { className: 'setting-desc', textContent: note }) : null,
+  evidenceList(evidence));
 const UPD_DOING = { check: 'Checking for updates', fetch: 'Downloading update', install: 'Installing the update', addon: 'Changing an add-on', repair: 'Running the installer again' };
 let updWaiting = null; // { id, action }
 let updPoll = null;
@@ -1419,13 +1422,16 @@ function renderUpdoctor(d) {
   })));
   // Each row named by its check, not its place in the list, so a link to it survives a new report.
   const slug = (f) => `ud-${String(f.id || f.check).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  // A finding in the shared shape (finding.py) brings its parts, its commands and its place to go; a report kept from
+  // before (check, detail, fix) has its command and its place found in its words, as the Box doctor's older reports.
   const item = (f) => {
     const x = healthDo(f, false);
     // The cache and a failed verification are dealt with in Updates' Maintenance, where their buttons are.
-    if (f.status !== 'ok' && /cache|cached copy|verif/i.test(`${f.check} ${f.fix || ''}`) && !x.controls.some((c) => c.getAttribute && c.getAttribute('href') === '#update-maint')) {
+    if (!f.summary && f.status !== 'ok' && /cache|cached copy|verif/i.test(`${f.check} ${f.fix || ''}`) && !x.controls.some((c) => c.getAttribute && c.getAttribute('href') === '#update-maint')) {
       x.controls.push(el('a', { className: 'action-btn go-btn', href: '#update-maint', textContent: 'Go to Updates → Maintenance →' }));
     }
-    return findingRow({ id: slug(f), state: f.status, title: f.check, detail: f.detail, how: x.how, controls: x.controls });
+    return findingRow({ id: slug(f), state: f.status, title: f.title || f.check, ...findingParts(f), how: x.how,
+      commands: f.status === 'ok' ? [] : x.commands || [], controls: x.controls });
   };
   const open = all.filter((f) => f.status !== 'ok' && (udShow === 'all' || f.status === udShow));
   upd.findings.replaceChildren(...open.map(item));
@@ -1443,6 +1449,8 @@ function meteredOk(what) {
   if (!meteredNow || !meteredNow.metered) return true;
   return confirm(`The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). ${what} can use a lot of data. Continue?`);
 }
+// A result of the root helper in the reader's language: its message (msg.py) where it has one, else its English.
+const resultSaid = (r) => (r.msg ? AW.say(r.msg) : r.message);
 function renderUpdate(data) {
   drawSigning(data.signing, data.results);
   const m = data.metered || {};
@@ -1453,7 +1461,7 @@ function renderUpdate(data) {
   mEl.textContent = w ? `Scheduled updates and downloads have waited since ${new Date(w.since * 1000).toLocaleString()}. The box is on a metered network `
     + `(${w.connection || w.iface}, ${w.how}). They continue on another network. An update that you start here asks for approval first. To change this, mark the network as not metered in its settings (Network → WiFi).`
     : meteredNow && meteredNow.metered ? `The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). Scheduled updates and downloads wait for another network.` : '';
-  const s = data.state;
+  const s = AW.localise(data.state);   // the checks' and the doctor's messages said once, in the reader's language
   const p = data.progress;
   const busy = data.pending > 0 || !!updWaiting || !!p;
   const found = !!s && !s.up_to_date; // a check found a newer version
@@ -1474,11 +1482,12 @@ function renderUpdate(data) {
   const checks = (fetched && s.checks) || [];
   const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
   upd.forceFailed.hidden = !failedChecks.length;
-  upd.forceFailed.replaceChildren(...failedChecks.map((c) => findingRow({ state: 'problem', title: c.name, detail: c.detail })));
+  upd.forceFailed.replaceChildren(...failedChecks.map((c) => findingRow({ state: 'problem', title: c.name, detail: c.detail, how: c.fix || '',
+    evidence: c.evidence || [] })));
   upd.checks.hidden = !checks.length;
   upd.checks.replaceChildren(...checks.map((c) =>
-    checkItem(c.ok ? 'ok' : c.warn ? 'warn' : 'problem', c.name, c.detail)));
-  const d = data.doctor;
+    checkItem(c.ok ? 'ok' : c.warn ? 'warn' : 'problem', c.name, c.detail, c.ok ? '' : c.fix, c.ok ? [] : c.evidence || [], c.note)));
+  const d = AW.localise(data.doctor);
   renderUpdoctor(d);
   const doctorProblems = d ? d.findings.filter((f) => f.status === 'problem').length : 0;
   badge('updoctor', doctorProblems ? String(doctorProblems) : failedChecks.length ? '!' : '');
@@ -1495,9 +1504,9 @@ function renderUpdate(data) {
   if (updWaiting) {
     const done = (data.results || []).find((r) => r.id === updWaiting.id);
     if (done) {
-      const failed = !done.ok || /did not pass verification/.test(done.message);
+      const failed = !done.ok || (done.msg ? done.msg.id === 'update.fetch.failed' : /did not pass verification/.test(done.message));
       // A failure says itself, with the way to its diagnosis beside it.
-      updSay(updWaiting.action, done.message, !failed, failed && updWaiting.action !== 'doctor'
+      updSay(updWaiting.action, resultSaid(done), !failed, failed && updWaiting.action !== 'doctor'
         ? el('a', { className: 'action-btn go-btn', href: '#updoctor', textContent: 'Show reason: Updates doctor →' }) : null);
       updWaiting = null;
       renderUpdate(data);
@@ -6817,7 +6826,7 @@ function drawSigning(sig, results) {
   if (!sigEl.form || !sig) return;
   if (sigWaiting) {
     const done = (results || []).find((r) => r.id === sigWaiting);
-    if (done) { sigWaiting = null; say(done.message, done.ok, sigEl.note); }
+    if (done) { sigWaiting = null; say(resultSaid(done), done.ok, sigEl.note); }
   }
   if (!sigEl.form.contains(document.activeElement)) sigEl.form.elements.level.value = sig.level;
   const says = document.getElementById('update-signing-says');

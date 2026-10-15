@@ -39,24 +39,18 @@ now = [{"id": "a", "status": "problem"}, {"id": "b", "status": "problem"}, {"id"
 check("new_since: what was fine or absent and is not now; not what was already wrong, nor what is fine",
       sd.new_since(prev, now) == ["a", "c"] and sd.new_since(None, now) == [], sd.new_since(prev, now))
 
-# The update doctor's links: each check it names exists in its report, and each target is on the admin page.
+# The update doctor's links (go, as health.py's): each place it names is an id on the admin page, and only what is not
+# fine has one.
 hc = (Path(__file__).resolve().parents[1] / "irate_box" / "root" / "hub_control.py").read_text()
 html = (Path(__file__).resolve().parents[1] / "web" / "admin.html").read_text()
-go = ast.literal_eval(next(n.value for n in ast.parse(hc).body if isinstance(n, ast.Assign)
-                           and any(getattr(t, "id", "") == "DOCTOR_GO" for t in n.targets)))
-check("every check DOCTOR_GO names is one the update doctor reports",
-      all(f'_finding("{c}"' in hc for c in go), [c for c in go if f'_finding("{c}"' not in hc])
-check("every DOCTOR_GO target (and mark) is an id on the admin page",
-      all(f'id="{t[0]}"' in html and (len(t) < 3 or f'id="{t[2]}"' in html) for t in go.values()),
-      [t for t in go.values() if f'id="{t[0]}"' not in html or (len(t) > 2 and f'id="{t[2]}"' not in html)])
-fn = next(n for n in ast.parse(hc).body if isinstance(n, ast.FunctionDef) and n.name == "with_go")
-ns = {"DOCTOR_GO": go}
-exec(compile(ast.Module(body=[fn], type_ignores=[]), "with_go", "exec"), ns)
-out = ns["with_go"]([{"check": "DNS", "status": "problem"}, {"check": "DNS", "status": "ok"}, {"check": "Install options", "status": "problem"},
-                     {"check": "GitHub API", "status": "warn"}])
-check("with_go: a target for what is not fine, none for what is fine or has no place",
-      out[0]["go"] == {"section": "network", "where": "Network"} and "go" not in out[1] and "go" not in out[2]
-      and out[3]["go"].get("mark") == "library-token", out)
+places = [[a.value for a in n.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+          for n in ast.walk(ast.parse(hc)) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_go"]
+check("the update doctor names its places to go (_go)", len(places) >= 4, places)
+check("every place the update doctor names (and the setting it marks) is an id on the admin page",
+      all(f'id="{i}"' in html for p in places for i in p), [i for p in places for i in p if f'id="{i}"' not in html])
+fine_go = [n.lineno for n in ast.walk(ast.parse(hc)) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "finding"
+           and len(n.args) > 2 and isinstance(n.args[2], ast.Constant) and n.args[2].value == "ok" and any(k.arg == "go" for k in n.keywords)]
+check("a finding that is fine sends nobody anywhere (no go)", not fine_go, fine_go)
 
 # Who owns what: a doctor diagnoses and repairs; an ongoing choice is changed on its own page. The Box doctor builds no
 # setting chips, and the Security doctor's rows link a policy choice to Security or Updates rather than changing it.

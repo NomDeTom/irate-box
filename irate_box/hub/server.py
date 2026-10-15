@@ -1736,6 +1736,12 @@ def admin_box(proxied):
             "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
 
 
+def refusal(exc):
+    """An account refused (accounts.AccountError), as the pages read it: error, its English, as every page expects;
+    message, the message itself (its ID and arguments), for a page that says it in the reader's language."""
+    return {"error": str(exc), "message": exc.message}
+
+
 UPDATE_STATE = CONTROL_DIR / "update.json"
 UPDATE_LOG = CONTROL_DIR / "update.log"
 UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
@@ -3181,9 +3187,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json(400, {"error": "action must be signup, login, logout, password, code or prefs"})
         except accounts.Wait as exc:
-            self.send_json(429, {"error": str(exc)})
+            self.send_json(429, refusal(exc))
         except accounts.AccountError as exc:
-            self.send_json(400, {"error": str(exc)})
+            self.send_json(400, refusal(exc))
 
     def _admin_gate_follow(self, before):
         """The admin accounts changed: if one being able to sign in became true or false, the root helper
@@ -4045,7 +4051,7 @@ class Handler(BaseHTTPRequestHandler):
                     accounts.change(payload.get("name"), action, keep_admin=keep)
                     out = {}
             except accounts.AccountError as exc:
-                self.send_json(400, {"error": str(exc)})
+                self.send_json(400, refusal(exc))
                 return
             self._admin_gate_follow(before)
             self.send_json(200, dict(out, **accounts_view()))
@@ -4070,10 +4076,10 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     token, _me = accounts.claim_admin(name, pw, self._client_addr())
                 except accounts.Wait as exc:
-                    self.send_json(429, {"error": str(exc)})
+                    self.send_json(429, refusal(exc))
                     return
                 except accounts.AccountError as exc:
-                    self.send_json(400, {"error": str(exc)})
+                    self.send_json(400, refusal(exc))
                     return
                 rid = control_request({"action": "claim"})
                 control_request({"action": "admin-gate"})

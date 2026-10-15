@@ -21,22 +21,23 @@ def check(name, cond, info=""):
     fails += not cond
 
 
-def refused(fn, *a, kind=A.AccountError, says=""):
+def refused(fn, *a, kind=A.AccountError, says=None):
+    """Refused, with the refusal's message ID (accounts.py) when says names one: a change of words needs no change here."""
     try:
         fn(*a)
     except kind as exc:
-        return says in str(exc)
+        return says is None or exc.message["id"] == says
     return False
 
 
 # Off by default: nothing changes on a box until its owner wants it.
 check("off by default, HTTP with a warning", A.settings() == {"signup": "off", "http": "warning"})
-check("  no sign-ups while off", refused(A.signup, "alice", "password1", says="Registration closed"))
+check("  no sign-ups while off", refused(A.signup, "alice", "password1", says="accounts.signup.closed"))
 A.set_settings(signup="open")
 check("open: an account usable at once", A.signup("Alice", "password1", "10.0.0.2") == "user")
-check("  names: taken (any case), reserved, malformed", refused(A.signup, "ALICE", "password1", says="unavailable")
-      and refused(A.signup, "admin", "password1", says="reserved") and refused(A.signup, "a b", "password1") and refused(A.signup, "ab", "password1"))
-check("  a short password refused", refused(A.signup, "bob", "short"))
+check("  names: taken (any case), reserved, malformed", refused(A.signup, "ALICE", "password1", says="accounts.name.taken")
+      and refused(A.signup, "admin", "password1", says="accounts.name.reserved") and refused(A.signup, "a b", "password1", says="accounts.name.invalid") and refused(A.signup, "ab", "password1", says="accounts.name.invalid"))
+check("  a short password refused", refused(A.signup, "bob", "short", says="accounts.password.length"))
 raw = json.loads((T / "state" / "accounts.json").read_text())
 h = raw["accounts"]["alice"]["hash"]
 check("stored: scrypt with its salt, never the password; the file 600", h.startswith("scrypt$16384$8$1$") and "password1" not in json.dumps(raw)
@@ -45,29 +46,34 @@ t0 = time.time(); token, me = A.login("alice", "password1", "10.0.0.2"); dt = ti
 check("login: by name in any case; a session", me["name"] == "Alice" and A.session(token)["name"] == "Alice", me)
 print(f"note: one scrypt check took {dt * 1000:.0f} ms here")
 check("  the cookie itself never stored", token not in (T / "state" / "accounts.json").read_text())
-check("  a wrong password, an unknown name: the same answer", refused(A.login, "alice", "nope-nope", "10.0.0.3", says="do not match")
-      and refused(A.login, "nobody", "password1", "10.0.0.3", says="do not match"))
+check("  a wrong password, an unknown name: the same answer", refused(A.login, "alice", "nope-nope", "10.0.0.3", says="accounts.signin.failed")
+      and refused(A.login, "nobody", "password1", "10.0.0.3", says="accounts.signin.failed"))
 for _ in range(9):
     refused(A.login, "alice", "wrong-wrong", "10.0.0.9")
-check("  10 failures in a quarter hour: a wait, even with the right password", refused(A.login, "alice", "password1", "10.0.0.8", kind=A.Wait))
+check("  10 failures in a quarter hour: a wait, even with the right password", refused(A.login, "alice", "password1", "10.0.0.8", kind=A.Wait, says="accounts.wait"))
+try:
+    A.login("alice", "password1", "10.0.0.8"); waited = None
+except A.Wait as exc:
+    waited = exc.message
+check("  the wait says how long: 15 minutes", waited and waited.get("args") == {"n": 15} and "15 minutes" in str(A.Wait(waited)), waited)
 A._fails.clear()
 check("  a session that isn't one: none", A.session("x" * 43) is None and A.session(None) is None)
 A.set_settings(signup="apply")
-check("apply: the account waits", A.signup("bob", "password2", "10.0.0.4") == "asked" and refused(A.login, "bob", "password2", "", says="pending"))
+check("apply: the account waits", A.signup("bob", "password2", "10.0.0.4") == "asked" and refused(A.login, "bob", "password2", "", says="accounts.signin.pending"))
 A.change("bob", "accept")
 tb, _ = A.login("bob", "password2")
 check("  accepted: it logs in", A.session(tb)["state"] == "user")
 check("  sign-ups from one address limited", all(A.signup(f"x{i}x", "password9", "10.0.0.7") for i in range(5))
-      and refused(A.signup, "x6x", "password9", "10.0.0.7", kind=A.Wait))
+      and refused(A.signup, "x6x", "password9", "10.0.0.7", kind=A.Wait, says="accounts.signup.wait"))
 A.change("bob", "disable")
-check("disable: its sessions end at once, and it can't log in", A.session(tb) is None and refused(A.login, "bob", "password2", "", says="disabled"))
+check("disable: its sessions end at once, and it can't log in", A.session(tb) is None and refused(A.login, "bob", "password2", "", says="accounts.signin.disabled"))
 A.change("bob", "enable")
 A.set_settings(signup="assigned")
 code = A.make("carol", "admin")
-check("assigned: no sign-ups; an admin's account with a one-time code", refused(A.signup, "dave", "password3", says="administrator creates")
-      and len(code) == 19 and code.count("-") == 3 and refused(A.login, "carol", "anything1", "", says="do not match"))
+check("assigned: no sign-ups; an admin's account with a one-time code", refused(A.signup, "dave", "password3", says="accounts.signup.assigned")
+      and len(code) == 19 and code.count("-") == 3 and refused(A.login, "carol", "anything1", "", says="accounts.signin.failed"))
 check("  the code sets the password (dashes and case don't matter), once", A.use_code(code.lower().replace("-", " "), "password4") == "carol"
-      and A.login("carol", "password4")[1]["role"] == "admin" and refused(A.use_code, code, "password5", says="used or expired"))
+      and A.login("carol", "password4")[1]["role"] == "admin" and refused(A.use_code, code, "password5", says="accounts.code.invalid"))
 tc, _ = A.login("carol", "password4")
 code = A.reset("carol")
 check("reset: a new code, and the account's sessions end", A.session(tc) is None and A.use_code(code, "password6") == "carol")
@@ -75,20 +81,20 @@ ta, _ = A.login("alice", "password1")
 ta2, _ = A.login("alice", "password1")
 A.change_password(ta, "password1", "password7")
 check("change password: the old one wrong refused; done, its other sessions end", A.session(ta) and A.session(ta2) is None
-      and refused(A.change_password, ta, "password1", "password8", says="not correct"))
+      and refused(A.change_password, ta, "password1", "password8", says="accounts.password.wrong"))
 A.logout(ta)
 check("logout: the session ends", A.session(ta) is None)
 tb, _ = A.login("bob", "password2")
 A.set_settings(signup="off")
 check("off again: no users' logins, no users' sessions count, no codes that aren't the box's (admins still sign in: one login)",
-      A.session(tb) is None and refused(A.login, "bob", "password2", says="no user accounts")
-      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="used or expired"))
+      A.session(tb) is None and refused(A.login, "bob", "password2", says="accounts.signin.off")
+      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="accounts.code.invalid"))
 A.set_settings(signup="apply")
 check("  on again: the sessions count again", A.session(tb) is not None)
 A.change("x0x", "delete")
 check("delete: gone; the list shows no hash", "x0x" not in [a["name"] for a in A.listing()] and all("hash" not in a for a in A.listing()))
 check("counts", A.counts() == {"asked": 4, "user": 3, "disabled": 0, "admins": 1}, A.counts())
-check("bad settings refused", refused(A.set_settings, "everyone") and refused(A.set_settings, None, "sometimes"))
+check("bad settings refused", refused(A.set_settings, "everyone", says="accounts.settings.signup") and refused(A.set_settings, None, "sometimes", says="accounts.settings.http"))
 
 # git over HTTP (stage 4): an account by its basic-auth credentials.
 import base64  # noqa: E402
@@ -192,8 +198,8 @@ check("  then off: the login file emptied, its hash kept aside, the gates send p
       and "error_page 401" in (gd / "gate-admin.conf").read_text() and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
       and "carol" in out, out)
 check("  while it is off: the last admin account can't be switched off, made a user or deleted; sign-up can't go off",
-      refused(A.change, "carol", "user", True, says="last administrator") and refused(A.change, "carol", "delete", True, says="last administrator")
-      and refused(A.set_settings, "off", None, True, says="Switch it on"))
+      refused(A.change, "carol", "user", True, says="accounts.last-admin") and refused(A.change, "carol", "delete", True, says="accounts.last-admin")
+      and refused(A.set_settings, "off", None, True, says="accounts.settings.keep-admin"))
 H.admin_login({"on": True})
 check("on again: the login as it was; with an admin account ready a browser still goes to the standard sign-in (one login)",
       (T / "etc" / "htpasswd").read_text() == "admin:$6$hash\n" and not (T / "etc" / "admin-login.off").exists()

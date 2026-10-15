@@ -292,15 +292,18 @@ try:
 except ValueError:
     check("a silly budget refused", True)
 # The doctor.
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
 f = hub_control.kits_findings()
-check("the doctor: the cache matches its manifests", any(x["check"] == "Toolkits' cache" and x["status"] == "ok" for x in f), f)
+check("the doctor: the cache matches its manifests", any(x["id"] == "kits-cache" and x["status"] == "ok" for x in f), f)
 s = kits.installed_state(); s["small"]["at"] = time.time() - 9 * 86400; s["debug"] = {"added": [], "at": time.time() - 8 * 86400, "remove_at": None}
 kits._write(kits.INSTALLED, s)
 f = hub_control.kits_findings()
 check("the doctor: debug installed for over a week, and a kit with no removal time, are warnings",
-      any("debug toolkit has been installed for 8 days" in x["detail"] for x in f) and any(x["status"] == "warn" for x in f), f)
+      any(msg_args(x, "update.kits-installed.debug") == {"n": 8} for x in f) and any(x["status"] == "warn" for x in f), f)
 victim = kits.POOL / kits.manifest("small")["packages"][1]["file"]; victim.write_text("tampered")
-check("the doctor: a changed file is a problem", any(x["status"] == "problem" for x in hub_control.kits_findings()))
+f = hub_control.kits_findings()
+check("the doctor: a changed file is a problem, the file named", any(x["id"] == "kits-cache" and x["status"] == "problem"
+                                                                    and any(victim.name in e for e in x["evidence"]) for x in f), f)
 
 # The hub's half: settings, and the librarian's step.
 from irate_box.library import toolkits, librarian  # noqa: E402
@@ -413,11 +416,13 @@ def man_at(days):
 real_state = hub_control.STATE
 hub_control.STATE = T / "state"
 man_at(10); os.utime(toolkits.FEED / "trixie", (time.time() - 40 * 86400,) * 2)
-f = [x for x in hub_control.kits_findings() if x["check"] == "Security tools' freshness"]
-check("the doctor: the security kit's cache over a week old is a warning", any(x["status"] == "warn" and "security kit's cache is 10 days" in x["detail"] for x in f), f)
+f = [x for x in hub_control.kits_findings() if x["id"].startswith("kits-age:")]
+check("the doctor: the security kit's cache over a week old is a warning, with when it was downloaded",
+      any(x["status"] == "warn" and (msg_args(x, "update.kits-age.kit") or {}).get("kit") == "security"
+          and msg_args(x, "update.kits-age.kit")["n"] == 10 and "time" in msg_args(x, "update.kits-age.kit")["time"] for x in f), f)
 man_at(40)
-f = [x for x in hub_control.kits_findings() if x["check"] == "Security tools' freshness"]
-check("  over a month, a problem", any(x["status"] == "problem" and "security kit's cache is 40 days" in x["detail"] for x in f), f)
+f = [x for x in hub_control.kits_findings() if x["id"].startswith("kits-age:")]
+check("  over a month, a problem", any(x["status"] == "problem" and (msg_args(x, "update.kits-age.kit") or {}).get("n") == 40 for x in f), f)
 hub_control.STATE = real_state
 # 64-bit only: bpftrace, bcc and bpftool are left out on a 32-bit board.
 check("the debug kit marks bpftrace, bcc and bpftool 64-bit only", set(kits.definitions()["debug"]["needs_64bit"]) == {"bpftrace", "bpfcc-tools", "bpftool"})
