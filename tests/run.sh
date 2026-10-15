@@ -50,6 +50,7 @@ run sim_declared_services.py
 run sim_one_login.py
 run sim_account_nav.py
 run sim_health_accept.py
+run sim_clock_sources.py
 run sim_secdoctor_accounts.py
 run sim_secdoctor_sandbox.py
 run sim_ap_refresh.py
