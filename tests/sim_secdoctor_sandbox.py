@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The security doctor's unit sandboxing: a root unit missing a line is reported; a line a unit goes without by
-design (the root helper, the terminal, the audit and crash watch seeing every process) is not, and is listed with
-its reason. python3 tests/sim_secdoctor_sandbox.py"""
+design (the root helper's writes across the system, the terminal) is not, and is listed with its reason. The root
+units install.sh writes have every other line. python3 tests/sim_secdoctor_sandbox.py"""
 import os, sys, tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
@@ -36,18 +36,36 @@ check("a root unit with every line: ok, nothing exempt listed", out["units-root"
 out = run({"irate-box-uplink.service": dict(FULL, ProtectProc="default")})
 check("a root unit missing a line: reported", out["units-root"]["status"] == "warn"
       and out["units-root"]["evidence"] == ["irate-box-uplink: ProtectProc=invisible"] and "units.root.weak" in msg_ids(out["units-root"]), out["units-root"])
-out = run({"ttyd.service": BARE, "irate-box-crashwatch.service": dict(FULL, ProtectProc="default"),
-           "irate-box-secdoctor.service": dict(FULL, ProtectProc="default")})
-check("the terminal, crash watch and the audit without their exempt lines: ok", out["units-root"]["status"] == "ok", out["units-root"])
-check("  each listed with its reason (notes on units-root)", "units-exempt" not in out
-      and {("irate-box-crashwatch", "ProtectProc=invisible", "units.exempt.crashwatch"),
-           ("irate-box-secdoctor", "ProtectProc=invisible", "units.exempt.secdoctor"),
-           ("ttyd", "NoNewPrivileges", "units.exempt.ttyd")} <= exempt(out["units-root"]), exempt(out["units-root"]))
+out = run({"ttyd.service": BARE})
+check("the terminal without its exempt lines: ok", out["units-root"]["status"] == "ok", out["units-root"])
+check("  listed with its reason (notes on units-root)", "units-exempt" not in out
+      and ("ttyd", "NoNewPrivileges", "units.exempt.ttyd") in exempt(out["units-root"]), exempt(out["units-root"]))
+# Root keeps CAP_SYS_PTRACE under ProtectProc=invisible (seen on the Lyra: every process, and another account's
+# command line), so the audit and crash watch are held to it like any root unit.
+out = run({"irate-box-crashwatch.service": dict(FULL, ProtectProc="default"), "irate-box-secdoctor.service": dict(FULL, ProtectProc="default")})
+check("crash watch and the audit without ProtectProc: reported", out["units-root"]["status"] == "warn"
+      and sorted(out["units-root"]["evidence"]) == ["irate-box-crashwatch: ProtectProc=invisible", "irate-box-secdoctor: ProtectProc=invisible"],
+      out["units-root"])
 out = run({"irate-box-control.service": BARE})
 check("the root helper: only its exempt lines let off", out["units-root"]["status"] == "warn"
       and any("NoNewPrivileges" in e for e in out["units-root"]["evidence"]) and not any("ProtectSystem" in e for e in out["units-root"]["evidence"])
       and {(u, l) for u, l, _ in exempt(out["units-root"])} == {("irate-box-control", "ProtectSystem=strict"), ("irate-box-control", "ProtectHome")},
       out["units-root"])
+
+# The root units as install.sh writes them, its shared sandbox expanded: the doctor finds no line missing.
+import re  # noqa: E402
+inst = (REPO / "install.sh").read_text()
+shared = {name: body for name, body in re.findall(r'^([A-Z_]+_SANDBOX)="(.*?)"$', inst, re.S | re.M)}
+units = {}
+for name, body in re.findall(r"^\s*cat >/etc/systemd/system/([\w.@-]+\.service) <<'?EOF'?\n(.*?)^\s*EOF$", inst, re.S | re.M):
+    for var, text in shared.items():
+        body = body.replace(f"${var}", text)
+    props = dict(line.strip().split("=", 1) for line in body.splitlines() if re.match(r"^\s*[A-Za-z]+=", line))
+    if props.get("User", "root") in ("", "root") and "DynamicUser" not in props:
+        units[name] = dict(props, LoadState="loaded", User="")
+out = run(units)
+check(f"install.sh's root units ({len(units)}): no sandbox line missing", len(units) >= 5 and "irate-box-control.service" in units
+      and out["units-root"]["status"] == "ok", out["units-root"].get("evidence"))
 import shutil  # noqa: E402
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

@@ -1103,13 +1103,9 @@ SANDBOX_EXEMPT = {
         "ProtectHome": M("units.exempt.control-home", "The root helper sets up the accounts of the box, their home folders included.")},
     "ttyd.service": {line: M("units.exempt.ttyd", "It is the administrator's terminal: a sign-in shell that must see and reach the whole "
                                                   "box, sudo included.") for line in ALL_LINES},
-    "irate-box-secdoctor.service": {
-        "ProtectProc=invisible": M("units.exempt.secdoctor", "The audit looks at every process: what listens, and as which account.")},
     "irate-box-uplink.service": {
         "ProtectSystem=strict": M("units.exempt.uplink", "Its repairs start the network's own tools (ifup, the DHCP client), which "
                                                          "write /run, /var/lib and /etc/resolv.conf.")},
-    "irate-box-crashwatch.service": {
-        "ProtectProc=invisible": M("units.exempt.crashwatch", "It keeps a record of every process for after a hang.")},
 }
 
 

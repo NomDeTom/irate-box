@@ -2213,6 +2213,12 @@ Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC HUB_USER=$HUB_USER HUB_CODE_DI
 ExecStart=$CODE/irate-box hub_control
 # "Install update" reruns install.sh from here, which can take a while on a small board.
 TimeoutStartSec=50min
+# The root units' sandbox (the security doctor's units-root), but for ProtectSystem and ProtectHome: the helper
+# installs updates and packages and sets up the accounts' home folders. Root keeps CAP_SYS_PTRACE, so it still
+# sees every process; runuser only drops privileges; its mounts of USB drives last one request.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectProc=invisible
 EOF
 cat >/etc/systemd/system/irate-box-control.path <<EOF
 [Unit]
@@ -2440,6 +2446,8 @@ ReadWritePaths=$STATE/control
 PrivateTmp=yes
 NoNewPrivileges=yes
 ProtectHome=read-only
+# Root keeps CAP_SYS_PTRACE, so the audit still sees every process and its account.
+ProtectProc=invisible
 EOF
 # The hotspot firewall (root/firewall.py): loads /etc/hub/firewall.nft when the Security page has
 # written one, nothing otherwise; the page enables it, uninstall.sh takes it away.
