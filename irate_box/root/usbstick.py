@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 from irate_box.library import zimcheck
-from irate_box.msg import M, Refused
+from irate_box.msg import M, Refused, render
 from irate_box.root import safeio
 
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
@@ -159,9 +159,13 @@ def scan():
         fs = (dev.get("fstype") or "").lower()
         if not can.get(fs, True):
             dev["zims"], dev["kits"] = [], []
-            # English, as the rest of control/usb.json: the page shows it as text.
-            dev["error"] = (f"Filesystem unsupported: this box cannot read {FS_WORDS.get(fs, fs)} because its kernel has no driver for it. "
-                            "Most boxes and computers read FAT and exFAT. Format the USB drive as FAT or exFAT to use it here.")
+            # Only what this box can read is suggested: no filesystem is readable on every box. error, the English, for
+            # a reader of control/usb.json that expects text; error_message, the message, for the page.
+            ok = list(dict.fromkeys(FS_WORDS[n] for n in FS_WORDS if can.get(n)))
+            said = M("usb.fs.unsupported", "This box cannot read {fs}: its kernel has no driver for it. "
+                     "This box can read {names}. Format the USB drive with one of them to use it here.",
+                     fs=FS_WORDS.get(fs, fs), names=ok)
+            dev["error"], dev["error_message"] = render(said), said
             out.append(dev)
             continue
         try:

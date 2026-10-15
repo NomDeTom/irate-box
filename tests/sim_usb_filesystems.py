@@ -44,6 +44,7 @@ class Never:
     def __exit__(self, *a): return False
 usbstick.Mounted = Never
 s = usbstick.scan()["devices"][0]
-check("a stick it cannot read: why, in words, and not mounted", not mounted and "cannot read ISO 9660" in s["error"] and s["zims"] == [], s)
+check("a stick it cannot read: why, in words, and not mounted", not mounted and s["error_message"]["id"] == "usb.fs.unsupported"
+      and s["error_message"]["args"]["fs"].startswith("ISO 9660") and "FAT" in s["error_message"]["args"]["names"] and s["zims"] == [], s)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -359,12 +359,13 @@ def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=
 
 
 def follow(run, inv, settings, iface, ssid=DEFAULT_SSID):
-    """The dispatcher's call when a link comes up: a hotspot that follows the link moves to its channel."""
+    """The dispatcher's call when a link comes up: a hotspot that follows the link moves to its channel.
+    (moved, note): whether it moved, and what happened in words."""
     rec = _load(RECORD, {})
     if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink") or rec["plan"].get("uplink") != iface:
-        return "The hotspot has no link to follow."
+        return False, "The hotspot has no link to follow."
     plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, _load(TRIED, {}))
     if plan.get("channel") == rec["plan"].get("channel"):
-        return f"The hotspot is still on channel {plan.get('channel')}."
+        return False, f"The hotspot is still on channel {plan.get('channel')}."
     start(run, inv, settings, rec.get("owner") or {}, ssid)
-    return f"The hotspot moved to channel {plan.get('channel')} with the link."
+    return True, f"The hotspot moved to channel {plan.get('channel')} with the link."

@@ -235,6 +235,17 @@ check("back to the box's own: its CA's certificate again", not tls.status()["cer
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("the helper reads the staged files without following a link, and removes them", 'safeio.read_request(staged / "chain.pem"' in hc
       and '(staged / f).unlink(missing_ok=True)' in hc and '"tls-import": tls_import' in hc)
+# A request that cannot be done is refused, not answered as done (R300).
+from irate_box.root import hub_control  # noqa: E402
+def refused_id(fn, req):
+    try:
+        fn(req)
+    except Refused as exc:
+        return exc.message["id"]
+check("an import with nothing staged: refused, nothing changed", refused_id(hub_control.tls_import, {}) == "control.https.import.none")
+real_status, tls.status = tls.status, lambda: {"set_up": False}
+check("HTTPS switched before it is set up: refused, nothing changed", refused_id(hub_control.tls_switch, {"on": True}) == "control.https.not-set-up")
+tls.status = real_status
 # /admin over HTTPS only.
 tls.front(True); reloads.clear()
 print(tls.admin_only(True))

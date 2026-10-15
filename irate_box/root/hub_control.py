@@ -2510,7 +2510,8 @@ def tls_import(req):
         chain = safeio.read_request(staged / "chain.pem", 64 << 10)
         key = safeio.read_request(staged / "key.pem", 16 << 10)
     except OSError as exc:
-        return M("control.https.import.none", "No certificate is available for import. Nothing changed: {reason}", reason=str(exc))
+        raise Refused(M("control.https.import.none", "No certificate is available for import. Nothing changed. "
+                        "Paste the certificate and the key again: {reason}", reason=str(exc)))
     finally:
         for f in ("chain.pem", "key.pem"):
             (staged / f).unlink(missing_ok=True)
@@ -2537,7 +2538,7 @@ def tls_switch(req):
     """HTTPS on or off at the front, the CA and certificate kept either way."""
     from irate_box.root import tls
     if not tls.status().get("set_up"):
-        return M("control.https.not-set-up", "HTTPS is not set up yet. Select Make the box's certificate first.")
+        raise Refused(M("control.https.not-set-up", "HTTPS is not set up yet. Nothing changed. Select Make the box's certificate first."))
     return tls.front(req.get("on") is True)
 
 
@@ -3611,8 +3612,8 @@ if __name__ == "__main__":
         if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink"):
             sys.exit(0)   # every link change calls this (ap0's own too): leave the last note alone
         try:
-            note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
-            if note.startswith("moved"):
+            moved, note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
+            if moved:
                 _ap_record_status(None, note)
         except RuntimeError as exc:
             sys.exit(str(_ap_failed(exc)))
