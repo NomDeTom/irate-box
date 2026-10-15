@@ -1421,16 +1421,11 @@ function renderUpdoctor(d) {
     return b;
   })));
   // Each row named by its check, not its place in the list, so a link to it survives a new report.
-  const slug = (f) => `ud-${String(f.id || f.check).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
-  // A finding in the shared shape (finding.py) brings its parts, its commands and its place to go; a report kept from
-  // before (check, detail, fix) has its command and its place found in its words, as the Box doctor's older reports.
+  const slug = (f) => `ud-${String(f.id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  // A finding (finding.py) brings its parts, its commands and its place to go.
   const item = (f) => {
     const x = healthDo(f, false);
-    // The cache and a failed verification are dealt with in Updates' Maintenance, where their buttons are.
-    if (!f.summary && f.status !== 'ok' && /cache|cached copy|verif/i.test(`${f.check} ${f.fix || ''}`) && !x.controls.some((c) => c.getAttribute && c.getAttribute('href') === '#update-maint')) {
-      x.controls.push(el('a', { className: 'action-btn go-btn', href: '#update-maint', textContent: 'Go to Updates → Maintenance →' }));
-    }
-    return findingRow({ id: slug(f), state: f.status, title: f.title || f.check, ...findingParts(f), how: x.how,
+    return findingRow({ id: slug(f), state: f.status, title: f.title, ...findingParts(f), how: x.how,
       commands: f.status === 'ok' ? [] : x.commands || [], controls: x.controls });
   };
   const open = all.filter((f) => f.status !== 'ok' && (udShow === 'all' || f.status === udShow));
@@ -1732,9 +1727,8 @@ function copyBox(cmd) {
   });
   return el('span', { className: 'fdo-cmd' }, el('code', { textContent: cmd }), b);
 }
-// A finding's parts (irate_box/finding.py: summary, why, notes, evidence, fix, commands), or the one paragraph of
-// a doctor that still reports in the old shape (detail).
-const findingParts = (f) => ({ detail: f.summary || f.detail || '', why: f.why || '', notes: f.notes || [],
+// A finding's parts (irate_box/finding.py: summary, why, notes, evidence, fix, commands).
+const findingParts = (f) => ({ detail: f.summary || '', why: f.why || '', notes: f.notes || [],
   evidence: f.evidence || [], commands: f.commands || [] });
 // What the check saw (names, paths, packages): data, shown as it is.
 const evidenceList = (items) => (items.length ? el('ul', { className: 'fevidence' }, ...items.map((e) => el('li', {}, el('code', { textContent: e })))) : null);
@@ -1765,7 +1759,7 @@ function findingRow(r) {
         c.cmd ? el('div', {}, copyBox(c.cmd)) : null)))) : null,
     (r.said || []).length ? el('details', { className: 'fsaid' }, el('summary', { textContent: `Source results (${r.said.length})` }),
       el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
-        el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), (l.summary || l.detail) ? ` — ${l.summary || l.detail}` : '',
+        el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.summary ? ` — ${l.summary}` : '',
         l.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${l.fix}` }) : null)))) : null,
     // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request.
     r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'action-btn small',
@@ -1890,8 +1884,7 @@ function renderSecurity(data) {
   // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
   sec.hub.replaceChildren(...data.hub.map((f) => el('div', { className: 'setting sec-choice', id: `sec-${f.id}` },
     el('span', { className: 'setting-name', textContent: f.title }),
-    el('span', { className: 'setting-desc', textContent: f.detail }),
-    (f.do && f.do.hub) || f.fix ? el('span', { className: 'setting-desc', textContent: (f.do && f.do.hub) || f.fix }) : null,
+    ...findingLines({ ...f, fix: (f.do && f.do.hub) || f.fix }),
     f.do && f.do.go ? el('div', { className: 'library-buttons' }, el('a', { className: 'action-btn go-btn', href: `#${f.do.go}`, textContent: `Go to ${f.do.where} →` })) : null)));
   // Debian's security updates, on Updates.
   // Automatic security updates: a choice of its own (off, download, install), not the System toolkit's.
@@ -1937,7 +1930,7 @@ function renderSecurity(data) {
         el('span', { className: 'setting-desc', textContent: l.unit || l.process || '' })),
       el('td', { textContent: l.addr }),
       el('td', {}, f ? el('span', { className: `fstate fstate-${f.status}`, textContent: f.status === 'ok' ? 'Yes' : STATE_WORD[f.status] }) : null,
-        f ? el('span', { className: 'setting-desc', textContent: ` ${f.summary ? [f.summary, f.why].filter(Boolean).join(' ') : f.detail.replace(/^(TCP|UDP) \d+ on .*?\.\s+/, '')}` }) : null,
+        f ? el('span', { className: 'setting-desc', textContent: ` ${[f.summary, f.why].filter(Boolean).join(' ')}` }) : null,
         ssh ? el('a', { href: '#sec-ssh-password', textContent: 'Who can sign in, and how: SSH settings' }) : null,
         f && f.fix && f.status !== 'ok' ? el('span', { className: 'setting-desc', textContent: ` ${f.fix}` }) : null,
         f && f.actions.length ? el('span', { className: 'library-buttons' }, ...scanButtons(f, busy)) : null, f ? noteUnder(f.id) : null));
@@ -2023,7 +2016,7 @@ function jointRow(i, data, busy, accepted) {
   const isNew = ((data.audit || {}).new || []).some((id) => i.lines.some((l) => l.id === id));
   const meta = [i.area, i.sources.length > 1 ? `${i.sources.length} sources agree` : `from ${srcWords(i.sources)}`,
     i.alone ? `${srcWords(i.could_see)} could have seen it and did not` : '', isNew ? 'new since the last run' : ''].filter(Boolean).join(' · ');
-  const said = i.lines.length > 1 || (i.lines[0] && (i.lines[0].summary || i.lines[0].detail) !== (i.summary || i.detail)) ? i.lines : [];
+  const said = i.lines.length > 1 || (i.lines[0] && i.lines[0].summary !== i.summary) ? i.lines : [];
   // Information only (secdoctor_xref.INFO): said as that, with why, in place of an action there is none of.
   const infoHow = i.tier === 'info' ? `Information only: nothing you can change on this box fixes this. ${i.info || ''}`.trim() : '';
   return findingRow({ id: `find-${i.key.replace(/[^A-Za-z0-9_-]/g, '-')}`, state: accepted ? 'accepted' : fixed ? 'fixed' : i.tier || i.status,
@@ -2042,7 +2035,7 @@ function renderJoint(j, data) {
   const real = all.filter((i) => !i.tier && ok(i));
   const counts = { problem: real.filter((i) => i.status === 'problem' && !fixedNow(i)).length, warn: real.filter((i) => i.status === 'warn' && !fixedNow(i)).length };
   const needle = jointSearch.value.trim().toLowerCase();
-  const words = (f) => [f.title, f.summary || f.detail, f.why, ...(f.notes || []), ...(f.evidence || []), f.fix];
+  const words = (f) => [f.title, f.summary, f.why, ...(f.notes || []), ...(f.evidence || []), f.fix];
   const match = (i) => !needle || [...words(i), i.area, ...i.lines.flatMap(words)].filter(Boolean).join(' ').toLowerCase().includes(needle);
   const pick = (i) => match(i) && (jointShow === 'all' || (i.status === jointShow && !fixedNow(i)));
   box('joint-summary').replaceChildren(...(!j ? [el('p', { className: 'setting-desc', textContent: 'Run the doctor to see it.' })] : [
@@ -2185,7 +2178,7 @@ function renderAudit(audit, busy, data) {
         el('span', { className: `fstate fstate-${f.status}`, textContent: STATE_WORD[f.status] }), ' ', el('strong', { textContent: f.title }),
         (audit.new || []).includes(f.id) ? el('span', { className: 'badge-push bad', textContent: 'new' }) : null,
         f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
-        el('span', { textContent: ` — ${[f.summary || f.detail, f.why, ...(f.notes || [])].filter(Boolean).join(' ')}` }),
+        el('span', { textContent: ` — ${[f.summary, f.why, ...(f.notes || [])].filter(Boolean).join(' ')}` }),
         (f.evidence || []).length ? el('span', { className: 'setting-desc', textContent: ` (${f.evidence.join(', ')})` }) : null,
         f.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${f.fix}` }) : null,
         ...(f.status !== 'ok' ? (f.commands || []).map(copyBox) : [])))));
@@ -2373,29 +2366,8 @@ function installText(st) {
   return `Started ${when} (${st.args || 'no options'}). Finished${n ? ` with ${n} problem${n === 1 ? '' : 's'}: ${st.problems.join(', ')}` : ' with no problems'}.`;
 }
 
-// What to do about one of the box doctor's findings: its repair buttons; a link to the page where it
-// is changed, when its words name one ("Network → the hotspot"); a command to copy, when they end
-// in one; and the words. A fine finding says nothing more.
-const HEALTH_GO = [[/\bBooks\b/, 'books', 'Books'], [/\bNetwork → (Network recovery|Hold|Connection settings)/, 'network/access', 'Network → Connection settings'],
-  [/\bNetwork → (the )?[Hh]otspot/, 'network/hotspot', 'Network → Hotspot'], [/\bNetwork → (Look|Hardware)/, 'network/hardware', 'Network → Hardware'], [/\bNetwork → /, 'network', 'Network'], [/\bGit → /, 'git', 'Git'],
-  [/\bUpdates\b/, 'updates', 'Updates'], [/\bClock\b/, 'clock', 'Clock'], [/\bToolkits\b/, 'toolkits', 'Toolkits'],
-  [/\bSecurity →/, 'security', 'Security'], [/\bAdd-ons\b/, 'addons', 'Add-ons'], [/\bAccounts\b/, 'accounts', 'Accounts'],
-  [/\bFirmware Factory\b/, 'factory', 'Firmware Factory']];
-// A command in a finding's words: where it starts, up to the end of its sentence (or before "  (").
-// Not prose that begins like one ("journalctl -u NAME says why"), nor one with a NAME to fill in.
-const CMD_RE = /(?:^|[.:;,]\s+|\(|\bor\s+)((?:sudo |journalctl |systemctl |dmesg|df |du |ls |nmcli |ip |iw |apt |cat |tail |\.\/irate-box |\/opt\/irate-box\/)[^]*)/i;
-function splitCmd(text) {
-  text = (text || '').trim();
-  const m = text.match(CMD_RE);
-  if (!m) return null;
-  const start = m.index + m[0].length - m[1].length;
-  const end = m[1].search(/\.\s+(?=[A-Z(])|\.$|\s{2,}\(/);
-  const cmd = (end >= 0 ? m[1].slice(0, end) : m[1]).trim();
-  if (/\b(says|clears|once|which|starts|stops|again)\b/.test(cmd) || /\b[A-Z]{3,}\b/.test(cmd.replace(/YYYY-MM-DD|HH:MM/g, ''))) return null;
-  const after = end >= 0 ? m[1].slice(end).replace(/^\.?\s*/, '').trim() : '';
-  const before = text.slice(0, start).trim().replace(/\bor$/, '').trim().replace(/[.:;,]$/, '').trim();
-  return { cmd, before, after };
-}
+// What to do about a finding of the box doctor (and the update doctor): its repair buttons, its setting's choices, the
+// place to go and the commands it names, and its words. A fine finding says nothing more.
 // A setting's choices (actions with a group): one row of chips each, the current one selected, shown
 // whatever the finding's state, since a setting is worth seeing when all is well too.
 function healthChips(f, busy) {
@@ -2415,23 +2387,11 @@ function healthDo(f, busy) {
   if (f.status === 'ok') return { how: '', controls: chips };
   const controls = [...chips, ...(f.actions || []).filter((a) => !a.group).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
     onclick: () => hlFix(f.id, a) }))];
+  // Commands of their own, the place to go named: nothing is found in the words.
   let how = f.fix || '';
-  if (f.summary) {   // the shared shape (finding.py): commands of their own, the place to go named, nothing to find in the words
-    if (f.go) controls.push(goLink(f.go));
-    if (!how && !controls.length && !(f.commands || []).length) how = 'Information only.';
-    return { how, controls, commands: f.commands || [] };
-  }
-  const c = splitCmd(how);
-  if (c) {
-    controls.push(copyBox(c.cmd));
-    how = [c.before ? `${c.before}${/[.!?]$/.test(c.before) ? '' : (controls.length > 1 ? ', or by hand' : ', by hand')}:` : 'By hand, on the box:',
-      c.after].filter(Boolean).join(' ').replace(/::$/, ':');
-  }
-  const go = HEALTH_GO.find(([re]) => re.test(f.fix || ''));
   if (f.go) controls.push(goLink(f.go));
-  else if (go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${go[1]}`, textContent: `Go to ${go[2]} →` }));
-  if (!how && !controls.length) how = 'Information only.';
-  return { how, controls };
+  if (!how && !controls.length && !(f.commands || []).length) how = 'Information only.';
+  return { how, controls, commands: f.commands || [] };
 }
 let hlShow = 'all';  // the counters double as the list's filter: all, problem, warn
 let hlDrawn = '';    // what the findings were last drawn from: the same again leaves them (and a selection in them) alone
@@ -2441,8 +2401,8 @@ let hlDrawn = '';    // what the findings were last drawn from: the same again l
 function renderGlance(data, rep) {
   const find = (id) => rep && rep.findings.find((f) => f.id === id);
   const first = (text) => String(text || '').split(/(?<=\.)\s/)[0];
-  // A finding in a few words: its own glance (health.py), else the first sentence of its detail (an older report).
-  const brief = (f) => f.glance || first(f.summary || f.detail);
+  // A finding in a few words: its own glance (health.py), else the first sentence of what it found.
+  const brief = (f) => f.glance || first(f.summary);
   // Why the box last started: the reason only ("Unclean shutdown"), the explanation stays in the findings below.
   const why = (t) => { const r = String(t || '').replace(/^Started: /, '').split(/[:.]/)[0].trim(); return r ? r[0].toUpperCase() + r.slice(1) : 'Started'; };
   const w = data.watchers || {};
@@ -2625,13 +2585,13 @@ function renderHealth(data) {
   const item = (f) => {
     const d = healthDo(f, busy || h.stuck);
     const on = accepted(f);
-    return findingRow({ id: `hl-${f.id}`, state: on ? 'accepted' : f.status, title: f.title || f.check, ...findingParts(f), how: d.how,
+    return findingRow({ id: `hl-${f.id}`, state: on ? 'accepted' : f.status, title: f.title, ...findingParts(f), how: d.how,
       commands: f.status === 'ok' ? [] : d.commands, controls: d.controls, note: noteUnder(f.id),
-      accept: f.status === 'warn' ? { key: f.id, title: f.title || f.check, on, act: hlAccept, label: 'Accept',
+      accept: f.status === 'warn' ? { key: f.id, title: f.title, on, act: hlAccept, label: 'Accept',
         hint: 'Accepting leaves it as it is and takes it out of the review count. It moves to Accepted. The doctor shows it again if it becomes a problem.' } : null });
   };
   const needle = hl.search.value.trim().toLowerCase();
-  const match = (f) => !needle || [f.title || f.check, f.summary || f.detail, f.why, ...(f.notes || []), ...(f.evidence || []), f.fix]
+  const match = (f) => !needle || [f.title, f.summary, f.why, ...(f.notes || []), ...(f.evidence || []), f.fix]
     .filter(Boolean).join(' ').toLowerCase().includes(needle);
   const services = all.filter((f) => !isClock(f));
   const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn' && !accepted(f)).length };

@@ -39,7 +39,7 @@ import sys
 import time
 from pathlib import Path
 
-from irate_box.finding import finding
+from irate_box.finding import current, finding
 from irate_box.msg import M, named, when
 from irate_box.root import secdoctor_xref
 
@@ -2402,31 +2402,20 @@ def step_deep_lynis(ctx):
     return _deep_findings("lynis")
 
 
-def _shaped(f, source):
-    """A finding kept on disk by an older version (title, detail and fix as English) in the shared shape,
-    its words as they are, until its source runs again; one in the shape already, as it is."""
-    if "summary" in f:
-        return dict(f)
-    out = finding(f["id"], f.get("title", ""), f.get("status", "warn"), f.get("detail", ""), fix=f.get("fix") or None, source=source,
-                  about=f.get("about"), accepted=f.get("accepted"))
-    for k in ("tier", "checks", "listed", "cmd"):
-        if k in f:
-            out[k] = f[k]
-    return out
-
-
 def _deep_findings(source):
     """The deep audit's kept findings for one source, dated; a warning when it is old."""
     from irate_box.root import deepaudit
     rep = deepaudit.load()
     got = (rep or {}).get("sources", {}).get(source)
+    if got and not current(got):
+        got = None   # kept by an older version, in the old shape: as not run, until the deep audit runs again
     if not got:
         return [finding(f"{source}-none", named(source), "ok",
                         M("deep.not-run", "It runs in the deep audit: each week, or when you select Deep audit on this page."),
                         notes=[M("deep.duration", "The deep audit takes about 8 minutes on a small board, and longer when the box is busy.")],
                         source=source)]
     ran = M("deep.when", "From the deep audit of {date}.", date=when(got["at"]))
-    out = [_shaped(f, source) for f in got["findings"]]
+    out = [dict(f) for f in got["findings"]]
     if time.time() - got["at"] > 14 * 86400:
         out.append(finding(f"{source}-old", named(source), "warn", M("deep.old", "The last deep audit is more than 14 days old."),
                            M("deep.old.why", "Settings can have changed since. The results below can be out of date."),
@@ -2472,15 +2461,14 @@ def step_security_page(ctx):
         scan = json.loads(_read(CONTROL / "security.json") or "")
     except ValueError:
         scan = None
-    if not scan:
+    if not current(scan):   # none yet, or one an older version wrote: it runs again when the Security page opens
         return [finding("security-page-none", M("page.title", "Security page scan"), "ok",
                         M("page.not-run", "It has not run yet. It runs when someone opens the Security page."), source="security-page")]
     ran = M("page.when", "From the Security page's scan of {date}.", date=when(scan.get("at") or 0))
     out = []
     for f in scan.get("findings", []):
-        g = _shaped(f, "security-page")
-        out.append(finding(f"page-{f['id']}", g["title"], g["status"], g["summary"], g.get("why"), g.get("fix"),
-                           notes=list(g.get("notes") or []) + [ran], commands=g.get("commands", []), evidence=g.get("evidence", []),
+        out.append(finding(f"page-{f['id']}", f["title"], f["status"], f["summary"], f.get("why"), f.get("fix"),
+                           notes=list(f.get("notes") or []) + [ran], commands=f.get("commands", []), evidence=f.get("evidence", []),
                            source="security-page", about=secdoctor_xref.about("security-page", f["id"])))
     return out
 

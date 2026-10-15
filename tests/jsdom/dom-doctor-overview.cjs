@@ -11,10 +11,10 @@ const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.rea
 const fixture = JSON.parse(fs.readFileSync(`${__dirname}/health-fixture.json`, 'utf8'));
 fixture.helper = { waiting: 0, oldest: 0, stuck: false, commands: [] };
 fixture.report.at = Date.now() / 1000;   // fresh: the page doesn't ask for a look of its own
-fixture.report.findings.push({ id: 'uplink-report', check: 'Uplink watchdog report', status: 'ok', detail: 'up on wlan0, steady pace. More.', fix: '', actions: [] });
-fixture.report.findings.push({ id: 'led', check: 'Status light', status: 'ok', detail: 'work-led: alive and on its network; now 1 s on, 1 s off: well (driven by the box: this kernel has no LED triggers, so nothing else can blink it).', fix: '', actions: [],
+fixture.report.findings.push({ id: 'uplink-report', title: 'Uplink watchdog report', status: 'ok', summary: 'up on wlan0, steady pace. More.', fix: '', actions: [] });
+fixture.report.findings.push({ id: 'led', title: 'Status light', status: 'ok', summary: 'work-led: alive and on its network; now 1 s on, 1 s off: well (driven by the box: this kernel has no LED triggers, so nothing else can blink it).', fix: '', actions: [],
   glance: 'work-led: alive and on its network.' });
-fixture.report.findings.push({ id: 'crash-radio', check: 'The WiFi radio', status: 'ok', detail: 'Watching: wlan0 (AIC8800DC). Crash watch notes.', fix: '', actions: [] });
+fixture.report.findings.push({ id: 'crash-radio', title: 'The WiFi radio', status: 'ok', summary: 'Watching: wlan0 (AIC8800DC). Crash watch notes.', fix: '', actions: [] });
 fixture.report.settings = { snapshots: true, panic: false, watchdog: false, watchdog_device: 'hardware', groups: [
   { key: 'snapshots', label: "Crash watch's snapshots", desc: 'Every 30 s.', current: 'on', options: [
     { value: 'on', label: 'On', choice: 'crashwatch-snapshots:on' }, { value: 'off', label: 'Off', choice: 'crashwatch-snapshots:off' }] },
@@ -50,7 +50,7 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   check('at a glance: health, the link, the radio, the last start and why, the last repair, a frozen box, snapshots, the status light, writes to the card',
     Object.keys(g).join('|') === 'Health|Network recovery|The WiFi radio|Last boot|Last repair|Frozen-system recovery|Snapshot interval|Status light|SD card writes', Object.keys(g));
   check('  the status light: its finding\'s glance, not the whole detail', g['Status light'] === 'work-led: alive and on its network.', g['Status light']);
-  check('  a finding with no glance (an older report): its first sentence', g['The WiFi radio'] === 'Watching: wlan0 (AIC8800DC).', g['The WiFi radio']);
+  check('  a finding with no glance: the first sentence of what it found', g['The WiFi radio'] === 'Watching: wlan0 (AIC8800DC).', g['The WiFi radio']);
   check('  the last start: when, and why in a few words (the reason, not its explanation)', g['Last boot'] === '2 h ago: The uplink watchdog rebooted it.', g['Last boot']);
   check('  a frozen box stays stopped; snapshots kept', g['Frozen-system recovery'].startsWith('Stays stopped') && g['Snapshot interval'] === 'Every 30 s.', g);
   const save = d.getElementById('health-settings-save');

@@ -18,7 +18,7 @@ os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HU
                   HUB_UPDATE_DIR=str(T / "cache" / "src"), HUB_DOWNLOAD_CACHE=str(T / "cache" / "downloads"), HUB_WEB_SERVER="nginx")
 sys.path.insert(0, str(REPO))
 from irate_box.root import hub_control as H  # noqa: E402
-from irate_box.finding import legacy, message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.finding import english, message_args as msg_args, message_ids as msg_ids  # noqa: E402
 from irate_box.msg import is_message, render  # noqa: E402
 
 fails = 0
@@ -95,7 +95,7 @@ def well_said(fs):
         if not (is_message(f["title"]) and is_message(f["summary"])) or any("{" in s for s in said) \
                 or (f["status"] == "ok" and f.get("go")) or not all(isinstance(e, str) for e in f["evidence"] + f["commands"]):
             bad.append(f["id"])
-        legacy(f)
+        english(f)
     return bad
 
 

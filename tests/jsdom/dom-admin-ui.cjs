@@ -12,8 +12,8 @@ const adminApps = require('./admin-apps-fixture.cjs');
 const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const health = JSON.parse(fs.readFileSync(`${__dirname}/health-fixture.json`, 'utf8'));
 health.report.findings.push(
-  { id: 'clock', check: 'Clock', status: 'warn', detail: 'No network time.', fix: '', actions: [{ choice: 'clock-set', label: 'Set the clock from this browser' }] },
-  { id: 'rtc', check: 'Clock module', status: 'problem', detail: 'DS3231 on bus 1 does not answer.', fix: '', actions: [] });
+  { id: 'clock', title: 'Clock', status: 'warn', summary: 'No network time.', fix: '', actions: [{ choice: 'clock-set', label: 'Set the clock from this browser' }] },
+  { id: 'rtc', title: 'Clock module', status: 'problem', summary: 'DS3231 on bus 1 does not answer.', fix: '', actions: [] });
 health.helper = { stuck: false, waiting: 0, oldest: 0, commands: [] };
 const accessData = { apps: [
   { id: 'drop', title: 'File drop', mode: 'public', login: false, kind: 'builtin', unit: false },

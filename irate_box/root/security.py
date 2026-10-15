@@ -21,7 +21,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from irate_box.finding import action, finding, legacy
+from irate_box.finding import action, finding, english
 from irate_box.hub import services
 from irate_box.msg import M, is_message, named, render, when
 from irate_box.root import safeio
@@ -1823,7 +1823,7 @@ if __name__ == "__main__":
         # For the end of install.sh: what needs the owner's attention, one line each.
         for f in scan()["findings"]:
             if f["status"] != "ok":
-                said = legacy(f)
+                said = english(f)
                 print(f"{'problem' if f['status'] == 'problem' else 'note   '}  {said['title']}: {said['detail']}")
     elif len(sys.argv) in (3, 4) and sys.argv[1] == "unit-off":
         rec = load_record()

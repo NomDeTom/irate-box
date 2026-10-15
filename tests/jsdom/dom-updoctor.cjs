@@ -18,9 +18,11 @@ const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textCon
 w.eval(`renderUpdoctor(null)`);
 check('not run yet: said, no counters', /Not run yet/.test(d.getElementById('doctor-when').textContent) && !d.querySelector('#updoctor-summary button'));
 w.eval(`renderUpdoctor({ at: 1790950000, findings: [
-  { check: 'Names (DNS)', status: 'problem', detail: 'github.com does not resolve.', fix: 'sudo systemctl restart systemd-resolved' },
-  { check: 'Free space', status: 'warn', detail: 'Under 1 GB free.', fix: 'Library → Books: remove one.' },
-  { check: 'The clock', status: 'ok', detail: 'Right to a second.', fix: '' }] })`);
+  { id: 'dns', title: 'Names (DNS)', status: 'problem', summary: 'github.com does not resolve.', fix: 'Restart the name service.',
+    commands: ['sudo systemctl restart systemd-resolved'] },
+  { id: 'space', title: 'Free space', status: 'warn', summary: 'Under 1 GB free.', fix: 'On Books, remove one.',
+    go: { section: 'books', where: 'Books' } },
+  { id: 'clock', title: 'The clock', status: 'ok', summary: 'Right to a second.' }] })`);
 check('the counters: all, to fix, to review', t('#updoctor-summary button').join(' | ') === '2 all | 1 to fix | 1 to review', t('#updoctor-summary button'));
 check('  a row per finding, the problem first, each with its status word', t('#doctor-findings .finding .ftitle').join(' | ') === 'Names (DNS) | Free space'
   && d.querySelector('#doctor-findings .finding').classList.contains('finding-problem'), t('#doctor-findings .ftitle'));

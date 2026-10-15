@@ -41,9 +41,9 @@ check("an unlisted check stands alone", xref.about("debian-cis", "1.4.1_install_
 
 # The Security page's scan as a source.
 scan = {"at": time.time(), "listeners": [{"proto": "tcp", "port": 80}, {"proto": "tcp", "port": 22}],
-        "findings": [{"id": "port-tcp-80", "title": "the hub (nginx)", "status": "ok", "detail": "TCP 80.", "fix": ""},
-                     {"id": "port-tcp-22", "title": "SSH", "status": "warn", "detail": "TCP 22.", "fix": "Limit it to the LAN."},
-                     {"id": "kernel-links", "title": "Kernel link protections", "status": "problem", "detail": "off", "fix": "Turn them on"}]}
+        "findings": [{"id": "port-tcp-80", "title": "the hub (nginx)", "status": "ok", "summary": "TCP 80.", "fix": ""},
+                     {"id": "port-tcp-22", "title": "SSH", "status": "warn", "summary": "TCP 22.", "fix": "Limit it to the LAN."},
+                     {"id": "kernel-links", "title": "Kernel link protections", "status": "problem", "summary": "off", "fix": "Turn them on"}]}
 (T / "control" / "security.json").write_text(json.dumps(scan))
 page = {f["id"]: f for f in sd.step_security_page({})}
 check("the Security page's findings, from it, about what they are about", page["page-kernel-links"]["source"] == "security-page"

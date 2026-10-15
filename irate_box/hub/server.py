@@ -32,6 +32,7 @@ from urllib.parse import quote, unquote, urlparse
 
 import html
 from irate_box import confine, finding
+from irate_box.msg import M, render
 from irate_box.hub import access
 from irate_box.hub import accounts
 from irate_box.hub import backup
@@ -1834,7 +1835,7 @@ def update_snapshot():
     except OSError:
         log = []
     try:
-        doctor = json.loads(DOCTOR_STATE.read_text())
+        doctor = finding.current(json.loads(DOCTOR_STATE.read_text()))
     except (OSError, ValueError):
         doctor = None
     # Only update requests: a queued app install or service change is not the update's.
@@ -1860,12 +1861,14 @@ def setup_blocked():
     names an account sshd lets in by password, the one state an image leaves that makes a guessed
     password root. None when it does not, or no scan has run."""
     try:
+        # Any scan, an older version's too: this refusal reads only a finding's id and status.
         scan = json.loads(SECURITY_STATE.read_text())
     except (OSError, ValueError):
         return None
     for f in scan.get("findings", []) if isinstance(scan, dict) else []:
         if isinstance(f, dict) and f.get("id") == "sudo-nopasswd" and f.get("status") == "problem":
-            return f"Not finished yet: {finding.legacy(f)['detail']} The Security page (System) offers the fixes; then finish here."
+            return render(M("setup.blocked", "Not finished yet. {reason} The Security page offers the fixes. Then finish here.",
+                            reason=f.get("summary") or f.get("detail", "")))
     return None
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
@@ -1939,44 +1942,56 @@ def security_snapshot():
     root helper's last scan of the box. The lines follow HTTPS as it is."""
     tls = _tls_status()
     https, admin_only = bool(tls.get("on")), bool(tls.get("admin_only"))
-    to_https = {"go": "security-https", "where": "Security → HTTPS"}
+    to_https = {"go": "security-https", "where": M("go.security-https", "Security → HTTPS")}
+    pw_t = M("hub.password.title", "Administrator password")
     if unclaimed():
-        pw = {"status": "problem", "detail": "Not set yet. The box is in its first use. Until an administrator account is made, any device on the network can use /admin.",
-              "fix": "Select Set up this box and make the administrator account over HTTPS. Or run hub_control set-admin NAME at the console over SSH."}
+        pw = finding.finding("admin-password", pw_t, "problem", M("hub.password.unset", "No administrator account is set yet. The box is in its "
+                                                                                "first use."),
+                     M("hub.password.unset.why", "Until an administrator account is made, any device on the network can use the "
+                                                 "administration pages."),
+                     M("hub.password.unset.fix", "Select Set up this box, and make the administrator account over HTTPS. Or make it at "
+                                                 "the console, over SSH."), commands=["sudo /opt/irate-box/irate-box hub_control set-admin NAME"])
     elif https and admin_only:
-        pw = {"status": "ok", "detail": "Set, and /admin answers over HTTPS only, so the password never crosses the network in clear."}
+        pw = finding.finding("admin-password", pw_t, "ok", M("hub.password.https-only", "It is set, and the administration pages answer over "
+                                                                                "HTTPS only. The password never crosses the network "
+                                                                                "unencrypted."))
     elif https:
-        pw = {"status": "warn", "detail": "Set. HTTPS is on, but /admin still answers on plain HTTP too: a browser that opens "
-              "it as http:// sends the password in clear, readable by anyone listening on an open hotspot.",
-              "fix": "Make /admin HTTPS only, after this device trusts the box's certificate.", "do": to_https}
+        pw = finding.finding("admin-password", pw_t, "warn", M("hub.password.both", "It is set. HTTPS is on, but the administration pages also "
+                                                                            "answer over plain HTTP."),
+                     M("hub.password.both.why", "A browser that opens them as http:// sends the password unencrypted. Anyone who "
+                                                "listens on an open hotspot can read it."),
+                     M("hub.password.both.fix", "Make the administration pages HTTPS only, after this device trusts the box's "
+                                                "certificate."), do=to_https)
     else:
-        pw = {"status": "warn", "detail": "Set. It travels as plain HTTP, so on an open hotspot anyone listening can read it "
-              "the first time a browser sends it.",
-              "fix": "Turn HTTPS on and install the box's certificate on your devices. Until then, sign in from the LAN or over Tailscale.",
-              "do": to_https}
-    hub = [{"id": "admin-password", "title": "Administrator password", **pw}, {
-        "id": "plain-http", "title": "HTTPS" if https else "Plain HTTP only",
-        **({"status": "ok", "detail": "On: devices that installed the box's certificate (from /certificate) use HTTPS when they connect. "
-            "Plain HTTP still answers, for the hotspot's sign-in sheet and devices without the certificate."} if https else
-           {"status": "warn", "detail": "The box has no certificate in use. Other people on the same network can read and change what a browser "
-            "and the box send to each other: pages, messages and uploads.",
-            "fix": "Make the box's certificate, then install it on your own devices from /certificate.", "do": to_https}),
-    }, {
-        "id": "one-origin", "title": "Apps share the address of the administration pages", "status": "warn",
-        "detail": "Notes, the books, git and the add-ons have addresses of their own. The drawing editors (Excalidraw, Mermaid) "
-                  "and the hub's other apps run on the administration address. A hostile page among them can act with your "
-                  "sign-in while you are signed in.",
-        "fix": "Select Sign out after administration work. Signing out does not remove this risk. Giving the editors an address of their own is on the plan.",
-        "do": {"hub": "This is the design of the hub. Nothing to set here. Accept the risk, or sign out after administration work."},
-    }]
-    for f in hub:
-        f.setdefault("actions", [])
+        pw = finding.finding("admin-password", pw_t, "warn", M("hub.password.plain", "It is set. It travels over plain HTTP."),
+                     M("hub.password.plain.why", "On an open hotspot, anyone who listens can read it the first time a browser sends it."),
+                     M("hub.password.plain.fix", "Turn HTTPS on, and install the box's certificate on your devices. Until then, sign in "
+                                                 "from the LAN or over Tailscale."), do=to_https)
+    https_t = M("hub.https.title", "HTTPS")
+    hub = [pw, finding.finding("plain-http", https_t, "ok",
+                       M("hub.https.on", "HTTPS is on. Devices that installed the box's certificate (from /certificate) use HTTPS when "
+                                         "they connect."),
+                       notes=[M("hub.https.plain-too", "Plain HTTP still answers, for the sign-in sheet of the hotspot and for devices "
+                                                       "without the certificate.")]) if https else
+           finding.finding("plain-http", https_t, "warn", M("hub.https.off", "The box has no certificate in use."),
+                   M("hub.https.off.why", "Other people on the same network can read and change what a browser and the box send to "
+                                          "each other: pages, messages and uploads."),
+                   M("hub.https.off.fix", "Make the box's certificate. Then install it on your own devices from /certificate."), do=to_https),
+           finding.finding("one-origin", M("hub.origin.title", "Apps on the address of the administration pages"), "warn",
+                   M("hub.origin.shared", "The drawing editors (Excalidraw, Mermaid) and the hub's other apps run on the address of the "
+                                          "administration pages."),
+                   M("hub.origin.why", "A hostile page among them can act with your sign-in while you are signed in."),
+                   M("hub.origin.fix", "Select Sign out after administration work. Signing out does not remove this risk."),
+                   notes=[M("hub.origin.own", "Notes, the books, Git and the add-ons have addresses of their own. Giving the editors an "
+                                              "address of their own is planned.")],
+                   do={"hub": M("hub.origin.design", "This is the design of the hub. There is nothing to set here. Accept the risk, or "
+                                                     "sign out after administration work.")})]
     try:
-        scan = json.loads(SECURITY_STATE.read_text())
+        scan = finding.current(json.loads(SECURITY_STATE.read_text()))
     except (OSError, ValueError):
         scan = None
     try:
-        audit = json.loads(AUDIT_STATE.read_text())
+        audit = finding.current(json.loads(AUDIT_STATE.read_text()))
     except (OSError, ValueError):
         audit = None
     try:
@@ -2177,7 +2192,7 @@ def health_snapshot():
         log = [ANSI_RE.sub("", line) for line in (INSTALL_LOG_DIR / "install.log").read_text(errors="replace").splitlines()[-80:]]
     except OSError:
         log = []
-    return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
+    return {"report": finding.current(load(HEALTH_STATE)), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
             "ladder": jsonlog.read(uplink.LADDER), "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
             "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
             "progress": update_progress(), "watchers": watchers_glance(), "accepted": health_accepted()}

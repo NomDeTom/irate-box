@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hub admin</title>
+  <title>Hub administration</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
@@ -855,7 +855,7 @@
             <select name="http">
               <option value="prevented" data-says="The box accepts passwords only over HTTPS.">Blocked</option>
               <option value="warning" data-says="The box accepts passwords over HTTP. The page warns that others on the network can read them.">Warning</option>
-              <option value="permitted" data-says="The box accepts passwords over HTTP. The page shows no warning.">Allowed</option>
+              <option value="permitted" data-says="The box accepts passwords over HTTP. The page shows no warning.">Accepted</option>
             </select>
           </label>
           <button class="action-btn primary" type="submit">Save</button>
@@ -1668,8 +1668,8 @@
         <h3>Import a scan</h3>
         <p class="setting-desc">
           Run OpenVAS (Greenbone) or nmap from a PC on the hotspot against the box. This gives the outside view,
-          including software that debsecan cannot see. Export the report (OpenVAS: XML or CSV; nmap:
-          <code>nmap -sV -oX report.xml &lt;box&gt;</code>) and select it here. This browser reads the report. It
+          including software that debsecan cannot see. Export the report from OpenVAS as XML or CSV, or from nmap with
+          <code>nmap -sV -oX report.xml &lt;box&gt;</code>, and select it here. This browser reads the report. It
           sends only the findings to the box. The box keeps them until the next import of the same type.
         </p>
         <form id="import-form" class="library-form inline-form">
@@ -1695,7 +1695,7 @@
           The update doctor checks what an update depends on. These are the network, names, the clock,
           GitHub, free space, the cached copy and the package sources. It says what is wrong and what
           to do about it. For the box itself (services, Kiwix, an install that stopped), see the
-          <a href="#health">Box doctor</a>; to check for and install updates, <a href="#updates">Updates</a>.
+          <a href="#health">Box doctor</a>. To check for and install updates, see <a href="#updates">Updates</a>.
         </p>
         <div class="library-buttons">
           <button class="action-btn" type="button" id="update-doctor">Run the update doctor</button>

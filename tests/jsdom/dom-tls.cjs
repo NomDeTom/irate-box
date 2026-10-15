@@ -98,7 +98,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     && /Install anyway/.test(t(folds[1])) && /Network may be monitored/.test(t(folds[1])) && /Certificate Trust Settings/.test(t(folds[0])));
   check('  the general step for the rest, named, until tried', /On other devices \(Windows, macOS, Linux\): download the certificate/.test(t(p.d.getElementById('cert-steps'))), t(p.d.getElementById('cert-steps')));
   check('  the self-check: not trusted yet', /does not trust the box yet/.test(t(p.d.getElementById('cert-check'))), t(p.d.getElementById('cert-check')));
-  check('  never a click-through: the warning is not to be clicked past', /do not click through/.test(t(p.d.getElementById('cert-about'))));
+  check('  never past the warning: the warning is not to be gone past', /do not go past it/.test(t(p.d.getElementById('cert-about'))));
   p = pub(info, true);
   await wait();
   check('  trusted: said, with the HTTPS address', /✓ This device trusts the box\. You can use https:\/\/box\.local\/\./.test(t(p.d.getElementById('cert-check'))), t(p.d.getElementById('cert-check')));

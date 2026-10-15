@@ -23,7 +23,7 @@ The setting **Password submission over HTTP** has three values:
 
 - **Blocked**: the box accepts passwords only over HTTPS.
 - **Warning** (the default): the box accepts passwords over HTTP. The page warns that other devices on the network can read them.
-- **Allowed**: the box accepts passwords over HTTP and shows no warning.
+- **Accepted**: the box accepts passwords over HTTP and shows no warning.
 
 HTTP does not encrypt traffic. An administrator password changes only over HTTPS or at the console. This rule applies for every value of the setting.
 
