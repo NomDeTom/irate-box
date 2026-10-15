@@ -134,6 +134,7 @@ import platform
 import pwd
 import re
 import secrets
+import shlex
 import shutil
 import stat
 import subprocess
@@ -144,7 +145,9 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from irate_box.finding import finding
 from irate_box.hub import access
+from irate_box.msg import M, is_message, render, when
 from irate_box.root import health
 from irate_box.root import signing
 from irate_box.hub import manifests
@@ -1124,12 +1127,28 @@ def console_script_login(on):
 
 
 # --- updates ---------------------------------------------------------------------
+# What the update actions answer, and the checks a downloaded version passes, are messages (msg.py): whole
+# sentences with stable IDs. The result keeps the English for every reader that expects text (answer).
+
+class Refused(ValueError):
+    """A request refused, with the reason as a message (msg.M): its English is the exception's text, and the
+    result keeps the message too (answer)."""
+
+    def __init__(self, message):
+        super().__init__(render(message))
+        self.message = message
+
+
+NO_REPO = M("update.options.no-repo", "The install options name no repository. Run the installer once by hand to record one.")
+OPTIONS_MISSING = M("update.options.missing", "This box has no record of its install options. It was installed before updates "
+                                              "from the administration pages existed. Run the installer once by hand to record them.")
+
 
 def _install_options():
     try:
         lines = (ETC / "install-options").read_text().splitlines()
     except OSError:
-        raise ValueError("No /etc/hub/install-options. This box was installed before updates from /admin existed. Run install.sh once by hand to record them.")
+        raise Refused(OPTIONS_MISSING)
     return [line for line in lines if line]
 
 
@@ -1210,10 +1229,25 @@ class Progress:
 # --- verifying a fetched update -------------------------------------------------------
 # Everything that can be checked before install.sh runs is checked here, so a bad push or a
 # broken download shows up as a red line on /admin rather than as a half-installed box.
-# Each check: {"name", "ok", "detail", "warn"}; warn marks one that does not block.
+# Each check: {"id", "name", "ok", "warn", "detail", "fix", "evidence"}. name (what was checked), detail (what it
+# found) and fix are messages; evidence is what it saw (an error line, a file), as data. warn marks one that does not
+# block. A state kept from before the messages has name and detail as English text: the page and Install anyway read both.
 
-def _check(name, ok, detail="", warn=False):
-    return {"name": name, "ok": bool(ok), "detail": detail, "warn": warn}
+def _check(cid, ok, name, detail, warn=False, fix=None, evidence=(), note=None):
+    return {"id": cid, "name": name, "ok": bool(ok), "detail": detail, "warn": warn, "fix": fix,
+            "evidence": [str(e) for e in evidence if e], **({"note": note} if note else {})}
+
+
+# What a check of the code's form does not show: said beside the checks that read only the form.
+LIMITED_CHECK = M("update.verify.limited", "This check reads only the form of the code or of the web server's configuration. "
+                                           "It does not prove that the update is safe.")
+DOWNLOAD_OK = M("update.download.ok", "The checksum matches.")
+DOWNLOAD_MISMATCH = M("update.download.mismatch", "The checksum does not match. The file is not the one that was published.")
+DOWNLOAD_FAILED = M("update.download.failed", "The download failed.")
+
+
+def _download_title(name, version):
+    return M("update.download.title", "Download of {name} {version}", name=name, version=version)
 
 
 def _arch_names():
@@ -1288,9 +1322,10 @@ def prefetch(src, opts, progress=None):
                 sums = _fetch(f"{base}/SHA256SUMS", DOWNLOADS / f"ttyd-{ttyd}-SHA256SUMS")
                 binary = _fetch(f"{base}/{name}", DOWNLOADS / f"ttyd-{ttyd}-{name}", report=report)
                 ok = _digest(binary, "sha256") == _sum_for(sums, name)
-                return _check(f"ttyd {ttyd} downloaded", ok, "checksum matches" if ok else "checksum MISMATCH")
+                return _check("download:ttyd", ok, _download_title("ttyd", ttyd), DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH,
+                              evidence=[name])
             except OSError as exc:
-                return _check(f"ttyd {ttyd} downloaded", False, str(exc))
+                return _check("download:ttyd", False, _download_title("ttyd", ttyd), DOWNLOAD_FAILED, evidence=[exc])
         jobs.append((f"Downloading ttyd {ttyd}", get_ttyd))
 
     sb = _var(script, "SB_VERSION")
@@ -1304,10 +1339,14 @@ def prefetch(src, opts, progress=None):
                 # The digest pinned beside SB_VERSION (GitHub's record of the release asset).
                 want = _var(script, f"SB_SHA256_{arch['sb']}")
                 ok = bool(want) and hashlib.sha256(Path(z).read_bytes()).hexdigest() == want
-                return _check(f"SilverBullet {sb} downloaded", ok,
-                              "checksum matches" if ok else "checksum MISMATCH" if want else f"no SB_SHA256_{arch['sb']} in install.sh")
+                if not want:
+                    return _check("download:silverbullet", False, _download_title("SilverBullet", sb),
+                                  M("update.download.no-digest", "The new installer pins no checksum for this file."),
+                                  evidence=[f"SB_SHA256_{arch['sb']}", "install.sh"])
+                return _check("download:silverbullet", ok, _download_title("SilverBullet", sb), DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH,
+                              evidence=[name])
             except OSError as exc:
-                return _check(f"SilverBullet {sb} downloaded", False, str(exc))
+                return _check("download:silverbullet", False, _download_title("SilverBullet", sb), DOWNLOAD_FAILED, evidence=[exc])
         jobs.append((f"Downloading SilverBullet {sb}", get_sb))
 
     # Caddy from its GitHub release, on a box served by Caddy whose apt repository failed
@@ -1329,9 +1368,10 @@ def prefetch(src, opts, progress=None):
                 sums = _fetch(f"{base}/caddy_{ver}_checksums.txt", DOWNLOADS / f"caddy_{ver}_checksums.txt")
                 pkg = _fetch(f"{base}/{deb}", DOWNLOADS / deb, report=report)
                 ok = _digest(pkg, "sha512") == _sum_for(sums, deb)
-                return _check(f"Caddy {ver} downloaded", ok, "checksum matches" if ok else "checksum MISMATCH")
+                return _check("download:caddy", ok, _download_title("Caddy", ver), DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH, evidence=[deb])
             except (OSError, ValueError, KeyError) as exc:
-                return _check("Caddy release downloaded", False, str(exc))
+                return _check("download:caddy", False, M("update.download.caddy.title", "Download of Caddy's latest release"),
+                              DOWNLOAD_FAILED, evidence=[exc])
         jobs.append(("Downloading Caddy's latest release", get_caddy))
 
     if progress:
@@ -1346,7 +1386,8 @@ def prefetch(src, opts, progress=None):
     return checks
 
 
-SIGNED_CHECK = "Signed as this box requires"
+SIGNED_CHECK = "signed"
+SIGNED_OLD = "Signed as this box requires"   # its name in a state kept before the checks had IDs
 
 
 def _signature_check(src, installed, tag=None):
@@ -1360,21 +1401,28 @@ def _signature_check(src, installed, tag=None):
         span = f"{installed}..HEAD" if known else "-1"
         revs = [r for r in run("git", "-C", str(src), "rev-list", span).stdout.split() if r] if known else \
             [run("git", "-C", str(src), "rev-parse", "HEAD").stdout.strip()]
-        ok, detail = signing.check_commits(src, revs, CODE / signing.GITHUB_KEY)
+        ok, detail, seen = signing.check_commits(src, revs, CODE / signing.GITHUB_KEY)
     else:
         # The tag the check fetched; failing that, the newest release tag on what is checked out.
         tag = tag or next(iter(run("git", "-C", str(src), "tag", "--points-at", "HEAD", "-l", signing.TAG_GLOB,
                                    "--sort=-v:refname").stdout.split()), "")
-        ok, detail = signing.check_tag(src, tag, sig["signers"]) if tag else (False, "The downloaded version is not a release tag")
-    return [_check(SIGNED_CHECK, ok, detail)]
+        ok, detail, seen = signing.check_tag(src, tag, sig["signers"]) if tag else \
+            (False, M("update.signed.no-tag", "The downloaded version is not a release tag."), [])
+    return [_check(SIGNED_CHECK, ok, M("update.verify.signed.title", "Signed as this box requires"), detail, evidence=seen,
+                   fix=None if ok else M("update.verify.signed.fix", "Install anyway cannot skip this check. "
+                                                                    "To change the signing level, open Updates, then Update verification."))]
 
 
 def update_signing(req):
     data = signing.save(ETC, str(req.get("level", "")), str(req.get("signers", "")), lambda path, text: safeio.write(path, text, mode=0o600))
     safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
-    words = {"off": "any version from the branch", "github": "only commits signed by the GitHub key",
-             "tags": f"only release tags signed by one of {len(data['signers'])} trusted key{'s' if len(data['signers']) != 1 else ''}"}
-    return f"Updates now accept {words[data['level']]}. The next check uses this setting."
+    if data["level"] == "off":
+        return M("update.signing.off", "Updates now accept any version from the branch. The next check uses this setting.")
+    if data["level"] == "github":
+        return M("update.signing.github", "Updates now accept only commits signed by GitHub's key. The next check uses this setting.")
+    return M("update.signing.tags", {"one": "Updates now accept only release tags signed by the trusted key. The next check uses this setting.",
+                                     "other": "Updates now accept only release tags signed by one of {n} trusted keys. "
+                                              "The next check uses this setting."}, n=len(data["signers"]))
 
 
 def verify_update(src, installed, opts, progress=None, tag=None):
@@ -1387,18 +1435,29 @@ def verify_update(src, installed, opts, progress=None, tag=None):
         # update path is root, and a history that no longer contains what runs here is the
         # sign of a source taken over. A commit the fetched
         # history does not know at all (a box installed from a copy) is only a warning.
-        checks.append(_check("A fast-forward of the installed version", ff,
-                             "The history continues from the installed commit" if ff else
-                             f"{installed} is not an ancestor, so the branch history changed. Read the changes. If you made them, use Install anyway under Updates, Advanced update actions." if known else
-                             f"{installed} is not in the downloaded history, so the box was installed from another source. "
-                             "Read the changes before you install.", warn=not known))
+        title = M("update.verify.history.title", "Continues from the installed version")
+        if ff:
+            checks.append(_check("history", True, title, M("update.verify.history.ok", "The new history continues from the installed commit.")))
+        elif known:
+            checks.append(_check("history", False, title,
+                                 M("update.verify.history.rewritten", "The new version does not continue from the installed commit "
+                                                                      "{commit}. The branch history changed.", commit=installed),
+                                 fix=M("update.verify.history.rewritten.fix", "Read the changes. If you made them, use Install anyway "
+                                                                              "on Updates → Maintenance.")))
+        else:
+            checks.append(_check("history", False, title,
+                                 M("update.verify.history.unknown", "The installed commit {commit} is not in the downloaded history. "
+                                                                    "The box was installed from another source.", commit=installed),
+                                 warn=True, fix=M("update.verify.history.unknown.fix", "Read the changes before you install.")))
     checks += _signature_check(src, installed, tag)
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():
             out = run("bash", "-n", str(path))
-            checks.append(_check(f"{script} parses", out.returncode == 0,
-                                 (out.stderr.strip().splitlines() or [""])[-1]))
+            checks.append(_check(f"parses:{script}", out.returncode == 0, M("update.verify.parses.title", "Shell syntax of {script}", script=script),
+                                 M("update.verify.parses.ok", "The shell finds no syntax error in it.") if out.returncode == 0 else
+                                 M("update.verify.parses.failed", "The shell finds a syntax error in it."),
+                                 evidence=[] if out.returncode == 0 else (out.stderr.strip().splitlines() or [""])[-1:]))
     bad = []
     pys = sorted([*src.glob("irate_box/**/*.py"), *src.glob("scripts/*.py")])
     for py in pys:
@@ -1406,8 +1465,17 @@ def verify_update(src, installed, opts, progress=None, tag=None):
             compile(py.read_text(), str(py), "exec")
         except (SyntaxError, ValueError, UnicodeDecodeError) as exc:
             bad.append(f"{py.relative_to(src)}: {exc}")
-    checks.append(_check("Python files compile", bool(pys) and not bad,
-                         ". ".join(bad) or (f"{len(pys)} files compile. Compiling does not prove the code is safe" if pys else "No Python files under irate_box/, so this is not the expected layout")))
+    title = M("update.verify.python.title", "Python files compile")
+    if bad:
+        checks.append(_check("python", False, title, M("update.verify.python.failed", {"one": "{n} Python file does not compile.",
+                                                                                      "other": "{n} Python files do not compile."}, n=len(bad)),
+                             evidence=bad[:5]))
+    elif pys:
+        checks.append(_check("python", True, title, M("update.verify.python.ok", {"one": "{n} file compiles.", "other": "{n} files compile."}, n=len(pys)),
+                             note=LIMITED_CHECK))
+    else:
+        checks.append(_check("python", False, title, M("update.verify.python.none", "The update has no Python files where the box expects them. "
+                                                                                    "This is not the expected layout."), evidence=["irate_box/"]))
 
     if WEB_SERVER == "nginx":
         checks.append(_nginx_check(src, opts))
@@ -1421,12 +1489,17 @@ def verify_update(src, installed, opts, progress=None, tag=None):
             text = text.replace("$2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT", m.group(0).split()[-1])
         with tempfile.NamedTemporaryFile("w", suffix=".Caddyfile", delete=False) as tmp:
             tmp.write(text)
+        title = M("update.verify.caddy.title", "Syntax of the new Caddyfile")
         try:
             out = run("caddy", "validate", "--adapter", "caddyfile", "--config", tmp.name)
             detail = "" if out.returncode == 0 else ((out.stderr or out.stdout).strip().splitlines() or [""])[-1]
-            checks.append(_check("The new Caddyfile validates", out.returncode == 0, detail[:300]))
+            if out.returncode == 0:
+                checks.append(_check("caddyfile", True, title, M("update.verify.caddy.ok", "Caddy accepts the new configuration."), note=LIMITED_CHECK))
+            else:
+                checks.append(_check("caddyfile", False, title, M("update.verify.caddy.failed", "Caddy refuses the new configuration."),
+                                     evidence=[detail[:300]]))
         except (OSError, subprocess.SubprocessError) as exc:
-            checks.append(_check("The new Caddyfile validates", False, str(exc)))
+            checks.append(_check("caddyfile", False, title, M("update.verify.caddy.failed", "Caddy refuses the new configuration."), evidence=[exc]))
         finally:
             os.unlink(tmp.name)
     checks += prefetch(src, opts, progress)
@@ -1436,10 +1509,12 @@ def verify_update(src, installed, opts, progress=None, tag=None):
 def _nginx_check(src, opts):
     """The new irate-box.nginx as install.sh will write it, through nginx -t on its own (a
     minimal main config around it, so the box's live config is not touched)."""
-    name = "The new nginx site passes nginx -t"
+    name = M("update.verify.nginx.title", "Syntax of the new nginx site")
+    failed = M("update.verify.nginx.failed", "nginx refuses the new site.")
     template = src / "config" / "irate-box.nginx"
     if not template.exists():
-        return _check(name, False, "config/irate-box.nginx is missing from the update")
+        return _check("nginx", False, name, M("update.verify.nginx.missing", "The update has no nginx site file."),
+                      evidence=["config/irate-box.nginx"])
     text = template.read_text()
     # nobody may not bind a port under 1024, even for a test: an unprivileged one stands in, so
     # the listen lines are still parsed.
@@ -1492,9 +1567,11 @@ def _nginx_check(src, opts):
         try:
             out = run(*as_nobody, "nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
         except (OSError, subprocess.SubprocessError) as exc:
-            return _check(name, False, str(exc))
+            return _check("nginx", False, name, failed, evidence=[exc])
     lines = [l for l in (out.stderr or out.stdout).strip().splitlines() if "[emerg]" in l or "[crit]" in l]
-    return _check(name, out.returncode == 0, "" if out.returncode == 0 else (lines or ["nginx -t failed"])[-1][:300])
+    if out.returncode == 0:
+        return _check("nginx", True, name, M("update.verify.nginx.ok", "nginx accepts the new site."), note=LIMITED_CHECK)
+    return _check("nginx", False, name, failed, evidence=[(lines or ["nginx -t failed"])[-1][:300]])
 
 
 def _check_for_update(progress):
@@ -1504,10 +1581,11 @@ def _check_for_update(progress):
     repo = _option(opts, "--repo")
     branch = _option(opts, "--branch", "main")
     if not repo:
-        raise ValueError("install-options names no repository. Run install.sh once by hand to record one.")
+        raise Refused(NO_REPO)
     if repo.startswith(("http://", "git://")):
         # Code that root will run, over a transport anyone on the way can rewrite.
-        raise ValueError(f"Updates come from {repo} over an unencrypted link. Run install.sh again with --repo https://…")
+        raise Refused(M("update.check.unencrypted", "Updates come from {repo} over an unencrypted link. "
+                                                    "Run the installer again with an https:// address for the repository.", repo=repo))
     progress.step(f"Fetching {branch} from {repo}")
     src = str(UPDATE_SRC)
     if (UPDATE_SRC / ".git").is_dir():
@@ -1530,17 +1608,19 @@ def _check_for_update(progress):
         # git says nothing when no tag matches: tell that apart from a fetch that failed.
         remote = run("git", "-C", src, "ls-remote", "--tags", "origin", f"refs/tags/{signing.TAG_GLOB}")
         if remote.returncode == 0 and not remote.stdout.strip():
-            tags_said = f"{repo} has no release tag ({signing.TAG_GLOB}) yet"
+            tags_said = M("update.check.no-tags", "Updates require signed releases, and {repo} has no release tag yet.", repo=repo) \
+                if sig["level"] == "tags" else M("update.check.no-tags-yet", "The repository {repo} has no release tag yet.", repo=repo)
         else:
-            tags_said = "Downloading the release tags failed: " + ((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1]
+            tags_said = M("update.check.tags-failed", "Downloading the release tags failed: {error}",
+                          error=((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1])
         if sig["level"] == "tags":
-            raise ValueError(f"Updates require signed releases, and {tags_said}" if "no release tag" in tags_said else tags_said)
+            raise Refused(tags_said)
     newest = signing.newest_tag(src)
     if sig["level"] == "tags":
         # Signed releases (signing.py): the newest v* tag, not the branch's tip.
         tag = newest
         if not tag:
-            raise ValueError(f"Updates require signed releases, and {repo} has no release tag ({signing.TAG_GLOB}) yet")
+            raise Refused(M("update.check.no-tags", "Updates require signed releases, and {repo} has no release tag yet.", repo=repo))
         _git("-C", src, "checkout", "-q", "--detach", f"refs/tags/{tag}")
     progress.step("Reading the changes")
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
@@ -1568,20 +1648,33 @@ def _check_for_update(progress):
     return state, opts
 
 
-def _change_count(state):
-    n = len(state["changes"])
-    return f"{n} new commit{'s' if n != 1 else ''}" if state["changes_known"] else "a different version"
+def _up_to_date(state):
+    return M("update.check.none", "No newer version detected. The box is up to date with {commit} on {branch}.",
+             commit=state["available"], branch=state["branch"])
 
 
 def update_check(req):
     with Progress("check", 2) as progress:
         state, _ = _check_for_update(progress)
     _write_update_state(state)
+    commit, branch, n = state["available"], state["branch"], len(state["changes"])
     if state["up_to_date"]:
-        return f"No newer version detected: irate-box is up to date ({state['available']} on {state['branch']})"
+        return _up_to_date(state)
+    # The changes are counted only when the history continues from the installed commit.
     if state["verified"]:
-        return f"Update available: {_change_count(state)}, {state['available']} on {state['branch']}. Download complete and verification passed."
-    return f"Update available: {_change_count(state)}, {state['available']} on {state['branch']}. Download it to verify it."
+        if state["changes_known"]:
+            return M("update.check.new-verified", {"one": "Update available: {commit} on {branch}, with {n} new commit. It is downloaded, "
+                                                          "and verification passed.",
+                                                   "other": "Update available: {commit} on {branch}, with {n} new commits. It is downloaded, "
+                                                            "and verification passed."}, commit=commit, branch=branch, n=n)
+        return M("update.check.other-verified", "Update available: a different version, {commit} on {branch}. It is downloaded, "
+                                                "and verification passed.", commit=commit, branch=branch)
+    if state["changes_known"]:
+        return M("update.check.new", {"one": "Update available: {commit} on {branch}, with {n} new commit. Download it to verify it.",
+                                      "other": "Update available: {commit} on {branch}, with {n} new commits. Download it to verify it."},
+                 commit=commit, branch=branch, n=n)
+    return M("update.check.other", "Update available: a different version, {commit} on {branch}. Download it to verify it.",
+             commit=commit, branch=branch)
 
 
 def update_fetch(req):
@@ -1598,7 +1691,7 @@ def update_fetch(req):
             opts = _install_options()
         if state["up_to_date"]:
             _write_update_state(state)
-            return f"No newer version detected: irate-box is up to date ({state['available']} on {state['branch']})"
+            return _up_to_date(state)
         progress.step("Checking the new version")
         checks = verify_update(UPDATE_SRC, state["installed"], opts, progress, tag=state.get("tag"))
     head = state["available"]
@@ -1607,8 +1700,15 @@ def update_fetch(req):
     state.update(checks=checks, verified=None if failed else head, verified_sha=None if failed else full)
     _write_update_state(state)
     if failed:
-        return f"Verification failed: update {head} did not pass verification. Failed check: {failed[0]['name']} ({failed[0]['detail']})"
-    return f"Download complete. Verification passed: {_change_count(state)}, {head} on {state['branch']}"
+        return M("update.fetch.failed", {"one": "Verification failed. The downloaded version {commit} did not pass {n} check: {checks}.",
+                                         "other": "Verification failed. The downloaded version {commit} did not pass {n} checks: {checks}."},
+                 commit=head, n=len(failed), checks=[c["name"] for c in failed])
+    if state["changes_known"]:
+        return M("update.fetch.done", {"one": "Download complete. Verification passed: {commit} on {branch}, with {n} new commit.",
+                                       "other": "Download complete. Verification passed: {commit} on {branch}, with {n} new commits."},
+                 commit=head, branch=state["branch"], n=len(state["changes"]))
+    return M("update.fetch.done-other", "Download complete. Verification passed: a different version, {commit} on {branch}.",
+             commit=head, branch=state["branch"])
 
 
 STEP_LINE = re.compile(rb"==> (.*?)(?:\x1b\[0m)?\s*$")
@@ -1636,18 +1736,20 @@ def _follow_install(proc, progress):
         if time.monotonic() > deadline:
             proc.kill()
             proc.wait()
-            raise ValueError(f"install.sh did not finish within {INSTALL_TIMEOUT // 60} minutes. See update.log.")
+            raise Refused(M("update.install.timeout", {"one": "The installer did not finish within {n} minute. Read the installer output on Updates.",
+                                                       "other": "The installer did not finish within {n} minutes. Read the installer output on Updates."},
+                            n=INSTALL_TIMEOUT // 60))
         time.sleep(1)
 
 
 def update_install(req):
     if not (UPDATE_SRC / "install.sh").is_file():
-        raise ValueError("No update is downloaded yet. Check for updates first.")
+        raise Refused(M("update.install.none", "No update is downloaded yet. Check for updates first."))
     state = _read_update_state()
     # The whole hash of what is checked out, against the whole hash that passed.
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     if not state.get("verified_sha") or state.get("verified_sha") != full:
-        raise ValueError("The downloaded version has not passed verification. Download the update again.")
+        raise Refused(M("update.install.not-verified", "The downloaded version has not passed verification. Download the update again."))
     return _install_fetched(state)
 
 
@@ -1657,7 +1759,13 @@ def _install_fetched(state):
     if state:
         state.update(installed=_installed_commit(), up_to_date=True, changes=[], install_steps=seen)
         _write_update_state(state)
-    return f"Updated to {_installed_commit() or 'the downloaded version'}"
+    return _installed_now()
+
+
+def _installed_now():
+    commit = _installed_commit()
+    return M("update.install.done", "Updated to {commit}.", commit=commit) if commit else \
+        M("update.install.done-unknown", "Updated to the downloaded version.")
 
 
 def update_force_install(req):
@@ -1666,20 +1774,28 @@ def update_force_install(req):
     code's layout and this box's check cannot read it. Still only the version that was fetched
     and checked, and only if its installer parses; the installer stops on its own errors."""
     if not (UPDATE_SRC / "install.sh").is_file():
-        raise ValueError("No update is downloaded yet. Check for updates and download first.")
+        raise Refused(M("update.force.none", "No update is downloaded yet. Check for updates, then download the update."))
     state = _read_update_state()
     head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
     if state.get("available") != head or not state.get("checks"):
-        raise ValueError("Download the update first. Install anyway works only on a downloaded version that was checked.")
+        raise Refused(M("update.force.not-checked", "Install anyway works only on a downloaded version that the box checked. "
+                                                    "Download the update first."))
     if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
-        raise ValueError("Shell parse check failed: the downloaded install.sh does not parse. Install anyway cannot bypass this.")
-    failed = [c["name"] for c in state["checks"] if not c["ok"] and not c["warn"]]
-    if SIGNED_CHECK in failed:
+        raise Refused(M("update.force.parse", "The downloaded installer does not pass the shell syntax check. Install anyway cannot skip this check."))
+    failed = [c for c in state["checks"] if not c["ok"] and not c["warn"]]
+    if any(c.get("id") == SIGNED_CHECK or c.get("name") == SIGNED_OLD for c in failed):
         # The point of a signing level (signing.py): not even Install anyway passes it.
-        raise ValueError("Verification failed: the downloaded version does not meet the signing level of this box. Install anyway cannot bypass this. "
-                         "To change the signing level, open Updates, then Advanced update actions, then Update verification.")
-    done = _install_fetched(state)
-    return f"{done} (Install anyway bypassed these failed checks: {', '.join(failed)})" if failed else done
+        raise Refused(M("update.force.unsigned", "Verification failed. The downloaded version does not meet the signing level of this box. "
+                                                 "Install anyway cannot skip this check. To change the signing level, open Updates, "
+                                                 "then Update verification."))
+    _install_fetched(state)
+    commit = _installed_commit() or head
+    if failed:
+        # Exactly what was skipped, by name.
+        return M("update.force.done", {"one": "Updated to {commit}. Install anyway skipped {n} failed check: {checks}.",
+                                       "other": "Updated to {commit}. Install anyway skipped {n} failed checks: {checks}."},
+                 commit=commit, n=len(failed), checks=[c["name"] for c in failed])
+    return _installed_now()
 
 
 def _run_install(src, args, action, steps=None):
@@ -1698,7 +1814,7 @@ def _run_install(src, args, action, steps=None):
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
         code, seen = _follow_install(proc, progress)
     if code != 0:
-        raise ValueError(f"install.sh exited with code {code}. See the installer output.")
+        raise Refused(M("update.install.failed", "The installer stopped with exit code {code}. Read the installer output on Updates.", code=code))
     return seen
 
 
@@ -1738,11 +1854,25 @@ def addon(req):
 # --- the update doctor ---------------------------------------------------------------
 # For when "Check for updates" fails: look at everything an update depends on and say, in
 # plain words, what is wrong and what to do. Read-only apart from `apt-get update`, which
-# only refreshes package lists. Each finding: {"check", "status": ok|warn|problem,
-# "detail", "fix"}.
+# only refreshes package lists. Each finding in finding.py's shape: whole sentences (msg.M) with
+# stable IDs, commands and what the check saw as data, and the place on the admin page where its cure
+# is chosen (go), for what is not fine.
 
-def _finding(check, status, detail, fix=""):
-    return {"check": check, "status": status, "detail": detail, "fix": fix}
+_go = health._go
+GO_NETWORK, GO_CLOCK, GO_BOOKS, GO_UPDATES = health.GO_NETWORK, health.GO_CLOCK, health.GO_BOOKS, health.GO_UPDATES
+GO_LIBRARIAN = _go("sources", M("go.librarian", "The librarian"))
+GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access"), "library-token")
+GO_MAINT = _go("update-maint", M("go.update-maint", "Updates → Maintenance"))
+GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
+
+# One failed attempt says what happened, not why.
+PROBE_NOTE = M("update.probe.note", "One failed attempt does not show the cause. The server or the network can fail for a short time. "
+                                    "Run the doctor again to see if it stays.")
+CLOCK_WHY = M("update.clock.why", "Certificate checks need the correct time. With a wrong clock, every HTTPS connection can fail.")
+CLOCK_FIX = M("update.clock.fix", "Set the time on Clock. Or connect the box to a network with internet access, so that it can set its clock.")
+CLOCK_SET = "timedatectl set-time 'YYYY-MM-DD HH:MM'"
+LIBRARIAN_LOG = "journalctl -u irate-box-librarian -n 80"
+CACHE_CLEAR = M("update.cache.clear.fix", "Clear the update cache on Updates → Maintenance. Then check for updates again.")
 
 
 def _local_addresses():
@@ -1762,41 +1892,61 @@ def doctor():
     findings = []
 
     # 1. How this box updates.
+    title = M("update.options.title", "Install options")
     try:
         opts = _install_options()
         repo, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
-        findings.append(_finding("Install options", "ok", f"Updates come from {repo} ({branch})"))
-    except ValueError as exc:
+        if repo:
+            findings.append(finding("options", title, "ok", M("update.options.ok", "Updates come from the branch {branch} of {repo}.",
+                                                              branch=branch, repo=repo)))
+        else:
+            findings.append(finding("options", title, "problem", NO_REPO, evidence=[ETC / "install-options"]))
+    except ValueError:
         opts, repo, branch = [], None, "main"
-        findings.append(_finding("Install options", "problem", str(exc),
-                                 "Run install.sh once by hand (sudo ./install.sh …) to record the install options."))
+        findings.append(finding("options", title, "problem",
+                                M("update.options.none", "The box has no record of where its updates come from."),
+                                M("update.options.none.why", "This box was installed before updates from the administration pages existed. "
+                                                             "A check for updates cannot start without the record."),
+                                M("update.options.none.fix", "Run the installer once by hand. It records the install options."),
+                                evidence=[ETC / "install-options"]))
 
     # 2. Names: on the hub's own access point every name resolves to the box itself.
     host = "github.com"
+    title = M("update.dns.title", "Name lookup (DNS)")
     try:
         addrs = {a[4][0] for a in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)}
         mine = addrs & (_local_addresses() | {"127.0.0.1", "::1"})
         if mine:
-            findings.append(_finding("DNS", "problem", f"DNS lookup failed: {host} resolves to this box ({', '.join(sorted(mine))})",
-                                     "The box answers every name itself in hotspot mode. "
-                                     "Connect the box to a network with internet access, or update from a laptop that has it."))
+            findings.append(finding("dns", title, "problem",
+                                    M("update.dns.self", "The DNS lookup of {host} failed. The name leads to this box itself.", host=host),
+                                    M("update.dns.self.why", "In hotspot mode, the box answers every name lookup itself."),
+                                    M("update.dns.self.fix", "Connect the box to a network with internet access. "
+                                                             "Or update from a laptop that has internet access."),
+                                    evidence=sorted(mine), go=GO_NETWORK))
         else:
-            findings.append(_finding("DNS", "ok", f"{host} → {', '.join(sorted(addrs)[:3])}"))
+            findings.append(finding("dns", title, "ok", M("update.dns.ok", "The name {host} resolves.", host=host),
+                                    evidence=sorted(addrs)[:3]))
     except OSError as exc:
         addrs = set()
-        findings.append(_finding("DNS", "problem", f"DNS lookup failed: the box cannot resolve {host}: {exc}",
-                                 "Check the network the box is on (Ethernet or the WiFi network it joined). The DNS server did not answer."))
+        findings.append(finding("dns", title, "problem", M("update.dns.failed", "The DNS lookup of {host} failed.", host=host),
+                                M("update.dns.failed.why", "Without names, the box cannot reach the repository or the package sources."),
+                                M("update.dns.failed.fix", "Check the network that the box uses: Ethernet, or the WiFi network that it joined."),
+                                notes=[PROBE_NOTE], evidence=[exc], go=GO_NETWORK))
 
     # 3. A route out.
     reachable = False
+    title = M("update.connection.title", "Connection to GitHub")
     if addrs:
         try:
             with socket.create_connection((host, 443), timeout=8):
                 reachable = True
-            findings.append(_finding("Connection", "ok", f"{host}:443 answers"))
+            findings.append(finding("connection", title, "ok", M("update.connection.ok", "{host} answers on port 443.", host=host)))
         except OSError as exc:
-            findings.append(_finding("Connection", "problem", f"HTTPS connection failed: the box cannot connect to {host}:443: {exc}",
-                                     "Check that the network has internet access and lets HTTPS through. If it does, try another network."))
+            findings.append(finding("connection", title, "problem",
+                                    M("update.connection.failed", "The HTTPS connection to {host} failed.", host=host),
+                                    fix=M("update.connection.failed.fix", "Check that the network has internet access and lets HTTPS through. "
+                                                                          "If it does, try another network."),
+                                    notes=[PROBE_NOTE], evidence=[exc], go=GO_NETWORK))
 
     # 4. TLS, and the clock it depends on. A board with no RTC can boot years in the past,
     #    and then every certificate looks not-yet-valid.
@@ -1807,139 +1957,211 @@ def doctor():
         installed_on = time.mktime(time.strptime(m.group(1), "%Y-%m-%d")) if m else None
     except OSError:
         pass
+    clock = M("update.clock.title", "Clock")
+    tls = M("update.tls.title", "HTTPS certificate")
+    url = f"https://{host}/"
     if reachable:
         try:
-            with _tls_get(f"https://{host}/") as resp:
+            with _tls_get(url) as resp:
                 server = parsedate_to_datetime(resp.headers["Date"]).timestamp()
             skew = now - server
             if abs(skew) > 600:
-                findings.append(_finding("Clock", "problem", f"The box's clock is {abs(skew) / 3600:.1f} h "
-                                         f"{'ahead' if skew > 0 else 'behind'}",
-                                         "Set the time with timedatectl, or let NTP sync when the box is online. "
-                                         "Certificate checks need the correct time."))
+                hours = f"{abs(skew) / 3600:.1f}"
+                findings.append(finding("clock", clock, "problem",
+                                        M("update.clock.ahead", "The box's clock is {hours} h ahead of {host}.", hours=hours, host=host) if skew > 0 else
+                                        M("update.clock.behind", "The box's clock is {hours} h behind {host}.", hours=hours, host=host),
+                                        CLOCK_WHY, CLOCK_FIX, commands=[CLOCK_SET], go=GO_CLOCK))
             else:
-                findings.append(_finding("Clock", "ok", f"within {abs(skew):.0f} s of {host}"))
-            findings.append(_finding("TLS", "ok", f"The certificate of https://{host}/ is valid"))
+                findings.append(finding("clock", clock, "ok", M("update.clock.ok", "The clock is within {seconds} s of {host}.",
+                                                                seconds=round(abs(skew)), host=host)))
+            findings.append(finding("tls", tls, "ok", M("update.tls.ok", "The certificate of {url} is valid.", url=url)))
         except ssl.SSLError as exc:
-            findings.append(_finding("TLS", "problem", f"Certificate validation failed: {exc}",
-                                     "Possible causes: a wrong clock, missing ca-certificates, or a network that intercepts HTTPS. Check the clock first."))
+            findings.append(finding("tls", tls, "problem", M("update.tls.failed", "Certificate validation failed for {url}.", url=url),
+                                    fix=M("update.tls.failed.fix", "Check the clock first."),
+                                    notes=[M("update.tls.failed.causes", "Possible causes are a wrong clock, missing CA certificates, "
+                                                                         "or a network that intercepts HTTPS.")],
+                                    evidence=[exc], go=GO_CLOCK))
         except (OSError, KeyError, TypeError, ValueError) as exc:
-            findings.append(_finding("TLS", "problem", f"HTTPS connection failed: https://{host}/: {exc}", ""))
+            findings.append(finding("tls", tls, "problem", M("update.tls.error", "The HTTPS request to {url} failed.", url=url),
+                                    notes=[PROBE_NOTE], evidence=[exc], go=GO_CLOCK))
     if installed_on and now < installed_on - 86400:
-        findings.append(_finding("Clock", "problem",
-                                 f"The clock says {time.strftime('%Y-%m-%d', time.gmtime(now))}, which is before the box was installed.", "Set the time: timedatectl set-time 'YYYY-MM-DD HH:MM'."))
+        findings.append(finding("clock-installed", clock, "problem",
+                                M("update.clock.before-install", "The clock says {date}. That is before the box was installed.",
+                                  date=time.strftime("%Y-%m-%d", time.gmtime(now))),
+                                CLOCK_WHY, CLOCK_FIX, commands=[CLOCK_SET], go=GO_CLOCK))
 
     # 5. GitHub's API, which the librarian and Caddy's release lookup use.
+    title = M("update.github-api.title", "GitHub API")
     if reachable:
         try:
             with _tls_get("https://api.github.com/rate_limit") as resp:
                 core = json.load(resp)["resources"]["core"]
             if core["remaining"] == 0:
-                wait = max(0, core["reset"] - now) / 60
-                findings.append(_finding("GitHub API", "problem", "The rate limit is used up (60 requests an hour "
-                                         "without a token)", f"Wait about {wait:.0f} minutes, or enter a GitHub token on "
-                                         "the librarian page."))
+                wait = round(max(0, core["reset"] - now) / 60)
+                findings.append(finding("github-api", title, "problem",
+                                        M("update.github-api.used-up", "The GitHub API rate limit is used up. "
+                                                                       "Without a token, the limit is 60 requests an hour."),
+                                        M("update.github-api.why", "The librarian and the lookup of Caddy's latest release use the GitHub API."),
+                                        M("update.github-api.used-up.fix", {"one": "Wait about {n} minute. Or enter a GitHub token on "
+                                                                                   "The librarian → Source access.",
+                                                                            "other": "Wait about {n} minutes. Or enter a GitHub token on "
+                                                                                     "The librarian → Source access."}, n=wait),
+                                        go=GO_TOKEN))
             else:
-                findings.append(_finding("GitHub API", "ok", f"{core['remaining']} of {core['limit']} requests left this hour"))
+                findings.append(finding("github-api", title, "ok", M("update.github-api.ok", "{left} of {limit} requests are left this hour.",
+                                                                     left=core["remaining"], limit=core["limit"])))
         except (OSError, ValueError, KeyError) as exc:
-            findings.append(_finding("GitHub API", "warn", f"The box could not ask GitHub: {exc}", ""))
+            findings.append(finding("github-api", title, "warn", M("update.github-api.failed", "The box could not ask GitHub for its rate limit."),
+                                    notes=[PROBE_NOTE], evidence=[exc], go=GO_TOKEN))
 
     # 6. The repository and branch exist and answer.
+    title = M("update.repo.title", "Repository")
     if repo and reachable:
         out = run("git", "ls-remote", "--heads", repo, branch, timeout=60)
         if out.returncode != 0:
-            findings.append(_finding("Repository", "problem", (out.stderr.strip().splitlines() or ["git ls-remote failed"])[-1],
-                                     "Check that the repository exists and that the box can read it without a sign-in."))
+            findings.append(finding("repo", title, "problem", M("update.repo.failed", "The box could not read the repository {repo}.", repo=repo),
+                                    fix=M("update.repo.failed.fix", "Check that the repository exists and that the box can read it without a sign-in."),
+                                    notes=[PROBE_NOTE], evidence=(out.stderr.strip().splitlines() or ["git ls-remote failed"])[-1:]))
         elif not out.stdout.strip():
-            findings.append(_finding("Repository", "problem", f"Branch not found: {repo} has no branch {branch}",
-                                     "Check the branch name. Run install.sh again with --branch and the correct name."))
+            # The branch is not there now: renamed, removed, or never there. The doctor cannot tell which.
+            findings.append(finding("repo", title, "problem",
+                                    M("update.repo.no-branch", "Branch not found. The repository {repo} has no branch named {branch}.",
+                                      repo=repo, branch=branch),
+                                    fix=M("update.repo.no-branch.fix", "Check the branch name. To change it, run the installer again "
+                                                                       "with the option --branch and the correct name.")))
         else:
-            findings.append(_finding("Repository", "ok", f"{branch} is at {out.stdout.split()[0][:7]}"))
+            findings.append(finding("repo", title, "ok", M("update.repo.ok", "The branch {branch} is at {commit}.",
+                                                           branch=branch, commit=out.stdout.split()[0][:7])))
 
     # 7. Space for the clone, downloads and the install.
-    for label, path, need in (("Space for the update cache", UPDATE_SRC.parent, 200),
-                              ("Space on the system card", Path("/"), 300)):
+    for fid, title, path, need in (("space:cache", M("update.space.cache.title", "Space for the update cache"), UPDATE_SRC.parent, 200),
+                                   ("space:system", M("update.space.system.title", "Space on the system card"), Path("/"), 300)):
         path = path if path.exists() else path.parent
         free = shutil.disk_usage(path).free >> 20
-        findings.append(_finding(label, "ok" if free >= need else "problem", f"{free} MB free in {path}",
-                                 "" if free >= need else f"Insufficient free storage. Make at least {need} MB free, for example by removing books under Library."))
+        if free >= need:
+            findings.append(finding(fid, title, "ok", M("update.space.ok", "{mb} MB is free.", mb=free), evidence=[path]))
+        else:
+            findings.append(finding(fid, title, "problem",
+                                    M("update.space.low", "Insufficient free storage. Only {mb} MB is free, and an update needs {need} MB.",
+                                      mb=free, need=need),
+                                    fix=M("update.space.low.fix", "Delete what is no longer needed, for example old books on Books."),
+                                    evidence=[path], go=GO_BOOKS))
 
     # 8. The cached clone.
+    title = M("update.cache.title", "Update cache")
     if (UPDATE_SRC / ".git").is_dir():
         locks = [p.name for p in (UPDATE_SRC / ".git").glob("*.lock")]
         if locks:
-            findings.append(_finding("Update cache", "problem", f"Stale cache lock: {', '.join(locks)}",
-                                     "A git command left a lock file. Clear the cache below, then check again."))
+            findings.append(finding("cache", title, "problem",
+                                    M("update.cache.lock", {"one": "Stale cache lock. The update cache has {n} lock file that a git command left.",
+                                                            "other": "Stale cache lock. The update cache has {n} lock files that git commands left."},
+                                      n=len(locks)),
+                                    M("update.cache.lock.why", "Git cannot work in the cache while a lock file is there."),
+                                    CACHE_CLEAR, evidence=locks, go=GO_MAINT))
         else:
             status = run("git", "-C", str(UPDATE_SRC), "status", "--porcelain", timeout=60)
             remote = run("git", "-C", str(UPDATE_SRC), "remote", "get-url", "origin").stdout.strip()
             if status.returncode != 0:
-                findings.append(_finding("Update cache", "problem", "The cached clone is damaged",
-                                         "Clear the cache below and check again."))
+                findings.append(finding("cache", title, "problem", M("update.cache.damaged", "The cached copy of the repository is damaged."),
+                                        fix=CACHE_CLEAR, evidence=(status.stderr.strip().splitlines() or [])[-1:], go=GO_MAINT))
             elif repo and remote != repo:
-                findings.append(_finding("Update cache", "warn", f"The cache was cloned from {remote}, not {repo}",
-                                         f"The next check switches the cache to {repo}."))
+                findings.append(finding("cache", title, "warn",
+                                        M("update.cache.other-repo", "The cache was copied from {remote}, not from {repo}.", remote=remote, repo=repo),
+                                        notes=[M("update.cache.other-repo.note", "The next check for updates switches the cache to {repo}.", repo=repo)],
+                                        go=GO_MAINT))
             else:
-                findings.append(_finding("Update cache", "ok", "The cached clone is intact"))
+                findings.append(finding("cache", title, "ok", M("update.cache.ok", "The cached copy of the repository is intact.")))
     else:
-        findings.append(_finding("Update cache", "ok", "The cache is empty. The next check downloads the repository again."))
+        findings.append(finding("cache", title, "ok", M("update.cache.empty", "The cache is empty. The next check downloads the repository again.")))
 
     # 9. Package sources: a repository that fails verification fails every apt-get update.
+    title = M("update.sources.title", "Package sources")
     out = run("apt-get", "update", "-q", timeout=300)
     text = out.stdout + out.stderr
-    bad = sorted(set(re.findall(r"(?:Err|E|W):\S*\s+(https?://\S+)", text)))
     if out.returncode == 0 and not re.search(r"^(E|Err):", text, re.M):
-        findings.append(_finding("Package sources", "ok", "apt-get update succeeds"))
+        findings.append(finding("sources", title, "ok", M("update.sources.ok", "The package lists refresh without errors.")))
     else:
+        # Which sources fail, so that the file named is the one that fails: a command finds its list file.
+        bad = sorted(set(re.findall(r"(?:Err|E|W):\S*\s+(https?://\S+)", text)))
+        hosts = sorted({re.sub(r"^https?://([^/]+).*", r"\1", u) for u in bad})
         lines = [l for l in text.splitlines() if re.match(r"^(E|Err|W):", l)][:3]
-        findings.append(_finding("Package sources", "problem", " | ".join(lines)[:400] or "apt-get update failed",
-                                 "Package-index refresh failed. A package source that fails verification blocks "
-                                 "every update. install.sh handles the Caddy source. For another source, "
-                                 "read the lines above to find the list file in /etc/apt/sources.list.d/. "
-                                 "Copy that file to a safe place, then remove it from the terminal."))
+        findings.append(finding("sources", title, "problem",
+                                M("update.sources.failed", "The package-index refresh failed."),
+                                M("update.sources.failed.why", "A package source that fails verification blocks every package update."),
+                                M("update.sources.failed.fix", "Find the list file of the failing source with the command. "
+                                                               "Copy that file to a safe place. Then remove it, and run the doctor again.")
+                                if hosts else None,
+                                notes=[M("update.sources.caddy", "The installer repairs the Caddy package source itself.")],
+                                commands=[f"grep -rlF {shlex.quote(h)} /etc/apt/sources.list /etc/apt/sources.list.d/" for h in hosts[:2]],
+                                evidence=[*bad[:3], *[l[:200] for l in lines]] or ["apt-get update failed"]))
 
     # 10. The last fetch, as the page last saw it.
     try:
         last = json.loads(UPDATE_STATE.read_text())
         failed = [c for c in last.get("checks", []) if not c.get("ok") and not c.get("warn")]
         if failed:
-            findings.append(_finding("Last update check", "problem",
-                                     "; ".join(f"{c['name']}: {c['detail']}" for c in failed)[:400],
-                                     "Fix the cause, then check for updates again."))
-    except (OSError, ValueError):
+            findings.append(finding("last-check", M("update.last-check.title", "Last update check"), "problem",
+                                    M("update.last-check.failed", {"one": "The downloaded version failed {n} check.",
+                                                                   "other": "The downloaded version failed {n} checks."}, n=len(failed)),
+                                    fix=M("update.last-check.fix", "Repair the cause. Then check for updates again."),
+                                    notes=[*(_said_check(c) for c in failed), *(c["fix"] for c in failed if is_message(c.get("fix")))],
+                                    evidence=[e for c in failed for e in c.get("evidence", [])][:6], go=GO_UPDATES))
+    except (OSError, ValueError, AttributeError):
         pass
     findings += scheduled_findings()
     findings += kits_findings()
     return findings
 
 
+def _said_check(c):
+    """A failed check as the doctor says it: its own sentence (with its fix) now, or its name and words in a state
+    kept from before the checks were messages."""
+    if is_message(c.get("detail")):
+        return M("update.last-check.item", "{check}: {detail}", check=c["name"], detail=c["detail"])
+    return f"{c.get('name', '')}: {c.get('detail', '')}"
+
+
 def scheduled_findings(now=None):
     """Whether the timer's runs actually reach the hub's own update (library/last-run.json, kept
     by the librarian): a check that the box *can* update says nothing about whether it *does*."""
     now = now or time.time()
+    title = M("update.scheduled.title", "Scheduled updates")
+    log_fix = M("update.scheduled.log.fix", "Read the librarian's log.")
     try:
         rec = json.loads((STATE / "library" / "last-run.json").read_text())
     except (OSError, ValueError):
-        return [_finding("Scheduled updates", "warn", "No scheduled run recorded yet",
-                         "The librarian runs every hour. If this message stays, run: journalctl -u irate-box-librarian -n 80")]
+        return [finding("scheduled", title, "warn", M("update.scheduled.none", "No scheduled run is recorded yet."),
+                        fix=M("update.scheduled.none.fix", "If this stays, read the librarian's log."),
+                        notes=[M("update.scheduled.none.note", "The librarian runs every hour.")],
+                        commands=[LIBRARIAN_LOG], go=GO_LIBRARIAN)]
     out = []
     last = rec.get("last_scheduled") or {}
-    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("started") or 0))
+    started = when(last.get("started") or 0)
     if last and last.get("finished") is None:
         pass  # running now
     elif last and last.get("error"):
-        out.append(_finding("Scheduled updates", "problem", f"Scheduled run failed ({when}). It crashed: {last['error']}"
-                            + (f" in {last['where']}" if last.get("where") else ""),
-                            "Run journalctl -u irate-box-librarian -n 80 for the full error. Until the cause is fixed, the steps after the crash do not run: books, toolkits and the update of the hub server."))
+        out.append(finding("scheduled", title, "problem",
+                           M("update.scheduled.crashed", "Scheduled run failed. The run of {time} stopped with an error.", time=started),
+                           M("update.scheduled.crashed.why", "Until the cause is repaired, the steps after the error do not run: books, "
+                                                             "toolkits and the update of the hub server."),
+                           log_fix, commands=[LIBRARIAN_LOG],
+                           evidence=[last["error"], *([last["where"]] if last.get("where") else [])], go=GO_LIBRARIAN))
     hub_at = rec.get("hub_stage_at")
     if not hub_at or now - hub_at > 3 * 3600:
-        out.append(_finding("Scheduled updates", "problem",
-                            "Update stage not reached: scheduled runs have not reached the update of the hub server "
-                            + (f"since {time.strftime('%Y-%m-%d %H:%M', time.localtime(hub_at))}" if hub_at else "yet"),
-                            "Run journalctl -u irate-box-librarian -n 80 to see the last runs."))
+        out.append(finding("scheduled-stage", title, "problem",
+                           M("update.scheduled.stage.since", "Update stage not reached. Scheduled runs have not reached the update of "
+                                                             "the hub server since {time}.", time=when(hub_at)) if hub_at else
+                           M("update.scheduled.stage.never", "Update stage not reached. Scheduled runs have not reached the update of "
+                                                             "the hub server yet."),
+                           fix=log_fix, commands=[LIBRARIAN_LOG], go=GO_LIBRARIAN))
     if not out:
-        out.append(_finding("Scheduled updates", "ok", f"The scheduled run ({when}) finished and reached the update of the hub server"
-                            + ("" if last.get("ok") else f". Some sources had errors: {'; '.join(last.get('errors', [])[:3])}")))
+        errors = last.get("errors", [])[:3] if not last.get("ok") else []
+        out.append(finding("scheduled", title, "ok",
+                           M("update.scheduled.ok", "The scheduled run of {time} finished and reached the update of the hub server.",
+                             time=started) if last else
+                           M("update.scheduled.ok-reached", "Scheduled runs reach the update of the hub server."),
+                           notes=[M("update.scheduled.ok.errors", "Some sources had errors.")] if errors else [],
+                           evidence=errors))
     return out
 
 
@@ -1948,80 +2170,86 @@ def kits_findings(now=None):
     its size against the budget the page set, and kits left installed."""
     now = now or time.time()
     out = []
+    title = M("update.kits-cache.title", "Toolkit cache")
     problems = kits.verify()
     if problems:
-        out.append(_finding("Toolkits' cache", "problem", "; ".join(problems[:5]),
-                            "Download the toolkit again while the box is online (Toolkits page). The box installs nothing from a cache that fails this check."))
+        out.append(finding("kits-cache", title, "problem",
+                           M("update.kits-cache.failed", "The toolkit cache failed its integrity check."),
+                           M("update.kits-cache.failed.why", "The box installs nothing from a cache that fails this check."),
+                           M("update.kits-cache.failed.fix", "On Toolkits, select Refresh cache for the toolkit while the box has internet access."),
+                           evidence=problems[:5], go=GO_TOOLKITS))
     elif kits.MANIFESTS.is_dir() and any(kits.MANIFESTS.glob("*.json")):
-        out.append(_finding("Toolkits' cache", "ok", f"Cached files verified: every file matches its manifest ({kits.pool_bytes() >> 20} MB)"))
+        out.append(finding("kits-cache", title, "ok",
+                           M("update.kits-cache.ok", "Cached files verified. Every file in the toolkit cache matches its manifest. "
+                                                     "The cache uses {mb} MB.", mb=kits.pool_bytes() >> 20)))
     try:
         budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
     except (OSError, ValueError, TypeError, AttributeError):
         budget = 500
     if kits.pool_bytes() > budget << 20:
-        out.append(_finding("Toolkits' cache", "warn", f"Toolkit cache budget exceeded: {kits.pool_bytes() >> 20} MB, over its {budget} MB budget",
-                            "Increase the toolkit cache size limit, or stop keeping a toolkit up to date."))
-    # Kits kept fresher (the security kit: from outside the box's control), and their data:
-    # a warning after a week, a problem after a month.
-    def age(what, when, fix):
-        days = (now - when) / 86400
-        if days > 30:
-            out.append(_finding("Security tools' freshness", "problem", f"Vulnerability data age: {what} is {int(days)} days old", fix))
-        elif days > 7:
-            out.append(_finding("Security tools' freshness", "warn", f"Vulnerability data age: {what} is {int(days)} days old", fix))
+        out.append(finding("kits-limit", M("update.kits-limit.title", "Toolkit cache storage limit"), "warn",
+                           M("update.kits-limit.over", "Toolkit cache storage limit exceeded. The cache uses {mb} MB, and its limit is {limit} MB.",
+                             mb=kits.pool_bytes() >> 20, limit=budget),
+                           fix=M("update.kits-limit.fix", "Increase the cache storage limit on Toolkits. Or stop keeping a toolkit up to date."),
+                           go=GO_TOOLKITS))
+    # Kits kept up to date (the security kit: from outside the box's control), and their data, by when the box
+    # downloaded them: a warning after a week, a problem after a month.
+    age_title = M("update.kits-age.title", "Vulnerability data age")
+    age_fix = M("update.kits-age.fix", "Connect the box to the internet. The librarian downloads new data every day.")
+
+    def age(fid, at, said):
+        days = (now - at) / 86400
+        if days > 7:
+            out.append(finding(fid, age_title, "problem" if days > 30 else "warn", said(int(days)), fix=age_fix, go=GO_TOOLKITS))
+
     for kid, k in kits.definitions().items():
         man = kits.manifest(kid)
         if k.get("refresh_hours") and man:
-            age(f"the {kid} kit's cache", man["fetched"], "Connect the box to the internet. The librarian downloads new data every day.")
+            age(f"kits-age:{kid}", man["fetched"], lambda n, kid=kid, at=man["fetched"]: M(
+                "update.kits-age.kit", {"one": "The box downloaded the cache of the {kit} toolkit on {time}, {n} day ago.",
+                                        "other": "The box downloaded the cache of the {kit} toolkit on {time}, {n} days ago."},
+                kit=kid, time=when(at), n=n))
         if "debsecan" in k.get("feeds", []) and man:
             try:
                 codename = next(l.split("=", 1)[1].strip().strip('"') for l in open("/etc/os-release") if l.startswith("VERSION_CODENAME="))
                 feed = STATE / "library" / "debsecan" / "release" / "1" / codename
                 if feed.is_file():
-                    age("debsecan's data (Debian's security tracker)", feed.stat().st_mtime,
-                        "Connect the box to the internet. The librarian downloads new data every day.")
+                    at = feed.stat().st_mtime
+                    age("kits-age:debsecan", at, lambda n, at=at: M(
+                        "update.kits-age.debsecan", {"one": "The box downloaded debsecan's data from Debian's security tracker on {time}, "
+                                                            "{n} day ago.",
+                                                     "other": "The box downloaded debsecan's data from Debian's security tracker on {time}, "
+                                                              "{n} days ago."}, time=when(at), n=n))
             except (OSError, StopIteration):
                 pass
+    title = M("update.kits-installed.title", "Installed toolkits")
     for kit, v in kits.installed_state().items():
         days = (now - v.get("at", now)) / 86400
         if kit == "debug" and days > 7:
-            out.append(_finding("Toolkits installed", "warn", f"The debug toolkit has been installed for {int(days)} days. "
-                                "Its tools can read process memory and network traffic on this box.", "Remove it on the Toolkits page."))
+            out.append(finding(f"kits-installed:{kit}", title, "warn",
+                               M("update.kits-installed.debug", {"one": "The debug toolkit has been installed for {n} day.",
+                                                                 "other": "The debug toolkit has been installed for {n} days."}, n=int(days)),
+                               M("update.kits-installed.debug.why", "Run as root, its tools can read the memory of processes and the "
+                                                                    "network traffic on this box."),
+                               M("update.kits-installed.debug.fix", "On Toolkits, select Remove toolkit."), go=GO_TOOLKITS))
         elif v.get("remove_at") is None and kit != "build":
-            out.append(_finding("Toolkits installed", "warn", f"Toolkit installed without removal time: {kit}",
-                                "Set a removal time on the Toolkits page, or remove the toolkit."))
+            out.append(finding(f"kits-installed:{kit}", title, "warn",
+                               M("update.kits-installed.no-removal", "Toolkit installed without removal time. The {kit} toolkit stays "
+                                                                     "installed until someone removes it.", kit=kit),
+                               fix=M("update.kits-installed.no-removal.fix", "On Toolkits, set a removal time, or select Remove toolkit."),
+                               go=GO_TOOLKITS))
     return out
 
 
-# Where each check's cure is chosen on the admin page: the page's link to it, said by the check, not read from its words.
-DOCTOR_GO = {
-    "DNS": ("network", "Network"), "Connection": ("network", "Network"),
-    "Clock": ("clock", "Clock"), "TLS": ("clock", "Clock"),
-    "GitHub API": ("sources", "The librarian → Source access", "library-token"),
-    "Update cache": ("update-maint", "Updates → Maintenance"),
-    "Last update check": ("updates", "Updates"),
-    "Scheduled updates": ("sources", "The librarian"),
-    "Toolkits' cache": ("toolkits", "Toolkits"), "Toolkits installed": ("toolkits", "Toolkits"),
-    "Security tools' freshness": ("toolkits", "Toolkits"),
-}
-
-
-def with_go(findings):
-    """Each finding that is not fine, with its check's place on the admin page (go: section, where, mark?)."""
-    for f in findings:
-        to = DOCTOR_GO.get(f["check"])
-        if to and f["status"] != "ok":
-            f["go"] = {"section": to[0], "where": to[1], **({"mark": to[2]} if len(to) > 2 else {})}
-    return findings
-
-
 def update_doctor(req):
-    findings = with_go(doctor())
+    findings = doctor()
     safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2))
     problems = [f for f in findings if f["status"] == "problem"]
     if not problems:
-        return "Updates doctor: no problems found"
-    return f"Updates doctor: {len(problems)} problem{'s' if len(problems) != 1 else ''}, first: {problems[0]['check']}"
+        return M("update.doctor.none", "The update doctor found no problems.")
+    return M("update.doctor.problems", {"one": "The update doctor found {n} problem: {first}.",
+                                        "other": "The update doctor found {n} problems. The first is {first}."},
+             n=len(problems), first=problems[0]["title"])
 
 
 def update_clear_cache(req):
@@ -2030,7 +2258,7 @@ def update_clear_cache(req):
         if path.exists():
             shutil.rmtree(path)
     UPDATE_STATE.unlink(missing_ok=True)
-    return "Update cache cleared"
+    return M("update.cache.cleared", "The update cache is cleared. The next check starts again from the beginning.")
 
 
 # --- the security page -----------------------------------------------------------------
@@ -3048,8 +3276,11 @@ ACTIONS = {"service": service, "password": password, "claim": claim,
 
 
 def answer(rid, ok, message):
+    """The result the hub reads: message in English, as every reader of results expects; a message (msg.M) also as
+    itself (msg), for a page that says it in the reader's language and a test that reads its ID."""
+    said = {"message": render(message), "msg": message} if is_message(message) else {"message": message}
     safeio.mkdir(RESULTS)
-    safeio.write(RESULTS / f"{rid}.json", json.dumps({"id": rid, "ok": ok, "message": message, "at": time.time()}))
+    safeio.write(RESULTS / f"{rid}.json", json.dumps({"id": rid, "ok": ok, **said, "at": time.time()}))
     # Keep the last 50 answers; the page only ever looks at recent ones.
     old = sorted(RESULTS.glob("*.json"), key=lambda p: p.stat().st_mtime)[:-50]
     for p in old:
@@ -3083,7 +3314,8 @@ def main():
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 path.unlink(missing_ok=True)
-                answer(rid, False, str(exc))
+                said = getattr(exc, "message", None)
+                answer(rid, False, said if is_message(said) else str(exc))
             except Exception as exc:  # a handler's own bug: answered, and the queue goes on
                 path.unlink(missing_ok=True)
                 answer(rid, False, f"{type(exc).__name__}: {exc}")

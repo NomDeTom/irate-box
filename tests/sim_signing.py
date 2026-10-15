@@ -17,6 +17,7 @@ os.environ.update(HUB_STATE_DIR=str(STATE), HUB_ETC_DIR=str(ETC), HUB_RUN_DIR=st
                   HUB_UPDATE_DIR=str(T / "cache" / "src"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import hub_control, signing  # noqa: E402
+from irate_box.msg import M  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -61,12 +62,12 @@ git(src, *signed, "tag", "-s", "v1.10", "-m", "1.10")
 git(src, "tag", "-a", "v1.11-unsigned", "-m", "x")
 git(src, "-c", "gpg.format=ssh", "-c", f"user.signingkey={k_eve}", "tag", "-s", "v1.12-eve", "-m", "x")
 check("the newest release by version: v1.12-eve over v1.10 over v1.9", signing.newest_tag(src) == "v1.12-eve", signing.newest_tag(src))
-ok, d = signing.check_tag(src, "v1.10", [line_tom])
-check("a tag signed with a trusted key: taken, and by whom", ok and "owner@box" in d, d)
-ok, d = signing.check_tag(src, "v1.12-eve", [line_tom])
-check("a tag signed with another key: refused", not ok, d)
-ok, d = signing.check_tag(src, "v1.11-unsigned", [line_tom])
-check("an unsigned tag: refused", not ok, d)
+ok, d, _ = signing.check_tag(src, "v1.10", [line_tom])
+check("a tag signed with a trusted key: taken, and by whom", ok and d["id"] == "update.signed.tag.ok" and d["args"]["signer"] == "owner@box", d)
+ok, d, seen = signing.check_tag(src, "v1.12-eve", [line_tom])
+check("a tag signed with another key: refused, with what git said", not ok and d["id"] == "update.signed.tag-untrusted" and seen, (d, seen))
+ok, d, _ = signing.check_tag(src, "v1.11-unsigned", [line_tom])
+check("an unsigned tag: refused", not ok and d["id"] == "update.signed.tag-untrusted", d)
 
 # --- the root helper: the level kept, what /admin sees, the check before an install ---
 msg = hub_control.update_signing({"level": "tags", "signers": line_tom})
@@ -76,19 +77,20 @@ check("the level and the keys kept root's (0600)", kept == {"level": "tags", "si
       and ((ETC / "update-signing.json").stat().st_mode & 0o077) == 0, oct((ETC / "update-signing.json").stat().st_mode))
 check("/admin sees the key's name, type and comment, never the key", public == {"level": "tags", "keys": [{"name": "owner@box", "type": "ssh-ed25519", "comment": "laptop"}]}
       and pub_tom.split()[1] not in json.dumps(public), public)
-check("  and says so", "release tags signed by one of 1 trusted key" in msg, msg)
+check("  and says so", msg["id"] == "update.signing.tags" and msg["args"] == {"n": 1}, msg)
 git(src, "checkout", "-q", "--detach", "v1.10")
 c = hub_control._signature_check(src, None, "v1.10")
-check("the check before an install: v1.10, signed by the owner's key, passes", c and c[0]["ok"] and c[0]["name"] == hub_control.SIGNED_CHECK, c)
+check("the check before an install: v1.10, signed by the owner's key, passes", c and c[0]["ok"] and c[0]["id"] == hub_control.SIGNED_CHECK, c)
 git(src, "checkout", "-q", "--detach", "v1.12-eve")
 c = hub_control._signature_check(src, None, "v1.12-eve")
 check("v1.12-eve, eve's key: fails", c and not c[0]["ok"], c)
 c = hub_control._signature_check(src, None)
-check("  with no tag named, the newest release tag on that commit is the one checked (eve's): fails", c and not c[0]["ok"] and "v1.12-eve" in c[0]["detail"], c)
+check("  with no tag named, the newest release tag on that commit is the one checked (eve's): fails", c and not c[0]["ok"]
+      and c[0]["detail"]["args"]["tag"] == "v1.12-eve" and c[0]["fix"], c)
 git(src, "checkout", "-q", "main")
 (src / "a").write_text("3"); git(src, "commit", "-qam", "three, no tag")
 c = hub_control._signature_check(src, None)
-check("the branch's tip, not a release tag: fails", c and not c[0]["ok"] and "not a release tag" in c[0]["detail"], c)
+check("the branch's tip, not a release tag: fails", c and not c[0]["ok"] and c[0]["detail"]["id"] == "update.signed.no-tag", c)
 
 # Install anyway cannot pass a signature that failed.
 upd = Path(hub_control.UPDATE_SRC)
@@ -97,12 +99,20 @@ upd.mkdir(parents=True, exist_ok=True)
 subprocess.run(["git", "init", "-q", str(upd)], check=True)
 git(upd, "add", "install.sh"); git(upd, "commit", "-qm", "x")
 head = git(upd, "rev-parse", "--short=7", "HEAD")
-hub_control._write_update_state({"available": head, "checks": [hub_control._check(hub_control.SIGNED_CHECK, False, "unsigned")]})
+hub_control._write_update_state({"available": head, "checks": [hub_control._check(hub_control.SIGNED_CHECK, False, M("t.name", "Signed"),
+                                                                                    M("t.unsigned", "Unsigned."))]})
 try:
     hub_control.update_force_install({}); ok = False; why = "installed"
-except ValueError as exc:
-    ok, why = "Install anyway cannot bypass" in str(exc), str(exc)
+except hub_control.Refused as exc:
+    ok, why = exc.message["id"] == "update.force.unsigned", exc.message
 check("Install anyway refuses a version not signed as required", ok, why)
+# A state kept before the checks had IDs: the signature check known by its old name, and refused the same.
+hub_control._write_update_state({"available": head, "checks": [{"name": hub_control.SIGNED_OLD, "ok": False, "detail": "unsigned", "warn": False}]})
+try:
+    hub_control.update_force_install({}); ok = False; why = "installed"
+except hub_control.Refused as exc:
+    ok, why = exc.message["id"] == "update.force.unsigned", exc.message
+check("  and in a state kept before the checks had IDs", ok, why)
 
 # --- off: nothing more than before ---
 hub_control.update_signing({"level": "off", "signers": ""})
@@ -126,7 +136,7 @@ for t in git(bare, "tag", "-l").split():
 shutil.rmtree(hub_control.UPDATE_SRC, ignore_errors=True)
 st, _ = hub_control._check_for_update(_Quiet())
 check("  a repository with no release tag: noted, not in the way while signing is off", st["release_tag"] is None
-      and "no release tag" in (st["tags_problem"] or ""), st.get("tags_problem"))
+      and (st["tags_problem"] or {}).get("id") == "update.check.no-tags-yet", st.get("tags_problem"))
 
 # --- merged on GitHub: GitHub's key, a key of our own standing in for it ---
 if not (shutil.which("gpg") and shutil.which("gpgv")):
@@ -149,13 +159,15 @@ else:
     (gh / "a").write_text("2"); git(gh, "-c", f"user.signingkey={fpr}", "commit", "-S", "-qam", "merged on GitHub", env={"GNUPGHOME": str(home)})
     hub_control.update_signing({"level": "github", "signers": ""})
     c = hub_control._signature_check(gh, installed)
-    check("GitHub's level: a commit signed by GitHub's key passes", c and c[0]["ok"], c)
+    check("GitHub's level: a commit signed by GitHub's key passes, said with what it does not prove", c and c[0]["ok"]
+          and c[0]["detail"]["id"] == "update.signed.github.ok" and c[0]["detail"]["args"] == {"n": 1}, c)
     (gh / "a").write_text("3"); git(gh, "commit", "-qam", "pushed straight to main")
     c = hub_control._signature_check(gh, installed)
-    check("  an unsigned commit pushed on top: refused, said so", c and not c[0]["ok"] and "unsigned" in c[0]["detail"], c)
+    check("  an unsigned commit pushed on top: refused, said so", c and not c[0]["ok"] and c[0]["detail"]["id"] == "update.signed.unsigned", c)
     (CODE / signing.GITHUB_KEY).unlink()
     c = hub_control._signature_check(gh, installed)
-    check("  no GitHub key in the installed code: refused, not waved through", c and not c[0]["ok"], c)
+    check("  no GitHub key in the installed code: refused, not waved through", c and not c[0]["ok"]
+          and c[0]["detail"]["id"] == "update.signed.github-key-missing", c)
 check("the shipped key is GitHub's (its current key, B5690EEEBB952194)", "BEGIN PGP PUBLIC KEY BLOCK" in (REPO / signing.GITHUB_KEY).read_text())
 
 shutil.rmtree(T, ignore_errors=True)

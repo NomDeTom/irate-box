@@ -264,12 +264,15 @@ rec = json.loads(librarian.LAST_RUN.read_text())
 check("a crashed run is recorded, with where", rec["last_scheduled"]["ok"] is False and "AttributeError" in rec["last_scheduled"]["error"]
       and "crash" in rec["last_scheduled"]["where"] and rec["last_scheduled"]["finished"], rec)
 from irate_box.root import hub_control  # noqa: E402
+from irate_box.finding import message_ids as msg_ids  # noqa: E402
 f = hub_control.scheduled_findings()
-check("the updates doctor: a crashed run is a problem, saying where", any(x["status"] == "problem" and "crashed" in x["detail"] and "crash (" in x["detail"] for x in f), f)
-check("  and that the hub's own update has not been reached", any("Update stage not reached" in x["detail"] for x in f), f)
+check("the updates doctor: a crashed run is a problem, saying where", any(x["status"] == "problem" and "update.scheduled.crashed" in msg_ids(x)
+                                                                         and any("crash (" in e for e in x["evidence"]) for x in f), f)
+check("  and that the hub's own update has not been reached", any("update.scheduled.stage.never" in msg_ids(x) for x in f), f)
 librarian.record_run(lambda: {"books": "up to date", "mirrors": {"fw": "error: refused"}, "hub": "up to date"}, True)
 f = hub_control.scheduled_findings()
-check("a run that reaches the hub's update: ok, the sources' errors said", len(f) == 1 and f[0]["status"] == "ok" and "fw: error: refused" in f[0]["detail"], f)
+check("a run that reaches the hub's update: ok, the sources' errors said", len(f) == 1 and f[0]["status"] == "ok"
+      and "update.scheduled.ok.errors" in msg_ids(f[0]) and any("fw: error: refused" in e for e in f[0]["evidence"]), f)
 check("  later than 3 h without reaching it: a problem", any(x["status"] == "problem" for x in hub_control.scheduled_findings(now=_t.time() + 4 * 3600)))
 librarian.record_run(lambda: {"books": "up to date"}, False)
 check("a run by hand doesn't count as the timer's", json.loads(librarian.LAST_RUN.read_text())["last_scheduled"]["stages"] == ["books", "hub", "mirrors"])

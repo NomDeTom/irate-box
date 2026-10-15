@@ -18,26 +18,27 @@ fails = 0
 def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
-def refused(fn, *a, says=""):
+def refused(fn, *a, says=None):
+    """Refused, with the refusal's message ID (accounts.py) when says names one."""
     try:
         fn(*a)
         return False
     except A.AccountError as exc:
-        return says in str(exc)
+        return says is None or exc.message["id"] == says
 check("sign-up off by default, and no admin ready on a new box", A.settings()["signup"] == "off" and not A.admin_ready())
 tok, me = A.claim_admin("alice", "password-one", "10.0.0.1")
 check("first use: the owner's admin account made and signed in", me["role"] == "admin" and A.session(tok)["name"] == "alice" and A.admin_ready())
 check("  admins sign in with sign-up off", A.login("alice", "password-one")[1]["name"] == "alice")
 A.make("ann", "user")
 data = A._load(); data["accounts"]["ann"]["hash"] = A.hash_password("password-two"); A._save(data)
-check("  a user's account does not, with sign-up off", refused(A.login, "ann", "password-two", says="no user accounts"))
-check("  a wrong admin password is refused, as always", refused(A.login, "alice", "wrong-one", says="do not match"))
+check("  a user's account does not, with sign-up off", refused(A.login, "ann", "password-two", says="accounts.signin.off"))
+check("  a wrong admin password is refused, as always", refused(A.login, "alice", "wrong-one", says="accounts.signin.failed"))
 tok2, me2 = A.claim_admin("Ann", "password-three")
 check("the console's reset and first use again: an existing name made admin with the new password", me2["role"] == "admin"
       and A.login("ann", "password-three")[1]["role"] == "admin")
-check("  the name rules hold ('admin' is kept for the box's own login)", refused(A.claim_admin, "admin", "password-four", says="reserved"))
+check("  the name rules hold ('admin' is kept for the box's own login)", refused(A.claim_admin, "admin", "password-four", says="accounts.name.reserved"))
 code = A.make("bob", "admin")
-check("an admin's one-time code over plain HTTP: refused, and the code kept", refused(A.use_code, code, "password-five", "", False, says="HTTPS"))
+check("an admin's one-time code over plain HTTP: refused, and the code kept", refused(A.use_code, code, "password-five", "", False, says="accounts.password.https-only"))
 check("  over HTTPS: the password set with it", A.use_code(code, "password-five", "", True) == "bob" and A.login("bob", "password-five")[1]["role"] == "admin")
 A.set_admin("dave", "password-seven", by="the console")
 check("the console's set-admin: an admin account, no session made", A._load()["accounts"]["dave"]["role"] == "admin"
@@ -106,7 +107,8 @@ try:
     (st / "unclaimed").unlink()  # what the root helper's claim does
     acct = {"X-Irate-Account": "1", "Cookie": cookie}
     code, d, _ = req("/api/account", {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"}, headers=acct)
-    check("after it, an admin's password over plain HTTP: refused", code == 400 and "HTTPS" in d.get("error", ""), (code, d))
+    check("after it, an admin's password over plain HTTP: refused, the English in error and the message beside it",
+          code == 400 and (d.get("message") or {}).get("id") == "accounts.password.https-only" and d.get("error") == d["message"]["en"], (code, d))
     code, d, _ = req("/api/account", {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"}, headers=dict(acct, **HTTPS))
     check("  over HTTPS: changed", code == 200 and d.get("changed") is True, (code, d))
     code, d, _ = req("/admin/password", {"password": "pw-for-scripts"}, headers={"Cookie": cookie})

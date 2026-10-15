@@ -22,6 +22,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from irate_box.msg import M
+
 LEVELS = ("off", "github", "tags")
 FILE_NAME = "update-signing.json"
 GITHUB_KEY = Path("config/signing/github-web-flow.asc")   # under the installed code
@@ -138,18 +140,18 @@ def _split_commit(raw):
 
 
 def check_commits(src, revs, key_file):
-    """(ok, detail): each of revs carries a good signature by the key in key_file (GitHub's).
-    Read with gpgv, the verify-only tool apt itself uses: no agent, no keyring of root's touched."""
+    """(ok, what it found as a message, evidence): each of revs carries a good signature by the key in key_file
+    (GitHub's). Read with gpgv, the verify-only tool apt itself uses: no agent, no keyring of root's touched."""
     if not shutil.which("gpgv"):
-        return False, "Verification tool unavailable: gpgv is not installed, so the box cannot read GitHub's signatures"
+        return False, M("update.signed.no-gpgv", "The verification tool gpgv is not installed. The box cannot read GitHub's signatures."), []
     if not Path(key_file).is_file():
-        return False, f"GitHub's key is missing from the installed code ({key_file})"
+        return False, M("update.signed.github-key-missing", "GitHub's key is missing from the installed code."), [str(key_file)]
     if not revs:
-        return True, "No new commits to check"
+        return True, M("update.signed.no-commits", "There are no new commits to check."), []
     try:
         keyring = _dearmor(Path(key_file).read_text())
     except (OSError, ValueError) as exc:
-        return False, f"The box could not read GitHub's key: {exc}"
+        return False, M("update.signed.github-key-unreadable", "The box could not read GitHub's key."), [str(key_file), str(exc)]
     with tempfile.TemporaryDirectory() as tmp:
         ring = Path(tmp) / "github.gpg"
         ring.write_bytes(keyring)
@@ -158,22 +160,26 @@ def check_commits(src, revs, key_file):
             sig, payload = _split_commit(raw)
             short = rev[:7]
             if not sig:
-                return False, f"Commit {short} unsigned"
+                return False, M("update.signed.unsigned", "The commit {commit} is not signed.", commit=short), []
             (Path(tmp) / "sig").write_bytes(sig)
             (Path(tmp) / "payload").write_bytes(payload)
             out = subprocess.run(["gpgv", "--status-fd", "1", "--keyring", str(ring), str(Path(tmp) / "sig"), str(Path(tmp) / "payload")],
                                  capture_output=True, text=True, timeout=60, env=dict(os.environ, GNUPGHOME=tmp))
             if out.returncode != 0 or "[GNUPG:] VALIDSIG" not in out.stdout:
-                return False, f"Commit {short} not signed by the configured GitHub key"
-    return True, f"{len(revs)} commit{'s' if len(revs) != 1 else ''} signed by GitHub"
+                return False, M("update.signed.wrong-key", "The commit {commit} is not signed by GitHub's key.", commit=short), []
+    # GitHub signs what it merges in its web pages: its key shows that GitHub made the commit, not who approved it.
+    return True, M("update.signed.github.ok", {"one": "{n} commit is signed by GitHub's key. This does not prove who merged it.",
+                                               "other": "{n} commits are signed by GitHub's key. This does not prove who merged them."},
+                   n=len(revs)), []
 
 
 def check_tag(src, tag, signers):
-    """(ok, detail): the tag is signed with one of the owner's SSH keys."""
+    """(ok, what it found as a message, evidence): the tag is signed with one of the owner's SSH keys."""
     if not signers:
-        return False, "No trusted key is set. Add one under Update verification on the Updates page"
+        return False, M("update.signed.no-keys", "No trusted key is set. Add one under Update verification on Updates."), []
     if not shutil.which("ssh-keygen"):
-        return False, "Verification tool unavailable: ssh-keygen is not installed, so the box cannot read the release signature"
+        return False, M("update.signed.no-ssh-keygen", "The verification tool ssh-keygen is not installed. "
+                                                       "The box cannot read the release signature."), []
     with tempfile.NamedTemporaryFile("w", suffix=".allowed_signers", delete=False) as f:
         f.write("\n".join(signers) + "\n")
         path = f.name
@@ -183,6 +189,8 @@ def check_tag(src, tag, signers):
         os.unlink(path)
     if out.returncode != 0:
         line = next((l for l in (out.stderr or "").splitlines() if l.strip()), "no good signature")
-        return False, f"Release tag {tag} not signed by a trusted key ({line.strip()[:160]})"
+        return False, M("update.signed.tag-untrusted", "The release tag {tag} is not signed by a trusted key.", tag=tag), [line.strip()[:160]]
     good = re.search(r'Good "git" signature for (\S+)', out.stderr or "")
-    return True, f"Release tag {tag} signed by {good.group(1) if good else 'a trusted key'}"
+    if good:
+        return True, M("update.signed.tag.ok", "The release tag {tag} is signed by {signer}.", tag=tag, signer=good.group(1)), []
+    return True, M("update.signed.tag.ok-unknown", "The release tag {tag} is signed by a trusted key.", tag=tag), []
