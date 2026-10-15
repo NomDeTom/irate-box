@@ -66,6 +66,17 @@ for name, body in re.findall(r"^\s*cat >/etc/systemd/system/([\w.@-]+\.service) 
 out = run(units)
 check(f"install.sh's root units ({len(units)}): no sandbox line missing", len(units) >= 5 and "irate-box-control.service" in units
       and out["units-root"]["status"] == "ok", out["units-root"].get("evidence"))
+
+# Who can see which processes: the box's /proc as PID 1 has it. Under ProtectProc the unit's own /proc/mounts always
+# says hidepid (seen on the Lyra), so it is not the box's.
+proc = T / "proc"
+(proc / "1").mkdir(parents=True)
+(proc / "mounts").write_text("proc /proc proc rw,nosuid,nodev,noexec,relatime,hidepid=invisible 0 0\n")
+sd.PROC = proc
+for box, want in (("rw,nosuid,nodev,noexec,relatime", "warn"), ("rw,nosuid,nodev,noexec,relatime,hidepid=2", "ok")):
+    (proc / "1" / "mounts").write_text(f"proc /proc proc {box} 0 0\n")
+    f = next(f for f in sd.step_cmdlines({}) if f["id"] == "cmdlines-proc")
+    check(f"process visibility read from PID 1's mounts, not the unit's own: {box.rpartition(',')[2]} is {want}", f["status"] == want, f)
 import shutil  # noqa: E402
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

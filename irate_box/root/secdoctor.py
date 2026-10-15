@@ -1654,7 +1654,9 @@ def step_cmdlines(ctx):
                 hits.append(f"{name} (pid {pid}) password set …")
             elif SECRET_KV.match(a) and not a.startswith("/"):
                 hits.append(f"{name} (pid {pid}) {a.split('=', 1)[0]}=…")
-    mount = _read(PROC / "mounts") or ""
+    # The box's own /proc, as PID 1 has it: under ProtectProc (this unit's and the root helper's) /proc/mounts is the
+    # unit's own instance, always with hidepid set.
+    mount = _read(PROC / "1" / "mounts") or ""
     m = re.search(r"^\S+ /proc proc (\S+)", mount, re.M)
     hidepid = bool(m and re.search(r"hidepid=(1|2|invisible|noaccess|ptraceable)\b", m.group(1)))
     out = []
