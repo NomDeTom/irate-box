@@ -21,7 +21,7 @@ The Firmware Factory builds Meshtastic firmware on the box. Select Apps → Firm
 3. Select the boards.
 4. Add the targets to the queue.
 
-The box does one build at a time. You can pause the queue. The current build continues while the queue is paused. You can offer a finished build on the front page of the hub. Select **Publish to web flasher** to make it available in the web flasher.
+The box does one build at a time. You can pause the queue. The current build continues while the queue is paused. You can offer a finished build on the front page of the hub. Select **Publish firmware** to make it available in the web flasher.
 
 ## The web flasher
 

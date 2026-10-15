@@ -47,7 +47,7 @@ A notebook runs only while its user uses it. It starts when the user opens it. I
 
 Open **Accounts → Notebooks** on the administration pages. These settings are there:
 
-- **Shared notes only**, **By sign-up** (the default) or **Also one per login**. By sign-up gives each account a notebook where people can create an account.
+- **Shared notebook only**, **Private notebooks when registration is enabled** (the default) or **Private notebooks for all accounts**. The default gives each account a notebook where people can create an account.
 - The number of notebooks that can run at once (5 by default).
 - The free memory that must remain. Below this amount, no more notebooks start.
 

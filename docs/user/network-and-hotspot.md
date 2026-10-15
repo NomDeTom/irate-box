@@ -38,12 +38,12 @@ The watchdog also finds out why the link is down.
 
 ## Monitored interfaces
 
-Each link (the WiFi, the cable or a USB adapter) can have a watchdog of its own. Set each link to **Watched**, **Not watched** or **As any other link**. Set **New interfaces and interfaces not listed here** to one of these:
+Each link (the WiFi, the cable or a USB adapter) can have a watchdog of its own. Set each link to **Monitored**, **Not monitored** or **As any other link**. Set **New interfaces and interfaces not listed here** to one of these:
 
-- **While it holds the route** (the default). The watchdog monitors the link that the box uses to reach its network.
-- **Looked at**. The watchdog monitors the link of the route. For every other link, it reports the problem and does nothing.
-- **Watched**.
-- **Not watched**.
+- **Monitor default-route interface** (the default). The watchdog monitors the link that the box uses to reach its network.
+- **Report all interfaces**. The watchdog monitors the link of the route. For every other link, it reports the problem and does nothing.
+- **Monitor all interfaces**. Each link has its own watchdog.
+- **Do not monitor**. The watchdog monitors only the links that you set above.
 
 If no watchdog monitors a link and the link fails, nothing detects the failure and nothing retries. The Box doctor reports this.
 
@@ -59,9 +59,9 @@ You can let the box do these actions for the link of the route when another link
 
 When a wired link has no carrier, the cable is disconnected or the other end is off. No recovery action repairs this. By default, the box waits and shows a message. These settings are available:
 
-- **Wait, and say so** (the default).
-- **Reconnect now and then**.
-- **The whole ladder**: every recovery step up to the maximum recovery action.
+- **Wait and report** (the default).
+- **Reconnect periodically**, in case the port is stuck.
+- **All recovery steps**: every recovery step up to the maximum recovery action.
 
 When the cable returns without a link, the box reconnects at once. A box without a screen gets its cable back without a reboot.
 
@@ -96,5 +96,5 @@ If **Remote access** says "running, but not logged in to a Tailscale network", T
 The hotspot is the WiFi network of the box. It is for people who have no other network. The first name is **Irate-Box**. The hotspot is off until you switch it on in Network → Hotspot. The page fits the hotspot to the radios of the box. When captive portal DNS is on, every web address on the hotspot leads to the hub.
 
 - **Security**: **Open** (no password), **Enhanced Open** (no password, and the WiFi link is encrypted), **WPA3** (a password that you publish) or two networks, one open and one encrypted.
-- **Hotspot service access** (on the Security page): what guests can reach on the box. The levels are everything, the hub and its apps, or the hub only.
+- **Hotspot firewall** (on the Security page): what guests can reach on the box. When the firewall is off, guests reach every service that listens on the hotspot, SSH included. When it is on, select **Hub and apps** or **Hub only**.
 - **Guest internet access**: **Off** (the default), the web for signed-in users only, everyone after a welcome page (the web only, or everything), or everyone without a welcome page. A device has access for 12 hours at a time.

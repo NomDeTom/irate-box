@@ -14,7 +14,7 @@ The **This hub** card says what is installed and what is newer, with **Check now
   - **Download** also downloads the new version and checks it. The version is then ready for you.
   - **Install** also installs the new version. This happens only in the hours that you set, and only when nobody is on the hub. The hub restarts.
 
-Each update downloads only the files that changed. Some dependencies can download in full. **What an update must carry** sets what the box must verify before it installs:
+Each update downloads only the files that changed. Some dependencies can download in full. **Update verification** sets what the box must verify before it installs:
 
 - **From the branch**: the update as it comes, with its checks passed.
 - **Merged on GitHub**: every new commit has a GitHub signature.
@@ -34,9 +34,9 @@ The box watches some programs for updates from their publishers. An example is m
 
 **Back up this box** makes a backup at one of three levels. The first two levels make a file to download.
 
-- **Settings only**: the settings of the hub, the accounts, the settings of apps and add-ons, the sources of the library and the mirrors, and the mesh channels.
-- **Settings and data**: also the shared notes, saved work, the board and shoutbox, dropped files, the box's own git repositories. The private notebooks of users are not included. Each user keeps a copy with the **My notebook** download.
-- **Full image**: a copy of the whole card. The box writes it to a USB drive in parts. It does not make a file to download. The image contains everything on the card, including books, firmware and private data. The box keeps running while it writes the image, so the parts can differ in time.
+- **Settings archive**: the settings of the hub, the accounts, the settings of apps and add-ons, the sources of the library and the mirrors, and the mesh channels.
+- **Settings and shared-data archive**: also the shared notes, saved work, the board and shoutbox, dropped files, the box's own git repositories. The private notebooks of users are not included. Each user keeps a copy with the **My notebook** download.
+- **Full storage image**: a copy of the whole card. The box writes it to a USB drive in parts. It does not make a file to download. The image contains everything on the card, including books, firmware and private data. The box keeps running while it writes the image, so the parts can differ in time.
 
 The first two levels leave out books, firmware, mirrors, builds and caches. The box downloads them again. The box includes the private keys of Syncthing only if you select them. The backup file also holds account and mesh channel secrets. A person who has the file can pose as the box. Keep the file as secret as a password.
 
