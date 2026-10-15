@@ -514,7 +514,7 @@ def validate(raw):
         if not IFACE_RE.match(str(name)) or name == "auto":
             raise Refused(_bad_iface(name))
         if not isinstance(steps, list) or any(x not in STEPS for x in steps):
-            raise Refused(M("uplink.steps-off.list", "The recovery actions switched off for {iface} must be a list "
+            raise Refused(M("uplink.steps-off.list", "The recovery actions disabled for {iface} must be a list "
                             "of some of: {values}.", iface=name, values=list(STEPS)))
         if steps:
             out["steps_off"][name] = [x for x in STEPS if x in steps]

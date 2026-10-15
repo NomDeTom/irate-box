@@ -421,14 +421,14 @@ def check_idle():
         out.append(finding(f"idle:{i['unit']}", i["title"], "warn", i["summary"], i["why"],
                            M("idle.fix", "If this box does not need it, switch it off. You can switch it on again here."),
                            evidence=i["evidence"],
-                           actions=[action(f"idle-off:{i['unit']}", M("idle.off", "Switch it off"),
-                                           M("idle.off.confirm", "Switch {unit} off? It stops now and does not start at boot. "
-                                                                 "The doctor then lists it with a button to switch it on again.", unit=i["unit"]))]))
+                           actions=[action(f"idle-off:{i['unit']}", M("idle.off", "Disable it"),
+                                           M("idle.off.confirm", "Disable {unit}? It stops now and does not start at boot. "
+                                                                 "The doctor then lists it with a button to restore it.", unit=i["unit"]))]))
     for unit, rec in sorted(off.items()):
-        out.append(finding(f"idle-off:{unit}", M("idle-off.title", "{unit}: switched off here", unit=unit), "ok",
-                           M("idle-off.when", "Switched off here on {at}.", at=when(rec.get("at", 0))),
-                           actions=[action(f"idle-on:{unit}", M("idle.on", "Switch it back on"),
-                                           M("idle.on.confirm", "Switch {unit} back on? This restores its previous state.", unit=unit))]))
+        out.append(finding(f"idle-off:{unit}", M("idle-off.title", "{unit}: disabled here", unit=unit), "ok",
+                           M("idle-off.when", "Disabled here on {at}.", at=when(rec.get("at", 0))),
+                           actions=[action(f"idle-on:{unit}", M("idle.on", "Restore it"),
+                                           M("idle.on.confirm", "Restore {unit} to its previous state?", unit=unit))]))
     return out
 
 
@@ -440,21 +440,21 @@ def idle_switch(unit, on):
     if on:
         rec = off.pop(unit, None)
         if rec is None:
-            raise Refused(M("repair.idle.not-off", "{unit} was not switched off here. There is nothing to switch back on.", unit=unit))
+            raise Refused(M("repair.idle.not-off", "The box did not disable {unit}. There is nothing to restore.", unit=unit))
         if rec.get("enabled"):
             run("systemctl", "enable", unit)
         if rec.get("active"):
             run("systemctl", "start", unit, timeout=120)
-        msg = M("repair.idle.on", "The box switched {unit} back on, to its previous state.", unit=unit)
+        msg = M("repair.idle.on", "The box restored {unit} to its previous state.", unit=unit)
     else:
         p = unit_props(unit)
         off[unit] = {"at": time.time(), "enabled": p.get("UnitFileState") == "enabled", "active": p.get("ActiveState") == "active"}
         r = run("systemctl", "disable", "--now", unit, timeout=120)
         if r.returncode:
-            raise Refused(M("repair.idle.off-failed", "The box could not switch off {unit}: {detail}", unit=unit, detail=r.stderr.strip()[-200:])
-                       if r.stderr.strip() else M("repair.idle.off-failed.quiet", "The box could not switch off {unit}.", unit=unit))
+            raise Refused(M("repair.idle.off-failed", "The box could not stop and disable {unit}: {detail}", unit=unit, detail=r.stderr.strip()[-200:])
+                       if r.stderr.strip() else M("repair.idle.off-failed.quiet", "The box could not stop and disable {unit}.", unit=unit))
         run("systemctl", "reset-failed", unit)
-        msg = M("repair.idle.off", "The box switched off {unit}. It does not start at boot.", unit=unit)
+        msg = M("repair.idle.off", "The box stopped and disabled {unit}. It does not start at boot.", unit=unit)
     from irate_box.root import safeio
     safeio.write(IDLE_OFF, json.dumps(off, indent=1), 0o644)
     return msg
@@ -1738,13 +1738,13 @@ def fix(choice):
         return led.flash(arg)
     if kind == "armbian-led":
         if not armbian_led_state() and arg == "off":
-            raise Refused(M("repair.armbian-led.not-failing", "{unit} is not failing here. There is nothing to switch off.", unit=ARMBIAN_LED))
+            raise Refused(M("repair.armbian-led.not-failing", "{unit} is not failing here. There is nothing to disable.", unit=ARMBIAN_LED))
         r = run("systemctl", "mask" if arg == "off" else "unmask", ARMBIAN_LED)
         if r.returncode:
             raise Refused(M("repair.systemctl-failed", "systemctl could not change {unit}: {detail}", unit=ARMBIAN_LED, detail=r.stderr.strip()[-200:]))
         if arg == "off":
             run("systemctl", "reset-failed", ARMBIAN_LED)
-            return M("repair.armbian-led.off", "{unit} is switched off (masked). To unmask it, select As the image has it.", unit=ARMBIAN_LED)
+            return M("repair.armbian-led.off", "{unit} is disabled (masked). To unmask it, select As the image has it.", unit=ARMBIAN_LED)
         return M("repair.armbian-led.on", "{unit} is as the image has it again.", unit=ARMBIAN_LED)
     if kind == "other-restart":
         failed = [l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()]

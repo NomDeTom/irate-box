@@ -333,7 +333,7 @@ def _time_ok(regs, off, wd_style):
 
 
 # What prepare_user did, for setup to say.
-PREPARED = {"inien": M("rtc-module.prepared.inien", "The box switched on the module's battery backup (INIEN)."),
+PREPARED = {"inien": M("rtc-module.prepared.inien", "The box enabled the module's battery backup (INIEN)."),
             "eosc": M("rtc-module.prepared.eosc", "The box set the module's oscillator to run on battery (EOSC cleared).")}
 
 

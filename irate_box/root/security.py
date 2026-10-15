@@ -1450,7 +1450,7 @@ def _firewall(rec, what):
     from irate_box.hub import services as declared_services
     if what == "off":
         if "firewall" not in rec:
-            raise Refused(M("security-fix.firewall.not-on", "The hotspot firewall was not turned on from this page."))
+            raise Refused(M("security-fix.firewall.not-on", "The hotspot firewall was not enabled from this page. There is nothing to restore."))
         _firewall_apply(None)
         rec.pop("firewall")
         return M("security-fix.firewall.off", "Hotspot firewall off: the hub no longer limits what devices on the hotspot can reach "
@@ -1554,8 +1554,8 @@ def _share_contain(what):
         fw = load_record().get("firewall")
         firewall.apply_all(dict(fw, services=firewall.services_here(fw.get("services", []))) if fw else None, st)
     share.save(st)
-    return (M("security-fix.contain.on", "Turned on: {name}.", name=CONTAIN_HEADING[k]) if onoff == "on" else
-            M("security-fix.contain.off", "Turned off: {name}.", name=CONTAIN_HEADING[k]))
+    return (M("security-fix.contain.on", "Enabled: {name}.", name=CONTAIN_HEADING[k]) if onoff == "on" else
+            M("security-fix.contain.off", "Disabled: {name}.", name=CONTAIN_HEADING[k]))
 
 
 def scan():
@@ -1690,7 +1690,7 @@ def _unit(rec, unit, on, reason="from this page"):
         return M("security-fix.unit.off", "{unit} is stopped and disabled.", unit=unit)
     old = units.get(unit)
     if old is None:
-        raise Refused(M("security-fix.unit.not-off", "{unit} was not switched off from this page. There is nothing to restore.", unit=unit))
+        raise Refused(M("security-fix.unit.not-off", "{unit} was not disabled from this page. There is nothing to restore.", unit=unit))
     if "take-port-80" in old.get("reason", "") and _hub_on_80():
         raise Refused(M("security-fix.unit.port-80", "{unit} gave port 80 to the hub, which still has it. First move the hub: run "
                                                   "install.sh --port 8080 again. Or uninstall the hub, which gives the port back.", unit=unit))
