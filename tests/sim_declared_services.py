@@ -67,7 +67,11 @@ check("the Security page: its listener rated and said as its manifest says, no s
 check("the doctor's add-on finding and the page's port: the same service", xref.about("doctor", "addon-tak") == {"kind": "service", "key": "tcp/8087"}
       and xref.about("security-page", "page-port-tcp-8087") == {"kind": "service", "key": "tcp/8087"})
 do = xref.do_for("security-page", "page-port-udp-6969")
-check("  put right on Add-ons, in its own words", do and do["go"] == "addons" and "TAK apps send their positions here" in do["say"], do)
+check("  put right on Add-ons, in its own words", do and do["go"] == "addons" and do["say"]["id"] == "do.declared"
+      and "TAK apps send their positions here" in do["say"]["args"]["says"], do)
+check("  the add-on's state and what listens: the same words; a point of its own (a limit): not", all(
+    (xref.do_for("doctor", f) or {}).get("say", {}).get("id") == "do.declared" for f in ("addon-tak", "addon-tak-listen"))
+      and (xref.do_for("doctor", "addon-tak-max-conn") or {}).get("say", {}).get("id") != "do.declared")
 
 # --- the box doctor ----------------------------------------------------------------------------------
 from irate_box.root import health  # noqa: E402

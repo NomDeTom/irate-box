@@ -35,11 +35,12 @@ ji = {i["key"]: i for i in sd.joint(steps)["items"]}
 irc = ji.get("service:tcp/6667", {})
 check("IRC: the doctor's add-on finding and the page's port 6667 as one item, pointing at Add-ons",
       sorted(irc.get("sources", [])) == ["doctor", "security-page"] and (irc.get("do") or {}).get("go") == "addons"
-      and "IRC" in (irc.get("do") or {}).get("say", ""), {k: v.get("sources") for k, v in ji.items() if "6667" in k or "irc" in k})
+      and ((irc.get("do") or {}).get("say") or {}).get("id") == "do.declared"
+      and "IRC" in irc["do"]["say"]["args"]["says"], {k: v.get("sources") for k, v in ji.items() if "6667" in k or "irc" in k})
 check("  CIS 1.9 with the page's security updates: one item, a suggestion (the page found none waiting)",
       merged.get("setting:security-updates") == ["debian-cis", "security-page"] and items["setting:security-updates"]["tier"] == "suggest")
 check("  the page's automatic updates as the table names them (it was an item of its own)", "setting:unattended" in items
-      and items["setting:unattended"]["title"] == "Automatic security updates" and "finding:security-page:page-unattended" not in items, sorted(items))
+      and items["setting:unattended"]["title"]["id"] == "xref.unattended" and "finding:security-page:page-unattended" not in items, sorted(items))
 nothing = [k for k, i in items.items() if not (i["do"] or i["fix"] or i["cmd"] or i["page"])]
 check("every item ends in something to do: a button, a place, a command or the words", not nothing, nothing)
 tiers = {k.removeprefix("setting:cis-"): i["tier"] for k, i in items.items() if k.startswith("setting:cis-")}

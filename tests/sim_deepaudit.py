@@ -14,6 +14,8 @@ T = Path(tempfile.mkdtemp(prefix="deep-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_GIT_ROOT=str(T / "git"), HUB_KITS_ROOT=str(T / "kits"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import deepaudit as da  # noqa: E402
+from irate_box.finding import finding, message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.msg import M  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -35,20 +37,24 @@ checks, summary = da.parse_cis(CIS)
 check("debian-cis's batch lines read: status, check, and of a failed one what failed", len(checks) == 9 and checks[1] == ("KO", "1.1.3_tmp_nodev", ["/tmp has no option nodev in fstab!"])
       and summary["PASSED_CHECKS"] == "2" and summary["CONFORMITY_PERCENTAGE"] == "22.22", (checks[:2], summary))
 fs = {f["id"]: f for f in da.cis_findings(checks, summary, 180)}
-check("failed checks grouped by section, a warning each", fs["cis-5.2"]["status"] == "warn" and "1 check not met" in fs["cis-5.2"]["title"]
-      and "sshd_maxauthtries" in fs["cis-5.2"]["detail"] and fs["cis-4.1"]["about"] == {"kind": "setting", "key": "cis-4.1"}, fs.get("cis-5.2"))
+check("failed checks grouped by section, a warning each", fs["cis-5.2"]["status"] == "warn"
+      and msg_args(fs["cis-5.2"], "cis.section.title") == {"section": "5.2"} and msg_args(fs["cis-5.2"], "cis.section.not-met") == {"n": 1}
+      and "sshd_maxauthtries" in fs["cis-5.2"]["evidence"] and fs["cis-4.1"]["about"] == {"kind": "setting", "key": "cis-4.1"}, fs.get("cis-5.2"))
 check("a check another source asks too (secdoctor_xref): a finding of its own, about the shared key", fs["cis-5.2.10_disable_root_login"]["about"] == {"kind": "setting", "key": "ssh-root-login"}
-      and fs["cis-5.2.10_disable_root_login"]["title"] == "CIS 5.2.10: SSH: logging in as root")
+      and fs["cis-5.2.10_disable_root_login"]["title"]["id"] == "cis.shared.title"
+      and fs["cis-5.2.10_disable_root_login"]["title"]["args"]["check"] == "5.2.10"
+      and fs["cis-5.2.10_disable_root_login"]["title"]["args"]["topic"]["id"] == "xref.ssh-root-login", fs["cis-5.2.10_disable_root_login"])
 check("  each keeps its checks one by one", [c["check"] for c in fs["cis-5.2"]["checks"]] == ["5.2.7_sshd_maxauthtries"]
       and fs["cis-5.2"]["checks"][0]["msgs"] == ["MaxAuthTries is 6"] and fs["cis-5.2.10_disable_root_login"]["checks"][0]["check"] == "5.2.10_disable_root_login",
       fs["cis-5.2"].get("checks"))
 check("  sections in the benchmark's order, then the shared ones", [k for k in fs if k.startswith("cis-") and k[4].isdigit()] == ["cis-4.1", "cis-5.2", "cis-5.2.10_disable_root_login"], list(fs))
-acc = [f for f in fs.values() if f["accepted"]]
+acc = [f for f in fs.values() if f.get("accepted")]
 check("the box's design accepted, not counted: one partition, the web server, no firewall yet",
-      {f["accepted"] for f in acc} == {"the box runs from one partition on an SD card, with no separate /var, /tmp or /home",
-                                        "the box is a web server, and nginx or Caddy serves the hub", "the box filters only the hotspot interface (the hotspot firewall on the Security page). The other interfaces belong to the administrator's network and stay as they are"}
-      and all(f["status"] == "ok" for f in acc) and not any(k in fs for k in ("cis-1.1", "cis-2.2", "cis-3.5")), [f["detail"] for f in acc])
-check("the passes counted, and the time", "2 of 9 checks pass (22.22 %); 3.0 min." == fs["cis-summary"]["detail"], fs["cis-summary"]["detail"])
+      {f["accepted"]["id"] for f in acc} == {"deep.accepted.partition", "deep.accepted.http", "deep.accepted.firewall"}
+      and all(f["accepted"]["id"] in msg_ids(f) for f in acc)
+      and all(f["status"] == "ok" for f in acc) and not any(k in fs for k in ("cis-1.1", "cis-2.2", "cis-3.5")), [(f["accepted"], f["evidence"]) for f in acc])
+check("the passes counted, and the time", msg_args(fs["cis-summary"], "cis.summary") == {"passed": "2", "run": "9", "percent": "22.22"}
+      and msg_args(fs["cis-summary"], "deep.took") == {"minutes": 3.0}, fs["cis-summary"])
 
 LYNIS = """# Lynis Report
 lynis_version=3.1.4
@@ -64,11 +70,13 @@ check("Lynis's report read", rep["index"] == "64" and rep["warnings"][1] == {"te
 lf = {f["id"]: f for f in da.lynis_findings(rep, 281)}
 check("a Lynis warning: a finding of its own, about what its test asks (SSH-7408: sshd's settings, CIS 5.2)", lf["lynis-SSH-7408"]["status"] == "warn"
       and lf["lynis-SSH-7408"]["source"] == "lynis" and lf["lynis-SSH-7408"]["about"] == {"kind": "setting", "key": "cis-5.2"} and not lf["lynis-SSH-7408"].get("tier"))
-check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["status"] == "ok" and lf["lynis-FIRE-4512"]["accepted"].startswith("the box filters only the hotspot interface"))
+check("  the firewall one accepted, as for debian-cis", lf["lynis-FIRE-4512"]["status"] == "ok" and lf["lynis-FIRE-4512"]["accepted"]["id"] == "deep.accepted.firewall")
 check("a suggestion the table knows: about that, as a suggestion; the rest listed, not counted; the hardening index said",
       lf["lynis-SSH-7408-2"]["about"]["key"] == "cis-5.2" and lf["lynis-SSH-7408-2"]["tier"] == "suggest"
-      and lf["lynis-summary"]["status"] == "ok" and "Hardening index 64" in lf["lynis-summary"]["detail"]
-      and "2 suggestions; 4.7 min. Not matched to an item (listed, not counted): DEB-0280: Install libpam-tmpdir" in lf["lynis-summary"]["detail"], lf["lynis-summary"]["detail"])
+      and lf["lynis-summary"]["status"] == "ok" and msg_args(lf["lynis-summary"], "lynis.index") == {"index": "64"}
+      and msg_args(lf["lynis-summary"], "lynis.suggestions") == {"n": 2} and msg_args(lf["lynis-summary"], "deep.took") == {"minutes": 4.7}
+      and msg_args(lf["lynis-summary"], "lynis.listed") == {"n": 1}
+      and any(e.startswith("DEB-0280: Install libpam-tmpdir") for e in lf["lynis-summary"]["evidence"]), lf["lynis-summary"])
 
 # Lynis's settings one by one (details[]) and its tests that ask what another source asks
 # (secdoctor_xref): each about the same thing, so the joint report merges them.
@@ -87,18 +95,20 @@ l2 = {f["id"]: f for f in da.lynis_findings(da.parse_lynis(LYNIS2))}
 key = lambda i: (l2[i]["about"] or {}).get("key")  # noqa: E731
 check("Lynis's sysctl keys one by one: each about its setting (kptr_restrict: kernel-info; send_redirects: CIS 3.2)",
       key("lynis-KRNL-6000-kernel.kptr_restrict") == "kernel-info" and key("lynis-KRNL-6000-net.ipv4.conf.all.send_redirects") == "cis-3.2"
-      and l2["lynis-KRNL-6000-kernel.kptr_restrict"]["detail"] == "kernel.kptr_restrict is 0; Lynis prefers 2.", sorted(l2))
-check("  the one known to nothing listed, and KRNL-6000's one line not repeated", "kernel.sysrq is 176" in l2["lynis-summary"]["detail"]
-      and "lynis-KRNL-6000" not in l2, l2["lynis-summary"]["detail"])
+      and msg_args(l2["lynis-KRNL-6000-kernel.kptr_restrict"], "lynis.setting") == {"setting": "kernel.kptr_restrict", "value": "0", "preferred": "2"},
+      (sorted(l2), l2.get("lynis-KRNL-6000-kernel.kptr_restrict")))
+check("  the one known to nothing listed, and KRNL-6000's one line not repeated", any("kernel.sysrq=176" in e for e in l2["lynis-summary"]["evidence"])
+      and "lynis-KRNL-6000" not in l2, l2["lynis-summary"]["evidence"])
 check("  sshd's options too: PermitRootLogin is about SSH root login", key("lynis-SSH-7408-PermitRootLogin") == "ssh-root-login")
 check("Lynis's tests by name onto CIS sections, tiered as the section is (5.3 a suggestion; 4.1 not for this board)",
       key("lynis-AUTH-9262") == "cis-5.3" and l2["lynis-AUTH-9262"]["tier"] == "suggest" and l2["lynis-ACCT-9628"]["tier"] == "not-here")
 check("  and onto the Security page's: PKGS-7392 is Debian's security updates", key("lynis-PKGS-7392") == "security-updates")
 check("  one partition accepted for Lynis as for debian-cis: listed, not a finding", "lynis-FILE-6310" not in l2
-      and "FILE-6310: To decrease the impact of a full /home file system, place /home on a separate partition (not applicable by design)" in l2["lynis-summary"]["detail"])
+      and "FILE-6310: To decrease the impact of a full /home file system, place /home on a separate partition (✓)" in l2["lynis-summary"]["listed"],
+      l2["lynis-summary"]["listed"])
 from irate_box.root import secdoctor as sd0  # noqa: E402
-doctor = [{"id": "kernel-info", "title": "Kernel addresses and log readable by everyone", "status": "warn", "detail": "kptr_restrict 0.", "fix": "",
-           "source": "doctor", "about": {"kind": "setting", "key": "kernel-info"}}]
+doctor = [finding("kernel-info", M("test.kernel-info.title", "Kernel addresses and log readable by everyone"), "warn",
+                  M("test.kernel-info", "kptr_restrict is 0."), source="doctor", about={"kind": "setting", "key": "kernel-info"})]
 j0 = {i["key"]: i for i in sd0.joint([{"title": "Kernel", "findings": doctor}, {"title": "Lynis", "findings": list(l2.values())}])["items"]}
 check("the joint report: Lynis's kptr_restrict merged with the doctor's kernel-info, a real item (not a suggestion)",
       j0["setting:kernel-info"]["sources"] == ["doctor", "lynis"] and j0["setting:kernel-info"]["tier"] is None, j0.get("setting:kernel-info"))
@@ -128,10 +138,12 @@ check("sshd options: a file in sshd_config.d, checked by sshd -t before the relo
       "printf '%s\\n' 'MaxAuthTries 4' | sudo tee /etc/ssh/sshd_config.d/60-cis-sshd-maxauthtries.conf && sudo sshd -t && sudo systemctl reload ssh",
       info["sshd_maxauthtries"].get("cmd"))
 check("a package to install, or to remove", info["install_auditd"]["cmd"] == "sudo apt-get install auditd" and info["disable_telnet_client"]["cmd"] == "sudo apt-get purge telnet")
-check("never the removal of what the hub uses (dnsmasq): said instead", "cmd" not in info["dnsmasq_is_disabled"] and "The box uses dnsmasq" in info["dnsmasq_is_disabled"]["say"])
+check("never the removal of what the hub uses (dnsmasq): said instead", "cmd" not in info["dnsmasq_is_disabled"]
+      and info["dnsmasq_is_disabled"]["say"]["id"] == "cis.check.keep" and info["dnsmasq_is_disabled"]["say"]["args"] == {"packages": ["dnsmasq"]})
 check("a file's owner and mode", info["crontab_perm_ownership"]["cmd"] == "sudo chown root:root /etc/crontab && sudo chmod 600 /etc/crontab")
 # (Not printed on failure: CodeQL takes anything named for a password as a secret logged.)
-check("another file's settings in words, not its prerequisite package", info["set_password_exp_days"] == {"what": "Set password expiration days.", "say": "In /etc/login.defs, set: PASS_MAX_DAYS=90."})
+check("another file's settings in words, not its prerequisite package", info["set_password_exp_days"] == {"what": "Set password expiration days.",
+      "say": M("cis.check.file-settings", "In {file}, set {settings}.", file="/etc/login.defs", settings=["PASS_MAX_DAYS=90"])})
 check("a value built from a variable: no command", info["logfile_sudo"] == {"what": "Ensure sudo log files exists."}, info["logfile_sudo"])
 check("an unknown or odd check name: nothing", da.cis_check_info(src0, "9.9_nothing_here") == {} and da.cis_check_info(src0, "9.9_../../etc/passwd") == {})
 withinfo = {f["id"]: f for f in da.cis_findings([("KO", "3.2.2_disable_send_packet_redirects", ["net.ipv4.conf.all.send_redirects was not set to 0"])], {},
@@ -164,7 +176,8 @@ check("no pin from the kit, or a pin the mirror lacks: not run", da.run_cis(work
       and da.run_cis(work, pin="0" * 40)[0]["id"] == "cis-pin-missing")
 check("the shipped security kit pins a commit of debian-cis", re.fullmatch(r"[0-9a-f]{40}", da.cis_pin() or ""), da.cis_pin())
 got = {f["id"]: f for f in da.run_cis(work, pin=pinned)}
-check("from the mirror: exported, run with its paths, read", "cis-5.2.10_disable_root_login" in got and "1 of 2 checks pass (50.00 %)" in got["cis-summary"]["detail"], got)
+check("from the mirror: exported, run with its paths, read", "cis-5.2.10_disable_root_login" in got
+      and msg_args(got["cis-summary"], "cis.summary") == {"passed": "1", "run": "2", "percent": "50.00"}, got)
 
 # The deep audit: both, kept in control/security-deep.json, shown by every regular audit.
 with mock.patch.object(da, "run_cis", return_value=da.cis_findings(checks, summary, 180)), \
@@ -176,7 +189,8 @@ check("the deep audit kept, with both sources and its time", set(kept["sources"]
 from irate_box.root import secdoctor as sd  # noqa: E402
 steps = {sid: fn for sid, _, _, fn in sd.STEPS}
 cis_step = steps["debian-cis"]({})
-check("the regular audit shows them as steps, dated", any(f["id"] == "cis-5.2" and "(deep audit of " in f["detail"] for f in cis_step)
+check("the regular audit shows them as steps, dated", any(f["id"] == "cis-5.2" and "deep.when" in msg_ids(f) and msg_args(f, "deep.when")["date"]["time"] == kept["sources"]["debian-cis"]["at"]
+          for f in cis_step)
       and any(f["id"] == "lynis-SSH-7408" for f in steps["lynis"]({})))
 j = sd.joint([{"findings": cis_step}])
 check("  and they reach the joint report (accepted ones left out)", {i["about"]["key"] for i in j["items"]} == {"cis-4.1", "cis-5.2", "ssh-root-login"}, j["items"])

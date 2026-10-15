@@ -149,7 +149,7 @@ check("  the box's own config: not bridged, anonymous limited, keys private", (f
 (MQ / "irate-box.acl").write_text("topic readwrite msh/#\ntopic readwrite #\n")
 os.chmod(B.CHANNELS, 0o644)
 f = {x["id"]: x for x in SD.step_mqtt({})}
-check("  a bridge to mqtt.meshtastic.org, an open ACL, readable keys: each said", f["mqtt-bridge"]["status"] == "problem" and "mqtt.meshtastic.org" in f["mqtt-bridge"]["detail"]
+check("  a bridge to mqtt.meshtastic.org, an open ACL, readable keys: each said", f["mqtt-bridge"]["status"] == "problem" and any("mqtt.meshtastic.org" in e for e in f["mqtt-bridge"]["evidence"])
       and f["mqtt-acl"]["status"] == "warn" and f["mqtt-keys"]["status"] == "problem", {k: v["status"] for k, v in f.items()})
 check("  in the doctor's steps", any(st[0] == "mqtt" for st in SD.STEPS))
 print("ok" if not fails else f"{fails} failure(s)")

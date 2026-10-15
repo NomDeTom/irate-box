@@ -1765,7 +1765,7 @@ function findingRow(r) {
         c.cmd ? el('div', {}, copyBox(c.cmd)) : null)))) : null,
     (r.said || []).length ? el('details', { className: 'fsaid' }, el('summary', { textContent: `Source results (${r.said.length})` }),
       el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
-        el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
+        el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), (l.summary || l.detail) ? ` — ${l.summary || l.detail}` : '',
         l.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${l.fix}` }) : null)))) : null,
     // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request.
     r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'action-btn small',
@@ -2007,7 +2007,8 @@ function jointDo(i, data, busy) {
   }
   if (d.act === 'deep') controls.push(el('button', { type: 'button', className: 'action-btn', textContent: 'Run the deep audit', disabled: busy, onclick: () => sec.auditDeep.click() }));
   if (d.go) controls.push(el('a', { className: 'action-btn go-btn', href: `#${d.go}`, textContent: `Go to ${d.where} →` }));
-  if (d.cmd || i.cmd) controls.push(copyBox(d.cmd || i.cmd));
+  const cmd = d.cmd || i.cmd;
+  if (cmd && !(i.commands || []).includes(cmd)) controls.push(copyBox(cmd));
   // The words: the hub's own work said as such; else the Security page's (it goes with its buttons); else the item's.
   const pageFix = page.map((f) => f.fix).find(Boolean);
   const how = d.hub || d.say || (page.length && page.some((f) => (f.actions || []).length) ? pageFix || '' : '') || i.fix
@@ -2022,11 +2023,11 @@ function jointRow(i, data, busy, accepted) {
   const isNew = ((data.audit || {}).new || []).some((id) => i.lines.some((l) => l.id === id));
   const meta = [i.area, i.sources.length > 1 ? `${i.sources.length} sources agree` : `from ${srcWords(i.sources)}`,
     i.alone ? `${srcWords(i.could_see)} could have seen it and did not` : '', isNew ? 'new since the last run' : ''].filter(Boolean).join(' · ');
-  const said = i.lines.length > 1 || (i.lines[0] && i.lines[0].detail !== i.detail) ? i.lines : [];
+  const said = i.lines.length > 1 || (i.lines[0] && (i.lines[0].summary || i.lines[0].detail) !== (i.summary || i.detail)) ? i.lines : [];
   // Information only (secdoctor_xref.INFO): said as that, with why, in place of an action there is none of.
   const infoHow = i.tier === 'info' ? `Information only: nothing you can change on this box fixes this. ${i.info || ''}`.trim() : '';
   return findingRow({ id: `find-${i.key.replace(/[^A-Za-z0-9_-]/g, '-')}`, state: accepted ? 'accepted' : fixed ? 'fixed' : i.tier || i.status,
-    title: i.title, detail: i.detail, how: fixed ? 'Repaired here since the doctor last ran. It leaves the list at the next run.' : infoHow || how,
+    title: i.title, ...findingParts(i), how: fixed ? 'Repaired here since the doctor last ran. It leaves the list at the next run.' : infoHow || how,
     controls, meta, said, checks: i.checks, note: (i.page || []).map(noteUnder).find(Boolean) || null,
     accept: { key: i.key, title: i.title, on: !!accepted } });
 }
@@ -2041,7 +2042,8 @@ function renderJoint(j, data) {
   const real = all.filter((i) => !i.tier && ok(i));
   const counts = { problem: real.filter((i) => i.status === 'problem' && !fixedNow(i)).length, warn: real.filter((i) => i.status === 'warn' && !fixedNow(i)).length };
   const needle = jointSearch.value.trim().toLowerCase();
-  const match = (i) => !needle || [i.title, i.detail, i.fix, i.area, ...i.lines.map((l) => `${l.title} ${l.detail}`)].join(' ').toLowerCase().includes(needle);
+  const words = (f) => [f.title, f.summary || f.detail, f.why, ...(f.notes || []), ...(f.evidence || []), f.fix];
+  const match = (i) => !needle || [...words(i), i.area, ...i.lines.flatMap(words)].filter(Boolean).join(' ').toLowerCase().includes(needle);
   const pick = (i) => match(i) && (jointShow === 'all' || (i.status === jointShow && !fixedNow(i)));
   box('joint-summary').replaceChildren(...(!j ? [el('p', { className: 'setting-desc', textContent: 'Run the doctor to see it.' })] : [
     ['all', `${counts.problem + counts.warn}`, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
@@ -2067,7 +2069,7 @@ function renderJoint(j, data) {
   fold('joint-accepted', all.filter((i) => !ok(i)), (i) => jointRow(i, data, busy, accepted[i.key]));
   // What the box's own scan has put right with a cure (one right answer), each with its Undo.
   const cured = ((data.scan || {}).findings || []).filter((f) => secKind(f) === 'cure' && f.status === 'ok' && (f.actions || []).length);
-  fold('joint-cured', cured, (f) => findingRow({ id: `sec-cure-${f.id}`, state: 'ok', title: f.title, detail: f.detail,
+  fold('joint-cured', cured, (f) => findingRow({ id: `sec-cure-${f.id}`, state: 'ok', title: f.title, ...findingParts(f),
     how: 'Done from here. Use the button to restore the previous setting.', controls: scanButtons(f, busy), note: noteUnder(f.id) }));
   // One strip at the top: each source, its age, and a warning once it is older than it
   // should be; what it covers and what it said in the pill's title.
@@ -2183,8 +2185,10 @@ function renderAudit(audit, busy, data) {
         el('span', { className: `fstate fstate-${f.status}`, textContent: STATE_WORD[f.status] }), ' ', el('strong', { textContent: f.title }),
         (audit.new || []).includes(f.id) ? el('span', { className: 'badge-push bad', textContent: 'new' }) : null,
         f.ref ? el('span', { className: 'setting-desc', textContent: ` [${f.ref}]` }) : null,
-        el('span', { textContent: ` — ${f.detail}` }),
-        f.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${f.fix}` }) : null))));
+        el('span', { textContent: ` — ${[f.summary || f.detail, f.why, ...(f.notes || [])].filter(Boolean).join(' ')}` }),
+        (f.evidence || []).length ? el('span', { className: 'setting-desc', textContent: ` (${f.evidence.join(', ')})` }) : null,
+        f.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${f.fix}` }) : null,
+        ...(f.status !== 'ok' ? (f.commands || []).map(copyBox) : [])))));
   }));
   sec.auditScope.hidden = !(audit.not_covered || []).length;
   sec.auditNot.replaceChildren(...(audit.not_covered || []).map((t) => el('li', { textContent: t })));
@@ -5751,6 +5755,7 @@ async function kitAct(body, quiet) {
 }
 
 function renderKits(data) {
+  data = AW.localise(data);   // the Security doctor's flags (flag_details) are messages
   kitsData = data;
   const st = data.status || {};
   const cfg = data.settings;

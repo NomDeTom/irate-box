@@ -47,18 +47,18 @@ leftover = [str(p.relative_to(REPO)) for p in list((REPO / "irate_box").rglob("*
 check("nothing writes TTYD_CREDENTIAL any more", not leftover, leftover)
 show = lambda argv: {"ExecStart": "{ path=/usr/local/bin/ttyd ; argv[]=" + " ".join(argv) + " ; ignore_errors=no ; }"}
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "lo", "--port", "7681", "/bin/login"]))
-check("the doctor warns of ttyd on a TCP port", any(s == "warn" and "TCP" in m for s, m, _ in said), said)
+check("the doctor warns of ttyd on a TCP port", any(i["status"] == "warn" and i["key"] == "listen" and i["summary"]["id"] == "ttyd.listen.tcp" for i in said), said)
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "/bin/login"]))
 check("and not of ttyd on its socket", said == [], said)
 unit_argv = ["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "--writable", "--", "/usr/bin/script", "-qfc", "/bin/login", "/dev/null"]
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "--writable", "--", "/usr/bin/setsid", "-w", "/bin/login"]))
 check("  nor of login in a session of its own (setsid -w /bin/login, as install.sh writes it)", said == [], said)
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "--writable", "--", "/usr/bin/setsid", "-w", "/bin/sh"]))
-check("  but setsid around a bare shell is still a bare shell", any(s == "problem" and "bare shell (/bin/sh)" in m for s, m, _ in said), said)
+check("  but setsid around a bare shell is still a bare shell", any(i["status"] == "problem" and i["summary"]["id"] == "ttyd.shell" and i["evidence"] == ["/bin/sh"] for i in said), said)
 said = secdoctor.probe_ttyd({}, {}, show(unit_argv))
 check("  nor of login given a terminal of its own (script -c /bin/login, as install.sh writes it)", said == [], said)
 said = secdoctor.probe_ttyd({}, {}, show(unit_argv[:-2] + ["/bin/bash", "/dev/null"]))
-check("  but script around a bare shell is still a bare shell", any(s == "problem" and "bare shell (/bin/bash)" in m for s, m, _ in said), said)
+check("  but script around a bare shell is still a bare shell", any(i["status"] == "problem" and i["summary"]["id"] == "ttyd.shell" and i["evidence"] == ["/bin/bash"] for i in said), said)
 check("install.sh's unit runs login that way", "--writable -- /usr/bin/setsid -w /bin/login" in (REPO / "install.sh").read_text())
 
 # kiwix-manage
