@@ -27,14 +27,14 @@ can = usbstick.readable()
 check("what the kernel knows or can load: readable; the rest not", all(can[f] for f in ("vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext4", "btrfs"))
       and not any(can[f] for f in ("xfs", "f2fs", "iso9660")), can)
 f = health.check_usb_filesystems()[0]
-check("the doctor names both, NTFS once, and what reads anywhere", f["detail"] == "FAT, exFAT, NTFS, ext2, ext3, ext4, btrfs. Not XFS, F2FS, ISO 9660 "
-      "(a disc image): this kernel has no driver for them." and "filesystems above" in f["fix"], f)
+check("the doctor names both, NTFS once, and what reads anywhere", f["summary"]["args"]["names"] == ["FAT", "exFAT", "NTFS", "ext2", "ext3", "ext4", "btrfs"]
+      and f["notes"][0]["args"]["names"] == ["XFS", "F2FS", "ISO 9660 (a disc image)"] and f["fix"]["id"] == "usb-fs.fix", f)
 loadable.discard("ntfs3")
 usbstick.shutil = type("W", (), {"which": staticmethod(lambda name: "/usr/bin/ntfs-3g" if name == "ntfs-3g" else None)})
 can = usbstick.readable()
 check("NTFS through ntfs-3g where the kernel has no ntfs3", can["ntfs"] and not can["ntfs3"])
-check("  said once, as readable", "NTFS" in health.check_usb_filesystems()[0]["detail"].split(". Not")[0]
-      and "NTFS" not in health.check_usb_filesystems()[0]["detail"].split(". Not")[-1])
+u = health.check_usb_filesystems()[0]
+check("  said once, as readable", "NTFS" in u["summary"]["args"]["names"] and not any("NTFS" in n for x in u["notes"] for n in x["args"]["names"]), u)
 # A stick in a filesystem this box cannot read: said, and never mounted.
 mounted = []
 usbstick.devices = lambda: [{"name": "sda1", "path": "/dev/sda1", "label": "DISC", "size": 1, "fstype": "iso9660", "mountpoint": None}]

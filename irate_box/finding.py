@@ -51,3 +51,11 @@ def message_ids(f):
     """The IDs of what a finding says (summary, why, fix, notes): what a test checks, so a change of wording
     needs no change of test."""
     return {m["id"] for m in (f.get("summary"), f.get("why"), f.get("fix"), *f.get("notes", ())) if msg.is_message(m)}
+
+
+def message_args(f, mid):
+    """The arguments of the message with this ID in a finding (its title, summary, why, fix, notes or glance), or None."""
+    for m in (f.get("title"), f.get("summary"), f.get("why"), f.get("fix"), *f.get("notes", ()), f.get("glance")):
+        if msg.is_message(m) and m["id"] == mid:
+            return m.get("args", {})
+    return None

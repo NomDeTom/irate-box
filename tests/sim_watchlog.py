@@ -82,9 +82,9 @@ check("a filed radio failure carries the watchers' last ten minutes", "crash wat
 
 f = {x["id"]: x for x in health.check_watchers(now=now + 600)}["watchers"]
 check("the doctor: the last day in one line, starts and repairs counted, where it all is",
-      "1 start of the box" in f["detail"] and "2 repairs by the watchdog" in f["detail"] and "watchers.jsonl" in f["fix"], f)
+      f["summary"]["args"]["n"] == 1 and f["notes"][0]["args"]["n"] == 2 and any("watchers.jsonl" in c for c in f["commands"]), f)
 watchlog.LOG.unlink()
-check("  nothing in the last day: said so", "Nothing in the last day" in health.check_watchers()[0]["detail"])
+check("  nothing in the last day: said so", health.check_watchers()[0]["summary"]["id"] == "watchers.none")
 
 # The doctor's overview, from the hub: the last start and why, the last repair, the link now.
 from irate_box.hub import server  # noqa: E402

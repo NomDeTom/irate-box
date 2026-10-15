@@ -12,6 +12,8 @@ os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HU
                   HUB_DEVICE_TREE=str(T / "dt"), HUB_LED_RUN=str(T / "run-led"), HUB_UPLINK_RUN=str(T / "run-uplink"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import led, health  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.msg import render  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -156,7 +158,7 @@ board(["raspberrypi,3-model-b-plus"], "Raspberry Pi 3 Model B Plus Rev 1.3", {"A
 ls = led.status()
 g = {x["key"]: x for x in health.led_groups(ls)}
 check("the doctor's settings: what the light shows (left on a Pi, said why), the safest first; which light, when there's a choice",
-      list(g) == ["led-show", "led-which"] and g["led-show"]["current"] == "leave" and "SD card" in g["led-show"]["desc"]
+      list(g) == ["led-show", "led-which"] and g["led-show"]["current"] == "leave" and g["led-show"]["desc"]["id"] == "hs.led-show.desc-leave"
       and [o["value"] for o in g["led-show"]["options"]] == ["leave", "alive", "network", "all"]
       and g["led-which"]["options"][0]["choice"] == "led-led:auto" and g["led-which"]["options"][2]["choice"] == "led-led:led-user")
 check("  the image's failing LED service: a choice to switch it off, and on again",
@@ -164,7 +166,7 @@ check("  the image's failing LED service: a choice to switch it off, and on agai
       and health.led_groups(ls, "masked")[-1]["current"] == "off")
 check("  no LED: no settings", health.led_groups({"found": {}, "settings": {}}) == [])
 f = health.check_led(ls)
-check("  left: said, with a way to change it and to find each light", f[0]["status"] == "ok" and "Left as the image set it" in f[0]["detail"]
+check("  left: said, with a way to change it and to find each light", f[0]["status"] == "ok" and "led.leave" in msg_ids(f[0])
       and [a["choice"] for a in f[0]["actions"]] == ["led-flash:ACT", "led-flash:led-user"] and f[0]["go"]["mark"] == "hs-led-show", f)
 led.set_option("show", "network")
 ls = led.status()
@@ -173,7 +175,7 @@ check("  chosen but its service not running: a problem, with a restart", f[0]["s
       and f[0]["actions"][0]["choice"] == "unit-restart:irate-box-led.service", f)
 board(["rockchip,rk3506"], "Luckfox Lyra Zero W", {"work-led": (None, "platform")})
 f = health.check_led(led.status(), active=lambda u: {"ActiveState": "active"})
-check("  a kernel with no triggers: said that the box drives it", "no LED triggers" in f[0]["detail"], f)
+check("  a kernel with no triggers: said that the box drives it", "led.driven-no-triggers" in msg_ids(f[0]), f)
 for good in ("led-show:network", "led-led:auto", "led-led:green:status", "led-flash:work-led", "armbian-led:off"):
     check(f"the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
 for bad in ("led-show:blink", "led-led:../x", "led-flash:a b", "armbian-led:remove"):

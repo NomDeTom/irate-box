@@ -85,11 +85,12 @@ hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("saving settings applies roaming first, and keeps the old if it fails", "roaming.apply(s, old, iface)" in hc and "Not saved:" in hc)
 # The box doctor: roaming often with the hotspot on the same radio, said with the choices.
 from irate_box.root import health  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
 inv = {"radios": [{"iface": "wlan0", "roaming": {"ssid": "HomeNet", "aps": [{}, {}, {}], "channels": [6, 11], "hotspot_shares": True}}]}
 st = {"iface": "wlan0", "roams_hour": 9, "chosen": {"roaming": "roam"}}
 f = health.roaming_findings(st, inv)
 check("the doctor: 9 roams an hour with the hotspot on the radio, a warning naming the choices", len(f) == 1 and f[0]["status"] == "warn"
-      and "9 times" in f[0]["detail"] and "lock to one access point" in f[0]["fix"] and "Network → Network recovery" in f[0]["fix"], f)
+      and msg_args(f[0], "roaming.often")["n"] == 9 and "roaming.fix" in msg_ids(f[0]) and f[0]["go"]["section"] == "net-watchdog-card", f)
 check("  not for a few roams, nor with no hotspot on the radio, nor once a choice is made", health.roaming_findings(dict(st, roams_hour=4), inv) == []
       and health.roaming_findings(st, {"radios": [{"iface": "wlan0", "roaming": dict(inv["radios"][0]["roaming"], hotspot_shares=False)}]}) == []
       and health.roaming_findings(dict(st, chosen={"roaming": "no-scan"}), inv) == [])

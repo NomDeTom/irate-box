@@ -58,6 +58,16 @@ def placeholders(en):
     return {p for t in texts for p in PLACEHOLDER_RE.findall(t)}
 
 
+def walk_outside_messages(node):
+    """ast.walk, but not into an M(...) or named(...): what a message is given as its data (a percentage made with an
+    f-string) is data, and the message's own English is checked as a message."""
+    yield node
+    if isinstance(node, ast.Call) and callee(node) in ("M", "named"):
+        return
+    for child in ast.iter_child_nodes(node):
+        yield from walk_outside_messages(child)
+
+
 messages = {}            # id -> (english, where)
 bad_id, not_literal, two_english, args_wrong, plural_wrong, built = [], [], [], [], [], []
 sources = sorted((REPO / "irate_box").rglob("*.py"))
@@ -94,7 +104,7 @@ for path in sources:
             # finding(fid, title, status, summary, why, fix, ...): the sentences are messages or data, never built here.
             said = node.args[3:6] + [k.value for k in node.keywords if k.arg in ("summary", "why", "fix", "title")] + node.args[1:2]
             for arg in said:
-                for sub in ast.walk(arg):
+                for sub in walk_outside_messages(arg):
                     if isinstance(sub, ast.JoinedStr) or (isinstance(sub, ast.BinOp) and isinstance(sub.op, (ast.Add, ast.Mod))
                                                           and any(isinstance(x, (ast.Constant, ast.JoinedStr)) for x in (sub.left, sub.right))):
                         built.append(where)

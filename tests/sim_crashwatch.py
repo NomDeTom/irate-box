@@ -16,6 +16,8 @@ os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HU
 (T / "etc").mkdir()
 sys.path.insert(0, str(REPO))
 from irate_box.root import crashwatch as cw, health  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.msg import render  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -129,16 +131,18 @@ cw._write(cw.STATUS, {"at": now, "radios": known, "floods": {"4addr #": 4000}, "
 cw._write(cw.EVENTS, [{"at": now - 600, "iface": "wlan0", "kind": "failed", "text": "wlan0 is gone"}])
 f = {x["id"]: x for x in health.check_crashwatch(now=now)}
 check("the doctor: the last crash said, with its last snapshot, and what would have restarted it",
-      f["crash-last"]["status"] == "warn" and "2 times this week" in f["crash-last"]["detail"] and "=== " in f["crash-last"]["detail"]
-      and "hang settings below" in f["crash-last"]["fix"], f["crash-last"])
-check("  the kernel flood, with its rate", f["crash-flood"]["status"] == "warn" and "about 1.1 a second" in f["crash-flood"]["detail"], f["crash-flood"])
+      f["crash-last"]["status"] == "warn" and msg_args(f["crash-last"], "crash-last.count")["n"] == 2
+      and any(e.startswith("=== ") for e in f["crash-last"]["evidence"]) and "crash-last.fix" in msg_ids(f["crash-last"]), f["crash-last"])
+check("  the kernel flood, with its rate", f["crash-flood"]["status"] == "warn" and msg_args(f["crash-flood"], "crash-flood.lines")["rate"] == "1.1", f["crash-flood"])
 check("  the radio watched, its failure in the last day, nothing to choose here: where repairs are set, said",
-      f["crash-radio"]["status"] == "warn" and "wlan0 (AIC8800DC)" in f["crash-radio"]["detail"] and "wlan0 failed" in f["crash-radio"]["detail"]
-      and not f["crash-radio"]["actions"] and "Network → Connection settings → Failed radio" in f["crash-radio"]["fix"]
+      f["crash-radio"]["status"] == "warn" and msg_args(f["crash-radio"], "crash-radio.watching")["radios"] == ["wlan0 (AIC8800DC)"]
+      and any("wlan0 failed" in e for e in f["crash-radio"]["evidence"])
+      and not f["crash-radio"]["actions"] and "crash-radio.fix" in msg_ids(f["crash-radio"])
       and f["crash-radio"]["go"]["mark"] == "up-wedge", f["crash-radio"])
 check("  a frozen box after a crash, nothing to restart it: a warning; the choice is the doctor's settings', linked to its row",
-      f["crash-hang"]["status"] == "warn" and "pull the plug" in f["crash-hang"]["detail"] and not f["crash-hang"]["actions"]
-      and f["crash-hang"]["go"] == {"section": "health-settings", "where": "Recovery and monitoring", "mark": "hs-panic"}, f["crash-hang"])
+      f["crash-hang"]["status"] == "warn" and "crash-hang.none" in msg_ids(f["crash-hang"]) and not f["crash-hang"]["actions"]
+      and (f["crash-hang"]["go"]["section"], render(f["crash-hang"]["go"]["where"]), f["crash-hang"]["go"]["mark"])
+      == ("health-settings", "Recovery and monitoring", "hs-panic"), f["crash-hang"])
 check("  snapshots: said, linked to their row", not f["crash-snapshots"]["actions"] and f["crash-snapshots"]["go"]["mark"] == "hs-snapshots", f["crash-snapshots"])
 g = {x["key"]: x for x in health.doctor_settings()["groups"]}
 check("the doctor's settings: snapshots, a panic, and the watchdog where there is one, each with its current choice, the safest first",
@@ -188,8 +192,8 @@ check("a switched-off watchdog in the device tree, on Armbian with dtc: offered 
 f = {x["id"]: x for x in health.check_crashwatch(now=now)}
 wdg = {x["key"]: x for x in health.doctor_settings()["groups"]}["watchdog"]
 check("  the doctor says so, and its setting asks with a confirm that says a restart is needed",
-      "switched off in its device tree" in f["crash-hang"]["detail"] and "next restart" in wdg["desc"]
-      and "next restart" in wdg["options"][1]["confirm"], (f["crash-hang"], wdg))
+      "crash-hang.switched-off" in msg_ids(f["crash-hang"]) and "next restart" in render(wdg["desc"])
+      and wdg["options"][1]["confirm"]["id"] == "hs.watchdog.confirm-overlay", (f["crash-hang"], wdg))
 said = cw.set_option("watchdog", "on")
 env = (BOOTD / "armbianEnv.txt").read_text()
 check("  on: the overlay compiled for the first switched-off node, added to user_overlays, systemd set to feed it",
@@ -198,7 +202,7 @@ check("  on: the overlay compiled for the first switched-off node, added to user
       and "overlays=luckfox-lyra-zero-w-spi0-1cs-spidev\n" in env and "RuntimeWatchdogSec=60" in cw.SYSTEMD_CONF.read_text()
       and "next restart" in said, (said, env))
 check("  until the restart, it waits, and the doctor says so", cw.board_watchdog_pending()
-      and "after the next restart" in {x["id"]: x for x in health.check_crashwatch(now=now)}["crash-hang"]["detail"])
+      and "crash-hang.pending" in msg_ids({x["id"]: x for x in health.check_crashwatch(now=now)}["crash-hang"]))
 (BOOTD / "armbianEnv.txt").write_text(env.replace("user_overlays=irate-box-watchdog", "user_overlays=mine irate-box-watchdog"))
 cw.set_option("watchdog", "off")
 env = (BOOTD / "armbianEnv.txt").read_text()
@@ -239,7 +243,7 @@ check("  with the ten minutes before it and the kernel's lines", snaps.startswit
       and "cmd queue crashed" in (d / "kernel.log").read_text(), snaps[:40])
 check("  a crash filed later reaches back to that boot's first radio failure (not only the last 200 KB)",
       cw.snapshots_tail(10, since=at - 600).startswith("=== 2026-10-09 03:50:00"))
-check("  and the doctor says where it is kept", "Kept as it happened: 1 this week" in next(f["detail"] for f in health.check_crashwatch(now=at + 60) if f["id"] == "crash-radio"))
+check("  and the doctor says where it is kept", msg_args(next(f for f in health.check_crashwatch(now=at + 60) if f["id"] == "crash-radio"), "crash-radio.kept")["n"] == 1)
 # One radio, two interfaces (the uplink and the hotspot on one AIC8800): one incident, both named.
 n0 = len(json.loads(cw.INCIDENTS.read_text()))
 a = cw.file_radio(at + 200, "wlan0", "wlan0 is gone", ["k1"], "1-1.1")

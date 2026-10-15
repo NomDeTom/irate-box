@@ -282,7 +282,7 @@ with mock.patch.object(health, "expected_units", return_value=[("irate-box-libra
     found = health.check_units()
 svc = [x for x in found if x["id"] == "unit:irate-box-librarian.service"]
 check("the services doctor: a timer running, its service's last run failed: a problem, with its log", svc and svc[0]["status"] == "problem"
-      and "exit-code" in svc[0]["detail"] and "AttributeError" in svc[0]["detail"], found)
+      and "exit-code" in svc[0]["evidence"] and any("AttributeError" in e for e in svc[0]["evidence"]), found)
 props["irate-box-librarian.service"]["Result"] = "success"
 with mock.patch.object(health, "expected_units", return_value=[("irate-box-librarian.timer", "the librarian's schedule")]), \
      mock.patch.object(health, "unit_props", side_effect=lambda u: props.get(u, {"LoadState": "loaded", "ActiveState": "active", "Result": "success"})), \

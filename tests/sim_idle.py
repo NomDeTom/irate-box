@@ -12,6 +12,8 @@ os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 (T / "etc").mkdir()
 sys.path.insert(0, str(REPO))
 from irate_box.root import health  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.msg import render  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     """info: what a failure looked at, for a debugger; not printed (the doctor's records can hold a unit's own words)."""
@@ -49,8 +51,8 @@ health.watched_units = lambda: {}
 
 f = {x["id"]: x for x in health.check_idle()}
 check("meshtasticd with no LoRa radio: said, with why (its own words) and that systemd gave up",
-      "idle:meshtasticd.service" in f and "No sx1262 radio" in f["idle:meshtasticd.service"]["detail"]
-      and "gives up" in f["idle:meshtasticd.service"]["detail"], f.get("idle:meshtasticd.service"))
+      "idle:meshtasticd.service" in f and any("No sx1262 radio" in e for e in f["idle:meshtasticd.service"]["evidence"])
+      and "idle.meshtasticd.gave-up" in msg_ids(f["idle:meshtasticd.service"]), f.get("idle:meshtasticd.service"))
 check("  ModemManager with no modem, Bluetooth with nothing paired: said", "idle:ModemManager.service" in f and "idle:bluetooth.service" in f)
 check("  each offered to be switched off, asked first; nothing done by looking",
       all(x["actions"][0]["choice"].startswith("idle-off:") and x["actions"][0].get("confirm") for x in f.values())

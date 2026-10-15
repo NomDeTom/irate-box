@@ -178,7 +178,7 @@ try:
     health.set_clock(1600000000); check("set_clock refuses a time before what the box has written", False)
 except ValueError as exc:
     check(f"set_clock refuses an implausible time ({exc})", True)
-f = health.check_module(); print("   doctor:", [(x["status"], x["detail"][:70]) for x in f])
+f = health.check_module(); print("   doctor:", [(x["status"], x["summary"]["id"]) for x in f])
 check("doctor: module ok", f and f[0]["status"] == "ok")
 rtc.remove(); rtc.FOUND.unlink(missing_ok=True)
 fake({"1": {"0x68": ds}, "4": {"0x32": both}})
@@ -190,7 +190,7 @@ check("doctor: three set-up offers after a search (one DS3231, the ambiguous pai
 fake({"1": {}})
 rtc.find()
 f = health.check_module()
-check("doctor: none found on I2C is yellow, with the offer to look again", f and f[0]["status"] == "warn" and "None found" in f[0]["detail"]
-      and [a["choice"] for a in f[0]["actions"]] == ["rtc-find"], [(x["status"], x["detail"][:60]) for x in f])
+check("doctor: none found on I2C is yellow, with the offer to look again", f and f[0]["status"] == "warn" and f[0]["summary"]["id"] == "rtc.not-found"
+      and [a["choice"] for a in f[0]["actions"]] == ["rtc-find"], [(x["status"], x["summary"]["id"]) for x in f])
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

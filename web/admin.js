@@ -2403,6 +2403,11 @@ function healthDo(f, busy) {
   const controls = [...chips, ...(f.actions || []).filter((a) => !a.group).map((a) => el('button', { type: 'button', className: 'action-btn', textContent: a.label, disabled: busy,
     onclick: () => hlFix(f.id, a) }))];
   let how = f.fix || '';
+  if (f.summary) {   // the shared shape (finding.py): commands of their own, the place to go named, nothing to find in the words
+    if (f.go) controls.push(goLink(f.go));
+    if (!how && !controls.length && !(f.commands || []).length) how = 'Information only.';
+    return { how, controls, commands: f.commands || [] };
+  }
   const c = splitCmd(how);
   if (c) {
     controls.push(copyBox(c.cmd));
@@ -2424,7 +2429,7 @@ function renderGlance(data, rep) {
   const find = (id) => rep && rep.findings.find((f) => f.id === id);
   const first = (text) => String(text || '').split(/(?<=\.)\s/)[0];
   // A finding in a few words: its own glance (health.py), else the first sentence of its detail (an older report).
-  const brief = (f) => f.glance || first(f.detail);
+  const brief = (f) => f.glance || first(f.summary || f.detail);
   // Why the box last started: the reason only ("Unclean shutdown"), the explanation stays in the findings below.
   const why = (t) => { const r = String(t || '').replace(/^Started: /, '').split(/[:.]/)[0].trim(); return r ? r[0].toUpperCase() + r.slice(1) : 'Started'; };
   const w = data.watchers || {};
@@ -2547,6 +2552,7 @@ function renderHelperQueue(q) {
     textContent: `${r.ok ? '✓' : '✗'} ${r.ago != null ? ago(r.ago) : ''}: ${r.message}` })));
 }
 function renderHealth(data) {
+  data = AW.localise(data);   // the report's messages said once, in the reader's language
   hlLast = data;
   renderHelperQueue(data.queue);
   secRepairFollow(data);
@@ -2606,12 +2612,14 @@ function renderHealth(data) {
   const item = (f) => {
     const d = healthDo(f, busy || h.stuck);
     const on = accepted(f);
-    return findingRow({ id: `hl-${f.id}`, state: on ? 'accepted' : f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id),
-      accept: f.status === 'warn' ? { key: f.id, title: f.check, on, act: hlAccept, label: 'Accept',
+    return findingRow({ id: `hl-${f.id}`, state: on ? 'accepted' : f.status, title: f.title || f.check, ...findingParts(f), how: d.how,
+      commands: f.status === 'ok' ? [] : d.commands, controls: d.controls, note: noteUnder(f.id),
+      accept: f.status === 'warn' ? { key: f.id, title: f.title || f.check, on, act: hlAccept, label: 'Accept',
         hint: 'Accepting leaves it as it is and takes it out of the review count. It moves to Accepted. The doctor shows it again if it becomes a problem.' } : null });
   };
   const needle = hl.search.value.trim().toLowerCase();
-  const match = (f) => !needle || `${f.check} ${f.detail} ${f.fix || ''}`.toLowerCase().includes(needle);
+  const match = (f) => !needle || [f.title || f.check, f.summary || f.detail, f.why, ...(f.notes || []), ...(f.evidence || []), f.fix]
+    .filter(Boolean).join(' ').toLowerCase().includes(needle);
   const services = all.filter((f) => !isClock(f));
   const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn' && !accepted(f)).length };
   hl.summary.replaceChildren(...(!rep ? [] : [

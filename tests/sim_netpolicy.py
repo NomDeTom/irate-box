@@ -63,11 +63,12 @@ check("librarian: a scheduled run on a metered network does nothing, and says wh
 
 # The Box doctor, after three days of waiting.
 from irate_box.root import health  # noqa: E402
+from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
 N.WAIT.write_text('{"since": 0, "last": 10, "connection": "Phone", "iface": "wlan0", "how": "set"}')
 check("doctor: nothing within three days", health.metered_findings(now=2 * 86400) == [])
 f = health.metered_findings(now=4 * 86400)
-check("  after: a warning, how long and which network, and what to do", f and f[0]["status"] == "warn" and "For 4 days" in f[0]["detail"]
-      and "Phone" in f[0]["detail"] and "not metered" in f[0]["fix"], f)
+check("  after: a warning, how long and which network, and what to do", f and f[0]["status"] == "warn" and msg_args(f[0], "metered.waiting") == {"n": 4}
+      and "Phone" in f[0]["evidence"] and "metered.fix" in msg_ids(f[0]) and f[0]["go"]["section"] == "updates", f)
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
