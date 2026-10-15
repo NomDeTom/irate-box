@@ -15,13 +15,18 @@ const dom = new JSDOM(html, { url: 'http://box/admin/#health', runScripts: 'outs
 const w = dom.window;
 const posted = [];
 w.fetch = async (u, opts = {}) => {
-  if (u === '/admin/health' && opts.method === 'POST') { posted.push(JSON.parse(opts.body)); return new Response('{"id":"x"}', { status: 202 }); }
+  if (u === '/admin/health' && opts.method === 'POST') {
+    const b = JSON.parse(opts.body); posted.push(b);
+    // Accept answers with the list, as the hub does; the rest are root helper requests.
+    if (b.action === 'accept' || b.action === 'unaccept') return new Response(JSON.stringify({ accepted: b.action === 'accept' ? { [b.key]: { at: 1, title: b.title } } : {} }), { status: 200 });
+    return new Response('{"id":"x"}', { status: 202 });
+  }
   if (u === '/admin/health') return new Response(fixture, { status: 200 });
   return new Response('{}', { status: 404 });
 };
 w.confirm = () => true;
 w.eval(js);
-setTimeout(() => {
+setTimeout(async () => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   console.log('BANNER hidden:', d.getElementById('helper-banner').hidden, '|', t('#helper-banner')[0]);
   console.log('WHEN:', t('#health-when')[0]);
@@ -59,6 +64,28 @@ setTimeout(() => {
   check('  a clean install stays folded', !d.getElementById('health-install-fold').open);
   w.renderHealth({ ...JSON.parse(fixture), install: { ...JSON.parse(fixture).install, problems: ['nginx -t failed'] } });
   check('  one with problems opens by itself', d.getElementById('health-install-fold').open);
+  // A review finding can be accepted: out of the review count and the open list, under Passed and accepted, and back.
+  s.value = ''; s.dispatchEvent(new w.Event('input'));
+  const fx = JSON.parse(fixture);
+  fx.report.findings.push({ id: 'other-failed:armbian-led-state.service', check: "The image's LED service failed", status: 'warn',
+    detail: 'armbian-led-state.service puts the LEDs back as they were.', fix: 'Switch it off.', actions: [{ choice: 'armbian-led:off', label: 'Switch it off' }] });
+  w.renderHealth({ ...fx, accepted: {} });
+  const reviewN = () => Number((t('#health-summary .sec-count')[2] || '').match(/\d+/)[0]);
+  const led = () => d.getElementById('hl-other-failed:armbian-led-state.service');
+  check('a review finding: its own fix (Switch it off) and Accept', led() && d.getElementById('health-findings').contains(led())
+    && [...led().querySelectorAll('button')].some((b) => b.textContent === 'Switch it off') && [...led().querySelectorAll('button')].some((b) => b.textContent === 'Accept') && reviewN() === 1, reviewN());
+  [...led().querySelectorAll('button')].find((b) => b.textContent === 'Accept').click();
+  await new Promise((r) => setTimeout(r, 200));
+  check('  Accept: sent with its id', posted.some((b) => b.action === 'accept' && b.key === 'other-failed:armbian-led-state.service'), JSON.stringify(posted.slice(-1)));
+  check('  then out of the review count and the open list, under Passed and accepted as Accepted', reviewN() === 0 && d.getElementById('health-fine').contains(led())
+    && /Accepted/.test(led().querySelector('.fstate').textContent) && /Passed and accepted/.test(d.querySelector('#health-fine-fold summary').textContent), reviewN());
+  check('  the Summary\'s Health line counts it no more', /0 to review|Nothing to fix or review|1 to fix, 0 to review/.test(t('#health-glance dd')[0]), t('#health-glance dd')[0]);
+  [...led().querySelectorAll('button')].find((b) => b.textContent === 'Take back').click();
+  await new Promise((r) => setTimeout(r, 200));
+  check('  Take back: in the review list again', posted.some((b) => b.action === 'unaccept') && d.getElementById('health-findings').contains(led()) && reviewN() === 1, reviewN());
+  w.renderHealth({ ...fx, report: { ...fx.report, findings: fx.report.findings.map((f) => (f.id === 'other-failed:armbian-led-state.service' ? { ...f, status: 'problem' } : f)) },
+    accepted: { 'other-failed:armbian-led-state.service': { at: 1 } } });
+  check('  accepted, but now a problem: shown as one', d.getElementById('health-findings').contains(led()) && led().classList.contains('finding-problem'));
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);

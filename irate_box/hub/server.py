@@ -1884,17 +1884,41 @@ def security_accepted():
 def security_accept(key, title, yes):
     if not isinstance(key, str) or not ACCEPT_KEY_RE.match(key):
         raise ValueError("key: an item's key from the report")
-    data = security_accepted()
+    return _accept(SECURITY_ACCEPTED, security_accepted(), key, title, yes)
+
+
+def _accept(path, data, key, title, yes):
+    """One doctor's accepted list, a key accepted (with when and its title) or taken back; written whole."""
     if yes:
         if len(data) >= 500 and key not in data:
             raise ValueError("500 accepted already: take some back first")
         data[key] = {"at": time.time(), "title": str(title or "")[:200]}
     else:
         data.pop(key, None)
-    tmp = SECURITY_ACCEPTED.parent / (SECURITY_ACCEPTED.name + ".tmp")
+    tmp = path.parent / (path.name + ".tmp")
     tmp.write_text(json.dumps(data))
-    os.replace(tmp, SECURITY_ACCEPTED)
+    os.replace(tmp, path)
     return data
+
+
+# The Box doctor's own accepted list: review findings (warn) the owner has looked at and leaves as they are, by the
+# finding's id. The page lists them apart and leaves them out of its counts; a finding that becomes a problem shows again.
+HEALTH_ACCEPTED = STATE_DIR / "health-accepted.json"
+HEALTH_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:/._@+-]{0,180}$")
+
+
+def health_accepted():
+    try:
+        data = json.loads(HEALTH_ACCEPTED.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def health_accept(key, title, yes):
+    if not isinstance(key, str) or not HEALTH_KEY_RE.match(key):
+        raise ValueError("key: a finding's id from the report")
+    return _accept(HEALTH_ACCEPTED, health_accepted(), key, title, yes)
 
 
 def _tls_status():
@@ -2149,7 +2173,7 @@ def health_snapshot():
     return {"report": load(HEALTH_STATE), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
             "ladder": jsonlog.read(uplink.LADDER), "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
             "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
-            "progress": update_progress(), "watchers": watchers_glance()}
+            "progress": update_progress(), "watchers": watchers_glance(), "accepted": health_accepted()}
 
 
 def watchers_glance():
@@ -2192,6 +2216,7 @@ def network_snapshot():
             "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
             "metered": _metered_view(),
             "other_ap": load(CONTROL_DIR / "other-ap.json") or {},   # other hotspot profiles: removed or left
+            "accepted": health_accepted(),   # review items accepted (the Box doctor's list: a network one is "net:<id>")
             "wifisync": load(CONTROL_DIR / "wifisync.json") or {},   # mPWRD-OS's wifisync: as the image had it, if changed here
             "levels": uplink.levels(),
             "pending": _pending_actions("net-") + _pending_actions("uplink-") + _pending_actions("wifi-"), "results": control_results(5)}
@@ -4429,8 +4454,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "health-scan"})})
             elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.match(str(payload.get("choice", ""))):
                 self.send_json(202, {"id": control_request({"action": "health-fix", "choice": payload["choice"]})})
+            elif payload.get("action") in ("accept", "unaccept"):
+                # The owner's own: a review finding looked at and left as it is (or taken back). The hub's file; no root.
+                try:
+                    data = health_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
+                except ValueError as exc:
+                    self.send_json(400, {"error": str(exc)})
+                    return
+                self.send_json(200, {"accepted": data, "message": "Accepted." if payload["action"] == "accept" else "Taken back."})
             else:
-                self.send_json(400, {"error": "action must be scan, or fix with a choice the doctor offered"})
+                self.send_json(400, {"error": "action must be scan, accept, unaccept, or fix with a choice the doctor offered"})
             return
 
         if path == "/admin/network":

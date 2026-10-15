@@ -1714,7 +1714,7 @@ async function secSavePending(page) {
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
 // link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
 const STATE_WORD = { problem: 'Action required', warn: 'Needs review', ok: 'Passed', suggest: 'Suggestion', 'not-here': 'Not applicable',
-  accepted: 'Accepted risk', fixed: 'Repaired' };
+  accepted: 'Accepted', fixed: 'Repaired' };
 function copyBox(cmd) {
   const b = el('button', { type: 'button', className: 'action-btn small', textContent: 'Copy' });
   b.addEventListener('click', async () => {
@@ -1748,10 +1748,11 @@ function findingRow(r) {
       el('ul', {}, ...r.said.map((l) => el('li', {}, el('span', { className: `fstate fstate-${l.status}`, textContent: STATE_WORD[l.status] }),
         el('strong', { textContent: ` ${SOURCE_WORDS[l.source] || l.source}: ${l.title}` }), l.detail ? ` — ${l.detail}` : '',
         l.fix ? el('span', { className: 'setting-desc', textContent: ` Recommended action: ${l.fix}` }) : null)))) : null,
+    // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request.
     r.accept ? el('div', { className: 'faccept' }, el('button', { type: 'button', className: 'link-button',
-      textContent: r.accept.on ? 'Reopen finding' : 'Accept risk',
-      title: r.accept.on ? 'Return this finding to the unresolved list.' : 'Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.',
-      onclick: () => secAccept(r.accept.key, r.accept.title, !r.accept.on) })) : null);
+      textContent: r.accept.on ? (r.accept.reopen || 'Reopen finding') : (r.accept.label || 'Accept risk'),
+      title: r.accept.on ? 'Return this finding to the unresolved list.' : (r.accept.hint || 'Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.'),
+      onclick: () => (r.accept.act || secAccept)(r.accept.key, r.accept.title, !r.accept.on) })) : null);
 }
 const noteUnder = (fid) => (secNote && secNote.fid === fid
   ? el('p', { className: `setting-desc action-note${secNote.ok ? '' : ' bad'}`, role: 'status', textContent: secNote.text }) : null);
@@ -2393,20 +2394,25 @@ let hlDrawn = '';    // what the findings were last drawn from: the same again l
 function renderGlance(data, rep) {
   const find = (id) => rep && rep.findings.find((f) => f.id === id);
   const first = (text) => String(text || '').split(/(?<=\.)\s/)[0];
+  // A finding in a few words: its own glance (health.py), else the first sentence of its detail (an older report).
+  const brief = (f) => f.glance || first(f.detail);
+  // Why the box last started: the reason only ("Unclean shutdown"), the explanation stays in the findings below.
+  const why = (t) => { const r = String(t || '').replace(/^Started: /, '').split(/[:.]/)[0].trim(); return r ? r[0].toUpperCase() + r.slice(1) : 'Started'; };
   const w = data.watchers || {};
   const st = rep && rep.settings;
-  const counts = rep ? ['problem', 'warn'].map((k) => rep.findings.filter((f) => f.status === k).length) : null;
+  const acc = data.accepted || {};
+  const counts = rep ? ['problem', 'warn'].map((k) => rep.findings.filter((f) => f.status === k && !(k === 'warn' && acc[f.id])).length) : null;
   const ago = (at) => { const s = Date.now() / 1000 - at; return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
   const rows = [
     ['Health', !rep ? 'Not checked yet.' : counts[0] + counts[1] ? `${counts[0]} to fix, ${counts[1]} to review (below).` : 'Nothing to fix or review.'],
-    ['Network recovery', find('uplink-report') ? first(find('uplink-report').detail) + (w.link && w.link.cause ? ` Cause: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
-    ['The WiFi radio', find('crash-radio') ? first(find('crash-radio').detail) : 'No radio watched.'],
-    ['Last boot', w.last_boot ? `${ago(w.last_boot.at)}: ${w.last_boot.text.replace(/^Started: /, '')}` : 'Not recorded yet.'],
+    ['Network recovery', find('uplink-report') ? brief(find('uplink-report')) + (w.link && w.link.cause ? ` Cause: ${w.link.cause}.` : '') : 'The watchdog has not reported.'],
+    ['The WiFi radio', find('crash-radio') ? brief(find('crash-radio')) : 'No radio watched.'],
+    ['Last boot', w.last_boot ? `${ago(w.last_boot.at)}: ${why(w.last_boot.text)}.` : 'Not recorded yet.'],
     ['Last repair', w.last_repair ? `${ago(w.last_repair.at)}: ${w.last_repair.text}` : 'None recorded.'],
     ['Frozen-system recovery', !st ? 'Not known yet.' : st.panic || st.watchdog
-      ? `Restarts automatically (${[st.panic && 'after a kernel panic', st.watchdog && 'by the watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
+      ? `Restarts by itself (${[st.panic && 'kernel panic', st.watchdog && 'watchdog'].filter(Boolean).join(', ')}).` : 'Stays stopped until someone restarts it.'],
     ['Snapshot interval', !st ? 'Not known yet.' : st.snapshots ? 'Every 30 s.' : 'Disabled.'],
-    ['Status light', find('led') ? first(find('led').detail) : 'Not checked yet.'],
+    ['Status light', find('led') ? brief(find('led')) : 'Not checked yet.'],
     ['SD card writes', (lastBox && cardRate(lastBox.system)) || 'Not known yet.'],
   ];
   const key = JSON.stringify(rows);
@@ -2553,6 +2559,10 @@ function renderHealth(data) {
     }
   }
   const rep = data.report;
+  // A review finding the owner accepted (data.accepted, by id) leaves the counts and the open list; one that has
+  // become a problem shows again whatever was accepted.
+  const acc = data.accepted || {};
+  const accepted = (f) => f.status === 'warn' && !!acc[f.id];
   renderGlance(data, rep);
   renderDoctorSettings(data, rep);
   const all = rep ? [...rep.findings].sort((a, b) => RANK[a.status] - RANK[b.status]) : [];
@@ -2565,12 +2575,15 @@ function renderHealth(data) {
   // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
   const item = (f) => {
     const d = healthDo(f, busy || h.stuck);
-    return findingRow({ id: `hl-${f.id}`, state: f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id) });
+    const on = accepted(f);
+    return findingRow({ id: `hl-${f.id}`, state: on ? 'accepted' : f.status, title: f.check, detail: f.detail, how: d.how, controls: d.controls, note: noteUnder(f.id),
+      accept: f.status === 'warn' ? { key: f.id, title: f.check, on, act: hlAccept, label: 'Accept', reopen: 'Take back',
+        hint: 'Accepting leaves it as it is and takes it out of the review count. It moves to Accepted. The doctor shows it again if it becomes a problem.' } : null });
   };
   const needle = hl.search.value.trim().toLowerCase();
   const match = (f) => !needle || `${f.check} ${f.detail} ${f.fix || ''}`.toLowerCase().includes(needle);
   const services = all.filter((f) => !isClock(f));
-  const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn').length };
+  const counts = { problem: services.filter((f) => f.status === 'problem').length, warn: services.filter((f) => f.status === 'warn' && !accepted(f)).length };
   hl.summary.replaceChildren(...(!rep ? [] : [
     ['all', counts.problem + counts.warn, 'all', counts.problem ? 'problem' : counts.warn ? 'warn' : 'ok'],
     ['problem', counts.problem, 'to fix', counts.problem ? 'problem' : 'ok'],
@@ -2580,15 +2593,16 @@ function renderHealth(data) {
     b.setAttribute('aria-pressed', String(hlShow === key));
     return b;
   })));
-  const open = services.filter((f) => f.status !== 'ok' && match(f) && (hlShow === 'all' || f.status === hlShow));
+  const open = services.filter((f) => f.status !== 'ok' && !accepted(f) && match(f) && (hlShow === 'all' || f.status === hlShow));
   // Redrawn only when what they show has changed: a poll that brings the same leaves a selection in them alone.
-  const drawn = JSON.stringify([rep && rep.at, all, busy, h.stuck, hlNote, hlShow, needle]);
+  const drawn = JSON.stringify([rep && rep.at, all, busy, h.stuck, hlNote, hlShow, needle, acc]);
   const redraw = drawn !== hlDrawn;
   hlDrawn = drawn;
   if (redraw) hl.findings.replaceChildren(...open.map(item));
   hl.empty.hidden = !rep || open.length > 0;
   hl.empty.textContent = counts.problem + counts.warn ? 'Nothing matches.' : 'Nothing to fix or review.';
-  const fine = services.filter((f) => f.status === 'ok' && match(f));
+  // Accepted first, then what passed: both folded under one heading.
+  const fine = [...services.filter((f) => accepted(f) && match(f)), ...services.filter((f) => f.status === 'ok' && match(f))];
   hl.fineFold.hidden = !fine.length;
   hl.fineCount.textContent = `(${fine.length})`;
   if (redraw) {
@@ -2625,6 +2639,15 @@ function renderHealth(data) {
   if (stale && !busy && !hlAsked && !h.stuck && here) { hlAsked = true; hlRequest({ action: 'scan' }, paneShown('clock') ? 'clock-scan' : 'scan'); return; }
   clearTimeout(hlPoll);
   hlPoll = setTimeout(loadHealth, busy ? 2000 : here ? 15000 : 30000);
+}
+
+// Accept a review finding (or take it back): the hub keeps the list; the page draws it again at once.
+async function hlAccept(key, title, yes) {
+  try {
+    const r = await postJSON('/admin/health', { action: yes ? 'accept' : 'unaccept', key, title });
+    hlNote = { fid: key, text: yes ? 'Accepted. It is under Passed and accepted, below.' : 'Taken back.', ok: true };
+    if (hlLast) renderHealth({ ...hlLast, accepted: r.accepted || {} });
+  } catch (e) { hlNote = { fid: key, text: e.message, ok: false }; if (hlLast) renderHealth(hlLast); }
 }
 
 async function loadHealth() {
@@ -3241,9 +3264,9 @@ function deviceCard(inv, d, wifi, hazards) {
   }
   // What the box knows about this device, in words: what to review first, then what is known.
   const mine = hazards.filter((h) => h.iface === d.iface);
-  const look = mine.filter((h) => h.status !== 'ok'), known = mine.filter((h) => h.status === 'ok');
+  const look = mine.filter((h) => h.status === 'problem' || h.status === 'warn'), known = mine.filter((h) => h.status === 'ok' || h.status === 'accepted');
   const fact = (h) => el('li', {}, el('strong', { textContent: h.title }), h.detail ? `: ${h.detail}` : '',
-    h.fix ? el('span', { className: 'setting-desc', textContent: ` ${h.fix}` }) : null);
+    h.fix ? el('span', { className: 'setting-desc', textContent: ` ${h.fix}` }) : null, hazardControls(h));
   if (look.length) kids.push(section(line('Needs review', ''), el('ul', { className: 'net-facts' }, ...look.map(fact))));
   if (known.length) kids.push(section(line('Known limitations', ''), el('ul', { className: 'net-facts' }, ...known.map(fact))));
   return el('div', { className: 'net-device setting' }, ...kids);
@@ -3402,13 +3425,17 @@ function renderNetwork(data) {
   // A card per device, in plain words: what it is, what it's doing, what manages it, whether it
   // can run the hotspot and on what conditions, and the warnings that are about it.
   const shownIfaces = new Set(inv ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)] : []);
-  const hz = inv ? [...inv.hazards].sort((x, y) => RANK[x.status] - RANK[y.status]) : [];
+  // A review item accepted (on this page or the Box doctor's, one list: "net:<id>") is said as that and sorts with the passed.
+  const accNet = data.accepted || {};
+  const hz = inv ? inv.hazards.map((h) => (h.status === 'warn' && accNet[`net:${h.id}`] ? { ...h, status: 'accepted' } : h))
+    .sort((x, y) => (RANK[x.status] ?? 2) - (RANK[y.status] ?? 2)) : [];
   net.devices.replaceChildren(...(inv ? [...inv.radios.map((r) => deviceCard(inv, r, true, hz)), ...inv.wired.map((w) => deviceCard(inv, w, false, hz))] : []));
   drawNetTabs(data, inv, u);
   net.hazards.replaceChildren(...hz.filter((h) => !(h.iface && shownIfaces.has(h.iface))).map((h) => el('div', { className: 'net-device setting' },
     el('h4', {}, el('span', { textContent: h.title }), el('span', { className: { problem: 'bad-pill', warn: 'warn-pill', ok: 'ok-pill' }[h.status] || 'info-pill', textContent: STATE_WORD[h.status] || h.status })),
     h.detail ? el('p', { className: 'setting-desc', textContent: h.detail }) : null,
-    h.fix ? el('p', { className: 'setting-desc', textContent: h.fix }) : null)));
+    h.fix ? el('p', { className: 'setting-desc', textContent: h.fix }) : null,
+    hazardControls(h))));
   const sn = netNotes.scan;
   say(sn ? sn.text : '', sn ? sn.ok : true, net.scanNote);
   const jn = netNotes.join;
@@ -3832,6 +3859,29 @@ function applyChangesHidden() {
   // All hidden and folded: the section's heading alone, with its button.
   const lead = document.getElementById('net-changes-lead');
   if (lead) lead.dataset.allHidden = String(hiddenNow === rows.length && !changesShowAll);
+}
+
+// What a review item on this page can do here: another hotspot profile, delete or ignore it (as under Changes made
+// here); any review item, accept it as it is (or take that back), on the Box doctor's list as "net:<id>".
+function hazardControls(h) {
+  const btns = [];
+  const ap = /^other-ap:(.+)$/.exec(h.id || '');
+  if (ap && h.status === 'warn') {
+    btns.push(actionButton('Delete profile', () => {
+      if (confirm('Delete this hotspot profile? The box keeps a copy. Restore profile, under Changes made here, brings it back.')) netRequest({ action: 'otherap', uuid: ap[1], do: 'remove' }, 'otherap');
+    }, { className: 'small' }), ' ',
+    actionButton('Ignore profile', () => netRequest({ action: 'otherap', uuid: ap[1], do: 'leave' }, 'otherap'), { className: 'small' }));
+  }
+  if (h.status === 'warn' || h.status === 'accepted') {
+    const on = h.status === 'accepted';
+    btns.push(' ', el('button', { type: 'button', className: 'link-button', textContent: on ? 'Take back' : 'Accept',
+      title: on ? 'Return this item to the review list.' : 'Leave it as it is and take it out of the review count. The Box doctor shows it as accepted too.',
+      onclick: async () => {
+        try { await postJSON('/admin/health', { action: on ? 'unaccept' : 'accept', key: `net:${h.id}`, title: h.title }); loadNetwork(); }
+        catch (e) { say(e.message, false, net.scanNote); }
+      } }));
+  }
+  return btns.length ? el('p', { className: 'library-buttons' }, ...btns) : null;
 }
 
 async function netRequest(body, where) {
