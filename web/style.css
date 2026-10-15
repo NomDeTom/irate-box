@@ -123,6 +123,8 @@ h2 {
    Cards (.net-card, .git-card, .net-device) set their own, later in this file. */
 .admin-pane h4 { margin: 1.75rem 0 0.4rem; font-size: 1rem; }
 .admin-pane h4:first-child { margin-top: 0; }
+/* A card straight after a pane's buttons or their note (shown or hidden): apart from them, not on them (Box doctor's Summary). */
+.admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting) { margin-top: 1rem; }
 
 /* --- Services (collapsible) --- */
 .services { margin-bottom: 2rem; }
