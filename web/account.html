@@ -30,13 +30,13 @@
       <h2>Change your password</h2>
       <label>Current password <input type="password" name="old" autocomplete="current-password" required></label>
       <label>New password <input type="password" name="new" autocomplete="new-password" minlength="8" maxlength="128" required></label>
-      <button type="submit">Change it</button>
+      <button type="submit">Change password</button>
     </form>
     <form id="acct-prefs-form" class="acct-form acct-prefs">
       <h2>Your settings</h2>
       <p class="setting-desc">The administrator decides which options exist. You decide your own settings.</p>
       <div class="acct-pref">
-        <span>Show me by name in "here now"</span>
+        <span>Show my username in online status</span>
         <button type="button" class="chip-btn" data-pref="show_online" aria-pressed="false">Off</button>
         <small class="setting-desc" id="acct-names-to"></small>
       </div>
@@ -45,16 +45,16 @@
         <span class="chip-group" role="group" aria-label="Name and text colour" id="acct-hues"></span>
       </div>
       <div class="acct-pref">
-        <span>Lock my files in the drop by default</span>
+        <span>Lock my uploads in File drop by default</span>
         <button type="button" class="chip-btn" data-pref="lock_default" aria-pressed="false">Off</button>
-        <small class="setting-desc">Locked: others can open it but not change or remove it. You can still select for each one.</small>
+        <small class="setting-desc">Only devices with the key can delete a locked file. You can still select a lock for each file.</small>
       </div>
-      <h3>Who sees what I post</h3>
+      <h3>Post visibility</h3>
       <div id="acct-posts"></div>
-      <p class="setting-desc">No setting here can give wider access than the administrator set for the app. The shared notes are one notebook everyone
-        who can open them shares, so they have nothing of yours alone to hide. Your own notebook is below.</p>
+      <p class="setting-desc">No setting here can give wider access than the administrator set for the app. The shared notes are one notebook for everyone
+        who can open them. Your own notebook is below.</p>
       <label>Email for a password reset <input type="email" name="email" autocomplete="email" placeholder="optional"></label>
-      <p class="setting-desc">The box uses it only if it can send mail. Nobody else sees it. New accounts start not shown by name.</p>
+      <p class="setting-desc">The box uses this address only to send a password reset, and only if it can send mail. Other users do not see it. A new account does not show its username in online status.</p>
       <div class="acct-pref-foot">
         <button type="button" class="action-btn" id="acct-prefs-discard" disabled>Discard</button>
         <button type="submit" class="action-btn primary" id="acct-prefs-save" disabled>Save</button>
@@ -62,11 +62,11 @@
     </form>
     <section class="acct-form" id="acct-notebook" hidden>
       <h2>My notebook</h2>
-      <p class="setting-desc">Your own notes, private to you: no one else can open them. It is separate from the
-        shared notes, which everyone with notes access can read and change.</p>
+      <p class="setting-desc">Your own notes. In the notebook application, no other account can open them. An
+        administrator can read their files on the box. The shared notes are separate: everyone with Notes access can read and change them.</p>
       <p class="setting-desc" id="acct-notebook-state" role="status"></p>
-      <p><a class="action-btn" href="/notebook.html" id="acct-notebook-open">Open my notebook</a>
-        <a class="action-btn" href="/api/notebook/download" id="acct-notebook-download" download>Download it (zip)</a></p>
+      <p><a class="action-btn" href="/notebook.html" id="acct-notebook-open">Open notebook</a>
+        <a class="action-btn" href="/api/notebook/download" id="acct-notebook-download" download>Download notebook (ZIP)</a></p>
     </section>
     <p><button type="button" id="acct-logout">Sign out</button></p>
   </section>
@@ -74,14 +74,14 @@
   <section id="acct-guest" hidden>
     <form id="acct-login-form" class="acct-form">
       <h2>Sign in</h2>
-      <label>Name <input name="name" autocomplete="username" required></label>
+      <label>Username <input name="name" autocomplete="username" required></label>
       <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
       <button type="submit">Sign in</button>
     </form>
     <form id="acct-signup-form" class="acct-form" hidden>
       <h2 id="acct-signup-title">Create account</h2>
       <p class="setting-desc" id="acct-signup-desc"></p>
-      <label>Name <input name="name" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" title="3–32 letters, digits, dots, dashes or underscores" required></label>
+      <label>Username <input name="name" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" title="3–32 letters, digits, dots, dashes or underscores" required></label>
       <label>Password <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
       <button type="submit" id="acct-signup-button">Create account</button>
     </form>
@@ -90,7 +90,7 @@
       <p class="setting-desc">An administrator gives you this code with a new account or to reset a password. It works once. It expires after 24 hours.</p>
       <label>Code <input name="code" autocomplete="one-time-code" required></label>
       <label>New password <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
-      <button type="submit">Set it</button>
+      <button type="submit">Set password</button>
     </form>
   </section>
   <p id="acct-note" role="status"></p>

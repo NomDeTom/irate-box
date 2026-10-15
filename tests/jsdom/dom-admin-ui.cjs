@@ -386,12 +386,12 @@ setTimeout(() => {
   check('content export: starts as Update a box, the hub program left out and said with its size', preset('update').classList.contains('selected')
     && !kf.elements.hub.checked && /about 90\.6 MB/.test(t('#kit-hub-size')[0]) && /Nothing selected yet/.test(t('#kit-total')[0]), t('#kit-total')[0]);
   preset('level').click();
-  check('  Bring a box level: every repository and the settings ticked, still no hub program', kf.elements.state.value === 'settings'
+  check('  Transfer settings and content: every repository and the settings ticked, still no hub program', kf.elements.state.value === 'settings'
     && [...d.querySelectorAll('#kit-repos input')].every((i) => i.checked) && !kf.elements.hub.checked, kf.elements.state.value);
   kf.elements.dest.value = 'stick'; kf.dispatchEvent(new w.Event('change'));
   check('  onto a stick: the stick offered, the button says so', !d.getElementById('offline-stick-box').hidden && t('#kit-make')[0] === 'Copy export to USB drive', t('#kit-make')[0]);
   preset('new').click();
-  check('A new box: the hub program in, and so a download', kf.elements.hub.checked && kf.elements.dest.value === 'download' && d.getElementById('offline-stick-box').hidden
+  check('Install on a new box: the hub program in, and so a download', kf.elements.hub.checked && kf.elements.dest.value === 'download' && d.getElementById('offline-stick-box').hidden
     && /hub program is in it/.test(t('#kit-total')[0]), t('#kit-total')[0]);
   kf.elements.state.value = 'none'; d.querySelectorAll('#kit-repos input').forEach((i) => { i.checked = false; });
   kb.querySelector('input').click(); kf.elements.budget.value = '1000'; kf.dispatchEvent(new w.Event('input'));

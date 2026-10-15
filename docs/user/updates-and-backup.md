@@ -16,7 +16,7 @@ The **This hub** card says what is installed and what is newer, with **Check now
 
 Each update downloads only the files that changed. Some dependencies can download in full. **Update verification** sets what the box must verify before it installs:
 
-- **From the branch**: the update as it comes, with its checks passed.
+- **Branch updates**: the update as it comes, with its checks passed.
 - **Merged on GitHub**: every new commit has a GitHub signature.
 - **Signed releases only**: the newest release tag has a signature from one of your own SSH keys.
 

@@ -109,7 +109,7 @@ setTimeout(() => {
   d.getElementById('net-join-now').click();
   w.confirm = () => true;
   const sentJoin = posted.find((p) => p.action === 'join');
-  check('  Add and join now: warned the page may lose the box, sent, the password cleared from the form', /can lose the connection to the box/.test(asked)
+  check('  Add and connect: warned the page may lose the box, sent, the password cleared from the form', /can lose the connection to the box/.test(asked)
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');

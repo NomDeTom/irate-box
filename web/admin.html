@@ -41,7 +41,7 @@
       <div class="helper-banner" id="helper-banner" role="alert" hidden>
         <strong>The box's root helper is not responding.</strong>
         <span id="helper-banner-detail"></span>
-        Actions that need root access are unavailable. Open a terminal on the box (SSH, or Terminal if it is on).
+        Actions that need root access are unavailable. Open a terminal on the box: over SSH, or in the Terminal app if it is enabled.
         Run these commands:
         <pre class="admin-log" id="helper-banner-cmds"></pre>
       </div>
@@ -144,8 +144,8 @@
         <h3>Web add-ons</h3>
         <p class="setting-desc">
           Web add-ons run in the visitor's browser. The box adds them without an installer and without a restart.
-          Each add-on has its own address (this box, port <span id="local-port">8090</span>). The hub prevents an
-          add-on from opening this page or the hub settings. An add-on can reach the services that its manifest
+          Each add-on has its own address (this box, port <span id="local-port">8090</span>). The box prevents an
+          add-on from opening the administration pages. An add-on can reach the services that its manifest
           declares, such as the MQTT broker. A new add-on is <strong>disabled</strong>. Select Access to give it
           to guests, users or administrators. The Apps list on this page keeps the add-on current, at the commit
           that the box's code checked, unless you select the newest.
@@ -160,8 +160,8 @@
             <p><strong>⚠️ Add a pasted manifest only if you have read it and you trust its author.</strong></p>
             <p>Nobody else checks a pasted manifest. The box downloads someone else's code. The box serves that code
             under its own name to everyone on the box's network who opens it. The code can show anything and ask
-            for anything. It can send what people type to the services that its manifest declares. The hub
-            prevents it from opening this page or the box itself. If you are not sure, use the catalogue.</p>
+            for anything. It can send what people type to the services that its manifest declares. The box
+            prevents it from opening the administration pages. If you are not sure, use the catalogue.</p>
           </div>
           <textarea id="local-paste-text" rows="10" spellcheck="false" placeholder='{"id": "...", "order": 70, "tile": {...}, "source": {...}, "needs": "index.html", "addon": {...}}'></textarea>
           <label class="setting"><input type="checkbox" id="local-paste-ok">
@@ -253,7 +253,7 @@
         <h2 id="clock-title">Clock</h2>
         <p class="setting-desc">
           This page shows what keeps the box's time and what happened to the time at this boot. It also shows the clock
-          module on I2C, if there is one. This board has no clock of its own. Without the network or a clock
+          module on I2C, if there is one. Many small boards have no clock of their own. Without the network or a clock
           module, the time is wrong after a power cut. A scan only reads the I2C buses. Setup of a module uses the
           kernel driver where one exists. Setup never turns on charging.
         </p>
@@ -275,7 +275,7 @@
         <h2 id="appearance-title">Appearance</h2>
         <p class="setting-desc">
           Set the hub name, subtitle and colours. Set page widths separately for the hub, administration, Shoutbox
-          and Board. Text keeps its reading width at every page width setting. On a phone, the page always fits
+          and Board. Text keeps its reading width at every page width setting. On a phone, the page uses the width of
           the screen. Select the emoji sets below.
         </p>
         <div id="appearance-box"></div>
@@ -443,7 +443,7 @@
         <p class="setting-desc">
           Store Meshtastic releases on the box for the web flasher. You can then flash a radio without internet access.
           The box stores every board unless you select boards (about 600 MB for each release). Clear All boards and
-          select your boards to store only those (a few MB each, for each release). The box looks for new releases as
+          select your boards to store only those (a few MB each, for each release). The box checks for new releases as
           often as you set below, when it has internet access. The firmware source code is a mirror like any other
           repository (Git → Mirrors). The build cache is with the builds (Git → Builds). To build your own firmware
           for boards that a release does not cover, or from a fork, use the <a href="#factory">Firmware Factory</a>.
@@ -617,7 +617,7 @@
             <label>Token <input name="value" type="password" autocomplete="off" placeholder="github_pat_…"></label>
             <div class="library-buttons">
               <button class="action-btn primary" type="submit">Save</button>
-              <button class="action-btn" type="button" id="library-token-clear">Clear</button>
+              <button class="action-btn" type="button" id="library-token-clear">Remove GitHub token</button>
             </div>
           </form>
           <h4>Adapt to the rate limit</h4>
@@ -625,7 +625,7 @@
             GitHub lets this box send 60 requests an hour without a token and 5000 with a token. Adapt asks GitHub for
             its request limit. The librarian then keeps its scheduled checks to a budget just under that limit. When the
             hourly budget is spent, the checks wait. If GitHub refuses several requests in a row, the box halves the
-            budget. A clean run gives some budget back. Adapt works with or without a token.
+            budget. After a run with no refusals, the box raises the budget again. Adapt works with or without a token.
             <span id="library-pace-state"></span>
           </p>
           <div class="library-buttons">
@@ -653,7 +653,7 @@
         <p class="setting-desc" id="drop-usage"></p>
         <h3>Storage limits and retention</h3>
         <form id="store-settings" class="library-form">
-          <label>Store storage limit (MB) <input name="store_max_total_mb" type="number" min="1" step="1"></label>
+          <label>Saved work storage limit (MB) <input name="store_max_total_mb" type="number" min="1" step="1"></label>
           <label>Gallery retention period (hours of powered-on time, 0 = never delete)
             <input name="store_save_ttl_hours" type="number" min="0" step="1"></label>
           <label>File drop storage limit (MB)
@@ -808,7 +808,7 @@
           <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}(\.git)?" placeholder="firmware-notes"></label>
           <label>Access <select name="area"><option value="public">Guests (/git/)</option><option value="private">Administrators (/git-private/)</option></select></label>
           <label>Description <input name="description" maxlength="200" placeholder="optional, shown in the list"></label>
-          <button class="action-btn primary" type="submit">Create</button>
+          <button class="action-btn primary" type="submit">Create repository</button>
         </form>
         <p class="setting-desc action-note" id="git-create-note" role="status" hidden></p>
         </div>
@@ -867,7 +867,7 @@
           Users with Notes access can read and change the shared notebook. Each account can also have a private
           notebook. It starts when the account holder opens it. It stops when the account holder signs out, or 30 minutes after the
           last use. A running notebook uses about 40 MB of memory. The pages of a notebook stay on the box when the
-          notebook stops, when notebooks are switched off, and when its account is deleted.
+          notebook stops, when private notebooks are disabled, and when its account is deleted.
         </p>
         <div id="notebooks-box"></div>
         <p class="setting-desc" id="notebooks-state"></p>
@@ -881,7 +881,7 @@
             <button class="action-btn primary big" type="submit" name="role" value="admin">Create administrator account</button>
           </div>
         </form>
-        <p class="setting-desc">Each account gets a one-time activation code that works for one day. Give the code to the user. The user sets a password at /account.html.</p>
+        <p class="setting-desc">Each account gets a one-time activation code that works for one day. Give the code to the user. The user sets a password on the <a href="/account.html">account page</a>.</p>
         <p class="acct-code" id="accounts-code" hidden></p>
         <h3>Existing accounts</h3>
         <div id="accounts-list" class="admin-list"></div>
@@ -911,7 +911,7 @@
         <form id="mesh-channel-form" class="library-form">
           <label>Name <input name="name" maxlength="11" placeholder="LongFast" autocomplete="off"></label>
           <label>Key <input name="key" placeholder="the channel's key, base64, as Meshtastic shows it" autocomplete="off" spellcheck="false"></label>
-          <button class="action-btn primary" type="submit">Add</button>
+          <button class="action-btn primary" type="submit">Add channel</button>
           <button type="button" id="mesh-longfast" class="link-button">Add Meshtastic's public LongFast</button>
         </form>
         <p class="setting-desc action-note" id="mesh-note" role="status" hidden></p>
@@ -934,7 +934,7 @@
             <input type="checkbox" id="factory_tile">
             <span>
               <span class="setting-name">Show the Firmware Factory on the hub</span>
-              <span class="setting-desc">A tile that anyone on the network can see. It shows what is building and how far along, what is waiting, and the ESP32 images and UF2 files of the newest builds to download. It shows no logs and nothing else of the builds.</span>
+              <span class="setting-desc">A tile that anyone on the network can see. It shows what is building and how far along, what is waiting, and the ESP32 images and UF2 files of the newest builds to download. It does not show the build logs.</span>
             </span>
           </label>
         </div>
@@ -993,9 +993,8 @@
         </details>
         <details class="sec-fold" id="health-ladder-fold">
           <summary>Network recovery history</summary>
-          <p class="setting-desc">This history shows each outage of the box's link and the steps that the uplink watchdog took.
-          Many outages that end at the first step show that a gentler pace is enough. Long waits at a step that never helps show
-          that the reach or the pace can go further (<a href="#network/access">Network → Connection settings</a>).</p>
+          <p class="setting-desc">This history shows each outage of the box's link and the recovery steps that the uplink watchdog took.
+          Set the recovery timing and the maximum recovery action on <a href="#network/access">Network → Connection settings</a>.</p>
           <div id="health-ladder"></div>
         </details>
         <details class="sec-fold" id="health-install-fold">
@@ -1027,9 +1026,8 @@
             <p class="setting-desc net-overview" id="net-overview">Not checked yet.</p>
             <div class="net-cards" id="net-status-cards"></div>
             <h3>Network recovery history</h3>
-            <p class="setting-desc">This history shows each outage of the box's link and the steps that the watchdog took. Many outages that end at the
-              first step show that a gentler pace is enough. Long waits at a step that never helps show that the reach or the pace can go
-              further (<a href="#network/access">Connection settings</a>).</p>
+            <p class="setting-desc">This history shows each outage of the box's link and the recovery steps that the watchdog took.
+              Set the recovery timing and the maximum recovery action on <a href="#network/access">Connection settings</a>.</p>
             <div id="net-ladder"></div>
             <h3>Recent events</h3>
             <ul class="admin-list net-events" id="up-events"></ul>
@@ -1050,7 +1048,7 @@
                 <dt>Concurrent client and hotspot</dt><dd>Some radios can serve the client connection and the hotspot at the same time. The hotspot is a second network.</dd>
                 <dt>Exclusive hotspot radio</dt><dd>This radio can do one task only. To run the hotspot, the box must leave your WiFi.</dd>
                 <dt>Channel</dt><dd>The part of the WiFi band that a network uses. A radio that can use one channel at a time makes its hotspot follow the channel of your WiFi.</dd>
-                <dt>Managed by</dt><dd>The program on the box that manages the connection of a device (NetworkManager, wpa_supplicant, …). irate-box asks that program and does not take control.</dd>
+                <dt>Connection manager</dt><dd>The program on the box that manages the connection of a device (NetworkManager, wpa_supplicant, …). irate-box asks that program and does not take control.</dd>
                 <dt>Signal</dt><dd>How strongly the box receives your WiFi, in dBm. A value closer to 0 is stronger. About −50 is excellent, −70 is weak, −80 is barely usable.</dd>
               </dl>
             </details>
@@ -1094,8 +1092,8 @@
                     <label id="net-join-psk">Password <input name="psk" type="password" minlength="8" maxlength="64" autocomplete="new-password" spellcheck="false"></label>
                     <label class="inline"><input type="checkbox" name="hidden"> The network is hidden (does not announce its name)</label>
                     <span class="library-buttons">
-                      <button class="action-btn primary" type="submit">Add</button>
-                      <button class="action-btn" type="button" id="net-join-now">Add and join now</button>
+                      <button class="action-btn primary" type="submit">Add network</button>
+                      <button class="action-btn" type="button" id="net-join-now">Add and connect</button>
                     </span>
                   </form>
                 </details>
@@ -1121,7 +1119,7 @@
                   value comes from now. Changing one writes it to the irate-box file. "Use NetworkManager default" removes
                   the irate-box line again.</p>
                 <div class="net-defaults" id="net-defaults"></div>
-                <span class="library-buttons"><button class="action-btn" type="button" id="net-defaults-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-defaults-save" disabled>Save the box defaults</button></span>
+                <span class="library-buttons"><button class="action-btn" type="button" id="net-defaults-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-defaults-save" disabled>Save default settings</button></span>
                 <p class="setting-desc action-note" id="net-defaults-note" role="status" hidden></p>
               </div>
               <div class="net-card setting net-card-wide" id="net-watchdog-card">
@@ -1130,7 +1128,7 @@
                 <div class="library-buttons" id="up-stall" hidden></div>
                 <div class="net-settings up-settings">
                   <div class="up-group up-scope-row">
-                    <label class="setting-name" for="up-scope">For</label>
+                    <label class="setting-name" for="up-scope">Interface or connection</label>
                     <select id="up-scope"><option value="">Every connection</option></select>
                     <p class="setting-desc" id="up-scope-says"></p>
                   </div>
@@ -1168,7 +1166,7 @@
                       check fails. After the last retry, it stops and waits until someone reconnects the connection by hand. This setting applies to every connection on the box.</p>
                     <div class="net-defaults" id="net-retry-defaults"></div>
                     <div id="up-profile"></div>
-                    <span class="library-buttons"><button class="action-btn" type="button" id="net-retry-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-retry-save" disabled>Save these</button></span>
+                    <span class="library-buttons"><button class="action-btn" type="button" id="net-retry-discard" disabled>Discard</button><button class="action-btn" type="button" id="net-retry-save" disabled>Save retry settings</button></span>
                   </div>
                   <div class="up-group">
                     <label class="setting-name" for="up-sens">Sensitivity: missed checks, within the timing window, that start recovery</label>
@@ -1186,8 +1184,8 @@
                        link (box_steps) or meet a cable unplugged (cable_out). -->
                   <div class="up-group up-box-only" id="up-watch">
                     <span class="setting-name">Monitored interfaces</span>
-                    <p class="setting-desc">Each monitored interface has a watchdog of its own, with the settings above. If nobody monitors
-                      a link and it fails, nothing detects the failure and nothing retries. The Box doctor reports it.</p>
+                    <p class="setting-desc">Each monitored interface has a watchdog of its own, with the settings above. The watchdog does not monitor
+                      or retry an interface that is not selected. The Box doctor reports such an interface.</p>
                     <div class="up-watch-rows" id="up-watch-rows"></div>
                     <span class="setting-name" id="up-watchnew-label">New interfaces and interfaces not listed here</span>
                     <div class="choice-tiles" id="up-watchnew" role="radiogroup" aria-labelledby="up-watchnew-label"></div>
@@ -1310,7 +1308,7 @@
         <h2 id="security-title">Security</h2>
         <p class="setting-desc">
           This page shows what a guest on the box's network can reach, and how the box is set up. Nothing here
-          changes until you select its button. You can undo every change here. Uninstalling irate-box restores the
+          changes until you select its button. You can undo most changes here. Uninstalling irate-box restores the
           settings that it found.
         </p>
         <div class="sec-head">
@@ -1334,7 +1332,7 @@
           The box counts different devices, today and this week, for the People tile. It never records who they were. A
           helper reads the network addresses of the devices that the box has seen. It hashes each address with a random
           salt for the day and a random salt for the week. The helper holds the salts only in memory and discards them when
-          the day or week ends. No hash can be reversed to a device or matched to another day. The box writes only the two
+          the day or week ends. The box writes only the two
           numbers, and deletes them at reboot. Phones that use a random address can count more than once, so the numbers
           are approximate. If you turn this off, the helper does not run. Signed-in names show only if each person lets the box
           show it on their account page.
@@ -1343,7 +1341,7 @@
           <label class="setting">
             <input type="checkbox" id="visitor_counts">
             <span>
-              <span class="setting-name">Count unique visitors</span>
+              <span class="setting-name">Count distinct devices</span>
               <span class="setting-desc">By salted hashes, as above. Enabled unless you disable it.</span>
             </span>
           </label>
@@ -1361,8 +1359,8 @@
         <p class="library-buttons">
           <button class="action-btn" type="button" id="tls-make">Make the box's certificate</button>
           <button class="action-btn" type="button" id="tls-switch" hidden></button>
-          <button class="action-btn" type="button" id="tls-again" hidden>Make a new CA</button>
-          <button class="action-btn" type="button" id="tls-box" hidden>Go back to the box's own certificate</button>
+          <button class="action-btn" type="button" id="tls-again" hidden>Create a new certificate authority</button>
+          <button class="action-btn" type="button" id="tls-box" hidden>Use the box's own certificate</button>
           <button class="action-btn" type="button" id="tls-admin-only" hidden></button>
         </p>
         <p class="setting-desc" id="tls-admin-only-note" hidden></p>
@@ -1377,18 +1375,18 @@
             certificate has not expired, and that the chain reaches a known CA. The box never replaces the certificate
             by itself. Renew it before it expires.
           </p>
-          <p class="setting-desc bad" id="tls-own-plain" hidden>This page uses plain HTTP. The private key would cross the network in clear text. Paste the key over HTTPS, or from a device on a cable.</p>
+          <p class="setting-desc bad" id="tls-own-plain" hidden>This page uses plain HTTP. The private key would cross the network in clear text. Paste the key over HTTPS.</p>
           <form id="tls-own-form" class="library-form">
             <label>Certificate chain <textarea name="chain" rows="5" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label>
             <label>Private key <textarea name="key" rows="4" spellcheck="false" autocomplete="off" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></label>
-            <button class="action-btn primary" type="submit">Use this certificate</button>
+            <button class="action-btn primary" type="submit">Apply certificate</button>
           </form>
         </details>
 
         <h3 id="security-ports">Listening on the network</h3>
         <p class="setting-desc">This table lists every service that answers from outside the box, and whether it should. It omits services that listen on loopback only.</p>
         <table class="admin-table" id="security-listeners">
-          <thead><tr><th>Port</th><th>Service</th><th>On</th><th>Should it?</th></tr></thead>
+          <thead><tr><th>Port</th><th>Service</th><th>Address</th><th>Expected?</th></tr></thead>
           <tbody></tbody>
         </table>
         <details class="admin-output" id="security-output" hidden>
@@ -1400,7 +1398,7 @@
 
       <section class="admin-pane" id="updates" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
-        <p class="setting-desc">Each card shows one item that the box updates. It shows the state, how often the box looks for updates and what the box does
+        <p class="setting-desc">Each card shows one item that the box updates. It shows the state, how often the box checks for updates and what the box does
           with an update. It also has the buttons Check now, Download and Install. If an update fails, the
           <a href="#updoctor">Updates doctor</a> shows the reason.</p>
         <div class="update-cards">
@@ -1450,7 +1448,7 @@
               <form id="update-signing-form" class="library-form">
                 <fieldset class="choice-tiles">
                   <legend>Required update level</legend>
-                  <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">From the branch, as now</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
+                  <label class="choice-tile"><input type="radio" name="level" value="off"><span class="choice-text"><span class="setting-name">Branch updates</span><span class="setting-desc">A fast-forward of what is installed, its checks passed.</span></span></label>
                   <label class="choice-tile"><input type="radio" name="level" value="github"><span class="choice-text"><span class="setting-name">Merged on GitHub</span><span class="setting-desc">Every new commit signed by GitHub, as merging a pull request there does. The box refuses a commit that GitHub did not sign.</span></span></label>
                   <label class="choice-tile"><input type="radio" name="level" value="tags"><span class="choice-text"><span class="setting-name">Signed releases only</span><span class="setting-desc">The newest release tag (v…), signed with one of your SSH keys. The box then follows releases, not the branch.</span></span></label>
                 </fieldset>
@@ -1462,7 +1460,7 @@
               <p class="setting-desc action-note" id="update-signing-note" role="status" hidden></p>
             </details>
             <details class="field-help">
-              <summary>How an update goes</summary>
+              <summary>Update process</summary>
               <p class="setting-desc">
                 Check asks the repository that the box was installed from what is new. Download verifies that version and
                 downloads what its installer needs, so the box downloads nothing in the middle of an installation. Install
@@ -1470,7 +1468,7 @@
                 server restarts during the installation, and this page reconnects by itself.
               </p>
               <p class="setting-desc">
-                The librarian can look for updates by itself in its hourly round, and take them as far as you select. The
+                The librarian can check for updates by itself in its hourly round. It then shows, downloads or installs them, as you select. The
                 box installs only a version that passed verification. It installs inside the hours you set, when nobody
                 uses the hub and nothing else runs. The hub server restarts during the installation. A version that fails
                 verification waits for you here.
@@ -1492,7 +1490,7 @@
                   data-says-0="The box shows what is new here and on the badge. It downloads only apt's lists of new packages. You download and install the updates."
                   data-says-1="The box shows what is new. It downloads the updates into the apt cache. You install them."
                   data-says-2="The box shows what is new. It downloads the updates and installs them with unattended-upgrades, from the Debian security archive only."
-                  data-often-says-0="The box looks only when you select Check now. It then does what the setting below says."></div>
+                  data-often-says-0="The box checks only when you select Check now. It then does what the setting below says."></div>
                 <button class="action-btn primary" type="submit">Save</button>
               </form>
               <p class="setting-desc action-note" id="debian-pattern-note" role="status" hidden></p>
@@ -1504,7 +1502,7 @@
         <p class="setting-desc">
           The box watches Debian packages on the channels of their makers: meshtasticd from the Meshtastic
           repositories (beta, alpha or nightly). The box keeps each new build when it first sees it. You can install a
-          build after it has been out for a while, and you can roll back an update without internet access.
+          build after a minimum release age that you set, and you can roll back an update without internet access.
         </p>
         <div id="pkg-list"><p class="setting-desc">Checking…</p></div>
         <p class="setting-desc action-note" id="pkg-note" role="status" hidden></p>
@@ -1556,7 +1554,7 @@
           <div class="library-buttons">
             <select id="backup-image-stick" aria-label="USB drive"></select>
             <button class="action-btn" type="button" id="backup-image-scan">Scan for USB drives</button>
-            <button class="action-btn primary" type="button" id="backup-image-go" disabled>Write the image</button>
+            <button class="action-btn primary" type="button" id="backup-image-go" disabled>Write backup image</button>
           </div>
         </div>
         <p class="setting-desc action-note" id="backup-note" role="status" hidden></p>
@@ -1578,8 +1576,8 @@
         <form id="kit-form" class="library-form kit-offer">
           <div class="chip-group" id="export-presets" role="group" aria-label="Preset">
             <button type="button" class="chip" data-export="update" title="Without the hub program and the state. Books and toolkits for a box that has irate-box.">Update a box</button>
-            <button type="button" class="chip" data-export="level" title="As Update a box, with every repository and the settings of this box.">Bring a box level</button>
-            <button type="button" class="chip" data-export="new" title="With the hub program and everything that you select. For a box without irate-box.">A new box</button>
+            <button type="button" class="chip" data-export="level" title="As Update a box, with every repository and the settings of this box.">Transfer settings and content</button>
+            <button type="button" class="chip" data-export="new" title="With the hub program and everything that you select. For a box without irate-box.">Install on a new box</button>
           </div>
           <p class="setting-desc" id="export-preset-says"></p>
           <fieldset class="kit-pick"><legend>Books</legend><div id="kit-books"></div></fieldset>
@@ -1603,14 +1601,14 @@
             <button class="action-btn" type="button" id="offline-scan">Scan for USB drives</button>
           </div>
           <p class="setting-desc kit-total" id="kit-total" role="status"></p>
-          <button class="action-btn primary" type="submit" id="kit-make">Make the export</button>
+          <button class="action-btn primary" type="submit" id="kit-make">Create export</button>
         </form>
         <div class="admin-progress" id="kit-progress" hidden>
           <progress class="admin-bar" id="kit-bar" max="1" value="0"></progress>
           <p class="setting-desc" id="kit-step"></p>
         </div>
         <p class="setting-desc action-note" id="kit-note" role="status" hidden></p>
-        <p class="setting-desc" id="kit-state">No export made yet.</p>
+        <p class="setting-desc" id="kit-state">No export created yet.</p>
         <details class="admin-output" id="kit-details" hidden>
           <summary>Contents</summary>
           <ul class="admin-list" id="kit-contents"></ul>
@@ -1618,8 +1616,8 @@
 
         <p class="setting-desc">
           <a href="/sync/" target="_blank">Syncthing</a> is an optional add-on. It moves notes and content between the box
-          and your own machines when they share a network. The link shows an error page if Syncthing is not installed or its
-          service is off.
+          and your own machines when they share a network. Install and enable the add-on before you open
+          it.
         </p>
       </section>
 
@@ -1628,7 +1626,7 @@
         <p class="setting-desc">
           This page lists the problems that the security checks found, once each, worst first. The sources are the
           audit of the doctor, the scan on the Security page, the Debian security tracker and the weekly deep audit.
-          Each finding ends with one action. Accept a finding that you want to leave, and it stops counting. From a
+          Each finding ends with one action. Accept a risk to remove it from the unresolved count. Accepting does not repair it. From a
           shell, run <code>sudo /opt/irate-box/irate-box secdoctor</code>.
         </p>
         <div class="sec-head">
@@ -1679,12 +1677,12 @@
         <p class="setting-desc action-note" id="import-note" role="status" hidden></p>
         <ul class="admin-list" id="import-list"></ul>
         <details class="sec-fold" id="audit-raw">
-          <summary>Raw report, step by step</summary>
+          <summary>All check results</summary>
           <p class="setting-desc">Every check of each step, including the checks that passed, as the doctor wrote them.</p>
           <div id="audit-steps"></div>
         </details>
         <details class="sec-fold" id="audit-scope" hidden>
-          <summary>What the doctor cannot see</summary>
+          <summary>Checks not covered</summary>
           <ul class="admin-list" id="audit-not-covered"></ul>
         </details>
       </section>
@@ -1692,16 +1690,16 @@
       <section class="admin-pane" id="updoctor" aria-labelledby="updoctor-title">
         <h2 id="updoctor-title">Updates doctor</h2>
         <p class="setting-desc">
-          The update doctor checks what an update depends on. These are the network, names, the clock,
+          The update doctor checks what an update depends on. These are the network, DNS, the clock,
           GitHub, free space, the cached copy and the package sources. It says what is wrong and what
           to do about it. For the box itself (services, Kiwix, an install that stopped), see the
           <a href="#health">Box doctor</a>. To check for and install updates, see <a href="#updates">Updates</a>.
         </p>
         <div class="library-buttons">
-          <button class="action-btn" type="button" id="update-doctor">Run the update doctor</button>
+          <button class="action-btn" type="button" id="update-doctor">Run update checks</button>
         </div>
         <p class="setting-desc action-note" id="doctor-note" role="status" hidden></p>
-        <p class="setting-desc" id="doctor-when">Not run yet: it runs when you press the button, or by itself when a check
+        <p class="setting-desc" id="doctor-when">Not run yet. It runs when you select the button. It also runs when a check
           for updates fails.</p>
         <div class="sec-counts" id="updoctor-summary" role="group" aria-label="Show"></div>
         <div class="findings" id="doctor-findings"></div>
