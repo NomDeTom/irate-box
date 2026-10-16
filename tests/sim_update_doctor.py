@@ -275,6 +275,42 @@ with mock.patch.object(H, "run", side_effect=FileNotFoundError("nginx")):
 check("an unavailable preflight is distinguished from a rejected candidate", inconclusive["warn"] and inconclusive["outcome"] == "inconclusive", inconclusive)
 
 import shutil  # noqa: E402
+from irate_box.root import nginx_front  # noqa: E402
+
+render_values = nginx_front.settings_from_env()
+rendered = nginx_front.render((REPO / "config/irate-box.nginx").read_text(), render_values)
+check("target renderer fills every declared placeholder", not nginx_front.TOKENS.search(rendered))
+check("target renderer uses real configured ports", f"https {render_values['TLS_PORT']}" in rendered)
+check("IPv6-disabled rendering drops only IPv6 listeners", nginx_front.render("listen [::]:80;\nlisten 80;\n", {}, ipv6=False) == "listen 80;\n")
+for bad_values, bad_template in [
+    (dict(render_values, PORT="0"), "listen @PORT@;"),
+    (dict(render_values, STATIC="/tmp/unsafe;include /secret"), "root @STATIC@;"),
+    (render_values, "include @FUTURE@;"),
+]:
+    try:
+        nginx_front.render(bad_template, bad_values)
+        check("invalid staging settings are refused", False)
+    except ValueError:
+        check("invalid staging settings are refused", True)
+private_stage = T / "private-stage"
+private_stage.mkdir(mode=0o700)
+bundle = nginx_front.prepare(REPO / "config/irate-box.nginx", private_stage, render_values, "a" * 40)
+manifest, site = nginx_front.read_bundle(bundle)
+check("staged bundle records protocol, full source and restrictive modes", manifest["protocol"] == 1 and manifest["source"] == "a" * 40 and site.stat().st_mode & 0o077 == 0)
+site.write_text("changed")
+try:
+    nginx_front.read_bundle(bundle)
+    check("changed staged site is refused", False)
+except ValueError:
+    check("changed staged site is refused", True)
+linked_stage = T / "linked-stage"
+linked_stage.symlink_to(private_stage, target_is_directory=True)
+try:
+    nginx_front.prepare(REPO / "config/irate-box.nginx", linked_stage, render_values, "a" * 40)
+    check("symlinked staging directories are refused", False)
+except ValueError:
+    check("symlinked staging directories are refused", True)
+
 candidate = "a" * 40
 pipeline_state = {"available": candidate[:7], "available_sha": candidate, "up_to_date": False, "branch": "main"}
 pipeline_calls = []
