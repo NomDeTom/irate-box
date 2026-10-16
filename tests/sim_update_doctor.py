@@ -146,7 +146,7 @@ check("  space: both short, with how much is free and needed, and Books the plac
       msg_args(fs["space:system"], "update.space.low") == {"mb": 100, "need": 300} and msg_args(fs["space:cache"], "update.space.low") == {"mb": 100, "need": 200}
       and fs["space:system"]["go"]["section"] == "books", fs["space:system"])
 check("  a stale cache lock: counted, named, Maintenance the place to clear it",
-      msg_args(fs["cache"], "update.cache.lock") == {"n": 1} and fs["cache"]["evidence"] == ["index.lock"] and fs["cache"]["go"]["section"] == "update-maint", fs["cache"])
+    msg_args(fs["cache"], "update.cache.lock") == {"n": 1} and fs["cache"]["evidence"] == ["index.lock"] and fs["cache"]["go"]["section"] == "updoctor", fs["cache"])
 check("  apt fails: the failing source named, a command to find its list file, keep a copy before removing it",
       "update.sources.failed" in msg_ids(fs["sources"]) and "update.sources.failed.fix" in msg_ids(fs["sources"])
       and fs["sources"]["commands"] == ["grep -rlF dl.example.org /etc/apt/sources.list /etc/apt/sources.list.d/"]
@@ -154,7 +154,7 @@ check("  apt fails: the failing source named, a command to find its list file, k
 lc = fs.get("last-check", {})
 check("  the last download's failed checks: counted (a warning is not), each said, the new by its message, the old by its words",
       msg_args(lc, "update.last-check.failed") == {"n": 2} and any(is_message(n) and n["id"] == "update.last-check.item" for n in lc["notes"])
-      and "install.sh parses: line 3: syntax error" in lc["notes"] and any("x.py" in e for e in lc["evidence"]) and lc["go"]["section"] == "updates", lc)
+    and "install.sh parses: line 3: syntax error" in lc["notes"] and any("x.py" in e for e in lc["evidence"]) and lc.get("go") is None, lc)
 check("  every finding well said", not well_said(fs), well_said(fs))
 
 # The certificate refused; GitHub's rate used up; the branch gone; the clock two hours fast.
@@ -267,8 +267,57 @@ finally:
     os.umask(previous_umask)
 check("  nginx TLS includes stay readable to the unprivileged checker under umask 077",
       nginx["ok"] and nginx_permissions == [True], nginx)
+with mock.patch.object(H, "run", return_value=subprocess.CompletedProcess([], 1, "", "[emerg] unknown directive")):
+    rejected = H._nginx_check(src, [])
+check("nginx preflight rejection is advisory, not a security gate", rejected["warn"] and rejected["outcome"] == "rejected", rejected)
+with mock.patch.object(H, "run", side_effect=FileNotFoundError("nginx")):
+    inconclusive = H._nginx_check(src, [])
+check("an unavailable preflight is distinguished from a rejected candidate", inconclusive["warn"] and inconclusive["outcome"] == "inconclusive", inconclusive)
 
 import shutil  # noqa: E402
+candidate = "a" * 40
+pipeline_state = {"available": candidate[:7], "available_sha": candidate, "up_to_date": False, "branch": "main"}
+pipeline_calls = []
+
+
+def pipeline_check(req):
+    pipeline_calls.append("check")
+    H._write_update_state(pipeline_state)
+
+
+def pipeline_fetch(req):
+    pipeline_calls.append("download")
+    H._write_update_state(dict(pipeline_state, checked_sha=candidate, verified_sha=candidate))
+    return H.M("test.download", "Downloaded.")
+
+
+with mock.patch.object(H, "update_check", pipeline_check), mock.patch.object(H, "update_fetch", pipeline_fetch), \
+        mock.patch.object(H, "update_install", lambda req: pipeline_calls.append("install")), \
+        mock.patch.object(H, "_git", return_value=candidate):
+    H.UPDATE_STATE.unlink(missing_ok=True)
+    H.update_reach({"endpoint": "install"})
+    check("combined install checks, downloads and installs in order", pipeline_calls == ["check", "download", "install"], pipeline_calls)
+    pipeline_calls.clear()
+    H.update_reach({"endpoint": "install", "candidate": candidate})
+    check("downloaded candidate installs without repeating completed stages", pipeline_calls == ["install"], pipeline_calls)
+    pipeline_calls.clear()
+    try:
+        H.update_reach({"endpoint": "install", "candidate": "b" * 40})
+        check("changed candidate requires a fresh review", False)
+    except H.Refused:
+        check("changed candidate requires a fresh review", not pipeline_calls)
+    H._write_update_state(dict(pipeline_state, checked_sha=candidate))
+    try:
+        H.update_reach({"endpoint": "install"})
+        check("failed verification never silently retries or installs", False)
+    except H.Refused:
+        check("failed verification never silently retries or installs", not pipeline_calls)
+    pipeline_calls.clear()
+    H.UPDATE_STATE.unlink()
+    with mock.patch.object(H, "update_check", lambda req: H._write_update_state(dict(pipeline_state, up_to_date=True))):
+        H.update_reach({"endpoint": "install"})
+    check("no update ends a combined operation without installation", not pipeline_calls)
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

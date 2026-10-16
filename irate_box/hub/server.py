@@ -2400,6 +2400,7 @@ def let_out(addr):
 
 UPDATE_ACTIONS = {
     "check": "update-check",
+    "reach": "update-reach",
     "fetch": "update-fetch",
     "install": "update-install",
     "force-install": "update-force-install",
@@ -6043,7 +6044,13 @@ class Handler(BaseHTTPRequestHandler):
             if not action:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
                 return
-            self.send_json(202, {"id": control_request({"action": action})})
+            request = {"action": action}
+            if action == "update-reach":
+                if payload.get("endpoint") not in ("download", "install"):
+                    self.send_json(400, refused.say(UNKNOWN_ACTION))
+                    return
+                request.update(endpoint=payload["endpoint"], candidate=payload.get("candidate"))
+            self.send_json(202, {"id": control_request(request)})
             return
 
         if path == "/admin/store":

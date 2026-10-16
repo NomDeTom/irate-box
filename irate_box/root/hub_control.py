@@ -3040,7 +3040,9 @@ def _nginx_check(src, opts):
         try:
             out = run(*as_nobody, "nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
         except (OSError, subprocess.SubprocessError) as exc:
-            return _check("nginx", False, name, failed, evidence=[exc])
+            return _check("nginx", False, name,
+                M("update.verify.nginx.unavailable", "The compatibility check could not run. Installation still checks the actual nginx configuration."),
+                warn=True, evidence=[exc]) | {"outcome": "inconclusive"}
     lines = [
         line
         for line in (out.stderr or out.stdout).strip().splitlines()
@@ -3059,8 +3061,10 @@ def _nginx_check(src, opts):
         False,
         name,
         failed,
+        warn=True,
+        fix=M("update.verify.nginx.advisory", "This is an isolated compatibility check, not the installed configuration. Review the evidence in the Updates doctor. Installation must still pass its full nginx check."),
         evidence=[(lines or ["nginx -t failed"])[-1][:300]],
-    )
+    ) | {"outcome": "inconclusive" if any(f'"{tmp}/tls/' in line and "Permission denied" in line for line in lines) else "rejected"}
 
 
 def _check_for_update(progress):
@@ -3186,6 +3190,7 @@ def _check_for_update(progress):
         "repo": repo,
         "branch": branch,
         "available": head,
+        "available_sha": full,
         "available_date": _git("-C", src, "log", "-1", "--format=%cs"),
         "installed": installed,
         "up_to_date": up_to_date,
@@ -3204,7 +3209,7 @@ def _check_for_update(progress):
     # whole hash: a commit sharing the first 7 digits must not inherit "verified".
     old = _read_update_state()
     if not up_to_date and old.get("verified_sha") == full:
-        state.update(verified=head, verified_sha=full, checks=old.get("checks", []))
+        state.update(verified=head, verified_sha=full, checked_sha=full, checks=old.get("checks", []))
     if old.get("install_steps"):
         state["install_steps"] = old["install_steps"]
     return state, opts
@@ -3292,6 +3297,7 @@ def update_fetch(req):
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
     state.update(
         checks=checks,
+        checked_sha=full,
         verified=None if failed else head,
         verified_sha=None if failed else full,
     )
@@ -3365,6 +3371,33 @@ def _follow_install(proc, progress):
         time.sleep(1)
 
 
+def update_reach(req):
+    endpoint = req.get("endpoint")
+    if endpoint not in ("download", "install"):
+        raise Refused(M("update.reach.endpoint", "Unknown update endpoint."))
+    state = _read_update_state()
+    expected = req.get("candidate")
+    if expected and expected != state.get("available_sha"):
+        raise Refused(M("update.reach.changed", "The update changed. Review it before continuing."))
+    if not state or state.get("up_to_date") or not state.get("available_sha"):
+        update_check(req)
+        state = _read_update_state()
+    if state.get("up_to_date"):
+        return _up_to_date(state)
+    full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    if state.get("available_sha") != full:
+        raise Refused(M("update.reach.source", "The downloaded source changed. Check for updates again."))
+    result = None
+    if state.get("checked_sha") != full:
+        result = update_fetch(req)
+        state = _read_update_state()
+    if state.get("verified_sha") != full:
+        raise Refused(M("update.reach.blocked", "Verification did not pass. Open the Updates doctor to review the failure."))
+    if endpoint == "install":
+        return update_install(req)
+    return result or M("update.download.ready", "The update is downloaded and verified.")
+
+
 def update_install(req):
     if not (UPDATE_SRC / "install.sh").is_file():
         raise Refused(
@@ -3425,8 +3458,9 @@ def update_force_install(req):
             )
         )
     state = _read_update_state()
-    head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
-    if state.get("available") != head or not state.get("checks"):
+    full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    head = full[:7]
+    if state.get("checked_sha") != full or not state.get("checks"):
         raise Refused(
             M(
                 "update.force.not-checked",
@@ -3568,7 +3602,7 @@ GO_LIBRARIAN = _go("sources", M("go.librarian", "The librarian"))
 GO_TOKEN = _go(
     "sources", M("go.source-access", "The librarian → Source access"), "library-token"
 )
-GO_MAINT = _go("update-maint", M("go.update-maint", "Updates → Maintenance"))
+GO_MAINT = _go("updoctor", M("go.update-maint", "Updates doctor"))
 GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
 
 # One failed attempt says what happened, not why.
@@ -3589,7 +3623,7 @@ CLOCK_SET = "timedatectl set-time 'YYYY-MM-DD HH:MM'"
 LIBRARIAN_LOG = "journalctl -u irate-box-librarian -n 80"
 CACHE_CLEAR = M(
     "update.cache.clear.fix",
-    "Clear the update cache on Updates → Maintenance. Then check for updates again.",
+    "Clear the update cache in this doctor. Then check for updates again.",
 )
 
 
@@ -4215,14 +4249,14 @@ def doctor():
     try:
         last = json.loads(UPDATE_STATE.read_text())
         failed = [
-            c for c in last.get("checks", []) if not c.get("ok") and not c.get("warn")
+            c for c in last.get("checks", []) if not c.get("ok") and (not c.get("warn") or c.get("id") == "nginx")
         ]
         if failed:
             findings.append(
                 finding(
                     "last-check",
                     M("update.last-check.title", "Last update check"),
-                    "problem",
+                    "problem" if any(not c.get("warn") for c in failed) else "warn",
                     M(
                         "update.last-check.failed",
                         {
@@ -4233,14 +4267,14 @@ def doctor():
                     ),
                     fix=M(
                         "update.last-check.fix",
-                        "Repair the cause. Then check for updates again.",
+                        "Review the evidence here. Clear a broken cache or, for a trusted version with a known checker failure, select Install anyway in this doctor. Signing and installer syntax checks cannot be skipped.",
                     ),
                     notes=[
                         *(_said_check(c) for c in failed),
                         *(c["fix"] for c in failed if is_message(c.get("fix"))),
                     ],
                     evidence=[e for c in failed for e in c.get("evidence", [])][:6],
-                    go=GO_UPDATES,
+                    go=None,
                 )
             )
     except (OSError, ValueError, AttributeError):
@@ -6307,6 +6341,7 @@ ACTIONS = {
     "tls-settings": tls_settings,
     "update-check": update_check,
     "update-fetch": update_fetch,
+    "update-reach": update_reach,
     "update-install": update_install,
     "update-force-install": update_force_install,
     "update-doctor": update_doctor,
@@ -6501,7 +6536,7 @@ def main():
     return 0
 
 
-UPDATES = ("update-install", "update-force-install")
+UPDATES = ("update-install", "update-force-install", "update-reach")
 
 # A notebook per login (hub/notebooks.py): the hub lists which should run; this makes it so.
 NOTEBOOK_RE = re.compile(r"^[a-z0-9_-][a-z0-9._-]{2,31}$")

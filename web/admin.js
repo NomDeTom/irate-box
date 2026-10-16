@@ -3137,6 +3137,7 @@ const UPD_DOING = {
 };
 let updWaiting = null; // { id, action }
 let updPoll = null;
+let updCandidate = null;
 
 // Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in Maintenance.
 function updSay(action, text, ok, extra) {
@@ -3382,9 +3383,14 @@ function renderUpdate(data) {
       return;
     }
   }
-  upd.check.disabled = upd.doctor.disabled = upd.clear.disabled = busy;
-  upd.fetch.disabled = busy || !found || ready;
-  upd.install.disabled = busy || !ready;
+  updCandidate = found ? s.available_sha || null : null;
+  upd.check.textContent = "Check for updates";
+  upd.fetch.textContent = found ? "Download" : "Check for updates and download";
+  upd.install.textContent = fetched ? "Install" : found ? "Download and install" : "Check for updates, download and install";
+  upd.check.disabled = busy || found;
+  upd.doctor.disabled = upd.clear.disabled = busy;
+  upd.fetch.disabled = busy || fetched;
+  upd.install.disabled = busy || (fetched && !ready);
   upd.force.disabled = busy || !failedChecks.length;
   upd.force.dataset.failed = failedChecks.map((c) => c.name).join("\n");
   clearTimeout(updPoll);
@@ -3408,9 +3414,9 @@ async function loadUpdate() {
   }
 }
 
-async function requestUpdate(action) {
+async function requestUpdate(action, endpoint = null) {
   if (
-    action === "install" &&
+    (action === "install" || endpoint === "install") &&
     !confirm("Install the update now? The hub restarts during the install.")
   )
     return;
@@ -3423,8 +3429,8 @@ async function requestUpdate(action) {
     return;
   try {
     updWaiting = {
-      id: (await postJSON("/admin/update", { action })).id,
-      action,
+      id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate })).id,
+      action: endpoint === "install" ? "install" : action,
     };
     upd.check.disabled =
       upd.fetch.disabled =
@@ -3441,6 +3447,7 @@ async function requestUpdate(action) {
         "force-install": "Installing the downloaded version anyway…",
         doctor: "Running the update doctor. It can take up to two minutes…",
         "clear-cache": "Clearing the update cache…",
+        reach: endpoint === "install" ? "Preparing and installing the update…" : "Checking and downloading the update…",
       }[action],
       true,
     );
@@ -3452,7 +3459,7 @@ async function requestUpdate(action) {
 
 upd.check.addEventListener("click", () => requestUpdate("check"));
 upd.fetch.addEventListener("click", () => {
-  if (meteredOk("Downloading the update")) requestUpdate("fetch");
+  if (meteredOk("Downloading the update")) requestUpdate("reach", "download");
 });
 upd.doctor.addEventListener("click", () => requestUpdate("doctor"));
 upd.clear.addEventListener("click", () => {
@@ -3463,7 +3470,9 @@ upd.clear.addEventListener("click", () => {
   )
     requestUpdate("clear-cache");
 });
-upd.install.addEventListener("click", () => requestUpdate("install"));
+upd.install.addEventListener("click", () => {
+  if (meteredOk("Preparing and installing the update")) requestUpdate("reach", "install");
+});
 
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
 // and what its last step did. The form is filled from the hub only while nobody is editing it.
