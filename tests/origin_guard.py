@@ -2,117 +2,381 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Apps on origins of their own: notes are served only from their own
 port, with the same login switch and refusals as before, and /notes/ on the hub's port only
-redirects there; the doctor can tell which origin each app is on. python3 tests/origin_guard.py"""
-import re, sys
+redirects there; the doctor can tell which origin each app is on. python3 tests/origin_guard.py
+"""
+
+import re
+import sys
 from pathlib import Path
+
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.root import secdoctor  # noqa: E402
+from irate_box.root import secdoctor, tls  # noqa: E402
+
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
 
 tmpl = (REPO / "config" / "irate-box.nginx").read_text()
-text = tmpl.replace("@PORT@", "80").replace("@ADDON_PORT@", "8090").replace("@NOTES_PORT@", "8091").replace("@WIKI_PORT@", "8092").replace("@GIT_PORT@", "8093").replace("@NOTEBOOK_PORT@", "8094")
-text = text.replace("@TLS_PORT@", "443").replace("@ADDON_TLS_PORT@", "8490").replace("@NOTES_TLS_PORT@", "8491").replace("@WIKI_TLS_PORT@", "8492").replace("@GIT_TLS_PORT@", "8493").replace("@NOTEBOOK_TLS_PORT@", "8494")
+plain_files = {
+    path.name: content for path, content in tls._plain_files("http", "allow").items()
+}
+
+
+def expand(text):
+    return re.sub(
+        r"(?m)^\s*(?:include|import)\s+\S*/((?:nginx|caddy)-(?:http|policy)-[a-z]+\.inc);?\s*$",
+        lambda match: plain_files[match[1]],
+        text,
+    )
+
+
+tmpl = expand(tmpl)
+text = (
+    tmpl.replace("@PORT@", "80")
+    .replace("@ADDON_PORT@", "8090")
+    .replace("@NOTES_PORT@", "8091")
+    .replace("@WIKI_PORT@", "8092")
+    .replace("@GIT_PORT@", "8093")
+    .replace("@NOTEBOOK_PORT@", "8094")
+)
+text = (
+    text.replace("@TLS_PORT@", "443")
+    .replace("@ADDON_TLS_PORT@", "8490")
+    .replace("@NOTES_TLS_PORT@", "8491")
+    .replace("@WIKI_TLS_PORT@", "8492")
+    .replace("@GIT_TLS_PORT@", "8493")
+    .replace("@NOTEBOOK_TLS_PORT@", "8494")
+)
 servers = secdoctor._nginx_servers(text)
 by_port = {tuple(p): b for p, b in servers}
 hub, notes = by_port.get(("80",), ""), by_port.get(("8091",), "")
-check("six server blocks: the hub, add-ons, notes, books, cgit, notebooks", sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",)], sorted(by_port))
+check(
+    "six server blocks: the hub, add-ons, notes, books, cgit, notebooks",
+    sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",)],
+    sorted(by_port),
+)
 cgit = by_port.get(("8093",), "")
-check("the hub's port runs no cgit, but still serves clones and pushes", "cgit.cgi" not in hub and "git-http-backend" in hub
-      and "auth_request /_irate_git_access;" in hub)
-check("cgit's pages on the hub's port redirect to its origin (its TLS twin over HTTPS)", "return 302 $scheme://$host:$irate_box_git_port$request_uri;" in hub)
-check("cgit's origin: its clone URLs name the hub's port", cgit.count("fastcgi_param HTTP_HOST $host:80;") == 2)
-check("cgit's origin: the hub's app bar may frame it", cgit.count("frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host\"") == 2)
-check("cgit's origin: a clone or push sent here goes to the hub's port", re.search(r"git-receive-pack\)\$ \{\s*return 302 \$scheme://\$host:\$irate_box_hub_port\$request_uri;", cgit) is not None)
+check(
+    "the hub's port runs no cgit, but still serves clones and pushes",
+    "cgit.cgi" not in hub
+    and "git-http-backend" in hub
+    and "auth_request /_irate_git_access;" in hub,
+)
+check(
+    "cgit's pages on the hub's port redirect to its origin (its TLS twin over HTTPS)",
+    "return 302 $scheme://$host:$irate_box_git_port$request_uri;" in hub,
+)
+check(
+    "cgit's origin: its clone URLs name the hub's port",
+    cgit.count("fastcgi_param HTTP_HOST $host:80;") == 2,
+)
+check(
+    "cgit's origin: the hub's app bar may frame it",
+    cgit.count(
+        "frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host\""
+    )
+    == 2,
+)
+check(
+    "cgit's origin: a clone or push sent here goes to the hub's port",
+    re.search(
+        r"git-receive-pack\)\$ \{\s*return 302 \$scheme://\$host:\$irate_box_hub_port\$request_uri;",
+        cgit,
+    )
+    is not None,
+)
 # HTTPS: every origin has its TLS twin in the same server
 # block (so the same routes), redirects keep to the scheme they came in on, and never HSTS.
-for (port,), name in ((("80",), "main"), (("8090",), "addons"), (("8091",), "notes"), (("8092",), "wiki"), (("8093",), "git"), (("8094",), "notebook")):
-    check(f"TLS twin: the {name} server block includes its own", f"include @TLS@/nginx-{name}.conf*;" in by_port.get((port,), ""))
-maps = {k: (h, d) for k, h, d in re.findall(r"map \$scheme \$(irate_box_\w+_port)\s*\{\s*https (\d+);\s*default (\d+);", text)}
-check("  each origin's port by scheme: http to its own, https to its twin", maps == {"irate_box_hub_port": ("443", "80"), "irate_box_addon_port": ("8490", "8090"),
-      "irate_box_notes_port": ("8491", "8091"), "irate_box_wiki_port": ("8492", "8092"), "irate_box_git_port": ("8493", "8093"),
-      "irate_box_notebook_port": ("8494", "8094")}, maps)
-check("  no redirect between origins with a fixed port", not re.search(r"\$scheme://\$host:\d", text), re.findall(r"\$scheme://\$host:\d+", text))
-caddy = (REPO / "config" / "Caddyfile").read_text()
+for (port,), name in (
+    (("80",), "main"),
+    (("8090",), "addons"),
+    (("8091",), "notes"),
+    (("8092",), "wiki"),
+    (("8093",), "git"),
+    (("8094",), "notebook"),
+):
+    check(
+        f"TLS twin: the {name} server block includes its own",
+        f"include @TLS@/nginx-{name}.conf*;" in by_port.get((port,), ""),
+    )
+maps = {
+    k: (h, d)
+    for k, h, d in re.findall(
+        r"map \$scheme \$(irate_box_\w+_port)\s*\{\s*https (\d+);\s*default (\d+);",
+        text,
+    )
+}
+check(
+    "  each origin's port by scheme: http to its own, https to its twin",
+    maps
+    == {
+        "irate_box_hub_port": ("443", "80"),
+        "irate_box_addon_port": ("8490", "8090"),
+        "irate_box_notes_port": ("8491", "8091"),
+        "irate_box_wiki_port": ("8492", "8092"),
+        "irate_box_git_port": ("8493", "8093"),
+        "irate_box_notebook_port": ("8494", "8094"),
+    },
+    maps,
+)
+check(
+    "  no redirect between origins with a fixed port",
+    not re.search(r"\$scheme://\$host:\d", text),
+    re.findall(r"\$scheme://\$host:\d+", text),
+)
+caddy = expand((REPO / "config" / "Caddyfile").read_text())
 # A baseline CSP on the hub's origin, server-wide and wherever a location sets its own headers.
 csp_line = "add_header Content-Security-Policy $irate_box_csp always;"
-check("a baseline CSP on the hub's origin: server-wide, and beside every Cache-Control the hub block sets",
-      "set $irate_box_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\";" in hub
-      and hub.count(csp_line) == hub.count("add_header Cache-Control") + 1, (hub.count(csp_line), hub.count("add_header Cache-Control")))
-check("  and on Caddy", "header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\"" in caddy)
-check("  /admin over HTTPS only: its include first in /admin/, before the login", re.search(r"location /admin/ \{\s*(#[^\n]*\n\s*)*include @TLS@/nginx-admin\.conf\*;\s*set \$irate_box_admin_auth", hub) is not None)
-directives = lambda t: "\n".join(l for l in t.splitlines() if not l.lstrip().startswith("#"))  # noqa: E731
-check("  never HSTS (port 80 must keep working for the captive portal)", "Strict-Transport-Security" not in directives(text)
-      and "Strict-Transport-Security" not in directives(caddy))
+check(
+    "a baseline CSP on the hub's origin: server-wide, and beside every Cache-Control the hub block sets",
+    "set $irate_box_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\";"
+    in hub
+    and hub.count(csp_line) == hub.count("add_header Cache-Control") + 1,
+    (hub.count(csp_line), hub.count("add_header Cache-Control")),
+)
+check(
+    "  and on Caddy",
+    "header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\""
+    in caddy,
+)
+check(
+    "  /admin over HTTPS only: its include first in /admin/, before the login",
+    re.search(
+        r"location /admin/ \{\s*(#[^\n]*\n\s*)*include @TLS@/nginx-admin\.conf\*;\s*set \$irate_box_admin_auth",
+        hub,
+    )
+    is not None,
+)
+
+
+def directives(t):
+    return "\n".join(
+        line for line in t.splitlines() if not line.lstrip().startswith("#")
+    )  # noqa: E731
+
+
+check(
+    "  never HSTS (port 80 must keep working for the captive portal)",
+    "Strict-Transport-Security" not in directives(text)
+    and "Strict-Transport-Security" not in directives(caddy),
+)
 head = (REPO / "config" / "cgit-head.html").read_text()
-served = all(f"location = {f}" in cgit for f in ("/palette.css", "/cgit-hub.css", "/themes.js", "/cgit-hub.js")) and "location ^~ /git-static/" in cgit and "location ^~ /git-hl/" in cgit
-check("cgit's origin serves everything its pages load", served and all(s in head for s in ("/palette.css", "/cgit-hub.css", "/themes.js", "/git-hl/", "/cgit-hub.js")))
+served = (
+    all(
+        f"location = {f}" in cgit
+        for f in ("/palette.css", "/cgit-hub.css", "/themes.js", "/cgit-hub.js")
+    )
+    and "location ^~ /git-static/" in cgit
+    and "location ^~ /git-hl/" in cgit
+)
+check(
+    "cgit's origin serves everything its pages load",
+    served
+    and all(
+        s in head
+        for s in (
+            "/palette.css",
+            "/cgit-hub.css",
+            "/themes.js",
+            "/git-hl/",
+            "/cgit-hub.js",
+        )
+    ),
+)
 wiki = by_port.get(("8092",), "")
 check("the hub's port does not proxy to Kiwix", "127.0.0.1:8081" not in hub)
-check("/wiki/ on the hub's port redirects to the books' port, and keeps the off switch",
-      re.search(r"location /wiki/ \{\s*if \(\$irate_box_off_wiki\) \{ return 404; \}\s*return 302 \$scheme://\$host:\$irate_box_wiki_port\$request_uri;", hub) is not None)
-check("the books' port: the login switch, Kiwix, and no-cache on book pages",
-      wiki.count("auth_basic $irate_box_auth_wiki;") == 2 and "proxy_pass http://127.0.0.1:8081;" in wiki and 'add_header Cache-Control "no-cache" always;' in wiki)
-check("the hub's port does not proxy to SilverBullet", "silverbullet" not in re.sub(r"(?m)^\s*#.*$", "", hub))
-check("/notes/ on the hub's port redirects to the notes port, and keeps the off switch",
-      re.search(r"location /notes/ \{\s*if \(\$irate_box_off_notes\) \{ return 404; \}\s*return 302 \$scheme://\$host:\$irate_box_notes_port\$request_uri;", hub) is not None)
-check("the hub's port still refuses /notes/.shell, .proxy, .runtime", "location ~* ^/notes/\\.(shell|proxy|runtime) { return 403; }" in hub)
-check("the notes port: the same refusals", "location ~* ^/notes/\\.(shell|proxy|runtime) { return 403; }" in notes)
-check("the notes port: the login switch and the socket",
-      "auth_basic $irate_box_auth_notes;" in notes and "proxy_pass http://unix:/run/silverbullet/silverbullet.sock;" in notes
-      and "include @ACCESS@;" in notes)
+check(
+    "/wiki/ on the hub's port redirects to the books' port, and keeps the off switch",
+    re.search(
+        r"location /wiki/ \{\s*if \(\$irate_box_off_wiki\) \{ return 404; \}\s*return 302 \$scheme://\$host:\$irate_box_wiki_port\$request_uri;",
+        hub,
+    )
+    is not None,
+)
+check(
+    "the books' port: the login switch, Kiwix, and no-cache on book pages",
+    wiki.count("auth_basic $irate_box_auth_wiki;") == 2
+    and "proxy_pass http://127.0.0.1:8081;" in wiki
+    and 'add_header Cache-Control "no-cache" always;' in wiki,
+)
+check(
+    "the hub's port does not proxy to SilverBullet",
+    "silverbullet" not in re.sub(r"(?m)^\s*#.*$", "", hub),
+)
+check(
+    "/notes/ on the hub's port redirects to the notes port, and keeps the off switch",
+    re.search(
+        r"location /notes/ \{\s*if \(\$irate_box_off_notes\) \{ return 404; \}\s*return 302 \$scheme://\$host:\$irate_box_notes_port\$request_uri;",
+        hub,
+    )
+    is not None,
+)
+check(
+    "the hub's port still refuses /notes/.shell, .proxy, .runtime",
+    "location ~* ^/notes/\\.(shell|proxy|runtime) { return 403; }" in hub,
+)
+check(
+    "the notes port: the same refusals",
+    "location ~* ^/notes/\\.(shell|proxy|runtime) { return 403; }" in notes,
+)
+check(
+    "the notes port: the login switch and the socket",
+    "auth_basic $irate_box_auth_notes;" in notes
+    and "proxy_pass http://unix:/run/silverbullet/silverbullet.sock;" in notes
+    and "include @ACCESS@;" in notes,
+)
 check("the notes port serves nothing but notes", "location / { return 404; }" in notes)
 inst = (REPO / "install.sh").read_text()
-check("install.sh fills in the notes port", "NOTES_PORT=8091" in inst and 's|@NOTES_PORT@|$NOTES_PORT|g' in inst)
+check(
+    "install.sh fills in the notes port",
+    "NOTES_PORT=8091" in inst and "s|@NOTES_PORT@|$NOTES_PORT|g" in inst,
+)
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
-check("the updater's nginx -t fills it in too, the TLS includes and ports among them", '"@NOTES_PORT@": "8091"' in hc and '"@TLS@": f"{tmp}/tls"' in hc and '"@GIT_TLS_PORT@": "8493"' in hc)
-place = {k: next((tuple(p) for p, b in servers if re.search(pat, b)), None) for k, _, pat in secdoctor.OWN_ORIGIN}
-check("the doctor sees notes, books and cgit on their own origins", place == {"notes": ("8091",), "wiki": ("8092",), "git": ("8093",)}, place)
+check(
+    "the updater's nginx -t fills it in too, the TLS includes and ports among them",
+    '"@NOTES_PORT@": "8091"' in hc
+    and '"@TLS@": f"{tmp}/tls"' in hc
+    and '"@GIT_TLS_PORT@": "8493"' in hc,
+)
+place = {
+    k: next((tuple(p) for p, b in servers if re.search(pat, b)), None)
+    for k, _, pat in secdoctor.OWN_ORIGIN
+}
+check(
+    "the doctor sees notes, books and cgit on their own origins",
+    place == {"notes": ("8091",), "wiki": ("8092",), "git": ("8093",)},
+    place,
+)
 # The hub's session cookie never reaches an app on a sibling port.
 books, sync = by_port.get(("8092",), ""), hub
-check("the hub's session cookie is stripped for notes, books, cgit and Syncthing", "map $http_cookie $irate_box_app_cookie" in text
-      and notes.count("proxy_set_header Cookie $irate_box_app_cookie;") == 1 and books.count("proxy_set_header Cookie $irate_box_app_cookie;") == 2
-      and cgit.count("fastcgi_param HTTP_COOKIE $irate_box_app_cookie;") == 2
-      and re.search(r"location /sync/ \{.*?proxy_set_header Cookie \$irate_box_app_cookie;.*?proxy_pass http://127\.0\.0\.1:8384/;", hub, re.S) is not None)
-caddy = (REPO / "config" / "Caddyfile").read_text()
-check("  and on Caddy", caddy.count("header_up Cookie \"irate_session=[^;]*;?\\s*\" \"\"") == 5, caddy.count("header_up Cookie"))
+check(
+    "the hub's session cookie is stripped for notes, books, cgit and Syncthing",
+    "map $http_cookie $irate_box_app_cookie" in text
+    and notes.count("proxy_set_header Cookie $irate_box_app_cookie;") == 1
+    and books.count("proxy_set_header Cookie $irate_box_app_cookie;") == 2
+    and cgit.count("fastcgi_param HTTP_COOKIE $irate_box_app_cookie;") == 2
+    and re.search(
+        r"location /sync/ \{.*?proxy_set_header Cookie \$irate_box_app_cookie;.*?proxy_pass http://127\.0\.0\.1:8384/;",
+        hub,
+        re.S,
+    )
+    is not None,
+)
+caddy = expand((REPO / "config" / "Caddyfile").read_text())
+check(
+    "  and on Caddy",
+    caddy.count('header_up Cookie "irate_session=[^;]*;?\\s*" ""') == 5,
+    caddy.count("header_up Cookie"),
+)
 # Caddy, the fallback: the same origins (audit M3). Each site with its snippet in place.
-csites = {tuple(p): b for p, b in secdoctor._caddy_servers(secdoctor.parse_caddy(caddy))}
-chub, cnotes, cwiki, cgit_ = (csites.get((p,), "") for p in ("80", "8091", "8092", "8093"))
-check("Caddy: five sites: the hub, add-ons, notes, books, cgit", sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",)], sorted(csites))
-check("Caddy: the hub's port runs no cgit, Kiwix or SilverBullet, but still serves clones and pushes",
-      "cgit.cgi" not in chub and "127.0.0.1:8081" not in chub and "silverbullet" not in chub
-      and "git-http-guard.py" in chub and "uri /internal/git-access?soft=1" in chub)
+csites = {
+    tuple(p): b for p, b in secdoctor._caddy_servers(secdoctor.parse_caddy(caddy))
+}
+chub, cnotes, cwiki, cgit_ = (
+    csites.get((p,), "") for p in ("80", "8091", "8092", "8093")
+)
+check(
+    "Caddy: five sites: the hub, add-ons, notes, books, cgit",
+    sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",)],
+    sorted(csites),
+)
+check(
+    "Caddy: the hub's port runs no cgit, Kiwix or SilverBullet, but still serves clones and pushes",
+    "cgit.cgi" not in chub
+    and "127.0.0.1:8081" not in chub
+    and "silverbullet" not in chub
+    and "git-http-guard.py" in chub
+    and "uri /internal/git-access?soft=1" in chub,
+)
 for app in ("wiki", "notes", "git"):
-    check(f"Caddy: /{app}/ on the hub's port keeps the off switch, then redirects to its origin by scheme",
-          re.search(rf"import \S+/{app}-off\.caddy\*\n[^{{}}]*?redir \{{scheme\}}://\{{host\}}:\{{irate_box_{app}_port\}}\S* 302", chub) is not None)
-    check(f"  and its port by scheme: https to its TLS twin",
-          re.search(rf"map \{{scheme\}} \{{irate_box_{app}_port\}}\nhttps \{{\$HUB_{app.upper()}_TLS_PORT:849\d\}}\ndefault \{{\$HUB_{app.upper()}_PORT:809\d\}}", chub) is not None)
-check("Caddy: /git-private/'s web view on the hub's port redirects too", chub.count("redir {scheme}://{host}:{irate_box_git_port}{http.request.orig_uri} 302") == 2)
-check("Caddy: the hub's port still refuses /notes/.shell, .proxy, .runtime", "@capability path_regexp (?i)^/notes/\\.(shell|proxy|runtime)" in chub)
-check("Caddy: the notes port: the refusals, the login switch, the socket, nothing else",
-      "@capability path_regexp (?i)^/notes/\\.(shell|proxy|runtime)" in cnotes and "/notes.caddy*" in cnotes
-      and "reverse_proxy unix//run/silverbullet/silverbullet.sock" in cnotes and cnotes.rstrip().endswith("respond 404"))
-check("Caddy: the books' port: the login switch, Kiwix, nothing else",
-      "/wiki.caddy*" in cwiki and "reverse_proxy 127.0.0.1:8081" in cwiki and cwiki.rstrip().endswith("respond 404"))
-check("Caddy: cgit's origin: public and private views, the hub's app bar may frame it, clone URLs name the hub's port",
-      cgit_.count("env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi") == 2 and "/git.caddy*" in cgit_ and "admin-gate.caddy*" in cgit_
-      and cgit_.count("frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}\"") == 2
-      and cgit_.count("env HTTP_HOST {host}") == 2)
-check("Caddy: cgit's origin: a clone or push sent here goes to the hub's port",
-      "redir @smart {scheme}://{host}:{irate_box_hub_port}{uri} 302" in cgit_ and "git-http-guard.py" not in cgit_)
-check("Caddy: cgit's origin serves everything its pages load",
-      "@cgit_assets path /palette.css /cgit-hub.css /themes.js /cgit-hub.js /themes/*" in cgit_
-      and "handle_path /git-static/*" in cgit_ and "handle_path /git-hl/*" in cgit_)
-check("Caddy: no redirect between origins with a fixed port", not re.search(r"redir .*://\{host\}:\d", caddy))
+    check(
+        f"Caddy: /{app}/ on the hub's port keeps the off switch, then redirects to its origin by scheme",
+        re.search(
+            rf"import \S+/{app}-off\.caddy\*\n[^{{}}]*?redir \{{scheme\}}://\{{host\}}:\{{irate_box_{app}_port\}}\S* 302",
+            chub,
+        )
+        is not None,
+    )
+    check(
+        "  and its port by scheme: https to its TLS twin",
+        re.search(
+            rf"map \{{scheme\}} \{{irate_box_{app}_port\}}\nhttps \{{\$HUB_{app.upper()}_TLS_PORT:849\d\}}\ndefault \{{\$HUB_{app.upper()}_PORT:809\d\}}",
+            chub,
+        )
+        is not None,
+    )
+check(
+    "Caddy: /git-private/'s web view on the hub's port redirects too",
+    chub.count(
+        "redir {scheme}://{host}:{irate_box_git_port}{http.request.orig_uri} 302"
+    )
+    == 2,
+)
+check(
+    "Caddy: the hub's port still refuses /notes/.shell, .proxy, .runtime",
+    "@capability path_regexp (?i)^/notes/\\.(shell|proxy|runtime)" in chub,
+)
+check(
+    "Caddy: the notes port: the refusals, the login switch, the socket, nothing else",
+    "@capability path_regexp (?i)^/notes/\\.(shell|proxy|runtime)" in cnotes
+    and "/notes.caddy*" in cnotes
+    and "reverse_proxy unix//run/silverbullet/silverbullet.sock" in cnotes
+    and cnotes.rstrip().endswith("respond 404"),
+)
+check(
+    "Caddy: the books' port: the login switch, Kiwix, nothing else",
+    "/wiki.caddy*" in cwiki
+    and "reverse_proxy 127.0.0.1:8081" in cwiki
+    and cwiki.rstrip().endswith("respond 404"),
+)
+check(
+    "Caddy: cgit's origin: public and private views, the hub's app bar may frame it, clone URLs name the hub's port",
+    cgit_.count("env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi") == 2
+    and "/git.caddy*" in cgit_
+    and "admin-gate.caddy*" in cgit_
+    and cgit_.count(
+        "frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}\""
+    )
+    == 2
+    and cgit_.count("env HTTP_HOST {host}") == 2,
+)
+check(
+    "Caddy: cgit's origin: a clone or push sent here goes to the hub's port",
+    "redir @smart {scheme}://{host}:{irate_box_hub_port}{uri} 302" in cgit_
+    and "git-http-guard.py" not in cgit_,
+)
+check(
+    "Caddy: cgit's origin serves everything its pages load",
+    "@cgit_assets path /palette.css /cgit-hub.css /themes.js /cgit-hub.js /themes/*"
+    in cgit_
+    and "handle_path /git-static/*" in cgit_
+    and "handle_path /git-hl/*" in cgit_,
+)
+check(
+    "Caddy: no redirect between origins with a fixed port",
+    not re.search(r"redir .*://\{host\}:\d", caddy),
+)
 for name in ("notes", "wiki", "git"):
-    check(f"Caddy: the {name} origin has a TLS twin", f'"{name}"' in (REPO / "irate_box/root/tls.py").read_text().split("_front_files", 1)[1].split("out = {}", 1)[0])
+    check(
+        f"Caddy: the {name} origin has a TLS twin",
+        f'"{name}"'
+        in (REPO / "irate_box/root/tls.py")
+        .read_text()
+        .split("_front_files", 1)[1]
+        .split("out = {}", 1)[0],
+    )
 ctx = {"front_kind": "caddy", "front": secdoctor.parse_caddy(caddy)}
 seen = {f["id"]: f["status"] for f in secdoctor.step_origins(ctx)}
-check("the doctor sees notes, books and cgit on their own origins under Caddy too",
-      seen == {"origin-notes": "ok", "origin-wiki": "ok", "origin-git": "ok"}, seen)
+check(
+    "the doctor sees notes, books and cgit on their own origins under Caddy too",
+    seen == {"origin-notes": "ok", "origin-wiki": "ok", "origin-git": "ok"},
+    seen,
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -4,6 +4,7 @@
 other than light and dark, every page with a picker loads themes.js after style.css, and no
 page carries its own copy of the boot script or of the picker's buttons.
 python3 tests/theme_guard.py"""
+
 import re
 import sys
 from pathlib import Path
@@ -20,48 +21,102 @@ def check(name, cond, info=""):
 
 
 registry = (WEB / "themes.js").read_text(encoding="utf-8")
-themes_list = registry[registry.index("var THEMES = ["):registry.index("];", registry.index("var THEMES = ["))]
+themes_list = registry[
+    registry.index("var THEMES = [") : registry.index(
+        "];", registry.index("var THEMES = [")
+    )
+]
 ids = re.findall(r"\{ id: '([a-z0-9-]+)'", themes_list)
 # The colours of light and dark a visitor may pick over the box's: each but the box's has its rules in palette.css, and
 # the box's own (/layout.css) apply only where none is picked.
-pal_list = registry[registry.index("var PALETTES = ["):registry.index("];", registry.index("var PALETTES = ["))]
+pal_list = registry[
+    registry.index("var PALETTES = [") : registry.index(
+        "];", registry.index("var PALETTES = [")
+    )
+]
 palettes = re.findall(r"\{ id: '([a-z0-9-]+)'", pal_list)
 palette_css_text = (WEB / "palette.css").read_text(encoding="utf-8")
-check("themes.js lists the box's preset first, then Standard and Increased contrast", palettes == ["box", "standard", "contrast"], palettes)
-check("  Increased contrast has its rules in palette.css, in dark and light", '[data-palette="contrast"][data-theme="dark"]' in palette_css_text
-      and '[data-palette="contrast"][data-theme="light"]' in palette_css_text)
+check(
+    "themes.js lists the box's preset first, then Standard and Increased contrast",
+    palettes == ["box", "standard", "contrast"],
+    palettes,
+)
+check(
+    "  Increased contrast has its rules in palette.css, in dark and light",
+    '[data-palette="contrast"][data-theme="dark"]' in palette_css_text
+    and '[data-palette="contrast"][data-theme="light"]' in palette_css_text,
+)
 server_src = (REPO / "irate_box" / "hub" / "server.py").read_text(encoding="utf-8")
-check("  the box's colours in /layout.css only without a visitor's palette", server_src.count(":not([data-palette])") >= 7)
-check("themes.js lists light and dark as the main theme", {"light", "dark"} <= set(ids), ids)
+check(
+    "  the box's colours in /layout.css only without a visitor's palette",
+    server_src.count(":not([data-palette])") >= 7,
+)
+check(
+    "themes.js lists light and dark as the main theme",
+    {"light", "dark"} <= set(ids),
+    ids,
+)
 others = [i for i in ids if i not in ("light", "dark")]
 for t in others:
     check(f"themes/{t}.css exists", (WEB / "themes" / f"{t}.css").is_file())
     css = (WEB / "themes" / f"{t}.css").read_text(encoding="utf-8")
-    bad = [line for line in css.splitlines() if "{" in line and not line.lstrip().startswith(("/*", "@media", "}"))
-           and f'[data-theme="{t}"]' not in line and not line.strip().endswith(",")]
-    check(f"themes/{t}.css styles only [data-theme=\"{t}\"]", not bad, bad[:3])
+    bad = [
+        line
+        for line in css.splitlines()
+        if "{" in line
+        and not line.lstrip().startswith(("/*", "@media", "}"))
+        and f'[data-theme="{t}"]' not in line
+        and not line.strip().endswith(",")
+    ]
+    check(f'themes/{t}.css styles only [data-theme="{t}"]', not bad, bad[:3])
 
 # Every file the pages are made from, but the registry and the themes themselves.
-sources = [p for p in list(WEB.rglob("*")) + [REPO / "irate_box" / "hub" / "server.py"]
-           if p.is_file() and p.suffix in (".html", ".js", ".css", ".py")
-           and p != WEB / "themes.js" and WEB / "themes" not in p.parents]
+sources = [
+    p
+    for p in list(WEB.rglob("*")) + [REPO / "irate_box" / "hub" / "server.py"]
+    if p.is_file()
+    and p.suffix in (".html", ".js", ".css", ".py")
+    and p != WEB / "themes.js"
+    and WEB / "themes" not in p.parents
+]
 for t in others:
-    named = [str(p.relative_to(REPO)) for p in sources if re.search(rf"\b{re.escape(t)}\b", p.read_text(encoding="utf-8", errors="replace"))]
+    named = [
+        str(p.relative_to(REPO))
+        for p in sources
+        if re.search(
+            rf"\b{re.escape(t)}\b", p.read_text(encoding="utf-8", errors="replace")
+        )
+    ]
     check(f"'{t}' named only in themes.js and themes/", not named, named)
 
-for p in sorted(WEB.glob("*.html")) + sorted(WEB.glob("guide/*.html")) + [REPO / "irate_box" / "hub" / "server.py"]:
+for p in (
+    sorted(WEB.glob("*.html"))
+    + sorted(WEB.glob("guide/*.html"))
+    + [REPO / "irate_box" / "hub" / "server.py"]
+):
     text = p.read_text(encoding="utf-8")
     if "theme-picker" not in text:
         continue
     name = p.relative_to(REPO)
-    check(f"{name}: loads /themes.js after style.css",
-          re.search(r'style\.css">\s*\n\s*<script src="/themes\.js"></script>', text) is not None)
-    check(f"{name}: no boot script of its own", "localStorage.getItem('theme')" not in text)
+    check(
+        f"{name}: loads /themes.js after style.css",
+        re.search(r'style\.css"\s*/?>\s*<script src="/themes\.js"></script>', text)
+        is not None,
+    )
+    check(
+        f"{name}: no boot script of its own",
+        "localStorage.getItem('theme')" not in text,
+    )
     check(f"{name}: no hand-written theme buttons", "data-theme-choice" not in text)
 
 # Not a theme, but the same kind of drift: every page's 🏠 is labelled "Hub".
-bare = [str(p.relative_to(REPO)) for p in sorted(WEB.glob("*.html")) + sorted(WEB.glob("guide/*.html")) + [REPO / "irate_box" / "hub" / "server.py"]
-        if re.search(r'>🏠</a>', p.read_text(encoding="utf-8"))]
+bare = [
+    str(p.relative_to(REPO))
+    for p in sorted(WEB.glob("*.html"))
+    + sorted(WEB.glob("guide/*.html"))
+    + [REPO / "irate_box" / "hub" / "server.py"]
+    if re.search(r">🏠</a>", p.read_text(encoding="utf-8"))
+]
 check("every 🏠 link says Hub", not bare, bare)
 
 # The tile grid: every row at least a normal tile's height, so a large tile is two rows and their gap even where its
@@ -69,10 +124,24 @@ check("every 🏠 link says Hub", not bare, bare)
 # tests/browser/tile-rows.sh.
 css = (WEB / "style.css").read_text(encoding="utf-8")
 grid = re.search(r"\.service-grid \{[^}]*\}", css)
-check("the tile grid's rows all alike, the tallest tile's, with a floor (grid-auto-rows: minmax(..., 1fr))",
-      bool(grid) and re.search(r"grid-auto-rows:\s*minmax\(.+,\s*1fr\);", grid.group(0)) is not None, grid and grid.group(0))
-check("  and on a phone, rows back to their own height", re.search(r"@media \(max-width: 480px\) \{ \.service-grid \{ grid-auto-rows: minmax\(.+, auto\); \}", css) is not None)
-check("  and a large tile spans two rows", re.search(r"\.service-card\.large \{[^}]*grid-row: span 2", css) is not None)
+check(
+    "the tile grid's rows all alike, the tallest tile's, with a floor (grid-auto-rows: minmax(..., 1fr))",
+    bool(grid)
+    and re.search(r"grid-auto-rows:\s*minmax\(.+,\s*1fr\);", grid.group(0)) is not None,
+    grid and grid.group(0),
+)
+check(
+    "  and on a phone, rows back to their own height",
+    re.search(
+        r"@media \(max-width: 480px\)\s*\{\s*\.service-grid\s*\{\s*grid-auto-rows:\s*minmax\([^;]+,\s*auto\);\s*\}",
+        css,
+    )
+    is not None,
+)
+check(
+    "  and a large tile spans two rows",
+    re.search(r"\.service-card\.large \{[^}]*grid-row: span 2", css) is not None,
+)
 
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

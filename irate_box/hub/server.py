@@ -4,25 +4,27 @@
 """Irate-Box hub server: shoutbox, board, blob store, status, captive-portal target.
 
 Serves web/ itself so a bare `./irate-box server` works; behind the web server
-(nginx, or Caddy) the assets come off disk and only `/` and the API reach this process."""
+(nginx, or Caddy) the assets come off disk and only `/` and the API reach this process.
+"""
 
 import base64
 import binascii
+import hashlib
+import hmac
+import html
 import io
 import ipaddress
 import json
 import os
 import re
-import hashlib
-import hmac
 import secrets
 import shutil
 import socket
 import subprocess
 import sys
 import tarfile
-import threading
 import tempfile
+import threading
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -30,36 +32,35 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-import html
 from irate_box import confine, finding
+from irate_box.hub import (
+    access,
+    accounts,
+    backup,
+    board,
+    ci,
+    factory,
+    flasher,
+    gitrepos,
+    hotspot,
+    hubclock,
+    jsonlog,
+    kitauto,
+    linkhistory,
+    manifests,
+    memhistory,
+    meshbridge,
+    notebooks,
+    pagehistory,
+    reach,
+    refused,
+    store,
+    svchistory,
+    uplink,
+    watchlog,
+)
+from irate_box.library import firmware, librarian, zimcheck
 from irate_box.msg import M, render
-from irate_box.hub import access
-from irate_box.hub import kitauto
-from irate_box.hub import accounts
-from irate_box.hub import backup
-from irate_box.hub import board
-from irate_box.hub import ci
-from irate_box.library import firmware
-from irate_box.hub import factory
-from irate_box.hub import flasher
-from irate_box.hub import gitrepos
-from irate_box.hub import hotspot
-from irate_box.hub import hubclock
-from irate_box.hub import reach
-from irate_box.hub import linkhistory
-from irate_box.library import librarian
-from irate_box.hub import manifests
-from irate_box.hub import meshbridge
-from irate_box.hub import memhistory
-from irate_box.hub import jsonlog
-from irate_box.hub import notebooks
-from irate_box.hub import refused
-from irate_box.hub import store
-from irate_box.hub import pagehistory
-from irate_box.hub import svchistory
-from irate_box.hub import uplink
-from irate_box.hub import watchlog
-from irate_box.library import zimcheck
 
 CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/hub/server.py → the checkout
 STATIC = CHECKOUT / "web"
@@ -83,10 +84,16 @@ HUB_URL = os.environ.get("HUB_URL", "/")
 # the address bar shows the hub's address and the browser keeps one site's storage (names,
 # theme) rather than one per name typed. Guests on the owner's LAN are never redirected.
 try:
-    AP_NET = ipaddress.ip_network(os.environ["HUB_AP_NET"]) if os.environ.get("HUB_AP_NET") else None
+    AP_NET = (
+        ipaddress.ip_network(os.environ["HUB_AP_NET"])
+        if os.environ.get("HUB_AP_NET")
+        else None
+    )
 except ValueError:
     AP_NET = None
-HUB_HOST = urlparse(HUB_URL).hostname if HUB_URL.startswith(("http://", "https://")) else None
+HUB_HOST = (
+    urlparse(HUB_URL).hostname if HUB_URL.startswith(("http://", "https://")) else None
+)
 # Without HUB_AP_NET and an absolute HUB_URL set, the hotspot's own (root/ap.py: 192.168.4.1/24) are
 # used while the root helper says it is up (control/ap.json), and never otherwise: a home network
 # that happens to be 192.168.4.0/24 is not the hotspot.
@@ -117,6 +124,7 @@ def ap_net():
 def hub_host():
     return HUB_HOST or (urlparse(HOTSPOT_URL).hostname if hotspot_up() else None)
 
+
 CLOCK = hubclock.HubClock(STATE_DIR / "clock.json")
 BOARD = board.Board(STATE_DIR / "board.json", CLOCK)
 # Excalidraw's storage API and the saved-work gallery. See store.py.
@@ -139,13 +147,13 @@ CAPTIVE_HOSTS = {
 }
 
 CAPTIVE_PATHS = {
-    "/hotspot-detect.html",       # iOS / macOS
-    "/library/test/success.html", # older iOS
-    "/generate_204",              # Android
-    "/gen_204",                   # Android's fallback probe (www.google.com); a 404 there reads as "no internet"
-    "/connecttest.txt",           # Windows
-    "/ncsi.txt",                  # Windows (legacy)
-    "/canonical.html",            # Firefox
+    "/hotspot-detect.html",  # iOS / macOS
+    "/library/test/success.html",  # older iOS
+    "/generate_204",  # Android
+    "/gen_204",  # Android's fallback probe (www.google.com); a 404 there reads as "no internet"
+    "/connecttest.txt",  # Windows
+    "/ncsi.txt",  # Windows (legacy)
+    "/canonical.html",  # Firefox
     "/check_network_status.txt",  # GNOME
 }
 
@@ -195,10 +203,24 @@ def _service_entry(status):
 
 
 def _services():
-    return [dict(_service_entry(m["status"]), app=m["id"]) for m in MANIFESTS if "status" in m] + [
-        {"path": None, "name": TAILSCALE_NAME, "unit": "tailscaled.service",
-         "active": True, "note": "switched on and off from /admin"},
-        {"path": None, "name": f"Web server ({WEB_SERVER_NAME})", "unit": f"{WEB_SERVER}.service", "proxy": True},
+    return [
+        dict(_service_entry(m["status"]), app=m["id"])
+        for m in MANIFESTS
+        if "status" in m
+    ] + [
+        {
+            "path": None,
+            "name": TAILSCALE_NAME,
+            "unit": "tailscaled.service",
+            "active": True,
+            "note": "switched on and off from /admin",
+        },
+        {
+            "path": None,
+            "name": f"Web server ({WEB_SERVER_NAME})",
+            "unit": f"{WEB_SERVER}.service",
+            "proxy": True,
+        },
         {"path": None, "name": "Hub server", "unit": "irate-box.service", "self": True},
     ]
 
@@ -213,7 +235,11 @@ def refresh_manifests():
     pages and the librarian's apps follow."""
     global MANIFESTS, SERVICES, MENU_PAGES
     stamp = []
-    for p in [manifests.LOCAL_D, manifests.CATALOGUE, *sorted(manifests.CATALOGUE.glob("*.json"))]:
+    for p in [
+        manifests.LOCAL_D,
+        manifests.CATALOGUE,
+        *sorted(manifests.CATALOGUE.glob("*.json")),
+    ]:
         try:
             stamp.append(p.stat().st_mtime_ns)
         except OSError:
@@ -226,8 +252,14 @@ def refresh_manifests():
         catalogue_sync()
     except (OSError, ValueError, manifests.ManifestError) as exc:
         print(f"catalogue sync: {exc}", file=sys.stderr)
-    _local_stamp["at"] = [p.stat().st_mtime_ns if p.exists() else None
-                          for p in [manifests.LOCAL_D, manifests.CATALOGUE, *sorted(manifests.CATALOGUE.glob("*.json"))]]
+    _local_stamp["at"] = [
+        p.stat().st_mtime_ns if p.exists() else None
+        for p in [
+            manifests.LOCAL_D,
+            manifests.CATALOGUE,
+            *sorted(manifests.CATALOGUE.glob("*.json")),
+        ]
+    ]
     MANIFESTS = manifests.load_all()
     SERVICES = _services()
     MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
@@ -307,12 +339,18 @@ def admin_seen_ok(value, now=None):
     until, _, sig = (value or "").partition(".")
     if not until.isdigit() or int(until) < (now or time.time()):
         return False
-    return hmac.compare_digest(sig, hmac.new(admin_seen_key(), until.encode(), "sha256").hexdigest())
+    return hmac.compare_digest(
+        sig, hmac.new(admin_seen_key(), until.encode(), "sha256").hexdigest()
+    )
 
 
 def _unseen(v, signed_in):
     """Is a tile at visibility v hidden from this visitor?"""
-    return v == "hidden" or (v == "users" and not signed_in) or (v == "admin" and signed_in != "admin")
+    return (
+        v == "hidden"
+        or (v == "users" and not signed_in)
+        or (v == "admin" and signed_in != "admin")
+    )
 
 
 def visibility():
@@ -320,7 +358,11 @@ def visibility():
         data = json.loads(VISIBILITY_FILE.read_text())
     except (OSError, ValueError):
         return {}
-    return {k: v for k, v in data.items() if isinstance(k, str) and v in VISIBLE} if isinstance(data, dict) else {}
+    return (
+        {k: v for k, v in data.items() if isinstance(k, str) and v in VISIBLE}
+        if isinstance(data, dict)
+        else {}
+    )
 
 
 def save_visibility(data):
@@ -342,7 +384,11 @@ def locked_as():
         data = json.loads(LOCKED_AS_FILE.read_text())
     except (OSError, ValueError):
         return {}
-    return {k: v for k, v in data.items() if isinstance(k, str) and v in LOCKED_AS} if isinstance(data, dict) else {}
+    return (
+        {k: v for k, v in data.items() if isinstance(k, str) and v in LOCKED_AS}
+        if isinstance(data, dict)
+        else {}
+    )
 
 
 def save_locked_as(data):
@@ -379,19 +425,31 @@ def hidden_apps(signed_in=False):
         mode, v = access.mode_of(state, i), vis.get(i, "auto")
         if mode == "off" or (v != "auto" and _unseen(v, signed_in)):
             out.add(i)
-        elif v == "auto" and mode != "public" and not (signed_in and mode == "users") \
-                and not (mode == "users" and offer) and not (mode == "private" and signed_in == "admin"):
+        elif (
+            v == "auto"
+            and mode != "public"
+            and not (signed_in and mode == "users")
+            and not (mode == "users" and offer)
+            and not (mode == "private" and signed_in == "admin")
+        ):
             out.add(i)
     return out
 
 
 def seen_only():
     """The tiles with no switch of their own: the folders, About. Who opens them
-    is no one's to set (their pages are the hub's, open to all), but who sees the tile is."""
+    is no one's to set (their pages are the hub's, open to all), but who sees the tile is.
+    """
     sw = _switched()
-    return {m["id"] for m in MANIFESTS if m["id"] not in sw and m["id"] not in PAGE_APPS
-            and (m.get("tile") or {}).get("row", "apps") == "apps" and not (m.get("tile") or {}).get("widget")
-            and (m.get("tile") or m.get("menu"))}
+    return {
+        m["id"]
+        for m in MANIFESTS
+        if m["id"] not in sw
+        and m["id"] not in PAGE_APPS
+        and (m.get("tile") or {}).get("row", "apps") == "apps"
+        and not (m.get("tile") or {}).get("widget")
+        and (m.get("tile") or m.get("menu"))
+    }
 
 
 def hidden_tiles(signed_in=False):
@@ -420,11 +478,21 @@ def locked_apps(signed_in=False):
     """The apps whose tile shows but which this visitor can't open yet: for users, to someone not
     logged in; private, to anyone (the admin login is asked for at its door)."""
     state = access.read(ACCESS_STATE)
-    return {i for i in _switched() if access.mode_of(state, i) == "private"
-            or (access.mode_of(state, i) == "users" and not signed_in)}
+    return {
+        i
+        for i in _switched()
+        if access.mode_of(state, i) == "private"
+        or (access.mode_of(state, i) == "users" and not signed_in)
+    }
 
 
-def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=frozenset(), admin_only=frozenset()):
+def render_tiles(
+    row="apps",
+    hidden=frozenset(),
+    factory_tile=False,
+    locked=frozenset(),
+    admin_only=frozenset(),
+):
     """One row of the home page's tiles, from the manifests' "tile" parts. Rendered here
     rather than in the browser, so the page arrives whole. hidden: apps left out, and so a
     list page left with nothing on it. factory_tile: the owner's choice to show the factory's.
@@ -457,15 +525,31 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
             continue
         if "widget" in tile:
             w = WIDGET_HTML[tile["widget"]]
-            out.append(w.replace('class="service-card ', f'class="service-card {size} ', 1).replace('<div ', f'<div data-size="{size}" ', 1) if size else w)
+            out.append(
+                w.replace(
+                    'class="service-card ', f'class="service-card {size} ', 1
+                ).replace("<div ", f'<div data-size="{size}" ', 1)
+                if size
+                else w
+            )
             continue
         # A locked tile (seen, not to be opened by this visitor): as the owner chose for it.
-        how = ((lock_all or lock_ways.get(m["id"], "signin")) if m["id"] in locked else None)
-        if how == "signup" and not (sign_up_open and access.mode_of(access_state, m["id"]) == "users"):
+        how = (
+            (lock_all or lock_ways.get(m["id"], "signin"))
+            if m["id"] in locked
+            else None
+        )
+        if how == "signup" and not (
+            sign_up_open and access.mode_of(access_state, m["id"]) == "users"
+        ):
             how = "signin"  # no sign-up to offer, or an app for the admin only
         dead = how in ("padlock", "grey")
-        attrs = [(f'class="service-card{" locked" if how else ""}{" greyed" if how == "grey" else ""}{" padlock" if how == "padlock" else ""}'
-                  f'{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"')]  # one attribute, two lines
+        attrs = [
+            (
+                f'class="service-card{" locked" if how else ""}{" greyed" if how == "grey" else ""}{" padlock" if how == "padlock" else ""}'
+                f'{" admin-only" if m["id"] in admin_only else ""}{" " + size if size else ""}"'
+            )
+        ]  # one attribute, two lines
         if size:
             attrs.append(f'data-size="{size}"')
         if tile.get("element_id"):
@@ -473,7 +557,9 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         if dead:
             attrs.append('aria-disabled="true"')
         elif how == "signup":
-            attrs.append(f'href="/account.html?next={quote(tile["href"], safe="")}#signup"')
+            attrs.append(
+                f'href="/account.html?next={quote(tile["href"], safe="")}#signup"'
+            )
         elif how == "signin" and access.mode_of(access_state, m["id"]) == "users":
             attrs.append(f'href="/account.html?next={quote(tile["href"], safe="")}"')
         else:
@@ -484,14 +570,24 @@ def render_tiles(row="apps", hidden=frozenset(), factory_tile=False, locked=froz
         if tile.get("new_tab") and not dead:
             attrs.append('target="_blank"')
         tag = "div" if dead else "a"
-        lock = {"signin": "🔒 sign in to open", "signup": "🔒 sign up to open", "padlock": "🔒"}.get(how)
-        out.append(f'      <{tag} {" ".join(attrs)}>\n'
-                   + icon_html(own_icons.get(m["id"]) or tile["icon"])
-                   + f'        <span class="name">{html.escape(tile["name"])}</span>\n'
-                   f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
-                   + (f'        <span class="lock">{lock}</span>\n' if lock else '')
-                   + ('        <span class="tile-pill admin-pill" title="Only administrators see this tile">admin only</span>\n' if m["id"] in admin_only else '')
-                   + f'      </{tag}>')
+        lock = {
+            "signin": "🔒 sign in to open",
+            "signup": "🔒 sign up to open",
+            "padlock": "🔒",
+        }.get(how)
+        out.append(
+            f'      <{tag} {" ".join(attrs)}>\n'
+            + icon_html(own_icons.get(m["id"]) or tile["icon"])
+            + f'        <span class="name">{html.escape(tile["name"])}</span>\n'
+            f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
+            + (f'        <span class="lock">{lock}</span>\n' if lock else "")
+            + (
+                '        <span class="tile-pill admin-pill" title="Only administrators see this tile">admin only</span>\n'
+                if m["id"] in admin_only
+                else ""
+            )
+            + f"      </{tag}>"
+        )
     return "\n".join(out)
 
 
@@ -512,8 +608,14 @@ def folders_state():
         return {}
     if not isinstance(data, dict):
         return {}
-    return {f: {k: [h for h in v.get(k, []) if isinstance(h, str)][:500] for k in FOLDER_PARTS}
-            for f, v in data.items() if isinstance(f, str) and isinstance(v, dict)}
+    return {
+        f: {
+            k: [h for h in v.get(k, []) if isinstance(h, str)][:500]
+            for k in FOLDER_PARTS
+        }
+        for f, v in data.items()
+        if isinstance(f, str) and isinstance(v, dict)
+    }
 
 
 def save_folders(data):
@@ -534,7 +636,8 @@ def entry_pool(skip=()):
 
 def menu_entries(menu_id, skip=(), include_hidden=False, state=None):
     """A folder's entries as the owner arranged them: its own (manifests.entries_for), those put
-    in from other folders, in its order (the rest after, as they were), less the hidden ones."""
+    in from other folders, in its order (the rest after, as they were), less the hidden ones.
+    """
     st = (folders_state() if state is None else state).get(menu_id, {})
     items = list(manifests.entries_for(menu_id, MANIFESTS, skip))
     have = {e["href"] for _, e, _ in items}
@@ -546,7 +649,12 @@ def menu_entries(menu_id, skip=(), include_hidden=False, state=None):
                 items.append((o, e, svc))
                 have.add(href)
     pos = {h: i for i, h in enumerate(st.get("order", []))}
-    items = [x for _, x in sorted(enumerate(items), key=lambda p: (pos.get(p[1][1]["href"], len(pos)), p[0]))]
+    items = [
+        x
+        for _, x in sorted(
+            enumerate(items), key=lambda p: (pos.get(p[1][1]["href"], len(pos)), p[0])
+        )
+    ]
     if not include_hidden:
         hidden = set(st.get("hidden", []))
         items = [x for x in items if x[1]["href"] not in hidden]
@@ -572,8 +680,17 @@ def folders_snapshot():
         entries = []
         for _, e, _ in menu_entries(mid, include_hidden=True, state=state):
             href = e["href"]
-            entries.append({"href": href, "name": e["name"], "desc": e.get("desc", ""), "kind": entry_kind(href),
-                            "from": pool.get(href, (0, 0, 0, mid))[3], "hidden": href in hidden, "extra": href in extra})
+            entries.append(
+                {
+                    "href": href,
+                    "name": e["name"],
+                    "desc": e.get("desc", ""),
+                    "kind": entry_kind(href),
+                    "from": pool.get(href, (0, 0, 0, mid))[3],
+                    "hidden": href in hidden,
+                    "extra": href in extra,
+                }
+            )
         out.append({"id": mid, "title": m["menu"]["title"], "entries": entries})
     return {"folders": out, "state": state}
 
@@ -590,7 +707,11 @@ def valid_folders(data):
         part = {}
         for k in FOLDER_PARTS:
             hrefs = v.get(k, [])
-            if not isinstance(hrefs, list) or len(hrefs) > 500 or not all(isinstance(h, str) and h in pool for h in hrefs):
+            if (
+                not isinstance(hrefs, list)
+                or len(hrefs) > 500
+                or not all(isinstance(h, str) and h in pool for h in hrefs)
+            ):
                 return None
             part[k] = list(dict.fromkeys(hrefs))
         out[f] = part
@@ -623,24 +744,45 @@ def status_tiles_state():
     except (OSError, ValueError):
         data = {}
     data = data if isinstance(data, dict) else {}
-    out = {k: [x for x in data.get(k, []) if isinstance(x, str)][:50] for k in ("order", "hidden")}
+    out = {
+        k: [x for x in data.get(k, []) if isinstance(x, str)][:50]
+        for k in ("order", "hidden")
+    }
     out["size"] = _sizes(data)
     return out
 
 
 def box_tiles():
     """The box row's tiles, in the manifests' order: [(id, name)]."""
-    names = {"people": "People here", "qr": "Join QR", "system": "Memory and disk", "factory": "Firmware Factory"}
-    return [(m["id"], m["tile"].get("name") or names.get(m["tile"].get("widget"), m["id"]))
-            for m in MANIFESTS if (m.get("tile") or {}).get("row") == "box"]
+    names = {
+        "people": "People here",
+        "qr": "Join QR",
+        "system": "Memory and disk",
+        "factory": "Firmware Factory",
+    }
+    return [
+        (m["id"], m["tile"].get("name") or names.get(m["tile"].get("widget"), m["id"]))
+        for m in MANIFESTS
+        if (m.get("tile") or {}).get("row") == "box"
+    ]
 
 
 def status_tiles_snapshot():
     st = status_tiles_state()
     pos = {i: n for n, i in enumerate(st["order"])}
     tiles = sorted(box_tiles(), key=lambda t: pos.get(t[0], len(pos)))
-    return {"tiles": [{"id": i, "name": n, "hidden": i in st["hidden"], "size": st["size"].get(i, "single")} for i, n in tiles],
-            "state": st}
+    return {
+        "tiles": [
+            {
+                "id": i,
+                "name": n,
+                "hidden": i in st["hidden"],
+                "size": st["size"].get(i, "single"),
+            }
+            for i, n in tiles
+        ],
+        "state": st,
+    }
 
 
 # The apps row's order (on /admin's "All apps"): the hub's own, like the box row's.
@@ -654,7 +796,9 @@ ICON_TEXT = re.compile(r"^[A-Za-z0-9]{1,4}$")
 def valid_icon(s):
     """Up to four letters and digits; or emoji (up to 16 code points, none of them ASCII, so no
     letters, markup or spaces among them)."""
-    return isinstance(s, str) and (bool(ICON_TEXT.match(s)) or (0 < len(s) <= 16 and all(ord(c) > 0x7F for c in s)))
+    return isinstance(s, str) and (
+        bool(ICON_TEXT.match(s)) or (0 < len(s) <= 16 and all(ord(c) > 0x7F for c in s))
+    )
 
 
 def tiles_state():
@@ -664,22 +808,46 @@ def tiles_state():
         data = {}
     data = data if isinstance(data, dict) else {}
     icon = data.get("icon", {})
-    icon = {k: v for k, v in icon.items() if isinstance(k, str) and valid_icon(v)} if isinstance(icon, dict) else {}
-    return {"order": [x for x in data.get("order", []) if isinstance(x, str)][:100], "size": _sizes(data), "icon": icon}
+    icon = (
+        {k: v for k, v in icon.items() if isinstance(k, str) and valid_icon(v)}
+        if isinstance(icon, dict)
+        else {}
+    )
+    return {
+        "order": [x for x in data.get("order", []) if isinstance(x, str)][:100],
+        "size": _sizes(data),
+        "icon": icon,
+    }
 
 
 def app_tiles():
     """The apps row's tiles, in the manifests' order: [(id, name, icon)]."""
-    return [(m["id"], m["tile"].get("name", m["id"]), m["tile"].get("icon", "")) for m in MANIFESTS
-            if m.get("tile") and m["tile"].get("row", "apps") == "apps" and not m["tile"].get("widget")]
+    return [
+        (m["id"], m["tile"].get("name", m["id"]), m["tile"].get("icon", ""))
+        for m in MANIFESTS
+        if m.get("tile")
+        and m["tile"].get("row", "apps") == "apps"
+        and not m["tile"].get("widget")
+    ]
 
 
 def tiles_snapshot():
     st = tiles_state()
     pos = {i: n for n, i in enumerate(st["order"])}
     tiles = sorted(app_tiles(), key=lambda t: pos.get(t[0], len(pos)))
-    return {"tiles": [{"id": i, "name": n, "icon": c, "own_icon": st["icon"].get(i), "size": st["size"].get(i, "single")} for i, n, c in tiles],
-            "state": st}
+    return {
+        "tiles": [
+            {
+                "id": i,
+                "name": n,
+                "icon": c,
+                "own_icon": st["icon"].get(i),
+                "size": st["size"].get(i, "single"),
+            }
+            for i, n, c in tiles
+        ],
+        "state": st,
+    }
 
 
 def icon_html(icon):
@@ -699,26 +867,36 @@ def _first_use_note():
     network until the owner's admin account is made, and how to make it safely."""
     if not unclaimed():
         return ""
-    return ('<section class="first-use-note" role="note"><h2>⚙️ This box is not set up yet</h2>'
-            '<p>Until an administrator account is made, any device on this network can use the administration pages. Make it now '
-            'over HTTPS or at the box\'s console over SSH (<code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>). '
-            'Over plain HTTP, others on the network can read the password.</p>'
-            '<p><a class="action-btn" href="/admin/setup">Set up this box</a> '
-            '<a href="/guide/first-use.html">How: Setting up a new box</a></p></section>')
-_home_page = {}   # signed in or not -> {"mtime", "body"}
+    return (
+        '<section class="first-use-note" role="note"><h2>⚙️ This box is not set up yet</h2>'
+        "<p>Until an administrator account is made, any device on this network can use the administration pages. Make it now "
+        "over HTTPS or at the box's console over SSH (<code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>). "
+        "Over plain HTTP, others on the network can read the password.</p>"
+        '<p><a class="action-btn" href="/admin/setup">Set up this box</a> '
+        '<a href="/guide/first-use.html">How: Setting up a new box</a></p></section>'
+    )
+
+
+_home_page = {}  # signed in or not -> {"mtime", "body"}
 
 
 def _account_nav(signed_in):
     """The header's account buttons. One login for everyone, admins included: "Sign in" for a guest
     (admins sign in there too, so it shows with sign-up off), "My account" for anyone in; "Admin" for a
-    signed-in admin only (a box in its first use says so on the home page instead: FIRST_USE_MARK)."""
+    signed-in admin only (a box in its first use says so on the home page instead: FIRST_USE_MARK).
+    """
     signup = accounts.settings()["signup"]
-    title, label = (("Your account", "My account") if signed_in else
-                    ("Sign in" if signup == "off" else "Sign in or sign up", "Sign in"))
+    title, label = (
+        ("Your account", "My account")
+        if signed_in
+        else ("Sign in" if signup == "off" else "Sign in or sign up", "Sign in")
+    )
     out = f'<a class="head-btn labelled" href="/account.html" title="{title}"><span class="head-emoji" aria-hidden="true">👤</span> {label}</a>'
     if signed_in == "admin":
-        out += ('<a class="head-btn labelled" href="/admin/" title="Administration pages">'
-                '<span class="head-emoji" aria-hidden="true">⚙️</span> Admin</a>')
+        out += (
+            '<a class="head-btn labelled" href="/admin/" title="Administration pages">'
+            '<span class="head-emoji" aria-hidden="true">⚙️</span> Admin</a>'
+        )
     return out
 
 
@@ -730,7 +908,15 @@ def home_page(signed_in=False):
         chosen = ACCESS_STATE.stat().st_mtime
     except OSError:
         chosen = None
-    for f in (VISIBILITY_FILE, FOLDERS_FILE, STATUS_TILES_FILE, TILES_FILE, SETTINGS_FILE, LOCKED_AS_FILE, PICTURES["hub-art"]["file"]):
+    for f in (
+        VISIBILITY_FILE,
+        FOLDERS_FILE,
+        STATUS_TILES_FILE,
+        TILES_FILE,
+        SETTINGS_FILE,
+        LOCKED_AS_FILE,
+        PICTURES["hub-art"]["file"],
+    ):
         try:
             chosen = (chosen, f.stat().st_mtime)
         except OSError:
@@ -739,7 +925,15 @@ def home_page(signed_in=False):
     signup = accounts.settings()["signup"]
     words = settings_snapshot()
     notice_over = bool(words["notice_until"]) and time.time() >= words["notice_until"]
-    mtime = (path.stat().st_mtime, chosen, show_factory, signup, accounts.admin_ready(), unclaimed(), notice_over)
+    mtime = (
+        path.stat().st_mtime,
+        chosen,
+        show_factory,
+        signup,
+        accounts.admin_ready(),
+        unclaimed(),
+        notice_over,
+    )
     cached = _home_page.setdefault(signed_in, {"mtime": None, "body": b""})
     if cached["mtime"] != mtime:
         text = path.read_text(encoding="utf-8")
@@ -749,26 +943,60 @@ def home_page(signed_in=False):
         # A tab its visitor isn't to see: its link and its pane left out of the page.
         for app, tab in PAGE_APPS.items():
             if page_app_hidden(app, signed_in):
-                text = re.sub(rf'\s*<a href="#{tab}" data-tab="{tab}"[^>]*>[^<]*</a>', "", text)
-                text = text.replace(f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>').replace(f'<div id="tab-{tab}" hidden>', f'<div id="tab-{tab}" data-off hidden>')
-        text = text.replace(TILES_MARK, render_tiles("apps", hidden, locked=locked, admin_only=admin_only)).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
-        text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(FIRST_USE_MARK, _first_use_note())
-        title, sub = html.escape(words["hub_title"].strip()), html.escape(words["hub_subtitle"].strip())
+                text = re.sub(
+                    rf'\s*<a href="#{tab}" data-tab="{tab}"[^>]*>[^<]*</a>', "", text
+                )
+                text = text.replace(
+                    f'<div id="tab-{tab}">', f'<div id="tab-{tab}" data-off hidden>'
+                ).replace(
+                    f'<div id="tab-{tab}" hidden>',
+                    f'<div id="tab-{tab}" data-off hidden>',
+                )
+        text = text.replace(
+            TILES_MARK,
+            render_tiles("apps", hidden, locked=locked, admin_only=admin_only),
+        ).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
+        text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(
+            FIRST_USE_MARK, _first_use_note()
+        )
+        title, sub = html.escape(words["hub_title"].strip()), html.escape(
+            words["hub_subtitle"].strip()
+        )
         # The keeper's own name for the hub is theirs, not the page's words: no message ID on it.
         if title != html.escape(DEFAULT_SETTINGS["hub_title"]):
-            text = re.sub(r"<title[^>]*>Hub</title>", f"<title>{title}</title>", text, count=1)
+            text = re.sub(
+                r"<title[^>]*>Hub</title>", f"<title>{title}</title>", text, count=1
+            )
             text = re.sub(r"<h1[^>]*>Hub</h1>", f"<h1>{title}</h1>", text, count=1)
         notice, keeper = words["notice_text"].strip(), words["keeper_contact"].strip()
         if notice and not notice_over:
-            text = text.replace("</header>", f'</header>\n  <p class="hub-notice" role="status">{html.escape(notice)}</p>', 1)
+            text = text.replace(
+                "</header>",
+                f'</header>\n  <p class="hub-notice" role="status">{html.escape(notice)}</p>',
+                1,
+            )
         if keeper:
-            text = text.replace('  <script src="qrcode.js">', f'  <footer class="hub-keeper">Looked after by: {html.escape(keeper)}</footer>\n'
-                                '  <script src="qrcode.js">', 1)
+            text = text.replace(
+                '  <script src="qrcode.js">',
+                f'  <footer class="hub-keeper">Looked after by: {html.escape(keeper)}</footer>\n'
+                '  <script src="qrcode.js">',
+                1,
+            )
         art = picture_mtime("hub-art")
         if art:
-            text = re.sub(r"<h1[^>]*>", lambda m: f'<img class="hub-art" src="/hub-art?{int(art)}" alt="">{m.group(0)}', text, count=1)
+            text = re.sub(
+                r"<h1[^>]*>",
+                lambda m: f'<img class="hub-art" src="/hub-art?{int(art)}" alt="">{m.group(0)}',
+                text,
+                count=1,
+            )
         if sub != html.escape(DEFAULT_SETTINGS["hub_subtitle"]):
-            text = re.sub(r'<p class="subtitle"[^>]*>[^<]*</p>', (f'<p class="subtitle">{sub}</p>' if sub else ""), text, count=1)
+            text = re.sub(
+                r'<p class="subtitle"[^>]*>[^<]*</p>',
+                (f'<p class="subtitle">{sub}</p>' if sub else ""),
+                text,
+                count=1,
+            )
         cached["body"] = text.encode()
         cached["mtime"] = mtime
     return cached["body"]
@@ -779,14 +1007,18 @@ def home_page(signed_in=False):
 MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
 # A page's tab icon: its emoji drawn as an SVG in the page itself (no request). The first emoji of a tile's icon
 # ("📡📻" is 📡), with what joins to it (U+FE0F, a skin tone, a ZWJ sequence, a flag's pair).
-FIRST_EMOJI = re.compile("[\U0001F1E6-\U0001F1FF]{2}|.[\uFE0F\U0001F3FB-\U0001F3FF]*(?:\u200D.[\uFE0F]*)*")
+FIRST_EMOJI = re.compile(
+    "[\U0001f1e6-\U0001f1ff]{2}|.[\ufe0f\U0001f3fb-\U0001f3ff]*(?:\u200d.[\ufe0f]*)*"
+)
 
 
 def emoji_icon(icon, fallback="🏴\u200d☠️"):
     m = FIRST_EMOJI.match(icon or "")
     e = html.escape(m.group(0) if m else fallback)
-    return ('<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22>'
-            f'<text y=%22.9em%22 font-size=%2290%22>{e}</text></svg>">')
+    return (
+        '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22>'
+        f'<text y=%22.9em%22 font-size=%2290%22>{e}</text></svg>">'
+    )
 
 
 MENU_TEMPLATE = """<!DOCTYPE html>
@@ -830,27 +1062,49 @@ def menu_page(m, signed_in=False):
         href = e["href"]
         if href.startswith("/app.html#"):
             # The hub bar then offers ↑ back to this list (app.js).
-            href = f"/app.html?from={m['id']}#" + href[len("/app.html#"):]
+            href = f"/app.html?from={m['id']}#" + href[len("/app.html#") :]
         attrs = f'href="{html.escape(href)}"'
         if service:
             attrs += f' data-service="{html.escape(service)}"'
         if e.get("new_tab", True):
             attrs += ' target="_blank"'
-        desc = f'<span class="desc">{html.escape(e["desc"])}</span>' if e.get("desc") else ""
-        items.append(f'      <li><a {attrs}><span class="name">{html.escape(e["name"])}</span>{desc}</a></li>')
+        desc = (
+            f'<span class="desc">{html.escape(e["desc"])}</span>'
+            if e.get("desc")
+            else ""
+        )
+        items.append(
+            f'      <li><a {attrs}><span class="name">{html.escape(e["name"])}</span>{desc}</a></li>'
+        )
     menu = m["menu"]
     # A krab in the bottom-left corner, if the manifest names one (style.css: data-art).
     art = menu.get("art")
     lines = menu.get("banner")
     # Text art instead, if the manifest has it (e.g. ELIZA's, from its source): the same kind of
     # faint ident in the bottom-right corner, behind the list (style.css: .menu-ident).
-    art_attrs = f' data-art="{art}" data-art-side="left"' if art else (' data-art="ident"' if lines else "")
+    art_attrs = (
+        f' data-art="{art}" data-art-side="left"'
+        if art
+        else (' data-art="ident"' if lines else "")
+    )
     art_html = '  <div class="admin-art" aria-hidden="true"></div>\n' if art else ""
-    banner = f'  <pre class="menu-ident" aria-hidden="true">{html.escape(chr(10).join(lines))}</pre>\n' if lines else ""
-    return MENU_TEMPLATE.format(art_attrs=art_attrs, art=art_html, banner=banner, title=html.escape(menu["title"]), subtitle=html.escape(menu["subtitle"]),
-                                icon=emoji_icon((m.get("tile") or {}).get("icon")),
-                                about=html.escape(menu.get("about", "")).replace("--", "-"),
-                                items="\n".join(items)).encode()
+    banner = (
+        f'  <pre class="menu-ident" aria-hidden="true">{html.escape(chr(10).join(lines))}</pre>\n'
+        if lines
+        else ""
+    )
+    return MENU_TEMPLATE.format(
+        art_attrs=art_attrs,
+        art=art_html,
+        banner=banner,
+        title=html.escape(menu["title"]),
+        subtitle=html.escape(menu["subtitle"]),
+        icon=emoji_icon((m.get("tile") or {}).get("icon")),
+        about=html.escape(menu.get("about", "")).replace("--", "-"),
+        items="\n".join(items),
+    ).encode()
+
+
 STATUS_CACHE_S = 5  # one probe sweep per this many seconds, shared by every client
 _status_cache = {"at": 0.0, "ports": {}, "units": {}}
 
@@ -868,7 +1122,7 @@ _seen = {}
 _seen_lock = threading.Lock()
 
 
-_online_names = {}   # account name -> when last seen (ticks), in memory only
+_online_names = {}  # account name -> when last seen (ticks), in memory only
 
 
 def note_account(name):
@@ -903,11 +1157,26 @@ SETTINGS_FILE = STATE_DIR / "settings.json"
 # The owner's pictures (Appearance), each a file in $STATE served at its own path, its type told by its
 # first bytes: the favicon (a PNG or an icon file) and the hub page's header picture (PNG, JPEG or WebP).
 # Never SVG: one served from the hub's own origin could carry script.
-PNG, ICO, JPEG = (b"\x89PNG\r\n\x1a\n", "image/png"), (b"\x00\x00\x01\x00", "image/x-icon"), (b"\xff\xd8\xff", "image/jpeg")
+PNG, ICO, JPEG = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\x00\x00\x01\x00", "image/x-icon"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+)
 PICTURES = {
-    "favicon": {"file": STATE_DIR / "favicon", "url": "/favicon.ico", "max": 64 * 1024, "kinds": (PNG, ICO), "says": "a PNG or .ico file"},
-    "hub-art": {"file": STATE_DIR / "hub-art", "url": "/hub-art", "max": 180 * 1024, "kinds": (PNG, JPEG, "webp"),
-                "says": "a PNG, JPEG or WebP picture"},
+    "favicon": {
+        "file": STATE_DIR / "favicon",
+        "url": "/favicon.ico",
+        "max": 64 * 1024,
+        "kinds": (PNG, ICO),
+        "says": "a PNG or .ico file",
+    },
+    "hub-art": {
+        "file": STATE_DIR / "hub-art",
+        "url": "/hub-art",
+        "max": 180 * 1024,
+        "kinds": (PNG, JPEG, "webp"),
+        "says": "a PNG, JPEG or WebP picture",
+    },
 }
 PICTURE_URLS = {p["url"]: name for name, p in PICTURES.items()}
 
@@ -927,6 +1196,8 @@ def picture_mtime(name):
         return PICTURES[name]["file"].stat().st_mtime
     except OSError:
         return None
+
+
 DEFAULT_SETTINGS = {
     # The saved-work store (store.py): its size cap, and how long a gallery save lives
     # (0 = until the cap evicts it). Defaults from HUB_STORE_* in hub.env.
@@ -1025,57 +1296,113 @@ DEFAULT_SETTINGS = {
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
 EMOJI_SETS = ("13.1", "15.0", "16.0")
-TEXT_LIMITS = {"hub_title": 40, "hub_subtitle": 120, "notice_text": 200, "keeper_contact": 200}
+TEXT_LIMITS = {
+    "hub_title": 40,
+    "hub_subtitle": 120,
+    "notice_text": 200,
+    "keeper_contact": 200,
+}
 
 
 # A palette role and the colour variable it sets.
-PALETTE_ROLES = {"bg": "--bg", "surface": "--surface", "border": "--border", "text": "--text", "muted": "--muted",
-                 "accent": "--accent"}
+PALETTE_ROLES = {
+    "bg": "--bg",
+    "surface": "--surface",
+    "border": "--border",
+    "text": "--text",
+    "muted": "--muted",
+    "accent": "--accent",
+}
 PALETTE_MODES = ("light", "dark")
 
 
 def valid_palette(value):
-    return (isinstance(value, dict) and set(value) <= set(PALETTE_MODES)
-            and all(isinstance(m, dict) and set(m) <= set(PALETTE_ROLES)
-                    and all(isinstance(c, str) and re.fullmatch(r"#[0-9a-f]{6}", c) for c in m.values()) for m in value.values()))
+    return (
+        isinstance(value, dict)
+        and set(value) <= set(PALETTE_MODES)
+        and all(
+            isinstance(m, dict)
+            and set(m) <= set(PALETTE_ROLES)
+            and all(
+                isinstance(c, str) and re.fullmatch(r"#[0-9a-f]{6}", c)
+                for c in m.values()
+            )
+            for m in value.values()
+        )
+    )
 
 
 def palette_css(palette):
     """The owner's palettes as rules for the main themes only: dark where the page is dark (chosen, or Auto on a device
     not asking for light), light where it is light; the other themes keep their colours, and so does a visitor who
-    chose a palette of their own (themes.js: data-palette, standard or more contrast) over the box's."""
+    chose a palette of their own (themes.js: data-palette, standard or more contrast) over the box's.
+    """
+
     def block(colours):
         decl = "".join(f" {PALETTE_ROLES[r]}: {c};" for r, c in sorted(colours.items()))
         if "accent" in colours:
             decl += f" --accent-ink: {accent_ink(colours['accent'])};"
         return "{" + decl + " }"
+
     out = ""
     dark, light = palette.get("dark") or {}, palette.get("light") or {}
     if dark:
-        out += ('html:root:not([data-palette])[data-theme="dark"] %s\n'
-                '@media not all and (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) %s }\n' % (block(dark), block(dark)))
+        out += (
+            'html:root:not([data-palette])[data-theme="dark"] %s\n'
+            "@media not all and (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) %s }\n"
+            % (block(dark), block(dark))
+        )
     if light:
-        out += ('html:root:not([data-palette])[data-theme="light"] %s\n'
-                '@media (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) %s }\n' % (block(light), block(light)))
+        out += (
+            'html:root:not([data-palette])[data-theme="light"] %s\n'
+            "@media (prefers-color-scheme: light) { html:root:not([data-palette]):not([data-theme]) %s }\n"
+            % (block(light), block(light))
+        )
     return out
 
 
 def accent_ink(accent):
     """The text colour on the accent: white or near-black, whichever stands out more from it."""
+
     def lum(hexc):
         def ch(v):
             v /= 255
             return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
-        r, g, b = (int(hexc[i:i + 2], 16) for i in (1, 3, 5))
+
+        r, g, b = (int(hexc[i : i + 2], 16) for i in (1, 3, 5))
         return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+
     a = lum(accent)
-    return "#fff" if (1.05) / (a + 0.05) >= (a + 0.05) / (lum("#0f1117") + 0.05) else "#0f1117"
+    return (
+        "#fff"
+        if (1.05) / (a + 0.05) >= (a + 0.05) / (lum("#0f1117") + 0.05)
+        else "#0f1117"
+    )
+
+
 # The setup decisions (anything that has an impact on user or box security):
 # web/admin-tour.js has each one's words and where it lives.
 # With the setup's own steps and the backup: one list, one tour.
-SETUP_DECISIONS = ("visitors", "names", "signup", "sign-in-offer", "https", "hotspot", "guest-net", "ssh",
-                   "tailscale", "cockpit", "terminal",
-                   "password", "connection", "security", "addons", "books", "backup")
+SETUP_DECISIONS = (
+    "visitors",
+    "names",
+    "signup",
+    "sign-in-offer",
+    "https",
+    "root-policy",
+    "hotspot",
+    "guest-net",
+    "ssh",
+    "tailscale",
+    "cockpit",
+    "terminal",
+    "password",
+    "connection",
+    "security",
+    "addons",
+    "books",
+    "backup",
+)
 REPORT_REASONS = ("spam", "unkind", "personal details", "illegal", "other")
 _settings_lock = threading.Lock()
 
@@ -1087,21 +1414,44 @@ def valid_setting(key, value):
     if key in ("page_width", "admin_width", "shout_width", "board_width"):
         return type(value) is int and value in WIDTHS
     if key == "report_reasons":
-        return isinstance(value, list) and 0 < len(value) <= len(REPORT_REASONS) and all(v in REPORT_REASONS for v in value)
+        return (
+            isinstance(value, list)
+            and 0 < len(value) <= len(REPORT_REASONS)
+            and all(v in REPORT_REASONS for v in value)
+        )
     if key == "locked_all":
         return value == "" or value in LOCKED_AS
     if key == "net_changes_hidden":
-        return isinstance(value, list) and len(value) <= 32 and all(
-            isinstance(v, str) and re.fullmatch(r"(handover|otherap|wifisync)(:[A-Za-z0-9._-]{1,80})?", v) for v in value)
+        return (
+            isinstance(value, list)
+            and len(value) <= 32
+            and all(
+                isinstance(v, str)
+                and re.fullmatch(
+                    r"(handover|otherap|wifisync)(:[A-Za-z0-9._-]{1,80})?", v
+                )
+                for v in value
+            )
+        )
     if key in ("setup_decided", "setup_muted"):
-        return isinstance(value, list) and len(value) <= len(SETUP_DECISIONS) and all(v in SETUP_DECISIONS for v in value)
+        return (
+            isinstance(value, list)
+            and len(value) <= len(SETUP_DECISIONS)
+            and all(v in SETUP_DECISIONS for v in value)
+        )
     if key == "emoji_set":
         return value in EMOJI_SETS
     if key in TEXT_LIMITS:
-        return (isinstance(value, str) and len(value.strip()) <= TEXT_LIMITS[key]
-                and (key != "hub_title" or value.strip()) and not any(ord(c) < 32 for c in value))
+        return (
+            isinstance(value, str)
+            and len(value.strip()) <= TEXT_LIMITS[key]
+            and (key != "hub_title" or value.strip())
+            and not any(ord(c) < 32 for c in value)
+        )
     if key == "accent":
-        return value == "" or (isinstance(value, str) and re.fullmatch(r"#[0-9a-f]{6}", value) is not None)
+        return value == "" or (
+            isinstance(value, str) and re.fullmatch(r"#[0-9a-f]{6}", value) is not None
+        )
     if key == "palette":
         return valid_palette(value)
     if key == "names_to":
@@ -1121,11 +1471,18 @@ def valid_setting(key, value):
 
 # The write-intensity ladder: seconds between the hub clock's saves and the mesh nodes' saves, per stop.
 # (Crash watch reads the same setting for its snapshots: crashwatch.card_writes.)
-CARD_WRITES = {"everything": (60, 60), "thrifty": (600, 300), "gentle": (1800, 900), "saver": (3600, 1800)}
+CARD_WRITES = {
+    "everything": (60, 60),
+    "thrifty": (600, 300),
+    "gentle": (1800, 900),
+    "saver": (3600, 1800),
+}
 
 
 def apply_settings(data):
-    clock_every, mesh_every = CARD_WRITES.get(data.get("card_writes"), CARD_WRITES["thrifty"])
+    clock_every, mesh_every = CARD_WRITES.get(
+        data.get("card_writes"), CARD_WRITES["thrifty"]
+    )
     if "CLOCK" in globals():
         CLOCK.flush_interval = clock_every
     meshbridge.SAVE_EVERY = mesh_every
@@ -1146,7 +1503,9 @@ def load_settings():
         for key in DEFAULT_SETTINGS:
             if valid_setting(key, stored.get(key)):
                 data[key] = stored[key]
-        if "admin_width" not in stored:  # chosen before the admin pages had a width of their own: the one width for both
+        if (
+            "admin_width" not in stored
+        ):  # chosen before the admin pages had a width of their own: the one width for both
             data["admin_width"] = data["page_width"]
     return data
 
@@ -1166,8 +1525,13 @@ _settings = load_settings()
 apply_settings(_settings)
 # The notebooks per login: the list of those running starts empty with the hub (a notebook left
 # running from before is stopped, and opens again on its owner's next visit).
-NOTEBOOKS = notebooks.Notebooks(lambda path: socket_listening(path), lambda k: accounts.has_session(k),
-                                lambda: settings_snapshot(), lambda: accounts.settings()["signup"], WEB_SERVER)
+NOTEBOOKS = notebooks.Notebooks(
+    lambda path: socket_listening(path),
+    lambda k: accounts.has_session(k),
+    lambda: settings_snapshot(),
+    lambda: accounts.settings()["signup"],
+    WEB_SERVER,
+)
 
 
 def settings_snapshot():
@@ -1219,11 +1583,19 @@ def socket_listening(path):
 
 def unit_states(units):
     """{unit: (installed?, active?, enabled?)} from one `systemctl show`, or {} where there
-    is no systemd to ask (a dev machine): the caller then treats every unit as installed."""
+    is no systemd to ask (a dev machine): the caller then treats every unit as installed.
+    """
     try:
         out = subprocess.run(
-            ["systemctl", "show", "--property=Id,LoadState,ActiveState,UnitFileState", *units],
-            capture_output=True, text=True, timeout=2,
+            [
+                "systemctl",
+                "show",
+                "--property=Id,LoadState,ActiveState,UnitFileState",
+                *units,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return {}
@@ -1231,9 +1603,11 @@ def unit_states(units):
     for block in out.strip().split("\n\n"):
         fields = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
         if "Id" in fields:
-            states[fields["Id"]] = (fields.get("LoadState") not in ("not-found", ""),
-                                    fields.get("ActiveState") == "active",
-                                    fields.get("UnitFileState") == "enabled")
+            states[fields["Id"]] = (
+                fields.get("LoadState") not in ("not-found", ""),
+                fields.get("ActiveState") == "active",
+                fields.get("UnitFileState") == "enabled",
+            )
     # A missing unit still gets a block, under the name it was asked for.
     return states
 
@@ -1241,13 +1615,17 @@ def unit_states(units):
 def kiwix_why():
     """Why /wiki/ is not running, in words a guest or the owner can act on. Cheap enough for
     /status (cached with it): the ZIM headers only, never kiwix-manage."""
-    books = sorted(librarian.ZIM_DIR.glob("*.zim")) if librarian.ZIM_DIR.is_dir() else []
+    books = (
+        sorted(librarian.ZIM_DIR.glob("*.zim")) if librarian.ZIM_DIR.is_dir() else []
+    )
     if not books:
         return "No books yet. Add one on the Books page, or from a USB drive."
     bad = [b for b in books if zimcheck.header_problem(b)]
     if len(bad) == len(books):
-        return (f"None of the {len(books)} book{'s' if len(books) != 1 else ''} can be read (damaged or unfinished "
-                "copies). Health says which, and can set them aside.")
+        return (
+            f"None of the {len(books)} book{'s' if len(books) != 1 else ''} can be read (damaged or unfinished "
+            "copies). Health says which, and can set them aside."
+        )
     try:
         has_books = "<book " in librarian.LIBRARY_XML.read_text(errors="replace")
     except OSError:
@@ -1264,18 +1642,28 @@ def service_status(proxied):
     now = time.monotonic()
     if now - _status_cache["at"] > STATUS_CACHE_S:
         _status_cache["ports"] = {
-            svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc
+            svc["port"]: port_listening(svc["port"])
+            for svc in SERVICES
+            if "port" in svc
         }
         _status_cache["sockets"] = {
-            svc["socket"]: socket_listening(svc["socket"]) for svc in SERVICES if "socket" in svc
+            svc["socket"]: socket_listening(svc["socket"])
+            for svc in SERVICES
+            if "socket" in svc
         }
-        _status_cache["units"] = unit_states([s["unit"] for s in SERVICES if "unit" in s])
+        _status_cache["units"] = unit_states(
+            [s["unit"] for s in SERVICES if "unit" in s]
+        )
         _status_cache["why"] = {}
         _status_cache["at"] = now
     units = _status_cache["units"]
     out = []
     for svc in SERVICES:
-        installed, active, _ = units.get(svc["unit"], (True, False, False)) if "unit" in svc else (True, False, False)
+        installed, active, _ = (
+            units.get(svc["unit"], (True, False, False))
+            if "unit" in svc
+            else (True, False, False)
+        )
         if "local_dir" in svc:
             installed = Path(svc["local_dir"]).is_dir()
             running = installed and proxied
@@ -1294,15 +1682,21 @@ def service_status(proxied):
         else:
             running = _status_cache["ports"].get(svc["port"], False)
         state = "running" if running else "stopped" if installed else "missing"
-        entry = {"path": svc["path"], "name": svc["name"], "state": state,
-                 "up": proxied and running}
+        entry = {
+            "path": svc["path"],
+            "name": svc["name"],
+            "state": state,
+            "up": proxied and running,
+        }
         if "note" in svc:
             entry["note"] = svc["note"]
         if svc["name"] == TAILSCALE_NAME and running:
             # Running is not reachable: a box never logged in to a Tailscale network can't be reached through it.
             ts = tailscale_backend()
             if ts and ts["state"] == "needs-login":
-                entry["note"] = "running, but not signed in to a Tailscale network, so nothing reaches the box through it (System → Access)"
+                entry["note"] = (
+                    "running, but not signed in to a Tailscale network, so nothing reaches the box through it (System → Access)"
+                )
         if state == "stopped" and svc.get("unit") == "kiwix.service":
             why = _status_cache.setdefault("why", {})
             if "kiwix" not in why:
@@ -1317,7 +1711,9 @@ def service_status(proxied):
 # the owner's choice in VISITORS_WANT, and a root path unit (irate-box-visitors-switch.path) applies
 # it (scripts/visitors-apply.sh). The helper leaves only two numbers in VISITORS_COUNTS.
 VISITORS_WANT = STATE_DIR / "visitors.want"
-VISITORS_COUNTS = Path(os.environ.get("HUB_VISITORS_COUNTS", "/run/irate-box-visitors/counts.json"))
+VISITORS_COUNTS = Path(
+    os.environ.get("HUB_VISITORS_COUNTS", "/run/irate-box-visitors/counts.json")
+)
 
 
 def write_visitors_want(on):
@@ -1334,9 +1730,17 @@ def visitor_counts():
         data = json.loads(VISITORS_COUNTS.read_text())
     except (OSError, ValueError):
         return None
-    if not isinstance(data, dict) or type(data.get("day")) is not int or type(data.get("week")) is not int:
+    if (
+        not isinstance(data, dict)
+        or type(data.get("day")) is not int
+        or type(data.get("week")) is not int
+    ):
         return None
-    return {"day": data["day"], "week": data["week"], "date": str(data.get("date", ""))[:10]}
+    return {
+        "day": data["day"],
+        "week": data["week"],
+        "date": str(data.get("date", ""))[:10],
+    }
 
 
 # --- remote access -------------------------------------------------------------
@@ -1360,16 +1764,23 @@ def tailscale_backend(run=subprocess.run):
         return _tailscale_cache["val"]
     val = None
     try:
-        r = run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5)
+        r = run(
+            ["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5
+        )
         d = json.loads(r.stdout) if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
         d = None
     if isinstance(d, dict) and isinstance(d.get("BackendState"), str):
         me, net = d.get("Self") or {}, d.get("CurrentTailnet") or {}
         bs = d["BackendState"]
-        val = {"state": {"Running": "connected", "NeedsLogin": "needs-login"}.get(bs, bs.lower()),
-               "name": me.get("DNSName", "").rstrip(".") or me.get("HostName"), "tailnet": net.get("Name"),
-               "ip": next(iter(me.get("TailscaleIPs") or []), None)}
+        val = {
+            "state": {"Running": "connected", "NeedsLogin": "needs-login"}.get(
+                bs, bs.lower()
+            ),
+            "name": me.get("DNSName", "").rstrip(".") or me.get("HostName"),
+            "tailnet": net.get("Name"),
+            "ip": next(iter(me.get("TailscaleIPs") or []), None),
+        }
     _tailscale_cache.update(at=now, val=val)
     return val
 
@@ -1396,7 +1807,9 @@ def write_tailscale_want(mode, hours=None):
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(tmp, TAILSCALE_WANT)
-    _status_cache["at"] = 0.0  # the next /status should show the change, not a cached sweep
+    _status_cache["at"] = (
+        0.0  # the next /status should show the change, not a cached sweep
+    )
 
 
 # --- the librarian -------------------------------------------------------------
@@ -1416,14 +1829,18 @@ def library_snapshot():
             entry["install_result"] = results.get(entry["pending"])
     with _library_lock:
         thread = _library_job["thread"]
-        snap["job"] = {"action": _library_job["action"], "result": _library_job["result"],
-                       "busy": bool(thread and thread.is_alive())}
+        snap["job"] = {
+            "action": _library_job["action"],
+            "result": _library_job["result"],
+            "busy": bool(thread and thread.is_alive()),
+        }
     snap["running"] = snap["running"] or snap["job"]["busy"]
     return snap
 
 
 def library_start(action, fn):
     """Run fn() in the background unless something is already running; False if busy."""
+
     def work():
         try:
             result = fn()
@@ -1431,12 +1848,16 @@ def library_start(action, fn):
             result = refused.answer(exc)
         with _library_lock:
             _library_job["result"] = result
+
     with _library_lock:
         thread = _library_job["thread"]
         if (thread and thread.is_alive()) or librarian.is_running():
             return False
-        _library_job.update(action=action, result=None,
-                            thread=threading.Thread(target=work, daemon=True))
+        _library_job.update(
+            action=action,
+            result=None,
+            thread=threading.Thread(target=work, daemon=True),
+        )
         _library_job["thread"].start()
     return True
 
@@ -1450,10 +1871,17 @@ def library_action(payload):
         if action == "add":
             librarian.add_source(payload.get("source") or {})
         elif action == "remove":
-            librarian.remove_source(str(payload.get("name", "")), bool(payload.get("delete_book")))
+            librarian.remove_source(
+                str(payload.get("name", "")), bool(payload.get("delete_book"))
+            )
         elif action == "policy":
-            librarian.set_policy(**{k: payload[k] for k in librarian.DEFAULT_POLICY
-                                    if type(payload.get(k)) is int})
+            librarian.set_policy(
+                **{
+                    k: payload[k]
+                    for k in librarian.DEFAULT_POLICY
+                    if type(payload.get(k)) is int
+                }
+            )
         elif action == "token":
             librarian.set_token(str(payload.get("value") or ""))
         elif action == "adapt-rate":
@@ -1465,15 +1893,25 @@ def library_action(payload):
             have = {s["name"] for s in librarian.load_config()["sources"]}
             for app in names or librarian.default_apps():
                 if not librarian.APPS.get(app, {}).get("source"):
-                    raise librarian.LibrarianError(M("library.app.not-kept", "The hub does not keep {app} current.", app=app))
+                    raise librarian.LibrarianError(
+                        M(
+                            "library.app.not-kept",
+                            "The hub does not keep {app} current.",
+                            app=app,
+                        )
+                    )
                 if app not in have:
                     librarian.add_source(librarian.default_app_source(app))
         elif action in ("check", "fetch", "update"):
-            if not library_start(action, lambda: librarian.update(names or None, mode=action, **quiet)):
+            if not library_start(
+                action, lambda: librarian.update(names or None, mode=action, **quiet)
+            ):
                 return 409, refused.say(librarian.BUSY)
         elif action == "rollback":
             name, version = str(payload.get("name", "")), payload.get("version") or None
-            if not library_start(action, lambda: {name: librarian.rollback(name, version)}):
+            if not library_start(
+                action, lambda: {name: librarian.rollback(name, version)}
+            ):
                 return 409, refused.say(librarian.BUSY)
         else:
             return 400, refused.say(UNKNOWN_ACTION)
@@ -1485,13 +1923,20 @@ def library_action(payload):
 def git_snapshot():
     """The Git page: the repositories, and the mirrors with what each keeps (mirrors.py)."""
     from irate_box.library import mirrors
+
     snap = gitrepos.snapshot()
     mirror_list = mirrors.snapshot()
     # Each repository's newest build, and which mirror a submodule mirror belongs to (the Git
     # page leaves those out of its grid; Library → Mirrors lists them under their parent).
     last = {}
     for r in ci.snapshot(limit=500)["runs"]:
-        last.setdefault(r["run"].split("/")[0], {k: r.get(k) for k in ("run", "state", "started", "duration", "branch", "commit")})
+        last.setdefault(
+            r["run"].split("/")[0],
+            {
+                k: r.get(k)
+                for k in ("run", "state", "started", "duration", "branch", "commit")
+            },
+        )
     parent = {}
     for m in mirror_list:
         for sub in (m.get("status") or {}).get("submodules", {}).values():
@@ -1499,13 +1944,18 @@ def git_snapshot():
     for r in snap["repos"]:
         r["last_build"] = last.get(r["name"]) if r["area"] == "private" else None
         r["submodule_of"] = parent.get((r["area"], r["name"]))
-    snap.update(mirrors=mirror_list, running=librarian.is_running(), progress=librarian.progress())
+    snap.update(
+        mirrors=mirror_list,
+        running=librarian.is_running(),
+        progress=librarian.progress(),
+    )
     return snap
 
 
 def git_action(payload):
     """(status, body) for POST /admin/git: a repository change (gitrepos.py), or a mirror's."""
     from irate_box.library import mirrors
+
     action = payload.get("action")
     if not str(action).startswith("mirror-"):
         code, body = gitrepos.action(payload)
@@ -1519,9 +1969,17 @@ def git_action(payload):
             mirrors.remove(str(payload.get("name", "")))
         elif action in ("mirror-check", "mirror-update"):
             names = [str(payload["name"])] if payload.get("name") else None
+
             def run():
                 with librarian.Lock():
-                    return {"mirrors": mirrors.sync_all(names, check_only=(action == "mirror-check"), log=lambda *_: None)}
+                    return {
+                        "mirrors": mirrors.sync_all(
+                            names,
+                            check_only=(action == "mirror-check"),
+                            log=lambda *_: None,
+                        )
+                    }
+
             if not library_start(action, run):
                 return 409, refused.say(librarian.BUSY)
         else:
@@ -1536,12 +1994,30 @@ def firmware_action(payload):
     action = payload.get("action")
     try:
         if action == "settings":
-            firmware.set_settings(**{k: payload[k] for k in ("enabled", "configs", "boards", "keep_alpha", "keep_beta", "cache")
-                                     if k in payload})
+            firmware.set_settings(
+                **{
+                    k: payload[k]
+                    for k in (
+                        "enabled",
+                        "configs",
+                        "boards",
+                        "keep_alpha",
+                        "keep_beta",
+                        "cache",
+                    )
+                    if k in payload
+                }
+            )
         elif action in ("check", "update"):
+
             def run():
                 with librarian.Lock():
-                    return {"firmware": firmware.sync(check_only=(action == "check"), log=lambda *_: None)}
+                    return {
+                        "firmware": firmware.sync(
+                            check_only=(action == "check"), log=lambda *_: None
+                        )
+                    }
+
             if not library_start(f"firmware-{action}", run):
                 return 409, refused.say(librarian.BUSY)
         elif action == "flush-cache":
@@ -1565,16 +2041,22 @@ CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
 ACCESS_STATE = CONTROL_DIR / "access.json"
 KITS_DIR = STATE_DIR / "kits"  # the offline kit the root helper made (/admin, Backup)
-KIT_PROGRESS = CONTROL_DIR / "kit-progress.json"  # the root helper's copy of who may open each app
+KIT_PROGRESS = (
+    CONTROL_DIR / "kit-progress.json"
+)  # the root helper's copy of who may open each app
 VERSION_FILE = CHECKOUT / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
 CONTROL_OPS = {unit: _ALL_OPS for unit in manifests.controllable_units(MANIFESTS)}
-CONTROL_OPS.update({f"{WEB_SERVER}.service": ["restart"], "irate-box.service": ["restart"]})
+CONTROL_OPS.update(
+    {f"{WEB_SERVER}.service": ["restart"], "irate-box.service": ["restart"]}
+)
 MIN_PASSWORD = 8
 # First use (hub_control.py, the web server's config): while this root-owned file exists no
 # admin password has been chosen, the web server lets /admin through with no login, and the
 # hub serves only the set-the-password page there. It sits beside that server's config.
-UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
+UNCLAIMED_FILE = Path(
+    os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed")
+)
 
 
 # The front's word that a request came through its /admin route, where it asked for the
@@ -1596,7 +2078,10 @@ def admin_login_on():
     """Whether the box's own admin login (basic auth) is on: the root helper's record (on unless
     it says off)."""
     try:
-        return json.loads((CONTROL_DIR / "admin-login.json").read_text()).get("on") is not False
+        return (
+            json.loads((CONTROL_DIR / "admin-login.json").read_text()).get("on")
+            is not False
+        )
     except (OSError, ValueError, AttributeError):
         return True
 
@@ -1608,22 +2093,43 @@ def admin_login_state():
     except (OSError, ValueError):
         d = {}
     on = d.get("on") is not False
-    return {"on": on, "reach": d.get("reach") or ("network" if on else "off"), "password_set": d.get("password_set", on)}
+    return {
+        "on": on,
+        "reach": d.get("reach") or ("network" if on else "off"),
+        "password_set": d.get("password_set", on),
+    }
 
 
 def accounts_view():
     listing = accounts.listing()
-    return {"settings": accounts.settings(), "accounts": listing, "counts": accounts.counts(),
-            "admin_login": {**admin_login_state(), "results": control_results(10),
-                            "https_admins": [a["name"] for a in listing if a["role"] == "admin" and a["state"] == "user"
-                                             and a["password_set"] and a.get("https_login")]}}
+    return {
+        "settings": accounts.settings(),
+        "accounts": listing,
+        "counts": accounts.counts(),
+        "admin_login": {
+            **admin_login_state(),
+            "results": control_results(10),
+            "https_admins": [
+                a["name"]
+                for a in listing
+                if a["role"] == "admin"
+                and a["state"] == "user"
+                and a["password_set"]
+                and a.get("https_login")
+            ],
+        },
+    }
 
 
 def setup_status(rid):
     out = {"unclaimed": unclaimed()}
     if rid:
-        out["result"] = next((r for r in control_results(20) if r.get("id") == rid), None)
+        out["result"] = next(
+            (r for r in control_results(20) if r.get("id") == rid), None
+        )
     return out
+
+
 # What a backup holds is hub/backup.py's: settings only, or settings and data; never what is
 # fetched again (books, mirrors, builds, caches), nor the GitHub token. Syncthing's identity (its private
 # keys and config.xml: restored, the box keeps its device ID, but whoever holds the file can pose as the box
@@ -1631,12 +2137,17 @@ def setup_status(rid):
 
 
 def _str_list(v, limit=500):
-    return isinstance(v, list) and len(v) <= limit and all(isinstance(x, str) and 0 < len(x) <= 80 for x in v)
+    return (
+        isinstance(v, list)
+        and len(v) <= limit
+        and all(isinstance(x, str) and 0 < len(x) <= 80 for x in v)
+    )
 
 
 def backup_plan():
     """Everything the Backup page offers, with its size (hub/backup.py plan)."""
     from irate_box.hub import kitdefs
+
     try:
         kits_status = json.loads((CONTROL_DIR / "kits.json").read_text())
     except (OSError, ValueError):
@@ -1645,7 +2156,13 @@ def backup_plan():
         titles = {k: d.get("title", k) for k, d in kitdefs.definitions().items()}
     except (OSError, ValueError, AttributeError):
         titles = {}
-    out = backup.plan(STATE_DIR, STATE_DIR / "zim", kits_status, apps_dir=Path("/usr/share/hub/apps"), kit_titles=titles)
+    out = backup.plan(
+        STATE_DIR,
+        STATE_DIR / "zim",
+        kits_status,
+        apps_dir=Path("/usr/share/hub/apps"),
+        kit_titles=titles,
+    )
     out["image_pending"] = _pending_actions("backup-image")
     return out
 
@@ -1678,8 +2195,9 @@ def control_request(req):
 
 def control_results(limit=10):
     out = []
-    for path in sorted(CONTROL_RESULTS.glob("*.json"), key=lambda p: p.stat().st_mtime,
-                       reverse=True)[:limit]:
+    for path in sorted(
+        CONTROL_RESULTS.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+    )[:limit]:
         try:
             out.append(json.loads(path.read_text()))
         except (OSError, ValueError):
@@ -1687,25 +2205,41 @@ def control_results(limit=10):
     return out
 
 
-MESHTASTICD = "meshtasticd.service"   # sampled for its trends where installed; not one of the hub's services
+MESHTASTICD = "meshtasticd.service"  # sampled for its trends where installed; not one of the hub's services
 
 
 def meshtasticd_state():
     """meshtasticd on Overview, or None where it is not installed: running or not, how it last
     ended, its restarts since the box started, and systemd's start limit, which ends a crash loop
-    (the unit restarts it always, up to the limit, then leaves it failed until it is started again)."""
+    (the unit restarts it always, up to the limit, then leaves it failed until it is started again).
+    """
     try:
-        out = subprocess.run(["systemctl", "show", "--property=LoadState,ActiveState,SubState,Result,NRestarts,"
-                              "StartLimitBurst,StartLimitIntervalUSec", MESHTASTICD],
-                             capture_output=True, text=True, timeout=2).stdout
+        out = subprocess.run(
+            [
+                "systemctl",
+                "show",
+                "--property=LoadState,ActiveState,SubState,Result,NRestarts,"
+                "StartLimitBurst,StartLimitIntervalUSec",
+                MESHTASTICD,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     f = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
     if f.get("LoadState") in (None, "", "not-found"):
         return None
     num = lambda k: int(f[k]) if f.get(k, "").isdigit() else None  # noqa: E731
-    return {"active": f.get("ActiveState"), "sub": f.get("SubState"), "result": f.get("Result"),
-            "restarts": num("NRestarts"), "burst": num("StartLimitBurst"), "interval": f.get("StartLimitIntervalUSec")}
+    return {
+        "active": f.get("ActiveState"),
+        "sub": f.get("SubState"),
+        "result": f.get("Result"),
+        "restarts": num("NRestarts"),
+        "burst": num("StartLimitBurst"),
+        "interval": f.get("StartLimitIntervalUSec"),
+    }
 
 
 def net_uptime_72h():
@@ -1717,10 +2251,15 @@ def net_uptime_72h():
     except (OSError, ValueError):
         return {}
     out = {}
-    for iface, u in sorted(linkhistory.summarize(hist).items(), key=lambda kv: (kv[1]["kind"] != "uplink", kv[0])):
+    for iface, u in sorted(
+        linkhistory.summarize(hist).items(),
+        key=lambda kv: (kv[1]["kind"] != "uplink", kv[0]),
+    ):
         # A link never up in the 72 hours (a port with no cable) is left off: drawn, it would be red throughout.
         if u["summary"]["hours_seen"] and (u["kind"] == "uplink" or u["summary"]["up"]):
-            out[iface] = {k: u[k] for k in ("kind", "hours", "hour_cols", "hour_full", "summary")}
+            out[iface] = {
+                k: u[k] for k in ("kind", "hours", "hour_cols", "hour_full", "summary")
+            }
     return out
 
 
@@ -1732,15 +2271,36 @@ def admin_box(proxied):
     for entry in service_status(proxied):
         unit = by_name.get(entry["name"], {}).get("unit")
         _, active, enabled = states.get(unit, (True, False, False))
-        services.append(dict(entry, unit=unit, active=active, enabled=enabled,
-                             ops=CONTROL_OPS.get(unit, [])))
+        services.append(
+            dict(
+                entry,
+                unit=unit,
+                active=active,
+                enabled=enabled,
+                ops=CONTROL_OPS.get(unit, []),
+            )
+        )
     now = CLOCK.ticks()
-    return {"system": system_status(), "uptime": now, "online": online_count(now), "memory_history": memhistory.snapshot(),
-            "joined": joined_count(), "services": services, "version": hub_version(),
-            "service_uptime": svchistory.summarize(svchistory.load()), "page_use": pagehistory.summarize(pagehistory.load()),
-            "net_uptime": net_uptime_72h(), "meshtasticd": meshtasticd_state(), "first_use": unclaimed(),
-            "results": control_results(),
-            "pending": len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0}
+    return {
+        "system": system_status(),
+        "uptime": now,
+        "online": online_count(now),
+        "memory_history": memhistory.snapshot(),
+        "joined": joined_count(),
+        "services": services,
+        "version": hub_version(),
+        "service_uptime": svchistory.summarize(svchistory.load()),
+        "page_use": pagehistory.summarize(pagehistory.load()),
+        "net_uptime": net_uptime_72h(),
+        "meshtasticd": meshtasticd_state(),
+        "first_use": unclaimed(),
+        "results": control_results(),
+        "pending": (
+            len(list(CONTROL_REQUESTS.glob("*.json")))
+            if CONTROL_REQUESTS.exists()
+            else 0
+        ),
+    }
 
 
 # A refusal, as the pages read it (refused.py): error, its English, as every page expects; message, the message
@@ -1749,19 +2309,39 @@ refusal = refused.answer
 
 # Refusals said in more than one place. A request no page of this version makes (an unknown action, a malformed
 # body) is still refused in a sentence: an older page open in a tab can make one.
-UNKNOWN_ACTION = M("hub.action.unknown", "Unknown action. Reload the page and try again.")
-ACCEPTED = M("hub.accept.done", "Accepted. The finding is no longer in the review list.")
-REOPENED = M("hub.accept.reopened", "Reopened. The finding is in the review list again.")
-BAD_REQUEST = M("hub.request.invalid", "Invalid request. Reload the page and try again.")
+UNKNOWN_ACTION = M(
+    "hub.action.unknown", "Unknown action. Reload the page and try again."
+)
+ACCEPTED = M(
+    "hub.accept.done", "Accepted. The finding is no longer in the review list."
+)
+REOPENED = M(
+    "hub.accept.reopened", "Reopened. The finding is in the review list again."
+)
+BAD_REQUEST = M(
+    "hub.request.invalid", "Invalid request. Reload the page and try again."
+)
 NOT_SHOWN = M("hub.not-shown", "Not found. The administrator does not show this page.")
-NO_THREAD = M("board.thread.not-found", "Thread not found. It was deleted, or you cannot see it.")
-CONSENT_FIRST = M("addons.consent.first", "Read the consent text of the add-on and agree to it first.")
+NO_THREAD = M(
+    "board.thread.not-found", "Thread not found. It was deleted, or you cannot see it."
+)
+CONSENT_FIRST = M(
+    "addons.consent.first", "Read the consent text of the add-on and agree to it first."
+)
 CROSS_SITE = M("hub.cross-site", "Refused. A change must come from a page of this box.")
-SETUP_FIRST = M("setup.first", "The box is in its first use. Select Set up this box and make the first administrator account.")
+SETUP_FIRST = M(
+    "setup.first",
+    "The box is in its first use. Select Set up this box and make the first administrator account.",
+)
 
 
 def password_length():
-    return M("hub.password.length", "The password must be {min} to {max} characters, on one line.", min=MIN_PASSWORD, max=128)
+    return M(
+        "hub.password.length",
+        "The password must be {min} to {max} characters, on one line.",
+        min=MIN_PASSWORD,
+        max=128,
+    )
 
 
 def _already_added(addon):
@@ -1771,21 +2351,27 @@ def _already_added(addon):
 def _busy_or(code, exc):
     """A librarian's failure: 409 when the librarian is already running (or the add-on is already added), else code."""
     m = getattr(exc, "message", None)
-    return (409 if isinstance(m, dict) and m.get("id") in (librarian.BUSY["id"], "addons.added") else code), refused.answer(exc)
+    return (
+        409
+        if isinstance(m, dict) and m.get("id") in (librarian.BUSY["id"], "addons.added")
+        else code
+    ), refused.answer(exc)
 
 
 UPDATE_STATE = CONTROL_DIR / "update.json"
 UPDATE_LOG = CONTROL_DIR / "update.log"
 UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
-SIGNING_STATE = CONTROL_DIR / "update-signing.json"  # root's: the level, and the keys' names
+SIGNING_STATE = (
+    CONTROL_DIR / "update-signing.json"
+)  # root's: the level, and the keys' names
 # Guests' onward internet (root/share.py): the level root keeps, and the devices this hub has asked
 # root to let out (for the captive API's answer; root's table holds the real list, each for 12 h).
 SHARE_STATE = CONTROL_DIR / "share.json"
 SHARE_LEVELS = ("off", "users-web", "sheet-web", "sheet-all", "open")
 SHARE_LET_OUT = ("users-web", "sheet-web", "sheet-all")
 SHARE_HOURS = 12
-_let_out = {}            # address -> until (time.time())
+_let_out = {}  # address -> until (time.time())
 _let_out_lock = threading.Lock()
 
 
@@ -1799,7 +2385,10 @@ def share_level():
 
 def on_hotspot(addr):
     try:
-        return ipaddress.ip_address(addr) in ipaddress.ip_network("192.168.4.0/24") and addr != "192.168.4.1"
+        return (
+            ipaddress.ip_address(addr) in ipaddress.ip_network("192.168.4.0/24")
+            and addr != "192.168.4.1"
+        )
     except ValueError:
         return False
 
@@ -1809,9 +2398,14 @@ def let_out(addr):
         return _let_out.get(addr, 0) > time.time()
 
 
-UPDATE_ACTIONS = {"check": "update-check", "fetch": "update-fetch", "install": "update-install",
-                  "force-install": "update-force-install",
-                  "doctor": "update-doctor", "clear-cache": "update-clear-cache"}
+UPDATE_ACTIONS = {
+    "check": "update-check",
+    "fetch": "update-fetch",
+    "install": "update-install",
+    "force-install": "update-force-install",
+    "doctor": "update-doctor",
+    "clear-cache": "update-clear-cache",
+}
 # Terminal colour codes, in logs written before install.sh stopped sending them to files.
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
@@ -1846,6 +2440,7 @@ def _pending_actions(prefix):
 def _metered_view():
     """For the page: whether the box is on a metered network now, and since when scheduled downloads wait."""
     from irate_box.hub import netpolicy
+
     try:
         now = netpolicy.metered_now()
     except (OSError, ValueError):
@@ -1862,7 +2457,10 @@ def update_snapshot():
     except (OSError, ValueError):
         state = None
     try:
-        log = [ANSI_RE.sub("", line) for line in UPDATE_LOG.read_text(errors="replace").splitlines()[-40:]]
+        log = [
+            ANSI_RE.sub("", line)
+            for line in UPDATE_LOG.read_text(errors="replace").splitlines()[-40:]
+        ]
     except OSError:
         log = []
     try:
@@ -1873,15 +2471,32 @@ def update_snapshot():
     pending = _pending_actions("update-")
     # Automatic updates: the librarian's policy for them, and what its last step did.
     policy = librarian.load_config()["policy"]
-    auto = {k: policy[k] for k in ("hub_check_every_hours", "hub_auto", "hub_window_start", "hub_window_end")}
+    auto = {
+        k: policy[k]
+        for k in (
+            "hub_check_every_hours",
+            "hub_auto",
+            "hub_window_start",
+            "hub_window_end",
+        )
+    }
     auto["state"] = librarian._hub_update_state()
     try:
         sig = json.loads(SIGNING_STATE.read_text())
     except (OSError, ValueError):
         sig = {"level": "off", "keys": []}
-    return {"version": hub_version(), "state": state, "log": log, "pending": pending,
-            "progress": update_progress(), "doctor": doctor, "results": control_results(5), "auto": auto, "signing": sig,
-            "metered": _metered_view()}
+    return {
+        "version": hub_version(),
+        "state": state,
+        "log": log,
+        "pending": pending,
+        "progress": update_progress(),
+        "doctor": doctor,
+        "results": control_results(5),
+        "auto": auto,
+        "signing": sig,
+        "metered": _metered_view(),
+    }
 
 
 SECURITY_STATE = CONTROL_DIR / "security.json"
@@ -1897,18 +2512,31 @@ def setup_blocked():
     except (OSError, ValueError):
         return None
     for f in scan.get("findings", []) if isinstance(scan, dict) else []:
-        if isinstance(f, dict) and f.get("id") == "sudo-nopasswd" and f.get("status") == "problem":
-            return M("setup.blocked", "Not finished yet. {reason} The Security page offers the fixes. Then finish here.",
-                     reason=f.get("summary") or f.get("detail", ""))
+        if (
+            isinstance(f, dict)
+            and f.get("id") == "sudo-nopasswd"
+            and f.get("status") == "problem"
+        ):
+            return M(
+                "setup.blocked",
+                "Not finished yet. {reason} The Security page offers the fixes. Then finish here.",
+                reason=f.get("summary") or f.get("detail", ""),
+            )
     return None
+
+
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
 IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
-SECURITY_CHOICE_RE = re.compile(r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._/-]*)?$")   # tcp/8123: a port the hotspot firewall opens
+SECURITY_CHOICE_RE = re.compile(
+    r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._/-]*)?$"
+)  # tcp/8123: a port the hotspot firewall opens
 
 
 SECURITY_ACCEPTED = STATE_DIR / "security-accepted.json"
-ACCEPT_KEY_RE = re.compile(r"^(setting|service|finding|compound|kit|package|hub):[A-Za-z0-9:/._@+-]{1,180}$")
+ACCEPT_KEY_RE = re.compile(
+    r"^(setting|service|finding|compound|kit|package|hub):[A-Za-z0-9:/._@+-]{1,180}$"
+)
 
 
 def security_accepted():
@@ -1923,7 +2551,9 @@ def security_accepted():
 
 def security_accept(key, title, yes):
     if not isinstance(key, str) or not ACCEPT_KEY_RE.match(key):
-        raise refused.Refused(M("accept.key.invalid", "Invalid item. Reload the page and try again."))
+        raise refused.Refused(
+            M("accept.key.invalid", "Invalid item. Reload the page and try again.")
+        )
     return _accept(SECURITY_ACCEPTED, security_accepted(), key, title, yes)
 
 
@@ -1931,7 +2561,12 @@ def _accept(path, data, key, title, yes):
     """One doctor's accepted list, a key accepted (with when and its title) or taken back; written whole."""
     if yes:
         if len(data) >= 500 and key not in data:
-            raise refused.Refused(M("accept.full", "The list already has 500 accepted items. Reopen some items first."))
+            raise refused.Refused(
+                M(
+                    "accept.full",
+                    "The list already has 500 accepted items. Reopen some items first.",
+                )
+            )
         data[key] = {"at": time.time(), "title": str(title or "")[:200]}
     else:
         data.pop(key, None)
@@ -1957,7 +2592,9 @@ def health_accepted():
 
 def health_accept(key, title, yes):
     if not isinstance(key, str) or not HEALTH_KEY_RE.match(key):
-        raise refused.Refused(M("accept.key.invalid", "Invalid item. Reload the page and try again."))
+        raise refused.Refused(
+            M("accept.key.invalid", "Invalid item. Reload the page and try again.")
+        )
     return _accept(HEALTH_ACCEPTED, health_accepted(), key, title, yes)
 
 
@@ -1972,51 +2609,173 @@ def security_snapshot():
     """What the Security page shows: the hub's own lines (which only the hub knows), then the
     root helper's last scan of the box. The lines follow HTTPS as it is."""
     tls = _tls_status()
-    https, admin_only = bool(tls.get("on")), bool(tls.get("admin_only"))
-    to_https = {"go": "security-https", "where": M("go.security-https", "Security → HTTPS")}
+    transport = tls.get("transport", "both" if tls.get("on") else "http")
+    https, admin_only = bool(tls.get("on")), bool(
+        tls.get("admin_only")
+    ) or transport in ("discovery", "https")
+    to_https = {
+        "go": "security-https",
+        "where": M("go.security-https", "Security → HTTPS"),
+    }
     pw_t = M("hub.password.title", "Administrator password")
     if unclaimed():
-        pw = finding.finding("admin-password", pw_t, "problem", M("hub.password.unset", "No administrator account is set yet. The box is in its "
-                                                                                "first use."),
-                     M("hub.password.unset.why", "Until an administrator account is made, any device on the network can use the "
-                                                 "administration pages."),
-                     M("hub.password.unset.fix", "Select Set up this box, and make the administrator account over HTTPS. Or make it at "
-                                                 "the console, over SSH."), commands=["sudo /opt/irate-box/irate-box hub_control set-admin NAME"])
+        pw = finding.finding(
+            "admin-password",
+            pw_t,
+            "problem",
+            M(
+                "hub.password.unset",
+                "No administrator account is set yet. The box is in its " "first use.",
+            ),
+            M(
+                "hub.password.unset.why",
+                "Until an administrator account is made, any device on the network can use the "
+                "administration pages.",
+            ),
+            M(
+                "hub.password.unset.fix",
+                "Select Set up this box, and make the administrator account over HTTPS. Or make it at "
+                "the console, over SSH.",
+            ),
+            commands=["sudo /opt/irate-box/irate-box hub_control set-admin NAME"],
+        )
     elif https and admin_only:
-        pw = finding.finding("admin-password", pw_t, "ok", M("hub.password.https-only", "It is set, and the administration pages answer over "
-                                                                                "HTTPS only. The password never crosses the network "
-                                                                                "unencrypted."))
+        pw = finding.finding(
+            "admin-password",
+            pw_t,
+            "ok",
+            M(
+                "hub.password.https-only",
+                "It is set, and the administration pages answer over "
+                "HTTPS only. The password never crosses the network "
+                "unencrypted.",
+            ),
+        )
     elif https:
-        pw = finding.finding("admin-password", pw_t, "warn", M("hub.password.both", "It is set. HTTPS is on, but the administration pages also "
-                                                                            "answer over plain HTTP."),
-                     M("hub.password.both.why", "A browser that opens them as http:// sends the password unencrypted. Anyone who "
-                                                "listens on an open hotspot can read it."),
-                     M("hub.password.both.fix", "Make the administration pages HTTPS only, after this device trusts the box's "
-                                                "certificate."), do=to_https)
+        pw = finding.finding(
+            "admin-password",
+            pw_t,
+            "warn",
+            M(
+                "hub.password.both",
+                "It is set. HTTPS is on, but the administration pages also "
+                "answer over plain HTTP.",
+            ),
+            M(
+                "hub.password.both.why",
+                "A browser that opens them as http:// sends the password unencrypted. Anyone who "
+                "listens on an open hotspot can read it.",
+            ),
+            M(
+                "hub.password.both.fix",
+                "Make the administration pages HTTPS only, after this device trusts the box's "
+                "certificate.",
+            ),
+            do=to_https,
+        )
     else:
-        pw = finding.finding("admin-password", pw_t, "warn", M("hub.password.plain", "It is set. It travels over plain HTTP."),
-                     M("hub.password.plain.why", "On an open hotspot, anyone who listens can read it the first time a browser sends it."),
-                     M("hub.password.plain.fix", "Turn HTTPS on, and install the box's certificate on your devices. Until then, sign in "
-                                                 "from the LAN or over Tailscale."), do=to_https)
+        pw = finding.finding(
+            "admin-password",
+            pw_t,
+            "warn",
+            M("hub.password.plain", "It is set. It travels over plain HTTP."),
+            M(
+                "hub.password.plain.why",
+                "On an open hotspot, anyone who listens can read it the first time a browser sends it.",
+            ),
+            M(
+                "hub.password.plain.fix",
+                "Turn HTTPS on, and install the box's certificate on your devices. Until then, sign in "
+                "from the LAN or over Tailscale.",
+            ),
+            do=to_https,
+        )
     https_t = M("hub.https.title", "HTTPS")
-    hub = [pw, finding.finding("plain-http", https_t, "ok",
-                       M("hub.https.on", "HTTPS is on. Devices that installed the box's certificate (from /certificate) use HTTPS when "
-                                         "they connect."),
-                       notes=[M("hub.https.plain-too", "Plain HTTP still answers, for the sign-in sheet of the hotspot and for devices "
-                                                       "without the certificate.")]) if https else
-           finding.finding("plain-http", https_t, "warn", M("hub.https.off", "The box has no certificate in use."),
-                   M("hub.https.off.why", "Other people on the same network can read and change what a browser and the box send to "
-                                          "each other: pages, messages and uploads."),
-                   M("hub.https.off.fix", "Make the box's certificate. Then install it on your own devices from /certificate."), do=to_https),
-           finding.finding("one-origin", M("hub.origin.title", "Apps on the address of the administration pages"), "warn",
-                   M("hub.origin.shared", "The drawing editors (Excalidraw, Mermaid) and the hub's other apps run on the address of the "
-                                          "administration pages."),
-                   M("hub.origin.why", "A hostile page among them can act with your sign-in while you are signed in."),
-                   M("hub.origin.fix", "Select Sign out after administration work. Signing out does not remove this risk."),
-                   notes=[M("hub.origin.own", "Notes, the books, Git and the add-ons have addresses of their own. Giving the editors an "
-                                              "address of their own is planned.")],
-                   do={"hub": M("hub.origin.design", "This is the design of the hub. There is nothing to set here. Accept the risk, or "
-                                                     "sign out after administration work.")})]
+    hub = [
+        pw,
+        (
+            finding.finding(
+                "plain-http",
+                https_t,
+                "ok",
+                M(
+                    "hub.https.on",
+                    "HTTPS is on. Devices that installed the box's certificate (from /certificate) use HTTPS when "
+                    "they connect.",
+                ),
+                notes=[
+                    (
+                        M(
+                            "hub.https.http-disabled",
+                            "HTTP is disabled, including HTTP captive-portal discovery.",
+                        )
+                        if transport == "https"
+                        else (
+                            M(
+                                "hub.https.http-discovery",
+                                "HTTP serves only captive discovery probes and redirects other requests to HTTPS.",
+                            )
+                            if transport == "discovery"
+                            else M(
+                                "hub.https.plain-too",
+                                "Plain HTTP still answers, for the sign-in sheet of the hotspot and for devices "
+                                "without the certificate.",
+                            )
+                        )
+                    )
+                ],
+            )
+            if https
+            else finding.finding(
+                "plain-http",
+                https_t,
+                "warn",
+                M("hub.https.off", "The box has no certificate in use."),
+                M(
+                    "hub.https.off.why",
+                    "Other people on the same network can read and change what a browser and the box send to "
+                    "each other: pages, messages and uploads.",
+                ),
+                M(
+                    "hub.https.off.fix",
+                    "Make the box's certificate. Then install it on your own devices from /certificate.",
+                ),
+                do=to_https,
+            )
+        ),
+        finding.finding(
+            "one-origin",
+            M("hub.origin.title", "Apps on the address of the administration pages"),
+            "warn",
+            M(
+                "hub.origin.shared",
+                "The drawing editors (Excalidraw, Mermaid) and the hub's other apps run on the address of the "
+                "administration pages.",
+            ),
+            M(
+                "hub.origin.why",
+                "A hostile page among them can act with your sign-in while you are signed in.",
+            ),
+            M(
+                "hub.origin.fix",
+                "Select Sign out after administration work. Signing out does not remove this risk.",
+            ),
+            notes=[
+                M(
+                    "hub.origin.own",
+                    "Notes, the books, Git and the add-ons have addresses of their own. Giving the editors an "
+                    "address of their own is planned.",
+                )
+            ],
+            do={
+                "hub": M(
+                    "hub.origin.design",
+                    "This is the design of the hub. There is nothing to set here. Accept the risk, or "
+                    "sign out after administration work.",
+                )
+            },
+        ),
+    ]
     try:
         scan = finding.current(json.loads(SECURITY_STATE.read_text()))
     except (OSError, ValueError):
@@ -2026,7 +2785,10 @@ def security_snapshot():
     except (OSError, ValueError):
         audit = None
     try:
-        log = [ANSI_RE.sub("", line) for line in SECURITY_LOG.read_text(errors="replace").splitlines()[-40:]]
+        log = [
+            ANSI_RE.sub("", line)
+            for line in SECURITY_LOG.read_text(errors="replace").splitlines()[-40:]
+        ]
     except OSError:
         log = []
     deep = {}
@@ -2036,33 +2798,55 @@ def security_snapshot():
     except (OSError, ValueError):
         pass
     try:
-        deep["progress"] = json.loads((CONTROL_DIR / "security-deep-progress.json").read_text())
+        deep["progress"] = json.loads(
+            (CONTROL_DIR / "security-deep-progress.json").read_text()
+        )
     except (OSError, ValueError):
         pass
     imports = {}
     for kind in ("openvas", "nmap"):
         try:
-            rep = json.loads((STATE_DIR / "security-imports" / f"{kind}.json").read_text())
-            imports[kind] = {"name": rep.get("name"), "ran": rep.get("ran"), "imported": rep.get("imported"), "results": len(rep.get("results", []))}
+            rep = json.loads(
+                (STATE_DIR / "security-imports" / f"{kind}.json").read_text()
+            )
+            imports[kind] = {
+                "name": rep.get("name"),
+                "ran": rep.get("ran"),
+                "imported": rep.get("imported"),
+                "results": len(rep.get("results", [])),
+            }
         except (OSError, ValueError):
             pass
-    return {"hub": hub, "scan": scan, "audit": audit, "deep": deep, "imports": imports, "log": log, "pending": _pending_actions("security-"),
-            "results": control_results(5), "accepted": security_accepted()}
+    return {
+        "hub": hub,
+        "scan": scan,
+        "audit": audit,
+        "deep": deep,
+        "imports": imports,
+        "log": log,
+        "pending": _pending_actions("security-"),
+        "results": control_results(5),
+        "accepted": security_accepted(),
+    }
 
 
 HEALTH_STATE = CONTROL_DIR / "health.json"
 INSTALL_LOG_DIR = Path(os.environ.get("HUB_LOG_DIR", "/var/log/irate-box"))
-HEALTH_CHOICE_RE = re.compile(r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
-                              r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
-                              r"|^(kiwix-rebuild|kiwix-off|rerun-install|net-scan|rtc-find|rtc-save|rtc-remove)$"
-                              r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
-                              r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
-                              r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$|^clock-undo$"
-                              r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
-                              r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
-                              r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
-                              r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")
-HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
+HEALTH_CHOICE_RE = re.compile(
+    r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
+    r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
+    r"|^(kiwix-rebuild|kiwix-off|rerun-install|net-scan|rtc-find|rtc-save|rtc-remove)$"
+    r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
+    r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
+    r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$|^clock-undo$"
+    r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
+    r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
+    r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
+    r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
+)
+HELPER_STUCK_AFTER = (
+    90  # seconds a request may wait before the page says the helper is not answering
+)
 HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
 # Busy spells logged, so that patterns in false alarms can be seen:
 # one entry per job of the helper's that kept a request waiting past HELPER_STUCK_AFTER.
@@ -2082,20 +2866,37 @@ def _helper_doing():
     except (OSError, ValueError, AttributeError):
         pass
     try:
-        r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "MainPID"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            ["systemctl", "show", "irate-box-control.service", "-p", "MainPID"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         pid = r.stdout.strip().partition("=")[2]
-        kids = Path(f"/proc/{pid}/task/{pid}/children").read_text().split() if pid.isdigit() and pid != "0" else []
+        kids = (
+            Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+            if pid.isdigit() and pid != "0"
+            else []
+        )
         cmd = Path(f"/proc/{kids[0]}/cmdline").read_bytes().split(b"\0") if kids else []
     except (OSError, subprocess.SubprocessError):
         return None
     words = [w.decode(errors="replace") for w in cmd if w]
     # The command and its plain words; options' values (paths) kept short.
-    return " ".join(Path(w).name if w.startswith("/") else w for w in words if not w.startswith("Dir::") and w != "-o")[:160] or None
+    return (
+        " ".join(
+            Path(w).name if w.startswith("/") else w
+            for w in words
+            if not w.startswith("Dir::") and w != "-o"
+        )[:160]
+        or None
+    )
 
 
 def _log_busy(started, busy, waited, now=None):
     """One entry per job: when it started, how long it ran, the longest any request waited behind it,
-    what waited, and what the helper was doing. Updated as the job goes on; the last 200 kept."""
+    what waited, and what the helper was doing. Updated as the job goes on; the last 200 kept.
+    """
     now = now or time.time()
     waiting = []
     for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
@@ -2108,12 +2909,22 @@ def _log_busy(started, busy, waited, now=None):
             log = json.loads(HELPER_BUSY_LOG.read_text())
         except (OSError, ValueError):
             log = []
-        entry = next((e for e in log if abs(e.get("job_started", 0) - started) < 10), None)
+        entry = next(
+            (e for e in log if abs(e.get("job_started", 0) - started) < 10), None
+        )
         if entry is None:
-            entry = {"job_started": round(started), "doing": _helper_doing(), "waiting": []}
+            entry = {
+                "job_started": round(started),
+                "doing": _helper_doing(),
+                "waiting": [],
+            }
             log.append(entry)
-        entry.update(seen=round(now), busy_for=round(busy), longest_wait=max(entry.get("longest_wait", 0), round(waited)),
-                     waiting=sorted(set(entry["waiting"]) | set(waiting)))
+        entry.update(
+            seen=round(now),
+            busy_for=round(busy),
+            longest_wait=max(entry.get("longest_wait", 0), round(waited)),
+            waiting=sorted(set(entry["waiting"]) | set(waiting)),
+        )
         if not entry.get("doing"):
             entry["doing"] = _helper_doing()
         try:
@@ -2126,7 +2937,11 @@ def helper_busy_summary(now=None):
     """The last week's busy spells, for the Health page: how many, the longest wait, the commonest job."""
     now = now or time.time()
     try:
-        log = [e for e in json.loads(HELPER_BUSY_LOG.read_text()) if e.get("seen", 0) > now - 7 * 86400]
+        log = [
+            e
+            for e in json.loads(HELPER_BUSY_LOG.read_text())
+            if e.get("seen", 0) > now - 7 * 86400
+        ]
     except (OSError, ValueError):
         return None
     if not log:
@@ -2136,8 +2951,13 @@ def helper_busy_summary(now=None):
         k = " ".join((e.get("doing") or "?").split()[:2])
         kinds[k] = kinds.get(k, 0) + 1
     top = max(kinds.items(), key=lambda x: x[1])
-    return {"count": len(log), "longest_wait": max(e.get("longest_wait", 0) for e in log), "commonest": top[0], "commonest_n": top[1],
-            "last": log[-1]}
+    return {
+        "count": len(log),
+        "longest_wait": max(e.get("longest_wait", 0) for e in log),
+        "commonest": top[0],
+        "commonest_n": top[1],
+        "last": log[-1],
+    }
 
 
 def helper_busy():
@@ -2146,18 +2966,38 @@ def helper_busy():
     waiting without anything being wrong (a kit's refresh of minutes is not "not answering").
     systemctl show is the hub's to ask."""
     try:
-        r = subprocess.run(["systemctl", "show", "irate-box-control.service", "-p", "ActiveState",
-                            "-p", "InactiveExitTimestampMonotonic"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            [
+                "systemctl",
+                "show",
+                "irate-box-control.service",
+                "-p",
+                "ActiveState",
+                "-p",
+                "InactiveExitTimestampMonotonic",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
     except (OSError, subprocess.SubprocessError):
         return None
-    f = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
-    if f.get("ActiveState") not in ("activating", "active") or not f.get("InactiveExitTimestampMonotonic", "").isdigit():
+    f = dict(line.split("=", 1) for line in r.stdout.splitlines() if "=" in line)
+    if (
+        f.get("ActiveState") not in ("activating", "active")
+        or not f.get("InactiveExitTimestampMonotonic", "").isdigit()
+    ):
         return None
     since = int(f["InactiveExitTimestampMonotonic"]) / 1e6
     return max(0, time.monotonic() - since) if since else None
 
 
-QUEUE_DETAIL_KEYS = ("kit", "app", "choice", "name")  # what a request is for, safe to show: never its other fields
+QUEUE_DETAIL_KEYS = (
+    "kit",
+    "app",
+    "choice",
+    "name",
+)  # what a request is for, safe to show: never its other fields
 
 
 def helper_queue(done=8):
@@ -2165,25 +3005,53 @@ def helper_queue(done=8):
     waits, oldest first, and the last answers. A request shows only its action and what it is for (a kit, an
     app, a doctor's choice, a name): requests can carry passwords and passphrases."""
     now = time.time()
-    age = lambda at: round(max(0, now - at)) if isinstance(at, (int, float)) else None  # by the hub's clock, never the browser's
+
+    def age(at):
+        return round(max(0, now - at)) if isinstance(at, (int, float)) else None
 
     def detail(req):
-        return next((str(req[k])[:60] for k in QUEUE_DETAIL_KEYS if isinstance(req.get(k), str)), "")
+        return next(
+            (
+                str(req[k])[:60]
+                for k in QUEUE_DETAIL_KEYS
+                if isinstance(req.get(k), str)
+            ),
+            "",
+        )
+
     try:
         d = json.loads((CONTROL_DIR / "helper-doing.json").read_text())
-        running = {"action": str(d.get("action", ""))[:40], "detail": str(d.get("detail", ""))[:60], "for": age(d.get("started"))}
+        running = {
+            "action": str(d.get("action", ""))[:40],
+            "detail": str(d.get("detail", ""))[:60],
+            "for": age(d.get("started")),
+        }
     except (OSError, ValueError, AttributeError):
         running = None
     waiting = []
     for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
         try:
             req = json.loads(path.read_text())
-            waiting.append({"id": path.stem[:32], "action": str(req.get("action", "?"))[:40], "detail": detail(req), "waited": age(path.stat().st_mtime)})
+            waiting.append(
+                {
+                    "id": path.stem[:32],
+                    "action": str(req.get("action", "?"))[:40],
+                    "detail": detail(req),
+                    "waited": age(path.stat().st_mtime),
+                }
+            )
         except (OSError, ValueError, AttributeError):
             continue
     waiting.sort(key=lambda w: -(w["waited"] or 0))
-    finished = [{"id": str(r.get("id", ""))[:32], "ok": bool(r.get("ok")), "message": str(r.get("message", ""))[:200], "ago": age(r.get("at"))}
-                for r in control_results(done)]
+    finished = [
+        {
+            "id": str(r.get("id", ""))[:32],
+            "ok": bool(r.get("ok")),
+            "message": str(r.get("message", ""))[:200],
+            "ago": age(r.get("at")),
+        }
+        for r in control_results(done)
+    ]
     return {"running": running, "waiting": waiting, "done": finished}
 
 
@@ -2204,29 +3072,54 @@ def helper_state():
     working = busy is not None and busy < HELPER_BUSY_UP_TO
     if working:
         _log_busy(time.time() - busy, busy, age)
-    return {"waiting": _pending_actions(""), "oldest": round(age), "stuck": age > HELPER_STUCK_AFTER and not working,
-            "busy": round(busy) if working else None, "busy_log": helper_busy_summary(),
-            "commands": ["sudo systemctl reset-failed irate-box-control.service irate-box-control.path",
-                         "sudo systemctl start irate-box-control.path",
-                         "sudo /opt/irate-box/irate-box health"]}
+    return {
+        "waiting": _pending_actions(""),
+        "oldest": round(age),
+        "stuck": age > HELPER_STUCK_AFTER and not working,
+        "busy": round(busy) if working else None,
+        "busy_log": helper_busy_summary(),
+        "commands": [
+            "sudo systemctl reset-failed irate-box-control.service irate-box-control.path",
+            "sudo systemctl start irate-box-control.path",
+            "sudo /opt/irate-box/irate-box health",
+        ],
+    }
 
 
 def health_snapshot():
     """The Health page: the doctor's last report (root helper), the last install's record and
-    the end of its output (both readable by the hub), and whether the helper is answering."""
+    the end of its output (both readable by the hub), and whether the helper is answering.
+    """
+
     def load(path):
         try:
             return json.loads(path.read_text())
         except (OSError, ValueError):
             return None
+
     try:
-        log = [ANSI_RE.sub("", line) for line in (INSTALL_LOG_DIR / "install.log").read_text(errors="replace").splitlines()[-80:]]
+        log = [
+            ANSI_RE.sub("", line)
+            for line in (INSTALL_LOG_DIR / "install.log")
+            .read_text(errors="replace")
+            .splitlines()[-80:]
+        ]
     except OSError:
         log = []
-    return {"report": finding.current(load(HEALTH_STATE)), "install": load(INSTALL_LOG_DIR / "install-state.json"), "log": log,
-            "ladder": jsonlog.read(uplink.LADDER), "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
-            "helper": helper_state(), "queue": helper_queue(), "pending": _pending_actions("health-"), "results": control_results(5),
-            "progress": update_progress(), "watchers": watchers_glance(), "accepted": health_accepted()}
+    return {
+        "report": finding.current(load(HEALTH_STATE)),
+        "install": load(INSTALL_LOG_DIR / "install-state.json"),
+        "log": log,
+        "ladder": jsonlog.read(uplink.LADDER),
+        "ladder_gaps": linkhistory.gaps(load(uplink.HISTORY)),
+        "helper": helper_state(),
+        "queue": helper_queue(),
+        "pending": _pending_actions("health-"),
+        "results": control_results(5),
+        "progress": update_progress(),
+        "watchers": watchers_glance(),
+        "accepted": health_accepted(),
+    }
 
 
 def watchers_glance():
@@ -2238,41 +3131,65 @@ def watchers_glance():
         u = json.loads(uplink.status_path().read_text())
     except (OSError, ValueError):
         u = {}
-    return {"last_boot": boots[-1] if boots else None, "last_repair": repairs[-1] if repairs else None,
-            "link": {k: u.get(k) for k in ("at", "state", "iface", "cause")} if u else None}
+    return {
+        "last_boot": boots[-1] if boots else None,
+        "last_repair": repairs[-1] if repairs else None,
+        "link": {k: u.get(k) for k in ("at", "state", "iface", "cause")} if u else None,
+    }
 
 
 NETINV_STATE = CONTROL_DIR / "netinv.json"
 UPLINK_STATE = CONTROL_DIR / "uplink.json"
-MESH = meshbridge.Bridge()  # started in main; idle (retrying now and then) where there is no broker
+MESH = (
+    meshbridge.Bridge()
+)  # started in main; idle (retrying now and then) where there is no broker
 
 
 def network_snapshot():
     """The Network page: the root helper's last inventory, the watchdog's own report, and the
     levels it offers (from uplink.py, so the page and the watchdog cannot disagree)."""
+
     def load(path):
         try:
             return json.loads(path.read_text())
         except (OSError, ValueError):
             return None
+
     status = load(uplink.status_path())
     if status:
         # A report the watchdog stopped writing is old news: say so rather than show it as live.
-        status["stale"] = time.time() - status.get("at", 0) > 3 * max(status.get("settings", {}).get("check", 60), 60)
+        status["stale"] = time.time() - status.get("at", 0) > 3 * max(
+            status.get("settings", {}).get("check", 60), 60
+        )
     # Each link's uptime: hours for a week, days for 35, summed here from the watchdog's
     # five-minute slots, so the page gets a few KB rather than the slots.
     hist = load(uplink.HISTORY)
-    return {"inventory": load(NETINV_STATE), "uplink": status, "uptime": linkhistory.summarize(hist),
-            "ladder": jsonlog.read(uplink.LADDER),   # the escalation chart, on the Status tab
-            "ladder_gaps": linkhistory.gaps(hist),   # its spans with no record (a freeze, a reboot)
-            "joined": load(CONTROL_DIR / "wifi-joined.json") or [],   # networks added on the access tab (wifijoin.py)
-            "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json") or {},   # connections' own settings changed here
-            "metered": _metered_view(),
-            "other_ap": load(CONTROL_DIR / "other-ap.json") or {},   # other hotspot profiles: removed or left
-            "accepted": health_accepted(),   # review items accepted (the Box doctor's list: a network one is "net:<id>")
-            "wifisync": load(CONTROL_DIR / "wifisync.json") or {},   # mPWRD-OS's wifisync: as the image had it, if changed here
-            "levels": uplink.levels(),
-            "pending": _pending_actions("net-") + _pending_actions("uplink-") + _pending_actions("wifi-"), "results": control_results(5)}
+    return {
+        "inventory": load(NETINV_STATE),
+        "uplink": status,
+        "uptime": linkhistory.summarize(hist),
+        "ladder": jsonlog.read(
+            uplink.LADDER
+        ),  # the escalation chart, on the Status tab
+        "ladder_gaps": linkhistory.gaps(
+            hist
+        ),  # its spans with no record (a freeze, a reboot)
+        "joined": load(CONTROL_DIR / "wifi-joined.json")
+        or [],  # networks added on the access tab (wifijoin.py)
+        "conn_changes": load(CONTROL_DIR / "nm-connection-changes.json")
+        or {},  # connections' own settings changed here
+        "metered": _metered_view(),
+        "other_ap": load(CONTROL_DIR / "other-ap.json")
+        or {},  # other hotspot profiles: removed or left
+        "accepted": health_accepted(),  # review items accepted (the Box doctor's list: a network one is "net:<id>")
+        "wifisync": load(CONTROL_DIR / "wifisync.json")
+        or {},  # mPWRD-OS's wifisync: as the image had it, if changed here
+        "levels": uplink.levels(),
+        "pending": _pending_actions("net-")
+        + _pending_actions("uplink-")
+        + _pending_actions("wifi-"),
+        "results": control_results(5),
+    }
 
 
 # install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
@@ -2290,18 +3207,40 @@ def addons_snapshot():
     except OSError:
         opts = None  # a dev checkout, or a box installed before install-options existed
     specs = manifests.addons(MANIFESTS)
-    units = [m["status"]["unit"].replace("@hub.", f"@{os.environ.get('HUB_USER', 'hub')}.")
-             for m in specs.values() if m.get("status", {}).get("unit")]
+    units = [
+        m["status"]["unit"].replace("@hub.", f"@{os.environ.get('HUB_USER', 'hub')}.")
+        for m in specs.values()
+        if m.get("status", {}).get("unit")
+    ]
     states = unit_states(units) if units else {}
     out = []
     for aid, m in specs.items():
-        unit = m.get("status", {}).get("unit", "").replace("@hub.", f"@{os.environ.get('HUB_USER', 'hub')}.")
+        unit = (
+            m.get("status", {})
+            .get("unit", "")
+            .replace("@hub.", f"@{os.environ.get('HUB_USER', 'hub')}.")
+        )
         _, active, _ = states.get(unit, (False, False, False))
-        out.append({"id": aid, **{k: m["addon"].get(k) for k in ("title", "summary", "consent", "needs")},
-                    "added": None if opts is None else m["addon"]["option"] in opts, "active": active})
+        out.append(
+            {
+                "id": aid,
+                **{
+                    k: m["addon"].get(k)
+                    for k in ("title", "summary", "consent", "needs")
+                },
+                "added": None if opts is None else m["addon"]["option"] in opts,
+                "active": active,
+            }
+        )
     snap = update_snapshot()
-    return {"addons": out, "known": opts is not None, "progress": snap["progress"], "log": snap["log"],
-            "pending": _pending_actions("addon"), "results": control_results(5)}
+    return {
+        "addons": out,
+        "known": opts is not None,
+        "progress": snap["progress"],
+        "log": snap["log"],
+        "pending": _pending_actions("addon"),
+        "results": control_results(5),
+    }
 
 
 # --- local add-ons --------------------------------------------------------------
@@ -2343,9 +3282,15 @@ def _agreed_changes(old, new):
     if gone:
         out.append("no longer connects to " + ", ".join(gone))
     if a["storage"] != b["storage"]:
-        out.append("now keeps data in the visitor's browser" if b["storage"] else "no longer keeps data in the browser")
+        out.append(
+            "now keeps data in the visitor's browser"
+            if b["storage"]
+            else "no longer keeps data in the browser"
+        )
     if a["source"] != b["source"]:
-        out.append(f"comes from {b['source'].get('repo')} (was {a['source'].get('repo')})")
+        out.append(
+            f"comes from {b['source'].get('repo')} (was {a['source'].get('repo')})"
+        )
     return out
 
 
@@ -2355,7 +3300,8 @@ def catalogue_sync():
     agreed to; a newer catalogue entry with the same agreed part (manifests.agreed_part: consent
     text, what it connects to, browser storage, where it comes from) replaces it: the tile, its
     list, a moved pin. One that changes the agreed part waits for the owner to accept it (/admin);
-    the agreed copy keeps running. Pasted add-ons have no catalogue entry and are left alone."""
+    the agreed copy keeps running. Pasted add-ons have no catalogue entry and are left alone.
+    """
     try:
         cat = manifests.catalogue()
     except (manifests.ManifestError, OSError, ValueError):
@@ -2367,7 +3313,9 @@ def catalogue_sync():
         state = {}
     now = int(time.time())
     kick = []
-    for path in sorted(manifests.LOCAL_D.glob("*.json")) if manifests.LOCAL_D.is_dir() else []:
+    for path in (
+        sorted(manifests.LOCAL_D.glob("*.json")) if manifests.LOCAL_D.is_dir() else []
+    ):
         i = path.stem
         if (consents.get(i) or {}).get("how") != "catalogue":
             continue
@@ -2389,8 +3337,12 @@ def catalogue_sync():
         if held:
             state[i] = {"status": "held", "at": now, "held": held}
             continue
-        changed = sorted(k for k in set(copy) | set(entry) if copy.get(k) != entry.get(k))
-        if (copy.get("source") or {}).get("pin") != (entry.get("source") or {}).get("pin"):
+        changed = sorted(
+            k for k in set(copy) | set(entry) if copy.get(k) != entry.get(k)
+        )
+        if (copy.get("source") or {}).get("pin") != (entry.get("source") or {}).get(
+            "pin"
+        ):
             kick.append(i)
         _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
         state[i] = {"status": "updated", "at": now, "changed": changed}
@@ -2398,7 +3350,9 @@ def catalogue_sync():
     if kick:
         # A moved pin: fetch it now rather than at the librarian's next turn.
         librarian.reload_apps()
-        library_start("update", lambda: librarian.update(kick, mode="update", log=lambda *_: None))
+        library_start(
+            "update", lambda: librarian.update(kick, mode="update", log=lambda *_: None)
+        )
     return state
 
 
@@ -2422,19 +3376,47 @@ def local_addons_snapshot():
     added = []
     for m in local:
         i = m["id"]
-        added.append({"id": i, "title": m["addon"]["title"], "summary": m["addon"]["summary"],
-                      "mode": access.mode_of(state, i), "installed": librarian.installed_app(i),
-                      "status": status.get(i, {}), "pin": m["source"].get("pin"), "repo": m["source"].get("repo"),
-                      "capabilities": m["capabilities"], "from_catalogue": i in cat,
-                      "consent": consents.get(i), "href": m["tile"]["href"], "catalogue": cat_state.get(i)})
+        added.append(
+            {
+                "id": i,
+                "title": m["addon"]["title"],
+                "summary": m["addon"]["summary"],
+                "mode": access.mode_of(state, i),
+                "installed": librarian.installed_app(i),
+                "status": status.get(i, {}),
+                "pin": m["source"].get("pin"),
+                "repo": m["source"].get("repo"),
+                "capabilities": m["capabilities"],
+                "from_catalogue": i in cat,
+                "consent": consents.get(i),
+                "href": m["tile"]["href"],
+                "catalogue": cat_state.get(i),
+            }
+        )
     have = {m["id"] for m in local}
-    offered = [{"id": i, "title": c["addon"]["title"], "summary": c["addon"]["summary"],
-                "consent": c["addon"]["consent"], "repo": c["source"].get("repo"), "pin": c["source"].get("pin"),
-                "capabilities": c.get("capabilities", {}), "added": i in have} for i, c in cat.items()]
+    offered = [
+        {
+            "id": i,
+            "title": c["addon"]["title"],
+            "summary": c["addon"]["summary"],
+            "consent": c["addon"]["consent"],
+            "repo": c["source"].get("repo"),
+            "pin": c["source"].get("pin"),
+            "capabilities": c.get("capabilities", {}),
+            "added": i in have,
+        }
+        for i, c in cat.items()
+    ]
     job = {k: _library_job.get(k) for k in ("action", "result")}
-    return {"catalogue": offered, "catalogue_error": cat_error, "added": added, "errors": errors,
-            "addon_port": int(os.environ.get("HUB_ADDON_PORT", "8090")), "job": job,
-            "running": librarian.is_running()}
+    return {
+        "catalogue": offered,
+        "catalogue_error": cat_error,
+        "added": added,
+        "errors": errors,
+        "addon_port": int(os.environ.get("HUB_ADDON_PORT", "8090")),
+        "job": job,
+        "running": librarian.is_running(),
+    }
 
 
 def _local_add(m, how):
@@ -2453,7 +3435,9 @@ def _local_add(m, how):
     # server's add-on maps.
     rid = control_request({"action": "access", "app": i, "mode": "off"})
     librarian.add_source(librarian.default_app_source(i))
-    started = library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None))
+    started = library_start(
+        "update", lambda: librarian.update([i], mode="update", log=lambda *_: None)
+    )
     return {"added": i, "fetching": started, "access": rid}
 
 
@@ -2465,7 +3449,12 @@ def local_addons_action(payload):
             i = str(payload.get("id", ""))
             cat = manifests.catalogue()
             if i not in cat:
-                return 400, refused.say(M("addons.catalogue.unknown", "Add-on not found in the catalogue. Reload the page and try again."))
+                return 400, refused.say(
+                    M(
+                        "addons.catalogue.unknown",
+                        "Add-on not found in the catalogue. Reload the page and try again.",
+                    )
+                )
             if payload.get("agree") is not True:
                 return 400, refused.say(CONSENT_FIRST)
             return 202, _local_add(cat[i], "catalogue")
@@ -2473,38 +3462,76 @@ def local_addons_action(payload):
             m = payload.get("manifest")
             # Pasted: anyone's manifest, not one this hub's code offers. The page shows the
             # heavy warning; the request must say it was read.
-            if payload.get("understood") != "I understand this runs someone else's code on this box's address":
-                return 400, refused.say(M("addons.paste.warning", "Read the warning about pasted add-ons and confirm it first."))
-            manifests.check_local(m, "the pasted manifest", {x["id"] for x in manifests.load()})
+            if (
+                payload.get("understood")
+                != "I understand this runs someone else's code on this box's address"
+            ):
+                return 400, refused.say(
+                    M(
+                        "addons.paste.warning",
+                        "Read the warning about pasted add-ons and confirm it first.",
+                    )
+                )
+            manifests.check_local(
+                m, "the pasted manifest", {x["id"] for x in manifests.load()}
+            )
             return 202, _local_add(m, "pasted")
         if action == "accept":
             # The catalogue's newer entry, whose agreed part changed: the owner has read the
             # changes on /admin and takes it. It replaces the copy, with a new consent record.
             i = str(payload.get("id", ""))
             cat = manifests.catalogue()
-            if not LOCAL_ID_RE.match(i) or i not in cat or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
-                return 400, refused.say(M("addons.catalogue.not-added", "This add-on was not added from the catalogue. Reload the page and try again."))
+            if (
+                not LOCAL_ID_RE.match(i)
+                or i not in cat
+                or not confine.under(manifests.LOCAL_D, f"{i}.json").exists()
+            ):
+                return 400, refused.say(
+                    M(
+                        "addons.catalogue.not-added",
+                        "This add-on was not added from the catalogue. Reload the page and try again.",
+                    )
+                )
             path = confine.under(manifests.LOCAL_D, f"{i}.json")
             if payload.get("agree") is not True:
                 return 400, refused.say(CONSENT_FIRST)
             entry = cat[i]
             _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
             consents = _read_consents()
-            consents[i] = {"at": int(time.time()), "how": "catalogue", "consent": entry["addon"]["consent"]}
+            consents[i] = {
+                "at": int(time.time()),
+                "how": "catalogue",
+                "consent": entry["addon"]["consent"],
+            }
             _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
             refresh_manifests()
             librarian.reload_apps()
-            library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None))
+            library_start(
+                "update",
+                lambda: librarian.update([i], mode="update", log=lambda *_: None),
+            )
             return 200, {"accepted": i}
         if action == "remove":
             i = str(payload.get("id", ""))
-            if not LOCAL_ID_RE.match(i) or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
-                return 400, refused.say(M("addons.not-added", "Add-on not found. It is not added on this box."))
+            if (
+                not LOCAL_ID_RE.match(i)
+                or not confine.under(manifests.LOCAL_D, f"{i}.json").exists()
+            ):
+                return 400, refused.say(
+                    M(
+                        "addons.not-added",
+                        "Add-on not found. It is not added on this box.",
+                    )
+                )
             try:
                 librarian.remove_source(i)
             except librarian.LibrarianError:
                 pass
-            for p in (confine.under(manifests.ADDONS, i), confine.under(manifests.ADDONS, f".{i}.prev"), confine.under(manifests.ADDONS, f".{i}.new")):
+            for p in (
+                confine.under(manifests.ADDONS, i),
+                confine.under(manifests.ADDONS, f".{i}.prev"),
+                confine.under(manifests.ADDONS, f".{i}.new"),
+            ):
                 shutil.rmtree(p, ignore_errors=True)
             # Off first (root's, while the manifest is still there to name it), then gone.
             control_request({"action": "access", "app": i, "mode": "off"})
@@ -2516,7 +3543,9 @@ def local_addons_action(payload):
             return 200, {"removed": i}
         return 400, refused.say(UNKNOWN_ACTION)
     except manifests.ManifestError as exc:
-        return 400, refused.say(M("addons.manifest.invalid", "Invalid manifest: {reason}.", reason=str(exc)))
+        return 400, refused.say(
+            M("addons.manifest.invalid", "Invalid manifest: {reason}.", reason=str(exc))
+        )
     except (ValueError, librarian.LibrarianError) as exc:
         return _busy_or(400, exc)
 
@@ -2535,12 +3564,20 @@ def kit_snapshot():
         os.kill(int(progress["pid"]), 0)
     except (OSError, ValueError, KeyError, TypeError):
         progress = None
-    books = sorted((STATE_DIR / "zim").glob("*.zim")) if (STATE_DIR / "zim").is_dir() else []
+    books = (
+        sorted((STATE_DIR / "zim").glob("*.zim"))
+        if (STATE_DIR / "zim").is_dir()
+        else []
+    )
     auto = kitauto.load(STATE_DIR)
-    return {"kit": kit, "progress": progress, "pending": _pending_actions("offline-kit") + _pending_actions("content-export"),
-            "auto": {"when": auto["when"], "can_refresh": bool(auto["request"])},
-            "books": {"count": len(books), "bytes": sum(b.stat().st_size for b in books)},
-            "results": control_results(5)}
+    return {
+        "kit": kit,
+        "progress": progress,
+        "pending": _pending_actions("offline-kit") + _pending_actions("content-export"),
+        "auto": {"when": auto["when"], "can_refresh": bool(auto["request"])},
+        "books": {"count": len(books), "bytes": sum(b.stat().st_size for b in books)},
+        "results": control_results(5),
+    }
 
 
 USB_STATE = CONTROL_DIR / "usb.json"
@@ -2562,9 +3599,18 @@ def usb_snapshot():
         pass
     except (OSError, ValueError, KeyError, TypeError):
         progress = None
-    books = sorted(p.stem for p in (STATE_DIR / "zim").glob("*.zim")) if (STATE_DIR / "zim").is_dir() else []
-    return {"scan": scan, "progress": progress, "books": books,
-            "pending": _pending_actions("usb-"), "results": control_results(5)}
+    books = (
+        sorted(p.stem for p in (STATE_DIR / "zim").glob("*.zim"))
+        if (STATE_DIR / "zim").is_dir()
+        else []
+    )
+    return {
+        "scan": scan,
+        "progress": progress,
+        "books": books,
+        "pending": _pending_actions("usb-"),
+        "results": control_results(5),
+    }
 
 
 def moderation_snapshot():
@@ -2572,10 +3618,19 @@ def moderation_snapshot():
     with lock:
         msgs = live_messages(now)
     st = settings_snapshot()
-    return {"now": now, "messages": list(reversed(msgs)), "board": BOARD.all_threads(),
-            "drops": [store.public_meta(m) for m in DROP.list()], "queue": moderation_queue(),
-            "reports": {"reasons": st["report_reasons"], "all_reasons": list(REPORT_REASONS),
-                        "threshold": st["report_threshold"], "hide": st["report_hide"]}}
+    return {
+        "now": now,
+        "messages": list(reversed(msgs)),
+        "board": BOARD.all_threads(),
+        "drops": [store.public_meta(m) for m in DROP.list()],
+        "queue": moderation_queue(),
+        "reports": {
+            "reasons": st["report_reasons"],
+            "all_reasons": list(REPORT_REASONS),
+            "threshold": st["report_threshold"],
+            "hide": st["report_hide"],
+        },
+    }
 
 
 def forget_report(key):
@@ -2588,7 +3643,11 @@ def forget_report(key):
 def delete_message(created, name):
     with lock:
         msgs = load_messages()
-        kept = [m for m in msgs if not (m.get("created") == created and m.get("name") == name)]
+        kept = [
+            m
+            for m in msgs
+            if not (m.get("created") == created and m.get("name") == name)
+        ]
         if len(kept) == len(msgs):
             return False
         save_messages(kept)
@@ -2597,7 +3656,11 @@ def delete_message(created, name):
 
 def moderation_action(payload):
     action = payload.get("action")
-    if action == "keep" and isinstance(payload.get("key"), str) and REPORT_KEY_RE.match(payload["key"]):
+    if (
+        action == "keep"
+        and isinstance(payload.get("key"), str)
+        and REPORT_KEY_RE.match(payload["key"])
+    ):
         # Looked at and kept: out of the queue, and shown again if it was hidden.
         with _reports_lock:
             data = reports()
@@ -2609,17 +3672,27 @@ def moderation_action(payload):
     if action == "delete_message":
         ok = delete_message(payload.get("created"), payload.get("name"))
         if ok:
-            forget_report(f"shoutbox:{int(payload.get('created') or 0)}:{str(payload.get('name', ''))[:40]}")
+            forget_report(
+                f"shoutbox:{int(payload.get('created') or 0)}:{str(payload.get('name', ''))[:40]}"
+            )
     elif action == "delete_thread" and type(payload.get("id")) is int:
         ok = BOARD.delete_thread(payload["id"])
-    elif action == "delete_post" and type(payload.get("id")) is int and type(payload.get("index")) is int:
+    elif (
+        action == "delete_post"
+        and type(payload.get("id")) is int
+        and type(payload.get("index")) is int
+    ):
         thread = BOARD.get_thread(payload["id"])
         posts = thread["thread"]["posts"] if thread else []
         ok = BOARD.delete_post(payload["id"], payload["index"])
         if ok and 0 <= payload["index"] < len(posts):
-            forget_report(f"board:{payload['id']}:{int(posts[payload['index']].get('created', 0))}")
+            forget_report(
+                f"board:{payload['id']}:{int(posts[payload['index']].get('created', 0))}"
+            )
     elif action == "delete_drop" and isinstance(payload.get("id"), str):
-        ok = DROP.delete(payload["id"], force=True)  # moderation removes locked files too
+        ok = DROP.delete(
+            payload["id"], force=True
+        )  # moderation removes locked files too
         if ok:
             forget_report(f"drop:{payload['id']}")
     else:
@@ -2657,12 +3730,16 @@ def seen_by_of(account, app):
 REPORTS_FILE = STATE_DIR / "reports.json"
 _reports_lock = threading.Lock()
 _report_salt = secrets.token_bytes(32)
-_reported = set()       # hashes of (visitor, post): who has reported what, this run only
-_report_times = {}      # visitor hash -> recent report times (at most REPORTS_PER_HOUR an hour)
+_reported = set()  # hashes of (visitor, post): who has reported what, this run only
+_report_times = (
+    {}
+)  # visitor hash -> recent report times (at most REPORTS_PER_HOUR an hour)
 REPORTS_PER_HOUR = 20
 # A notes page by its path in SilverBullet's space (no leading slash, no "..", no control characters).
-REPORT_KEY_RE = re.compile(r"^(shoutbox:\d{1,20}:.{1,40}|board:\d{1,12}:\d{1,20}|drop:[A-Za-z0-9_-]{1,64}"
-                           r"|notes:(?!/)(?!(?:.*/)?\.\.(?:/|$))[^\x00-\x1f]{1,200})$")
+REPORT_KEY_RE = re.compile(
+    r"^(shoutbox:\d{1,20}:.{1,40}|board:\d{1,12}:\d{1,20}|drop:[A-Za-z0-9_-]{1,64}"
+    r"|notes:(?!/)(?!(?:.*/)?\.\.(?:/|$))[^\x00-\x1f]{1,200})$"
+)
 
 
 def reports():
@@ -2670,7 +3747,15 @@ def reports():
         data = json.loads(REPORTS_FILE.read_text())
     except (OSError, ValueError):
         return {}
-    return {k: v for k, v in data.items() if REPORT_KEY_RE.match(k) and isinstance(v, dict)} if isinstance(data, dict) else {}
+    return (
+        {
+            k: v
+            for k, v in data.items()
+            if REPORT_KEY_RE.match(k) and isinstance(v, dict)
+        }
+        if isinstance(data, dict)
+        else {}
+    )
 
 
 def save_reports(data):
@@ -2685,9 +3770,17 @@ def report_key(app, ref):
     drop {id}; notes {page}."""
     if not isinstance(ref, dict):
         return None
-    if app == "shoutbox" and type(ref.get("created")) in (int, float) and isinstance(ref.get("name"), str):
+    if (
+        app == "shoutbox"
+        and type(ref.get("created")) in (int, float)
+        and isinstance(ref.get("name"), str)
+    ):
         key = f"shoutbox:{int(ref['created'])}:{ref['name'][:40]}"
-    elif app == "board" and type(ref.get("thread")) is int and type(ref.get("created")) in (int, float):
+    elif (
+        app == "board"
+        and type(ref.get("thread")) is int
+        and type(ref.get("created")) in (int, float)
+    ):
         key = f"board:{ref['thread']}:{int(ref['created'])}"
     elif app == "drop" and isinstance(ref.get("id"), str):
         key = f"drop:{ref['id']}"
@@ -2703,7 +3796,9 @@ def report(app, ref, reason, addr):
     st = settings_snapshot()
     key = report_key(app, ref)
     if key is None or reason not in st["report_reasons"]:
-        return 400, M("report.invalid", "Invalid report. Select one of the reasons offered.")
+        return 400, M(
+            "report.invalid", "Invalid report. Select one of the reasons offered."
+        )
     who = hmac.new(_report_salt, addr.encode(), hashlib.sha256).digest()[:16]
     mine = hmac.new(_report_salt, who + key.encode(), hashlib.sha256).digest()[:16]
     now = time.monotonic()
@@ -2716,12 +3811,16 @@ def report(app, ref, reason, addr):
         _reported.add(mine)
         _report_times[who] = recent + [now]
         data = reports()
-        r = data.setdefault(key, {"app": app, "count": 0, "reasons": {}, "first": CLOCK.ticks()})
+        r = data.setdefault(
+            key, {"app": app, "count": 0, "reasons": {}, "first": CLOCK.ticks()}
+        )
         r["count"] += 1
         r["reasons"][reason] = r["reasons"].get(reason, 0) + 1
         r["last"] = CLOCK.ticks()
         save_reports(data)
-    return 200, M("report.done", "Reported. Thank you. An administrator will review it.")
+    return 200, M(
+        "report.done", "Reported. Thank you. An administrator will review it."
+    )
 
 
 def hidden_by_reports():
@@ -2729,14 +3828,21 @@ def hidden_by_reports():
     st = settings_snapshot()
     if not st["report_hide"]:
         return set()
-    return {k for k, r in reports().items() if r.get("count", 0) >= st["report_threshold"] and not r.get("kept")}
+    return {
+        k
+        for k, r in reports().items()
+        if r.get("count", 0) >= st["report_threshold"] and not r.get("kept")
+    }
 
 
 def moderation_queue():
     """The reported posts that count (as many reports as the owner asked), with what they say."""
     st, now = settings_snapshot(), CLOCK.ticks()
     with lock:
-        msgs = {f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}": m for m in live_messages(now)}
+        msgs = {
+            f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}": m
+            for m in live_messages(now)
+        }
     posts = {}
     for t in BOARD.all_threads()["threads"]:
         for i, p in enumerate(t["posts"]):
@@ -2748,25 +3854,57 @@ def moderation_queue():
             continue
         kind, _, rest = k.partition(":")
         if kind == "drop" and rest in files:
-            out.append(dict(r, key=k, by=files[rest].get("by") or "", text=files[rest].get("name", ""), where="File drop", drop=rest))
+            out.append(
+                dict(
+                    r,
+                    key=k,
+                    by=files[rest].get("by") or "",
+                    text=files[rest].get("name", ""),
+                    where="File drop",
+                    drop=rest,
+                )
+            )
             continue
         if kind == "notes":
-            out.append(dict(r, key=k, by="", text=rest, where="Notes", link="/notes/" + rest))
+            out.append(
+                dict(r, key=k, by="", text=rest, where="Notes", link="/notes/" + rest)
+            )
             continue
         if k in msgs:
             m = msgs[k]
-            out.append(dict(r, key=k, by=m.get("name", ""), text=m.get("text", ""), where="Shoutbox"))
+            out.append(
+                dict(
+                    r,
+                    key=k,
+                    by=m.get("name", ""),
+                    text=m.get("text", ""),
+                    where="Shoutbox",
+                )
+            )
         elif k in posts:
             t, i, p = posts[k]
-            out.append(dict(r, key=k, by=p.get("author", ""), text=p.get("text", ""), where=f"Board: {t.get('title', '')}",
-                            thread=t["id"], index=i))
+            out.append(
+                dict(
+                    r,
+                    key=k,
+                    by=p.get("author", ""),
+                    text=p.get("text", ""),
+                    where=f"Board: {t.get('title', '')}",
+                    thread=t["id"],
+                    index=i,
+                )
+            )
     out.sort(key=lambda x: (-x["count"], -x.get("last", 0)))
     return out
 
 
 def store_snapshot():
-    return {"now": CLOCK.ticks(), "saves": [store.public_meta(m) for m in STORE.list_saves()], "usage": STORE.usage(),
-            "drop": DROP.usage()}
+    return {
+        "now": CLOCK.ticks(),
+        "saves": [store.public_meta(m) for m in STORE.list_saves()],
+        "usage": STORE.usage(),
+        "drop": DROP.usage(),
+    }
 
 
 def store_action(payload):
@@ -2775,7 +3913,7 @@ def store_action(payload):
         return 400, refused.say(store.BAD_ID)
     try:
         if action == "rename":
-            name = str(payload.get("name", "")).strip()[:store.MAX_NAME]
+            name = str(payload.get("name", "")).strip()[: store.MAX_NAME]
             if not name:
                 return 400, refused.say(store.NAME_REQUIRED)
             if STORE.rename_save(key, name, force=True) is None:
@@ -2794,10 +3932,15 @@ def store_action(payload):
 def card_written():
     """Bytes written to the block device under / since boot (its stat's sectors written), or None."""
     try:
-        source = next(line.split()[-2] for line in Path("/proc/self/mountinfo").read_text().splitlines()
-                      if line.split()[4] == "/")
+        source = next(
+            line.split()[-2]
+            for line in Path("/proc/self/mountinfo").read_text().splitlines()
+            if line.split()[4] == "/"
+        )
         dev = Path(source).name
-        return int((Path("/sys/class/block") / dev / "stat").read_text().split()[6]) * 512
+        return (
+            int((Path("/sys/class/block") / dev / "stat").read_text().split()[6]) * 512
+        )
     except (OSError, ValueError, IndexError, StopIteration):
         return None
 
@@ -2815,14 +3958,22 @@ def system_status():
         out["card_written"] = written
     try:
         with open("/proc/meminfo") as fh:
-            mem = {k: int(v.split()[0]) * 1024 for k, v in (l.split(":", 1) for l in fh)}
+            mem = {
+                k: int(v.split()[0]) * 1024
+                for k, v in (line.split(":", 1) for line in fh)
+            }
         out["mem_total"], out["mem_available"] = mem["MemTotal"], mem["MemAvailable"]
-        out["swap_total"], out["swap_free"] = mem.get("SwapTotal", 0), mem.get("SwapFree", 0)
+        out["swap_total"], out["swap_free"] = mem.get("SwapTotal", 0), mem.get(
+            "SwapFree", 0
+        )
     except (OSError, KeyError, ValueError):
         pass
     try:
         st = os.statvfs(STATE_DIR)
-        out["disk_total"], out["disk_free"] = st.f_blocks * st.f_frsize, st.f_bavail * st.f_frsize
+        out["disk_total"], out["disk_free"] = (
+            st.f_blocks * st.f_frsize,
+            st.f_bavail * st.f_frsize,
+        )
     except OSError:
         pass
     return out
@@ -2844,7 +3995,7 @@ def thread_id(path):
     if not path.startswith(prefix):
         return None
     try:
-        return int(path[len(prefix):].strip("/"))
+        return int(path[len(prefix) :].strip("/"))
     except ValueError:
         return None
 
@@ -2871,7 +4022,9 @@ class HubServer(ThreadingHTTPServer):
 # closed) after it answers, so the web server's kept-alive connection never carries it into the
 # next request. The security doctor looks for this marker.
 DRAINS_REQUEST_BODIES = True
-MAX_JSON = 256 * 1024  # the largest JSON body the hub reads; the store and drop have their own
+MAX_JSON = (
+    256 * 1024
+)  # the largest JSON body the hub reads; the store and drop have their own
 # More unread than this, and the connection is closed rather than read. Closing early is the
 # rougher choice (a client still sending sees a reset, and may lose the answer), so it is kept
 # for bodies far over any the hub takes (the drop's are up to 25 MB by default).
@@ -2931,12 +4084,19 @@ class Handler(BaseHTTPRequestHandler):
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 n = -1
-            self._close_after = bool(self.headers.get("Transfer-Encoding")) or not 0 <= n <= DRAIN_MAX
+            self._close_after = (
+                bool(self.headers.get("Transfer-Encoding")) or not 0 <= n <= DRAIN_MAX
+            )
             # Asked to close (an nginx location that sets its own headers sends Connection: close):
             # Python closes, but says nothing, and the web server would keep the connection for
             # its next request, which then fails (found with the accounts' session check).
-            self._close_after = self._close_after or self.headers.get("Connection", "").strip().lower() == "close"
-            reach.note(self._client_addr())   # from the internet? (the security doctor asks)
+            self._close_after = (
+                self._close_after
+                or self.headers.get("Connection", "").strip().lower() == "close"
+            )
+            reach.note(
+                self._client_addr()
+            )  # from the internet? (the security doctor asks)
         return ok
 
     def send_response(self, code, message=None):
@@ -2973,10 +4133,15 @@ class Handler(BaseHTTPRequestHandler):
         or settings and data; Syncthing's identity only when asked for. BACKUP-CONTENTS.txt at the top
         says which this is."""
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-        kind = ("settings" if level == "settings" else "settings-and-data") + ("-with-syncthing-keys" if with_syncthing else "")
+        kind = ("settings" if level == "settings" else "settings-and-data") + (
+            "-with-syncthing-keys" if with_syncthing else ""
+        )
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
-        self.send_header("Content-Disposition", f'attachment; filename="irate-box-{kind}-{stamp}.tar.gz"')
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="irate-box-{kind}-{stamp}.tar.gz"',
+        )
         self.send_header("Connection", "close")  # no length known in advance
         self.end_headers()
         self.close_connection = True
@@ -2984,22 +4149,30 @@ class Handler(BaseHTTPRequestHandler):
         keep = backup.keep_for(level, with_syncthing, backup.git_mirrors(STATE_DIR))
 
         if with_syncthing:
-            about = ("This backup CONTAINS THE SYNCTHING PRIVATE KEYS AND CONFIGURATION\n"
-                     "(.local/state/syncthing: key.pem, https-key.pem, config.xml).\n"
-                     "Anyone who has this file can pose as this box to its Syncthing peers.\n"
-                     "Keep it as you keep a password. Delete copies that you do not need.\n")
+            about = (
+                "This backup CONTAINS THE SYNCTHING PRIVATE KEYS AND CONFIGURATION\n"
+                "(.local/state/syncthing: key.pem, https-key.pem, config.xml).\n"
+                "Anyone who has this file can pose as this box to its Syncthing peers.\n"
+                "Keep it as you keep a password. Delete copies that you do not need.\n"
+            )
         else:
-            about = ("The Syncthing identity (private keys, config.xml) is NOT in this backup.\n"
-                     "Restored on a box, Syncthing starts with a new device ID, and its peers\n"
-                     "must be paired again.\n")
-        held = ("SETTINGS ONLY: what was chosen (the hub's settings, accounts, the apps' and add-ons'\n"
-                "settings, the library's and mirrors' sources), none of what was made on the box.\n"
-                if level == "settings" else
-                "SETTINGS AND DATA: what was chosen, and what was made on the box (notes, saved work,\n"
-                "the board, the shoutbox, dropped files, the box's own git repositories).\n")
-        about = (f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{held}\n{about}\n"
-                 "Left out: books, the firmware and git mirrors, builds and their caches, crash\n"
-                 "evidence, the library's archive (all downloaded again), the GitHub token, temporary files.\n")
+            about = (
+                "The Syncthing identity (private keys, config.xml) is NOT in this backup.\n"
+                "Restored on a box, Syncthing starts with a new device ID, and its peers\n"
+                "must be paired again.\n"
+            )
+        held = (
+            "SETTINGS ONLY: what was chosen (the hub's settings, accounts, the apps' and add-ons'\n"
+            "settings, the library's and mirrors' sources), none of what was made on the box.\n"
+            if level == "settings"
+            else "SETTINGS AND DATA: what was chosen, and what was made on the box (notes, saved work,\n"
+            "the board, the shoutbox, dropped files, the box's own git repositories).\n"
+        )
+        about = (
+            f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{held}\n{about}\n"
+            "Left out: books, the firmware and git mirrors, builds and their caches, crash\n"
+            "evidence, the library's archive (all downloaded again), the GitHub token, temporary files.\n"
+        )
         try:
             with tarfile.open(fileobj=self.wfile, mode="w|gz") as tar:
                 data = about.encode()
@@ -3012,12 +4185,26 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_tailscale(self):
         """What the operator asked for, and what the unit is doing. They differ for the
-        second or two the path unit takes to act, and permanently if it is not set up."""
+        second or two the path unit takes to act, and permanently if it is not set up.
+        """
         proxied = "X-Forwarded-For" in self.headers
-        state = next((s["state"] for s in service_status(proxied)
-                      if s["name"] == TAILSCALE_NAME), "missing")
-        self.send_json(200, {"want": read_tailscale_want(), "state": state, "max_hours": TAILSCALE_MAX_HOURS,
-                             "backend": tailscale_backend() if state == "running" else None})
+        state = next(
+            (
+                s["state"]
+                for s in service_status(proxied)
+                if s["name"] == TAILSCALE_NAME
+            ),
+            "missing",
+        )
+        self.send_json(
+            200,
+            {
+                "want": read_tailscale_want(),
+                "state": state,
+                "max_hours": TAILSCALE_MAX_HOURS,
+                "backend": tailscale_backend() if state == "running" else None,
+            },
+        )
 
     def send_empty(self, code):
         # Under HTTP/1.1 keep-alive every response needs a length, or the client
@@ -3038,9 +4225,11 @@ class Handler(BaseHTTPRequestHandler):
         # A guest on the hotspot goes to the hub's own address (not "/" under whatever name they typed).
         target = HUB_URL if HUB_HOST or not self._from_hotspot() else HOTSPOT_URL
         url = html.escape(target, quote=True)
-        body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>Irate-Box</title>'
-                f'<meta http-equiv="refresh" content="0; url={url}"></head>'
-                f'<body><p><a href="{url}">Open the hub</a></p></body></html>').encode()
+        body = (
+            f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>Irate-Box</title>'
+            f'<meta http-equiv="refresh" content="0; url={url}"></head>'
+            f'<body><p><a href="{url}">Open the hub</a></p></body></html>'
+        ).encode()
         self.send_response(302)
         self.send_header("Location", target)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -3054,7 +4243,8 @@ class Handler(BaseHTTPRequestHandler):
         """Read away what is left unread of this request's body when it is small, or close the
         connection. Left in the stream, the web server's kept-alive connection would carry it
         into the next request (the next request fails, or is another). Runs
-        after every request (handle_one_request), and before a refusal that reads nothing."""
+        after every request (handle_one_request), and before a refusal that reads nothing.
+        """
         headers = getattr(self, "headers", None)
         if headers is None:
             return
@@ -3078,10 +4268,20 @@ class Handler(BaseHTTPRequestHandler):
         """An /admin request that did not come through the front's /admin route: 403."""
         if not FRONT_SECRET or not path.startswith("/admin"):
             return False
-        if hmac.compare_digest(self.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode()):
+        if hmac.compare_digest(
+            self.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode()
+        ):
             return False
         self._discard_body()
-        self.send_json(403, refused.say(M("hub.admin.front", "Refused. Open /admin through the web server of the box.")))
+        self.send_json(
+            403,
+            refused.say(
+                M(
+                    "hub.admin.front",
+                    "Refused. Open /admin through the web server of the box.",
+                )
+            ),
+        )
         return True
 
     # --- accounts (accounts.py): the session cookie, and whether the request came over HTTPS
@@ -3089,7 +4289,10 @@ class Handler(BaseHTTPRequestHandler):
     def _https(self):
         """Over HTTPS: the web server says so (X-Forwarded-Proto, which it always sets, replacing a
         guest's own). Run bare, the hub is plain HTTP."""
-        return "X-Forwarded-For" in self.headers and self.headers.get("X-Forwarded-Proto") == "https"
+        return (
+            "X-Forwarded-For" in self.headers
+            and self.headers.get("X-Forwarded-Proto") == "https"
+        )
 
     def _irate_check(self, path):
         """The front's questions (nginx auth_request, Caddy forward_auth), never with a body.
@@ -3112,9 +4315,18 @@ class Handler(BaseHTTPRequestHandler):
             # basic=1 (Caddy, the box's own login on and an admin account ready): a request carrying a
             # login of its own (a script's) goes on to Caddy's basic_auth, which checks it; anyone else
             # without an admin session is sent to the standard sign-in rather than asked for that login.
-            if admin or "soft=1" in query or ("basic=1" in query and self.headers.get("Authorization", "").startswith("Basic ")):
+            if (
+                admin
+                or "soft=1" in query
+                or (
+                    "basic=1" in query
+                    and self.headers.get("Authorization", "").startswith("Basic ")
+                )
+            ):
                 self.send_response(204)
-                self.send_header("X-Irate-Session", "admin" if admin else "")   # always: see git-access
+                self.send_header(
+                    "X-Irate-Session", "admin" if admin else ""
+                )  # always: see git-access
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
@@ -3126,8 +4338,13 @@ class Handler(BaseHTTPRequestHandler):
             # "/admin/../term/" reaches the shell's location: judged here as the browser and
             # nginx see it, after unquoting and normalising.
             import posixpath
-            uri = posixpath.normpath(unquote(self.headers.get("X-Original-URI", "").partition("?")[0]) or "/")
-            ok = admin or (unclaimed() and (uri == "/admin" or uri.startswith("/admin/")))
+
+            uri = posixpath.normpath(
+                unquote(self.headers.get("X-Original-URI", "").partition("?")[0]) or "/"
+            )
+            ok = admin or (
+                unclaimed() and (uri == "/admin" or uri.startswith("/admin/"))
+            )
         else:
             ok = me is not None
         if ok:
@@ -3142,11 +4359,24 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
         else:
-            self.send_json(401, refused.say(M("hub.admin.sign-in", "Administrator access required. Sign in as an administrator.")
-                                            if path == "/_irate/admin" else accounts.SIGN_IN_FIRST))
+            self.send_json(
+                401,
+                refused.say(
+                    M(
+                        "hub.admin.sign-in",
+                        "Administrator access required. Sign in as an administrator.",
+                    )
+                    if path == "/_irate/admin"
+                    else accounts.SIGN_IN_FIRST
+                ),
+            )
 
     def _signed_in(self):
-        return accounts.session(self._session_token()) is not None if self._session_token() else False
+        return (
+            accounts.session(self._session_token()) is not None
+            if self._session_token()
+            else False
+        )
 
     def _viewer(self):
         """The visitor's level for what the hub shows them: False, True, or "admin" (an admin account,
@@ -3171,8 +4401,11 @@ class Handler(BaseHTTPRequestHandler):
         return ""
 
     def _session_cookie(self, token, max_age):
-        return ("Set-Cookie", f"{SESSION_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict"
-                + ("; Secure" if self._https() else ""))
+        return (
+            "Set-Cookie",
+            f"{SESSION_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict"
+            + ("; Secure" if self._https() else ""),
+        )
 
     def _client_addr(self):
         fwd = self.headers.get("X-Forwarded-For", "")
@@ -3200,9 +4433,20 @@ class Handler(BaseHTTPRequestHandler):
         HTTP when the admin has prevented it."""
         site = self.headers.get("Sec-Fetch-Site")
         origin = self.headers.get("Origin")
-        if self.headers.get("X-Irate-Account") != "1" or (site and site not in ("same-origin", "none")) \
-                or (origin and urlparse(origin).netloc != self.headers.get("Host", "")):
-            self.send_json(403, refused.say(M("accounts.cross-site", "Refused. Use the account page of this box.")))
+        if (
+            self.headers.get("X-Irate-Account") != "1"
+            or (site and site not in ("same-origin", "none"))
+            or (origin and urlparse(origin).netloc != self.headers.get("Host", ""))
+        ):
+            self.send_json(
+                403,
+                refused.say(
+                    M(
+                        "accounts.cross-site",
+                        "Refused. Use the account page of this box.",
+                    )
+                ),
+            )
             return
         action, addr = payload.get("action"), self._client_addr()
         if action == "logout":
@@ -3212,31 +4456,74 @@ class Handler(BaseHTTPRequestHandler):
                 NOTEBOOKS.close(me["name"])
             self.send_json(200, {"me": None}, [self._session_cookie("", 0)])
             return
-        if action in ("signup", "login", "password", "code") and not self._https() and accounts.settings()["http"] == "prevented":
-            self.send_json(403, dict(refused.say(M("accounts.https-only", "This box accepts passwords only over HTTPS. Open this page with https://.")),
-                                     https=False))
+        if (
+            action in ("signup", "login", "password", "code")
+            and not self._https()
+            and accounts.settings()["http"] == "prevented"
+        ):
+            self.send_json(
+                403,
+                dict(
+                    refused.say(
+                        M(
+                            "accounts.https-only",
+                            "This box accepts passwords only over HTTPS. Open this page with https://.",
+                        )
+                    ),
+                    https=False,
+                ),
+            )
             return
         try:
             if action == "signup":
-                state = accounts.signup(payload.get("name"), payload.get("password"), addr)
+                state = accounts.signup(
+                    payload.get("name"), payload.get("password"), addr
+                )
                 if state == "asked":
                     self.send_json(200, {"state": "asked"})
                     return
                 action = "login"
             if action == "login":
-                token, me = accounts.login(payload.get("name"), payload.get("password"), addr, https=self._https())
-                self.send_json(200, {"me": me}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
+                token, me = accounts.login(
+                    payload.get("name"),
+                    payload.get("password"),
+                    addr,
+                    https=self._https(),
+                )
+                self.send_json(
+                    200,
+                    {"me": me},
+                    [self._session_cookie(token, accounts.SESSION_DAYS * 86400)],
+                )
             elif action == "password":
-                accounts.change_password(self._session_token(), payload.get("old"), payload.get("new"), addr, https=self._https())
+                accounts.change_password(
+                    self._session_token(),
+                    payload.get("old"),
+                    payload.get("new"),
+                    addr,
+                    https=self._https(),
+                )
                 self.send_json(200, {"changed": True})
             elif action == "code":
                 before = accounts.admin_ready()
-                name = accounts.use_code(payload.get("code"), payload.get("password"), addr, https=self._https())
+                name = accounts.use_code(
+                    payload.get("code"),
+                    payload.get("password"),
+                    addr,
+                    https=self._https(),
+                )
                 self._admin_gate_follow(before)
                 self.send_json(200, {"name": name})
             elif action == "prefs":
                 # A person's own settings: theirs alone, through their own session.
-                self.send_json(200, {"prefs": accounts.set_prefs(self._session_token(), payload.get("prefs"))})
+                self.send_json(
+                    200,
+                    {
+                        "prefs": accounts.set_prefs(
+                            self._session_token(), payload.get("prefs")
+                        )
+                    },
+                )
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
         except accounts.Wait as exc:
@@ -3246,7 +4533,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _admin_gate_follow(self, before):
         """The admin accounts changed: if one being able to sign in became true or false, the root helper
-        rewrites the admin's gates (no login prompt of the box's own while one can; hub_control admin-gate)."""
+        rewrites the admin's gates (no login prompt of the box's own while one can; hub_control admin-gate).
+        """
         if accounts.admin_ready() != before:
             control_request({"action": "admin-gate"})
 
@@ -3267,7 +4555,15 @@ class Handler(BaseHTTPRequestHandler):
             ok = False
         if not ok:
             self._discard_body()
-            self.send_json(403, refused.say(M("hub.admin.cross-site", "Refused. An /admin change must come from the /admin page itself.")))
+            self.send_json(
+                403,
+                refused.say(
+                    M(
+                        "hub.admin.cross-site",
+                        "Refused. An /admin change must come from the /admin page itself.",
+                    )
+                ),
+            )
         return not ok
 
     def _admin_locked(self, path):
@@ -3300,12 +4596,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_notes(self):
         """The shared notes (SilverBullet's space) as a zip."""
-        self._send_zip(STATE_DIR / "notes", "notes",
-                       M("notes.download.none", "No notes yet. SilverBullet is not installed, or nobody has written a note."))
+        self._send_zip(
+            STATE_DIR / "notes",
+            "notes",
+            M(
+                "notes.download.none",
+                "No notes yet. SilverBullet is not installed, or nobody has written a note.",
+            ),
+        )
 
     def _send_zip(self, base, stem, missing):
         """A SilverBullet space as a zip: its pages and attachments, without its own hidden files (a
-        dot at any level) and never past a link out of the folder. missing: a message, when there is none."""
+        dot at any level) and never past a link out of the folder. missing: a message, when there is none.
+        """
         if not base.is_dir():
             self.send_json(404, refused.say(missing))
             return
@@ -3313,10 +4616,19 @@ class Handler(BaseHTTPRequestHandler):
         with tempfile.SpooledTemporaryFile(max_size=32 << 20) as buf:
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
                 for dirpath, dirnames, filenames in os.walk(root):
-                    dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and not os.path.islink(os.path.join(dirpath, d)))
+                    dirnames[:] = sorted(
+                        d
+                        for d in dirnames
+                        if not d.startswith(".")
+                        and not os.path.islink(os.path.join(dirpath, d))
+                    )
                     for name in sorted(filenames):
                         full = Path(dirpath) / name
-                        if name.startswith(".") or full.is_symlink() or not full.is_file():
+                        if (
+                            name.startswith(".")
+                            or full.is_symlink()
+                            or not full.is_file()
+                        ):
                             continue
                         z.write(full, str(full.relative_to(root)))
             size = buf.tell()
@@ -3338,11 +4650,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             kit = json.loads((KITS_DIR / "kit.json").read_text())
             name = kit["name"]
-            if not re.fullmatch(r"irate-box-(kit|content)-[A-Za-z0-9._-]{1,120}\.tar", name):
+            if not re.fullmatch(
+                r"irate-box-(kit|content)-[A-Za-z0-9._-]{1,120}\.tar", name
+            ):
                 raise ValueError(name)
             fh = open(KITS_DIR / name, "rb")
         except (OSError, ValueError, KeyError, TypeError):
-            self.send_json(404, refused.say(M("kit.download.none", "No offline kit yet. Make one first.")))
+            self.send_json(
+                404,
+                refused.say(
+                    M("kit.download.none", "No offline kit yet. Make one first.")
+                ),
+            )
             return
         with fh:
             size = os.fstat(fh.fileno()).st_size
@@ -3362,14 +4681,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = SOURCE_TARBALL.read_bytes()
         except OSError:
-            self.send_json(404, refused.say(M("hub.source.none", "No source archive. The installer makes it, and this copy of irate-box was not installed.")))
+            self.send_json(
+                404,
+                refused.say(
+                    M(
+                        "hub.source.none",
+                        "No source archive. The installer makes it, and this copy of irate-box was not installed.",
+                    )
+                ),
+            )
             return
         try:  # the name install.sh gave it, the same as on the git server and in the drop
             name = (SOURCE_TARBALL.parent / "name").read_text().strip()
         except OSError:
             name = ""
         if not re.fullmatch(r"irate-box-source-[A-Za-z0-9._-]{1,80}\.tar\.gz", name):
-            ver = re.sub(r"[^A-Za-z0-9._-]", "", hub_version().split(" ")[0]) or "unknown"
+            ver = (
+                re.sub(r"[^A-Za-z0-9._-]", "", hub_version().split(" ")[0]) or "unknown"
+            )
             name = f"irate-box-source-{ver}.tar.gz"
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
@@ -3388,6 +4717,44 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         path = self.path.split("?")[0]
+        if path in ("/http-admin-warning", "/http-admin-continue"):
+            nxt = self.path.partition("?next=")[2]
+            if (
+                not nxt.startswith("/")
+                or nxt.startswith("//")
+                or "\\" in nxt
+                or any(ord(char) < 32 for char in nxt)
+            ):
+                nxt = "/admin/"
+            if path == "/http-admin-continue":
+                self.send_response(303)
+                self.send_header(
+                    "Set-Cookie", "irate_http_ok=1; Path=/; HttpOnly; SameSite=Strict"
+                )
+                self.send_header("Location", nxt)
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+            else:
+                body = (
+                    '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+                    '<title>Unencrypted administrator access</title><link rel="stylesheet" href="/palette.css">'
+                    "<main><h1>Unencrypted administrator access</h1><p>Other people on this network can read your password "
+                    'and change traffic sent over HTTP. Use HTTPS when possible.</p><p><a href="/http-admin-continue?next='
+                    + html.escape(nxt, quote=True)
+                    + '">Continue over HTTP</a></p></main></html>'
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header(
+                    "Content-Security-Policy",
+                    "default-src 'none'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+                )
+                self.end_headers()
+                self.wfile.write(body)
+            return
         if self._admin_refused(path) or self._admin_locked(path):
             return
 
@@ -3414,16 +4781,33 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/notebook":
-            self.send_json(200, NOTEBOOKS.status(accounts.session(self._session_token())))
+            self.send_json(
+                200, NOTEBOOKS.status(accounts.session(self._session_token()))
+            )
             return
 
         if path == "/api/notebook/download":
             me = accounts.session(self._session_token())
             k = notebooks.key(me["name"]) if me else None
             if k is None:
-                self.send_json(401, refused.say(M("notebook.download.sign-in", "Sign in to download your notebook.")))
+                self.send_json(
+                    401,
+                    refused.say(
+                        M(
+                            "notebook.download.sign-in",
+                            "Sign in to download your notebook.",
+                        )
+                    ),
+                )
                 return
-            self._send_zip(NOTEBOOKS.folder(k), f"notebook-{k}", M("notebook.download.none", "No notebook yet. Open your notebook once first."))
+            self._send_zip(
+                NOTEBOOKS.folder(k),
+                f"notebook-{k}",
+                M(
+                    "notebook.download.none",
+                    "No notebook yet. Open your notebook once first.",
+                ),
+            )
             return
 
         if path == "/admin/notebooks":
@@ -3433,19 +4817,43 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/account":
             # The account page's view: what the admin allows, who this is, and their own settings.
             me = accounts.session(self._session_token())
-            self.send_json(200, dict(accounts.settings(), https=self._https(), me=me,
-                                     prefs=accounts.prefs(me["name"]) if me else None, names_to=settings_snapshot()["names_to"]))
+            self.send_json(
+                200,
+                dict(
+                    accounts.settings(),
+                    https=self._https(),
+                    me=me,
+                    prefs=accounts.prefs(me["name"]) if me else None,
+                    names_to=settings_snapshot()["names_to"],
+                ),
+            )
             return
 
         if path == "/api/trends":
             # The memory and disk history behind the hub page's box tile: an admin account's session only (a guest,
             # or a user, is refused here, not merely not shown the triangle), and the samples alone, never the processes.
-            me = accounts.session(self._session_token()) if self._session_token() else None
+            me = (
+                accounts.session(self._session_token())
+                if self._session_token()
+                else None
+            )
             if not me or me.get("role") != "admin":
-                self.send_json(403, refused.say(M("hub.trends.admin", "Only administrators can see the trends.")))
+                self.send_json(
+                    403,
+                    refused.say(
+                        M("hub.trends.admin", "Only administrators can see the trends.")
+                    ),
+                )
                 return
             snap = memhistory.snapshot()
-            self.send_json(200, {"now": snap["now"], "every": snap["every"], "samples": snap["samples"]})
+            self.send_json(
+                200,
+                {
+                    "now": snap["now"],
+                    "every": snap["every"],
+                    "samples": snap["samples"],
+                },
+            )
             return
 
         if path == "/admin/accounts":
@@ -3454,7 +4862,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/setup" and "?" in self.path:
             # The first use's request, followed (?id=); without a query, the page itself (below).
-            query = dict(p.partition("=")[::2] for p in self.path.partition("?")[2].split("&") if p)
+            query = dict(
+                p.partition("=")[::2]
+                for p in self.path.partition("?")[2].split("&")
+                if p
+            )
             self.send_json(200, setup_status(query.get("id", "")[:40]))
             return
 
@@ -3472,11 +4884,24 @@ class Handler(BaseHTTPRequestHandler):
                 msgs = live_messages(now)
             hide = hidden_by_reports()
             if hide:
-                msgs = [m for m in msgs if f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}" not in hide]
+                msgs = [
+                    m
+                    for m in msgs
+                    if f"shoutbox:{int(m.get('created', 0))}:{str(m.get('name', ''))[:40]}"
+                    not in hide
+                ]
             me = accounts.session(self._session_token())
             msgs = [m for m in msgs if store.can_see(m, me)]
-            self.send_json(200, {"now": now, "ttl": SHOUT_TTL, "messages": msgs, "posting": self._posting_view("shout"),
-                                 "report_reasons": settings_snapshot()["report_reasons"]})
+            self.send_json(
+                200,
+                {
+                    "now": now,
+                    "ttl": SHOUT_TTL,
+                    "messages": msgs,
+                    "posting": self._posting_view("shout"),
+                    "report_reasons": settings_snapshot()["report_reasons"],
+                },
+            )
             return
 
         if path == "/board/threads":
@@ -3501,8 +4926,19 @@ class Handler(BaseHTTPRequestHandler):
             # The Apps and Folders groups of /admin: which sections each app owns.
             # switch: whether its access can be set (its page then starts with it).
             seen = seen_only()
-            self.send_json(200, {"apps": [dict(a, switch=a["id"] in access.ROUTED or a["local"], seen=a["id"] in seen)
-                                          for a in manifests.admin_apps(MANIFESTS)]})
+            self.send_json(
+                200,
+                {
+                    "apps": [
+                        dict(
+                            a,
+                            switch=a["id"] in access.ROUTED or a["local"],
+                            seen=a["id"] in seen,
+                        )
+                        for a in manifests.admin_apps(MANIFESTS)
+                    ]
+                },
+            )
             return
 
         if path == "/admin/settings":
@@ -3518,31 +4954,76 @@ class Handler(BaseHTTPRequestHandler):
             if "books=0" in self.path.partition("?")[2].split("&"):
                 # The Books page asks for its books a page at a time (/admin/books): leave them out.
                 snap["sources"] = [x for x in snap["sources"] if x.get("kind") == "app"]
-                snap["status"] = {k: v for k, v in snap["status"].items() if k in {x["name"] for x in snap["sources"]}}
+                snap["status"] = {
+                    k: v
+                    for k, v in snap["status"].items()
+                    if k in {x["name"] for x in snap["sources"]}
+                }
             self.send_json(200, snap)
             return
 
         if path == "/admin/catalogue":
             # Kiwix's online catalogue, to pick books from (librarian.catalogue_search): online only.
-            query = {k: unquote(v.replace("+", " ")) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
+            query = {
+                k: unquote(v.replace("+", " "))
+                for k, v in (
+                    p.split("=", 1)
+                    for p in self.path.partition("?")[2].split("&")
+                    if "=" in p
+                )
+            }
             try:
-                self.send_json(200, librarian.catalogue_search(q=query.get("q", ""), language=query.get("language", ""),
-                                                               category=query.get("category", ""), start=int(query.get("start") or 0)))
+                self.send_json(
+                    200,
+                    librarian.catalogue_search(
+                        q=query.get("q", ""),
+                        language=query.get("language", ""),
+                        category=query.get("category", ""),
+                        start=int(query.get("start") or 0),
+                    ),
+                )
             except ValueError:
                 self.send_json(400, refused.say(BAD_REQUEST))
             except librarian.LibrarianError as exc:
-                self.send_json(502, refused.say(M("library.catalogue.failed", "The box cannot read the Kiwix catalogue: {reason} The catalogue needs the internet.",
-                                                  reason=getattr(exc, "message", None) or str(exc))))
+                self.send_json(
+                    502,
+                    refused.say(
+                        M(
+                            "library.catalogue.failed",
+                            "The box cannot read the Kiwix catalogue: {reason} The catalogue needs the internet.",
+                            reason=getattr(exc, "message", None) or str(exc),
+                        )
+                    ),
+                )
             return
 
         if path == "/admin/books":
-            query = {k: unquote(v.replace("+", " ")) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
+            query = {
+                k: unquote(v.replace("+", " "))
+                for k, v in (
+                    p.split("=", 1)
+                    for p in self.path.partition("?")[2].split("&")
+                    if "=" in p
+                )
+            }
             try:
-                self.send_json(200, librarian.books_page(q=query.get("q", "")[:100], language=query.get("language", "")[:20],
-                                                         state=query.get("state", "") if query.get("state") in librarian.BOOK_STATES else "",
-                                                         kept=query.get("kept", ""), sort=query.get("sort", "title"),
-                                                         page=int(query.get("page") or 1), per_page=int(query.get("per_page") or librarian.PER_PAGE),
-                                                         names_only=query.get("names") == "1"))
+                self.send_json(
+                    200,
+                    librarian.books_page(
+                        q=query.get("q", "")[:100],
+                        language=query.get("language", "")[:20],
+                        state=(
+                            query.get("state", "")
+                            if query.get("state") in librarian.BOOK_STATES
+                            else ""
+                        ),
+                        kept=query.get("kept", ""),
+                        sort=query.get("sort", "title"),
+                        page=int(query.get("page") or 1),
+                        per_page=int(query.get("per_page") or librarian.PER_PAGE),
+                        names_only=query.get("names") == "1",
+                    ),
+                )
             except ValueError:
                 self.send_json(400, refused.say(BAD_REQUEST))
             return
@@ -3561,7 +5042,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/backup":
             q = self.path.partition("?")[2].split("&")
-            self._send_backup(with_syncthing="syncthing=1" in q, level="settings" if "level=settings" in q else "data")
+            self._send_backup(
+                with_syncthing="syncthing=1" in q,
+                level="settings" if "level=settings" in q else "data",
+            )
             return
 
         if path == "/admin/backup/plan":
@@ -3620,12 +5104,23 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/access":
             state = access.read(ACCESS_STATE)
             vis = visibility()
-            self.send_json(200, {"apps": [dict(a, mode=access.mode_of(state, a["id"]), visible=vis.get(a["id"], "auto"))
-                                          for a in access.apps(MANIFESTS)],
-                                 "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
-                                 "seen": {i: vis.get(i, "auto") for i in sorted(seen_only())},
-                                 "locked_as": locked_as(),
-                                 "results": control_results()})
+            self.send_json(
+                200,
+                {
+                    "apps": [
+                        dict(
+                            a,
+                            mode=access.mode_of(state, a["id"]),
+                            visible=vis.get(a["id"], "auto"),
+                        )
+                        for a in access.apps(MANIFESTS)
+                    ],
+                    "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
+                    "seen": {i: vis.get(i, "auto") for i in sorted(seen_only())},
+                    "locked_as": locked_as(),
+                    "results": control_results(),
+                },
+            )
             return
 
         if path == "/admin/usb":
@@ -3642,16 +5137,25 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/kits":
             from irate_box.library import toolkits
+
             snap = toolkits.snapshot()
             snap["results"] = [r for r in control_results(20)]
             # What the security doctor flags about a kit's cache, shown before an install
             # (an upgrade is fine unless it is a flagged issue).
             try:
                 audit = json.loads((CONTROL_DIR / "security-audit.json").read_text())
-                snap["flags"] = {i["about"]["key"]: i["titles"] for i in (audit.get("joint") or {}).get("items", [])
-                                 if i["about"]["kind"] == "kit"}
-                snap["flag_details"] = {f["about"]["key"]: f.get("summary") or f.get("detail") for st in audit.get("steps", [])
-                                        for f in st["findings"] if (f.get("about") or {}).get("kind") == "kit" and f["status"] != "ok"}
+                snap["flags"] = {
+                    i["about"]["key"]: i["titles"]
+                    for i in (audit.get("joint") or {}).get("items", [])
+                    if i["about"]["kind"] == "kit"
+                }
+                snap["flag_details"] = {
+                    f["about"]["key"]: f.get("summary") or f.get("detail")
+                    for st in audit.get("steps", [])
+                    for f in st["findings"]
+                    if (f.get("about") or {}).get("kind") == "kit"
+                    and f["status"] != "ok"
+                }
             except (OSError, ValueError, KeyError, TypeError):
                 snap["flags"], snap["flag_details"] = {}, {}
             self.send_json(200, snap)
@@ -3670,8 +5174,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/mesh":
             # The decoder bridge: everything it heard, the messages too, and the channels
             # by name (never their keys).
-            self.send_json(200, dict(MESH.heard.view(texts=True), state=MESH.state, error=MESH.error, error_message=MESH.error_message,
-                                     channels=meshbridge.channels_view()))
+            self.send_json(
+                200,
+                dict(
+                    MESH.heard.view(texts=True),
+                    state=MESH.state,
+                    error=MESH.error,
+                    error_message=MESH.error_message,
+                    channels=meshbridge.channels_view(),
+                ),
+            )
             return
 
         if path == "/admin/tls":
@@ -3680,40 +5192,86 @@ class Handler(BaseHTTPRequestHandler):
                 st = json.loads((CONTROL_DIR / "tls" / "status.json").read_text())
             except (OSError, ValueError):
                 st = {"set_up": False}
-            self.send_json(200, dict(st, pending=_pending_actions("tls-"), results=control_results(5)))
+            try:
+                policy = json.loads((CONTROL_DIR / "security-policy.json").read_text())
+            except (OSError, ValueError):
+                policy = {"mode": "hub"}
+            self.send_json(
+                200,
+                dict(
+                    st,
+                    policy=policy,
+                    pending=_pending_actions("tls-")
+                    + _pending_actions("security-policy"),
+                    results=control_results(5),
+                ),
+            )
             return
 
         if path == "/admin/factory/targets":
             # A source's refs, and its targets at one (factory.py): read from its local copy.
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            query = dict(
+                p.split("=", 1)
+                for p in self.path.partition("?")[2].split("&")
+                if "=" in p
+            )
             try:
                 src = factory.source(unquote(query.get("source", "")))
                 out = {"source": src["name"], "refs": factory.refs(src)}
                 if query.get("ref"):
                     out.update(factory.targets(src, unquote(query["ref"])))
-                    out["suggested"] = factory.suggested(out["targets"], factory._flasher_boards())
+                    out["suggested"] = factory.suggested(
+                        out["targets"], factory._flasher_boards()
+                    )
                 self.send_json(200, out)
             except ValueError as exc:
                 self.send_json(400, refused.answer(exc))
             return
 
         if path == "/admin/ci/run":
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            query = dict(
+                p.split("=", 1)
+                for p in self.path.partition("?")[2].split("&")
+                if "=" in p
+            )
             try:
                 offset = int(query.get("from", "0"))
             except ValueError:
                 offset = 0
             view = ci.run_view(unquote(query.get("run", "")), offset)
-            self.send_json(*((200, view) if view else (404, refused.say(M("ci.run.not-found", "Build not found. It was deleted.")))))
+            self.send_json(
+                *(
+                    (200, view)
+                    if view
+                    else (
+                        404,
+                        refused.say(
+                            M("ci.run.not-found", "Build not found. It was deleted.")
+                        ),
+                    )
+                )
+            )
             return
 
         if path == "/admin/ci/file":
             # A build's log (shown as text) or one of its artifacts (a download, never shown).
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            query = dict(
+                p.split("=", 1)
+                for p in self.path.partition("?")[2].split("&")
+                if "=" in p
+            )
             name = unquote(query.get("name", ""))
             f = ci.run_file(unquote(query.get("run", "")), name)
             if not f:
-                self.send_json(404, refused.say(M("ci.file.not-found", "File not found. The build was deleted, or it did not make this file.")))
+                self.send_json(
+                    404,
+                    refused.say(
+                        M(
+                            "ci.file.not-found",
+                            "File not found. The build was deleted, or it did not make this file.",
+                        )
+                    ),
+                )
                 return
             body = f.read_bytes()
             self.send_response(200)
@@ -3721,7 +5279,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
             else:
                 self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+                self.send_header(
+                    "Content-Disposition", f'attachment; filename="{name}"'
+                )
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
@@ -3753,8 +5313,16 @@ class Handler(BaseHTTPRequestHandler):
             # What the sheet shows a guest: whether the owner shares the connection, at what level,
             # and whether this device is out. (root/share.py; the home page's banner, home.js.)
             level, addr = share_level(), self._client_addr()
-            self.send_json(200, {"level": level, "here": on_hotspot(addr), "out": level == "open" or let_out(addr),
-                                 "signed_in": bool(self._signed_in()), "hours": SHARE_HOURS})
+            self.send_json(
+                200,
+                {
+                    "level": level,
+                    "here": on_hotspot(addr),
+                    "out": level == "open" or let_out(addr),
+                    "signed_in": bool(self._signed_in()),
+                    "hours": SHARE_HOURS,
+                },
+            )
             return
 
         if path == "/api/captive":
@@ -3764,7 +5332,9 @@ class Handler(BaseHTTPRequestHandler):
             # is let out (or everyone is: "open"); root/share.py.
             level, addr = share_level(), self._client_addr()
             out = level == "open" or (level in SHARE_LET_OUT and let_out(addr))
-            body = json.dumps({"captive": not out, "user-portal-url": HUB_URL if HUB_HOST else "/"}).encode()
+            body = json.dumps(
+                {"captive": not out, "user-portal-url": HUB_URL if HUB_HOST else "/"}
+            ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/captive+json")
             self.send_header("Cache-Control", "private, no-store")
@@ -3776,8 +5346,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/menus.json":
             # The list pages, for the hub bar's ↑ (app.js): {id: {title, href}}, public ones only.
             hidden = hidden_apps(self._viewer())
-            self.send_json(200, {i: {"title": mm["menu"]["title"], "href": mm["tile"]["href"]}
-                                 for i, mm in manifests.menus(MANIFESTS).items() if i not in hidden})
+            self.send_json(
+                200,
+                {
+                    i: {"title": mm["menu"]["title"], "href": mm["tile"]["href"]}
+                    for i, mm in manifests.menus(MANIFESTS).items()
+                    if i not in hidden
+                },
+            )
             return
 
         if path == "/internal/git-access":
@@ -3786,8 +5362,16 @@ class Handler(BaseHTTPRequestHandler):
             # login will do (nginx then asks for it). Anything on loopback may ask what a guest may
             # do; an account's answer needs its password.
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
-            account = accounts.check_basic(self.headers.get("Authorization", ""), self.headers.get("X-Forwarded-For", ""))
-            ok = gitrepos.decide(self.headers.get("X-Original-URI", ""), self.headers.get("X-Original-Method", "GET"), mode, account)
+            account = accounts.check_basic(
+                self.headers.get("Authorization", ""),
+                self.headers.get("X-Forwarded-For", ""),
+            )
+            ok = gitrepos.decide(
+                self.headers.get("X-Original-URI", ""),
+                self.headers.get("X-Original-Method", "GET"),
+                mode,
+                account,
+            )
             if "soft=1" in self.path.partition("?")[2].split("&"):
                 # Caddy's git routes (no satisfy any): always 204, saying "ok" when the box's own login
                 # isn't needed, and the account's name for the push hook's REMOTE_USER (nginx passes
@@ -3795,10 +5379,15 @@ class Handler(BaseHTTPRequestHandler):
                 # vouched for here: Caddy's login checks them, so a wrong password isn't let through.
                 # Both always sent, empty for nothing: Caddy 2.6's copy_headers otherwise sets the
                 # placeholder's own text ({http.reverse_proxy.header.…}) on the request.
-                vouched = ok and (account is not None or not self.headers.get("Authorization"))
+                vouched = ok and (
+                    account is not None or not self.headers.get("Authorization")
+                )
                 self.send_response(204)
                 self.send_header("X-Irate-Session", "ok" if vouched else "")
-                self.send_header("X-Irate-User", account["name"] if vouched and account is not None else "")
+                self.send_header(
+                    "X-Irate-User",
+                    account["name"] if vouched and account is not None else "",
+                )
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
@@ -3829,18 +5418,36 @@ class Handler(BaseHTTPRequestHandler):
                 st = {"set_up": False}
             if path == "/certificate.json":
                 cert = st.get("cert") or {}
-                self.send_json(200, {"set_up": bool(st.get("set_up")), "on": bool(st.get("on")), "port": (st.get("ports") or {}).get("main", 443),
-                                     "fingerprint": (st.get("ca") or {}).get("fingerprint"), "names": cert.get("names", []),
-                                     "expires": cert.get("expires")})
+                self.send_json(
+                    200,
+                    {
+                        "set_up": bool(st.get("set_up")),
+                        "on": bool(st.get("on")),
+                        "port": (st.get("ports") or {}).get("main", 443),
+                        "fingerprint": (st.get("ca") or {}).get("fingerprint"),
+                        "names": cert.get("names", []),
+                        "expires": cert.get("expires"),
+                    },
+                )
                 return
             try:
                 body = (CONTROL_DIR / "tls" / "ca.crt").read_bytes()
             except OSError:
-                self.send_json(404, refused.say(M("tls.ca.none", "No certificate yet. The administrator has not set up HTTPS.")))
+                self.send_json(
+                    404,
+                    refused.say(
+                        M(
+                            "tls.ca.none",
+                            "No certificate yet. The administrator has not set up HTTPS.",
+                        )
+                    ),
+                )
                 return
             self.send_response(200)
             self.send_header("Content-Type", "application/x-x509-ca-cert")
-            self.send_header("Content-Disposition", 'attachment; filename="irate-box-ca.crt"')
+            self.send_header(
+                "Content-Disposition", 'attachment; filename="irate-box-ca.crt"'
+            )
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -3856,11 +5463,23 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/factory.json":
                 self.send_json(200, factory.public_view())
                 return
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            query = dict(
+                p.split("=", 1)
+                for p in self.path.partition("?")[2].split("&")
+                if "=" in p
+            )
             name = unquote(query.get("name", ""))
             f = factory.public_file(unquote(query.get("run", "")), name)
             if not f:
-                self.send_json(404, refused.say(M("factory.file.not-found", "File not found. The firmware was unpublished.")))
+                self.send_json(
+                    404,
+                    refused.say(
+                        M(
+                            "factory.file.not-found",
+                            "File not found. The firmware was unpublished.",
+                        )
+                    ),
+                )
                 return
             body = f.read_bytes()
             self.send_response(200)
@@ -3897,22 +5516,37 @@ class Handler(BaseHTTPRequestHandler):
             # No file of that name in web/, so both web servers hand it to the hub.
             with _settings_lock:
                 cur = dict(_settings)
-            body = (":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
-                    "body.admin { --page-width: %drem; }\n"
-                    % (cur["page_width"], cur["shout_width"], cur["board_width"], cur["emoji_set"], cur["admin_width"]))
+            body = (
+                ":root { --page-width: %drem; --shout-width: %drem; --board-width: %drem; --emoji-set: %s; }\n"
+                "body.admin { --page-width: %drem; }\n"
+                % (
+                    cur["page_width"],
+                    cur["shout_width"],
+                    cur["board_width"],
+                    cur["emoji_set"],
+                    cur["admin_width"],
+                )
+            )
             # An uploaded favicon (Appearance) over the pages' own emoji icons: themes.js reads this and swaps it in.
             fav = picture_mtime("favicon")
             if fav:
                 body += ':root { --favicon: "%d"; }\n' % int(fav)
             if not cur["krab_art"]:
-                body += ('.admin-art, .art-loop { display: none !important; }\n'
-                         '[data-art]:not([data-art=""]) { padding-bottom: 0 !important; }\n')
+                body += (
+                    ".admin-art, .art-loop { display: none !important; }\n"
+                    '[data-art]:not([data-art=""]) { padding-bottom: 0 !important; }\n'
+                )
             if cur["accent"]:
                 # The main themes only (light, dark, or as the device): another theme keeps its colours.
-                body += ('html:root:not([data-palette]):not([data-theme]), html:root:not([data-palette])[data-theme="light"], '
-                         'html:root:not([data-palette])[data-theme="dark"] '
-                         "{ --accent: %s; --accent-ink: %s; }\n" % (cur["accent"], accent_ink(cur["accent"])))
-            body += palette_css(cur["palette"])   # after the one accent: a mode's own accent wins over it
+                body += (
+                    'html:root:not([data-palette]):not([data-theme]), html:root:not([data-palette])[data-theme="light"], '
+                    'html:root:not([data-palette])[data-theme="dark"] '
+                    "{ --accent: %s; --accent-ink: %s; }\n"
+                    % (cur["accent"], accent_ink(cur["accent"]))
+                )
+            body += palette_css(
+                cur["palette"]
+            )  # after the one accent: a mode's own accent wins over it
             body = body.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/css; charset=utf-8")
@@ -3948,8 +5582,12 @@ class Handler(BaseHTTPRequestHandler):
             around = online_names(now)
             payload["signed_in"] = len(around)
             me = accounts.session(self._session_token())
-            if me and (settings_snapshot()["names_to"] == "users" or me.get("role") == "admin"):
-                payload["names"] = [n for n in around if accounts.prefs(n)["show_online"]]
+            if me and (
+                settings_snapshot()["names_to"] == "users" or me.get("role") == "admin"
+            ):
+                payload["names"] = [
+                    n for n in around if accounts.prefs(n)["show_online"]
+                ]
             self.send_json(200, payload)
             return
 
@@ -3960,20 +5598,50 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(404, refused.say(NO_THREAD))
             else:
                 me = accounts.session(self._session_token())
-                if result["thread"]["posts"] and not store.can_see(result["thread"]["posts"][0], me):
+                if result["thread"]["posts"] and not store.can_see(
+                    result["thread"]["posts"][0], me
+                ):
                     self.send_json(404, refused.say(NO_THREAD))
                     return
-                result = dict(result, thread=dict(result["thread"], posts=[p for p in result["thread"]["posts"] if store.can_see(p, me)]))
+                result = dict(
+                    result,
+                    thread=dict(
+                        result["thread"],
+                        posts=[
+                            p for p in result["thread"]["posts"] if store.can_see(p, me)
+                        ],
+                    ),
+                )
                 hide = hidden_by_reports()
                 if hide:
                     t = dict(result["thread"])
-                    t["posts"] = [p if f"board:{t['id']}:{int(p.get('created', 0))}" not in hide
-                                  else dict(p, text="(hidden while an administrator reviews a report)", hidden=True) for p in t["posts"]]
+                    t["posts"] = [
+                        (
+                            p
+                            if f"board:{t['id']}:{int(p.get('created', 0))}" not in hide
+                            else dict(
+                                p,
+                                text="(hidden while an administrator reviews a report)",
+                                hidden=True,
+                            )
+                        )
+                        for p in t["posts"]
+                    ]
                     result = dict(result, thread=t)
-                self.send_json(200, dict(result, posting=self._posting_view("board"), report_reasons=settings_snapshot()["report_reasons"]))
+                self.send_json(
+                    200,
+                    dict(
+                        result,
+                        posting=self._posting_view("board"),
+                        report_reasons=settings_snapshot()["report_reasons"],
+                    ),
+                )
             return
 
-        if path in MENU_PAGES and not (MENU_PAGES[path].get("local") and MENU_PAGES[path]["id"] in hidden_apps(self._viewer())):
+        if path in MENU_PAGES and not (
+            MENU_PAGES[path].get("local")
+            and MENU_PAGES[path]["id"] in hidden_apps(self._viewer())
+        ):
             body = menu_page(MENU_PAGES[path], self._viewer())
             self.send_response(200)
             self.send_header("Content-Type", MIME[".html"])
@@ -4001,10 +5669,17 @@ class Handler(BaseHTTPRequestHandler):
         if file_path.is_file():
             body = file_path.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", MIME.get(file_path.suffix, "application/octet-stream"))
-            if admin_page:  # only the admin reaches /admin: the home page may show them the admin's tiles
-                self.send_header("Set-Cookie", f"{ADMIN_SEEN_COOKIE}={admin_seen_value()}; Path=/; Max-Age={ADMIN_SEEN_HOURS * 3600}; "
-                                 "HttpOnly; SameSite=Strict" + ("; Secure" if self._https() else ""))
+            self.send_header(
+                "Content-Type", MIME.get(file_path.suffix, "application/octet-stream")
+            )
+            if (
+                admin_page
+            ):  # only the admin reaches /admin: the home page may show them the admin's tiles
+                self.send_header(
+                    "Set-Cookie",
+                    f"{ADMIN_SEEN_COOKIE}={admin_seen_value()}; Path=/; Max-Age={ADMIN_SEEN_HOURS * 3600}; "
+                    "HttpOnly; SameSite=Strict" + ("; Secure" if self._https() else ""),
+                )
             self.send_header("Content-Length", len(body))
             self.end_headers()
             self.wfile.write(body)
@@ -4050,7 +5725,16 @@ class Handler(BaseHTTPRequestHandler):
         payload = self._read_payload()
         if not isinstance(payload, dict):  # None, or a JSON array or string
             if self._too_large:
-                self.send_json(413, refused.say(M("hub.request.large", "Request too large. The hub reads at most {kb} KB.", kb=MAX_JSON >> 10)))
+                self.send_json(
+                    413,
+                    refused.say(
+                        M(
+                            "hub.request.large",
+                            "Request too large. The hub reads at most {kb} KB.",
+                            kb=MAX_JSON >> 10,
+                        )
+                    ),
+                )
                 return
             self.send_json(400, refused.say(BAD_REQUEST))
             return
@@ -4062,7 +5746,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/notebook":
             # Open (start) this login's own notebook; only from the hub's own pages, as /api/account.
             site = self.headers.get("Sec-Fetch-Site")
-            if self.headers.get("X-Irate-Account") != "1" or (site and site not in ("same-origin", "none")):
+            if self.headers.get("X-Irate-Account") != "1" or (
+                site and site not in ("same-origin", "none")
+            ):
                 self.send_json(403, refused.say(CROSS_SITE))
                 return
             me = accounts.session(self._session_token())
@@ -4079,7 +5765,10 @@ class Handler(BaseHTTPRequestHandler):
             # enable, delete, the role; a new account or a reset, each with a one-time code.
             action = payload.get("action")
             before = accounts.admin_ready()
-            if unclaimed() and (action == "admin" or (action == "make" and payload.get("role") == "admin")):
+            if unclaimed() and (
+                action == "admin"
+                or (action == "make" and payload.get("role") == "admin")
+            ):
                 # The first admin is the first use's: made on the set-up page (HTTPS, or HTTP by choice) or at the console.
                 self.send_json(403, refused.say(SETUP_FIRST))
                 return
@@ -4092,13 +5781,25 @@ class Handler(BaseHTTPRequestHandler):
                     if reach is not None and reach not in ("off", "local", "network"):
                         self.send_json(400, refused.say(BAD_REQUEST))
                         return
-                    req = {"action": "admin-login", "reach": reach} if reach is not None else {"action": "admin-login", "on": payload.get("on") is True}
+                    req = (
+                        {"action": "admin-login", "reach": reach}
+                        if reach is not None
+                        else {"action": "admin-login", "on": payload.get("on") is True}
+                    )
                     self.send_json(202, {"id": control_request(req)})
                     return
                 if action == "settings":
-                    out = {"settings": accounts.set_settings(payload.get("signup"), payload.get("http"), keep_admin=keep)}
+                    out = {
+                        "settings": accounts.set_settings(
+                            payload.get("signup"), payload.get("http"), keep_admin=keep
+                        )
+                    }
                 elif action == "make":
-                    out = {"code": accounts.make(payload.get("name"), payload.get("role", "user"))}
+                    out = {
+                        "code": accounts.make(
+                            payload.get("name"), payload.get("role", "user")
+                        )
+                    }
                 elif action == "reset":
                     out = {"code": accounts.reset(payload.get("name"))}
                 else:
@@ -4114,16 +5815,43 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/setup":
             pw, name = payload.get("password"), payload.get("name")
             if not unclaimed():
-                self.send_json(403, refused.say(M("setup.done", "The administrator password is already set.")))
+                self.send_json(
+                    403,
+                    refused.say(
+                        M("setup.done", "The administrator password is already set.")
+                    ),
+                )
             elif not self._https() and payload.get("over_http") is not True:
                 # The first password over plain HTTP only when the owner chooses it, having been told.
-                self.send_json(403, dict(refused.say(M("setup.http", "Over plain HTTP, others on the network can read the password. "
-                                                          "Use HTTPS or the console, or select the option to set it over HTTP.")), https=False))
-            elif not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
+                self.send_json(
+                    403,
+                    dict(
+                        refused.say(
+                            M(
+                                "setup.http",
+                                "Over plain HTTP, others on the network can read the password. "
+                                "Use HTTPS or the console, or select the option to set it over HTTP.",
+                            )
+                        ),
+                        https=False,
+                    ),
+                )
+            elif (
+                not isinstance(pw, str)
+                or not (MIN_PASSWORD <= len(pw) <= 128)
+                or "\n" in pw
+            ):
                 self.send_json(400, refused.say(password_length()))
             elif name is None:
                 # A script's first use (no name): the box's own login, as before.
-                self.send_json(202, {"id": control_request({"action": "password", "password": pw, "setup": True})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "password", "password": pw, "setup": True}
+                        )
+                    },
+                )
             else:
                 # The owner's first use: their admin account, signed in at once. The box's own login goes
                 # off (no password made for scripts: script-login at the console makes one).
@@ -4137,7 +5865,11 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 rid = control_request({"action": "claim"})
                 control_request({"action": "admin-gate"})
-                self.send_json(202, {"id": rid}, [self._session_cookie(token, accounts.SESSION_DAYS * 86400)])
+                self.send_json(
+                    202,
+                    {"id": rid},
+                    [self._session_cookie(token, accounts.SESSION_DAYS * 86400)],
+                )
             return
 
         if path == "/admin/settings":
@@ -4154,7 +5886,10 @@ class Handler(BaseHTTPRequestHandler):
                 current = dict(_settings)
                 save_settings(current)
                 apply_settings(current)
-                if current["visitor_counts"] != was_counting or not VISITORS_WANT.exists():
+                if (
+                    current["visitor_counts"] != was_counting
+                    or not VISITORS_WANT.exists()
+                ):
                     write_visitors_want(current["visitor_counts"])
             self.send_json(200, current)
             return
@@ -4174,9 +5909,22 @@ class Handler(BaseHTTPRequestHandler):
             except (binascii.Error, TypeError, ValueError):
                 data = b""
             if not data or len(data) > pic["max"] or not picture_kind(name, data):
-                self.send_json(400, refused.say(M("hub.picture.favicon", "Select a PNG or .ico file of at most {kb} KB.", kb=pic["max"] >> 10)
-                                                if name == "favicon" else
-                                                M("hub.picture.art", "Select a PNG, JPEG or WebP picture of at most {kb} KB.", kb=pic["max"] >> 10)))
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "hub.picture.favicon",
+                            "Select a PNG or .ico file of at most {kb} KB.",
+                            kb=pic["max"] >> 10,
+                        )
+                        if name == "favicon"
+                        else M(
+                            "hub.picture.art",
+                            "Select a PNG, JPEG or WebP picture of at most {kb} KB.",
+                            kb=pic["max"] >> 10,
+                        )
+                    ),
+                )
                 return
             tmp = pic["file"].with_name(pic["file"].name + ".tmp")
             tmp.write_bytes(data)
@@ -4186,9 +5934,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/tailscale":
             mode, hours = payload.get("mode"), payload.get("hours")
-            if mode not in ("off", "on", "timed") or (mode == "timed" and not (
-                    type(hours) is int and 1 <= hours <= TAILSCALE_MAX_HOURS)):  # not bool
-                self.send_json(400, refused.say(M("tailscale.hours", "Select off, on, or on for 1 to {max} hours.", max=TAILSCALE_MAX_HOURS)))
+            if mode not in ("off", "on", "timed") or (
+                mode == "timed"
+                and not (type(hours) is int and 1 <= hours <= TAILSCALE_MAX_HOURS)
+            ):  # not bool
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "tailscale.hours",
+                            "Select off, on, or on for 1 to {max} hours.",
+                            max=TAILSCALE_MAX_HOURS,
+                        )
+                    ),
+                )
                 return
             write_tailscale_want(mode, hours)
             self._send_tailscale()
@@ -4201,21 +5960,50 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/control":
             unit, op = payload.get("unit"), payload.get("op")
             if op not in CONTROL_OPS.get(unit, []):
-                self.send_json(400, refused.say(M("hub.control.not-offered", "The hub does not offer {op} for {unit}.", op=str(op), unit=str(unit))))
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "hub.control.not-offered",
+                            "The hub does not offer {op} for {unit}.",
+                            op=str(op),
+                            unit=str(unit),
+                        )
+                    ),
+                )
                 return
-            self.send_json(202, {"id": control_request({"action": "service", "unit": unit, "op": op})})
+            self.send_json(
+                202,
+                {"id": control_request({"action": "service", "unit": unit, "op": op})},
+            )
             return
 
         if path == "/admin/password":
             pw = payload.get("password")
             if not self._https():
-                self.send_json(403, dict(refused.say(M("hub.password.https", "An administrator password can change only over HTTPS or at the console over SSH.")),
-                                         https=False))
+                self.send_json(
+                    403,
+                    dict(
+                        refused.say(
+                            M(
+                                "hub.password.https",
+                                "An administrator password can change only over HTTPS or at the console over SSH.",
+                            )
+                        ),
+                        https=False,
+                    ),
+                )
                 return
-            if not isinstance(pw, str) or not (MIN_PASSWORD <= len(pw) <= 128) or "\n" in pw:
+            if (
+                not isinstance(pw, str)
+                or not (MIN_PASSWORD <= len(pw) <= 128)
+                or "\n" in pw
+            ):
                 self.send_json(400, refused.say(password_length()))
                 return
-            self.send_json(202, {"id": control_request({"action": "password", "password": pw})})
+            self.send_json(
+                202, {"id": control_request({"action": "password", "password": pw})}
+            )
             return
 
         if path == "/admin/moderation":
@@ -4225,10 +6013,29 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/update" and payload.get("action") == "signing":
             # How far an update must be vouched for (root/signing.py): root checks and keeps it.
             level, signers = payload.get("level"), payload.get("signers", "")
-            if level not in ("off", "github", "tags") or not isinstance(signers, str) or len(signers) > 20000:
-                self.send_json(400, refused.say(M("update.signing.invalid", "Invalid signing settings. Select a level, and enter the signers as allowed_signers lines.")))
+            if (
+                level not in ("off", "github", "tags")
+                or not isinstance(signers, str)
+                or len(signers) > 20000
+            ):
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "update.signing.invalid",
+                            "Invalid signing settings. Select a level, and enter the signers as allowed_signers lines.",
+                        )
+                    ),
+                )
                 return
-            self.send_json(202, {"id": control_request({"action": "update-signing", "level": level, "signers": signers})})
+            self.send_json(
+                202,
+                {
+                    "id": control_request(
+                        {"action": "update-signing", "level": level, "signers": signers}
+                    )
+                },
+            )
             return
 
         if path == "/admin/update":
@@ -4268,15 +6075,105 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/tls":
             action = payload.get("action")
+            if action == "policy":
+                if (
+                    unclaimed()
+                    or payload.get("mode") not in ("hub", "console")
+                    or (
+                        payload["mode"] == "console"
+                        and payload.get("confirmed") is not True
+                    )
+                ):
+                    self.send_json(
+                        400,
+                        refused.say(
+                            M(
+                                "policy.request.invalid",
+                                "Claim the box and confirm the security policy choice first.",
+                            )
+                        ),
+                    )
+                    return
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "security-policy",
+                                "mode": payload["mode"],
+                                "confirmed": payload.get("confirmed") is True,
+                            }
+                        )
+                    },
+                )
+                return
+            if action == "settings":
+                transport, admin_http = payload.get("transport"), payload.get(
+                    "admin_http"
+                )
+                if transport not in (
+                    "http",
+                    "both",
+                    "discovery",
+                    "https",
+                ) or admin_http not in ("allow", "warning", "block"):
+                    self.send_json(400, refused.say(BAD_REQUEST))
+                    return
+                if (
+                    transport in ("discovery", "https") or admin_http == "block"
+                ) and self.headers.get("X-Forwarded-Proto") != "https":
+                    self.send_json(
+                        409,
+                        refused.say(
+                            M(
+                                "tls.settings.http",
+                                "Open /admin over HTTPS first. These settings cannot be enabled from an HTTP session.",
+                            )
+                        ),
+                    )
+                    return
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "tls-settings",
+                                "transport": transport,
+                                "admin_http": admin_http,
+                            }
+                        )
+                    },
+                )
+                return
             if action in ("on", "off"):
-                self.send_json(202, {"id": control_request({"action": "tls-switch", "on": action == "on"})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "tls-switch", "on": action == "on"}
+                        )
+                    },
+                )
                 return
             if action == "import":
                 # The owner's own certificate and key, staged for the root helper (hub-only, 0600),
                 # which checks and installs them and removes these copies.
                 chain, key = payload.get("chain"), payload.get("key")
-                if not isinstance(chain, str) or not isinstance(key, str) or len(chain) > 64 << 10 or len(key) > 16 << 10:
-                    self.send_json(400, refused.say(M("tls.import.invalid", "Paste the certificate chain and the key, each as PEM text.")))
+                if (
+                    not isinstance(chain, str)
+                    or not isinstance(key, str)
+                    or len(chain) > 64 << 10
+                    or len(key) > 16 << 10
+                ):
+                    self.send_json(
+                        400,
+                        refused.say(
+                            M(
+                                "tls.import.invalid",
+                                "Paste the certificate chain and the key, each as PEM text.",
+                            )
+                        ),
+                    )
                     return
                 staged = STATE_DIR / "tls-import"
                 staged.mkdir(mode=0o700, exist_ok=True)
@@ -4296,15 +6193,35 @@ class Handler(BaseHTTPRequestHandler):
                 # Only from a page that came over HTTPS: proof the owner's device trusts the box,
                 # so turning it on can't lock them out of /admin.
                 if on and self.headers.get("X-Forwarded-Proto") != "https":
-                    self.send_json(409, refused.say(M("tls.admin-only.http", "Open /admin over HTTPS first (https://<this box>/admin/). Then make it HTTPS only. "
-                                                      "Otherwise you can lose access to /admin.")))
+                    self.send_json(
+                        409,
+                        refused.say(
+                            M(
+                                "tls.admin-only.http",
+                                "Open /admin over HTTPS first (https://<this box>/admin/). Then make it HTTPS only. "
+                                "Otherwise you can lose access to /admin.",
+                            )
+                        ),
+                    )
                     return
-                self.send_json(202, {"id": control_request({"action": "tls-admin-only", "on": on})})
+                self.send_json(
+                    202, {"id": control_request({"action": "tls-admin-only", "on": on})}
+                )
                 return
             if action not in ("make", "renew"):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
                 return
-            self.send_json(202, {"id": control_request({"action": f"tls-{action}", "again": payload.get("again") is True})})
+            self.send_json(
+                202,
+                {
+                    "id": control_request(
+                        {
+                            "action": f"tls-{action}",
+                            "again": payload.get("again") is True,
+                        }
+                    )
+                },
+            )
             return
 
         if path == "/admin/factory":
@@ -4312,20 +6229,33 @@ class Handler(BaseHTTPRequestHandler):
             action = payload.get("action")
             try:
                 if action == "queue":
-                    out = factory.queue(str(payload.get("source", "")), str(payload.get("ref", "")), payload.get("targets"))
+                    out = factory.queue(
+                        str(payload.get("source", "")),
+                        str(payload.get("ref", "")),
+                        payload.get("targets"),
+                    )
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
                     return
                 if action in ("tools", "offline"):
-                    out = factory.queue_tools(str(payload.get("source", "")), str(payload.get("ref", "")), str(payload.get("family", "")),
-                                              offline=action == "offline", env=str(payload.get("env") or "") or None)
+                    out = factory.queue_tools(
+                        str(payload.get("source", "")),
+                        str(payload.get("ref", "")),
+                        str(payload.get("family", "")),
+                        offline=action == "offline",
+                        env=str(payload.get("env") or "") or None,
+                    )
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
                     return
                 if action == "publish":
                     factory.publish(str(payload.get("run", "")))
                 elif action == "unpublish":
-                    factory.unpublish(str(payload.get("version", "")), str(payload.get("env", "")))
+                    factory.unpublish(
+                        str(payload.get("version", "")), str(payload.get("env", ""))
+                    )
                 elif action in ("cancel", "up"):
-                    (factory.cancel if action == "cancel" else factory.move_up)(str(payload.get("id", "")))
+                    (factory.cancel if action == "cancel" else factory.move_up)(
+                        str(payload.get("id", ""))
+                    )
                 elif action in ("pause", "resume"):
                     factory.pause(action == "pause")
                 else:
@@ -4343,9 +6273,17 @@ class Handler(BaseHTTPRequestHandler):
                 if action == "build":
                     name = str(payload.get("repo", ""))
                     if not gitrepos.NAME_RE.match(name):
-                        raise refused.Refused(M("ci.repo.invalid", "Invalid repository name. Select a private repository."))
+                        raise refused.Refused(
+                            M(
+                                "ci.repo.invalid",
+                                "Invalid repository name. Select a private repository.",
+                            )
+                        )
                     branch = payload.get("branch")
-                    out = ci.queue_build(confine.under(gitrepos.ROOT, "private", f"{name}.git"), str(branch) if branch else None)
+                    out = ci.queue_build(
+                        confine.under(gitrepos.ROOT, "private", f"{name}.git"),
+                        str(branch) if branch else None,
+                    )
                     self.send_json(202, dict(out, queued=True, snapshot=ci.snapshot()))
                 elif action in ("keep", "unkeep", "delete"):
                     ci.queue_run_change(str(payload.get("run", "")), action)
@@ -4353,7 +6291,12 @@ class Handler(BaseHTTPRequestHandler):
                 elif action == "settings":
                     keep = payload.get("keep_runs")
                     if type(keep) is not int or not 1 <= keep <= 50:
-                        raise refused.Refused(M("ci.keep.range", "Enter a number of builds to keep from 1 to 50."))
+                        raise refused.Refused(
+                            M(
+                                "ci.keep.range",
+                                "Enter a number of builds to keep from 1 to 50.",
+                            )
+                        )
                     ci.SETTINGS.parent.mkdir(parents=True, exist_ok=True)
                     ci.SETTINGS.write_text(json.dumps({"keep_runs": keep}))
                     self.send_json(200, ci.snapshot())
@@ -4365,6 +6308,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/kits":
             from irate_box.library import toolkits
+
             try:
                 rid = toolkits.action(payload)
             except librarian.LibrarianError as exc:
@@ -4380,45 +6324,138 @@ class Handler(BaseHTTPRequestHandler):
             action, device = payload.get("action"), str(payload.get("device", ""))
             if action == "scan":
                 self.send_json(202, {"id": control_request({"action": "usb-scan"})})
-            elif action == "import" and USB_DEVICE_RE.match(device) and isinstance(payload.get("file"), str):
-                self.send_json(202, {"id": control_request({"action": "usb-import", "device": device,
-                                                            "file": payload["file"][:512]})})
-            elif action == "export" and USB_DEVICE_RE.match(device) and isinstance(payload.get("book"), str):
-                self.send_json(202, {"id": control_request({"action": "usb-export", "device": device,
-                                                            "book": payload["book"][:64]})})
-            elif action in ("kit-import", "kit-export") and USB_DEVICE_RE.match(device) and isinstance(payload.get("kit"), str):
-                self.send_json(202, {"id": control_request({"action": f"usb-{action}", "device": device, "kit": payload["kit"][:32]})})
-            elif action == "export-many" and USB_DEVICE_RE.match(device) and _str_list(payload.get("books")) and _str_list(payload.get("kits")) \
-                    and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data"):
+            elif (
+                action == "import"
+                and USB_DEVICE_RE.match(device)
+                and isinstance(payload.get("file"), str)
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "usb-import",
+                                "device": device,
+                                "file": payload["file"][:512],
+                            }
+                        )
+                    },
+                )
+            elif (
+                action == "export"
+                and USB_DEVICE_RE.match(device)
+                and isinstance(payload.get("book"), str)
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "usb-export",
+                                "device": device,
+                                "book": payload["book"][:64],
+                            }
+                        )
+                    },
+                )
+            elif (
+                action in ("kit-import", "kit-export")
+                and USB_DEVICE_RE.match(device)
+                and isinstance(payload.get("kit"), str)
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": f"usb-{action}",
+                                "device": device,
+                                "kit": payload["kit"][:32],
+                            }
+                        )
+                    },
+                )
+            elif (
+                action == "export-many"
+                and USB_DEVICE_RE.match(device)
+                and _str_list(payload.get("books"))
+                and _str_list(payload.get("kits"))
+                and _str_list(payload.get("repos", []))
+                and payload.get("state", "none") in ("none", "settings", "data")
+            ):
                 # A content export without the hub program: the layout the other box's USB imports read.
-                self.send_json(202, {"id": control_request({"action": "usb-export-many", "device": device,
-                                                            "books": payload["books"][:200], "kits": payload["kits"][:50],
-                                                            "repos": payload.get("repos", [])[:200], "state": payload.get("state", "none")})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "usb-export-many",
+                                "device": device,
+                                "books": payload["books"][:200],
+                                "kits": payload["kits"][:50],
+                                "repos": payload.get("repos", [])[:200],
+                                "state": payload.get("state", "none"),
+                            }
+                        )
+                    },
+                )
             elif action == "image" and USB_DEVICE_RE.match(device):
-                self.send_json(202, {"id": control_request({"action": "backup-image", "device": device})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "backup-image", "device": device}
+                        )
+                    },
+                )
             else:
                 self.send_json(400, refused.say(BAD_REQUEST))
             return
 
         if path == "/admin/kit":
             books, budget = payload.get("books", False), payload.get("budget_mb")
-            if payload.get("action") == "make" and (type(books) is bool or _str_list(books)) and _str_list(payload.get("kits", []))  \
-                    and _str_list(payload.get("repos", [])) and payload.get("state", "none") in ("none", "settings", "data") \
-                    and (budget is None or (type(budget) is int and budget > 0)):
+            if (
+                payload.get("action") == "make"
+                and (type(books) is bool or _str_list(books))
+                and _str_list(payload.get("kits", []))
+                and _str_list(payload.get("repos", []))
+                and payload.get("state", "none") in ("none", "settings", "data")
+                and (budget is None or (type(budget) is int and budget > 0))
+            ):
                 # A new box's kit with what the owner chose; root checks each again (kit_choices). Kept, so Refresh and
                 # the schedule (kitauto) make the same kit again.
-                req = {"action": "offline-kit" if payload.get("hub", True) is not False else "content-export",
-                       "books": books, "kits": payload.get("kits", []), "repos": payload.get("repos", []),
-                       "state": payload.get("state", "none"), "budget_mb": budget}
+                req = {
+                    "action": (
+                        "offline-kit"
+                        if payload.get("hub", True) is not False
+                        else "content-export"
+                    ),
+                    "books": books,
+                    "kits": payload.get("kits", []),
+                    "repos": payload.get("repos", []),
+                    "state": payload.get("state", "none"),
+                    "budget_mb": budget,
+                }
                 kitauto.remember(STATE_DIR, req)
                 self.send_json(202, {"id": control_request(req)})
             elif payload.get("action") == "refresh":
                 req = kitauto.load(STATE_DIR)["request"]
                 if not req:
-                    self.send_json(400, refused.say(M("kit.refresh.none", "No export was made yet. Create an export first.")))
+                    self.send_json(
+                        400,
+                        refused.say(
+                            M(
+                                "kit.refresh.none",
+                                "No export was made yet. Create an export first.",
+                            )
+                        ),
+                    )
                 else:
                     self.send_json(202, {"id": control_request(req)})
-            elif payload.get("action") == "schedule" and payload.get("when") in kitauto.WHEN:
+            elif (
+                payload.get("action") == "schedule"
+                and payload.get("when") in kitauto.WHEN
+            ):
                 kitauto.set_when(STATE_DIR, payload["when"])
                 self.send_json(200, kit_snapshot())
             else:
@@ -4430,14 +6467,38 @@ class Handler(BaseHTTPRequestHandler):
             data, ids = payload.get("state"), {i for i, _, _ in app_tiles()}
             size = data.get("size", {}) if isinstance(data, dict) else None
             icon = data.get("icon", {}) if isinstance(data, dict) else None
-            if not isinstance(data, dict) or not isinstance(data.get("order", []), list) or not set(data.get("order", [])) <= ids \
-                    or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES) \
-                    or not isinstance(icon, dict) or not set(icon) <= ids or not all(valid_icon(v) for v in icon.values()):
-                self.send_json(400, refused.say(M("tiles.invalid", "Invalid tile arrangement. An icon is an emoji, or up to four letters and digits.")))
+            if (
+                not isinstance(data, dict)
+                or not isinstance(data.get("order", []), list)
+                or not set(data.get("order", [])) <= ids
+                or not isinstance(size, dict)
+                or not set(size) <= ids
+                or not set(size.values()) <= set(SIZES)
+                or not isinstance(icon, dict)
+                or not set(icon) <= ids
+                or not all(valid_icon(v) for v in icon.values())
+            ):
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "tiles.invalid",
+                            "Invalid tile arrangement. An icon is an emoji, or up to four letters and digits.",
+                        )
+                    ),
+                )
                 return
             tmp = TILES_FILE.parent / (TILES_FILE.name + ".tmp")
             STATE_DIR.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps({"order": list(dict.fromkeys(data.get("order", []))), "size": size, "icon": icon}))
+            tmp.write_text(
+                json.dumps(
+                    {
+                        "order": list(dict.fromkeys(data.get("order", []))),
+                        "size": size,
+                        "icon": icon,
+                    }
+                )
+            )
             os.replace(tmp, TILES_FILE)
             self.send_json(200, tiles_snapshot())
             return
@@ -4446,9 +6507,16 @@ class Handler(BaseHTTPRequestHandler):
             # The box row's arrangement: its tiles only, each part a list of their ids.
             data, ids = payload.get("state"), {i for i, _ in box_tiles()}
             size = data.get("size", {}) if isinstance(data, dict) else None
-            if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list) and set(data.get(k, [])) <= ids
-                                                     for k in ("order", "hidden", "double")) \
-                    or not isinstance(size, dict) or not set(size) <= ids or not set(size.values()) <= set(SIZES):
+            if (
+                not isinstance(data, dict)
+                or not all(
+                    isinstance(data.get(k, []), list) and set(data.get(k, [])) <= ids
+                    for k in ("order", "hidden", "double")
+                )
+                or not isinstance(size, dict)
+                or not set(size) <= ids
+                or not set(size.values()) <= set(SIZES)
+            ):
                 self.send_json(400, refused.say(BAD_REQUEST))
                 return
             tmp = STATUS_TILES_FILE.parent / (STATUS_TILES_FILE.name + ".tmp")
@@ -4488,7 +6556,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/visibility":
             # Who sees an app's tile: the hub's own, at once; no root, no web server change.
             app, v = str(payload.get("app", "")), payload.get("visible")
-            if (app not in _switched() and app not in PAGE_APPS and app not in seen_only()) or v not in VISIBLE:
+            if (
+                app not in _switched()
+                and app not in PAGE_APPS
+                and app not in seen_only()
+            ) or v not in VISIBLE:
                 self.send_json(400, refused.say(BAD_REQUEST))
                 return
             data = visibility()
@@ -4502,11 +6574,32 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/access":
             app, mode = str(payload.get("app", "")), payload.get("mode")
-            if (app not in access.ROUTED and not any(m.get("local") and m["id"] == app for m in MANIFESTS)) or mode not in access.MODES \
-                    or (mode == "users" and not access.users_allowed(app)):
-                self.send_json(400, refused.say(M("access.invalid", "This app does not offer this access. Reload the page and try again.")))
+            if (
+                (
+                    app not in access.ROUTED
+                    and not any(m.get("local") and m["id"] == app for m in MANIFESTS)
+                )
+                or mode not in access.MODES
+                or (mode == "users" and not access.users_allowed(app))
+            ):
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "access.invalid",
+                            "This app does not offer this access. Reload the page and try again.",
+                        )
+                    ),
+                )
             else:
-                self.send_json(202, {"id": control_request({"action": "access", "app": app, "mode": mode})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "access", "app": app, "mode": mode}
+                        )
+                    },
+                )
             return
 
         if path == "/admin/local-addons":
@@ -4516,34 +6609,77 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/addons":
             aid = str(payload.get("addon", ""))
-            if not ADDON_ID_RE.match(aid) or aid not in manifests.addons(MANIFESTS) or type(payload.get("on")) is not bool:
+            if (
+                not ADDON_ID_RE.match(aid)
+                or aid not in manifests.addons(MANIFESTS)
+                or type(payload.get("on")) is not bool
+            ):
                 self.send_json(400, refused.say(BAD_REQUEST))
             else:
-                self.send_json(202, {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "addon", "addon": aid, "on": payload["on"]}
+                        )
+                    },
+                )
             return
 
         if path == "/admin/health":
             if payload.get("action") == "scan":
                 self.send_json(202, {"id": control_request({"action": "health-scan"})})
-            elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.match(str(payload.get("choice", ""))):
-                self.send_json(202, {"id": control_request({"action": "health-fix", "choice": payload["choice"]})})
+            elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.match(
+                str(payload.get("choice", ""))
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "health-fix", "choice": payload["choice"]}
+                        )
+                    },
+                )
             elif payload.get("action") in ("accept", "unaccept"):
                 # The owner's own: a review finding looked at and left as it is (or taken back). The hub's file; no root.
                 try:
-                    data = health_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
+                    data = health_accept(
+                        payload.get("key"),
+                        payload.get("title"),
+                        payload["action"] == "accept",
+                    )
                 except ValueError as exc:
                     self.send_json(400, refused.answer(exc))
                     return
-                self.send_json(200, refused.done(ACCEPTED if payload["action"] == "accept" else REOPENED, accepted=data))
+                self.send_json(
+                    200,
+                    refused.done(
+                        ACCEPTED if payload["action"] == "accept" else REOPENED,
+                        accepted=data,
+                    ),
+                )
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
         if path == "/admin/network":
             act = payload.get("action")
-            if act == "scan" and (payload.get("iface") in (None, "") or IFACE_NAME_RE.match(str(payload["iface"]))):
-                self.send_json(202, {"id": control_request({"action": "net-scan", "iface": payload.get("iface") or None,
-                                                            "rescan": payload.get("rescan") is True})})
+            if act == "scan" and (
+                payload.get("iface") in (None, "")
+                or IFACE_NAME_RE.match(str(payload["iface"]))
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "net-scan",
+                                "iface": payload.get("iface") or None,
+                                "rescan": payload.get("rescan") is True,
+                            }
+                        )
+                    },
+                )
             elif act == "settings":
                 try:
                     settings = uplink.validate(payload.get("settings"))
@@ -4551,50 +6687,201 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, refused.answer(exc))
                     return
                 settings.pop("hold_until", None)
-                self.send_json(202, {"id": control_request({"action": "uplink-set", "settings": settings})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "uplink-set", "settings": settings}
+                        )
+                    },
+                )
             elif act == "do" and payload.get("step") in uplink.STEPS:
-                self.send_json(202, {"id": control_request({"action": "uplink-do", "step": payload["step"]})})
-            elif act == "hold" and type(payload.get("minutes")) is int and 0 <= payload["minutes"] <= 1440:
-                self.send_json(202, {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "uplink-do", "step": payload["step"]}
+                        )
+                    },
+                )
+            elif (
+                act == "hold"
+                and type(payload.get("minutes")) is int
+                and 0 <= payload["minutes"] <= 1440
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "uplink-hold", "minutes": payload["minutes"]}
+                        )
+                    },
+                )
             elif act == "profile" and type(payload.get("on")) is bool:
-                self.send_json(202, {"id": control_request({"action": "uplink-profile", "on": payload["on"]})})
-            elif act == "handover" and isinstance(payload.get("name"), str) \
-                    and re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}\.yaml", payload["name"]) and type(payload.get("undo", False)) is bool:
-                self.send_json(202, {"id": control_request({"action": "nm-handover", "name": payload["name"],
-                                                            "undo": payload.get("undo", False)})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "uplink-profile", "on": payload["on"]}
+                        )
+                    },
+                )
+            elif (
+                act == "handover"
+                and isinstance(payload.get("name"), str)
+                and re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}\.yaml", payload["name"])
+                and type(payload.get("undo", False)) is bool
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "nm-handover",
+                                "name": payload["name"],
+                                "undo": payload.get("undo", False),
+                            }
+                        )
+                    },
+                )
             elif act == "defaults" and isinstance(payload.get("changes"), dict):
                 from irate_box.hub import nmconf
+
                 iface = payload.get("iface")
                 try:
                     changes = nmconf.validate(payload["changes"], iface)
                 except ValueError as exc:
                     self.send_json(400, refused.answer(exc))
                     return
-                self.send_json(202, {"id": control_request({"action": "nm-defaults", "iface": iface,
-                                                            "changes": {k: ("default" if v is None else v) for k, v in changes.items()}})})
-            elif act == "radiotest" and payload.get("exp") in ("follows-roam", "radio-reset", "driver-reset") \
-                    and IFACE_NAME_RE.match(str(payload.get("iface") or "")):
-                self.send_json(202, {"id": control_request({"action": "radio-test", "iface": payload["iface"], "exp": payload["exp"]})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "nm-defaults",
+                                "iface": iface,
+                                "changes": {
+                                    k: ("default" if v is None else v)
+                                    for k, v in changes.items()
+                                },
+                            }
+                        )
+                    },
+                )
+            elif (
+                act == "radiotest"
+                and payload.get("exp")
+                in ("follows-roam", "radio-reset", "driver-reset")
+                and IFACE_NAME_RE.match(str(payload.get("iface") or ""))
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "radio-test",
+                                "iface": payload["iface"],
+                                "exp": payload["exp"],
+                            }
+                        )
+                    },
+                )
             elif act == "wifisync" and payload.get("do") in ("off", "on", "undo"):
-                self.send_json(202, {"id": control_request({"action": "wifisync", "do": payload["do"]})})
-            elif act == "otherap" and isinstance(payload.get("uuid"), str) and payload.get("do") in ("remove", "leave", "undo", "forget") \
-                    and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]):
-                self.send_json(202, {"id": control_request({"action": "other-ap", "uuid": payload["uuid"], "do": payload["do"]})})
-            elif act == "connection" and isinstance(payload.get("uuid"), str) \
-                    and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", payload["uuid"]) \
-                    and (payload.get("undo") is True or (isinstance(payload.get("changes"), dict) and payload["changes"]
-                                                        and all(isinstance(k, str) and isinstance(v, str) for k, v in payload["changes"].items()))):
-                self.send_json(202, {"id": control_request({"action": "nm-connection", "uuid": payload["uuid"],
-                                                            "changes": payload.get("changes") or {}, "undo": payload.get("undo") is True})})
-            elif act == "join" and isinstance(payload.get("ssid"), str) and payload.get("security") in ("wpa-psk", "sae", "open") \
-                    and isinstance(payload.get("psk", ""), str) and type(payload.get("hidden", False)) is bool and type(payload.get("now", False)) is bool:
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "wifisync", "do": payload["do"]}
+                        )
+                    },
+                )
+            elif (
+                act == "otherap"
+                and isinstance(payload.get("uuid"), str)
+                and payload.get("do") in ("remove", "leave", "undo", "forget")
+                and re.fullmatch(
+                    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                    payload["uuid"],
+                )
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "other-ap",
+                                "uuid": payload["uuid"],
+                                "do": payload["do"],
+                            }
+                        )
+                    },
+                )
+            elif (
+                act == "connection"
+                and isinstance(payload.get("uuid"), str)
+                and re.fullmatch(
+                    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                    payload["uuid"],
+                )
+                and (
+                    payload.get("undo") is True
+                    or (
+                        isinstance(payload.get("changes"), dict)
+                        and payload["changes"]
+                        and all(
+                            isinstance(k, str) and isinstance(v, str)
+                            for k, v in payload["changes"].items()
+                        )
+                    )
+                )
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "nm-connection",
+                                "uuid": payload["uuid"],
+                                "changes": payload.get("changes") or {},
+                                "undo": payload.get("undo") is True,
+                            }
+                        )
+                    },
+                )
+            elif (
+                act == "join"
+                and isinstance(payload.get("ssid"), str)
+                and payload.get("security") in ("wpa-psk", "sae", "open")
+                and isinstance(payload.get("psk", ""), str)
+                and type(payload.get("hidden", False)) is bool
+                and type(payload.get("now", False)) is bool
+            ):
                 # A network for the box to join: checked again by root (wifijoin.validate); the password
                 # goes only into the request file (0600, the hub's) and NetworkManager's keyfile (root's).
-                self.send_json(202, {"id": control_request({"action": "wifi-join", "ssid": payload["ssid"], "security": payload["security"],
-                                                            "psk": payload.get("psk", ""), "hidden": payload.get("hidden", False),
-                                                            "now": payload.get("now", False)})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "wifi-join",
+                                "ssid": payload["ssid"],
+                                "security": payload["security"],
+                                "psk": payload.get("psk", ""),
+                                "hidden": payload.get("hidden", False),
+                                "now": payload.get("now", False),
+                            }
+                        )
+                    },
+                )
             elif act == "forget" and isinstance(payload.get("uuid"), str):
-                self.send_json(202, {"id": control_request({"action": "wifi-forget", "uuid": payload["uuid"]})})
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "wifi-forget", "uuid": payload["uuid"]}
+                        )
+                    },
+                )
             else:
                 self.send_json(400, refused.say(BAD_REQUEST))
             return
@@ -4602,22 +6889,46 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/packages":
             # Root checks each of these again (pkgwatch.py); here only their shapes.
             act, pkg = payload.get("action"), payload.get("package")
-            if not isinstance(pkg, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", pkg) and not (act == "check" and pkg == ""):
+            if (
+                not isinstance(pkg, str)
+                or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", pkg)
+                and not (act == "check" and pkg == "")
+            ):
                 self.send_json(400, refused.say(BAD_REQUEST))
                 return
             if act == "check":
                 req = {"action": "pkg-check", **({"package": pkg} if pkg else {})}
             elif act == "fetch" and pkg:
                 req = {"action": "pkg-fetch", "package": pkg}
-            elif act == "install" and isinstance(payload.get("version"), str) and re.fullmatch(r"[A-Za-z0-9.+~:-]{1,100}", payload["version"]):
-                req = {"action": "pkg-install", "package": pkg, "version": payload["version"]}
+            elif (
+                act == "install"
+                and isinstance(payload.get("version"), str)
+                and re.fullmatch(r"[A-Za-z0-9.+~:-]{1,100}", payload["version"])
+            ):
+                req = {
+                    "action": "pkg-install",
+                    "package": pkg,
+                    "version": payload["version"],
+                }
             elif act == "rollback":
                 req = {"action": "pkg-rollback", "package": pkg}
-            elif act == "settings" and payload.get("channel") in ("beta", "alpha", "daily") and payload.get("mode") in ("flag", "watch", "auto", "aged") \
-                    and payload.get("days") in (1, 3, 7, 14, 30) and not isinstance(payload.get("days"), bool) \
-                    and payload.get("every", 24) in (0, 6, 24, 168) and not isinstance(payload.get("every"), bool):
-                req = {"action": "pkg-settings", "package": pkg, "channel": payload["channel"], "mode": payload["mode"], "days": payload["days"],
-                       "every": payload.get("every", 24)}
+            elif (
+                act == "settings"
+                and payload.get("channel") in ("beta", "alpha", "daily")
+                and payload.get("mode") in ("flag", "watch", "auto", "aged")
+                and payload.get("days") in (1, 3, 7, 14, 30)
+                and not isinstance(payload.get("days"), bool)
+                and payload.get("every", 24) in (0, 6, 24, 168)
+                and not isinstance(payload.get("every"), bool)
+            ):
+                req = {
+                    "action": "pkg-settings",
+                    "package": pkg,
+                    "channel": payload["channel"],
+                    "mode": payload["mode"],
+                    "days": payload["days"],
+                    "every": payload.get("every", 24),
+                }
             else:
                 self.send_json(400, refused.say(BAD_REQUEST))
                 return
@@ -4630,10 +6941,17 @@ class Handler(BaseHTTPRequestHandler):
             if level not in SHARE_LEVELS:
                 self.send_json(400, refused.say(BAD_REQUEST))
                 return
-            self.send_json(202, {"id": control_request({"action": "share-set", "level": level})})
+            self.send_json(
+                202, {"id": control_request({"action": "share-set", "level": level})}
+            )
             return
 
-        if path == "/admin/hotspot" and payload.get("action") in ("on", "off", "try", "confirm"):
+        if path == "/admin/hotspot" and payload.get("action") in (
+            "on",
+            "off",
+            "try",
+            "confirm",
+        ):
             # The hotspot itself (root/ap.py through the root helper): on with the owner's choices,
             # off, the try of a channel of its own beside the WiFi link, or keeping one that took it.
             req = {"action": "ap-" + payload["action"]}
@@ -4650,37 +6968,78 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 self.send_json(400, refused.answer(exc))
                 return
-            self.send_json(200, refused.done(M("hotspot.saved", "Saved: {mode}. The setting applies the next time you enable the hotspot (Network).",
-                                               mode=hotspot.LABEL_SAID[saved["mode"]]), settings=saved))
+            self.send_json(
+                200,
+                refused.done(
+                    M(
+                        "hotspot.saved",
+                        "Saved: {mode}. The setting applies the next time you enable the hotspot (Network).",
+                        mode=hotspot.LABEL_SAID[saved["mode"]],
+                    ),
+                    settings=saved,
+                ),
+            )
             return
 
         if path == "/admin/security":
             if payload.get("action") == "scan":
-                self.send_json(202, {"id": control_request({"action": "security-scan"})})
+                self.send_json(
+                    202, {"id": control_request({"action": "security-scan"})}
+                )
             elif payload.get("action") == "audit":
-                self.send_json(202, {"id": control_request({"action": "security-audit"})})
+                self.send_json(
+                    202, {"id": control_request({"action": "security-audit"})}
+                )
             elif payload.get("action") == "deep":
-                self.send_json(202, {"id": control_request({"action": "security-deep-audit"})})
+                self.send_json(
+                    202, {"id": control_request({"action": "security-deep-audit"})}
+                )
             elif payload.get("action") in ("import", "import-remove"):
                 # A scan report read in the owner's browser (secimports.py); the doctor runs again.
                 from irate_box.hub import secimports
+
                 try:
-                    msg = secimports.save(payload.get("report")) if payload["action"] == "import" else \
-                        secimports.remove(str(payload.get("kind", "")))
+                    msg = (
+                        secimports.save(payload.get("report"))
+                        if payload["action"] == "import"
+                        else secimports.remove(str(payload.get("kind", "")))
+                    )
                 except ValueError as exc:
                     self.send_json(400, refused.answer(exc))
                     return
-                self.send_json(202, refused.done(msg, id=control_request({"action": "security-audit"})))
+                self.send_json(
+                    202,
+                    refused.done(msg, id=control_request({"action": "security-audit"})),
+                )
             elif payload.get("action") in ("accept", "unaccept"):
                 # The owner's own: looked at, and accepted as it is (or taken back). The hub's file; no root.
                 try:
-                    data = security_accept(payload.get("key"), payload.get("title"), payload["action"] == "accept")
+                    data = security_accept(
+                        payload.get("key"),
+                        payload.get("title"),
+                        payload["action"] == "accept",
+                    )
                 except ValueError as exc:
                     self.send_json(400, refused.answer(exc))
                     return
-                self.send_json(200, refused.done(ACCEPTED if payload["action"] == "accept" else REOPENED, accepted=data))
-            elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
-                self.send_json(202, {"id": control_request({"action": "security-fix", "choice": payload["choice"]})})
+                self.send_json(
+                    200,
+                    refused.done(
+                        ACCEPTED if payload["action"] == "accept" else REOPENED,
+                        accepted=data,
+                    ),
+                )
+            elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(
+                str(payload.get("choice", ""))
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "security-fix", "choice": payload["choice"]}
+                        )
+                    },
+                )
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
@@ -4693,31 +7052,80 @@ class Handler(BaseHTTPRequestHandler):
             # A guest taps through the sheet (or, at users-web, is signed in): root lets the device out.
             level, addr = share_level(), self._client_addr()
             if level not in SHARE_LET_OUT:
-                self.send_json(409, refused.say(M("share.not-per-device", "The administrator does not share the internet connection one device at a time now.")))
+                self.send_json(
+                    409,
+                    refused.say(
+                        M(
+                            "share.not-per-device",
+                            "The administrator does not share the internet connection one device at a time now.",
+                        )
+                    ),
+                )
                 return
             if not on_hotspot(addr):
-                self.send_json(400, refused.say(M("share.not-hotspot", "Only a device on the hotspot of the box can use the shared connection.")))
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "share.not-hotspot",
+                            "Only a device on the hotspot of the box can use the shared connection.",
+                        )
+                    ),
+                )
                 return
             if level == "users-web" and not self._signed_in():
-                self.send_json(403, refused.say(M("share.users-only", "Sign in first. The administrator shares this connection with users only.")))
+                self.send_json(
+                    403,
+                    refused.say(
+                        M(
+                            "share.users-only",
+                            "Sign in first. The administrator shares this connection with users only.",
+                        )
+                    ),
+                )
                 return
             if payload.get("agree") is not True:
-                self.send_json(400, refused.say(M("share.agree", "Read what sharing means, and agree to it first.")))
+                self.send_json(
+                    400,
+                    refused.say(
+                        M(
+                            "share.agree",
+                            "Read what sharing means, and agree to it first.",
+                        )
+                    ),
+                )
                 return
             with _let_out_lock:
                 if _let_out.get(addr, 0) > time.time() + SHARE_HOURS * 3600 - 60:
-                    self.send_json(200, {"out": True})   # asked a moment ago
+                    self.send_json(200, {"out": True})  # asked a moment ago
                     return
                 _let_out[addr] = time.time() + SHARE_HOURS * 3600
-            self.send_json(202, {"id": control_request({"action": "share-allow", "ip": addr}), "out": True})
+            self.send_json(
+                202,
+                {
+                    "id": control_request({"action": "share-allow", "ip": addr}),
+                    "out": True,
+                },
+            )
             return
 
         if path == "/api/report":
             fwd = self.headers.get("X-Forwarded-For", "")
             addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
-            code, message = report(str(payload.get("app", "")), payload.get("ref"), payload.get("reason"), addr)
+            code, message = report(
+                str(payload.get("app", "")),
+                payload.get("ref"),
+                payload.get("reason"),
+                addr,
+            )
             # report.js reads message (the thanks) or error as text: the English, with the message itself as msg.
-            self.send_json(code, {"message" if code == 200 else "error": render(message), "msg": message})
+            self.send_json(
+                code,
+                {
+                    "message" if code == 200 else "error": render(message),
+                    "msg": message,
+                },
+            )
             return
 
         if path == "/board/threads":
@@ -4725,10 +7133,14 @@ class Handler(BaseHTTPRequestHandler):
             if poster is None:
                 return
             try:
-                result = BOARD.create_thread(poster[0],
-                                             payload.get("title"),
-                                             payload.get("text"),
-                                             self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
+                result = BOARD.create_thread(
+                    poster[0],
+                    payload.get("title"),
+                    payload.get("text"),
+                    self._hue(payload, poster),
+                    poster[1],
+                    seen_by_of(poster[1], "board"),
+                )
             except ValueError as exc:
                 self.send_json(400, refused.answer(exc))
                 return
@@ -4741,8 +7153,14 @@ class Handler(BaseHTTPRequestHandler):
             if poster is None:
                 return
             try:
-                result = BOARD.reply(tid, poster[0], payload.get("text"),
-                                     self._hue(payload, poster), poster[1], seen_by_of(poster[1], "board"))
+                result = BOARD.reply(
+                    tid,
+                    poster[0],
+                    payload.get("text"),
+                    self._hue(payload, poster),
+                    poster[1],
+                    seen_by_of(poster[1], "board"),
+                )
             except ValueError as exc:
                 self.send_json(400, refused.answer(exc))
                 return
@@ -4758,25 +7176,34 @@ class Handler(BaseHTTPRequestHandler):
         """A change a page on another site made (for /admin,
         see _forged): when the browser says where the request came from (Sec-Fetch-Site, or
         Origin), it must be this host; a sibling port (same-site) does not count. A client that
-        sends neither (curl, the box's own scripts) carries no cached login of a browser's."""
+        sends neither (curl, the box's own scripts) carries no cached login of a browser's.
+        """
         site = self.headers.get("Sec-Fetch-Site")
         origin = self.headers.get("Origin")
-        if (site and site not in ("same-origin", "none")) or (origin and urlparse(origin).netloc != self.headers.get("Host", "")):
+        if (site and site not in ("same-origin", "none")) or (
+            origin and urlparse(origin).netloc != self.headers.get("Host", "")
+        ):
             self._discard_body()
             self.send_json(403, refused.say(CROSS_SITE))
             return True
         return False
 
     def do_PUT(self):
-        if not self._cross_site() and not store.handle(self, "PUT", self.path.split("?")[0], STORE, DROP):
+        if not self._cross_site() and not store.handle(
+            self, "PUT", self.path.split("?")[0], STORE, DROP
+        ):
             self.send_empty(404)
 
     def do_DELETE(self):
-        if not self._cross_site() and not store.handle(self, "DELETE", self.path.split("?")[0], STORE, DROP):
+        if not self._cross_site() and not store.handle(
+            self, "DELETE", self.path.split("?")[0], STORE, DROP
+        ):
             self.send_empty(404)
 
     def do_PATCH(self):
-        if not self._cross_site() and not store.handle(self, "PATCH", self.path.split("?")[0], STORE, DROP):
+        if not self._cross_site() and not store.handle(
+            self, "PATCH", self.path.split("?")[0], STORE, DROP
+        ):
             self.send_empty(404)
 
     def do_OPTIONS(self):
@@ -4820,11 +7247,21 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/flasher/flasher.html":
             body = flasher.page(self.headers.get("Host", ""))
             if body is None:
-                self.send_json(404, refused.say(M("flasher.none", "The web flasher is not installed on this hub.")))
+                self.send_json(
+                    404,
+                    refused.say(
+                        M(
+                            "flasher.none",
+                            "The web flasher is not installed on this hub.",
+                        )
+                    ),
+                )
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="meshtastic-flasher.html"')
+            self.send_header(
+                "Content-Disposition", 'attachment; filename="meshtastic-flasher.html"'
+            )
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(body)))
@@ -4853,19 +7290,48 @@ class Handler(BaseHTTPRequestHandler):
         shout = kind == "shout"
         who = settings_snapshot()[f"{kind}_who"]
         if who == "off":
-            self.send_json(403, refused.say(M("shoutbox.closed", "The shoutbox is closed.") if shout else
-                                            M("board.closed", "The forum is closed.")))
+            self.send_json(
+                403,
+                refused.say(
+                    M("shoutbox.closed", "The shoutbox is closed.")
+                    if shout
+                    else M("board.closed", "The forum is closed.")
+                ),
+            )
             return None
         me = accounts.session(self._session_token())
         if me:
             return me["name"], me["name"]
         if who == "users":
-            self.send_json(403, dict(refused.say(M("shoutbox.sign-in", "Sign in to post on the shoutbox (/account.html).") if shout else
-                                                 M("board.sign-in", "Sign in to post on the forum (/account.html).")), login=True))
+            self.send_json(
+                403,
+                dict(
+                    refused.say(
+                        M(
+                            "shoutbox.sign-in",
+                            "Sign in to post on the shoutbox (/account.html).",
+                        )
+                        if shout
+                        else M(
+                            "board.sign-in",
+                            "Sign in to post on the forum (/account.html).",
+                        )
+                    ),
+                    login=True,
+                ),
+            )
             return None
         if accounts.exists(name):
-            self.send_json(403, refused.say(M("posting.name.account", "{name} is the name of an account. Sign in to post with that name.",
-                                              name=name.strip())))
+            self.send_json(
+                403,
+                refused.say(
+                    M(
+                        "posting.name.account",
+                        "{name} is the name of an account. Sign in to post with that name.",
+                        name=name.strip(),
+                    )
+                ),
+            )
             return None
         return name, None
 
@@ -4874,7 +7340,11 @@ class Handler(BaseHTTPRequestHandler):
         whether users' names are marked, and who this is."""
         st = settings_snapshot()
         me = accounts.session(self._session_token())
-        return {"who": st[f"{kind}_who"], "marks": st[f"{kind}_marks"], "me": me["name"] if me else None}
+        return {
+            "who": st[f"{kind}_who"],
+            "marks": st[f"{kind}_marks"],
+            "me": me["name"] if me else None,
+        }
 
     def _post_message(self, payload):
         text = str(payload.get("text", "")).strip()[:200]
@@ -4883,7 +7353,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         name, account = poster
         if not name or not text:
-            self.send_json(400, refused.say(M("shoutbox.empty", "Enter a name and a message.")))
+            self.send_json(
+                400, refused.say(M("shoutbox.empty", "Enter a name and a message."))
+            )
             return
 
         # Optional author colour, stored as a hue only (0-359) -- the client's palette
@@ -4960,12 +7432,16 @@ if __name__ == "__main__":
     # The mesh heard through the box's MQTT broker: decoded with the owner's channel keys.
     MESH.start()
     # The services' uptime: every unit's state every five minutes, for /admin's grid.
-    svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s] + [MESHTASTICD]).start()
+    svchistory.Sampler(
+        lambda: [s["unit"] for s in SERVICES if "unit" in s] + [MESHTASTICD]
+    ).start()
     memory_sampler = memhistory.Sampler()
     memory_sampler.start()
     notebooks.Reaper(NOTEBOOKS).start()
     # The pages the web server serves itself (no unit to sample): their use, from nginx's log of page loads.
-    pagehistory.Sampler(lambda: [s["path"] for s in SERVICES if "root" in s and s.get("path")]).start()
+    pagehistory.Sampler(
+        lambda: [s["path"] for s in SERVICES if "root" in s and s.get("path")]
+    ).start()
     # One thread per request: a 50 MB paste into the blob store must not freeze
     # everyone else's shoutbox poll. State is guarded by `lock` and the store's own.
     server = HubServer((BIND, PORT), Handler)
@@ -4974,6 +7450,7 @@ if __name__ == "__main__":
     # Stopped (an update, a restart, a shutdown): out through the finally below, so the clock and the
     # mesh nodes are saved; with the card ladder they are otherwise saved only every few minutes.
     import signal
+
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         server.serve_forever()

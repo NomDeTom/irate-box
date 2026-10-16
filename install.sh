@@ -160,63 +160,154 @@ HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
 for _a in "$@"; do
-	if [ "$_mask" = 1 ]; then ARGS_SHOWN+=" ***"; _mask=0; continue; fi
+	if [ "$_mask" = 1 ]; then
+		ARGS_SHOWN+=" ***"
+		_mask=0
+		continue
+	fi
 	ARGS_SHOWN+=" $_a"
 	[ "$_a" = --admin-password ] && _mask=1
 done
 ARGS_SHOWN="${ARGS_SHOWN# }"
 while [ $# -gt 0 ]; do
 	case "$1" in
-	--src) SRC="$2"; shift 2 ;;
-	--repo) REPO="$2"; shift 2 ;;
-	--branch) BRANCH="$2"; shift 2 ;;
-	--apps) APPS_SRC="$2"; shift 2 ;;
-	--tools) WITH_TOOLS=1; shift ;;
-	--apps-from-actions) APPS_FROM_ACTIONS=1; shift ;;
-	--with-notes) WITH_NOTES=1; shift ;;
-	--with-sync) WITH_SYNC=1; shift ;;
-	--zim) ZIMS+=("$2"); shift 2 ;;
-	--with-term) WITH_TERM=1; shift ;;
+	--src)
+		SRC="$2"
+		shift 2
+		;;
+	--repo)
+		REPO="$2"
+		shift 2
+		;;
+	--branch)
+		BRANCH="$2"
+		shift 2
+		;;
+	--apps)
+		APPS_SRC="$2"
+		shift 2
+		;;
+	--tools)
+		WITH_TOOLS=1
+		shift
+		;;
+	--apps-from-actions)
+		APPS_FROM_ACTIONS=1
+		shift
+		;;
+	--with-notes)
+		WITH_NOTES=1
+		shift
+		;;
+	--with-sync)
+		WITH_SYNC=1
+		shift
+		;;
+	--zim)
+		ZIMS+=("$2")
+		shift 2
+		;;
+	--with-term)
+		WITH_TERM=1
+		shift
+		;;
 	# ELIZA was an option here; it is an add-on from /admin's catalogue now. Still
 	# accepted, so an older install record replays.
 	--with-eliza) shift ;;
-	--with-mqtt) WITH_MQTT=1; shift ;;
-	--with-irc) WITH_IRC=1; shift ;;
-	--with-kiwix) WITH_KIWIX=1; shift ;;
-	--with-collab) WITH_COLLAB=1; shift ;;
-	--admin-password) ADMIN_PW="$2"; shift 2 ;;
-	--hub-url) HUB_URL="$2"; shift 2 ;;
-	--port) HUB_PORT="$2"; shift 2 ;;
+	--with-mqtt)
+		WITH_MQTT=1
+		shift
+		;;
+	--with-irc)
+		WITH_IRC=1
+		shift
+		;;
+	--with-kiwix)
+		WITH_KIWIX=1
+		shift
+		;;
+	--with-collab)
+		WITH_COLLAB=1
+		shift
+		;;
+	--admin-password)
+		ADMIN_PW="$2"
+		shift 2
+		;;
+	--hub-url)
+		HUB_URL="$2"
+		shift 2
+		;;
+	--port)
+		HUB_PORT="$2"
+		shift 2
+		;;
 	--web)
-		case "$2" in nginx | caddy) WEB="$2" ;; *) echo "--web takes nginx or caddy" >&2; exit 2 ;; esac
-		shift 2 ;;
-	--take-port-80) TAKE_PORT_80=1; shift ;;
+		case "$2" in nginx | caddy) WEB="$2" ;; *)
+			echo "--web takes nginx or caddy" >&2
+			exit 2
+			;;
+		esac
+		shift 2
+		;;
+	--take-port-80)
+		TAKE_PORT_80=1
+		shift
+		;;
 	--rtc)
-		case "$2" in auto | off) RTC="$2" ;; *) echo "--rtc takes auto or off" >&2; exit 2 ;; esac
-		shift 2 ;;
+		case "$2" in auto | off) RTC="$2" ;; *)
+			echo "--rtc takes auto or off" >&2
+			exit 2
+			;;
+		esac
+		shift 2
+		;;
 	--uplink)
 		# KEY=VALUE pairs (uplink.py checks each again), or the old single level E[,F].
-		if [[ "$2" =~ ^(pace|reach|sensitivity|forgiveness|guests|on_wedge|ignore_roams)=[a-z0-9]+(,(pace|reach|sensitivity|forgiveness|guests|on_wedge|ignore_roams)=[a-z0-9]+)*$ ]] ||
-			[[ "$2" =~ ^(off|patient|standard|persistent|stubborn)(,(tolerant|normal|strict))?$ ]]; then
+		if [[ $2 =~ ^(pace|reach|sensitivity|forgiveness|guests|on_wedge|ignore_roams)=[a-z0-9]+(,(pace|reach|sensitivity|forgiveness|guests|on_wedge|ignore_roams)=[a-z0-9]+)*$ ]] ||
+			[[ $2 =~ ^(off|patient|standard|persistent|stubborn)(,(tolerant|normal|strict))?$ ]]; then
 			UPLINK="$2"
 		else
-			echo "--uplink takes KEY=VALUE pairs (pace, reach, sensitivity, guests, on_wedge, ignore_roams=yes|no), e.g. pace=steady,reach=radio,sensitivity=4" >&2; exit 2
+			echo "--uplink takes KEY=VALUE pairs (pace, reach, sensitivity, guests, on_wedge, ignore_roams=yes|no), e.g. pace=steady,reach=radio,sensitivity=4" >&2
+			exit 2
 		fi
-		shift 2 ;;
+		shift 2
+		;;
 	--remove)
 		case "$2" in notes | sync | mqtt | irc | term | collab | kiwix) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term, collab or kiwix" ;; esac
-		shift 2 ;;
-	--download-cache) DL_CACHE="$2"; shift 2 ;;
-	--make-offline-bundle) MAKE_BUNDLE="$2"; shift 2 ;;
-	--arch) BUNDLE_ARCHS="$2"; shift 2 ;;
-	-h | --help) usage; exit 0 ;;
-	*) echo "install.sh: unknown option: $1" >&2; usage >&2; exit 2 ;;
+		shift 2
+		;;
+	--download-cache)
+		DL_CACHE="$2"
+		shift 2
+		;;
+	--make-offline-bundle)
+		MAKE_BUNDLE="$2"
+		shift 2
+		;;
+	--arch)
+		BUNDLE_ARCHS="$2"
+		shift 2
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "install.sh: unknown option: $1" >&2
+		usage >&2
+		exit 2
+		;;
 	esac
 done
 # Books from the network over HTTPS only: a book swapped on the way has its pages served
 # on the hub's own origin.
 for z in ${ZIMS[@]+"${ZIMS[@]}"}; do
-	case "$z" in http://*) echo "install.sh: --zim $z: use https:// (a book downloaded over plain HTTP can be replaced on the way)" >&2; exit 2 ;; esac
+	case "$z" in http://*)
+		echo "install.sh: --zim $z: use https:// (a book downloaded over plain HTTP can be replaced on the way)" >&2
+		exit 2
+		;;
+	esac
 done
 
 # An add-on being removed is not installed by this run, whatever else asks for it.
@@ -230,17 +321,17 @@ HUB_USER=hub
 CODE=/opt/irate-box
 STATE=/var/lib/hub
 APPS=/usr/share/hub/apps
-SB_SOCKET=/run/silverbullet/silverbullet.sock  # --with-notes: SilverBullet listens here
-TTYD_SOCKET=/run/ttyd/ttyd.sock  # --with-term: ttyd listens here
+SB_SOCKET=/run/silverbullet/silverbullet.sock # --with-notes: SilverBullet listens here
+TTYD_SOCKET=/run/ttyd/ttyd.sock               # --with-term: ttyd listens here
 # The local add-ons: their own origin, this port of the web server,
 # serving $STATE/addons/<id>/; their manifests in $STATE/apps.d/. Both the hub's, so adding one
 # from /admin needs no root.
 ADDON_PORT=8090
-GIT_PORT=8093  # cgit's web view, its own origin; clones and pushes stay on the hub's port
-WIKI_PORT=8092  # Kiwix's own origin; /wiki/ on the hub's port redirects there
-NOTES_PORT=8091  # SilverBullet's own origin; /notes/ on the hub's port redirects there
-NOTEBOOK_PORT=8094  # the notebooks per login: an origin apart from the shared notes'
-NB_SOCKETS=/run/irate-box-notebooks  # a notebook's socket: <name>/sb.sock under it
+GIT_PORT=8093                       # cgit's web view, its own origin; clones and pushes stay on the hub's port
+WIKI_PORT=8092                      # Kiwix's own origin; /wiki/ on the hub's port redirects there
+NOTES_PORT=8091                     # SilverBullet's own origin; /notes/ on the hub's port redirects there
+NOTEBOOK_PORT=8094                  # the notebooks per login: an origin apart from the shared notes'
+NB_SOCKETS=/run/irate-box-notebooks # a notebook's socket: <name>/sb.sock under it
 # HTTPS: each origin's TLS twin, listening only once the box has a
 # certificate (/admin → Security, HTTPS; root/tls.py writes the includes in $ETC/tls/front).
 TLS_PORT=443
@@ -409,7 +500,10 @@ state_write() {
 }
 on_err() {
 	# Only the first: the trap runs again in every function the failure passes through.
-	[ -n "$ABORT_CMD" ] || { ABORT_LINE="$1"; ABORT_CMD="$2"; }
+	[ -n "$ABORT_CMD" ] || {
+		ABORT_LINE="$1"
+		ABORT_CMD="$2"
+	}
 }
 on_exit() {
 	EXIT_CODE=$?
@@ -464,7 +558,10 @@ kit_get() {
 	if [ -n "$DL_CACHE" ] && [ -s "$DL_CACHE/$1" ]; then
 		cp "$DL_CACHE/$1" "$dest"
 	else
-		curl -fsSL -o "$dest" "$2" 2>/dev/null || { rm -f "$dest"; return 1; }
+		curl -fsSL -o "$dest" "$2" 2>/dev/null || {
+			rm -f "$dest"
+			return 1
+		}
 	fi
 }
 # SilverBullet's manual ($1, the pack's path) from the download cache, the box's own, or git; checked
@@ -473,44 +570,71 @@ kit_get() {
 sb_docs_get() {
 	local src="" d
 	for d in "$DL_CACHE" "$OWN_CACHE"; do
-		[ -n "$d" ] && [ -s "$d/$SB_DOCS_NAME" ] && { src="$d/$SB_DOCS_NAME"; break; }
+		[ -n "$d" ] && [ -s "$d/$SB_DOCS_NAME" ] && {
+			src="$d/$SB_DOCS_NAME"
+			break
+		}
 	done
 	if [ -n "$src" ]; then
 		cp "$src" "$1"
 	else
-		"$(dirname "$(readlink -f "$0")")/irate-box" sbdocs fetch "$SB_DOCS_COMMIT" "$1" 2>/dev/null || { rm -f "$1"; return 1; }
+		"$(dirname "$(readlink -f "$0")")/irate-box" sbdocs fetch "$SB_DOCS_COMMIT" "$1" 2>/dev/null || {
+			rm -f "$1"
+			return 1
+		}
 	fi
-	[ "$("$(dirname "$(readlink -f "$0")")/irate-box" sbdocs sum "$1" 2>/dev/null)" = "$SB_DOCS_SHA256" ] || { rm -f "$1"; return 2; }
+	[ "$("$(dirname "$(readlink -f "$0")")/irate-box" sbdocs sum "$1" 2>/dev/null)" = "$SB_DOCS_SHA256" ] || {
+		rm -f "$1"
+		return 2
+	}
 }
 # ESP Web Tools' tarball ($1) from the download cache, the box's own, or npm; checked against
 # EWT_SHA256 either way. Returns 1 when none has it, 2 when what it got does not match (and removes it).
 ewt_get() {
 	local src="" d
 	for d in "$DL_CACHE" "$OWN_CACHE"; do
-		[ -n "$d" ] && [ -s "$d/$EWT_NAME" ] && { src="$d/$EWT_NAME"; break; }
+		[ -n "$d" ] && [ -s "$d/$EWT_NAME" ] && {
+			src="$d/$EWT_NAME"
+			break
+		}
 	done
 	if [ -n "$src" ]; then
 		cp "$src" "$1"
 	else
-		curl -fsSL -o "$1" "$EWT_URL" 2>/dev/null || { rm -f "$1"; return 1; }
+		curl -fsSL -o "$1" "$EWT_URL" 2>/dev/null || {
+			rm -f "$1"
+			return 1
+		}
 	fi
-	[ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$EWT_SHA256" ] || { rm -f "$1"; return 2; }
+	[ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$EWT_SHA256" ] || {
+		rm -f "$1"
+		return 2
+	}
 }
 # FreeOCD's release zip ($1), as ewt_get: the download cache, the box's own, or GitHub; checked against FOCD_SHA256.
 focd_get() {
 	local src="" d
 	for d in "$DL_CACHE" "$OWN_CACHE"; do
-		[ -n "$d" ] && [ -s "$d/$FOCD_NAME" ] && { src="$d/$FOCD_NAME"; break; }
+		[ -n "$d" ] && [ -s "$d/$FOCD_NAME" ] && {
+			src="$d/$FOCD_NAME"
+			break
+		}
 	done
 	if [ -n "$src" ]; then
 		cp "$src" "$1"
 	else
-		curl -fsSL -o "$1" "$FOCD_URL" 2>/dev/null || { rm -f "$1"; return 1; }
+		curl -fsSL -o "$1" "$FOCD_URL" 2>/dev/null || {
+			rm -f "$1"
+			return 1
+		}
 	fi
-	[ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$FOCD_SHA256" ] || { rm -f "$1"; return 2; }
+	[ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$FOCD_SHA256" ] || {
+		rm -f "$1"
+		return 2
+	}
 }
-own_ttyd_arch() { case "$(uname -m)" in x86_64 | aarch64) uname -m ;; armv7l | armv8l) echo armhf ;; armv6l) echo arm ;; esac; }
-own_sb_arch() { case "$(uname -m)" in x86_64) echo x86_64 ;; aarch64) echo aarch64 ;; armv7l | armv8l) echo armv7 ;; esac; }
+own_ttyd_arch() { case "$(uname -m)" in x86_64 | aarch64) uname -m ;; armv7l | armv8l) echo armhf ;; armv6l) echo arm ;; esac }
+own_sb_arch() { case "$(uname -m)" in x86_64) echo x86_64 ;; aarch64) echo aarch64 ;; armv7l | armv8l) echo armv7 ;; esac }
 make_bundle() {
 	local kit here a tmp z ver tag sb_arch ttyd_arch caddy_arch app zip t sum
 	MISSING_N=0
@@ -532,15 +656,18 @@ make_bundle() {
 	printf '%s (offline kit, made %s)\n' "$ver" "$(date -u +%Y-%m-%d)" >"$kit/irate-box/VERSION"
 	echo "    irate-box $ver"
 	echo "==> The apps (downloaded and checked as the librarian does)"
-	tmp="$(mktemp -d)"; install -d "$tmp/library"
+	tmp="$(mktemp -d)"
+	install -d "$tmp/library"
 	for app in draw mermaid serial tools room flasher; do
 		# A box making a kit of itself (--apps): its installed copy, with no download and no GitHub request; the room
 		# relay lives apart ($ROOM). Only an app the box does not have is downloaded.
 		src=""
-		if [ "$app" = room ] && [ -n "$APPS_SRC" ] && [ -f "$ROOM/dist/index.js" ]; then src="$ROOM"
+		if [ "$app" = room ] && [ -n "$APPS_SRC" ] && [ -f "$ROOM/dist/index.js" ]; then
+			src="$ROOM"
 		elif [ -n "$APPS_SRC" ] && [ -d "$APPS_SRC/$app" ]; then src="$APPS_SRC/$app"; fi
 		if [ -n "$src" ]; then
-			rm -rf "${kit:?}/apps/$app"; install -d "$kit/apps"
+			rm -rf "${kit:?}/apps/$app"
+			install -d "$kit/apps"
 			cp -a "$src" "$kit/apps/$app"
 			rm -rf "$kit/apps/$app/.git"
 			echo "    $app: this box's installed copy ($src)"
@@ -552,7 +679,8 @@ make_bundle() {
 			echo "    $(tail -1 "$tmp/err")"
 			rm -f "$zip"
 		else
-			MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: the $app app. Download unavailable ($(tail -1 "$tmp/err" | sed 's/^librarian: //'))"
+			MISSING_N=$((MISSING_N + 1))
+			echo "    Missing offline component: the $app app. Download unavailable ($(tail -1 "$tmp/err" | sed 's/^librarian: //'))"
 		fi
 	done
 	rm -rf "$tmp"
@@ -580,7 +708,8 @@ make_bundle() {
 			echo "    $a: ttyd $TTYD_VERSION (this box's installed copy; no internet for the published one)"
 		else
 			rm -f "$KIT_DL/ttyd-$TTYD_VERSION-ttyd.$ttyd_arch"
-			MISSING_N=$((MISSING_N+1)); echo "    $a: Missing offline component: ttyd. It is not in the download cache and the download failed. The box downloads it during setup, so setup needs internet."
+			MISSING_N=$((MISSING_N + 1))
+			echo "    $a: Missing offline component: ttyd. It is not in the download cache and the download failed. The box downloads it during setup, so setup needs internet."
 		fi
 		if [ -n "$sb_arch" ]; then
 			z="silverbullet-$SB_VERSION-silverbullet-server-linux-$sb_arch.zip"
@@ -595,7 +724,8 @@ make_bundle() {
 				printf '%s  silverbullet-server-linux-%s.zip\n' "$(sha256sum <"$KIT_DL/$z" | cut -d' ' -f1)" "$sb_arch" >>"$KIT_DL/silverbullet-$SB_VERSION-SHA256SUMS"
 				echo "    $a: SilverBullet $SB_VERSION (this box's installed copy; no internet for the release)"
 			else
-				MISSING_N=$((MISSING_N+1)); echo "    $a: Missing offline component: SilverBullet. It is not in the download cache and the download failed. Only notes need it."
+				MISSING_N=$((MISSING_N + 1))
+				echo "    $a: Missing offline component: SilverBullet. It is not in the download cache and the download failed. Only notes need it."
 			fi
 		else
 			echo "    $a: SilverBullet has no build for this architecture. Notes need armv7, aarch64 or x86_64."
@@ -612,7 +742,8 @@ make_bundle() {
 				echo "    $a: Caddy ${tag#v}"
 			else
 				rm -f "$KIT_DL/caddy-release-tag"
-				MISSING_N=$((MISSING_N+1)); echo "    $a: Missing offline component: the Caddy .deb. It is not in the download cache and the download failed."
+				MISSING_N=$((MISSING_N + 1))
+				echo "    $a: Missing offline component: the Caddy .deb. It is not in the download cache and the download failed."
 			fi
 		fi
 	done
@@ -622,7 +753,8 @@ make_bundle() {
 	elif [ $? = 2 ]; then
 		die "$SB_DOCS_NAME does not match its pinned digest (SB_DOCS_SHA256)"
 	else
-		MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: the SilverBullet manual. It is not in the download cache and the download failed. Notes work without it."
+		MISSING_N=$((MISSING_N + 1))
+		echo "    Missing offline component: the SilverBullet manual. It is not in the download cache and the download failed. Notes work without it."
 	fi
 	# ESP Web Tools, for the light web flasher, the same for every architecture.
 	if [ -s "$KIT_DL/$EWT_NAME" ] || ewt_get "$KIT_DL/$EWT_NAME"; then
@@ -630,7 +762,8 @@ make_bundle() {
 	elif [ $? = 2 ]; then
 		die "$EWT_NAME does not match its pinned digest (EWT_SHA256)"
 	else
-		MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: ESP Web Tools. It is not in the download cache and the download failed. The flasher page then offers downloads only."
+		MISSING_N=$((MISSING_N + 1))
+		echo "    Missing offline component: ESP Web Tools. It is not in the download cache and the download failed. The flasher page then offers downloads only."
 	fi
 	# FreeOCD, for the flashing tools, the same for every architecture.
 	if [ -s "$KIT_DL/$FOCD_NAME" ] || focd_get "$KIT_DL/$FOCD_NAME"; then
@@ -638,44 +771,48 @@ make_bundle() {
 	elif [ $? = 2 ]; then
 		die "$FOCD_NAME does not match its pinned digest (FOCD_SHA256)"
 	else
-		MISSING_N=$((MISSING_N+1)); echo "    Missing offline component: FreeOCD. It is not in the download cache and the download failed. The flashing tools work without it."
+		MISSING_N=$((MISSING_N + 1))
+		echo "    Missing offline component: FreeOCD. It is not in the download cache and the download failed. The flashing tools work without it."
 	fi
 	if [ ${#ZIMS[@]} -gt 0 ]; then
 		echo "==> Books"
 		for z in "${ZIMS[@]}"; do
 			case "$z" in
 			http://* | https://*) curl -fL --progress-bar -o "$kit/zim/$(basename "${z%%\?*}")" "$z" ;;
-			*) [ -f "$z" ] || die "--zim $z: no such file"; cp "$z" "$kit/zim/" ;;
+			*)
+				[ -f "$z" ] || die "--zim $z: no such file"
+				cp "$z" "$kit/zim/"
+				;;
 			esac
 			echo "    $(basename "${z%%\?*}")"
 		done
 	fi
 	cat >"$kit/setup.sh" <<-'SETUP'
-	#!/bin/sh
-	# Sets up a box from this offline kit: the installer from the kit, with the kit's apps,
-	# release downloads and books. Any installer option may follow (--with-notes, --web caddy, ...);
-	# see irate-box/install.sh --help. Debian's own packages still come from the box's apt.
-	here="$(cd "$(dirname "$0")" && pwd)"
-	set -- --src "$here/irate-box" --apps "$here/apps" --download-cache "$here/downloads" "$@"
-	for z in "$here"/zim/*.zim; do [ -f "$z" ] && set -- "$@" --zim "$z"; done
-	bash "$here/irate-box/install.sh" "$@" || exit $?
-	# What the kit's maker chose to bring: the old box's state, git repositories, toolkits.
-	if [ -f "$here/state-backup.tar.gz" ]; then
-		echo "==> The state of the box this kit was made on"
-		runuser -u hub -- tar -xzf "$here/state-backup.tar.gz" -C /var/lib/hub --strip-components=1 \
-			--exclude=irate-box-state/BACKUP-CONTENTS.txt && systemctl restart irate-box 2>/dev/null
-		echo "    restored into /var/lib/hub"
-	fi
-	for repo in "$here"/git/public/*.git "$here"/git/private/*.git; do
-		[ -d "$repo" ] || continue
-		dest="/var/lib/hub/git/$(basename "$(dirname "$repo")")/$(basename "$repo")"
-		if [ -e "$dest" ]; then echo "    $dest already exists. Not replaced."; continue; fi
-		cp -a "$repo" "$dest" && chown -R hub:hub "$dest" && echo "    git: $dest"
-	done
-	if [ -d "$here/kits" ]; then
-		echo "==> Toolkits (each package checked against the hashes in signed Debian indexes)"
-		/opt/irate-box/irate-box kits import-dir "$here/kits" | sed 's/^/    /'
-	fi
+		#!/bin/sh
+		# Sets up a box from this offline kit: the installer from the kit, with the kit's apps,
+		# release downloads and books. Any installer option may follow (--with-notes, --web caddy, ...);
+		# see irate-box/install.sh --help. Debian's own packages still come from the box's apt.
+		here="$(cd "$(dirname "$0")" && pwd)"
+		set -- --src "$here/irate-box" --apps "$here/apps" --download-cache "$here/downloads" "$@"
+		for z in "$here"/zim/*.zim; do [ -f "$z" ] && set -- "$@" --zim "$z"; done
+		bash "$here/irate-box/install.sh" "$@" || exit $?
+		# What the kit's maker chose to bring: the old box's state, git repositories, toolkits.
+		if [ -f "$here/state-backup.tar.gz" ]; then
+			echo "==> The state of the box this kit was made on"
+			runuser -u hub -- tar -xzf "$here/state-backup.tar.gz" -C /var/lib/hub --strip-components=1 \
+				--exclude=irate-box-state/BACKUP-CONTENTS.txt && systemctl restart irate-box 2>/dev/null
+			echo "    restored into /var/lib/hub"
+		fi
+		for repo in "$here"/git/public/*.git "$here"/git/private/*.git; do
+			[ -d "$repo" ] || continue
+			dest="/var/lib/hub/git/$(basename "$(dirname "$repo")")/$(basename "$repo")"
+			if [ -e "$dest" ]; then echo "    $dest already exists. Not replaced."; continue; fi
+			cp -a "$repo" "$dest" && chown -R hub:hub "$dest" && echo "    git: $dest"
+		done
+		if [ -d "$here/kits" ]; then
+			echo "==> Toolkits (each package checked against the hashes in signed Debian indexes)"
+			/opt/irate-box/irate-box kits import-dir "$here/kits" | sed 's/^/    /'
+		fi
 	SETUP
 	chmod 755 "$kit/setup.sh"
 	(cd "$kit" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS)
@@ -709,7 +846,10 @@ command -v apt-get >/dev/null || die "needs a Debian-family system with apt"
 command -v systemctl >/dev/null || die "needs systemd"
 . /etc/os-release
 DISTRO="${PRETTY_NAME:-$ID}"
-[ -f /etc/armbian-release ] && DISTRO="$DISTRO (Armbian $(. /etc/armbian-release; echo "${BOARD_NAME:-$BOARD}"))"
+[ -f /etc/armbian-release ] && DISTRO="$DISTRO (Armbian $(
+	. /etc/armbian-release
+	echo "${BOARD_NAME:-$BOARD}"
+))"
 ARCH="$(uname -m)"
 say "Installing on $DISTRO, $ARCH"
 [ "${#KEPT[@]}" -eq 0 ] || notice "Keeping the add-ons already on this box: ${KEPT[*]} (they were not named this time; --remove NAME takes one away)."
@@ -810,7 +950,10 @@ if command -v ss >/dev/null; then
 			TAKE_UNIT="$unit"
 			notice "Port 80 is served by $holder ($unit). Because of --take-port-80, the installer stops and disables it. The Security page or uninstall.sh restores it."
 		elif [ "$HUB_PORT" = 80 ]; then
-			for p in 8080 8088 8888; do port_free "$p" && { HUB_PORT=$p; break; }; done
+			for p in 8080 8088 8888; do port_free "$p" && {
+				HUB_PORT=$p
+				break
+			}; done
 			[ "$HUB_PORT" != 80 ] || die "port 80 is held by $holder, and 8080, 8088 and 8888 are taken too: pass --port N"
 			notice "Port 80 is already served by $holder${unit:+ ($unit)}, so the hub uses port $HUB_PORT and $holder stays as it is. The hotspot's sign-in sheet needs port 80, so it will not open. To give the hub port 80, rerun with --take-port-80. That stops $holder."
 		else
@@ -854,7 +997,10 @@ pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libj
 # Kiwix: asked for (--with-kiwix, an add-on), or brought by the books, unless it was taken out (--remove kiwix
 # leaves a mark, so the books already there do not bring it back at the next update).
 KIWIX=0
-[ "$WITH_KIWIX" = 1 ] && { KIWIX=1; rm -f "$ETC/kiwix-removed"; }
+[ "$WITH_KIWIX" = 1 ] && {
+	KIWIX=1
+	rm -f "$ETC/kiwix-removed"
+}
 [ -e "$ETC/kiwix-removed" ] || { { [ ${#ZIMS[@]} -gt 0 ] || compgen -G "$STATE/zim/*.zim" >/dev/null; } && KIWIX=1; }
 printf '%s\n' "${REMOVE[@]}" | grep -qx kiwix && KIWIX=0
 [ "$KIWIX" = 1 ] && WITH_KIWIX=1
@@ -862,7 +1008,10 @@ printf '%s\n' "${REMOVE[@]}" | grep -qx kiwix && KIWIX=0
 [ "$WITH_COLLAB" = 1 ] && pkgs+=(nodejs)
 apt_update() {
 	local out
-	out="$(apt-get update -q 2>&1)" && { printf '%s\n' "$out"; return 0; }
+	out="$(apt-get update -q 2>&1)" && {
+		printf '%s\n' "$out"
+		return 0
+	}
 	printf '%s\n' "$out"
 	# Whether Caddy's repository is the cause is tested, not guessed from the messages:
 	# set it aside and try again. If that works, it was; if not (offline), it goes back.
@@ -996,7 +1145,7 @@ fi
 # --- user and directories --------------------------------------------------------
 id -u "$HUB_USER" >/dev/null 2>&1 ||
 	useradd --system --home-dir "$STATE" --shell /usr/sbin/nologin "$HUB_USER"
-install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE"  # /var/lib is root's: no link to fear here
+install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE" # /var/lib is root's: no link to fear here
 state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/notes" "$STATE/addons" "$STATE/apps.d"
 install -d -m 755 "$CODE" "$APPS"
 install -d -m 750 "$ETC"
@@ -1055,7 +1204,8 @@ if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
 fi
 case "$rec_repo" in
 http://* | git://*)
-	notice "Updates come from $rec_repo, which uses unencrypted HTTP. The box's updater refuses it, because any device on the path could supply code that root runs. To receive updates, rerun with --repo https://…" ;;
+	notice "Updates come from $rec_repo, which uses unencrypted HTTP. The box's updater refuses it, because any device on the path could supply code that root runs. To receive updates, rerun with --repo https://…"
+	;;
 esac
 {
 	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch" --web "$WEB"
@@ -1090,7 +1240,8 @@ fi
 # it is the pinned version, so an update with no internet keeps the one it has.
 if [ "$(cat "$APPS/esp-web-tools/VERSION" 2>/dev/null)" != "$EWT_VERSION" ]; then
 	tmp="$(mktemp -d)"
-	got=0; ewt_get "$tmp/$EWT_NAME" || got=$?
+	got=0
+	ewt_get "$tmp/$EWT_NAME" || got=$?
 	if [ "$got" = 0 ]; then
 		[ -s "$OWN_CACHE/$EWT_NAME" ] || install -D -m 644 "$tmp/$EWT_NAME" "$OWN_CACHE/$EWT_NAME" || true
 		tar -xzf "$tmp/$EWT_NAME" -C "$tmp" package/dist/web package/LICENSE
@@ -1116,7 +1267,8 @@ fi
 # FreeOCD's WebDebugger: its release under $APPS/freeocd, kept while it is the pinned version, as ESP Web Tools.
 if [ "$(cat "$APPS/freeocd/VERSION" 2>/dev/null)" != "$FOCD_VERSION" ]; then
 	tmp="$(mktemp -d)"
-	got=0; focd_get "$tmp/$FOCD_NAME" || got=$?
+	got=0
+	focd_get "$tmp/$FOCD_NAME" || got=$?
 	if [ "$got" = 0 ]; then
 		[ -s "$OWN_CACHE/$FOCD_NAME" ] || install -D -m 644 "$tmp/$FOCD_NAME" "$OWN_CACHE/$FOCD_NAME" || true
 		rm -rf "${APPS:?}/.freeocd.new"
@@ -1214,7 +1366,10 @@ fi
 # it, so nothing else on the box that can reach the hub's loopback port is the admin. Made
 # once, kept across reinstalls; root's alone (systemd reads it for the hub and Caddy).
 if ! grep -qs '^HUB_FRONT_SECRET=[0-9a-f]\{64\}$' "$ETC/front-secret.env"; then
-	( umask 077; printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >"$ETC/front-secret.env" )
+	(
+		umask 077
+		printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >"$ETC/front-secret.env"
+	)
 fi
 chown root:root "$ETC/front-secret.env"
 chmod 600 "$ETC/front-secret.env"
@@ -1259,7 +1414,10 @@ EOF
 # updates keep it.
 pick_own_port() {
 	local p
-	for p in 8080 8088 8888; do port_free "$p" && { HUB_PORT=$p; return 0; }; done
+	for p in 8080 8088 8888; do port_free "$p" && {
+		HUB_PORT=$p
+		return 0
+	}; done
 	return 1
 }
 record_port() {
@@ -1358,6 +1516,10 @@ nginx_config() {
 # Who may open each app (/admin, Apps and Add-ons: public, private or off): the choices so far,
 # or the defaults, as the web server's part, before the web server's config is checked.
 control_dirs
+HUB_WEB_SERVER="${WEB}" HUB_ETC_DIR="${ETC}" HUB_STATE_DIR="${STATE}" HUB_PORT="${HUB_PORT}" \
+	HUB_ADDON_PORT="${ADDON_PORT}" HUB_NOTES_PORT="${NOTES_PORT}" HUB_WIKI_PORT="${WIKI_PORT}" HUB_GIT_PORT="${GIT_PORT}" HUB_NOTEBOOK_PORT="${NOTEBOOK_PORT}" \
+	HUB_TLS_PORT="${TLS_PORT}" HUB_ADDON_TLS_PORT="${ADDON_TLS_PORT}" HUB_NOTES_TLS_PORT="${NOTES_TLS_PORT}" HUB_WIKI_TLS_PORT="${WIKI_TLS_PORT}" \
+	HUB_GIT_TLS_PORT="${GIT_TLS_PORT}" HUB_NOTEBOOK_TLS_PORT="${NOTEBOOK_TLS_PORT}" "${CODE}/irate-box" tls initialise
 access_install() {
 	HUB_WEB_SERVER="$1" HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" HUB_USER="$HUB_USER" HUB_CADDY_HASH="${HASH:-}" \
 		"$CODE/irate-box" hub_control access-install
@@ -1367,7 +1529,10 @@ if [ "$WEB" = nginx ]; then
 	ngx_user="$(sed -n 's/^[[:space:]]*user[[:space:]]\{1,\}\([^[:space:];]\{1,\}\).*/\1/p' /etc/nginx/nginx.conf 2>/dev/null | head -1)"
 	ngx_group="$(id -gn "${ngx_user:-www-data}" 2>/dev/null || echo root)"
 	hash="$(printf '%s\n' "$ADMIN_PW" | openssl passwd -6 -stdin)"
-	( umask 077; printf 'admin:%s\n' "$hash" >"$NGINX_LOGINS.new" )
+	(
+		umask 077
+		printf 'admin:%s\n' "$hash" >"$NGINX_LOGINS.new"
+	)
 	chown "root:$ngx_group" "$NGINX_LOGINS.new"
 	chmod 640 "$NGINX_LOGINS.new"
 	mv "$NGINX_LOGINS.new" "$NGINX_LOGINS"
@@ -1384,8 +1549,11 @@ if [ "$WEB" = nginx ]; then
 	fi
 	[ -f "$NGINX_SITE" ] && cp "$NGINX_SITE" "$NGINX_SITE.prev"
 	access_install nginx >/dev/null
-	( umask 077; printf '# Generated by irate-box install.sh from %s. Root only.\nproxy_set_header X-Irate-Front "%s";\n' \
-		"$ETC/front-secret.env" "$FRONT_SECRET" >"$NGINX_FRONT" )
+	(
+		umask 077
+		printf '# Generated by irate-box install.sh from %s. Root only.\nproxy_set_header X-Irate-Front "%s";\n' \
+			"$ETC/front-secret.env" "$FRONT_SECRET" >"$NGINX_FRONT"
+	)
 	# The page loads of the pages nginx serves itself (pagehistory.py reads them): a folder the hub can read,
 	# the file nginx's own (root), emptied by logrotate past 1 MB (the hub starts again when it shrinks).
 	state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/pagelog"
@@ -1407,7 +1575,7 @@ fi
 # --- the web server: Caddy (the fallback) ----------------------------------------------
 if [ "$WEB" = caddy ]; then
 	say "Configuring Caddy"
-	HASH="$(printf '%s\n' "$ADMIN_PW" | caddy hash-password)"  # on stdin, not in /proc
+	HASH="$(printf '%s\n' "$ADMIN_PW" | caddy hash-password)" # on stdin, not in /proc
 	CADDY_VER="$(caddy version | grep -oE '[0-9]+\.[0-9]+' | head -1)"
 	CADDY_SITE=/etc/caddy/irate-box.caddy
 	IMPORT_LINE="import $CADDY_SITE"
@@ -1416,11 +1584,23 @@ if [ "$WEB" = caddy ]; then
 	# own file, pulled in by one import line that uninstall.sh takes out again.
 	caddyfile_owner() {
 		local f=/etc/caddy/Caddyfile shipped
-		[ -f "$f" ] || { echo default; return; }
-		grep -q '^# Generated by irate-box' "$f" && { echo ours; return; }
-		grep -qxF "$IMPORT_LINE" "$f" && { echo owner; return; }
+		[ -f "$f" ] || {
+			echo default
+			return
+		}
+		grep -q '^# Generated by irate-box' "$f" && {
+			echo ours
+			return
+		}
+		grep -qxF "$IMPORT_LINE" "$f" && {
+			echo owner
+			return
+		}
 		shipped="$(dpkg-query -W -f='${Conffiles}\n' caddy 2>/dev/null | awk '$1 == "/etc/caddy/Caddyfile" {print $2}')"
-		[ -n "$shipped" ] && [ "$(md5sum <"$f" | cut -d' ' -f1)" = "$shipped" ] && { echo default; return; }
+		[ -n "$shipped" ] && [ "$(md5sum <"$f" | cut -d' ' -f1)" = "$shipped" ] && {
+			echo default
+			return
+		}
 		echo owner
 	}
 	# The repo's Caddyfile with this box's login hash and port; with "site", the site block alone
@@ -1484,30 +1664,30 @@ if [ "$WEB" = caddy ]; then
 	# The Caddyfile's roots are {$ENV:default} placeholders; point them at this layout.
 	install -d /etc/systemd/system/caddy.service.d
 	cat >/etc/systemd/system/caddy.service.d/irate-box.conf <<-EOF
-	[Service]
-	Environment=HUB_STATIC=$CODE/web
-	Environment=HUB_MERMAID_ROOT=$APPS/mermaid
-	Environment=HUB_DRAW_ROOT=$APPS/draw
-	Environment=HUB_TOOLS_ROOT=$APPS/tools
-	Environment=HUB_SERIAL_ROOT=$APPS/serial
-	Environment=HUB_GIT_ROOT=$STATE/git
-	Environment=HUB_CODE_DIR=$CODE
-	Environment=HUB_FLASHER_ROOT=$APPS/flasher
-	Environment=HUB_EWT_ROOT=$APPS/esp-web-tools
-	Environment=HUB_FREEOCD_ROOT=$APPS/freeocd
-	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
-	Environment=HUB_ADDON_PORT=$ADDON_PORT
-	Environment=HUB_NOTES_PORT=$NOTES_PORT
-	Environment=HUB_WIKI_PORT=$WIKI_PORT
-	Environment=HUB_GIT_PORT=$GIT_PORT
-	Environment=HUB_TLS_PORT=$TLS_PORT
-	Environment=HUB_ADDON_TLS_PORT=$ADDON_TLS_PORT
-	Environment=HUB_NOTES_TLS_PORT=$NOTES_TLS_PORT
-	Environment=HUB_WIKI_TLS_PORT=$WIKI_TLS_PORT
-	Environment=HUB_GIT_TLS_PORT=$GIT_TLS_PORT
-	Environment=HUB_ADDONS_ROOT=$STATE/addons
-	# HUB_FRONT_SECRET, for /admin (header_up {env.HUB_FRONT_SECRET}): root's file, read by systemd.
-	EnvironmentFile=$ETC/front-secret.env
+		[Service]
+		Environment=HUB_STATIC=$CODE/web
+		Environment=HUB_MERMAID_ROOT=$APPS/mermaid
+		Environment=HUB_DRAW_ROOT=$APPS/draw
+		Environment=HUB_TOOLS_ROOT=$APPS/tools
+		Environment=HUB_SERIAL_ROOT=$APPS/serial
+		Environment=HUB_GIT_ROOT=$STATE/git
+		Environment=HUB_CODE_DIR=$CODE
+		Environment=HUB_FLASHER_ROOT=$APPS/flasher
+		Environment=HUB_EWT_ROOT=$APPS/esp-web-tools
+		Environment=HUB_FREEOCD_ROOT=$APPS/freeocd
+		Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
+		Environment=HUB_ADDON_PORT=$ADDON_PORT
+		Environment=HUB_NOTES_PORT=$NOTES_PORT
+		Environment=HUB_WIKI_PORT=$WIKI_PORT
+		Environment=HUB_GIT_PORT=$GIT_PORT
+		Environment=HUB_TLS_PORT=$TLS_PORT
+		Environment=HUB_ADDON_TLS_PORT=$ADDON_TLS_PORT
+		Environment=HUB_NOTES_TLS_PORT=$NOTES_TLS_PORT
+		Environment=HUB_WIKI_TLS_PORT=$WIKI_TLS_PORT
+		Environment=HUB_GIT_TLS_PORT=$GIT_TLS_PORT
+		Environment=HUB_ADDONS_ROOT=$STATE/addons
+		# HUB_FRONT_SECRET, for /admin (header_up {env.HUB_FRONT_SECRET}): root's file, read by systemd.
+		EnvironmentFile=$ETC/front-secret.env
 	EOF
 	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi
@@ -1521,7 +1701,6 @@ if [ "$UNCLAIMED" = 1 ]; then
 else
 	rm -f "$UNCLAIMED_MARK"
 fi
-
 
 # --- hub service -----------------------------------------------------------------
 # The sandbox for every unit that runs as the hub user, guest-facing as they are: the
@@ -1676,10 +1855,13 @@ done
 # Each repository's push level (gitrepos.py): a repository from before
 # gets the one that keeps its behaviour, public-everything where guest push was on, the
 # area's default otherwise. Then the old one-switch flag file goes. http.receivepack follows.
-git_level() {  # REPO DEFAULT
+git_level() { # REPO DEFAULT
 	local lv
 	lv="$(runuser -u "$HUB_USER" -- git -C "$1" config --get irate-box.write 2>/dev/null)" || lv=""
-	[ -n "$lv" ] || { lv="$2"; runuser -u "$HUB_USER" -- git -C "$1" config irate-box.write "$lv"; }
+	[ -n "$lv" ] || {
+		lv="$2"
+		runuser -u "$HUB_USER" -- git -C "$1" config irate-box.write "$lv"
+	}
 	runuser -u "$HUB_USER" -- git -C "$1" config http.receivepack "$([ "$lv" = nobody ] && echo false || echo true)"
 }
 pub_default=admin
@@ -2673,9 +2855,13 @@ done
 # SilverBullet's manual in the notes, under SilverBullet/, once SilverBullet has written its starting page
 # (on its first start), so that page's links to the manual can point at the copy.
 if [ "$WITH_NOTES" = 1 ] && systemctl is-active --quiet silverbullet; then
-	for _ in $(seq 1 30); do [ -f "$STATE/notes/index.md" ] && break; sleep 1; done
+	for _ in $(seq 1 30); do
+		[ -f "$STATE/notes/index.md" ] && break
+		sleep 1
+	done
 	tmp="$(mktemp -d)"
-	got=0; sb_docs_get "$tmp/$SB_DOCS_NAME" || got=$?
+	got=0
+	sb_docs_get "$tmp/$SB_DOCS_NAME" || got=$?
 	if [ "$got" = 0 ]; then
 		[ -s "$OWN_CACHE/$SB_DOCS_NAME" ] || install -D -m 644 "$tmp/$SB_DOCS_NAME" "$OWN_CACHE/$SB_DOCS_NAME" || true
 		chmod 755 "$tmp" && chmod 644 "$tmp/$SB_DOCS_NAME"
@@ -2694,8 +2880,8 @@ fi
 # Crash watch's history moves once from $STATE/crashwatch (the hub's folder) to root's own beside it.
 # Outside the unit: in its sandbox the two are separate mounts, and a rename between them fails.
 systemctl stop irate-box-crashwatch.service 2>/dev/null || true
-HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" crashwatch migrate | sed 's/^/    /' \
-	|| problem "crash watch's history was not moved from $STATE/crashwatch"
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" crashwatch migrate | sed 's/^/    /' ||
+	problem "crash watch's history was not moved from $STATE/crashwatch"
 for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
@@ -2713,7 +2899,10 @@ fi
 if [ "$WITH_SYNC" = 1 ]; then
 	say "Configuring Syncthing for an offline box"
 	st() { runuser -u "$HUB_USER" -- env HOME="$STATE" syncthing cli "$@"; }
-	for _ in $(seq 60); do st show system >/dev/null 2>&1 && break; sleep 1; done
+	for _ in $(seq 60); do
+		st show system >/dev/null 2>&1 && break
+		sleep 1
+	done
 	st show system >/dev/null 2>&1 || die "Syncthing did not come up (journalctl -u syncthing@$HUB_USER)"
 	# None of these can reach anything without an uplink; local discovery stays on.
 	st config options global-ann-enabled set false
@@ -2742,34 +2931,41 @@ for r in "${REMOVE[@]}"; do
 		rm -f "$STATE/zim/irate-box-guide.zim"
 		systemctl disable --now kiwix >/dev/null 2>&1 || true
 		rm -f /etc/systemd/system/kiwix.service
-		install -d -m 755 "$ETC" && touch "$ETC/kiwix-removed" ;;
+		install -d -m 755 "$ETC" && touch "$ETC/kiwix-removed"
+		;;
 	notes)
 		say "Removing the notes add-on (SilverBullet); $STATE/notes stays"
 		systemctl disable --now silverbullet irate-box-notebooks.path >/dev/null 2>&1 || true
 		systemctl stop 'irate-box-notebook@*.service' >/dev/null 2>&1 || true
 		rm -f /etc/systemd/system/silverbullet.service /usr/local/bin/silverbullet /etc/systemd/system/irate-box-notebook@.service \
-			/etc/systemd/system/irate-box-notebooks.service /etc/systemd/system/irate-box-notebooks.path ;;
+			/etc/systemd/system/irate-box-notebooks.service /etc/systemd/system/irate-box-notebooks.path
+		;;
 	sync)
 		say "Removing the sync add-on (Syncthing); its state in $STATE stays"
 		systemctl disable --now "syncthing@$HUB_USER" >/dev/null 2>&1 || true
 		rm -f "/etc/systemd/system/syncthing@$HUB_USER.service.d/irate-box.conf"
-		rmdir "/etc/systemd/system/syncthing@$HUB_USER.service.d" 2>/dev/null || true ;;
+		rmdir "/etc/systemd/system/syncthing@$HUB_USER.service.d" 2>/dev/null || true
+		;;
 	mqtt)
 		say "Removing the MQTT add-on (mosquitto's irate-box config)"
 		systemctl disable --now mosquitto >/dev/null 2>&1 || true
-		rm -f /etc/mosquitto/conf.d/irate-box.conf /etc/mosquitto/irate-box.acl ;;
+		rm -f /etc/mosquitto/conf.d/irate-box.conf /etc/mosquitto/irate-box.acl
+		;;
 	irc)
 		say "Removing the IRC add-on (ngircd's irate-box config; the package stays, stopped)"
 		systemctl disable --now ngircd >/dev/null 2>&1 || true
 		rm -f /etc/ngircd/irate-box.conf /etc/ngircd/irate-box.motd /etc/systemd/system/ngircd.service.d/irate-box.conf
-		rmdir /etc/systemd/system/ngircd.service.d 2>/dev/null || true ;;
+		rmdir /etc/systemd/system/ngircd.service.d 2>/dev/null || true
+		;;
 	term)
 		say "Turning the terminal off (ttyd stays installed, off)"
-		systemctl disable --now ttyd >/dev/null 2>&1 || true ;;
+		systemctl disable --now ttyd >/dev/null 2>&1 || true
+		;;
 	collab)
 		say "Removing the collaboration add-on (the relay's service; Node.js stays)"
 		systemctl disable --now excalidraw-room >/dev/null 2>&1 || true
-		rm -f /etc/systemd/system/excalidraw-room.service ;;
+		rm -f /etc/systemd/system/excalidraw-room.service
+		;;
 	esac
 done
 [ ${#REMOVE[@]} -eq 0 ] || systemctl daemon-reload
@@ -2801,10 +2997,10 @@ fi
 [ -f /etc/ngircd/irate-box.conf ] && echo "    irc:   :6667 for any IRC app, channel #lobby (open to the network, unencrypted; how to join: /irc.html)"
 term_state="$(systemctl is-enabled ttyd 2>/dev/null)" || true
 echo "    term:  /term/   (${term_state:-disabled}. Sign in as administrator, then as an account on the box)"
-[ "$WITH_SYNC" = 1 ] && echo "    sync:  /sync/   (behind the administrator sign-in. Folder \"hub-notes\" shared if notes are installed.)"
+[ "$WITH_SYNC" = 1 ] && echo '    sync:  /sync/   (behind the administrator sign-in. Folder "hub-notes" shared if notes are installed.)'
 echo "    git:   /git/ (clone for all, push with the administrator sign-in) and /git-private/ (administrator sign-in). Make repositories on /admin"
 [ "$WITH_COLLAB" = 1 ] && echo "    collab: live sessions in /draw/ (relay on 127.0.0.1:3002, via /socket.io/)"
-[ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c "\"name\":" "$STATE/library/sources.json") sources kept current; settings on /admin"
+[ -f "$STATE/library/sources.json" ] && echo "    library: $(grep -c '"name":' "$STATE/library/sources.json") sources kept current; settings on /admin"
 [ "$WITH_TAILSCALE" = 1 ] && echo "    remote: Tailscale is $(systemctl is-active tailscaled); switch it on /admin"
 
 up_now="$(HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -c 'from irate_box.hub import uplink as u; s=u.load_settings(); print(u.words(s)+(" (custom values)" if s["overrides"] else ""))' 2>/dev/null || echo unknown)"
