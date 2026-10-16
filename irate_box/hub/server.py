@@ -2406,6 +2406,9 @@ UPDATE_ACTIONS = {
     "force-install": "update-force-install",
     "doctor": "update-doctor",
     "clear-cache": "update-clear-cache",
+    "poll-target": "update-poll-target",
+    "poll-source": "update-poll-target",
+    "set-source": "update-set-source",
 }
 # Terminal colour codes, in logs written before install.sh stopped sending them to files.
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -6050,6 +6053,10 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, refused.say(UNKNOWN_ACTION))
                     return
                 request.update(endpoint=payload["endpoint"], candidate=payload.get("candidate"))
+            if action in ("update-poll-target", "update-set-source"):
+                request.update(repo=str(payload.get("repo") or "")[:300])
+            if action == "update-set-source":
+                request.update(branch=str(payload.get("branch") or "")[:100], confirmed=payload.get("confirmed") is True)
             self.send_json(202, {"id": control_request(request)})
             return
 

@@ -34,6 +34,13 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       report, each finding with what to do, to control/doctor.json.
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
+  {"id": ..., "action": "update-poll-target"[, "repo": "<https url>"]}
+      Ask the recorded repository (or the one named) which branch it serves by default
+      (git ls-remote --symref), and say whether that is the branch this box follows. Changes nothing.
+  {"id": ..., "action": "update-set-source", "repo": "<https url>", "branch": "<name>", "confirmed": true}
+      Point the box's updates at another repository or branch (a fork): checked as readable, https
+      only, the branch listed by the remote; recorded in install-options; the update cache cleared.
+      A security-policy action: refused when policy is console-only.
   {"id": ..., "action": "share-set", "level": "off"|"users-web"|"sheet-web"|"sheet-all"|"open"}
       Guests' onward internet (share.py): the one ruleset with the hotspot firewall (firewall.apply_all), IPv4
       forwarding and the guests' resolver made to agree; off takes it all back. The level and the
@@ -147,7 +154,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from irate_box.finding import finding
+from irate_box.finding import action as finding_action, finding
 from irate_box.root.nginx_front import locked
 from irate_box.hub import access, manifests, netinv, uplink
 from irate_box.msg import (
@@ -285,6 +292,7 @@ POLICY_ACTIONS = frozenset(
         "security-fix",
         "update-signing",
         "update-force-install",
+        "update-set-source",
         "tls-make",
         "tls-switch",
         "tls-import",
@@ -3702,6 +3710,45 @@ def doctor():
             )
         )
 
+    # 1b. A target the installer picked up by accident. The installer records the branch of the
+    # checkout it ran from, so an install from a topic branch leaves the box following that branch,
+    # which is merged and deleted soon after. Only said when the branch is not the default.
+    if repo and branch != "main":
+        findings.append(
+            finding(
+                "target",
+                M("update.target.title", "Update branch"),
+                "warn",
+                M(
+                    "update.target.branch",
+                    "Updates follow the branch {branch}, not main. The installer records the branch of the "
+                    "checkout it was run from.",
+                    branch=branch,
+                ),
+                M(
+                    "update.target.branch.why",
+                    "A branch made for one change is merged and then removed. The box would then stop finding "
+                    "updates. Until then it receives only that branch, not the releases on main.",
+                ),
+                M(
+                    "update.target.branch.fix",
+                    "If this is not intended, change the branch under Update source in this doctor's recovery "
+                    "actions. Or run the installer once with --branch main.",
+                ),
+                evidence=[ETC / "install-options"],
+                go=GO_MAINT,
+                actions=[
+                    finding_action(
+                        "poll-target",
+                        M(
+                            "update.target.poll",
+                            "Ask the repository for its default branch",
+                        ),
+                    )
+                ],
+            )
+        )
+
     # 2. Names: on the hub's own access point every name resolves to the box itself.
     host = "github.com"
     title = M("update.dns.title", "Name lookup (DNS)")
@@ -4633,6 +4680,134 @@ def update_clear_cache(req):
     )
 
 
+SOURCE_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,99}$")
+
+
+def _source_repo(value):
+    """A repository address root may fetch and run code from: https, a host, no sign-in, no query. Anything
+    else is refused before git runs."""
+    value = str(value).strip()
+    bad = M(
+        "update.source.repo.bad",
+        "Give the repository as an https:// address, without a user name, password, query or fragment.",
+    )
+    if not value or len(value) > 300 or not value.isprintable() or " " in value:
+        raise Refused(bad)
+    try:
+        parts = urllib.parse.urlsplit(value)
+        host, _ = parts.hostname, parts.port
+    except ValueError:
+        raise Refused(bad) from None
+    if (
+        parts.scheme != "https"
+        or not host
+        or parts.username is not None
+        or parts.password is not None
+        or parts.query
+        or parts.fragment
+        or "\\" in value
+    ):
+        raise Refused(bad)
+    return value
+
+
+def update_set_source(req):
+    """Point updates at another repository or branch (a fork). The address must be https and the remote must
+    list the branch; only then is the root-owned record changed, and the cache that held the old source
+    cleared. Whoever can do this chooses the code root installs next, so it is a security-policy action."""
+    repo = _source_repo(req.get("repo", ""))
+    branch = str(req.get("branch", "")).strip()
+    if not SOURCE_BRANCH.match(branch) or ".." in branch or branch.endswith(("/", ".lock")):
+        raise Refused(M("update.source.branch.bad", "Give the branch name as git writes it, for example main."))
+    if req.get("confirmed") is not True:
+        raise Refused(
+            M(
+                "update.source.confirm",
+                "Confirm that this box can install code from {repo} on {branch}.",
+                repo=repo,
+                branch=branch,
+            )
+        )
+    opts = _install_options()
+    out = run("git", "ls-remote", "--heads", repo, branch, timeout=60)
+    if out.returncode != 0:
+        raise Refused(M("update.target.poll.failed", "The box could not read {repo}.", repo=repo))
+    if not any(line.endswith(f"\trefs/heads/{branch}") for line in out.stdout.splitlines()):
+        raise Refused(
+            M(
+                "update.repo.no-branch",
+                "Branch not found. The repository {repo} has no branch named {branch}.",
+                repo=repo,
+                branch=branch,
+            )
+        )
+    for name, value in (("--repo", repo), ("--branch", branch)):
+        if name in opts and opts.index(name) + 1 < len(opts):
+            opts[opts.index(name) + 1] = value
+        else:
+            opts += [name, value]
+    text = "\n".join(opts) + "\n"
+    safeio.write(ETC / "install-options", text, mode=0o644)
+    safeio.write(STATE / "install-options", text, mode=0o644)
+    update_clear_cache({})
+    return M(
+        "update.source.saved",
+        "Updates now come from the branch {branch} of {repo}. The next check starts from there.",
+        repo=repo,
+        branch=branch,
+    )
+
+
+def update_poll_target(req):
+    """Ask the recorded repository which branch it serves by default, and say how it compares with the
+    branch this box follows. The doctor's "Update branch" warning offers it. Changes nothing."""
+    try:
+        opts = _install_options()
+    except ValueError:
+        raise Refused(NO_REPO) from None
+    repo, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
+    if req.get("repo"):
+        repo = _source_repo(req["repo"])
+    if not repo:
+        raise Refused(NO_REPO)
+    if repo.startswith(("http://", "git://")):
+        raise Refused(
+            M(
+                "update.check.unencrypted",
+                "Updates come from {repo} over an unencrypted link. "
+                "Run the installer again with an https:// address for the repository.",
+                repo=repo,
+            )
+        )
+    out = run("git", "ls-remote", "--symref", repo, "HEAD", timeout=60)
+    if out.returncode != 0:
+        raise Refused(
+            M("update.target.poll.failed", "The box could not read {repo}.", repo=repo)
+        )
+    default = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out.stdout, re.M)
+    if not default:
+        return M(
+            "update.target.poll.unknown",
+            "{repo} did not say which branch is its default. This box follows {branch}.",
+            repo=repo,
+            branch=branch,
+        )
+    if default.group(1) == branch:
+        return M(
+            "update.target.poll.same",
+            "{repo} serves {branch} by default, which is the branch this box follows.",
+            repo=repo,
+            branch=branch,
+        )
+    return M(
+        "update.target.poll.differs",
+        "{repo} serves {default} by default. This box follows {branch}.",
+        repo=repo,
+        default=default.group(1),
+        branch=branch,
+    )
+
+
 # --- the security page -----------------------------------------------------------------
 
 
@@ -4702,6 +4877,8 @@ def security_fix(req):
         "security-check",
         "security-fetch",
         "security-updates",
+        "security-reach-fetch",
+        "security-reach-install",
     ) or choice.startswith("autoupdate-set:")
     if pattern and choice.startswith("autoupdate-set:"):
         security.parse_pattern(choice.split(":", 1)[1])
@@ -6351,6 +6528,8 @@ ACTIONS = {
     "update-force-install": update_force_install,
     "update-doctor": update_doctor,
     "update-clear-cache": update_clear_cache,
+    "update-poll-target": update_poll_target,
+    "update-set-source": update_set_source,
     "update-signing": update_signing,
     "security-scan": security_scan,
     "security-audit": security_audit,

@@ -545,6 +545,23 @@ check(
     and got["args"] == {"n": 1}
     and any("--force-confold" in " ".join(c) for c in calls if isinstance(c, tuple)),
 )
+calls.clear()
+got = security.fix("security-reach-fetch", log)
+check(
+    "  Check and download by hand: the lists afresh, then the update downloaded, not installed, whatever the pattern",
+    msg_ids(got)[1:] == ["security-fix.lists.done", "security-fix.updates.downloaded"]
+    and ("apt-get", "install", "-y", "--only-upgrade", "--download-only", "libssl3") in calls
+    and not any("--force-confold" in " ".join(c) for c in calls if isinstance(c, tuple)),
+    got,
+)
+calls.clear()
+got = security.fix("security-reach-install", log)
+check(
+    "  Check, download and install by hand: the lists afresh, then the update installed",
+    msg_ids(got)[1:] == ["security-fix.lists.done", "security-fix.updates.installed"]
+    and any("--force-confold" in " ".join(c) for c in calls if isinstance(c, tuple)),
+    got,
+)
 security.fix("autoupdate-set:24-0", None)
 got = security.fix("security-check", log)
 check(

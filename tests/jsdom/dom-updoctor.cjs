@@ -45,5 +45,46 @@ for (const [stage, state, labels, disabled] of [
   check(`${stage}: three stage-aware actions`, buttons.every((button, index) => button.textContent === labels[index] && button.disabled === disabled[index]));
 }
 check('repairs belong to the doctor, not Updates', ['update-clear', 'update-force'].every(id => d.getElementById(id).closest('.admin-pane').id === 'updoctor'));
-console.log(`failures: ${fails}`);
-process.exit(fails ? 1 : 0);
+// Debian's buttons follow the same stages as the hub card's: nothing known, waiting, downloaded.
+{
+  const debian = (waiting, fetched) => {
+    w.drawDebianPattern([{ id: 'security-updates', waiting, fetched }], false);
+    return [...d.querySelectorAll('#debian-buttons [data-update]')].map((b) => `${b.textContent.trim()}${b.disabled ? ' (off)' : ''}`).join(' | ');
+  };
+  check('Debian, nothing known: each button checks first', debian(0, 0) === 'Check for updates | Check for updates and download | Check for updates, download and install', debian(0, 0));
+  check('  updates waiting: download, or download and install; the check is off', debian(3, 0) === 'Check for updates (off) | Download | Download and install', debian(3, 0));
+  check('  downloaded: only Install is left', debian(3, 3) === 'Check for updates (off) | Download (off) | Install', debian(3, 3));
+}
+// The branch warning's own button asks the update helper, not the box doctor's repairs.
+const posted = [];
+w.fetch = async (url, init) => { posted.push([url, init && init.body]); return new Response('{"id":"r1"}', { status: 202, headers: { 'Content-Type': 'application/json' } }); };
+w.eval(`renderUpdoctor({ at: 1790950000, findings: [
+  { id: 'target', title: 'Update branch', status: 'warn', summary: 'Updates follow the branch fix-topic.',
+    actions: [{ choice: 'poll-target', label: 'Ask the repository for its default branch' }] }] })`);
+[...d.querySelectorAll('#updoctor-summary button')][0].click(); // the filter is still on what is to fix
+const ask = [...d.querySelectorAll('#doctor-findings button.action-btn')].filter((b) => /default branch/.test(b.textContent));
+check('the branch warning has one button to ask the repository', ask.length === 1, t('#doctor-findings .finding'));
+ask[0].click();
+// The source form: asked first, changed only after a confirmation that names the repository.
+d.getElementById('update-source-repo').value = 'https://example.org/fork/irate-box';
+d.getElementById('update-source-branch').value = 'dev';
+let asked = '';
+w.confirm = (text) => { asked = text; return false; };
+d.getElementById('update-source-save').click();
+const before = posted.length;
+w.confirm = (text) => { asked = text; return true; };
+d.getElementById('update-source-save').click();
+d.getElementById('update-source-poll').click();
+const settle = () => {
+  check('  it asks the update helper (poll-target), not the box doctor', posted.some(([u, b]) => /\/admin\/update$/.test(u) && /"action":"poll-target"/.test(b)), posted);
+};
+setTimeout(() => {
+  settle();
+  const sent = posted.slice(before).filter(([, b]) => b).map(([, b]) => JSON.parse(b));
+  check('the source form: declined sends nothing, accepted sends the repository, the branch and the confirmation',
+    posted.slice(0, before).every(([, b]) => !/set-source/.test(b)) && sent.some((b) => b.action === 'set-source' && b.repo === 'https://example.org/fork/irate-box' && b.branch === 'dev' && b.confirmed === true), sent);
+  check('  the question names the repository and warns about root', /fork\/irate-box/.test(asked) && /as root/.test(asked), asked);
+  check('  its poll asks about the typed repository', sent.some((b) => b.action === 'poll-source' && b.repo === 'https://example.org/fork/irate-box'), sent);
+  console.log(`failures: ${fails}`);
+  process.exit(fails ? 1 : 0);
+}, 50);

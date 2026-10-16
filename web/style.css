@@ -1265,22 +1265,6 @@ body.app-frame iframe {
 .library-actions[hidden] {
   display: none;
 }
-.hub-update-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1.9fr);
-  align-items: stretch;
-}
-.hub-update-actions > .action-btn {
-  width: 100%;
-  min-width: 0;
-  min-height: 3.25rem;
-  white-space: normal;
-}
-@media (max-width: 44rem) {
-  .hub-update-actions {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
 .action-btn.big {
   padding: 0.55rem 1.2rem;
   font-size: 1rem;
