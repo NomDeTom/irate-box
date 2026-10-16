@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
-<html lang="en">
+<html lang="en" class="art-page">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,7 +11,7 @@
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
 </head>
-<body class="home">
+<body class="home" data-art="helmskrab" data-art-side="left">
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="index.header.tip-quick-help" data-i18n="index.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><!-- account nav --></nav>
     <h1 data-i18n="index.header.heading">Hub</h1>
@@ -95,6 +95,8 @@
   
     <p class="decay-note" id="board-decay-note"></p>
   </div>
+
+  <div class="admin-art" aria-hidden="true"></div>
 
   <script src="i18n.js"></script>
   <script src="qrcode.js"></script>
