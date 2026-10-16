@@ -99,7 +99,7 @@ upd.mkdir(parents=True, exist_ok=True)
 subprocess.run(["git", "init", "-q", str(upd)], check=True)
 git(upd, "add", "install.sh"); git(upd, "commit", "-qm", "x")
 head = git(upd, "rev-parse", "--short=7", "HEAD")
-hub_control._write_update_state({"available": head, "checks": [hub_control._check(hub_control.SIGNED_CHECK, False, M("t.name", "Signed"),
+hub_control._write_update_state({"available": head, "checked_sha": git(upd, "rev-parse", "HEAD"), "checks": [hub_control._check(hub_control.SIGNED_CHECK, False, M("t.name", "Signed"),
                                                                                     M("t.unsigned", "Unsigned."))]})
 try:
     hub_control.update_force_install({}); ok = False; why = "installed"
@@ -107,7 +107,7 @@ except hub_control.Refused as exc:
     ok, why = exc.message["id"] == "update.force.unsigned", exc.message
 check("Install anyway refuses a version not signed as required", ok, why)
 # A state kept before the checks had IDs: the signature check known by its old name, and refused the same.
-hub_control._write_update_state({"available": head, "checks": [{"name": hub_control.SIGNED_OLD, "ok": False, "detail": "unsigned", "warn": False}]})
+hub_control._write_update_state({"available": head, "checked_sha": git(upd, "rev-parse", "HEAD"), "checks": [{"name": hub_control.SIGNED_OLD, "ok": False, "detail": "unsigned", "warn": False}]})
 try:
     hub_control.update_force_install({}); ok = False; why = "installed"
 except hub_control.Refused as exc:

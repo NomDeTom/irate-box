@@ -36,6 +36,7 @@ import time
 from pathlib import Path
 
 from irate_box.msg import M, Refused
+from irate_box.root.nginx_front import locked
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -219,6 +220,7 @@ def _plain_files(transport, admin_http, access_state=None):
     return out
 
 
+@locked
 def initialise():
     FRONT.mkdir(parents=True, exist_ok=True)
     _write(TLS / "ports.json", json.dumps({"http": PLAIN_PORTS, "https": TWINS}), 0o644)
@@ -226,6 +228,7 @@ def initialise():
         _write(path, text, 0o644)
 
 
+@locked
 def configure(transport, admin_http):
     if transport not in TRANSPORTS or admin_http not in ADMIN_HTTP:
         raise Refused(
@@ -373,6 +376,7 @@ def _write(path, text, mode, group=None):
     os.replace(tmp, path)
 
 
+@locked
 def make_ca(nets=None):
     """The CA, made once (and again only when asked: a new CA must be installed again)."""
     previous = settings() if _record().get("cert") else None
@@ -602,6 +606,7 @@ def _front_files():
     return out
 
 
+@locked
 def front(on):
     """HTTPS on or off at the front: each server block's include, then nginx checked and reloaded.
     A check that fails takes the includes away again, so the box serves what it did before.
@@ -627,6 +632,7 @@ def front(on):
     )
 
 
+@locked
 def admin_only(on):
     """/admin over HTTPS only: plain requests for it are sent to the
     HTTPS twin, so the admin password never crosses the network in clear. Only while HTTPS is on;
@@ -678,6 +684,7 @@ def due(now=None):
     }[case]
 
 
+@locked
 def renew():
     why = _due()
     if not why:
@@ -738,6 +745,7 @@ def _not_after(cert_file):
     )
 
 
+@locked
 def import_own(chain_pem, key_pem):
     """The owner's certificate chain and key, checked, then served in place of the box's own."""
     certs = PEM_CERT.findall(chain_pem or "")
@@ -855,6 +863,7 @@ def import_own(chain_pem, key_pem):
     )
 
 
+@locked
 def use_box_own():
     """Back from the owner's certificate to the box's own (its CA's)."""
     rec = _record()

@@ -4494,35 +4494,33 @@
                   id="update-metered"
                   hidden
                 ></p>
-                <div class="library-buttons">
+                <div class="library-buttons hub-update-actions">
                   <button
                     class="action-btn"
                     type="button"
                     id="update-check"
                     data-update="check"
-                    data-i18n="admin.updates.update-check"
+                    data-i18n="admin.update.check"
                   >
-                    Check now
+                    Check for updates
                   </button>
                   <button
                     class="action-btn"
                     type="button"
                     id="update-fetch"
                     data-update="fetch"
-                    disabled
-                    data-i18n="admin.updates.update-fetch"
+                    data-i18n="admin.update.reach.download"
                   >
-                    Download
+                    Check for updates and download
                   </button>
                   <button
                     class="action-btn primary"
                     type="button"
                     id="update-install"
                     data-update="install"
-                    disabled
-                    data-i18n="admin.updates.update-install"
+                    data-i18n="admin.update.reach.install"
                   >
-                    Install
+                    Check for updates, download and install
                   </button>
                 </div>
                 <div class="admin-progress" id="update-progress" hidden>
@@ -4790,69 +4788,6 @@
             hidden
           ></p>
 
-          <!-- Maintenance: what is done rarely and on purpose, not routine updating. -->
-          <details class="sec-fold" id="update-maint">
-            <summary
-              data-i18n="admin.updates.summary-maintenance-clear-cache-install"
-            >
-              Maintenance: clear the cache, install anyway
-            </summary>
-            <h3 data-i18n="admin.updates.h-update-cache">The update cache</h3>
-            <p
-              class="setting-desc"
-              data-i18n="admin.updates.cache-holds-copy-hub"
-            >
-              The cache holds a copy of the hub's code and the downloads for
-              updates. After you clear it, the next check starts afresh. Clear
-              it when the Updates doctor finds the cache broken.
-            </p>
-            <div class="library-buttons">
-              <button
-                class="action-btn"
-                type="button"
-                id="update-clear"
-                data-i18n="admin.updates.update-clear"
-              >
-                Clear the update cache
-              </button>
-            </div>
-            <p
-              class="setting-desc action-note"
-              id="update-clear-note"
-              role="status"
-              hidden
-            ></p>
-            <h3 data-i18n="admin.updates.h-install-anyway">Install anyway</h3>
-            <p
-              class="setting-desc"
-              data-i18n="admin.updates.use-downloaded-version-did"
-            >
-              Use this when the downloaded version did not pass verification and
-              you know the reason. For example, the check can be wrong when an
-              update changes the code layout. The installer runs as usual and
-              stops on its own errors. It skips the checks that failed. Use this
-              only for a version that you trust: the version downloaded from the
-              repository that the box was installed from.
-            </p>
-            <div class="findings" id="force-failed" hidden></div>
-            <div class="library-buttons">
-              <button
-                class="action-btn"
-                type="button"
-                id="update-force"
-                disabled
-                data-i18n="admin.updates.update-force"
-              >
-                Install the downloaded version anyway
-              </button>
-            </div>
-            <p
-              class="setting-desc action-note"
-              id="force-note"
-              role="status"
-              hidden
-            ></p>
-          </details>
         </section>
 
         <section class="admin-pane" id="backup" aria-labelledby="backup-title">
@@ -5437,14 +5372,22 @@
             <div class="findings compact" id="updoctor-fine"></div>
           </details>
 
-          <p
-            class="setting-desc"
-            data-i18n="admin.updoctor.clearing-update-cache-installing"
-          >
-            Clearing the update cache and installing a downloaded version that
-            failed its checks are on
-            <a href="#update-maint">Updates → Maintenance</a>.
-          </p>
+          <details class="sec-fold" id="update-maint">
+            <summary data-i18n="admin.update.recovery">Recovery actions</summary>
+            <h3 data-i18n="admin.update.cache">The update cache</h3>
+            <p class="setting-desc" data-i18n="admin.update.cache.desc">Clear a broken cache to start again. This does not install an update.</p>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="update-clear" data-i18n="admin.update.clear">Clear the update cache</button>
+            </div>
+            <p class="setting-desc action-note" id="update-clear-note" role="status" hidden></p>
+            <h3 data-i18n="admin.update.force">Install anyway</h3>
+            <p class="setting-desc" data-i18n="admin.update.force.desc">For a trusted update with a known checker failure. Review the failed checks below. Signing requirements and installer syntax checks cannot be skipped.</p>
+            <div class="findings" id="force-failed" hidden></div>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="update-force" data-i18n="admin.update.force.install" disabled>Install the downloaded version anyway</button>
+            </div>
+            <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
+          </details>
         </section>
       </main>
     </div>

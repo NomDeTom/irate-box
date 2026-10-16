@@ -235,7 +235,8 @@ check("the notes port serves nothing but notes", "location / { return 404; }" in
 inst = (REPO / "install.sh").read_text()
 check(
     "install.sh fills in the notes port",
-    "NOTES_PORT=8091" in inst and "s|@NOTES_PORT@|$NOTES_PORT|g" in inst,
+    "NOTES_PORT=8091" in inst and 'HUB_NOTES_PORT="$NOTES_PORT"' in inst
+    and '"$CODE/irate-box" nginx_front "$@"' in inst,
 )
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check(

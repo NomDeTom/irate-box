@@ -160,6 +160,8 @@ if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/irate_box/root/rtc.py" ]; then
 fi
 
 say "Removing unit files and drop-ins"
+rm -f "$UNITDIR/irate-box-nginx-recover.service" "$UNITDIR/nginx.service.d/irate-box-recovery.conf"
+rmdir "$UNITDIR/nginx.service.d" 2>/dev/null || true
 rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch,irate-box-led}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
