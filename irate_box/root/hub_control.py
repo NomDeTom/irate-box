@@ -3029,7 +3029,7 @@ def _nginx_check(src, opts):
         # nginx -t as root would create any file its error_log or access_log names, or echo an
         # include's first token (a root-only file's) into the report.
         safeio.mkdir(tmp, mode=0o755)
-        for f in Path(tmp).iterdir():
+        for f in Path(tmp).rglob("*"):
             f.chmod(0o755 if f.is_dir() else 0o644)
         as_nobody = ()
         if os.geteuid() == 0:
