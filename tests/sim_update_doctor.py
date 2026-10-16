@@ -4,7 +4,14 @@
 each case said by its message ID, its commands, what it saw and the place to go as data, a place only for what is
 not fine; then the checks of a downloaded version and the update actions' answers as messages, the result file
 keeping the English for every reader that expects text. python3 tests/sim_update_doctor.py"""
-import io, json, os, ssl, subprocess, sys, tempfile, time
+import io
+import json
+import os
+import ssl
+import subprocess  # CompletedProcess mock results only. # nosec B404
+import sys
+import tempfile
+import time
 import urllib.parse
 from email.utils import formatdate
 from pathlib import Path
@@ -198,7 +205,8 @@ H.answer("r2", False, "a plain refusal")
 r = json.loads((H.RESULTS / "r2.json").read_text())
 check("  a plain string: as before, no msg", r["message"] == "a plain refusal" and "msg" not in r, r)
 try:
-    H.update_install({}); refusal = None
+    H.update_install({})
+    refusal = None
 except H.Refused as exc:
     refusal = exc
 check("Install with nothing downloaded: refused by message, its English the exception's text",
@@ -236,6 +244,29 @@ check("  the nginx site missing from the update: said, the file as evidence",
 py = next(c for c in H.verify_update(src, None, []) if c["id"] == "python")
 check("  Python that compiles: passed, with what compiling does not prove", py["ok"] and py["note"]["id"] == "update.verify.limited", py)
 check("  every check's words said in full", all("{" not in render(c[k]) for c in checks.values() for k in ("name", "detail", "fix") if c.get(k)))
+
+(src / "config").mkdir()
+(src / "config" / "irate-box.nginx").write_text((REPO / "config" / "irate-box.nginx").read_text())
+nginx_permissions = []
+
+
+def nginx_scratch_check(*cmd, **kwargs):
+    scratch = Path(cmd[-1]).parent
+    includes = list((scratch / "tls").glob("*.inc"))
+    readable = bool(includes) and all(path.stat().st_mode & 0o004 for path in includes)
+    traversable = all(path.stat().st_mode & 0o001 for path in (scratch, scratch / "tls"))
+    nginx_permissions.append(readable and traversable)
+    return subprocess.CompletedProcess(cmd, 0 if readable and traversable else 1, "", "[emerg] TLS include permission denied")
+
+
+previous_umask = os.umask(0o077)
+try:
+    with mock.patch.object(H, "run", nginx_scratch_check):
+        nginx = H._nginx_check(src, [])
+finally:
+    os.umask(previous_umask)
+check("  nginx TLS includes stay readable to the unprivileged checker under umask 077",
+      nginx["ok"] and nginx_permissions == [True], nginx)
 
 import shutil  # noqa: E402
 shutil.rmtree(T, ignore_errors=True)
