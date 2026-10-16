@@ -4723,7 +4723,7 @@ def update_set_source(req):
         raise Refused(
             M(
                 "update.source.confirm",
-                "Confirm that this box may install code from {repo} on {branch}.",
+                "Confirm that this box can install code from {repo} on {branch}.",
                 repo=repo,
                 branch=branch,
             )
