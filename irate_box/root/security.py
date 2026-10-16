@@ -1887,6 +1887,16 @@ def check_security_updates(rec, log_path):
     return sentences(*said)
 
 
+def reach_security_updates(log_path, install):
+    """The hub card's "Check for updates and download" / "...download and install" for Debian: the package
+    lists afresh, then what waits downloaded or installed, whatever the owner's pattern says about a check."""
+    with safeio.open_new(log_path) as log:
+        said = [_lists(log)]
+        pkgs = _waiting()
+        said.append(_take(log, pkgs, install))
+    return sentences(*said)
+
+
 def refresh_lists(log_path):
     """apt-get update, its output to log_path; what it found is in the scan that follows."""
     with safeio.open_new(log_path) as log:
@@ -1940,6 +1950,8 @@ def fix(choice, updates_log):
         return fetch_security_updates(updates_log)
     elif choice == "security-check":
         return check_security_updates(rec, updates_log)
+    elif choice in ("security-reach-fetch", "security-reach-install"):
+        return reach_security_updates(updates_log, choice == "security-reach-install")
     elif choice == "apt-lists":
         return refresh_lists(updates_log)
     else:

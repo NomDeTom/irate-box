@@ -159,9 +159,10 @@ const AW = (() => {
       for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
         const s = { ...(b[k] || {}), ...((state || {})[k] || {}) }, node = row.querySelector(`[data-update="${k}"]`);
         if (!node) continue;
+        if (s.label) node.textContent = s.label;
         node.disabled = !!s.disabled;
         node.title = s.disabled && s.why ? s.why : '';
-        if (s.disabled && s.why) whys.push(`${label}: ${s.why}`);
+        if (s.disabled && s.why) whys.push(`${s.label || label}: ${s.why}`);
       }
       why.textContent = whys.join(' ');
       why.hidden = !whys.length;

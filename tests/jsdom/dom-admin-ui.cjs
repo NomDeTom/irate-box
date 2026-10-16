@@ -252,8 +252,9 @@ setTimeout(() => {
   check('Recovery and monitoring under System holds the recovery settings; the Box doctor links there', !!d.querySelector('#page-recovery #health-settings')
     && !d.querySelector('#health #health-settings') && !!d.querySelector('#health-recovery-summary a[href="#recovery"]')
     && side.indexOf('Recovery and monitoring') > side.indexOf('System'));
-  check('update maintenance on Updates, folded: the cache and Install anyway; the Updates doctor points there', !!d.querySelector('#updates details#update-maint #update-clear')
-    && !!d.querySelector('#update-maint #update-force') && !d.querySelector('#updoctor #update-clear') && !!d.querySelector('#updoctor a[href="#update-maint"]'));
+  check('update maintenance in the Updates doctor, folded: the cache, the update source and Install anyway; not on Updates',
+    !!d.querySelector('#updoctor details#update-maint #update-clear') && !!d.querySelector('#update-maint #update-force')
+    && !!d.querySelector('#update-maint #update-source-save') && !d.querySelector('#updates #update-clear, #updates #update-force'));
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));
@@ -359,9 +360,11 @@ setTimeout(() => {
   check('  the full image: the download keeps the last real level, never a size of nothing', /about 0\.1 MB|about 117/.test(t('#backup-go')[0]) && !/0 MB\)|unknown/.test(t('#backup-go')[0].replace(/0\.1 MB/, '')), t('#backup-go')[0]);
   const pk = d.querySelector('#pkg-list .library-source');
   const cards = [...d.querySelectorAll('#updates .update-card')];
+  // The hub and Debian cards check, download and install by stage (three buttons); a package has one Check now.
   const shape = (c) => [c.querySelector('.setting-name') ? 'title' : '-', c.querySelector('.update-pattern, .chip-group') ? 'chips' : '-',
-    [...c.querySelectorAll('button')].some((b) => /^Check now$/.test(b.textContent)) ? 'check' : '-'].join(' ');
-  check('Updates: a card each for the hub, Debian and every package, the same shape (title, chips, Check now)', cards.length === 3
+    c.id === 'update-hub-card' ? (['update-check', 'update-fetch', 'update-install'].every((id) => c.querySelector(`#${id}`)) ? 'check' : '-')
+      : [...c.querySelectorAll('button')].some((b) => /^(Check now|Check for updates)$/.test(b.textContent.trim())) ? 'check' : '-'].join(' ');
+  check('Updates: a card each for the hub, Debian and every package, the same shape (title, chips, its check buttons)', cards.length === 3
     && cards.map((c) => c.id || 'pkg').join(' ') === 'update-hub-card updates-debian pkg' && cards.every((c) => shape(c) === 'title chips check'), cards.map(shape));
   check('  the hub card holds what an update must carry, folded; the doctors\' places still there', !!d.querySelector('#update-hub-card details #update-signing-form')
     && !!d.getElementById('pkg-makers') && d.getElementById('updates-debian').classList.contains('update-card'));
@@ -460,7 +463,7 @@ setTimeout(() => {
   {
     const tabs = [...d.querySelectorAll('[data-tabs="book-sources"] [role="tab"]')];
     const panel = (id) => d.getElementById(id);
-    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent).join('|') === 'Kiwix library|Other source|USB drive'
+    check('books: three tabs, the Kiwix library open first', tabs.map((x) => x.textContent.trim()).join('|') === 'Kiwix library|Other source|USB drive'
       && tabs[0].getAttribute('aria-selected') === 'true' && !panel('books-kiwix').hidden && panel('books-other').hidden && panel('books-usb').hidden);
     tabs[2].click();
     check('  a tab opens its panel and closes the rest', !panel('books-usb').hidden && panel('books-kiwix').hidden && tabs[2].classList.contains('active'));

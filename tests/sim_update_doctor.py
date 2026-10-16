@@ -127,6 +127,84 @@ check("  no run of the schedule recorded: a warning, the log's command to copy, 
       "update.scheduled.none" in msg_ids(fs["scheduled"]) and fs["scheduled"]["commands"] == ["journalctl -u irate-box-librarian -n 80"]
       and fs["scheduled"]["go"]["section"] == "sources", fs["scheduled"])
 check("  every finding well said, in the shared shape", not well_said(fs), well_said(fs))
+check("  the default branch: no finding about the update branch", "target" not in fs, fs.get("target"))
+
+# A box that followed the branch it was installed from: a warning that names the branch and the file.
+OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nfix-topic\n")
+fs = doctor()
+check("a topic branch recorded: a warning with the branch as data, the cure said, the options file as evidence",
+      fs["target"]["status"] == "warn" and msg_args(fs["target"], "update.target.branch") == {"branch": "fix-topic"}
+      and {"update.target.branch.why", "update.target.branch.fix"} <= msg_ids(fs["target"])
+      and fs["target"]["evidence"] == [str(OPTIONS)], fs["target"])
+check("  a button to ask the repository for its default branch",
+      [a["choice"] for a in fs["target"]["actions"]] == ["poll-target"] and is_message(fs["target"]["actions"][0]["label"]), fs["target"]["actions"])
+check("  every finding well said", not well_said(fs), well_said(fs))
+
+# The button: ask the repository which branch it serves by default.
+def poll(out, code=0):
+    run = lambda *cmd, **kw: subprocess.CompletedProcess(cmd, code, out, "fatal: no\n")
+    with mock.patch.object(H, "run", run):
+        try:
+            return H.update_poll_target({})
+        except H.Refused as exc:
+            return exc.args[0] if exc.args else exc
+SYMREF = "ref: refs/heads/main\tHEAD\nabc1234def\tHEAD\n"
+said = poll(SYMREF)
+check("polling: the default is main, the box follows fix-topic: both said as data",
+      msg_args({"summary": said}, "update.target.poll.differs") == {"repo": "https://example.invalid/irate-box", "default": "main", "branch": "fix-topic"}, said)
+OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
+check("  the same branch: said so", msg_args({"summary": poll(SYMREF)}, "update.target.poll.same") is not None, poll(SYMREF))
+check("  no symref from the server: said it did not say", msg_args({"summary": poll("abc1234def\tHEAD\n")}, "update.target.poll.unknown") is not None)
+check("  the repository unreadable: refused, and said", "could not read https://example.invalid/irate-box" in str(poll("", 128)), poll("", 128))
+
+# Changing the source (a fork): checked before any git runs, recorded only once the remote lists the branch.
+GOOD = "https://example.org/fork/irate-box"
+calls = []
+def source(req, heads="abc1234def\trefs/heads/dev\n", code=0):
+    def run(*cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, code, heads if code == 0 else "", "fatal: no\n")
+    with mock.patch.object(H, "run", run):
+        try:
+            return H.update_set_source(req)
+        except H.Refused as exc:
+            return exc.args[0] if exc.args else exc
+before = OPTIONS.read_text()
+for bad in ("http://example.org/x", "git://example.org/x", "file:///srv/x", "ssh://git@example.org/x", "git@example.org:x/y.git",
+            "/home/hub/irate-box", "https://user:pw@example.org/x", "https://example.org/x?a=1", "https://example.org/x#f",
+            "https:///x", "https://example.org/x y", "", "https://example.org:notaport/x"):
+    calls.clear()
+    got = source({"repo": bad, "branch": "dev", "confirmed": True})
+    check(f"a source of {bad!r}: refused before git runs, nothing recorded", str(got).startswith("Give the repository as an https://") and not calls and OPTIONS.read_text() == before, (got, calls))
+for bad in ("", "-x", "a..b", "a b", "x.lock", "x/", "$(id)"):
+    calls.clear()
+    got = source({"repo": GOOD, "branch": bad, "confirmed": True})
+    check(f"a branch of {bad!r}: refused before git runs", not calls and OPTIONS.read_text() == before, (got, calls))
+calls.clear()
+got = source({"repo": GOOD, "branch": "dev"})
+check("not confirmed: refused before git runs", not calls and OPTIONS.read_text() == before, (got, calls))
+got = source({"repo": GOOD, "branch": "nope", "confirmed": True})
+check("a branch the remote does not list: refused, nothing recorded", "no branch named nope" in str(got) and OPTIONS.read_text() == before, got)
+got = source({"repo": GOOD, "branch": "dev", "confirmed": True}, code=128)
+check("a repository that cannot be read: refused, nothing recorded", "could not read" in str(got) and OPTIONS.read_text() == before, got)
+OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n--web\nnginx\n--with-notes\n")
+(T / "cache" / "src").mkdir(parents=True, exist_ok=True)
+(T / "cache" / "src" / "x").write_text("old cache")
+got = source({"repo": GOOD, "branch": "dev", "confirmed": True})
+check("a fork the remote lists: recorded in both copies, the other options kept, the old cache gone",
+      OPTIONS.read_text() == f"--repo\n{GOOD}\n--branch\ndev\n--web\nnginx\n--with-notes\n"
+      and (T / "state" / "install-options").read_text() == OPTIONS.read_text() and not (T / "cache" / "src").exists()
+      and msg_args({"summary": got}, "update.source.saved") == {"repo": GOOD, "branch": "dev"}, got)
+check("  security policy: refused when only the console may change it, the poll left free",
+      "update-set-source" in H.POLICY_ACTIONS and "update-poll-target" not in H.POLICY_ACTIONS)
+with mock.patch.object(H, "policy_mode", lambda: "console"):
+    try:
+        H.policy_check("update-set-source")
+        locked = False
+    except H.Refused:
+        locked = True
+check("  and it is", locked)
+OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
 
 # The hotspot: every name is the box's own; nothing answers; the card is nearly full; a lock left in the cache; apt fails.
 (T / "cache" / "src" / ".git").mkdir(parents=True)

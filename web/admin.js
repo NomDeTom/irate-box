@@ -3104,6 +3104,11 @@ const upd = {
   clear: document.getElementById("update-clear"),
   doctorNote: document.getElementById("doctor-note"),
   clearNote: document.getElementById("update-clear-note"),
+  sourceRepo: document.getElementById("update-source-repo"),
+  sourceBranch: document.getElementById("update-source-branch"),
+  sourcePoll: document.getElementById("update-source-poll"),
+  sourceSave: document.getElementById("update-source-save"),
+  sourceNote: document.getElementById("update-source-note"),
   doctorWhen: document.getElementById("doctor-when"),
   findings: document.getElementById("doctor-findings"),
   udSummary: document.getElementById("updoctor-summary"),
@@ -3144,11 +3149,13 @@ function updSay(action, text, ok, extra) {
   const node =
     action === "force-install"
       ? upd.forceNote
-      : action === "clear-cache"
-        ? upd.clearNote
-        : action === "doctor"
-          ? upd.doctorNote
-          : upd.note;
+      : action === "set-source" || action === "poll-source"
+        ? upd.sourceNote
+        : action === "clear-cache"
+          ? upd.clearNote
+          : action === "doctor" || action === "poll-target"
+            ? upd.doctorNote
+            : upd.note;
   node.replaceChildren(text || "", ...(extra ? [" ", extra] : []));
   node.classList.toggle("bad", !ok);
   node.hidden = !text;
@@ -3227,8 +3234,17 @@ function renderUpdoctor(d) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")}`;
   // A finding (finding.py) brings its parts, its commands and its place to go.
+  // The doctor's own buttons ask the update helper (requestUpdate), not the box doctor's repairs (hlFix).
   const item = (f) => {
-    const x = healthDo(f, false);
+    const x = healthDo({ ...f, actions: [] }, false);
+    const own = f.status === "ok" ? [] : (f.actions || []).map((a) =>
+      el("button", {
+        type: "button",
+        className: "action-btn",
+        textContent: a.label,
+        onclick: () => requestUpdate(a.choice),
+      }),
+    );
     return findingRow({
       id: slug(f),
       state: f.status,
@@ -3236,7 +3252,7 @@ function renderUpdoctor(d) {
       ...findingParts(f),
       how: x.how,
       commands: f.status === "ok" ? [] : x.commands || [],
-      controls: x.controls,
+      controls: [...x.controls, ...own],
     });
   };
   const open = all.filter(
@@ -3370,7 +3386,9 @@ function renderUpdate(data) {
         updWaiting.action,
         resultSaid(done),
         !failed,
-        failed && updWaiting.action !== "doctor"
+        failed && !["doctor", "poll-target", "poll-source", "set-source"].includes(
+          updWaiting.action,
+        )
           ? el("a", {
               className: "action-btn go-btn",
               href: "#updoctor",
@@ -3414,7 +3432,7 @@ async function loadUpdate() {
   }
 }
 
-async function requestUpdate(action, endpoint = null) {
+async function requestUpdate(action, endpoint = null, extra = {}) {
   if (
     (action === "install" || endpoint === "install") &&
     !confirm("Install the update now? The hub restarts during the install.")
@@ -3429,7 +3447,7 @@ async function requestUpdate(action, endpoint = null) {
     return;
   try {
     updWaiting = {
-      id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate })).id,
+      id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate, ...extra })).id,
       action: endpoint === "install" ? "install" : action,
     };
     upd.check.disabled =
@@ -3446,6 +3464,9 @@ async function requestUpdate(action, endpoint = null) {
         install: "Installing the update…",
         "force-install": "Installing the downloaded version anyway…",
         doctor: "Running the update doctor. It can take up to two minutes…",
+        "poll-target": "Asking the repository for its default branch…",
+        "poll-source": "Asking the repository for its default branch…",
+        "set-source": "Changing where updates come from…",
         "clear-cache": "Clearing the update cache…",
         reach: endpoint === "install" ? "Preparing and installing the update…" : "Checking and downloading the update…",
       }[action],
@@ -3472,6 +3493,25 @@ upd.clear.addEventListener("click", () => {
 });
 upd.install.addEventListener("click", () => {
   if (meteredOk("Preparing and installing the update")) requestUpdate("reach", "install");
+});
+// Where updates come from (a fork, say): asked of the repository first, then changed after a confirmation that
+// names it. The root helper checks the address and the branch again, and refuses it when policy is console-only.
+upd.sourcePoll.addEventListener("click", () =>
+  requestUpdate("poll-source", null, { repo: upd.sourceRepo.value.trim() }),
+);
+upd.sourceSave.addEventListener("click", () => {
+  const repo = upd.sourceRepo.value.trim();
+  const branch = upd.sourceBranch.value.trim();
+  if (
+    repo &&
+    branch &&
+    confirm(
+      `Install updates from the branch ${branch} of ${repo}?\n\nThe box runs the code it fetches as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
+    )
+  )
+    requestUpdate("set-source", null, { repo, branch, confirmed: true });
+  else if (!repo || !branch)
+    updSay("set-source", "Give a repository and a branch.", false);
 });
 
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
@@ -5093,19 +5133,28 @@ const deb = {
   box: document.getElementById("debian-buttons"),
   says: document.getElementById("debian-auto-says"),
 };
+// The hub card's buttons, by how far Debian's update has got: nothing known (each button checks first), updates
+// waiting (download, or download and install), downloaded (install). The labels follow in drawDebianPattern.
+const DEB_INSTALL_ASK =
+  "Install the waiting security updates now? It can take several minutes on this board.";
 deb.buttons = AW.updateButtons({
   check: {
+    label: "Check for updates",
     onclick: () => secFix("security-updates", { choice: "security-check" }),
   },
   fetch: {
-    onclick: () => secFix("security-updates", { choice: "security-fetch" }),
-  },
-  install: {
+    label: "Check for updates and download",
     onclick: () =>
       secFix("security-updates", {
-        choice: "security-updates",
-        confirm:
-          "Install the waiting security updates now? It can take several minutes on this board.",
+        choice: deb.waiting ? "security-fetch" : "security-reach-fetch",
+      }),
+  },
+  install: {
+    label: "Check for updates, download and install",
+    onclick: () =>
+      secFix("security-updates", {
+        choice: deb.waiting ? "security-updates" : "security-reach-install",
+        confirm: DEB_INSTALL_ASK,
       }),
   },
 });
@@ -5128,21 +5177,27 @@ function drawDebianPattern(lines, busy) {
     : "Not known until the box is scanned.";
   const waiting = w ? w.waiting || 0 : 0,
     fetched = w ? w.fetched || 0 : 0;
+  deb.waiting = waiting;
+  const down = waiting > 0 && fetched >= waiting;
   deb.buttons.update({
-    check: { disabled: busy, why: busy ? "busy" : "" },
+    check: {
+      label: "Check for updates",
+      disabled: busy || waiting > 0,
+      why: busy ? "busy" : waiting > 0 ? "updates are already waiting." : "",
+    },
     fetch: {
-      disabled: busy || !waiting || fetched >= waiting,
-      why: busy
-        ? "busy"
-        : !waiting
-          ? "no newer version is known. Select Check now first."
-          : fetched >= waiting
-            ? "already downloaded."
-            : "",
+      label: waiting ? "Download" : "Check for updates and download",
+      disabled: busy || down,
+      why: busy ? "busy" : down ? "already downloaded." : "",
     },
     install: {
-      disabled: busy || !waiting,
-      why: busy ? "busy" : !waiting ? "no updates are waiting." : "",
+      label: down
+        ? "Install"
+        : waiting
+          ? "Download and install"
+          : "Check for updates, download and install",
+      disabled: busy,
+      why: busy ? "busy" : "",
     },
   });
 }
@@ -5675,6 +5730,8 @@ const HELPER_WORDS = {
   "update-force-install": "Updates: install anyway",
   "update-doctor": "Updates: run doctor",
   "update-clear-cache": "Updates: delete the cache",
+  "update-poll-target": "Updates: ask for the default branch",
+  "update-set-source": "Updates: change the source",
   "update-signing": "Updates: signing",
   "pkg-check": "Packages: check",
   "pkg-fetch": "Packages: download",
@@ -10632,7 +10689,7 @@ function fillTileBlocks() {
             ? ` Locked-tile action: ${LOCK_WORDS[lock]}.`
             : ""),
       }),
-      el("p", {}, go),
+      el("div", { className: "library-buttons" }, go),
     );
   });
 }
