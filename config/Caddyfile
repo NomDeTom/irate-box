@@ -6,15 +6,13 @@
 # Caddy is the fallback (install.sh --web caddy); nginx, with the same routes in
 # irate-box.nginx, is the default. A route changed here is changed there too.
 #
-# Two listeners:
-#   - :80 always plain. Captive-portal probes are HTTP; an HTTPS listener appears only
-#     when the box has a certificate (root/tls.py writes its
-#     sites, imported at the end), and never as a redirect target.
+# Generated listeners:
+#   - root/tls.py writes HTTP and HTTPS sites according to the saved transport policy:
+#     HTTP only, both, HTTPS with HTTP discovery/redirect, or HTTPS only.
 #   - The routes are snippets, (irate_box_hub), (irate_box_addons), (irate_box_notes),
 #     (irate_box_wiki) and (irate_box_git), so the plain sites and their HTTPS twins serve
 #     the same: Caddy can't put TLS on one port of a site block whose other port is plain.
-#   - never a blanket HTTP→HTTPS redirect, never HSTS. auto_https off keeps Caddy
-#     from adding either on its own.
+#   - Never HSTS. auto_https off keeps Caddy from adding listeners or redirects on its own.
 #
 # Every service binds to 127.0.0.1; Caddy is the sole listener on the AP interface.
 # Guests see http://192.168.4.1/… and nothing else — no ports, no pi.local.
@@ -29,6 +27,7 @@
 }
 
 (irate_box_hub) {
+	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-main.inc
 	# Never a guest's: only the /admin route below sends it (the hub's proof of the login).
 	request_header -X-Irate-Front
 	# A baseline Content-Security-Policy on every answer of this origin.
@@ -500,9 +499,7 @@
 	}
 }
 
-:80 {
-	import irate_box_hub
-}
+import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 
 # --- the add-on origin: the local add-ons ---------------------------------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's
@@ -512,6 +509,7 @@
 # Content-Security-Policy, are the root helper's (addons-routes.caddy). Caddy follows links,
 # unlike nginx's disable_symlinks: the security doctor looks for any in the folder.
 (irate_box_addons) {
+	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-addons.inc
 	root * {$HUB_ADDONS_ROOT:/var/lib/hub/addons}
 	header {
 		X-Content-Type-Options nosniff
@@ -522,9 +520,7 @@
 	import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/addons-routes.caddy*
 }
 
-:{$HUB_ADDON_PORT:8090} {
-	import irate_box_addons
-}
+import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-addons.inc
 
 # --- the notes origin: SilverBullet (--with-notes) -----------------------------------------
 # Its own port, so what a note runs is on an origin with no /admin and none of the hub's
@@ -533,6 +529,7 @@
 # refused whatever the unit says: the shell, the HTTP proxy, which can reach the hub's
 # loopback API past the /admin login, and the runtime API.
 (irate_box_notes) {
+	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-notes.inc
 	request_header -X-Irate-Front
 	# The sign-in an app in users mode sends to (server.py /_irate/user) is the hub's.
 	redir /account.html {scheme}://{host}{uri} 302
@@ -554,15 +551,14 @@
 	}
 }
 
-:{$HUB_NOTES_PORT:8091} {
-	import irate_box_notes
-}
+import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-notes.inc
 
 # --- the books' origin: Kiwix ---------------------------------------------------------------
 # kiwix-serve on 127.0.0.1:8081, path passed through, not stripped: run it with
 #   --urlRootLocation /wiki  --blockexternal  -p 8081  -i 127.0.0.1
 # so its own links come out under /wiki/ too. The same login switch (/admin, Apps).
 (irate_box_wiki) {
+	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-wiki.inc
 	request_header -X-Irate-Front
 	redir /account.html {scheme}://{host}{uri} 302
 	redir / /wiki/ 302
@@ -586,15 +582,14 @@
 	}
 }
 
-:{$HUB_WIKI_PORT:8092} {
-	import irate_box_wiki
-}
+import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-wiki.inc
 
 # --- cgit's origin: the git servers' web view -----------------------------------------------
 # What a repository holds is written by whoever may push, so its pages are served away from
 # /admin. Its CSP (scripts only the box's own) lets the hub's app bar frame it. Clones and
 # pushes are the hub's port's (a smart-HTTP request here is sent there).
 (irate_box_git) {
+	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-git.inc
 	request_header -X-Irate-Front
 	# The hub's port by scheme: where clones and pushes go, and who may frame these pages.
 	map {scheme} {irate_box_hub_port} {
@@ -673,9 +668,7 @@
 	}
 }
 
-:{$HUB_GIT_PORT:8093} {
-	import irate_box_git
-}
+import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-git.inc
 
 # HTTPS: https://:443 and each app origin's twin, each importing the same
 # snippet as its plain site, with the box's certificate. Written by root/tls.py only while HTTPS

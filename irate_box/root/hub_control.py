@@ -126,9 +126,9 @@ install.sh --apps-from-actions uses  hub_control.py install-app APP ZIP  for a f
 Stdlib only.
 """
 
+import errno
 import hashlib
 import json
-import errno
 import os
 import platform
 import pwd
@@ -142,21 +142,33 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 
 from irate_box.finding import finding
-from irate_box.hub import access
-from irate_box.msg import M, Refused, duration, is_message, render, text as paragraph, when
-from irate_box.root import health
-from irate_box.root import signing
-from irate_box.hub import manifests
-from irate_box.hub import netinv
-from irate_box.root import secdoctor
-from irate_box.root import security
-from irate_box.hub import uplink
-from irate_box.root import ap, kits, safeio, share, usbstick
+from irate_box.hub import access, manifests, netinv, uplink
+from irate_box.msg import (
+    M,
+    Refused,
+    duration,
+    is_message,
+    render,
+)
+from irate_box.msg import text as paragraph
+from irate_box.msg import when
+from irate_box.root import (
+    ap,
+    health,
+    kits,
+    safeio,
+    secdoctor,
+    security,
+    share,
+    signing,
+    usbstick,
+)
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -164,7 +176,9 @@ HUB_USER = os.environ.get("HUB_USER", "hub")
 CONTROL = STATE / "control"
 REQUESTS = CONTROL / "requests"
 RESULTS = CONTROL / "results"
-HELPER_DOING = CONTROL / "helper-doing.json"  # the request being run, for the hub (it cannot see root's processes)
+HELPER_DOING = (
+    CONTROL / "helper-doing.json"
+)  # the request being run, for the hub (it cannot see root's processes)
 
 
 def _web_server():
@@ -191,11 +205,15 @@ NGINX_LOGINS = Path(os.environ.get("HUB_NGINX_LOGINS", "/etc/nginx/irate-box.htp
 # Present while no admin password has been chosen (install.sh creates it, beside the web
 # server's config). The server then lets /admin through without a login, and the hub serves
 # only the set-the-password page.
-UNCLAIMED = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed"))
+UNCLAIMED = Path(
+    os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/irate-box-unclaimed")
+)
 
 
 def _login_file():
     return CADDY_SITE if CADDY_SITE.exists() else CADDYFILE
+
+
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
 UPDATE_STATE = CONTROL / "update.json"
@@ -222,7 +240,10 @@ OPS_ALL = ("start", "stop", "restart", "enable", "disable")
 # The units each app's manifest offers for control (apps.d/, beside this file and as
 # root-owned as it), and the two that may only be restarted.
 MANIFESTS = manifests.load()
-UNITS = {unit.replace("@hub.", f"@{HUB_USER}."): OPS_ALL for unit in manifests.controllable_units(MANIFESTS)}
+UNITS = {
+    unit.replace("@hub.", f"@{HUB_USER}."): OPS_ALL
+    for unit in manifests.controllable_units(MANIFESTS)
+}
 UNITS.update({f"{WEB_SERVER}.service": ("restart",), "irate-box.service": ("restart",)})
 # Who may open each app (access.py): root's choice, the web server's snippet made from it,
 # and the copy the hub reads for its tiles.
@@ -236,18 +257,100 @@ ADMIN_LOGIN_STATE = CONTROL / "admin-login.json"
 # "network" (from other devices too); the admin's choice on Accounts. Absent: "network", as it always was.
 ADMIN_LOGIN_REACH = ETC / "admin-login.reach"
 REACHES = ("off", "local", "network")
-ACCESS_STOPPED = ETC / "access-stopped.json"  # the services "off" stopped, to start again
+ACCESS_STOPPED = (
+    ETC / "access-stopped.json"
+)  # the services "off" stopped, to start again
 NGINX_ACCESS = Path(os.environ.get("HUB_NGINX_ACCESS", ETC / "nginx-access.conf"))
 # The add-on server's maps (http level), and Caddy's add-on routes: from access.json and the
 # local add-ons' manifests, re-checked here (the hub writes those).
-NGINX_ADDON_ACCESS = Path(os.environ.get("HUB_NGINX_ADDON_ACCESS", ETC / "nginx-addons.conf"))
+NGINX_ADDON_ACCESS = Path(
+    os.environ.get("HUB_NGINX_ADDON_ACCESS", ETC / "nginx-addons.conf")
+)
 # A local add-on in users mode: one location per such add-on,
 # ahead of the add-on server's shared one (access.addon_gates).
-NGINX_ADDON_GATES = Path(os.environ.get("HUB_NGINX_ADDON_GATES", ETC / "nginx-addon-gates.conf.d"))
+NGINX_ADDON_GATES = Path(
+    os.environ.get("HUB_NGINX_ADDON_GATES", ETC / "nginx-addon-gates.conf.d")
+)
 CADDY_ACCESS = Path(os.environ.get("HUB_ACCESS_DIR", "/etc/caddy/irate-box-access"))
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 HASH_LINE = re.compile(r"^(\s*admin\s+)\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}\s*$", re.M)
 MIN_PASSWORD = 8
+
+POLICY_FILE = ETC / "security-policy.json"
+POLICY_STATE = CONTROL / "security-policy.json"
+POLICY_ACTIONS = frozenset(
+    (
+        "security-policy",
+        "security-fix",
+        "update-signing",
+        "update-force-install",
+        "tls-make",
+        "tls-switch",
+        "tls-import",
+        "tls-box",
+        "tls-admin-only",
+        "tls-settings",
+        "access",
+        "admin-login",
+        "admin-gate",
+        "share-set",
+        "share-allow",
+    )
+)
+
+
+def policy_mode():
+    try:
+        mode = json.loads(safeio.read_own(POLICY_FILE)).get("mode")
+    except FileNotFoundError:
+        return "console" if POLICY_FILE.is_symlink() else "hub"
+    except (ValueError, OSError, AttributeError):
+        return "console"
+    return mode if mode in ("hub", "console") else "console"
+
+
+def policy_publish():
+    mode = policy_mode()
+    safeio.write(POLICY_STATE, json.dumps({"mode": mode}))
+    return mode
+
+
+def policy_set(req):
+    mode = req.get("mode")
+    if mode not in ("hub", "console"):
+        raise Refused(
+            M(
+                "policy.invalid",
+                "Select hub administration or console/SSH administration.",
+            )
+        )
+    if mode == "console" and req.get("confirmed") is not True:
+        raise Refused(
+            M(
+                "policy.confirm",
+                "Confirm that restoring hub policy changes requires a root-capable console or SSH session.",
+            )
+        )
+    safeio.write(POLICY_FILE, json.dumps({"mode": mode}))
+    policy_publish()
+    return M(
+        "policy.saved",
+        "Security policy changes are accepted from {source}.",
+        source=(
+            "the hub administrator" if mode == "hub" else "the root console or SSH only"
+        ),
+    )
+
+
+def policy_check(action):
+    if action in POLICY_ACTIONS and policy_mode() != "hub":
+        raise Refused(
+            M(
+                "policy.locked",
+                "The root helper accepts security policy changes only from the console or SSH. "
+                "To restore hub changes, run sudo /opt/irate-box/irate-box hub_control security-policy hub.",
+            )
+        )
 
 
 # systemd-run's timers default to AccuracySec=1min: "--on-active=1" fired 22 s late in a
@@ -262,6 +365,7 @@ def run(*cmd, timeout=120, **kw):
 # What every action answers, and why it refuses, are messages (msg.py): whole sentences with stable IDs. Names,
 # paths, commands and what a program printed are their arguments, never part of the English. The result keeps
 # the English for every reader that expects text (answer).
+
 
 def _why(exc):
     """What an exception says, as an argument: its message where it has one (Refused, or another module's own),
@@ -282,37 +386,87 @@ def _last_line(text, limit=300):
 def service(req):
     unit, op = str(req.get("unit", "")), str(req.get("op", ""))
     if unit not in UNITS:
-        raise Refused(M("control.service.unknown", "The administration pages do not control {unit}.", unit=unit))
+        raise Refused(
+            M(
+                "control.service.unknown",
+                "The administration pages do not control {unit}.",
+                unit=unit,
+            )
+        )
     if op not in UNITS[unit]:
-        raise Refused(M("control.service.op-unavailable", "The action {op} is not available for {unit}.", op=op, unit=unit))
+        raise Refused(
+            M(
+                "control.service.op-unavailable",
+                "The action {op} is not available for {unit}.",
+                op=op,
+                unit=unit,
+            )
+        )
     if run("systemctl", "cat", unit).returncode != 0:
-        raise Refused(M("control.service.not-installed", "The service {unit} is not installed.", unit=unit))
-    args = {"enable": ("enable", "--now"), "disable": ("disable", "--now")}.get(op, (op,))
+        raise Refused(
+            M(
+                "control.service.not-installed",
+                "The service {unit} is not installed.",
+                unit=unit,
+            )
+        )
+    args = {"enable": ("enable", "--now"), "disable": ("disable", "--now")}.get(
+        op, (op,)
+    )
     if unit == "irate-box.service":
         # Restarting the hub from a request the hub made: answer first, then go.
-        subprocess.Popen(["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit])
-        return M("control.service.restarting", "The service {unit} is restarting.", unit=unit)
+        subprocess.Popen(
+            ["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit]
+        )
+        return M(
+            "control.service.restarting", "The service {unit} is restarting.", unit=unit
+        )
     out = run("systemctl", *args, unit)
     if out.returncode != 0:
         said = (out.stderr or out.stdout).strip()
         if said:
-            raise Refused(M("control.service.failed", "The action {op} failed for {unit}. systemctl said: {output}",
-                            op=op, unit=unit, output=_last_line(said)))
-        raise Refused(M("control.service.failed-silent", "The action {op} failed for {unit}.", op=op, unit=unit))
+            raise Refused(
+                M(
+                    "control.service.failed",
+                    "The action {op} failed for {unit}. systemctl said: {output}",
+                    op=op,
+                    unit=unit,
+                    output=_last_line(said),
+                )
+            )
+        raise Refused(
+            M(
+                "control.service.failed-silent",
+                "The action {op} failed for {unit}.",
+                op=op,
+                unit=unit,
+            )
+        )
     # The state is systemd's own word (active, inactive, failed …): data.
-    return M("control.service.done", "The action {op} is complete for {unit}. The service state is now {state}.",
-             op=op, unit=unit, state=run("systemctl", "is-active", unit).stdout.strip())
+    return M(
+        "control.service.done",
+        "The action {op} is complete for {unit}. The service state is now {state}.",
+        op=op,
+        unit=unit,
+        state=run("systemctl", "is-active", unit).stdout.strip(),
+    )
 
 
 MAX_PASSWORD = 128
-PASSWORD_LENGTH = M("control.password.length", "The password must have {min} to {max} characters on one line.",
-                    min=MIN_PASSWORD, max=MAX_PASSWORD)
+PASSWORD_LENGTH = M(
+    "control.password.length",
+    "The password must have {min} to {max} characters on one line.",
+    min=MIN_PASSWORD,
+    max=MAX_PASSWORD,
+)
 # The box's own sign-in for scripts (HTTP basic auth, user admin): not a hub account, and not an account of the system.
 SCRIPT_USER = "admin"
 
 
 def _password_ok(pw):
-    return MIN_PASSWORD <= len(pw) <= MAX_PASSWORD and not any(c in pw for c in "\n\r\0")
+    return MIN_PASSWORD <= len(pw) <= MAX_PASSWORD and not any(
+        c in pw for c in "\n\r\0"
+    )
 
 
 def password(req):
@@ -320,8 +474,13 @@ def password(req):
     if not _password_ok(pw):
         raise Refused(PASSWORD_LENGTH)
     if req.get("setup") and not UNCLAIMED.exists():
-        raise Refused(M("control.password.already-set", "The password of the user {user} is already set. Sign in to change it.",
-                        user=SCRIPT_USER))
+        raise Refused(
+            M(
+                "control.password.already-set",
+                "The password of the user {user} is already set. Sign in to change it.",
+                user=SCRIPT_USER,
+            )
+        )
     done = set_login(pw)
     if req.get("setup"):
         UNCLAIMED.unlink(missing_ok=True)
@@ -332,37 +491,77 @@ def _password_saved(done):
     """set_login's record said: where the password went, and the two things that can come with it."""
     places, on_again, failed = done["places"], done["on_again"], done["failed"]
     if on_again and failed:
-        return M("control.password.saved.on-again.failed", "The new password of the user {user} is saved for {places}. "
-                 "Script sign-in is enabled again. {failed} did not accept the new password.",
-                 user=SCRIPT_USER, places=places, failed=failed)
+        return M(
+            "control.password.saved.on-again.failed",
+            "The new password of the user {user} is saved for {places}. "
+            "Script sign-in is enabled again. {failed} did not accept the new password.",
+            user=SCRIPT_USER,
+            places=places,
+            failed=failed,
+        )
     if on_again:
-        return M("control.password.saved.on-again", "The new password of the user {user} is saved for {places}. "
-                 "Script sign-in is enabled again.", user=SCRIPT_USER, places=places)
+        return M(
+            "control.password.saved.on-again",
+            "The new password of the user {user} is saved for {places}. "
+            "Script sign-in is enabled again.",
+            user=SCRIPT_USER,
+            places=places,
+        )
     if failed:
-        return M("control.password.saved.failed", "The new password of the user {user} is saved for {places}. "
-                 "{failed} did not accept the new password.", user=SCRIPT_USER, places=places, failed=failed)
-    return M("control.password.saved", "The new password of the user {user} is saved for {places}.", user=SCRIPT_USER, places=places)
+        return M(
+            "control.password.saved.failed",
+            "The new password of the user {user} is saved for {places}. "
+            "{failed} did not accept the new password.",
+            user=SCRIPT_USER,
+            places=places,
+            failed=failed,
+        )
+    return M(
+        "control.password.saved",
+        "The new password of the user {user} is saved for {places}.",
+        user=SCRIPT_USER,
+        places=places,
+    )
 
 
 def reset_password():
     """Back to unclaimed: an unknown random login everywhere, and the first-use form on
     /admin. For the console, when the owner has lost the password."""
     set_login(secrets.token_urlsafe(24), keep=False)
-    UNCLAIMED.write_text("no admin password chosen yet (hub_control.py reset-password)\n")
+    UNCLAIMED.write_text(
+        "no admin password chosen yet (hub_control.py reset-password)\n"
+    )
     UNCLAIMED.chmod(0o644)
-    return M("control.password.reset", "The password of the user {user} is reset, and initial setup is open again. "
-             "Until someone sets a new password, any person who can reach the box can open {page}, "
-             "set the password and become the administrator.", user=SCRIPT_USER, page="/admin")
+    return M(
+        "control.password.reset",
+        "The password of the user {user} is reset, and initial setup is open again. "
+        "Until someone sets a new password, any person who can reach the box can open {page}, "
+        "set the password and become the administrator.",
+        user=SCRIPT_USER,
+        page="/admin",
+    )
 
 
 def _set_nginx_login(pw):
     """The login file nginx checks. SHA-512-crypt, not bcrypt: nginx checks the hash on every
     request and caches nothing, and bcrypt at Caddy's cost takes seconds a check on a small
-    board (this: milliseconds). nginx reads the file per request, so nothing needs reloading."""
+    board (this: milliseconds). nginx reads the file per request, so nothing needs reloading.
+    """
     if not NGINX_LOGINS.exists():
-        raise Refused(M("control.password.no-file", "The script sign-in file {path} does not exist.", path=str(NGINX_LOGINS)))
-    out = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=pw + "\n",
-                         capture_output=True, text=True, timeout=30)
+        raise Refused(
+            M(
+                "control.password.no-file",
+                "The script sign-in file {path} does not exist.",
+                path=str(NGINX_LOGINS),
+            )
+        )
+    out = subprocess.run(
+        ["openssl", "passwd", "-6", "-stdin"],
+        input=pw + "\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     hashed = out.stdout.strip()
     if out.returncode != 0 or not hashed.startswith("$6$"):
         raise Refused(_hash_failed("openssl passwd"))
@@ -389,19 +588,26 @@ def _set_caddy_login(pw):
     if CADDY_ACCESS.is_dir():
         _access_files(access.read(ACCESS_FILE))
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
-    subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+    subprocess.Popen(
+        ["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"]
+    )
     return "Caddy"
 
 
 def _hash_failed(command):
-    return M("control.password.hash-failed", "The command {command} failed. Nothing changed.", command=command)
+    return M(
+        "control.password.hash-failed",
+        "The command {command} failed. Nothing changed.",
+        command=command,
+    )
 
 
 def set_login(pw, keep=True):
     """Put pw everywhere the admin login is used. keep=False leaves /etc/hub/admin-password
     out (removed): a random placeholder nobody is meant to know. A new password turns the box's
     own login back on if it was off (reset-password at the console is the way back in).
-    Returns {"places": the programs that took it, "failed": those that did not, "on_again": whether it was off}."""
+    Returns {"places": the programs that took it, "failed": those that did not, "on_again": whether it was off}.
+    """
     # The web server first: if its new login cannot be written, nothing else has changed.
     web = _set_nginx_login(pw) if WEB_SERVER == "nginx" else _set_caddy_login(pw)
     on_again = ADMIN_LOGIN_OFF.exists()
@@ -427,12 +633,43 @@ def set_login(pw, keep=True):
     # which is no use to anyone once it changes: it goes.
     (ETC / "ttyd.env").unlink(missing_ok=True)
     done = {"places": [web], "failed": [], "on_again": on_again}
-    if run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode == 0:
+    if (
+        run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode
+        == 0
+    ):
         done["places" if syncthing_gui_password(pw) else "failed"].append("Syncthing")
     return done
 
 
 SYNCTHING_GUI = "http://127.0.0.1:8384"
+
+
+def _web_open(request, timeout, local_origin=None):
+    def validate(url):
+        parsed = urllib.parse.urlsplit(url)
+        if local_origin is None:
+            allowed = parsed.scheme == "https" and bool(parsed.hostname)
+        else:
+            origin = urllib.parse.urlsplit(local_origin)
+            allowed = (
+                origin.scheme == "http"
+                and origin.hostname in ("127.0.0.1", "::1")
+                and (parsed.scheme, parsed.hostname, parsed.port)
+                == (origin.scheme, origin.hostname, origin.port)
+            )
+        if not allowed or parsed.username is not None or parsed.password is not None:
+            raise ValueError("URL must use HTTPS or the configured loopback API origin")
+
+    class WebRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            validate(newurl)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    validate(request.full_url)
+    handlers = [WebRedirect()]
+    if local_origin is not None:
+        handlers.append(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener(*handlers).open(request, timeout=timeout)
 
 
 def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
@@ -441,17 +678,29 @@ def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
     set` would put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves.
     Tried again for a while: install.sh's `gui user set` just before restarts the GUI's listener,
     and a request in that gap finds nothing there."""
-    cfg = next((t for t in (STATE / ".local/state/syncthing/config.xml", STATE / ".config/syncthing/config.xml")
-                if t.exists()), None)
+    cfg = next(
+        (
+            t
+            for t in (
+                STATE / ".local/state/syncthing/config.xml",
+                STATE / ".config/syncthing/config.xml",
+            )
+            if t.exists()
+        ),
+        None,
+    )
     m = re.search(r"<apikey>([^<]+)</apikey>", cfg.read_text()) if cfg else None
     if not m:
         return False
-    req = urllib.request.Request(f"{SYNCTHING_GUI}/rest/config/gui", method="PATCH",
-                                 data=json.dumps({"password": pw}).encode(),
-                                 headers={"X-API-Key": m.group(1), "Content-Type": "application/json"})
+    req = urllib.request.Request(
+        f"{SYNCTHING_GUI}/rest/config/gui",
+        method="PATCH",
+        data=json.dumps({"password": pw}).encode(),
+        headers={"X-API-Key": m.group(1), "Content-Type": "application/json"},
+    )
     for attempt in range(tries):
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with _web_open(req, timeout=20, local_origin=SYNCTHING_GUI) as resp:
                 return resp.status == 200
         except OSError:
             if attempt + 1 < tries:
@@ -460,6 +709,7 @@ def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
 
 
 # --- an offline kit of this box (/admin, Backup) ------------------------------------------
+
 
 def _du(*paths):
     total = 0
@@ -483,50 +733,112 @@ def kit_choices(req):
     books = req.get("books", False)
     if books is True:
         zims = sorted(ZIM_DIR.glob("*.zim"))
-    elif isinstance(books, list) and all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
+    elif isinstance(books, list) and all(
+        isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books
+    ):
         zims = [ZIM_DIR / f"{b}.zim" for b in books]
         missing = [z.stem for z in zims if not z.is_file() or z.is_symlink()]
         if missing:
-            raise Refused(M("control.kit.no-book", {"one": "This box has no book named {names}.",
-                                                    "other": "This box has no books named {names}."},
-                            n=len(missing), names=missing[:3]))
+            raise Refused(
+                M(
+                    "control.kit.no-book",
+                    {
+                        "one": "This box has no book named {names}.",
+                        "other": "This box has no books named {names}.",
+                    },
+                    n=len(missing),
+                    names=missing[:3],
+                )
+            )
     elif books is False or books is None:
         zims = []
     else:
-        raise Refused(M("control.kit.books-bad", "The request must give the books as true, false or a list of book names."))
+        raise Refused(
+            M(
+                "control.kit.books-bad",
+                "The request must give the books as true, false or a list of book names.",
+            )
+        )
     kit_ids = req.get("kits") or []
-    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+    if not isinstance(kit_ids, list) or not all(
+        isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids
+    ):
         raise Refused(KITS_BAD)
     repos = req.get("repos") or []
-    if not isinstance(repos, list) or not all(isinstance(r, str) and REPO_RE.match(r) for r in repos):
-        raise Refused(M("control.kit.repos-bad", "The request must give the repositories as a list of names in the form {form}.",
-                        form="area/name"))
+    if not isinstance(repos, list) or not all(
+        isinstance(r, str) and REPO_RE.match(r) for r in repos
+    ):
+        raise Refused(
+            M(
+                "control.kit.repos-bad",
+                "The request must give the repositories as a list of names in the form {form}.",
+                form="area/name",
+            )
+        )
     repo_dirs = [STATE / "git" / f"{r}.git" for r in repos]
-    gone = [r for r, d in zip(repos, repo_dirs) if not d.is_dir() or d.is_symlink()]
+    gone = [
+        repo
+        for repo, directory in zip(repos, repo_dirs, strict=True)
+        if not directory.is_dir() or directory.is_symlink()
+    ]
     if gone:
-        raise Refused(M("control.kit.no-repo", {"one": "This box has no repository named {names}.",
-                                                "other": "This box has no repositories named {names}."},
-                        n=len(gone), names=gone[:3]))
+        raise Refused(
+            M(
+                "control.kit.no-repo",
+                {
+                    "one": "This box has no repository named {names}.",
+                    "other": "This box has no repositories named {names}.",
+                },
+                n=len(gone),
+                names=gone[:3],
+            )
+        )
     state = req.get("state", "none")
     if state not in ("none", "settings", "data"):
-        raise Refused(M("control.kit.state-bad", "The request must give the box state as one of these values: {values}.",
-                        values=["none", "settings", "data"]))
+        raise Refused(
+            M(
+                "control.kit.state-bad",
+                "The request must give the box state as one of these values: {values}.",
+                values=["none", "settings", "data"],
+            )
+        )
     budget = req.get("budget_mb")
     if budget is not None and (type(budget) is not int or budget <= 0):
-        raise Refused(M("control.kit.budget-bad", "The request must give the size limit as a whole number of MB, or no limit."))
+        raise Refused(
+            M(
+                "control.kit.budget-bad",
+                "The request must give the size limit as a whole number of MB, or no limit.",
+            )
+        )
     return zims, kit_ids, repo_dirs, state, budget
 
 
-KITS_BAD = M("control.kit.kits-bad", "The request must give the toolkits as a list of toolkit IDs.")
-EXPORT_EMPTY = M("control.export.empty", "The export selection is empty. Select at least one item.")
+KITS_BAD = M(
+    "control.kit.kits-bad",
+    "The request must give the toolkits as a list of toolkit IDs.",
+)
+EXPORT_EMPTY = M(
+    "control.export.empty", "The export selection is empty. Select at least one item."
+)
 
 
 def _download_ready(meta):
-    return M("control.kit.ready", "The download is ready: {name} ({size} MB).", name=meta["name"], size=meta["size"] >> 20)
+    return M(
+        "control.kit.ready",
+        "The download is ready: {name} ({size} MB).",
+        name=meta["name"],
+        size=meta["size"] >> 20,
+    )
 
 
 def _tar_failed(tar):
-    return Refused(M("control.kit.tar-failed", "The tar command failed: {output}", output=_last_line(tar.stderr)))
+    return Refused(
+        M(
+            "control.kit.tar-failed",
+            "The tar command failed: {output}",
+            output=_last_line(tar.stderr),
+        )
+    )
 
 
 def offline_kit(req):
@@ -535,25 +847,39 @@ def offline_kit(req):
     cache (anything missing fetched if there is internet), and what the owner chose (kit_choices):
     books, toolkits (in the stick layout the new box's Toolkits import reads), git repositories,
     and this box's settings, or settings and data. One .tar in $STATE/kits, which replaces the
-    last; the hub offers it as a download. Refused over the budget, before anything is made."""
+    last; the hub offers it as a download. Refused over the budget, before anything is made.
+    """
     zims, kit_ids, repo_dirs, state, budget = kit_choices(req)
     apps = Path("/usr/share/hub/apps")
     arch = platform.machine()
     from irate_box.hub import backup
-    base = backup.apps_size(apps) + _du(Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
-    chosen = (sum(z.stat().st_size for z in zims) + _du(*repo_dirs)
-              + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
-              + (_state_size(state) if state != "none" else 0))
+
+    base = (
+        backup.apps_size(apps) + _du(Path("/usr/share/hub/room"), DOWNLOADS) + (4 << 20)
+    )
+    chosen = (
+        sum(z.stat().st_size for z in zims)
+        + _du(*repo_dirs)
+        + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
+        + (_state_size(state) if state != "none" else 0)
+    )
     if budget is not None and base + chosen > budget << 20:
-        raise Refused(M("control.kit.too-large", "The estimated kit size is {size} MB. The size limit is {limit} MB. "
-                        "Select fewer items or increase the size limit.", size=(base + chosen) >> 20, limit=budget))
+        raise Refused(
+            M(
+                "control.kit.too-large",
+                "The estimated kit size is {size} MB. The size limit is {limit} MB. "
+                "Select fewer items or increase the size limit.",
+                size=(base + chosen) >> 20,
+                limit=budget,
+            )
+        )
     need = 2 * base + chosen + (64 << 20)
     with KitRoom() as room:
         return _offline_kit(room, zims, apps, arch, need, kit_ids, repo_dirs, state)
 
 
 KIT_WORK = Path(os.environ.get("HUB_KIT_WORK", "/var/lib/irate-box-kit-work"))
-ROOT_UID = 0   # who must own kits/ and the work folder (the tests stand in their own)
+ROOT_UID = 0  # who must own kits/ and the work folder (the tests stand in their own)
 
 
 class KitRoom:
@@ -568,7 +894,13 @@ class KitRoom:
         self.fd = safeio._dir_fd(KITS)
         if os.fstat(self.fd).st_uid != ROOT_UID:
             os.close(self.fd)
-            raise Refused(M("control.kit.not-root", "Root does not own the folder {path}, so the box did not use it.", path=str(KITS)))
+            raise Refused(
+                M(
+                    "control.kit.not-root",
+                    "Root does not own the folder {path}, so the box did not use it.",
+                    path=str(KITS),
+                )
+            )
         safeio.mkdir(KIT_WORK, ROOT_UID, ROOT_UID, 0o700)
         self.work = Path(tempfile.mkdtemp(prefix="kit-", dir=KIT_WORK))
         return self
@@ -585,19 +917,27 @@ class KitRoom:
         and its record as kit.json; meta gains the size. Returns meta."""
         os.chmod(src, 0o644)
         for old in os.listdir(self.fd):
-            if re.fullmatch(r"irate-box-(kit|content)-[A-Za-z0-9._-]+\.tar", old) and old != name:
+            if (
+                re.fullmatch(r"irate-box-(kit|content)-[A-Za-z0-9._-]+\.tar", old)
+                and old != name
+            ):
                 os.unlink(old, dir_fd=self.fd)
         try:
             os.rename(src, name, dst_dir_fd=self.fd)
         except OSError as exc:
             if exc.errno != errno.EXDEV:
                 raise
-            part = f".{name}.part"   # another filesystem: copied in, new and never through a link, then renamed
+            part = f".{name}.part"  # another filesystem: copied in, new and never through a link, then renamed
             try:
                 os.unlink(part, dir_fd=self.fd)
             except FileNotFoundError:
                 pass
-            fd = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644, dir_fd=self.fd)
+            fd = os.open(
+                part,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o644,
+                dir_fd=self.fd,
+            )
             with open(fd, "wb") as out, open(src, "rb") as inp:
                 shutil.copyfileobj(inp, out, 1 << 20)
             os.rename(part, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)
@@ -621,7 +961,11 @@ CONTENT_IMPORT = Path(__file__).with_name("content-import.sh")
 def _as_hub():
     """subprocess arguments that run a reader as the hub user: a link the hub swapped in then reads only what the hub
     could read already. Not root (the tests): already no more than this user."""
-    return {"user": HUB_USER, "group": HUB_USER, "extra_groups": []} if os.geteuid() == 0 else {}
+    return (
+        {"user": HUB_USER, "group": HUB_USER, "extra_groups": []}
+        if os.geteuid() == 0
+        else {}
+    )
 
 
 class _Capped:
@@ -634,8 +978,13 @@ class _Capped:
         data = self.fh.read(n if n is not None and n >= 0 else self.left + 1)
         self.left -= len(data)
         if self.left < 0:
-            raise Refused(M("control.kit.hub-too-large", "{path} holds more than the free storage. The box stopped copying it.",
-                            path=str(self.path)))
+            raise Refused(
+                M(
+                    "control.kit.hub-too-large",
+                    "{path} holds more than the free storage. The box stopped copying it.",
+                    path=str(self.path),
+                )
+            )
         return data
 
 
@@ -655,9 +1004,16 @@ class _HubTar:
     def __init__(self, folder, names, limit):
         self.folder = folder
         self.err = tempfile.TemporaryFile()
-        self.proc = subprocess.Popen(["tar", "-C", str(folder), "-cf", "-", "--", *names],
-                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=self.err, **_as_hub())
-        self.tar = tarfile.open(fileobj=_Capped(self.proc.stdout, limit, folder), mode="r|")
+        self.proc = subprocess.Popen(
+            ["tar", "-C", str(folder), "-cf", "-", "--", *names],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=self.err,
+            **_as_hub(),
+        )
+        self.tar = tarfile.open(
+            fileobj=_Capped(self.proc.stdout, limit, folder), mode="r|"
+        )
 
     def __enter__(self):
         return self.tar
@@ -673,13 +1029,20 @@ class _HubTar:
 
 
 def _hub_read_failed(path, said):
-    return Refused(M("control.kit.hub-read-failed", "The box could not read {path} as the hub user: {output}",
-                     path=str(path), output=_last_line(said)))
+    return Refused(
+        M(
+            "control.kit.hub-read-failed",
+            "The box could not read {path} as the hub user: {output}",
+            path=str(path),
+            output=_last_line(said),
+        )
+    )
 
 
 def _copy_as_hub(src, dest):
     """A folder the hub owns (a git repository) copied into dest, a new folder of root's: read by the hub user,
-    unpacked by tarfile's data filter (no absolute paths, no .., no links out, no devices, no setuid)."""
+    unpacked by tarfile's data filter (no absolute paths, no .., no links out, no devices, no setuid).
+    """
     os.mkdir(dest, 0o755)
     with _HubTar(src, ["."], shutil.disk_usage(dest).free - _min_free()) as tar:
         tar.extractall(dest, filter="data")
@@ -687,36 +1050,58 @@ def _copy_as_hub(src, dest):
 
 def _hash_as_hub(zims):
     """{name: sha256} of the books, hashed by the hub user."""
-    out = subprocess.run(["sha256sum", "-z", "--", *map(str, zims)], capture_output=True, timeout=7200, **_as_hub())
+    out = subprocess.run(
+        ["sha256sum", "-z", "--", *map(str, zims)],
+        capture_output=True,
+        timeout=7200,
+        **_as_hub(),
+    )
     if out.returncode != 0:
         raise _hub_read_failed(ZIM_DIR, out.stderr.decode(errors="replace"))
-    return {Path(rec[66:]).name: rec[:64] for rec in out.stdout.decode(errors="replace").split("\0") if len(rec) > 66}
+    return {
+        Path(rec[66:]).name: rec[:64]
+        for rec in out.stdout.decode(errors="replace").split("\0")
+        if len(rec) > 66
+    }
 
 
 def _append_books(part, zims, prefix, sums=None):
     """The books appended to the tar `part` as prefix + name, read by the hub user. Only those names, only regular
     files; with `sums`, each must still have the hash it was listed with."""
     want = {z.name for z in zims}
-    with _HubTar(ZIM_DIR, sorted(want), shutil.disk_usage(part.parent).free - _min_free()) as books, \
-            tarfile.open(part, "a") as out:
+    with _HubTar(
+        ZIM_DIR, sorted(want), shutil.disk_usage(part.parent).free - _min_free()
+    ) as books, tarfile.open(part, "a") as out:
         for m in books:
             if m.name not in want or not m.isreg():
-                raise Refused(M("control.kit.book-unexpected", "The book folder gave an entry that the box did not ask for: {name}. "
-                                "The box did not use it.", name=m.name))
+                raise Refused(
+                    M(
+                        "control.kit.book-unexpected",
+                        "The book folder gave an entry that the box did not ask for: {name}. "
+                        "The box did not use it.",
+                        name=m.name,
+                    )
+                )
             want.discard(m.name)
             info = tarfile.TarInfo(prefix + m.name)
             info.size, info.mtime, info.mode = m.size, m.mtime, 0o644
             src = _Hashing(books.extractfile(m))
             out.addfile(info, src)
             if sums is not None and sums.get(m.name) != src.h.hexdigest():
-                raise Refused(M("control.kit.book-changed", "The book {name} changed while the box made the kit. Make the kit again.",
-                                name=m.name))
+                raise Refused(
+                    M(
+                        "control.kit.book-changed",
+                        "The book {name} changed while the box made the kit. Make the kit again.",
+                        name=m.name,
+                    )
+                )
 
 
 def content_extras(top, repo_dirs, state):
     """Git repositories (git/<area>/<name>.git) and this box's state (state-backup.tar.gz) into `top`, an
     export's irate-box/ folder, with import.sh to bring them in on a box that has the hub. Folders and
-    files made new, never through a link; a repository already there is replaced whole."""
+    files made new, never through a link; a repository already there is replaced whole.
+    """
     said = []
     if not repo_dirs and state == "none":
         return said
@@ -734,13 +1119,21 @@ def content_extras(top, repo_dirs, state):
         os.replace(part, dest)
         said.append(f"git: {d.parent.name}/{d.name}")
     if state != "none":
-        from irate_box.hub import backup
         import tarfile
+
+        from irate_box.hub import backup
+
         name = top / "state-backup.tar.gz"
         name.unlink(missing_ok=True)
         with tarfile.open(fileobj=safeio.create(name, 0o644), mode="w:gz") as tar:
-            tar.add(STATE, arcname="irate-box-state", filter=backup.keep_for(state, False, backup.git_mirrors(STATE)))
-        said.append(f"this box's {'settings' if state == 'settings' else 'settings and data'}")
+            tar.add(
+                STATE,
+                arcname="irate-box-state",
+                filter=backup.keep_for(state, False, backup.git_mirrors(STATE)),
+            )
+        said.append(
+            f"this box's {'settings' if state == 'settings' else 'settings and data'}"
+        )
     script = top / "import.sh"
     script.unlink(missing_ok=True)
     with safeio.create(script, 0o755) as fh:
@@ -751,22 +1144,43 @@ def content_extras(top, repo_dirs, state):
 def content_export(req):
     """A content export as one download, without the hub program: the stick layout (books at the top of
     irate-box/, toolkits in kits/, repositories and state with import.sh), packed as a .tar in $STATE/kits,
-    which replaces the last kit or export. Unpacked onto a stick, the other box reads it as a stick."""
+    which replaces the last kit or export. Unpacked onto a stick, the other box reads it as a stick.
+    """
     zims, kit_ids, repo_dirs, state, budget = kit_choices(req)
-    size = (sum(z.stat().st_size for z in zims) + _du(*repo_dirs) + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
-            + (_state_size(state) if state != "none" else 0))
+    size = (
+        sum(z.stat().st_size for z in zims)
+        + _du(*repo_dirs)
+        + sum((kits.manifest(k) or {}).get("bytes", 0) for k in kit_ids)
+        + (_state_size(state) if state != "none" else 0)
+    )
     if not size:
         raise Refused(EXPORT_EMPTY)
     if budget is not None and size > budget << 20:
-        raise Refused(M("control.export.too-large", "The estimated export size is {size} MB. The size limit is {limit} MB. "
-                        "Select fewer items or increase the size limit.", size=size >> 20, limit=budget))
+        raise Refused(
+            M(
+                "control.export.too-large",
+                "The estimated export size is {size} MB. The size limit is {limit} MB. "
+                "Select fewer items or increase the size limit.",
+                size=size >> 20,
+                limit=budget,
+            )
+        )
     with KitRoom() as room:
         books = sum(z.stat().st_size for z in zims)
-        need = 2 * (size - books) + books + (16 << 20)   # the work folder (no books), then the tar (all)
+        need = (
+            2 * (size - books) + books + (16 << 20)
+        )  # the work folder (no books), then the tar (all)
         if room.free() - need < _min_free():
-            raise Refused(M("control.export.no-space", "There is not enough free storage. The export needs {need} MB of free space. "
-                            "{free} MB is free, and the box keeps {spare} MB spare.",
-                            need=need >> 20, free=room.free() >> 20, spare=_min_free() >> 20))
+            raise Refused(
+                M(
+                    "control.export.no-space",
+                    "There is not enough free storage. The export needs {need} MB of free space. "
+                    "{free} MB is free, and the box keeps {spare} MB spare.",
+                    need=need >> 20,
+                    free=room.free() >> 20,
+                    spare=_min_free() >> 20,
+                )
+            )
         with Progress("kit", 2 + bool(kit_ids), path=KIT_PROGRESS) as progress:
             work = room.work
             top = work / "irate-box"
@@ -777,26 +1191,52 @@ def content_export(req):
                 (top / "kits").mkdir()
                 for k in kit_ids:
                     report.append(kits.export_usb(k, top / "kits", progress.bytes))
-            progress.step(M("control.progress.extras", "Adding the repositories and the state of this box"))
+            progress.step(
+                M(
+                    "control.progress.extras",
+                    "Adding the repositories and the state of this box",
+                )
+            )
             report += content_extras(top, repo_dirs, state)
             progress.step(PACKING)
-            ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
+            ver = (
+                re.sub(
+                    r"[^A-Za-z0-9._-]",
+                    "",
+                    ((CODE / "VERSION").read_text().split() or ["unknown"])[0],
+                )
+                or "unknown"
+            )
             name = f"irate-box-content-{ver}.tar"
             part = work / name
-            tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box", timeout=3600)
+            tar = run(
+                "tar", "-C", str(work), "-cf", str(part), "irate-box", timeout=3600
+            )
             if tar.returncode != 0:
                 raise _tar_failed(tar)
             if zims:
                 _append_books(part, zims, "irate-box/")
-            meta = room.publish(part, name, {"name": name, "kind": "content", "at": time.time(), "arch": platform.machine(),
-                                             "books": [z.name for z in zims], "kits": list(kit_ids),
-                                             "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs], "state": state,
-                                             "contents": ([f"book: {z.stem}" for z in zims] + report)[:60]})
+            meta = room.publish(
+                part,
+                name,
+                {
+                    "name": name,
+                    "kind": "content",
+                    "at": time.time(),
+                    "arch": platform.machine(),
+                    "books": [z.name for z in zims],
+                    "kits": list(kit_ids),
+                    "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
+                    "state": state,
+                    "contents": ([f"book: {z.stem}" for z in zims] + report)[:60],
+                },
+            )
     return _download_ready(meta)
 
 
 def _state_size(level):
     from irate_box.hub import backup
+
     sums = backup.walk(STATE)
     return sums["settings"] + (sums["data"] if level == "data" else 0)
 
@@ -806,7 +1246,11 @@ PACKING = M("control.progress.pack", "Packing everything into one file")
 
 
 def _copying_kits(kit_ids):
-    return M("control.progress.kits", {"one": "Copying {n} toolkit", "other": "Copying {n} toolkits"}, n=len(kit_ids))
+    return M(
+        "control.progress.kits",
+        {"one": "Copying {n} toolkit", "other": "Copying {n} toolkits"},
+        n=len(kit_ids),
+    )
 
 
 def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="none"):
@@ -814,23 +1258,61 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
     if free - need < _min_free():
         args = {"need": need >> 20, "free": free >> 20, "spare": _min_free() >> 20}
         if zims:
-            raise Refused(M("control.kit.no-space.books", "There is not enough free storage. The kit needs {need} MB of free space. "
-                            "{free} MB is free, and the box keeps {spare} MB spare. Select no books to make the kit smaller.", **args))
-        raise Refused(M("control.kit.no-space", "There is not enough free storage. The kit needs {need} MB of free space. "
-                        "{free} MB is free, and the box keeps {spare} MB spare.", **args))
-    with Progress("kit", 3 + bool(kit_ids) + bool(repo_dirs) + (state != "none"), path=KIT_PROGRESS) as progress:
+            raise Refused(
+                M(
+                    "control.kit.no-space.books",
+                    "There is not enough free storage. The kit needs {need} MB of free space. "
+                    "{free} MB is free, and the box keeps {spare} MB spare. Select no books to make the kit smaller.",
+                    **args,
+                )
+            )
+        raise Refused(
+            M(
+                "control.kit.no-space",
+                "There is not enough free storage. The kit needs {need} MB of free space. "
+                "{free} MB is free, and the box keeps {spare} MB spare.",
+                **args,
+            )
+        )
+    with Progress(
+        "kit",
+        3 + bool(kit_ids) + bool(repo_dirs) + (state != "none"),
+        path=KIT_PROGRESS,
+    ) as progress:
         work = room.work
-        progress.step(M("control.progress.gather", "Gathering the code, the apps and the downloads"))
+        progress.step(
+            M(
+                "control.progress.gather",
+                "Gathering the code, the apps and the downloads",
+            )
+        )
         kit = work / "irate-box-kit"
-        args = ["bash", str(CODE / "install.sh"), "--make-offline-bundle", str(kit), "--apps", str(apps),
-                "--download-cache", str(DOWNLOADS), "--arch", arch]
+        args = [
+            "bash",
+            str(CODE / "install.sh"),
+            "--make-offline-bundle",
+            str(kit),
+            "--apps",
+            str(apps),
+            "--download-cache",
+            str(DOWNLOADS),
+            "--arch",
+            arch,
+        ]
         if WEB_SERVER == "caddy":
             args += ["--web", "caddy"]
         out = run(*args, timeout=3600, env=dict(os.environ, HOME=str(work)))
         if out.returncode != 0:
-            raise Refused(M("control.kit.make-failed", "The box could not make the kit. The installer said: {output}",
-                            output=_last_line(out.stderr or out.stdout)))
-        report = [l.strip() for l in out.stdout.splitlines() if l.startswith("    ")]
+            raise Refused(
+                M(
+                    "control.kit.make-failed",
+                    "The box could not make the kit. The installer said: {output}",
+                    output=_last_line(out.stderr or out.stdout),
+                )
+            )
+        report = [
+            line.strip() for line in out.stdout.splitlines() if line.startswith("    ")
+        ]
         if kit_ids:
             # The toolkits in the stick layout (kits.export_usb) beside the kit: unpacked on a stick,
             # the new box's setup.sh imports them, each .deb checked against Debian's signatures.
@@ -838,45 +1320,92 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
             for k in kit_ids:
                 report.append(kits.export_usb(k, kit / "kits", progress.bytes))
         if repo_dirs:
-            progress.step(M("control.progress.repos", {"one": "Copying {n} git repository", "other": "Copying {n} git repositories"},
-                            n=len(repo_dirs)))
+            progress.step(
+                M(
+                    "control.progress.repos",
+                    {
+                        "one": "Copying {n} git repository",
+                        "other": "Copying {n} git repositories",
+                    },
+                    n=len(repo_dirs),
+                )
+            )
             for d in repo_dirs:
                 dest = kit / "git" / d.parent.name / d.name
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 _copy_as_hub(d, dest)
                 report.append(f"git: {d.parent.name}/{d.name}")
         if state != "none":
-            from irate_box.hub import backup
             import tarfile
-            progress.step(M("control.progress.data", "Adding the settings and data of this box") if state == "data"
-                          else M("control.progress.settings", "Adding the settings of this box"))
+
+            from irate_box.hub import backup
+
+            progress.step(
+                M("control.progress.data", "Adding the settings and data of this box")
+                if state == "data"
+                else M("control.progress.settings", "Adding the settings of this box")
+            )
             with tarfile.open(kit / "state-backup.tar.gz", "w:gz") as tar:
-                tar.add(STATE, arcname="irate-box-state", filter=backup.keep_for(state, False, backup.git_mirrors(STATE)))
-            report.append(f"this box's {'settings' if state == 'settings' else 'settings and data'} (restored by setup.sh)")
+                tar.add(
+                    STATE,
+                    arcname="irate-box-state",
+                    filter=backup.keep_for(state, False, backup.git_mirrors(STATE)),
+                )
+            report.append(
+                f"this box's {'settings' if state == 'settings' else 'settings and data'} (restored by setup.sh)"
+            )
         if zims:
-            progress.step(M("control.progress.checksums", {"one": "Calculating the checksum of {n} book",
-                                                           "other": "Calculating the checksums of {n} books"}, n=len(zims)))
+            progress.step(
+                M(
+                    "control.progress.checksums",
+                    {
+                        "one": "Calculating the checksum of {n} book",
+                        "other": "Calculating the checksums of {n} books",
+                    },
+                    n=len(zims),
+                )
+            )
             sums = _hash_as_hub(zims)
             with open(kit / "SHA256SUMS", "a") as fh:
                 for z in zims:
                     fh.write(f"{sums[z.name]}  ./zim/{z.name}\n")
         progress.step(PACKING)
-        ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
+        ver = (
+            re.sub(
+                r"[^A-Za-z0-9._-]",
+                "",
+                ((CODE / "VERSION").read_text().split() or ["unknown"])[0],
+            )
+            or "unknown"
+        )
         name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
         part = work / name
-        tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600)
+        tar = run(
+            "tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600
+        )
         if tar.returncode != 0:
             raise _tar_failed(tar)
         if zims:
             _append_books(part, zims, "irate-box-kit/zim/", sums)
-        meta = room.publish(part, name, {"name": name, "at": time.time(), "arch": arch,
-                                         "books": [z.name for z in zims], "kits": list(kit_ids),
-                                         "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
-                                         "state": state, "contents": report[:60]})
+        meta = room.publish(
+            part,
+            name,
+            {
+                "name": name,
+                "at": time.time(),
+                "arch": arch,
+                "books": [z.name for z in zims],
+                "kits": list(kit_ids),
+                "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
+                "state": state,
+                "contents": report[:60],
+            },
+        )
     return _download_ready(meta)
 
 
 # --- who may open each app ---------------------------------------------------------
+
 
 def _caddy_hash():
     m = HASH_LINE.search(_login_file().read_text()) if _login_file().exists() else None
@@ -887,11 +1416,17 @@ def _caddy_directive():
     """basic_auth, or basicauth on Caddy older than 2.8 (as install.sh writes it there)."""
     out = run("caddy", "version")
     m = re.search(r"v?(\d+)\.(\d+)", out.stdout or "")
-    return "basicauth" if m and (int(m.group(1)), int(m.group(2))) < (2, 8) else "basic_auth"
+    return (
+        "basicauth"
+        if m and (int(m.group(1)), int(m.group(2))) < (2, 8)
+        else "basic_auth"
+    )
 
 
 def _write_root_file(path, text, mode=0o644, group=None):
-    tmp = path.with_name(f".{path.name}.new")  # a leading dot: Caddy's <id>.caddy* imports never see it
+    tmp = path.with_name(
+        f".{path.name}.new"
+    )  # a leading dot: Caddy's <id>.caddy* imports never see it
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(text)
@@ -903,15 +1438,40 @@ def _write_root_file(path, text, mode=0o644, group=None):
 
 def _access_files(state):
     """The web server's part, written; returns what it replaced, to put back on failure."""
+    from irate_box.root import tls
+
+    policies = {
+        path: text
+        for path, text in tls._plain_files(**tls.settings(), access_state=state).items()
+        if "-policy-" in path.name
+    }
+    tls.FRONT.mkdir(parents=True, exist_ok=True)
+    previous = {path: path.read_text() if path.exists() else None for path in policies}
+    for path, text in policies.items():
+        _write_root_file(path, text)
     local, _ = manifests.load_local(builtin=MANIFESTS)
     if WEB_SERVER == "nginx":
-        gates_dir = NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d")   # the template's @ACCESS@.d/gate-<id>.conf*
-        gates = access.nginx_gates(state, admin_login=not ADMIN_LOGIN_OFF.exists(), accounts_ready=_admin_accounts_ready())
+        gates_dir = NGINX_ACCESS.with_name(
+            NGINX_ACCESS.name + ".d"
+        )  # the template's @ACCESS@.d/gate-<id>.conf*
+        gates = access.nginx_gates(
+            state,
+            admin_login=not ADMIN_LOGIN_OFF.exists(),
+            accounts_ready=_admin_accounts_ready(),
+        )
         gates_dir.mkdir(mode=0o755, exist_ok=True)
         addon_gates = access.addon_gates(state, local)
         NGINX_ADDON_GATES.mkdir(mode=0o755, exist_ok=True)
-        paths = ([NGINX_ACCESS, NGINX_ADDON_ACCESS] + sorted(set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates})
-                 + sorted(set(NGINX_ADDON_GATES.glob("users-*.conf")) | {NGINX_ADDON_GATES / n for n in addon_gates}))
+        paths = (
+            [NGINX_ACCESS, NGINX_ADDON_ACCESS]
+            + sorted(
+                set(gates_dir.glob("gate-*.conf")) | {gates_dir / n for n in gates}
+            )
+            + sorted(
+                set(NGINX_ADDON_GATES.glob("users-*.conf"))
+                | {NGINX_ADDON_GATES / n for n in addon_gates}
+            )
+        )
         old = {p: p.read_text() if p.exists() else None for p in paths}
         _write_root_file(NGINX_ACCESS, access.nginx_conf(state))
         _write_root_file(NGINX_ADDON_ACCESS, access.addon_nginx_conf(state, local))
@@ -925,23 +1485,37 @@ def _access_files(state):
                 p.unlink()
         for name, text in addon_gates.items():
             _write_root_file(NGINX_ADDON_GATES / name, text)
-        return old
+        return {**old, **previous}
     login = _caddy_hash()
     if not login:
-        raise Refused(M("control.access.no-hash", "The file {path} has no script sign-in password. The apps that require sign-in need it.",
-                        path=str(_login_file())))
+        raise Refused(
+            M(
+                "control.access.no-hash",
+                "The file {path} has no script sign-in password. The apps that require sign-in need it.",
+                path=str(_login_file()),
+            )
+        )
     # Readable by Caddy (it runs as its own user), as the Caddyfile with the same hash is.
     CADDY_ACCESS.mkdir(mode=0o755, exist_ok=True)
     old = {}
-    files = dict(access.caddy_snippets(state, login, _caddy_directive(), admin_login=not ADMIN_LOGIN_OFF.exists(),
-                                       local_only=_login_reach() == "local",
-                                       accounts_ready=_admin_accounts_ready()))
-    files["addons-routes.caddy"] = access.addon_caddy_routes(state, local, login, _caddy_directive())
+    files = dict(
+        access.caddy_snippets(
+            state,
+            login,
+            _caddy_directive(),
+            admin_login=not ADMIN_LOGIN_OFF.exists(),
+            local_only=_login_reach() == "local",
+            accounts_ready=_admin_accounts_ready(),
+        )
+    )
+    files["addons-routes.caddy"] = access.addon_caddy_routes(
+        state, local, login, _caddy_directive()
+    )
     for name, text in files.items():
         path = CADDY_ACCESS / name
         old[path] = path.read_text() if path.exists() else None
         _write_root_file(path, text)
-    return old
+    return {**old, **previous}
 
 
 def _access_record(state):
@@ -952,32 +1526,56 @@ def _access_record(state):
 
 def _access_apply(state, reload=True):
     """Write the web server's part and check it with the rest of its config; on a failed
-    check, put the old files back. reload: make it live (install.sh does that itself)."""
+    check, put the old files back. reload: make it live (install.sh does that itself).
+    """
     old = _access_files(state)
-    check = run("nginx", "-t") if WEB_SERVER == "nginx" else \
-        run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE))
+    check = (
+        run("nginx", "-t")
+        if WEB_SERVER == "nginx"
+        else run(
+            "caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)
+        )
+    )
     if check.returncode != 0:
         for path, text in old.items():
             if text is None:
                 path.unlink(missing_ok=True)
             else:
                 _write_root_file(path, text)
-        raise Refused(M("control.access.web-refused", "The web server did not accept the change, so nothing changed. It said: {output}",
-                        output=_last_line(check.stderr or check.stdout, 200)))
+        raise Refused(
+            M(
+                "control.access.web-refused",
+                "The web server did not accept the change, so nothing changed. It said: {output}",
+                output=_last_line(check.stderr or check.stdout, 200),
+            )
+        )
     _access_record(state)
     if reload:
         if WEB_SERVER == "nginx":
             run("systemctl", "reload", "nginx")
         else:
             # The Caddyfile turns Caddy's admin API off, which reload needs.
-            subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+            subprocess.Popen(
+                [
+                    "systemd-run",
+                    "--on-active=1",
+                    *TIMER_EXACT,
+                    "systemctl",
+                    "restart",
+                    "caddy",
+                ]
+            )
 
 
 def _access_unit(app):
     m = next((m for m in MANIFESTS if m["id"] == app), {})
     st = m.get("status", {})
     unit = st.get("unit", "").replace("@hub.", f"@{HUB_USER}.")
-    return unit if st.get("control") and unit and run("systemctl", "cat", unit).returncode == 0 else None
+    return (
+        unit
+        if st.get("control") and unit and run("systemctl", "cat", unit).returncode == 0
+        else None
+    )
 
 
 def access_set(req):
@@ -987,13 +1585,36 @@ def access_set(req):
     local = {m["id"] for m in manifests.load_local(builtin=MANIFESTS)[0]}
     # Off is always safe, so a web add-on just removed (its manifest gone) can still be switched
     # off: the hub asks that when one is added or removed.
-    if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.match(app)):
-        raise Refused(M("control.access.unknown-app", "The box cannot set access for {app}.", app=app))
+    if (
+        app not in access.ROUTED
+        and app not in local
+        and not (mode == "off" and access.LOCAL_ID_RE.match(app))
+    ):
+        raise Refused(
+            M(
+                "control.access.unknown-app",
+                "The box cannot set access for {app}.",
+                app=app,
+            )
+        )
     if mode not in access.MODES:
-        raise Refused(M("control.access.mode-bad", "The access mode must be one of these values: {modes}.", modes=list(access.MODES)))
+        raise Refused(
+            M(
+                "control.access.mode-bad",
+                "The access mode must be one of these values: {modes}.",
+                modes=list(access.MODES),
+            )
+        )
     if mode == "users" and not access.users_allowed(app):
-        raise Refused(M("control.access.no-users", "The access of {app} cannot be {mode}. Select one of these modes: {modes}.",
-                        app=app, mode=mode, modes=[m for m in access.MODES if m != "users"]))
+        raise Refused(
+            M(
+                "control.access.no-users",
+                "The access of {app} cannot be {mode}. Select one of these modes: {modes}.",
+                app=app,
+                mode=mode,
+                modes=[m for m in access.MODES if m != "users"],
+            )
+        )
     state = access.read(ACCESS_FILE)
     was = access.mode_of(state, app)
     state[app] = mode
@@ -1006,23 +1627,46 @@ def access_set(req):
     except (OSError, ValueError, TypeError):
         stopped = set()
     if unit and mode == "off" and was != "off":
-        if run("systemctl", "is-enabled", "--quiet", unit).returncode == 0 or \
-                run("systemctl", "is-active", "--quiet", unit).returncode == 0:
+        if (
+            run("systemctl", "is-enabled", "--quiet", unit).returncode == 0
+            or run("systemctl", "is-active", "--quiet", unit).returncode == 0
+        ):
             out = run("systemctl", "disable", "--now", unit)
             if out.returncode == 0:
                 stopped.add(unit)
-                done = M("control.access.saved.off.stopped", "App access is saved. {app} is disabled, and the box stopped its service {unit}.",
-                         app=app, unit=unit)
+                done = M(
+                    "control.access.saved.off.stopped",
+                    "App access is saved. {app} is disabled, and the box stopped its service {unit}.",
+                    app=app,
+                    unit=unit,
+                )
             else:
-                done = M("control.access.saved.off.stop-failed", "App access is saved. {app} is disabled. "
-                         "The box could not stop its service {unit}.", app=app, unit=unit)
+                done = M(
+                    "control.access.saved.off.stop-failed",
+                    "App access is saved. {app} is disabled. "
+                    "The box could not stop its service {unit}.",
+                    app=app,
+                    unit=unit,
+                )
     elif unit and was == "off" and mode != "off" and unit in stopped:
         out = run("systemctl", "enable", "--now", unit)
         stopped.discard(unit)
         # The access sentence, then what became of the service: two whole sentences.
-        done = M("control.access.saved.started", "{access} The box started the service {unit} again.", access=done, unit=unit) \
-            if out.returncode == 0 else \
-            M("control.access.saved.start-failed", "{access} The service {unit} did not start.", access=done, unit=unit)
+        done = (
+            M(
+                "control.access.saved.started",
+                "{access} The box started the service {unit} again.",
+                access=done,
+                unit=unit,
+            )
+            if out.returncode == 0
+            else M(
+                "control.access.saved.start-failed",
+                "{access} The service {unit} did not start.",
+                access=done,
+                unit=unit,
+            )
+        )
     _write_root_file(ACCESS_STOPPED, json.dumps(sorted(stopped)) + "\n", 0o644)
     return done
 
@@ -1030,12 +1674,26 @@ def access_set(req):
 def _access_saved(app, mode):
     """Who can open the app now, by its mode. Its listener and the firewalls still decide who can reach it."""
     if mode == "public":
-        return M("control.access.saved.public", "App access is saved. Guests can open {app}.", app=app)
+        return M(
+            "control.access.saved.public",
+            "App access is saved. Guests can open {app}.",
+            app=app,
+        )
     if mode == "users":
-        return M("control.access.saved.users", "App access is saved. Signed-in users can open {app}.", app=app)
+        return M(
+            "control.access.saved.users",
+            "App access is saved. Signed-in users can open {app}.",
+            app=app,
+        )
     if mode == "private":
-        return M("control.access.saved.private", "App access is saved. Only administrators can open {app}.", app=app)
-    return M("control.access.saved.off", "App access is saved. {app} is disabled.", app=app)
+        return M(
+            "control.access.saved.private",
+            "App access is saved. Only administrators can open {app}.",
+            app=app,
+        )
+    return M(
+        "control.access.saved.off", "App access is saved. {app} is disabled.", app=app
+    )
 
 
 def access_install():
@@ -1046,7 +1704,10 @@ def access_install():
     else:
         state = access.defaults()
         try:
-            if json.loads((STATE / "settings.json").read_text()).get("show_term_card") is False:
+            if (
+                json.loads((STATE / "settings.json").read_text()).get("show_term_card")
+                is False
+            ):
                 state["term"] = "private"
         except (OSError, ValueError):
             pass
@@ -1055,9 +1716,16 @@ def access_install():
     _admin_login_record()
     limited = [f"{k} ({v})" for k, v in state.items() if v != "public"]
     if limited:
-        return M("control.access.installed", "App access is written. These apps are not public: {apps}.", apps=limited)
-    return M("control.access.installed.public", "App access is written. Every app has public access. "
-             "The firewalls and the address that each app listens on still apply.")
+        return M(
+            "control.access.installed",
+            "App access is written. These apps are not public: {apps}.",
+            apps=limited,
+        )
+    return M(
+        "control.access.installed.public",
+        "App access is written. Every app has public access. "
+        "The firewalls and the address that each app listens on still apply.",
+    )
 
 
 def _login_reach():
@@ -1077,8 +1745,11 @@ def _sync_net_logins():
     if WEB_SERVER != "nginx" or not NGINX_LOGINS.exists():
         return
     net = NGINX_LOGINS.with_name(NGINX_LOGINS.name + ".net")
-    text = NGINX_LOGINS.read_text() if _login_reach() == "network" else \
-        "# The box's own login answers only from the box itself (/admin → Accounts).\n"
+    text = (
+        NGINX_LOGINS.read_text()
+        if _login_reach() == "network"
+        else "# The box's own login answers only from the box itself (/admin → Accounts).\n"
+    )
     tmp = net.with_name(net.name + ".new")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
@@ -1091,8 +1762,16 @@ def _sync_net_logins():
 
 def _admin_login_record():
     _sync_net_logins()
-    safeio.write(ADMIN_LOGIN_STATE, json.dumps({"on": not ADMIN_LOGIN_OFF.exists(), "reach": _login_reach(),
-                                                "password_set": (ETC / "admin-password").is_file()}))
+    safeio.write(
+        ADMIN_LOGIN_STATE,
+        json.dumps(
+            {
+                "on": not ADMIN_LOGIN_OFF.exists(),
+                "reach": _login_reach(),
+                "password_set": (ETC / "admin-password").is_file(),
+            }
+        ),
+    )
 
 
 def _https_admins():
@@ -1103,20 +1782,36 @@ def _https_admins():
         data = json.loads((STATE / "accounts.json").read_text())
     except (OSError, ValueError):
         return []
-    if not isinstance(data, dict) or (data.get("settings") or {}).get("signup", "off") == "off":
+    if (
+        not isinstance(data, dict)
+        or (data.get("settings") or {}).get("signup", "off") == "off"
+    ):
         return []
-    return sorted(a.get("name", "?") for a in (data.get("accounts") or {}).values()
-                  if isinstance(a, dict) and a.get("role") == "admin" and a.get("state") == "user" and a.get("hash") and a.get("https_login"))
+    return sorted(
+        a.get("name", "?")
+        for a in (data.get("accounts") or {}).values()
+        if isinstance(a, dict)
+        and a.get("role") == "admin"
+        and a.get("state") == "user"
+        and a.get("hash")
+        and a.get("https_login")
+    )
 
 
 def _admin_accounts_ready():
     """An admin account that can sign in (accounts.admin_ready, read here from the hub's file): then the
     admin's routes send a browser to the standard sign-in, never the box's own login. The hub's file could
-    say otherwise only to bring back the box's own login prompt, which still asks for its password."""
+    say otherwise only to bring back the box's own login prompt, which still asks for its password.
+    """
     try:
         data = json.loads((STATE / "accounts.json").read_text())
-        return any(isinstance(a, dict) and a.get("role") == "admin" and a.get("state") == "user" and a.get("hash")
-                   for a in (data.get("accounts") or {}).values())
+        return any(
+            isinstance(a, dict)
+            and a.get("role") == "admin"
+            and a.get("state") == "user"
+            and a.get("hash")
+            for a in (data.get("accounts") or {}).values()
+        )
     except (OSError, ValueError, AttributeError):
         return False
 
@@ -1128,14 +1823,24 @@ def admin_gate(req):
     if any((p.read_text() if p.exists() else None) != t for p, t in old.items()):
         _reload_web()
         if _admin_accounts_ready():
-            return M("control.admin-gate.accounts", "Administrators now sign in with their accounts on the sign-in page of the box.")
-        return M("control.admin-gate.script", "No administrator account can sign in yet. The administration pages now ask for script sign-in.")
-    return M("control.admin-gate.unchanged", "The administrator sign-in did not change.")
+            return M(
+                "control.admin-gate.accounts",
+                "Administrators now sign in with their accounts on the sign-in page of the box.",
+            )
+        return M(
+            "control.admin-gate.script",
+            "No administrator account can sign in yet. The administration pages now ask for script sign-in.",
+        )
+    return M(
+        "control.admin-gate.unchanged", "The administrator sign-in did not change."
+    )
 
 
 def _gate_paths():
     if WEB_SERVER == "nginx":
-        return sorted(NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d").glob("gate-*.conf"))
+        return sorted(
+            NGINX_ACCESS.with_name(NGINX_ACCESS.name + ".d").glob("gate-*.conf")
+        )
     return [CADDY_ACCESS / "admin-gate.caddy"]
 
 
@@ -1144,7 +1849,16 @@ def _reload_web():
         run("systemctl", "reload", "nginx")
     else:
         # The Caddyfile turns Caddy's admin API off, which reload needs.
-        subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+        subprocess.Popen(
+            [
+                "systemd-run",
+                "--on-active=1",
+                *TIMER_EXACT,
+                "systemctl",
+                "restart",
+                "caddy",
+            ]
+        )
 
 
 def _caddy_login_swap(new_hash):
@@ -1157,19 +1871,44 @@ def _caddy_login_swap(new_hash):
         raise Refused(_no_hash(target))
     candidate = target.with_name(target.name + ".new")
     candidate.write_text(updated)
-    if run("caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate)).returncode != 0:
+    if (
+        run(
+            "caddy", "validate", "--adapter", "caddyfile", "--config", str(candidate)
+        ).returncode
+        != 0
+    ):
         candidate.unlink(missing_ok=True)
-        raise Refused(M("control.password.caddy-invalid", "Caddy did not accept the new configuration. Nothing changed."))
+        raise Refused(
+            M(
+                "control.password.caddy-invalid",
+                "Caddy did not accept the new configuration. Nothing changed.",
+            )
+        )
     os.replace(candidate, target)
-    if target != CADDYFILE and run("caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)).returncode != 0:
+    if (
+        target != CADDYFILE
+        and run(
+            "caddy", "validate", "--adapter", "caddyfile", "--config", str(CADDYFILE)
+        ).returncode
+        != 0
+    ):
         target.write_text(text)
-        raise Refused(M("control.password.caddy-invalid-whole", "Caddy did not accept its whole configuration with the new password. "
-                        "Nothing changed."))
+        raise Refused(
+            M(
+                "control.password.caddy-invalid-whole",
+                "Caddy did not accept its whole configuration with the new password. "
+                "Nothing changed.",
+            )
+        )
     return count
 
 
 def _no_hash(path):
-    return M("control.password.no-hash", "The file {path} has no script sign-in password.", path=str(path))
+    return M(
+        "control.password.no-hash",
+        "The file {path} has no script sign-in password.",
+        path=str(path),
+    )
 
 
 def _caddy_login_off():
@@ -1181,7 +1920,9 @@ def _caddy_login_off():
     hashed = run("caddy", "hash-password", input=secrets.token_urlsafe(32) + "\n")
     if hashed.returncode != 0 or not hashed.stdout.strip().startswith("$2"):
         raise Refused(_hash_failed("caddy hash-password"))
-    fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    fd = os.open(
+        ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600
+    )
     with os.fdopen(fd, "w") as fh:
         fh.write(real + "\n")
     try:
@@ -1197,23 +1938,42 @@ def admin_login(req):
     reach). Off only while an admin account has logged in over HTTPS, so the box can't be locked out from
     /admin. On only with a password set at the console (script-login): none is made here. nginx: its login file
     emptied when off, the network's copy kept or emptied by the reach; Caddy: its hashes swapped for an unknown one,
-    its admin gate made a hard one (access.py), and a login from elsewhere dropped when the reach is local."""
+    its admin gate made a hard one (access.py), and a login from elsewhere dropped when the reach is local.
+    """
     reach = req.get("reach")
     if reach is not None:
         if reach not in REACHES:
-            raise Refused(M("control.script-sign-in.reach-bad", "The reach must be one of these values: {values}.", values=list(REACHES)))
+            raise Refused(
+                M(
+                    "control.script-sign-in.reach-bad",
+                    "The reach must be one of these values: {values}.",
+                    values=list(REACHES),
+                )
+            )
         if reach == "off":
             return admin_login({"on": False})
         if not (ETC / "admin-password").is_file():
-            raise Refused(M("control.script-sign-in.no-password", "Script sign-in has no password yet. "
-                            "Set one at the console of the box over SSH with this command: {command}", command=SCRIPT_LOGIN_CMD))
+            raise Refused(
+                M(
+                    "control.script-sign-in.no-password",
+                    "Script sign-in has no password yet. "
+                    "Set one at the console of the box over SSH with this command: {command}",
+                    command=SCRIPT_LOGIN_CMD,
+                )
+            )
         # From the box itself only, with no administrator account that has signed in over HTTPS, nobody on another
         # device can open /admin at all: as much a lockout as turning the login off, so the same rule (_https_admins).
         if reach == "local" and not _https_admins():
-            raise Refused(M("control.script-sign-in.local-refused", "Nothing changed. No administrator account of this box has signed in "
-                            "over HTTPS. If script sign-in works only from the box itself, no other device can open the "
-                            "administration pages. Create an administrator account on Accounts, and sign in with it over HTTPS. "
-                            "At the console, this command creates one: {command}", command=SET_ADMIN_CMD))
+            raise Refused(
+                M(
+                    "control.script-sign-in.local-refused",
+                    "Nothing changed. No administrator account of this box has signed in "
+                    "over HTTPS. If script sign-in works only from the box itself, no other device can open the "
+                    "administration pages. Create an administrator account on Accounts, and sign in with it over HTTPS. "
+                    "At the console, this command creates one: {command}",
+                    command=SET_ADMIN_CMD,
+                )
+            )
         _write_reach(reach)
         if ADMIN_LOGIN_OFF.exists():
             _switch_login(True)
@@ -1229,25 +1989,44 @@ def admin_login(req):
     if not on:
         admins = _https_admins()
         if not admins:
-            raise Refused(M("control.script-sign-in.off-refused", "Create an administrator account and sign in with it over HTTPS first. "
-                            "Then the account can replace script sign-in."))
+            raise Refused(
+                M(
+                    "control.script-sign-in.off-refused",
+                    "Create an administrator account and sign in with it over HTTPS first. "
+                    "Then the account can replace script sign-in.",
+                )
+            )
     _switch_login(on)
     if on:
         return M("control.script-sign-in.on-again", "Script sign-in is enabled again.")
-    return M("control.script-sign-in.off.accounts", "Script sign-in is disabled. Administrators open {page} with their accounts: {names}.",
-             page="/admin", names=admins)
+    return M(
+        "control.script-sign-in.off.accounts",
+        "Script sign-in is disabled. Administrators open {page} with their accounts: {names}.",
+        page="/admin",
+        names=admins,
+    )
 
 
 SCRIPT_LOGIN_CMD = "sudo /opt/irate-box/irate-box hub_control script-login"
 SET_ADMIN_CMD = "sudo /opt/irate-box/irate-box hub_control set-admin NAME"
-ALREADY_ON = M("control.script-sign-in.already-on", "Script sign-in is already enabled.")
-ALREADY_OFF = M("control.script-sign-in.already-off", "Script sign-in is already disabled.")
+ALREADY_ON = M(
+    "control.script-sign-in.already-on", "Script sign-in is already enabled."
+)
+ALREADY_OFF = M(
+    "control.script-sign-in.already-off", "Script sign-in is already disabled."
+)
 
 
 def _reach_said(reach):
     if reach == "local":
-        return M("control.script-sign-in.reach.local", "Script sign-in now accepts requests only from the box itself.")
-    return M("control.script-sign-in.reach.network", "Script sign-in now accepts requests from every device on the network of the box.")
+        return M(
+            "control.script-sign-in.reach.local",
+            "Script sign-in now accepts requests only from the box itself.",
+        )
+    return M(
+        "control.script-sign-in.reach.network",
+        "Script sign-in now accepts requests from every device on the network of the box.",
+    )
 
 
 def _switch_login(on):
@@ -1264,7 +2043,11 @@ def _switch_login(on):
         _admin_login_record()
         return
     if not on:
-        fd = os.open(ADMIN_LOGIN_OFF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        fd = os.open(
+            ADMIN_LOGIN_OFF,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o600,
+        )
         with os.fdopen(fd, "w") as fh:
             fh.write(NGINX_LOGINS.read_text())
         text = "# The box's own admin login is off (/admin → Accounts); reset-password at the console turns it on.\n"
@@ -1287,14 +2070,17 @@ def _switch_login(on):
 
 
 def _write_reach(reach):
-    fd = os.open(ADMIN_LOGIN_REACH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    fd = os.open(
+        ADMIN_LOGIN_REACH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644
+    )
     with os.fdopen(fd, "w") as fh:
         fh.write(reach + "\n")
 
 
 def claim(req):
     """The first use ended by the owner's admin account (the hub made it): no longer free, and no
-    login of the box's own (no password made for scripts: script-login at the console makes one)."""
+    login of the box's own (no password made for scripts: script-login at the console makes one).
+    """
     if not UNCLAIMED.exists():
         raise Refused(M("control.setup.already", "Initial setup is already complete."))
     UNCLAIMED.unlink()
@@ -1304,29 +2090,60 @@ def claim(req):
     else:
         _access_files(access.read(ACCESS_FILE))
         _reload_web()
-    return M("control.setup.done", "Initial setup is complete. Administrators sign in on the sign-in page of the box. "
-             "Script sign-in is disabled, so scripts have no password.")
+    return M(
+        "control.setup.done",
+        "Initial setup is complete. Administrators sign in on the sign-in page of the box. "
+        "Script sign-in is disabled, so scripts have no password.",
+    )
 
 
 def _ask_password(prompt="Password: "):
     """Asked twice at a terminal, without echo; from a script, two lines on stdin."""
     import getpass
-    ask = getpass.getpass if sys.stdin.isatty() else (lambda _p: sys.stdin.readline().rstrip("\n"))
+
+    ask = (
+        getpass.getpass
+        if sys.stdin.isatty()
+        else (lambda _p: sys.stdin.readline().rstrip("\n"))
+    )
     pw = ask(prompt)
     if not _password_ok(pw):
         sys.exit(render(PASSWORD_LENGTH))
     if ask("Again: ") != pw:
-        sys.exit(render(M("control.password.mismatch", "The passwords do not match. Nothing changed.")))
+        sys.exit(
+            render(
+                M(
+                    "control.password.mismatch",
+                    "The passwords do not match. Nothing changed.",
+                )
+            )
+        )
     return pw
 
 
 def console_set_admin(name):
     """sudo irate-box hub_control set-admin NAME: an admin account from the console (over SSH, so the
-    password never crosses the network in the clear); ends the first use if it is still on."""
+    password never crosses the network in the clear); ends the first use if it is still on.
+    """
     pw = _ask_password(f"Password for the administrator account {name}: ")
-    out = subprocess.run(["runuser", "-u", HUB_USER, "--", "env", f"HUB_STATE_DIR={STATE}",
-                          str(Path(__file__).resolve().parents[2] / "irate-box"), "accounts", "set-admin", name],
-                         input=pw + "\n", capture_output=True, text=True, timeout=60)
+    out = subprocess.run(
+        [
+            "runuser",
+            "-u",
+            HUB_USER,
+            "--",
+            "env",
+            f"HUB_STATE_DIR={STATE}",
+            str(Path(__file__).resolve().parents[2] / "irate-box"),
+            "accounts",
+            "set-admin",
+            name,
+        ],
+        input=pw + "\n",
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     if out.returncode != 0:
         sys.exit(out.stderr.strip() or out.stdout.strip() or "accounts: failed")
     # The accounts command's own line, then what the helper did: for the terminal, in English.
@@ -1348,43 +2165,73 @@ def console_script_login(on):
         if ADMIN_LOGIN_OFF.exists():
             return render(ALREADY_OFF)
         if not _admin_accounts_ready():
-            sys.exit(render(M("control.script-sign-in.off-lockout", "No administrator account can sign in yet. "
-                              "Create one with this command first: {command}. Otherwise nobody can open {page}.",
-                              command=SET_ADMIN_CMD, page="/admin")))
+            sys.exit(
+                render(
+                    M(
+                        "control.script-sign-in.off-lockout",
+                        "No administrator account can sign in yet. "
+                        "Create one with this command first: {command}. Otherwise nobody can open {page}.",
+                        command=SET_ADMIN_CMD,
+                        page="/admin",
+                    )
+                )
+            )
         _switch_login(False)
         return render(M("control.script-sign-in.off", "Script sign-in is disabled."))
     if not ADMIN_LOGIN_REACH.exists():
         _write_reach("local")  # the safer reach to start; widened on Accounts if wanted
-    said = set_login(_ask_password(f"Password for script sign-in (user {SCRIPT_USER}): "))
-    return paragraph(_reach_said(_login_reach()), M("control.script-sign-in.change-reach", "To change this, open Accounts."), _password_saved(said))
+    said = set_login(
+        _ask_password(f"Password for script sign-in (user {SCRIPT_USER}): ")
+    )
+    return paragraph(
+        _reach_said(_login_reach()),
+        M("control.script-sign-in.change-reach", "To change this, open Accounts."),
+        _password_saved(said),
+    )
 
 
 # --- updates ---------------------------------------------------------------------
 # The checks a downloaded version passes are messages too (msg.py).
 
-NO_REPO = M("update.options.no-repo", "The install options name no repository. Run the installer once by hand to record one.")
-OPTIONS_MISSING = M("update.options.missing", "This box has no record of its install options. It was installed before updates "
-                                              "from the administration pages existed. Run the installer once by hand to record them.")
+NO_REPO = M(
+    "update.options.no-repo",
+    "The install options name no repository. Run the installer once by hand to record one.",
+)
+OPTIONS_MISSING = M(
+    "update.options.missing",
+    "This box has no record of its install options. It was installed before updates "
+    "from the administration pages existed. Run the installer once by hand to record them.",
+)
 
 
 def _install_options():
     try:
         lines = (ETC / "install-options").read_text().splitlines()
-    except OSError:
-        raise Refused(OPTIONS_MISSING)
+    except OSError as exc:
+        raise Refused(OPTIONS_MISSING) from exc
     return [line for line in lines if line]
 
 
 def _option(opts, name, default=None):
-    return opts[opts.index(name) + 1] if name in opts and opts.index(name) + 1 < len(opts) else default
+    return (
+        opts[opts.index(name) + 1]
+        if name in opts and opts.index(name) + 1 < len(opts)
+        else default
+    )
 
 
 def _git(*args):
     out = run("git", *args, timeout=600)
     if out.returncode != 0:
         # What git printed is evidence, never translated: an argument of the sentence around it.
-        raise Refused(M("update.git.failed", "The command {command} failed: {output}",
-                        command=f"git {args[0] if args[0] != '-C' else args[2]}", output=_last_line(out.stderr or out.stdout)))
+        raise Refused(
+            M(
+                "update.git.failed",
+                "The command {command} failed: {output}",
+                command=f"git {args[0] if args[0] != '-C' else args[2]}",
+                output=_last_line(out.stderr or out.stdout),
+            )
+        )
     return out.stdout.strip()
 
 
@@ -1395,7 +2242,9 @@ def _installed_commit():
     except (OSError, IndexError):
         return None
     first = first.removesuffix("-dirty")
-    match = re.search(r"-g([0-9a-f]{7,40})$", first) or re.match(r"^([0-9a-f]{7,40})$", first)
+    match = re.search(r"-g([0-9a-f]{7,40})$", first) or re.match(
+        r"^([0-9a-f]{7,40})$", first
+    )
     return match.group(1) if match else None
 
 
@@ -1418,8 +2267,16 @@ class Progress:
     removed when the action ends, however it ends."""
 
     def __init__(self, action, steps, estimate=False, path=None):
-        self.data = {"action": action, "pid": os.getpid(), "step": 0, "steps": steps,
-                     "estimate": estimate, "label": "", "done": 0, "total": 0}
+        self.data = {
+            "action": action,
+            "pid": os.getpid(),
+            "step": 0,
+            "steps": steps,
+            "estimate": estimate,
+            "label": "",
+            "done": 0,
+            "total": 0,
+        }
         self.path = path or UPDATE_PROGRESS
         self._last = 0.0
 
@@ -1436,7 +2293,9 @@ class Progress:
 
     def step(self, label):
         step = self.data["step"] + 1
-        self.data.update(step=step, steps=max(self.data["steps"], step), label=label, done=0, total=0)
+        self.data.update(
+            step=step, steps=max(self.data["steps"], step), label=label, done=0, total=0
+        )
         self._write()
 
     def bytes(self, done, total):
@@ -1457,29 +2316,66 @@ class Progress:
 # found) and fix are messages; evidence is what it saw (an error line, a file), as data. warn marks one that does not
 # block. A state kept from before the messages has name and detail as English text: the page and Install anyway read both.
 
+
 def _check(cid, ok, name, detail, warn=False, fix=None, evidence=(), note=None):
-    return {"id": cid, "name": name, "ok": bool(ok), "detail": detail, "warn": warn, "fix": fix,
-            "evidence": [str(e) for e in evidence if e], **({"note": note} if note else {})}
+    return {
+        "id": cid,
+        "name": name,
+        "ok": bool(ok),
+        "detail": detail,
+        "warn": warn,
+        "fix": fix,
+        "evidence": [str(e) for e in evidence if e],
+        **({"note": note} if note else {}),
+    }
 
 
 # What a check of the code's form does not show: said beside the checks that read only the form.
-LIMITED_CHECK = M("update.verify.limited", "This check reads only the form of the code or of the web server's configuration. "
-                                           "It does not prove that the update is safe.")
+LIMITED_CHECK = M(
+    "update.verify.limited",
+    "This check reads only the form of the code or of the web server's configuration. "
+    "It does not prove that the update is safe.",
+)
 DOWNLOAD_OK = M("update.download.ok", "The checksum matches.")
-DOWNLOAD_MISMATCH = M("update.download.mismatch", "The checksum does not match. The file is not the one that was published.")
+DOWNLOAD_MISMATCH = M(
+    "update.download.mismatch",
+    "The checksum does not match. The file is not the one that was published.",
+)
 DOWNLOAD_FAILED = M("update.download.failed", "The download failed.")
 
 
 def _download_title(name, version):
-    return M("update.download.title", "Download of {name} {version}", name=name, version=version)
+    return M(
+        "update.download.title",
+        "Download of {name} {version}",
+        name=name,
+        version=version,
+    )
 
 
 def _arch_names():
     m = platform.machine()
-    return {"ttyd": {"x86_64": "x86_64", "aarch64": "aarch64", "armv7l": "armhf", "armv8l": "armhf",
-                     "armv6l": "arm"}.get(m),
-            "sb": {"x86_64": "x86_64", "aarch64": "aarch64", "armv7l": "armv7", "armv8l": "armv7"}.get(m),
-            "caddy": {"x86_64": "amd64", "aarch64": "arm64", "armv7l": "armv7", "armv8l": "armv7"}.get(m)}
+    return {
+        "ttyd": {
+            "x86_64": "x86_64",
+            "aarch64": "aarch64",
+            "armv7l": "armhf",
+            "armv8l": "armhf",
+            "armv6l": "arm",
+        }.get(m),
+        "sb": {
+            "x86_64": "x86_64",
+            "aarch64": "aarch64",
+            "armv7l": "armv7",
+            "armv8l": "armv7",
+        }.get(m),
+        "caddy": {
+            "x86_64": "amd64",
+            "aarch64": "arm64",
+            "armv7l": "armv7",
+            "armv8l": "armv7",
+        }.get(m),
+    }
 
 
 def _fetch(url, dest, timeout=300, report=None):
@@ -1487,7 +2383,7 @@ def _fetch(url, dest, timeout=300, report=None):
     is 0 when the server does not say). Returns dest."""
     req = urllib.request.Request(url, headers={"User-Agent": "irate-box-update"})
     tmp = dest.with_name(dest.name + ".part")
-    with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp, "wb") as out:
+    with _web_open(req, timeout=timeout) as resp, open(tmp, "wb") as out:
         total = int(resp.headers.get("Content-Length") or 0)
         done = 0
         while chunk := resp.read(1 << 16):
@@ -1528,13 +2424,19 @@ def _have_version(cmd, version):
 
 
 def _downloading(name, version):
-    return M("update.progress.download", "Downloading {name} {version}", name=name, version=version)
+    return M(
+        "update.progress.download",
+        "Downloading {name} {version}",
+        name=name,
+        version=version,
+    )
 
 
 def prefetch(src, opts, progress=None):
     """Download into DOWNLOADS the release files the new install.sh will want and the box
     does not already have, each checked against its published checksum. Returns checks.
-    The downloads are listed before any starts, so progress knows how many steps they are."""
+    The downloads are listed before any starts, so progress knows how many steps they are.
+    """
     DOWNLOADS.mkdir(parents=True, exist_ok=True)
     script = (src / "install.sh").read_text()
     arch = _arch_names()
@@ -1542,65 +2444,148 @@ def prefetch(src, opts, progress=None):
     jobs = []  # (step label, function returning a check or None)
 
     ttyd = _var(script, "TTYD_VERSION")
-    if ttyd and arch["ttyd"] and not _have_version(("/usr/local/bin/ttyd", "--version"), ttyd):
+    if (
+        ttyd
+        and arch["ttyd"]
+        and not _have_version(("/usr/local/bin/ttyd", "--version"), ttyd)
+    ):
+
         def get_ttyd():
             base = f"https://github.com/tsl0922/ttyd/releases/download/{ttyd}"
             name = f"ttyd.{arch['ttyd']}"
             try:
-                sums = _fetch(f"{base}/SHA256SUMS", DOWNLOADS / f"ttyd-{ttyd}-SHA256SUMS")
-                binary = _fetch(f"{base}/{name}", DOWNLOADS / f"ttyd-{ttyd}-{name}", report=report)
+                sums = _fetch(
+                    f"{base}/SHA256SUMS", DOWNLOADS / f"ttyd-{ttyd}-SHA256SUMS"
+                )
+                binary = _fetch(
+                    f"{base}/{name}", DOWNLOADS / f"ttyd-{ttyd}-{name}", report=report
+                )
                 ok = _digest(binary, "sha256") == _sum_for(sums, name)
-                return _check("download:ttyd", ok, _download_title("ttyd", ttyd), DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH,
-                              evidence=[name])
+                return _check(
+                    "download:ttyd",
+                    ok,
+                    _download_title("ttyd", ttyd),
+                    DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH,
+                    evidence=[name],
+                )
             except OSError as exc:
-                return _check("download:ttyd", False, _download_title("ttyd", ttyd), DOWNLOAD_FAILED, evidence=[exc])
+                return _check(
+                    "download:ttyd",
+                    False,
+                    _download_title("ttyd", ttyd),
+                    DOWNLOAD_FAILED,
+                    evidence=[exc],
+                )
+
         jobs.append((_downloading("ttyd", ttyd), get_ttyd))
 
     sb = _var(script, "SB_VERSION")
-    if sb and "--with-notes" in opts and arch["sb"] and \
-            not _have_version(("/usr/local/bin/silverbullet", "--version"), sb):
+    if (
+        sb
+        and "--with-notes" in opts
+        and arch["sb"]
+        and not _have_version(("/usr/local/bin/silverbullet", "--version"), sb)
+    ):
+
         def get_sb():
             name = f"silverbullet-server-linux-{arch['sb']}.zip"
             try:
-                z = _fetch(f"https://github.com/silverbulletmd/silverbullet/releases/download/{sb}/{name}",
-                           DOWNLOADS / f"silverbullet-{sb}-{name}", report=report)
+                z = _fetch(
+                    f"https://github.com/silverbulletmd/silverbullet/releases/download/{sb}/{name}",
+                    DOWNLOADS / f"silverbullet-{sb}-{name}",
+                    report=report,
+                )
                 # The digest pinned beside SB_VERSION (GitHub's record of the release asset).
                 want = _var(script, f"SB_SHA256_{arch['sb']}")
-                ok = bool(want) and hashlib.sha256(Path(z).read_bytes()).hexdigest() == want
+                ok = (
+                    bool(want)
+                    and hashlib.sha256(Path(z).read_bytes()).hexdigest() == want
+                )
                 if not want:
-                    return _check("download:silverbullet", False, _download_title("SilverBullet", sb),
-                                  M("update.download.no-digest", "The new installer pins no checksum for this file."),
-                                  evidence=[f"SB_SHA256_{arch['sb']}", "install.sh"])
-                return _check("download:silverbullet", ok, _download_title("SilverBullet", sb), DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH,
-                              evidence=[name])
+                    return _check(
+                        "download:silverbullet",
+                        False,
+                        _download_title("SilverBullet", sb),
+                        M(
+                            "update.download.no-digest",
+                            "The new installer pins no checksum for this file.",
+                        ),
+                        evidence=[f"SB_SHA256_{arch['sb']}", "install.sh"],
+                    )
+                return _check(
+                    "download:silverbullet",
+                    ok,
+                    _download_title("SilverBullet", sb),
+                    DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH,
+                    evidence=[name],
+                )
             except OSError as exc:
-                return _check("download:silverbullet", False, _download_title("SilverBullet", sb), DOWNLOAD_FAILED, evidence=[exc])
+                return _check(
+                    "download:silverbullet",
+                    False,
+                    _download_title("SilverBullet", sb),
+                    DOWNLOAD_FAILED,
+                    evidence=[exc],
+                )
+
         jobs.append((_downloading("SilverBullet", sb), get_sb))
 
     # Caddy from its GitHub release, on a box served by Caddy whose apt repository failed
     # verification.
-    if WEB_SERVER == "caddy" and (ETC / "caddy-from-release").exists() and arch["caddy"]:
+    if (
+        WEB_SERVER == "caddy"
+        and (ETC / "caddy-from-release").exists()
+        and arch["caddy"]
+    ):
+
         def get_caddy():
             try:
-                req = urllib.request.Request("https://api.github.com/repos/caddyserver/caddy/releases/latest",
-                                             headers={"User-Agent": "irate-box-update"})
-                with urllib.request.urlopen(req, timeout=60) as resp:
+                req = urllib.request.Request(
+                    "https://api.github.com/repos/caddyserver/caddy/releases/latest",
+                    headers={"User-Agent": "irate-box-update"},
+                )
+                with _web_open(req, timeout=60) as resp:
                     tag = json.load(resp)["tag_name"]
                 ver = tag.lstrip("v")
-                installed = run("dpkg-query", "-W", "-f=${Version}", "caddy").stdout.strip()
+                installed = run(
+                    "dpkg-query", "-W", "-f=${Version}", "caddy"
+                ).stdout.strip()
                 (DOWNLOADS / "caddy-release-tag").write_text(tag + "\n")
                 if installed == ver:
                     return None
                 deb = f"caddy_{ver}_linux_{arch['caddy']}.deb"
                 base = f"https://github.com/caddyserver/caddy/releases/download/{tag}"
-                sums = _fetch(f"{base}/caddy_{ver}_checksums.txt", DOWNLOADS / f"caddy_{ver}_checksums.txt")
+                sums = _fetch(
+                    f"{base}/caddy_{ver}_checksums.txt",
+                    DOWNLOADS / f"caddy_{ver}_checksums.txt",
+                )
                 pkg = _fetch(f"{base}/{deb}", DOWNLOADS / deb, report=report)
                 ok = _digest(pkg, "sha512") == _sum_for(sums, deb)
-                return _check("download:caddy", ok, _download_title("Caddy", ver), DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH, evidence=[deb])
+                return _check(
+                    "download:caddy",
+                    ok,
+                    _download_title("Caddy", ver),
+                    DOWNLOAD_OK if ok else DOWNLOAD_MISMATCH,
+                    evidence=[deb],
+                )
             except (OSError, ValueError, KeyError) as exc:
-                return _check("download:caddy", False, M("update.download.caddy.title", "Download of Caddy's latest release"),
-                              DOWNLOAD_FAILED, evidence=[exc])
-        jobs.append((M("update.progress.caddy", "Downloading the latest release of Caddy"), get_caddy))
+                return _check(
+                    "download:caddy",
+                    False,
+                    M(
+                        "update.download.caddy.title",
+                        "Download of Caddy's latest release",
+                    ),
+                    DOWNLOAD_FAILED,
+                    evidence=[exc],
+                )
+
+        jobs.append(
+            (
+                M("update.progress.caddy", "Downloading the latest release of Caddy"),
+                get_caddy,
+            )
+        )
 
     if progress:
         progress.add_steps(len(jobs))
@@ -1615,7 +2600,9 @@ def prefetch(src, opts, progress=None):
 
 
 SIGNED_CHECK = "signed"
-SIGNED_OLD = "Signed as this box requires"   # its name in a state kept before the checks had IDs
+SIGNED_OLD = (
+    "Signed as this box requires"  # its name in a state kept before the checks had IDs
+)
 
 
 def _signature_check(src, installed, tag=None):
@@ -1625,67 +2612,207 @@ def _signature_check(src, installed, tag=None):
     if sig["level"] == "off":
         return []
     if sig["level"] == "github":
-        known = bool(installed) and run("git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
+        known = (
+            bool(installed)
+            and run(
+                "git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}"
+            ).returncode
+            == 0
+        )
         span = f"{installed}..HEAD" if known else "-1"
-        revs = [r for r in run("git", "-C", str(src), "rev-list", span).stdout.split() if r] if known else \
-            [run("git", "-C", str(src), "rev-parse", "HEAD").stdout.strip()]
+        revs = (
+            [
+                r
+                for r in run("git", "-C", str(src), "rev-list", span).stdout.split()
+                if r
+            ]
+            if known
+            else [run("git", "-C", str(src), "rev-parse", "HEAD").stdout.strip()]
+        )
         ok, detail, seen = signing.check_commits(src, revs, CODE / signing.GITHUB_KEY)
     else:
         # The tag the check fetched; failing that, the newest release tag on what is checked out.
-        tag = tag or next(iter(run("git", "-C", str(src), "tag", "--points-at", "HEAD", "-l", signing.TAG_GLOB,
-                                   "--sort=-v:refname").stdout.split()), "")
-        ok, detail, seen = signing.check_tag(src, tag, sig["signers"]) if tag else \
-            (False, M("update.signed.no-tag", "The downloaded version is not a release tag."), [])
-    return [_check(SIGNED_CHECK, ok, M("update.verify.signed.title", "Signed as this box requires"), detail, evidence=seen,
-                   fix=None if ok else M("update.verify.signed.fix", "Install anyway cannot skip this check. "
-                                                                    "To change the signing level, open Updates, then Update verification."))]
+        tag = tag or next(
+            iter(
+                run(
+                    "git",
+                    "-C",
+                    str(src),
+                    "tag",
+                    "--points-at",
+                    "HEAD",
+                    "-l",
+                    signing.TAG_GLOB,
+                    "--sort=-v:refname",
+                ).stdout.split()
+            ),
+            "",
+        )
+        ok, detail, seen = (
+            signing.check_tag(src, tag, sig["signers"])
+            if tag
+            else (
+                False,
+                M(
+                    "update.signed.no-tag",
+                    "The downloaded version is not a release tag.",
+                ),
+                [],
+            )
+        )
+    return [
+        _check(
+            SIGNED_CHECK,
+            ok,
+            M("update.verify.signed.title", "Signed as this box requires"),
+            detail,
+            evidence=seen,
+            fix=(
+                None
+                if ok
+                else M(
+                    "update.verify.signed.fix",
+                    "Install anyway cannot skip this check. "
+                    "To change the signing level, open Updates, then Update verification.",
+                )
+            ),
+        )
+    ]
 
 
 def update_signing(req):
-    data = signing.save(ETC, str(req.get("level", "")), str(req.get("signers", "")), lambda path, text: safeio.write(path, text, mode=0o600))
+    data = signing.save(
+        ETC,
+        str(req.get("level", "")),
+        str(req.get("signers", "")),
+        lambda path, text: safeio.write(path, text, mode=0o600),
+    )
     safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
     if data["level"] == "off":
-        return M("update.signing.off", "Updates now accept any version from the branch. The next check uses this setting.")
+        return M(
+            "update.signing.off",
+            "Updates now accept any version from the branch. The next check uses this setting.",
+        )
     if data["level"] == "github":
-        return M("update.signing.github", "Updates now accept only commits signed by GitHub's key. The next check uses this setting.")
-    return M("update.signing.tags", {"one": "Updates now accept only release tags signed by the trusted key. The next check uses this setting.",
-                                     "other": "Updates now accept only release tags signed by one of {n} trusted keys. "
-                                              "The next check uses this setting."}, n=len(data["signers"]))
+        return M(
+            "update.signing.github",
+            "Updates now accept only commits signed by GitHub's key. The next check uses this setting.",
+        )
+    return M(
+        "update.signing.tags",
+        {
+            "one": "Updates now accept only release tags signed by the trusted key. The next check uses this setting.",
+            "other": "Updates now accept only release tags signed by one of {n} trusted keys. "
+            "The next check uses this setting.",
+        },
+        n=len(data["signers"]),
+    )
 
 
 def verify_update(src, installed, opts, progress=None, tag=None):
     """Checks on a fetched tree; any failure not marked warn blocks the install."""
     checks = []
     if installed:
-        known = run("git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
-        ff = known and run("git", "-C", str(src), "merge-base", "--is-ancestor", installed, "HEAD").returncode == 0
+        known = (
+            run(
+                "git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}"
+            ).returncode
+            == 0
+        )
+        ff = (
+            known
+            and run(
+                "git", "-C", str(src), "merge-base", "--is-ancestor", installed, "HEAD"
+            ).returncode
+            == 0
+        )
         # A rewritten branch (the installed commit is known, and not behind HEAD) blocks: the
         # update path is root, and a history that no longer contains what runs here is the
         # sign of a source taken over. A commit the fetched
         # history does not know at all (a box installed from a copy) is only a warning.
         title = M("update.verify.history.title", "Continues from the installed version")
         if ff:
-            checks.append(_check("history", True, title, M("update.verify.history.ok", "The new history continues from the installed commit.")))
+            checks.append(
+                _check(
+                    "history",
+                    True,
+                    title,
+                    M(
+                        "update.verify.history.ok",
+                        "The new history continues from the installed commit.",
+                    ),
+                )
+            )
         elif known:
-            checks.append(_check("history", False, title,
-                                 M("update.verify.history.rewritten", "The new version does not continue from the installed commit "
-                                                                      "{commit}. The branch history changed.", commit=installed),
-                                 fix=M("update.verify.history.rewritten.fix", "Read the changes. If you made them, use Install anyway "
-                                                                              "on Updates → Maintenance.")))
+            checks.append(
+                _check(
+                    "history",
+                    False,
+                    title,
+                    M(
+                        "update.verify.history.rewritten",
+                        "The new version does not continue from the installed commit "
+                        "{commit}. The branch history changed.",
+                        commit=installed,
+                    ),
+                    fix=M(
+                        "update.verify.history.rewritten.fix",
+                        "Read the changes. If you made them, use Install anyway "
+                        "on Updates → Maintenance.",
+                    ),
+                )
+            )
         else:
-            checks.append(_check("history", False, title,
-                                 M("update.verify.history.unknown", "The installed commit {commit} is not in the downloaded history. "
-                                                                    "The box was installed from another source.", commit=installed),
-                                 warn=True, fix=M("update.verify.history.unknown.fix", "Read the changes before you install.")))
+            checks.append(
+                _check(
+                    "history",
+                    False,
+                    title,
+                    M(
+                        "update.verify.history.unknown",
+                        "The installed commit {commit} is not in the downloaded history. "
+                        "The box was installed from another source.",
+                        commit=installed,
+                    ),
+                    warn=True,
+                    fix=M(
+                        "update.verify.history.unknown.fix",
+                        "Read the changes before you install.",
+                    ),
+                )
+            )
     checks += _signature_check(src, installed, tag)
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():
             out = run("bash", "-n", str(path))
-            checks.append(_check(f"parses:{script}", out.returncode == 0, M("update.verify.parses.title", "Shell syntax of {script}", script=script),
-                                 M("update.verify.parses.ok", "The shell finds no syntax error in it.") if out.returncode == 0 else
-                                 M("update.verify.parses.failed", "The shell finds a syntax error in it."),
-                                 evidence=[] if out.returncode == 0 else (out.stderr.strip().splitlines() or [""])[-1:]))
+            checks.append(
+                _check(
+                    f"parses:{script}",
+                    out.returncode == 0,
+                    M(
+                        "update.verify.parses.title",
+                        "Shell syntax of {script}",
+                        script=script,
+                    ),
+                    (
+                        M(
+                            "update.verify.parses.ok",
+                            "The shell finds no syntax error in it.",
+                        )
+                        if out.returncode == 0
+                        else M(
+                            "update.verify.parses.failed",
+                            "The shell finds a syntax error in it.",
+                        )
+                    ),
+                    evidence=(
+                        []
+                        if out.returncode == 0
+                        else (out.stderr.strip().splitlines() or [""])[-1:]
+                    ),
+                )
+            )
     bad = []
     pys = sorted([*src.glob("irate_box/**/*.py"), *src.glob("scripts/*.py")])
     for py in pys:
@@ -1695,15 +2822,50 @@ def verify_update(src, installed, opts, progress=None, tag=None):
             bad.append(f"{py.relative_to(src)}: {exc}")
     title = M("update.verify.python.title", "Python files compile")
     if bad:
-        checks.append(_check("python", False, title, M("update.verify.python.failed", {"one": "{n} Python file does not compile.",
-                                                                                      "other": "{n} Python files do not compile."}, n=len(bad)),
-                             evidence=bad[:5]))
+        checks.append(
+            _check(
+                "python",
+                False,
+                title,
+                M(
+                    "update.verify.python.failed",
+                    {
+                        "one": "{n} Python file does not compile.",
+                        "other": "{n} Python files do not compile.",
+                    },
+                    n=len(bad),
+                ),
+                evidence=bad[:5],
+            )
+        )
     elif pys:
-        checks.append(_check("python", True, title, M("update.verify.python.ok", {"one": "{n} file compiles.", "other": "{n} files compile."}, n=len(pys)),
-                             note=LIMITED_CHECK))
+        checks.append(
+            _check(
+                "python",
+                True,
+                title,
+                M(
+                    "update.verify.python.ok",
+                    {"one": "{n} file compiles.", "other": "{n} files compile."},
+                    n=len(pys),
+                ),
+                note=LIMITED_CHECK,
+            )
+        )
     else:
-        checks.append(_check("python", False, title, M("update.verify.python.none", "The update has no Python files where the box expects them. "
-                                                                                    "This is not the expected layout."), evidence=["irate_box/"]))
+        checks.append(
+            _check(
+                "python",
+                False,
+                title,
+                M(
+                    "update.verify.python.none",
+                    "The update has no Python files where the box expects them. "
+                    "This is not the expected layout.",
+                ),
+                evidence=["irate_box/"],
+            )
+        )
 
     if WEB_SERVER == "nginx":
         checks.append(_nginx_check(src, opts))
@@ -1714,20 +2876,61 @@ def verify_update(src, installed, opts, progress=None, tag=None):
         m = HASH_LINE.search(current)
         text = caddyfile.read_text()
         if m:
-            text = text.replace("$2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT", m.group(0).split()[-1])
+            text = text.replace(
+                "$2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT",
+                m.group(0).split()[-1],
+            )
         with tempfile.NamedTemporaryFile("w", suffix=".Caddyfile", delete=False) as tmp:
             tmp.write(text)
         title = M("update.verify.caddy.title", "Syntax of the new Caddyfile")
         try:
-            out = run("caddy", "validate", "--adapter", "caddyfile", "--config", tmp.name)
-            detail = "" if out.returncode == 0 else ((out.stderr or out.stdout).strip().splitlines() or [""])[-1]
+            out = run(
+                "caddy", "validate", "--adapter", "caddyfile", "--config", tmp.name
+            )
+            detail = (
+                ""
+                if out.returncode == 0
+                else ((out.stderr or out.stdout).strip().splitlines() or [""])[-1]
+            )
             if out.returncode == 0:
-                checks.append(_check("caddyfile", True, title, M("update.verify.caddy.ok", "Caddy accepts the new configuration."), note=LIMITED_CHECK))
+                checks.append(
+                    _check(
+                        "caddyfile",
+                        True,
+                        title,
+                        M(
+                            "update.verify.caddy.ok",
+                            "Caddy accepts the new configuration.",
+                        ),
+                        note=LIMITED_CHECK,
+                    )
+                )
             else:
-                checks.append(_check("caddyfile", False, title, M("update.verify.caddy.failed", "Caddy refuses the new configuration."),
-                                     evidence=[detail[:300]]))
+                checks.append(
+                    _check(
+                        "caddyfile",
+                        False,
+                        title,
+                        M(
+                            "update.verify.caddy.failed",
+                            "Caddy refuses the new configuration.",
+                        ),
+                        evidence=[detail[:300]],
+                    )
+                )
         except (OSError, subprocess.SubprocessError) as exc:
-            checks.append(_check("caddyfile", False, title, M("update.verify.caddy.failed", "Caddy refuses the new configuration."), evidence=[exc]))
+            checks.append(
+                _check(
+                    "caddyfile",
+                    False,
+                    title,
+                    M(
+                        "update.verify.caddy.failed",
+                        "Caddy refuses the new configuration.",
+                    ),
+                    evidence=[exc],
+                )
+            )
         finally:
             os.unlink(tmp.name)
     checks += prefetch(src, opts, progress)
@@ -1741,34 +2944,71 @@ def _nginx_check(src, opts):
     failed = M("update.verify.nginx.failed", "nginx refuses the new site.")
     template = src / "config" / "irate-box.nginx"
     if not template.exists():
-        return _check("nginx", False, name, M("update.verify.nginx.missing", "The update has no nginx site file."),
-                      evidence=["config/irate-box.nginx"])
+        return _check(
+            "nginx",
+            False,
+            name,
+            M("update.verify.nginx.missing", "The update has no nginx site file."),
+            evidence=["config/irate-box.nginx"],
+        )
     text = template.read_text()
     # nobody may not bind a port under 1024, even for a test: an unprivileged one stands in, so
     # the listen lines are still parsed.
     port = _option(opts, "--port", "80")
     if os.geteuid() == 0 and port.isdigit() and int(port) < 1024:
         port = "18080"
-    for key, value in {"@PORT@": port, "@STATIC@": str(CODE / "web"),
-                       "@APPS@": "/usr/share/hub/apps", "@GIT_ROOT@": str(STATE / "git"),
-                       "@FIRMWARE@": str(STATE / "firmware"),
-                       "@HTPASSWD@": str(NGINX_LOGINS),
-                       "@UNCLAIMED@": str(UNCLAIMED)}.items():
+    for key, value in {
+        "@PORT@": port,
+        "@STATIC@": str(CODE / "web"),
+        "@APPS@": "/usr/share/hub/apps",
+        "@GIT_ROOT@": str(STATE / "git"),
+        "@FIRMWARE@": str(STATE / "firmware"),
+        "@HTPASSWD@": str(NGINX_LOGINS),
+        "@UNCLAIMED@": str(UNCLAIMED),
+    }.items():
         text = text.replace(key, value)
     with tempfile.TemporaryDirectory() as tmp:
         # Who may open each app, as this box has it now (install.sh writes it the same way).
-        (Path(tmp) / "access.conf").write_text(access.nginx_conf(access.read(ACCESS_FILE)))
+        (Path(tmp) / "access.conf").write_text(
+            access.nginx_conf(access.read(ACCESS_FILE))
+        )
         text = text.replace("@ACCESS@", f"{tmp}/access.conf")
         # The front's /admin secret: its include, with a stand-in (the check only parses it).
-        (Path(tmp) / "front.conf").write_text('proxy_set_header X-Irate-Front "check";\n')
+        (Path(tmp) / "front.conf").write_text(
+            'proxy_set_header X-Irate-Front "check";\n'
+        )
         text = text.replace("@FRONT@", f"{tmp}/front.conf")
-        (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
+        (Path(tmp) / "addons.conf").write_text(
+            access.addon_nginx_conf(access.read(ACCESS_FILE), [])
+        )
         # The TLS twins' includes: an empty folder (a box with no certificate), their ports as set.
         (Path(tmp) / "tls").mkdir()
-        for key, value in {"@ADDON_ACCESS@": f"{tmp}/addons.conf", "@ADDON_GATES@": f"{tmp}/addon-gates.d", "@ADDON_PORT@": "8090", "@NOTES_PORT@": "8091", "@NOTEBOOK_PORT@": "8094", "@WIKI_PORT@": "8092", "@GIT_PORT@": "8093",
-                           "@TLS@": f"{tmp}/tls", "@TLS_PORT@": "18443", "@ADDON_TLS_PORT@": "8490", "@NOTES_TLS_PORT@": "8491", "@NOTEBOOK_TLS_PORT@": "8494",
-                           "@WIKI_TLS_PORT@": "8492", "@GIT_TLS_PORT@": "8493", "@ADDONS@": str(STATE / "addons"),
-                           "@PAGELOG@": f"{tmp}/pages.log"}.items():
+        from irate_box.root import tls
+
+        for path, content in tls._plain_files("http", "allow").items():
+            (Path(tmp) / "tls" / path.name).write_text(
+                content.replace("listen 80 ", f"listen {port} ").replace(
+                    "[::]:80 ", f"[::]:{port} "
+                )
+            )
+        for key, value in {
+            "@ADDON_ACCESS@": f"{tmp}/addons.conf",
+            "@ADDON_GATES@": f"{tmp}/addon-gates.d",
+            "@ADDON_PORT@": "8090",
+            "@NOTES_PORT@": "8091",
+            "@NOTEBOOK_PORT@": "8094",
+            "@WIKI_PORT@": "8092",
+            "@GIT_PORT@": "8093",
+            "@TLS@": f"{tmp}/tls",
+            "@TLS_PORT@": "18443",
+            "@ADDON_TLS_PORT@": "8490",
+            "@NOTES_TLS_PORT@": "8491",
+            "@NOTEBOOK_TLS_PORT@": "8494",
+            "@WIKI_TLS_PORT@": "8492",
+            "@GIT_TLS_PORT@": "8493",
+            "@ADDONS@": str(STATE / "addons"),
+            "@PAGELOG@": f"{tmp}/pages.log",
+        }.items():
             text = text.replace(key, value)
         # A port placeholder this helper does not know yet (an update adds a server block): a
         # spare port stands in, so a newer site is checked by its syntax, not refused for being
@@ -1777,15 +3017,20 @@ def _nginx_check(src, opts):
         text = re.sub(r"@[A-Z_]+_PORT@", lambda m: str(next(spare)), text)
         conf = Path(tmp) / "nginx.conf"
         # nginx's scratch paths in here too, so it needs nothing of the box's.
-        temps = "access_log off;\n" + "".join(f"{k}_temp_path {tmp}/{k};\n" for k in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"))
-        conf.write_text(f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
-                        f"http {{\ninclude /etc/nginx/mime.types;\n{temps}{text}\n}}\n")
+        temps = "access_log off;\n" + "".join(
+            f"{k}_temp_path {tmp}/{k};\n"
+            for k in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi")
+        )
+        conf.write_text(
+            f"pid {tmp}/nginx.pid;\nerror_log stderr;\nevents {{}}\n"
+            f"http {{\ninclude /etc/nginx/mime.types;\n{temps}{text}\n}}\n"
+        )
         # As nobody, not root: this is the fetched commit's config, not yet approved, and
         # nginx -t as root would create any file its error_log or access_log names, or echo an
         # include's first token (a root-only file's) into the report.
-        os.chmod(tmp, 0o755)
+        safeio.mkdir(tmp, mode=0o755)
         for f in Path(tmp).iterdir():
-            f.chmod(0o644)
+            f.chmod(0o755 if f.is_dir() else 0o644)
         as_nobody = ()
         if os.geteuid() == 0:
             # nobody's own scratch folder: nginx -t writes its pid and temp paths there.
@@ -1796,10 +3041,26 @@ def _nginx_check(src, opts):
             out = run(*as_nobody, "nginx", "-t", "-q", "-e", "stderr", "-c", str(conf))
         except (OSError, subprocess.SubprocessError) as exc:
             return _check("nginx", False, name, failed, evidence=[exc])
-    lines = [l for l in (out.stderr or out.stdout).strip().splitlines() if "[emerg]" in l or "[crit]" in l]
+    lines = [
+        line
+        for line in (out.stderr or out.stdout).strip().splitlines()
+        if "[emerg]" in line or "[crit]" in line
+    ]
     if out.returncode == 0:
-        return _check("nginx", True, name, M("update.verify.nginx.ok", "nginx accepts the new site."), note=LIMITED_CHECK)
-    return _check("nginx", False, name, failed, evidence=[(lines or ["nginx -t failed"])[-1][:300]])
+        return _check(
+            "nginx",
+            True,
+            name,
+            M("update.verify.nginx.ok", "nginx accepts the new site."),
+            note=LIMITED_CHECK,
+        )
+    return _check(
+        "nginx",
+        False,
+        name,
+        failed,
+        evidence=[(lines or ["nginx -t failed"])[-1][:300]],
+    )
 
 
 def _check_for_update(progress):
@@ -1812,9 +3073,22 @@ def _check_for_update(progress):
         raise Refused(NO_REPO)
     if repo.startswith(("http://", "git://")):
         # Code that root will run, over a transport anyone on the way can rewrite.
-        raise Refused(M("update.check.unencrypted", "Updates come from {repo} over an unencrypted link. "
-                                                    "Run the installer again with an https:// address for the repository.", repo=repo))
-    progress.step(M("update.progress.branch", "Downloading the branch {branch} from {repo}", branch=branch, repo=repo))
+        raise Refused(
+            M(
+                "update.check.unencrypted",
+                "Updates come from {repo} over an unencrypted link. "
+                "Run the installer again with an https:// address for the repository.",
+                repo=repo,
+            )
+        )
+    progress.step(
+        M(
+            "update.progress.branch",
+            "Downloading the branch {branch} from {repo}",
+            branch=branch,
+            repo=repo,
+        )
+    )
     src = str(UPDATE_SRC)
     if (UPDATE_SRC / ".git").is_dir():
         _git("-C", src, "remote", "set-url", "origin", repo)
@@ -1831,16 +3105,50 @@ def _check_for_update(progress):
     # The release tags (v*), fetched whatever the signing level, so the box holds them: needed when
     # signed releases are chosen, kept otherwise (their failing then only noted).
     tags_said = None
-    got = run("git", "-C", src, "fetch", "--depth", "200", "--force", "origin", f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}")
+    got = run(
+        "git",
+        "-C",
+        src,
+        "fetch",
+        "--depth",
+        "200",
+        "--force",
+        "origin",
+        f"+refs/tags/{signing.TAG_GLOB}:refs/tags/{signing.TAG_GLOB}",
+    )
     if got.returncode != 0:
         # git says nothing when no tag matches: tell that apart from a fetch that failed.
-        remote = run("git", "-C", src, "ls-remote", "--tags", "origin", f"refs/tags/{signing.TAG_GLOB}")
+        remote = run(
+            "git",
+            "-C",
+            src,
+            "ls-remote",
+            "--tags",
+            "origin",
+            f"refs/tags/{signing.TAG_GLOB}",
+        )
         if remote.returncode == 0 and not remote.stdout.strip():
-            tags_said = M("update.check.no-tags", "Updates require signed releases, and {repo} has no release tag yet.", repo=repo) \
-                if sig["level"] == "tags" else M("update.check.no-tags-yet", "The repository {repo} has no release tag yet.", repo=repo)
+            tags_said = (
+                M(
+                    "update.check.no-tags",
+                    "Updates require signed releases, and {repo} has no release tag yet.",
+                    repo=repo,
+                )
+                if sig["level"] == "tags"
+                else M(
+                    "update.check.no-tags-yet",
+                    "The repository {repo} has no release tag yet.",
+                    repo=repo,
+                )
+            )
         else:
-            tags_said = M("update.check.tags-failed", "Downloading the release tags failed: {error}",
-                          error=((got.stderr or remote.stderr).strip().splitlines() or ["failed"])[-1])
+            tags_said = M(
+                "update.check.tags-failed",
+                "Downloading the release tags failed: {error}",
+                error=(
+                    (got.stderr or remote.stderr).strip().splitlines() or ["failed"]
+                )[-1],
+            )
         if sig["level"] == "tags":
             raise Refused(tags_said)
     newest = signing.newest_tag(src)
@@ -1848,23 +3156,49 @@ def _check_for_update(progress):
         # Signed releases (signing.py): the newest v* tag, not the branch's tip.
         tag = newest
         if not tag:
-            raise Refused(M("update.check.no-tags", "Updates require signed releases, and {repo} has no release tag yet.", repo=repo))
+            raise Refused(
+                M(
+                    "update.check.no-tags",
+                    "Updates require signed releases, and {repo} has no release tag yet.",
+                    repo=repo,
+                )
+            )
         _git("-C", src, "checkout", "-q", "--detach", f"refs/tags/{tag}")
     progress.step(M("update.progress.changes", "Reading the changes"))
     head = _git("-C", src, "rev-parse", "--short=7", "HEAD")
     full = _git("-C", src, "rev-parse", "HEAD")
     installed = _installed_commit()
-    known = bool(installed) and run("git", "-C", src, "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
+    known = (
+        bool(installed)
+        and run(
+            "git", "-C", src, "cat-file", "-e", f"{installed}^{{commit}}"
+        ).returncode
+        == 0
+    )
     span = f"{installed}..HEAD" if known else "-10"
-    changes = [c for c in _git("-C", src, "log", "--format=%h %cs %s", span).splitlines() if c]
-    up_to_date = bool(installed) and head.startswith(installed[:7]) or (known and not changes)
+    changes = [
+        c for c in _git("-C", src, "log", "--format=%h %cs %s", span).splitlines() if c
+    ]
+    up_to_date = (
+        bool(installed) and head.startswith(installed[:7]) or (known and not changes)
+    )
     state = {
-        "repo": repo, "branch": branch, "available": head,
+        "repo": repo,
+        "branch": branch,
+        "available": head,
         "available_date": _git("-C", src, "log", "-1", "--format=%cs"),
-        "installed": installed, "up_to_date": up_to_date,
-        "changes": changes[:50], "changes_known": known, "fetched": time.time(),
-        "verified": None, "verified_sha": None, "checks": [],
-        "signing": sig["level"], "tag": tag, "release_tag": newest, "tags_problem": tags_said,
+        "installed": installed,
+        "up_to_date": up_to_date,
+        "changes": changes[:50],
+        "changes_known": known,
+        "fetched": time.time(),
+        "verified": None,
+        "verified_sha": None,
+        "checks": [],
+        "signing": sig["level"],
+        "tag": tag,
+        "release_tag": newest,
+        "tags_problem": tags_said,
     }
     # The same commit fetched before: its checks and downloads still stand. Matched on the
     # whole hash: a commit sharing the first 7 digits must not inherit "verified".
@@ -1877,8 +3211,12 @@ def _check_for_update(progress):
 
 
 def _up_to_date(state):
-    return M("update.check.none", "No newer version detected. The box is up to date with {commit} on {branch}.",
-             commit=state["available"], branch=state["branch"])
+    return M(
+        "update.check.none",
+        "No newer version detected. The box is up to date with {commit} on {branch}.",
+        commit=state["available"],
+        branch=state["branch"],
+    )
 
 
 def update_check(req):
@@ -1891,18 +3229,42 @@ def update_check(req):
     # The changes are counted only when the history continues from the installed commit.
     if state["verified"]:
         if state["changes_known"]:
-            return M("update.check.new-verified", {"one": "Update available: {commit} on {branch}, with {n} new commit. It is downloaded, "
-                                                          "and verification passed.",
-                                                   "other": "Update available: {commit} on {branch}, with {n} new commits. It is downloaded, "
-                                                            "and verification passed."}, commit=commit, branch=branch, n=n)
-        return M("update.check.other-verified", "Update available: a different version, {commit} on {branch}. It is downloaded, "
-                                                "and verification passed.", commit=commit, branch=branch)
+            return M(
+                "update.check.new-verified",
+                {
+                    "one": "Update available: {commit} on {branch}, with {n} new commit. It is downloaded, "
+                    "and verification passed.",
+                    "other": "Update available: {commit} on {branch}, with {n} new commits. It is downloaded, "
+                    "and verification passed.",
+                },
+                commit=commit,
+                branch=branch,
+                n=n,
+            )
+        return M(
+            "update.check.other-verified",
+            "Update available: a different version, {commit} on {branch}. It is downloaded, "
+            "and verification passed.",
+            commit=commit,
+            branch=branch,
+        )
     if state["changes_known"]:
-        return M("update.check.new", {"one": "Update available: {commit} on {branch}, with {n} new commit. Download it to verify it.",
-                                      "other": "Update available: {commit} on {branch}, with {n} new commits. Download it to verify it."},
-                 commit=commit, branch=branch, n=n)
-    return M("update.check.other", "Update available: a different version, {commit} on {branch}. Download it to verify it.",
-             commit=commit, branch=branch)
+        return M(
+            "update.check.new",
+            {
+                "one": "Update available: {commit} on {branch}, with {n} new commit. Download it to verify it.",
+                "other": "Update available: {commit} on {branch}, with {n} new commits. Download it to verify it.",
+            },
+            commit=commit,
+            branch=branch,
+            n=n,
+        )
+    return M(
+        "update.check.other",
+        "Update available: a different version, {commit} on {branch}. Download it to verify it.",
+        commit=commit,
+        branch=branch,
+    )
 
 
 def update_fetch(req):
@@ -1910,8 +3272,9 @@ def update_fetch(req):
     # (prefetch adds those once it knows them).
     with Progress("fetch", 1) as progress:
         state = _read_update_state()
-        cached = (UPDATE_SRC / ".git").is_dir() and \
-            run("git", "-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD").stdout.strip()
+        cached = (UPDATE_SRC / ".git").is_dir() and run(
+            "git", "-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD"
+        ).stdout.strip()
         if state.get("up_to_date") or not cached or cached != state.get("available"):
             progress.add_steps(2)
             state, opts = _check_for_update(progress)
@@ -1921,22 +3284,46 @@ def update_fetch(req):
             _write_update_state(state)
             return _up_to_date(state)
         progress.step(M("update.progress.verify", "Checking the new version"))
-        checks = verify_update(UPDATE_SRC, state["installed"], opts, progress, tag=state.get("tag"))
+        checks = verify_update(
+            UPDATE_SRC, state["installed"], opts, progress, tag=state.get("tag")
+        )
     head = state["available"]
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
-    state.update(checks=checks, verified=None if failed else head, verified_sha=None if failed else full)
+    state.update(
+        checks=checks,
+        verified=None if failed else head,
+        verified_sha=None if failed else full,
+    )
     _write_update_state(state)
     if failed:
-        return M("update.fetch.failed", {"one": "Verification failed. The downloaded version {commit} did not pass {n} check: {checks}.",
-                                         "other": "Verification failed. The downloaded version {commit} did not pass {n} checks: {checks}."},
-                 commit=head, n=len(failed), checks=[c["name"] for c in failed])
+        return M(
+            "update.fetch.failed",
+            {
+                "one": "Verification failed. The downloaded version {commit} did not pass {n} check: {checks}.",
+                "other": "Verification failed. The downloaded version {commit} did not pass {n} checks: {checks}.",
+            },
+            commit=head,
+            n=len(failed),
+            checks=[c["name"] for c in failed],
+        )
     if state["changes_known"]:
-        return M("update.fetch.done", {"one": "Download complete. Verification passed: {commit} on {branch}, with {n} new commit.",
-                                       "other": "Download complete. Verification passed: {commit} on {branch}, with {n} new commits."},
-                 commit=head, branch=state["branch"], n=len(state["changes"]))
-    return M("update.fetch.done-other", "Download complete. Verification passed: a different version, {commit} on {branch}.",
-             commit=head, branch=state["branch"])
+        return M(
+            "update.fetch.done",
+            {
+                "one": "Download complete. Verification passed: {commit} on {branch}, with {n} new commit.",
+                "other": "Download complete. Verification passed: {commit} on {branch}, with {n} new commits.",
+            },
+            commit=head,
+            branch=state["branch"],
+            n=len(state["changes"]),
+        )
+    return M(
+        "update.fetch.done-other",
+        "Download complete. Verification passed: a different version, {commit} on {branch}.",
+        commit=head,
+        branch=state["branch"],
+    )
 
 
 STEP_LINE = re.compile(rb"==> (.*?)(?:\x1b\[0m)?\s*$")
@@ -1965,65 +3352,120 @@ def _follow_install(proc, progress):
         if time.monotonic() > deadline:
             proc.kill()
             proc.wait()
-            raise Refused(M("update.install.timeout", {"one": "The installer did not finish within {n} minute. Read the installer output on Updates.",
-                                                       "other": "The installer did not finish within {n} minutes. Read the installer output on Updates."},
-                            n=INSTALL_TIMEOUT // 60))
+            raise Refused(
+                M(
+                    "update.install.timeout",
+                    {
+                        "one": "The installer did not finish within {n} minute. Read the installer output on Updates.",
+                        "other": "The installer did not finish within {n} minutes. Read the installer output on Updates.",
+                    },
+                    n=INSTALL_TIMEOUT // 60,
+                )
+            )
         time.sleep(1)
 
 
 def update_install(req):
     if not (UPDATE_SRC / "install.sh").is_file():
-        raise Refused(M("update.install.none", "No update is downloaded yet. Check for updates first."))
+        raise Refused(
+            M(
+                "update.install.none",
+                "No update is downloaded yet. Check for updates first.",
+            )
+        )
     state = _read_update_state()
     # The whole hash of what is checked out, against the whole hash that passed.
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     if not state.get("verified_sha") or state.get("verified_sha") != full:
-        raise Refused(M("update.install.not-verified", "The downloaded version has not passed verification. Download the update again."))
+        raise Refused(
+            M(
+                "update.install.not-verified",
+                "The downloaded version has not passed verification. Download the update again.",
+            )
+        )
     return _install_fetched(state)
 
 
 def _install_fetched(state):
-    seen = _run_install(UPDATE_SRC, _install_options(), "install", state.get("install_steps"))
+    seen = _run_install(
+        UPDATE_SRC, _install_options(), "install", state.get("install_steps")
+    )
     state = _read_update_state()
     if state:
-        state.update(installed=_installed_commit(), up_to_date=True, changes=[], install_steps=seen)
+        state.update(
+            installed=_installed_commit(),
+            up_to_date=True,
+            changes=[],
+            install_steps=seen,
+        )
         _write_update_state(state)
     return _installed_now()
 
 
 def _installed_now():
     commit = _installed_commit()
-    return M("update.install.done", "Updated to {commit}.", commit=commit) if commit else \
-        M("update.install.done-unknown", "Updated to the downloaded version.")
+    return (
+        M("update.install.done", "Updated to {commit}.", commit=commit)
+        if commit
+        else M("update.install.done-unknown", "Updated to the downloaded version.")
+    )
 
 
 def update_force_install(req):
     """The fetched version, installed although it failed verification (the Updates doctor's
     "Install anyway"): for when the check is what is wrong, as when an update changes the
     code's layout and this box's check cannot read it. Still only the version that was fetched
-    and checked, and only if its installer parses; the installer stops on its own errors."""
+    and checked, and only if its installer parses; the installer stops on its own errors.
+    """
     if not (UPDATE_SRC / "install.sh").is_file():
-        raise Refused(M("update.force.none", "No update is downloaded yet. Check for updates, then download the update."))
+        raise Refused(
+            M(
+                "update.force.none",
+                "No update is downloaded yet. Check for updates, then download the update.",
+            )
+        )
     state = _read_update_state()
     head = _git("-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD")
     if state.get("available") != head or not state.get("checks"):
-        raise Refused(M("update.force.not-checked", "Install anyway works only on a downloaded version that the box checked. "
-                                                    "Download the update first."))
+        raise Refused(
+            M(
+                "update.force.not-checked",
+                "Install anyway works only on a downloaded version that the box checked. "
+                "Download the update first.",
+            )
+        )
     if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
-        raise Refused(M("update.force.parse", "The downloaded installer does not pass the shell syntax check. Install anyway cannot skip this check."))
+        raise Refused(
+            M(
+                "update.force.parse",
+                "The downloaded installer does not pass the shell syntax check. Install anyway cannot skip this check.",
+            )
+        )
     failed = [c for c in state["checks"] if not c["ok"] and not c["warn"]]
     if any(c.get("id") == SIGNED_CHECK or c.get("name") == SIGNED_OLD for c in failed):
         # The point of a signing level (signing.py): not even Install anyway passes it.
-        raise Refused(M("update.force.unsigned", "Verification failed. The downloaded version does not meet the signing level of this box. "
-                                                 "Install anyway cannot skip this check. To change the signing level, open Updates, "
-                                                 "then Update verification."))
+        raise Refused(
+            M(
+                "update.force.unsigned",
+                "Verification failed. The downloaded version does not meet the signing level of this box. "
+                "Install anyway cannot skip this check. To change the signing level, open Updates, "
+                "then Update verification.",
+            )
+        )
     _install_fetched(state)
     commit = _installed_commit() or head
     if failed:
         # Exactly what was skipped, by name.
-        return M("update.force.done", {"one": "Updated to {commit}. Install anyway skipped {n} failed check: {checks}.",
-                                       "other": "Updated to {commit}. Install anyway skipped {n} failed checks: {checks}."},
-                 commit=commit, n=len(failed), checks=[c["name"] for c in failed])
+        return M(
+            "update.force.done",
+            {
+                "one": "Updated to {commit}. Install anyway skipped {n} failed check: {checks}.",
+                "other": "Updated to {commit}. Install anyway skipped {n} failed checks: {checks}.",
+            },
+            commit=commit,
+            n=len(failed),
+            checks=[c["name"] for c in failed],
+        )
     return _installed_now()
 
 
@@ -2036,14 +3478,23 @@ def _run_install(src, args, action, steps=None):
         cmd += ["--download-cache", str(DOWNLOADS)]
     # systemd gives the helper no HOME, and Caddy (the fallback) warns about it on every validate.
     env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
-    with Progress(action, steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress, \
-            safeio.open_new(UPDATE_LOG) as log:
+    with Progress(
+        action, steps or INSTALL_STEPS_GUESS, estimate=not steps
+    ) as progress, safeio.open_new(UPDATE_LOG) as log:
         log.write("$ " + " ".join(cmd) + "\n\n")
         log.flush()
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+        proc = subprocess.Popen(
+            cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env
+        )
         code, seen = _follow_install(proc, progress)
     if code != 0:
-        raise Refused(M("update.install.failed", "The installer stopped with exit code {code}. Read the installer output on Updates.", code=code))
+        raise Refused(
+            M(
+                "update.install.failed",
+                "The installer stopped with exit code {code}. Read the installer output on Updates.",
+                code=code,
+            )
+        )
     return seen
 
 
@@ -2059,15 +3510,30 @@ def addon(req):
     aid = str(req.get("addon", ""))
     spec = manifests.addons(MANIFESTS).get(aid)
     if not spec:
-        raise Refused(M("control.addon.unknown", "{addon} is not an add-on.", addon=aid))
+        raise Refused(
+            M("control.addon.unknown", "{addon} is not an add-on.", addon=aid)
+        )
     on = req.get("on") is True
     option = spec["addon"]["option"]
     title = spec["addon"]["title"]
     opts = _install_options()
     if (option in opts) == on:
-        raise Refused(M("control.addon.already-added", "The add-on {title} is already added.", title=title) if on else
-                      M("control.addon.already-removed", "The add-on {title} is already removed.", title=title))
-    args = [o for o in opts if o != option] + ([option] if on else ["--remove", option.removeprefix("--with-")])
+        raise Refused(
+            M(
+                "control.addon.already-added",
+                "The add-on {title} is already added.",
+                title=title,
+            )
+            if on
+            else M(
+                "control.addon.already-removed",
+                "The add-on {title} is already removed.",
+                title=title,
+            )
+        )
+    args = [o for o in opts if o != option] + (
+        [option] if on else ["--remove", option.removeprefix("--with-")]
+    )
     shutil.rmtree(ADDON_SRC, ignore_errors=True)
     ADDON_SRC.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(CODE, ADDON_SRC, symlinks=True)
@@ -2092,20 +3558,39 @@ def addon(req):
 # is chosen (go), for what is not fine.
 
 _go = health._go
-GO_NETWORK, GO_CLOCK, GO_BOOKS, GO_UPDATES = health.GO_NETWORK, health.GO_CLOCK, health.GO_BOOKS, health.GO_UPDATES
+GO_NETWORK, GO_CLOCK, GO_BOOKS, GO_UPDATES = (
+    health.GO_NETWORK,
+    health.GO_CLOCK,
+    health.GO_BOOKS,
+    health.GO_UPDATES,
+)
 GO_LIBRARIAN = _go("sources", M("go.librarian", "The librarian"))
-GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access"), "library-token")
+GO_TOKEN = _go(
+    "sources", M("go.source-access", "The librarian → Source access"), "library-token"
+)
 GO_MAINT = _go("update-maint", M("go.update-maint", "Updates → Maintenance"))
 GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
 
 # One failed attempt says what happened, not why.
-PROBE_NOTE = M("update.probe.note", "One failed attempt does not show the cause. The server or the network can fail for a short time. "
-                                    "Run the doctor again to see if it stays.")
-CLOCK_WHY = M("update.clock.why", "Certificate checks need the correct time. With a wrong clock, every HTTPS connection can fail.")
-CLOCK_FIX = M("update.clock.fix", "Set the time on Clock. Or connect the box to a network with internet access, so that it can set its clock.")
+PROBE_NOTE = M(
+    "update.probe.note",
+    "One failed attempt does not show the cause. The server or the network can fail for a short time. "
+    "Run the doctor again to see if it stays.",
+)
+CLOCK_WHY = M(
+    "update.clock.why",
+    "Certificate checks need the correct time. With a wrong clock, every HTTPS connection can fail.",
+)
+CLOCK_FIX = M(
+    "update.clock.fix",
+    "Set the time on Clock. Or connect the box to a network with internet access, so that it can set its clock.",
+)
 CLOCK_SET = "timedatectl set-time 'YYYY-MM-DD HH:MM'"
 LIBRARIAN_LOG = "journalctl -u irate-box-librarian -n 80"
-CACHE_CLEAR = M("update.cache.clear.fix", "Clear the update cache on Updates → Maintenance. Then check for updates again.")
+CACHE_CLEAR = M(
+    "update.cache.clear.fix",
+    "Clear the update cache on Updates → Maintenance. Then check for updates again.",
+)
 
 
 def _local_addresses():
@@ -2115,13 +3600,14 @@ def _local_addresses():
 
 def _tls_get(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": "irate-box-doctor"})
-    return urllib.request.urlopen(req, timeout=timeout)
+    return _web_open(req, timeout=timeout)
 
 
 def doctor():
     import socket
     import ssl
     from email.utils import parsedate_to_datetime
+
     findings = []
 
     # 1. How this box updates.
@@ -2130,41 +3616,116 @@ def doctor():
         opts = _install_options()
         repo, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
         if repo:
-            findings.append(finding("options", title, "ok", M("update.options.ok", "Updates come from the branch {branch} of {repo}.",
-                                                              branch=branch, repo=repo)))
+            findings.append(
+                finding(
+                    "options",
+                    title,
+                    "ok",
+                    M(
+                        "update.options.ok",
+                        "Updates come from the branch {branch} of {repo}.",
+                        branch=branch,
+                        repo=repo,
+                    ),
+                )
+            )
         else:
-            findings.append(finding("options", title, "problem", NO_REPO, evidence=[ETC / "install-options"]))
+            findings.append(
+                finding(
+                    "options",
+                    title,
+                    "problem",
+                    NO_REPO,
+                    evidence=[ETC / "install-options"],
+                )
+            )
     except ValueError:
         opts, repo, branch = [], None, "main"
-        findings.append(finding("options", title, "problem",
-                                M("update.options.none", "The box has no record of where its updates come from."),
-                                M("update.options.none.why", "This box was installed before updates from the administration pages existed. "
-                                                             "A check for updates cannot start without the record."),
-                                M("update.options.none.fix", "Run the installer once by hand. It records the install options."),
-                                evidence=[ETC / "install-options"]))
+        findings.append(
+            finding(
+                "options",
+                title,
+                "problem",
+                M(
+                    "update.options.none",
+                    "The box has no record of where its updates come from.",
+                ),
+                M(
+                    "update.options.none.why",
+                    "This box was installed before updates from the administration pages existed. "
+                    "A check for updates cannot start without the record.",
+                ),
+                M(
+                    "update.options.none.fix",
+                    "Run the installer once by hand. It records the install options.",
+                ),
+                evidence=[ETC / "install-options"],
+            )
+        )
 
     # 2. Names: on the hub's own access point every name resolves to the box itself.
     host = "github.com"
     title = M("update.dns.title", "Name lookup (DNS)")
     try:
-        addrs = {a[4][0] for a in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)}
+        addrs = {
+            a[4][0] for a in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+        }
         mine = addrs & (_local_addresses() | {"127.0.0.1", "::1"})
         if mine:
-            findings.append(finding("dns", title, "problem",
-                                    M("update.dns.self", "The DNS lookup of {host} failed. The name leads to this box itself.", host=host),
-                                    M("update.dns.self.why", "In hotspot mode, the box answers every name lookup itself."),
-                                    M("update.dns.self.fix", "Connect the box to a network with internet access. "
-                                                             "Or update from a laptop that has internet access."),
-                                    evidence=sorted(mine), go=GO_NETWORK))
+            findings.append(
+                finding(
+                    "dns",
+                    title,
+                    "problem",
+                    M(
+                        "update.dns.self",
+                        "The DNS lookup of {host} failed. The name leads to this box itself.",
+                        host=host,
+                    ),
+                    M(
+                        "update.dns.self.why",
+                        "In hotspot mode, the box answers every name lookup itself.",
+                    ),
+                    M(
+                        "update.dns.self.fix",
+                        "Connect the box to a network with internet access. "
+                        "Or update from a laptop that has internet access.",
+                    ),
+                    evidence=sorted(mine),
+                    go=GO_NETWORK,
+                )
+            )
         else:
-            findings.append(finding("dns", title, "ok", M("update.dns.ok", "The name {host} resolves.", host=host),
-                                    evidence=sorted(addrs)[:3]))
+            findings.append(
+                finding(
+                    "dns",
+                    title,
+                    "ok",
+                    M("update.dns.ok", "The name {host} resolves.", host=host),
+                    evidence=sorted(addrs)[:3],
+                )
+            )
     except OSError as exc:
         addrs = set()
-        findings.append(finding("dns", title, "problem", M("update.dns.failed", "The DNS lookup of {host} failed.", host=host),
-                                M("update.dns.failed.why", "Without names, the box cannot reach the repository or the package sources."),
-                                M("update.dns.failed.fix", "Check the network that the box uses: Ethernet, or the WiFi network that it joined."),
-                                notes=[PROBE_NOTE], evidence=[exc], go=GO_NETWORK))
+        findings.append(
+            finding(
+                "dns",
+                title,
+                "problem",
+                M("update.dns.failed", "The DNS lookup of {host} failed.", host=host),
+                M(
+                    "update.dns.failed.why",
+                    "Without names, the box cannot reach the repository or the package sources.",
+                ),
+                M(
+                    "update.dns.failed.fix",
+                    "Check the network that the box uses: Ethernet, or the WiFi network that it joined.",
+                ),
+                notes=[PROBE_NOTE],
+                evidence=[exc],
+                go=GO_NETWORK,
+            )
+        )
 
     # 3. A route out.
     reachable = False
@@ -2173,13 +3734,35 @@ def doctor():
         try:
             with socket.create_connection((host, 443), timeout=8):
                 reachable = True
-            findings.append(finding("connection", title, "ok", M("update.connection.ok", "{host} answers on port 443.", host=host)))
+            findings.append(
+                finding(
+                    "connection",
+                    title,
+                    "ok",
+                    M("update.connection.ok", "{host} answers on port 443.", host=host),
+                )
+            )
         except OSError as exc:
-            findings.append(finding("connection", title, "problem",
-                                    M("update.connection.failed", "The HTTPS connection to {host} failed.", host=host),
-                                    fix=M("update.connection.failed.fix", "Check that the network has internet access and lets HTTPS through. "
-                                                                          "If it does, try another network."),
-                                    notes=[PROBE_NOTE], evidence=[exc], go=GO_NETWORK))
+            findings.append(
+                finding(
+                    "connection",
+                    title,
+                    "problem",
+                    M(
+                        "update.connection.failed",
+                        "The HTTPS connection to {host} failed.",
+                        host=host,
+                    ),
+                    fix=M(
+                        "update.connection.failed.fix",
+                        "Check that the network has internet access and lets HTTPS through. "
+                        "If it does, try another network.",
+                    ),
+                    notes=[PROBE_NOTE],
+                    evidence=[exc],
+                    go=GO_NETWORK,
+                )
+            )
 
     # 4. TLS, and the clock it depends on. A board with no RTC can boot years in the past,
     #    and then every certificate looks not-yet-valid.
@@ -2200,28 +3783,110 @@ def doctor():
             skew = now - server
             if abs(skew) > 600:
                 gap = duration(round(abs(skew)))
-                findings.append(finding("clock", clock, "problem",
-                                        M("update.clock.ahead", "The box's clock is {gap} ahead of {host}.", gap=gap, host=host) if skew > 0 else
-                                        M("update.clock.behind", "The box's clock is {gap} behind {host}.", gap=gap, host=host),
-                                        CLOCK_WHY, CLOCK_FIX, commands=[CLOCK_SET], go=GO_CLOCK))
+                findings.append(
+                    finding(
+                        "clock",
+                        clock,
+                        "problem",
+                        (
+                            M(
+                                "update.clock.ahead",
+                                "The box's clock is {gap} ahead of {host}.",
+                                gap=gap,
+                                host=host,
+                            )
+                            if skew > 0
+                            else M(
+                                "update.clock.behind",
+                                "The box's clock is {gap} behind {host}.",
+                                gap=gap,
+                                host=host,
+                            )
+                        ),
+                        CLOCK_WHY,
+                        CLOCK_FIX,
+                        commands=[CLOCK_SET],
+                        go=GO_CLOCK,
+                    )
+                )
             else:
-                findings.append(finding("clock", clock, "ok", M("update.clock.ok", "The clock is within {gap} of {host}.",
-                                                                gap=duration(round(abs(skew))), host=host)))
-            findings.append(finding("tls", tls, "ok", M("update.tls.ok", "The certificate of {url} is valid.", url=url)))
+                findings.append(
+                    finding(
+                        "clock",
+                        clock,
+                        "ok",
+                        M(
+                            "update.clock.ok",
+                            "The clock is within {gap} of {host}.",
+                            gap=duration(round(abs(skew))),
+                            host=host,
+                        ),
+                    )
+                )
+            findings.append(
+                finding(
+                    "tls",
+                    tls,
+                    "ok",
+                    M("update.tls.ok", "The certificate of {url} is valid.", url=url),
+                )
+            )
         except ssl.SSLError as exc:
-            findings.append(finding("tls", tls, "problem", M("update.tls.failed", "Certificate validation failed for {url}.", url=url),
-                                    fix=M("update.tls.failed.fix", "Check the clock first."),
-                                    notes=[M("update.tls.failed.causes", "Possible causes are a wrong clock, missing CA certificates, "
-                                                                         "or a network that intercepts HTTPS.")],
-                                    evidence=[exc], go=GO_CLOCK))
+            findings.append(
+                finding(
+                    "tls",
+                    tls,
+                    "problem",
+                    M(
+                        "update.tls.failed",
+                        "Certificate validation failed for {url}.",
+                        url=url,
+                    ),
+                    fix=M("update.tls.failed.fix", "Check the clock first."),
+                    notes=[
+                        M(
+                            "update.tls.failed.causes",
+                            "Possible causes are a wrong clock, missing CA certificates, "
+                            "or a network that intercepts HTTPS.",
+                        )
+                    ],
+                    evidence=[exc],
+                    go=GO_CLOCK,
+                )
+            )
         except (OSError, KeyError, TypeError, ValueError) as exc:
-            findings.append(finding("tls", tls, "problem", M("update.tls.error", "The HTTPS request to {url} failed.", url=url),
-                                    notes=[PROBE_NOTE], evidence=[exc], go=GO_CLOCK))
+            findings.append(
+                finding(
+                    "tls",
+                    tls,
+                    "problem",
+                    M(
+                        "update.tls.error",
+                        "The HTTPS request to {url} failed.",
+                        url=url,
+                    ),
+                    notes=[PROBE_NOTE],
+                    evidence=[exc],
+                    go=GO_CLOCK,
+                )
+            )
     if installed_on and now < installed_on - 86400:
-        findings.append(finding("clock-installed", clock, "problem",
-                                M("update.clock.before-install", "The clock says {date}. That is before the box was installed.",
-                                  date=time.strftime("%Y-%m-%d", time.gmtime(now))),
-                                CLOCK_WHY, CLOCK_FIX, commands=[CLOCK_SET], go=GO_CLOCK))
+        findings.append(
+            finding(
+                "clock-installed",
+                clock,
+                "problem",
+                M(
+                    "update.clock.before-install",
+                    "The clock says {date}. That is before the box was installed.",
+                    date=time.strftime("%Y-%m-%d", time.gmtime(now)),
+                ),
+                CLOCK_WHY,
+                CLOCK_FIX,
+                commands=[CLOCK_SET],
+                go=GO_CLOCK,
+            )
+        )
 
     # 5. GitHub's API, which the librarian and Caddy's release lookup use.
     title = M("update.github-api.title", "GitHub API")
@@ -2231,114 +3896,353 @@ def doctor():
                 core = json.load(resp)["resources"]["core"]
             if core["remaining"] == 0:
                 wait = round(max(0, core["reset"] - now) / 60)
-                findings.append(finding("github-api", title, "problem",
-                                        M("update.github-api.used-up", "The GitHub API rate limit is used up. "
-                                                                       "Without a token, the limit is 60 requests an hour."),
-                                        M("update.github-api.why", "The librarian and the lookup of Caddy's latest release use the GitHub API."),
-                                        M("update.github-api.used-up.fix", {"one": "Wait about {n} minute. Or enter a GitHub token on "
-                                                                                   "The librarian → Source access.",
-                                                                            "other": "Wait about {n} minutes. Or enter a GitHub token on "
-                                                                                     "The librarian → Source access."}, n=wait),
-                                        go=GO_TOKEN))
+                findings.append(
+                    finding(
+                        "github-api",
+                        title,
+                        "problem",
+                        M(
+                            "update.github-api.used-up",
+                            "The GitHub API rate limit is used up. "
+                            "Without a token, the limit is 60 requests an hour.",
+                        ),
+                        M(
+                            "update.github-api.why",
+                            "The librarian and the lookup of Caddy's latest release use the GitHub API.",
+                        ),
+                        M(
+                            "update.github-api.used-up.fix",
+                            {
+                                "one": "Wait about {n} minute. Or enter a GitHub token on "
+                                "The librarian → Source access.",
+                                "other": "Wait about {n} minutes. Or enter a GitHub token on "
+                                "The librarian → Source access.",
+                            },
+                            n=wait,
+                        ),
+                        go=GO_TOKEN,
+                    )
+                )
             else:
-                findings.append(finding("github-api", title, "ok", M("update.github-api.ok", "{left} of {limit} requests are left this hour.",
-                                                                     left=core["remaining"], limit=core["limit"])))
+                findings.append(
+                    finding(
+                        "github-api",
+                        title,
+                        "ok",
+                        M(
+                            "update.github-api.ok",
+                            "{left} of {limit} requests are left this hour.",
+                            left=core["remaining"],
+                            limit=core["limit"],
+                        ),
+                    )
+                )
         except (OSError, ValueError, KeyError) as exc:
-            findings.append(finding("github-api", title, "warn", M("update.github-api.failed", "The box could not ask GitHub for its rate limit."),
-                                    notes=[PROBE_NOTE], evidence=[exc], go=GO_TOKEN))
+            findings.append(
+                finding(
+                    "github-api",
+                    title,
+                    "warn",
+                    M(
+                        "update.github-api.failed",
+                        "The box could not ask GitHub for its rate limit.",
+                    ),
+                    notes=[PROBE_NOTE],
+                    evidence=[exc],
+                    go=GO_TOKEN,
+                )
+            )
 
     # 6. The repository and branch exist and answer.
     title = M("update.repo.title", "Repository")
     if repo and reachable:
         out = run("git", "ls-remote", "--heads", repo, branch, timeout=60)
         if out.returncode != 0:
-            findings.append(finding("repo", title, "problem", M("update.repo.failed", "The box could not read the repository {repo}.", repo=repo),
-                                    fix=M("update.repo.failed.fix", "Check that the repository exists and that the box can read it without a sign-in."),
-                                    notes=[PROBE_NOTE], evidence=(out.stderr.strip().splitlines() or ["git ls-remote failed"])[-1:]))
+            findings.append(
+                finding(
+                    "repo",
+                    title,
+                    "problem",
+                    M(
+                        "update.repo.failed",
+                        "The box could not read the repository {repo}.",
+                        repo=repo,
+                    ),
+                    fix=M(
+                        "update.repo.failed.fix",
+                        "Check that the repository exists and that the box can read it without a sign-in.",
+                    ),
+                    notes=[PROBE_NOTE],
+                    evidence=(
+                        out.stderr.strip().splitlines() or ["git ls-remote failed"]
+                    )[-1:],
+                )
+            )
         elif not out.stdout.strip():
             # The branch is not there now: renamed, removed, or never there. The doctor cannot tell which.
-            findings.append(finding("repo", title, "problem",
-                                    M("update.repo.no-branch", "Branch not found. The repository {repo} has no branch named {branch}.",
-                                      repo=repo, branch=branch),
-                                    fix=M("update.repo.no-branch.fix", "Check the branch name. To change it, run the installer again "
-                                                                       "with the option --branch and the correct name.")))
+            findings.append(
+                finding(
+                    "repo",
+                    title,
+                    "problem",
+                    M(
+                        "update.repo.no-branch",
+                        "Branch not found. The repository {repo} has no branch named {branch}.",
+                        repo=repo,
+                        branch=branch,
+                    ),
+                    fix=M(
+                        "update.repo.no-branch.fix",
+                        "Check the branch name. To change it, run the installer again "
+                        "with the option --branch and the correct name.",
+                    ),
+                )
+            )
         else:
-            findings.append(finding("repo", title, "ok", M("update.repo.ok", "The branch {branch} is at {commit}.",
-                                                           branch=branch, commit=out.stdout.split()[0][:7])))
+            findings.append(
+                finding(
+                    "repo",
+                    title,
+                    "ok",
+                    M(
+                        "update.repo.ok",
+                        "The branch {branch} is at {commit}.",
+                        branch=branch,
+                        commit=out.stdout.split()[0][:7],
+                    ),
+                )
+            )
 
     # 7. Space for the clone, downloads and the install.
-    for fid, title, path, need in (("space:cache", M("update.space.cache.title", "Space for the update cache"), UPDATE_SRC.parent, 200),
-                                   ("space:system", M("update.space.system.title", "Space on the system card"), Path("/"), 300)):
+    for fid, title, path, need in (
+        (
+            "space:cache",
+            M("update.space.cache.title", "Space for the update cache"),
+            UPDATE_SRC.parent,
+            200,
+        ),
+        (
+            "space:system",
+            M("update.space.system.title", "Space on the system card"),
+            Path("/"),
+            300,
+        ),
+    ):
         path = path if path.exists() else path.parent
         free = shutil.disk_usage(path).free >> 20
         if free >= need:
-            findings.append(finding(fid, title, "ok", M("update.space.ok", "{mb} MB is free.", mb=free), evidence=[path]))
+            findings.append(
+                finding(
+                    fid,
+                    title,
+                    "ok",
+                    M("update.space.ok", "{mb} MB is free.", mb=free),
+                    evidence=[path],
+                )
+            )
         else:
-            findings.append(finding(fid, title, "problem",
-                                    M("update.space.low", "Insufficient free storage. Only {mb} MB is free, and an update needs {need} MB.",
-                                      mb=free, need=need),
-                                    fix=M("update.space.low.fix", "Delete what is no longer needed, for example old books on Books."),
-                                    evidence=[path], go=GO_BOOKS))
+            findings.append(
+                finding(
+                    fid,
+                    title,
+                    "problem",
+                    M(
+                        "update.space.low",
+                        "Insufficient free storage. Only {mb} MB is free, and an update needs {need} MB.",
+                        mb=free,
+                        need=need,
+                    ),
+                    fix=M(
+                        "update.space.low.fix",
+                        "Delete what is no longer needed, for example old books on Books.",
+                    ),
+                    evidence=[path],
+                    go=GO_BOOKS,
+                )
+            )
 
     # 8. The cached clone.
     title = M("update.cache.title", "Update cache")
     if (UPDATE_SRC / ".git").is_dir():
         locks = [p.name for p in (UPDATE_SRC / ".git").glob("*.lock")]
         if locks:
-            findings.append(finding("cache", title, "problem",
-                                    M("update.cache.lock", {"one": "Stale cache lock. The update cache has {n} lock file that a git command left.",
-                                                            "other": "Stale cache lock. The update cache has {n} lock files that git commands left."},
-                                      n=len(locks)),
-                                    M("update.cache.lock.why", "Git cannot work in the cache while a lock file is there."),
-                                    CACHE_CLEAR, evidence=locks, go=GO_MAINT))
+            findings.append(
+                finding(
+                    "cache",
+                    title,
+                    "problem",
+                    M(
+                        "update.cache.lock",
+                        {
+                            "one": "Stale cache lock. The update cache has {n} lock file that a git command left.",
+                            "other": "Stale cache lock. The update cache has {n} lock files that git commands left.",
+                        },
+                        n=len(locks),
+                    ),
+                    M(
+                        "update.cache.lock.why",
+                        "Git cannot work in the cache while a lock file is there.",
+                    ),
+                    CACHE_CLEAR,
+                    evidence=locks,
+                    go=GO_MAINT,
+                )
+            )
         else:
-            status = run("git", "-C", str(UPDATE_SRC), "status", "--porcelain", timeout=60)
-            remote = run("git", "-C", str(UPDATE_SRC), "remote", "get-url", "origin").stdout.strip()
+            status = run(
+                "git", "-C", str(UPDATE_SRC), "status", "--porcelain", timeout=60
+            )
+            remote = run(
+                "git", "-C", str(UPDATE_SRC), "remote", "get-url", "origin"
+            ).stdout.strip()
             if status.returncode != 0:
-                findings.append(finding("cache", title, "problem", M("update.cache.damaged", "The cached copy of the repository is damaged."),
-                                        fix=CACHE_CLEAR, evidence=(status.stderr.strip().splitlines() or [])[-1:], go=GO_MAINT))
+                findings.append(
+                    finding(
+                        "cache",
+                        title,
+                        "problem",
+                        M(
+                            "update.cache.damaged",
+                            "The cached copy of the repository is damaged.",
+                        ),
+                        fix=CACHE_CLEAR,
+                        evidence=(status.stderr.strip().splitlines() or [])[-1:],
+                        go=GO_MAINT,
+                    )
+                )
             elif repo and remote != repo:
-                findings.append(finding("cache", title, "warn",
-                                        M("update.cache.other-repo", "The cache was copied from {remote}, not from {repo}.", remote=remote, repo=repo),
-                                        notes=[M("update.cache.other-repo.note", "The next check for updates switches the cache to {repo}.", repo=repo)],
-                                        go=GO_MAINT))
+                findings.append(
+                    finding(
+                        "cache",
+                        title,
+                        "warn",
+                        M(
+                            "update.cache.other-repo",
+                            "The cache was copied from {remote}, not from {repo}.",
+                            remote=remote,
+                            repo=repo,
+                        ),
+                        notes=[
+                            M(
+                                "update.cache.other-repo.note",
+                                "The next check for updates switches the cache to {repo}.",
+                                repo=repo,
+                            )
+                        ],
+                        go=GO_MAINT,
+                    )
+                )
             else:
-                findings.append(finding("cache", title, "ok", M("update.cache.ok", "The cached copy of the repository is intact.")))
+                findings.append(
+                    finding(
+                        "cache",
+                        title,
+                        "ok",
+                        M(
+                            "update.cache.ok",
+                            "The cached copy of the repository is intact.",
+                        ),
+                    )
+                )
     else:
-        findings.append(finding("cache", title, "ok", M("update.cache.empty", "The cache is empty. The next check downloads the repository again.")))
+        findings.append(
+            finding(
+                "cache",
+                title,
+                "ok",
+                M(
+                    "update.cache.empty",
+                    "The cache is empty. The next check downloads the repository again.",
+                ),
+            )
+        )
 
     # 9. Package sources: a repository that fails verification fails every apt-get update.
     title = M("update.sources.title", "Package sources")
     out = run("apt-get", "update", "-q", timeout=300)
     text = out.stdout + out.stderr
     if out.returncode == 0 and not re.search(r"^(E|Err):", text, re.M):
-        findings.append(finding("sources", title, "ok", M("update.sources.ok", "The package lists refresh without errors.")))
+        findings.append(
+            finding(
+                "sources",
+                title,
+                "ok",
+                M("update.sources.ok", "The package lists refresh without errors."),
+            )
+        )
     else:
         # Which sources fail, so that the file named is the one that fails: a command finds its list file.
         bad = sorted(set(re.findall(r"(?:Err|E|W):\S*\s+(https?://\S+)", text)))
         hosts = sorted({re.sub(r"^https?://([^/]+).*", r"\1", u) for u in bad})
-        lines = [l for l in text.splitlines() if re.match(r"^(E|Err|W):", l)][:3]
-        findings.append(finding("sources", title, "problem",
-                                M("update.sources.failed", "The package-index refresh failed."),
-                                M("update.sources.failed.why", "A package source that fails verification blocks every package update."),
-                                M("update.sources.failed.fix", "Find the list file of the failing source with the command. "
-                                                               "Copy that file to a safe place. Then remove it, and run the doctor again.")
-                                if hosts else None,
-                                notes=[M("update.sources.caddy", "The installer repairs the Caddy package source itself.")],
-                                commands=[f"grep -rlF {shlex.quote(h)} /etc/apt/sources.list /etc/apt/sources.list.d/" for h in hosts[:2]],
-                                evidence=[*bad[:3], *[l[:200] for l in lines]] or ["apt-get update failed"]))
+        lines = [line for line in text.splitlines() if re.match(r"^(E|Err|W):", line)][
+            :3
+        ]
+        findings.append(
+            finding(
+                "sources",
+                title,
+                "problem",
+                M("update.sources.failed", "The package-index refresh failed."),
+                M(
+                    "update.sources.failed.why",
+                    "A package source that fails verification blocks every package update.",
+                ),
+                (
+                    M(
+                        "update.sources.failed.fix",
+                        "Find the list file of the failing source with the command. "
+                        "Copy that file to a safe place. Then remove it, and run the doctor again.",
+                    )
+                    if hosts
+                    else None
+                ),
+                notes=[
+                    M(
+                        "update.sources.caddy",
+                        "The installer repairs the Caddy package source itself.",
+                    )
+                ],
+                commands=[
+                    f"grep -rlF {shlex.quote(h)} /etc/apt/sources.list /etc/apt/sources.list.d/"
+                    for h in hosts[:2]
+                ],
+                evidence=[*bad[:3], *[line[:200] for line in lines]]
+                or ["apt-get update failed"],
+            )
+        )
 
     # 10. The last fetch, as the page last saw it.
     try:
         last = json.loads(UPDATE_STATE.read_text())
-        failed = [c for c in last.get("checks", []) if not c.get("ok") and not c.get("warn")]
+        failed = [
+            c for c in last.get("checks", []) if not c.get("ok") and not c.get("warn")
+        ]
         if failed:
-            findings.append(finding("last-check", M("update.last-check.title", "Last update check"), "problem",
-                                    M("update.last-check.failed", {"one": "The downloaded version failed {n} check.",
-                                                                   "other": "The downloaded version failed {n} checks."}, n=len(failed)),
-                                    fix=M("update.last-check.fix", "Repair the cause. Then check for updates again."),
-                                    notes=[*(_said_check(c) for c in failed), *(c["fix"] for c in failed if is_message(c.get("fix")))],
-                                    evidence=[e for c in failed for e in c.get("evidence", [])][:6], go=GO_UPDATES))
+            findings.append(
+                finding(
+                    "last-check",
+                    M("update.last-check.title", "Last update check"),
+                    "problem",
+                    M(
+                        "update.last-check.failed",
+                        {
+                            "one": "The downloaded version failed {n} check.",
+                            "other": "The downloaded version failed {n} checks.",
+                        },
+                        n=len(failed),
+                    ),
+                    fix=M(
+                        "update.last-check.fix",
+                        "Repair the cause. Then check for updates again.",
+                    ),
+                    notes=[
+                        *(_said_check(c) for c in failed),
+                        *(c["fix"] for c in failed if is_message(c.get("fix"))),
+                    ],
+                    evidence=[e for c in failed for e in c.get("evidence", [])][:6],
+                    go=GO_UPDATES,
+                )
+            )
     except (OSError, ValueError, AttributeError):
         pass
     findings += scheduled_findings()
@@ -2350,51 +4254,125 @@ def _said_check(c):
     """A failed check as the doctor says it: its own sentence (with its fix) now, or its name and words in a state
     kept from before the checks were messages."""
     if is_message(c.get("detail")):
-        return M("update.last-check.item", "{check}: {detail}", check=c["name"], detail=c["detail"])
+        return M(
+            "update.last-check.item",
+            "{check}: {detail}",
+            check=c["name"],
+            detail=c["detail"],
+        )
     return f"{c.get('name', '')}: {c.get('detail', '')}"
 
 
 def scheduled_findings(now=None):
     """Whether the timer's runs actually reach the hub's own update (library/last-run.json, kept
-    by the librarian): a check that the box *can* update says nothing about whether it *does*."""
+    by the librarian): a check that the box *can* update says nothing about whether it *does*.
+    """
     now = now or time.time()
     title = M("update.scheduled.title", "Scheduled updates")
     log_fix = M("update.scheduled.log.fix", "Read the librarian's log.")
     try:
         rec = json.loads((STATE / "library" / "last-run.json").read_text())
     except (OSError, ValueError):
-        return [finding("scheduled", title, "warn", M("update.scheduled.none", "No scheduled run is recorded yet."),
-                        fix=M("update.scheduled.none.fix", "If this stays, read the librarian's log."),
-                        notes=[M("update.scheduled.none.note", "The librarian runs every hour.")],
-                        commands=[LIBRARIAN_LOG], go=GO_LIBRARIAN)]
+        return [
+            finding(
+                "scheduled",
+                title,
+                "warn",
+                M("update.scheduled.none", "No scheduled run is recorded yet."),
+                fix=M(
+                    "update.scheduled.none.fix",
+                    "If this stays, read the librarian's log.",
+                ),
+                notes=[
+                    M("update.scheduled.none.note", "The librarian runs every hour.")
+                ],
+                commands=[LIBRARIAN_LOG],
+                go=GO_LIBRARIAN,
+            )
+        ]
     out = []
     last = rec.get("last_scheduled") or {}
     started = when(last.get("started") or 0)
     if last and last.get("finished") is None:
         pass  # running now
     elif last and last.get("error"):
-        out.append(finding("scheduled", title, "problem",
-                           M("update.scheduled.crashed", "Scheduled run failed. The run of {time} stopped with an error.", time=started),
-                           M("update.scheduled.crashed.why", "Until the cause is repaired, the steps after the error do not run: books, "
-                                                             "toolkits and the update of the hub server."),
-                           log_fix, commands=[LIBRARIAN_LOG],
-                           evidence=[last["error"], *([last["where"]] if last.get("where") else [])], go=GO_LIBRARIAN))
+        out.append(
+            finding(
+                "scheduled",
+                title,
+                "problem",
+                M(
+                    "update.scheduled.crashed",
+                    "Scheduled run failed. The run of {time} stopped with an error.",
+                    time=started,
+                ),
+                M(
+                    "update.scheduled.crashed.why",
+                    "Until the cause is repaired, the steps after the error do not run: books, "
+                    "toolkits and the update of the hub server.",
+                ),
+                log_fix,
+                commands=[LIBRARIAN_LOG],
+                evidence=[
+                    last["error"],
+                    *([last["where"]] if last.get("where") else []),
+                ],
+                go=GO_LIBRARIAN,
+            )
+        )
     hub_at = rec.get("hub_stage_at")
     if not hub_at or now - hub_at > 3 * 3600:
-        out.append(finding("scheduled-stage", title, "problem",
-                           M("update.scheduled.stage.since", "Update stage not reached. Scheduled runs have not reached the update of "
-                                                             "the hub server since {time}.", time=when(hub_at)) if hub_at else
-                           M("update.scheduled.stage.never", "Update stage not reached. Scheduled runs have not reached the update of "
-                                                             "the hub server yet."),
-                           fix=log_fix, commands=[LIBRARIAN_LOG], go=GO_LIBRARIAN))
+        out.append(
+            finding(
+                "scheduled-stage",
+                title,
+                "problem",
+                (
+                    M(
+                        "update.scheduled.stage.since",
+                        "Update stage not reached. Scheduled runs have not reached the update of "
+                        "the hub server since {time}.",
+                        time=when(hub_at),
+                    )
+                    if hub_at
+                    else M(
+                        "update.scheduled.stage.never",
+                        "Update stage not reached. Scheduled runs have not reached the update of "
+                        "the hub server yet.",
+                    )
+                ),
+                fix=log_fix,
+                commands=[LIBRARIAN_LOG],
+                go=GO_LIBRARIAN,
+            )
+        )
     if not out:
         errors = last.get("errors", [])[:3] if not last.get("ok") else []
-        out.append(finding("scheduled", title, "ok",
-                           M("update.scheduled.ok", "The scheduled run of {time} finished and reached the update of the hub server.",
-                             time=started) if last else
-                           M("update.scheduled.ok-reached", "Scheduled runs reach the update of the hub server."),
-                           notes=[M("update.scheduled.ok.errors", "Some sources had errors.")] if errors else [],
-                           evidence=errors))
+        out.append(
+            finding(
+                "scheduled",
+                title,
+                "ok",
+                (
+                    M(
+                        "update.scheduled.ok",
+                        "The scheduled run of {time} finished and reached the update of the hub server.",
+                        time=started,
+                    )
+                    if last
+                    else M(
+                        "update.scheduled.ok-reached",
+                        "Scheduled runs reach the update of the hub server.",
+                    )
+                ),
+                notes=(
+                    [M("update.scheduled.ok.errors", "Some sources had errors.")]
+                    if errors
+                    else []
+                ),
+                evidence=errors,
+            )
+        )
     return out
 
 
@@ -2406,83 +4384,202 @@ def kits_findings(now=None):
     title = M("update.kits-cache.title", "Toolkit cache")
     problems = kits.verify()
     if problems:
-        out.append(finding("kits-cache", title, "problem",
-                           M("update.kits-cache.failed", "The toolkit cache failed its integrity check."),
-                           M("update.kits-cache.failed.why", "The box installs nothing from a cache that fails this check."),
-                           M("update.kits-cache.failed.fix", "On Toolkits, select Refresh cache for the toolkit while the box has internet access."),
-                           evidence=problems[:5], go=GO_TOOLKITS))
+        out.append(
+            finding(
+                "kits-cache",
+                title,
+                "problem",
+                M(
+                    "update.kits-cache.failed",
+                    "The toolkit cache failed its integrity check.",
+                ),
+                M(
+                    "update.kits-cache.failed.why",
+                    "The box installs nothing from a cache that fails this check.",
+                ),
+                M(
+                    "update.kits-cache.failed.fix",
+                    "On Toolkits, select Refresh cache for the toolkit while the box has internet access.",
+                ),
+                evidence=problems[:5],
+                go=GO_TOOLKITS,
+            )
+        )
     elif kits.MANIFESTS.is_dir() and any(kits.MANIFESTS.glob("*.json")):
-        out.append(finding("kits-cache", title, "ok",
-                           M("update.kits-cache.ok", "Cached files verified. Every file in the toolkit cache matches its manifest. "
-                                                     "The cache uses {mb} MB.", mb=kits.pool_bytes() >> 20)))
+        out.append(
+            finding(
+                "kits-cache",
+                title,
+                "ok",
+                M(
+                    "update.kits-cache.ok",
+                    "Cached files verified. Every file in the toolkit cache matches its manifest. "
+                    "The cache uses {mb} MB.",
+                    mb=kits.pool_bytes() >> 20,
+                ),
+            )
+        )
     try:
-        budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
+        budget = int(
+            json.loads((STATE / "library" / "toolkits.json").read_text()).get(
+                "budget_mb", 500
+            )
+        )
     except (OSError, ValueError, TypeError, AttributeError):
         budget = 500
     if kits.pool_bytes() > budget << 20:
-        out.append(finding("kits-limit", M("update.kits-limit.title", "Toolkit cache storage limit"), "warn",
-                           M("update.kits-limit.over", "Toolkit cache storage limit exceeded. The cache uses {mb} MB, and its limit is {limit} MB.",
-                             mb=kits.pool_bytes() >> 20, limit=budget),
-                           fix=M("update.kits-limit.fix", "Increase the cache storage limit on Toolkits. Or stop keeping a toolkit up to date."),
-                           go=GO_TOOLKITS))
+        out.append(
+            finding(
+                "kits-limit",
+                M("update.kits-limit.title", "Toolkit cache storage limit"),
+                "warn",
+                M(
+                    "update.kits-limit.over",
+                    "Toolkit cache storage limit exceeded. The cache uses {mb} MB, and its limit is {limit} MB.",
+                    mb=kits.pool_bytes() >> 20,
+                    limit=budget,
+                ),
+                fix=M(
+                    "update.kits-limit.fix",
+                    "Increase the cache storage limit on Toolkits. Or stop keeping a toolkit up to date.",
+                ),
+                go=GO_TOOLKITS,
+            )
+        )
     # Kits kept up to date (the security kit: from outside the box's control), and their data, by when the box
     # downloaded them: a warning after a week, a problem after a month.
     age_title = M("update.kits-age.title", "Vulnerability data age")
-    age_fix = M("update.kits-age.fix", "Connect the box to the internet. The librarian downloads new data every day.")
+    age_fix = M(
+        "update.kits-age.fix",
+        "Connect the box to the internet. The librarian downloads new data every day.",
+    )
 
     def age(fid, at, said):
         days = (now - at) / 86400
         if days > 7:
-            out.append(finding(fid, age_title, "problem" if days > 30 else "warn", said(int(days)), fix=age_fix, go=GO_TOOLKITS))
+            out.append(
+                finding(
+                    fid,
+                    age_title,
+                    "problem" if days > 30 else "warn",
+                    said(int(days)),
+                    fix=age_fix,
+                    go=GO_TOOLKITS,
+                )
+            )
 
     for kid, k in kits.definitions().items():
         man = kits.manifest(kid)
         if k.get("refresh_hours") and man:
-            age(f"kits-age:{kid}", man["fetched"], lambda n, kid=kid, at=man["fetched"]: M(
-                "update.kits-age.kit", {"one": "The box downloaded the cache of the {kit} toolkit on {time}, {n} day ago.",
-                                        "other": "The box downloaded the cache of the {kit} toolkit on {time}, {n} days ago."},
-                kit=kid, time=when(at), n=n))
+            age(
+                f"kits-age:{kid}",
+                man["fetched"],
+                lambda n, kid=kid, at=man["fetched"]: M(
+                    "update.kits-age.kit",
+                    {
+                        "one": "The box downloaded the cache of the {kit} toolkit on {time}, {n} day ago.",
+                        "other": "The box downloaded the cache of the {kit} toolkit on {time}, {n} days ago.",
+                    },
+                    kit=kid,
+                    time=when(at),
+                    n=n,
+                ),
+            )
         if "debsecan" in k.get("feeds", []) and man:
             try:
-                codename = next(l.split("=", 1)[1].strip().strip('"') for l in open("/etc/os-release") if l.startswith("VERSION_CODENAME="))
+                codename = next(
+                    line.split("=", 1)[1].strip().strip('"')
+                    for line in open("/etc/os-release")
+                    if line.startswith("VERSION_CODENAME=")
+                )
                 feed = STATE / "library" / "debsecan" / "release" / "1" / codename
                 if feed.is_file():
                     at = feed.stat().st_mtime
-                    age("kits-age:debsecan", at, lambda n, at=at: M(
-                        "update.kits-age.debsecan", {"one": "The box downloaded debsecan's data from Debian's security tracker on {time}, "
-                                                            "{n} day ago.",
-                                                     "other": "The box downloaded debsecan's data from Debian's security tracker on {time}, "
-                                                              "{n} days ago."}, time=when(at), n=n))
+                    age(
+                        "kits-age:debsecan",
+                        at,
+                        lambda n, at=at: M(
+                            "update.kits-age.debsecan",
+                            {
+                                "one": "The box downloaded debsecan's data from Debian's security tracker on {time}, "
+                                "{n} day ago.",
+                                "other": "The box downloaded debsecan's data from Debian's security tracker on {time}, "
+                                "{n} days ago.",
+                            },
+                            time=when(at),
+                            n=n,
+                        ),
+                    )
             except (OSError, StopIteration):
                 pass
     title = M("update.kits-installed.title", "Installed toolkits")
     for kit, v in kits.installed_state().items():
         days = (now - v.get("at", now)) / 86400
         if kit == "debug" and days > 7:
-            out.append(finding(f"kits-installed:{kit}", title, "warn",
-                               M("update.kits-installed.debug", {"one": "The debug toolkit has been installed for {n} day.",
-                                                                 "other": "The debug toolkit has been installed for {n} days."}, n=int(days)),
-                               M("update.kits-installed.debug.why", "Run as root, its tools can read the memory of processes and the "
-                                                                    "network traffic on this box."),
-                               M("update.kits-installed.debug.fix", "On Toolkits, select Remove toolkit."), go=GO_TOOLKITS))
+            out.append(
+                finding(
+                    f"kits-installed:{kit}",
+                    title,
+                    "warn",
+                    M(
+                        "update.kits-installed.debug",
+                        {
+                            "one": "The debug toolkit has been installed for {n} day.",
+                            "other": "The debug toolkit has been installed for {n} days.",
+                        },
+                        n=int(days),
+                    ),
+                    M(
+                        "update.kits-installed.debug.why",
+                        "Run as root, its tools can read the memory of processes and the "
+                        "network traffic on this box.",
+                    ),
+                    M(
+                        "update.kits-installed.debug.fix",
+                        "On Toolkits, select Remove toolkit.",
+                    ),
+                    go=GO_TOOLKITS,
+                )
+            )
         elif v.get("remove_at") is None and kit != "build":
-            out.append(finding(f"kits-installed:{kit}", title, "warn",
-                               M("update.kits-installed.no-removal", "Toolkit installed without removal time. The {kit} toolkit stays "
-                                                                     "installed until someone removes it.", kit=kit),
-                               fix=M("update.kits-installed.no-removal.fix", "On Toolkits, set a removal time, or select Remove toolkit."),
-                               go=GO_TOOLKITS))
+            out.append(
+                finding(
+                    f"kits-installed:{kit}",
+                    title,
+                    "warn",
+                    M(
+                        "update.kits-installed.no-removal",
+                        "Toolkit installed without removal time. The {kit} toolkit stays "
+                        "installed until someone removes it.",
+                        kit=kit,
+                    ),
+                    fix=M(
+                        "update.kits-installed.no-removal.fix",
+                        "On Toolkits, set a removal time, or select Remove toolkit.",
+                    ),
+                    go=GO_TOOLKITS,
+                )
+            )
     return out
 
 
 def update_doctor(req):
     findings = doctor()
-    safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2))
+    safeio.write(
+        DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2)
+    )
     problems = [f for f in findings if f["status"] == "problem"]
     if not problems:
         return M("update.doctor.none", "The update doctor found no problems.")
-    return M("update.doctor.problems", {"one": "The update doctor found {n} problem: {first}.",
-                                        "other": "The update doctor found {n} problems. The first is {first}."},
-             n=len(problems), first=problems[0]["title"])
+    return M(
+        "update.doctor.problems",
+        {
+            "one": "The update doctor found {n} problem: {first}.",
+            "other": "The update doctor found {n} problems. The first is {first}.",
+        },
+        n=len(problems),
+        first=problems[0]["title"],
+    )
 
 
 def update_clear_cache(req):
@@ -2491,10 +4588,14 @@ def update_clear_cache(req):
         if path.exists():
             shutil.rmtree(path)
     UPDATE_STATE.unlink(missing_ok=True)
-    return M("update.cache.cleared", "The update cache is cleared. The next check starts again from the beginning.")
+    return M(
+        "update.cache.cleared",
+        "The update cache is cleared. The next check starts again from the beginning.",
+    )
 
 
 # --- the security page -----------------------------------------------------------------
+
 
 def _write_security(data):
     safeio.write(SECURITY_STATE, json.dumps(data, indent=2))
@@ -2506,21 +4607,32 @@ def security_scan(req):
     bad = sum(1 for f in data["findings"] if f["status"] == "problem")
     look = sum(1 for f in data["findings"] if f["status"] == "warn")
     # "nothing to fix" with warnings reads as all clear: both counts, always.
-    return M("control.security.scanned", "The security scan is complete. Findings that require repair: {repair}. "
-             "Findings that require review: {review}.", repair=bad, review=look)
+    return M(
+        "control.security.scanned",
+        "The security scan is complete. Findings that require repair: {repair}. "
+        "Findings that require review: {review}.",
+        repair=bad,
+        review=look,
+    )
 
 
 def security_audit(req):
     report = secdoctor.audit()
     secdoctor.write_report(report, AUDIT_STATE)
     c = report["counts"]
-    return M("control.security.audited", "The Security doctor is complete. Findings that require repair: {repair}. "
-             "Findings that require review: {review}.", repair=c["problem"], review=c["warn"])
+    return M(
+        "control.security.audited",
+        "The Security doctor is complete. Findings that require repair: {repair}. "
+        "Findings that require review: {review}.",
+        repair=c["problem"],
+        review=c["warn"],
+    )
 
 
 def security_deep_audit(req):
     """debian-cis and Lynis (deepaudit.py), then the regular audit, so the report shows them."""
     from irate_box.root import deepaudit
+
     line = deepaudit.deep(log=lambda *_: None)
     security_audit(req)
     return line
@@ -2529,22 +4641,39 @@ def security_deep_audit(req):
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?", choice):
-        raise Refused(M("control.security.not-action", "This is not an action of the Security page."))
+        raise Refused(
+            M(
+                "control.security.not-action",
+                "This is not an action of the Security page.",
+            )
+        )
     # Only what root's own last scan offered: a forged request could otherwise switch off
     # any unit not on the protected list (a firewall, auditd, a getty). The scan is root's file,
     # read only if it still is; every fix ends with a new one, so the page's buttons stay valid.
     try:
-        offered = {a["choice"] for f in json.loads(safeio.read_own(SECURITY_STATE)).get("findings", [])
-                   for a in f.get("actions", [])}
+        offered = {
+            a["choice"]
+            for f in json.loads(safeio.read_own(SECURITY_STATE)).get("findings", [])
+            for a in f.get("actions", [])
+        }
     except (OSError, ValueError, KeyError, TypeError):
         offered = set()
     # The update pattern's chips and buttons are a closed set of their own, always there on Updates.
-    pattern = choice in ("security-check", "security-fetch", "security-updates") or choice.startswith("autoupdate-set:")
+    pattern = choice in (
+        "security-check",
+        "security-fetch",
+        "security-updates",
+    ) or choice.startswith("autoupdate-set:")
     if pattern and choice.startswith("autoupdate-set:"):
         security.parse_pattern(choice.split(":", 1)[1])
     if choice not in offered and not pattern:
-        raise Refused(M("control.security.stale", "This action is no longer available. Run the checks again. "
-                        "Then select an action from the new results."))
+        raise Refused(
+            M(
+                "control.security.stale",
+                "This action is no longer available. Run the checks again. "
+                "Then select an action from the new results.",
+            )
+        )
     if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
@@ -2556,19 +4685,23 @@ def security_fix(req):
 
 # --- books on a USB stick -----------------------------------------------------------------
 
+
 def _write_usb(data):
     safeio.write(USB_STATE, json.dumps(data, indent=2))
 
 
 def _tls_answer(fn):
     """openssl's and nginx's refusals (RuntimeError in tls.py) as a failed answer, not a crash of
-    the helper: only ValueError and OSError are answered as failures by the loop below."""
+    the helper: only ValueError and OSError are answered as failures by the loop below.
+    """
+
     def run_it(req):
         try:
             return fn(req)
         except RuntimeError as exc:
             said = _why(exc)
-            raise Refused(said) if is_message(said) else ValueError(said)
+            raise (Refused(said) if is_message(said) else ValueError(said)) from exc
+
     run_it.__name__ = fn.__name__
     return run_it
 
@@ -2578,59 +4711,97 @@ def tls_make(req):
     """HTTPS: the box's own CA and its certificate. A second CA only when asked: every
     device that installed the first would have to install the new one."""
     from irate_box.root import tls
+
     if tls.status().get("set_up") and req.get("again") is not True:
-        return M("control.https.already", "HTTPS is already set up. Nothing changed. To replace the certificate authority (CA), "
-                 "select Make a new CA and confirm. Then every device that trusts the old CA must install the new CA.")
+        return M(
+            "control.https.already",
+            "HTTPS is already set up. Nothing changed. To replace the certificate authority (CA), "
+            "select Make a new CA and confirm. Then every device that trusts the old CA must install the new CA.",
+        )
     rec = tls.make_ca()
-    return M("control.https.made", "The box made its certificate authority (CA) and its certificate. "
-             "The CA fingerprint starts with {fingerprint}.", fingerprint=rec["ca"]["fingerprint"][:23])
+    return M(
+        "control.https.made",
+        "The box made its certificate authority (CA) and its certificate. "
+        "The CA fingerprint starts with {fingerprint}.",
+        fingerprint=rec["ca"]["fingerprint"][:23],
+    )
 
 
 @_tls_answer
 def tls_renew(req):
     from irate_box.root import tls
+
     return tls.renew()
 
 
 @_tls_answer
 def tls_import(req):
     """The owner's own certificate: the chain and key the hub staged, read without
-    following a link, checked by tls.import_own, and the staged copies removed either way."""
+    following a link, checked by tls.import_own, and the staged copies removed either way.
+    """
     from irate_box.root import tls
+
     staged = STATE / "tls-import"
     try:
         chain = safeio.read_request(staged / "chain.pem", 64 << 10)
         key = safeio.read_request(staged / "key.pem", 16 << 10)
     except OSError as exc:
-        raise Refused(M("control.https.import.none", "No certificate is available for import. Nothing changed. "
-                        "Paste the certificate and the key again: {reason}", reason=str(exc)))
+        raise Refused(
+            M(
+                "control.https.import.none",
+                "No certificate is available for import. Nothing changed. "
+                "Paste the certificate and the key again: {reason}",
+                reason=str(exc),
+            )
+        ) from exc
     finally:
         for f in ("chain.pem", "key.pem"):
             (staged / f).unlink(missing_ok=True)
     try:
         return tls.import_own(chain, key)
     except ValueError as exc:
-        raise Refused(M("control.https.import.refused", "The box did not import the certificate: {reason}", reason=_why(exc)))
+        raise Refused(
+            M(
+                "control.https.import.refused",
+                "The box did not import the certificate: {reason}",
+                reason=_why(exc),
+            )
+        ) from exc
 
 
 @_tls_answer
 def tls_box(req):
     from irate_box.root import tls
+
     return tls.use_box_own()
 
 
 @_tls_answer
 def tls_admin_only(req):
     from irate_box.root import tls
+
     return tls.admin_only(req.get("on") is True)
+
+
+@_tls_answer
+def tls_settings(req):
+    from irate_box.root import tls
+
+    return tls.configure(req.get("transport"), req.get("admin_http"))
 
 
 @_tls_answer
 def tls_switch(req):
     """HTTPS on or off at the front, the CA and certificate kept either way."""
     from irate_box.root import tls
+
     if not tls.status().get("set_up"):
-        raise Refused(M("control.https.not-set-up", "HTTPS is not set up yet. Nothing changed. Select Make the box's certificate first."))
+        raise Refused(
+            M(
+                "control.https.not-set-up",
+                "HTTPS is not set up yet. Nothing changed. Select Make the box's certificate first.",
+            )
+        )
     return tls.front(req.get("on") is True)
 
 
@@ -2640,12 +4811,19 @@ def usb_scan(req):
     books = sum(len(d["zims"]) for d in data["devices"])
     if not data["devices"]:
         return M("control.usb.scan.none", "No USB drive found.")
-    return M("control.usb.scan.found", "USB drives found: {drives}. Books on them: {books}.", drives=len(data["devices"]), books=books)
+    return M(
+        "control.usb.scan.found",
+        "USB drives found: {drives}. Books on them: {books}.",
+        drives=len(data["devices"]),
+        books=books,
+    )
 
 
 def _min_free():
     try:
-        policy = json.loads((STATE / "library" / "sources.json").read_text()).get("policy", {})
+        policy = json.loads((STATE / "library" / "sources.json").read_text()).get(
+            "policy", {}
+        )
         return int(policy.get("min_free_mb", 512)) << 20
     except (OSError, ValueError, TypeError):
         return 512 << 20
@@ -2654,10 +4832,26 @@ def _min_free():
 def usb_import(req):
     device, file = str(req.get("device", "")), str(req.get("file", ""))
     with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
-        progress.step(M("control.progress.usb-import", "Copying {file} from the USB drive", file=Path(file).name))
-        name = usbstick.import_zim(device, file, ZIM_DIR, HUB_USER, _min_free(),
-                                   [str(CODE / "irate-box"), "librarian"], STATE, progress.bytes)
-    return M("control.usb.import.done", "The book {name} is added to the library.", name=name)
+        progress.step(
+            M(
+                "control.progress.usb-import",
+                "Copying {file} from the USB drive",
+                file=Path(file).name,
+            )
+        )
+        name = usbstick.import_zim(
+            device,
+            file,
+            ZIM_DIR,
+            HUB_USER,
+            _min_free(),
+            [str(CODE / "irate-box"), "librarian"],
+            STATE,
+            progress.bytes,
+        )
+    return M(
+        "control.usb.import.done", "The book {name} is added to the library.", name=name
+    )
 
 
 def usb_export(req):
@@ -2670,8 +4864,13 @@ def usb_export(req):
     except (ValueError, OSError):
         pass
     # The drive is synced and unmounted when the box mounted it, but not one mounted already: hence the eject.
-    return M("control.usb.export.done", "The USB transfer is complete. The book {book} is on the USB drive as {path}. "
-             "Eject the drive before you remove it.", book=book, path=where)
+    return M(
+        "control.usb.export.done",
+        "The USB transfer is complete. The book {book} is on the USB drive as {path}. "
+        "Eject the drive before you remove it.",
+        book=book,
+        path=where,
+    )
 
 
 def _copying_to_usb(book):
@@ -2679,7 +4878,11 @@ def _copying_to_usb(book):
 
 
 def _copying_kit_to_usb(kit):
-    return M("control.progress.usb-kit", "Copying the toolkit {kit} to the USB drive", kit=kit)
+    return M(
+        "control.progress.usb-kit",
+        "Copying the toolkit {kit} to the USB drive",
+        kit=kit,
+    )
 
 
 KIT_BAD = M("control.kit.kit-bad", "The request must give a toolkit ID.")
@@ -2697,8 +4900,13 @@ def usb_kit_export(req):
             _write_usb(usbstick.scan())
         except (ValueError, OSError):
             pass
-        return M("control.usb.kit-export.done", "The USB transfer of the toolkit {kit} is complete: {details}. "
-                 "Eject the drive before you remove it.", kit=kit, details=line)
+        return M(
+            "control.usb.kit-export.done",
+            "The USB transfer of the toolkit {kit} is complete: {details}. "
+            "Eject the drive before you remove it.",
+            kit=kit,
+            details=line,
+        )
     finally:
         _kits_status()
 
@@ -2706,20 +4914,34 @@ def usb_kit_export(req):
 def usb_export_many(req):
     """A content export onto a stick, without the hub program: books and toolkits in the layout the other
     box's own USB imports read (the existing exports, one after another), and git repositories and this
-    box's state beside them with import.sh, which brings those two in on a box that has the hub."""
+    box's state beside them with import.sh, which brings those two in on a box that has the hub.
+    """
     device = str(req.get("device", ""))
     books, kit_ids = req.get("books") or [], req.get("kits") or []
-    if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
-        raise Refused(M("control.kit.book-list-bad", "The request must give the books as a list of book names."))
-    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+    if not isinstance(books, list) or not all(
+        isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books
+    ):
+        raise Refused(
+            M(
+                "control.kit.book-list-bad",
+                "The request must give the books as a list of book names.",
+            )
+        )
+    if not isinstance(kit_ids, list) or not all(
+        isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids
+    ):
         raise Refused(KITS_BAD)
-    _, _, repo_dirs, state, _ = kit_choices({"repos": req.get("repos") or [], "state": req.get("state", "none")})
+    _, _, repo_dirs, state, _ = kit_choices(
+        {"repos": req.get("repos") or [], "state": req.get("state", "none")}
+    )
     if not books and not kit_ids and not repo_dirs and state == "none":
         raise Refused(EXPORT_EMPTY)
     said = []
     try:
         extras = bool(repo_dirs) or state != "none"
-        with Progress("usb-export", len(books) + len(kit_ids) + extras, path=USB_PROGRESS) as progress:
+        with Progress(
+            "usb-export", len(books) + len(kit_ids) + extras, path=USB_PROGRESS
+        ) as progress:
             for b in books:
                 progress.step(_copying_to_usb(b))
                 said.append(usbstick.export_zim(device, b, ZIM_DIR, progress.bytes))
@@ -2727,8 +4949,16 @@ def usb_export_many(req):
                 progress.step(_copying_kit_to_usb(k))
                 said.append(usbstick.export_kit(device, k, progress.bytes))
             if extras:
-                progress.step(M("control.progress.usb-extras", "Copying the repositories and the state of this box to the USB drive"))
-                usbstick.export_with(device, lambda top: said.extend(content_extras(top, repo_dirs, state)))
+                progress.step(
+                    M(
+                        "control.progress.usb-extras",
+                        "Copying the repositories and the state of this box to the USB drive",
+                    )
+                )
+                usbstick.export_with(
+                    device,
+                    lambda top: said.extend(content_extras(top, repo_dirs, state)),
+                )
     finally:
         _kits_status()
         try:
@@ -2736,24 +4966,45 @@ def usb_export_many(req):
         except (ValueError, OSError):
             pass
     # What is on the drive now, by name: the books, the toolkits and the repositories; the box's state said apart.
-    items = [*books, *kit_ids, *(f"{d.parent.name}/{d.name.removesuffix('.git')}" for d in repo_dirs)]
+    items = [
+        *books,
+        *kit_ids,
+        *(f"{d.parent.name}/{d.name.removesuffix('.git')}" for d in repo_dirs),
+    ]
     if state == "none":
-        return M("control.usb.many.done", "The USB transfer is complete. The USB drive now holds {items}. "
-                 "Eject the drive before you remove it.", items=items)
+        return M(
+            "control.usb.many.done",
+            "The USB transfer is complete. The USB drive now holds {items}. "
+            "Eject the drive before you remove it.",
+            items=items,
+        )
     if items:
-        return M("control.usb.many.done-state", "The USB transfer is complete. The USB drive now holds {items}, "
-                 "and the state of this box with import.sh. Eject the drive before you remove it.", items=items)
-    return M("control.usb.many.done-state-only", "The USB transfer is complete. The USB drive now holds the state of this box "
-             "with import.sh. Eject the drive before you remove it.")
+        return M(
+            "control.usb.many.done-state",
+            "The USB transfer is complete. The USB drive now holds {items}, "
+            "and the state of this box with import.sh. Eject the drive before you remove it.",
+            items=items,
+        )
+    return M(
+        "control.usb.many.done-state-only",
+        "The USB transfer is complete. The USB drive now holds the state of this box "
+        "with import.sh. Eject the drive before you remove it.",
+    )
 
 
 def backup_image(req):
     """A full image of the box's card onto a stick, compressed, in 3.9 GB parts
     on a FAT stick. Taken while the box runs, so as after a power cut: what was being written may be
-    half-written. Restored by writing it back with any image writer (gunzip, then dd or Etcher)."""
+    half-written. Restored by writing it back with any image writer (gunzip, then dd or Etcher).
+    """
     device = str(req.get("device", ""))
     with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
-        progress.step(M("control.progress.usb-image", "Writing an image of the memory card to the USB drive"))
+        progress.step(
+            M(
+                "control.progress.usb-image",
+                "Writing an image of the memory card to the USB drive",
+            )
+        )
         return usbstick.export_image(device, progress.bytes)
 
 
@@ -2762,12 +5013,22 @@ def usb_kit_import(req):
     if not kits.ID_RE.match(kit):
         raise Refused(KIT_BAD)
     try:
-        budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
+        budget = int(
+            json.loads((STATE / "library" / "toolkits.json").read_text()).get(
+                "budget_mb", 500
+            )
+        )
     except (OSError, ValueError, TypeError, AttributeError):
         budget = 500
     try:
         with Progress("usb-import", 1, path=USB_PROGRESS) as progress:
-            progress.step(M("control.progress.usb-kit-import", "Checking and copying the toolkit {kit} from the USB drive", kit=kit))
+            progress.step(
+                M(
+                    "control.progress.usb-kit-import",
+                    "Checking and copying the toolkit {kit} from the USB drive",
+                    kit=kit,
+                )
+            )
             return usbstick.import_kit(device, kit, budget, progress.bytes)
     finally:
         _kits_status()
@@ -2791,7 +5052,12 @@ def _app_dir(app):
 def _has_needed(names, pattern):
     """The manifest's "needs": a file, or a glob such as *.html, present at the top level."""
     import fnmatch
-    return any(fnmatch.fnmatchcase(n, pattern) for n in names) if any(c in pattern for c in "*?[") else pattern in names
+
+    return (
+        any(fnmatch.fnmatchcase(n, pattern) for n in names)
+        if any(c in pattern for c in "*?[")
+        else pattern in names
+    )
 
 
 def _checked_bundle(app, zip_path):
@@ -2806,28 +5072,66 @@ def _checked_bundle(app, zip_path):
             names, total = set(), 0
             for info in zf.infolist():
                 parts = Path(info.filename).parts
-                if info.filename.startswith(("/", "\\")) or ".." in parts or ":" in info.filename:
-                    raise Refused(M("control.app.unsafe-path", "The bundle has an unsafe path: {path}", path=info.filename))
+                if (
+                    info.filename.startswith(("/", "\\"))
+                    or ".." in parts
+                    or ":" in info.filename
+                ):
+                    raise Refused(
+                        M(
+                            "control.app.unsafe-path",
+                            "The bundle has an unsafe path: {path}",
+                            path=info.filename,
+                        )
+                    )
                 if (info.external_attr >> 16) & 0o170000 == 0o120000:
-                    raise Refused(M("control.app.symlink", "The bundle has a symbolic link: {path}", path=info.filename))
+                    raise Refused(
+                        M(
+                            "control.app.symlink",
+                            "The bundle has a symbolic link: {path}",
+                            path=info.filename,
+                        )
+                    )
                 total += info.file_size
                 names.add(info.filename)
             if total > APP_MAX_BYTES:
                 raise Refused(TOO_LARGE)
             meta = json.loads(zf.read("irate-box-bundle.json"))
-            if meta.get("app") != app or not _has_needed(names, APPS[app]["install"]["needs"]):
-                raise Refused(M("control.app.wrong-app", "This is not a bundle of {app}.", app=app))
+            if meta.get("app") != app or not _has_needed(
+                names, APPS[app]["install"]["needs"]
+            ):
+                raise Refused(
+                    M(
+                        "control.app.wrong-app",
+                        "This is not a bundle of {app}.",
+                        app=app,
+                    )
+                )
             return meta
     except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as exc:
-        raise Refused(M("control.app.invalid", "This is not a valid bundle: {reason}", reason=str(exc)))
+        raise Refused(
+            M(
+                "control.app.invalid",
+                "This is not a valid bundle: {reason}",
+                reason=str(exc),
+            )
+        ) from exc
 
 
 def _not_an_app(app):
-    return M("control.app.unknown", "{app} is not an app that the hub installs.", app=app)
+    return M(
+        "control.app.unknown", "{app} is not an app that the hub installs.", app=app
+    )
 
 
-NOT_STAGED = M("control.app.not-staged", "The bundle must be a file that the librarian staged.")
-TOO_LARGE = M("control.app.too-large", "The bundle is larger than {max} MB.", max=APP_MAX_BYTES >> 20)
+NOT_STAGED = M(
+    "control.app.not-staged", "The bundle must be a file that the librarian staged."
+)
+TOO_LARGE = M(
+    "control.app.too-large",
+    "The bundle is larger than {max} MB.",
+    max=APP_MAX_BYTES >> 20,
+)
 
 
 # Root's copy of a bundle while it is checked and extracted: the staged zip is in the hub's
@@ -2837,16 +5141,24 @@ APP_TAKEN = Path(os.environ.get("HUB_APP_TAKEN", "/var/cache/irate-box/app-insta
 
 def _staged_dir_fd(zip_path):
     """The staged bundle's folder, opened without following a link, and only if the hub (this
-    user, when not root) owns it: a folder swapped for a link, or for one of root's, is refused."""
+    user, when not root) owns it: a folder swapped for a link, or for one of root's, is refused.
+    """
     path = Path(zip_path)
     staging = APP_STAGING.resolve()
     if not path.resolve().is_relative_to(staging):
         raise Refused(NOT_STAGED)
-    dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    dfd = os.open(
+        path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
     owner = pwd.getpwnam(HUB_USER).pw_uid if os.geteuid() == 0 else os.geteuid()
     if os.fstat(dfd).st_uid != owner:
         os.close(dfd)
-        raise Refused(M("control.app.folder-owner", "The folder of the bundle does not belong to the librarian."))
+        raise Refused(
+            M(
+                "control.app.folder-owner",
+                "The folder of the bundle does not belong to the librarian.",
+            )
+        )
     return dfd
 
 
@@ -2855,15 +5167,23 @@ def _take_staged(zip_path):
     name = Path(zip_path).name
     dfd = _staged_dir_fd(zip_path)
     try:
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd)
-    except OSError:
-        raise Refused(NOT_STAGED)
+        fd = os.open(
+            name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=dfd
+        )
+    except OSError as exc:
+        raise Refused(NOT_STAGED) from exc
     finally:
         os.close(dfd)
     with os.fdopen(fd, "rb") as src:
         st = os.fstat(src.fileno())
         if not stat.S_ISREG(st.st_mode) or st.st_size > APP_MAX_BYTES:
-            raise Refused(M("control.app.not-plain", "The bundle must be a plain file of at most {max} MB.", max=APP_MAX_BYTES >> 20))
+            raise Refused(
+                M(
+                    "control.app.not-plain",
+                    "The bundle must be a plain file of at most {max} MB.",
+                    max=APP_MAX_BYTES >> 20,
+                )
+            )
         APP_TAKEN.mkdir(parents=True, exist_ok=True)
         os.chmod(APP_TAKEN, 0o700)
         copy = APP_TAKEN / f"{secrets.token_hex(8)}.zip"
@@ -2911,13 +5231,29 @@ def _install_taken(app, zip_path, staged):
     new.mkdir()
     try:
         with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(new)
+            destination = new.resolve()
+            for member in zf.infolist():
+                path = (destination / member.filename).resolve()
+                if not path.is_relative_to(destination):
+                    raise Refused(
+                        M(
+                            "control.app.unsafe-path",
+                            "The bundle has an unsafe path: {path}",
+                            path=member.filename,
+                        )
+                    )
+                if member.is_dir():
+                    path.mkdir(parents=True, exist_ok=True)
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member) as source, path.open("wb") as output:
+                        shutil.copyfileobj(source, output)
         # Root-owned and world-readable, whatever modes the zip carried.
         as_root = os.geteuid() == 0
-        for root, dirs, files in os.walk(new):
-            if as_root:
-                os.chown(root, 0, 0)
-            os.chmod(root, 0o755)
+        for root, _dirs, files in os.walk(new):
+            safeio.mkdir(
+                root, uid=0 if as_root else None, gid=0 if as_root else None, mode=0o755
+            )
             for name in files:
                 p = os.path.join(root, name)
                 if as_root:
@@ -2932,8 +5268,14 @@ def _install_taken(app, zip_path, staged):
     _drop_staged(staged)
     if APPS[app]["install"].get("restart"):
         run("systemctl", "try-restart", APPS[app]["install"]["restart"])
-    return M("control.app.installed", "The app {app} is installed: version {commit} from {ref}, built on {built}.",
-             app=app, commit=str(meta.get("commit", ""))[:7], ref=str(meta.get("ref")), built=str(meta.get("built", ""))[:10])
+    return M(
+        "control.app.installed",
+        "The app {app} is installed: version {commit} from {ref}, built on {built}.",
+        app=app,
+        commit=str(meta.get("commit", ""))[:7],
+        ref=str(meta.get("ref")),
+        built=str(meta.get("built", ""))[:10],
+    )
 
 
 def app_install(req):
@@ -2947,7 +5289,13 @@ def app_rollback(req):
     target = _app_dir(app)
     prev = target.parent / f".{target.name}.prev"
     if not prev.is_dir():
-        raise Refused(M("control.app.no-previous", "There is no earlier version of {app} to roll back to.", app=app))
+        raise Refused(
+            M(
+                "control.app.no-previous",
+                "There is no earlier version of {app} to roll back to.",
+                app=app,
+            )
+        )
     swap = target.parent / f".{target.name}.swap"
     shutil.rmtree(swap, ignore_errors=True)
     if target.exists():
@@ -2957,10 +5305,23 @@ def app_rollback(req):
         os.rename(swap, prev)  # so a second roll back goes forward again
     if APPS[app]["install"].get("restart"):
         run("systemctl", "try-restart", APPS[app]["install"]["restart"])
-    meta = json.loads((target / "irate-box-bundle.json").read_text()) if (target / "irate-box-bundle.json").exists() else {}
+    meta = (
+        json.loads((target / "irate-box-bundle.json").read_text())
+        if (target / "irate-box-bundle.json").exists()
+        else {}
+    )
     if meta.get("commit"):
-        return M("control.app.rolled-back", "The app {app} is rolled back to version {commit}.", app=app, commit=str(meta["commit"])[:7])
-    return M("control.app.rolled-back-unknown", "The app {app} is rolled back to its earlier version.", app=app)
+        return M(
+            "control.app.rolled-back",
+            "The app {app} is rolled back to version {commit}.",
+            app=app,
+            commit=str(meta["commit"])[:7],
+        )
+    return M(
+        "control.app.rolled-back-unknown",
+        "The app {app} is rolled back to its earlier version.",
+        app=app,
+    )
 
 
 # --- the box doctor ----------------------------------------------------------------------
@@ -2969,7 +5330,9 @@ HEALTH_STATE = CONTROL / "health.json"
 
 
 def _write_health():
-    os.environ["HUB_CONTROL_RUNNING"] = "1"  # the queue it would report is the one being answered
+    os.environ["HUB_CONTROL_RUNNING"] = (
+        "1"  # the queue it would report is the one being answered
+    )
     data = health.scan()
     safeio.write(HEALTH_STATE, json.dumps(data, indent=2))
     return data
@@ -2980,7 +5343,14 @@ def health_scan(req):
     bad = [f for f in data["findings"] if f["status"] == "problem"]
     if not bad:
         return M("control.health.scanned.none", "The Box doctor found no problems.")
-    return M("control.health.scanned", {"one": "The Box doctor found {n} problem.", "other": "The Box doctor found {n} problems."}, n=len(bad))
+    return M(
+        "control.health.scanned",
+        {
+            "one": "The Box doctor found {n} problem.",
+            "other": "The Box doctor found {n} problems.",
+        },
+        n=len(bad),
+    )
 
 
 def rerun_install():
@@ -3016,7 +5386,9 @@ def health_fix(req):
 
 # --- network: inventory and the uplink watchdog ------------------------------------------
 
-IFACE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")  # no leading "-": it would be an option
+IFACE_RE = re.compile(
+    r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
+)  # no leading "-": it would be an option
 
 
 def net_scan(req):
@@ -3031,11 +5403,24 @@ def net_scan(req):
     netinv.write(inv, CONTROL / "netinv.json")
     radios, up = len(inv["radios"]), inv["uplink"]
     if up.get("iface"):
-        return M("control.net.scanned", {"one": "The network scan found {n} radio. {backend} runs the network link {iface}.",
-                                         "other": "The network scan found {n} radios. {backend} runs the network link {iface}."},
-                 n=radios, backend=up.get("backend"), iface=up["iface"])
-    return M("control.net.scanned.no-link", {"one": "The network scan found {n} radio. The box has no network link.",
-                                             "other": "The network scan found {n} radios. The box has no network link."}, n=radios)
+        return M(
+            "control.net.scanned",
+            {
+                "one": "The network scan found {n} radio. {backend} runs the network link {iface}.",
+                "other": "The network scan found {n} radios. {backend} runs the network link {iface}.",
+            },
+            n=radios,
+            backend=up.get("backend"),
+            iface=up["iface"],
+        )
+    return M(
+        "control.net.scanned.no-link",
+        {
+            "one": "The network scan found {n} radio. The box has no network link.",
+            "other": "The network scan found {n} radios. The box has no network link.",
+        },
+        n=radios,
+    )
 
 
 NOT_IFACE = M("control.net.iface-bad", "This is not an interface name.")
@@ -3043,12 +5428,13 @@ NOT_IFACE = M("control.net.iface-bad", "This is not an interface name.")
 
 # --- the hotspot (root/ap.py does the work, hub/apmode.py the plan) -------------------------------
 
-AP_STATUS = CONTROL / "ap.json"      # the hub's copy: the plan, whether it's up, the tries
+AP_STATUS = CONTROL / "ap.json"  # the hub's copy: the plan, whether it's up, the tries
 
 
 def _ap_settings():
     """The owner's security choice for the hotspot (the hub's hotspot.json), checked again here."""
     from irate_box.hub import hotspot
+
     try:
         raw = json.loads((STATE / "hotspot.json").read_text())
     except (OSError, ValueError):
@@ -3071,7 +5457,14 @@ def _ap_owner(req):
         out["band"] = req["band"]
     if req.get("channel") is not None:
         if type(req["channel"]) is not int or not 1 <= req["channel"] <= 196:
-            raise Refused(M("control.hotspot.channel-bad", "The channel must be a channel number from {min} to {max}.", min=1, max=196))
+            raise Refused(
+                M(
+                    "control.hotspot.channel-bad",
+                    "The channel must be a channel number from {min} to {max}.",
+                    min=1,
+                    max=196,
+                )
+            )
         out["channel"] = req["channel"]
     if req.get("take_radio") is True:
         out["take_radio"] = True
@@ -3082,10 +5475,21 @@ def _ap_record_status(plan=None, note=""):
     """ap.json, for the Network page: the note in English (a message said there as it is)."""
     note = render(note)
     rec = ap._load(ap.RECORD, {})
-    safeio.write(AP_STATUS, json.dumps({"up": bool(rec.get("up")), "plan": rec.get("plan") if rec.get("up") else plan,
-                                        "confirmed": rec.get("confirmed", True), "since": rec.get("since"),
-                                        "owner": rec.get("owner") or {}, "tried": ap._load(ap.TRIED, {}),
-                                        "note": note, "at": time.time()}))
+    safeio.write(
+        AP_STATUS,
+        json.dumps(
+            {
+                "up": bool(rec.get("up")),
+                "plan": rec.get("plan") if rec.get("up") else plan,
+                "confirmed": rec.get("confirmed", True),
+                "since": rec.get("since"),
+                "owner": rec.get("owner") or {},
+                "tried": ap._load(ap.TRIED, {}),
+                "note": note,
+                "at": time.time(),
+            }
+        ),
+    )
 
 
 def _ap_inventory():
@@ -3096,7 +5500,11 @@ def _ap_inventory():
 
 def _ap_failed(exc):
     """A step that failed (ap.start has undone what it did): said on the Network page and to the hub."""
-    note = M("control.hotspot.failed", "The hotspot did not start: {reason}", reason=_why(exc))
+    note = M(
+        "control.hotspot.failed",
+        "The hotspot did not start: {reason}",
+        reason=_why(exc),
+    )
     _ap_record_status(None, note)
     return Refused(note)
 
@@ -3111,12 +5519,17 @@ def _forward(on, rec):
     if on:
         if rec.get("forward_was") is None:
             try:
-                rec["forward_was"] = Path("/proc/sys/net/ipv4/ip_forward").read_text().strip()
+                rec["forward_was"] = (
+                    Path("/proc/sys/net/ipv4/ip_forward").read_text().strip()
+                )
             except OSError:
                 rec["forward_was"] = "0"
         share.SYSCTL.parent.mkdir(parents=True, exist_ok=True)
-        safeio.write(share.SYSCTL, "# Written by irate-box (root/share.py) while guests share the box's connection.\n"
-                     "net.ipv4.ip_forward = 1\n")
+        safeio.write(
+            share.SYSCTL,
+            "# Written by irate-box (root/share.py) while guests share the box's connection.\n"
+            "net.ipv4.ip_forward = 1\n",
+        )
         run("sysctl", "-q", "-w", "net.ipv4.ip_forward=1")
     else:
         share.SYSCTL.unlink(missing_ok=True)
@@ -3145,10 +5558,16 @@ def _guest_dns(on, iface=None):
 def share_apply(rec):
     """Guests' internet as rec says (share.load()'s shape), with the hotspot firewall as it is: one ruleset
     (firewall.apply_all). Turning on: the rules first, then forwarding, then the guests' resolver;
-    off: forwarding first, then the rest, so at no moment does anything pass unfiltered."""
+    off: forwarding first, then the rest, so at no moment does anything pass unfiltered.
+    """
     from irate_box.root import firewall, security
+
     fw = security.load_record().get("firewall")
-    fw = dict(fw, services=firewall.services_here(fw.get("services", []))) if fw else None
+    fw = (
+        dict(fw, services=firewall.services_here(fw.get("services", [])))
+        if fw
+        else None
+    )
     iface = firewall.hotspot_iface()
     if share.on(rec):
         firewall.apply_all(fw, rec, iface)
@@ -3164,14 +5583,25 @@ def share_apply(rec):
 
 def share_set(req):
     """{"level": one of share.LEVELS}: the rules, forwarding and the guests' resolver made to agree
-    with it; off takes all of it back. The containment stays as the owner set it (Security page)."""
+    with it; off takes all of it back. The containment stays as the owner set it (Security page).
+    """
     level = str(req.get("level", ""))
     if level not in share.LEVELS:
-        raise Refused(M("control.share.level-bad", "The level must be one of these values: {levels}.", levels=list(share.LEVELS)))
+        raise Refused(
+            M(
+                "control.share.level-bad",
+                "The level must be one of these values: {levels}.",
+                levels=list(share.LEVELS),
+            )
+        )
     rec = share.load()
     rec["level"] = level
     share_apply(rec)
-    return M("control.share.set", "Guest internet sharing is saved: {level}.", level=share.WORDS[level])
+    return M(
+        "control.share.set",
+        "Guest internet sharing is saved: {level}.",
+        level=share.WORDS[level],
+    )
 
 
 def share_allow(req):
@@ -3180,27 +5610,60 @@ def share_allow(req):
     signs in, at users-web)."""
     rec = share.load()
     if rec["level"] not in share.LET_OUT:
-        raise Refused(M("control.share.not-one-by-one", "At the level {level}, the box does not let devices through one at a time.",
-                        level=rec["level"]))
+        raise Refused(
+            M(
+                "control.share.not-one-by-one",
+                "At the level {level}, the box does not let devices through one at a time.",
+                level=rec["level"],
+            )
+        )
     addr = share.guest_address(req.get("ip"))
     if not addr:
-        raise Refused(M("control.share.not-hotspot", "This is not an address on the hotspot."))
+        raise Refused(
+            M("control.share.not-hotspot", "This is not an address on the hotspot.")
+        )
     key = addr
     if rec["contain"]["by_mac"]:
         r = run("ip", "neigh", "show", addr)
         key = share.mac_of(addr, r.stdout if r.returncode == 0 else "")
         if not key:
-            raise Refused(M("control.share.no-mac", "The box has no hardware address for {address}. "
-                            "Check that the device is still on the hotspot.", address=addr))
+            raise Refused(
+                M(
+                    "control.share.no-mac",
+                    "The box has no hardware address for {address}. "
+                    "Check that the device is still on the hotspot.",
+                    address=addr,
+                )
+            )
     r = run(*share.allow_command(key))
     if r.returncode != 0:
-        raise Refused(M("control.share.let-failed", "The box could not let the device through: {output}", output=_last_line(r.stderr, 200)))
+        raise Refused(
+            M(
+                "control.share.let-failed",
+                "The box could not let the device through: {output}",
+                output=_last_line(r.stderr, 200),
+            )
+        )
     if key != addr:
-        return M("control.share.let.mac", {"one": "{address} ({mac}) can reach the internet through the box for {n} hour.",
-                                           "other": "{address} ({mac}) can reach the internet through the box for {n} hours."},
-                 address=addr, mac=key, n=share.OUT_HOURS)
-    return M("control.share.let", {"one": "{address} can reach the internet through the box for {n} hour.",
-                                   "other": "{address} can reach the internet through the box for {n} hours."}, address=addr, n=share.OUT_HOURS)
+        return M(
+            "control.share.let.mac",
+            {
+                "one": "{address} ({mac}) can reach the internet through the box for {n} hour.",
+                "other": "{address} ({mac}) can reach the internet through the box for {n} hours.",
+            },
+            address=addr,
+            mac=key,
+            n=share.OUT_HOURS,
+        )
+    return M(
+        "control.share.let",
+        {
+            "one": "{address} can reach the internet through the box for {n} hour.",
+            "other": "{address} can reach the internet through the box for {n} hours.",
+        },
+        address=addr,
+        n=share.OUT_HOURS,
+    )
 
 
 def _guest_policy_follows(note):
@@ -3208,6 +5671,7 @@ def _guest_policy_follows(note):
     guests' internet rewritten for it, when either is on. Refused, not raised: the hotspot is up. Returns note, or note
     with why the rules were not rewritten."""
     from irate_box.root import security
+
     if not security.load_record().get("firewall") and not share.on():
         return note
     try:
@@ -3215,16 +5679,22 @@ def _guest_policy_follows(note):
         return note
     except (ValueError, OSError) as exc:
         # The hotspot's sentence, then this one: two whole sentences.
-        return M("control.hotspot.rules-failed", "{said} The box could not rewrite the guest rules for the hotspot: {reason}",
-                 said=note, reason=_why(exc))
+        return M(
+            "control.hotspot.rules-failed",
+            "{said} The box could not rewrite the guest rules for the hotspot: {reason}",
+            said=note,
+            reason=_why(exc),
+        )
 
 
 # --- packages from their makers, watched (pkgwatch.py) ----------------------------------------------
+
 
 def pkg_check(req):
     """{"package": a watched package, or none for every one on the box}: the channel read, a new build
     cached, installed if the owner's mode says so."""
     from irate_box.root import pkgwatch
+
     ids = [str(req["package"])] if req.get("package") else pkgwatch.watched()
     said = [pkgwatch.check(i, log=lambda *a: None) for i in ids]
     if not said:
@@ -3235,25 +5705,41 @@ def pkg_check(req):
 def pkg_fetch(req):
     """The channel's newest build downloaded into the cache, whatever the mode; nothing installed."""
     from irate_box.root import pkgwatch
+
     return pkgwatch.check(str(req.get("package", "")), log=lambda *a: None, fetch=True)
 
 
 def pkg_install(req):
     from irate_box.root import pkgwatch
-    return pkgwatch.install(str(req.get("package", "")), str(req.get("version", "")), log=lambda *a: None)
+
+    return pkgwatch.install(
+        str(req.get("package", "")), str(req.get("version", "")), log=lambda *a: None
+    )
 
 
 def pkg_rollback(req):
     from irate_box.root import pkgwatch
+
     return pkgwatch.rollback(str(req.get("package", "")), log=lambda *a: None)
 
 
 def pkg_settings(req):
     from irate_box.root import pkgwatch
+
     days, every = req.get("days"), req.get("every")
-    num = lambda v, bad: v if isinstance(v, int) and not isinstance(v, bool) else bad  # noqa: E731
-    return pkgwatch.set_settings(str(req.get("package", "")), str(req.get("channel", "")), str(req.get("mode", "")),
-                                 num(days, -1), None if every is None else num(every, -1))
+
+    def num(v, bad):
+        return (
+            v if isinstance(v, int) and not isinstance(v, bool) else bad
+        )  # noqa: E731
+
+    return pkgwatch.set_settings(
+        str(req.get("package", "")),
+        str(req.get("channel", "")),
+        str(req.get("mode", "")),
+        num(days, -1),
+        None if every is None else num(every, -1),
+    )
 
 
 def ap_on(req):
@@ -3265,15 +5751,33 @@ def ap_on(req):
     if plan.get("needs_choice") or plan["kind"] == "none":
         _ap_record_status(plan, plan["text"])
         if plan.get("why"):
-            return M("control.hotspot.not-started", "{plan} Reason: {why}", plan=plan["text"], why=plan["why"])
+            return M(
+                "control.hotspot.not-started",
+                "{plan} Reason: {why}",
+                plan=plan["text"],
+                why=plan["why"],
+            )
         return plan["text"]
-    where = {"iface": ap.ap_iface(plan), "channel": plan["channel"], "plan": plan["text"]}
+    where = {
+        "iface": ap.ap_iface(plan),
+        "channel": plan["channel"],
+        "plan": plan["text"],
+    }
     if plan.get("drops_uplink"):
-        note = M("control.hotspot.on.drops-uplink", "The hotspot is enabled on {iface}, channel {channel}. {plan} "
-                 "Your WiFi link is off. Open the hub from the hotspot within {minutes} minutes and confirm. "
-                 "Otherwise the box restores the WiFi link.", minutes=ap.DEADMAN // 60, **where)
+        note = M(
+            "control.hotspot.on.drops-uplink",
+            "The hotspot is enabled on {iface}, channel {channel}. {plan} "
+            "Your WiFi link is off. Open the hub from the hotspot within {minutes} minutes and confirm. "
+            "Otherwise the box restores the WiFi link.",
+            minutes=ap.DEADMAN // 60,
+            **where,
+        )
     else:
-        note = M("control.hotspot.on", "The hotspot is enabled on {iface}, channel {channel}. {plan}", **where)
+        note = M(
+            "control.hotspot.on",
+            "The hotspot is enabled on {iface}, channel {channel}. {plan}",
+            **where,
+        )
     note = _guest_policy_follows(note)
     _ap_record_status(plan, note)
     return note
@@ -3291,12 +5795,23 @@ def ap_try(req):
     except RuntimeError as exc:
         raise _ap_failed(exc) from exc
     if worked is None:
-        note = M("control.hotspot.try.nothing", "There is nothing to try. {plan}", plan=plan["text"])
+        note = M(
+            "control.hotspot.try.nothing",
+            "There is nothing to try. {plan}",
+            plan=plan["text"],
+        )
     else:
         note = _guest_policy_follows(
-            M("control.hotspot.try.own", "The hotspot holds a channel of its own beside your WiFi. Guests do not notice when your WiFi roams.")
-            if worked else
-            M("control.hotspot.try.follows", "The hotspot cannot hold a channel of its own here, so it follows the channel of your WiFi."))
+            M(
+                "control.hotspot.try.own",
+                "The hotspot holds a channel of its own beside your WiFi. Guests do not notice when your WiFi roams.",
+            )
+            if worked
+            else M(
+                "control.hotspot.try.follows",
+                "The hotspot cannot hold a channel of its own here, so it follows the channel of your WiFi.",
+            )
+        )
     _ap_record_status(plan, note)
     return note
 
@@ -3314,15 +5829,25 @@ def _uplink_running():
 
 def uplink_set(req):
     from irate_box.hub import roaming
+
     s = uplink.load_settings()
     new = dict(req.get("settings") or {})
     new.setdefault("hold_until", s.get("hold_until", 0))
     old, s = s, uplink.validate(new)
     # Each link the settings name: its hardware as it is now, so its settings follow it under another name later;
     # one not here now keeps what was recorded for it.
-    named = set(s["watch"]) | set(s.get("per_iface") or {}) | set(s.get("steps_off") or {})
-    s["watch_hw"] = {n: (uplink.link_hw(n) if (uplink.SYS_NET / n).exists() else (old.get("watch_hw") or {}).get(n))
-                     for n in sorted(named) if (uplink.SYS_NET / n).exists() or (old.get("watch_hw") or {}).get(n)}
+    named = (
+        set(s["watch"]) | set(s.get("per_iface") or {}) | set(s.get("steps_off") or {})
+    )
+    s["watch_hw"] = {
+        n: (
+            uplink.link_hw(n)
+            if (uplink.SYS_NET / n).exists()
+            else (old.get("watch_hw") or {}).get(n)
+        )
+        for n in sorted(named)
+        if (uplink.SYS_NET / n).exists() or (old.get("watch_hw") or {}).get(n)
+    }
     s = uplink.validate(s)
     # Roaming's lock and its no-scan change the owner's WiFi: done first, and the setting kept as
     # it was if they fail, so the page never says one is in force that is not.
@@ -3330,25 +5855,54 @@ def uplink_set(req):
     try:
         moved = roaming.apply(s, old, iface)
     except ValueError as exc:
-        raise Refused(M("control.uplink.not-saved", "The watchdog settings are not saved: {reason}", reason=_why(exc))) from None
+        raise Refused(
+            M(
+                "control.uplink.not-saved",
+                "The watchdog settings are not saved: {reason}",
+                reason=_why(exc),
+            )
+        ) from None
     s = uplink.save_settings(s)
     _uplink_running()
     # The settings and the links in uplink.py's own words, as arguments.
-    args = {"settings": uplink.words(s), "links": uplink.watching_words(s), "minutes": uplink.COMMON["pause_after_change"] // 60}
+    args = {
+        "settings": uplink.words(s),
+        "links": uplink.watching_words(s),
+        "minutes": uplink.COMMON["pause_after_change"] // 60,
+    }
     if s["overrides"]:
-        said = M("control.uplink.saved.custom", "The watchdog settings are saved, with custom values: {settings}. The watchdog watches {links}. "
-                 "Its next repair comes after {minutes} minutes at the earliest.", **args)
+        said = M(
+            "control.uplink.saved.custom",
+            "The watchdog settings are saved, with custom values: {settings}. The watchdog watches {links}. "
+            "Its next repair comes after {minutes} minutes at the earliest.",
+            **args,
+        )
     else:
-        said = M("control.uplink.saved", "The watchdog settings are saved: {settings}. The watchdog watches {links}. "
-                 "Its next repair comes after {minutes} minutes at the earliest.", **args)
+        said = M(
+            "control.uplink.saved",
+            "The watchdog settings are saved: {settings}. The watchdog watches {links}. "
+            "Its next repair comes after {minutes} minutes at the earliest.",
+            **args,
+        )
     if moved:
-        return M("control.uplink.saved.roaming", "{said} Changes to the WiFi connection: {changes}.", said=said, changes=moved)
+        return M(
+            "control.uplink.saved.roaming",
+            "{said} Changes to the WiFi connection: {changes}.",
+            said=said,
+            changes=moved,
+        )
     return said
 
 
 def uplink_do(req):
     if req.get("step") not in uplink.STEPS:
-        raise Refused(M("control.uplink.step-bad", "The step must be one of these values: {steps}.", steps=list(uplink.STEPS)))
+        raise Refused(
+            M(
+                "control.uplink.step-bad",
+                "The step must be one of these values: {steps}.",
+                steps=list(uplink.STEPS),
+            )
+        )
     _uplink_running()
     return uplink.request_step(req["step"])
 
@@ -3356,19 +5910,37 @@ def uplink_do(req):
 def uplink_hold(req):
     minutes = req.get("minutes")
     if type(minutes) is not int or not 0 <= minutes <= 1440:
-        raise Refused(M("control.uplink.hold-bad", "The hold must be from {min} to {max} minutes.", min=0, max=1440))
+        raise Refused(
+            M(
+                "control.uplink.hold-bad",
+                "The hold must be from {min} to {max} minutes.",
+                min=0,
+                max=1440,
+            )
+        )
     s = uplink.load_settings()
     s["hold_until"] = time.time() + minutes * 60 if minutes else 0
     uplink.save_settings(s)
     if not minutes:
-        return M("control.uplink.hold-ended", "The hold has ended. The watchdog repairs as its settings say.")
-    return M("control.uplink.held", {"one": "The watchdog makes no repairs for {n} minute.",
-                                     "other": "The watchdog makes no repairs for {n} minutes."}, n=minutes)
+        return M(
+            "control.uplink.hold-ended",
+            "The hold has ended. The watchdog repairs as its settings say.",
+        )
+    return M(
+        "control.uplink.held",
+        {
+            "one": "The watchdog makes no repairs for {n} minute.",
+            "other": "The watchdog makes no repairs for {n} minutes.",
+        },
+        n=minutes,
+    )
 
 
 def uplink_profile(req):
     if type(req.get("on")) is not bool:
-        raise Refused(M("control.request.on-bad", "The request must give on as true or false."))
+        raise Refused(
+            M("control.request.on-bad", "The request must give on as true or false.")
+        )
     msg = uplink.profile(req["on"])
     try:
         netinv.write(netinv.scan(), CONTROL / "netinv.json")
@@ -3379,6 +5951,7 @@ def uplink_profile(req):
 
 def nm_defaults(req):
     from irate_box.hub import nmconf
+
     iface = req.get("iface")
     clean = nmconf.validate(req.get("changes"), iface)
     mine, ifaces = nmconf.current_mine(), nmconf.current_ifaces()
@@ -3405,28 +5978,70 @@ def nm_defaults(req):
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     # Each change: the setting's label and value in nmconf.py's words, or back to a default.
-    changes = [M("control.nm.change.box-default", "{setting}: the box default", setting=nmconf.SETTINGS[k]["label"]) if v is None and iface
-               else M("control.nm.change.nm-default", "{setting}: the NetworkManager default", setting=nmconf.SETTINGS[k]["label"])
-               if v is None else
-               M("control.nm.change", "{setting}: {value}", setting=nmconf.SETTINGS[k]["label"], value=nmconf.SETTINGS[k]["values"].get(v, v))
-               for k, v in clean.items()]
-    said = M("control.nm.saved.iface", "The NetworkManager settings for {iface} are saved: {changes}.", iface=iface, changes=changes) \
-        if iface else M("control.nm.saved", "The NetworkManager settings of the box are saved: {changes}.", changes=changes)
+    changes = [
+        (
+            M(
+                "control.nm.change.box-default",
+                "{setting}: the box default",
+                setting=nmconf.SETTINGS[k]["label"],
+            )
+            if v is None and iface
+            else (
+                M(
+                    "control.nm.change.nm-default",
+                    "{setting}: the NetworkManager default",
+                    setting=nmconf.SETTINGS[k]["label"],
+                )
+                if v is None
+                else M(
+                    "control.nm.change",
+                    "{setting}: {value}",
+                    setting=nmconf.SETTINGS[k]["label"],
+                    value=nmconf.SETTINGS[k]["values"].get(v, v),
+                )
+            )
+        )
+        for k, v in clean.items()
+    ]
+    said = (
+        M(
+            "control.nm.saved.iface",
+            "The NetworkManager settings for {iface} are saved: {changes}.",
+            iface=iface,
+            changes=changes,
+        )
+        if iface
+        else M(
+            "control.nm.saved",
+            "The NetworkManager settings of the box are saved: {changes}.",
+            changes=changes,
+        )
+    )
     if code == 0:
         return said
-    return M("control.nm.not-reloaded", "{said} NetworkManager did not reload, so it reads the settings at its next start. "
-             "It said: {output}", said=said, output=out[-160:])
+    return M(
+        "control.nm.not-reloaded",
+        "{said} NetworkManager did not reload, so it reads the settings at its next start. "
+        "It said: {output}",
+        said=said,
+        output=out[-160:],
+    )
 
 
 def nm_connection(req):
     from irate_box.root import nmconnection, nmhandover
+
     uuid = req.get("uuid")
     try:
         if req.get("undo") is True:
             return nmconnection.undo(uuid)
-        return nmconnection.change(uuid, req.get("changes"), integrated=nmhandover.integrated())
+        return nmconnection.change(
+            uuid, req.get("changes"), integrated=nmhandover.integrated()
+        )
     finally:
-        safeio.write(CONTROL / "nm-connection-changes.json", json.dumps(nmconnection.public()))
+        safeio.write(
+            CONTROL / "nm-connection-changes.json", json.dumps(nmconnection.public())
+        )
         try:
             netinv.write(netinv.scan(), CONTROL / "netinv.json")
         except (OSError, ValueError, subprocess.SubprocessError):
@@ -3447,19 +6062,42 @@ def wifisync(req):
         rec = {}
     now = netinv.enabled(WIFISYNC)
     if now is None:
-        raise Refused(M("control.wifisync.missing", "The service {unit} is not installed on this box.", unit="wifisync"))
+        raise Refused(
+            M(
+                "control.wifisync.missing",
+                "The service {unit} is not installed on this box.",
+                unit="wifisync",
+            )
+        )
     if do == "undo":
         if not rec.get("was"):
-            raise Refused(M("control.wifisync.nothing-to-undo", "There is nothing to undo. The box did not change {unit}.", unit="wifisync"))
+            raise Refused(
+                M(
+                    "control.wifisync.nothing-to-undo",
+                    "There is nothing to undo. The box did not change {unit}.",
+                    unit="wifisync",
+                )
+            )
         want = rec["was"] == "enabled"
     else:
         want = do == "on"
         if "was" not in rec:
-            rec["was"] = now   # the image's own state, before the first change made here
-    r = subprocess.run(["systemctl", "enable" if want else "disable", "--now", WIFISYNC], capture_output=True, text=True, timeout=60)
+            rec["was"] = now  # the image's own state, before the first change made here
+    r = subprocess.run(
+        ["systemctl", "enable" if want else "disable", "--now", WIFISYNC],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     if r.returncode:
-        raise Refused(M("control.wifisync.failed", "The command {command} failed: {output}",
-                        command=f"systemctl {'enable' if want else 'disable'} --now {WIFISYNC}", output=(r.stderr or r.stdout).strip()[:200]))
+        raise Refused(
+            M(
+                "control.wifisync.failed",
+                "The command {command} failed: {output}",
+                command=f"systemctl {'enable' if want else 'disable'} --now {WIFISYNC}",
+                output=(r.stderr or r.stdout).strip()[:200],
+            )
+        )
     if do == "undo":
         rec = {}
     else:
@@ -3470,19 +6108,36 @@ def wifisync(req):
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     if do == "undo":
-        return M("control.wifisync.undone", "{unit} is back in its state before the box changed it.", unit="wifisync")
+        return M(
+            "control.wifisync.undone",
+            "{unit} is back in its state before the box changed it.",
+            unit="wifisync",
+        )
     if want:
-        return M("control.wifisync.on", "{unit} is enabled. It disables the WiFi whenever the WiFi setting of {daemon} is off.",
-                 unit="wifisync", daemon="meshtasticd")
-    return M("control.wifisync.off", "{unit} is disabled. It no longer changes the WiFi radio.", unit="wifisync")
+        return M(
+            "control.wifisync.on",
+            "{unit} is enabled. It disables the WiFi whenever the WiFi setting of {daemon} is off.",
+            unit="wifisync",
+            daemon="meshtasticd",
+        )
+    return M(
+        "control.wifisync.off",
+        "{unit} is disabled. It no longer changes the WiFi radio.",
+        unit="wifisync",
+    )
 
 
 def _do_bad(values):
-    return M("control.request.do-bad", "The request must give do as one of these values: {values}.", values=list(values))
+    return M(
+        "control.request.do-bad",
+        "The request must give do as one of these values: {values}.",
+        values=list(values),
+    )
 
 
 def other_ap(req):
     from irate_box.root import otherap
+
     do, uuid = req.get("do"), req.get("uuid")
     if do not in ("remove", "leave", "undo", "forget"):
         raise Refused(_do_bad(("remove", "leave", "undo", "forget")))
@@ -3498,6 +6153,7 @@ def other_ap(req):
 
 def radio_test(req):
     from irate_box.root import radiotests
+
     inv = netinv.scan()
     try:
         return radiotests.experiment(inv, req.get("iface"), req.get("exp"))
@@ -3510,9 +6166,14 @@ def radio_test(req):
 
 def nm_handover(req):
     from irate_box.root import nmhandover
+
     name = req.get("name")
     try:
-        return nmhandover.undo(name) if req.get("undo") is True else nmhandover.handover(name)
+        return (
+            nmhandover.undo(name)
+            if req.get("undo") is True
+            else nmhandover.handover(name)
+        )
     finally:
         try:
             netinv.write(netinv.scan(), CONTROL / "netinv.json")
@@ -3522,8 +6183,10 @@ def nm_handover(req):
 
 def _wifi_after(fn):
     """A network added or forgotten (wifijoin.py), then the inventory and control/wifi-joined.json afresh."""
+
     def action(req):
         from irate_box.root import wifijoin
+
         try:
             return fn(req, wifijoin)
         finally:
@@ -3532,14 +6195,20 @@ def _wifi_after(fn):
                 netinv.write(netinv.scan(), CONTROL / "netinv.json")
             except (OSError, ValueError, subprocess.SubprocessError):
                 pass
+
     action.__name__ = fn.__name__
     return action
 
 
 @_wifi_after
 def wifi_join(req, wifijoin):
-    return wifijoin.join(req.get("ssid"), req.get("security", "wpa-psk"), req.get("psk") or "",
-                         req.get("hidden", False), req.get("now") is True)
+    return wifijoin.join(
+        req.get("ssid"),
+        req.get("security", "wpa-psk"),
+        req.get("psk") or "",
+        req.get("hidden", False),
+        req.get("now") is True,
+    )
 
 
 @_wifi_after
@@ -3554,7 +6223,14 @@ def _kits_status():
 def _kit_hours(req):
     hours = req.get("hours", 24)
     if hours is not None and (type(hours) is not int or not 1 <= hours <= 24 * 365):
-        raise Refused(M("control.kit.hours-bad", "The removal time must be from {min} to {max} hours, or never.", min=1, max=24 * 365))
+        raise Refused(
+            M(
+                "control.kit.hours-bad",
+                "The removal time must be from {min} to {max} hours, or never.",
+                min=1,
+                max=24 * 365,
+            )
+        )
     return hours
 
 
@@ -3562,7 +6238,14 @@ def _kit_sweep(req):
     """The librarian's sweep by age: older sets past their days removed, control/kits.json written after it."""
     days = req.get("days")
     if type(days) is not int or not 1 <= days <= 365:
-        raise Refused(M("control.kit.days-range", "The days for older sets must be from {min} to {max}.", min=1, max=365))
+        raise Refused(
+            M(
+                "control.kit.days-range",
+                "The days for older sets must be from {min} to {max}.",
+                min=1,
+                max=365,
+            )
+        )
     try:
         return kits.drop_old_previous(days, log=lambda *_: None)
     finally:
@@ -3571,6 +6254,7 @@ def _kit_sweep(req):
 
 def _kit_req(fn):
     """A toolkit action, and control/kits.json written after it, whatever happened."""
+
     def action(req):
         kit = req.get("kit")
         if fn is kits.define:
@@ -3578,7 +6262,9 @@ def _kit_req(fn):
                 return kits.define(kit)
             finally:
                 _kits_status()
-        if fn not in (kits.expire, kits.drop_all_previous) and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+        if fn not in (kits.expire, kits.drop_all_previous) and not (
+            isinstance(kit, str) and kits.ID_RE.match(kit)
+        ):
             raise Refused(KIT_BAD)
         try:
             if fn is kits.set_extra:
@@ -3586,7 +6272,14 @@ def _kit_req(fn):
             if fn is kits.fetch:
                 budget = req.get("budget_mb", 500)
                 if type(budget) is not int or not 10 <= budget <= 1 << 16:
-                    raise Refused(M("control.kit.budget-range", "The cache budget must be from {min} to {max} MB.", min=10, max=1 << 16))
+                    raise Refused(
+                        M(
+                            "control.kit.budget-range",
+                            "The cache budget must be from {min} to {max} MB.",
+                            min=10,
+                            max=1 << 16,
+                        )
+                    )
                 return kits.fetch(kit, budget_mb=budget, log=lambda *_: None)
             if fn is kits.install:
                 return kits.install(kit, _kit_hours(req), log=lambda *_: None)
@@ -3596,27 +6289,94 @@ def _kit_req(fn):
                 return kits.drop_all_previous(log=lambda *_: None)
             if fn is kits.expire:
                 # One answer per toolkit removed, said one after another.
-                return kits.expire() or M("control.kit.expire.none", "No toolkit is due for removal.")
+                return kits.expire() or M(
+                    "control.kit.expire.none", "No toolkit is due for removal."
+                )
             return fn(kit, log=lambda *_: None)
         finally:
             _kits_status()
+
     return action
 
 
-ACTIONS = {"service": service, "password": password, "claim": claim,
-           "update-check": update_check, "update-fetch": update_fetch, "update-install": update_install,
-           "update-force-install": update_force_install,
-           "update-doctor": update_doctor, "update-clear-cache": update_clear_cache, "update-signing": update_signing,
-           "security-scan": security_scan, "security-audit": security_audit, "security-deep-audit": security_deep_audit, "security-fix": security_fix, "addon": addon,
-           "tls-make": tls_make, "tls-renew": tls_renew, "tls-switch": tls_switch, "tls-import": tls_import, "tls-box": tls_box, "tls-admin-only": tls_admin_only, "usb-scan": usb_scan, "usb-import": usb_import, "usb-export": usb_export,
-           "usb-kit-import": usb_kit_import, "usb-kit-export": usb_kit_export, "usb-export-many": usb_export_many, "backup-image": backup_image,
-           "app-install": app_install, "app-rollback": app_rollback,
-           "access": access_set, "admin-login": admin_login, "ap-on": ap_on, "ap-off": ap_off, "share-set": share_set, "share-allow": share_allow,
-           "pkg-check": pkg_check, "pkg-fetch": pkg_fetch, "pkg-install": pkg_install, "pkg-rollback": pkg_rollback, "pkg-settings": pkg_settings, "ap-try": ap_try, "ap-confirm": ap_confirm, "offline-kit": offline_kit, "content-export": content_export, "health-scan": health_scan, "health-fix": health_fix, "net-scan": net_scan, "uplink-set": uplink_set, "uplink-do": uplink_do, "uplink-hold": uplink_hold, "uplink-profile": uplink_profile, "nm-defaults": nm_defaults, "nm-handover": nm_handover, "nm-connection": nm_connection, "other-ap": other_ap, "wifisync": wifisync, "radio-test": radio_test, "wifi-join": wifi_join, "wifi-forget": wifi_forget, "admin-gate": admin_gate,
-           "kit-fetch": _kit_req(kits.fetch), "kit-install": _kit_req(kits.install), "kit-remove": _kit_req(kits.remove),
-           "kit-keep": _kit_req(kits.set_removal), "kit-rollback": _kit_req(kits.rollback), "kit-drop-previous": _kit_req(kits.drop_previous),
-           "kit-drop-all-previous": _kit_req(kits.drop_all_previous), "kit-drop-old-previous": _kit_sweep,
-           "kit-define": _kit_req(kits.define), "kit-undefine": _kit_req(kits.undefine), "kit-extra": _kit_req(kits.set_extra), "kit-expire": _kit_req(kits.expire), "kit-status": lambda req: (_kits_status(), KITS_STATUS)[1]}
+ACTIONS = {
+    "service": service,
+    "password": password,
+    "claim": claim,
+    "security-policy": policy_set,
+    "tls-settings": tls_settings,
+    "update-check": update_check,
+    "update-fetch": update_fetch,
+    "update-install": update_install,
+    "update-force-install": update_force_install,
+    "update-doctor": update_doctor,
+    "update-clear-cache": update_clear_cache,
+    "update-signing": update_signing,
+    "security-scan": security_scan,
+    "security-audit": security_audit,
+    "security-deep-audit": security_deep_audit,
+    "security-fix": security_fix,
+    "addon": addon,
+    "tls-make": tls_make,
+    "tls-renew": tls_renew,
+    "tls-switch": tls_switch,
+    "tls-import": tls_import,
+    "tls-box": tls_box,
+    "tls-admin-only": tls_admin_only,
+    "usb-scan": usb_scan,
+    "usb-import": usb_import,
+    "usb-export": usb_export,
+    "usb-kit-import": usb_kit_import,
+    "usb-kit-export": usb_kit_export,
+    "usb-export-many": usb_export_many,
+    "backup-image": backup_image,
+    "app-install": app_install,
+    "app-rollback": app_rollback,
+    "access": access_set,
+    "admin-login": admin_login,
+    "ap-on": ap_on,
+    "ap-off": ap_off,
+    "share-set": share_set,
+    "share-allow": share_allow,
+    "pkg-check": pkg_check,
+    "pkg-fetch": pkg_fetch,
+    "pkg-install": pkg_install,
+    "pkg-rollback": pkg_rollback,
+    "pkg-settings": pkg_settings,
+    "ap-try": ap_try,
+    "ap-confirm": ap_confirm,
+    "offline-kit": offline_kit,
+    "content-export": content_export,
+    "health-scan": health_scan,
+    "health-fix": health_fix,
+    "net-scan": net_scan,
+    "uplink-set": uplink_set,
+    "uplink-do": uplink_do,
+    "uplink-hold": uplink_hold,
+    "uplink-profile": uplink_profile,
+    "nm-defaults": nm_defaults,
+    "nm-handover": nm_handover,
+    "nm-connection": nm_connection,
+    "other-ap": other_ap,
+    "wifisync": wifisync,
+    "radio-test": radio_test,
+    "wifi-join": wifi_join,
+    "wifi-forget": wifi_forget,
+    "admin-gate": admin_gate,
+    "kit-fetch": _kit_req(kits.fetch),
+    "kit-install": _kit_req(kits.install),
+    "kit-remove": _kit_req(kits.remove),
+    "kit-keep": _kit_req(kits.set_removal),
+    "kit-rollback": _kit_req(kits.rollback),
+    "kit-drop-previous": _kit_req(kits.drop_previous),
+    "kit-drop-all-previous": _kit_req(kits.drop_all_previous),
+    "kit-drop-old-previous": _kit_sweep,
+    "kit-define": _kit_req(kits.define),
+    "kit-undefine": _kit_req(kits.undefine),
+    "kit-extra": _kit_req(kits.set_extra),
+    "kit-expire": _kit_req(kits.expire),
+    "kit-status": lambda req: (_kits_status(), KITS_STATUS)[1],
+}
 
 KITS_STATUS = M("control.kit.status", "The toolkit status is up to date.")
 
@@ -3624,13 +6384,25 @@ KITS_STATUS = M("control.kit.status", "The toolkit status is up to date.")
 def answer(rid, ok, message):
     """The result the hub reads: message in English, as every reader of results expects; a message (msg.M) also as
     itself (msg), for a page that says it in the reader's language and a test that reads its ID. Several answers
-    (a check of every watched package, every toolkit due removed) are a list, said one after another."""
+    (a check of every watched package, every toolkit due removed) are a list, said one after another.
+    """
     if isinstance(message, list):
-        said = {"message": paragraph(*message), "msg": message} if any(is_message(m) for m in message) else {"message": paragraph(*message)}
+        said = (
+            {"message": paragraph(*message), "msg": message}
+            if any(is_message(m) for m in message)
+            else {"message": paragraph(*message)}
+        )
     else:
-        said = {"message": render(message), "msg": message} if is_message(message) else {"message": message}
+        said = (
+            {"message": render(message), "msg": message}
+            if is_message(message)
+            else {"message": message}
+        )
     safeio.mkdir(RESULTS)
-    safeio.write(RESULTS / f"{rid}.json", json.dumps({"id": rid, "ok": ok, **said, "at": time.time()}))
+    safeio.write(
+        RESULTS / f"{rid}.json",
+        json.dumps({"id": rid, "ok": ok, **said, "at": time.time()}),
+    )
     # Keep the last 50 answers; the page only ever looks at recent ones.
     old = sorted(RESULTS.glob("*.json"), key=lambda p: p.stat().st_mtime)[:-50]
     for p in old:
@@ -3655,6 +6427,7 @@ def _mtime(path):
 
 
 def main():
+    policy_publish()
     # A request that arrives while this runs is picked up by the same loop.
     for _ in range(100):
         pending = sorted(REQUESTS.glob("*.json"), key=_mtime)
@@ -3675,17 +6448,49 @@ def main():
                 what = req.get("action")
                 action = ACTIONS.get(what)
                 if not action:
-                    raise Refused(M("control.request.unknown", "The root helper does not know the action {action}.", action=str(what)[:40]))
-                detail = next((str(req[k])[:60] for k in ("kit", "app", "choice", "name") if isinstance(req.get(k), str)), "")
-                safeio.write(HELPER_DOING, json.dumps({"action": str(what)[:40], "detail": detail, "started": time.time()}))
+                    raise Refused(
+                        M(
+                            "control.request.unknown",
+                            "The root helper does not know the action {action}.",
+                            action=str(what)[:40],
+                        )
+                    )
+                policy_check(what)
+                detail = next(
+                    (
+                        str(req[k])[:60]
+                        for k in ("kit", "app", "choice", "name")
+                        if isinstance(req.get(k), str)
+                    ),
+                    "",
+                )
+                safeio.write(
+                    HELPER_DOING,
+                    json.dumps(
+                        {
+                            "action": str(what)[:40],
+                            "detail": detail,
+                            "started": time.time(),
+                        }
+                    ),
+                )
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 _discard(path)
                 answer(rid, False, _why(exc))
-            except Exception as exc:  # a handler's own bug: answered, and the queue goes on
+            except (
+                Exception
+            ) as exc:  # a handler's own bug: answered, and the queue goes on
                 _discard(path)
-                answer(rid, False, M("control.request.crashed", "The root helper stopped with an error: {error}",
-                                     error=f"{type(exc).__name__}: {exc}"))
+                answer(
+                    rid,
+                    False,
+                    M(
+                        "control.request.crashed",
+                        "The root helper stopped with an error: {error}",
+                        error=f"{type(exc).__name__}: {exc}",
+                    ),
+                )
             finally:
                 HELPER_DOING.unlink(missing_ok=True)
             if what in UPDATES:
@@ -3705,7 +6510,8 @@ NOTEBOOK_MAX = 10
 
 def notebooks_sync():
     """Start irate-box-notebook@<name> for each name the hub lists and stop every other. The list
-    is the hub's: read without following a link, its names checked, at most NOTEBOOK_MAX."""
+    is the hub's: read without following a link, its names checked, at most NOTEBOOK_MAX.
+    """
     wanted = set()
     try:
         fd = os.open(STATE / "notebooks" / ".wanted.json", os.O_RDONLY | os.O_NOFOLLOW)
@@ -3715,10 +6521,20 @@ def notebooks_sync():
     except (OSError, ValueError, AttributeError):
         pass
     wanted = set(sorted(wanted)[:NOTEBOOK_MAX])
-    out = run("systemctl", "list-units", "irate-box-notebook@*.service", "--state=active,activating",
-              "--plain", "--no-legend", "--no-pager")
-    running = {line.split()[0][len("irate-box-notebook@"):-len(".service")]
-               for line in out.stdout.splitlines() if line.startswith("irate-box-notebook@")}
+    out = run(
+        "systemctl",
+        "list-units",
+        "irate-box-notebook@*.service",
+        "--state=active,activating",
+        "--plain",
+        "--no-legend",
+        "--no-pager",
+    )
+    running = {
+        line.split()[0][len("irate-box-notebook@") : -len(".service")]
+        for line in out.stdout.splitlines()
+        if line.startswith("irate-box-notebook@")
+    }
     for name in sorted(running - wanted):
         run("systemctl", "stop", "--no-block", f"irate-box-notebook@{name}.service")
     for name in sorted(wanted - running):
@@ -3728,12 +6544,18 @@ def notebooks_sync():
 
 if __name__ == "__main__":
     # NetworkManager's dispatcher (root/ap.py's hook): a link came up; a following hotspot moves.
-    if len(sys.argv) == 3 and sys.argv[1] == "ap-follow" and IFACE_RE.match(sys.argv[2]):
+    if (
+        len(sys.argv) == 3
+        and sys.argv[1] == "ap-follow"
+        and IFACE_RE.match(sys.argv[2])
+    ):
         if os.geteuid() != 0:
             sys.exit("run as root")
         rec = ap._load(ap.RECORD, {})
         if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink"):
-            sys.exit(0)   # every link change calls this (ap0's own too): leave the last note alone
+            sys.exit(
+                0
+            )  # every link change calls this (ap0's own too): leave the last note alone
         try:
             moved, note = ap.follow(run, _ap_inventory(), _ap_settings(), sys.argv[2])
             if moved:
@@ -3762,17 +6584,37 @@ if __name__ == "__main__":
             sys.exit("run as root")
         rec = ap._load(ap.RECORD, {})
         if rec.get("up") and not rec.get("confirmed"):
-            _ap_record_status(None, M("control.hotspot.reverted", "{stopped} Nobody confirmed the hotspot in time, "
-                                      "so the box restored its WiFi link.", stopped=ap.stop(run)))
+            _ap_record_status(
+                None,
+                M(
+                    "control.hotspot.reverted",
+                    "{stopped} Nobody confirmed the hotspot in time, "
+                    "so the box restored its WiFi link.",
+                    stopped=ap.stop(run),
+                ),
+            )
         sys.exit(0)
     if len(sys.argv) == 3 and sys.argv[1] == "set-admin":
         if os.geteuid() != 0:
-            sys.exit("run as root: sudo /opt/irate-box/irate-box hub_control set-admin NAME")
+            sys.exit(
+                "run as root: sudo /opt/irate-box/irate-box hub_control set-admin NAME"
+            )
         print(render(console_set_admin(sys.argv[2])))
+        sys.exit(0)
+    if sys.argv[1:2] == ["security-policy"]:
+        if os.geteuid() != 0:
+            sys.exit(
+                "run as root: sudo /opt/irate-box/irate-box hub_control security-policy hub|console"
+            )
+        if sys.argv[2:] not in (["hub"], ["console"]):
+            sys.exit("usage: hub_control security-policy hub|console")
+        print(render(policy_set({"mode": sys.argv[2], "confirmed": True})))
         sys.exit(0)
     if sys.argv[1:2] == ["script-login"] and sys.argv[2:] in ([], ["--off"]):
         if os.geteuid() != 0:
-            sys.exit("run as root: sudo /opt/irate-box/irate-box hub_control script-login [--off]")
+            sys.exit(
+                "run as root: sudo /opt/irate-box/irate-box hub_control script-login [--off]"
+            )
         print(console_script_login(sys.argv[2:] != ["--off"]))
         sys.exit(0)
     if sys.argv[1:] == ["reset-password"]:

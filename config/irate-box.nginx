@@ -71,8 +71,8 @@ upstream irate_box_hub {
 include @ADDON_ACCESS@;
 
 server {
-	listen @PORT@ default_server;
-	listen [::]:@PORT@ default_server;
+	include @TLS@/nginx-http-main.inc;
+	include @TLS@/nginx-policy-main.inc;
 	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
 	include @TLS@/nginx-main.conf*;
 	server_name _;
@@ -563,8 +563,8 @@ server {
 # proxies anywhere, and links are not followed (the hub owns the folder). Whether each is
 # public, private or off, and what it may connect to, comes from the include at the top.
 server {
-	listen @ADDON_PORT@;
-	listen [::]:@ADDON_PORT@;
+	include @TLS@/nginx-http-addons.inc;
+	include @TLS@/nginx-policy-addons.inc;
 	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
 	include @TLS@/nginx-addons.conf*;
 	server_name _;
@@ -616,8 +616,8 @@ server {
 # storage. The same login switch as before (/admin, Apps: public, private or off), the same
 # refusals, the same socket.
 server {
-	listen @NOTES_PORT@;
-	listen [::]:@NOTES_PORT@;
+	include @TLS@/nginx-http-notes.inc;
+	include @TLS@/nginx-policy-notes.inc;
 	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
 	include @TLS@/nginx-notes.conf*;
 	server_name _;
@@ -689,8 +689,8 @@ server {
 # routed on to that login's socket; not signed in, to the sign-in; not running yet, to the hub's
 # waiting page, which starts it.
 server {
-	listen @NOTEBOOK_PORT@;
-	listen [::]:@NOTEBOOK_PORT@;
+	include @TLS@/nginx-http-notebook.inc;
+	include @TLS@/nginx-policy-notebook.inc;
 	include @TLS@/nginx-notebook.conf*;
 	server_name _;
 	access_log off;
@@ -742,8 +742,8 @@ server {
 # kiwix-serve on 127.0.0.1:8081, path passed through (--urlRootLocation /wiki), with the same
 # login switch as before (/admin, Apps).
 server {
-	listen @WIKI_PORT@;
-	listen [::]:@WIKI_PORT@;
+	include @TLS@/nginx-http-wiki.inc;
+	include @TLS@/nginx-policy-wiki.inc;
 	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
 	include @TLS@/nginx-wiki.conf*;
 	server_name _;
@@ -821,8 +821,8 @@ server {
 # /admin. Its CSP (scripts only the box's own) lets the hub's app bar frame it. Clones and
 # pushes are the hub's port's (a smart-HTTP request here is sent there).
 server {
-	listen @GIT_PORT@;
-	listen [::]:@GIT_PORT@;
+	include @TLS@/nginx-http-git.inc;
+	include @TLS@/nginx-policy-git.inc;
 	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
 	include @TLS@/nginx-git.conf*;
 	server_name _;
