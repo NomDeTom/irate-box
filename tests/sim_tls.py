@@ -233,6 +233,27 @@ check(
     and "ssl_protocols TLSv1.2 TLSv1.3;" in main
     and "listen 8491 ssl;" in (tls.FRONT / "nginx-notes.conf").read_text(),
 )
+# A box upgraded from before the notebook TLS twin existed has its HTTPS setting and
+# certificate, but lacks that include.  Installation must bring every TLS listener forward.
+(tls.FRONT / "nginx-notebook.conf").unlink()
+(tls.TLS / "ports.json").unlink()
+tls.initialise()
+check(
+    "installer restores a missing TLS origin include on upgrade",
+    "listen 8494 ssl;" in (tls.FRONT / "nginx-notebook.conf").read_text()
+    and json.loads((tls.TLS / "ports.json").read_text())["https"] == tls.TWINS,
+)
+# Without its certificate the includes would point at nothing and fail the installer's check.
+(tls.FRONT / "nginx-notebook.conf").unlink()
+chain_text = tls.CHAIN.read_text()
+tls.CHAIN.unlink()
+tls.initialise()
+check(
+    "installer leaves TLS includes alone when the certificate is missing",
+    not (tls.FRONT / "nginx-notebook.conf").exists(),
+)
+tls.CHAIN.write_text(chain_text)
+tls.initialise()
 reloads.clear()
 ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.90", "network": "192.168.1.0/24"}
 tls.renew()

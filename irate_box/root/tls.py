@@ -224,7 +224,19 @@ def _plain_files(transport, admin_http, access_state=None):
 def initialise():
     FRONT.mkdir(parents=True, exist_ok=True)
     _write(TLS / "ports.json", json.dumps({"http": PLAIN_PORTS, "https": TWINS}), 0o644)
-    for path, text in _plain_files(**settings()).items():
+    policy = settings()
+    files = _plain_files(**policy)
+    # An older installation may have enabled HTTPS before a new origin was added.  This
+    # runs during an authorised install, before its full nginx validation, so bring its
+    # TLS includes forward as well as the always-regenerated HTTP includes.
+    if (
+        _record().get("on")
+        and policy["transport"] != "http"
+        and CHAIN.exists()
+        and KEY.exists()
+    ):
+        files.update(_front_files())
+    for path, text in files.items():
         _write(path, text, 0o644)
 
 
