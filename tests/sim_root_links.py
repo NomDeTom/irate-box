@@ -3,7 +3,7 @@
 """Root's writers never follow a link the hub planted. Each writer is run against a state folder with a symlink, a hardlink or a FIFO
 waiting where it writes or reads, and the file the link leads to must be untouched. Runs as
 any user: following a link is the same mistake whoever does it. python3 tests/sim_root_links.py"""
-import json, os, re, shutil, subprocess, sys, tempfile, threading
+import json, os, re, shutil, subprocess, sys, tempfile, threading, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="root-links-"))
@@ -124,6 +124,18 @@ answers = {rid: json.loads((hub_control.RESULTS / f"{rid}.json").read_text()) fo
 check("a non-object request and a handler's own error are answered, not left to loop the helper",
       crashed is None and set(answers) == set(poison) and all(a["ok"] is False for a in answers.values())
       and not list(hub_control.REQUESTS.glob("*.json")), (crashed, answers))
+# A folder named like a request (audit M2): removed and answered, and the request behind it served.
+(hub_control.REQUESTS / "0000000000000004.json").mkdir()
+(hub_control.REQUESTS / "0000000000000004.json" / "inner").write_text("x")
+time.sleep(0.01)
+(hub_control.REQUESTS / "0000000000000005.json").write_text("[]")
+try:
+    hub_control.main(); crashed = None
+except Exception as exc:  # noqa: BLE001
+    crashed = exc
+check("a folder named like a request does not stop the helper",
+      crashed is None and not list(hub_control.REQUESTS.iterdir())
+      and all((hub_control.RESULTS / f"000000000000000{n}.json").exists() for n in (4, 5)), crashed)
 
 # --- what is left as source checks ---------------------------------------------------------
 src = {p: (REPO / p).read_text() for p in ("irate_box/root/hub_control.py", "irate_box/root/rtc.py", "irate_box/root/health.py",

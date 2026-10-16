@@ -3637,10 +3637,27 @@ def answer(rid, ok, message):
         p.unlink(missing_ok=True)
 
 
+def _discard(path):
+    """Whatever the hub left at a request's name gone, a folder too; never raises, so the queue goes on."""
+    try:
+        path.unlink(missing_ok=True)
+    except IsADirectoryError:
+        shutil.rmtree(path, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def _mtime(path):
+    try:
+        return path.lstat().st_mtime
+    except OSError:
+        return 0
+
+
 def main():
     # A request that arrives while this runs is picked up by the same loop.
     for _ in range(100):
-        pending = sorted(REQUESTS.glob("*.json"), key=lambda p: p.stat().st_mtime)
+        pending = sorted(REQUESTS.glob("*.json"), key=_mtime)
         if not pending:
             return 0
         for path in pending:
@@ -3651,7 +3668,7 @@ def main():
                 # Gone before anything else can fail on it: a request this process cannot handle
                 # must never be found again by the next one, or the path unit restarts the helper
                 # for ever and nothing queued behind it is served.
-                path.unlink(missing_ok=True)
+                _discard(path)
                 req = json.loads(text)
                 if not isinstance(req, dict):
                     raise Refused(M("control.request.bad", "The request is not valid."))
@@ -3663,10 +3680,10 @@ def main():
                 safeio.write(HELPER_DOING, json.dumps({"action": str(what)[:40], "detail": detail, "started": time.time()}))
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
-                path.unlink(missing_ok=True)
+                _discard(path)
                 answer(rid, False, _why(exc))
             except Exception as exc:  # a handler's own bug: answered, and the queue goes on
-                path.unlink(missing_ok=True)
+                _discard(path)
                 answer(rid, False, M("control.request.crashed", "The root helper stopped with an error: {error}",
                                      error=f"{type(exc).__name__}: {exc}"))
             finally:
