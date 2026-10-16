@@ -142,6 +142,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -643,6 +644,34 @@ def set_login(pw, keep=True):
 SYNCTHING_GUI = "http://127.0.0.1:8384"
 
 
+def _web_open(request, timeout, local_origin=None):
+    def validate(url):
+        parsed = urllib.parse.urlsplit(url)
+        if local_origin is None:
+            allowed = parsed.scheme == "https" and bool(parsed.hostname)
+        else:
+            origin = urllib.parse.urlsplit(local_origin)
+            allowed = (
+                origin.scheme == "http"
+                and origin.hostname in ("127.0.0.1", "::1")
+                and (parsed.scheme, parsed.hostname, parsed.port)
+                == (origin.scheme, origin.hostname, origin.port)
+            )
+        if not allowed or parsed.username is not None or parsed.password is not None:
+            raise ValueError("URL must use HTTPS or the configured loopback API origin")
+
+    class WebRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            validate(newurl)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    validate(request.full_url)
+    handlers = [WebRedirect()]
+    if local_origin is not None:
+        handlers.append(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener(*handlers).open(request, timeout=timeout)
+
+
 def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
     """Syncthing's GUI password, through its REST API with the API key from its own config: the
     password travels in the request body, never on a command line (`syncthing cli … password
@@ -671,7 +700,7 @@ def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
     )
     for attempt in range(tries):
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with _web_open(req, timeout=20, local_origin=SYNCTHING_GUI) as resp:
                 return resp.status == 200
         except OSError:
             if attempt + 1 < tries:
@@ -2354,7 +2383,7 @@ def _fetch(url, dest, timeout=300, report=None):
     is 0 when the server does not say). Returns dest."""
     req = urllib.request.Request(url, headers={"User-Agent": "irate-box-update"})
     tmp = dest.with_name(dest.name + ".part")
-    with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp, "wb") as out:
+    with _web_open(req, timeout=timeout) as resp, open(tmp, "wb") as out:
         total = int(resp.headers.get("Content-Length") or 0)
         done = 0
         while chunk := resp.read(1 << 16):
@@ -2515,7 +2544,7 @@ def prefetch(src, opts, progress=None):
                     "https://api.github.com/repos/caddyserver/caddy/releases/latest",
                     headers={"User-Agent": "irate-box-update"},
                 )
-                with urllib.request.urlopen(req, timeout=60) as resp:
+                with _web_open(req, timeout=60) as resp:
                     tag = json.load(resp)["tag_name"]
                 ver = tag.lstrip("v")
                 installed = run(
@@ -2999,7 +3028,7 @@ def _nginx_check(src, opts):
         # As nobody, not root: this is the fetched commit's config, not yet approved, and
         # nginx -t as root would create any file its error_log or access_log names, or echo an
         # include's first token (a root-only file's) into the report.
-        os.chmod(tmp, 0o755)
+        safeio.mkdir(tmp, mode=0o755)
         for f in Path(tmp).iterdir():
             f.chmod(0o755 if f.is_dir() else 0o644)
         as_nobody = ()
@@ -3571,7 +3600,7 @@ def _local_addresses():
 
 def _tls_get(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": "irate-box-doctor"})
-    return urllib.request.urlopen(req, timeout=timeout)
+    return _web_open(req, timeout=timeout)
 
 
 def doctor():
@@ -5202,13 +5231,29 @@ def _install_taken(app, zip_path, staged):
     new.mkdir()
     try:
         with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(new)
+            destination = new.resolve()
+            for member in zf.infolist():
+                path = (destination / member.filename).resolve()
+                if not path.is_relative_to(destination):
+                    raise Refused(
+                        M(
+                            "control.app.unsafe-path",
+                            "The bundle has an unsafe path: {path}",
+                            path=member.filename,
+                        )
+                    )
+                if member.is_dir():
+                    path.mkdir(parents=True, exist_ok=True)
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member) as source, path.open("wb") as output:
+                        shutil.copyfileobj(source, output)
         # Root-owned and world-readable, whatever modes the zip carried.
         as_root = os.geteuid() == 0
         for root, _dirs, files in os.walk(new):
-            if as_root:
-                os.chown(root, 0, 0)
-            os.chmod(root, 0o755)
+            safeio.mkdir(
+                root, uid=0 if as_root else None, gid=0 if as_root else None, mode=0o755
+            )
             for name in files:
                 p = os.path.join(root, name)
                 if as_root:

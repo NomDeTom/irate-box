@@ -17,6 +17,8 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
+from urllib.request import Request
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="root-links-"))
@@ -364,6 +366,58 @@ check(
     "the staged zip is removed, and root's copy too",
     not good.exists() and not any((T / "taken").iterdir()),
 )
+for unsafe in ("../escape.html", "/escape.html", "nested/../../escape.html"):
+    bad_bundle = staging / "unsafe.zip"
+    bundle(bad_bundle, extra={unsafe: "outside"})
+    try:
+        hub_control.install_app("draw", str(bad_bundle))
+        refused = False
+    except ValueError:
+        refused = True
+    check(
+        f"unsafe bundle member refused: {unsafe}",
+        refused
+        and not (T / "share/apps/escape.html").exists()
+        and not any((T / "taken").iterdir()),
+    )
+    bad_bundle.unlink(missing_ok=True)
+
+with patch.object(hub_control.urllib.request, "build_opener") as opener:
+    for unsafe_url in (
+        "file:///etc/passwd",
+        "ftp://example.org/file",
+        "http://example.org/",
+    ):
+        try:
+            hub_control._web_open(Request(unsafe_url), timeout=1)
+            refused = False
+        except ValueError:
+            refused = True
+        check(
+            f"unsafe download URL refused: {unsafe_url}", refused and not opener.called
+        )
+    request = Request("https://example.org/file")
+    hub_control._web_open(request, timeout=1)
+    redirect = opener.call_args.args[0]
+    for unsafe_url in ("file:///etc/passwd", "http://example.org/file"):
+        try:
+            redirect.redirect_request(request, None, 302, "Found", {}, unsafe_url)
+            refused = False
+        except ValueError:
+            refused = True
+        check(f"unsafe download redirect refused: {unsafe_url}", refused)
+    local_origin = "http://127.0.0.1:8384"
+    local_request = Request(f"{local_origin}/rest/config/gui")
+    hub_control._web_open(local_request, timeout=1, local_origin=local_origin)
+    redirect = opener.call_args.args[0]
+    for unsafe_url in ("http://127.0.0.1:9999/", "https://example.org/"):
+        try:
+            redirect.redirect_request(local_request, None, 302, "Found", {}, unsafe_url)
+            refused = False
+        except ValueError:
+            refused = True
+        check(f"local API redirect cannot escape its origin: {unsafe_url}", refused)
+
 v = victim()
 link = staging / "draw-2.zip"
 os.symlink(v, link)
