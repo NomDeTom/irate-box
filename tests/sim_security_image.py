@@ -6,9 +6,8 @@ found, fixed and undone against a fake /proc/sys, /etc/group and /etc/passwd, wi
 gpasswd; uninstall's undo_all puts everything back. python3 tests/sim_security_image.py
 """
 
-import json
 import os
-import stat
+import re
 import sys
 import tempfile
 import time
@@ -117,9 +116,9 @@ from irate_box.root import security  # noqa: E402
 fails = 0
 
 
-def check(name, cond, info=""):
+def check(name, cond, _info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    print(("PASS " if cond else "FAIL ") + name)
     fails += not cond
 
 
@@ -334,7 +333,6 @@ check(
 )
 check("undo_all: no record left", not (T / "etc" / "security-changes.json").exists())
 srv = (REPO / "irate_box" / "hub" / "server.py").read_text()
-import re
 
 rx = re.compile(
     re.search(r'SECURITY_CHOICE_RE\s*=\s*re.compile\(\s*r"(.*?)"\s*\)', srv).group(1)
