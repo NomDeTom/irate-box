@@ -88,6 +88,19 @@ def body_too_large():
     return M("store.body.large", "The request body is missing or too large. The limit is {mb} MB.", mb=MAX_BODY >> 20)
 
 
+class TooLarge(Said):
+    """An item larger than the store's whole budget: refused, before anything is evicted for it."""
+
+    def __init__(self):
+        super().__init__(M("store.item.large", "This item is larger than the storage of the store ({mb} MB). The box did not keep it.",
+                           mb=MAX_TOTAL >> 20))
+
+
+def _fits(*blobs):
+    if sum(map(len, blobs)) > MAX_TOTAL:
+        raise TooLarge()
+
+
 def file_too_large():
     return M("drop.file.large", "File exceeds the {mb} MB limit.", mb=DROP_MAX_FILE >> 20)
 
@@ -214,19 +227,22 @@ class Store:
             return None
 
     def put(self, namespace, key, data):
+        _fits(data)
         with self._lock:
-            self._write(self._blob_path(namespace, key), data)
-            self._enforce_quota()
+            path = self._blob_path(namespace, key)
+            self._write(path, data)
+            self._enforce_quota(keep={path})
         return key
 
     def create_scene(self, data):
+        _fits(data)
         with self._lock:
             for _ in range(8):
                 key = _numeric_id()
                 path = self._blob_path("scenes", key)
                 if not path.exists():
                     self._write(path, data)
-                    self._enforce_quota()
+                    self._enforce_quota(keep={path})
                     return key
         # 16 digits colliding eight times running means something is badly wrong.
         raise RuntimeError("could not allocate a scene id")
@@ -242,6 +258,7 @@ class Store:
         locked save needs its proof (see "locks" above); raises LockError otherwise.
         """
         key = key or secrets.token_hex(8)
+        _fits(payload, thumb or b"")
         meta = {
             "id": key,
             "kind": kind,
@@ -265,7 +282,7 @@ class Store:
             if thumb:
                 self._write(confine.under(saves, key + ".thumb"), thumb)
             self._write(confine.under(saves, key + ".meta"), json.dumps(meta).encode())
-            self._enforce_quota()
+            self._enforce_quota(keep={confine.under(saves, key + s) for s in (".data", ".thumb", ".meta")})
         return meta
 
     def list_saves(self):
@@ -371,8 +388,9 @@ class Store:
                     removed += 1
         return removed
 
-    def _enforce_quota(self):
-        """Evict oldest-first until the whole store fits in MAX_TOTAL.
+    def _enforce_quota(self, keep=()):
+        """Evict oldest-first until the whole store fits in MAX_TOTAL; never what is in `keep`
+        (the item just written: _fits made sure it fits by itself).
 
         Called with the lock held. With no authentication anywhere on this hub, the
         quota is the only thing standing between a guest and a full SD card, so it runs
@@ -401,6 +419,8 @@ class Store:
         for _, size, path in entries:
             if total <= MAX_TOTAL:
                 break
+            if path in keep:
+                continue
             try:
                 path.unlink()
                 total -= size
@@ -802,7 +822,10 @@ def _handle_blob(handler, method, rest, store):
         if data is None:
             _send_json(handler, 413, say(body_too_large()))
             return True
-        _send_json(handler, 201, {"id": store.create_scene(data)})
+        try:
+            _send_json(handler, 201, {"id": store.create_scene(data)})
+        except TooLarge as exc:
+            _send_json(handler, 413, answer(exc))
         return True
 
     if method == "PUT" and key and namespace in ("rooms", "files"):
@@ -810,7 +833,11 @@ def _handle_blob(handler, method, rest, store):
         if data is None:
             _send_json(handler, 413, say(body_too_large()))
             return True
-        store.put(namespace, key, data)
+        try:
+            store.put(namespace, key, data)
+        except TooLarge as exc:
+            _send_json(handler, 413, answer(exc))
+            return True
         _send_json(handler, 200, {"id": key})
         return True
 
@@ -970,6 +997,9 @@ def _create_save(handler, store):
         meta = store.save(kind, name, body, thumb, key, proof=proof, lock_new=new, lock_next=nxt, marks=_author_marks(handler, "saves"))
     except LockError as exc:
         _send_locked(handler, exc)
+        return
+    except TooLarge as exc:
+        _send_json(handler, 413, answer(exc))
         return
     _send_json(handler, 201, public_meta(meta))
 
