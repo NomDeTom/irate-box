@@ -1486,7 +1486,8 @@ body.admin button.link-button {
 }
 /* The same art on a public page (Services: data-art on its body), behind its sections. */
 body[data-art] > header,
-body[data-art] > section {
+body[data-art] > section,
+body.home[data-art] > :not(header):not(.admin-art):not(script) {
   position: relative;
   z-index: 1;
 }
@@ -1544,6 +1545,13 @@ body[data-art] > header {
 [data-art="librarian"] .admin-art {
   display: block;
   background-image: url("art/krab-librarian.webp");
+}
+[data-art="helmskrab"] {
+  --art-r: calc(400 / 600);
+}
+[data-art="helmskrab"] .admin-art {
+  display: block;
+  background-image: url("art/krab-helm.webp");
 }
 [data-art="electronics"] {
   --art-r: calc(550 / 520);
