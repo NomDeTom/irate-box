@@ -20,13 +20,13 @@ def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 
-SECRET = "root's file: must not change\n"
+UNCHANGED = "root's file: must not change\n"
 def victim():
     v = T / f"victim-{os.urandom(4).hex()}"
-    v.write_text(SECRET); v.chmod(0o600)
+    v.write_text(UNCHANGED); v.chmod(0o600)
     return v
 def untouched(v):
-    return v.read_text() == SECRET and (v.stat().st_mode & 0o777) == 0o600
+    return v.read_text() == UNCHANGED and (v.stat().st_mode & 0o777) == 0o600
 def plant(path, kind="symlink"):
     path = Path(path); path.unlink(missing_ok=True)
     v = victim()
@@ -257,7 +257,7 @@ def linked_folder(path, files):
     return d
 # H2: an old kept profile, its folder swapped for a link.
 NM = T / "nm"; NM.mkdir(); otherap.KEYFILES = NM
-d = linked_folder(STATE / "other-ap", {"x.nmconnection": SECRET})
+d = linked_folder(STATE / "other-ap", {"x.nmconnection": UNCHANGED})
 uid = "12345678-1234-1234-1234-123456789abc"
 otherap.RECORD.write_text(json.dumps({uid: {"name": "a", "ssid": "s", "choice": "removed", "at": 0,
                                             "kept": str(STATE / "other-ap" / "x.nmconnection"), "file": str(NM / "x.nmconnection")}}))
@@ -267,17 +267,17 @@ except Refused:
     refused = True
 check("other-ap undo: an old kept copy through a link is not read", refused and not (NM / "x.nmconnection").exists())
 otherap.forget(uid)
-check("other-ap forget: nothing deleted through the link", (d / "x.nmconnection").read_text() == SECRET)
+check("other-ap forget: nothing deleted through the link", (d / "x.nmconnection").read_text() == UNCHANGED)
 # M1: crash watch's old folder moved once; a link in its place left alone.
 old = STATE / "crashwatch"; old.mkdir(); old.chmod(0o700); (old / "run.json").write_text('{"boot": "b"}')
 said = crashwatch.migrate()
 check("crash watch's old files move to root's own folder", (crashwatch.DIR / "run.json").exists() and not old.exists()
       and (crashwatch.DIR.stat().st_mode & 0o777) == 0o700, said)
-d = linked_folder(old, {"snap.log": SECRET})
+d = linked_folder(old, {"snap.log": UNCHANGED})
 said = crashwatch.migrate()
 crashwatch.append_snapshot("look\n", sync=False)
 check("crash watch: a link at the old folder is not followed, and snapshots go to root's own",
-      (d / "snap.log").read_text() == SECRET and sorted(p.name for p in d.iterdir()) == ["snap.log"]
+      (d / "snap.log").read_text() == UNCHANGED and sorted(p.name for p in d.iterdir()) == ["snap.log"]
       and crashwatch.SNAP.read_text().endswith("look\n"), said)
 # L18: an old hand-over's copies, their folder swapped for a link.
 NP = T / "netplan"; NP.mkdir()
