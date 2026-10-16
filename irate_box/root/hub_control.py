@@ -148,6 +148,7 @@ import zipfile
 from pathlib import Path
 
 from irate_box.finding import finding
+from irate_box.root.nginx_front import locked
 from irate_box.hub import access, manifests, netinv, uplink
 from irate_box.msg import (
     M,
@@ -1436,6 +1437,7 @@ def _write_root_file(path, text, mode=0o644, group=None):
     os.replace(tmp, path)
 
 
+@locked
 def _access_files(state):
     """The web server's part, written; returns what it replaced, to put back on failure."""
     from irate_box.root import tls
@@ -1524,6 +1526,7 @@ def _access_record(state):
     safeio.write(ACCESS_STATE, json.dumps(state))
 
 
+@locked
 def _access_apply(state, reload=True):
     """Write the web server's part and check it with the rest of its config; on a failed
     check, put the old files back. reload: make it live (install.sh does that itself).
@@ -1578,6 +1581,7 @@ def _access_unit(app):
     )
 
 
+@locked
 def access_set(req):
     """One app public, users, private or off. Off also stops (and disables) an add-on's service;
     leaving off starts it again."""
@@ -1696,6 +1700,7 @@ def _access_saved(app, mode):
     )
 
 
+@locked
 def access_install():
     """For install.sh: the choices so far (or the defaults, or the old "show the Terminal
     card" setting), written out for the web server it is about to check and start."""

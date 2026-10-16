@@ -7,13 +7,17 @@ keeping the English for every reader that expects text. python3 tests/sim_update
 import io
 import json
 import os
+import pwd
+import socket
 import ssl
 import subprocess  # CompletedProcess mock results only. # nosec B404
 import sys
 import tempfile
+import threading
 import time
 import urllib.parse
 from email.utils import formatdate
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -312,6 +316,52 @@ except ValueError:
     check("symlinked staging directories are refused", True)
 
 candidate = "a" * 40
+transaction = T / "nginx-transaction"
+old_site = T / "old-site.conf"
+old_site.write_text("old")
+old_site.chmod(0o640)
+old_link = T / "default-site"
+old_link.symlink_to("owner-site")
+new_file = T / "new-include.conf"
+nginx_front.begin(transaction, [old_site, old_link, new_file])
+old_site.write_text("new")
+old_link.unlink()
+new_file.write_text("new")
+nginx_front.recover(transaction)
+check("interrupted activation restores content, modes, links and prior nonexistence",
+    old_site.read_text() == "old" and old_site.stat().st_mode & 0o777 == 0o640 and old_link.is_symlink() and not new_file.exists())
+check("transaction recovery is idempotent", nginx_front.recover(transaction) is False)
+
+for failure in ("none", "validation", "reload", "health", "candidate", "rollback"):
+    directory = T / ("activation-" + failure)
+    nginx_front.begin(directory, [old_site])
+    prepared = nginx_front.prepare(REPO / "config/irate-box.nginx", private_stage, render_values, candidate)
+    old_site.write_bytes((prepared / "site.conf").read_bytes())
+    nginx_front.seal(directory, prepared, old_site)
+    commands = []
+    probes = []
+
+    def activate(*argv):
+        commands.append(argv)
+        failed = (failure in ("validation", "rollback") and len(commands) == 1) or (failure == "reload" and argv[1] == "reload") or (failure == "rollback" and argv[1] == "reload-or-restart")
+        return subprocess.CompletedProcess(argv, int(failed), "", "injected failure" if failed else "")
+
+    def probe(values):
+        probes.append(values)
+        if failure == "health" and len(probes) == 1:
+            raise ValueError("injected health failure")
+
+    if failure == "candidate":
+        old_site.write_text("tampered")
+    try:
+        nginx_front.finish(directory, prepared, render_values, runner=activate, probe=probe)
+        check("activation succeeds only with an unchanged healthy candidate", failure == "none" and nginx_front.transaction_state(directory)["state"] == "committed")
+    except ValueError:
+        state = nginx_front.transaction_state(directory)["state"]
+        check("activation failure restores the previous files: " + failure, failure != "none" and old_site.read_text() == "old")
+        check("rollback outcome is explicit: " + failure, state == ("recovery-required" if failure == "rollback" else "restored"))
+    old_site.write_text("old")
+
 pipeline_state = {"available": candidate[:7], "available_sha": candidate, "up_to_date": False, "branch": "main"}
 pipeline_calls = []
 
@@ -353,6 +403,106 @@ with mock.patch.object(H, "update_check", pipeline_check), mock.patch.object(H, 
     with mock.patch.object(H, "update_check", lambda req: H._write_update_state(dict(pipeline_state, up_to_date=True))):
         H.update_reach({"endpoint": "install"})
     check("no update ends a combined operation without installation", not pipeline_calls)
+
+if os.environ.get("IRATE_NGINX"):
+    from irate_box.hub import access
+    from irate_box.root import tls
+
+    class Backend(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"proxied": "X-Forwarded-For" in self.headers, "version": "test"}).encode() if self.path == "/status" else b"<html>healthy</html>"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    backend = ThreadingHTTPServer(("127.0.0.1", 0), Backend)
+    threading.Thread(target=backend.serve_forever, daemon=True).start()
+    try:
+        for transport in ("http", "both", "discovery", "https"):
+            live = T / ("real-" + transport)
+            live.mkdir()
+            values = dict(render_values)
+            reserved = []
+            for token in nginx_front.PORTS:
+                listener = socket.socket()
+                listener.bind(("127.0.0.1", 0))
+                reserved.append(listener)
+                values[token] = str(listener.getsockname()[1])
+            for token in ("ACCESS", "ADDON_ACCESS", "FRONT", "HTPASSWD", "UNCLAIMED", "PAGELOG"):
+                values[token] = str(live / token.lower())
+            values["TLS"] = str(live / "tls")
+            front = Path(values["TLS"])
+            front.mkdir()
+            Path(values["ACCESS"]).write_text(access.nginx_conf(access.defaults()))
+            Path(values["ADDON_ACCESS"]).write_text(access.addon_nginx_conf(access.defaults(), []))
+            Path(values["FRONT"]).write_text('proxy_set_header X-Irate-Front "test";\n')
+            Path(values["HTPASSWD"]).write_text("admin:unused\n")
+            certificate, key = live / "cert.pem", live / "key.pem"
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1", "-keyout", str(key), "-out", str(certificate)], check=True, capture_output=True)
+            names = {"main": "", "addons": "ADDON_", "notes": "NOTES_", "wiki": "WIKI_", "git": "GIT_", "notebook": "NOTEBOOK_"}
+            with mock.patch.multiple(tls, FRONT=front, CHAIN=certificate, KEY=key, PLAIN_PORTS={name: int(values[prefix + "PORT"]) for name, prefix in names.items()}, TWINS={name: int(values[prefix + "TLS_PORT"]) for name, prefix in names.items()}), mock.patch.object(tls, "settings", return_value={"transport": transport, "admin_http": "allow"}):
+                generated = tls._plain_files(transport, "allow")
+                if transport != "http":
+                    generated.update(tls._front_files())
+                for path, text in generated.items():
+                    path.write_text(text)
+                template = live / "template"
+                template.write_text((REPO / "config/irate-box.nginx").read_text().replace("127.0.0.1:8000", f"127.0.0.1:{backend.server_port}").replace("/etc/nginx/fastcgi_params", str(Path(os.environ.get("IRATE_NGINX_CONF_DIR", "/etc/nginx")) / "fastcgi_params")))
+                prior_bundle = nginx_front.prepare(template, private_stage, values, "old")
+                deployed = live / "site.conf"
+                deployed.write_bytes((prior_bundle / "site.conf").read_bytes())
+                configuration = live / "nginx.conf"
+                configuration.write_text(f"user {pwd.getpwuid(os.getuid()).pw_name};\npid {live}/nginx.pid;\nerror_log {live}/error.log;\nevents {{}}\nhttp {{ access_log off; client_body_temp_path {live}/body; proxy_temp_path {live}/proxy; fastcgi_temp_path {live}/fastcgi; uwsgi_temp_path {live}/uwsgi; scgi_temp_path {live}/scgi; include {deployed}; }}\n")
+                command = [os.environ["IRATE_NGINX"], "-p", str(live), "-c", str(configuration)]
+
+                def real_run(*arguments):
+                    if arguments[:2] == ("systemctl", "is-active"):
+                        return subprocess.CompletedProcess(arguments, 0, "", "")
+                    options = list(arguments[1:]) if arguments[0] == "nginx" else ["-s", "reload"]
+                    return subprocess.run(command + options, check=False, capture_output=True, text=True)
+
+                for listener in reserved:
+                    listener.close()
+                started = subprocess.run(command, check=False, capture_output=True, text=True)
+                check("real nginx starts in " + transport, started.returncode == 0, started.stderr)
+                if started.returncode:
+                    continue
+                try:
+                    for fault in ("none", "syntax", "health"):
+                        journal = live / ("transaction-" + fault)
+                        with mock.patch.object(nginx_front, "settings_from_env", return_value=dict(values)):
+                            nginx_front.begin(journal, [deployed])
+                        if fault == "syntax":
+                            template.write_text(template.read_text() + "\ninvalid_directive;\n")
+                        prepared = nginx_front.prepare(template, private_stage, values, "new-" + fault)
+                        deployed.write_bytes((prepared / "site.conf").read_bytes())
+                        nginx_front.seal(journal, prepared, deployed)
+                        attempts = []
+
+                        def live_probe(settings):
+                            attempts.append(settings)
+                            if fault == "health" and len(attempts) == 1:
+                                raise ValueError("injected health failure")
+                            nginx_front.health(settings)
+
+                        try:
+                            nginx_front.finish(journal, prepared, values, runner=real_run, probe=live_probe)
+                            check("real nginx activates all origins in " + transport, fault == "none")
+                        except ValueError as error:
+                            check("real nginx rollback: " + transport + "/" + fault, fault != "none" and nginx_front.transaction_state(journal)["state"] == "restored", str(error))
+                        if fault == "syntax":
+                            template.write_text(template.read_text().replace("\ninvalid_directive;\n", ""))
+                finally:
+                    subprocess.run(command + ["-s", "quit"], check=False, capture_output=True)
+    finally:
+        backend.shutdown()
+        backend.server_close()
+else:
+    print("SKIP real nginx activation tests (set IRATE_NGINX to an isolated nginx binary)")
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

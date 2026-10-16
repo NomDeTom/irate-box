@@ -507,6 +507,13 @@ on_err() {
 }
 on_exit() {
 	EXIT_CODE=$?
+	if [ "${BASH_SUBSHELL:-0}" = 0 ] && [ -n "${NGINX_TRANSACTION:-}" ]; then
+		if HUB_ETC_DIR="$ETC" "$CODE/irate-box" nginx_front rollback "$NGINX_TRANSACTION"; then
+			echo "    The previous nginx configuration was restored."
+		else
+			echo "    Nginx recovery needs console attention; the private transaction is in $NGINX_TRANSACTION." >&2
+		fi
+	fi
 	RUNNING=false
 	state_write
 	[ "$EXIT_CODE" = 0 ] || [ -z "$ABORT_CMD" ] && return
@@ -1188,6 +1195,42 @@ fi
 # nothing the hub's users run imports from it, so they have no reason to read it, and a hub
 # process that goes wrong cannot run them. Its source is still public (/source, below).
 [ -d "$CODE/irate_box/root" ] && chmod 700 "$CODE/irate_box/root"
+UNCLAIMED_MARK=/etc/$WEB/irate-box-unclaimed
+if [ "$WEB" = nginx ]; then
+	NGINX_DEFAULT=/etc/nginx/sites-enabled/default
+	install -d -m 755 /etc/systemd/system/nginx.service.d
+	cat >/etc/systemd/system/irate-box-nginx-recover.service <<EOF
+[Unit]
+Description=Irate-Box: restore interrupted nginx configuration changes
+After=local-fs.target
+Before=nginx.service irate-box.service
+
+[Service]
+Type=oneshot
+Environment=HUB_ETC_DIR=$ETC
+ExecStart=$CODE/irate-box nginx_front recover-if-idle $ETC/nginx-transaction
+ProtectSystem=strict
+ReadWritePaths=$ETC /etc/nginx -$STATE/control
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectProc=invisible
+EOF
+	cat >/etc/systemd/system/nginx.service.d/irate-box-recovery.conf <<EOF
+[Unit]
+Requires=irate-box-nginx-recover.service
+After=irate-box-nginx-recover.service
+EOF
+	exec {NGINX_LOCK_FD}>"$ETC/.front.lock"
+	flock -x "$NGINX_LOCK_FD"
+	export HUB_FRONT_LOCK_FD="$NGINX_LOCK_FD"
+	NGINX_TRANSACTION="$ETC/nginx-transaction"
+	HUB_ETC_DIR="$ETC" "$CODE/irate-box" nginx_front begin "$NGINX_TRANSACTION" \
+		"$NGINX_SITE" "$NGINX_DEFAULT" "$NGINX_DEFAULT_MARK" "$NGINX_LOGINS" "$NGINX_LOGINS.net" "$NGINX_FRONT" "$UNCLAIMED_MARK" \
+		"$ETC/tls" "$ETC/nginx-access.conf" "$ETC/nginx-access.conf.d" "$ETC/nginx-addons.conf" "$ETC/nginx-addon-gates.conf.d" \
+		"$ETC/front-secret.env" "$ETC/admin-password" "$ETC/hub.env" "$ETC/access.json" \
+		"$ETC/install-options" "$STATE/install-options" "$STATE/control/access.json" "$STATE/control/admin-login.json" "$STATE/control/tls"
+fi
 
 # How this box was installed, for /admin's "Install update", which reruns this script the
 # same way (hub_control.py). One argument per line. Root-owned, so the unprivileged hub
@@ -1337,7 +1380,6 @@ done
 # nobody knows, so /sync and /term stay shut; it is never saved or shown. The mark sits beside the web
 # server's config, where its workers can see it (/etc/hub cannot be read by them). --admin-password
 # sets the box's own login for scripts instead, for scripted installs.
-UNCLAIMED_MARK=/etc/$WEB/irate-box-unclaimed
 UNCLAIMED=0
 # An admin account that can sign in (accounts.py's record): the first use has ended, though no password is kept here.
 admin_made() {
@@ -1537,18 +1579,15 @@ if [ "$WEB" = nginx ]; then
 	chown "root:$ngx_group" "$NGINX_LOGINS.new"
 	chmod 640 "$NGINX_LOGINS.new"
 	mv "$NGINX_LOGINS.new" "$NGINX_LOGINS"
-	removed_default=0
 	if [ -e "$NGINX_DEFAULT" ] && nginx_default_untouched; then
 		rm -f "$NGINX_DEFAULT"
 		echo "the nginx package's default site, switched off by irate-box $(date -u +%Y-%m-%d); uninstall.sh turns it back on" >"$NGINX_DEFAULT_MARK"
-		removed_default=1
 	fi
 	if [ "$HUB_PORT" = 80 ] && nginx_serves_port 80; then
 		pick_own_port || die "the existing nginx config serves :80, and 8080, 8088 and 8888 are taken too: pass --port N"
 		record_port
 		notice "The existing nginx config already serves :80, so the hub is on :$HUB_PORT instead. The hotspot's sign-in sheet needs :80, so it will not pop up."
 	fi
-	[ -f "$NGINX_SITE" ] && cp "$NGINX_SITE" "$NGINX_SITE.prev"
 	access_install nginx >/dev/null
 	(
 		umask 077
@@ -1561,18 +1600,12 @@ if [ "$WEB" = nginx ]; then
 	printf '%s\n' "# Written by irate-box install.sh: the page loads the hub's use heatmap reads (pagehistory.py)." \
 		"$STATE/pagelog/pages.log {" "	size 1M" "	rotate 0" "	copytruncate" "	missingok" "	notifempty" "}" >/etc/logrotate.d/irate-box-pages
 	install -d -m 700 "$ETC/nginx-staging"
-	nginx_bundle="$(nginx_prepare prepare "$CODE/config/irate-box.nginx" "$ETC/nginx-staging" "$(git -C "$CODE" rev-parse HEAD 2>/dev/null || echo installed-source)")"
+	nginx_bundle="$(nginx_prepare prepare "$CODE/config/irate-box.nginx" "$ETC/nginx-staging" "$(git -C "${SRC:-$CODE}" rev-parse HEAD 2>/dev/null || echo installed-source)")"
 	install -m 644 "$nginx_bundle/site.conf" "$NGINX_SITE"
 	if ! out="$(nginx -t 2>&1)"; then
 		printf '%s\n' "$out" | tail -3 >&2
-		if [ -f "$NGINX_SITE.prev" ]; then mv "$NGINX_SITE.prev" "$NGINX_SITE"; else rm -f "$NGINX_SITE"; fi
-		if [ "$removed_default" = 1 ]; then
-			ln -sf ../sites-available/default "$NGINX_DEFAULT"
-			rm -f "$NGINX_DEFAULT_MARK"
-		fi
-		die "the hub's nginx site does not pass nginx -t with the rest of the config, which is left as it was"
+		die "the hub's nginx site does not pass nginx -t; restoring the previous frontend configuration"
 	fi
-	rm -f "$NGINX_SITE.prev"
 fi
 
 # --- the web server: Caddy (the fallback) ----------------------------------------------
@@ -2839,6 +2872,7 @@ for u in "${units[@]}"; do
 		continue
 	fi
 	systemctl enable --quiet "$u" || problem "$u could not be enabled: systemctl status $u"
+	if [ "$u" = nginx ]; then continue; fi
 	if [ "$u" = kiwix ]; then
 		print="$(kiwix_print)"
 		if systemctl is-active --quiet kiwix && [ "$print" = "$(cat "$KIWIX_PRINT" 2>/dev/null)" ]; then
@@ -2850,6 +2884,14 @@ for u in "${units[@]}"; do
 	fi
 	systemctl restart "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
+if [ "$WEB" = nginx ]; then
+	nginx_prepare seal "$NGINX_TRANSACTION" "$nginx_bundle" "$NGINX_SITE"
+	nginx_prepare finish "$NGINX_TRANSACTION" "$nginx_bundle"
+	NGINX_TRANSACTION=""
+	flock -u "$NGINX_LOCK_FD"
+	exec {NGINX_LOCK_FD}>&-
+	unset HUB_FRONT_LOCK_FD
+fi
 # Turned on by an earlier run: keep it on, with the current credential.
 [ "$WITH_TERM" = 1 ] || systemctl try-restart ttyd
 # A ZIM replaced under the same name stays open in kiwix-serve until it restarts;
@@ -2978,9 +3020,11 @@ sleep 2
 for u in "${units[@]}"; do
 	systemctl is-active --quiet "$u" || problem "$u is not running: journalctl -u $u -n 30"
 done
-hostport="127.0.0.1$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
-code="$(curl -s -o /dev/null -w '%{http_code}' "http://$hostport/" || true)"
-[ "$code" = 200 ] || problem "http://$hostport/ answered $code: journalctl -u irate-box -u $WEB -n 30"
+if [ "$WEB" != nginx ]; then
+	hostport="127.0.0.1$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"
+	code="$(curl -s -o /dev/null -w '%{http_code}' "http://$hostport/" || true)"
+	[ "$code" = 200 ] || problem "http://$hostport/ answered $code: journalctl -u irate-box -u $WEB -n 30"
+fi
 
 addr="$(ip -4 -o route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' || hostname -I | cut -d' ' -f1)"
 where="http://${addr:-<this box>}$([ "$HUB_PORT" = 80 ] || echo ":$HUB_PORT")"

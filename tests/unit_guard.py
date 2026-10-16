@@ -23,6 +23,7 @@ BASELINE = ["ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "Pr
 # Root's units: they act for the owner on the system itself (packages, units, the network, the
 # clock), so the baseline would stop them working. Each says what needs root.
 ROOT = {
+    "irate-box-nginx-recover.service": "restores root-owned nginx configuration, keys and ownership before nginx starts",
     "irate-box-control.service": "the root helper: installs updates and packages, writes the front's config, starts units",
     "irate-box-uplink.service": "the network watchdog: reconnects, restarts the network, resets the radio",
     "irate-box-led.service": "the status light: writes an LED's trigger and brightness under /sys/class/leds, which are root's",

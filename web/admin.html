@@ -4494,12 +4494,13 @@
                   id="update-metered"
                   hidden
                 ></p>
-                <div class="library-buttons">
+                <div class="library-buttons hub-update-actions">
                   <button
                     class="action-btn"
                     type="button"
                     id="update-check"
                     data-update="check"
+                    data-i18n="admin.update.check"
                   >
                     Check for updates
                   </button>
@@ -4508,6 +4509,7 @@
                     type="button"
                     id="update-fetch"
                     data-update="fetch"
+                    data-i18n="admin.update.reach.download"
                   >
                     Check for updates and download
                   </button>
@@ -4516,6 +4518,7 @@
                     type="button"
                     id="update-install"
                     data-update="install"
+                    data-i18n="admin.update.reach.install"
                   >
                     Check for updates, download and install
                   </button>
@@ -5370,18 +5373,18 @@
           </details>
 
           <details class="sec-fold" id="update-maint">
-            <summary>Recovery actions</summary>
-            <h3>The update cache</h3>
-            <p class="setting-desc">Clear a broken cache to start again. This does not install an update.</p>
+            <summary data-i18n="admin.update.recovery">Recovery actions</summary>
+            <h3 data-i18n="admin.update.cache">The update cache</h3>
+            <p class="setting-desc" data-i18n="admin.update.cache.desc">Clear a broken cache to start again. This does not install an update.</p>
             <div class="library-buttons">
-              <button class="action-btn" type="button" id="update-clear">Clear the update cache</button>
+              <button class="action-btn" type="button" id="update-clear" data-i18n="admin.update.clear">Clear the update cache</button>
             </div>
             <p class="setting-desc action-note" id="update-clear-note" role="status" hidden></p>
-            <h3>Install anyway</h3>
-            <p class="setting-desc">For a trusted update with a known checker failure. Review the failed checks below. Signing requirements and installer syntax checks cannot be skipped.</p>
+            <h3 data-i18n="admin.update.force">Install anyway</h3>
+            <p class="setting-desc" data-i18n="admin.update.force.desc">For a trusted update with a known checker failure. Review the failed checks below. Signing requirements and installer syntax checks cannot be skipped.</p>
             <div class="findings" id="force-failed" hidden></div>
             <div class="library-buttons">
-              <button class="action-btn" type="button" id="update-force" disabled>Install the downloaded version anyway</button>
+              <button class="action-btn" type="button" id="update-force" data-i18n="admin.update.force.install" disabled>Install the downloaded version anyway</button>
             </div>
             <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
           </details>
