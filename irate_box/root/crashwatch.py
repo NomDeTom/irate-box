@@ -6,14 +6,14 @@
 irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: small, one process.
 
   Snapshots   every 30 s, load, memory, the heaviest processes, temperature, the network links and
-              the kernel's new lines, appended to STATE/crashwatch/snap.log on the box's own storage
+              the kernel's new lines, appended to ROOT_STATE/crashwatch/snap.log on the box's own storage
               and synced (on Armbian images /var/log is a RAM disk, so the journal alone loses a
               hang). Rotated at 4 MB. A driver flooding the kernel log (the AIC8800's "4addr" hex
               dumps, ~10 a second) is counted, not copied. On by default; off on the box doctor.
   A crash     each start of the service notes the boot; a stop (a shutdown) marks it clean. A new
               boot with no clean mark is a box that stopped without shutting down (a hang, a crash
               or the power going): its last snapshots and the previous boot's journal tail are filed
-              under STATE/crashwatch/crashes/<time>/ for the box doctor (the last 30 kept).
+              under ROOT_STATE/crashwatch/crashes/<time>/ for the box doctor (the last 30 kept).
   A radio     the WiFi radio watched for a hardware or driver failure: its interface or USB device
               gone, or a burst of driver errors (the AIC8800's own "cmd queue crashed" among them),
               and its driver resetting the radio itself. Each failure is filed as it happens
@@ -49,11 +49,15 @@ from collections import Counter, deque
 from pathlib import Path
 
 from irate_box.msg import M, Refused, duration, render
+from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 SETTINGS = ETC / "crashwatch.json"
-DIR = STATE / "crashwatch"
+# Root's own folder beside $STATE: the hub owns $STATE, so it could swap a folder of root's there
+# for a link, and root's writes would land where it pointed.
+DIR = safeio.ROOT_STATE / "crashwatch"
+OLD_DIR = STATE / "crashwatch"      # before 2026-10; migrate() moves its files over
 SNAP = DIR / "snap.log"
 RUN = DIR / "run.json"               # this boot: its id, when it started, whether it stopped cleanly
 CRASHES = DIR / "crashes"
@@ -291,8 +295,7 @@ def snapshot(kernel, flood, extra=""):
 
 
 def append_snapshot(text, sync=True):
-    DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(DIR, 0o700)
+    safeio.root_dir("crashwatch")
     if SNAP.exists() and SNAP.stat().st_size > SNAP_MAX:
         os.replace(SNAP, SNAP.with_name("snap.log.1"))
     fd = os.open(SNAP, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -378,6 +381,7 @@ def file_radio(now, iface, text, kernel, radio=None):
     runs on, so no crash is ever filed for it. `radio` is its USB port (radios()): another interface
     of the same radio failing soon after (a hotspot beside the uplink) joins that incident."""
     index = _json(INCIDENTS, [])
+    safeio.root_dir("crashwatch")
     last = index[-1] if index else None
     if (radio and last and last.get("radio") == radio and last.get("boot") == boot_id()
             and now - last.get("at", 0) < RADIO_JOIN and iface not in last.get("ifaces", [last.get("iface")])):
@@ -441,8 +445,7 @@ def last_snapshot(text):
 def boot(now=None):
     """At the service's start: a previous boot that never stopped cleanly is filed as a crash."""
     now = now or time.time()
-    DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(DIR, 0o700)
+    safeio.root_dir("crashwatch")
     cur, prev = boot_id(), _json(RUN, None)
     filed = None
     if prev and prev.get("boot") and prev["boot"] != cur and not prev.get("clean"):
@@ -802,6 +805,44 @@ def run(once=False):
         time.sleep(TICK)
 
 
+def migrate():
+    """The files of a watch from before 2026-10, in $STATE/crashwatch, moved to DIR. Only a folder
+    that is root's, 0700 and not a link is taken, and each entry moves through the folders' fds, so
+    a folder the hub swapped in is left alone. Run by install.sh, outside the unit's sandbox (a
+    rename between two of its mounts fails)."""
+    try:
+        old = safeio._dir_fd(OLD_DIR)
+    except FileNotFoundError:
+        return "nothing to move"
+    except safeio.LinkRefused:
+        return f"{OLD_DIR} is a link, not crash watch's folder: left as it is"
+    try:
+        st = os.fstat(old)
+        if st.st_uid != os.geteuid() or st.st_mode & 0o777 != 0o700:
+            return f"{OLD_DIR} is not crash watch's folder: left as it is"
+        safeio.root_dir("crashwatch")
+        new = os.open(DIR, safeio.DIR_FLAGS)
+        moved = 0
+        try:
+            for name in os.listdir(old):
+                try:
+                    os.stat(name, dir_fd=new, follow_symlinks=False)
+                    continue   # the new folder's own is newer
+                except FileNotFoundError:
+                    pass
+                os.rename(name, name, src_dir_fd=old, dst_dir_fd=new)
+                moved += 1
+        finally:
+            os.close(new)
+    finally:
+        os.close(old)
+    try:
+        os.rmdir(OLD_DIR)
+    except OSError:
+        pass
+    return f"moved {moved} to {DIR}"
+
+
 def main(argv):
     cmd = argv[0] if argv else ""
     if cmd == "run":
@@ -817,9 +858,11 @@ def main(argv):
         print(set_option(argv[1], argv[2]))
     elif cmd == "undo-all":
         print("\n".join(undo_all()) or "nothing to undo")
+    elif cmd == "migrate":
+        print(f"crashwatch: {migrate()}")
     else:
         print(__doc__.split("    crashwatch.py run")[0].strip().splitlines()[0])
-        print("usage: crashwatch.py run | boot | shutdown | status | set KEY VALUE | undo-all")
+        print("usage: crashwatch.py run | boot | shutdown | status | set KEY VALUE | undo-all | migrate")
         return 2
     return 0
 

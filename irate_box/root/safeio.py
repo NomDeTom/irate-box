@@ -19,6 +19,10 @@ the hub) a file of the hub's choosing. Here, nothing is followed:
   read_own(path)          a file only if it and its folder are this user's (root's), no links
   mkdir(path, uid, gid)   a folder made, or one already there, refusing a link, and owned and
                           moded through its fd
+  root_dir(name)          a folder of root's own beside $STATE (0700), for what root keeps: the
+                          hub can rename anything inside $STATE, so nothing of root's lives there
+  own_dir(path)           an fd for a folder of this user's that is not a link, in a folder of
+                          this user's that is not a link
 
 Root's files are left root's: mode 0644 by default, which the hub reads. Nothing is chowned to
 the hub by path. Stdlib only.
@@ -30,6 +34,8 @@ import stat
 from pathlib import Path
 
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+ROOT_STATE = Path(os.environ.get("HUB_ROOT_STATE_DIR")
+                  or Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")).parent / "irate-box-root")
 
 
 class LinkRefused(OSError):
@@ -166,3 +172,27 @@ def mkdir(path, uid=None, gid=None, mode=0o755):
         os.fchmod(fd, mode)
     finally:
         os.close(fd)
+
+
+def root_dir(name):
+    """ROOT_STATE/name, made 0700 if missing, never a link. Its parents are root's, so its path is safe to use."""
+    mkdir(ROOT_STATE, mode=0o700)
+    mkdir(ROOT_STATE / name, mode=0o700)
+    return ROOT_STATE / name
+
+
+def own_dir(path):
+    """An fd for `path`: a folder of this user's, not a link, in a folder of this user's, not a link."""
+    path = Path(path)
+    me = os.geteuid()
+    pfd = _dir_fd(path.parent)
+    try:
+        if os.fstat(pfd).st_uid != me:
+            raise NotOurs(f"{path.parent} is not owned by the user that the box expects. The box did not use it")
+        fd = os.open(path.name, DIR_FLAGS, dir_fd=pfd)
+    finally:
+        os.close(pfd)
+    if os.fstat(fd).st_uid != me:
+        os.close(fd)
+        raise NotOurs(f"{path} is not owned by the user that the box expects. The box did not use it")
+    return fd

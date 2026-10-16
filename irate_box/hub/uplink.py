@@ -1271,8 +1271,9 @@ def own_reset():
 
 
 def crashwatch_events():
+    from irate_box.root import crashwatch
     try:
-        return json.loads((STATE / "crashwatch" / "events.json").read_text())
+        return json.loads(crashwatch.EVENTS.read_text())
     except (OSError, ValueError):
         return []
 

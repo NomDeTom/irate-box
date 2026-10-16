@@ -9,7 +9,8 @@ network. irate-box's own hotspot runs beside the link, so a second one adds noth
 is often the image's default. The doctor warns whenever one is set to start by itself, left or not.
 
 Records: /etc/hub/other-ap.json ({uuid: {name, ssid, choice: removed|left, kept, at}}); removed
-profiles kept in STATE/other-ap/. Root only; stdlib only.
+profiles kept in ROOT_STATE/other-ap/ (root's, beside $STATE; older ones in STATE/other-ap/, read
+only through safeio's checks). Root only; stdlib only.
 """
 import json
 import os
@@ -20,11 +21,13 @@ import time
 from pathlib import Path
 
 from irate_box.msg import M, Refused
+from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 RECORD = ETC / "other-ap.json"
-KEPT = STATE / "other-ap"
+KEPT = safeio.ROOT_STATE / "other-ap"
+OLD_KEPT = STATE / "other-ap"   # before 2026-10: the hub owns $STATE and could swap this folder
 KEYFILES = Path(os.environ.get("HUB_NM_CONNECTIONS", "/etc/NetworkManager/system-connections"))
 OURS = "irate-box-ap"
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -49,7 +52,6 @@ def record():
 
 
 def _save(rec):
-    from irate_box.root import safeio
     ETC.mkdir(parents=True, exist_ok=True)
     if rec:
         safeio.write(RECORD, json.dumps(rec, indent=1), 0o644)   # names and choices only: the page reads it
@@ -80,8 +82,7 @@ def remove(uuid):
     if not f or not src.is_relative_to(KEYFILES) or not src.is_file():
         raise Refused(M("other-ap.remove.no-file", "{name} is not a profile file in {folder}, so the box cannot keep a copy to restore it. "
                      "The box removed nothing.", name=name, folder=str(KEYFILES)))
-    KEPT.mkdir(parents=True, exist_ok=True)
-    os.chmod(KEPT, 0o700)
+    safeio.root_dir("other-ap")
     kept = KEPT / f"{time.strftime('%Y%m%d-%H%M%S')}-{src.name}"
     shutil.copy2(src, kept)
     code, out = run("nmcli", "con", "delete", "uuid", uuid)
@@ -111,8 +112,20 @@ def forget(uuid):
     if not r or r.get("choice") != "removed":
         raise Refused(M("other-ap.forget.none", "No deleted profile with this ID has a retained copy."))
     kept = Path(r["kept"])
-    if kept.is_relative_to(KEPT):
+    if kept.parent == KEPT:
         kept.unlink(missing_ok=True)
+    elif kept.parent == OLD_KEPT:
+        try:
+            fd = safeio.own_dir(OLD_KEPT)
+        except OSError:
+            fd = None   # gone, or not root's folder now: nothing of root's to delete there
+        if fd is not None:
+            try:
+                os.unlink(kept.name, dir_fd=fd)
+            except FileNotFoundError:
+                pass
+            finally:
+                os.close(fd)
     rec.pop(uuid)
     _save(rec)
     return M("other-ap.forgotten", "The box deleted the retained copy of {name}. You cannot restore the profile now.", name=r["name"])
@@ -127,8 +140,22 @@ def undo(uuid):
         dest = Path(r["file"])
         if dest.exists():
             raise Refused(M("other-ap.undo.exists", "{file} exists already, so the box did not restore the profile.", file=str(dest)))
-        shutil.copy2(r["kept"], dest)
-        os.chmod(dest, 0o600)
+        kept = Path(r["kept"])
+        try:
+            if kept.parent == KEPT:
+                data = kept.read_bytes()
+            elif kept.parent == OLD_KEPT:
+                data = safeio.read_own(kept).encode()
+            else:
+                raise OSError("not a kept copy")
+        except OSError as e:
+            raise Refused(M("other-ap.undo.kept", "The box could not read the retained copy {kept}: {detail}",
+                            kept=str(kept), detail=str(e)))
+        try:
+            with safeio.create(dest, 0o600) as fh:
+                fh.write(data)
+        except FileExistsError:
+            raise Refused(M("other-ap.undo.exists", "{file} exists already, so the box did not restore the profile.", file=str(dest)))
         code, out = run("nmcli", "con", "load", str(dest))
         if code != 0:
             dest.unlink(missing_ok=True)

@@ -20,7 +20,9 @@ writes to have NetworkManager manage the file's interfaces are kept in irate-box
 
 After the move, NetworkManager's view of each profile (every setting, the secrets with it) must be
 what it was; otherwise everything is put back at once. Undo puts the netplan file back and takes the
-keyfiles away. Everything moved is kept in STATE/netplan-handover/<when>/; the record is
+keyfiles away. Everything moved is kept in ROOT_STATE/netplan-handover/<when>/ (root's, beside
+$STATE; older hand-overs kept theirs in STATE/netplan-handover/, used only through a checked fd);
+the record is
 /etc/hub/netplan-handover.json. Uninstalling irate-box leaves a handed-over connection as it is (the
 box stays on its network) and says how to put it back.
 
@@ -36,11 +38,12 @@ import time
 from pathlib import Path
 
 from irate_box.msg import M, Refused
+from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 RECORD = ETC / "netplan-handover.json"
-BACKUP = STATE / "netplan-handover"
+BACKUP = safeio.ROOT_STATE / "netplan-handover"
 NETPLAN_DIRS = [Path(p) for p in os.environ.get("HUB_NETPLAN_DIRS", "/lib/netplan:/etc/netplan:/run/netplan").split(":")]
 KEYFILES = Path(os.environ.get("HUB_NM_CONNECTIONS", "/etc/NetworkManager/system-connections"))
 RUN_PROFILES = Path(os.environ.get("HUB_NM_RUN_CONNECTIONS", "/run/NetworkManager/system-connections"))
@@ -74,7 +77,6 @@ def record():
 
 
 def _save(rec):
-    from irate_box.root import safeio
     ETC.mkdir(parents=True, exist_ok=True)
     safeio.write(RECORD, json.dumps(rec, indent=1), 0o600)
 
@@ -240,7 +242,7 @@ def handover(name, sleep=time.sleep):
     if not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}\.yaml", str(name or "")):
         raise Refused(M("nm-handover.request.name", "The request is not valid: the name is not the name of a netplan file."))
     pl = plan(name)
-    BACKUP.mkdir(parents=True, exist_ok=True)
+    safeio.root_dir("netplan-handover")
     back = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%d-%H%M%S-"), dir=BACKUP))   # 0700, unique
     not_shown = M("nm-handover.not-shown", "NetworkManager does not show every connection this file makes. The box changed nothing.")
     if any(not p["uuid"] for p in pl["profiles"]):
@@ -362,15 +364,28 @@ def undo(name):
         raise Refused(M("nm-handover.undo.none", "The box did not transfer {name} to NetworkManager.", name=name))
     if Path(entry["file"]).exists():
         raise Refused(M("nm-handover.undo.exists", "{file} exists again, so the box did not restore the netplan file.", file=entry["file"]))
-    if not (Path(entry["backup"]) / Path(entry["file"]).name).exists():
-        raise Refused(M("nm-handover.undo.missing", "The box cannot restore the netplan file, because the kept copy of {name} "
-                     "is missing from {backup}.", name=name, backup=entry["backup"]))
-    entry = {**entry, "moved_etc": []}   # a second copy kept aside stays aside: it is what made the trouble
-    _put_back(entry, [c["keyfile"] for c in entry["connections"]])
+    kept_in, fd = entry["backup"], None
+    if Path(kept_in).parent != BACKUP:
+        # An older hand-over's copies, in $STATE: the hub owns it, so the folder is opened once,
+        # checked to be root's and not a link, and used only through that fd.
+        try:
+            fd = safeio.own_dir(kept_in)
+        except OSError as exc:
+            raise Refused(M("nm-handover.undo.not-ours", "The box did not use {backup}: {detail}", backup=kept_in, detail=str(exc)))
+    try:
+        back = Path(f"/proc/self/fd/{fd}") if fd is not None else Path(kept_in)
+        if not (back / Path(entry["file"]).name).exists():
+            raise Refused(M("nm-handover.undo.missing", "The box cannot restore the netplan file, because the kept copy of {name} "
+                         "is missing from {backup}.", name=name, backup=kept_in))
+        # a second copy kept aside stays aside: it is what made the trouble
+        _put_back({**entry, "backup": str(back), "moved_etc": []}, [c["keyfile"] for c in entry["connections"]])
+    finally:
+        if fd is not None:
+            os.close(fd)
     rec.remove(next(r for r in reversed(rec) if r["name"] == name))
     _save(rec)
     return M("nm-handover.undo.done", "The box restored {name}. netplan makes its connections again. "
-             "The box keeps its copies in {backup}.", name=name, backup=entry["backup"])
+             "The box keeps its copies in {backup}.", name=name, backup=kept_in)
 
 
 def kept_on_uninstall():
