@@ -78,6 +78,41 @@ check("the hub's session cookie is stripped for notes, books, cgit and Syncthing
       and cgit.count("fastcgi_param HTTP_COOKIE $irate_box_app_cookie;") == 2
       and re.search(r"location /sync/ \{.*?proxy_set_header Cookie \$irate_box_app_cookie;.*?proxy_pass http://127\.0\.0\.1:8384/;", hub, re.S) is not None)
 caddy = (REPO / "config" / "Caddyfile").read_text()
-check("  and on Caddy", caddy.count("header_up Cookie \"irate_session=[^;]*;?\\s*\" \"\"") == 4, caddy.count("header_up Cookie"))
+check("  and on Caddy", caddy.count("header_up Cookie \"irate_session=[^;]*;?\\s*\" \"\"") == 5, caddy.count("header_up Cookie"))
+# Caddy, the fallback: the same origins (audit M3). Each site with its snippet in place.
+csites = {tuple(p): b for p, b in secdoctor._caddy_servers(secdoctor.parse_caddy(caddy))}
+chub, cnotes, cwiki, cgit_ = (csites.get((p,), "") for p in ("80", "8091", "8092", "8093"))
+check("Caddy: five sites: the hub, add-ons, notes, books, cgit", sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",)], sorted(csites))
+check("Caddy: the hub's port runs no cgit, Kiwix or SilverBullet, but still serves clones and pushes",
+      "cgit.cgi" not in chub and "127.0.0.1:8081" not in chub and "silverbullet" not in chub
+      and "git-http-guard.py" in chub and "uri /internal/git-access?soft=1" in chub)
+for app in ("wiki", "notes", "git"):
+    check(f"Caddy: /{app}/ on the hub's port keeps the off switch, then redirects to its origin by scheme",
+          re.search(rf"import \S+/{app}-off\.caddy\*\n[^{{}}]*?redir \{{scheme\}}://\{{host\}}:\{{irate_box_{app}_port\}}\S* 302", chub) is not None)
+    check(f"  and its port by scheme: https to its TLS twin",
+          re.search(rf"map \{{scheme\}} \{{irate_box_{app}_port\}}\nhttps \{{\$HUB_{app.upper()}_TLS_PORT:849\d\}}\ndefault \{{\$HUB_{app.upper()}_PORT:809\d\}}", chub) is not None)
+check("Caddy: /git-private/'s web view on the hub's port redirects too", chub.count("redir {scheme}://{host}:{irate_box_git_port}{http.request.orig_uri} 302") == 2)
+check("Caddy: the hub's port still refuses /notes/.shell, .proxy, .runtime", "@capability path_regexp (?i)^/notes/\\.(shell|proxy|runtime)" in chub)
+check("Caddy: the notes port: the refusals, the login switch, the socket, nothing else",
+      "@capability path_regexp (?i)^/notes/\\.(shell|proxy|runtime)" in cnotes and "/notes.caddy*" in cnotes
+      and "reverse_proxy unix//run/silverbullet/silverbullet.sock" in cnotes and cnotes.rstrip().endswith("respond 404"))
+check("Caddy: the books' port: the login switch, Kiwix, nothing else",
+      "/wiki.caddy*" in cwiki and "reverse_proxy 127.0.0.1:8081" in cwiki and cwiki.rstrip().endswith("respond 404"))
+check("Caddy: cgit's origin: public and private views, the hub's app bar may frame it, clone URLs name the hub's port",
+      cgit_.count("env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi") == 2 and "/git.caddy*" in cgit_ and "admin-gate.caddy*" in cgit_
+      and cgit_.count("frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}\"") == 2
+      and cgit_.count("env HTTP_HOST {host}") == 2)
+check("Caddy: cgit's origin: a clone or push sent here goes to the hub's port",
+      "redir @smart {scheme}://{host}:{irate_box_hub_port}{uri} 302" in cgit_ and "git-http-guard.py" not in cgit_)
+check("Caddy: cgit's origin serves everything its pages load",
+      "@cgit_assets path /palette.css /cgit-hub.css /themes.js /cgit-hub.js /themes/*" in cgit_
+      and "handle_path /git-static/*" in cgit_ and "handle_path /git-hl/*" in cgit_)
+check("Caddy: no redirect between origins with a fixed port", not re.search(r"redir .*://\{host\}:\d", caddy))
+for name in ("notes", "wiki", "git"):
+    check(f"Caddy: the {name} origin has a TLS twin", f'"{name}"' in (REPO / "irate_box/root/tls.py").read_text().split("_front_files", 1)[1].split("out = {}", 1)[0])
+ctx = {"front_kind": "caddy", "front": secdoctor.parse_caddy(caddy)}
+seen = {f["id"]: f["status"] for f in secdoctor.step_origins(ctx)}
+check("the doctor sees notes, books and cgit on their own origins under Caddy too",
+      seen == {"origin-notes": "ok", "origin-wiki": "ok", "origin-git": "ok"}, seen)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

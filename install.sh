@@ -1497,6 +1497,14 @@ if [ "$WEB" = caddy ]; then
 	Environment=HUB_FREEOCD_ROOT=$APPS/freeocd
 	Environment=HUB_FIRMWARE_ROOT=$STATE/firmware
 	Environment=HUB_ADDON_PORT=$ADDON_PORT
+	Environment=HUB_NOTES_PORT=$NOTES_PORT
+	Environment=HUB_WIKI_PORT=$WIKI_PORT
+	Environment=HUB_GIT_PORT=$GIT_PORT
+	Environment=HUB_TLS_PORT=$TLS_PORT
+	Environment=HUB_ADDON_TLS_PORT=$ADDON_TLS_PORT
+	Environment=HUB_NOTES_TLS_PORT=$NOTES_TLS_PORT
+	Environment=HUB_WIKI_TLS_PORT=$WIKI_TLS_PORT
+	Environment=HUB_GIT_TLS_PORT=$GIT_TLS_PORT
 	Environment=HUB_ADDONS_ROOT=$STATE/addons
 	# HUB_FRONT_SECRET, for /admin (header_up {env.HUB_FRONT_SECRET}): root's file, read by systemd.
 	EnvironmentFile=$ETC/front-secret.env

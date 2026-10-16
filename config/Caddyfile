@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-# Irate-Box front for Caddy — one origin, path-routed.
+# Irate-Box front for Caddy — the hub's origin, path-routed, and an origin per app that runs
+# what others wrote (add-ons, notes, books, cgit), as in irate-box.nginx.
 #
 # Caddy is the fallback (install.sh --web caddy); nginx, with the same routes in
 # irate-box.nginx, is the default. A route changed here is changed there too.
@@ -9,9 +10,9 @@
 #   - :80 always plain. Captive-portal probes are HTTP; an HTTPS listener appears only
 #     when the box has a certificate (root/tls.py writes its
 #     sites, imported at the end), and never as a redirect target.
-#   - The routes are snippets, (irate_box_hub) and (irate_box_addons), so the plain
-#     sites and their HTTPS twins serve the same: Caddy can't put TLS on one port of a
-#     site block whose other port is plain.
+#   - The routes are snippets, (irate_box_hub), (irate_box_addons), (irate_box_notes),
+#     (irate_box_wiki) and (irate_box_git), so the plain sites and their HTTPS twins serve
+#     the same: Caddy can't put TLS on one port of a site block whose other port is plain.
 #   - never a blanket HTTP→HTTPS redirect, never HSTS. auto_https off keeps Caddy
 #     from adding either on its own.
 #
@@ -32,6 +33,24 @@
 	request_header -X-Irate-Front
 	# A baseline Content-Security-Policy on every answer of this origin.
 	header Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+	# Each app origin's port by scheme: http to its own, https to its TLS twin (root/tls.py), so a
+	# redirect from a page on HTTPS goes to that origin's twin. As nginx's map $scheme.
+	map {scheme} {irate_box_addon_port} {
+		https {$HUB_ADDON_TLS_PORT:8490}
+		default {$HUB_ADDON_PORT:8090}
+	}
+	map {scheme} {irate_box_notes_port} {
+		https {$HUB_NOTES_TLS_PORT:8491}
+		default {$HUB_NOTES_PORT:8091}
+	}
+	map {scheme} {irate_box_wiki_port} {
+		https {$HUB_WIKI_TLS_PORT:8492}
+		default {$HUB_WIKI_PORT:8092}
+	}
+	map {scheme} {irate_box_git_port} {
+		https {$HUB_GIT_TLS_PORT:8493}
+		default {$HUB_GIT_PORT:8093}
+	}
 
 	# --- hub: landing page, shoutbox, board, file store, captive-portal target ----
 	# Host header passes through untouched, so server.py's probe-host check
@@ -85,21 +104,15 @@
 		reverse_proxy 127.0.0.1:8000
 	}
 
-	# --- /wiki → kiwix-serve ------------------------------------------------------
-	# Path is passed through, not stripped: run kiwix-serve with
-	#   --urlRootLocation /wiki  --blockexternal  -p 8081  -i 127.0.0.1
-	# so its own links come out under /wiki/ too.
+	# --- /wiki → Kiwix, on an origin of its own (irate_box_wiki, below) ------------------
+	# A book's pages run whatever script the book carries, from a download, a stick or a URL,
+	# so on the hub's origin a book could act with the owner's login. Here: the off switch, then
+	# a redirect (in a route, so in that order).
 	handle /wiki/* {
-		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/wiki.caddy*
-		# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM stays hidden behind
-		# the old copy for an hour. Its ETag carries the book UUID, which a rebuild
-		# changes, so always revalidating is cheap (a 304) and never stale.
-		# (header_down takes no matcher; a deferred header runs after the proxy's own.)
-		@content path /wiki/content/*
-		header @content Cache-Control "no-cache" {
-			defer
+		route {
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/wiki-off.caddy*
+			redir {scheme}://{host}:{irate_box_wiki_port}{uri} 302
 		}
-		reverse_proxy 127.0.0.1:8081
 	}
 	redir /wiki /wiki/ permanent
 
@@ -176,20 +189,18 @@
 	# --- /addons/<id>/ → the add-on origin (below): the local add-ons' own address ----------
 	# Tiles and list pages link here, so a link stays on the hub's port and name.
 	@addon path_regexp addon ^/addons/([a-z0-9-]+/.*)$
-	redir @addon http://{host}:{$HUB_ADDON_PORT:8090}/{re.addon.1}{uri.query_string_with_question_mark} 302
+	redir @addon {scheme}://{host}:{irate_box_addon_port}/{re.addon.1}{uri.query_string_with_question_mark} 302
 
-	# --- /notes → SilverBullet (optional add-on) ------------------------------------
-	# Markdown notes in a plain folder. Not in any profile: 502 and a greyed card until
-	# installed. Official builds are ARMv7/ARM64 only, so never on the Zero W.
-	# Path passes through (SB_URL_PREFIX=/notes), to its socket (silverbullet.service). Its
-	# capability endpoints are refused whatever the unit says: the shell, the HTTP proxy,
-	# which can reach the hub's loopback API past the /admin login, and the runtime API.
+	# --- /notes → SilverBullet, on an origin of its own (irate_box_notes, below) ----------
+	# A note is written by anyone with notes access, and its pages run script, so on the hub's
+	# origin a note could act with the owner's login. Here: the off switch, the capability
+	# endpoints refused as on the notes' origin, then a redirect.
 	handle /notes/* {
-		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes.caddy*
-		@capability path_regexp (?i)^/notes/\.(shell|proxy|runtime)
-		respond @capability 403
-		reverse_proxy unix//run/silverbullet/silverbullet.sock {
-			header_up Cookie "irate_session=[^;]*;?\s*" ""
+		route {
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes-off.caddy*
+			@capability path_regexp (?i)^/notes/\.(shell|proxy|runtime)
+			respond @capability 403
+			redir {scheme}://{host}:{irate_box_notes_port}{uri} 302
 		}
 	}
 	redir /notes /notes/ permanent
@@ -303,10 +314,12 @@
 		}
 	}
 
-	# --- /git and /git-private → git over HTTP, and cgit to browse ---------------------
+	# --- /git and /git-private → git over HTTP; cgit's web view on its own origin --------
 	# Bare repositories under $HUB_GIT_ROOT/public and /private, owned by the hub user, who
 	# runs both CGIs: fcgiwrap on irate-box-git.socket. A clone, fetch or push (the smart-HTTP
-	# paths in @smart) goes to git http-backend; every other path is cgit's web view. As on
+	# paths in @smart) goes to git http-backend here; every other path is cgit's web view, which
+	# shows what anyone who may push wrote, so it is served on cgit's origin (irate_box_git,
+	# below) and only redirected to from here. As on
 	# nginx, the hub decides each clone, fetch and push (gitrepos.decide: the repository's
 	# preset, the git app's switch, an account's own credentials), asked with forward_auth: its
 	# "ok" skips the box's own login, which is the way in otherwise, and its X-Irate-User is the
@@ -364,17 +377,9 @@
 			}
 		}
 		handle {
-			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git.caddy*
-			# As on nginx: scripts only the box's own; a README's HTML is already text.
-			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
-			header X-Content-Type-Options nosniff
-			reverse_proxy unix//run/irate-box-git.sock {
-				header_up Cookie "irate_session=[^;]*;?\s*" ""
-				transport fastcgi {
-					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
-					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-public
-					env PATH_INFO {path}
-				}
+			route {
+				import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git-off.caddy*
+				redir {scheme}://{host}:{irate_box_git_port}{http.request.orig_uri} 302
 			}
 		}
 	}
@@ -414,26 +419,7 @@
 			}
 		}
 		handle {
-			route {
-				request_header -X-Irate-Session
-				import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
-				@irate_box_basic not header X-Irate-Session admin
-				basic_auth @irate_box_basic {
-					admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
-				}
-				request_header -X-Irate-Session
-			}
-			# As on nginx: scripts only the box's own; a README's HTML is already text.
-			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
-			header X-Content-Type-Options nosniff
-			reverse_proxy unix//run/irate-box-git.sock {
-				header_up Cookie "irate_session=[^;]*;?\s*" ""
-				transport fastcgi {
-					env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
-					env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-private
-					env PATH_INFO {path}
-				}
-			}
+			redir {scheme}://{host}:{irate_box_git_port}{http.request.orig_uri} 302
 		}
 	}
 
@@ -540,7 +526,158 @@
 	import irate_box_addons
 }
 
-# HTTPS: https://:443 and the add-ons' twin, each importing the same
+# --- the notes origin: SilverBullet (--with-notes) -----------------------------------------
+# Its own port, so what a note runs is on an origin with no /admin and none of the hub's
+# storage. The same login switch (/admin, Apps: public, private or off), the same refusals,
+# the same socket. Path passes through (SB_URL_PREFIX=/notes). The capability endpoints are
+# refused whatever the unit says: the shell, the HTTP proxy, which can reach the hub's
+# loopback API past the /admin login, and the runtime API.
+(irate_box_notes) {
+	request_header -X-Irate-Front
+	# The sign-in an app in users mode sends to (server.py /_irate/user) is the hub's.
+	redir /account.html {scheme}://{host}{uri} 302
+	redir / /notes/ 302
+	redir /notes /notes/ permanent
+	handle /notes/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notes.caddy*
+		@capability path_regexp (?i)^/notes/\.(shell|proxy|runtime)
+		respond @capability 403
+		request_body {
+			max_size 50MB
+		}
+		reverse_proxy unix//run/silverbullet/silverbullet.sock {
+			header_up Cookie "irate_session=[^;]*;?\s*" ""
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+:{$HUB_NOTES_PORT:8091} {
+	import irate_box_notes
+}
+
+# --- the books' origin: Kiwix ---------------------------------------------------------------
+# kiwix-serve on 127.0.0.1:8081, path passed through, not stripped: run it with
+#   --urlRootLocation /wiki  --blockexternal  -p 8081  -i 127.0.0.1
+# so its own links come out under /wiki/ too. The same login switch (/admin, Apps).
+(irate_box_wiki) {
+	request_header -X-Irate-Front
+	redir /account.html {scheme}://{host}{uri} 302
+	redir / /wiki/ 302
+	redir /wiki /wiki/ permanent
+	handle /wiki/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/wiki.caddy*
+		# kiwix-serve sends book pages max-age=3600, so a rebuilt ZIM stays hidden behind
+		# the old copy for an hour. Its ETag carries the book UUID, which a rebuild
+		# changes, so always revalidating is cheap (a 304) and never stale.
+		# (header_down takes no matcher; a deferred header runs after the proxy's own.)
+		@content path /wiki/content/*
+		header @content Cache-Control "no-cache" {
+			defer
+		}
+		reverse_proxy 127.0.0.1:8081 {
+			header_up Cookie "irate_session=[^;]*;?\s*" ""
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+:{$HUB_WIKI_PORT:8092} {
+	import irate_box_wiki
+}
+
+# --- cgit's origin: the git servers' web view -----------------------------------------------
+# What a repository holds is written by whoever may push, so its pages are served away from
+# /admin. Its CSP (scripts only the box's own) lets the hub's app bar frame it. Clones and
+# pushes are the hub's port's (a smart-HTTP request here is sent there).
+(irate_box_git) {
+	request_header -X-Irate-Front
+	# The hub's port by scheme: where clones and pushes go, and who may frame these pages.
+	map {scheme} {irate_box_hub_port} {
+		https {$HUB_TLS_PORT:443}
+		default 80
+	}
+	redir /account.html {scheme}://{host}{uri} 302
+	redir / /git/ 302
+	redir /git /git/ permanent
+	redir /git-private /git-private/ permanent
+	@smart path_regexp ^/git(-private)?/[^/]+\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack)$
+	redir @smart {scheme}://{host}:{irate_box_hub_port}{uri} 302
+	# What cgit's pages load (config/cgit-head.html): the palette, the hub's cgit look, the
+	# theme and highlighting scripts, cgit's own files and Debian's highlight.js.
+	@cgit_assets path /palette.css /cgit-hub.css /themes.js /cgit-hub.js /themes/*
+	handle @cgit_assets {
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header X-Content-Type-Options nosniff
+		file_server
+	}
+	handle_path /git-static/* {
+		root * /usr/share/cgit
+		header X-Content-Type-Options nosniff
+		file_server
+	}
+	handle_path /git-hl/* {
+		root * /usr/share/javascript/highlight.js
+		encode gzip
+		header Cache-Control "public, max-age=86400"
+		header X-Content-Type-Options nosniff
+		file_server
+	}
+	# Scripts: only the box's own (themes.js, cgit-hub.js); a README's HTML is already text
+	# (scripts/cgit-about.py), this is the second lock. nosniff: a repository's files, served as
+	# text/plain, are never run as a script. HTTP_HOST without this port: cgit's clone URLs
+	# name the hub's port, where git is served.
+	handle_path /git/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/git.caddy*
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}"
+		header X-Content-Type-Options nosniff
+		reverse_proxy unix//run/irate-box-git.sock {
+			header_up Cookie "irate_session=[^;]*;?\s*" ""
+			transport fastcgi {
+				env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
+				env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-public
+				env PATH_INFO {path}
+				env HTTP_HOST {host}
+			}
+		}
+	}
+	handle_path /git-private/* {
+		# The login, or an admin account's session (access.py caddy_admin_gate).
+		route {
+			request_header -X-Irate-Session
+			import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*
+			@irate_box_basic not header X-Irate-Session admin
+			basic_auth @irate_box_basic {
+				admin $2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT
+			}
+			request_header -X-Irate-Session
+		}
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}"
+		header X-Content-Type-Options nosniff
+		reverse_proxy unix//run/irate-box-git.sock {
+			header_up Cookie "irate_session=[^;]*;?\s*" ""
+			transport fastcgi {
+				env SCRIPT_FILENAME /usr/lib/cgit/cgit.cgi
+				env CGIT_CONFIG {$HUB_GIT_ROOT:/var/lib/hub/git}/cgitrc-private
+				env PATH_INFO {path}
+				env HTTP_HOST {host}
+			}
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+:{$HUB_GIT_PORT:8093} {
+	import irate_box_git
+}
+
+# HTTPS: https://:443 and each app origin's twin, each importing the same
 # snippet as its plain site, with the box's certificate. Written by root/tls.py only while HTTPS
 # is on; with none, this matches nothing and the box serves plain HTTP only.
 import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-site-*.caddy
