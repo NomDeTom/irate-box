@@ -139,6 +139,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.request
@@ -617,6 +618,101 @@ class KitRoom:
 CONTENT_IMPORT = Path(__file__).with_name("content-import.sh")
 
 
+def _as_hub():
+    """subprocess arguments that run a reader as the hub user: a link the hub swapped in then reads only what the hub
+    could read already. Not root (the tests): already no more than this user."""
+    return {"user": HUB_USER, "group": HUB_USER, "extra_groups": []} if os.geteuid() == 0 else {}
+
+
+class _Capped:
+    """A stream that refuses to give more than `left` bytes: the hub writes it, root stores it."""
+
+    def __init__(self, fh, left, path):
+        self.fh, self.left, self.path = fh, left, path
+
+    def read(self, n=-1):
+        data = self.fh.read(n if n is not None and n >= 0 else self.left + 1)
+        self.left -= len(data)
+        if self.left < 0:
+            raise Refused(M("control.kit.hub-too-large", "{path} holds more than the free storage. The box stopped copying it.",
+                            path=str(self.path)))
+        return data
+
+
+class _Hashing:
+    def __init__(self, fh):
+        self.fh, self.h = fh, hashlib.sha256()
+
+    def read(self, n=-1):
+        data = self.fh.read(n)
+        self.h.update(data)
+        return data
+
+
+class _HubTar:
+    """`tar -cf -` of `names` in `folder`, run as the hub user, read as a tarfile stream."""
+
+    def __init__(self, folder, names, limit):
+        self.folder = folder
+        self.err = tempfile.TemporaryFile()
+        self.proc = subprocess.Popen(["tar", "-C", str(folder), "-cf", "-", "--", *names],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=self.err, **_as_hub())
+        self.tar = tarfile.open(fileobj=_Capped(self.proc.stdout, limit, folder), mode="r|")
+
+    def __enter__(self):
+        return self.tar
+
+    def __exit__(self, kind, *_):
+        self.proc.stdout.close()
+        code = self.proc.wait()
+        self.err.seek(0)
+        said = self.err.read().decode(errors="replace")
+        self.err.close()
+        if kind is None and code != 0:
+            raise _hub_read_failed(self.folder, said)
+
+
+def _hub_read_failed(path, said):
+    return Refused(M("control.kit.hub-read-failed", "The box could not read {path} as the hub user: {output}",
+                     path=str(path), output=_last_line(said)))
+
+
+def _copy_as_hub(src, dest):
+    """A folder the hub owns (a git repository) copied into dest, a new folder of root's: read by the hub user,
+    unpacked by tarfile's data filter (no absolute paths, no .., no links out, no devices, no setuid)."""
+    os.mkdir(dest, 0o755)
+    with _HubTar(src, ["."], shutil.disk_usage(dest).free - _min_free()) as tar:
+        tar.extractall(dest, filter="data")
+
+
+def _hash_as_hub(zims):
+    """{name: sha256} of the books, hashed by the hub user."""
+    out = subprocess.run(["sha256sum", "-z", "--", *map(str, zims)], capture_output=True, timeout=7200, **_as_hub())
+    if out.returncode != 0:
+        raise _hub_read_failed(ZIM_DIR, out.stderr.decode(errors="replace"))
+    return {Path(rec[66:]).name: rec[:64] for rec in out.stdout.decode(errors="replace").split("\0") if len(rec) > 66}
+
+
+def _append_books(part, zims, prefix, sums=None):
+    """The books appended to the tar `part` as prefix + name, read by the hub user. Only those names, only regular
+    files; with `sums`, each must still have the hash it was listed with."""
+    want = {z.name for z in zims}
+    with _HubTar(ZIM_DIR, sorted(want), shutil.disk_usage(part.parent).free - _min_free()) as books, \
+            tarfile.open(part, "a") as out:
+        for m in books:
+            if m.name not in want or not m.isreg():
+                raise Refused(M("control.kit.book-unexpected", "The book folder gave an entry that the box did not ask for: {name}. "
+                                "The box did not use it.", name=m.name))
+            want.discard(m.name)
+            info = tarfile.TarInfo(prefix + m.name)
+            info.size, info.mtime, info.mode = m.size, m.mtime, 0o644
+            src = _Hashing(books.extractfile(m))
+            out.addfile(info, src)
+            if sums is not None and sums.get(m.name) != src.h.hexdigest():
+                raise Refused(M("control.kit.book-changed", "The book {name} changed while the box made the kit. Make the kit again.",
+                                name=m.name))
+
+
 def content_extras(top, repo_dirs, state):
     """Git repositories (git/<area>/<name>.git) and this box's state (state-backup.tar.gz) into `top`, an
     export's irate-box/ folder, with import.sh to bring them in on a box that has the hub. Folders and
@@ -634,7 +730,7 @@ def content_extras(top, repo_dirs, state):
                 old.unlink()
             elif old.exists():
                 shutil.rmtree(old)
-        shutil.copytree(d, part, symlinks=True)
+        _copy_as_hub(d, part)
         os.replace(part, dest)
         said.append(f"git: {d.parent.name}/{d.name}")
     if state != "none":
@@ -688,11 +784,10 @@ def content_export(req):
             name = f"irate-box-content-{ver}.tar"
             part = work / name
             tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box", timeout=3600)
-            if tar.returncode == 0 and zims:
-                tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box/,",
-                          *[z.name for z in zims], timeout=7200)
             if tar.returncode != 0:
                 raise _tar_failed(tar)
+            if zims:
+                _append_books(part, zims, "irate-box/")
             meta = room.publish(part, name, {"name": name, "kind": "content", "at": time.time(), "arch": platform.machine(),
                                              "books": [z.name for z in zims], "kits": list(kit_ids),
                                              "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs], "state": state,
@@ -747,7 +842,8 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
                             n=len(repo_dirs)))
             for d in repo_dirs:
                 dest = kit / "git" / d.parent.name / d.name
-                shutil.copytree(d, dest, symlinks=True)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                _copy_as_hub(d, dest)
                 report.append(f"git: {d.parent.name}/{d.name}")
         if state != "none":
             from irate_box.hub import backup
@@ -760,23 +856,19 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
         if zims:
             progress.step(M("control.progress.checksums", {"one": "Calculating the checksum of {n} book",
                                                            "other": "Calculating the checksums of {n} books"}, n=len(zims)))
+            sums = _hash_as_hub(zims)
             with open(kit / "SHA256SUMS", "a") as fh:
                 for z in zims:
-                    h = hashlib.sha256()
-                    with open(z, "rb") as zf:
-                        for chunk in iter(lambda: zf.read(1 << 20), b""):
-                            h.update(chunk)
-                    fh.write(f"{h.hexdigest()}  ./zim/{z.name}\n")
+                    fh.write(f"{sums[z.name]}  ./zim/{z.name}\n")
         progress.step(PACKING)
         ver = re.sub(r"[^A-Za-z0-9._-]", "", ((CODE / "VERSION").read_text().split() or ["unknown"])[0]) or "unknown"
         name = f"irate-box-kit-{ver}-{arch}{'-with-books' if zims else ''}.tar"
         part = work / name
         tar = run("tar", "-C", str(work), "-cf", str(part), "irate-box-kit", timeout=3600)
-        if tar.returncode == 0 and zims:
-            tar = run("tar", "-C", str(ZIM_DIR), "-rf", str(part), "--transform", "s,^,irate-box-kit/zim/,",
-                      *[z.name for z in zims], timeout=7200)
         if tar.returncode != 0:
             raise _tar_failed(tar)
+        if zims:
+            _append_books(part, zims, "irate-box-kit/zim/", sums)
         meta = room.publish(part, name, {"name": name, "at": time.time(), "arch": arch,
                                          "books": [z.name for z in zims], "kits": list(kit_ids),
                                          "repos": [f"{d.parent.name}/{d.name}" for d in repo_dirs],
@@ -3545,10 +3637,27 @@ def answer(rid, ok, message):
         p.unlink(missing_ok=True)
 
 
+def _discard(path):
+    """Whatever the hub left at a request's name gone, a folder too; never raises, so the queue goes on."""
+    try:
+        path.unlink(missing_ok=True)
+    except IsADirectoryError:
+        shutil.rmtree(path, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def _mtime(path):
+    try:
+        return path.lstat().st_mtime
+    except OSError:
+        return 0
+
+
 def main():
     # A request that arrives while this runs is picked up by the same loop.
     for _ in range(100):
-        pending = sorted(REQUESTS.glob("*.json"), key=lambda p: p.stat().st_mtime)
+        pending = sorted(REQUESTS.glob("*.json"), key=_mtime)
         if not pending:
             return 0
         for path in pending:
@@ -3559,7 +3668,7 @@ def main():
                 # Gone before anything else can fail on it: a request this process cannot handle
                 # must never be found again by the next one, or the path unit restarts the helper
                 # for ever and nothing queued behind it is served.
-                path.unlink(missing_ok=True)
+                _discard(path)
                 req = json.loads(text)
                 if not isinstance(req, dict):
                     raise Refused(M("control.request.bad", "The request is not valid."))
@@ -3571,10 +3680,10 @@ def main():
                 safeio.write(HELPER_DOING, json.dumps({"action": str(what)[:40], "detail": detail, "started": time.time()}))
                 answer(rid, True, action(req))
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
-                path.unlink(missing_ok=True)
+                _discard(path)
                 answer(rid, False, _why(exc))
             except Exception as exc:  # a handler's own bug: answered, and the queue goes on
-                path.unlink(missing_ok=True)
+                _discard(path)
                 answer(rid, False, M("control.request.crashed", "The root helper stopped with an error: {error}",
                                      error=f"{type(exc).__name__}: {exc}"))
             finally:

@@ -2118,9 +2118,34 @@ def step_kernel(ctx):
 
 # Which apps run on an origin of their own (S4): what an app's pages run
 # can act with the owner's login only where it shares the hub's origin.
-OWN_ORIGIN = (("notes", "Notes (SilverBullet)", r"proxy_pass\s+http://unix:/run/silverbullet/"),
-              ("wiki", "Kiwix's books", r"proxy_pass\s+http://127\.0\.0\.1:8081"),
+OWN_ORIGIN = (("notes", "Notes (SilverBullet)", r"proxy_pass\s+http://unix:/run/silverbullet/|reverse_proxy\s+unix//run/silverbullet/"),
+              ("wiki", "Kiwix's books", r"proxy_pass\s+http://127\.0\.0\.1:8081|reverse_proxy\s+127\.0\.0\.1:8081"),
               ("git", "cgit and pushed content", r"cgit\.cgi"))
+
+
+def _caddy_servers(parsed):
+    """[(listen ports, the site's lines with its snippets' in place)] for each top-level site
+    block of a parsed Caddyfile, in file order. A site's port is its address's (or the default
+    of its {$ENV:default})."""
+    blocks, order = {}, []
+    for stack, line, opens in parsed:
+        if not stack and opens:
+            blocks.setdefault(line, [])
+            order.append(line)
+        elif stack:
+            blocks.setdefault(stack[0], []).append(line)
+    snippets = {h[1:-1]: lines for h, lines in blocks.items() if h.startswith("(") and h.endswith(")")}
+    out = []
+    for head in order:
+        m = re.fullmatch(r"(?:https?://)?:(?:(\d+)|\{\$\w+:(\d+)\})", head)
+        if not m:
+            continue
+        lines = []
+        for line in blocks[head]:
+            name = line.split()[1] if line.startswith("import ") and len(line.split()) == 2 else None
+            lines.extend(snippets.get(name, [line]))
+        out.append(([m.group(1) or m.group(2)], "\n".join(lines)))
+    return out
 
 
 def _nginx_servers(text):
@@ -2144,9 +2169,14 @@ def _nginx_servers(text):
 def step_origins(ctx):
     """Which origin each app is on: the hub's own port, or one of its own (S4)."""
     origins_t = M("origins.title", "Application origins")
-    if ctx["front_kind"] != "nginx":
-        return [_cannot("origins", origins_t, M("check.cannot.not-nginx", "It reads the origins from the nginx configuration only."), "S4")]
-    servers = _nginx_servers(_read(NGINX_CONF) or "")
+    if ctx["front_kind"] == "caddy":
+        servers = _caddy_servers(ctx["front"] or [])
+        if not servers:
+            return [_cannot("origins", origins_t, M("check.cannot.caddy-sites", "It finds no site blocks in the Caddy configuration."), "S4")]
+    elif ctx["front_kind"] != "nginx":
+        return [_cannot("origins", origins_t, M("check.cannot.no-front", "It finds no nginx or Caddy configuration."), "S4")]
+    else:
+        servers = _nginx_servers(_read(NGINX_CONF) or "")
     if not servers:
         return [_cannot("origins", origins_t, M("check.cannot.read", "It cannot read {path}.", path=str(NGINX_CONF)), "S4")]
     hub_ports = servers[0][0]

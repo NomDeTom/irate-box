@@ -101,7 +101,9 @@ os.environ["HUB_WEB_SERVER"] = "caddy"
 tls.front(True)
 sites = sorted(p.name for p in tls.FRONT.glob("caddy-site-*.caddy"))
 main_site = (tls.FRONT / "caddy-site-main.caddy").read_text()
-check("under Caddy: the hub's and the add-ons' twins, each importing its snippet, with the certificate", sites == ["caddy-site-addons.caddy", "caddy-site-main.caddy"]
+check("under Caddy: a twin per origin (the hub, add-ons, notes, books, cgit), each importing its snippet, with the certificate",
+      sites == ["caddy-site-addons.caddy", "caddy-site-git.caddy", "caddy-site-main.caddy", "caddy-site-notes.caddy", "caddy-site-wiki.caddy"]
+      and all(f"import irate_box_{n}" in (tls.FRONT / f"caddy-site-{n}.caddy").read_text() for n in ("notes", "wiki", "git"))
       and "https://:443 {" in main_site and f"tls {tls.CHAIN} {tls.KEY}" in main_site and "import irate_box_hub" in main_site
       and "import irate_box_addons" in (tls.FRONT / "caddy-site-addons.caddy").read_text() and not list(tls.FRONT.glob("nginx-*.conf")), sites)
 tls.admin_only(True)
@@ -111,7 +113,7 @@ caddies = [c for c in os.environ.get("CADDY", "").split(":") if c]
 cf = (REPO / "config" / "Caddyfile").read_text().replace("$2a$14$REPLACE_ME_WITH_CADDY_HASH_PASSWORD_OUTPUT", "$2a$14$" + "a" * 53)
 for c in caddies:
     ver = subprocess.run([c, "version"], capture_output=True, text=True).stdout
-    text = cf.replace("basic_auth", "basicauth") if ver.startswith("v2.6") else cf
+    text = cf.replace("basic_auth", "basicauth") if ver.lstrip("v").startswith("2.6") else cf
     (T / "Caddyfile").write_text(text)
     for state, files in (("with HTTPS on", True), ("with HTTPS off", False)):
         if not files:

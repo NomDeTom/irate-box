@@ -3,7 +3,7 @@
 """Root's writers never follow a link the hub planted. Each writer is run against a state folder with a symlink, a hardlink or a FIFO
 waiting where it writes or reads, and the file the link leads to must be untouched. Runs as
 any user: following a link is the same mistake whoever does it. python3 tests/sim_root_links.py"""
-import json, os, re, shutil, subprocess, sys, tempfile, threading
+import json, os, re, shutil, subprocess, sys, tempfile, threading, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="root-links-"))
@@ -20,13 +20,13 @@ def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
 
-SECRET = "root's file: must not change\n"
+UNCHANGED = "root's file: must not change\n"
 def victim():
     v = T / f"victim-{os.urandom(4).hex()}"
-    v.write_text(SECRET); v.chmod(0o600)
+    v.write_text(UNCHANGED); v.chmod(0o600)
     return v
 def untouched(v):
-    return v.read_text() == SECRET and (v.stat().st_mode & 0o777) == 0o600
+    return v.read_text() == UNCHANGED and (v.stat().st_mode & 0o777) == 0o600
 def plant(path, kind="symlink"):
     path = Path(path); path.unlink(missing_ok=True)
     v = victim()
@@ -124,6 +124,18 @@ answers = {rid: json.loads((hub_control.RESULTS / f"{rid}.json").read_text()) fo
 check("a non-object request and a handler's own error are answered, not left to loop the helper",
       crashed is None and set(answers) == set(poison) and all(a["ok"] is False for a in answers.values())
       and not list(hub_control.REQUESTS.glob("*.json")), (crashed, answers))
+# A folder named like a request (audit M2): removed and answered, and the request behind it served.
+(hub_control.REQUESTS / "0000000000000004.json").mkdir()
+(hub_control.REQUESTS / "0000000000000004.json" / "inner").write_text("x")
+time.sleep(0.01)
+(hub_control.REQUESTS / "0000000000000005.json").write_text("[]")
+try:
+    hub_control.main(); crashed = None
+except Exception as exc:  # noqa: BLE001
+    crashed = exc
+check("a folder named like a request does not stop the helper",
+      crashed is None and not list(hub_control.REQUESTS.iterdir())
+      and all((hub_control.RESULTS / f"000000000000000{n}.json").exists() for n in (4, 5)), crashed)
 
 # --- what is left as source checks ---------------------------------------------------------
 src = {p: (REPO / p).read_text() for p in ("irate_box/root/hub_control.py", "irate_box/root/rtc.py", "irate_box/root/health.py",
@@ -211,6 +223,84 @@ check("state_dir refuses a folder that is a link, and leaves its target's mode",
 (S / "git").symlink_to(target)
 r = state_dir(S / "git" / "public")
 check("state_dir refuses a link higher up the path, and makes nothing there", r.returncode != 0 and not (target / "public").exists(), r.stdout)
+
+# --- the kit's copies of the hub's folders (audit H1, L20): read as the hub, unpacked by tarfile's data filter ---
+from irate_box.msg import Refused  # noqa: E402
+repo = STATE / "git" / "public" / "r.git"; repo.mkdir(parents=True); (repo / "HEAD").write_text("ref: refs/heads/main\n")
+hub_control._copy_as_hub(repo, T / "copy-ok")
+check("a hub folder copies through the hub's tar", (T / "copy-ok" / "HEAD").read_text().startswith("ref:"))
+v = victim(); (repo / "leak").symlink_to(v)
+try:
+    hub_control._copy_as_hub(repo, T / "copy-leak"); refused = False
+except Exception:  # noqa: BLE001
+    refused = True
+check("a link out of a hub folder: refused by the data filter, nothing copied through it",
+      refused and untouched(v) and not (T / "copy-leak" / "leak").exists())
+(repo / "leak").unlink()
+hub_control.ZIM_DIR.mkdir(parents=True, exist_ok=True)
+book = hub_control.ZIM_DIR / "a.zim"
+book.write_bytes(b"zim one")
+import tarfile  # noqa: E402
+part = T / "kit.tar"; tarfile.open(part, "w").close()
+hub_control._append_books(part, [book], "kit/zim/", hub_control._hash_as_hub([book]))
+with tarfile.open(part) as tf:
+    got = {m.name: (m.mode, tf.extractfile(m).read()) for m in tf}
+check("a book goes into the kit as a plain 0644 file with its hash checked", got == {"kit/zim/a.zim": (0o644, b"zim one")}, got)
+for case, sums in (("changed after hashing", {"a.zim": "0" * 64}), ("a link", None)):
+    if case == "a link":
+        book.unlink(); v = victim(); book.symlink_to(v)
+    tarfile.open(part, "w").close()
+    try:
+        hub_control._append_books(part, [book], "kit/zim/", sums); refused = False
+    except Refused:
+        refused = True
+    check(f"a book {case}: refused", refused)
+check("no copytree or root tar of the hub's folders is left", "copytree(d" not in src_ and 'str(ZIM_DIR), "-rf"' not in src_)
+
+# --- root's own state beside $STATE, not in it (audit H2, M1, L18) -----------------------------
+from irate_box.root import crashwatch, nmhandover, otherap  # noqa: E402
+check("root's kept files live beside $STATE",
+      all(not p.is_relative_to(STATE) for p in (otherap.KEPT, crashwatch.DIR, nmhandover.BACKUP)), safeio.ROOT_STATE)
+def linked_folder(path, files):
+    d = T / f"victim-dir-{os.urandom(4).hex()}"; d.mkdir(); d.chmod(0o700)
+    for rel, text in files.items():
+        (d / rel).parent.mkdir(parents=True, exist_ok=True); (d / rel).write_text(text)
+    Path(path).symlink_to(d)
+    return d
+# H2: an old kept profile, its folder swapped for a link.
+NM = T / "nm"; NM.mkdir(); otherap.KEYFILES = NM
+d = linked_folder(STATE / "other-ap", {"x.nmconnection": UNCHANGED})
+uid = "12345678-1234-1234-1234-123456789abc"
+otherap.RECORD.write_text(json.dumps({uid: {"name": "a", "ssid": "s", "choice": "removed", "at": 0,
+                                            "kept": str(STATE / "other-ap" / "x.nmconnection"), "file": str(NM / "x.nmconnection")}}))
+try:
+    otherap.undo(uid); refused = False
+except Refused:
+    refused = True
+check("other-ap undo: an old kept copy through a link is not read", refused and not (NM / "x.nmconnection").exists())
+otherap.forget(uid)
+check("other-ap forget: nothing deleted through the link", (d / "x.nmconnection").read_text() == UNCHANGED)
+# M1: crash watch's old folder moved once; a link in its place left alone.
+old = STATE / "crashwatch"; old.mkdir(); old.chmod(0o700); (old / "run.json").write_text('{"boot": "b"}')
+said = crashwatch.migrate()
+check("crash watch's old files move to root's own folder", (crashwatch.DIR / "run.json").exists() and not old.exists()
+      and (crashwatch.DIR.stat().st_mode & 0o777) == 0o700, said)
+d = linked_folder(old, {"snap.log": UNCHANGED})
+said = crashwatch.migrate()
+crashwatch.append_snapshot("look\n", sync=False)
+check("crash watch: a link at the old folder is not followed, and snapshots go to root's own",
+      (d / "snap.log").read_text() == UNCHANGED and sorted(p.name for p in d.iterdir()) == ["snap.log"]
+      and crashwatch.SNAP.read_text().endswith("look\n"), said)
+# L18: an old hand-over's copies, their folder swapped for a link.
+NP = T / "netplan"; NP.mkdir()
+d = linked_folder(STATE / "netplan-handover", {"20260101-x/30-wifis.yaml": "network: {}\n"})
+nmhandover.RECORD.write_text(json.dumps([{"name": "30-wifis.yaml", "file": str(NP / "30-wifis.yaml"), "at": 0,
+                                          "backup": str(STATE / "netplan-handover" / "20260101-x"), "connections": []}]))
+try:
+    nmhandover.undo("30-wifis.yaml"); refused = False
+except Refused:
+    refused = True
+check("netplan hand-over undo: an old copy through a link is not used", refused and not (NP / "30-wifis.yaml").exists())
 
 shutil.rmtree(T, ignore_errors=True)
 print("ok" if not fails else f"{fails} failure(s)")

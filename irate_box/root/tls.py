@@ -204,8 +204,8 @@ def _front_files():
     Caddy: a site of its own per twin, importing the same snippet as the plain site (its routes)."""
     if _server() == "caddy":
         return {FRONT / f"caddy-site-{name}.caddy": f"# Written by irate-box (root/tls.py): the {name} site's TLS twin.\n"
-                f"https://:{TWINS[name]} {{\n\ttls {CHAIN} {KEY}\n\timport irate_box_{'hub' if name == 'main' else 'addons'}\n}}\n"
-                for name in ("main", "addons")}
+                f"https://:{TWINS[name]} {{\n\ttls {CHAIN} {KEY}\n\timport irate_box_{'hub' if name == 'main' else name}\n}}\n"
+                for name in ("main", "addons", "notes", "wiki", "git")}
     out = {}
     for name, port in TWINS.items():
         ds = " default_server" if name == "main" else ""

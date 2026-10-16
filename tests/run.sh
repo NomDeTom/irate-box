@@ -43,6 +43,7 @@ run sim_nmhandover.py
 run sim_nmconnection.py
 run sim_netpolicy.py
 run sim_otherap.py
+run sim_store_quota.py
 run sim_radiotests.py
 run sim_roaming.py
 run sim_backup.py

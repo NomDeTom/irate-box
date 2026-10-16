@@ -209,6 +209,10 @@ if [ "$KEEP_STATE" = 1 ]; then
 else
 	say "Deleting the user data in $STATE"
 	rm -rf "$STATE"
+	# Root's own beside it: crash history and removed hotspot profiles. The netplan files handed
+	# over stay, as the lines above say how to put them back from there.
+	rm -rf /var/lib/irate-box-root/crashwatch /var/lib/irate-box-root/other-ap
+	rmdir /var/lib/irate-box-root 2>/dev/null || true
 fi
 # With --keep-state the users stay: their files stay, and a user made later with the same uid
 # would own them.
