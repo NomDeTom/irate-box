@@ -198,6 +198,11 @@ check(
     fs["target"],
 )
 check(
+    "  its link lands on the Branch field",
+    fs["target"]["go"]["mark"] == "update-source-branch",
+    fs["target"].get("go"),
+)
+check(
     "  a button to ask the repository for its default branch",
     [a["choice"] for a in fs["target"]["actions"]] == ["poll-target"]
     and is_message(fs["target"]["actions"][0]["label"]),
@@ -433,6 +438,17 @@ check(
     "  a branch that is not there: Branch not found, with the repository and the branch as data",
     msg_args(fs["repo"], "update.repo.no-branch") == {"repo": "https://example.invalid/irate-box", "branch": "main"},
     fs["repo"],
+)
+check(
+    "  and its link lands on the Branch field of Update source, which the page marks",
+    fs["repo"]["go"]["section"] == "updoctor" and fs["repo"]["go"]["mark"] == "update-source-branch",
+    fs["repo"].get("go"),
+)
+fs = doctor(ls_code=128)
+check(
+    "a repository that cannot be read: the link lands on the Repository field",
+    fs["repo"]["status"] == "problem" and fs["repo"]["go"]["mark"] == "update-source-repo",
+    fs["repo"].get("go"),
 )
 fs = doctor(date=time.time() - 7200)
 check(

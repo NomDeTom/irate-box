@@ -3408,6 +3408,9 @@ GO_NETWORK, GO_CLOCK, GO_BOOKS, GO_UPDATES = (
 GO_LIBRARIAN = _go("sources", M("go.librarian", "The librarian"))
 GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access"), "library-token")
 GO_MAINT = _go("updoctor", M("go.update-maint", "Updates doctor"))
+# The Update source form's two fields: the link opens the fold, scrolls to the field and marks it.
+GO_SOURCE_REPO = _go("updoctor", M("go.update-source", "Update source"), "update-source-repo")
+GO_SOURCE_BRANCH = _go("updoctor", M("go.update-source", "Update source"), "update-source-branch")
 GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
 
 # One failed attempt says what happened, not why.
@@ -3528,7 +3531,7 @@ def doctor():
                     "actions. Or run the installer once with --branch main.",
                 ),
                 evidence=[ETC / "install-options"],
-                go=GO_MAINT,
+                go=GO_SOURCE_BRANCH,
                 actions=[
                     finding_action(
                         "poll-target",
@@ -3849,6 +3852,7 @@ def doctor():
                     ),
                     notes=[PROBE_NOTE],
                     evidence=(out.stderr.strip().splitlines() or ["git ls-remote failed"])[-1:],
+                    go=GO_SOURCE_REPO,
                 )
             )
         elif not out.stdout.strip():
@@ -3866,9 +3870,11 @@ def doctor():
                     ),
                     fix=M(
                         "update.repo.no-branch.fix",
-                        "Check the branch name. To change it, run the installer again "
-                        "with the option --branch and the correct name.",
+                        "Check the branch name. To change it, use Update source in this doctor's "
+                        "recovery actions, or run the installer again with the option --branch and "
+                        "the correct name.",
                     ),
+                    go=GO_SOURCE_BRANCH,
                 )
             )
         else:
