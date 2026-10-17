@@ -75,11 +75,25 @@ const before = posted.length;
 w.confirm = (text) => { asked = text; return true; };
 d.getElementById('update-source-save').click();
 d.getElementById('update-source-poll').click();
+// A finding's link lands on the setting it names: the fold opened, the field marked.
+w.eval(`renderUpdoctor({ at: 1790950000, findings: [
+  { id: 'repo', title: 'Repository', status: 'problem', summary: 'Branch not found.', fix: 'Correct the branch.',
+    go: { section: 'updoctor', where: 'Update source', mark: 'update-source-branch' } }] })`);
+[...d.querySelectorAll('#updoctor-summary button')][0].click();
+const land = [...d.querySelectorAll('#doctor-findings a.go-btn')].find((a) => /Update source/.test(a.textContent));
+check('a finding links to Update source by name', !!land, t('#doctor-findings .finding'));
+d.getElementById('update-maint').open = false;
+d.getElementById('updoctor').hidden = false; // the page's router shows the pane before the link lands
+w.eval("var _l = landOn; window.landOn = landOn = function () { console.log('DBG landOn ran'); return _l(); }"); land.click();
+
+setTimeout(() => console.log('DBG t100', d.getElementById('update-maint').open, d.getElementById('update-source-branch').className, (() => { const o = []; for (let n = d.getElementById('update-source-branch'); n; n = n.parentElement) if (n.hidden) o.push(n.id || n.tagName); return o; })()), 600);
 const settle = () => {
   check('  it asks the update helper (poll-target), not the box doctor', posted.some(([u, b]) => /\/admin\/update$/.test(u) && /"action":"poll-target"/.test(b)), posted);
 };
 setTimeout(() => {
   settle();
+  check('  the link opens the fold and marks the Branch field', d.getElementById('update-maint').open && d.getElementById('update-source-branch').classList.contains('landed'),
+    [d.getElementById('update-maint').open, d.getElementById('update-source-branch').className]);
   const sent = posted.slice(before).filter(([, b]) => b).map(([, b]) => JSON.parse(b));
   check('the source form: declined sends nothing, accepted sends the repository, the branch and the confirmation',
     posted.slice(0, before).every(([, b]) => !/set-source/.test(b)) && sent.some((b) => b.action === 'set-source' && b.repo === 'https://example.org/fork/irate-box' && b.branch === 'dev' && b.confirmed === true), sent);
@@ -87,4 +101,4 @@ setTimeout(() => {
   check('  its poll asks about the typed repository', sent.some((b) => b.action === 'poll-source' && b.repo === 'https://example.org/fork/irate-box'), sent);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
-}, 50);
+}, 900);
