@@ -195,9 +195,9 @@ def plan(name):
     if NETPLAN_UDEV in gone or NETPLAN_UDEV in changed:
         had = before[NETPLAN_UDEV].decode(errors="replace").splitlines()
         left = set(without.get(NETPLAN_UDEV, b"").decode(errors="replace").splitlines())
-        lost = [l for l in had if l not in left]
-        rules = [l for l in lost if not l.startswith("#")]
-        if rules and all(ALLOW_RE.match(l) for l in rules):
+        lost = [ln for ln in had if ln not in left]
+        rules = [ln for ln in lost if not ln.startswith("#")]
+        if rules and all(ALLOW_RE.match(ln) for ln in rules):
             keep_udev = lost
             gone = [k for k in gone if k != NETPLAN_UDEV]
             changed = [k for k in changed if k != NETPLAN_UDEV]
@@ -280,7 +280,9 @@ def _managed():
     code, out = run("nmcli", "-t", "-f", "DEVICE,STATE", "dev")
     return (
         sorted(
-            l.split(":", 1)[0] for l in out.splitlines() if ":" in l and not l.split(":", 1)[1].startswith("unmanaged")
+            ln.split(":", 1)[0]
+            for ln in out.splitlines()
+            if ":" in ln and not ln.split(":", 1)[1].startswith("unmanaged")
         )
         if code == 0
         else []
@@ -292,7 +294,9 @@ def _settings(uuid):
     code, out = run("nmcli", "-s", "-t", "con", "show", "uuid", uuid)
     if code != 0:
         return None
-    return sorted(l for l in out.splitlines() if not l.startswith(VOLATILE) and not l.startswith("connection.filename"))
+    return sorted(
+        ln for ln in out.splitlines() if not ln.startswith(VOLATILE) and not ln.startswith("connection.filename")
+    )
 
 
 def handover(name, sleep=time.sleep):
@@ -447,7 +451,7 @@ def _put_back(entry, written):
             else:
                 skip = False
             kept.append(line)
-        if [l for l in kept if not l.startswith("#")]:
+        if [ln for ln in kept if not ln.startswith("#")]:
             UDEV_RULES.write_text("\n".join(kept) + "\n")
         else:
             UDEV_RULES.unlink()

@@ -100,7 +100,7 @@ check(
     out["units-root"]["status"] == "warn"
     and any("NoNewPrivileges" in e for e in out["units-root"]["evidence"])
     and not any("ProtectSystem" in e for e in out["units-root"]["evidence"])
-    and {(u, l) for u, l, _ in exempt(out["units-root"])}
+    and {(u, ln) for u, ln, _ in exempt(out["units-root"])}
     == {("irate-box-control", "ProtectSystem=strict"), ("irate-box-control", "ProtectHome")},
     out["units-root"],
 )

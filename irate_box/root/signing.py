@@ -258,7 +258,7 @@ def check_tag(src, tag, signers):
     finally:
         os.unlink(path)
     if out.returncode != 0:
-        line = next((l for l in (out.stderr or "").splitlines() if l.strip()), "no good signature")
+        line = next((ln for ln in (out.stderr or "").splitlines() if ln.strip()), "no good signature")
         return (
             False,
             M("update.signed.tag-untrusted", "The release tag {tag} is not signed by a trusted key.", tag=tag),

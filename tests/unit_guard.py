@@ -79,7 +79,7 @@ for m in re.finditer(r"cat >/etc/systemd/system/([^ \n]+?\.service) <<'?EOF'?\n(
     units[m.group(1)] = m.group(2).replace("$HUB_SANDBOX", sandbox)
 check("install.sh's service units found", len(units) >= 10, sorted(units))
 for name, body in sorted(units.items()):
-    lines = [l.strip() for l in body.splitlines()]
+    lines = [ln.strip() for ln in body.splitlines()]
     root = not re.search(r"^(User=|DynamicUser=yes)", body, re.M)
     if root:
         check(
@@ -92,7 +92,7 @@ for name, body in sorted(units.items()):
     missing = [
         b
         for b in BASELINE
-        if not any(l.startswith(b) if b.endswith("=") else l == b for l in lines) and b not in exempt
+        if not any(ln.startswith(b) if b.endswith("=") else ln == b for ln in lines) and b not in exempt
     ]
     check(f"{name}: the sandbox baseline", not missing, missing)
 for name in ROOT:

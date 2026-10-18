@@ -164,7 +164,7 @@ def _left_out(rel):
 def _stignore(space):
     p = space / ".stignore"
     have = p.read_text().splitlines() if p.is_file() else []
-    missing = [l for l in STIGNORE if l not in have]
+    missing = [ln for ln in STIGNORE if ln not in have]
     if missing:
         p.write_text("\n".join(have + missing) + "\n")
 

@@ -203,9 +203,11 @@ def _check(m, where):
         need(isinstance(net, dict), "network: an object")
         listen = net.get("listen")
         need(isinstance(listen, list) and 0 < len(listen) <= 16, "network.listen: 1 to 16 entries")
-        for l in listen:
-            need(isinstance(l, dict) and l.get("proto") in ("tcp", "udp"), "network.listen: each with proto tcp or udp")
-            need(type(l.get("port")) is int and 0 < l["port"] < 65536, "network.listen: each with a port, 1 to 65535")
+        for ln in listen:
+            need(
+                isinstance(ln, dict) and ln.get("proto") in ("tcp", "udp"), "network.listen: each with proto tcp or udp"
+            )
+            need(type(ln.get("port")) is int and 0 < ln["port"] < 65536, "network.listen: each with a port, 1 to 65535")
         need(
             isinstance(net.get("present"), str) and net["present"].startswith("/") and ".." not in net["present"],
             "network.present: an absolute path, the file that shows it is installed",

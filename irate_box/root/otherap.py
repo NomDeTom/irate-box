@@ -75,7 +75,7 @@ def _profile(uuid):
     if kv.get("connection.id") == OURS:
         raise Refused(M("other-ap.ours", "This profile is the hotspot of irate-box. Switch it off on the Hotspot tab."))
     code, out = run("nmcli", "-t", "-f", "UUID,FILENAME", "con", "show")
-    f = next((l.partition(":")[2] for l in out.splitlines() if l.startswith(uuid + ":")), "")
+    f = next((ln.partition(":")[2] for ln in out.splitlines() if ln.startswith(uuid + ":")), "")
     return kv.get("connection.id"), kv.get("802-11-wireless.ssid"), f
 
 

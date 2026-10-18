@@ -261,7 +261,7 @@ else:
     fpr = subprocess.run(
         ["gpg", "--batch", "--with-colons", "--list-keys"], env=genv, capture_output=True, text=True
     ).stdout
-    fpr = next(l.split(":")[9] for l in fpr.splitlines() if l.startswith("fpr:"))
+    fpr = next(ln.split(":")[9] for ln in fpr.splitlines() if ln.startswith("fpr:"))
     key = CODE / signing.GITHUB_KEY
     key.write_text(
         subprocess.run(["gpg", "--batch", "--armor", "--export", fpr], env=genv, capture_output=True, text=True).stdout

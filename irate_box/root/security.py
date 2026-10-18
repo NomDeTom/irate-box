@@ -852,7 +852,7 @@ def _apt_periodic():
     if not _have("apt-config"):
         return {}
     out = run("apt-config", "dump", "--format", "%f=%v%n", "APT::Periodic::Enable", "APT::Periodic::Unattended-Upgrade")
-    return dict(l.split("=", 1) for l in out.stdout.splitlines() if "=" in l)
+    return dict(ln.split("=", 1) for ln in out.stdout.splitlines() if "=" in ln)
 
 
 # The update pattern as a whole sentence for each (how often, what to do) that runs on its own.

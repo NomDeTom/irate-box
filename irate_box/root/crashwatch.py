@@ -231,19 +231,19 @@ def kind(line):
 def floods(lines, limit=FLOOD):
     """(the lines worth keeping, {kind: count} of the kinds that flooded). Once a kind floods, the
     lines naming its word go with it ("usb 1-1.1: 4addr Frame received" with the "4addr" dump)."""
-    counts = Counter(kind(l) for l in lines)
+    counts = Counter(kind(ln) for ln in lines)
     flood = {k: n for k, n in counts.items() if n >= limit}
     words = {k: next((w for w in k.split() if "#" not in w), None) for k in flood}
     keep = []
-    for l in lines:
-        k = kind(l)
+    for ln in lines:
+        k = kind(ln)
         if k not in flood:
-            hit = next((f for f, w in words.items() if w and f" {w} " in f" {l.split('] ', 1)[-1]} "), None)
+            hit = next((f for f, w in words.items() if w and f" {w} " in f" {ln.split('] ', 1)[-1]} "), None)
             if not hit:
-                keep.append(l)
+                keep.append(ln)
                 continue
             k = hit
-        flood[k] = flood.get(k, 0) + (0 if counts[kind(l)] >= limit else 1)
+        flood[k] = flood.get(k, 0) + (0 if counts[kind(ln)] >= limit else 1)
     return keep, flood
 
 
@@ -299,9 +299,9 @@ def snapshot(kernel, flood, extra=""):
         f"  temp {temperature()}C  procs {len(list(PROC.glob('[0-9]*')))}",
         *[f"  {kb:>7} KB {name}" for kb, name in heaviest()],
         "  links: " + ", ".join(links()),
-        *[f"  wifi {l.strip()}" for l in _read(PROC / "net/wireless").splitlines()[2:]],
+        *[f"  wifi {ln.strip()}" for ln in _read(PROC / "net/wireless").splitlines()[2:]],
         *[f'  kernel: {n} lines like "{k}"' for k, n in flood.items()],
-        *[f"  k {l}" for l in kernel[-40:]],
+        *[f"  k {ln}" for ln in kernel[-40:]],
     ]
     if extra:
         lines.append(extra)
@@ -561,9 +561,9 @@ def radio_state(known, kernel):
         if aic:
             names |= {"aicwf", "aicbsp", "rwnx"}  # the AIC8800 driver's own prefixes ("AICWFDBG(LOGERROR)" too)
         errs = [
-            l
-            for l in kernel
-            if (RADIO_ERR.search(l) and any(n in l.lower() for n in names)) or (aic and AIC_ERR.search(l))
+            ln
+            for ln in kernel
+            if (RADIO_ERR.search(ln) and any(n in ln.lower() for n in names)) or (aic and AIC_ERR.search(ln))
         ]
         out[iface] = (why, errs)
     return out
@@ -584,7 +584,7 @@ class RadioWatch:
         """own: (marker, age) of the driver's last reset of its own device (radio.driver_reset), which
         a busy kernel log may have overwritten before this look read it."""
         events = []
-        said = next((l for l in kernel if DRIVER_RESET.search(l)), None)
+        said = next((ln for ln in kernel if DRIVER_RESET.search(ln)), None)
         marker, age = own
         fresh = marker is not None and marker != self.own_seen and age is not None and age < DRIVER_GRACE
         if marker is not None:
@@ -927,7 +927,7 @@ def run(once=False):
         pending["snap"] = None
         if settings["snapshots"] or extra:
             if extra:
-                extra += "\n  last kernel lines:\n" + "\n".join(f"    {l}" for l in lines[-60:])
+                extra += "\n  last kernel lines:\n" + "\n".join(f"    {ln}" for ln in lines[-60:])
             try:
                 keeper.add(snapshot(keep, flood, extra), card_writes(), trouble=bool(extra or flood))
             except OSError as exc:

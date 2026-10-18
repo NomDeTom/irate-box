@@ -27,7 +27,7 @@ def declared(found=None):
                 "id": m["id"],
                 "name": st.get("name") or (m.get("tile") or {}).get("name") or m["id"],
                 "unit": st.get("unit"),
-                "listen": [(l["proto"], l["port"]) for l in net["listen"]],
+                "listen": [(ln["proto"], ln["port"]) for ln in net["listen"]],
                 "present": net["present"],
                 "hotspot": net.get("hotspot", "closed"),
                 "risk": net.get("risk", "warn"),

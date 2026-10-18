@@ -423,14 +423,14 @@ check(
 
 # 7d. A wedged driver: the evidence, from a real board's journal lines, and what is done with it.
 J = (Path(REPO) / "tests/fixtures/aic8800-wedge-2026-10-09/journal.txt").read_text().splitlines()
-minute5 = [l for l in J if l.startswith("Oct 09 04:05")]
+minute5 = [ln for ln in J if ln.startswith("Oct 09 04:05")]
 ev = U.wedge_evidence("wlan0", "networkmanager", "networkmanager", minute5, [], 0)
 check(
     "wedged: scans failing as busy, from the journal (04:05, 32 of them)",
     ev == "scans keep failing as busy (32 in 2 minutes)",
     ev,
 )
-after = [l for l in J if l.startswith("Oct 09 04:10")]
+after = [ln for ln in J if ln.startswith("Oct 09 04:10")]
 ev = U.wedge_evidence("wlan0", "none", "networkmanager", after, [], 0)
 check(
     "  after NM's restart: the backend gone though wlan0 is there, and no supplicant for it",
@@ -930,8 +930,8 @@ check(
 check(
     "  the watched link's letter from its state",
     [
-        U.history_state(x, l)
-        for x, l in (("up", True), ("checking", True), ("down", True), ("down", False), ("off", False))
+        U.history_state(x, ln)
+        for x, ln in (("up", True), ("checking", True), ("down", True), ("down", False), ("off", False))
     ]
     == ["u", "g", "g", "d", "o"],
 )

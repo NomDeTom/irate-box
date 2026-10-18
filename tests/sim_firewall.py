@@ -76,7 +76,7 @@ def check(name, cond, info=""):
 # The text. The firewall as the Security page keeps it: a level (hub, or hub and apps) and the services.
 F = lambda services=(), level="apps": {"level": level, "services": list(services)}  # noqa: E731
 text = fw.ruleset("ap0", F(["mqtt", "sync"]))
-lines = [l.strip() for l in text.splitlines()]
+lines = [ln.strip() for ln in text.splitlines()]
 check(
     "one table, inet irate_box, made then deleted first so loading twice is loading once on any kernel",
     lines[3:5] == ["table inet irate_box", "delete table inet irate_box"] and "table inet irate_box {" in lines,

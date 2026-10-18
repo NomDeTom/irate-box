@@ -79,7 +79,7 @@ lines = dump * 4 + ["[21000.0] usb 1-1.2: USB disconnect, device number 5"]
 keep, flood = cw.floods(lines)
 check(
     "a driver's hex dump: one kind, counted not kept, its header lines with it",
-    flood == {"4addr #": 36} and not any("4addr" in l for l in keep),
+    flood == {"4addr #": 36} and not any("4addr" in ln for ln in keep),
     (flood, keep),
 )
 check("  the rest kept", "[21000.0] usb 1-1.2: USB disconnect, device number 5" in keep)
@@ -410,8 +410,8 @@ errs = cw.radio_state(aic, wedge)["wlan0"][1]
 check(
     "the wedge's lines now counted: the cmdqueue burst, the timeout, cmd queue crashed (none were before)",
     len(errs) == 57
-    and any("cmd queue crashed" in l for l in errs)
-    and any("cmd_mgr_queue cmd timed-out" in l for l in errs),
+    and any("cmd queue crashed" in ln for ln in errs)
+    and any("cmd_mgr_queue cmd timed-out" in ln for ln in errs),
     len(errs),
 )
 check(

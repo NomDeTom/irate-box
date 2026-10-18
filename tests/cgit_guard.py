@@ -326,7 +326,7 @@ installed = Path("/usr/share/cgit/cgit.css")
 want = (
     fixed(installed.read_text())
     if installed.exists()
-    else {(l.split(" ", 1)[1], l.split(" ", 1)[0]) for l in CGIT_FIXED.strip().splitlines()}
+    else {(ln.split(" ", 1)[1], ln.split(" ", 1)[0]) for ln in CGIT_FIXED.strip().splitlines()}
 )
 have = covered((REPO / "web" / "cgit-hub.css").read_text())
 missing = sorted(want - have)

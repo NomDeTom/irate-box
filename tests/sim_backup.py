@@ -399,9 +399,9 @@ out = subprocess.run(
     env=dict(os.environ, IRATE_BOX_CLI="/bin/true", HUB_STATE_DIR=str(box)),
 )
 listed = [
-    l.strip()
-    for l in out.stdout.split("state: the export holds:")[1].split("state: would")[0].splitlines()
-    if l.strip()
+    ln.strip()
+    for ln in out.stdout.split("state: the export holds:")[1].split("state: would")[0].splitlines()
+    if ln.strip()
 ]
 check(
     "  settings only: it lists where the settings are, not the data's folders left empty in the tar",

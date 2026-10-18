@@ -38,7 +38,7 @@ check(
 install = (REPO / "install.sh").read_text()
 unit = install[install.index("cat >/etc/systemd/system/ttyd.service") :]
 unit = unit[: unit.index("\nEOF")]
-start = next(l for l in unit.splitlines() if l.startswith("ExecStart="))
+start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
 check("ttyd's unit has no credential", "--credential" not in start and " -c " not in start, start)
 check("ttyd's unit reads no env file (ttyd.env held the password)", "EnvironmentFile" not in unit, unit)
 check("ttyd listens on its socket", "--interface $TTYD_SOCKET" in unit and "TTYD_SOCKET=/run/ttyd/ttyd.sock" in install)

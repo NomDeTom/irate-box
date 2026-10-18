@@ -294,7 +294,7 @@ def run_view(run, offset=0, limit=64 * 1024):
             fh.seek(offset)
             text = fh.read(limit).decode("utf-8", "replace")
             fh.seek(0)
-            steps = [l.decode("utf-8", "replace")[3:].strip()[:200] for l in fh if l.startswith(b"== ")][:200]
+            steps = [ln.decode("utf-8", "replace")[3:].strip()[:200] for ln in fh if ln.startswith(b"== ")][:200]
     arts = []
     adir = base / "artifacts"
     for p in sorted(adir.iterdir()) if adir.is_dir() else []:
@@ -679,7 +679,7 @@ class Usage(threading.Thread):
         """Bytes the box's interfaces (not loopback) have received, or None."""
         try:
             lines = Path("/proc/net/dev").read_text().splitlines()[2:]
-            return sum(int(l.split(":", 1)[1].split()[0]) for l in lines if l.split(":", 1)[0].strip() != "lo")
+            return sum(int(ln.split(":", 1)[1].split()[0]) for ln in lines if ln.split(":", 1)[0].strip() != "lo")
         except (OSError, ValueError, IndexError):
             return None
 
@@ -927,13 +927,13 @@ def snapshot(limit=20):
             pass
     # systemd lists properties in its own order, not the order asked: read them by name.
     props = dict(
-        l.split("=", 1)
-        for l in subprocess.run(
+        ln.split("=", 1)
+        for ln in subprocess.run(
             ["systemctl", "show", "-p", "MemoryMax", "-p", "MemoryHigh", "irate-box-ci.service"],
             capture_output=True,
             text=True,
         ).stdout.splitlines()
-        if "=" in l
+        if "=" in ln
     )
     try:
         mirrors = sorted(json.loads(MIRROR_URLS.read_text()))

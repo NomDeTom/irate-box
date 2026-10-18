@@ -61,9 +61,10 @@ st, m = req("POST", "/api/saves", {"id": "mine1", "kind": "t", "name": "mine", "
 check("locked save created", st == 201 and m["locked"] and m["lock_n"] == 4096 and not leaks(m), m)
 st, g = req("GET", "/api/saves/mine1")
 check("GET shows locked, no lock value", g["locked"] and g["lock_n"] == 4096 and not leaks(g), g)
-st, l = req("GET", "/api/saves")
+st, ln = req("GET", "/api/saves")
 check(
-    "listing shows locked, no lock value", any(x["id"] == "mine1" and x["locked"] for x in l["saves"]) and not leaks(l)
+    "listing shows locked, no lock value",
+    any(x["id"] == "mine1" and x["locked"] for x in ln["saves"]) and not leaks(ln),
 )
 st, e = req("POST", "/api/saves", {"id": "mine1", "kind": "t", "name": "vandal", "state": {"v": 666}})
 check(

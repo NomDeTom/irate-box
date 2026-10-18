@@ -144,7 +144,7 @@ def fake_run(*cmd, timeout=60):
         f = winning().get(cmd[6])
         if not f:
             return 10, "no such connection"
-        lines = [l for l in f.read_text().splitlines() if "=" in l and not l.startswith("uuid=")] + [
+        lines = [ln for ln in f.read_text().splitlines() if "=" in ln and not ln.startswith("uuid=")] + [
             f"connection.uuid:{cmd[6]}"
         ]
         if state["settings_drift"] and f.parent == T / "etc/nm":

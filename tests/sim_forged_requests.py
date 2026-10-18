@@ -286,7 +286,7 @@ with mock.patch.object(librarian, "_api", side_effect=only_untrusted):
 inst = (REPO / "install.sh").read_text()
 un = (REPO / "uninstall.sh").read_text()
 ngx = (REPO / "config/irate-box.nginx").read_text()
-ngx = "\n".join(l for l in ngx.splitlines() if not l.lstrip().startswith("#"))  # the directives, not the comments
+ngx = "\n".join(ln for ln in ngx.splitlines() if not ln.lstrip().startswith("#"))  # the directives, not the comments
 check("install-options records no credentials", 'rec_repo="$(printf \'%s\' "$rec_repo" | sed -E' in inst)
 check(
     "uninstall --keep-state keeps the users",

@@ -269,8 +269,8 @@ def _sync_tags(m, refs):
             _git("update-ref", "-d", r, cwd=path)
     listed = _git("for-each-ref", "refs/tags", "--format=%(objecttype)\t%(contents:signature)", cwd=path).stdout
     rows = listed.splitlines()  # a signature runs on over lines of its own, which start with neither word
-    count = sum(1 for l in rows if l.startswith(("tag\t", "commit\t")))
-    signed = sum(1 for l in rows if l.startswith("tag\t-----BEGIN"))
+    count = sum(1 for ln in rows if ln.startswith(("tag\t", "commit\t")))
+    signed = sum(1 for ln in rows if ln.startswith("tag\t-----BEGIN"))
     return {"count": count, "signed": signed, "moved": moved}
 
 

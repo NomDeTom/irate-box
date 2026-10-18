@@ -136,7 +136,7 @@ def parse_cis(text):
             msgs = [t for s, t in said if s != "OK"] if m.group(1) != "OK" else []
             checks.append((m.group(1), m.group(2), msgs or [t for _, t in said]))
     summary = dict(
-        re.findall(r"(\w+):([\d.]+)", next((l for l in text.splitlines() if l.startswith("AUDIT_SUMMARY")), ""))
+        re.findall(r"(\w+):([\d.]+)", next((ln for ln in text.splitlines() if ln.startswith("AUDIT_SUMMARY")), ""))
     )
     return checks, summary
 

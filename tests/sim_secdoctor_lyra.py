@@ -25,7 +25,7 @@ def check(name, cond, info=""):
 fx = json.loads((REPO / "tests" / "fixtures" / "lyra-secdoctor-2026-10-09.json").read_text())
 j = sd.joint(fx["steps"])
 items = {i["key"]: i for i in j["items"]}
-said = {(l["source"], l["id"]) for i in j["items"] for l in i["lines"]}
+said = {(ln["source"], ln["id"]) for i in j["items"] for ln in i["lines"]}
 loose = [
     (f.get("source", "doctor"), f["id"])
     for s in fx["steps"]
@@ -169,7 +169,7 @@ for day in ("2026-10-09", "2026-10-12"):
     _t.time = _now
     st = [s for s in fxd["steps"] if not any(f.get("source") in ("debian-cis", "lynis") for f in s["findings"])] + deep
     jd = sd.joint(st)
-    said_d = {(l["source"], l["id"]) for i in jd["items"] for l in i["lines"]}
+    said_d = {(ln["source"], ln["id"]) for i in jd["items"] for ln in i["lines"]}
     lost = [
         (f.get("source", "doctor"), f["id"])
         for s in st

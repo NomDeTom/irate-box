@@ -69,7 +69,7 @@ def run(cmd, timeout=1800, check=True, env=None):
         lines = (out.stderr or out.stdout).strip().splitlines()
         # apt's reason is in its E: and "Depends:" lines; its last line is often only the solver's
         # "[no choices]".
-        why = [l.strip() for l in lines if l.startswith("E: ") or "Depends:" in l][:3] or lines[-1:]
+        why = [ln.strip() for ln in lines if ln.startswith("E: ") or "Depends:" in ln][:3] or lines[-1:]
         verb = next((a for a in cmd[1:] if not a.startswith("-") and "=" not in a and "::" not in a), "")
         tool = f"{Path(cmd[0]).name} {verb}".strip()
         if not why:
@@ -182,7 +182,7 @@ def installed_state():
 
 def _installed_versions():
     out = run(["dpkg-query", "-W", "-f", "${Package}\t${db:Status-Abbrev}\t${Version}\n"]).stdout
-    rows = (l.split("\t") + ["", ""] for l in out.splitlines())
+    rows = (ln.split("\t") + ["", ""] for ln in out.splitlines())
     return {r[0].split(":")[0]: r[2] for r in rows if r[1].startswith("ii")}
 
 
@@ -207,7 +207,7 @@ def _base_status(dest, leave_out):
 
 def _deb_fields(path):
     out = run(["dpkg-deb", "-f", str(path), "Package", "Version", "Architecture", "Source"]).stdout
-    f = dict(l.split(": ", 1) for l in out.splitlines() if ": " in l)
+    f = dict(ln.split(": ", 1) for ln in out.splitlines() if ": " in ln)
     return f.get("Package", ""), f.get("Version", ""), f.get("Architecture", ""), f.get("Source", "")
 
 
@@ -315,7 +315,9 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
     try:
         leave_out = _kit_added(installed_state())
         _base_status(stage / "status", leave_out)
-        base = {l[len("Package: ") :] for l in (stage / "status").read_text().splitlines() if l.startswith("Package: ")}
+        base = {
+            ln[len("Package: ") :] for ln in (stage / "status").read_text().splitlines() if ln.startswith("Package: ")
+        }
         packages, left_out = _packages(kit, fetching=True)
         log(f"{kit_id}: downloading {len(packages)} packages and what they need")
         run(
@@ -433,7 +435,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
             "left_out": left_out,
             "arch": arch(),
             "bytes": sum(p["size"] for p in pkgs) + sum(w["size"] for w in wheels),
-            "index_bytes": sum(l.stat().st_size for l in set(lists)),
+            "index_bytes": sum(ln.stat().st_size for ln in set(lists)),
         }
         if cur and not same:
             _write(MANIFESTS / f"{kit_id}.previous.json", cur)
@@ -691,7 +693,7 @@ def _purgeable(go, keep):
         return (
             None
             if r.returncode
-            else {l.split()[1] for l in (r.stdout or "").splitlines() if l.startswith(("Purg ", "Remv "))}
+            else {ln.split()[1] for ln in (r.stdout or "").splitlines() if ln.startswith(("Purg ", "Remv "))}
         )
 
     gone = takes(go)
@@ -1199,7 +1201,8 @@ def export_usb(kit_id, dest, report=None):
     # The indexes go xz-compressed (a fifth of their size or less); the import checks what they decompress to
     # against the hash their signed release lists, as for a plain one.
     files = [(POOL / f, folder / "debs" / f) for f in sorted(want)] + [
-        (l, folder / "lists" / (l.name + ".xz" if l.name.endswith("_Packages") else l.name)) for l in sorted(set(lists))
+        (ln, folder / "lists" / (ln.name + ".xz" if ln.name.endswith("_Packages") else ln.name))
+        for ln in sorted(set(lists))
     ]
     total = sum(src.stat().st_size // (INDEX_XZ_RATIO if dst.suffix == ".xz" else 1) for src, dst in files)
     if shutil.disk_usage(folder).free < total:

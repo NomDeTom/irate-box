@@ -62,25 +62,25 @@ def _list(lines):
     """Lines of one list (items start with "- " or "1. "; deeper lines indented): its HTML."""
     ordered = bool(re.match(r"^\d+\. ", lines[0]))
     items = []
-    for l in lines:
-        if re.match(r"^(- |\d+\. )", l):
-            items.append([re.sub(r"^(- |\d+\. )", "", l)])
+    for ln in lines:
+        if re.match(r"^(- |\d+\. )", ln):
+            items.append([re.sub(r"^(- |\d+\. )", "", ln)])
         else:
-            items[-1].append(l)
+            items[-1].append(ln)
     tag = "ol" if ordered else "ul"
     parts = []
     for it in items:
-        first, rest = it[0], [l[2:] if l.startswith("  ") else l.lstrip() for l in it[1:]]
-        nested = [l for l in rest if re.match(r"^\s*(- |\d+\. )", l)]
-        text = " ".join([first] + [l.strip() for l in rest if l not in nested])
-        sub = _list([l.strip() if re.match(r"^\s*(- |\d+\. )", l) else l for l in nested]) if nested else ""
+        first, rest = it[0], [ln[2:] if ln.startswith("  ") else ln.lstrip() for ln in it[1:]]
+        nested = [ln for ln in rest if re.match(r"^\s*(- |\d+\. )", ln)]
+        text = " ".join([first] + [ln.strip() for ln in rest if ln not in nested])
+        sub = _list([ln.strip() if re.match(r"^\s*(- |\d+\. )", ln) else ln for ln in nested]) if nested else ""
         parts.append(f"<li>{_inline(text)}{sub}</li>")
     return f"<{tag}>" + "".join(parts) + f"</{tag}>"
 
 
 def _table(lines):
     rows = [
-        [c.strip() for c in l.strip().strip("|").split("|")] for l in lines if not re.match(r"^\s*\|?\s*:?-{3,}", l)
+        [c.strip() for c in ln.strip().strip("|").split("|")] for ln in lines if not re.match(r"^\s*\|?\s*:?-{3,}", ln)
     ]
     head, body = rows[0], rows[1:]
     return (
@@ -99,11 +99,11 @@ def render(md):
     lines = md.split("\n")
     title, subtitle, out, i = "", "", [], 0
     while i < len(lines):
-        l = lines[i]
-        if not l.strip():
+        ln = lines[i]
+        if not ln.strip():
             i += 1
             continue
-        if l.startswith("```"):
+        if ln.startswith("```"):
             j = i + 1
             while j < len(lines) and not lines[j].startswith("```"):
                 j += 1
@@ -114,7 +114,7 @@ def render(md):
             )
             i = j + 1
             continue
-        h = re.match(r"^(#{1,3}) (.*)$", l)
+        h = re.match(r"^(#{1,3}) (.*)$", ln)
         if h:
             if len(h.group(1)) == 1 and not title:
                 title = h.group(2).strip()
@@ -124,7 +124,7 @@ def render(md):
             i += 1
             continue
         j = i
-        if re.match(r"^(- |\d+\. )", l):
+        if re.match(r"^(- |\d+\. )", ln):
             while (
                 j < len(lines)
                 and lines[j].strip()
@@ -134,7 +134,7 @@ def render(md):
             out.append(_list(lines[i:j]))
             i = j
             continue
-        if l.lstrip().startswith("|"):
+        if ln.lstrip().startswith("|"):
             while j < len(lines) and lines[j].lstrip().startswith("|"):
                 j += 1
             out.append(_table(lines[i:j]))

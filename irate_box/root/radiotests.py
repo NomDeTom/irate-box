@@ -101,7 +101,7 @@ def _channels():
 
 def _guests(ap):
     code, out = run("iw", "dev", ap, "station", "dump")
-    return sum(1 for l in out.splitlines() if l.startswith("Station")) if code == 0 else 0
+    return sum(1 for ln in out.splitlines() if ln.startswith("Station")) if code == 0 else 0
 
 
 def _link_up(iface, wait, sleep):

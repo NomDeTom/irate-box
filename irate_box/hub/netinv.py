@@ -152,7 +152,7 @@ def parse_combos(lines):
     """The phy's "valid interface combinations" (the indented lines under that heading) as
     [{groups: [(modes, n)], total, channels}]."""
     combos = []
-    for chunk in " ".join(l.strip() for l in lines).split("* ")[1:]:
+    for chunk in " ".join(ln.strip() for ln in lines).split("* ")[1:]:
         groups = [
             ([m.strip() for m in modes.split(",") if m.strip()], int(n)) for modes, n in COMBO_GROUP_RE.findall(chunk)
         ]

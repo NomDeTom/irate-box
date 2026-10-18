@@ -1337,7 +1337,7 @@ def _opds(params):
     out = []
     for e in root.findall(f"{_ATOM}entry"):
         g = lambda tag, e=e: (e.findtext(f"{_ATOM}{tag}") or "").strip()  # noqa: E731
-        link = next((l for l in e.findall(f"{_ATOM}link") if l.get("type") == "application/x-zim"), None)
+        link = next((ln for ln in e.findall(f"{_ATOM}link") if ln.get("type") == "application/x-zim"), None)
         href = (link.get("href") or "") if link is not None else ""
         if not href.startswith("https://"):
             continue

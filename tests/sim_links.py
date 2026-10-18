@@ -322,17 +322,17 @@ check(
     "  said in the settings' words when not the default",
     "on a cable as far as to reset the adapter" in U.words(S(cable_reach="radio")),
 )
-O = U.outage_cause
+outage = U.outage_cause
 check(
     "the cause: carrier back and the link not up, plugged",
-    O("eth0", False, None, False, True, None, None, None, carrier=True) == "plugged",
+    outage("eth0", False, None, False, True, None, None, None, carrier=True) == "plugged",
 )
 check(
     "the cause on a cable: no carrier, no cable; gone, a failed adapter; up with the gateway silent, the gateway",
-    O("eth0", False, None, False, True, None, None, None, carrier=False) == "cable"
-    and O("eth0", False, None, False, False, None, None, None, carrier=False) == "radio"
-    and O("eth0", True, False, False, True, None, None, None, carrier=True) == "gateway"
-    and O("eth0", False, None, False, True, None, None, None) is None,
+    outage("eth0", False, None, False, True, None, None, None, carrier=False) == "cable"
+    and outage("eth0", False, None, False, False, None, None, None, carrier=False) == "radio"
+    and outage("eth0", True, False, False, True, None, None, None, carrier=True) == "gateway"
+    and outage("eth0", False, None, False, True, None, None, None) is None,
 )
 
 

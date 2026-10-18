@@ -115,7 +115,7 @@ def _def(pid):
 
 def suite():
     """The maker's name for this box's distribution: Debian_13 on trixie."""
-    rel = dict(l.split("=", 1) for l in OS_RELEASE.read_text().splitlines() if "=" in l)
+    rel = dict(ln.split("=", 1) for ln in OS_RELEASE.read_text().splitlines() if "=" in ln)
     ident, ver = rel.get("ID", "").strip('"'), rel.get("VERSION_ID", "").strip('"')
     if ident != "debian" or not ver.isdigit():
         raise Refused(
@@ -214,7 +214,7 @@ def _index(pid, pkg):
     a, best = arch(), None
     for f in (_dir(pid) / "lists").glob("*_Packages"):
         for stanza in f.read_text(errors="replace").split("\n\n"):
-            fields = dict(l.split(": ", 1) for l in stanza.splitlines() if ": " in l and not l.startswith(" "))
+            fields = dict(ln.split(": ", 1) for ln in stanza.splitlines() if ": " in ln and not ln.startswith(" "))
             if (
                 fields.get("Package") == pkg
                 and fields.get("Architecture") in (a, "all")

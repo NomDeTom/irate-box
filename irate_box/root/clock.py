@@ -293,7 +293,9 @@ def chrony_conf_text(gps, serve=False, net=None, module=False):
 
 def without_pool(text):
     """chrony.conf with its pool and server lines turned off (commented, so Restore is exact either way)."""
-    return "".join(f"#irate-box off: {l}" if re.match(r"^\s*(pool|server)\s", l) else l for l in text.splitlines(True))
+    return "".join(
+        f"#irate-box off: {ln}" if re.match(r"^\s*(pool|server)\s", ln) else ln for ln in text.splitlines(True)
+    )
 
 
 def _write(path, text):
@@ -500,7 +502,7 @@ def sock_layout():
     if struct.calcsize("P") == 8:
         return "<qqdiiii"
     try:
-        release = dict(l.split("=", 1) for l in (SYS / "etc/os-release").read_text().splitlines() if "=" in l)
+        release = dict(ln.split("=", 1) for ln in (SYS / "etc/os-release").read_text().splitlines() if "=" in ln)
         if release.get("ID") == "debian" or "debian" in release.get("ID_LIKE", ""):
             if int(release.get("VERSION_ID", "0").strip('"').split(".")[0] or 0) >= 13:
                 return "<qqdiiii"
@@ -615,11 +617,11 @@ def source_states(rec, chronyc_text=None, timesync=None):
         # timesyncd says only the server it uses now.
         if timesync is None:
             timesync = dict(
-                l.split("=", 1)
-                for l in run(
+                ln.split("=", 1)
+                for ln in run(
                     "timedatectl", "show-timesync", "-p", "ServerName", "-p", "ServerAddress"
                 ).stdout.splitlines()
-                if "=" in l
+                if "=" in ln
             )
         name = timesync.get("ServerName", "")
         if rec.get("local"):

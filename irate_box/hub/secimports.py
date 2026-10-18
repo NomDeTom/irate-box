@@ -104,7 +104,7 @@ def validate(report):
 def _box_ports():
     try:
         scan = json.loads(SECURITY_SCAN.read_text())
-        return sorted({f"{l['proto']}/{l['port']}" for l in scan.get("listeners", [])})
+        return sorted({f"{ln['proto']}/{ln['port']}" for ln in scan.get("listeners", [])})
     except (OSError, ValueError, KeyError, TypeError):
         return None
 

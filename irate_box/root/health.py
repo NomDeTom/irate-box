@@ -273,7 +273,7 @@ def unit_props(unit):
 
 def journal_tail(unit, n=6):
     out = run("journalctl", "-u", unit, "-n", str(n), "--no-pager", "-o", "cat").stdout.strip().splitlines()
-    return [l[:200] for l in out if l.strip()][-n:]
+    return [ln[:200] for ln in out if ln.strip()][-n:]
 
 
 def expected_units():
@@ -514,7 +514,7 @@ def check_units():
         )
     # Anything else that failed on the box: not ours to restart, but worth knowing when troubleshooting.
     failed = [
-        l.split()[0] for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if l.split()
+        ln.split()[0] for ln in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if ln.split()
     ]
     # Each failed unit that isn't irate-box's (the image's, or the owner's own), with its options, from the least
     # done: see why; accept it; start it again, asked first, as it isn't ours.
@@ -1881,7 +1881,7 @@ def check_web():
             )
         ]
     if r.returncode:
-        lines = [l[:200] for l in (r.stderr + r.stdout).splitlines() if re.search(r"emerg|error|Error", l)][:3]
+        lines = [ln[:200] for ln in (r.stderr + r.stdout).splitlines() if re.search(r"emerg|error|Error", ln)][:3]
         return [
             finding(
                 "web-config",
@@ -2105,7 +2105,7 @@ STEP_RE = re.compile(r"(?:System clock was stepped by|clock was stepped by) (-?[
 
 
 def clock_facts():
-    show = dict(l.split("=", 1) for l in run("timedatectl", "show").stdout.splitlines() if "=" in l)
+    show = dict(ln.split("=", 1) for ln in run("timedatectl", "show").stdout.splitlines() if "=" in ln)
     daemon = next((name for unit, name in NTP_DAEMONS if unit_props(unit).get("ActiveState") == "active"), None)
     synced = show.get("NTPSynchronized") == "yes"
     sources = None
@@ -2113,7 +2113,7 @@ def clock_facts():
         tracking = run("chronyc", "-n", "tracking").stdout
         if "Leap status     : Not synchronised" in tracking:
             synced = False
-        sources = sum(1 for l in run("chronyc", "-n", "sources").stdout.splitlines() if l[:2] in ("^*", "^+", "^-"))
+        sources = sum(1 for ln in run("chronyc", "-n", "sources").stdout.splitlines() if ln[:2] in ("^*", "^+", "^-"))
     rtcs = []
     for r in sorted(Path("/sys/class/rtc").glob("rtc*")):
         try:
@@ -2801,7 +2801,7 @@ def check_crashwatch(now=None):
     title = M("crash-last.title", "The box stopped without shutting down")
     if week:
         last = week[-1]
-        lines = [l.strip()[:200] for l in last.get("last", "").splitlines()[:4] if l.strip()]
+        lines = [ln.strip()[:200] for ln in last.get("last", "").splitlines()[:4] if ln.strip()]
         ev = [f"{e['kind']}: {e['text']}"[:200] for e in last.get("events", [])[-2:]]
         notes = [M("crash-last.files", "Its folder holds snapshots.log and journal-previous-boot.log.")]
         if not lines:
@@ -3465,9 +3465,9 @@ def fix(choice):
         return M("repair.armbian-led.on", "{unit} is as the image has it again.", unit=ARMBIAN_LED)
     if kind == "other-restart":
         failed = [
-            l.split()[0]
-            for l in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines()
-            if l.split()
+            ln.split()[0]
+            for ln in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines()
+            if ln.split()
         ]
         if (
             arg not in failed

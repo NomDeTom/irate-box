@@ -1655,10 +1655,10 @@ def wedge_evidence(iface, backend, was_backend, journal, cw_events, now, exists=
         why.append(f"{iface} has gone: its radio's driver did not bring it back")
     if exists and backend == "none" and was_backend not in (None, "none"):
         why.append(f"{was_backend} no longer runs {iface}, though it is still there")
-    mine = [l for l in journal if f"{iface}:" in l or f"({iface})" in l or f"'{iface}'" in l]
-    if any(NO_SUPPLICANT.search(l) for l in mine):
+    mine = [ln for ln in journal if f"{iface}:" in ln or f"({iface})" in ln or f"'{iface}'" in ln]
+    if any(NO_SUPPLICANT.search(ln) for ln in mine):
         why.append(f"the supplicant cannot be started for {iface}")
-    busy = sum(1 for l in mine if SCAN_BUSY.search(l))
+    busy = sum(1 for ln in mine if SCAN_BUSY.search(ln))
     if busy > 5:
         why.append(f"scans keep failing as busy ({busy} in 2 minutes)")
     last = next((e for e in reversed(cw_events or []) if e.get("iface") == iface), None)

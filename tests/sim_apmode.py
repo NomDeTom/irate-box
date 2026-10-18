@@ -229,7 +229,7 @@ def fake_run(*cmd, **kw):
         return subprocess.CompletedProcess(cmd, 0, text, "")
     if cmd[:3] == ("nmcli", "connection", "up"):
         kf = (T / "kf").read_text()
-        iw["ap0"] = int(next(l for l in kf.splitlines() if l.startswith("channel=")).split("=")[1])
+        iw["ap0"] = int(next(ln for ln in kf.splitlines() if ln.startswith("channel=")).split("=")[1])
     return subprocess.CompletedProcess(cmd, 0, "", "")
 
 
