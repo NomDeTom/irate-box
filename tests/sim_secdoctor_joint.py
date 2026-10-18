@@ -61,8 +61,7 @@ for key, e in xref.XREF.items():
         name = i.removeprefix("kernel-")
         check(
             f"xref {key}: the Security page still has {i}",
-            f'finding("{i}"' in page_src
-            or (i.startswith("kernel-") and f'"{name}": {{"title"' in page_src),
+            f'finding("{i}"' in page_src or (i.startswith("kernel-") and f'"{name}": {{"title"' in page_src),
             i,
         )
 check(
@@ -133,15 +132,12 @@ for bad, why in (
 v = secimports.validate(
     {
         "kind": "openvas",
-        "results": [
-            {"port": 80, "cvss": 5, "name": "x\x00y" * 200, "cves": ["CVE-2026-1234"]}
-        ],
+        "results": [{"port": 80, "cvss": 5, "name": "x\x00y" * 200, "cves": ["CVE-2026-1234"]}],
     }
 )
 check(
     "text is trimmed and control characters go",
-    190 <= len(v["results"][0]["name"]) <= 200
-    and "\x00" not in v["results"][0]["name"],
+    190 <= len(v["results"][0]["name"]) <= 200 and "\x00" not in v["results"][0]["name"],
 )
 msg = secimports.save(
     {
@@ -159,8 +155,7 @@ msg = secimports.save(
 kept = json.loads((T / "security-imports" / "nmap.json").read_text())
 check(
     "kept: open ports only, with the box's ports at the time",
-    [r["port"] for r in kept["results"]] == [80, 22, 9999]
-    and kept["box_ports"] == ["tcp/22", "tcp/80"],
+    [r["port"] for r in kept["results"]] == [80, 22, 9999] and kept["box_ports"] == ["tcp/22", "tcp/80"],
     kept,
 )
 check(
@@ -191,17 +186,14 @@ imp = {f["id"]: f for f in sd.step_imports({})}
 check(
     "OpenVAS by port: CVSS 7 and over a problem, its fix the worst one's",
     imp["openvas-tcp-80"]["status"] == "problem"
-    and msg_args(imp["openvas-tcp-80"], "imports.openvas.solution")
-    == {"solution": "Update nginx"}
-    and imp["openvas-tcp-80"]["evidence"]
-    == ["nginx old (CVSS 7.5)", "TLS missing (CVSS 5)"],
+    and msg_args(imp["openvas-tcp-80"], "imports.openvas.solution") == {"solution": "Update nginx"}
+    and imp["openvas-tcp-80"]["evidence"] == ["nginx old (CVSS 7.5)", "TLS missing (CVSS 5)"],
     imp["openvas-tcp-80"],
 )
 check("  under 4: listed, fine", imp["openvas-tcp-22"]["status"] == "ok")
 check(
     "  a finding for the box as a whole has no port to merge on",
-    imp["openvas-tcp-general"]["about"] is None
-    and imp["openvas-tcp-general"]["status"] == "warn",
+    imp["openvas-tcp-general"]["about"] is None and imp["openvas-tcp-general"]["status"] == "warn",
 )
 check(
     "nmap: a port the box serves is fine; one it wasn't listening on is worth a look",
@@ -251,17 +243,14 @@ check(
     "TCP 80: the page (fine), nmap (fine) and OpenVAS (a problem): one item, three sources, a problem",
     sorted(items["tcp/80"]["sources"]) == ["nmap", "openvas", "security-page"]
     and items["tcp/80"]["title"]["id"] == "joint.service"
-    and {k: items["tcp/80"]["title"]["args"][k] for k in ("proto", "port")}
-    == {"proto": "TCP", "port": "80"}
+    and {k: items["tcp/80"]["title"]["args"][k] for k in ("proto", "port")} == {"proto": "TCP", "port": "80"}
     and items["tcp/80"]["status"] == "problem"
-    and msg_args(items["tcp/80"], "imports.openvas.solution")
-    == {"solution": "Update nginx"},
+    and msg_args(items["tcp/80"], "imports.openvas.solution") == {"solution": "Update nginx"},
     items["tcp/80"],
 )
 check(
     "TCP 9999: only nmap saw it, the Security page could have: listed apart",
-    items["tcp/9999"]["alone"]
-    and items["tcp/9999"]["could_see"] == ["openvas", "security-page"],
+    items["tcp/9999"]["alone"] and items["tcp/9999"]["could_see"] == ["openvas", "security-page"],
     items["tcp/9999"],
 )
 j2 = sd.joint(
@@ -304,14 +293,12 @@ check(
 )
 check(
     "counts after merging: kernel links once, not twice",
-    j["after"]["problem"] == 2
-    and sum(c["problem"] for c in j["sources"].values()) == 3,
+    j["after"]["problem"] == 2 and sum(c["problem"] for c in j["sources"].values()) == 3,
     (j["after"], j["sources"]),
 )
 check(
     "each source's coverage said",
-    j["coverage"]["nmap"]["id"] == "coverage.nmap"
-    and set(j["coverage"]) == set(j["sources"]),
+    j["coverage"]["nmap"]["id"] == "coverage.nmap" and set(j["coverage"]) == set(j["sources"]),
 )
 rep = sd.audit()
 check(
@@ -323,8 +310,7 @@ check(
 )
 check(
     "the server sends the imports' summary and takes an import",
-    'secimports.save(payload.get("report"))'
-    in (REPO / "irate_box/hub/server.py").read_text(),
+    'secimports.save(payload.get("report"))' in (REPO / "irate_box/hub/server.py").read_text(),
 )
 # Together a problem (secdoctor_xref.COMPOUND): each named finding present
 # and not ok; a compound item in the joint report, a problem, with its own detail and fix.

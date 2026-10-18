@@ -27,7 +27,7 @@ LOG = STATE / "pagelog" / "pages.log"
 FILE = STATE / "page-history.json"
 HOUR = 3600
 KEEP = 72 * 24
-MAX_READ = 2_000_000   # at most this much of the log in one look
+MAX_READ = 2_000_000  # at most this much of the log in one look
 
 
 def failed(status):
@@ -60,7 +60,7 @@ def add(hist, path, at, bad):
         e = pages[path] = {"first": idx, "u": [0], "e": [0]}
     last = e["first"] + len(e["u"]) - 1
     if idx < e["first"]:
-        return                                  # older than kept: the clock was wrong then
+        return  # older than kept: the clock was wrong then
     if idx > last:
         gap = idx - last
         e["u"] += [0] * gap
@@ -82,12 +82,12 @@ def read_new(hist, paths, log=LOG):
         return 0
     off = hist.get("offset", 0) if hist.get("inode") == st.st_ino else 0
     if st.st_size < off:
-        off = 0                                 # emptied by logrotate: from the start again
+        off = 0  # emptied by logrotate: from the start again
     n = 0
     with open(log, "rb") as fh:
         fh.seek(off)
         data = fh.read(MAX_READ)
-    end = data.rfind(b"\n") + 1                 # a line half-written stays for the next look
+    end = data.rfind(b"\n") + 1  # a line half-written stays for the next look
     for line in data[:end].decode("utf-8", "replace").splitlines():
         parts = line.split(" ", 2)
         if len(parts) != 3:
@@ -136,8 +136,11 @@ def summarize(hist, now=None):
         hours = [_cell(e, anchor - 71 + i, anchor - 71 + i + 1) for i in range(72)]
         month = [_cell(e, int(s // HOUR), int(t // HOUR)) for s, t in days]
         seen = [c for c in hours if c]
-        out["pages"][path] = {"hours": hours, "month": month,
-                              "summary": {"uses": sum(c["uses"] for c in seen), "errors": sum(c["errors"] for c in seen)}}
+        out["pages"][path] = {
+            "hours": hours,
+            "month": month,
+            "summary": {"uses": sum(c["uses"] for c in seen), "errors": sum(c["errors"] for c in seen)},
+        }
     return out
 
 

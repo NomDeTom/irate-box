@@ -36,7 +36,7 @@ from pathlib import Path
 
 from irate_box import confine
 from irate_box.hub import hubclock
-from irate_box.hub.refused import Said, Refused, answer, say
+from irate_box.hub.refused import Refused, Said, answer, say
 from irate_box.msg import M
 
 # Namespaces the Excalidraw frontend uses. Scenes are shared drawings, rooms are
@@ -92,8 +92,13 @@ class TooLarge(Said):
     """An item larger than the store's whole budget: refused, before anything is evicted for it."""
 
     def __init__(self):
-        super().__init__(M("store.item.large", "This item is larger than the storage of the store ({mb} MB). The box did not keep it.",
-                           mb=MAX_TOTAL >> 20))
+        super().__init__(
+            M(
+                "store.item.large",
+                "This item is larger than the storage of the store ({mb} MB). The box did not keep it.",
+                mb=MAX_TOTAL >> 20,
+            )
+        )
 
 
 def _fits(*blobs):
@@ -128,8 +133,11 @@ class LockError(Said):
     """A change to a locked item without a valid proof."""
 
     def __init__(self, lock, pinned=False):
-        super().__init__(M("drop.pinned", "This file belongs to the box. Only an administrator can remove it.") if pinned
-                         else M("store.locked", "This item is locked. Only the browser that locked it can change it."))
+        super().__init__(
+            M("drop.pinned", "This file belongs to the box. Only an administrator can remove it.")
+            if pinned
+            else M("store.locked", "This item is locked. Only the browser that locked it can change it.")
+        )
         self.lock = lock
         self.pinned = pinned
 
@@ -379,7 +387,13 @@ class Store:
     def clear_namespace(self, namespace):
         """Delete every blob in one of BLOB_NAMESPACES (shared scenes, rooms, files)."""
         if namespace not in BLOB_NAMESPACES:
-            raise Refused(M("store.namespace.invalid", "Invalid request. {namespace} is not a storage area of the store.", namespace=str(namespace)))
+            raise Refused(
+                M(
+                    "store.namespace.invalid",
+                    "Invalid request. {namespace} is not a storage area of the store.",
+                    namespace=str(namespace),
+                )
+            )
         removed = 0
         with self._lock:
             for path in self._dir(namespace).iterdir():
@@ -489,8 +503,14 @@ class Drop:
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = confine.under(self.dir, key + ".tmp")
         shutil.copyfile(src, tmp)
-        meta = {"id": key, "name": clean_filename(name), "size": tmp.stat().st_size, "by": str(by)[:MAX_NAME],
-                "created": self.clock.ticks(), "pinned": True}
+        meta = {
+            "id": key,
+            "name": clean_filename(name),
+            "size": tmp.stat().st_size,
+            "by": str(by)[:MAX_NAME],
+            "created": self.clock.ticks(),
+            "pinned": True,
+        }
         with self._lock:
             os.replace(tmp, confine.under(self.dir, key + ".data"))
             (confine.under(self.dir, key + ".meta")).write_text(json.dumps(meta))
@@ -504,8 +524,13 @@ class Drop:
 
     def usage(self):
         metas = self._metas()
-        return {"files": len(metas), "bytes": sum(m.get("size", 0) for m in metas),
-                "max_total": DROP_MAX_TOTAL, "max_file": DROP_MAX_FILE, "ttl": DROP_TTL}
+        return {
+            "files": len(metas),
+            "bytes": sum(m.get("size", 0) for m in metas),
+            "max_total": DROP_MAX_TOTAL,
+            "max_file": DROP_MAX_FILE,
+            "ttl": DROP_TTL,
+        }
 
     def receive(self, stream, length, name, by="", lock=None, marks=None):
         """Stream `length` bytes from `stream` into a new drop. Returns its meta; raises
@@ -528,8 +553,13 @@ class Drop:
                     left -= len(chunk)
                 fh.flush()
                 os.fsync(fh.fileno())
-            meta = {"id": key, "name": clean_filename(name), "size": length,
-                    "by": str(by).strip()[:MAX_NAME], "created": self.clock.ticks()}
+            meta = {
+                "id": key,
+                "name": clean_filename(name),
+                "size": length,
+                "by": str(by).strip()[:MAX_NAME],
+                "created": self.clock.ticks(),
+            }
             if lock:
                 meta["lock"] = lock
             meta.update(marks or {})
@@ -579,21 +609,37 @@ def clean_filename(name):
 def content_disposition(name):
     """attachment, with an ASCII fallback and the real name per RFC 6266 / 5987."""
     from urllib.parse import quote
+
     ascii_name = "".join(c if 32 <= ord(c) < 127 and c not in '"\\%' else "_" for c in name)
-    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name, safe="")}'
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 
 def _handle_drop(handler, method, path, drop):
     from urllib.parse import unquote
+
     if path == "/api/drop" and method == "GET":
         me = VIEWER(handler) if VIEWER else None
         hidden = HIDDEN() if HIDDEN else set()
-        _send_json(handler, 200, {"files": [{**{k: m.get(k) for k in ("id", "name", "size", "by", "age", "seen_by")}, "locked": bool(m.get("lock")),
-                                             "pinned": bool(m.get("pinned")),
-                                             **({"lock_n": m["lock"]["n"]} if m.get("lock") else {})}
-                                            for m in drop.list() if can_see(m, me) and f"drop:{m.get('id')}" not in hidden],
-                                  "max_file": DROP_MAX_FILE, "max_total": DROP_MAX_TOTAL, "ttl": DROP_TTL,
-                                  "report_reasons": REPORT_REASONS() if REPORT_REASONS else []})
+        _send_json(
+            handler,
+            200,
+            {
+                "files": [
+                    {
+                        **{k: m.get(k) for k in ("id", "name", "size", "by", "age", "seen_by")},
+                        "locked": bool(m.get("lock")),
+                        "pinned": bool(m.get("pinned")),
+                        **({"lock_n": m["lock"]["n"]} if m.get("lock") else {}),
+                    }
+                    for m in drop.list()
+                    if can_see(m, me) and f"drop:{m.get('id')}" not in hidden
+                ],
+                "max_file": DROP_MAX_FILE,
+                "max_total": DROP_MAX_TOTAL,
+                "ttl": DROP_TTL,
+                "report_reasons": REPORT_REASONS() if REPORT_REASONS else [],
+            },
+        )
         return True
     if path == "/api/drop" and method == "POST":
         if handler.headers.get("Transfer-Encoding", "").lower() == "chunked":
@@ -614,8 +660,14 @@ def _handle_drop(handler, method, path, drop):
         name = unquote(handler.headers.get("X-Drop-Name", "") or "file")
         by = unquote(handler.headers.get("X-Drop-By", "") or "")
         try:
-            meta = drop.receive(handler.rfile, length, name, by, lock=parse_lock(handler.headers.get("X-Lock-New")),
-                                marks=_author_marks(handler, "drop"))
+            meta = drop.receive(
+                handler.rfile,
+                length,
+                name,
+                by,
+                lock=parse_lock(handler.headers.get("X-Lock-New")),
+                marks=_author_marks(handler, "drop"),
+            )
         except ValueError as exc:
             handler.close_connection = True
             _send_json(handler, 507 if getattr(exc, "message", None) == NO_SPACE else 413, answer(exc))
@@ -627,24 +679,38 @@ def _handle_drop(handler, method, path, drop):
         _send_json(handler, 201, {**{k: meta[k] for k in ("id", "name", "size")}, "locked": bool(meta.get("lock"))})
         return True
     if path.startswith("/api/drop/") and method == "DELETE":
-        key = path[len("/api/drop/"):]
+        key = path[len("/api/drop/") :]
         try:
             gone = drop.delete(key, proof=handler.headers.get("X-Lock"))
         except LockError as exc:
             if exc.pinned:
                 _send_json(handler, 403, {**answer(exc), "pinned": True})
             elif exc.lock is None:
-                _send_json(handler, 403, {**say(M("drop.unlocked", "Only an administrator can remove a file that nobody locked. "
-                                                    "The box deletes it when it expires.")), "locked": False})
+                _send_json(
+                    handler,
+                    403,
+                    {
+                        **say(
+                            M(
+                                "drop.unlocked",
+                                "Only an administrator can remove a file that nobody locked. "
+                                "The box deletes it when it expires.",
+                            )
+                        ),
+                        "locked": False,
+                    },
+                )
             else:
                 _send_locked(handler, exc)
             return True
         _send_json(handler, 200, {"id": key}) if gone else _send_json(handler, 404, say(DROP_GONE))
         return True
     if path.startswith("/api/drop/") and method in ("GET", "HEAD"):
-        found = drop.open(path[len("/api/drop/"):])
-        if found and (not can_see(found[0], VIEWER(handler) if VIEWER else None)
-                      or (HIDDEN and f"drop:{found[0].get('id')}" in HIDDEN())):
+        found = drop.open(path[len("/api/drop/") :])
+        if found and (
+            not can_see(found[0], VIEWER(handler) if VIEWER else None)
+            or (HIDDEN and f"drop:{found[0].get('id')}" in HIDDEN())
+        ):
             found[1].close()
             found = None
         if not found:
@@ -789,7 +855,7 @@ def handle(handler, method, path, store, drop=None):
         return True
 
     if path.startswith(GLOBAL_PREFIX + "/"):
-        return _handle_blob(handler, method, path[len(GLOBAL_PREFIX) + 1:], store)
+        return _handle_blob(handler, method, path[len(GLOBAL_PREFIX) + 1 :], store)
 
     if path == "/api/saves" or path.startswith("/api/saves/"):
         return _handle_saves(handler, method, path, store)
@@ -869,11 +935,15 @@ def _handle_saves(handler, method, path, store):
                 # one small read per entry. Text documents are cheap enough to inline,
                 # which saves the client an N+1 round trip on a hotspot.
                 saves = [_with_state(store, meta) for meta in saves]
-            _send_json(handler, 200, {
-                "now": store.clock.ticks(),
-                "ttl": SAVE_TTL,
-                "saves": [public_meta(m) for m in saves],
-            })
+            _send_json(
+                handler,
+                200,
+                {
+                    "now": store.clock.ticks(),
+                    "ttl": SAVE_TTL,
+                    "saves": [public_meta(m) for m in saves],
+                },
+            )
             return True
         if method == "POST":
             _create_save(handler, store)
@@ -881,7 +951,7 @@ def _handle_saves(handler, method, path, store):
         _send_json(handler, 405, say(BAD_METHOD))
         return True
 
-    rest = path[len("/api/saves/"):].split("/")
+    rest = path[len("/api/saves/") :].split("/")
     key = rest[0]
     if not ID_RE.match(key):
         _send_json(handler, 400, say(BAD_ID))
@@ -897,9 +967,13 @@ def _handle_saves(handler, method, path, store):
             # Thumbnails are whatever the browser uploaded. Served as an opaque
             # download rather than inline: everything on this hub shares one origin,
             # so a stored SVG rendered in place would run script against the shoutbox.
-            _send(handler, 200, thumb, "application/octet-stream",
-                  {"X-Content-Type-Options": "nosniff",
-                   "Content-Disposition": "attachment"})
+            _send(
+                handler,
+                200,
+                thumb,
+                "application/octet-stream",
+                {"X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment"},
+            )
         return True
 
     if method == "GET":
@@ -927,7 +1001,9 @@ def _handle_saves(handler, method, path, store):
             _send_json(handler, 400, say(NAME_REQUIRED))
             return True
         try:
-            meta = store.rename_save(key, name, proof=proof, lock_next=nxt, unlock=unlock, force=_owns_save(store, key, handler))
+            meta = store.rename_save(
+                key, name, proof=proof, lock_next=nxt, unlock=unlock, force=_owns_save(store, key, handler)
+            )
         except LockError as exc:
             _send_locked(handler, exc)
             return True
@@ -983,6 +1059,7 @@ def _create_save(handler, store):
     if payload.get("thumb"):
         # Data URL or bare base64, whichever the client finds easier to produce.
         import base64
+
         blob = str(payload["thumb"])
         if "," in blob and blob.startswith("data:"):
             blob = blob.split(",", 1)[1]
@@ -994,7 +1071,17 @@ def _create_save(handler, store):
     body = json.dumps(state).encode()
     proof, new, nxt = _lock_headers(handler)
     try:
-        meta = store.save(kind, name, body, thumb, key, proof=proof, lock_new=new, lock_next=nxt, marks=_author_marks(handler, "saves"))
+        meta = store.save(
+            kind,
+            name,
+            body,
+            thumb,
+            key,
+            proof=proof,
+            lock_new=new,
+            lock_next=nxt,
+            marks=_author_marks(handler, "saves"),
+        )
     except LockError as exc:
         _send_locked(handler, exc)
         return
@@ -1006,12 +1093,14 @@ def _create_save(handler, store):
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) == 5 and sys.argv[1] == "pin-drop":
         # store.py pin-drop STATE_DIR FILE NAME: install.sh, as the hub user, pinning the
         # box's own source into the file drop.
         state = Path(sys.argv[2])
-        meta = Drop(state / "drop", hubclock.HubClock(state / "clock.json")).pin(sys.argv[3], "irate-box-source", sys.argv[4],
-                                                                              by="this box")
+        meta = Drop(state / "drop", hubclock.HubClock(state / "clock.json")).pin(
+            sys.argv[3], "irate-box-source", sys.argv[4], by="this box"
+        )
         print(f"pinned {meta['name']} ({meta['size']} bytes) in the file drop")
         sys.exit(0)
     from http.server import BaseHTTPRequestHandler, HTTPServer

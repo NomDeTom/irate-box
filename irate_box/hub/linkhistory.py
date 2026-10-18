@@ -23,9 +23,9 @@ A slot number is the Unix time // 300. About 20 KB per interface. Stdlib only.
 import time
 
 SLOT = 300
-KEEP = 72 * 86400 // SLOT          # 20736 slots
+KEEP = 72 * 86400 // SLOT  # 20736 slots
 RANK = {".": 0, "u": 1, "o": 2, "g": 3, "d": 4}
-DOWN = ("g", "d")                  # what counts as an outage (off by the owner does not)
+DOWN = ("g", "d")  # what counts as an outage (off by the owner does not)
 
 
 def worst(a, b):
@@ -46,7 +46,7 @@ def record(hist, iface, state, now, kind="link"):
     e["kind"] = kind
     last = e["first"] + len(e["s"]) - 1
     if idx < last:
-        return False                   # the clock went back: the slots ahead stand
+        return False  # the clock went back: the slots ahead stand
     if idx == last:
         e["s"] = e["s"][:-1] + worst(e["s"][-1], state)
     elif idx - last - 1 >= KEEP:
@@ -66,7 +66,7 @@ def _span(e, start, end):
     lo, hi = max(start, first), min(end, first + len(s))
     if lo >= hi:
         return "." * (end - start)
-    return "." * (lo - start) + s[lo - first:hi - first] + "." * (end - hi)
+    return "." * (lo - start) + s[lo - first : hi - first] + "." * (end - hi)
 
 
 def _bucket(states):
@@ -76,8 +76,7 @@ def _bucket(states):
     if not seen:
         return None
     drops = sum(1 for a, b in zip(states, states[1:], strict=False) if a == "u" and b in DOWN)
-    return {"up": round(sum(c == "u" for c in seen) / len(seen), 3), "n": len(seen), "drops": drops,
-            "off": "o" in seen}
+    return {"up": round(sum(c == "u" for c in seen) / len(seen), 3), "n": len(seen), "drops": drops, "off": "o" in seen}
 
 
 def gaps(hist, now=None):
@@ -85,8 +84,11 @@ def gaps(hist, now=None):
     [[start, end], ...] in Unix time, oldest first; the slots after the last recorded one count once
     they are more than two slots old. For the escalation chart, which draws them as no record."""
     now = time.time() if now is None else now
-    ifaces = [e for e in (hist or {}).get("ifaces", {}).values()
-              if isinstance(e, dict) and isinstance(e.get("s"), str) and isinstance(e.get("first"), int) and e["s"]]
+    ifaces = [
+        e
+        for e in (hist or {}).get("ifaces", {}).values()
+        if isinstance(e, dict) and isinstance(e.get("s"), str) and isinstance(e.get("first"), int) and e["s"]
+    ]
     if not ifaces:
         return []
     lo = min(e["first"] for e in ifaces)
@@ -120,21 +122,30 @@ def summarize(hist, now=None):
     now = time.time() if now is None else now
     out = {}
     today = _midnight(now)
-    anchor = int(now // 3600) * 3600          # the hour now in progress, started
+    anchor = int(now // 3600) * 3600  # the hour now in progress, started
     hour_at = lambda i: anchor - (71 - i) * 3600  # noqa: E731 - hours[i] covers [hour_at(i), hour_at(i)+3600)
     hour_cols = [time.strftime("%H:00", time.localtime(hour_at(i))) if i % 12 == 0 else "" for i in range(72)]
-    hour_full = [time.strftime("%a %d %H:00", time.localtime(hour_at(i)))
-                 + "–" + time.strftime("%H:00", time.localtime(hour_at(i) + 3600)) for i in range(72)]
+    hour_full = [
+        time.strftime("%a %d %H:00", time.localtime(hour_at(i)))
+        + "–"
+        + time.strftime("%H:00", time.localtime(hour_at(i) + 3600))
+        for i in range(72)
+    ]
     for iface, e in sorted((hist or {}).get("ifaces", {}).items()):
         if not isinstance(e, dict) or not isinstance(e.get("s"), str) or not isinstance(e.get("first"), int):
             continue
         days = []
         for back in range(71, -1, -1):
-            start = _midnight(today - back * 86400 + 43200)   # noon, then its midnight: DST-proof
+            start = _midnight(today - back * 86400 + 43200)  # noon, then its midnight: DST-proof
             end = _midnight(start + 36 * 3600)
             days.append((start, end))
-        month = [dict(_bucket(_span(e, int(s // SLOT), int(t // SLOT))) or {}, date=time.strftime("%Y-%m-%d", time.localtime(s)))
-                 for s, t in days]
+        month = [
+            dict(
+                _bucket(_span(e, int(s // SLOT), int(t // SLOT))) or {},
+                date=time.strftime("%Y-%m-%d", time.localtime(s)),
+            )
+            for s, t in days
+        ]
         hours = [_bucket(_span(e, int(hour_at(i) // SLOT), int((hour_at(i) + 3600) // SLOT))) for i in range(72)]
         span = _span(e, int((now - 72 * 3600) // SLOT), int(now // SLOT) + 1)
         seen = [c for c in span if c != "."]
@@ -148,10 +159,17 @@ def summarize(hist, now=None):
             elif c != ".":
                 run = 0
         base = int((now - 72 * 3600) // SLOT)
-        out[iface] = {"kind": e.get("kind", "link"), "hours": hours, "hour_cols": hour_cols, "hour_full": hour_full,
-                      "month": month, "summary": {
-            "up": round(sum(c == "u" for c in seen) / len(seen), 4) if seen else None,
-            "hours_seen": round(len(seen) * SLOT / 3600, 1),
-            "drops": sum(1 for a, b in zip(span, span[1:], strict=False) if a == "u" and b in DOWN),
-            "longest": {"minutes": longest * SLOT // 60, "at": (base + at) * SLOT} if longest else None}}
+        out[iface] = {
+            "kind": e.get("kind", "link"),
+            "hours": hours,
+            "hour_cols": hour_cols,
+            "hour_full": hour_full,
+            "month": month,
+            "summary": {
+                "up": round(sum(c == "u" for c in seen) / len(seen), 4) if seen else None,
+                "hours_seen": round(len(seen) * SLOT / 3600, 1),
+                "drops": sum(1 for a, b in zip(span, span[1:], strict=False) if a == "u" and b in DOWN),
+                "longest": {"minutes": longest * SLOT // 60, "at": (base + at) * SLOT} if longest else None,
+            },
+        }
     return out

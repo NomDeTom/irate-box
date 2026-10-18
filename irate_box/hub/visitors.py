@@ -31,8 +31,7 @@ import sys
 import time
 from pathlib import Path
 
-LEASES = os.environ.get("VISITORS_LEASES",
-                        "/var/lib/misc/dnsmasq.leases:/var/lib/NetworkManager/dnsmasq-*.leases")
+LEASES = os.environ.get("VISITORS_LEASES", "/var/lib/misc/dnsmasq.leases:/var/lib/NetworkManager/dnsmasq-*.leases")
 ARP = Path(os.environ.get("VISITORS_ARP", "/proc/net/arp"))
 OUT = Path(os.environ.get("VISITORS_OUT", "/run/irate-box-visitors/counts.json"))
 EVERY = int(os.environ.get("VISITORS_EVERY", "60"))
@@ -87,8 +86,13 @@ class Counter:
             w = self._window(name, key)
             for mac in addresses:
                 w["seen"].add(hmac.new(w["salt"], mac.encode(), hashlib.sha256).digest()[:16])
-        return {"day": len(self.windows["day"]["seen"]), "week": len(self.windows["week"]["seen"]),
-                "date": day, "week_of": week, "at": int(now if now is not None else time.time())}
+        return {
+            "day": len(self.windows["day"]["seen"]),
+            "week": len(self.windows["week"]["seen"]),
+            "date": day,
+            "week_of": week,
+            "at": int(now if now is not None else time.time()),
+        }
 
 
 def write(counts):

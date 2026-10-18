@@ -13,6 +13,7 @@ translation still fits the English it was made from. Read with ast, nothing impo
     English than the code's now is stale, and one whose ID is gone is unused (both warnings)
 
 python3 tests/msg_guard.py  [--list: every ID and its English]"""
+
 import ast
 import json
 import sys
@@ -46,8 +47,10 @@ def english(node):
     """The English of an M(...): a str, a {category: str} dict, or None when it is not a literal."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
-    if isinstance(node, ast.Dict) and all(isinstance(k, ast.Constant) and isinstance(v, ast.Constant) and isinstance(v.value, str)
-                                          for k, v in zip(node.keys, node.values, strict=False)):
+    if isinstance(node, ast.Dict) and all(
+        isinstance(k, ast.Constant) and isinstance(v, ast.Constant) and isinstance(v.value, str)
+        for k, v in zip(node.keys, node.values, strict=False)
+    ):
         return {k.value: v.value for k, v in zip(node.keys, node.values, strict=False)}
     return None
 
@@ -67,7 +70,7 @@ def walk_outside_messages(node):
         yield from walk_outside_messages(child)
 
 
-messages = {}            # id -> (english, where)
+messages = {}  # id -> (english, where)
 bad_id, not_literal, two_english, args_wrong, plural_wrong, built = [], [], [], [], [], []
 sources = sorted((REPO / "irate_box").rglob("*.py"))
 for path in sources:
@@ -82,7 +85,11 @@ for path in sources:
             if len(node.args) != 2:
                 not_literal.append(where)
                 continue
-            mid = node.args[0].value if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str) else None
+            mid = (
+                node.args[0].value
+                if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+                else None
+            )
             en = english(node.args[1])
             if mid is None or not ID_RE.match(mid):
                 bad_id.append(f"{where} {mid!r}")
@@ -92,7 +99,7 @@ for path in sources:
             if isinstance(en, dict) and ("other" not in en or set(en) - CATEGORIES):
                 plural_wrong.append(f"{where} {mid}: {sorted(en)}")
             passed = {k.arg for k in node.keywords}
-            if None not in passed:   # **args: not checked here
+            if None not in passed:  # **args: not checked here
                 need = placeholders(en) | ({"n"} if isinstance(en, dict) else set())
                 if need != passed:
                     args_wrong.append(f"{where} {mid}: says {sorted(placeholders(en))}, given {sorted(passed)}")
@@ -101,11 +108,18 @@ for path in sources:
             messages.setdefault(mid, (en, where))
         elif name == "finding":
             # finding(fid, title, status, summary, why, fix, ...): the sentences are messages or data, never built here.
-            said = node.args[3:6] + [k.value for k in node.keywords if k.arg in ("summary", "why", "fix", "title")] + node.args[1:2]
+            said = (
+                node.args[3:6]
+                + [k.value for k in node.keywords if k.arg in ("summary", "why", "fix", "title")]
+                + node.args[1:2]
+            )
             for arg in said:
                 for sub in walk_outside_messages(arg):
-                    if isinstance(sub, ast.JoinedStr) or (isinstance(sub, ast.BinOp) and isinstance(sub.op, (ast.Add, ast.Mod))
-                                                          and any(isinstance(x, (ast.Constant, ast.JoinedStr)) for x in (sub.left, sub.right))):
+                    if isinstance(sub, ast.JoinedStr) or (
+                        isinstance(sub, ast.BinOp)
+                        and isinstance(sub.op, (ast.Add, ast.Mod))
+                        and any(isinstance(x, (ast.Constant, ast.JoinedStr)) for x in (sub.left, sub.right))
+                    ):
                         built.append(where)
                         break
                     if isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub is arg:

@@ -141,7 +141,9 @@ def step(policy, log=print, now=None):
         if not in_window(policy):
             reason = f"{avail} is ready. Waiting for the installation window, {policy['hub_window_start']:02d}:00 to {policy['hub_window_end']:02d}:00."
         elif (people := _online()) != 0:
-            reason = f"{avail} is ready. Waiting until no device is active on the hub" + (". The box cannot count active devices now." if people is None else f" ({people} now).")
+            reason = f"{avail} is ready. Waiting until no device is active on the hub" + (
+                ". The box cannot count active devices now." if people is None else f" ({people} now)."
+            )
         else:
             return ask("install", "update-install", install_tried=avail)
         state["note"] = reason

@@ -23,6 +23,7 @@ import struct
 
 # --- the protobuf wire format ------------------------------------------------------------------
 
+
 def _varint(buf, i):
     out = shift = 0
     while True:
@@ -50,12 +51,12 @@ def fields(buf):
         if wt == 0:
             v, i = _varint(buf, i)
         elif wt == 1:
-            v, i = buf[i:i + 8], i + 8
+            v, i = buf[i : i + 8], i + 8
         elif wt == 5:
-            v, i = buf[i:i + 4], i + 4
+            v, i = buf[i : i + 4], i + 4
         elif wt == 2:
             n, i = _varint(buf, i)
-            v, i = buf[i:i + n], i + n
+            v, i = buf[i : i + n], i + n
         else:
             raise ValueError(f"wire type {wt}")
         if i > len(buf):
@@ -86,6 +87,7 @@ def _text(b):
 
 # --- AES (FIPS-197), the encrypting direction -----------------------------------------------------
 
+
 def _sbox():
     sbox, p, q = [0] * 256, 1, 1
     while True:
@@ -96,7 +98,13 @@ def _sbox():
         q &= 0xFF
         if q & 0x80:
             q ^= 0x09
-        x = q ^ ((q << 1) | (q >> 7)) & 0xFF ^ ((q << 2) | (q >> 6)) & 0xFF ^ ((q << 3) | (q >> 5)) & 0xFF ^ ((q << 4) | (q >> 4)) & 0xFF
+        x = (
+            q
+            ^ ((q << 1) | (q >> 7)) & 0xFF
+            ^ ((q << 2) | (q >> 6)) & 0xFF
+            ^ ((q << 3) | (q >> 5)) & 0xFF
+            ^ ((q << 4) | (q >> 4)) & 0xFF
+        )
         sbox[p] = (x ^ 0x63) & 0xFF
         if p == 1:
             break
@@ -114,7 +122,7 @@ def _xt(a):
 def _expand(key):
     nk = len(key) // 4
     rounds = nk + 6
-    w = [list(key[4 * i:4 * i + 4]) for i in range(nk)]
+    w = [list(key[4 * i : 4 * i + 4]) for i in range(nk)]
     rcon = 1
     for i in range(nk, 4 * (rounds + 1)):
         t = list(w[i - 1])
@@ -125,7 +133,7 @@ def _expand(key):
         elif nk > 6 and i % nk == 4:
             t = [SBOX[b] for b in t]
         w.append([a ^ b for a, b in zip(w[i - nk], t, strict=False)])
-    return [sum(w[4 * r:4 * r + 4], []) for r in range(rounds + 1)]
+    return [sum(w[4 * r : 4 * r + 4], []) for r in range(rounds + 1)]
 
 
 def aes_encrypt_block(round_keys, block):
@@ -137,7 +145,7 @@ def aes_encrypt_block(round_keys, block):
         if r != last:
             m = []
             for c in range(4):
-                a = s[4 * c:4 * c + 4]
+                a = s[4 * c : 4 * c + 4]
                 t = a[0] ^ a[1] ^ a[2] ^ a[3]
                 m += [a[i] ^ t ^ _xt(a[i] ^ a[(i + 1) % 4]) for i in range(4)]
             s = m
@@ -153,7 +161,7 @@ def aes_ctr(key, nonce, data):
     counter = int.from_bytes(nonce, "big")
     for i in range(0, len(data), 16):
         stream = aes_encrypt_block(rk, counter.to_bytes(16, "big"))
-        out += bytes(a ^ b for a, b in zip(data[i:i + 16], stream, strict=False))
+        out += bytes(a ^ b for a, b in zip(data[i : i + 16], stream, strict=False))
         counter = (counter & ~0xFFFFFFFF) | ((counter + 1) & 0xFFFFFFFF)
     return bytes(out)
 
@@ -191,9 +199,23 @@ def nonce(packet_id, sender):
 
 # --- the messages ---------------------------------------------------------------------------------------
 
-PORTS = {1: "text", 3: "position", 4: "nodeinfo", 5: "routing", 6: "admin", 8: "waypoint", 32: "reply",
-         34: "paxcounter", 64: "serial", 65: "store_forward", 66: "range_test", 67: "telemetry", 70: "traceroute",
-         71: "neighborinfo", 73: "map_report"}
+PORTS = {
+    1: "text",
+    3: "position",
+    4: "nodeinfo",
+    5: "routing",
+    6: "admin",
+    8: "waypoint",
+    32: "reply",
+    34: "paxcounter",
+    64: "serial",
+    65: "store_forward",
+    66: "range_test",
+    67: "telemetry",
+    70: "traceroute",
+    71: "neighborinfo",
+    73: "map_report",
+}
 
 
 def decode_data(buf):
@@ -214,7 +236,9 @@ def decode_data(buf):
         elif num == 8:
             d["emoji"] = _u32(v)
     if "portnum" not in d:
-        raise ValueError("the packet has no port number. The packet is not a Data message, or the key does not decrypt it")
+        raise ValueError(
+            "the packet has no port number. The packet is not a Data message, or the key does not decrypt it"
+        )
     return d
 
 
@@ -254,12 +278,12 @@ def decode_payload(port, buf):
     if port == 67:
         out = {}
         for num, v in f:
-            if num == 2 and isinstance(v, bytes):     # device metrics
+            if num == 2 and isinstance(v, bytes):  # device metrics
                 for n2, v2 in fields(v):
                     key = {1: "battery", 2: "voltage", 3: "channel_util", 4: "air_util_tx", 5: "uptime"}.get(n2)
                     if key:
                         out[key] = _f32(v2) if isinstance(v2, bytes) and len(v2) == 4 else v2
-            elif num == 3 and isinstance(v, bytes):   # environment metrics
+            elif num == 3 and isinstance(v, bytes):  # environment metrics
                 for n2, v2 in fields(v):
                     key = {1: "temperature", 2: "humidity", 3: "pressure"}.get(n2)
                     if key and isinstance(v2, bytes) and len(v2) == 4:
@@ -311,16 +335,24 @@ def decode_envelope(buf, keys):
     p = env.get("packet")
     if not p:
         raise ValueError("the envelope has no packet")
-    out = {"from": f"!{p.get('from', 0):08x}", "to": "all" if p.get("to") == 0xFFFFFFFF else f"!{p.get('to', 0):08x}",
-           "id": p.get("id"), "channel_id": env.get("channel_id", ""), "gateway": env.get("gateway", ""),
-           "rx_snr": p.get("rx_snr"), "rx_rssi": p.get("rx_rssi"),
-           "hops": (p["hop_start"] - p.get("hop_limit", 0)) if p.get("hop_start") else None}
+    out = {
+        "from": f"!{p.get('from', 0):08x}",
+        "to": "all" if p.get("to") == 0xFFFFFFFF else f"!{p.get('to', 0):08x}",
+        "id": p.get("id"),
+        "channel_id": env.get("channel_id", ""),
+        "gateway": env.get("gateway", ""),
+        "rx_snr": p.get("rx_snr"),
+        "rx_rssi": p.get("rx_rssi"),
+        "hops": (p["hop_start"] - p.get("hop_limit", 0)) if p.get("hop_start") else None,
+    }
     data = None
     if "decoded" in p:
         data = decode_data(p["decoded"])
     elif "encrypted" in p:
         named = keys.get(out["channel_id"])
-        tries = ([named] if named is not None else []) + [k for name, k in keys.items() if channel_hash(name, k) == p.get("channel") and k != named]
+        tries = ([named] if named is not None else []) + [
+            k for name, k in keys.items() if channel_hash(name, k) == p.get("channel") and k != named
+        ]
         for key in tries:
             if not key:
                 continue

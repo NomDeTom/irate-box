@@ -6,30 +6,43 @@ ones listed and not counted, a kit's cache flagged; the run with no data, and wi
 debsecan on the installed packages and the kits' cache; the joint report merging what two sources
 say about one package.
 python3 tests/sim_secdoctor_debsecan.py"""
+
 import json
 import os
 import sys
 import tempfile
 import time
 from pathlib import Path
+
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="secdoc-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_KITS_ROOT=str(T / "kits"), HUB_OS_RELEASE=str(T / "os-release"))
 sys.path.insert(0, str(REPO))
-from irate_box.root import secdoctor as sd  # noqa: E402
-from irate_box.finding import finding, message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.finding import finding  # noqa: E402
+from irate_box.finding import message_args as msg_args
+from irate_box.finding import message_ids as msg_ids
 from irate_box.msg import M  # noqa: E402
+from irate_box.root import secdoctor as sd  # noqa: E402
+
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
-
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
 
 
 def F(fid, title, status, summary=None, fix=None, **extra):
     """A finding in the shared shape (finding.py), its words as messages made up for the test."""
-    return finding(fid, M(f"test.{fid}.title", title), status, M(f"test.{fid}", summary or title),
-                   fix=M(f"test.{fid}.fix", fix) if fix else None, **extra)
+    return finding(
+        fid,
+        M(f"test.{fid}.title", title),
+        status,
+        M(f"test.{fid}", summary or title),
+        fix=M(f"test.{fid}.fix", fix) if fix else None,
+        **extra,
+    )
 
 
 # debsecan's --format summary, as it prints it (recorded on a real board, and two made up).
@@ -44,117 +57,283 @@ CACHED = """CVE-2026-60001 tcpdump (fixed)
 CVE-2026-60002 python3.13
 """
 fake = T / "debsecan"
-fake.write_text("import sys\nargs = sys.argv[1:]\nprint(open(%r if '--status' in args else %r).read(), end='')\n" % (str(T / "cached.txt"), str(T / "installed.txt")))
-(T / "installed.txt").write_text(INSTALLED); (T / "cached.txt").write_text(CACHED)
+fake.write_text(
+    "import sys\nargs = sys.argv[1:]\nprint(open(%r if '--status' in args else %r).read(), end='')\n"
+    % (str(T / "cached.txt"), str(T / "installed.txt"))
+)
+(T / "installed.txt").write_text(INSTALLED)
+(T / "cached.txt").write_text(CACHED)
 (T / "os-release").write_text("VERSION_CODENAME=trixie\n")
 got = sd._debsecan([sys.executable, str(fake)], {}, "trixie")
-check("the summary is read: each CVE, fixed or not, remote, urgency", got["dnsmasq-base"][0] == ("CVE-2026-12725", {"fixed": True, "remote": True, "urgency": ""})
-      and got["gzip"][0][1]["urgency"] == "low" and got["libc6"][1] == ("CVE-2025-0001", {"fixed": False, "remote": False, "urgency": ""}), got)
-fs = {x["id"]: x for x in sd.debsecan_findings(got, sd._debsecan([sys.executable, str(fake)], {}, "trixie", T / "x"), {"tcpdump": ["capture", "debug"]}, time.time())}
-check("every finding has the shared shape (finding.py), with its source; about where it is about a shared thing",
-      all(set(x) >= {"id", "title", "status", "summary", "why", "fix", "notes", "commands", "evidence", "actions", "source"}
-          and x["source"] == "debsecan" for x in fs.values()), {k: sorted(x) for k, x in fs.items()})
-check("a released fix that is remotely exploitable: a problem", fs["debsecan-dnsmasq-base"]["status"] == "problem"
-      and "CVE-2026-12725 remote" in fs["debsecan-dnsmasq-base"]["evidence"] and "debsecan.fixed.remote" in msg_ids(fs["debsecan-dnsmasq-base"]),
-      fs["debsecan-dnsmasq-base"])
-check("  one of high urgency: a problem", fs["debsecan-libc6"]["status"] == "problem" and "CVE-2026-50001 high" in fs["debsecan-libc6"]["evidence"]
-      and "debsecan.fixed.remote" in msg_ids(fs["debsecan-libc6"]), fs["debsecan-libc6"])
-check("  otherwise a warning", fs["debsecan-gzip"]["status"] == "warn" and "debsecan.fixed.remote" not in msg_ids(fs["debsecan-gzip"]))
-check("  about Debian's security updates (one item on the page with the Security page's), from debsecan, with the fix",
-      fs["debsecan-gzip"]["about"] == {"kind": "setting", "key": "security-updates"}
-      and fs["debsecan-gzip"]["source"] == "debsecan" and fs["debsecan-gzip"]["fix"]["id"] == "debsecan.fixed.fix")
-check("unfixed ones: listed in one line that isn't counted against the box", "debsecan-perl" not in fs and fs["debsecan-unfixed"]["status"] == "ok"
-      and msg_args(fs["debsecan-unfixed"], "debsecan.unfixed") == {"n": 1} and fs["debsecan-unfixed"]["evidence"] == ["perl"]
-      and "debsecan.unfixed.count" in msg_ids(fs["debsecan-unfixed"]), fs["debsecan-unfixed"])
-check("a kit's cache with a version since fixed: a warning on each kit that holds it", fs["debsecan-kit-capture"]["status"] == "warn"
-      and fs["debsecan-kit-debug"]["about"] == {"kind": "kit", "key": "debug"} and fs["debsecan-kit-capture"]["fix"]["id"] == "debsecan.kit.fix")
-check("  an unfixed one in the cache flags nothing", not any("python3.13" in e for k, x in fs.items() if k.startswith("debsecan-kit") for e in x["evidence"]))
+check(
+    "the summary is read: each CVE, fixed or not, remote, urgency",
+    got["dnsmasq-base"][0] == ("CVE-2026-12725", {"fixed": True, "remote": True, "urgency": ""})
+    and got["gzip"][0][1]["urgency"] == "low"
+    and got["libc6"][1] == ("CVE-2025-0001", {"fixed": False, "remote": False, "urgency": ""}),
+    got,
+)
+fs = {
+    x["id"]: x
+    for x in sd.debsecan_findings(
+        got,
+        sd._debsecan([sys.executable, str(fake)], {}, "trixie", T / "x"),
+        {"tcpdump": ["capture", "debug"]},
+        time.time(),
+    )
+}
+check(
+    "every finding has the shared shape (finding.py), with its source; about where it is about a shared thing",
+    all(
+        set(x)
+        >= {"id", "title", "status", "summary", "why", "fix", "notes", "commands", "evidence", "actions", "source"}
+        and x["source"] == "debsecan"
+        for x in fs.values()
+    ),
+    {k: sorted(x) for k, x in fs.items()},
+)
+check(
+    "a released fix that is remotely exploitable: a problem",
+    fs["debsecan-dnsmasq-base"]["status"] == "problem"
+    and "CVE-2026-12725 remote" in fs["debsecan-dnsmasq-base"]["evidence"]
+    and "debsecan.fixed.remote" in msg_ids(fs["debsecan-dnsmasq-base"]),
+    fs["debsecan-dnsmasq-base"],
+)
+check(
+    "  one of high urgency: a problem",
+    fs["debsecan-libc6"]["status"] == "problem"
+    and "CVE-2026-50001 high" in fs["debsecan-libc6"]["evidence"]
+    and "debsecan.fixed.remote" in msg_ids(fs["debsecan-libc6"]),
+    fs["debsecan-libc6"],
+)
+check(
+    "  otherwise a warning",
+    fs["debsecan-gzip"]["status"] == "warn" and "debsecan.fixed.remote" not in msg_ids(fs["debsecan-gzip"]),
+)
+check(
+    "  about Debian's security updates (one item on the page with the Security page's), from debsecan, with the fix",
+    fs["debsecan-gzip"]["about"] == {"kind": "setting", "key": "security-updates"}
+    and fs["debsecan-gzip"]["source"] == "debsecan"
+    and fs["debsecan-gzip"]["fix"]["id"] == "debsecan.fixed.fix",
+)
+check(
+    "unfixed ones: listed in one line that isn't counted against the box",
+    "debsecan-perl" not in fs
+    and fs["debsecan-unfixed"]["status"] == "ok"
+    and msg_args(fs["debsecan-unfixed"], "debsecan.unfixed") == {"n": 1}
+    and fs["debsecan-unfixed"]["evidence"] == ["perl"]
+    and "debsecan.unfixed.count" in msg_ids(fs["debsecan-unfixed"]),
+    fs["debsecan-unfixed"],
+)
+check(
+    "a kit's cache with a version since fixed: a warning on each kit that holds it",
+    fs["debsecan-kit-capture"]["status"] == "warn"
+    and fs["debsecan-kit-debug"]["about"] == {"kind": "kit", "key": "debug"}
+    and fs["debsecan-kit-capture"]["fix"]["id"] == "debsecan.kit.fix",
+)
+check(
+    "  an unfixed one in the cache flags nothing",
+    not any("python3.13" in e for k, x in fs.items() if k.startswith("debsecan-kit") for e in x["evidence"]),
+)
 
 # One finding per source package.
-two = {"perl": [("CVE-1", {"fixed": True, "remote": False, "urgency": ""})], "perl-base": [("CVE-1", {"fixed": True, "remote": False, "urgency": ""})],
-       "libperl5.40": [("CVE-2", {"fixed": True, "remote": True, "urgency": ""})]}
-g = [x for x in sd.debsecan_findings(two, {}, {}, None, {"perl-base": "perl", "libperl5.40": "perl"}) if x["id"].startswith("debsecan-perl")]
-check("binaries of one source package: one finding, naming them, its CVEs together, the worst status", len(g) == 1
-      and msg_args(g[0], "debsecan.binaries") == {"packages": ["libperl5.40", "perl", "perl-base"]}
-      and msg_args(g[0], "debsecan.fixed") == {"n": 2} and g[0]["evidence"] == ["CVE-1", "CVE-2 remote"]
-      and g[0]["status"] == "problem" and g[0]["about"] == {"kind": "setting", "key": "security-updates"}, g)
+two = {
+    "perl": [("CVE-1", {"fixed": True, "remote": False, "urgency": ""})],
+    "perl-base": [("CVE-1", {"fixed": True, "remote": False, "urgency": ""})],
+    "libperl5.40": [("CVE-2", {"fixed": True, "remote": True, "urgency": ""})],
+}
+g = [
+    x
+    for x in sd.debsecan_findings(two, {}, {}, None, {"perl-base": "perl", "libperl5.40": "perl"})
+    if x["id"].startswith("debsecan-perl")
+]
+check(
+    "binaries of one source package: one finding, naming them, its CVEs together, the worst status",
+    len(g) == 1
+    and msg_args(g[0], "debsecan.binaries") == {"packages": ["libperl5.40", "perl", "perl-base"]}
+    and msg_args(g[0], "debsecan.fixed") == {"n": 2}
+    and g[0]["evidence"] == ["CVE-1", "CVE-2 remote"]
+    and g[0]["status"] == "problem"
+    and g[0]["about"] == {"kind": "setting", "key": "security-updates"},
+    g,
+)
 sd._sources = lambda: {}
 # The step itself: no data yet; no debsecan anywhere; a stand-in in place of the real one.
 out = sd.step_debsecan({})
-check("no tracker data yet: a warning saying how it comes", len(out) == 1 and out[0]["id"] == "debsecan-data" and out[0]["status"] == "warn")
-(sd.DEBSECAN_FEED).mkdir(parents=True); (sd.DEBSECAN_FEED / "trixie").write_bytes(b"x")
+check(
+    "no tracker data yet: a warning saying how it comes",
+    len(out) == 1 and out[0]["id"] == "debsecan-data" and out[0]["status"] == "warn",
+)
+(sd.DEBSECAN_FEED).mkdir(parents=True)
+(sd.DEBSECAN_FEED / "trixie").write_bytes(b"x")
 real = sd._debsecan_command
 sd._debsecan_command = lambda work: (None, "debsecan is not on the box, and the security kit's cache doesn't hold it")
 out = sd.step_debsecan({})
-check("no debsecan: a warning, pointing at the security kit", out[0]["id"] == "debsecan-tool" and out[0]["fix"]["id"] == "debsecan.tool.fix")
+check(
+    "no debsecan: a warning, pointing at the security kit",
+    out[0]["id"] == "debsecan-tool" and out[0]["fix"]["id"] == "debsecan.tool.fix",
+)
 sd._debsecan_command = lambda work: ([sys.executable, str(fake)], {})
 (T / "kits" / "manifests").mkdir(parents=True)
-(T / "kits" / "manifests" / "capture.json").write_text(json.dumps({"packages": [{"name": "tcpdump", "file": "tcpdump_1_armhf.deb", "size": 1, "sha256": "0" * 64}]}))
-(T / "kits" / "manifests" / "capture.previous.json").write_text(json.dumps({"packages": [{"name": "tcpdump", "file": "tcpdump_1_armhf.deb", "size": 1, "sha256": "0" * 64}]}))
+(T / "kits" / "manifests" / "capture.json").write_text(
+    json.dumps({"packages": [{"name": "tcpdump", "file": "tcpdump_1_armhf.deb", "size": 1, "sha256": "0" * 64}]})
+)
+(T / "kits" / "manifests" / "capture.previous.json").write_text(
+    json.dumps({"packages": [{"name": "tcpdump", "file": "tcpdump_1_armhf.deb", "size": 1, "sha256": "0" * 64}]})
+)
 (T / "kits" / "kits-status").write_text("Package: tcpdump\n")
 out = {x["id"]: x for x in sd.step_debsecan({})}
-check("with debsecan: the installed packages and the kits' cache, the previous sets not counted twice",
-      "debsecan-dnsmasq-base" in out and out["debsecan-kit-capture"]["evidence"] == ["tcpdump"]
-      and "debsecan.kit" in msg_ids(out["debsecan-kit-capture"]) and "debsecan-kit-capture.previous" not in out, sorted(out))
+check(
+    "with debsecan: the installed packages and the kits' cache, the previous sets not counted twice",
+    "debsecan-dnsmasq-base" in out
+    and out["debsecan-kit-capture"]["evidence"] == ["tcpdump"]
+    and "debsecan.kit" in msg_ids(out["debsecan-kit-capture"])
+    and "debsecan-kit-capture.previous" not in out,
+    sorted(out),
+)
 sd._debsecan_command = real
 # Unpacking from the cache refuses a damaged file (it runs as root).
 (T / "kits" / "pool").mkdir()
 for n in ("debsecan_0.4.20.1_all.deb", "python3-apt_3.0.0_armhf.deb", "python-apt-common_3.0.0_all.deb"):
     (T / "kits" / "pool" / n).write_text("not what was fetched")
-(T / "kits" / "manifests" / "security.json").write_text(json.dumps({"id": "security", "packages": [
-    {"name": "debsecan", "file": "debsecan_0.4.20.1_all.deb", "size": 1, "sha256": "0" * 64}]}))
+(T / "kits" / "manifests" / "security.json").write_text(
+    json.dumps(
+        {
+            "id": "security",
+            "packages": [{"name": "debsecan", "file": "debsecan_0.4.20.1_all.deb", "size": 1, "sha256": "0" * 64}],
+        }
+    )
+)
 if not Path("/usr/bin/debsecan").exists():
     cmd, why = sd._debsecan_command(T / "work")
     check("a security kit file that fails its check is not run", cmd is None and "fails its check" in why, why)
 
 # The joint report: two sources about one package become one item.
-steps = [{"findings": [F("a", "nginx is old", "warn", fix="upgrade", about={"kind": "package", "key": "nginx"}),
-                       F("ok1", "fine", "ok")]},
-         {"findings": [F("debsecan-nginx", "nginx: a fix", "problem", fix="install updates", source="debsecan", about={"kind": "package", "key": "nginx"}),
-                       F("debsecan-unfixed", "unfixed", "ok", source="debsecan")]}]
+steps = [
+    {
+        "findings": [
+            F("a", "nginx is old", "warn", fix="upgrade", about={"kind": "package", "key": "nginx"}),
+            F("ok1", "fine", "ok"),
+        ]
+    },
+    {
+        "findings": [
+            F(
+                "debsecan-nginx",
+                "nginx: a fix",
+                "problem",
+                fix="install updates",
+                source="debsecan",
+                about={"kind": "package", "key": "nginx"},
+            ),
+            F("debsecan-unfixed", "unfixed", "ok", source="debsecan"),
+        ]
+    },
+]
 j = sd.joint(steps)
-check("joint: one item for the package, both sources, the worst status and its fix", len(j["items"]) == 1 and j["items"][0]["sources"] == ["doctor", "debsecan"]
-      and j["items"][0]["status"] == "problem" and j["items"][0]["fix"]["id"] == "test.debsecan-nginx.fix", j)
-check("  each source's counts", j["sources"] == {"doctor": {"problem": 0, "warn": 1, "ok": 1}, "debsecan": {"problem": 1, "warn": 0, "ok": 1}}, j["sources"])
+check(
+    "joint: one item for the package, both sources, the worst status and its fix",
+    len(j["items"]) == 1
+    and j["items"][0]["sources"] == ["doctor", "debsecan"]
+    and j["items"][0]["status"] == "problem"
+    and j["items"][0]["fix"]["id"] == "test.debsecan-nginx.fix",
+    j,
+)
+check(
+    "  each source's counts",
+    j["sources"] == {"doctor": {"problem": 0, "warn": 1, "ok": 1}, "debsecan": {"problem": 1, "warn": 0, "ok": 1}},
+    j["sources"],
+)
 check("the step is in the doctor's list", "debsecan" in [x[0] for x in sd.STEPS])
 
 # The kits' cache judged by its newest version of each package: an older copy kept for Roll back is not what an
 # install brings (on the Lyra, ntfs-3g deb13u2 beside deb13u3 was flagged though the fix was cached).
-order = [("1:2022.10.3-5+deb13u3", "1:2022.10.3-5+deb13u2", 1), ("1.0~rc1", "1.0", -1), ("1.0", "1.0-1", -1), ("2:1.0", "1:9.9", 1),
-         ("1.0a", "1.0+", -1), ("1.10", "1.9", 1), ("1.0-1", "1.0-1", 0), ("25.01+dfsg-1~deb13u2", "25.01+dfsg-1", -1)]
-check("Debian's version order: epochs, ~ before the end, letters before other characters, numbers as numbers",
-      all((lambda c: (c > 0) - (c < 0))(sd._deb_cmp(a, b)) == want for a, b, want in order),
-      [(a, b, sd._deb_cmp(a, b)) for a, b, want in order])
-status = "".join(f"Package: {n}\nStatus: install ok installed\nSource: ntfs-3g\nVersion: {v}\nArchitecture: armhf\n\n"
-                 for n in ("ntfs-3g", "libntfs-3g89t64") for v in ("1:2022.10.3-5+deb13u2", "1:2022.10.3-5+deb13u3")) \
+order = [
+    ("1:2022.10.3-5+deb13u3", "1:2022.10.3-5+deb13u2", 1),
+    ("1.0~rc1", "1.0", -1),
+    ("1.0", "1.0-1", -1),
+    ("2:1.0", "1:9.9", 1),
+    ("1.0a", "1.0+", -1),
+    ("1.10", "1.9", 1),
+    ("1.0-1", "1.0-1", 0),
+    ("25.01+dfsg-1~deb13u2", "25.01+dfsg-1", -1),
+]
+check(
+    "Debian's version order: epochs, ~ before the end, letters before other characters, numbers as numbers",
+    all((lambda c: (c > 0) - (c < 0))(sd._deb_cmp(a, b)) == want for a, b, want in order),
+    [(a, b, sd._deb_cmp(a, b)) for a, b, want in order],
+)
+status = (
+    "".join(
+        f"Package: {n}\nStatus: install ok installed\nSource: ntfs-3g\nVersion: {v}\nArchitecture: armhf\n\n"
+        for n in ("ntfs-3g", "libntfs-3g89t64")
+        for v in ("1:2022.10.3-5+deb13u2", "1:2022.10.3-5+deb13u3")
+    )
     + "Package: tcpdump\nStatus: install ok installed\nVersion: 4.99.5-2\nArchitecture: armhf\n\n"
+)
 kept, left = sd.newest_only(status)
-check("newest_only: each package's newest version kept, the older left out, the rest as they were",
-      left == 2 and kept.count("Package: ") == 3 and "deb13u2" not in kept and kept.count("deb13u3") == 2 and "Source: ntfs-3g" in kept
-      and "Package: tcpdump" in kept, (left, kept))
+check(
+    "newest_only: each package's newest version kept, the older left out, the rest as they were",
+    left == 2
+    and kept.count("Package: ") == 3
+    and "deb13u2" not in kept
+    and kept.count("deb13u3") == 2
+    and "Source: ntfs-3g" in kept
+    and "Package: tcpdump" in kept,
+    (left, kept),
+)
 seen = {}
 fake2 = T / "debsecan2"
-fake2.write_text("import sys\nargs = sys.argv[1:]\nst = args[args.index('--status') + 1] if '--status' in args else ''\n"
-                 "open(%r, 'w').write(open(st).read() if st else '')\nprint('', end='')\n" % str(T / "seen-status.txt"))
+fake2.write_text(
+    "import sys\nargs = sys.argv[1:]\nst = args[args.index('--status') + 1] if '--status' in args else ''\n"
+    "open(%r, 'w').write(open(st).read() if st else '')\nprint('', end='')\n" % str(T / "seen-status.txt")
+)
 (T / "kits" / "kits-status").write_text(status)
 sd._debsecan_command = lambda work: ([sys.executable, str(fake2)], {})
 sd.step_debsecan(None)
 got_status = (T / "seen-status.txt").read_text()
-check("  and that is what debsecan is given for the cache", "deb13u2" not in got_status and got_status.count("deb13u3") == 2, got_status)
+check(
+    "  and that is what debsecan is given for the cache",
+    "deb13u2" not in got_status and got_status.count("deb13u3") == 2,
+    got_status,
+)
 
 # Information only (secdoctor_xref.INFO): irate-box's own work or the board's limits leave the review count for a tier
 # of their own, with why; a real finding beside them stays real.
-steps = [{"findings": [F("units-root", "Root units with a sandbox line missing", "warn", evidence=["irate-box-control: NoNewPrivileges"]),
-                       F("image-kernel", "A vendor kernel", "warn", evidence=["6.1.115-vendor-rockchip"]),
-                       F("notes-login", "Notes: no login", "warn", "Anyone can read the notes.")]}]
+steps = [
+    {
+        "findings": [
+            F(
+                "units-root",
+                "Root units with a sandbox line missing",
+                "warn",
+                evidence=["irate-box-control: NoNewPrivileges"],
+            ),
+            F("image-kernel", "A vendor kernel", "warn", evidence=["6.1.115-vendor-rockchip"]),
+            F("notes-login", "Notes: no login", "warn", "Anyone can read the notes."),
+        ]
+    }
+]
 j = sd.joint(steps)
 by = {i["lines"][0]["id"]: i for i in j["items"]}
-check("information only: its tier, and why (irate-box's own work)", by["units-root"]["tier"] == "info"
-      and by["units-root"]["info"]["id"] == "info.units-root", by["units-root"])
-check("  the board's limit too", by["image-kernel"]["tier"] == "info" and by["image-kernel"]["info"]["id"] == "info.image-kernel")
-check("  a finding the owner can act on stays a review item", by["notes-login"]["tier"] is None and by["notes-login"]["info"] is None)
+check(
+    "information only: its tier, and why (irate-box's own work)",
+    by["units-root"]["tier"] == "info" and by["units-root"]["info"]["id"] == "info.units-root",
+    by["units-root"],
+)
+check(
+    "  the board's limit too",
+    by["image-kernel"]["tier"] == "info" and by["image-kernel"]["info"]["id"] == "info.image-kernel",
+)
+check(
+    "  a finding the owner can act on stays a review item",
+    by["notes-login"]["tier"] is None and by["notes-login"]["info"] is None,
+)
 check("  counted apart, not in the review count", j["after"]["warn"] == 1 and j["after"]["info"] == 2, j["after"])
-check("  listed after the real items", [i["lines"][0]["id"] for i in j["items"]][0] == "notes-login", [i["lines"][0]["id"] for i in j["items"]])
+check(
+    "  listed after the real items",
+    [i["lines"][0]["id"] for i in j["items"]][0] == "notes-login",
+    [i["lines"][0]["id"] for i in j["items"]],
+)
 check("  only the doctor's own findings", sd.secdoctor_xref.info("debian-cis", "units-root") is None)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

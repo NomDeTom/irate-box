@@ -56,12 +56,12 @@ SETTINGS = ETC / "pkgwatch.json"
 PUBLIC = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "control" / "pkgwatch.json"
 PREFS = Path(os.environ.get("HUB_APT_PREFS_DIR", "/etc/apt/preferences.d"))
 OS_RELEASE = Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))
-IMAGE_ROOT = Path(os.environ.get("HUB_IMAGE_ROOT", "/"))   # where an image's own files are (tests move it)
+IMAGE_ROOT = Path(os.environ.get("HUB_IMAGE_ROOT", "/"))  # where an image's own files are (tests move it)
 MODES = ("flag", "watch", "auto", "aged")
 DAYS = (1, 3, 7, 14, 30)
 # How often the librarian asks for a check (the update pattern: hours, 0 only when Check now is pressed).
 EVERY = (0, 6, 24, 168)
-KEEP = 8                     # builds kept in the cache, besides the installed and the previous
+KEEP = 8  # builds kept in the cache, besides the installed and the previous
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9.+~:-]{1,100}$")
 APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none", "LC_ALL": "C"}
@@ -69,7 +69,9 @@ APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "non
 
 def run(cmd, timeout=900, cwd=None):
     """Every command goes through here (the tests stand it in)."""
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=dict(os.environ, **APT_ENV))
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=dict(os.environ, **APT_ENV)
+    )
 
 
 def _json(p, default):
@@ -81,6 +83,7 @@ def _json(p, default):
 
 def _write(p, data, mode=0o644):
     from irate_box.root import safeio
+
     Path(p).parent.mkdir(parents=True, exist_ok=True)
     safeio.write(Path(p), data if isinstance(data, str) else json.dumps(data, indent=1), mode)
 
@@ -90,9 +93,15 @@ def definitions():
     out = {}
     for f in sorted(DEFS.glob("*.json")):
         d = _json(f, None)
-        if isinstance(d, dict) and ID_RE.match(str(d.get("id", ""))) and d["id"] == f.stem and isinstance(d.get("channels"), dict) \
-                and d.get("package") and re.fullmatch(r"[a-z0-9][a-z0-9+.-]+", d["package"]) \
-                and all(re.fullmatch(r"https://[A-Za-z0-9./:_{}-]+/", u) for u in d["channels"].values()):
+        if (
+            isinstance(d, dict)
+            and ID_RE.match(str(d.get("id", "")))
+            and d["id"] == f.stem
+            and isinstance(d.get("channels"), dict)
+            and d.get("package")
+            and re.fullmatch(r"[a-z0-9][a-z0-9+.-]+", d["package"])
+            and all(re.fullmatch(r"https://[A-Za-z0-9./:_{}-]+/", u) for u in d["channels"].values())
+        ):
             out[d["id"]] = d
     return out
 
@@ -109,8 +118,13 @@ def suite():
     rel = dict(l.split("=", 1) for l in OS_RELEASE.read_text().splitlines() if "=" in l)
     ident, ver = rel.get("ID", "").strip('"'), rel.get("VERSION_ID", "").strip('"')
     if ident != "debian" or not ver.isdigit():
-        raise Refused(M("pkgwatch.suite.not-debian", "The makers' repositories are for Debian. This box runs {system}.",
-                     system=rel.get("PRETTY_NAME", ident).strip('"')))
+        raise Refused(
+            M(
+                "pkgwatch.suite.not-debian",
+                "The makers' repositories are for Debian. This box runs {system}.",
+                system=rel.get("PRETTY_NAME", ident).strip('"'),
+            )
+        )
     return f"Debian_{ver}"
 
 
@@ -157,10 +171,19 @@ def settings(pid=None):
     d = _def(pid)
     s = raw.get(pid) if isinstance(raw.get(pid), dict) else {}
     listed = image_channels(d)
-    ch = (s.get("channel") if s.get("channel") in d["channels"] else listed[0] if len(listed) == 1 else
-          channel_of(d, installed(d["package"])) or d.get("default_channel") or next(iter(d["channels"])))
-    return {"channel": ch, "mode": s.get("mode") if s.get("mode") in MODES else "watch",
-            "days": s.get("days") if s.get("days") in DAYS else 7, "every": s.get("every") if s.get("every") in EVERY else 24}
+    ch = (
+        s.get("channel")
+        if s.get("channel") in d["channels"]
+        else listed[0]
+        if len(listed) == 1
+        else channel_of(d, installed(d["package"])) or d.get("default_channel") or next(iter(d["channels"]))
+    )
+    return {
+        "channel": ch,
+        "mode": s.get("mode") if s.get("mode") in MODES else "watch",
+        "days": s.get("days") if s.get("days") in DAYS else 7,
+        "every": s.get("every") if s.get("every") in EVERY else 24,
+    }
 
 
 def _dir(pid):
@@ -170,9 +193,20 @@ def _dir(pid):
 def _apt(pid):
     d = _dir(pid)
     (d / "prefs.d").mkdir(parents=True, exist_ok=True)
-    return ["-o", f"Dir::Etc::sourcelist={d / 'sources.list'}", "-o", "Dir::Etc::sourceparts=-",
-            "-o", f"Dir::State::Lists={d / 'lists'}", "-o", "APT::Get::List-Cleanup=0",
-            "-o", f"Dir::Etc::preferences={d / 'prefs.d' / 'none'}", "-o", f"Dir::Etc::preferencesparts={d / 'prefs.d'}"]
+    return [
+        "-o",
+        f"Dir::Etc::sourcelist={d / 'sources.list'}",
+        "-o",
+        "Dir::Etc::sourceparts=-",
+        "-o",
+        f"Dir::State::Lists={d / 'lists'}",
+        "-o",
+        "APT::Get::List-Cleanup=0",
+        "-o",
+        f"Dir::Etc::preferences={d / 'prefs.d' / 'none'}",
+        "-o",
+        f"Dir::Etc::preferencesparts={d / 'prefs.d'}",
+    ]
 
 
 def _index(pid, pkg):
@@ -181,10 +215,18 @@ def _index(pid, pkg):
     for f in (_dir(pid) / "lists").glob("*_Packages"):
         for stanza in f.read_text(errors="replace").split("\n\n"):
             fields = dict(l.split(": ", 1) for l in stanza.splitlines() if ": " in l and not l.startswith(" "))
-            if fields.get("Package") == pkg and fields.get("Architecture") in (a, "all") and VERSION_RE.match(fields.get("Version", "")):
+            if (
+                fields.get("Package") == pkg
+                and fields.get("Architecture") in (a, "all")
+                and VERSION_RE.match(fields.get("Version", ""))
+            ):
                 if not best or newer(fields["Version"], best["version"]):
-                    best = {"version": fields["Version"], "filename": fields.get("Filename", ""), "sha256": fields.get("SHA256", ""),
-                            "size": int(fields.get("Size", "0") or 0)}
+                    best = {
+                        "version": fields["Version"],
+                        "filename": fields.get("Filename", ""),
+                        "sha256": fields.get("SHA256", ""),
+                        "size": int(fields.get("Size", "0") or 0),
+                    }
     return best
 
 
@@ -219,8 +261,13 @@ def check(pid, now=None, log=print, fetch=False):
     _write(root / "sources.list", f"deb [signed-by={key}] {url} /\n")
     r = run(["apt-get", *_apt(pid), "update", "-q"])
     if r.returncode:
-        raise Refused(M("pkgwatch.check.update-failed", "The box could not read the channel. apt-get update said: {detail}",
-                     detail=((r.stderr or r.stdout).strip().splitlines() or ["?"])[-1][:200]))
+        raise Refused(
+            M(
+                "pkgwatch.check.update-failed",
+                "The box could not read the channel. apt-get update said: {detail}",
+                detail=((r.stderr or r.stdout).strip().splitlines() or ["?"])[-1][:200],
+            )
+        )
     top = _index(pid, d["package"])
     got, flags = seen(pid), flagged(pid)
     said = []
@@ -236,10 +283,22 @@ def check(pid, now=None, log=print, fetch=False):
         f = root / "debs" / name if re.fullmatch(r"[A-Za-z0-9+.~_%-]+\.deb", name) else None
         f = f if f and f.is_file() else None
         if r.returncode or not f or (top["sha256"] and sha256(f) != top["sha256"]):
-            raise Refused(M("pkgwatch.check.download-incomplete", "Package download incomplete: {version}. apt-get said: {detail}",
-                         version=top["version"], detail=((r.stderr or "").strip().splitlines() or ["?"])[-1][:200]))
+            raise Refused(
+                M(
+                    "pkgwatch.check.download-incomplete",
+                    "Package download incomplete: {version}. apt-get said: {detail}",
+                    version=top["version"],
+                    detail=((r.stderr or "").strip().splitlines() or ["?"])[-1][:200],
+                )
+            )
         first = flags.pop(top["version"], {}).get("first_seen", now)
-        got[top["version"]] = {"first_seen": first, "file": f.name, "sha256": sha256(f), "channel": s["channel"], "size": f.stat().st_size}
+        got[top["version"]] = {
+            "first_seen": first,
+            "file": f.name,
+            "sha256": sha256(f),
+            "channel": s["channel"],
+            "size": f.stat().st_size,
+        }
         said.append(f"Package downloaded: {top['version']} on {s['channel']}")
         log(f"{pid}: {said[-1]}")
     _prune(pid, got, installed(d["package"]))
@@ -287,16 +346,28 @@ def install(pid, version, log=print):
         raise Refused(M("pkgwatch.install.version-invalid", "The version is not valid."))
     e = seen(pid).get(version)
     if not e and version in flagged(pid):
-        check(pid, log=log, fetch=True)   # a flagged build: fetched first
+        check(pid, log=log, fetch=True)  # a flagged build: fetched first
         e = seen(pid).get(version)
     f = _dir(pid) / "debs" / (e or {}).get("file", "-")
     if not e or not f.is_file() or sha256(f) != e["sha256"]:
-        raise Refused(M("pkgwatch.install.not-cached", "Cached version unavailable: {version} is not in the cache. Run Check first.", version=version))
+        raise Refused(
+            M(
+                "pkgwatch.install.not-cached",
+                "Cached version unavailable: {version} is not in the cache. Run Check first.",
+                version=version,
+            )
+        )
     before = installed(d["package"])
     r = run(["apt-get", "install", "-y", "-q", "--allow-downgrades", "--no-install-recommends", str(f)], timeout=1800)
     if r.returncode:
-        raise Refused(M("pkgwatch.install.apt-failed", "The box could not install {version}. apt-get install said: {detail}", version=version,
-                     detail=((r.stderr or r.stdout).strip().splitlines() or ["?"])[-1][:200]))
+        raise Refused(
+            M(
+                "pkgwatch.install.apt-failed",
+                "The box could not install {version}. apt-get install said: {detail}",
+                version=version,
+                detail=((r.stderr or r.stdout).strip().splitlines() or ["?"])[-1][:200],
+            )
+        )
     rec = _record(pid)
     if before and before != version:
         rec["previous"] = before
@@ -306,11 +377,21 @@ def install(pid, version, log=print):
     if d.get("unit"):
         run(["systemctl", "try-restart", d["unit"]], timeout=120)
     publish(pid)
-    msg = sentences(M("pkgwatch.install.done-from", "The box installed {package} {version}. The version before was {before}.",
-                      package=d["package"], version=version, before=before) if before else
-                    M("pkgwatch.install.done", "The box installed {package} {version}.", package=d["package"], version=version),
-                    M("pkgwatch.install.dependencies", "apt also installed any missing dependencies."),
-                    d.get("unit") and M("pkgwatch.install.restart", "The box restarts {unit} if it is running.", unit=d["unit"]))
+    msg = sentences(
+        M(
+            "pkgwatch.install.done-from",
+            "The box installed {package} {version}. The version before was {before}.",
+            package=d["package"],
+            version=version,
+            before=before,
+        )
+        if before
+        else M(
+            "pkgwatch.install.done", "The box installed {package} {version}.", package=d["package"], version=version
+        ),
+        M("pkgwatch.install.dependencies", "apt also installed any missing dependencies."),
+        d.get("unit") and M("pkgwatch.install.restart", "The box restarts {unit} if it is running.", unit=d["unit"]),
+    )
     log(f"{pid}: {msg}")
     return msg
 
@@ -320,7 +401,13 @@ def rollback(pid, log=print):
     if not prev:
         raise Refused(M("pkgwatch.rollback.none", "Rollback unavailable: the box has no record of a previous version."))
     if prev not in seen(pid):
-        raise Refused(M("pkgwatch.rollback.not-cached", "Rollback unavailable: the previous version {version} is not in the cache.", version=prev))
+        raise Refused(
+            M(
+                "pkgwatch.rollback.not-cached",
+                "Rollback unavailable: the previous version {version} is not in the cache.",
+                version=prev,
+            )
+        )
     return install(pid, prev, log=log)
 
 
@@ -334,8 +421,16 @@ def set_settings(pid, channel, mode, days, every=None):
     d = _def(pid)
     every = settings(pid)["every"] if every is None else every
     if channel not in d["channels"] or mode not in MODES or days not in DAYS or every not in EVERY:
-        raise Refused(M("pkgwatch.settings.invalid", "Select a channel ({channels}), a mode ({modes}), days ({days}) and hours ({hours}).",
-                     channels=list(d["channels"]), modes=list(MODES), days=list(DAYS), hours=list(EVERY)))
+        raise Refused(
+            M(
+                "pkgwatch.settings.invalid",
+                "Select a channel ({channels}), a mode ({modes}), days ({days}) and hours ({hours}).",
+                channels=list(d["channels"]),
+                modes=list(MODES),
+                days=list(DAYS),
+                hours=list(EVERY),
+            )
+        )
     raw = settings()
     raw[pid] = {"channel": channel, "mode": mode, "days": days, "every": every}
     _write(SETTINGS, raw, 0o644)
@@ -344,21 +439,40 @@ def set_settings(pid, channel, mode, days, every=None):
     if mode != "aged":
         pref_path(d).unlink(missing_ok=True)
     else:
-        _write(pref_path(d), f"# Written by irate-box (root/pkgwatch.py): {d['package']} is updated by the box's watcher\n"
-                             f"# ({d['title']}, /admin), on the channel the owner chose, not by apt upgrade.\n"
-                             f"Package: {d['package']}\nPin: origin \"{host}\"\nPin-Priority: -1\n")
+        _write(
+            pref_path(d),
+            f"# Written by irate-box (root/pkgwatch.py): {d['package']} is updated by the box's watcher\n"
+            f"# ({d['title']}, /admin), on the channel the owner chose, not by apt upgrade.\n"
+            f'Package: {d["package"]}\nPin: origin "{host}"\nPin-Priority: -1\n',
+        )
     publish(pid)
     if mode == "flag":
-        does = M("pkgwatch.settings.flag", "The box reports newer versions. It does not download or install them automatically.")
+        does = M(
+            "pkgwatch.settings.flag",
+            "The box reports newer versions. It does not download or install them automatically.",
+        )
     elif mode == "watch":
-        does = M("pkgwatch.settings.watch", "The box downloads each newer version. It does not install them automatically.")
+        does = M(
+            "pkgwatch.settings.watch", "The box downloads each newer version. It does not install them automatically."
+        )
     elif mode == "auto":
         does = M("pkgwatch.settings.auto", "The box installs each new version when it detects it.")
     else:
-        does = M("pkgwatch.settings.aged", "The box installs the newest version {wait} after it first detected that version.",
-                 wait=duration(days * 86400))
-    return sentences(M("pkgwatch.settings.saved", "Release channel saved: {package} on {channel}.", package=d["package"], channel=channel),
-                     does, switched)
+        does = M(
+            "pkgwatch.settings.aged",
+            "The box installs the newest version {wait} after it first detected that version.",
+            wait=duration(days * 86400),
+        )
+    return sentences(
+        M(
+            "pkgwatch.settings.saved",
+            "Release channel saved: {package} on {channel}.",
+            package=d["package"],
+            channel=channel,
+        ),
+        does,
+        switched,
+    )
 
 
 def dearmor(armored):
@@ -378,7 +492,12 @@ def _switch_image_channel(d, channel):
         return None
     binary = dearmor((CODE / d["key"]).read_bytes())
     if binary is None:
-        raise Refused(M("pkgwatch.settings.no-gpg", "Verification tool unavailable: gpg is not installed, so the box cannot write the channel key."))
+        raise Refused(
+            M(
+                "pkgwatch.settings.no-gpg",
+                "Verification tool unavailable: gpg is not installed, so the box cannot write the channel key.",
+            )
+        )
     for ch in d["channels"]:
         (IMAGE_ROOT / img["list"].format(channel=ch)).unlink(missing_ok=True)
         (IMAGE_ROOT / img["key"].format(channel=ch)).unlink(missing_ok=True)
@@ -388,7 +507,12 @@ def _switch_image_channel(d, channel):
     key.parent.mkdir(parents=True, exist_ok=True)
     key.write_bytes(binary)
     os.chmod(key, 0o644)
-    return M("pkgwatch.settings.image-switched", "{tool} and the box's apt now use {channel} too.", tool=img["name"], channel=channel)
+    return M(
+        "pkgwatch.settings.image-switched",
+        "{tool} and the box's apt now use {channel} too.",
+        tool=img["name"],
+        channel=channel,
+    )
 
 
 def publish(pid, now=None):
@@ -407,15 +531,31 @@ def publish(pid, now=None):
     flag = next(((v, e) for v, e in flagged(pid).items() if e.get("channel") == s["channel"]), None)
     if flag and newer(flag[0], top):
         top = flag[0]
-    pub[pid] = {"title": d["title"], "package": d["package"], "channels": list(d["channels"]), "settings": s,
-                "installed": have, "previous": rec.get("previous"),
-                "newer": top if top and newer(top, have) else None,
-                "builds": [{"version": v, "channel": e["channel"], "first_seen": e["first_seen"], "size": e.get("size")}
-                           for v, e in sorted(got.items(), key=lambda x: x[1]["first_seen"])],
-                "flagged": {"version": flag[0], "first_seen": flag[1]["first_seen"], "size": flag[1].get("size")} if flag else None,
-                "due": due(pid, now), "checked": now or pub.get(pid, {}).get("checked"), "history": rec.get("history", [])[-5:],
-                "held": pref_path(d).exists(), "modes": list(MODES), "days": list(DAYS), "every": list(EVERY),
-                "labels": d.get("labels", {}), "image": {"name": d["image"]["name"], "channels": image_channels(d)} if has_image_tool(d) else None}
+    pub[pid] = {
+        "title": d["title"],
+        "package": d["package"],
+        "channels": list(d["channels"]),
+        "settings": s,
+        "installed": have,
+        "previous": rec.get("previous"),
+        "newer": top if top and newer(top, have) else None,
+        "builds": [
+            {"version": v, "channel": e["channel"], "first_seen": e["first_seen"], "size": e.get("size")}
+            for v, e in sorted(got.items(), key=lambda x: x[1]["first_seen"])
+        ],
+        "flagged": {"version": flag[0], "first_seen": flag[1]["first_seen"], "size": flag[1].get("size")}
+        if flag
+        else None,
+        "due": due(pid, now),
+        "checked": now or pub.get(pid, {}).get("checked"),
+        "history": rec.get("history", [])[-5:],
+        "held": pref_path(d).exists(),
+        "modes": list(MODES),
+        "days": list(DAYS),
+        "every": list(EVERY),
+        "labels": d.get("labels", {}),
+        "image": {"name": d["image"]["name"], "channels": image_channels(d)} if has_image_tool(d) else None,
+    }
     _write(PUBLIC, pub)
     return pub[pid]
 

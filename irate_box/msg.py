@@ -32,6 +32,7 @@ PLACEHOLDER_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
 class M(dict):
     """One message: {"id", "en", "args"}. A dict, so a finding that holds one goes to JSON as it is."""
+
     __slots__ = ()
 
     def __init__(self, mid, en, **args):
@@ -108,7 +109,7 @@ def duration_unit(seconds):
         if s >= size and s % size == 0 and s // size < 100:
             return int(s // size), unit
     size, unit, _, places = next(u for u in UNITS if s >= u[2])
-    v = math.floor(s / size * 10 ** places + 0.5) / 10 ** places
+    v = math.floor(s / size * 10**places + 0.5) / 10**places
     return (int(v) if v == int(v) else v), unit
 
 
@@ -173,12 +174,12 @@ def text(*ms):
 # English-only helpers for terminal output and logs, and for code that is not converted yet. A message for
 # a person takes its plural as a dict of whole sentences instead.
 def count(n, one, other=None):
-    """"1 update", "3 updates"."""
+    """ "1 update", "3 updates"."""
     return f"{n} {one if n == 1 else other or one + 's'}"
 
 
 def ago(seconds):
-    """"5 minutes ago", "3 days ago"."""
+    """ "5 minutes ago", "3 days ago"."""
     for size, unit in ((86400, "day"), (3600, "hour"), (60, "minute")):
         if seconds >= size:
             return f"{count(int(seconds // size), unit)} ago"

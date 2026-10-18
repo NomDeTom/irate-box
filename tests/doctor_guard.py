@@ -10,9 +10,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-src = (
-    Path(__file__).resolve().parents[1] / "irate_box" / "root" / "secdoctor.py"
-).read_text()
+src = (Path(__file__).resolve().parents[1] / "irate_box" / "root" / "secdoctor.py").read_text()
 tree = ast.parse(src)
 fails = 0
 
@@ -30,10 +28,7 @@ check(
     [n for n, c in names.items() if c > 1],
 )
 steps = next(
-    n
-    for n in tree.body
-    if isinstance(n, ast.Assign)
-    and any(getattr(t, "id", "") == "STEPS" for t in n.targets)
+    n for n in tree.body if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "STEPS" for t in n.targets)
 )
 ids = Counter(e.elts[0].value for e in steps.value.elts)
 check(
@@ -48,9 +43,7 @@ check(
     [f for f, c in Counter(fns).items() if c > 1],
 )
 # The doctor's drain check reads a marker in the hub's code: the hub must still carry it.
-server = (
-    Path(__file__).resolve().parents[1] / "irate_box" / "hub" / "server.py"
-).read_text()
+server = (Path(__file__).resolve().parents[1] / "irate_box" / "hub" / "server.py").read_text()
 check(
     "server.py declares DRAINS_REQUEST_BODIES = True (the doctor's drain check reads it)",
     re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server) is not None,
@@ -87,9 +80,7 @@ from irate_box.root import secdoctor as sd  # noqa: E402
 
 prev = {
     "at": 1,
-    "steps": [
-        {"findings": [{"id": "a", "status": "ok"}, {"id": "b", "status": "warn"}]}
-    ],
+    "steps": [{"findings": [{"id": "a", "status": "ok"}, {"id": "b", "status": "warn"}]}],
 }
 now = [
     {"id": "a", "status": "problem"},
@@ -105,16 +96,10 @@ check(
 
 # The update doctor's links (go, as health.py's): each place it names is an id on the admin page, and only what is not
 # fine has one.
-hc = (
-    Path(__file__).resolve().parents[1] / "irate_box" / "root" / "hub_control.py"
-).read_text()
+hc = (Path(__file__).resolve().parents[1] / "irate_box" / "root" / "hub_control.py").read_text()
 html = (Path(__file__).resolve().parents[1] / "web" / "admin.html").read_text()
 places = [
-    [
-        a.value
-        for a in n.args
-        if isinstance(a, ast.Constant) and isinstance(a.value, str)
-    ]
+    [a.value for a in n.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
     for n in ast.walk(ast.parse(hc))
     if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_go"
 ]
@@ -138,18 +123,14 @@ check("a finding that is fine sends nobody anywhere (no go)", not fine_go, fine_
 
 # Who owns what: a doctor diagnoses and repairs; an ongoing choice is changed on its own page. The Box doctor builds no
 # setting chips, and the Security doctor's rows link a policy choice to Security or Updates rather than changing it.
-health = (
-    Path(__file__).resolve().parents[1] / "irate_box" / "root" / "health.py"
-).read_text()
+health = (Path(__file__).resolve().parents[1] / "irate_box" / "root" / "health.py").read_text()
 check(
     "the Box doctor builds no setting chips (a choice is changed on its own page)",
     "_chip(" not in health and "group=" not in health,
     re.findall(r".*(?:_chip\(|group=).*", health)[:3],
 )
 adminjs = (Path(__file__).resolve().parents[1] / "web" / "admin.js").read_text()
-joint = adminjs[
-    adminjs.index("function jointDo(") : adminjs.index("function jointRow(")
-]
+joint = adminjs[adminjs.index("function jointDo(") : adminjs.index("function jointRow(")]
 check(
     "the Security doctor: a policy choice is a link (Go to …), only a cure is a button that acts",
     re.search(r"""secKind\(f\)\s*!==\s*['"]cure['"]""", joint) is not None

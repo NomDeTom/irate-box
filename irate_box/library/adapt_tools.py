@@ -46,7 +46,7 @@ MARK = "irate-box-adapted"
 BACK_LINK = re.compile(r'<a\b([^>]*?)\bhref="(?:\./)?index\.html"([^>]*)>')
 _DROPPED = r'<a\b[^>]*\bhref="(?:\./)?(?:' + "|".join(re.escape(d) for d in DROP) + r')"[^>]*>.*?</a\s*>'
 # A list item holding only such a link goes with it, so no empty bullet is left behind.
-DROPPED_ITEM = re.compile(r'<li\b[^>]*>\s*' + _DROPPED + r'\s*</li\s*>', re.S)
+DROPPED_ITEM = re.compile(r"<li\b[^>]*>\s*" + _DROPPED + r"\s*</li\s*>", re.S)
 DROPPED_LINK = re.compile(_DROPPED, re.S)
 STYLESHEET = '<link rel="stylesheet" href="/tools-hub.css">'
 OVERRIDE = "directory-override.css"
@@ -73,7 +73,9 @@ def homes(index):
     return out
 
 
-HEADING_OR_LINK = re.compile(r'<h([23])\b[^>]*>(.*?)</h\1\s*>|<a\b[^>]*\bhref="(?:\./)?([A-Za-z0-9_-]+\.html)"[^>]*>(.*?)</a\s*>', re.S)
+HEADING_OR_LINK = re.compile(
+    r'<h([23])\b[^>]*>(.*?)</h\1\s*>|<a\b[^>]*\bhref="(?:\./)?([A-Za-z0-9_-]+\.html)"[^>]*>(.*?)</a\s*>', re.S
+)
 
 
 def index_groups(tools, keep):
@@ -83,8 +85,10 @@ def index_groups(tools, keep):
         text = (tools / "index.html").read_text(encoding="utf-8")
     except OSError:
         return None
+
     def plain(s):
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s)).replace("&amp;", "&").strip()
+
     h2 = h3 = ""
     out, seen = [], set()
     for m in HEADING_OR_LINK.finditer(text):
@@ -117,12 +121,14 @@ def adapt(page, back):
         pass
     elif "</head>" in html:
         html = html.replace("</head>", f"  {STYLESHEET}\n</head>", 1)
-    elif (body := re.search(r"<body\b", html)):
-        html = html[:body.start()] + STYLESHEET + "\n" + html[body.start():]
+    elif body := re.search(r"<body\b", html):
+        html = html[: body.start()] + STYLESHEET + "\n" + html[body.start() :]
     else:
         html = STYLESHEET + "\n" + html
-    note = (f'<p class="{MARK}">Adapted for the Irate-Box: colours and navigation changed from '
-            f'<a href="{ORIGIN}{page.name}">the original</a>, under the same license.</p>\n')
+    note = (
+        f'<p class="{MARK}">Adapted for the Irate-Box: colours and navigation changed from '
+        f'<a href="{ORIGIN}{page.name}">the original</a>, under the same license.</p>\n'
+    )
     head, sep, tail = html.rpartition("</body>")
     html = head + note + sep + tail if sep else html + note
     page.write_text(html, encoding="utf-8")
@@ -187,7 +193,9 @@ def main(tools_dir, static_dir):
     (tools / OVERRIDE).write_text(
         "/* Written by irate-box's adapt_tools.py: the hub's palette, from web/tools-hub.css,\n"
         "   in place of the site's commented-out template. */\n"
-        + (static / "tools-hub.css").read_text(encoding="utf-8"), encoding="utf-8")
+        + (static / "tools-hub.css").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     listed = homes(index)
     changed = 0
     for page in sorted(tools.glob("*.html")):

@@ -25,7 +25,20 @@ MAX_BYTES = 1_000_000
 # Who wrote it, in words for the pages.
 BY = {"watchdog": "the uplink watchdog", "crashwatch": "crash watch", "driver": "the radio's driver", "box": "the box"}
 # What is worth an owner's look, in the doctor's summary (the rest stays in the file).
-NOTABLE = {"down", "up", "cause", "wedged", "repair", "held", "skip", "stalled", "failed", "recovered", "driver-reset", "boot"}
+NOTABLE = {
+    "down",
+    "up",
+    "cause",
+    "wedged",
+    "repair",
+    "held",
+    "skip",
+    "stalled",
+    "failed",
+    "recovered",
+    "driver-reset",
+    "boot",
+}
 
 
 def boot_id():
@@ -37,7 +50,14 @@ def boot_id():
 
 def add(by, kind, text, iface=None, at=None, **extra):
     """One line, appended under a lock. Never raises: a watcher goes on whatever happens here."""
-    e = {"at": time.time() if at is None else at, "boot": boot_id(), "by": by, "kind": kind, "iface": iface, "text": str(text)[:400]}
+    e = {
+        "at": time.time() if at is None else at,
+        "boot": boot_id(),
+        "by": by,
+        "kind": kind,
+        "iface": iface,
+        "text": str(text)[:400],
+    }
     e.update({k: v for k, v in extra.items() if v is not None})
     try:
         LOG.parent.mkdir(parents=True, exist_ok=True)

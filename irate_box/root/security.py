@@ -21,7 +21,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from irate_box.finding import action, finding, english
+from irate_box.finding import action, english, finding
 from irate_box.hub import services
 from irate_box.msg import M, Refused, is_message, named, render, sentences, when
 from irate_box.root import safeio
@@ -45,25 +45,40 @@ UPDATES_LOG_NAME = "security-updates.log"
 
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
 KNOWN_PORTS = {
-    ("tcp", 22): named("SSH"), ("tcp", 80): M("port.name.hub-server", "Hub server"), ("tcp", 9090): named("Cockpit"),
+    ("tcp", 22): named("SSH"),
+    ("tcp", 80): M("port.name.hub-server", "Hub server"),
+    ("tcp", 9090): named("Cockpit"),
     ("tcp", 1883): named("mosquitto", M("port.role.mqtt", "MQTT broker")),
-    ("tcp", 22000): named("Syncthing"), ("udp", 22000): named("Syncthing"),
-    ("udp", 21027): named("Syncthing", M("port.role.discovery", "discovery")), ("udp", 5353): named("mDNS", "Avahi or systemd-resolved"),
-    ("tcp", 5355): named("LLMNR", "systemd-resolved"), ("udp", 5355): named("LLMNR", "systemd-resolved"),
-    ("udp", 41641): named("Tailscale"), ("udp", 53): named("DNS"), ("tcp", 53): named("DNS"), ("udp", 67): named("DHCP"),
+    ("tcp", 22000): named("Syncthing"),
+    ("udp", 22000): named("Syncthing"),
+    ("udp", 21027): named("Syncthing", M("port.role.discovery", "discovery")),
+    ("udp", 5353): named("mDNS", "Avahi or systemd-resolved"),
+    ("tcp", 5355): named("LLMNR", "systemd-resolved"),
+    ("udp", 5355): named("LLMNR", "systemd-resolved"),
+    ("udp", 41641): named("Tailscale"),
+    ("udp", 53): named("DNS"),
+    ("tcp", 53): named("DNS"),
+    ("udp", 67): named("DHCP"),
 }
 # The hub's own listeners, there on purpose: reported, not offered for closing here.
 OURS = {("tcp", 80), ("tcp", 1883), ("tcp", 22000), ("udp", 22000), ("udp", 21027)}
 # Units of the hub and its add-ons: whatever they listen on is theirs (Syncthing, for one,
 # also opens random UDP ports for its connections).
-OUR_UNITS = re.compile(r"^(nginx|caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|excalidraw-room|syncthing@.*)\.service$")
+OUR_UNITS = re.compile(
+    r"^(nginx|caddy|irate-box.*|kiwix|silverbullet|ttyd|mosquitto|excalidraw-room|syncthing@.*)\.service$"
+)
 # The hub's front door: nginx, or Caddy, the fallback (install.sh --web).
 WEB_UNITS = {"nginx.service": "nginx", "caddy.service": "Caddy"}
 # The box's own network clients: they answer only the network's DHCP server.
-CLIENT_PORTS = {("udp", 68): M("port.name.dhcp-client", "DHCP client"), ("udp", 546): M("port.name.dhcpv6-client", "DHCPv6 client")}
+CLIENT_PORTS = {
+    ("udp", 68): M("port.name.dhcp-client", "DHCP client"),
+    ("udp", 546): M("port.name.dhcpv6-client", "DHCPv6 client"),
+}
 # Units the page never offers to stop: the box would be unreachable or the hub would break.
-PROTECTED = re.compile(r"^(ssh|sshd|systemd-.*|dbus|NetworkManager|wpa_supplicant|nginx|caddy|"
-                       r"irate-box.*|tailscaled|mosquitto|syncthing@.*|kiwix|init)\.(service|socket)$")
+PROTECTED = re.compile(
+    r"^(ssh|sshd|systemd-.*|dbus|NetworkManager|wpa_supplicant|nginx|caddy|"
+    r"irate-box.*|tailscaled|mosquitto|syncthing@.*|kiwix|init)\.(service|socket)$"
+)
 # Services the add-ons declare (manifests' network block) are the hub's too: services.py.
 
 
@@ -77,7 +92,13 @@ def _have(cmd):
 
 def _chip(group, choice, label, on, confirm=None):
     """One option of a choice, drawn as a chip in its group's row; `on` marks how it is now (pressing it does nothing)."""
-    return {"choice": choice, "label": label, "group": group, "on": bool(on), **({"confirm": confirm} if confirm and not on else {})}
+    return {
+        "choice": choice,
+        "label": label,
+        "group": group,
+        "on": bool(on),
+        **({"confirm": confirm} if confirm and not on else {}),
+    }
 
 
 UNDO = M("action.undo", "Undo")
@@ -150,9 +171,15 @@ def parse_ss(text):
         if _is_loopback(addr) or device == "lo":
             continue
         m = USERS_RE.search(line)
-        found.append({"proto": "udp" if proto.startswith("udp") else "tcp", "addr": addr or "*",
-                      "port": int(port), "process": m.group(1) if m else None,
-                      "pid": int(m.group(2)) if m else None})
+        found.append(
+            {
+                "proto": "udp" if proto.startswith("udp") else "tcp",
+                "addr": addr or "*",
+                "port": int(port),
+                "process": m.group(1) if m else None,
+                "pid": int(m.group(2)) if m else None,
+            }
+        )
     # One line per (proto, port): IPv4 and IPv6 sockets of the same service read as one.
     merged = {}
     for f in found:
@@ -166,6 +193,7 @@ def parse_ss(text):
 
 def listeners():
     from irate_box.hub import manifests, services
+
     try:
         found_manifests = manifests.load()
     except (manifests.ManifestError, OSError):
@@ -181,7 +209,9 @@ def listeners():
         f["unit"] = unit if unit and unit != "init.scope" else None
         decl = services.by_port(f["proto"], f["port"], found_manifests) or services.by_unit(f["unit"], found_manifests)
         own = (decl or {}).get("name") or f["process"]
-        f["name"] = KNOWN_PORTS.get((f["proto"], f["port"])) or (named(own) if own else M("port.name.unknown", "Unknown program"))
+        f["name"] = KNOWN_PORTS.get((f["proto"], f["port"])) or (
+            named(own) if own else M("port.name.unknown", "Unknown program")
+        )
     return found
 
 
@@ -199,39 +229,117 @@ def listener_findings(found, rec):
         name = f["name"] if is_message(f["name"]) else named(f["name"])
         where = _where(f)
         if f["unit"] in WEB_UNITS and f["proto"] == "tcp":
-            out.append(finding(fid, named(WEB_UNITS[f["unit"]], M("port.role.hub-server", "hub server")), "ok",
-                               M("port.hub-server", "The hub server. Devices on the network reach the hub and the administration pages here."),
-                               evidence=where))
+            out.append(
+                finding(
+                    fid,
+                    named(WEB_UNITS[f["unit"]], M("port.role.hub-server", "hub server")),
+                    "ok",
+                    M(
+                        "port.hub-server",
+                        "The hub server. Devices on the network reach the hub and the administration pages here.",
+                    ),
+                    evidence=where,
+                )
+            )
         elif key in CLIENT_PORTS:
-            out.append(finding(fid, CLIENT_PORTS[key], "ok",
-                               M("port.dhcp-client", "The box asks the network for its address here. It accepts answers only from the network's DHCP server."),
-                               evidence=where))
+            out.append(
+                finding(
+                    fid,
+                    CLIENT_PORTS[key],
+                    "ok",
+                    M(
+                        "port.dhcp-client",
+                        "The box asks the network for its address here. It accepts answers only from the network's DHCP server.",
+                    ),
+                    evidence=where,
+                )
+            )
         elif decl := (services.by_port(f["proto"], f["port"]) or services.by_unit(f["unit"])):
             # The add-on's own words (its manifest): they are translated with the manifest, not here.
-            out.append(finding(fid, named(decl["name"]), decl["risk"], decl["says"],
-                               fix=None if decl["risk"] == "ok" else M(
-                                   "port.declared.fix", "If nobody uses this add-on, remove it on Add-ons. "
-                                   "The hotspot firewall, below, sets whether devices on the hotspot can reach it."),
-                               evidence=where))
+            out.append(
+                finding(
+                    fid,
+                    named(decl["name"]),
+                    decl["risk"],
+                    decl["says"],
+                    fix=None
+                    if decl["risk"] == "ok"
+                    else M(
+                        "port.declared.fix",
+                        "If nobody uses this add-on, remove it on Add-ons. "
+                        "The hotspot firewall, below, sets whether devices on the hotspot can reach it.",
+                    ),
+                    evidence=where,
+                )
+            )
         elif key not in OURS and f["unit"] and OUR_UNITS.match(f["unit"]):
-            out.append(finding(fid, name, "ok", M("port.ours", "Part of the box's {service} service.",
-                                                  service=f["unit"].split(".")[0].split("@")[0]), evidence=where))
+            out.append(
+                finding(
+                    fid,
+                    name,
+                    "ok",
+                    M(
+                        "port.ours",
+                        "Part of the box's {service} service.",
+                        service=f["unit"].split(".")[0].split("@")[0],
+                    ),
+                    evidence=where,
+                )
+            )
         elif key == ("tcp", 1883):
-            out.append(finding(fid, name, "warn", M("port.mqtt", "The MQTT broker. Meshtastic nodes publish their messages here."),
-                               M("port.mqtt.why", "Any device on the network can also publish here, without an account. "
-                                                  "Publishing is limited to the msh/# topics."), evidence=where))
+            out.append(
+                finding(
+                    fid,
+                    name,
+                    "warn",
+                    M("port.mqtt", "The MQTT broker. Meshtastic nodes publish their messages here."),
+                    M(
+                        "port.mqtt.why",
+                        "Any device on the network can also publish here, without an account. "
+                        "Publishing is limited to the msh/# topics.",
+                    ),
+                    evidence=where,
+                )
+            )
         elif key in OURS:
-            out.append(finding(fid, name, "ok", M("port.hub-own", "A service of the hub. Devices on the network are meant to reach it."),
-                               evidence=where))
+            out.append(
+                finding(
+                    fid,
+                    name,
+                    "ok",
+                    M("port.hub-own", "A service of the hub. Devices on the network are meant to reach it."),
+                    evidence=where,
+                )
+            )
         elif f["port"] == 9090 and f["unit"] and f["unit"].startswith("cockpit"):
-            out.append(finding(fid, named("Cockpit"), "problem",
-                               M("port.cockpit", "Cockpit, the image's Linux web console, listens on the network."),
-                               M("port.cockpit.why", "Its sign-in page gives root access, and every device on the network can reach it."),
-                               M("port.cockpit.fix", "Nothing on the box needs Cockpit. Bind it to loopback, so that only the box reaches it, or disable it."),
-                               evidence=where,
-                               actions=[action("cockpit-loopback", M("port.cockpit.loopback", "Bind to loopback")),
-                                        action("cockpit-off", M("port.cockpit.off", "Stop and disable"),
-                                               M("port.cockpit.off.confirm", "Stop Cockpit and disable it? Undo puts back its previous state."))]))
+            out.append(
+                finding(
+                    fid,
+                    named("Cockpit"),
+                    "problem",
+                    M("port.cockpit", "Cockpit, the image's Linux web console, listens on the network."),
+                    M(
+                        "port.cockpit.why",
+                        "Its sign-in page gives root access, and every device on the network can reach it.",
+                    ),
+                    M(
+                        "port.cockpit.fix",
+                        "Nothing on the box needs Cockpit. Bind it to loopback, so that only the box reaches it, or disable it.",
+                    ),
+                    evidence=where,
+                    actions=[
+                        action("cockpit-loopback", M("port.cockpit.loopback", "Bind to loopback")),
+                        action(
+                            "cockpit-off",
+                            M("port.cockpit.off", "Stop and disable"),
+                            M(
+                                "port.cockpit.off.confirm",
+                                "Stop Cockpit and disable it? Undo puts back its previous state.",
+                            ),
+                        ),
+                    ],
+                )
+            )
         elif f["port"] == 22 and f["proto"] == "tcp":
             continue  # reported with SSH's own settings below
         elif f["port"] == 5355:
@@ -239,14 +347,37 @@ def listener_findings(found, rec):
                 continue  # TCP and UDP: one line, one switch
             llmnr_done = True
             group = M("port.llmnr.group", "LLMNR")
-            out.append(finding(fid, name, "warn",
-                               M("port.llmnr", "systemd-resolved answers LLMNR name lookups from any device on the local network."),
-                               M("port.llmnr.why", "The hub does not use LLMNR. Each service that answers the network is one more thing that an attacker can try."),
-                               M("port.llmnr.fix", "Disable LLMNR in systemd-resolved. Normal DNS does not change."),
-                               evidence=where, actions=[_chip(group, "llmnr-on-now", ON, True), _chip(group, "llmnr-off", OFF, False)]))
+            out.append(
+                finding(
+                    fid,
+                    name,
+                    "warn",
+                    M(
+                        "port.llmnr",
+                        "systemd-resolved answers LLMNR name lookups from any device on the local network.",
+                    ),
+                    M(
+                        "port.llmnr.why",
+                        "The hub does not use LLMNR. Each service that answers the network is one more thing that an attacker can try.",
+                    ),
+                    M("port.llmnr.fix", "Disable LLMNR in systemd-resolved. Normal DNS does not change."),
+                    evidence=where,
+                    actions=[_chip(group, "llmnr-on-now", ON, True), _chip(group, "llmnr-off", OFF, False)],
+                )
+            )
         elif f["port"] in (41641,) or (f["unit"] or "").startswith("tailscaled"):
-            out.append(finding(fid, named("Tailscale"), "ok",
-                               M("port.tailscale", "Tailscale. Its traffic is encrypted with WireGuard. Turn it on or off under Access."), evidence=where))
+            out.append(
+                finding(
+                    fid,
+                    named("Tailscale"),
+                    "ok",
+                    M(
+                        "port.tailscale",
+                        "Tailscale. Its traffic is encrypted with WireGuard. Turn it on or off under Access.",
+                    ),
+                    evidence=where,
+                )
+            )
         else:
             # Not the hub's and not declared: the owner's own, or the image's. A scale, from the most closed:
             # stop it; keep it for the box's own networks (the hotspot firewall keeps hotspot guests off: the default);
@@ -256,46 +387,122 @@ def listener_findings(found, rec):
             fw = rec.get("firewall")
             opened = bool(fw) and f"port:{f['proto']}/{f['port']}" in fw.get("services", [])
             loopback = f["addr"] in ("127.0.0.1", "::1", "[::1]", "localhost")
-            acts = ([action(f"unit-off:{unit}", M("port.unit-off", "Stop and disable {unit}", unit=unit),
-                            M("port.unit-off.confirm", "Stop {unit} and disable it at boot? Undo puts back its previous state.", unit=unit))]
-                    if stoppable else [])
+            acts = (
+                [
+                    action(
+                        f"unit-off:{unit}",
+                        M("port.unit-off", "Stop and disable {unit}", unit=unit),
+                        M(
+                            "port.unit-off.confirm",
+                            "Stop {unit} and disable it at boot? Undo puts back its previous state.",
+                            unit=unit,
+                        ),
+                    )
+                ]
+                if stoppable
+                else []
+            )
             if fw and not loopback:
                 proto = f["proto"].upper()
-                acts.append(action(f"firewall-port-off:{f['proto']}/{f['port']}", M("port.fw-close", "Close to the hotspot")) if opened else
-                            action(f"firewall-port-on:{f['proto']}/{f['port']}", M("port.fw-open", "Open to the hotspot"),
-                                   M("port.fw-open.confirm", "Let devices on the hotspot reach {name} ({proto} {port})? "
-                                                              "The hub does not know what it does or who can use it.",
-                                     name=name, proto=proto, port=f["port"])))
-            reach = (M("port.other.opened", "Not part of the hub. You let devices on the hotspot reach it.") if opened else
-                     M("port.other.closed", "Not part of the hub. The hotspot firewall keeps devices on the hotspot away from it. "
-                                            "Devices on your own network can reach it.") if fw else
-                     M("port.other.no-firewall", "Not part of the hub. The hotspot firewall is off, so devices on the hotspot can reach it too."))
-            out.append(finding(fid, name, "warn", reach,
-                               M("port.other.why", "If nothing on the box needs it, it is one more thing that an attacker can try."),
-                               (M("port.other.fix", "If nothing on the box needs it, stop it. To keep it, select Accept risk on the Security doctor.")
-                                if stoppable else
-                                M("port.other.fix-shell", "If nothing on the box needs it, stop it from a shell. To keep it, select Accept risk on the Security doctor.")),
-                               evidence=where, actions=acts))
+                acts.append(
+                    action(f"firewall-port-off:{f['proto']}/{f['port']}", M("port.fw-close", "Close to the hotspot"))
+                    if opened
+                    else action(
+                        f"firewall-port-on:{f['proto']}/{f['port']}",
+                        M("port.fw-open", "Open to the hotspot"),
+                        M(
+                            "port.fw-open.confirm",
+                            "Let devices on the hotspot reach {name} ({proto} {port})? "
+                            "The hub does not know what it does or who can use it.",
+                            name=name,
+                            proto=proto,
+                            port=f["port"],
+                        ),
+                    )
+                )
+            reach = (
+                M("port.other.opened", "Not part of the hub. You let devices on the hotspot reach it.")
+                if opened
+                else M(
+                    "port.other.closed",
+                    "Not part of the hub. The hotspot firewall keeps devices on the hotspot away from it. "
+                    "Devices on your own network can reach it.",
+                )
+                if fw
+                else M(
+                    "port.other.no-firewall",
+                    "Not part of the hub. The hotspot firewall is off, so devices on the hotspot can reach it too.",
+                )
+            )
+            out.append(
+                finding(
+                    fid,
+                    name,
+                    "warn",
+                    reach,
+                    M(
+                        "port.other.why",
+                        "If nothing on the box needs it, it is one more thing that an attacker can try.",
+                    ),
+                    (
+                        M(
+                            "port.other.fix",
+                            "If nothing on the box needs it, stop it. To keep it, select Accept risk on the Security doctor.",
+                        )
+                        if stoppable
+                        else M(
+                            "port.other.fix-shell",
+                            "If nothing on the box needs it, stop it from a shell. To keep it, select Accept risk on the Security doctor.",
+                        )
+                    ),
+                    evidence=where,
+                    actions=acts,
+                )
+            )
     for unit, change in rec.get("units", {}).items():
         reason = change.get("reason", "from this page")
-        said = (M("unit.off.page", "Stopped and disabled from this page on {date}.", date=change.get("at", "")) if reason == "from this page" else
-                M("unit.off.port-80", "Stopped and disabled by the installer on {date}, so that the hub server can use port 80.", date=change.get("at", ""))
-                if "take-port-80" in reason else
-                M("unit.off.other", "Stopped and disabled on {date}: {reason}.", date=change.get("at", ""), reason=reason))
+        said = (
+            M("unit.off.page", "Stopped and disabled from this page on {date}.", date=change.get("at", ""))
+            if reason == "from this page"
+            else M(
+                "unit.off.port-80",
+                "Stopped and disabled by the installer on {date}, so that the hub server can use port 80.",
+                date=change.get("at", ""),
+            )
+            if "take-port-80" in reason
+            else M(
+                "unit.off.other", "Stopped and disabled on {date}: {reason}.", date=change.get("at", ""), reason=reason
+            )
+        )
         out.append(finding(f"unit-{unit}", named(unit), "ok", said, actions=[action(f"unit-undo:{unit}", UNDO)]))
     if "cockpit" in rec:
-        out.append(finding("cockpit-change", named("Cockpit"), "ok",
-                           M("cockpit.loopback-here", "Bound to loopback from this page.") if rec["cockpit"]["mode"] == "loopback"
-                           else M("cockpit.off-here", "Stopped and disabled from this page."),
-                           actions=[action("cockpit-undo", UNDO)]))
+        out.append(
+            finding(
+                "cockpit-change",
+                named("Cockpit"),
+                "ok",
+                M("cockpit.loopback-here", "Bound to loopback from this page.")
+                if rec["cockpit"]["mode"] == "loopback"
+                else M("cockpit.off-here", "Stopped and disabled from this page."),
+                actions=[action("cockpit-undo", UNDO)],
+            )
+        )
     if rec.get("llmnr"):
         group = M("port.llmnr.group", "LLMNR")
-        out.append(finding("llmnr-change", named("LLMNR"), "ok", M("llmnr.off-here", "Disabled from this page."),
-                           actions=[_chip(group, "llmnr-undo", ON, False), _chip(group, "llmnr-off-now", OFF, True)]))
+        out.append(
+            finding(
+                "llmnr-change",
+                named("LLMNR"),
+                "ok",
+                M("llmnr.off-here", "Disabled from this page."),
+                actions=[_chip(group, "llmnr-undo", ON, False), _chip(group, "llmnr-off-now", OFF, True)],
+            )
+        )
     return out
 
 
 # --- SSH ------------------------------------------------------------------------------
+
 
 def sshd_settings():
     """sshd's effective settings (sshd -T), or None if there is no sshd."""
@@ -362,64 +569,170 @@ def ssh_findings(settings, keys, rec):
     title = M("ssh-root.title", "SSH sign-in as root")
     root = settings.get("permitrootlogin", "yes")
     if root == "yes":
-        out.append(finding("ssh-root", title, "problem", M("ssh-root.on", "SSH accepts sign-in as root."),
-                           M("ssh-root.on.why", "Any device on the network can try passwords for root, and root controls the whole box.")
-                           if settings.get("passwordauthentication", "yes") == "yes" else
-                           M("ssh-root.on.why-keys", "Root controls the whole box. A sign-in as an ordinary user, then sudo, "
-                                                     "records who did what."),
-                           M("ssh-root.on.fix", "Sign in as an ordinary user and use sudo. Then disable SSH sign-in as root."),
-                           evidence=[f"PermitRootLogin {root}"],
-                           actions=[action("ssh-root-off", M("ssh-root.off", "Disable root SSH sign-in"),
-                                           M("ssh-root.off.confirm", "Disable SSH sign-in as root? First make sure that you can sign in "
-                                                                     "as another user who can use sudo."))]))
+        out.append(
+            finding(
+                "ssh-root",
+                title,
+                "problem",
+                M("ssh-root.on", "SSH accepts sign-in as root."),
+                M(
+                    "ssh-root.on.why",
+                    "Any device on the network can try passwords for root, and root controls the whole box.",
+                )
+                if settings.get("passwordauthentication", "yes") == "yes"
+                else M(
+                    "ssh-root.on.why-keys",
+                    "Root controls the whole box. A sign-in as an ordinary user, then sudo, records who did what.",
+                ),
+                M("ssh-root.on.fix", "Sign in as an ordinary user and use sudo. Then disable SSH sign-in as root."),
+                evidence=[f"PermitRootLogin {root}"],
+                actions=[
+                    action(
+                        "ssh-root-off",
+                        M("ssh-root.off", "Disable root SSH sign-in"),
+                        M(
+                            "ssh-root.off.confirm",
+                            "Disable SSH sign-in as root? First make sure that you can sign in "
+                            "as another user who can use sudo.",
+                        ),
+                    )
+                ],
+            )
+        )
     else:
-        out.append(finding("ssh-root", title, "ok",
-                           M("ssh-root.no", "SSH does not accept sign-in as root.") if root == "no" else
-                           M("ssh-root.limited", "SSH accepts sign-in as root only with a key or a fixed command."),
-                           evidence=[f"PermitRootLogin {root}"],
-                           actions=[action("ssh-root-undo", UNDO)] if "root" in ours else []))
+        out.append(
+            finding(
+                "ssh-root",
+                title,
+                "ok",
+                M("ssh-root.no", "SSH does not accept sign-in as root.")
+                if root == "no"
+                else M("ssh-root.limited", "SSH accepts sign-in as root only with a key or a fixed command."),
+                evidence=[f"PermitRootLogin {root}"],
+                actions=[action("ssh-root-undo", UNDO)] if "root" in ours else [],
+            )
+        )
     title = M("ssh-password.title", "SSH password sign-in")
     pw = settings.get("passwordauthentication", "yes")
     if pw == "yes" and keys:
-        out.append(finding("ssh-password", title, "warn", M("ssh-password.on", "SSH accepts passwords."),
-                           M("ssh-password.on.why", "Any device on the network can try to guess a password."),
-                           M("ssh-password.on.fix", "Sign in with your key once to make sure that it works. Then disable password sign-in."),
-                           notes=[M("ssh-password.keys", {"one": "This account has a key for SSH on the box: {accounts}.",
-                                                          "other": "These accounts have a key for SSH on the box: {accounts}."},
-                                    n=len(keys), accounts=keys)],
-                           actions=[action("ssh-password-off", M("ssh-password.off", "Disable password sign-in"),
-                                           M("ssh-password.off.confirm", "Disable SSH password sign-in? Then only keys work, for {accounts}.",
-                                             accounts=keys))]))
+        out.append(
+            finding(
+                "ssh-password",
+                title,
+                "warn",
+                M("ssh-password.on", "SSH accepts passwords."),
+                M("ssh-password.on.why", "Any device on the network can try to guess a password."),
+                M(
+                    "ssh-password.on.fix",
+                    "Sign in with your key once to make sure that it works. Then disable password sign-in.",
+                ),
+                notes=[
+                    M(
+                        "ssh-password.keys",
+                        {
+                            "one": "This account has a key for SSH on the box: {accounts}.",
+                            "other": "These accounts have a key for SSH on the box: {accounts}.",
+                        },
+                        n=len(keys),
+                        accounts=keys,
+                    )
+                ],
+                actions=[
+                    action(
+                        "ssh-password-off",
+                        M("ssh-password.off", "Disable password sign-in"),
+                        M(
+                            "ssh-password.off.confirm",
+                            "Disable SSH password sign-in? Then only keys work, for {accounts}.",
+                            accounts=keys,
+                        ),
+                    )
+                ],
+            )
+        )
     elif pw == "yes":
-        out.append(finding("ssh-password", title, "warn", M("ssh-password.on", "SSH accepts passwords."),
-                           M("ssh-password.on.why", "Any device on the network can try to guess a password."),
-                           M("ssh-password.no-keys.fix", "Put your public key on the box first, for example with ssh-copy-id from your computer. "
-                                                         "Then this page offers to disable passwords."),
-                           notes=[M("ssh-password.no-keys", "No account has a key for SSH on the box. "
-                                                            "If you disable passwords now, nobody can sign in over SSH.")]))
+        out.append(
+            finding(
+                "ssh-password",
+                title,
+                "warn",
+                M("ssh-password.on", "SSH accepts passwords."),
+                M("ssh-password.on.why", "Any device on the network can try to guess a password."),
+                M(
+                    "ssh-password.no-keys.fix",
+                    "Put your public key on the box first, for example with ssh-copy-id from your computer. "
+                    "Then this page offers to disable passwords.",
+                ),
+                notes=[
+                    M(
+                        "ssh-password.no-keys",
+                        "No account has a key for SSH on the box. "
+                        "If you disable passwords now, nobody can sign in over SSH.",
+                    )
+                ],
+            )
+        )
     else:
-        out.append(finding("ssh-password", title, "ok", M("ssh-password.keys-only", "SSH accepts keys only, not passwords."),
-                           actions=[action("ssh-password-undo", UNDO)] if "password" in ours else []))
+        out.append(
+            finding(
+                "ssh-password",
+                title,
+                "ok",
+                M("ssh-password.keys-only", "SSH accepts keys only, not passwords."),
+                actions=[action("ssh-password-undo", UNDO)] if "password" in ours else [],
+            )
+        )
     # Forwarding: Debian's and Armbian's defaults leave TCP, agent
     # and X11 forwarding on. TCP forwarding hands anyone who can sign in a proxy from the hotspot
     # into the box's other network, which is the separation the hotspot design rests on.
     title = M("ssh-forwarding.title", "SSH forwarding")
-    fwd = [k for k in ("allowtcpforwarding", "allowagentforwarding", "x11forwarding") if settings.get(k, "yes") == "yes"]
+    fwd = [
+        k for k in ("allowtcpforwarding", "allowagentforwarding", "x11forwarding") if settings.get(k, "yes") == "yes"
+    ]
     if fwd:
-        out.append(finding("ssh-forwarding", title, "warn",
-                           M("ssh-forwarding.on", "SSH lets a signed-in user forward connections through the box."),
-                           M("ssh-forwarding.on.why", "A user who can sign in can then tunnel from the hotspot into the box's other network. "
-                                                      "The hotspot design depends on that separation."),
-                           M("ssh-forwarding.on.fix", "Disable forwarding unless you use it."),
-                           notes=[M("ssh-forwarding.tailscale", "An SSH tunnel into the box's network, for example from afar through Tailscale, "
-                                                                "needs TCP forwarding.")],
-                           evidence=[f"{k} yes" for k in fwd],
-                           actions=[action("ssh-forwarding-off", M("ssh-forwarding.off", "Disable forwarding"),
-                                           M("ssh-forwarding.off.confirm", "Disable SSH TCP, agent and X11 forwarding? Sign-ins and copies "
-                                                                           "with scp still work. Tunnels through the box stop."))]))
+        out.append(
+            finding(
+                "ssh-forwarding",
+                title,
+                "warn",
+                M("ssh-forwarding.on", "SSH lets a signed-in user forward connections through the box."),
+                M(
+                    "ssh-forwarding.on.why",
+                    "A user who can sign in can then tunnel from the hotspot into the box's other network. "
+                    "The hotspot design depends on that separation.",
+                ),
+                M("ssh-forwarding.on.fix", "Disable forwarding unless you use it."),
+                notes=[
+                    M(
+                        "ssh-forwarding.tailscale",
+                        "An SSH tunnel into the box's network, for example from afar through Tailscale, "
+                        "needs TCP forwarding.",
+                    )
+                ],
+                evidence=[f"{k} yes" for k in fwd],
+                actions=[
+                    action(
+                        "ssh-forwarding-off",
+                        M("ssh-forwarding.off", "Disable forwarding"),
+                        M(
+                            "ssh-forwarding.off.confirm",
+                            "Disable SSH TCP, agent and X11 forwarding? Sign-ins and copies "
+                            "with scp still work. Tunnels through the box stop.",
+                        ),
+                    )
+                ],
+            )
+        )
     else:
-        out.append(finding("ssh-forwarding", title, "ok", M("ssh-forwarding.off-state", "SSH does not forward TCP, agent or X11 connections."),
-                           actions=[action("ssh-forwarding-undo", UNDO)] if "forwarding" in ours else []))
+        out.append(
+            finding(
+                "ssh-forwarding",
+                title,
+                "ok",
+                M("ssh-forwarding.off-state", "SSH does not forward TCP, agent or X11 connections."),
+                actions=[action("ssh-forwarding-undo", UNDO)] if "forwarding" in ours else [],
+            )
+        )
     return out
 
 
@@ -442,7 +755,7 @@ APT_TIMERS = ("apt-daily.timer", "apt-daily-upgrade.timer")
 OFTEN = (0, 6, 24, 168)
 ACTS = (0, 1, 2)
 OFTEN_WORDS = {0: "by hand only", 6: "every 6 hours", 24: "every day", 168: "every week"}
-DEFAULT_PATTERN = (24, 0)   # the safe one
+DEFAULT_PATTERN = (24, 0)  # the safe one
 # The three earlier choices, read as the pattern's.
 LEVELS_WAS = {"off": (0, 0), "download": (24, 1), "install": (24, 2)}
 # apt's periodic intervals are in days; "always" leaves the timing to the timers (apt.systemd.daily).
@@ -458,9 +771,11 @@ def periodic_conf(often, act):
     if not often:
         return 'APT::Periodic::Enable "0";\n'
     iv = INTERVAL[often]
-    return (f'APT::Periodic::Enable "1";\nAPT::Periodic::Update-Package-Lists "{iv}";\n'
-            f'APT::Periodic::Download-Upgradeable-Packages "{iv if act >= 1 else "0"}";\n'
-            f'APT::Periodic::Unattended-Upgrade "{iv if act >= 2 else "0"}";\n')
+    return (
+        f'APT::Periodic::Enable "1";\nAPT::Periodic::Update-Package-Lists "{iv}";\n'
+        f'APT::Periodic::Download-Upgradeable-Packages "{iv if act >= 1 else "0"}";\n'
+        f'APT::Periodic::Unattended-Upgrade "{iv if act >= 2 else "0"}";\n'
+    )
 
 
 # What the box does with the security updates it finds, as the end of a sentence.
@@ -485,9 +800,21 @@ def parse_pattern(arg):
     try:
         often, act = (int(x) for x in arg.split("-"))
     except ValueError:
-        raise Refused(M("security-fix.pattern.bad", "This is not a choice of how often to check and what to do: {choice}.", choice=arg)) from None
+        raise Refused(
+            M(
+                "security-fix.pattern.bad",
+                "This is not a choice of how often to check and what to do: {choice}.",
+                choice=arg,
+            )
+        ) from None
     if often not in OFTEN or act not in ACTS:
-        raise Refused(M("security-fix.pattern.bad", "This is not a choice of how often to check and what to do: {choice}.", choice=arg))
+        raise Refused(
+            M(
+                "security-fix.pattern.bad",
+                "This is not a choice of how often to check and what to do: {choice}.",
+                choice=arg,
+            )
+        )
     return often, act
 
 
@@ -531,28 +858,46 @@ def _apt_periodic():
 # The update pattern as a whole sentence for each (how often, what to do) that runs on its own.
 PATTERN_SAYS = {
     (6, 0): M("pattern.6h-flag", "The box checks for security updates every 6 hours and flags what it finds."),
-    (6, 1): M("pattern.6h-fetch", "The box checks for security updates every 6 hours and downloads what it finds, for you to install."),
+    (6, 1): M(
+        "pattern.6h-fetch",
+        "The box checks for security updates every 6 hours and downloads what it finds, for you to install.",
+    ),
     (6, 2): M("pattern.6h-install", "The box checks for security updates every 6 hours and installs what it finds."),
     (24, 0): M("pattern.day-flag", "The box checks for security updates every day and flags what it finds."),
-    (24, 1): M("pattern.day-fetch", "The box checks for security updates every day and downloads what it finds, for you to install."),
+    (24, 1): M(
+        "pattern.day-fetch",
+        "The box checks for security updates every day and downloads what it finds, for you to install.",
+    ),
     (24, 2): M("pattern.day-install", "The box checks for security updates every day and installs what it finds."),
     (168, 0): M("pattern.week-flag", "The box checks for security updates every week and flags what it finds."),
-    (168, 1): M("pattern.week-fetch", "The box checks for security updates every week and downloads what it finds, for you to install."),
+    (168, 1): M(
+        "pattern.week-fetch",
+        "The box checks for security updates every week and downloads what it finds, for you to install.",
+    ),
     (168, 2): M("pattern.week-install", "The box checks for security updates every week and installs what it finds."),
 }
 # Manual: what Check now does with what it finds.
 MANUAL_SAYS = {
     0: M("pattern.manual-flag", "Manual, as you selected. When you select Check now, the box flags what it finds."),
-    1: M("pattern.manual-fetch", "Manual, as you selected. When you select Check now, the box downloads what it finds, for you to install."),
-    2: M("pattern.manual-install", "Manual, as you selected. When you select Check now, the box installs what it finds."),
+    1: M(
+        "pattern.manual-fetch",
+        "Manual, as you selected. When you select Check now, the box downloads what it finds, for you to install.",
+    ),
+    2: M(
+        "pattern.manual-install", "Manual, as you selected. When you select Check now, the box installs what it finds."
+    ),
 }
 
 
 def _last_ran(log_age_days, last_at):
     n = round(log_age_days)
     if last_at:
-        return M("unattended.last-ran-at", {"one": "It last ran on {when}, {n} day ago.", "other": "It last ran on {when}, {n} days ago."},
-                 n=n, when=when(last_at))
+        return M(
+            "unattended.last-ran-at",
+            {"one": "It last ran on {when}, {n} day ago.", "other": "It last ran on {when}, {n} days ago."},
+            n=n,
+            when=when(last_at),
+        )
     return M("unattended.last-ran", {"one": "It last ran {n} day ago.", "other": "It last ran {n} days ago."}, n=n)
 
 
@@ -564,46 +909,119 @@ def unattended_finding(installed, periodic, log_age_days, chosen=None, last_at=N
     chosen: (often, act) or None. The choice itself is made with the chips on Updates, not buttons here."""
     title = M("unattended.title", "Automatic security updates")
     acts = [action("autoupdate-undo", M("unattended.undo", "Restore the image's settings"))] if chosen else []
-    running = installed and periodic.get("APT::Periodic::Enable", "1") != "0" and periodic.get("APT::Periodic::Unattended-Upgrade", "0") not in ("0", "")
+    running = (
+        installed
+        and periodic.get("APT::Periodic::Enable", "1") != "0"
+        and periodic.get("APT::Periodic::Unattended-Upgrade", "0") not in ("0", "")
+    )
     if not chosen and running:
         # Debian's own package can switch it on when installed (20auto-upgrades): it runs, but was not chosen here.
-        return finding("unattended", title, "ok", M("unattended.by-image", "Enabled, but not from this page. Debian's own package or the image enabled it."),
-                       notes=[M("unattended.by-image.does", "The box installs security updates every day while it has internet. "
-                                                            "Select below to keep this or to change it.")], actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "ok",
+            M("unattended.by-image", "Enabled, but not from this page. Debian's own package or the image enabled it."),
+            notes=[
+                M(
+                    "unattended.by-image.does",
+                    "The box installs security updates every day while it has internet. "
+                    "Select below to keep this or to change it.",
+                )
+            ],
+            actions=acts,
+        )
     if not chosen:
-        return finding("unattended", title, "warn",
-                       M("unattended.unset", "Not chosen yet. Security updates wait until someone checks for them and installs them."),
-                       fix=M("unattended.unset.fix", "Select below how often the box checks for them, and what it does with what it finds."),
-                       notes=[M("unattended.unset.can", "The box can check every 6 hours, every day or every week. "
-                                                        "It can flag, download or install what it finds.")], actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "warn",
+            M(
+                "unattended.unset",
+                "Not chosen yet. Security updates wait until someone checks for them and installs them.",
+            ),
+            fix=M(
+                "unattended.unset.fix",
+                "Select below how often the box checks for them, and what it does with what it finds.",
+            ),
+            notes=[
+                M(
+                    "unattended.unset.can",
+                    "The box can check every 6 hours, every day or every week. "
+                    "It can flag, download or install what it finds.",
+                )
+            ],
+            actions=acts,
+        )
     often, act = chosen
     if not often:
         return finding("unattended", title, "ok", MANUAL_SAYS[act], actions=acts)
     said = PATTERN_SAYS[(often, act)]
     save_again = M("unattended.save-again", "Save the setting again below.")
     if periodic.get("APT::Periodic::Enable", "1") == "0":
-        return finding("unattended", title, "warn", said,
-                       M("unattended.disabled-again", "But it does not run: another file in /etc/apt/apt.conf.d disables apt's periodic work."),
-                       save_again, evidence=['APT::Periodic::Enable "0"'], actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "warn",
+            said,
+            M(
+                "unattended.disabled-again",
+                "But it does not run: another file in /etc/apt/apt.conf.d disables apt's periodic work.",
+            ),
+            save_again,
+            evidence=['APT::Periodic::Enable "0"'],
+            actions=acts,
+        )
     if act < 2:
-        return finding("unattended", title, "ok", said, notes=[M("unattended.needs-internet", "It does this while the box has internet.")],
-                       actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "ok",
+            said,
+            notes=[M("unattended.needs-internet", "It does this while the box has internet.")],
+            actions=acts,
+        )
     value = periodic.get("APT::Periodic::Unattended-Upgrade", "")
     if not installed:
-        return finding("unattended", title, "warn", said,
-                       M("unattended.not-installed", "But unattended-upgrades, which installs them, is not installed."), save_again, actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "warn",
+            said,
+            M("unattended.not-installed", "But unattended-upgrades, which installs them, is not installed."),
+            save_again,
+            actions=acts,
+        )
     if value in ("0", ""):
-        return finding("unattended", title, "warn", said,
-                       M("unattended.would-not-run", "But unattended-upgrades, which installs them, does not run."), save_again,
-                       evidence=[f"APT::Periodic::Unattended-Upgrade {value or 'unset'}"], actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "warn",
+            said,
+            M("unattended.would-not-run", "But unattended-upgrades, which installs them, does not run."),
+            save_again,
+            evidence=[f"APT::Periodic::Unattended-Upgrade {value or 'unset'}"],
+            actions=acts,
+        )
     if log_age_days is None:
-        return finding("unattended", title, "ok", said,
-                       notes=[M("unattended.not-run", "It has not run yet. It runs when the box has internet.")], actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "ok",
+            said,
+            notes=[M("unattended.not-run", "It has not run yet. It runs when the box has internet.")],
+            actions=acts,
+        )
     if log_age_days > max(14, often / 24 * 2):
-        return finding("unattended", title, "warn", said,
-                       M("unattended.stale.why", "It runs only when the box has internet, so updates can wait for a long time."),
-                       M("unattended.stale.fix", "If the box has no internet, install the waiting updates on this page."),
-                       notes=[_last_ran(log_age_days, last_at)], actions=acts)
+        return finding(
+            "unattended",
+            title,
+            "warn",
+            said,
+            M("unattended.stale.why", "It runs only when the box has internet, so updates can wait for a long time."),
+            M("unattended.stale.fix", "If the box has no internet, install the waiting updates on this page."),
+            notes=[_last_ran(log_age_days, last_at)],
+            actions=acts,
+        )
     return finding("unattended", title, "ok", said, notes=[_last_ran(log_age_days, last_at)], actions=acts)
 
 
@@ -614,8 +1032,10 @@ def _timers_six(rec_timers, on):
         drop = TIMER_DROPIN / f"{timer}.d" / "52irate-box.conf"
         if on:
             drop.parent.mkdir(parents=True, exist_ok=True)
-            drop.write_text("# Written by irate-box's Updates page: look for security updates every 6 hours.\n"
-                            f"[Timer]\nOnCalendar=\nOnCalendar={when}\nRandomizedDelaySec=30min\n")
+            drop.write_text(
+                "# Written by irate-box's Updates page: look for security updates every 6 hours.\n"
+                f"[Timer]\nOnCalendar=\nOnCalendar={when}\nRandomizedDelaySec=30min\n"
+            )
             changed = True
         elif drop.exists():
             drop.unlink()
@@ -634,7 +1054,12 @@ def _autoupdate(rec, how):
     cur = rec.get("autoupdate")
     if how == "undo":
         if not cur:
-            raise Refused(M("security-fix.autoupdate.not-set", "Automatic security updates were not set from this page. There is nothing to restore."))
+            raise Refused(
+                M(
+                    "security-fix.autoupdate.not-set",
+                    "Automatic security updates were not set from this page. There is nothing to restore.",
+                )
+            )
         if cur.get("conf") is not None:
             AUTOUPDATE_CONF.write_text(cur["conf"])
         else:
@@ -649,26 +1074,56 @@ def _autoupdate(rec, how):
         return M("security-fix.autoupdate.restored", "Automatic security updates are back as the image had them.")
     often, act = LEVELS_WAS[how] if how in LEVELS_WAS else parse_pattern(how)
     if not cur:
-        cur = {"date": time.strftime("%Y-%m-%d"), "conf": AUTOUPDATE_CONF.read_text() if AUTOUPDATE_CONF.is_file() else None,
-               "timers": {}, "installed": False}
+        cur = {
+            "date": time.strftime("%Y-%m-%d"),
+            "conf": AUTOUPDATE_CONF.read_text() if AUTOUPDATE_CONF.is_file() else None,
+            "timers": {},
+            "installed": False,
+        }
     said = []
     if act == 2 and often and not _have("unattended-upgrade"):
         env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-        code = subprocess.run(["apt-get", "install", "-y", "unattended-upgrades"], capture_output=True, env=env,
-                              stdin=subprocess.DEVNULL, timeout=1200).returncode
+        code = subprocess.run(
+            ["apt-get", "install", "-y", "unattended-upgrades"],
+            capture_output=True,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            timeout=1200,
+        ).returncode
         if code != 0:
             debs = sorted(KIT_POOL.glob("unattended-upgrades_*.deb")) if KIT_POOL.is_dir() else []
-            if not debs or subprocess.run(["apt-get", "install", "-y", str(debs[-1])], capture_output=True, env=env,
-                                          stdin=subprocess.DEVNULL, timeout=1200).returncode != 0:
-                raise Refused(M("security-fix.unattended.failed", "The box could not install unattended-upgrades. Connect the box to the "
-                                                               "internet once, or refresh the cache of the System toolkit on Toolkits."))
-            said.append(M("security-fix.unattended.installed-cache", "The box installed unattended-upgrades from the toolkits' cache."))
+            if (
+                not debs
+                or subprocess.run(
+                    ["apt-get", "install", "-y", str(debs[-1])],
+                    capture_output=True,
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    timeout=1200,
+                ).returncode
+                != 0
+            ):
+                raise Refused(
+                    M(
+                        "security-fix.unattended.failed",
+                        "The box could not install unattended-upgrades. Connect the box to the "
+                        "internet once, or refresh the cache of the System toolkit on Toolkits.",
+                    )
+                )
+            said.append(
+                M(
+                    "security-fix.unattended.installed-cache",
+                    "The box installed unattended-upgrades from the toolkits' cache.",
+                )
+            )
         else:
             said.append(M("security-fix.unattended.installed", "The box installed unattended-upgrades."))
         cur["installed"] = True
     AUTOUPDATE_CONF.parent.mkdir(parents=True, exist_ok=True)
-    AUTOUPDATE_CONF.write_text("// Written by irate-box's Updates page (/admin): "
-                               f"{pattern_words(often, act)}. Change it there.\n" + periodic_conf(often, act))
+    AUTOUPDATE_CONF.write_text(
+        "// Written by irate-box's Updates page (/admin): "
+        f"{pattern_words(often, act)}. Change it there.\n" + periodic_conf(often, act)
+    )
     _timers_six(cur["timers"], often == 6)
     if often:
         for timer in APT_TIMERS:
@@ -716,33 +1171,84 @@ def update_findings():
     findings[-1]["waiting"], findings[-1]["fetched"] = len(pkgs), fetched  # the pattern's Fetch and Install
     chosen = chosen_pattern(load_record())
     findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age, chosen, last_at))
-    findings[-1]["pattern"] = {"often": (chosen or DEFAULT_PATTERN)[0], "act": (chosen or DEFAULT_PATTERN)[1], "chosen": bool(chosen)}
+    findings[-1]["pattern"] = {
+        "often": (chosen or DEFAULT_PATTERN)[0],
+        "act": (chosen or DEFAULT_PATTERN)[1],
+        "chosen": bool(chosen),
+    }
     return findings, pkgs
 
 
 def security_updates_finding(pkgs, age):
     """Debian's security updates waiting, and how fresh the package lists are that say so."""
-    fresh = (M("updates.lists.today", "The package lists are from today.") if age is not None and age < 1 else
-             M("updates.lists.age", {"one": "The package lists are {n} day old. Newer fixes can be available.",
-                                     "other": "The package lists are {n} days old. Newer fixes can be available."}, n=round(age))
-             if age is not None else M("updates.lists.unknown", "The age of the package lists is not known."))
+    fresh = (
+        M("updates.lists.today", "The package lists are from today.")
+        if age is not None and age < 1
+        else M(
+            "updates.lists.age",
+            {
+                "one": "The package lists are {n} day old. Newer fixes can be available.",
+                "other": "The package lists are {n} days old. Newer fixes can be available.",
+            },
+            n=round(age),
+        )
+        if age is not None
+        else M("updates.lists.unknown", "The age of the package lists is not known.")
+    )
     look = action("apt-lists", M("updates.lists.refresh", "Refresh the package lists (needs internet)"))
     title = M("updates.title", "Security updates")
     if not pkgs:
-        return finding("security-updates", title, "ok", M("updates.none", "No security updates are waiting."),
-                       notes=[fresh, M("updates.none.limit", "This means only that the package lists have no newer fix. "
-                                                             "It does not prove that the installed packages have no weaknesses.")],
-                       actions=[look])
-    return finding("security-updates", title, "problem",
-                   M("updates.waiting", {"one": "{n} security update is waiting.", "other": "{n} security updates are waiting."}, n=len(pkgs)),
-                   M("updates.waiting.why", "They come from Debian's security archive or its stable fixes, which fix known security problems."),
-                   M("updates.waiting.fix", "Install them. Other packages change only where these need a newer version. "
-                                            "The box's own updates are separate, on Updates."),
-                   notes=[fresh], evidence=pkgs,
-                   actions=[action("security-updates", M("updates.install", {"one": "Install {n} security update", "other": "Install {n} security updates"},
-                                                         n=len(pkgs)),
-                                   M("updates.install.confirm", "Install the waiting security updates now? This can take several minutes on this board.")),
-                            look])
+        return finding(
+            "security-updates",
+            title,
+            "ok",
+            M("updates.none", "No security updates are waiting."),
+            notes=[
+                fresh,
+                M(
+                    "updates.none.limit",
+                    "This means only that the package lists have no newer fix. "
+                    "It does not prove that the installed packages have no weaknesses.",
+                ),
+            ],
+            actions=[look],
+        )
+    return finding(
+        "security-updates",
+        title,
+        "problem",
+        M(
+            "updates.waiting",
+            {"one": "{n} security update is waiting.", "other": "{n} security updates are waiting."},
+            n=len(pkgs),
+        ),
+        M(
+            "updates.waiting.why",
+            "They come from Debian's security archive or its stable fixes, which fix known security problems.",
+        ),
+        M(
+            "updates.waiting.fix",
+            "Install them. Other packages change only where these need a newer version. "
+            "The box's own updates are separate, on Updates.",
+        ),
+        notes=[fresh],
+        evidence=pkgs,
+        actions=[
+            action(
+                "security-updates",
+                M(
+                    "updates.install",
+                    {"one": "Install {n} security update", "other": "Install {n} security updates"},
+                    n=len(pkgs),
+                ),
+                M(
+                    "updates.install.confirm",
+                    "Install the waiting security updates now? This can take several minutes on this board.",
+                ),
+            ),
+            look,
+        ],
+    )
 
 
 # --- scan ---------------------------------------------------------------------------------
@@ -752,17 +1258,26 @@ def security_updates_finding(pkgs, age):
 # Each set is one button. The values are the ones Debian ships in its own kernels; the image's
 # vendor kernel leaves them off.
 KERNEL = {
-    "links": {"title": M("kernel-links.title", "Kernel link protections"), "status": "problem",
-              "keys": {"fs.protected_symlinks": "1", "fs.protected_hardlinks": "1"},
-              "off": M("kernel-links.off", "The kernel's link protections are not all on."),
-              "why": M("kernel-links.why", "The kernel follows links in shared folders such as /tmp across users. "
-                                           "A program that writes there as root can then be made to write somewhere else."),
-              "label": M("kernel-links.on", "Enable kernel link protections")},
-    "info": {"title": M("kernel-info.title", "Kernel addresses and log"), "status": "warn",
-             "keys": {"kernel.kptr_restrict": "1", "kernel.dmesg_restrict": "1"},
-             "off": M("kernel-info.off", "Any account can read the kernel's log and the addresses of its code."),
-             "why": M("kernel-info.why", "The addresses and the log help an attacker aim an exploit at the kernel."),
-             "label": M("kernel-info.on", "Hide them from ordinary accounts")},
+    "links": {
+        "title": M("kernel-links.title", "Kernel link protections"),
+        "status": "problem",
+        "keys": {"fs.protected_symlinks": "1", "fs.protected_hardlinks": "1"},
+        "off": M("kernel-links.off", "The kernel's link protections are not all on."),
+        "why": M(
+            "kernel-links.why",
+            "The kernel follows links in shared folders such as /tmp across users. "
+            "A program that writes there as root can then be made to write somewhere else.",
+        ),
+        "label": M("kernel-links.on", "Enable kernel link protections"),
+    },
+    "info": {
+        "title": M("kernel-info.title", "Kernel addresses and log"),
+        "status": "warn",
+        "keys": {"kernel.kptr_restrict": "1", "kernel.dmesg_restrict": "1"},
+        "off": M("kernel-info.off", "Any account can read the kernel's log and the addresses of its code."),
+        "why": M("kernel-info.why", "The addresses and the log help an attacker aim an exploit at the kernel."),
+        "label": M("kernel-info.on", "Hide them from ordinary accounts"),
+    },
 }
 
 
@@ -802,25 +1317,67 @@ def kernel_findings(rec):
             continue  # not this kernel's to set (or not readable here)
         shown = [f"{key}={v}" for key, v in now.items()]
         if all(now[key] == want for key, want in k["keys"].items()):
-            out.append(finding(f"kernel-{name}", k["title"], "ok", M("kernel.on", "On, as Debian sets them."), evidence=shown,
-                               actions=[action(f"kernel-{name}-undo", UNDO)] if name in ours else []))
+            out.append(
+                finding(
+                    f"kernel-{name}",
+                    k["title"],
+                    "ok",
+                    M("kernel.on", "On, as Debian sets them."),
+                    evidence=shown,
+                    actions=[action(f"kernel-{name}-undo", UNDO)] if name in ours else [],
+                )
+            )
         elif name == "links" and debian_sysctl() == "available":
-            out.append(finding(f"kernel-{name}", k["title"], k["status"], k["off"], k["why"],
-                               M("kernel-links.debian.fix", "Install Debian's own kernel defaults, or let the box set just these two. "
-                                                            "Either one applies now and at every boot."),
-                               notes=[M("kernel-links.debian.note", "Debian's defaults ({package}) set these and the other settings that a "
-                                                                    "standard Debian box has. The box writes just these two in /etc/sysctl.d.",
-                                        package=DEBIAN_SYSCTL)],
-                               evidence=shown,
-                               actions=[action("kernel-links-debian", M("kernel-links.debian", "Install Debian's defaults"),
-                                               M("kernel-links.debian.confirm", "Install {package} from Debian and apply it now? It also restricts "
-                                                                                "FIFOs and files in shared folders and refuses source routes, "
-                                                                                "as on any Debian box.", package=DEBIAN_SYSCTL)),
-                                        action(f"kernel-{name}-on", M("kernel-links.just-two", "Set just these two"))]))
+            out.append(
+                finding(
+                    f"kernel-{name}",
+                    k["title"],
+                    k["status"],
+                    k["off"],
+                    k["why"],
+                    M(
+                        "kernel-links.debian.fix",
+                        "Install Debian's own kernel defaults, or let the box set just these two. "
+                        "Either one applies now and at every boot.",
+                    ),
+                    notes=[
+                        M(
+                            "kernel-links.debian.note",
+                            "Debian's defaults ({package}) set these and the other settings that a "
+                            "standard Debian box has. The box writes just these two in /etc/sysctl.d.",
+                            package=DEBIAN_SYSCTL,
+                        )
+                    ],
+                    evidence=shown,
+                    actions=[
+                        action(
+                            "kernel-links-debian",
+                            M("kernel-links.debian", "Install Debian's defaults"),
+                            M(
+                                "kernel-links.debian.confirm",
+                                "Install {package} from Debian and apply it now? It also restricts "
+                                "FIFOs and files in shared folders and refuses source routes, "
+                                "as on any Debian box.",
+                                package=DEBIAN_SYSCTL,
+                            ),
+                        ),
+                        action(f"kernel-{name}-on", M("kernel-links.just-two", "Set just these two")),
+                    ],
+                )
+            )
         else:
-            out.append(finding(f"kernel-{name}", k["title"], k["status"], k["off"], k["why"],
-                               M("kernel.fix", "Set them now and at every boot. The box writes a file in /etc/sysctl.d."),
-                               evidence=shown, actions=[action(f"kernel-{name}-on", k["label"])]))
+            out.append(
+                finding(
+                    f"kernel-{name}",
+                    k["title"],
+                    k["status"],
+                    k["off"],
+                    k["why"],
+                    M("kernel.fix", "Set them now and at every boot. The box writes a file in /etc/sysctl.d."),
+                    evidence=shown,
+                    actions=[action(f"kernel-{name}-on", k["label"])],
+                )
+            )
     return out
 
 
@@ -830,13 +1387,17 @@ def _write_sysctl_dropin(kernel):
         SYSCTL_DROPIN.unlink(missing_ok=True)
         return
     SYSCTL_DROPIN.parent.mkdir(parents=True, exist_ok=True)
-    SYSCTL_DROPIN.write_text("# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
-                             + "".join(f"{key} = {v}\n" for key, v in keys.items()))
+    SYSCTL_DROPIN.write_text(
+        "# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
+        + "".join(f"{key} = {v}\n" for key, v in keys.items())
+    )
 
 
 def _kernel(rec, name, on):
     if name not in KERNEL:
-        raise Refused(M("security-fix.kernel.unknown", "{name} is not a kernel setting that this page changes.", name=name))
+        raise Refused(
+            M("security-fix.kernel.unknown", "{name} is not a kernel setting that this page changes.", name=name)
+        )
     kernel = rec.setdefault("kernel", {})
     if on:
         old = kernel.get(name, {}).get("old") or {key: _sysctl(key) for key in KERNEL[name]["keys"]}
@@ -847,21 +1408,34 @@ def _kernel(rec, name, on):
         return M("security-fix.kernel.on", "{setting}: on now and at every boot.", setting=KERNEL[name]["title"])
     entry = kernel.pop(name, None)
     if entry is None:
-        raise Refused(M("security-fix.kernel.not-changed", "{setting}: not changed from this page. There is nothing to restore.",
-                     setting=KERNEL[name]["title"]))
+        raise Refused(
+            M(
+                "security-fix.kernel.not-changed",
+                "{setting}: not changed from this page. There is nothing to restore.",
+                setting=KERNEL[name]["title"],
+            )
+        )
     if entry.get("by") == DEBIAN_SYSCTL:
         out = run("apt-get", "remove", "-y", DEBIAN_SYSCTL, timeout=600)
         if out.returncode != 0:
             kernel[name] = entry
-            raise Refused(M("security-fix.kernel.remove-failed", "apt-get could not remove {package}: {detail}", package=DEBIAN_SYSCTL,
-                         detail=(out.stderr or out.stdout).strip()[-200:]))
+            raise Refused(
+                M(
+                    "security-fix.kernel.remove-failed",
+                    "apt-get could not remove {package}: {detail}",
+                    package=DEBIAN_SYSCTL,
+                    detail=(out.stderr or out.stdout).strip()[-200:],
+                )
+            )
     for key, v in (entry.get("old") or {}).items():
         if v is not None:
             _sysctl_path(key).write_text(v + "\n")
     _write_sysctl_dropin(kernel)
     if not kernel:
         rec.pop("kernel")
-    return M("security-fix.kernel.restored", "{setting}: restored to the previous values.", setting=KERNEL[name]["title"])
+    return M(
+        "security-fix.kernel.restored", "{setting}: restored to the previous values.", setting=KERNEL[name]["title"]
+    )
 
 
 def _kernel_debian(rec):
@@ -869,23 +1443,45 @@ def _kernel_debian(rec):
     kernel = rec.setdefault("kernel", {})
     old = kernel.get("links", {}).get("old") or {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-    out = subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
-                         capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, timeout=600)
+    out = subprocess.run(
+        ["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        timeout=600,
+    )
     if out.returncode != 0:
-        raise Refused(M("security-fix.kernel.install-failed", "apt-get could not install {package}: {detail} "
-                                                           "To set just these two without the package, select Set just these two.", package=DEBIAN_SYSCTL,
-                     detail=(out.stderr or out.stdout).strip()[-200:]))
+        raise Refused(
+            M(
+                "security-fix.kernel.install-failed",
+                "apt-get could not install {package}: {detail} "
+                "To set just these two without the package, select Set just these two.",
+                package=DEBIAN_SYSCTL,
+                detail=(out.stderr or out.stdout).strip()[-200:],
+            )
+        )
     kernel["links"] = {"old": old, "at": time.strftime("%Y-%m-%d"), "by": DEBIAN_SYSCTL}
-    _write_sysctl_dropin(kernel)   # the hub's own file no longer carries these two
-    save_record(rec)               # installed: Undo must be possible even if what follows fails
+    _write_sysctl_dropin(kernel)  # the hub's own file no longer carries these two
+    save_record(rec)  # installed: Undo must be possible even if what follows fails
     _systemctl("restart", "systemd-sysctl.service")
     now = {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
     if any(now[key] != want for key, want in KERNEL["links"]["keys"].items()):
-        raise Refused(M("security-fix.kernel.still-off", "{package} is installed, but the link protections are still off: {values}. "
-                                                      "A later file in sysctl.d sets them back.", package=DEBIAN_SYSCTL,
-                     values=[f"{k}={v}" for k, v in now.items()]))
-    return M("security-fix.kernel.debian", "{setting}: on now and at every boot, from the Debian defaults ({package}).",
-             setting=KERNEL["links"]["title"], package=DEBIAN_SYSCTL)
+        raise Refused(
+            M(
+                "security-fix.kernel.still-off",
+                "{package} is installed, but the link protections are still off: {values}. "
+                "A later file in sysctl.d sets them back.",
+                package=DEBIAN_SYSCTL,
+                values=[f"{k}={v}" for k, v in now.items()],
+            )
+        )
+    return M(
+        "security-fix.kernel.debian",
+        "{setting}: on now and at every boot, from the Debian defaults ({package}).",
+        setting=KERNEL["links"]["title"],
+        package=DEBIAN_SYSCTL,
+    )
 
 
 # Groups that are root by another name: docker runs containers as root with any folder mounted;
@@ -898,8 +1494,13 @@ def _login_accounts():
     out = set()
     for line in (PASSWD_FILE.read_text(errors="replace") if PASSWD_FILE.exists() else "").splitlines():
         f = line.split(":")
-        if len(f) >= 7 and f[2].isdigit() and int(f[2]) >= 1000 and f[0] != "nobody" \
-                and not f[6].endswith(("nologin", "false")):
+        if (
+            len(f) >= 7
+            and f[2].isdigit()
+            and int(f[2]) >= 1000
+            and f[0] != "nobody"
+            and not f[6].endswith(("nologin", "false"))
+        ):
             out.add(f[0])
     return out
 
@@ -914,10 +1515,16 @@ def _group_members():
 
 
 GROUP_WHY = {
-    "docker": M("group-docker.why", "Members of the docker group can run containers as root with any folder of the box mounted. "
-                                    "That is a route to root without a password."),
-    "disk": M("group-disk.why", "Members of the disk group can read and write the raw storage, the password file included. "
-                                "That is a route to root without a password."),
+    "docker": M(
+        "group-docker.why",
+        "Members of the docker group can run containers as root with any folder of the box mounted. "
+        "That is a route to root without a password.",
+    ),
+    "disk": M(
+        "group-disk.why",
+        "Members of the disk group can read and write the raw storage, the password file included. "
+        "That is a route to root without a password.",
+    ),
 }
 
 
@@ -929,42 +1536,103 @@ def group_findings(rec):
             continue
         risky = sorted(members[group] & logins)
         title = M("group.title", "The {group} group", group=group)
-        undo = [action(f"group-undo:{k}", M("group.undo", "Put {account} back", account=k.split("@")[0])) for k in ours if k.endswith("@" + group)]
+        undo = [
+            action(f"group-undo:{k}", M("group.undo", "Put {account} back", account=k.split("@")[0]))
+            for k in ours
+            if k.endswith("@" + group)
+        ]
         if not risky:
-            out.append(finding(f"group-{group}", title, "ok", M("group.none", "No account that can sign in is in it."), actions=undo))
+            out.append(
+                finding(
+                    f"group-{group}",
+                    title,
+                    "ok",
+                    M("group.none", "No account that can sign in is in it."),
+                    actions=undo,
+                )
+            )
             continue
-        out.append(finding(f"group-{group}", title, "warn",
-                           M("group.members", {"one": "{n} account that can sign in is in it.",
-                                               "other": "{n} accounts that can sign in are in it."}, n=len(risky)),
-                           GROUP_WHY[group],
-                           M("group.fix", "Remove each account that does not need it. The change applies from the account's next sign-in."),
-                           evidence=risky,
-                           actions=[action(f"group-drop:{u}@{group}", M("group.drop", "Remove {account}", account=u),
-                                           M("group.drop.confirm", "Remove {account} from the {group} group? The change applies from "
-                                                                   "the next sign-in of {account}.", account=u, group=group))
-                                    for u in risky] + undo))
+        out.append(
+            finding(
+                f"group-{group}",
+                title,
+                "warn",
+                M(
+                    "group.members",
+                    {
+                        "one": "{n} account that can sign in is in it.",
+                        "other": "{n} accounts that can sign in are in it.",
+                    },
+                    n=len(risky),
+                ),
+                GROUP_WHY[group],
+                M(
+                    "group.fix",
+                    "Remove each account that does not need it. The change applies from the account's next sign-in.",
+                ),
+                evidence=risky,
+                actions=[
+                    action(
+                        f"group-drop:{u}@{group}",
+                        M("group.drop", "Remove {account}", account=u),
+                        M(
+                            "group.drop.confirm",
+                            "Remove {account} from the {group} group? The change applies from "
+                            "the next sign-in of {account}.",
+                            account=u,
+                            group=group,
+                        ),
+                    )
+                    for u in risky
+                ]
+                + undo,
+            )
+        )
     return out
 
 
 def _group(rec, arg, on):
     user, _, group = arg.partition("@")
     if group not in ROOTISH_GROUPS or not NAME_RE.match(user):
-        raise Refused(M("security-fix.group.unknown", "{choice} is not an account and group that this page changes.", choice=arg))
+        raise Refused(
+            M("security-fix.group.unknown", "{choice} is not an account and group that this page changes.", choice=arg)
+        )
     groups = rec.setdefault("groups", {})
     if on:
         if user not in _group_members().get(group, set()):
-            raise Refused(M("security-fix.group.not-member", "{account} is not in the {group} group.", account=user, group=group))
+            raise Refused(
+                M("security-fix.group.not-member", "{account} is not in the {group} group.", account=user, group=group)
+            )
         r = run("gpasswd", "-d", user, group)
         if r.returncode:
-            raise Refused(M("security-fix.gpasswd-failed", "gpasswd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
+            raise Refused(
+                M(
+                    "security-fix.gpasswd-failed",
+                    "gpasswd failed: {detail}",
+                    detail=(r.stderr or r.stdout).strip()[:160],
+                )
+            )
         groups[arg] = time.strftime("%Y-%m-%d")
-        return M("security-fix.group.removed", "Account removed from privileged group: {account} is out of the {group} group from its "
-                                              "next sign-in.", account=user, group=group)
+        return M(
+            "security-fix.group.removed",
+            "Account removed from privileged group: {account} is out of the {group} group from its next sign-in.",
+            account=user,
+            group=group,
+        )
     if arg not in groups:
-        raise Refused(M("security-fix.group.not-removed", "{account} was not removed from the {group} group on this page.", account=user, group=group))
+        raise Refused(
+            M(
+                "security-fix.group.not-removed",
+                "{account} was not removed from the {group} group on this page.",
+                account=user,
+                group=group,
+            )
+        )
     r = run("gpasswd", "-a", user, group)
     if r.returncode:
-        raise Refused(M("security-fix.gpasswd-failed", "gpasswd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
+        raise Refused(
+            M("security-fix.gpasswd-failed", "gpasswd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160])
+        )
     groups.pop(arg)
     if not groups:
         rec.pop("groups")
@@ -972,6 +1640,7 @@ def _group(rec, arg, on):
 
 
 # --- root's own login ---------------------------------------------------------------------------
+
 
 def _root_password():
     """P (a password), NP (none), L (locked), or None: from `passwd -S`, never the hash itself."""
@@ -990,45 +1659,129 @@ def _sudoers():
 def root_findings(rec):
     out, ours = [], rec.get("root", {})
     state, firstrun, admins = _root_password(), FIRSTRUN.exists(), _sudoers()
-    lock = [action("root-lock", M("root-password.lock", "Lock root's password"),
-                   M("root-lock.confirm", "Lock root's password? Root can then no longer sign in with a password, at the console or over SSH. "
-                                          "These accounts keep sudo: {accounts}. Keys for root and open root sessions do not change.",
-                     accounts=admins))] if admins else []
-    no_lock = [] if admins else [M("root-lock.no-sudo", "No other account here can use sudo, so this page does not lock the password. "
-                                                        "Add such an account first.")]
+    lock = (
+        [
+            action(
+                "root-lock",
+                M("root-password.lock", "Lock root's password"),
+                M(
+                    "root-lock.confirm",
+                    "Lock root's password? Root can then no longer sign in with a password, at the console or over SSH. "
+                    "These accounts keep sudo: {accounts}. Keys for root and open root sessions do not change.",
+                    accounts=admins,
+                ),
+            )
+        ]
+        if admins
+        else []
+    )
+    no_lock = (
+        []
+        if admins
+        else [
+            M(
+                "root-lock.no-sudo",
+                "No other account here can use sudo, so this page does not lock the password. "
+                "Add such an account first.",
+            )
+        ]
+    )
     lock_fix = M("root-password.lock.fix", "Lock the password, so that root cannot sign in with a password.")
     undo = [action("root-lock-undo", UNDO)] if "lock" in ours else []
     title = M("root-password.title", "Root's password")
     if state == "L":
-        out.append(finding("root-password", title, "ok", M("root-password.locked", "Locked: root cannot sign in with a password."),
-                           notes=[M("root-password.locked.note", "A key for root, and sudo, still reach root.")], actions=undo))
+        out.append(
+            finding(
+                "root-password",
+                title,
+                "ok",
+                M("root-password.locked", "Locked: root cannot sign in with a password."),
+                notes=[M("root-password.locked.note", "A key for root, and sudo, still reach root.")],
+                actions=undo,
+            )
+        )
     elif state == "NP":
-        out.append(finding("root-password", title, "problem", M("root-password.none", "Root has no password."),
-                           M("root-password.none.why", "Anyone at the console, or wherever root can sign in, is root."),
-                           lock_fix, notes=no_lock, actions=lock))
+        out.append(
+            finding(
+                "root-password",
+                title,
+                "problem",
+                M("root-password.none", "Root has no password."),
+                M("root-password.none.why", "Anyone at the console, or wherever root can sign in, is root."),
+                lock_fix,
+                notes=no_lock,
+                actions=lock,
+            )
+        )
     elif state == "P" and firstrun:
-        out.append(finding("root-password", title, "problem",
-                           M("root-password.image", "Root has a password, and Armbian's first sign-in setup never ran. "
-                                                    "The password is probably the image's default, usually 1234."),
-                           M("root-password.image.why", "Anyone who knows the default password can act as root."),
-                           lock_fix, notes=no_lock, actions=lock))
+        out.append(
+            finding(
+                "root-password",
+                title,
+                "problem",
+                M(
+                    "root-password.image",
+                    "Root has a password, and Armbian's first sign-in setup never ran. "
+                    "The password is probably the image's default, usually 1234.",
+                ),
+                M("root-password.image.why", "Anyone who knows the default password can act as root."),
+                lock_fix,
+                notes=no_lock,
+                actions=lock,
+            )
+        )
     elif state == "P":
-        out.append(finding("root-password", title, "warn", M("root-password.set", "Root has a password of its own."),
-                           M("root-password.set.why", "That is acceptable if you selected it and it is strong. "
-                                                      "Anyone who learns it can sign in as root wherever root sign-in is enabled."),
-                           M("root-password.set.fix", "If you do not use it, lock the password, so that root cannot sign in with a password."),
-                           notes=no_lock, actions=lock))
+        out.append(
+            finding(
+                "root-password",
+                title,
+                "warn",
+                M("root-password.set", "Root has a password of its own."),
+                M(
+                    "root-password.set.why",
+                    "That is acceptable if you selected it and it is strong. "
+                    "Anyone who learns it can sign in as root wherever root sign-in is enabled.",
+                ),
+                M(
+                    "root-password.set.fix",
+                    "If you do not use it, lock the password, so that root cannot sign in with a password.",
+                ),
+                notes=no_lock,
+                actions=lock,
+            )
+        )
     title = M("root-firstrun.title", "First sign-in setup")
     if firstrun:
-        out.append(finding("root-firstrun", title, "problem", M("root-firstrun.on", "Armbian's first sign-in setup never ran."),
-                           M("root-firstrun.on.why", "The image's defaults can still apply. The next root sign-in starts the setup, "
-                                                     "which asks for a new root password and a new user."),
-                           M("root-firstrun.on.fix", "If you set up this box another way, put the marker aside. "
-                                                     "The box keeps a copy, so that you can put it back."),
-                           evidence=[str(FIRSTRUN)], actions=[action("firstrun-off", M("root-firstrun.off", "Put the marker aside"))]))
+        out.append(
+            finding(
+                "root-firstrun",
+                title,
+                "problem",
+                M("root-firstrun.on", "Armbian's first sign-in setup never ran."),
+                M(
+                    "root-firstrun.on.why",
+                    "The image's defaults can still apply. The next root sign-in starts the setup, "
+                    "which asks for a new root password and a new user.",
+                ),
+                M(
+                    "root-firstrun.on.fix",
+                    "If you set up this box another way, put the marker aside. "
+                    "The box keeps a copy, so that you can put it back.",
+                ),
+                evidence=[str(FIRSTRUN)],
+                actions=[action("firstrun-off", M("root-firstrun.off", "Put the marker aside"))],
+            )
+        )
     elif "firstrun" in ours:
-        out.append(finding("root-firstrun", title, "ok", M("root-firstrun.aside", "Its marker is put aside."),
-                           actions=[action("firstrun-undo", M("root-firstrun.undo", "Put the marker back"))]))
+        out.append(
+            finding(
+                "root-firstrun",
+                title,
+                "ok",
+                M("root-firstrun.aside", "Its marker is put aside."),
+                actions=[action("firstrun-undo", M("root-firstrun.undo", "Put the marker back"))],
+            )
+        )
     return out
 
 
@@ -1037,24 +1790,48 @@ def _root(rec, what, on):
     if what == "lock":
         if on:
             if not _sudoers():
-                raise Refused(M("security-fix.root.no-sudo", "No other account here can use sudo. If root's password is locked, no account "
-                                                          "can become root."))
+                raise Refused(
+                    M(
+                        "security-fix.root.no-sudo",
+                        "No other account here can use sudo. If root's password is locked, no account can become root.",
+                    )
+                )
             was = _root_password()
             r = run("passwd", "-l", "root")
             if r.returncode:
-                raise Refused(M("security-fix.passwd-failed", "passwd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
+                raise Refused(
+                    M(
+                        "security-fix.passwd-failed",
+                        "passwd failed: {detail}",
+                        detail=(r.stderr or r.stdout).strip()[:160],
+                    )
+                )
             root["lock"] = {"was": was, "at": time.strftime("%Y-%m-%d")}
-            msg = M("security-fix.root.locked", "Root password authentication disabled: root cannot sign in with a password. "
-                                                "SSH keys for root, sudo and sessions that are open still give root access.")
+            msg = M(
+                "security-fix.root.locked",
+                "Root password authentication disabled: root cannot sign in with a password. "
+                "SSH keys for root, sudo and sessions that are open still give root access.",
+            )
         else:
             entry = root.pop("lock", None)
             if entry is None:
-                raise Refused(M("security-fix.root.not-locked", "Root's password was not locked from this page. There is nothing to restore."))
+                raise Refused(
+                    M(
+                        "security-fix.root.not-locked",
+                        "Root's password was not locked from this page. There is nothing to restore.",
+                    )
+                )
             if entry.get("was") in ("P", "NP"):
                 r = run("passwd", "-u", "root")
                 if r.returncode:
                     root["lock"] = entry
-                    raise Refused(M("security-fix.passwd-failed", "passwd failed: {detail}", detail=(r.stderr or r.stdout).strip()[:160]))
+                    raise Refused(
+                        M(
+                            "security-fix.passwd-failed",
+                            "passwd failed: {detail}",
+                            detail=(r.stderr or r.stdout).strip()[:160],
+                        )
+                    )
             msg = M("security-fix.root.restored", "Root's password is restored to its previous state.")
     else:
         kept = ETC / "armbian-firstrun.kept"
@@ -1065,12 +1842,19 @@ def _root(rec, what, on):
             kept.chmod(0o600)
             FIRSTRUN.unlink()
             root["firstrun"] = time.strftime("%Y-%m-%d")
-            msg = M("security-fix.firstrun.off", "First sign-in wizard disabled: the box put its marker aside. A root sign-in no longer "
-                                                 "starts the Armbian setup.")
+            msg = M(
+                "security-fix.firstrun.off",
+                "First sign-in wizard disabled: the box put its marker aside. A root sign-in no longer "
+                "starts the Armbian setup.",
+            )
         else:
             if root.pop("firstrun", None) is None or not kept.exists():
-                raise Refused(M("security-fix.firstrun.not-off", "The first sign-in marker was not put aside from this page. "
-                                                              "There is nothing to restore."))
+                raise Refused(
+                    M(
+                        "security-fix.firstrun.not-off",
+                        "The first sign-in marker was not put aside from this page. There is nothing to restore.",
+                    )
+                )
             FIRSTRUN.write_bytes(kept.read_bytes())
             kept.unlink()
             msg = M("security-fix.firstrun.restored", "The first sign-in marker is restored.")
@@ -1099,8 +1883,11 @@ FILE_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*$")
 def _nopasswd_rules():
     """[(file name, rule, account)]: NOPASSWD rules naming a login account, or a group it is in."""
     members, logins = _group_members(), _login_accounts()
-    files = ([SUDOERS] if SUDOERS.is_file() else []) + \
-        (sorted(p for p in SUDOERS_DIR.iterdir() if p.is_file() and "." not in p.name and not p.name.endswith("~")) if SUDOERS_DIR.is_dir() else [])
+    files = ([SUDOERS] if SUDOERS.is_file() else []) + (
+        sorted(p for p in SUDOERS_DIR.iterdir() if p.is_file() and "." not in p.name and not p.name.endswith("~"))
+        if SUDOERS_DIR.is_dir()
+        else []
+    )
     out = []
     for f in files:
         try:
@@ -1122,8 +1909,15 @@ def sudo_findings(rec, settings=None):
     undo = [action(f"sudo-undo:{f}", M("sudo.undo", "Put {file} back", file=f)) for f in ours]
     rules = _nopasswd_rules()
     if not rules:
-        return [finding("sudo-nopasswd", M("sudo.title", "Passwordless sudo"), "ok",
-                        M("sudo.none", "No NOPASSWD rule names an account that can sign in."), actions=undo)]
+        return [
+            finding(
+                "sudo-nopasswd",
+                M("sudo.title", "Passwordless sudo"),
+                "ok",
+                M("sudo.none", "No NOPASSWD rule names an account that can sign in."),
+                actions=undo,
+            )
+        ]
     settings = sshd_settings() if settings is None else settings
     guessable = bool(settings) and settings.get("passwordauthentication", "yes") == "yes"
     by_file = {}
@@ -1131,26 +1925,58 @@ def sudo_findings(rec, settings=None):
         by_file.setdefault(f, set()).add(a)
     accounts = sorted({a for _, _, a in rules})
     drops = [f for f in by_file if f != SUDOERS.name and FILE_RE.match(f)]
-    return [finding("sudo-nopasswd",
-                    M("sudo.title-ssh", "Passwordless sudo, and SSH accepts passwords") if guessable else M("sudo.title", "Passwordless sudo"),
-                    "problem" if guessable else "warn",
-                    M("sudo.rules", {"one": "{n} account that can sign in can use sudo with no password.",
-                                     "other": "{n} accounts that can sign in can use sudo with no password."}, n=len(accounts)),
-                    M("sudo.rules.why-ssh", "Whoever signs in as one of them is root. SSH lets any device on the network try "
-                                            "their passwords, so one correct guess is root.") if guessable else
-                    M("sudo.rules.why", "Whoever signs in as one of them is root, with no second password."),
-                    M("sudo.fix-ssh", "Remove the rule when the work that it was added for is done. Until then, disable SSH password sign-in (above).")
-                    if guessable else M("sudo.fix", "Remove the rule when the work that it was added for is done."),
-                    evidence=[f"{f}: {', '.join(sorted(a))}" for f, a in by_file.items()],
-                    actions=[action(f"sudo-drop:{f}", M("sudo.drop", "Remove {file}", file=f),
-                                    M("sudo.drop.confirm", "Remove /etc/sudoers.d/{file}? sudo then asks for the account's password, and "
-                                                           "the account stays in the sudo group. Undo puts the file back.", file=f))
-                             for f in drops] + undo)]
+    return [
+        finding(
+            "sudo-nopasswd",
+            M("sudo.title-ssh", "Passwordless sudo, and SSH accepts passwords")
+            if guessable
+            else M("sudo.title", "Passwordless sudo"),
+            "problem" if guessable else "warn",
+            M(
+                "sudo.rules",
+                {
+                    "one": "{n} account that can sign in can use sudo with no password.",
+                    "other": "{n} accounts that can sign in can use sudo with no password.",
+                },
+                n=len(accounts),
+            ),
+            M(
+                "sudo.rules.why-ssh",
+                "Whoever signs in as one of them is root. SSH lets any device on the network try "
+                "their passwords, so one correct guess is root.",
+            )
+            if guessable
+            else M("sudo.rules.why", "Whoever signs in as one of them is root, with no second password."),
+            M(
+                "sudo.fix-ssh",
+                "Remove the rule when the work that it was added for is done. Until then, disable SSH password sign-in (above).",
+            )
+            if guessable
+            else M("sudo.fix", "Remove the rule when the work that it was added for is done."),
+            evidence=[f"{f}: {', '.join(sorted(a))}" for f, a in by_file.items()],
+            actions=[
+                action(
+                    f"sudo-drop:{f}",
+                    M("sudo.drop", "Remove {file}", file=f),
+                    M(
+                        "sudo.drop.confirm",
+                        "Remove /etc/sudoers.d/{file}? sudo then asks for the account's password, and "
+                        "the account stays in the sudo group. Undo puts the file back.",
+                        file=f,
+                    ),
+                )
+                for f in drops
+            ]
+            + undo,
+        )
+    ]
 
 
 def _sudo(rec, name, on):
     if not FILE_RE.match(name) or name == SUDOERS.name:
-        raise Refused(M("security-fix.sudo.unknown", "{name} is not a file in sudoers.d that this page removes.", name=name))
+        raise Refused(
+            M("security-fix.sudo.unknown", "{name} is not a file in sudoers.d that this page removes.", name=name)
+        )
     ours = rec.setdefault("sudo", {})
     src, kept = SUDOERS_DIR / name, SUDOERS_KEPT / name
     if on:
@@ -1159,10 +1985,20 @@ def _sudo(rec, name, on):
         SUDOERS_KEPT.mkdir(mode=0o700, exist_ok=True)
         shutil.move(str(src), str(kept))
         ours[name] = time.strftime("%Y-%m-%d")
-        return M("security-fix.sudo.removed", "Passwordless sudo rule removed: the box moved {file} to {kept}, for Undo.",
-                 file=f"/etc/sudoers.d/{name}", kept=str(SUDOERS_KEPT))
+        return M(
+            "security-fix.sudo.removed",
+            "Passwordless sudo rule removed: the box moved {file} to {kept}, for Undo.",
+            file=f"/etc/sudoers.d/{name}",
+            kept=str(SUDOERS_KEPT),
+        )
     if name not in ours or not kept.is_file():
-        raise Refused(M("security-fix.sudo.not-removed", "{name} was not removed from this page. There is nothing to restore.", name=name))
+        raise Refused(
+            M(
+                "security-fix.sudo.not-removed",
+                "{name} was not removed from this page. There is nothing to restore.",
+                name=name,
+            )
+        )
     shutil.move(str(kept), str(src))
     os.chmod(src, 0o440)
     ours.pop(name)
@@ -1182,11 +2018,16 @@ def _key_for(stem, keys):
 
 def _apt_keys():
     trusted = APT_DIR / "trusted.gpg.d"
-    return sorted(p.name for p in trusted.iterdir() if p.is_file() and not p.name.startswith(DEBIAN_KEYS)) if trusted.is_dir() else []
+    return (
+        sorted(p.name for p in trusted.iterdir() if p.is_file() and not p.name.startswith(DEBIAN_KEYS))
+        if trusted.is_dir()
+        else []
+    )
 
 
 def _unsigned_lists():
     from irate_box.root import secdoctor
+
     return [(f, uri) for f, uri, _, signed in secdoctor._apt_sources(APT_DIR) if not signed and f.endswith(".list")]
 
 
@@ -1197,32 +2038,81 @@ def apt_findings(rec):
     # One choice per key: what it may sign for, how it is now selected.
     undo = []
     for k in ours:
-        undo += [_chip(k, f"apt-undo:{k}", any_repo, False,
-                       M("apt.undo.confirm", "Put {key} back in trusted.gpg.d, trusted for every repository again?", key=k)),
-                 _chip(k, f"apt-tied:{k}", M("apt.own", "Only its own source"), True)]
+        undo += [
+            _chip(
+                k,
+                f"apt-undo:{k}",
+                any_repo,
+                False,
+                M("apt.undo.confirm", "Put {key} back in trusted.gpg.d, trusted for every repository again?", key=k),
+            ),
+            _chip(k, f"apt-tied:{k}", M("apt.own", "Only its own source"), True),
+        ]
     if not keys and not unsigned:
-        return [finding("apt-trust", M("apt-trust.title", "Repository keys"), "ok",
-                        M("apt-trust.ok", "Each source names its own key. trusted.gpg.d holds only Debian's keys."), actions=undo)]
+        return [
+            finding(
+                "apt-trust",
+                M("apt-trust.title", "Repository keys"),
+                "ok",
+                M("apt-trust.ok", "Each source names its own key. trusted.gpg.d holds only Debian's keys."),
+                actions=undo,
+            )
+        ]
     actions = []
     for f, _ in unsigned:
-        k = _key_for(f[:-len(".list")], keys)
+        k = _key_for(f[: -len(".list")], keys)
         if k and FILE_RE.match(k):
-            actions += [_chip(k, f"apt-any:{k}", any_repo, True),
-                        _chip(k, f"apt-signedby:{k}", M("apt.only", "Only {source}", source=f), False,
-                              M("apt.signedby.confirm", "Move {key} out of trusted.gpg.d into /usr/share/keyrings, and name it in {source} "
-                                                        "as that source's signed-by key? apt then uses it for that source only. "
-                                                        "Any repository puts both back.", key=k, source=f))]
-    unsigned_note = M("apt-trust.unsigned", {"one": "{n} source does not name a key of its own.",
-                                             "other": "{n} sources do not name a key of their own."}, n=len(unsigned))
-    return [finding("apt-trust", M("apt-trust.title-wide", "Repository keys trusted for every repository"), "warn",
-                    M("apt-trust.keys", {"one": "{n} key in trusted.gpg.d can sign packages for any repository, Debian's included.",
-                                         "other": "{n} keys in trusted.gpg.d can sign packages for any repository, Debian's included."},
-                      n=len(keys)) if keys else unsigned_note,
-                    M("apt-trust.why", "A key that apt trusts for every repository can sign a package that replaces one of Debian's."),
-                    M("apt-trust.fix", "Bind each key to its own source (signed-by). If no source matches a key, check that nothing uses it, "
-                                       "then remove it by hand."),
-                    notes=[unsigned_note] if keys and unsigned else [],
-                    evidence=keys + [f for f, _ in unsigned], actions=actions + undo)]
+            actions += [
+                _chip(k, f"apt-any:{k}", any_repo, True),
+                _chip(
+                    k,
+                    f"apt-signedby:{k}",
+                    M("apt.only", "Only {source}", source=f),
+                    False,
+                    M(
+                        "apt.signedby.confirm",
+                        "Move {key} out of trusted.gpg.d into /usr/share/keyrings, and name it in {source} "
+                        "as that source's signed-by key? apt then uses it for that source only. "
+                        "Any repository puts both back.",
+                        key=k,
+                        source=f,
+                    ),
+                ),
+            ]
+    unsigned_note = M(
+        "apt-trust.unsigned",
+        {"one": "{n} source does not name a key of its own.", "other": "{n} sources do not name a key of their own."},
+        n=len(unsigned),
+    )
+    return [
+        finding(
+            "apt-trust",
+            M("apt-trust.title-wide", "Repository keys trusted for every repository"),
+            "warn",
+            M(
+                "apt-trust.keys",
+                {
+                    "one": "{n} key in trusted.gpg.d can sign packages for any repository, Debian's included.",
+                    "other": "{n} keys in trusted.gpg.d can sign packages for any repository, Debian's included.",
+                },
+                n=len(keys),
+            )
+            if keys
+            else unsigned_note,
+            M(
+                "apt-trust.why",
+                "A key that apt trusts for every repository can sign a package that replaces one of Debian's.",
+            ),
+            M(
+                "apt-trust.fix",
+                "Bind each key to its own source (signed-by). If no source matches a key, check that nothing uses it, "
+                "then remove it by hand.",
+            ),
+            notes=[unsigned_note] if keys and unsigned else [],
+            evidence=keys + [f for f, _ in unsigned],
+            actions=actions + undo,
+        )
+    ]
 
 
 def _apt(rec, key, on):
@@ -1231,9 +2121,17 @@ def _apt(rec, key, on):
     ours = rec.setdefault("apt", {})
     trusted, ring, kept = APT_DIR / "trusted.gpg.d" / key, KEYRINGS / key, KEYS_KEPT / key
     if on:
-        lst = next((APT_DIR / "sources.list.d" / f for f, _ in _unsigned_lists() if _key_for(f[:-len(".list")], [key])), None)
+        lst = next(
+            (APT_DIR / "sources.list.d" / f for f, _ in _unsigned_lists() if _key_for(f[: -len(".list")], [key])), None
+        )
         if not trusted.is_file() or lst is None:
-            raise Refused(M("security-fix.apt.not-applicable", "{key} is not in trusted.gpg.d, or no source of its name lacks a key.", key=key))
+            raise Refused(
+                M(
+                    "security-fix.apt.not-applicable",
+                    "{key} is not in trusted.gpg.d, or no source of its name lacks a key.",
+                    key=key,
+                )
+            )
         text = lst.read_text()
         new = re.sub(r"(?m)^(\s*deb(?:-src)?)\s+(?!\[)", rf"\1 [signed-by={ring}] ", text)
         new = re.sub(r"(?m)^(\s*deb(?:-src)?\s+\[)(?![^\]]*signed-by=)", rf"\1signed-by={ring} ", new)
@@ -1245,10 +2143,17 @@ def _apt(rec, key, on):
         lst.write_text(new)
         shutil.move(str(trusted), str(kept))
         ours[key] = {"source": lst.name, "date": time.strftime("%Y-%m-%d")}
-        return M("security-fix.apt.restricted", "Repository signing key restricted: apt now trusts {key} for {source} only (signed-by). "
-                                                "apt-get update reads it at the next refresh.", key=key, source=lst.name)
+        return M(
+            "security-fix.apt.restricted",
+            "Repository signing key restricted: apt now trusts {key} for {source} only (signed-by). "
+            "apt-get update reads it at the next refresh.",
+            key=key,
+            source=lst.name,
+        )
     if key not in ours or not kept.is_file():
-        raise Refused(M("security-fix.apt.not-moved", "{key} was not moved from this page. There is nothing to restore.", key=key))
+        raise Refused(
+            M("security-fix.apt.not-moved", "{key} was not moved from this page. There is nothing to restore.", key=key)
+        )
     lst = APT_DIR / "sources.list.d" / ours[key]["source"]
     saved = KEYS_KEPT / f"{key}.list"
     if saved.is_file():
@@ -1259,8 +2164,12 @@ def _apt(rec, key, on):
     ours.pop(key)
     if not ours:
         rec.pop("apt")
-    return M("security-fix.apt.restored", "Global key trust restored: {key} is back in trusted.gpg.d, and {source} is as it was.",
-             key=key, source=lst.name)
+    return M(
+        "security-fix.apt.restored",
+        "Global key trust restored: {key} is back in trusted.gpg.d, and {source} is as it was.",
+        key=key,
+        source=lst.name,
+    )
 
 
 def _log_in_ram():
@@ -1278,31 +2187,79 @@ def log_findings(rec):
     ours = rec.get("logs")
     ram = _log_in_ram()
     where = M("logs.group", "Where the logs are kept")
-    back = _chip(where, "logs-undo", M("logs.ram-image", "In RAM, as the image had it"), False,
-                 M("logs.ram-image.confirm", "Put Armbian's ramlog back as it was? This applies at the next boot."))
+    back = _chip(
+        where,
+        "logs-undo",
+        M("logs.ram-image", "In RAM, as the image had it"),
+        False,
+        M("logs.ram-image.confirm", "Put Armbian's ramlog back as it was? This applies at the next boot."),
+    )
     card = M("logs.card", "On the card")
     title = M("logs-card.title", "Logs on the card")
     if ram is None:
-        return [finding("logs-ram", title, "ok", M("logs.card-next-boot", "Set on this page. This applies from the next boot."),
-                        actions=[back, _chip(where, "logs-card", card, True)])] if ours else []
+        return (
+            [
+                finding(
+                    "logs-ram",
+                    title,
+                    "ok",
+                    M("logs.card-next-boot", "Set on this page. This applies from the next boot."),
+                    actions=[back, _chip(where, "logs-card", card, True)],
+                )
+            ]
+            if ours
+            else []
+        )
     if not ram:
-        return [finding("logs-ram", title, "ok",
-                        M("logs.on-card", "/var/log is on the card. The logs of sshd and the hub server stay after a reboot."),
-                        notes=[M("logs.set-here", "Set on this page.")] if ours else [],
-                        actions=[back, _chip(where, "logs-card", card, True)] if ours else [])]
-    return [finding("logs-ram", M("logs-ram.title", "Logs kept in RAM"), "warn",
-                    M("logs.in-ram", "/var/log is a RAM disk (Armbian's ramlog). The box trims the journal and the log of sshd every 15 minutes "
-                                     "and loses them at a power cut."),
-                    M("logs.in-ram.why", "The evidence of an intrusion goes with them. The doctor's check for sign-ins from the internet "
-                                         "sees only the time since the last boot."),
-                    M("logs.in-ram.fix", "Keep the logs on the card. This disables Armbian's ramlog and keeps the journal, with a limit of 32 MB. "
-                                         "It applies from the next boot."),
-                    notes=[M("logs.in-ram.cost", "The card then gets a few MB more writing each week.")],
-                    actions=[back, _chip(where, "logs-card", M("logs.card-next", "On the card, from the next boot"), True)] if ours else
-                    [_chip(where, "logs-ram-now", M("logs.ram", "In RAM"), True),
-                     _chip(where, "logs-card", card, False,
-                           M("logs.card.confirm", "Disable Armbian's ramlog and keep the journal on the card, with a limit of 32 MB? "
-                                                  "This applies at the next boot. The card gets a few MB more writing each week."))])]
+        return [
+            finding(
+                "logs-ram",
+                title,
+                "ok",
+                M("logs.on-card", "/var/log is on the card. The logs of sshd and the hub server stay after a reboot."),
+                notes=[M("logs.set-here", "Set on this page.")] if ours else [],
+                actions=[back, _chip(where, "logs-card", card, True)] if ours else [],
+            )
+        ]
+    return [
+        finding(
+            "logs-ram",
+            M("logs-ram.title", "Logs kept in RAM"),
+            "warn",
+            M(
+                "logs.in-ram",
+                "/var/log is a RAM disk (Armbian's ramlog). The box trims the journal and the log of sshd every 15 minutes "
+                "and loses them at a power cut.",
+            ),
+            M(
+                "logs.in-ram.why",
+                "The evidence of an intrusion goes with them. The doctor's check for sign-ins from the internet "
+                "sees only the time since the last boot.",
+            ),
+            M(
+                "logs.in-ram.fix",
+                "Keep the logs on the card. This disables Armbian's ramlog and keeps the journal, with a limit of 32 MB. "
+                "It applies from the next boot.",
+            ),
+            notes=[M("logs.in-ram.cost", "The card then gets a few MB more writing each week.")],
+            actions=[back, _chip(where, "logs-card", M("logs.card-next", "On the card, from the next boot"), True)]
+            if ours
+            else [
+                _chip(where, "logs-ram-now", M("logs.ram", "In RAM"), True),
+                _chip(
+                    where,
+                    "logs-card",
+                    card,
+                    False,
+                    M(
+                        "logs.card.confirm",
+                        "Disable Armbian's ramlog and keep the journal on the card, with a limit of 32 MB? "
+                        "This applies at the next boot. The card gets a few MB more writing each week.",
+                    ),
+                ),
+            ],
+        )
+    ]
 
 
 def _logs(rec, on):
@@ -1310,21 +2267,38 @@ def _logs(rec, on):
         was = None
         if RAMLOG_DEFAULT.is_file():
             was = RAMLOG_DEFAULT.read_text()
-            new = re.sub(r"(?m)^ENABLED=.*$", "ENABLED=false", was) if re.search(r"(?m)^ENABLED=", was) else was + "\nENABLED=false\n"
+            new = (
+                re.sub(r"(?m)^ENABLED=.*$", "ENABLED=false", was)
+                if re.search(r"(?m)^ENABLED=", was)
+                else was + "\nENABLED=false\n"
+            )
             RAMLOG_DEFAULT.write_text(new)
         JOURNALD_DROPIN.parent.mkdir(parents=True, exist_ok=True)
-        JOURNALD_DROPIN.write_text("# Written by irate-box's Security page (/admin): logs on the card. Undo there, or delete this file.\n"
-                                   "[Journal]\nStorage=persistent\nSystemMaxUse=32M\n")
+        JOURNALD_DROPIN.write_text(
+            "# Written by irate-box's Security page (/admin): logs on the card. Undo there, or delete this file.\n"
+            "[Journal]\nStorage=persistent\nSystemMaxUse=32M\n"
+        )
         rec["logs"] = {"date": time.strftime("%Y-%m-%d"), "ramlog": was}
-        return M("security-fix.logs.card", "Persistent logs: from the next boot, the journal is kept on the card, with a limit of {limit}. "
-                                           "Armbian's ramlog is off.", limit="32 MB")
+        return M(
+            "security-fix.logs.card",
+            "Persistent logs: from the next boot, the journal is kept on the card, with a limit of {limit}. "
+            "Armbian's ramlog is off.",
+            limit="32 MB",
+        )
     if "logs" not in rec:
-        raise Refused(M("security-fix.logs.not-moved", "Logs were not moved to the card from this page. There is nothing to restore."))
+        raise Refused(
+            M(
+                "security-fix.logs.not-moved",
+                "Logs were not moved to the card from this page. There is nothing to restore.",
+            )
+        )
     if rec["logs"].get("ramlog") is not None and RAMLOG_DEFAULT.is_file():
         RAMLOG_DEFAULT.write_text(rec["logs"]["ramlog"])
     JOURNALD_DROPIN.unlink(missing_ok=True)
     rec.pop("logs")
-    return M("security-fix.logs.ram", "In-memory logs: from the next boot, logs are in RAM again, as the image had them.")
+    return M(
+        "security-fix.logs.ram", "In-memory logs: from the next boot, logs are in RAM again, as the image had them."
+    )
 
 
 # --- process visibility: who sees which processes --------------------------------------------------------
@@ -1347,8 +2321,14 @@ def _proc_hidden():
 
 def _fstab_proc(lines):
     """The index of /etc/fstab's line for /proc, or None."""
-    return next((i for i, line in enumerate(lines) if not line.lstrip().startswith("#") and len(line.split()) >= 4
-                 and line.split()[1] == "/proc"), None)
+    return next(
+        (
+            i
+            for i, line in enumerate(lines)
+            if not line.lstrip().startswith("#") and len(line.split()) >= 4 and line.split()[1] == "/proc"
+        ),
+        None,
+    )
 
 
 def _write_fstab(text):
@@ -1362,8 +2342,13 @@ def _remount_proc(hidepid):
     """Remount the box's /proc (PID 1's mount namespace, not this unit's own) with hidepid=N. ValueError if it fails."""
     out = run("nsenter", "--target", "1", "--mount", "mount", "-o", f"remount,hidepid={hidepid}", "/proc")
     if out.returncode != 0:
-        raise Refused(M("security-fix.proc.remount-failed", "The box could not remount /proc. mount said: {detail}",
-                        detail=(out.stderr or out.stdout).strip()[-200:]))
+        raise Refused(
+            M(
+                "security-fix.proc.remount-failed",
+                "The box could not remount /proc. mount said: {detail}",
+                detail=(out.stderr or out.stdout).strip()[-200:],
+            )
+        )
 
 
 def proc_findings(rec):
@@ -1374,25 +2359,53 @@ def proc_findings(rec):
     group = M("proc.group", "Who sees which processes")
     every = M("proc.every", "Every account sees every process")
     own = M("proc.own", "Each account sees only its own")
-    hide_confirm = M("proc.own.confirm", "Hide the processes of each account from the other accounts? Root and the doctors keep their "
-                                         "view of every process. Other accounts need sudo to see processes that are not their own. This "
-                                         "applies at once and at each boot.")
-    back = _chip(group, "proc-undo", M("proc.every-image", "Every account sees every process, as the image has it"), False,
-                 M("proc.every.confirm", "Show every process to every account again, as the image has it? This applies at once and at "
-                                         "each boot."))
+    hide_confirm = M(
+        "proc.own.confirm",
+        "Hide the processes of each account from the other accounts? Root and the doctors keep their "
+        "view of every process. Other accounts need sudo to see processes that are not their own. This "
+        "applies at once and at each boot.",
+    )
+    back = _chip(
+        group,
+        "proc-undo",
+        M("proc.every-image", "Every account sees every process, as the image has it"),
+        False,
+        M(
+            "proc.every.confirm",
+            "Show every process to every account again, as the image has it? This applies at once and at each boot.",
+        ),
+    )
     title = M("proc-hidden.title", "Process visibility")
     if hidden:
-        return [finding("proc-hidden", title, "ok",
-                        M("proc.hidden", "Each account sees only its own processes. Root sees every process."),
-                        notes=[M("proc.set-here", "Set on this page.")] if ours else [],
-                        actions=[back, _chip(group, "proc-hide", own, True)] if ours else [])]
-    return [finding("proc-hidden", title, "warn",
-                    M("proc.visible", "Every account on the box can see every process and its command line."),
-                    M("proc.visible.why", "A local process, a build or a compromised add-on, for example, can read a secret that another "
-                                          "process has on its command line."),
-                    M("proc.visible.fix", "Hide the processes of each account from the other accounts. Root and the doctors keep their "
-                                          "view of every process. This applies at once and at each boot."),
-                    actions=[_chip(group, "proc-every-now", every, True), _chip(group, "proc-hide", own, False, hide_confirm)])]
+        return [
+            finding(
+                "proc-hidden",
+                title,
+                "ok",
+                M("proc.hidden", "Each account sees only its own processes. Root sees every process."),
+                notes=[M("proc.set-here", "Set on this page.")] if ours else [],
+                actions=[back, _chip(group, "proc-hide", own, True)] if ours else [],
+            )
+        ]
+    return [
+        finding(
+            "proc-hidden",
+            title,
+            "warn",
+            M("proc.visible", "Every account on the box can see every process and its command line."),
+            M(
+                "proc.visible.why",
+                "A local process, a build or a compromised add-on, for example, can read a secret that another "
+                "process has on its command line.",
+            ),
+            M(
+                "proc.visible.fix",
+                "Hide the processes of each account from the other accounts. Root and the doctors keep their "
+                "view of every process. This applies at once and at each boot.",
+            ),
+            actions=[_chip(group, "proc-every-now", every, True), _chip(group, "proc-hide", own, False, hide_confirm)],
+        )
+    ]
 
 
 def _proc(rec, on):
@@ -1413,13 +2426,24 @@ def _proc(rec, on):
             _write_fstab("\n".join(lines) + "\n")
         except OSError as exc:
             _remount_proc(0)
-            raise Refused(M("security-fix.proc.fstab-failed", "The box could not write {path}: {detail}. It showed every process "
-                                                              "again.", path=str(FSTAB), detail=str(exc)))
+            raise Refused(
+                M(
+                    "security-fix.proc.fstab-failed",
+                    "The box could not write {path}: {detail}. It showed every process again.",
+                    path=str(FSTAB),
+                    detail=str(exc),
+                )
+            )
         rec["proc"] = {"date": time.strftime("%Y-%m-%d"), "fstab": was}
-        return M("security-fix.proc.hidden", "Process visibility: each account now sees only its own processes. Root sees every process. "
-                                             "This also applies at each boot.")
+        return M(
+            "security-fix.proc.hidden",
+            "Process visibility: each account now sees only its own processes. Root sees every process. "
+            "This also applies at each boot.",
+        )
     if "proc" not in rec:
-        raise Refused(M("security-fix.proc.not-hidden", "Processes were not hidden from this page. There is nothing to restore."))
+        raise Refused(
+            M("security-fix.proc.not-hidden", "Processes were not hidden from this page. There is nothing to restore.")
+        )
     was = rec["proc"].get("fstab")
     if i is not None:
         if was is None:
@@ -1431,22 +2455,38 @@ def _proc(rec, on):
     _write_fstab("\n".join(lines) + "\n" if lines else "")
     _remount_proc(0)
     rec.pop("proc")
-    return M("security-fix.proc.shown", "Process visibility: every account sees every process again, as the image has it.")
+    return M(
+        "security-fix.proc.shown", "Process visibility: every account sees every process again, as the image has it."
+    )
 
 
 # --- the hotspot firewall: what a guest on the hotspot can reach -------------------------------------
 
 # The hotspot firewall's level, said when it is set: (just turned on?, level).
 FIREWALL_SAID = {
-    (True, "apps"): M("security-fix.firewall.on-apps", "Hotspot firewall on: devices on the hotspot reach the hub, its apps, DNS and DHCP."),
-    (True, "hub"): M("security-fix.firewall.on-hub", "Hotspot firewall on: devices on the hotspot reach the hub's pages, DNS and DHCP only."),
-    (False, "apps"): M("security-fix.firewall.apps", "Hotspot firewall: devices on the hotspot reach the hub, its apps, DNS and DHCP."),
-    (False, "hub"): M("security-fix.firewall.hub", "Hotspot firewall: devices on the hotspot reach the hub's pages, DNS and DHCP only."),
+    (True, "apps"): M(
+        "security-fix.firewall.on-apps",
+        "Hotspot firewall on: devices on the hotspot reach the hub, its apps, DNS and DHCP.",
+    ),
+    (True, "hub"): M(
+        "security-fix.firewall.on-hub",
+        "Hotspot firewall on: devices on the hotspot reach the hub's pages, DNS and DHCP only.",
+    ),
+    (False, "apps"): M(
+        "security-fix.firewall.apps", "Hotspot firewall: devices on the hotspot reach the hub, its apps, DNS and DHCP."
+    ),
+    (False, "hub"): M(
+        "security-fix.firewall.hub",
+        "Hotspot firewall: devices on the hotspot reach the hub's pages, DNS and DHCP only.",
+    ),
 }
+
+
 # What the hotspot firewall opens to guests besides the hub when first turned on, where each is installed (firewall.services_here):
 # MQTT and Syncthing, and every declared service whose manifest says hotspot "open".
 def firewall_default():
     from irate_box.hub import services
+
     return ["mqtt", "sync"] + [s["id"] for s in services.declared() if s["hotspot"] == "open"]
 
 
@@ -1458,6 +2498,7 @@ def _open_in_rules(tcp, udp, rules):
 def _firewall_apply(fw):
     """The hotspot firewall as given (None: off) with guests' internet as it is: one ruleset (firewall.apply_all)."""
     from irate_box.root import firewall, share
+
     fl = dict(fw, services=firewall.services_here(fw.get("services", []))) if fw else None
     firewall.apply_all(fl, share.load())
 
@@ -1468,39 +2509,95 @@ LEVEL_CHIP = {"apps": M("firewall.level.apps", "Hub and apps"), "hub": M("firewa
 
 def firewall_findings(rec):
     from irate_box.root import firewall
+
     ours = rec.get("firewall")
     loaded = firewall.loaded()
     iface = firewall.hotspot_iface()
     title = M("firewall.title", "Hotspot firewall")
-    reach_all = M("firewall.off.why", "Devices on the hotspot can reach every service that listens on the hotspot's network interface, SSH included.")
+    reach_all = M(
+        "firewall.off.why",
+        "Devices on the hotspot can reach every service that listens on the hotspot's network interface, SSH included.",
+    )
     if loaded is None:
-        return [finding("firewall", title, "warn",
-                        M("firewall.no-nft", "nftables is not installed, so the box cannot limit what devices on the hotspot reach."),
-                        reach_all, M("firewall.no-nft.fix", "Update the box, which installs nftables. Then enable the hotspot firewall here."))]
+        return [
+            finding(
+                "firewall",
+                title,
+                "warn",
+                M(
+                    "firewall.no-nft",
+                    "nftables is not installed, so the box cannot limit what devices on the hotspot reach.",
+                ),
+                reach_all,
+                M(
+                    "firewall.no-nft.fix",
+                    "Update the box, which installs nftables. Then enable the hotspot firewall here.",
+                ),
+            )
+        ]
     from irate_box.hub import services
+
     wanted = sorted(ours.get("services", [])) if ours else []
     level = (ours or {}).get("level", "apps")
     if not ours or not loaded:
         tcp, udp = firewall.ports(firewall.services_here(firewall_default()))
-        extra = ["MQTT", "Syncthing"] + [s["name"] for s in services.declared() if s["hotspot"] == "open" and services.installed(s)]
-        confirm = {"apps": M("firewall.on-apps.confirm", "Limit what a device on the hotspot ({iface}) can reach to the hub, its apps, DNS and DHCP, "
-                                                         "and {services} where installed? SSH from the hotspot stays closed until you open it here. "
-                                                         "Your own network does not change.", iface=iface, services=extra),
-                   "hub": M("firewall.on-hub.confirm", "Limit what a device on the hotspot ({iface}) can reach to the hub's pages, DNS and DHCP, "
-                                                       "and {services} where installed? SSH from the hotspot stays closed until you open it here. "
-                                                       "Your own network does not change.", iface=iface, services=extra)}
-        return [finding("firewall", title, "warn" if not ours else "problem",
-                        M("firewall.off", "The hotspot firewall is off.") if not ours else
-                        M("firewall.not-loaded", "The hotspot firewall is enabled, but its rules are not loaded."),
-                        reach_all,
-                        M("firewall.off.fix", "Select what devices on the hotspot can reach: the hub and its apps, or the hub only."),
-                        notes=[M("firewall.would-open", "When it is on, it lets through TCP {tcp} and UDP {udp} on {iface} only, and drops the rest. "
-                                                        "The box's other networks do not change.", tcp=tcp, udp=udp, iface=iface),
-                               M("firewall.extra", "{services} stay open to the hotspot where they are installed. "
-                                                   "SSH stays closed until you open it.", services=extra)],
-                        commands=[] if not ours else ["nft list table inet irate_box"],
-                        actions=[_chip(REACH, "firewall-off", M("firewall.level.off", "Everything (firewall off)"), True),
-                                 *(_chip(REACH, f"firewall-{lv}", LEVEL_CHIP[lv], False, confirm[lv]) for lv in ("apps", "hub"))])]
+        extra = ["MQTT", "Syncthing"] + [
+            s["name"] for s in services.declared() if s["hotspot"] == "open" and services.installed(s)
+        ]
+        confirm = {
+            "apps": M(
+                "firewall.on-apps.confirm",
+                "Limit what a device on the hotspot ({iface}) can reach to the hub, its apps, DNS and DHCP, "
+                "and {services} where installed? SSH from the hotspot stays closed until you open it here. "
+                "Your own network does not change.",
+                iface=iface,
+                services=extra,
+            ),
+            "hub": M(
+                "firewall.on-hub.confirm",
+                "Limit what a device on the hotspot ({iface}) can reach to the hub's pages, DNS and DHCP, "
+                "and {services} where installed? SSH from the hotspot stays closed until you open it here. "
+                "Your own network does not change.",
+                iface=iface,
+                services=extra,
+            ),
+        }
+        return [
+            finding(
+                "firewall",
+                title,
+                "warn" if not ours else "problem",
+                M("firewall.off", "The hotspot firewall is off.")
+                if not ours
+                else M("firewall.not-loaded", "The hotspot firewall is enabled, but its rules are not loaded."),
+                reach_all,
+                M(
+                    "firewall.off.fix",
+                    "Select what devices on the hotspot can reach: the hub and its apps, or the hub only.",
+                ),
+                notes=[
+                    M(
+                        "firewall.would-open",
+                        "When it is on, it lets through TCP {tcp} and UDP {udp} on {iface} only, and drops the rest. "
+                        "The box's other networks do not change.",
+                        tcp=tcp,
+                        udp=udp,
+                        iface=iface,
+                    ),
+                    M(
+                        "firewall.extra",
+                        "{services} stay open to the hotspot where they are installed. "
+                        "SSH stays closed until you open it.",
+                        services=extra,
+                    ),
+                ],
+                commands=[] if not ours else ["nft list table inet irate_box"],
+                actions=[
+                    _chip(REACH, "firewall-off", M("firewall.level.off", "Everything (firewall off)"), True),
+                    *(_chip(REACH, f"firewall-{lv}", LEVEL_CHIP[lv], False, confirm[lv]) for lv in ("apps", "hub")),
+                ],
+            )
+        ]
     tcp, udp = firewall.ports(firewall.services_here(wanted), level)
     ssh = "ssh" in wanted
     try:
@@ -1514,105 +2611,242 @@ def firewall_findings(rec):
         is_open = s["id"] in wanted and _open_in_rules(*firewall.service_ports(s["id"]), rules)
         (opened if is_open else closed).append(s["name"])
         ports = ", ".join(f"{pr.upper()} {p}" for pr, p in s["listen"])
-        switches.append(action(f"firewall-svc-off:{s['id']}", M("firewall.svc-close", "Close {name} to the hotspot", name=s["name"])) if is_open else
-                        action(f"firewall-svc-on:{s['id']}", M("firewall.svc-open", "Open {name} to the hotspot", name=s["name"]),
-                               M("firewall.svc-open.confirm", "Let devices on the hotspot reach {name} ({ports})? {says}",
-                                 name=s["name"], ports=ports, says=s["says"])))
+        switches.append(
+            action(
+                f"firewall-svc-off:{s['id']}", M("firewall.svc-close", "Close {name} to the hotspot", name=s["name"])
+            )
+            if is_open
+            else action(
+                f"firewall-svc-on:{s['id']}",
+                M("firewall.svc-open", "Open {name} to the hotspot", name=s["name"]),
+                M(
+                    "firewall.svc-open.confirm",
+                    "Let devices on the hotspot reach {name} ({ports})? {says}",
+                    name=s["name"],
+                    ports=ports,
+                    says=s["says"],
+                ),
+            )
+        )
     by_hand = []
     for w in wanted:
         if firewall.PORT_SERVICE.match(w):
             port = w[5:].replace("/", " ").upper()
             by_hand.append(port)
-            switches.append(action(f"firewall-port-off:{w[5:]}", M("firewall.port-close", "Close {port} to the hotspot", port=port)))
-    notes = [M("firewall.ports", "On {iface}, it lets through TCP {tcp} and UDP {udp}, and drops the rest.", iface=iface, tcp=tcp, udp=udp),
-             M("firewall.ssh-open", "SSH from the hotspot is open, as you selected.") if ssh else
-             M("firewall.ssh-closed", "SSH from the hotspot is closed.")]
+            switches.append(
+                action(f"firewall-port-off:{w[5:]}", M("firewall.port-close", "Close {port} to the hotspot", port=port))
+            )
+    notes = [
+        M(
+            "firewall.ports",
+            "On {iface}, it lets through TCP {tcp} and UDP {udp}, and drops the rest.",
+            iface=iface,
+            tcp=tcp,
+            udp=udp,
+        ),
+        M("firewall.ssh-open", "SSH from the hotspot is open, as you selected.")
+        if ssh
+        else M("firewall.ssh-closed", "SSH from the hotspot is closed."),
+    ]
     if opened:
-        notes.append(M("firewall.svcs-open", {"one": "This add-on is open to the hotspot: {names}.",
-                                              "other": "These add-ons are open to the hotspot: {names}."}, n=len(opened), names=opened))
+        notes.append(
+            M(
+                "firewall.svcs-open",
+                {
+                    "one": "This add-on is open to the hotspot: {names}.",
+                    "other": "These add-ons are open to the hotspot: {names}.",
+                },
+                n=len(opened),
+                names=opened,
+            )
+        )
     if closed:
-        notes.append(M("firewall.svcs-closed", {"one": "This add-on is closed to the hotspot: {names}.",
-                                                "other": "These add-ons are closed to the hotspot: {names}."}, n=len(closed), names=closed))
+        notes.append(
+            M(
+                "firewall.svcs-closed",
+                {
+                    "one": "This add-on is closed to the hotspot: {names}.",
+                    "other": "These add-ons are closed to the hotspot: {names}.",
+                },
+                n=len(closed),
+                names=closed,
+            )
+        )
     if "time" in firewall.services_here(wanted):
-        notes.append(M("firewall.time-open", "The time service (UDP 123) is open to the hotspot. The box serves the time, as set on the Clock page."))
+        notes.append(
+            M(
+                "firewall.time-open",
+                "The time service (UDP 123) is open to the hotspot. The box serves the time, as set on the Clock page.",
+            )
+        )
     if by_hand:
-        notes.append(M("firewall.ports-open", {"one": "You opened this port to the hotspot: {ports}.",
-                                               "other": "You opened these ports to the hotspot: {ports}."}, n=len(by_hand), ports=by_hand))
+        notes.append(
+            M(
+                "firewall.ports-open",
+                {
+                    "one": "You opened this port to the hotspot: {ports}.",
+                    "other": "You opened these ports to the hotspot: {ports}.",
+                },
+                n=len(by_hand),
+                ports=by_hand,
+            )
+        )
     ssh_group = M("firewall.ssh", "SSH from the hotspot")
-    return [finding("firewall", title, "ok",
-                    M("firewall.on-apps", "On: devices on the hotspot reach the hub, its apps, DNS and DHCP.") if level == "apps" else
-                    M("firewall.on-hub", "On: devices on the hotspot reach the hub's pages, DNS and DHCP only."),
-                    notes=notes,
-                    actions=[_chip(REACH, "firewall-off", M("firewall.level.off", "Everything (firewall off)"), False,
-                                   M("firewall.off.confirm", "Disable the hotspot firewall? Devices on the hotspot can then reach every service "
-                                                             "on the box again.")),
-                             _chip(REACH, "firewall-apps", LEVEL_CHIP["apps"], level == "apps"),
-                             _chip(REACH, "firewall-hub", LEVEL_CHIP["hub"], level != "apps"),
-                             _chip(ssh_group, "firewall-ssh-off", M("chip.closed", "Closed"), not ssh),
-                             _chip(ssh_group, "firewall-ssh-on", M("chip.open", "Open"), ssh,
-                                   M("firewall.ssh-on.confirm", "Let devices on the hotspot reach SSH (port 22)? First disable SSH password sign-in (above).")),
-                             *switches])]
+    return [
+        finding(
+            "firewall",
+            title,
+            "ok",
+            M("firewall.on-apps", "On: devices on the hotspot reach the hub, its apps, DNS and DHCP.")
+            if level == "apps"
+            else M("firewall.on-hub", "On: devices on the hotspot reach the hub's pages, DNS and DHCP only."),
+            notes=notes,
+            actions=[
+                _chip(
+                    REACH,
+                    "firewall-off",
+                    M("firewall.level.off", "Everything (firewall off)"),
+                    False,
+                    M(
+                        "firewall.off.confirm",
+                        "Disable the hotspot firewall? Devices on the hotspot can then reach every service "
+                        "on the box again.",
+                    ),
+                ),
+                _chip(REACH, "firewall-apps", LEVEL_CHIP["apps"], level == "apps"),
+                _chip(REACH, "firewall-hub", LEVEL_CHIP["hub"], level != "apps"),
+                _chip(ssh_group, "firewall-ssh-off", M("chip.closed", "Closed"), not ssh),
+                _chip(
+                    ssh_group,
+                    "firewall-ssh-on",
+                    M("chip.open", "Open"),
+                    ssh,
+                    M(
+                        "firewall.ssh-on.confirm",
+                        "Let devices on the hotspot reach SSH (port 22)? First disable SSH password sign-in (above).",
+                    ),
+                ),
+                *switches,
+            ],
+        )
+    ]
 
 
 def _firewall(rec, what):
     """what: on, apps, hub, off; ssh-on/off; svc-on/off:<declared service id>; port-on/off:<tcp|udp>/<port>."""
-    from irate_box.root import firewall
     from irate_box.hub import services as declared_services
+    from irate_box.root import firewall
+
     if what == "off":
         if "firewall" not in rec:
-            raise Refused(M("security-fix.firewall.not-on", "The hotspot firewall was not enabled from this page. There is nothing to restore."))
+            raise Refused(
+                M(
+                    "security-fix.firewall.not-on",
+                    "The hotspot firewall was not enabled from this page. There is nothing to restore.",
+                )
+            )
         _firewall_apply(None)
         rec.pop("firewall")
-        return M("security-fix.firewall.off", "Hotspot firewall off: the hub no longer limits what devices on the hotspot can reach "
-                                              "on the box.")
+        return M(
+            "security-fix.firewall.off",
+            "Hotspot firewall off: the hub no longer limits what devices on the hotspot can reach on the box.",
+        )
     act, _, arg = what.partition(":")
     if act in ("svc-on", "svc-off") and not declared_services.by_id(arg):
-        raise Refused(M("security-fix.firewall.unknown-service", "{service} is not a service that an add-on declares.", service=arg))
-    if act in ("port-on", "port-off") and not (firewall.PORT_SERVICE.match(f"port:{arg}") and 0 < int(arg.split("/")[1]) < 65536):
+        raise Refused(
+            M(
+                "security-fix.firewall.unknown-service",
+                "{service} is not a service that an add-on declares.",
+                service=arg,
+            )
+        )
+    if act in ("port-on", "port-off") and not (
+        firewall.PORT_SERVICE.match(f"port:{arg}") and 0 < int(arg.split("/")[1]) < 65536
+    ):
         raise Refused(M("security-fix.firewall.bad-port", "A port is tcp/N or udp/N, with N from 1 to 65535."))
     if act not in ("on", "apps", "hub", "ssh-on", "ssh-off", "svc-on", "svc-off", "port-on", "port-off"):
         raise Refused(M("security-fix.firewall.unknown", "{setting} is not a hotspot firewall setting.", setting=what))
     cur = rec.get("firewall") or {"services": firewall_default(), "level": "apps"}
     services = set(cur.get("services", []))
     level = {"on": "apps", "apps": "apps", "hub": "hub"}.get(act, cur.get("level", "apps"))
-    name = {"svc-on": arg, "svc-off": arg, "port-on": f"port:{arg}", "port-off": f"port:{arg}", "ssh-on": "ssh", "ssh-off": "ssh"}.get(act)
+    name = {
+        "svc-on": arg,
+        "svc-off": arg,
+        "port-on": f"port:{arg}",
+        "port-off": f"port:{arg}",
+        "ssh-on": "ssh",
+        "ssh-off": "ssh",
+    }.get(act)
     if name:
         (services.add if act.endswith("-on") else services.discard)(name)
     fw = {"services": sorted(services), "level": level, "date": time.strftime("%Y-%m-%d")}
     _firewall_apply(fw)
     rec["firewall"] = fw
-    label = (declared_services.by_id(arg) or {}).get("name", arg) if act.startswith("svc") else arg.replace("/", " ").upper()
+    label = (
+        (declared_services.by_id(arg) or {}).get("name", arg)
+        if act.startswith("svc")
+        else arg.replace("/", " ").upper()
+    )
     if act in ("on", "apps", "hub"):
-        return sentences(FIREWALL_SAID[(act == "on", level)],
-                         M("security-fix.firewall.services", "The services that it opens are open too, where they are installed.")
-                         if act == "on" and services - {"ssh"} else None)
-    return {"ssh-on": M("security-fix.firewall.ssh-on", "SSH is open to the hotspot."),
-            "ssh-off": M("security-fix.firewall.ssh-off", "SSH is closed to the hotspot."),
-            "svc-on": M("security-fix.firewall.opened", "{name} is open to the hotspot.", name=label),
-            "svc-off": M("security-fix.firewall.closed", "{name} is closed to the hotspot.", name=label),
-            "port-on": M("security-fix.firewall.opened", "{name} is open to the hotspot.", name=label),
-            "port-off": M("security-fix.firewall.closed", "{name} is closed to the hotspot.", name=label)}[act]
+        return sentences(
+            FIREWALL_SAID[(act == "on", level)],
+            M("security-fix.firewall.services", "The services that it opens are open too, where they are installed.")
+            if act == "on" and services - {"ssh"}
+            else None,
+        )
+    return {
+        "ssh-on": M("security-fix.firewall.ssh-on", "SSH is open to the hotspot."),
+        "ssh-off": M("security-fix.firewall.ssh-off", "SSH is closed to the hotspot."),
+        "svc-on": M("security-fix.firewall.opened", "{name} is open to the hotspot.", name=label),
+        "svc-off": M("security-fix.firewall.closed", "{name} is closed to the hotspot.", name=label),
+        "port-on": M("security-fix.firewall.opened", "{name} is open to the hotspot.", name=label),
+        "port-off": M("security-fix.firewall.closed", "{name} is closed to the hotspot.", name=label),
+    }[act]
 
 
 # Guest internet access: each level said whole, and each part of the containment by its heading and what it stops.
 SHARE_LEVEL = {
     "off": M("guest-net.level.off", "Guests reach the box and no other network."),
-    "users-web": M("guest-net.level.users-web", "A device that is signed in to an account reaches the web through the box."),
-    "sheet-web": M("guest-net.level.sheet-web", "A device reaches the web through the box after its user accepts the welcome page."),
-    "sheet-all": M("guest-net.level.sheet-all", "A device reaches every service on the internet through the box after its user accepts the welcome page."),
-    "open": M("guest-net.level.open", "Every device on the hotspot reaches every service on the internet through the box, with no welcome page."),
+    "users-web": M(
+        "guest-net.level.users-web", "A device that is signed in to an account reaches the web through the box."
+    ),
+    "sheet-web": M(
+        "guest-net.level.sheet-web", "A device reaches the web through the box after its user accepts the welcome page."
+    ),
+    "sheet-all": M(
+        "guest-net.level.sheet-all",
+        "A device reaches every service on the internet through the box after its user accepts the welcome page.",
+    ),
+    "open": M(
+        "guest-net.level.open",
+        "Every device on the hotspot reaches every service on the internet through the box, with no welcome page.",
+    ),
 }
-CONTAIN_HEADING = {"lan": M("guest-net.lan", "Block private-network destinations"),
-                   "tunnels": M("guest-net.tunnels", "Block Tailscale and container routes"),
-                   "by_mac": M("guest-net.by-mac", "Bind grants to device"),
-                   "dns_hold": M("guest-net.dns-hold", "Restrict unauthorised DNS")}
+CONTAIN_HEADING = {
+    "lan": M("guest-net.lan", "Block private-network destinations"),
+    "tunnels": M("guest-net.tunnels", "Block Tailscale and container routes"),
+    "by_mac": M("guest-net.by-mac", "Bind grants to device"),
+    "dns_hold": M("guest-net.dns-hold", "Restrict unauthorised DNS"),
+}
 CONTAIN_OFF_WHY = {
-    "lan": M("guest-net.lan.why", "Guests can reach the router page, printers and shared folders on the network behind the box."),
-    "tunnels": M("guest-net.tunnels.why", "Guest traffic can enter Tailscale, WireGuard or a container network with the box's access."),
-    "by_mac": M("guest-net.by-mac.why", "A device that gets an address that another device had in the last 12 hours also gets that device's "
-                                        "internet access, without the welcome page."),
-    "dns_hold": M("guest-net.dns-hold.why", "A device that has not accepted the welcome page can look up outside names through the box. "
-                                            "Attackers can use this to send data out."),
+    "lan": M(
+        "guest-net.lan.why",
+        "Guests can reach the router page, printers and shared folders on the network behind the box.",
+    ),
+    "tunnels": M(
+        "guest-net.tunnels.why",
+        "Guest traffic can enter Tailscale, WireGuard or a container network with the box's access.",
+    ),
+    "by_mac": M(
+        "guest-net.by-mac.why",
+        "A device that gets an address that another device had in the last 12 hours also gets that device's "
+        "internet access, without the welcome page.",
+    ),
+    "dns_hold": M(
+        "guest-net.dns-hold.why",
+        "A device that has not accepted the welcome page can look up outside names through the box. "
+        "Attackers can use this to send data out.",
+    ),
 }
 
 
@@ -1620,52 +2854,124 @@ def share_findings():
     """Guests' internet (share.py), while the owner shares it: what is shared, and each part of the
     containment the owner has turned off, a finding of its own with the way back."""
     from irate_box.root import firewall, share
+
     st = share.load()
     t = M("guest-net.title", "Guest internet access")
     off = [k for k in share.CONTAIN if not st["contain"][k]]
-    turn_on = [action(f"share-contain-{k}-on", M("guest-net.contain-on", "Turn on: {name}", name=CONTAIN_HEADING[k])) for k in off]
+    turn_on = [
+        action(f"share-contain-{k}-on", M("guest-net.contain-on", "Turn on: {name}", name=CONTAIN_HEADING[k]))
+        for k in off
+    ]
     if not share.on(st):
         # Nothing shared, nothing at risk; but a part left off would be off again the moment sharing is.
-        return [finding("guest-net", t, "ok", SHARE_LEVEL["off"],
-                        notes=[M("guest-net.stay-off", {"one": "You disabled this protection, and it stays disabled when you share the internet "
-                                                               "again: {names}.",
-                                                        "other": "You disabled these protections, and they stay disabled when you share the "
-                                                                 "internet again: {names}."},
-                                 n=len(off), names=[CONTAIN_HEADING[k] for k in off])],
-                        actions=turn_on)] if off else []
+        return (
+            [
+                finding(
+                    "guest-net",
+                    t,
+                    "ok",
+                    SHARE_LEVEL["off"],
+                    notes=[
+                        M(
+                            "guest-net.stay-off",
+                            {
+                                "one": "You disabled this protection, and it stays disabled when you share the internet "
+                                "again: {names}.",
+                                "other": "You disabled these protections, and they stay disabled when you share the "
+                                "internet again: {names}.",
+                            },
+                            n=len(off),
+                            names=[CONTAIN_HEADING[k] for k in off],
+                        )
+                    ],
+                    actions=turn_on,
+                )
+            ]
+            if off
+            else []
+        )
     out = []
     if not firewall.loaded():
-        out.append(finding("guest-net-rules", t, "problem", M("guest-net.not-loaded", "Guest internet access is set, but its rules are not loaded."),
-                           fix=M("guest-net.not-loaded.fix", "On Network, Hotspot, set the level again, or turn the access off."),
-                           notes=[SHARE_LEVEL[st["level"]]], commands=["nft list table inet irate_box"]))
+        out.append(
+            finding(
+                "guest-net-rules",
+                t,
+                "problem",
+                M("guest-net.not-loaded", "Guest internet access is set, but its rules are not loaded."),
+                fix=M("guest-net.not-loaded.fix", "On Network, Hotspot, set the level again, or turn the access off."),
+                notes=[SHARE_LEVEL[st["level"]]],
+                commands=["nft list table inet irate_box"],
+            )
+        )
     for k, on in zip(off, turn_on, strict=False):
-        out.append(finding(f"guest-net-{k}", M("guest-net.part-off.title", "Guest internet access: {name} is off", name=CONTAIN_HEADING[k]), "warn",
-                           M("guest-net.part-off", "You disabled this protection."), CONTAIN_OFF_WHY[k], actions=[on]))
+        out.append(
+            finding(
+                f"guest-net-{k}",
+                M("guest-net.part-off.title", "Guest internet access: {name} is off", name=CONTAIN_HEADING[k]),
+                "warn",
+                M("guest-net.part-off", "You disabled this protection."),
+                CONTAIN_OFF_WHY[k],
+                actions=[on],
+            )
+        )
     on_parts = [k for k in share.CONTAIN if st["contain"][k]]
-    out.append(finding("guest-net", t, "ok" if not off else "warn", SHARE_LEVEL[st["level"]],
-                       notes=[M("guest-net.protections-on", {"one": "This protection is on: {names}.", "other": "These protections are on: {names}."},
-                                n=len(on_parts), names=[CONTAIN_HEADING[k] for k in on_parts]) if on_parts else
-                              M("guest-net.protections-none", "No protection is on.")],
-                       actions=[action(f"share-contain-{k}-off", M("guest-net.contain-off", "Turn off: {name}", name=CONTAIN_HEADING[k]),
-                                       M("guest-net.contain-off.confirm", "Turn off {name}? {why} The Security doctor shows a warning while it is off.",
-                                         name=CONTAIN_HEADING[k], why=CONTAIN_OFF_WHY[k]))
-                                for k in on_parts]))
+    out.append(
+        finding(
+            "guest-net",
+            t,
+            "ok" if not off else "warn",
+            SHARE_LEVEL[st["level"]],
+            notes=[
+                M(
+                    "guest-net.protections-on",
+                    {"one": "This protection is on: {names}.", "other": "These protections are on: {names}."},
+                    n=len(on_parts),
+                    names=[CONTAIN_HEADING[k] for k in on_parts],
+                )
+                if on_parts
+                else M("guest-net.protections-none", "No protection is on.")
+            ],
+            actions=[
+                action(
+                    f"share-contain-{k}-off",
+                    M("guest-net.contain-off", "Turn off: {name}", name=CONTAIN_HEADING[k]),
+                    M(
+                        "guest-net.contain-off.confirm",
+                        "Turn off {name}? {why} The Security doctor shows a warning while it is off.",
+                        name=CONTAIN_HEADING[k],
+                        why=CONTAIN_OFF_WHY[k],
+                    ),
+                )
+                for k in on_parts
+            ],
+        )
+    )
     return out
 
 
 def _share_contain(what):
     from irate_box.root import firewall, share
+
     k, _, onoff = what.rpartition("-")
     if k not in share.CONTAIN or onoff not in ("on", "off"):
-        raise Refused(M("security-fix.unknown", "The Security page has no action called {choice}.", choice=f"share-contain-{what}"))
+        raise Refused(
+            M(
+                "security-fix.unknown",
+                "The Security page has no action called {choice}.",
+                choice=f"share-contain-{what}",
+            )
+        )
     st = share.load()
     st["contain"][k] = onoff == "on"
     if share.on(st):
         fw = load_record().get("firewall")
         firewall.apply_all(dict(fw, services=firewall.services_here(fw.get("services", []))) if fw else None, st)
     share.save(st)
-    return (M("security-fix.contain.on", "Enabled: {name}.", name=CONTAIN_HEADING[k]) if onoff == "on" else
-            M("security-fix.contain.off", "Disabled: {name}.", name=CONTAIN_HEADING[k]))
+    return (
+        M("security-fix.contain.on", "Enabled: {name}.", name=CONTAIN_HEADING[k])
+        if onoff == "on"
+        else M("security-fix.contain.off", "Disabled: {name}.", name=CONTAIN_HEADING[k])
+    )
 
 
 def scan():
@@ -1690,11 +2996,18 @@ def scan():
 
 # --- fixes --------------------------------------------------------------------------------
 
+
 def _systemctl(*args):
     out = run("systemctl", *args)
     if out.returncode != 0:
-        raise Refused(M("security-fix.systemctl-failed", "The command systemctl {command} failed: {detail}", command=" ".join(args),
-                     detail=((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1]))
+        raise Refused(
+            M(
+                "security-fix.systemctl-failed",
+                "The command systemctl {command} failed: {detail}",
+                command=" ".join(args),
+                detail=((out.stderr or out.stdout).strip().splitlines() or ["?"])[-1],
+            )
+        )
 
 
 def _write_sshd_dropin(ssh):
@@ -1715,25 +3028,47 @@ def _write_sshd_dropin(ssh):
     check = run(sshd, "-t")
     if check.returncode != 0:
         SSHD_DROPIN.unlink(missing_ok=True)
-        raise Refused(M("security-fix.sshd.rejected", "sshd rejected the change, so the box did not make it: {detail}", detail=check.stderr.strip()[:200]))
+        raise Refused(
+            M(
+                "security-fix.sshd.rejected",
+                "sshd rejected the change, so the box did not make it: {detail}",
+                detail=check.stderr.strip()[:200],
+            )
+        )
     for unit in ("ssh.service", "sshd.service"):
         if run("systemctl", "reload", unit).returncode == 0:
             return
-    raise Refused(M("security-fix.sshd.not-reloaded", "The setting is saved, but sshd did not reload. The setting applies when sshd restarts."))
+    raise Refused(
+        M(
+            "security-fix.sshd.not-reloaded",
+            "The setting is saved, but sshd did not reload. The setting applies when sshd restarts.",
+        )
+    )
 
 
-SSH_SAID = {("root", True): M("security-fix.ssh.root-off", "SSH sign-in as root disabled."),
-            ("root", False): M("security-fix.ssh.root-restored", "SSH sign-in as root is restored to its previous state."),
-            ("password", True): M("security-fix.ssh.password-off", "SSH password sign-in disabled."),
-            ("password", False): M("security-fix.ssh.password-restored", "SSH password sign-in is restored to its previous state."),
-            ("forwarding", True): M("security-fix.ssh.forwarding-off", "SSH forwarding disabled: TCP, agent and X11."),
-            ("forwarding", False): M("security-fix.ssh.forwarding-restored", "SSH forwarding is restored to its previous state.")}
+SSH_SAID = {
+    ("root", True): M("security-fix.ssh.root-off", "SSH sign-in as root disabled."),
+    ("root", False): M("security-fix.ssh.root-restored", "SSH sign-in as root is restored to its previous state."),
+    ("password", True): M("security-fix.ssh.password-off", "SSH password sign-in disabled."),
+    ("password", False): M(
+        "security-fix.ssh.password-restored", "SSH password sign-in is restored to its previous state."
+    ),
+    ("forwarding", True): M("security-fix.ssh.forwarding-off", "SSH forwarding disabled: TCP, agent and X11."),
+    ("forwarding", False): M(
+        "security-fix.ssh.forwarding-restored", "SSH forwarding is restored to its previous state."
+    ),
+}
 
 
 def _ssh(rec, what, on):
     ssh = set(rec.get("ssh", {}))
     if on and what == "password" and not keys_on_box():
-        raise Refused(M("security-fix.ssh.no-keys", "No account has an SSH key on the box. Without passwords, no account could sign in over SSH."))
+        raise Refused(
+            M(
+                "security-fix.ssh.no-keys",
+                "No account has an SSH key on the box. Without passwords, no account could sign in over SSH.",
+            )
+        )
     (ssh.add if on else ssh.discard)(what)
     _write_sshd_dropin(ssh)
     rec["ssh"] = {k: rec.get("ssh", {}).get(k, time.strftime("%Y-%m-%d")) for k in ssh}
@@ -1756,30 +3091,39 @@ def _cockpit(rec, mode):
     was_enabled = run("systemctl", "is-enabled", "cockpit.socket").stdout.strip() == "enabled"
     if mode == "loopback":
         dropin.parent.mkdir(parents=True, exist_ok=True)
-        dropin.write_text("# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
-                          "[Socket]\nListenStream=\nListenStream=127.0.0.1:9090\n")
+        dropin.write_text(
+            "# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
+            "[Socket]\nListenStream=\nListenStream=127.0.0.1:9090\n"
+        )
         _systemctl("daemon-reload")
         _systemctl("restart", "cockpit.socket")
     else:
         _systemctl("disable", "--now", "cockpit.socket")
         run("systemctl", "stop", "cockpit.service")
     rec["cockpit"] = {"mode": mode, "was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d")}
-    return (M("security-fix.cockpit.loopback", "Cockpit now listens on loopback only.") if mode == "loopback" else
-            M("security-fix.cockpit.off", "Cockpit is stopped and disabled."))
+    return (
+        M("security-fix.cockpit.loopback", "Cockpit now listens on loopback only.")
+        if mode == "loopback"
+        else M("security-fix.cockpit.off", "Cockpit is stopped and disabled.")
+    )
 
 
 def _llmnr(rec, on):
     if on:
         RESOLVED_DROPIN.parent.mkdir(parents=True, exist_ok=True)
-        RESOLVED_DROPIN.write_text("# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
-                                   "[Resolve]\nLLMNR=no\n")
+        RESOLVED_DROPIN.write_text(
+            "# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n[Resolve]\nLLMNR=no\n"
+        )
         rec["llmnr"] = time.strftime("%Y-%m-%d")
     else:
         RESOLVED_DROPIN.unlink(missing_ok=True)
         rec.pop("llmnr", None)
     _systemctl("restart", "systemd-resolved.service")
-    return (M("security-fix.llmnr.off", "LLMNR is off.") if on else
-            M("security-fix.llmnr.restored", "LLMNR is restored to its previous state."))
+    return (
+        M("security-fix.llmnr.off", "LLMNR is off.")
+        if on
+        else M("security-fix.llmnr.restored", "LLMNR is restored to its previous state.")
+    )
 
 
 def _hub_on_80():
@@ -1801,10 +3145,22 @@ def _unit(rec, unit, on, reason="from this page"):
         return M("security-fix.unit.off", "{unit} is stopped and disabled.", unit=unit)
     old = units.get(unit)
     if old is None:
-        raise Refused(M("security-fix.unit.not-off", "{unit} was not disabled from this page. There is nothing to restore.", unit=unit))
+        raise Refused(
+            M(
+                "security-fix.unit.not-off",
+                "{unit} was not disabled from this page. There is nothing to restore.",
+                unit=unit,
+            )
+        )
     if "take-port-80" in old.get("reason", "") and _hub_on_80():
-        raise Refused(M("security-fix.unit.port-80", "{unit} gave port 80 to the hub, which still has it. First move the hub: run "
-                                                  "install.sh --port 8080 again. Or uninstall the hub, which gives the port back.", unit=unit))
+        raise Refused(
+            M(
+                "security-fix.unit.port-80",
+                "{unit} gave port 80 to the hub, which still has it. First move the hub: run "
+                "install.sh --port 8080 again. Or uninstall the hub, which gives the port back.",
+                unit=unit,
+            )
+        )
     units.pop(unit)
     _systemctl("enable" if old.get("was_enabled") else "start", *(["--now"] if old.get("was_enabled") else []), unit)
     if not units:
@@ -1820,7 +3176,9 @@ def _apt_logged(log, argv, timeout):
     log.write("$ " + " ".join(argv) + "\n\n")
     log.flush()
     env = dict(os.environ, **APT_ENV, HOME=os.environ.get("HOME", "/root"))
-    code = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout).returncode
+    code = subprocess.run(
+        argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout
+    ).returncode
     log.write("\n")
     return code
 
@@ -1831,7 +3189,12 @@ def _waiting():
 
 def _lists(log):
     if _apt_logged(log, ["apt-get", "update"], 900) != 0:
-        raise Refused(M("security-fix.lists.failed", "apt-get update failed. The box can be without internet access. Read the log on Updates."))
+        raise Refused(
+            M(
+                "security-fix.lists.failed",
+                "apt-get update failed. The box can be without internet access. Read the log on Updates.",
+            )
+        )
     return M("security-fix.lists.done", "The box refreshed the package lists.")
 
 
@@ -1842,15 +3205,32 @@ def _take(log, pkgs, install):
     """The waiting security updates downloaded (the pattern's Fetch) or installed."""
     if not pkgs:
         return NONE_WAITING
-    argv = ["apt-get", "install", "-y", "--only-upgrade"] + (["-o", "Dpkg::Options::=--force-confold"] if install else ["--download-only"])
+    argv = ["apt-get", "install", "-y", "--only-upgrade"] + (
+        ["-o", "Dpkg::Options::=--force-confold"] if install else ["--download-only"]
+    )
     code = _apt_logged(log, argv + pkgs, 3600)
     if code != 0:
-        raise Refused(M("security-fix.updates.failed", "apt-get stopped with exit code {code}. Read the log on Updates.", code=code))
+        raise Refused(
+            M(
+                "security-fix.updates.failed",
+                "apt-get stopped with exit code {code}. Read the log on Updates.",
+                code=code,
+            )
+        )
     if install:
-        return M("security-fix.updates.installed", {"one": "The box installed {n} security update.",
-                                                    "other": "The box installed {n} security updates."}, n=len(pkgs))
-    return M("security-fix.updates.downloaded", {"one": "The box downloaded {n} security update. It is ready to install.",
-                                                 "other": "The box downloaded {n} security updates. They are ready to install."}, n=len(pkgs))
+        return M(
+            "security-fix.updates.installed",
+            {"one": "The box installed {n} security update.", "other": "The box installed {n} security updates."},
+            n=len(pkgs),
+        )
+    return M(
+        "security-fix.updates.downloaded",
+        {
+            "one": "The box downloaded {n} security update. It is ready to install.",
+            "other": "The box downloaded {n} security updates. They are ready to install.",
+        },
+        n=len(pkgs),
+    )
 
 
 def install_security_updates(log_path):
@@ -1882,8 +3262,15 @@ def check_security_updates(rec, log_path):
         if act and pkgs:
             said.append(_take(log, pkgs, act == 2))
         else:
-            said.append(M("security-fix.updates.waiting", {"one": "{n} security update is waiting.", "other": "{n} security updates are waiting."},
-                          n=len(pkgs)) if pkgs else NONE_WAITING)
+            said.append(
+                M(
+                    "security-fix.updates.waiting",
+                    {"one": "{n} security update is waiting.", "other": "{n} security updates are waiting."},
+                    n=len(pkgs),
+                )
+                if pkgs
+                else NONE_WAITING
+            )
     return sentences(*said)
 
 
@@ -1937,13 +3324,13 @@ def fix(choice, updates_log):
     elif choice in ("proc-hide", "proc-undo"):
         msg = _proc(rec, choice == "proc-hide")
     elif choice.startswith("firewall-"):
-        msg = _firewall(rec, choice[len("firewall-"):])   # each switch checked there
+        msg = _firewall(rec, choice[len("firewall-") :])  # each switch checked there
     elif choice.startswith("share-contain-"):
-        return _share_contain(choice[len("share-contain-"):])
+        return _share_contain(choice[len("share-contain-") :])
     elif choice.startswith("autoupdate-set:"):
         msg = _autoupdate(rec, choice.split(":", 1)[1])
     elif choice.startswith("autoupdate-"):
-        msg = _autoupdate(rec, choice[len("autoupdate-"):])
+        msg = _autoupdate(rec, choice[len("autoupdate-") :])
     elif choice == "security-updates":
         return install_security_updates(updates_log)
     elif choice == "security-fetch":
@@ -1966,18 +3353,24 @@ def undo_all():
     done = []
     # Not root's lock nor the first-login marker: undoing those would bring the image's known default
     # password back. They stay as they are (the page's own Undo still puts them back before then).
-    for choice in (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else []) + \
-                  (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else []) + \
-                  (["ssh-forwarding-undo"] if "forwarding" in rec.get("ssh", {}) else []) + \
-                  (["cockpit-undo"] if "cockpit" in rec else []) + (["llmnr-undo"] if rec.get("llmnr") else []) + \
-                  [f"unit-undo:{u}" for u in rec.get("units", {})] + \
-                  [f"kernel-{n}-undo" for n in rec.get("kernel", {})] + [f"group-undo:{g}" for g in rec.get("groups", {})] + \
-                  [f"sudo-undo:{f}" for f in rec.get("sudo", {})] + [f"apt-undo:{k}" for k in rec.get("apt", {})] + \
-                  (["logs-undo"] if "logs" in rec else []) + (["proc-undo"] if "proc" in rec else []) + \
-                  (["firewall-off"] if "firewall" in rec else []) + \
-                  (["autoupdate-undo"] if "autoupdate" in rec else []):
+    for choice in (
+        (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else [])
+        + (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else [])
+        + (["ssh-forwarding-undo"] if "forwarding" in rec.get("ssh", {}) else [])
+        + (["cockpit-undo"] if "cockpit" in rec else [])
+        + (["llmnr-undo"] if rec.get("llmnr") else [])
+        + [f"unit-undo:{u}" for u in rec.get("units", {})]
+        + [f"kernel-{n}-undo" for n in rec.get("kernel", {})]
+        + [f"group-undo:{g}" for g in rec.get("groups", {})]
+        + [f"sudo-undo:{f}" for f in rec.get("sudo", {})]
+        + [f"apt-undo:{k}" for k in rec.get("apt", {})]
+        + (["logs-undo"] if "logs" in rec else [])
+        + (["proc-undo"] if "proc" in rec else [])
+        + (["firewall-off"] if "firewall" in rec else [])
+        + (["autoupdate-undo"] if "autoupdate" in rec else [])
+    ):
         try:
-            done.append(render(fix(choice, None)))   # for uninstall.sh's terminal
+            done.append(render(fix(choice, None)))  # for uninstall.sh's terminal
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             done.append(f"{choice}: {exc}")
     RECORD.unlink(missing_ok=True)
@@ -1986,6 +3379,7 @@ def undo_all():
 
 if __name__ == "__main__":
     import sys
+
     if os.geteuid() != 0:
         sys.exit("run as root")
     if sys.argv[1:] == ["scan"]:

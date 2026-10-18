@@ -76,8 +76,8 @@ from pathlib import Path
 from irate_box import confine
 from irate_box.hub import manifests
 from irate_box.hub.refused import Said
-from irate_box.msg import M, is_message
 from irate_box.library import zimcheck
+from irate_box.msg import M, is_message
 
 CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/library/librarian.py → the checkout
 STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", CHECKOUT))
@@ -94,10 +94,10 @@ LIBRARY_XML = ZIM_DIR / "library.xml"
 
 TYPES = ("release", "actions", "nightly-link", "url", "kiwix")
 DEFAULT_POLICY = {
-    "keep_old": 1,            # archived previous versions per book; 0 deletes them
+    "keep_old": 1,  # archived previous versions per book; 0 deletes them
     "check_every_hours": 24,  # for the timer; 0 means only when asked
-    "min_free_mb": 512,       # never let a download leave less than this free
-    "books_budget_mb": 0,     # all the books together at most this (0: no cap, only min_free_mb)
+    "min_free_mb": 512,  # never let a download leave less than this free
+    "books_budget_mb": 0,  # all the books together at most this (0: no cap, only min_free_mb)
     # What a scheduled check does with something newer, for books and apps: 0 only notes it,
     # 1 also downloads and checks it (ready to update), 2 also puts it in use.
     "auto_install": 2,
@@ -118,12 +118,23 @@ DEFAULT_POLICY = {
     "firmware_auto": 1,
     "kits_every_hours": 24,
 }
-POLICY_MAX = {"auto_install": 2, "hub_auto": 2, "hub_window_start": 23, "hub_window_end": 23, "books_budget_mb": 10 ** 7,
-              "mirrors_auto": 1, "firmware_auto": 1}
+POLICY_MAX = {
+    "auto_install": 2,
+    "hub_auto": 2,
+    "hub_window_start": 23,
+    "hub_window_end": 23,
+    "books_budget_mb": 10**7,
+    "mirrors_auto": 1,
+    "firmware_auto": 1,
+}
 # A surface's pair, when the saved policy has none yet: (its key, the key it followed, a cap on the value).
-SURFACES = {"mirrors_every_hours": ("check_every_hours", None), "mirrors_auto": ("auto_install", 1),
-            "firmware_every_hours": ("check_every_hours", None), "firmware_auto": ("auto_install", 1),
-            "kits_every_hours": ("check_every_hours", None)}
+SURFACES = {
+    "mirrors_every_hours": ("check_every_hours", None),
+    "mirrors_auto": ("auto_install", 1),
+    "firmware_every_hours": ("check_every_hours", None),
+    "firmware_auto": ("auto_install", 1),
+    "kits_every_hours": ("check_every_hours", None),
+}
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 API = "https://api.github.com"
@@ -137,8 +148,10 @@ class LibrarianError(Said):
 
 # Refusals said in several places, and the ones other modules say too (server.py: BUSY).
 BUSY = M("library.busy", "The librarian is already running. Wait for it to finish, then try again.")
-BRANCH_INVALID = M("library.source.branch-invalid",
-                   "Invalid branch name. Use letters, digits, '_', '.', '/' and '-', and do not start with '-'.")
+BRANCH_INVALID = M(
+    "library.source.branch-invalid",
+    "Invalid branch name. Use letters, digits, '_', '.', '/' and '-', and do not start with '-'.",
+)
 NOT_ZIP = M("library.archive.not-zip", "Archive unsupported or damaged. The download is not a valid zip file.")
 
 
@@ -151,6 +164,7 @@ def _no_rollback(name):
 
 
 # --- config and status -------------------------------------------------------
+
 
 def _read_json(path, default):
     try:
@@ -246,6 +260,7 @@ def is_running():
 
 # --- sources -----------------------------------------------------------------
 
+
 def validate_source(src):
     """Normalise and check a source definition; raises LibrarianError on anything wrong."""
     out = {"name": str(src.get("name", "")).strip(), "type": str(src.get("type", "")).strip()}
@@ -257,20 +272,31 @@ def validate_source(src):
             # A git app comes from the repository its manifest names, and nowhere else: the
             # adapt script runs on whatever is cloned.
             if out["type"] != "git":
-                raise LibrarianError(M("library.app.git-only", "The app {name} comes from git only. Set the type to git.",
-                                          name=out["name"]))
+                raise LibrarianError(
+                    M(
+                        "library.app.git-only",
+                        "The app {name} comes from git only. Set the type to git.",
+                        name=out["name"],
+                    )
+                )
             spec = APPS[out["name"]]["source"]
             branch = str(src.get("branch") or spec.get("branch", "main")).strip()
             if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
                 raise LibrarianError(BRANCH_INVALID)
             follow = str(src.get("follow") or _default_follow(out["name"]))
             if follow not in ("latest", "pinned") or (follow == "pinned" and not spec.get("pin")):
-                raise LibrarianError(M("library.app.follow-invalid",
-                                          "Invalid follow setting. Select latest, or pinned for an app whose manifest pins a commit."))
+                raise LibrarianError(
+                    M(
+                        "library.app.follow-invalid",
+                        "Invalid follow setting. Select latest, or pinned for an app whose manifest pins a commit.",
+                    )
+                )
             out.update(repo=spec["repo"], branch=branch, follow=follow, enabled=bool(src.get("enabled", True)))
             return out
         if out["type"] not in ("actions", "nightly-link"):
-            raise LibrarianError(M("library.app.type-invalid", "Invalid source type for an app bundle. Use actions or nightly-link."))
+            raise LibrarianError(
+                M("library.app.type-invalid", "Invalid source type for an app bundle. Use actions or nightly-link.")
+            )
         # A bundle app comes from the repository, workflow and artifact its manifest names, and
         # nowhere else: a request may choose only the branch. Otherwise a forged request
         # could repoint draw, the flasher or the room relay at someone else's build.
@@ -278,27 +304,46 @@ def validate_source(src):
         branch = str(src.get("branch") or spec.get("branch", "main")).strip()
         if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
             raise LibrarianError(BRANCH_INVALID)
-        out.update(repo=spec["repo"], workflow=spec["workflow"], pattern=spec["pattern"], branch=branch,
-                   enabled=bool(src.get("enabled", True)))
+        out.update(
+            repo=spec["repo"],
+            workflow=spec["workflow"],
+            pattern=spec["pattern"],
+            branch=branch,
+            enabled=bool(src.get("enabled", True)),
+        )
         return out
     if not NAME_RE.match(out["name"]) or out["name"] == "library":
-        raise LibrarianError(M("library.source.name-invalid",
-                                "Invalid source name. Use letters, digits, '.', '_' and '-' only. The name becomes <name>.zim."))
+        raise LibrarianError(
+            M(
+                "library.source.name-invalid",
+                "Invalid source name. Use letters, digits, '.', '_' and '-' only. The name becomes <name>.zim.",
+            )
+        )
     if out["type"] not in TYPES:
-        raise LibrarianError(M("library.source.type-invalid", "Invalid source type. Use one of these types: {types}.",
-                                types=list(TYPES)))
+        raise LibrarianError(
+            M("library.source.type-invalid", "Invalid source type. Use one of these types: {types}.", types=list(TYPES))
+        )
     pattern = str(src.get("pattern", "")).strip()
     if out["type"] == "kiwix":
         # A book from Kiwix's catalogue (library.kiwix.org), kept current by its catalogue name:
         # each release has a new file name, so a plain url source would never move on.
         kname = str(src.get("kiwix_name", "")).strip()
         if not KIWIX_NAME_RE.match(kname):
-            raise LibrarianError(M("library.source.kiwix-name-invalid", "Invalid source settings. Enter the name of the book "
-                                    "in the Kiwix catalogue, for example wikipedia_en_top_mini."))
+            raise LibrarianError(
+                M(
+                    "library.source.kiwix-name-invalid",
+                    "Invalid source settings. Enter the name of the book "
+                    "in the Kiwix catalogue, for example wikipedia_en_top_mini.",
+                )
+            )
         flavour = str(src.get("flavour", "")).strip()
         if flavour and not KIWIX_NAME_RE.match(flavour):
-            raise LibrarianError(M("library.source.flavour-invalid",
-                                    "Invalid source settings. Use letters, digits, '_' and '-' for the flavour."))
+            raise LibrarianError(
+                M(
+                    "library.source.flavour-invalid",
+                    "Invalid source settings. Use letters, digits, '_' and '-' for the flavour.",
+                )
+            )
         out.update(kiwix_name=kname, flavour=flavour, enabled=bool(src.get("enabled", True)))
         return out
     if out["type"] == "url":
@@ -306,12 +351,19 @@ def validate_source(src):
         if urllib.parse.urlparse(url).scheme != "https":
             # A book over plain HTTP can be swapped on the way, and its pages are served on the
             # hub's own origin.
-            raise LibrarianError(M("library.source.url-not-https", "Invalid source settings. The URL must start with https://."))
+            raise LibrarianError(
+                M("library.source.url-not-https", "Invalid source settings. The URL must start with https://.")
+            )
         out["url"] = url
     else:
         repo = str(src.get("repo", "")).strip()
         if not REPO_RE.match(repo):
-            raise LibrarianError(M("library.source.repo-invalid", "Invalid source settings. Enter the repository as account/repository, for example meshtastic/firmware."))
+            raise LibrarianError(
+                M(
+                    "library.source.repo-invalid",
+                    "Invalid source settings. Enter the repository as account/repository, for example meshtastic/firmware.",
+                )
+            )
         out["repo"] = repo
         out["pattern"] = pattern or ("*.zim" if out["type"] == "release" else "*")
     if out["type"] == "release":
@@ -319,8 +371,12 @@ def validate_source(src):
     if out["type"] in ("actions", "nightly-link"):
         workflow = str(src.get("workflow", "")).strip()
         if not re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", workflow):
-            raise LibrarianError(M("library.source.workflow-invalid",
-                                    "Invalid source settings. Enter the file name of the workflow, for example docs-zim.yml."))
+            raise LibrarianError(
+                M(
+                    "library.source.workflow-invalid",
+                    "Invalid source settings. Enter the file name of the workflow, for example docs-zim.yml.",
+                )
+            )
         out["workflow"] = workflow
         branch = str(src.get("branch", "")).strip()
         if branch:
@@ -361,6 +417,8 @@ def reload_apps():
     global APPS
     APPS = manifests.installable(manifests.load_all())
     return APPS
+
+
 BUNDLE_JSON = "irate-box-bundle.json"
 
 
@@ -382,17 +440,38 @@ def _follow(src):
 
 def _pinned_candidate(src):
     sha = APPS[src["name"]]["source"]["pin"]
-    return {"version": f"git-{sha}", "url": src["repo"], "size": 0, "zip": False, "commit": sha,
-            "label": f"pinned {sha[:7]}", "auth": None, "pinned": True}
+    return {
+        "version": f"git-{sha}",
+        "url": src["repo"],
+        "size": 0,
+        "zip": False,
+        "commit": sha,
+        "label": f"pinned {sha[:7]}",
+        "auth": None,
+        "pinned": True,
+    }
 
 
 def default_app_source(name, via="nightly-link"):
     spec = APPS[name]["source"]
     if spec["type"] == "git":
-        return {"name": name, "kind": "app", "type": "git", "repo": spec["repo"], "branch": spec.get("branch", "main"),
-                "follow": _default_follow(name)}
-    return {"name": name, "kind": "app", "type": via, "repo": spec["repo"], "workflow": spec["workflow"],
-            "branch": spec.get("branch", ""), "pattern": spec.get("pattern", f"irate-box-{name}-*")}
+        return {
+            "name": name,
+            "kind": "app",
+            "type": "git",
+            "repo": spec["repo"],
+            "branch": spec.get("branch", "main"),
+            "follow": _default_follow(name),
+        }
+    return {
+        "name": name,
+        "kind": "app",
+        "type": via,
+        "repo": spec["repo"],
+        "workflow": spec["workflow"],
+        "branch": spec.get("branch", ""),
+        "pattern": spec.get("pattern", f"irate-box-{name}-*"),
+    }
 
 
 def installed_app(name):
@@ -422,29 +501,67 @@ def check_bundle(zip_path, name):
             for info in zf.infolist():
                 parts = Path(info.filename).parts
                 if info.filename.startswith(("/", "\\")) or ".." in parts or ":" in info.filename:
-                    raise LibrarianError(M("library.bundle.unsafe-path", "Bundle rejected. It has an unsafe path: {path}", path=info.filename))
+                    raise LibrarianError(
+                        M(
+                            "library.bundle.unsafe-path",
+                            "Bundle rejected. It has an unsafe path: {path}",
+                            path=info.filename,
+                        )
+                    )
                 if (info.external_attr >> 16) & 0o170000 == 0o120000:
-                    raise LibrarianError(M("library.bundle.symlink", "Bundle rejected. It has a symbolic link: {path}", path=info.filename))
+                    raise LibrarianError(
+                        M(
+                            "library.bundle.symlink",
+                            "Bundle rejected. It has a symbolic link: {path}",
+                            path=info.filename,
+                        )
+                    )
                 total += info.file_size
                 names.add(info.filename)
             if total > APP_MAX_BYTES:
-                raise LibrarianError(M("library.bundle.too-large", "Bundle rejected. It unpacks to {size} MB. The limit is {limit} MB.",
-                                        size=total >> 20, limit=APP_MAX_BYTES >> 20))
+                raise LibrarianError(
+                    M(
+                        "library.bundle.too-large",
+                        "Bundle rejected. It unpacks to {size} MB. The limit is {limit} MB.",
+                        size=total >> 20,
+                        limit=APP_MAX_BYTES >> 20,
+                    )
+                )
             if BUNDLE_JSON not in names:
-                raise LibrarianError(M("library.bundle.marker-missing", "Archive unsupported. It is not an Irate-Box bundle: {file} is missing.",
-                                        file=BUNDLE_JSON))
+                raise LibrarianError(
+                    M(
+                        "library.bundle.marker-missing",
+                        "Archive unsupported. It is not an Irate-Box bundle: {file} is missing.",
+                        file=BUNDLE_JSON,
+                    )
+                )
             meta = json.loads(zf.read(BUNDLE_JSON))
             if meta.get("app") != name:
-                raise LibrarianError(M("library.bundle.wrong-app", "Archive unsupported. This is a bundle of {got}, not {name}.",
-                                        got=str(meta.get("app")), name=name))
+                raise LibrarianError(
+                    M(
+                        "library.bundle.wrong-app",
+                        "Archive unsupported. This is a bundle of {got}, not {name}.",
+                        got=str(meta.get("app")),
+                        name=name,
+                    )
+                )
             needs = APPS[name]["install"]["needs"]
             if not _has_needed(names, needs):
-                raise LibrarianError(M("library.bundle.incomplete", "Archive unsupported. The bundle has no {needs}.", needs=needs))
+                raise LibrarianError(
+                    M("library.bundle.incomplete", "Archive unsupported. The bundle has no {needs}.", needs=needs)
+                )
             return meta
     except zipfile.BadZipFile:
         raise LibrarianError(NOT_ZIP)
     except (ValueError, KeyError) as exc:
-        raise LibrarianError(M("library.bundle.unreadable", "Archive damaged. The box cannot read {file}: {error}", file=BUNDLE_JSON, error=str(exc)))
+        raise LibrarianError(
+            M(
+                "library.bundle.unreadable",
+                "Archive damaged. The box cannot read {file}: {error}",
+                file=BUNDLE_JSON,
+                error=str(exc),
+            )
+        )
 
 
 def _queue_root(req):
@@ -467,7 +584,9 @@ def _git(*args, timeout=300):
     if out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
         what = args[2] if args[0] == "-C" and len(args) > 2 else args[0]
-        raise LibrarianError(M("library.git.failed", "Git {what} failed: {output}", what=what, output=lines[-1] if lines else ""))
+        raise LibrarianError(
+            M("library.git.failed", "Git {what} failed: {output}", what=what, output=lines[-1] if lines else "")
+        )
     return out.stdout
 
 
@@ -476,10 +595,24 @@ def _resolve_git(src, auth):
     branch = src.get("branch", "main")
     head = _git("ls-remote", src["repo"], f"refs/heads/{branch}", timeout=60).split()
     if not head:
-        raise LibrarianError(M("library.git.no-branch", "Source not found. {repo} has no branch {branch}.", repo=src["repo"], branch=branch))
+        raise LibrarianError(
+            M(
+                "library.git.no-branch",
+                "Source not found. {repo} has no branch {branch}.",
+                repo=src["repo"],
+                branch=branch,
+            )
+        )
     sha = head[0]
-    return {"version": f"git-{sha}", "url": src["repo"], "size": 0, "zip": False, "commit": sha,
-            "label": f"{branch} at {sha[:7]}", "auth": None}
+    return {
+        "version": f"git-{sha}",
+        "url": src["repo"],
+        "size": 0,
+        "zip": False,
+        "commit": sha,
+        "label": f"{branch} at {sha[:7]}",
+        "auth": None,
+    }
 
 
 def _pack_git(src, cand, part):
@@ -497,8 +630,16 @@ def _pack_git(src, cand, part):
             _git("clone", "-q", "--depth", "1", "--branch", src.get("branch", "main"), src["repo"], str(tree))
         commit = _git("-C", str(tree), "rev-parse", "HEAD").strip()
         if want and commit != want:
-            raise LibrarianError(M("library.git.wrong-commit", "Download failed. The box asked {repo} for commit {want} and got {got}. "
-                                    "The existing version is unchanged.", repo=src["repo"], want=want[:7], got=commit[:7]))
+            raise LibrarianError(
+                M(
+                    "library.git.wrong-commit",
+                    "Download failed. The box asked {repo} for commit {want} and got {got}. "
+                    "The existing version is unchanged.",
+                    repo=src["repo"],
+                    want=want[:7],
+                    got=commit[:7],
+                )
+            )
         shutil.rmtree(tree / ".git")
         # No links from the repository survive: the adapt script and the zip below would
         # follow them, writing or packing files of the hub's own.
@@ -507,14 +648,33 @@ def _pack_git(src, cand, part):
                 path.unlink()
         adapt = APPS[name]["source"].get("adapt")
         if adapt:
-            out = subprocess.run([str(CHECKOUT / "irate-box"), Path(adapt).stem, str(tree), str(CHECKOUT / "web")],
-                                 capture_output=True, text=True, timeout=300)
+            out = subprocess.run(
+                [str(CHECKOUT / "irate-box"), Path(adapt).stem, str(tree), str(CHECKOUT / "web")],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
             if out.returncode != 0:
-                raise LibrarianError(M("library.app.adapt-failed", "The adapt script {script} failed: {output}",
-                                        script=adapt, output=(out.stderr or out.stdout).strip()[-300:]))
-        (tree / BUNDLE_JSON).write_text(json.dumps({
-            "app": name, "repository": src["repo"], "ref": "pinned" if cand.get("pinned") else src.get("branch", "main"),
-            "commit": commit, "built": now_iso(), "source": "git"}))
+                raise LibrarianError(
+                    M(
+                        "library.app.adapt-failed",
+                        "The adapt script {script} failed: {output}",
+                        script=adapt,
+                        output=(out.stderr or out.stdout).strip()[-300:],
+                    )
+                )
+        (tree / BUNDLE_JSON).write_text(
+            json.dumps(
+                {
+                    "app": name,
+                    "repository": src["repo"],
+                    "ref": "pinned" if cand.get("pinned") else src.get("branch", "main"),
+                    "commit": commit,
+                    "built": now_iso(),
+                    "source": "git",
+                }
+            )
+        )
         with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in sorted(tree.rglob("*")):
                 if path.is_file() and not path.is_symlink():
@@ -530,8 +690,15 @@ def fetch_app(src, cand):
     need = cand["size"] * 3 + 64 * 2**20
     free = _free_bytes(APP_STAGING)
     if free < need:
-        raise LibrarianError(M("library.app.no-space", "Insufficient storage for the {name} bundle. {free} MB are free and {need} MB are needed.",
-                               name=name, free=free >> 20, need=need >> 20))
+        raise LibrarianError(
+            M(
+                "library.app.no-space",
+                "Insufficient storage for the {name} bundle. {free} MB are free and {need} MB are needed.",
+                name=name,
+                free=free >> 20,
+                need=need >> 20,
+            )
+        )
     dest = APP_STAGING / f"{name}.zip"
     part = APP_STAGING / f"{name}.zip.download"
     try:
@@ -561,9 +728,17 @@ def update_app(src, cand, entry, mode):
     installed = installed_app(src["name"])
     meta = installed or {}
     entry["current"] = {
-        "version": f"run-{meta['run']}" if meta.get("run") else (f"git-{meta['commit']}" if meta.get("commit") else None),
-        "label": (f"{meta['commit'][:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
-                  if meta.get("commit") else "a build copied in by hand" if installed is not None else "not installed")}
+        "version": f"run-{meta['run']}"
+        if meta.get("run")
+        else (f"git-{meta['commit']}" if meta.get("commit") else None),
+        "label": (
+            f"{meta['commit'][:7]} ({meta.get('ref')}, built {str(meta.get('built', ''))[:10]})"
+            if meta.get("commit")
+            else "a build copied in by hand"
+            if installed is not None
+            else "not installed"
+        ),
+    }
     staged = APP_STAGING / f"{src['name']}.zip"
     if _same_build(meta, cand):
         entry.pop("fetched", None)
@@ -573,8 +748,11 @@ def update_app(src, cand, entry, mode):
         if mode == "check":
             return f"newer available: {cand['label']}"
         path, bundle = fetch_app(src, cand)
-        fetched = entry["fetched"] = {"version": cand["version"], "label": cand["label"],
-                                      "commit": str(bundle.get("commit", ""))[:7]}
+        fetched = entry["fetched"] = {
+            "version": cand["version"],
+            "label": cand["label"],
+            "commit": str(bundle.get("commit", ""))[:7],
+        }
     if mode != "update":
         return f"downloaded {fetched['commit']} ({cand['label']}); ready to install"
     if APPS[src["name"]].get("local"):
@@ -644,8 +822,13 @@ def update_app_source(src, cand, entry, mode, latest_error=None):
     pin = APPS[src["name"]]["source"].get("pin") if src["type"] == "git" else None
     if not pin:
         if cand is None:
-            raise latest_error if isinstance(latest_error, LibrarianError) else LibrarianError(
-                M("library.app.latest-unknown", "The newest version is not known: {error}", error=str(latest_error)))
+            raise (
+                latest_error
+                if isinstance(latest_error, LibrarianError)
+                else LibrarianError(
+                    M("library.app.latest-unknown", "The newest version is not known: {error}", error=str(latest_error))
+                )
+            )
         return update_app(src, cand, entry, mode)
     pinned = _pinned_candidate(src)
     entry["pinned"] = {"version": pinned["version"], "label": pinned["label"]}
@@ -691,9 +874,16 @@ def default_apps():
 
 
 def apps_snapshot():
-    return {name: {"title": m["install"].get("title", name), "installed": installed_app(name),
-                   "source_type": m.get("source", {}).get("type"), "pin": m.get("source", {}).get("pin")}
-            for name, m in APPS.items() if m.get("source")}
+    return {
+        name: {
+            "title": m["install"].get("title", name),
+            "installed": installed_app(name),
+            "source_type": m.get("source", {}).get("type"),
+            "pin": m.get("source", {}).get("pin"),
+        }
+        for name, m in APPS.items()
+        if m.get("source")
+    }
 
 
 def add_source(src):
@@ -728,13 +918,16 @@ def set_policy(**changes):
         if value is None:
             continue
         if key not in DEFAULT_POLICY or not isinstance(value, int) or not 0 <= value <= POLICY_MAX.get(key, value):
-            raise LibrarianError(M("library.policy.invalid", "Invalid policy value {value} for {key}.", key=key, value=repr(value)))
+            raise LibrarianError(
+                M("library.policy.invalid", "Invalid policy value {value} for {key}.", key=key, value=repr(value))
+            )
         cfg["policy"][key] = value
     save_config(cfg)
     return cfg["policy"]
 
 
 # --- HTTP --------------------------------------------------------------------
+
 
 def _request(url, auth=None, method="GET", extra=None):
     headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json", **(extra or {})}
@@ -765,8 +958,14 @@ class _Answer:
         try:
             return self._resp.read(*args)
         except (http.client.HTTPException, OSError) as exc:
-            raise LibrarianError(M("library.download.cut-short", "Download failed. The answer from {host} ended early: {error}",
-                                   host=self._host, error=repr(exc)[:200])) from exc
+            raise LibrarianError(
+                M(
+                    "library.download.cut-short",
+                    "Download failed. The answer from {host} ended early: {error}",
+                    host=self._host,
+                    error=repr(exc)[:200],
+                )
+            ) from exc
 
     def __getattr__(self, name):
         return getattr(self._resp, name)
@@ -783,24 +982,45 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
     if urllib.parse.urlparse(url).hostname == "api.github.com" and not url.endswith("/rate_limit"):
         _pace_hit()
     try:
-        return _Answer(urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout),
-                       urllib.parse.urlparse(url).hostname)
+        return _Answer(
+            urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout),
+            urllib.parse.urlparse(url).hostname,
+        )
     except urllib.error.HTTPError as exc:
         if exc.code == 304 and (extra or {}).get("If-None-Match"):
             raise _NotModified(exc.headers)
         if exc.headers is not None:
             _note_rate(exc.headers)
         if exc.code == 401:
-            raise LibrarianError(M("library.github.token-refused", "GitHub refused the token for {url} (HTTP 401). Enter a valid GitHub token.", url=url))
+            raise LibrarianError(
+                M(
+                    "library.github.token-refused",
+                    "GitHub refused the token for {url} (HTTP 401). Enter a valid GitHub token.",
+                    url=url,
+                )
+            )
         if exc.code == 429 or (exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0"):
             _pace_fail()
-            raise LibrarianError(M("library.github.rate-limited", "GitHub API rate limit reached. The limit depends on authentication: "
-                                     "60 requests per hour without a token, more with a token."))
-        raise LibrarianError(M("library.download.http-error", "Download failed. {url} answered HTTP {code}.", url=url, code=exc.code))
+            raise LibrarianError(
+                M(
+                    "library.github.rate-limited",
+                    "GitHub API rate limit reached. The limit depends on authentication: "
+                    "60 requests per hour without a token, more with a token.",
+                )
+            )
+        raise LibrarianError(
+            M("library.download.http-error", "Download failed. {url} answered HTTP {code}.", url=url, code=exc.code)
+        )
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         reason = getattr(exc, "reason", exc)
-        raise LibrarianError(M("library.download.unreachable", "Download failed. The box cannot reach {host}: {reason}",
-                                 host=urllib.parse.urlparse(url).hostname, reason=str(reason)))
+        raise LibrarianError(
+            M(
+                "library.download.unreachable",
+                "Download failed. The box cannot reach {host}: {reason}",
+                host=urllib.parse.urlparse(url).hostname,
+                reason=str(reason),
+            )
+        )
 
 
 # GitHub's API at hundreds of sources. Without a token it allows 60 requests
@@ -809,12 +1029,12 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
 # hourly allowance only with a token: without one each 304 still counts), and
 # what is left of the allowance recorded, so a scheduled run stops checking before it runs out and
 # leaves the rest for the next one (update(), RESERVE).
-API_CACHE = LIB_DIR / "api-cache"   # one file per address: {url, etag, body, at}
+API_CACHE = LIB_DIR / "api-cache"  # one file per address: {url, etag, body, at}
 API_CACHE_MAX = 400
 RATE_FILE = LIB_DIR / "github-rate.json"
 RESERVE = 10
 MEMO_SECONDS = 600  # the same address asked twice within this: answered from memory
-_memo = {}          # path -> (when, body)
+_memo = {}  # path -> (when, body)
 _rate = {}
 
 
@@ -824,7 +1044,7 @@ _rate = {}
 # asking when the budget is spent. A rate-limit refusal counts as a failure; PACE_FAILS of them in a row
 # halve the budget (never below PACE_FLOOR), so it asks less often; a run that goes through clean
 # gives back a tenth of what was taken, up to what GitHub allows. Without Adapt nothing here acts.
-PACE_FILE = LIB_DIR / "github-pace.json"   # {budget, limit, failures, hits: [times], adapted, backed_off}
+PACE_FILE = LIB_DIR / "github-pace.json"  # {budget, limit, failures, hits: [times], adapted, backed_off}
 PACE_FAILS = 3
 PACE_FLOOR = 5
 _pace_failed_run = False
@@ -897,8 +1117,12 @@ def clear_pace():
 
 def _note_rate(headers):
     try:
-        _rate.update(limit=int(headers["X-RateLimit-Limit"]), remaining=int(headers["X-RateLimit-Remaining"]),
-                     reset=int(headers["X-RateLimit-Reset"]), at=int(time.time()))
+        _rate.update(
+            limit=int(headers["X-RateLimit-Limit"]),
+            remaining=int(headers["X-RateLimit-Remaining"]),
+            reset=int(headers["X-RateLimit-Reset"]),
+            at=int(time.time()),
+        )
     except (KeyError, TypeError, ValueError):
         pass
 
@@ -922,8 +1146,14 @@ def _api(path, auth=None):
             try:
                 body = json.load(resp)
             except ValueError as exc:
-                raise LibrarianError(M("library.download.not-json", "Download failed. {host} answered with something that is not JSON: {error}",
-                                           host=urllib.parse.urlparse(url).hostname, error=str(exc)[:200])) from exc
+                raise LibrarianError(
+                    M(
+                        "library.download.not-json",
+                        "Download failed. {host} answered with something that is not JSON: {error}",
+                        host=urllib.parse.urlparse(url).hostname,
+                        error=str(exc)[:200],
+                    )
+                ) from exc
             etag = resp.headers.get("ETag")
     except _NotModified as nm:
         _note_rate(nm.headers)
@@ -932,7 +1162,7 @@ def _api(path, auth=None):
         API_CACHE.mkdir(parents=True, exist_ok=True)
         _write_json(kept, {"url": url, "etag": etag, "body": body, "at": int(time.time())})
         files = sorted(API_CACHE.glob("*.json"), key=lambda f: f.stat().st_mtime)
-        for old in files[:max(0, len(files) - API_CACHE_MAX)]:
+        for old in files[: max(0, len(files) - API_CACHE_MAX)]:
             old.unlink(missing_ok=True)
     _memo[path] = (time.time(), body)
     return body
@@ -946,6 +1176,7 @@ def revoked(rel):
 
 # --- resolving the newest version ---------------------------------------------
 # Each returns {"version", "url", "size", "zip", "label", "auth"}, or raises.
+
 
 def _resolve_release(src, auth):
     releases = _api(f"/repos/{src['repo']}/releases?per_page=20", auth)
@@ -962,8 +1193,14 @@ def _resolve_release(src, auth):
                     "label": f"release {rel['tag_name']} ({asset['name']})",
                     "auth": None,
                 }
-    raise LibrarianError(M("library.release.not-found", "Source not found. No release of {repo} has an asset matching {pattern}.",
-                           repo=src["repo"], pattern=src["pattern"]))
+    raise LibrarianError(
+        M(
+            "library.release.not-found",
+            "Source not found. No release of {repo} has an asset matching {pattern}.",
+            repo=src["repo"],
+            pattern=src["pattern"],
+        )
+    )
 
 
 # Which runs' artifacts a book or an app may come from: a push to the repository, a run
@@ -980,8 +1217,10 @@ def _newest_artifact(src, auth):
     runs = _api(f"/repos/{src['repo']}/actions/workflows/{src['workflow']}/runs?{query}", auth)
     passed_over = 0
     for run in runs.get("workflow_runs", []):
-        if run.get("event", "push") not in TRUSTED_EVENTS or \
-                (run.get("head_repository") or {}).get("full_name", src["repo"]).lower() != src["repo"].lower():
+        if (
+            run.get("event", "push") not in TRUSTED_EVENTS
+            or (run.get("head_repository") or {}).get("full_name", src["repo"]).lower() != src["repo"].lower()
+        ):
             passed_over += 1
             continue
         arts = _api(f"/repos/{src['repo']}/actions/runs/{run['id']}/artifacts", auth)
@@ -990,22 +1229,38 @@ def _newest_artifact(src, auth):
                 return run, art
     args = dict(workflow=src["workflow"], repo=src["repo"], pattern=src["pattern"])
     if src.get("branch"):
-        why = M("library.artifact.not-found-branch", "Source not found. No successful {workflow} run on {branch} in {repo} has an "
-                "unexpired artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.",
-                branch=src["branch"], **args)
+        why = M(
+            "library.artifact.not-found-branch",
+            "Source not found. No successful {workflow} run on {branch} in {repo} has an "
+            "unexpired artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.",
+            branch=src["branch"],
+            **args,
+        )
     else:
-        why = M("library.artifact.not-found", "Source not found. No successful {workflow} run in {repo} has an unexpired "
-                "artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.", **args)
+        why = M(
+            "library.artifact.not-found",
+            "Source not found. No successful {workflow} run in {repo} has an unexpired "
+            "artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.",
+            **args,
+        )
     if passed_over:
-        why = M("library.artifact.not-found-skipped", {
-            "one": "{why} The box skipped {n} run from a pull request or a fork.",
-            "other": "{why} The box skipped {n} runs from a pull request or a fork."}, why=why, n=passed_over)
+        why = M(
+            "library.artifact.not-found-skipped",
+            {
+                "one": "{why} The box skipped {n} run from a pull request or a fork.",
+                "other": "{why} The box skipped {n} runs from a pull request or a fork.",
+            },
+            why=why,
+            n=passed_over,
+        )
     raise LibrarianError(why)
 
 
 def _resolve_actions(src, auth):
     if not auth:
-        raise LibrarianError(M("library.actions.no-token", "An actions source needs a GitHub token. Enter a token, or use nightly-link."))
+        raise LibrarianError(
+            M("library.actions.no-token", "An actions source needs a GitHub token. Enter a token, or use nightly-link.")
+        )
     run, art = _newest_artifact(src, auth)
     return {
         "version": f"run-{run['id']}/{art['id']}",
@@ -1030,7 +1285,9 @@ def _resolve_nightly(src, auth):
         "zip": True,
         "label": f"run {run['id']} ({run.get('head_branch')}, {run.get('created_at', '')[:10]}) via nightly.link",
         "auth": None,
-        "sha256": digest[7:].lower() if digest.startswith("sha256:") and re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest) else None,
+        "sha256": digest[7:].lower()
+        if digest.startswith("sha256:") and re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest)
+        else None,
     }
 
 
@@ -1040,8 +1297,13 @@ def _resolve_url(src, auth):
         final = resp.geturl()
     version = headers.get("ETag") or headers.get("Last-Modified")
     if not version:
-        raise LibrarianError(M("library.url.no-version", "The box cannot detect updates of {url}. It sends neither ETag nor Last-Modified.",
-                               url=src["url"]))
+        raise LibrarianError(
+            M(
+                "library.url.no-version",
+                "The box cannot detect updates of {url}. It sends neither ETag nor Last-Modified.",
+                url=src["url"],
+            )
+        )
     return {
         "version": version.strip('"'),
         "url": src["url"],
@@ -1062,13 +1324,16 @@ def _opds(params):
     """The catalogue's entries for a query: [{name, title, summary, language, category, flavour,
     updated, size, articles, url}] and the total. The download is the .zim the .meta4 names."""
     import xml.etree.ElementTree as ET
+
     url = f"{KIWIX_OPDS}?{urllib.parse.urlencode(params)}"
     with _open(url, timeout=30) as resp:
         data = resp.read(4 << 20)
     try:
         root = ET.fromstring(data)
     except ET.ParseError:
-        raise LibrarianError(M("library.kiwix.catalogue-unreadable", "Download failed. The box cannot read the Kiwix catalogue."))
+        raise LibrarianError(
+            M("library.kiwix.catalogue-unreadable", "Download failed. The box cannot read the Kiwix catalogue.")
+        )
     out = []
     for e in root.findall(f"{_ATOM}entry"):
         g = lambda tag: (e.findtext(f"{_ATOM}{tag}") or "").strip()  # noqa: E731
@@ -1076,11 +1341,21 @@ def _opds(params):
         href = (link.get("href") or "") if link is not None else ""
         if not href.startswith("https://"):
             continue
-        out.append({"name": g("name"), "title": g("title"), "summary": g("summary"), "language": g("language"),
-                    "category": g("category"), "flavour": g("flavour"), "updated": g("updated")[:10],
-                    "size": int(link.get("length") or 0), "articles": int(g("articleCount") or 0),
-                    "url": href[:-len(".meta4")] if href.endswith(".meta4") else href,
-                    "meta4": href if href.endswith(".meta4") else ""})
+        out.append(
+            {
+                "name": g("name"),
+                "title": g("title"),
+                "summary": g("summary"),
+                "language": g("language"),
+                "category": g("category"),
+                "flavour": g("flavour"),
+                "updated": g("updated")[:10],
+                "size": int(link.get("length") or 0),
+                "articles": int(g("articleCount") or 0),
+                "url": href[: -len(".meta4")] if href.endswith(".meta4") else href,
+                "meta4": href if href.endswith(".meta4") else "",
+            }
+        )
     try:
         total = int(root.findtext(f"{_ATOM}totalResults") or len(out))
     except ValueError:
@@ -1103,22 +1378,44 @@ def catalogue_search(q="", language="", category="", start=0, count=20):
 
 def _resolve_kiwix(src, auth):
     entries, _ = _opds({"name": src["kiwix_name"], "count": 20})
-    entries = [e for e in entries if e["name"] == src["kiwix_name"] and (e["flavour"] or "") == (src.get("flavour") or "")]
+    entries = [
+        e for e in entries if e["name"] == src["kiwix_name"] and (e["flavour"] or "") == (src.get("flavour") or "")
+    ]
     if not entries:
         if src.get("flavour"):
-            raise LibrarianError(M("library.kiwix.not-found-flavour", "Source not found. The Kiwix catalogue has no {name} with the flavour {flavour}.",
-                                   name=src["kiwix_name"], flavour=src["flavour"]))
-        raise LibrarianError(M("library.kiwix.not-found", "Source not found. The Kiwix catalogue has no {name}.", name=src["kiwix_name"]))
+            raise LibrarianError(
+                M(
+                    "library.kiwix.not-found-flavour",
+                    "Source not found. The Kiwix catalogue has no {name} with the flavour {flavour}.",
+                    name=src["kiwix_name"],
+                    flavour=src["flavour"],
+                )
+            )
+        raise LibrarianError(
+            M("library.kiwix.not-found", "Source not found. The Kiwix catalogue has no {name}.", name=src["kiwix_name"])
+        )
     e = max(entries, key=lambda x: x["updated"])
     file = e["url"].rsplit("/", 1)[-1]
-    return {"version": file, "url": e["url"], "size": e["size"], "zip": False,
-            "label": f"{file} ({e['updated']}, from Kiwix's catalogue)", "auth": None,
-            # The metalink carries the file's sha256: checked after the download.
-            "sha256": _meta4_sha256(e.get("meta4"))}
+    return {
+        "version": file,
+        "url": e["url"],
+        "size": e["size"],
+        "zip": False,
+        "label": f"{file} ({e['updated']}, from Kiwix's catalogue)",
+        "auth": None,
+        # The metalink carries the file's sha256: checked after the download.
+        "sha256": _meta4_sha256(e.get("meta4")),
+    }
 
 
-RESOLVERS = {"release": _resolve_release, "actions": _resolve_actions, "kiwix": _resolve_kiwix,
-             "nightly-link": _resolve_nightly, "url": _resolve_url, "git": _resolve_git}
+RESOLVERS = {
+    "release": _resolve_release,
+    "actions": _resolve_actions,
+    "kiwix": _resolve_kiwix,
+    "nightly-link": _resolve_nightly,
+    "url": _resolve_url,
+    "git": _resolve_git,
+}
 
 
 def resolve(src):
@@ -1137,6 +1434,7 @@ def _meta4_sha256(url):
         return None
     try:
         import xml.etree.ElementTree as ET
+
         with _open(url, timeout=60) as resp:
             text = resp.read(1 << 20)
         for h in ET.fromstring(text).iter(f"{METALINK}hash"):
@@ -1158,8 +1456,14 @@ def _verify_sha256(path, expected, what):
             h.update(chunk)
     if h.hexdigest() != expected.lower():
         Path(path).unlink(missing_ok=True)
-        raise LibrarianError(M("library.download.digest-mismatch", "Digest mismatch. The SHA-256 of {what} differs from the one "
-                               "the source names. The existing version is unchanged.", what=what))
+        raise LibrarianError(
+            M(
+                "library.download.digest-mismatch",
+                "Digest mismatch. The SHA-256 of {what} differs from the one "
+                "the source names. The existing version is unchanged.",
+                what=what,
+            )
+        )
 
 
 def _download(url, dest, auth=None, name=None, expected=0, resume=False):
@@ -1173,10 +1477,18 @@ def _download(url, dest, auth=None, name=None, expected=0, resume=False):
         have = 0
     try:
         resp = _open(url, auth, timeout=120, extra={"Range": f"bytes={have}-"} if have else None)
-        if urllib.parse.urlparse(url).scheme == "https" and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https":
+        if (
+            urllib.parse.urlparse(url).scheme == "https"
+            and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https"
+        ):
             resp.close()  # a book is never taken over plain HTTP, even on a redirect
-            raise LibrarianError(M("library.download.http-redirect", "Download rejected. {host} redirected to plain HTTP. "
-                                   "The existing version is unchanged.", host=urllib.parse.urlparse(url).hostname))
+            raise LibrarianError(
+                M(
+                    "library.download.http-redirect",
+                    "Download rejected. {host} redirected to plain HTTP. The existing version is unchanged.",
+                    host=urllib.parse.urlparse(url).hostname,
+                )
+            )
         go_on = have and getattr(resp, "status", None) == 206  # a server that ignores Range sends it all (200)
         done = have if go_on else 0
         with resp, open(dest, "ab" if go_on else "wb") as out:
@@ -1190,8 +1502,9 @@ def _download(url, dest, auth=None, name=None, expected=0, resume=False):
                 now = time.monotonic()
                 if name and now - last >= 1:
                     last = now
-                    _write_json(PROGRESS_FILE, {"name": name, "done": done, "total": total,
-                                                "seconds": round(now - started, 1)})
+                    _write_json(
+                        PROGRESS_FILE, {"name": name, "done": done, "total": total, "seconds": round(now - started, 1)}
+                    )
     finally:
         PROGRESS_FILE.unlink(missing_ok=True)
 
@@ -1210,9 +1523,17 @@ def _extract_zim(zip_path, name, dest):
             pick = next((i for i in zims if Path(i.filename).name == f"{name}.zim"), None)
             if pick is None:
                 if len(zims) != 1:
-                    raise LibrarianError(M("library.archive.no-zim", {
-                        "one": "Archive unsupported. The zip holds {n} .zim file and it is not {name}.zim.",
-                        "other": "Archive unsupported. The zip holds {n} .zim files and none is {name}.zim."}, n=len(zims), name=name))
+                    raise LibrarianError(
+                        M(
+                            "library.archive.no-zim",
+                            {
+                                "one": "Archive unsupported. The zip holds {n} .zim file and it is not {name}.zim.",
+                                "other": "Archive unsupported. The zip holds {n} .zim files and none is {name}.zim.",
+                            },
+                            n=len(zims),
+                            name=name,
+                        )
+                    )
                 pick = zims[0]
             with zf.open(pick) as src, open(dest, "wb") as out:
                 shutil.copyfileobj(src, out, CHUNK)
@@ -1225,10 +1546,18 @@ def _check_zim(path, archived=None):
     name of the archived version being put back, if that is what this is."""
     why = zimcheck.problem(path)
     if why and archived:
-        raise LibrarianError(M("library.book.archived-unreadable", "The archived version {version} was not installed. {why} "
-                               "The book in use is unchanged.", version=archived, why=why))
+        raise LibrarianError(
+            M(
+                "library.book.archived-unreadable",
+                "The archived version {version} was not installed. {why} The book in use is unchanged.",
+                version=archived,
+                why=why,
+            )
+        )
     if why:
-        raise LibrarianError(M("library.book.unreadable", "The download was not installed. {why} The book in use is unchanged.", why=why))
+        raise LibrarianError(
+            M("library.book.unreadable", "The download was not installed. {why} The book in use is unchanged.", why=why)
+        )
 
 
 def _free_bytes(path):
@@ -1252,9 +1581,12 @@ KIWIX_BATCH = 100
 def _kiwix(*args):
     manage = shutil.which("kiwix-manage")
     if not manage:
-        raise LibrarianError(M("library.kiwix.manage-missing", "Cache dependencies missing. Install kiwix-tools to get kiwix-manage."))
-    return subprocess.run([manage, *map(str, args)], check=False, stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL).returncode
+        raise LibrarianError(
+            M("library.kiwix.manage-missing", "Cache dependencies missing. Install kiwix-tools to get kiwix-manage.")
+        )
+    return subprocess.run(
+        [manage, *map(str, args)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    ).returncode
 
 
 def _kiwix_add(lib, zims):
@@ -1277,7 +1609,7 @@ def rebuild_library():
     zims = sorted(ZIM_DIR.glob("*.zim"))
     left = []
     for i in range(0, len(zims), KIWIX_BATCH):
-        left += _kiwix_add(new, zims[i:i + KIWIX_BATCH])
+        left += _kiwix_add(new, zims[i : i + KIWIX_BATCH])
     if new.exists():
         os.replace(new, LIBRARY_XML)
     return left
@@ -1290,6 +1622,7 @@ def _splice(drop_name, add_from=None):
     so even one `add` took 17 s; describing the new book alone, in an empty library beside the
     real one, and splicing its entry in takes a fraction of that. None if library.xml is unreadable."""
     import xml.etree.ElementTree as ET
+
     try:
         tree = ET.parse(LIBRARY_XML)
     except (OSError, ET.ParseError):
@@ -1365,10 +1698,17 @@ def over_budget(name, size, policy):
     if after <= budget:
         return None
     largest = sorted(ZIM_DIR.glob("*.zim"), key=lambda p: p.stat().st_size, reverse=True)[:3]
-    return M("library.book.over-limit", "Book storage limit exceeded. With this book, the books would use {after} MB of the "
-             "{limit} MB limit. They use {now} MB now. To make room, remove a book or increase the limit. The largest books now: {largest}.",
-             after=after >> 20, limit=budget >> 20, now=books_bytes() >> 20,
-             largest=[M("library.book.size", "{name} ({size} MB)", name=p.stem, size=p.stat().st_size >> 20) for p in largest])
+    return M(
+        "library.book.over-limit",
+        "Book storage limit exceeded. With this book, the books would use {after} MB of the "
+        "{limit} MB limit. They use {now} MB now. To make room, remove a book or increase the limit. The largest books now: {largest}.",
+        after=after >> 20,
+        limit=budget >> 20,
+        now=books_bytes() >> 20,
+        largest=[
+            M("library.book.size", "{name} ({size} MB)", name=p.stem, size=p.stat().st_size >> 20) for p in largest
+        ],
+    )
 
 
 def fetch_book(src, cand, policy, status_entry):
@@ -1377,8 +1717,14 @@ def fetch_book(src, cand, policy, status_entry):
     need = cand["size"] * (2 if cand["zip"] else 1) + policy["min_free_mb"] * 2**20
     free = _free_bytes(ZIM_DIR)
     if cand["size"] and free < need:
-        raise LibrarianError(M("library.book.no-space", "Insufficient storage. {free} MB are free and {need} MB are needed.",
-                               free=free >> 20, need=need >> 20))
+        raise LibrarianError(
+            M(
+                "library.book.no-space",
+                "Insufficient storage. {free} MB are free and {need} MB are needed.",
+                free=free >> 20,
+                need=need >> 20,
+            )
+        )
     over = over_budget(name, cand["size"], policy)
     if over:
         raise LibrarianError(over)
@@ -1406,8 +1752,11 @@ def fetch_book(src, cand, policy, status_entry):
     finally:
         part.unlink(missing_ok=True)
         zim_tmp.unlink(missing_ok=True)
-    status_entry["fetched"] = {"version": cand["version"], "label": cand["label"],
-                               "size": staged_book(name).stat().st_size}
+    status_entry["fetched"] = {
+        "version": cand["version"],
+        "label": cand["label"],
+        "size": staged_book(name).stat().st_size,
+    }
 
 
 def _fetched(name, cand, entry):
@@ -1439,8 +1788,12 @@ def install(src, cand, policy, status_entry):
 
     library_put(book)
     archived = _prune_archive(name, policy["keep_old"])
-    status_entry["current"] = {"version": cand["version"], "label": cand["label"],
-                               "size": book.stat().st_size, "installed": now_iso()}
+    status_entry["current"] = {
+        "version": cand["version"],
+        "label": cand["label"],
+        "size": book.stat().st_size,
+        "installed": now_iso(),
+    }
     status_entry["archive"] = archived
 
 
@@ -1457,8 +1810,16 @@ def rollback(name, version=None):
     if version:
         choices = [p for p in choices if p.stem == _safe(version)]
     if not choices:
-        raise LibrarianError(M("library.rollback.version-none", "No cached rollback version of {name} called {version}.",
-                                 name=name, version=version) if version else _no_rollback(name))
+        raise LibrarianError(
+            M(
+                "library.rollback.version-none",
+                "No cached rollback version of {name} called {version}.",
+                name=name,
+                version=version,
+            )
+            if version
+            else _no_rollback(name)
+        )
     pick = choices[0]
     with Lock():
         status = load_status()
@@ -1479,14 +1840,19 @@ def rollback(name, version=None):
         os.replace(tmp, book)
         pick.unlink()
         library_put(book)
-        entry["current"] = {"version": pick.stem, "label": f"rolled back to {pick.stem}",
-                            "size": book.stat().st_size, "installed": now_iso()}
+        entry["current"] = {
+            "version": pick.stem,
+            "label": f"rolled back to {pick.stem}",
+            "size": book.stat().st_size,
+            "installed": now_iso(),
+        }
         entry["archive"] = _prune_archive(name, max(load_config()["policy"]["keep_old"], 1))
         save_status(status)
         return pick.stem
 
 
 # --- the run -----------------------------------------------------------------
+
 
 def _due(entry, hours):
     if hours <= 0:
@@ -1532,12 +1898,15 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         # On a metered network (a phone's hotspot, say) the scheduled run waits for another; one
         # started by hand goes ahead (the page asks first).
         from irate_box.hub import netpolicy
+
         why = netpolicy.gate()
         if why:
             log(why)
             return {"_metered": why}
     # The timer goes as far as the owner chose; asked for by name or from /admin, it does what was asked.
-    mode = mode or (("check", "fetch", "update")[policy["auto_install"]] if scheduled else "update" if download else "check")
+    mode = mode or (
+        ("check", "fetch", "update")[policy["auto_install"]] if scheduled else "update" if download else "check"
+    )
     results = {}
     _memo.clear()  # a run asks afresh (ETags keep that cheap), then once per address
     global _pace_failed_run
@@ -1546,7 +1915,11 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         status = load_status()
         # A scheduled run takes the most overdue first, and stops asking GitHub while a few of
         # its hourly requests are left: the rest wait for the next run (spread across the day).
-        order = sorted(cfg["sources"], key=lambda s: (status.get(s["name"]) or {}).get("last_check") or "") if scheduled else cfg["sources"]
+        order = (
+            sorted(cfg["sources"], key=lambda s: (status.get(s["name"]) or {}).get("last_check") or "")
+            if scheduled
+            else cfg["sources"]
+        )
         for src in order:
             name = src["name"]
             if names and name not in names:
@@ -1557,10 +1930,17 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
             if scheduled and not _due(entry, policy["check_every_hours"]):
                 continue
             left = rate()
-            if scheduled and src.get("type") in ("release", "actions", "nightly-link") and left.get("remaining") is not None \
-                    and left["remaining"] < RESERVE and left.get("reset", 0) > time.time():
+            if (
+                scheduled
+                and src.get("type") in ("release", "actions", "nightly-link")
+                and left.get("remaining") is not None
+                and left["remaining"] < RESERVE
+                and left.get("reset", 0) > time.time()
+            ):
                 entry["deferred"] = now_iso()
-                results[name] = f"waiting: rate-limit budget exhausted ({left['remaining']} of {left.get('limit')} GitHub requests left this hour)"
+                results[name] = (
+                    f"waiting: rate-limit budget exhausted ({left['remaining']} of {left.get('limit')} GitHub requests left this hour)"
+                )
                 continue
             budget_left = pace_left()
             if scheduled and src.get("type") in ("release", "actions", "nightly-link") and budget_left == 0:
@@ -1604,27 +1984,36 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         # The firmware mirror (firmware.py), on the same schedule and under the same lock.
         if not names or "firmware" in names:
             from irate_box.library import firmware
+
             fw = firmware.settings()
             if (fw["enabled"] or fw["configs"]) and (not scheduled or firmware.due(policy["firmware_every_hours"])):
                 try:
-                    results["firmware"] = firmware.sync(check_only=(not policy["firmware_auto"]) if scheduled else (mode == "check"), log=log)
+                    results["firmware"] = firmware.sync(
+                        check_only=(not policy["firmware_auto"]) if scheduled else (mode == "check"), log=log
+                    )
                 except (LibrarianError, OSError) as exc:
                     results["firmware"] = f"error: {exc}"
                 log(f"firmware: {results['firmware']}")
         # Mirrored git repositories (mirrors.py), likewise.
         if not names or "mirrors" in names:
             from irate_box.library import mirrors
+
             if mirrors.load():
                 # One stage failing doesn't stop the ones after it (the hub's own update among them).
                 try:
-                    results["mirrors"] = mirrors.sync_all(check_only=(not policy["mirrors_auto"]) if scheduled else (mode == "check"),
-                                                          scheduled=scheduled, hours=policy["mirrors_every_hours"], log=log)
+                    results["mirrors"] = mirrors.sync_all(
+                        check_only=(not policy["mirrors_auto"]) if scheduled else (mode == "check"),
+                        scheduled=scheduled,
+                        hours=policy["mirrors_every_hours"],
+                        log=log,
+                    )
                 except (LibrarianError, OSError) as exc:
                     results["mirrors"] = f"error: {exc}"
                     log(f"mirrors: error: {exc}")
         # Toolkits (toolkits.py): installs whose time is up removed; one due kit's cache refreshed.
         if (scheduled and not names) or (names and "toolkits" in names):
             from irate_box.library import toolkits
+
             try:
                 line = toolkits.step(policy, log=log)
             except (LibrarianError, OSError) as exc:
@@ -1636,6 +2025,7 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         # choices, asked of root when due and no export is waiting.
         if scheduled and not names:
             from irate_box.hub import kitauto
+
             try:
                 kit = json.loads((STATE_DIR / "kits" / "kit.json").read_text())
             except (OSError, ValueError):
@@ -1661,13 +2051,14 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
         # The hub's own updates (selfupdate.py): one step per run of the timer.
         if scheduled and not names:
             from irate_box.library import selfupdate
+
             results["hub"] = selfupdate.step(policy, log=log)
             log(f"hub: {results['hub']}")
     return results
 
 
 PKGWATCH_STATE = LIB_DIR / "pkgwatch-state.json"
-PKGWATCH_PUBLIC = STATE_DIR / "control" / "pkgwatch.json"   # root/pkgwatch.py publishes it
+PKGWATCH_PUBLIC = STATE_DIR / "control" / "pkgwatch.json"  # root/pkgwatch.py publishes it
 
 
 def packages_step(now=None):
@@ -1676,7 +2067,7 @@ def packages_step(now=None):
     now = now or time.time()
     pub = _read_json(PKGWATCH_PUBLIC, {})
     state = _read_json(PKGWATCH_STATE, {})
-    if "queued" in state and not isinstance(state.get("each"), dict):   # an older state: one clock for all
+    if "queued" in state and not isinstance(state.get("each"), dict):  # an older state: one clock for all
         state = {"each": {pid: state["queued"] for pid in pub}}
     each = state.setdefault("each", {})
     queued = []
@@ -1701,19 +2092,33 @@ def record_run(fn, scheduled):
     timer's runs) when one last reached the hub's own update, so a crash is not left only in the
     journal while every scheduled run fails for hours without a doctor noticing."""
     import traceback
+
     rec = _read_json(LAST_RUN, {})
     run = {"started": time.time(), "scheduled": scheduled, "finished": None, "ok": None, "error": None, "stages": []}
     try:
         results = fn()
-        run.update(ok=not any(str(o).startswith("error") for o in outcomes(results)), stages=sorted(results),
-                   errors=[f"{k}: {o}" for k, v in results.items() for o in ([v] if not isinstance(v, dict) else
-                           [f"{n}: {x}" for n, x in v.items()]) if str(o).startswith("error") or ": error" in str(o)][:10])
+        run.update(
+            ok=not any(str(o).startswith("error") for o in outcomes(results)),
+            stages=sorted(results),
+            errors=[
+                f"{k}: {o}"
+                for k, v in results.items()
+                for o in ([v] if not isinstance(v, dict) else [f"{n}: {x}" for n, x in v.items()])
+                if str(o).startswith("error") or ": error" in str(o)
+            ][:10],
+        )
         if scheduled and "hub" in results:
             rec["hub_stage_at"] = time.time()
         return results
     except BaseException as exc:
-        run.update(ok=False, error=f"{type(exc).__name__}: {exc}"[:400],
-                   where=" < ".join(f"{f.name} ({Path(f.filename).name}:{f.lineno})" for f in reversed(traceback.extract_tb(exc.__traceback__)[-3:])))
+        run.update(
+            ok=False,
+            error=f"{type(exc).__name__}: {exc}"[:400],
+            where=" < ".join(
+                f"{f.name} ({Path(f.filename).name}:{f.lineno})"
+                for f in reversed(traceback.extract_tb(exc.__traceback__)[-3:])
+            ),
+        )
         raise
     finally:
         run["finished"] = time.time()
@@ -1738,17 +2143,27 @@ def outcomes(results):
 
 def _hub_update_state():
     from irate_box.library import selfupdate
+
     return selfupdate.load_state()
 
 
 def snapshot():
     """Everything the admin page shows."""
     cfg = load_config()
-    return {"policy": cfg["policy"], "sources": cfg["sources"], "status": load_status(),
-            "token_set": bool(token()), "running": is_running(), "types": list(TYPES),
-            "progress": progress(), "apps": apps_snapshot(), "hub_update": _hub_update_state(), "github": rate(),
-            "pace": {k: v for k, v in pace().items() if k != "hits"} | {"left": pace_left()},
-            "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None}
+    return {
+        "policy": cfg["policy"],
+        "sources": cfg["sources"],
+        "status": load_status(),
+        "token_set": bool(token()),
+        "running": is_running(),
+        "types": list(TYPES),
+        "progress": progress(),
+        "apps": apps_snapshot(),
+        "hub_update": _hub_update_state(),
+        "github": rate(),
+        "pace": {k: v for k, v in pace().items() if k != "hits"} | {"left": pace_left()},
+        "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None,
+    }
 
 
 # --- the books, a page at a time -------------------------------------------------------------
@@ -1763,6 +2178,7 @@ _catalogue_cache = {"key": None, "rows": None}
 def _catalogue():
     """{file name: {id, title, language, date, description, articles}} from library.xml, cached."""
     import xml.etree.ElementTree as ET
+
     try:
         key = LIBRARY_XML.stat().st_mtime_ns
     except OSError:
@@ -1771,9 +2187,14 @@ def _catalogue():
         rows = {}
         try:
             for b in ET.parse(LIBRARY_XML).getroot().iter("book"):
-                rows[Path(b.get("path", "")).name] = {"id": b.get("id"), "title": b.get("title") or "", "language": b.get("language") or "",
-                                                     "date": b.get("date") or "", "description": b.get("description") or "",
-                                                     "articles": int(b.get("articleCount") or 0)}
+                rows[Path(b.get("path", "")).name] = {
+                    "id": b.get("id"),
+                    "title": b.get("title") or "",
+                    "language": b.get("language") or "",
+                    "date": b.get("date") or "",
+                    "description": b.get("description") or "",
+                    "articles": int(b.get("articleCount") or 0),
+                }
         except (OSError, ET.ParseError):
             rows = {}
         _catalogue_cache.update(key=key, rows=rows)
@@ -1792,39 +2213,72 @@ def book_rows():
         meta = cat.get(f"{name}.zim") or {}
         st = status.get(name) or {}
         cur, latest = st.get("current") or {}, st.get("latest") or {}
-        state = ("not installed" if not f else "unreadable" if not meta else "failed" if st.get("error")
-                 else "newer" if latest.get("version") and latest.get("version") != cur.get("version") else "ok")
+        state = (
+            "not installed"
+            if not f
+            else "unreadable"
+            if not meta
+            else "failed"
+            if st.get("error")
+            else "newer"
+            if latest.get("version") and latest.get("version") != cur.get("version")
+            else "ok"
+        )
         try:
             size = f.stat().st_size if f else 0
         except OSError:
             size = 0
-        rows.append({"name": name, "title": meta.get("title") or name, "language": meta.get("language", ""), "date": meta.get("date", ""),
-                     "description": meta.get("description", ""), "size": size, "state": state, "kept": name in sources})
+        rows.append(
+            {
+                "name": name,
+                "title": meta.get("title") or name,
+                "language": meta.get("language", ""),
+                "date": meta.get("date", ""),
+                "description": meta.get("description", ""),
+                "size": size,
+                "state": state,
+                "kept": name in sources,
+            }
+        )
     return rows, sources, status
 
 
 def books_page(q="", language="", state="", kept="", sort="title", page=1, per_page=PER_PAGE, names_only=False):
     """One page of the books, filtered and sorted, with a summary of all of them."""
     rows, sources, status = book_rows()
-    summary = {"count": len(rows), "bytes": sum(r["size"] for r in rows), "languages": {}, "states": {}, "kept": sum(r["kept"] for r in rows),
-               "budget_mb": load_config()["policy"]["books_budget_mb"]}
+    summary = {
+        "count": len(rows),
+        "bytes": sum(r["size"] for r in rows),
+        "languages": {},
+        "states": {},
+        "kept": sum(r["kept"] for r in rows),
+        "budget_mb": load_config()["policy"]["books_budget_mb"],
+    }
     for r in rows:
         if r["language"]:
             summary["languages"][r["language"]] = summary["languages"].get(r["language"], 0) + 1
         summary["states"][r["state"]] = summary["states"].get(r["state"], 0) + 1
     q = (q or "").strip().lower()
-    hit = [r for r in rows if (not q or q in r["title"].lower() or q in r["name"].lower() or q in r["description"].lower())
-           and (not language or r["language"] == language) and (not state or r["state"] == state)
-           and (kept not in ("yes", "no") or r["kept"] == (kept == "yes"))]
-    key = {"title": lambda r: (r["title"].lower(), r["name"]), "size": lambda r: (-r["size"], r["name"]),
-           "date": lambda r: (r["date"], r["name"])}.get(sort, lambda r: (r["title"].lower(), r["name"]))
+    hit = [
+        r
+        for r in rows
+        if (not q or q in r["title"].lower() or q in r["name"].lower() or q in r["description"].lower())
+        and (not language or r["language"] == language)
+        and (not state or r["state"] == state)
+        and (kept not in ("yes", "no") or r["kept"] == (kept == "yes"))
+    ]
+    key = {
+        "title": lambda r: (r["title"].lower(), r["name"]),
+        "size": lambda r: (-r["size"], r["name"]),
+        "date": lambda r: (r["date"], r["name"]),
+    }.get(sort, lambda r: (r["title"].lower(), r["name"]))
     hit.sort(key=key, reverse=(sort == "date"))
     if names_only:
         return {"names": [r["name"] for r in hit], "matching": len(hit)}
     per_page = max(10, min(int(per_page or PER_PAGE), 200))
     pages = max(1, -(-len(hit) // per_page))
     page = max(1, min(int(page or 1), pages))
-    out = hit[(page - 1) * per_page:page * per_page]
+    out = hit[(page - 1) * per_page : page * per_page]
     for r in out:  # a page's books carry their source and status, for the card that opens on demand
         r["source"] = sources.get(r["name"])
         r["status"] = status.get(r["name"]) or {}
@@ -1832,6 +2286,7 @@ def books_page(q="", language="", state="", kept="", sort="title", page=1, per_p
 
 
 # --- CLI ---------------------------------------------------------------------
+
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Keep the hub's ZIM books up to date.")
@@ -1858,8 +2313,18 @@ def main(argv=None):
     pol.add_argument("--keep-old", type=int)
     pol.add_argument("--check-every-hours", type=int)
     pol.add_argument("--min-free-mb", type=int)
-    for k in ("auto-install", "hub-check-every-hours", "hub-auto", "hub-window-start", "hub-window-end",
-              "mirrors-every-hours", "mirrors-auto", "firmware-every-hours", "firmware-auto", "kits-every-hours"):
+    for k in (
+        "auto-install",
+        "hub-check-every-hours",
+        "hub-auto",
+        "hub-window-start",
+        "hub-window-end",
+        "mirrors-every-hours",
+        "mirrors-auto",
+        "firmware-every-hours",
+        "firmware-auto",
+        "kits-every-hours",
+    ):
         pol.add_argument(f"--{k}", type=int)
     sub.add_parser("hub-update")
     t = sub.add_parser("token")
@@ -1895,10 +2360,15 @@ def main(argv=None):
         elif args.cmd == "rollback":
             print(f"{args.name}: now {rollback(args.name, args.version)}")
         elif args.cmd == "policy":
-            print(json.dumps(set_policy(**{k: getattr(args, k) for k in DEFAULT_POLICY
-                                           if getattr(args, k, None) is not None}), indent=2))
+            print(
+                json.dumps(
+                    set_policy(**{k: getattr(args, k) for k in DEFAULT_POLICY if getattr(args, k, None) is not None}),
+                    indent=2,
+                )
+            )
         elif args.cmd == "hub-update":
             from irate_box.library import selfupdate
+
             with Lock():
                 print(selfupdate.step(load_config()["policy"]))
         elif args.cmd == "token":
@@ -1912,6 +2382,7 @@ def main(argv=None):
                     print(f"added {app}")
         elif args.cmd == "firmware":
             from irate_box.library import firmware
+
             with Lock():
                 print(firmware.sync(check_only=args.check))
         elif args.cmd == "rebuild-library":
@@ -1920,12 +2391,17 @@ def main(argv=None):
         elif args.cmd == "app-fetch":
             if args.app not in APPS:
                 raise LibrarianError(_unknown_app(APPS))
-            src = next((s for s in load_config()["sources"] if s["name"] == args.app),
-                       validate_source(default_app_source(args.app)))
+            src = next(
+                (s for s in load_config()["sources"] if s["name"] == args.app),
+                validate_source(default_app_source(args.app)),
+            )
             with Lock():
                 path, meta = fetch_app_source(src)
             print(path)
-            print(f"{args.app}: {meta.get('commit', '')[:7]} ({meta.get('ref')}, built {meta.get('built')})", file=sys.stderr)
+            print(
+                f"{args.app}: {meta.get('commit', '')[:7]} ({meta.get('ref')}, built {meta.get('built')})",
+                file=sys.stderr,
+            )
     except LibrarianError as exc:
         print(f"librarian: {exc}", file=sys.stderr)
         return 1

@@ -75,9 +75,7 @@ for kind in ("symlink", "hardlink"):
     check(f"safeio.write over a {kind}: the target is untouched", untouched(v))
     check(
         f"safeio.write over a {kind}: the name is now a plain file of its own",
-        not p.is_symlink()
-        and p.stat().st_nlink == 1
-        and json.loads(p.read_text()) == {"ok": 1},
+        not p.is_symlink() and p.stat().st_nlink == 1 and json.loads(p.read_text()) == {"ok": 1},
     )
     p = STATE / "control" / f"log-{kind}"
     v = plant(p, kind)
@@ -168,9 +166,7 @@ writers = {
     ),
     "security-audit.json": (
         hub_control.AUDIT_STATE,
-        lambda: hub_control.secdoctor.write_report(
-            {"counts": {}}, hub_control.AUDIT_STATE
-        ),
+        lambda: hub_control.secdoctor.write_report({"counts": {}}, hub_control.AUDIT_STATE),
     ),
     "uplink.json (the watchdog, F13)": (
         uplink.STATUS,
@@ -252,9 +248,7 @@ check(
     "a folder named like a request does not stop the helper",
     crashed is None
     and not list(hub_control.REQUESTS.iterdir())
-    and all(
-        (hub_control.RESULTS / f"000000000000000{n}.json").exists() for n in (4, 5)
-    ),
+    and all((hub_control.RESULTS / f"000000000000000{n}.json").exists() for n in (4, 5)),
     crashed,
 )
 
@@ -284,8 +278,7 @@ check(
 )
 check(
     "the quarantine is never chowned by root",
-    "chown(QUARANTINE" not in src["irate_box/root/health.py"]
-    and '"mv", "-n", "-T"' in src["irate_box/root/health.py"],
+    "chown(QUARANTINE" not in src["irate_box/root/health.py"] and '"mv", "-n", "-T"' in src["irate_box/root/health.py"],
 )
 check(
     "kiwix_rebuild does not chown the hub's new library by path",
@@ -297,8 +290,7 @@ check(
 )
 check(
     "the USB copy is made through safeio, on stick mounts without links",
-    "safeio.create(tmp" in src["irate_box/root/usbstick.py"]
-    and "nosymfollow" in src["irate_box/root/usbstick.py"],
+    "safeio.create(tmp" in src["irate_box/root/usbstick.py"] and "nosymfollow" in src["irate_box/root/usbstick.py"],
 )
 check(
     "the hub queues requests from its own folder, not control/",
@@ -308,16 +300,10 @@ check(
 ts = src["scripts/tailscale-apply.sh"]
 check(
     "tailscale-apply writes the hub's file only as the hub, reads plain files only",
-    "runuser -u $HUB_USER" in ts
-    and '[ ! -L "$WANT" ]' in ts
-    and not re.search(r"printf 'off\\\\n' >\"\$WANT\"", ts),
+    "runuser -u $HUB_USER" in ts and '[ ! -L "$WANT" ]' in ts and not re.search(r"printf 'off\\\\n' >\"\$WANT\"", ts),
 )
 inst = src["install.sh"]
-bad = [
-    line.strip()
-    for line in inst.splitlines()
-    if re.search(r'install -d .*"\$STATE/', line)
-]
+bad = [line.strip() for line in inst.splitlines() if re.search(r'install -d .*"\$STATE/', line)]
 check(
     "install.sh makes no $STATE folder with install -d (state_dir walks without links)",
     not bad,
@@ -325,11 +311,7 @@ check(
 )
 check(
     "install.sh chowns nothing in control/",
-    (
-        "control/netinv.json" not in inst.split("netinv --write")[1].split("\n")[1]
-        if "netinv --write" in inst
-        else True
-    ),
+    ("control/netinv.json" not in inst.split("netinv --write")[1].split("\n")[1] if "netinv --write" in inst else True),
 )
 
 # --- app-install: one read of the staged bundle, into root's own copy ------------------
@@ -344,9 +326,7 @@ def bundle(path, app="draw", extra=None):
         zf.writestr("index.html", "<h1>draw</h1>")
         zf.writestr(
             "irate-box-bundle.json",
-            json.dumps(
-                {"app": app, "commit": "abc1234", "ref": "main", "built": "2026-10-06"}
-            ),
+            json.dumps({"app": app, "commit": "abc1234", "ref": "main", "built": "2026-10-06"}),
         )
         for k, v in (extra or {}).items():
             zf.writestr(k, v)
@@ -376,9 +356,7 @@ for unsafe in ("../escape.html", "/escape.html", "nested/../../escape.html"):
         refused = True
     check(
         f"unsafe bundle member refused: {unsafe}",
-        refused
-        and not (T / "share/apps/escape.html").exists()
-        and not any((T / "taken").iterdir()),
+        refused and not (T / "share/apps/escape.html").exists() and not any((T / "taken").iterdir()),
     )
     bad_bundle.unlink(missing_ok=True)
 
@@ -393,9 +371,7 @@ with patch.object(hub_control.urllib.request, "build_opener") as opener:
             refused = False
         except ValueError:
             refused = True
-        check(
-            f"unsafe download URL refused: {unsafe_url}", refused and not opener.called
-        )
+        check(f"unsafe download URL refused: {unsafe_url}", refused and not opener.called)
     request = Request("https://example.org/file")
     hub_control._web_open(request, timeout=1)
     redirect = opener.call_args.args[0]
@@ -452,8 +428,7 @@ os.rename(T / "apps.real", real)
 src_ = (REPO / "irate_box/root/hub_control.py").read_text()
 check(
     "the check and the extraction read root's copy only",
-    "_install_taken(app, taken, zip_path)" in src_
-    and "Path(zip_path).unlink" not in src_,
+    "_install_taken(app, taken, zip_path)" in src_ and "Path(zip_path).unlink" not in src_,
 )
 
 # --- the offline kit: kits/ as a link the hub planted ---------------------------------------------
@@ -474,10 +449,7 @@ check(
 src_ = (REPO / "irate_box/root/hub_control.py").read_text()
 check(
     "the kit is built in root's own work folder and moved into kits/ through its fd, with no chown or chmod by path",
-    "dst_dir_fd=self.fd" in src_
-    and "KIT_WORK" in src_
-    and "os.chown(KITS" not in src_
-    and "os.chmod(KITS" not in src_,
+    "dst_dir_fd=self.fd" in src_ and "KIT_WORK" in src_ and "os.chown(KITS" not in src_ and "os.chmod(KITS" not in src_,
 )
 
 # --- install.sh's state_dir, for real --------------------------------------------------------
@@ -492,9 +464,8 @@ S.mkdir()
 
 
 def state_dir(*paths, mode="755"):
-    script = (
-        f'die() {{ echo "DIED: $*"; exit 1; }}\nSTATE={S}\n{fn}\nstate_dir {me} {grp_} {mode} '
-        + " ".join(map(str, paths))
+    script = f'die() {{ echo "DIED: $*"; exit 1; }}\nSTATE={S}\n{fn}\nstate_dir {me} {grp_} {mode} ' + " ".join(
+        map(str, paths)
     )
     return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
 
@@ -512,9 +483,7 @@ target.chmod(0o700)
 r = state_dir(S / "zim")
 check(
     "state_dir refuses a folder that is a link, and leaves its target's mode",
-    r.returncode != 0
-    and "DIED" in r.stdout
-    and (target.stat().st_mode & 0o777) == 0o700,
+    r.returncode != 0 and "DIED" in r.stdout and (target.stat().st_mode & 0o777) == 0o700,
     r.stdout + r.stderr,
 )
 (S / "git").symlink_to(target)
@@ -585,10 +554,7 @@ from irate_box.root import crashwatch, nmhandover, otherap  # noqa: E402
 
 check(
     "root's kept files live beside $STATE",
-    all(
-        not p.is_relative_to(STATE)
-        for p in (otherap.KEPT, crashwatch.DIR, nmhandover.BACKUP)
-    ),
+    all(not p.is_relative_to(STATE) for p in (otherap.KEPT, crashwatch.DIR, nmhandover.BACKUP)),
     safeio.ROOT_STATE,
 )
 
@@ -646,9 +612,7 @@ old.chmod(0o700)
 said = crashwatch.migrate()
 check(
     "crash watch's old files move to root's own folder",
-    (crashwatch.DIR / "run.json").exists()
-    and not old.exists()
-    and (crashwatch.DIR.stat().st_mode & 0o777) == 0o700,
+    (crashwatch.DIR / "run.json").exists() and not old.exists() and (crashwatch.DIR.stat().st_mode & 0o777) == 0o700,
     said,
 )
 d = linked_folder(old, {"snap.log": UNCHANGED})
@@ -664,9 +628,7 @@ check(
 # L18: an old hand-over's copies, their folder swapped for a link.
 NP = T / "netplan"
 NP.mkdir()
-d = linked_folder(
-    STATE / "netplan-handover", {"20260101-x/30-wifis.yaml": "network: {}\n"}
-)
+d = linked_folder(STATE / "netplan-handover", {"20260101-x/30-wifis.yaml": "network: {}\n"})
 nmhandover.RECORD.write_text(
     json.dumps(
         [
@@ -690,9 +652,7 @@ check(
     refused and not (NP / "30-wifis.yaml").exists(),
 )
 
-check(
-    "security policy starts with hub administration", hub_control.policy_mode() == "hub"
-)
+check("security policy starts with hub administration", hub_control.policy_mode() == "hub")
 try:
     hub_control.policy_set({"mode": "console"})
     refused = False
@@ -715,10 +675,7 @@ for number, req in enumerate(
 ):
     (hub_control.REQUESTS / f"{number:016d}.json").write_text(json.dumps(req))
 hub_control.main()
-answers = [
-    json.loads((hub_control.RESULTS / f"{number:016d}.json").read_text())
-    for number in range(20, 23)
-]
+answers = [json.loads((hub_control.RESULTS / f"{number:016d}.json").read_text()) for number in range(20, 23)]
 check(
     "a queued request cannot unlock policy or change TLS, but ordinary operations continue",
     [answer["ok"] for answer in answers] == [False, False, True]
@@ -739,8 +696,7 @@ hub_control.POLICY_FILE.unlink()
 hub_control.policy_set({"mode": "hub", "confirmed": True})
 check(
     "console recovery restores hub policy changes",
-    hub_control.policy_publish() == "hub"
-    and json.loads(hub_control.POLICY_STATE.read_text())["mode"] == "hub",
+    hub_control.policy_publish() == "hub" and json.loads(hub_control.POLICY_STATE.read_text())["mode"] == "hub",
 )
 shutil.rmtree(T, ignore_errors=True)
 print("ok" if not fails else f"{fails} failure(s)")

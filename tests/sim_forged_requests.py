@@ -4,6 +4,7 @@
 still root's, the RTC set up only where a search found one, no linked book exported, no leading
 "-" in a name that becomes an argument, the clock's floor from root's files only and no jump
 years ahead. Runs as any user ("root's" is this user here). python3 tests/sim_forged_requests.py"""
+
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import time
 import urllib.request
 from pathlib import Path
 from unittest import mock
+
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="forged-"))
 STATE = T / "state"
@@ -20,30 +22,49 @@ for d in (STATE / "control" / "results", STATE / "control" / "requests", STATE /
     d.mkdir(parents=True)
 os.environ.update(HUB_STATE_DIR=str(STATE), HUB_ETC_DIR=str(T / "etc"), HUB_RUN_DIR=str(T / "run"))
 sys.path.insert(0, str(REPO))
-from irate_box.root import hub_control, health, rtc, usbstick  # noqa: E402
-from irate_box.hub import uplink, manifests  # noqa: E402
+from irate_box.hub import manifests, uplink  # noqa: E402
+from irate_box.root import health, hub_control, rtc, usbstick  # noqa: E402
+
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
+
 def refused(fn, *a, exc=(ValueError, OSError)):
     try:
-        fn(*a); return False
+        fn(*a)
+        return False
     except exc:
         return True
+
 
 # Security choices: only what root's last scan offered.
 scan = {"findings": [{"id": "x", "actions": [{"choice": "unit-off:cups.service"}, {"choice": "kernel-links-on"}]}]}
 hub_control.SECURITY_STATE.write_text(json.dumps(scan))
-with mock.patch.object(hub_control.security, "fix", return_value="done") as fx, \
-     mock.patch.object(hub_control.security, "scan", return_value=scan):
-    check("a choice the scan offered goes through", hub_control.security_fix({"choice": "unit-off:cups.service"}) == "done")
-    check("one it did not (auditd) is refused", refused(hub_control.security_fix, {"choice": "unit-off:auditd.service"}))
+with (
+    mock.patch.object(hub_control.security, "fix", return_value="done") as fx,
+    mock.patch.object(hub_control.security, "scan", return_value=scan),
+):
+    check(
+        "a choice the scan offered goes through",
+        hub_control.security_fix({"choice": "unit-off:cups.service"}) == "done",
+    )
+    check(
+        "one it did not (auditd) is refused", refused(hub_control.security_fix, {"choice": "unit-off:auditd.service"})
+    )
     check("a leading '-' is refused", refused(hub_control.security_fix, {"choice": "unit-off:-x.service"}))
     hub_control.SECURITY_STATE.unlink()
-    forged = T / "forged-scan.json"; forged.write_text(json.dumps({"findings": [{"actions": [{"choice": "unit-off:auditd.service"}]}]}))
+    forged = T / "forged-scan.json"
+    forged.write_text(json.dumps({"findings": [{"actions": [{"choice": "unit-off:auditd.service"}]}]}))
     os.symlink(forged, hub_control.SECURITY_STATE)
-    check("a scan file that is a link is not believed", refused(hub_control.security_fix, {"choice": "unit-off:auditd.service"}))
+    check(
+        "a scan file that is a link is not believed",
+        refused(hub_control.security_fix, {"choice": "unit-off:auditd.service"}),
+    )
     check("…and nothing was carried out", fx.call_count == 1, fx.call_args_list)
 hub_control.SECURITY_STATE.unlink()
 
@@ -51,120 +72,234 @@ hub_control.SECURITY_STATE.unlink()
 (STATE / "control" / "update.json").write_text(json.dumps({"verified": "abc1234"}))
 check("update.json: root's own file is read", hub_control._read_update_state() == {"verified": "abc1234"})
 (STATE / "control" / "update.json").unlink()
-v = T / "forged-update.json"; v.write_text(json.dumps({"verified": "abc1234"}))
+v = T / "forged-update.json"
+v.write_text(json.dumps({"verified": "abc1234"}))
 os.symlink(v, STATE / "control" / "update.json")
 check("update.json that is a link: not believed (no 'verified')", hub_control._read_update_state() == {})
-real = STATE / "control"; os.rename(real, STATE / "control.real")
-fake = T / "fake-control"; fake.mkdir(); (fake / "update.json").write_text(json.dumps({"verified": "abc1234"}))
+real = STATE / "control"
+os.rename(real, STATE / "control.real")
+fake = T / "fake-control"
+fake.mkdir()
+(fake / "update.json").write_text(json.dumps({"verified": "abc1234"}))
 os.symlink(fake, real)
 check("control/ swapped for a link: not believed", hub_control._read_update_state() == {})
-os.unlink(real); os.rename(STATE / "control.real", real)
+os.unlink(real)
+os.rename(STATE / "control.real", real)
 
 # RTC: only an address clocks use (the "found" check itself is in sim_rtc.py).
 check("rtc-setup at an address no clock uses: refused", refused(rtc.setup, "ds3231", 1, "0x10", exc=(rtc.RtcError,)))
 
 # The clock's floor: root's own files, never through a link; no jump years ahead.
-target = T / "future"; target.write_text("x"); os.utime(target, (time.time() + 9e7, time.time() + 9e7))
-link = T / "link"; os.symlink(target, link)
+target = T / "future"
+target.write_text("x")
+os.utime(target, (time.time() + 9e7, time.time() + 9e7))
+link = T / "link"
+os.symlink(target, link)
 check("floor: a link's target time does not count", rtc.root_mtime(link) is None)
 check("floor: a plain file of root's counts", rtc.root_mtime(target) is not None)
-check("floor: the hub's clock.json is not a source", "clock.json" not in re.search(r"def floor_time.*?return", (REPO / "irate_box/root/rtc.py").read_text(), re.S).group(0))
-with mock.patch.object(health, "clock_facts", return_value={"synced": False, "daemon": None}), \
-     mock.patch.object(health, "latest_known_time", return_value=(time.time(), "x")), \
-     mock.patch.object(health, "run") as run:
+check(
+    "floor: the hub's clock.json is not a source",
+    "clock.json"
+    not in re.search(r"def floor_time.*?return", (REPO / "irate_box/root/rtc.py").read_text(), re.S).group(0),
+)
+with (
+    mock.patch.object(health, "clock_facts", return_value={"synced": False, "daemon": None}),
+    mock.patch.object(health, "latest_known_time", return_value=(time.time(), "x")),
+    mock.patch.object(health, "run") as run,
+):
     check("clock-set: three years ahead is refused", refused(health.set_clock, int(time.time() + 3 * 365 * 86400)))
     check("…and the clock was not touched", not run.called)
 
 # USB export: a book that is a link is not copied.
-secret = T / "secret"; secret.write_text("root's")
+secret = T / "secret"
+secret.write_text("root's")
 os.symlink(secret, STATE / "zim" / "stolen.zim")
-check("usb-export of a linked book: refused before any stick is touched",
-      refused(usbstick.export_zim, "sdz1", "stolen", str(STATE / "zim")))
+check(
+    "usb-export of a linked book: refused before any stick is touched",
+    refused(usbstick.export_zim, "sdz1", "stolen", str(STATE / "zim")),
+)
 check("_copy refuses a source that is a link", refused(usbstick._copy, STATE / "zim" / "stolen.zim", T / "out"))
 
 # Names that become arguments: no leading "-".
 check("interface names: no leading '-'", not hub_control.IFACE_RE.match("-x") and hub_control.IFACE_RE.match("wlan0"))
 check("uplink interface names: no leading '-'", not uplink.IFACE_RE.match("-x") and uplink.IFACE_RE.match("auto"))
-check("unit names: no leading '-'", not hub_control.security.UNIT_RE.match("-x.service") and not manifests.UNIT_RE.match("-x.service"))
-check("uplink: the reboot history is root's own record, not the status file's",
-      'REBOOTS = ETC / "uplink-reboots.json"' in (REPO / "irate_box/hub/uplink.py").read_text())
+check(
+    "unit names: no leading '-'",
+    not hub_control.security.UNIT_RE.match("-x.service") and not manifests.UNIT_RE.match("-x.service"),
+)
+check(
+    "uplink: the reboot history is root's own record, not the status file's",
+    'REBOOTS = ETC / "uplink-reboots.json"' in (REPO / "irate_box/hub/uplink.py").read_text(),
+)
 
 # An app bundle's source is its manifest's; a request chooses the branch at most.
-from irate_box.library import librarian, firmware  # noqa: E402
-got = librarian.validate_source({"kind": "app", "name": "draw", "type": "nightly-link", "repo": "evil/excalidraw",
-                                 "workflow": "evil.yml", "pattern": "*", "branch": "dev"})
+from irate_box.library import firmware, librarian  # noqa: E402
+
+got = librarian.validate_source(
+    {
+        "kind": "app",
+        "name": "draw",
+        "type": "nightly-link",
+        "repo": "evil/excalidraw",
+        "workflow": "evil.yml",
+        "pattern": "*",
+        "branch": "dev",
+    }
+)
 spec = librarian.APPS["draw"]["source"]
-check("app source: a forged repo, workflow and pattern are replaced by the manifest's",
-      (got["repo"], got["workflow"], got["pattern"]) == (spec["repo"], spec["workflow"], spec["pattern"]), got)
+check(
+    "app source: a forged repo, workflow and pattern are replaced by the manifest's",
+    (got["repo"], got["workflow"], got["pattern"]) == (spec["repo"], spec["workflow"], spec["pattern"]),
+    got,
+)
 check("app source: the branch may be chosen", got["branch"] == "dev")
-check("app source: but not one that is an option", refused(librarian.validate_source, {"kind": "app", "name": "draw", "type": "nightly-link", "branch": "-x"},
-                                                    exc=(librarian.LibrarianError,)))
+check(
+    "app source: but not one that is an option",
+    refused(
+        librarian.validate_source,
+        {"kind": "app", "name": "draw", "type": "nightly-link", "branch": "-x"},
+        exc=(librarian.LibrarianError,),
+    ),
+)
 # A deps-zip member cannot leave its folder.
 check("deps zip: '//' in a member name is left out", firmware._subset("pio-deps-x//etc/cron.d/x", "whole") is None)
 check("deps zip: '..' is left out", firmware._subset("pio-deps-x/packages/../../x", "whole") is None)
-check("deps zip: a normal member is kept", firmware._subset("pio-deps-x/packages/tool/bin/gcc", "whole") == "packages/tool/bin/gcc")
+check(
+    "deps zip: a normal member is kept",
+    firmware._subset("pio-deps-x/packages/tool/bin/gcc", "whole") == "packages/tool/bin/gcc",
+)
 # "native" keeps the download cache's small archives (the platform is only there), not the
 # UI libraries' big ones, nor usage.db, whose old dates would expire the rest.
 dl = "pio-deps-native-tft/core/.cache/downloads/"
-check("native: a small archive of the download cache kept", firmware._subset(dl + "eb76d078", "native", 20 << 10) == "core/.cache/downloads/eb76d078")
+check(
+    "native: a small archive of the download cache kept",
+    firmware._subset(dl + "eb76d078", "native", 20 << 10) == "core/.cache/downloads/eb76d078",
+)
 check("native: a big one (a UI library's) left out", firmware._subset(dl + "d3084ca4", "native", 88 << 20) is None)
-check("native: usage.db and the http cache left out", firmware._subset(dl + "usage.db", "native", 3000) is None
-      and firmware._subset("pio-deps-native-tft/core/.cache/http/4e69", "native", 3000) is None)
+check(
+    "native: usage.db and the http cache left out",
+    firmware._subset(dl + "usage.db", "native", 3000) is None
+    and firmware._subset("pio-deps-native-tft/core/.cache/http/4e69", "native", 3000) is None,
+)
 
 # Books and code over encrypted transports only.
-check("a book url over http is refused", refused(librarian.validate_source, {"name": "b", "type": "url", "url": "http://x/b.zim"},
-                                                     exc=(librarian.LibrarianError,)))
-check("  over https it is taken", librarian.validate_source({"name": "b", "type": "url", "url": "https://x/b.zim"})["url"] == "https://x/b.zim")
+check(
+    "a book url over http is refused",
+    refused(
+        librarian.validate_source,
+        {"name": "b", "type": "url", "url": "http://x/b.zim"},
+        exc=(librarian.LibrarianError,),
+    ),
+)
+check(
+    "  over https it is taken",
+    librarian.validate_source({"name": "b", "type": "url", "url": "https://x/b.zim"})["url"] == "https://x/b.zim",
+)
 (T / "etc" / "install-options").write_text("--repo\nhttp://example.invalid/irate-box\n--branch\nmain\n")
-check("updates from an http:// repository are refused before any fetch",
-      refused(hub_control._check_for_update, hub_control.Progress("check", 2, path=T / "p.json")))
+check(
+    "updates from an http:// repository are refused before any fetch",
+    refused(hub_control._check_for_update, hub_control.Progress("check", 2, path=T / "p.json")),
+)
 # "Verified" is matched on the whole hash.
 src = (REPO / "irate_box/root/hub_control.py").read_text()
-check("install compares the whole hash that passed", 'state.get("verified_sha") != full' in src
-      and 'old.get("verified_sha") == full' in src)
+check(
+    "install compares the whole hash that passed",
+    'state.get("verified_sha") != full' in src and 'old.get("verified_sha") == full' in src,
+)
 
 # The GitHub token is not carried across a redirect.
 req = librarian._request("https://api.github.com/repos/x/y/actions/artifacts/1/zip", auth="tok")
-redirected = urllib.request.HTTPRedirectHandler().redirect_request(req, None, 302, "Found", {}, "https://blob.example/x")
+redirected = urllib.request.HTTPRedirectHandler().redirect_request(
+    req, None, 302, "Found", {}, "https://blob.example/x"
+)
 check("GitHub token: goes to api.github.com", req.get_header("Authorization") == "Bearer tok")
-check("GitHub token: not to the host a redirect leads to", redirected.get_header("Authorization") is None, redirected.header_items())
+check(
+    "GitHub token: not to the host a redirect leads to",
+    redirected.get_header("Authorization") is None,
+    redirected.header_items(),
+)
 # Builds only from git/private; a run's file is never a link.
 from irate_box.hub import ci  # noqa: E402
-check("a public repository is not built", ci.PRIVATE.name == "private" and "repo.resolve().parent != PRIVATE.resolve()" in (REPO / "irate_box/hub/ci.py").read_text())
+
+check(
+    "a public repository is not built",
+    ci.PRIVATE.name == "private"
+    and "repo.resolve().parent != PRIVATE.resolve()" in (REPO / "irate_box/hub/ci.py").read_text(),
+)
 # A hue too large for an int does not crash the handler.
 from irate_box.hub import board  # noqa: E402
+
 check("hue 1e999 is ignored, not a crash", board._clean_hue(1e999) is None)
 
 # Artifacts only from pushes to the repository itself.
 calls = []
+
+
 def fake_api(path, auth=None):
     calls.append(path)
     if "/runs?" in path:
-        return {"workflow_runs": [{"id": 1, "event": "push", "head_repository": {"full_name": "fork/excalidraw"}},
-                                  {"id": 3, "event": "pull_request", "head_repository": {"full_name": "NomDeTom/excalidraw"}},
-                                  {"id": 2, "event": "workflow_dispatch", "head_repository": {"full_name": "NomDeTom/excalidraw"}}]}
+        return {
+            "workflow_runs": [
+                {"id": 1, "event": "push", "head_repository": {"full_name": "fork/excalidraw"}},
+                {"id": 3, "event": "pull_request", "head_repository": {"full_name": "NomDeTom/excalidraw"}},
+                {"id": 2, "event": "workflow_dispatch", "head_repository": {"full_name": "NomDeTom/excalidraw"}},
+            ]
+        }
     return {"artifacts": [{"name": "irate-box-draw-x", "expired": False, "id": int(path.split("/")[-2])}]}
+
+
 with mock.patch.object(librarian, "_api", side_effect=fake_api):
-    run_, art = librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
-check("artifacts: a fork's run and a pull request's are passed over; one started by hand is taken", run_["id"] == 2, run_)
-check("artifacts: the trusted events: push, by hand, on schedule", librarian.TRUSTED_EVENTS == ("push", "workflow_dispatch", "schedule"))
+    run_, art = librarian._newest_artifact(
+        {"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t"
+    )
+check(
+    "artifacts: a fork's run and a pull request's are passed over; one started by hand is taken", run_["id"] == 2, run_
+)
+check(
+    "artifacts: the trusted events: push, by hand, on schedule",
+    librarian.TRUSTED_EVENTS == ("push", "workflow_dispatch", "schedule"),
+)
+
+
 def only_untrusted(path, auth=None):
     if "/runs?" in path:
-        return {"workflow_runs": [{"id": 3, "event": "pull_request", "head_repository": {"full_name": "NomDeTom/excalidraw"}}]}
+        return {
+            "workflow_runs": [
+                {"id": 3, "event": "pull_request", "head_repository": {"full_name": "NomDeTom/excalidraw"}}
+            ]
+        }
     return {"artifacts": [{"name": "irate-box-draw-x", "expired": False, "id": 9}]}
+
+
 with mock.patch.object(librarian, "_api", side_effect=only_untrusted):
     try:
-        librarian._newest_artifact({"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t")
+        librarian._newest_artifact(
+            {"repo": "NomDeTom/excalidraw", "workflow": "w.yml", "pattern": "irate-box-draw-*"}, "t"
+        )
         check("artifacts: only a pull request's run: refused, and said", False)
     except librarian.LibrarianError as exc:
-        check("artifacts: only a pull request's run: refused, and said", exc.message["id"] == "library.artifact.not-found-skipped" and exc.message["args"]["n"] == 1, str(exc))
-inst = (REPO / "install.sh").read_text(); un = (REPO / "uninstall.sh").read_text(); ngx = (REPO / "config/irate-box.nginx").read_text()
+        check(
+            "artifacts: only a pull request's run: refused, and said",
+            exc.message["id"] == "library.artifact.not-found-skipped" and exc.message["args"]["n"] == 1,
+            str(exc),
+        )
+inst = (REPO / "install.sh").read_text()
+un = (REPO / "uninstall.sh").read_text()
+ngx = (REPO / "config/irate-box.nginx").read_text()
 ngx = "\n".join(l for l in ngx.splitlines() if not l.lstrip().startswith("#"))  # the directives, not the comments
-check("install-options records no credentials", "rec_repo=\"$(printf '%s' \"$rec_repo\" | sed -E" in inst)
-check("uninstall --keep-state keeps the users", 'Keeping the $HUB_USER and hubci users' in un and '[ "$KEEP_STATE" != 1 ] && id -u hubci' in un)
-check("the git push gate does not use the undecoded $arg_service (the hub decides, decoded)", "$arg_service" not in ngx
-      and "auth_request /_irate_git_access;" in ngx)
-check("links in a cloned app tree are removed", "if path.is_symlink():" in (REPO / "irate_box/library/librarian.py").read_text())
+check("install-options records no credentials", 'rec_repo="$(printf \'%s\' "$rec_repo" | sed -E' in inst)
+check(
+    "uninstall --keep-state keeps the users",
+    "Keeping the $HUB_USER and hubci users" in un and '[ "$KEEP_STATE" != 1 ] && id -u hubci' in un,
+)
+check(
+    "the git push gate does not use the undecoded $arg_service (the hub decides, decoded)",
+    "$arg_service" not in ngx and "auth_request /_irate_git_access;" in ngx,
+)
+check(
+    "links in a cloned app tree are removed",
+    "if path.is_symlink():" in (REPO / "irate_box/library/librarian.py").read_text(),
+)
 check("deps extraction checks free space first", "DEPS_RESERVE" in (REPO / "irate_box/library/firmware.py").read_text())
 check("nginx passes the guest's own address only", "$proxy_add_x_forwarded_for" not in ngx)
 
@@ -178,21 +313,43 @@ for i, what in enumerate(("update-install", "net-scan")):
     f = hub_control.REQUESTS / f"{'a' * 15}{i}.json"
     f.write_text(json.dumps({"action": what}))
     os.utime(f, (1_000_000 + i, 1_000_000 + i))
-with mock.patch.dict(hub_control.ACTIONS, {"update-install": lambda req: ran.append("update") or "updated", "net-scan": lambda req: ran.append("scan") or "scanned"}), \
-     mock.patch.object(hub_control, "answer", lambda rid, ok, msg: answered.append(msg)):
+with (
+    mock.patch.dict(
+        hub_control.ACTIONS,
+        {
+            "update-install": lambda req: ran.append("update") or "updated",
+            "net-scan": lambda req: ran.append("scan") or "scanned",
+        },
+    ),
+    mock.patch.object(hub_control, "answer", lambda rid, ok, msg: answered.append(msg)),
+):
     hub_control.main()
-    check("after an update the helper stops; the next request waits for a fresh one", ran == ["update"] and answered == ["updated"]
-          and len(list(hub_control.REQUESTS.glob("*.json"))) == 1, (ran, answered))
+    check(
+        "after an update the helper stops; the next request waits for a fresh one",
+        ran == ["update"] and answered == ["updated"] and len(list(hub_control.REQUESTS.glob("*.json"))) == 1,
+        (ran, answered),
+    )
     hub_control.main()
     check("  which then runs it", ran == ["update", "scan"])
 # While a request runs the helper says which, for the hub (which cannot see root's processes); after, it is gone.
 seen = []
 f = hub_control.REQUESTS / f"{'b' * 16}.json"
 f.write_text(json.dumps({"action": "kit-fetch", "kit": "build"}))
-with mock.patch.dict(hub_control.ACTIONS, {"kit-fetch": lambda req: seen.append(json.loads(hub_control.HELPER_DOING.read_text())) or "fetched"}), \
-     mock.patch.object(hub_control, "answer", lambda rid, ok, msg: None):
+with (
+    mock.patch.dict(
+        hub_control.ACTIONS,
+        {"kit-fetch": lambda req: seen.append(json.loads(hub_control.HELPER_DOING.read_text())) or "fetched"},
+    ),
+    mock.patch.object(hub_control, "answer", lambda rid, ok, msg: None),
+):
     hub_control.main()
-check("the helper says what it runs while it runs it, and clears it after", seen and seen[0]["action"] == "kit-fetch"
-      and seen[0]["detail"] == "build" and not hub_control.HELPER_DOING.exists(), seen)
+check(
+    "the helper says what it runs while it runs it, and clears it after",
+    seen
+    and seen[0]["action"] == "kit-fetch"
+    and seen[0]["detail"] == "build"
+    and not hub_control.HELPER_DOING.exists(),
+    seen,
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

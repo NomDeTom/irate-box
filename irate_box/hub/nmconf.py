@@ -15,13 +15,14 @@ boot, with these settings left at "default", so the drop-in fills them in.
 Reading needs no root (NetworkManager's files are world-readable); writing is root's, through
 hub_control.py. stdlib only.
 """
+
 import configparser
 import os
 import re
 from pathlib import Path
 
-from irate_box.msg import M
 from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 ETC = Path(os.environ.get("HUB_NM_ETC", "/etc/NetworkManager"))
 RUN = Path(os.environ.get("HUB_NM_RUN", "/run/NetworkManager"))
@@ -33,29 +34,49 @@ DROPIN = ETC / "conf.d" / "zz-90-irate-box-network.conf"
 # behaviour when nothing sets it. "default" in a change removes irate-box's line.
 SETTINGS = {
     "autoconnect_retries": {
-        "section": "main", "key": "autoconnect-retries-default", "kind": "count",
-        "label": "Keep trying to connect", "nm_default": "4 tries, then 5 minutes blocked",
+        "section": "main",
+        "key": "autoconnect-retries-default",
+        "kind": "count",
+        "label": "Keep trying to connect",
+        "nm_default": "4 tries, then 5 minutes blocked",
         "values": {"0": "forever"},
     },
     "auth_retries": {
-        "section": "connection", "key": "connection.auth-retries", "kind": "count",
-        "label": "Keep trying after a failed password check", "nm_default": "3 tries, then waits for someone",
+        "section": "connection",
+        "key": "connection.auth-retries",
+        "kind": "count",
+        "label": "Keep trying after a failed password check",
+        "nm_default": "3 tries, then waits for someone",
         "values": {"0": "forever"},
     },
     "cloned_mac": {
-        "section": "connection", "key": "wifi.cloned-mac-address", "kind": "choice",
-        "label": "MAC address on WiFi", "nm_default": "as the device has it",
-        "values": {"permanent": "the board's own", "preserve": "as the device has it", "random": "random each time",
-                   "stable": "stable, made up per connection", "stable-ssid": "stable, made up per network"},
+        "section": "connection",
+        "key": "wifi.cloned-mac-address",
+        "kind": "choice",
+        "label": "MAC address on WiFi",
+        "nm_default": "as the device has it",
+        "values": {
+            "permanent": "the board's own",
+            "preserve": "as the device has it",
+            "random": "random each time",
+            "stable": "stable, made up per connection",
+            "stable-ssid": "stable, made up per network",
+        },
     },
     "scan_mac": {
-        "section": "device", "key": "wifi.scan-rand-mac-address", "kind": "choice",
-        "label": "MAC address while scanning", "nm_default": "random",
+        "section": "device",
+        "key": "wifi.scan-rand-mac-address",
+        "kind": "choice",
+        "label": "MAC address while scanning",
+        "nm_default": "random",
         "values": {"no": "the board's own", "yes": "random"},
     },
     "powersave": {
-        "section": "connection", "key": "wifi.powersave", "kind": "choice",
-        "label": "WiFi power save", "nm_default": "the driver's choice",
+        "section": "connection",
+        "key": "wifi.powersave",
+        "kind": "choice",
+        "label": "WiFi power save",
+        "nm_default": "the driver's choice",
         "values": {"2": "off", "3": "on", "1": "leave to the driver (ignore)"},
     },
 }
@@ -72,12 +93,24 @@ PER_IFACE = ("auth_retries", "cloned_mac", "powersave", "scan_mac")
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 
 # Older names NetworkManager still reads, shown where they set the same thing.
-LEGACY = {("connection", "wifi.mac-address-randomization"): {"1": "the board's own (never random)", "2": "random", "0": "default"}}
+LEGACY = {
+    ("connection", "wifi.mac-address-randomization"): {
+        "1": "the board's own (never random)",
+        "2": "random",
+        "0": "default",
+    }
+}
 
 
 def _parser():
-    cp = configparser.ConfigParser(interpolation=None, strict=False, delimiters=("=",), comment_prefixes=("#", ";"),
-                                   inline_comment_prefixes=None, empty_lines_in_values=False)
+    cp = configparser.ConfigParser(
+        interpolation=None,
+        strict=False,
+        delimiters=("=",),
+        comment_prefixes=("#", ";"),
+        inline_comment_prefixes=None,
+        empty_lines_in_values=False,
+    )
     cp.optionxform = str
     return cp
 
@@ -89,7 +122,7 @@ def files():
     if main.is_file():
         out.append(main)
     by_name = {}
-    for d in (LIB / "conf.d", RUN / "conf.d", ETC / "conf.d"):   # later directories shadow earlier ones
+    for d in (LIB / "conf.d", RUN / "conf.d", ETC / "conf.d"):  # later directories shadow earlier ones
         if d.is_dir():
             for f in d.glob("*.conf"):
                 by_name[f.name] = f
@@ -111,8 +144,18 @@ def _read(path):
 def effective():
     """{name: {value, file, label, nm_default, values, mine}} for each box default, and the named
     sections that set the same keys for some devices only (Armbian's [device-…] match-device ones)."""
-    out = {n: {"value": None, "file": None, "label": s["label"], "nm_default": s["nm_default"],
-               "values": s["values"], "kind": s["kind"], "mine": None} for n, s in SETTINGS.items()}
+    out = {
+        n: {
+            "value": None,
+            "file": None,
+            "label": s["label"],
+            "nm_default": s["nm_default"],
+            "values": s["values"],
+            "kind": s["kind"],
+            "mine": None,
+        }
+        for n, s in SETTINGS.items()
+    }
     legacy, scoped, broken = [], [], []
     for f in files():
         cp = _read(f)
@@ -134,8 +177,14 @@ def effective():
             if sec != base and base in ("connection", "device"):
                 keys = [k for k in cp.options(sec) if k != "match-device"]
                 if keys:
-                    scoped.append({"section": sec, "match": cp.get(sec, "match-device", fallback=""),
-                                   "keys": {k: cp.get(sec, k).strip() for k in keys}, "file": str(f)})
+                    scoped.append(
+                        {
+                            "section": sec,
+                            "match": cp.get(sec, "match-device", fallback=""),
+                            "keys": {k: cp.get(sec, k).strip() for k in keys},
+                            "file": str(f),
+                        }
+                    )
     return {"settings": out, "legacy": legacy, "scoped": scoped, "broken": broken, "dropin": str(DROPIN)}
 
 
@@ -151,8 +200,14 @@ def validate(changes, iface=None):
         if s is None:
             raise Refused(M("nmconf.setting.unknown", "Unknown network default: {name}.", name=n))
         if iface is not None and n not in PER_IFACE:
-            raise Refused(M("nmconf.setting.box-wide", "NetworkManager applies the setting {setting} to the whole box. "
-                            "You cannot set it for one network interface.", setting=LABEL_SAID[n]))
+            raise Refused(
+                M(
+                    "nmconf.setting.box-wide",
+                    "NetworkManager applies the setting {setting} to the whole box. "
+                    "You cannot set it for one network interface.",
+                    setting=LABEL_SAID[n],
+                )
+            )
         v = str(v).strip()
         if v == "default":
             clean[n] = None
@@ -161,8 +216,14 @@ def validate(changes, iface=None):
         elif s["kind"] == "choice" and v in s["values"]:
             clean[n] = v
         else:
-            raise Refused(M("nmconf.value.not-allowed", "The setting {setting} cannot have the value {value}.",
-                            value=v, setting=LABEL_SAID[n]))
+            raise Refused(
+                M(
+                    "nmconf.value.not-allowed",
+                    "The setting {setting} cannot have the value {value}.",
+                    value=v,
+                    setting=LABEL_SAID[n],
+                )
+            )
     return clean
 
 
@@ -173,8 +234,11 @@ def dropin_text(mine, ifaces=None):
     lines = []
     for iface in sorted(ifaces or {}):
         for sec in ("connection", "device"):
-            keys = [f"{SETTINGS[n]['key']}={v}" for n, v in sorted((ifaces[iface] or {}).items())
-                    if v is not None and SETTINGS[n]["section"] == sec]
+            keys = [
+                f"{SETTINGS[n]['key']}={v}"
+                for n, v in sorted((ifaces[iface] or {}).items())
+                if v is not None and SETTINGS[n]["section"] == sec
+            ]
             if keys:
                 lines += ["", f"[{sec}-irate-box-{iface}]", f"match-device=interface-name:{iface}", *keys]
     by_section = {}
@@ -187,16 +251,26 @@ def dropin_text(mine, ifaces=None):
             lines += ["", f"[{sec}]", *by_section[sec]]
     if not lines:
         return ""
-    return "\n".join(["# irate-box: the defaults chosen on /admin's Network page, for the box and per interface.",
-                      "# Removing this file puts back whatever it shadowed (the image's own drop-ins, or",
-                      "# NetworkManager's defaults).", *lines]) + "\n"
+    return (
+        "\n".join(
+            [
+                "# irate-box: the defaults chosen on /admin's Network page, for the box and per interface.",
+                "# Removing this file puts back whatever it shadowed (the image's own drop-ins, or",
+                "# NetworkManager's defaults).",
+                *lines,
+            ]
+        )
+        + "\n"
+    )
 
 
 def current_mine():
     cp = _read(DROPIN) if DROPIN.is_file() else None
     if cp is None:
         return {}
-    return {n: cp.get(s["section"], s["key"]).strip() for n, s in SETTINGS.items() if cp.has_option(s["section"], s["key"])}
+    return {
+        n: cp.get(s["section"], s["key"]).strip() for n, s in SETTINGS.items() if cp.has_option(s["section"], s["key"])
+    }
 
 
 def current_ifaces():
@@ -251,7 +325,7 @@ def effective_for(iface, driver=None):
         for n in PER_IFACE:
             s = SETTINGS[n]
             secs = [x for x in cp.sections() if x == s["section"] or x.startswith(s["section"] + "-")]
-            secs.sort(key=lambda x: x == s["section"])        # the plain section last
+            secs.sort(key=lambda x: x == s["section"])  # the plain section last
             for sec in secs:
                 if not cp.has_option(sec, s["key"]):
                     continue

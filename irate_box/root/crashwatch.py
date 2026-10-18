@@ -57,14 +57,14 @@ SETTINGS = ETC / "crashwatch.json"
 # Root's own folder beside $STATE: the hub owns $STATE, so it could swap a folder of root's there
 # for a link, and root's writes would land where it pointed.
 DIR = safeio.ROOT_STATE / "crashwatch"
-OLD_DIR = STATE / "crashwatch"      # before 2026-10; migrate() moves its files over
+OLD_DIR = STATE / "crashwatch"  # before 2026-10; migrate() moves its files over
 SNAP = DIR / "snap.log"
-RUN = DIR / "run.json"               # this boot: its id, when it started, whether it stopped cleanly
+RUN = DIR / "run.json"  # this boot: its id, when it started, whether it stopped cleanly
 CRASHES = DIR / "crashes"
 INDEX = DIR / "crashes.json"
-INCIDENTS = DIR / "incidents.json"   # a radio's failures, filed as they happen (the box may never stop)
-EVENTS = DIR / "events.json"         # the radio's failures, its driver's own resets, its recoveries, newest last
-STATUS = DIR / "status.json"         # for the box doctor: the radios watched, the floods, the last look
+INCIDENTS = DIR / "incidents.json"  # a radio's failures, filed as they happen (the box may never stop)
+EVENTS = DIR / "events.json"  # the radio's failures, its driver's own resets, its recoveries, newest last
+STATUS = DIR / "status.json"  # for the box doctor: the radios watched, the floods, the last look
 PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
 KMSG = os.environ.get("HUB_KMSG", "/dev/kmsg")
@@ -78,14 +78,16 @@ OVERLAY_NAME = "irate-box-watchdog"
 TICK = 30
 SNAP_MAX = 4_000_000
 KEEP_CRASHES = 30
-WATCHDOG_SEC = 60        # RuntimeWatchdogSec: how long a frozen system can stop feeding the watchdog
+WATCHDOG_SEC = 60  # RuntimeWatchdogSec: how long a frozen system can stop feeding the watchdog
 DEFAULT = {"snapshots": True, "panic": False, "watchdog": False}
-FLOOD = 30                # kernel lines of one kind in one look (30 s, so one a second) that make a flood
-ERR_BURST = 5             # driver errors within two looks that make a failure
+FLOOD = 30  # kernel lines of one kind in one look (30 s, so one a second) that make a flood
+ERR_BURST = 5  # driver errors within two looks that make a failure
 # A radio in trouble, as the kernel says it (the AIC8800's own words, and the USB core's).
-RADIO_ERR = re.compile(r"USB disconnect|tx timeout|cmd (?:tx )?time ?out|firmware (?:crash|error|fail)|fw (?:crash|error)"
-                       r"|failed to (?:send|transmit|xmit)|error -(?:71|110|19)\b|descriptor read.*error|reset (?:high|full)-speed USB",
-                       re.I)
+RADIO_ERR = re.compile(
+    r"USB disconnect|tx timeout|cmd (?:tx )?time ?out|firmware (?:crash|error|fail)|fw (?:crash|error)"
+    r"|failed to (?:send|transmit|xmit)|error -(?:71|110|19)\b|descriptor read.*error|reset (?:high|full)-speed USB",
+    re.I,
+)
 # The AIC8800 driver's own words when its firmware wedges, which name no interface or driver (a
 # burst of "check cmdqueue empty", "cmd_mgr_queue cmd timed-out", then "cmd queue crashed"; none of
 # them seen in normal running). Counted for a radio with an aic driver.
@@ -101,6 +103,7 @@ HANG_SYSCTL = {"kernel.panic": "10", "kernel.panic_on_oops": "1", "kernel.softlo
 
 
 # --- settings ----------------------------------------------------------------------------------
+
 
 def load_settings():
     try:
@@ -128,6 +131,7 @@ def carry_over():
     said = None
     if old in ("radio", "reboot"):
         from irate_box.hub import uplink
+
         chosen = uplink.load_settings()
         order = uplink.ON_WEDGE
         if order.index(old) > order.index(chosen.get("on_wedge", "ladder")):
@@ -140,6 +144,7 @@ def carry_over():
 
 def save_settings(s):
     from irate_box.root import safeio
+
     safeio.write(SETTINGS, json.dumps(s, indent=1))
 
 
@@ -159,6 +164,7 @@ def _json(p, default):
 
 def _write(p, data):
     from irate_box.root import safeio
+
     p.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(p, json.dumps(data))
 
@@ -176,8 +182,10 @@ def uptime():
 
 # --- the kernel's lines --------------------------------------------------------------------------
 
+
 class Kmsg:
     """New kernel lines since the last look, from /dev/kmsg (non-blocking; starts at the end)."""
+
     def __init__(self, path=KMSG):
         self.fd = None
         try:
@@ -193,7 +201,7 @@ class Kmsg:
                 rec = os.read(self.fd, 8192).decode(errors="replace")
             except BlockingIOError:
                 break
-            except OSError as exc:          # EPIPE: lines overwritten before we read them
+            except OSError as exc:  # EPIPE: lines overwritten before we read them
                 if getattr(exc, "errno", 0) == 32:
                     continue
                 break
@@ -241,6 +249,7 @@ def floods(lines, limit=FLOOD):
 
 # --- a snapshot --------------------------------------------------------------------------------
 
+
 def meminfo():
     out = {}
     for line in _read(PROC / "meminfo").splitlines():
@@ -281,14 +290,19 @@ def links():
 def snapshot(kernel, flood, extra=""):
     m = meminfo()
     load = _read(PROC / "loadavg").split()
-    lines = [f"=== {time.strftime('%Y-%m-%d %H:%M:%S')} up {uptime():.0f}s load {' '.join(load[:3])} boot {boot_id()[:8]}",
-             "  mem: " + "  ".join(f"{k} {m[k]} MB" for k in ("MemAvailable", "MemFree", "SwapFree", "Slab", "Committed_AS") if k in m),
-             f"  temp {temperature()}C  procs {len(list(PROC.glob('[0-9]*')))}",
-             *[f"  {kb:>7} KB {name}" for kb, name in heaviest()],
-             "  links: " + ", ".join(links()),
-             *[f"  wifi {l.strip()}" for l in _read(PROC / "net/wireless").splitlines()[2:]],
-             *[f"  kernel: {n} lines like \"{k}\"" for k, n in flood.items()],
-             *[f"  k {l}" for l in kernel[-40:]]]
+    lines = [
+        f"=== {time.strftime('%Y-%m-%d %H:%M:%S')} up {uptime():.0f}s load {' '.join(load[:3])} boot {boot_id()[:8]}",
+        "  mem: "
+        + "  ".join(
+            f"{k} {m[k]} MB" for k in ("MemAvailable", "MemFree", "SwapFree", "Slab", "Committed_AS") if k in m
+        ),
+        f"  temp {temperature()}C  procs {len(list(PROC.glob('[0-9]*')))}",
+        *[f"  {kb:>7} KB {name}" for kb, name in heaviest()],
+        "  links: " + ", ".join(links()),
+        *[f"  wifi {l.strip()}" for l in _read(PROC / "net/wireless").splitlines()[2:]],
+        *[f'  kernel: {n} lines like "{k}"' for k, n in flood.items()],
+        *[f"  k {l}" for l in kernel[-40:]],
+    ]
     if extra:
         lines.append(extra)
     return "\n".join(lines) + "\n"
@@ -318,6 +332,7 @@ def card_writes():
     """The ladder's stop, from the hub's settings (the hub's file, read as data, never through a link)."""
     try:
         from irate_box.root import safeio
+
         value = json.loads(safeio.read_request(STATE / "settings.json")).get("card_writes")
     except (OSError, ValueError, AttributeError, ImportError):
         return "thrifty"
@@ -348,14 +363,19 @@ class SnapshotKeeper:
 
 # --- a crash, at boot ----------------------------------------------------------------------------
 
+
 def journal_tail(n=300):
     try:
-        r = subprocess.run(["journalctl", "-b", "-1", "--no-pager", "-o", "short-monotonic", "-n", str(n * 4)],
-                           capture_output=True, text=True, timeout=120)
+        r = subprocess.run(
+            ["journalctl", "-b", "-1", "--no-pager", "-o", "short-monotonic", "-n", str(n * 4)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
     except (OSError, subprocess.SubprocessError):
         return ""
     keep, flood = floods(r.stdout.splitlines(), limit=40)
-    return "\n".join([f"({n} lines like \"{k}\" left out)" for k, n in flood.items()] + keep[-n:])
+    return "\n".join([f'({n} lines like "{k}" left out)' for k, n in flood.items()] + keep[-n:])
 
 
 def snapshots_tail(nbytes=200_000, since=None):
@@ -383,8 +403,14 @@ def file_radio(now, iface, text, kernel, radio=None):
     index = _json(INCIDENTS, [])
     safeio.root_dir("crashwatch")
     last = index[-1] if index else None
-    if (radio and last and last.get("radio") == radio and last.get("boot") == boot_id()
-            and now - last.get("at", 0) < RADIO_JOIN and iface not in last.get("ifaces", [last.get("iface")])):
+    if (
+        radio
+        and last
+        and last.get("radio") == radio
+        and last.get("boot") == boot_id()
+        and now - last.get("at", 0) < RADIO_JOIN
+        and iface not in last.get("ifaces", [last.get("iface")])
+    ):
         last["ifaces"] = last.get("ifaces", [last.get("iface")]) + [iface]
         last["text"] = f"{last['text']}; {iface}: {text}"
         d = CRASHES / last["dir"]
@@ -400,7 +426,16 @@ def file_radio(now, iface, text, kernel, radio=None):
     (d / "snapshots.log").write_text(snapshots_tail(0, since=now - 600))
     (d / "kernel.log").write_text("\n".join(kernel[-300:]) + "\n")
     _file_watchers(d, since=now - 600)
-    rec = {"dir": d.name, "kind": "radio", "iface": iface, "ifaces": [iface], "radio": radio, "at": now, "boot": boot_id(), "text": text}
+    rec = {
+        "dir": d.name,
+        "kind": "radio",
+        "iface": iface,
+        "ifaces": [iface],
+        "radio": radio,
+        "at": now,
+        "boot": boot_id(),
+        "text": text,
+    }
     (d / "info.json").write_text(json.dumps(rec, indent=1))
     index = index + [rec]
     for old in index[:-KEEP_CRASHES]:
@@ -412,6 +447,7 @@ def file_radio(now, iface, text, kernel, radio=None):
 def _file_watchers(d, since=0.0, boot=None):
     """What the watchers saw and did (watchlog), beside a filed failure or crash."""
     from irate_box.hub import watchlog
+
     lines = [watchlog.line(e) for e in watchlog.read(since=since, boot=boot)]
     if lines:
         (d / "watchers.log").write_text("\n".join(lines[-500:]) + "\n")
@@ -423,15 +459,21 @@ def boot_reason(prev, now=None):
     afterwards; the hardware watchdog restarts a hang by itself when it is on); or it shut down
     cleanly, after the uplink watchdog's reboot, or otherwise (by hand, an update, the system)."""
     from irate_box.hub import watchlog
+
     if not prev or not prev.get("boot"):
         return "the first boot crash watch has seen"
     if not prev.get("clean"):
         s = load_settings()
-        return ("unclean shutdown: the box stopped without shutting down. The cause can be a hang, a crash or a power loss, and the box cannot tell which"
-                + (f". The watchdog restarts a frozen box after {WATCHDOG_SEC} s" if s.get("watchdog") else ""))
+        return (
+            "unclean shutdown: the box stopped without shutting down. The cause can be a hang, a crash or a power loss, and the box cannot tell which"
+            + (f". The watchdog restarts a frozen box after {WATCHDOG_SEC} s" if s.get("watchdog") else "")
+        )
     stopped = prev.get("stopped") or 0
-    asked = [e for e in watchlog.read(boot=prev["boot"], kinds={"repair"}) if e.get("step") == "reboot"
-             and (not stopped or 0 <= stopped - e.get("at", 0) <= 600)]
+    asked = [
+        e
+        for e in watchlog.read(boot=prev["boot"], kinds={"repair"})
+        if e.get("step") == "reboot" and (not stopped or 0 <= stopped - e.get("at", 0) <= 600)
+    ]
     if asked:
         return f"the uplink watchdog rebooted it: {asked[-1]['text']}"
     return "it was shut down or restarted cleanly (by hand, or by the system)"
@@ -459,8 +501,14 @@ def boot(now=None):
         (d / "snapshots.log").write_text(snaps)
         (d / "journal-previous-boot.log").write_text(journal_tail())
         _file_watchers(d, boot=prev["boot"])
-        filed = {"dir": stamp, "boot": prev["boot"], "started": prev.get("at"), "detected": now,
-                 "last": last_snapshot(snaps)[:1500], "events": events[-5:]}
+        filed = {
+            "dir": stamp,
+            "boot": prev["boot"],
+            "started": prev.get("at"),
+            "detected": now,
+            "last": last_snapshot(snaps)[:1500],
+            "events": events[-5:],
+        }
         (d / "info.json").write_text(json.dumps(filed, indent=1))
         index = _json(INDEX, []) + [filed]
         for old in index[:-KEEP_CRASHES]:
@@ -468,6 +516,7 @@ def boot(now=None):
         _write(INDEX, index[-KEEP_CRASHES:])
     if not prev or prev.get("boot") != cur:
         from irate_box.hub import watchlog
+
         watchlog.add("box", "boot", f"Started: {boot_reason(prev, now)}.", at=now, filed=filed and filed["dir"])
         _write(RUN, {"boot": cur, "at": now, "clean": False})
     else:
@@ -483,9 +532,11 @@ def shutdown():
 
 # --- the radio ---------------------------------------------------------------------------------
 
+
 def radios():
     """{iface: {driver, port, product}} for the WiFi interfaces on the box now."""
     from irate_box.hub import netinv
+
     out = {}
     for i in sorted((SYS / "class/net").glob("*")):
         if (i / "wireless").exists() or (i / "phy80211").exists():
@@ -508,8 +559,12 @@ def radio_state(known, kernel):
         names = {n.lower() for n in (iface, r.get("driver"), r.get("port") and f"{r['port']}:") if n}
         aic = (r.get("driver") or "").startswith("aic")
         if aic:
-            names |= {"aicwf", "aicbsp", "rwnx"}      # the AIC8800 driver's own prefixes ("AICWFDBG(LOGERROR)" too)
-        errs = [l for l in kernel if (RADIO_ERR.search(l) and any(n in l.lower() for n in names)) or (aic and AIC_ERR.search(l))]
+            names |= {"aicwf", "aicbsp", "rwnx"}  # the AIC8800 driver's own prefixes ("AICWFDBG(LOGERROR)" too)
+        errs = [
+            l
+            for l in kernel
+            if (RADIO_ERR.search(l) and any(n in l.lower() for n in names)) or (aic and AIC_ERR.search(l))
+        ]
         out[iface] = (why, errs)
     return out
 
@@ -517,12 +572,13 @@ def radio_state(known, kernel):
 class RadioWatch:
     """A failing radio noticed and noted, never acted on (the uplink watchdog repairs). act(now,
     states) returns the events of this look."""
+
     def __init__(self, log):
         self.log = log
-        self.driver_reset = None   # when the driver last reset the radio itself
-        self.own_seen = None       # the driver's own count of its resets, as last read (radio.driver_reset)
-        self.recent = {}           # iface: deque of (time, error count)
-        self.failed = {}           # iface: since
+        self.driver_reset = None  # when the driver last reset the radio itself
+        self.own_seen = None  # the driver's own count of its resets, as last read (radio.driver_reset)
+        self.recent = {}  # iface: deque of (time, error count)
+        self.failed = {}  # iface: since
 
     def act(self, now, states, kernel=(), own=(None, None)):
         """own: (marker, age) of the driver's last reset of its own device (radio.driver_reset), which
@@ -535,9 +591,13 @@ class RadioWatch:
             self.own_seen = marker
         if said or fresh:
             self.driver_reset = now - age if fresh and not said else now
-            events.append(self.log(now, "radio", "driver-reset", "the radio's driver reset it itself (its firmware stopped answering)"))
+            events.append(
+                self.log(
+                    now, "radio", "driver-reset", "the radio's driver reset it itself (its firmware stopped answering)"
+                )
+            )
         if self.driver_reset is not None and now - self.driver_reset < DRIVER_GRACE:
-            return events   # its own reset at work: the interfaces come back by themselves, or don't
+            return events  # its own reset at work: the interfaces come back by themselves, or don't
         for iface, (gone, errs) in states.items():
             q = self.recent.setdefault(iface, deque(maxlen=2))
             q.append((now, len(errs)))
@@ -549,12 +609,16 @@ class RadioWatch:
                 continue
             if iface not in self.failed:
                 self.failed[iface] = now
-                why = "; ".join(gone) or f"{sum(n for _, n in q)} driver errors in a minute: {errs[-1][:160] if errs else ''}"
+                why = (
+                    "; ".join(gone)
+                    or f"{sum(n for _, n in q)} driver errors in a minute: {errs[-1][:160] if errs else ''}"
+                )
                 events.append(self.log(now, iface, "failed", why, snapshot=True))
         return events
 
 
 # --- the hang settings ---------------------------------------------------------------------------
+
 
 def watchdog_device():
     """'hardware' when the board has a watchdog of its own, 'softdog' when the kernel can give one,
@@ -592,6 +656,7 @@ def _boot_env_overlays(add=None, remove=None):
     names = [n for n in have if n != remove] + ([add] if add and add not in have else [])
     if names != have:
         from irate_box.root import safeio
+
         new = "user_overlays=" + " ".join(names)
         if at is None:
             lines.append(new)
@@ -614,19 +679,31 @@ def _board_watchdog(on):
     node = _dt_watchdog()
     if not node:
         raise Refused(M("crashwatch-set.no-dt-watchdog", "The device tree has no disabled watchdog to enable."))
-    src = ("/dts-v1/;\n/plugin/;\n/ {\n\tfragment@0 {\n\t\ttarget-path = \"%s\";\n"
-           "\t\t__overlay__ { status = \"okay\"; };\n\t};\n};\n" % node)
+    src = (
+        '/dts-v1/;\n/plugin/;\n/ {\n\tfragment@0 {\n\t\ttarget-path = "%s";\n'
+        '\t\t__overlay__ { status = "okay"; };\n\t};\n};\n' % node
+    )
     dtbo.parent.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(dtbo), "-"], input=src, capture_output=True, text=True)
+    r = subprocess.run(
+        ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(dtbo), "-"], input=src, capture_output=True, text=True
+    )
     if r.returncode:
         dtbo.unlink(missing_ok=True)
-        raise Refused(M("crashwatch-set.dtc-failed", "The device tree compiler (dtc) failed: {detail}", detail=r.stderr.strip()[:160]))
+        raise Refused(
+            M(
+                "crashwatch-set.dtc-failed",
+                "The device tree compiler (dtc) failed: {detail}",
+                detail=r.stderr.strip()[:160],
+            )
+        )
     _boot_env_overlays(add=OVERLAY_NAME)
 
 
 def board_watchdog_pending():
     """True when the overlay is in place but the watchdog hasn't appeared yet: it waits for a restart."""
-    return (BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo").exists() and not any((SYS / "class/watchdog").glob("watchdog*"))
+    return (BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo").exists() and not any(
+        (SYS / "class/watchdog").glob("watchdog*")
+    )
 
 
 def _softdog_loaded():
@@ -636,47 +713,81 @@ def _softdog_loaded():
 def set_panic(on):
     if on:
         from irate_box.root import safeio
+
         SYSCTL.parent.mkdir(parents=True, exist_ok=True)
-        safeio.write(SYSCTL, "# Written by irate-box (root/crashwatch.py): restart on a kernel panic, oops or lockup.\n"
-                     + "".join(f"{k} = {v}\n" for k, v in HANG_SYSCTL.items()))
+        safeio.write(
+            SYSCTL,
+            "# Written by irate-box (root/crashwatch.py): restart on a kernel panic, oops or lockup.\n"
+            + "".join(f"{k} = {v}\n" for k, v in HANG_SYSCTL.items()),
+        )
         for k, v in HANG_SYSCTL.items():
             subprocess.run(["sysctl", "-q", "-w", f"{k}={v}"], capture_output=True)
-        return M("crashwatch-set.panic.on", "Restart after kernel fault enabled: the box restarts {wait} after a kernel panic, oops "
-                                            "or lockup.", wait=duration(int(HANG_SYSCTL["kernel.panic"])))
+        return M(
+            "crashwatch-set.panic.on",
+            "Restart after kernel fault enabled: the box restarts {wait} after a kernel panic, oops or lockup.",
+            wait=duration(int(HANG_SYSCTL["kernel.panic"])),
+        )
     SYSCTL.unlink(missing_ok=True)
     for k in HANG_SYSCTL:
         subprocess.run(["sysctl", "-q", "-w", f"{k}=0"], capture_output=True)
-    return M("crashwatch-set.panic.off", "Restart after kernel fault disabled: a kernel panic or lockup no longer restarts the box.")
+    return M(
+        "crashwatch-set.panic.off",
+        "Restart after kernel fault disabled: a kernel panic or lockup no longer restarts the box.",
+    )
 
 
 def set_watchdog(on):
     from irate_box.root import safeio
+
     if on:
         kind = watchdog_device()
         if not kind:
-            raise Refused(M("crashwatch-set.no-watchdog", "This kernel has no watchdog: neither the board's own nor softdog."))
+            raise Refused(
+                M("crashwatch-set.no-watchdog", "This kernel has no watchdog: neither the board's own nor softdog.")
+            )
         if kind == "switched-off":
             _board_watchdog(True)
         if kind == "softdog":
             MODULES.parent.mkdir(parents=True, exist_ok=True)
-            safeio.write(MODULES, "# Written by irate-box (root/crashwatch.py): a watchdog where the board has none.\nsoftdog\n")
+            safeio.write(
+                MODULES, "# Written by irate-box (root/crashwatch.py): a watchdog where the board has none.\nsoftdog\n"
+            )
             p = subprocess.run(["modprobe", "softdog"], capture_output=True, text=True)
             if p.returncode:
                 MODULES.unlink(missing_ok=True)
-                raise Refused(M("crashwatch-set.softdog-failed", "The kernel did not load softdog: {detail}", detail=p.stderr.strip()[:160]))
+                raise Refused(
+                    M(
+                        "crashwatch-set.softdog-failed",
+                        "The kernel did not load softdog: {detail}",
+                        detail=p.stderr.strip()[:160],
+                    )
+                )
         SYSTEMD_CONF.parent.mkdir(parents=True, exist_ok=True)
-        safeio.write(SYSTEMD_CONF, "# Written by irate-box (root/crashwatch.py): systemd feeds the watchdog; a frozen\n"
-                     f"# system stops feeding it and the box restarts.\n[Manager]\nRuntimeWatchdogSec={WATCHDOG_SEC}\nRebootWatchdogSec=5min\n")
+        safeio.write(
+            SYSTEMD_CONF,
+            "# Written by irate-box (root/crashwatch.py): systemd feeds the watchdog; a frozen\n"
+            f"# system stops feeding it and the box restarts.\n[Manager]\nRuntimeWatchdogSec={WATCHDOG_SEC}\nRebootWatchdogSec=5min\n",
+        )
         subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
         wait = duration(WATCHDOG_SEC)
         if kind == "switched-off":
-            return M("crashwatch-set.watchdog.after-restart", "Watchdog enabled after restart: the board's own watchdog starts at the next "
-                                                              "restart. Then it restarts the box if the system freezes for {wait}.", wait=wait)
+            return M(
+                "crashwatch-set.watchdog.after-restart",
+                "Watchdog enabled after restart: the board's own watchdog starts at the next "
+                "restart. Then it restarts the box if the system freezes for {wait}.",
+                wait=wait,
+            )
         if kind == "hardware":
-            return M("crashwatch-set.watchdog.board", "Watchdog enabled: the board's own watchdog restarts the box if the system freezes "
-                                                      "for {wait}.", wait=wait)
-        return M("crashwatch-set.watchdog.softdog", "Watchdog enabled: the kernel's softdog restarts the box if the system freezes for {wait}.",
-                 wait=wait)
+            return M(
+                "crashwatch-set.watchdog.board",
+                "Watchdog enabled: the board's own watchdog restarts the box if the system freezes for {wait}.",
+                wait=wait,
+            )
+        return M(
+            "crashwatch-set.watchdog.softdog",
+            "Watchdog enabled: the kernel's softdog restarts the box if the system freezes for {wait}.",
+            wait=wait,
+        )
     SYSTEMD_CONF.unlink(missing_ok=True)
     _board_watchdog(False)
     subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
@@ -691,9 +802,18 @@ def set_option(key, value):
     s = load_settings()
     if key == "snapshots" and value in ("on", "off"):
         s["snapshots"] = value == "on"
-        msg = (M("crashwatch-set.snapshots.on", "Crash snapshots enabled: the box saves a snapshot to its storage every {every}.",
-                 every=duration(TICK)) if s["snapshots"] else
-               M("crashwatch-set.snapshots.off", "Crash snapshots disabled: after a crash, only what the journal last wrote is kept."))
+        msg = (
+            M(
+                "crashwatch-set.snapshots.on",
+                "Crash snapshots enabled: the box saves a snapshot to its storage every {every}.",
+                every=duration(TICK),
+            )
+            if s["snapshots"]
+            else M(
+                "crashwatch-set.snapshots.off",
+                "Crash snapshots disabled: after a crash, only what the journal last wrote is kept.",
+            )
+        )
     elif key == "panic" and value in ("on", "off"):
         msg = set_panic(value == "on")
         s["panic"] = value == "on"
@@ -710,7 +830,7 @@ def undo_all():
     done = []
     s = load_settings()
     if s["panic"] or SYSCTL.exists():
-        done.append(render(set_panic(False)))   # for uninstall.sh's terminal
+        done.append(render(set_panic(False)))  # for uninstall.sh's terminal
     if s["watchdog"] or SYSTEMD_CONF.exists() or (BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo").exists():
         done.append(render(set_watchdog(False)))
     return done
@@ -718,12 +838,19 @@ def undo_all():
 
 # --- running ---------------------------------------------------------------------------------
 
+
 def status():
     s = load_settings()
     st = _json(STATUS, {})
-    return {"settings": s, "running": st, "crashes": _json(INDEX, []), "incidents": _json(INCIDENTS, []), "events": _json(EVENTS, [])[-20:],
-            "watchdog_device": None if os.geteuid() and not os.environ.get("HUB_SYSFS") else watchdog_device(),
-            "watchdog_pending": board_watchdog_pending()}
+    return {
+        "settings": s,
+        "running": st,
+        "crashes": _json(INDEX, []),
+        "incidents": _json(INCIDENTS, []),
+        "events": _json(EVENTS, [])[-20:],
+        "watchdog_device": None if os.geteuid() and not os.environ.get("HUB_SYSFS") else watchdog_device(),
+        "watchdog_pending": board_watchdog_pending(),
+    }
 
 
 def run(once=False):
@@ -737,7 +864,10 @@ def run(once=False):
 
     def log(now, iface, kind, text, snapshot=False):
         e = {"at": now, "boot": boot_id(), "iface": iface, "kind": kind, "text": text}
-        if kind in ("failed", "driver-reset"):   # filed with the kernel's lines: what failed, or what the driver timed out on
+        if kind in (
+            "failed",
+            "driver-reset",
+        ):  # filed with the kernel's lines: what failed, or what the driver timed out on
             try:
                 e["filed"] = file_radio(now, iface, text, pending["lines"], (known.get(iface) or {}).get("port"))["dir"]
             except OSError as exc:
@@ -745,14 +875,22 @@ def run(once=False):
         events.append(e)
         _write(EVENTS, list(events))
         from irate_box.hub import watchlog
-        watchlog.add("driver" if kind == "driver-reset" else "crashwatch", kind, text, None if iface == "radio" else iface, at=now,
-                     filed=e.get("filed"))
+
+        watchlog.add(
+            "driver" if kind == "driver-reset" else "crashwatch",
+            kind,
+            text,
+            None if iface == "radio" else iface,
+            at=now,
+            filed=e.get("filed"),
+        )
         if snapshot:
             pending["snap"] = f"  !! {iface}: {text}"
         return e
 
     settings = load_settings()
     from irate_box.root import radio
+
     try:
         said = carry_over()
         if said:
@@ -763,9 +901,11 @@ def run(once=False):
     keeper = SnapshotKeeper()
     # Stopped (a shutdown, a restart): what the saver stop holds goes to the card first.
     import signal
+
     def _stop(*_):
         keeper.flush()
         sys.exit(0)
+
     signal.signal(signal.SIGTERM, _stop)
     mtime = 0.0
     while True:
@@ -781,7 +921,7 @@ def run(once=False):
         keep, flood = floods(lines)
         floods_hour.update(flood)
         for i, r in radios().items():
-            known[i] = r          # a radio that came back, or a new one, watched from now on
+            known[i] = r  # a radio that came back, or a new one, watched from now on
         watch.act(now, radio_state(known, lines), lines, radio.driver_reset())
         extra = pending.pop("snap", None) or ""
         pending["snap"] = None
@@ -795,8 +935,16 @@ def run(once=False):
         # For the doctor every 5 minutes: the radios, and the floods counted over the hour so far.
         if now - status_at >= 300 or once:
             status_at = now
-            _write(STATUS, {"at": now, "boot": boot_id(), "radios": known, "floods": dict(floods_hour.most_common(5)),
-                            "flood_window": max(now - hour_start, TICK)})
+            _write(
+                STATUS,
+                {
+                    "at": now,
+                    "boot": boot_id(),
+                    "radios": known,
+                    "floods": dict(floods_hour.most_common(5)),
+                    "flood_window": max(now - hour_start, TICK),
+                },
+            )
         if now - hour_start >= 3600:
             floods_hour.clear()
             hour_start = now
@@ -827,7 +975,7 @@ def migrate():
             for name in os.listdir(old):
                 try:
                     os.stat(name, dir_fd=new, follow_symlinks=False)
-                    continue   # the new folder's own is newer
+                    continue  # the new folder's own is newer
                 except FileNotFoundError:
                     pass
                 os.rename(name, name, src_dir_fd=old, dst_dir_fd=new)
@@ -849,7 +997,11 @@ def main(argv):
         run()
     elif cmd == "boot":
         f = boot()
-        print(f"crashwatch: the previous boot stopped without shutting down; filed as {f['dir']}" if f else "crashwatch: boot noted")
+        print(
+            f"crashwatch: the previous boot stopped without shutting down; filed as {f['dir']}"
+            if f
+            else "crashwatch: boot noted"
+        )
     elif cmd == "shutdown":
         shutdown()
     elif cmd == "status":

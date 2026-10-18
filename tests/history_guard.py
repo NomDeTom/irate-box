@@ -3,6 +3,7 @@
 """The code says what it does and why, not who asked or when: lines naming people, the plan or the notes, and
 comments carrying dates, said with their place. A warning by default; --strict fails (for CI, if wanted).
 python3 tests/history_guard.py [--strict]"""
+
 import re
 import subprocess
 import sys
@@ -10,7 +11,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 # A note link is [[name-like]]; "step N" is left out, as the product has steps of its own (setup's "Step 1 of 5").
-ANYWHERE = re.compile(r"\bTom\b|next-work.plan|current-and-next|notes-sync|\[\[[a-z][a-z0-9-]*\]\]|\bstance review\b|\b[Ii]tem \d+\b")
+ANYWHERE = re.compile(
+    r"\bTom\b|next-work.plan|current-and-next|notes-sync|\[\[[a-z][a-z0-9-]*\]\]|\bstance review\b|\b[Ii]tem \d+\b"
+)
 DATE = re.compile(r"\b20\d\d-[01]\d-[0-3]\d\b")
 COMMENT = re.compile(r"^\s*(#|//|/\*|\*|<!--)")
 SKIP = re.compile(r"^(tests/fixtures/|LICENSES/|.*\.(png|jpg|webp|webm|zim|gpg|asc|pub|woff2?)$)")

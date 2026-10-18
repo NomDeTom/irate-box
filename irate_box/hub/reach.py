@@ -19,11 +19,11 @@ from pathlib import Path
 
 STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 FILE = STATE_DIR / "public-visits.json"
-KEEP = 20            # networks kept, the most recent
-WRITE_EVERY = 60     # seconds between writes for one network
+KEEP = 20  # networks kept, the most recent
+WRITE_EVERY = 60  # seconds between writes for one network
 _lock = threading.Lock()
-_written = {}        # network -> when last written
-_seen = None         # the file's contents, once read
+_written = {}  # network -> when last written
+_seen = None  # the file's contents, once read
 
 
 def public_net(addr):

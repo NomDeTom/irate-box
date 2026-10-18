@@ -25,7 +25,10 @@ SOCKETS = Path(os.environ.get("HUB_NOTEBOOK_SOCKETS", "/run/irate-box-notebooks"
 NAME_RE = re.compile(r"^[a-z0-9_-][a-z0-9._-]{2,31}$")
 IDLE = 30 * 60
 HARD_MAX = 10
-PORTS = {"http": int(os.environ.get("HUB_NOTEBOOK_PORT", "8094")), "https": int(os.environ.get("HUB_NOTEBOOK_TLS_PORT", "8494"))}
+PORTS = {
+    "http": int(os.environ.get("HUB_NOTEBOOK_PORT", "8094")),
+    "https": int(os.environ.get("HUB_NOTEBOOK_TLS_PORT", "8494")),
+}
 MODES = ("", "private", "communal")
 MAX_CHOICES = (1, 2, 3, 4, 5, 6, 8, 10)
 FREE_CHOICES = (48, 64, 96, 128, 192)
@@ -132,8 +135,12 @@ class Notebooks:
         with self.lock:
             running = k in self.wanted
             ready = running and self.listening(str(socket_path(k)))
-        return {"state": "ready" if ready else "starting" if running else "stopped",
-                "running": len(self.wanted), "max": self.settings()["notebooks_max"], "ports": PORTS}
+        return {
+            "state": "ready" if ready else "starting" if running else "stopped",
+            "running": len(self.wanted),
+            "max": self.settings()["notebooks_max"],
+            "ports": PORTS,
+        }
 
     def open(self, me):
         """Asked to open: put it on the list if there is room (a count and the memory kept free)."""
@@ -182,8 +189,13 @@ class Notebooks:
         """For /admin: who has one, and which are running."""
         names = sorted(p.name for p in ROOT.iterdir() if p.is_dir() and NAME_RE.match(p.name)) if ROOT.is_dir() else []
         with self.lock:
-            return {"mode": self.mode(), "supported": self.supported(), "notebooks": names,
-                    "running": sorted(self.wanted), "free_mb": available_mb()}
+            return {
+                "mode": self.mode(),
+                "supported": self.supported(),
+                "notebooks": names,
+                "running": sorted(self.wanted),
+                "free_mb": available_mb(),
+            }
 
 
 class Reaper(threading.Thread):

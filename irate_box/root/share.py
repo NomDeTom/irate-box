@@ -33,20 +33,22 @@ from pathlib import Path
 from irate_box.msg import M, Refused
 
 LEVELS = ("off", "users-web", "sheet-web", "sheet-all", "open")
-LET_OUT = ("users-web", "sheet-web", "sheet-all")     # the levels where a device is let out one by one
+LET_OUT = ("users-web", "sheet-web", "sheet-all")  # the levels where a device is let out one by one
 WEB_ONLY = ("users-web", "sheet-web")
 CONTAIN = ("lan", "tunnels", "by_mac", "dns_hold")
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RECORD = ETC / "share.json"
-PUBLIC = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "control" / "share.json"   # what the hub and /admin may see
+PUBLIC = (
+    Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "control" / "share.json"
+)  # what the hub and /admin may see
 SYSCTL = Path(os.environ.get("HUB_SYSCTL_DIR", "/etc/sysctl.d")) / "90-irate-box-share.conf"
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 GUEST_DNS_UNIT = "irate-box-guest-dns.service"
 GUEST_DNS_PORT = 5354
 LEASES = Path(os.environ.get("HUB_AP_LEASES", "/var/lib/misc/dnsmasq.leases"))
-HUB = "192.168.4.1"                 # apmode.ADDRESS: the hub on the hotspot
+HUB = "192.168.4.1"  # apmode.ADDRESS: the hub on the hotspot
 NETWORK = ipaddress.ip_network(f"{HUB}/24", strict=False)
-OUT_HOURS = 12                      # how long a device stays let out after tapping through
+OUT_HOURS = 12  # how long a device stays let out after tapping through
 MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 
 
@@ -56,14 +58,17 @@ def load():
     except (OSError, ValueError):
         data = {}
     contain = data.get("contain") if isinstance(data.get("contain"), dict) else {}
-    return {"level": data.get("level") if data.get("level") in LEVELS else "off",
-            "forward_was": data.get("forward_was"),
-            "contain": {k: contain.get(k) is not False for k in CONTAIN}}
+    return {
+        "level": data.get("level") if data.get("level") in LEVELS else "off",
+        "forward_was": data.get("forward_was"),
+        "contain": {k: contain.get(k) is not False for k in CONTAIN},
+    }
 
 
 def save(rec):
     """Root's record, and what the hub may see of it (the level and the containment)."""
     from irate_box.root import safeio
+
     safeio.write(RECORD, json.dumps(rec))
     safeio.write(PUBLIC, json.dumps({"level": rec["level"], "contain": rec["contain"]}))
 
@@ -78,8 +83,14 @@ def guest_address(addr):
         ip = ipaddress.ip_address(str(addr))
     except ValueError:
         return None
-    return str(ip) if ip in NETWORK and ip != ipaddress.ip_address(HUB) and ip != NETWORK.broadcast_address \
-        and ip != NETWORK.network_address else None
+    return (
+        str(ip)
+        if ip in NETWORK
+        and ip != ipaddress.ip_address(HUB)
+        and ip != NETWORK.broadcast_address
+        and ip != NETWORK.network_address
+        else None
+    )
 
 
 def mac_of(addr, neigh=""):
@@ -110,16 +121,25 @@ def guest_dns_unit(iface):
     only, no DHCP, answering from the box's own resolv.conf. The hotspot's own dnsmasq keeps its
     catch-all; firewall.py sends only those let out here."""
     if not re.match(r"^[A-Za-z0-9_.-]{1,15}$", iface):
-        raise Refused(M("guest-share.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface)))
-    return "\n".join([
-        "[Unit]", "Description=Irate-Box: DNS for guests let out to the internet (root/share.py)",
-        "After=network-online.target", "",
-        "[Service]",
-        f"ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/dev/null --pid-file= --port={GUEST_DNS_PORT} "
-        f"--interface={iface} --bind-dynamic --except-interface=lo --no-hosts --cache-size=1000 --domain-needed --bogus-priv",
-        "Restart=on-failure", "",
-        "[Install]", "WantedBy=multi-user.target", "",
-    ])
+        raise Refused(
+            M("guest-share.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface))
+        )
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=Irate-Box: DNS for guests let out to the internet (root/share.py)",
+            "After=network-online.target",
+            "",
+            "[Service]",
+            f"ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/dev/null --pid-file= --port={GUEST_DNS_PORT} "
+            f"--interface={iface} --bind-dynamic --except-interface=lo --no-hosts --cache-size=1000 --domain-needed --bogus-priv",
+            "Restart=on-failure",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+            "",
+        ]
+    )
 
 
 WORDS = {

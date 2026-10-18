@@ -77,8 +77,11 @@ RELEASE_BASE = "https://release.meshtastic.org"
 DEFAULTS = {"enabled": True, "boards": "all", "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True}
 CONFIGS = ROOT / "config.d.json"
 CONFIGS_MAX = 4 << 20  # the whole folder's text; a few hundred KB in 2026
-CONFIGS_TOO_LARGE = M("firmware.configs.too-large", "The folder bin/config.d is larger than {mb} MB. The box does not keep it.",
-                      mb=CONFIGS_MAX >> 20)
+CONFIGS_TOO_LARGE = M(
+    "firmware.configs.too-large",
+    "The folder bin/config.d is larger than {mb} MB. The box does not keep it.",
+    mb=CONFIGS_MAX >> 20,
+)
 CACHES = ("discard", "native", "whole")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,}$")
 BOARD_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -113,7 +116,9 @@ def set_settings(**changes):
     if "boards" in changes:
         b = changes["boards"]
         if b != "all" and not (isinstance(b, list) and all(isinstance(x, str) and BOARD_RE.match(x) for x in b)):
-            raise LibrarianError(M("firmware.boards.invalid", 'Invalid boards setting. Enter "all" or a list of board names.'))
+            raise LibrarianError(
+                M("firmware.boards.invalid", 'Invalid boards setting. Enter "all" or a list of board names.')
+            )
         cfg["boards"] = b if b == "all" else sorted(set(b))
     for key in ("keep_alpha", "keep_beta"):
         if key in changes:
@@ -123,7 +128,13 @@ def set_settings(**changes):
             cfg[key] = n
     if "cache" in changes:
         if changes["cache"] not in CACHES:
-            raise LibrarianError(M("firmware.cache.invalid", "Invalid build cache setting. Use one of these: {caches}.", caches=list(CACHES)))
+            raise LibrarianError(
+                M(
+                    "firmware.cache.invalid",
+                    "Invalid build cache setting. Use one of these: {caches}.",
+                    caches=list(CACHES),
+                )
+            )
         cfg["cache"] = changes["cache"]
     librarian._write_json(SETTINGS, cfg)
     return cfg
@@ -139,6 +150,7 @@ def _save_status(st):
 
 
 # --- what to keep --------------------------------------------------------------------------
+
 
 def _releases(cfg):
     """The releases to keep, newest first: [{version, tag, channel, title, notes, deps}]. A
@@ -157,13 +169,19 @@ def _releases(cfg):
             continue
         deps = next((a for n, a in names.items() if n.startswith("platformio-deps-") and n.endswith(".zip")), None)
         source = next((a for n, a in names.items() if n.startswith("meshtasticd-") and n.endswith("-src.zip")), None)
-        item = {"version": version, "tag": rel["tag_name"], "published": rel.get("published_at"),
-                "notes": rel.get("body") or "", "deps": deps and {"url": deps["browser_download_url"],
-                                                                     "size": deps["size"], "name": deps["name"]},
-                "source": source and {"url": source["browser_download_url"], "size": source["size"], "name": source["name"]}}
+        item = {
+            "version": version,
+            "tag": rel["tag_name"],
+            "published": rel.get("published_at"),
+            "notes": rel.get("body") or "",
+            "deps": deps and {"url": deps["browser_download_url"], "size": deps["size"], "name": deps["name"]},
+            "source": source
+            and {"url": source["browser_download_url"], "size": source["size"], "name": source["name"]},
+        }
         (alphas if rel.get("prerelease") else betas).append(item)
-    keep = [dict(r, channel="alpha") for r in alphas[:cfg["keep_alpha"]]] + \
-           [dict(r, channel="beta") for r in betas[:cfg["keep_beta"]]]
+    keep = [dict(r, channel="alpha") for r in alphas[: cfg["keep_alpha"]]] + [
+        dict(r, channel="beta") for r in betas[: cfg["keep_beta"]]
+    ]
     keep.sort(key=lambda r: r["published"] or "", reverse=True)
     for r in keep:
         r["title"] = f"Meshtastic Firmware {r['version']} {r['channel'].capitalize()}"
@@ -218,8 +236,15 @@ def _mirror_version(rel, cfg, policy, log):
         _publish(vdir / f"firmware-{board}-{version}.mt.json", mt)
         got.append(board)
     missing = [b for b in (cfg["boards"] if cfg["boards"] != "all" else []) if b not in targets]
-    return {"channel": rel["channel"], "boards": got, "files": files, "bytes": size,
-            "missing": missing, "unavailable": unavailable, "fetched": librarian.now_iso()}
+    return {
+        "channel": rel["channel"],
+        "boards": got,
+        "files": files,
+        "bytes": size,
+        "missing": missing,
+        "unavailable": unavailable,
+        "fetched": librarian.now_iso(),
+    }
 
 
 class _Unavailable(LibrarianError):
@@ -231,35 +256,51 @@ def _mirror_board(base, vdir, version, mt, policy):
     stops the whole run (LibrarianError); a file that cannot be had stops only this board."""
     files = size = 0
     for entry in mt.get("files", []):
-            name = entry.get("name", "")
-            if not FILE_RE.match(name) or name.endswith(".elf"):
-                continue
-            dest = vdir / name
-            if not _have(dest, entry):
-                need = entry.get("bytes", 0) + policy["min_free_mb"] * 2**20
-                if librarian._free_bytes(ROOT) < need:
-                    raise LibrarianError(M("firmware.file.no-space", "Insufficient storage for {name}. The box keeps {reserve} MB free.",
-                                           name=name, reserve=policy["min_free_mb"]))
-                tmp = dest.with_name(dest.name + ".part")
-                try:
-                    librarian._download(f"{base}/{name}", tmp, name=f"firmware {version}: {name}",
-                                        expected=entry.get("bytes", 0))
-                except LibrarianError as exc:
-                    tmp.unlink(missing_ok=True)
-                    if isinstance(exc.message, dict) and exc.message.get("id") in ("library.download.unreachable", "library.download.cut-short"):
-                        raise  # the network, not this board: the whole run stops
-                    raise _Unavailable(exc.message)
-                if not _have(tmp, entry):
-                    tmp.unlink(missing_ok=True)
-                    raise _Unavailable(M("firmware.file.digest-mismatch", "Digest mismatch. The size or MD5 of {name} does not match the manifest.",
-                                         name=name))
-                os.replace(tmp, dest)
-            files += 1
-            size += entry.get("bytes", 0)
+        name = entry.get("name", "")
+        if not FILE_RE.match(name) or name.endswith(".elf"):
+            continue
+        dest = vdir / name
+        if not _have(dest, entry):
+            need = entry.get("bytes", 0) + policy["min_free_mb"] * 2**20
+            if librarian._free_bytes(ROOT) < need:
+                raise LibrarianError(
+                    M(
+                        "firmware.file.no-space",
+                        "Insufficient storage for {name}. The box keeps {reserve} MB free.",
+                        name=name,
+                        reserve=policy["min_free_mb"],
+                    )
+                )
+            tmp = dest.with_name(dest.name + ".part")
+            try:
+                librarian._download(
+                    f"{base}/{name}", tmp, name=f"firmware {version}: {name}", expected=entry.get("bytes", 0)
+                )
+            except LibrarianError as exc:
+                tmp.unlink(missing_ok=True)
+                if isinstance(exc.message, dict) and exc.message.get("id") in (
+                    "library.download.unreachable",
+                    "library.download.cut-short",
+                ):
+                    raise  # the network, not this board: the whole run stops
+                raise _Unavailable(exc.message)
+            if not _have(tmp, entry):
+                tmp.unlink(missing_ok=True)
+                raise _Unavailable(
+                    M(
+                        "firmware.file.digest-mismatch",
+                        "Digest mismatch. The size or MD5 of {name} does not match the manifest.",
+                        name=name,
+                    )
+                )
+            os.replace(tmp, dest)
+        files += 1
+        size += entry.get("bytes", 0)
     return files, size
 
 
 DEPS_RESERVE = 512 << 20  # free space the deps extraction leaves on the card
+
 
 def _subset(name, mode, size=0):
     """Where a deps-zip entry goes under pio-deps/, or None to leave it out."""
@@ -268,16 +309,22 @@ def _subset(name, mode, size=0):
     # no "." or "..", no backslash.
     if len(parts) < 3 or any(p in ("", ".", "..") for p in parts[:-1]) or parts[-1] in (".", "..") or "\\" in name:
         return None
-    _, area, *rest = parts            # pio-deps-<env>/<area>/...
+    _, area, *rest = parts  # pio-deps-<env>/<area>/...
     if mode == "whole":
         return "/".join([area, *rest])
     if area == "packages":
         return "/".join(["packages", *rest])
     if area == "libdeps" and len(rest) >= 2 and rest[1] not in UI_LIBS:
         return "/".join(["libdeps", *rest[1:]])  # libdeps/<env>/<lib>/... -> libdeps/<lib>/...
-    if area == "core" and rest[:2] == [".cache", "downloads"] and len(rest) == 3 and rest[2] != "usage.db" and size < BIG_ARCHIVE:
+    if (
+        area == "core"
+        and rest[:2] == [".cache", "downloads"]
+        and len(rest) == 3
+        and rest[2] != "usage.db"
+        and size < BIG_ARCHIVE
+    ):
         return "/".join(["core", *rest])
-    return None                        # the big archives, the rest of core/.cache, the UI libraries
+    return None  # the big archives, the rest of core/.cache, the UI libraries
 
 
 def _carry_cache(rel, cfg, policy, log):
@@ -298,8 +345,14 @@ def _carry_cache(rel, cfg, policy, log):
     deps = rel["deps"]
     need, free = deps["size"] * 3 + policy["min_free_mb"] * 2**20, librarian._free_bytes(ROOT)
     if free < need:
-        raise LibrarianError(M("firmware.cache.no-space", "Insufficient storage for the build cache. It needs {need} MB and {free} MB are free.",
-                               need=need >> 20, free=free >> 20))
+        raise LibrarianError(
+            M(
+                "firmware.cache.no-space",
+                "Insufficient storage for the build cache. It needs {need} MB and {free} MB are free.",
+                need=need >> 20,
+                free=free >> 20,
+            )
+        )
     tmp = librarian.TMP_DIR / deps["name"]
     tmp.parent.mkdir(parents=True, exist_ok=True)
     log(f"firmware {rel['version']}: downloading the build cache ({deps['size'] >> 20} MB)")
@@ -310,26 +363,47 @@ def _carry_cache(rel, cfg, policy, log):
     try:
         with zipfile.ZipFile(tmp) as zf:
             # What it unpacks to must fit, with room left: a small zip can claim gigabytes.
-            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"], i.file_size) and not i.is_dir())
+            wanted = sum(
+                i.file_size for i in zf.infolist() if _subset(i.filename, cfg["cache"], i.file_size) and not i.is_dir()
+            )
             free = shutil.disk_usage(ROOT).free
             if wanted > free - DEPS_RESERVE:
-                raise LibrarianError(M("firmware.cache.unpack-no-space", "Insufficient storage. {name} unpacks to {size} MB. "
-                                       "{free} MB are free. {reserve} MB must stay free.", name=deps["name"], size=wanted >> 20,
-                                       free=free >> 20, reserve=DEPS_RESERVE >> 20))
+                raise LibrarianError(
+                    M(
+                        "firmware.cache.unpack-no-space",
+                        "Insufficient storage. {name} unpacks to {size} MB. "
+                        "{free} MB are free. {reserve} MB must stay free.",
+                        name=deps["name"],
+                        size=wanted >> 20,
+                        free=free >> 20,
+                        reserve=DEPS_RESERVE >> 20,
+                    )
+                )
             for info in zf.infolist():
                 rel_path = _subset(info.filename, cfg["cache"], info.file_size)
                 if not rel_path or info.is_dir():
                     continue
                 target = work / rel_path
                 if not target.resolve().is_relative_to(work.resolve()):
-                    raise LibrarianError(M("firmware.cache.unsafe-path", "Archive rejected. {name} names a file outside its folder: {path}",
-                                           name=deps["name"], path=info.filename[:80]))
+                    raise LibrarianError(
+                        M(
+                            "firmware.cache.unsafe-path",
+                            "Archive rejected. {name} names a file outside its folder: {path}",
+                            name=deps["name"],
+                            path=info.filename[:80],
+                        )
+                    )
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)
     except zipfile.BadZipFile:
-        raise LibrarianError(M("firmware.cache.incomplete", "Archive damaged or incomplete. {name} is not a complete zip file.",
-                               name=deps["name"]))
+        raise LibrarianError(
+            M(
+                "firmware.cache.incomplete",
+                "Archive damaged or incomplete. {name} is not a complete zip file.",
+                name=deps["name"],
+            )
+        )
     finally:
         tmp.unlink(missing_ok=True)
     (work / ".irate-box-cache").write_text(cfg["cache"] + "\n")
@@ -375,6 +449,7 @@ def _write_index(kept, st):
 class _Inflate(io.RawIOBase):
     """A zip member's bytes (deflated or stored) as a stream, from a file or a ranged download,
     decompressed as read: no seeking, so a .tar.xz inside can be read from the start only."""
+
     def __init__(self, raw, method):
         self.raw, self.z = raw, zlib.decompressobj(-15) if method == 8 else None
         self.buf, self.x = b"", lzma.LZMADecompressor()
@@ -399,12 +474,18 @@ def _configs_from_package(open_at):
     bytes from there (a file, or a ranged request)."""
     head = open_at(0).read(30)
     if head[:4] != b"PK\x03\x04":
-        raise LibrarianError(M("firmware.package.not-zip", "Archive unsupported. The source package is not a zip file."))
+        raise LibrarianError(
+            M("firmware.package.not-zip", "Archive unsupported. The source package is not a zip file.")
+        )
     method = struct.unpack("<H", head[8:10])[0]
     n, m = struct.unpack("<HH", head[26:30])
     if method not in (0, 8):
-        raise LibrarianError(M("firmware.package.compression",
-                               "Archive unsupported. The source package uses a compression that the box cannot read."))
+        raise LibrarianError(
+            M(
+                "firmware.package.compression",
+                "Archive unsupported. The source package uses a compression that the box cannot read.",
+            )
+        )
     files, inside, total = [], False, 0
     with tarfile.open(fileobj=io.BufferedReader(_Inflate(open_at(30 + n + m), method), 1 << 16), mode="r|") as tf:
         for ti in tf:
@@ -416,7 +497,7 @@ def _configs_from_package(open_at):
                     total += len(text)
                     if total > CONFIGS_MAX:
                         raise LibrarianError(CONFIGS_TOO_LARGE)
-                    files.append({"path": rel[len("bin/config.d/"):], "text": text})
+                    files.append({"path": rel[len("bin/config.d/") :], "text": text})
             elif inside:
                 break
     return sorted(files, key=lambda f: f["path"])
@@ -426,6 +507,7 @@ def source_mirror():
     """The mirror of meshtastic/firmware on this box (mirrors.py), or None: the first whose
     upstream is it on github.com and whose repository exists."""
     from irate_box.library import mirrors
+
     for m in mirrors.load():
         if (mirrors._github(m.get("upstream", "")) or "").lower() == REPO and (mirrors.repo_path(m) / "HEAD").exists():
             return m
@@ -435,16 +517,28 @@ def source_mirror():
 def _configs_from_mirror(rel):
     """bin/config.d at the release's tag, read from the mirror with git: no network."""
     from irate_box.library import mirrors
+
     m = source_mirror()
     if not m:
-        raise LibrarianError(M("firmware.mirror.none", "Source not found. This box has no mirror of meshtastic/firmware."))
+        raise LibrarianError(
+            M("firmware.mirror.none", "Source not found. This box has no mirror of meshtastic/firmware.")
+        )
     path = str(mirrors.repo_path(m))
     try:
         librarian._git("-C", path, "rev-parse", "--verify", "--quiet", f"refs/tags/{rel['tag']}^{{commit}}")
     except LibrarianError:
-        raise LibrarianError(M("firmware.mirror.no-tag", "The mirror {name} does not have the tag {tag}.", name=m["name"], tag=rel["tag"]))
+        raise LibrarianError(
+            M(
+                "firmware.mirror.no-tag",
+                "The mirror {name} does not have the tag {tag}.",
+                name=m["name"],
+                tag=rel["tag"],
+            )
+        )
     files, total = [], 0
-    for line in librarian._git("-C", path, "ls-tree", "-r", "-z", f"refs/tags/{rel['tag']}", "--", "bin/config.d/").split("\0"):
+    for line in librarian._git(
+        "-C", path, "ls-tree", "-r", "-z", f"refs/tags/{rel['tag']}", "--", "bin/config.d/"
+    ).split("\0"):
         if not line:
             continue
         meta, _, name = line.partition("\t")
@@ -455,13 +549,23 @@ def _configs_from_mirror(rel):
         total += len(text)
         if total > CONFIGS_MAX:
             raise LibrarianError(CONFIGS_TOO_LARGE)
-        files.append({"path": name[len("bin/config.d/"):], "text": text})
+        files.append({"path": name[len("bin/config.d/") :], "text": text})
     return sorted(files, key=lambda f: f["path"]), m["name"]
 
 
 def _configs_from_git(rel, work):
-    librarian._git("clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", rel["tag"],
-                   f"https://github.com/{REPO}.git", str(work / "repo"))
+    librarian._git(
+        "clone",
+        "-q",
+        "--depth",
+        "1",
+        "--filter=blob:none",
+        "--sparse",
+        "--branch",
+        rel["tag"],
+        f"https://github.com/{REPO}.git",
+        str(work / "repo"),
+    )
     librarian._git("-C", str(work / "repo"), "sparse-checkout", "set", "bin/config.d")
     top = work / "repo" / "bin" / "config.d"
     files, total = [], 0
@@ -476,10 +580,13 @@ def _configs_from_git(rel, work):
 
 
 def _ranged(url):
-    real = urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": librarian.USER_AGENT}),
-                                  timeout=60).url
-    return lambda off: urllib.request.urlopen(urllib.request.Request(
-        real, headers={"Range": f"bytes={off}-", "User-Agent": librarian.USER_AGENT}), timeout=120)
+    real = urllib.request.urlopen(
+        urllib.request.Request(url, method="HEAD", headers={"User-Agent": librarian.USER_AGENT}), timeout=60
+    ).url
+    return lambda off: urllib.request.urlopen(
+        urllib.request.Request(real, headers={"Range": f"bytes={off}-", "User-Agent": librarian.USER_AGENT}),
+        timeout=120,
+    )
 
 
 def _said(exc):
@@ -525,14 +632,33 @@ def sync_configs(rel, log=print):
             files = _configs_from_package(_ranged(src["url"]))
             method = "the release's source package, streamed"
         except (LibrarianError, OSError, tarfile.TarError, lzma.LZMAError, zlib.error) as exc:
-            tried.append(M("firmware.configs.tried-release", "the source package of the release ({error})", error=_said(exc)))
+            tried.append(
+                M("firmware.configs.tried-release", "the source package of the release ({error})", error=_said(exc))
+            )
     if not files:
         if tried:
-            raise LibrarianError(M("firmware.configs.none", "No configuration files. The box tried {tried}.", tried=tried))
-        raise LibrarianError(M("firmware.configs.empty", "No configuration files. The folder bin/config.d at {tag} has none.", tag=rel["tag"]))
+            raise LibrarianError(
+                M("firmware.configs.none", "No configuration files. The box tried {tried}.", tried=tried)
+            )
+        raise LibrarianError(
+            M(
+                "firmware.configs.empty",
+                "No configuration files. The folder bin/config.d at {tag} has none.",
+                tag=rel["tag"],
+            )
+        )
     ROOT.mkdir(parents=True, exist_ok=True)
-    _publish(CONFIGS, {"repo": REPO, "tag": rel["tag"], "version": rel["version"], "from": method,
-                       "fetched": librarian.now_iso(), "files": files})
+    _publish(
+        CONFIGS,
+        {
+            "repo": REPO,
+            "tag": rel["tag"],
+            "version": rel["version"],
+            "from": method,
+            "fetched": librarian.now_iso(),
+            "files": files,
+        },
+    )
     return f"configs: {len(files)} from {rel['tag']} ({method})"
 
 
@@ -568,8 +694,18 @@ def sync(check_only=False, log=print):
             st.pop("versions", None)
             st["cache"] = _carry_cache(kept[0], cfg, policy, log) if kept else None
             st.pop("error", None)
-            outcome = "; ".join(x for x in (configs, f"build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else None,
-                                            f"flash files removed ({gone >> 20} MB)" if gone else None) if x) or "Firmware downloads disabled"
+            outcome = (
+                "; ".join(
+                    x
+                    for x in (
+                        configs,
+                        f"build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else None,
+                        f"flash files removed ({gone >> 20} MB)" if gone else None,
+                    )
+                    if x
+                )
+                or "Firmware downloads disabled"
+            )
             st["outcome"] = outcome
             _save_status(st)
             return outcome
@@ -585,9 +721,11 @@ def sync(check_only=False, log=print):
         st["cache"] = _carry_cache(kept[0], cfg, policy, log) if kept else None
         _write_index(kept, st)
         st.pop("error", None)
-        outcome = f"{len(versions)} releases, {sum(v['bytes'] for v in versions.values()) >> 20} MB" + \
-                  (f"; build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else "") + \
-                  (f"; {configs}" if configs else "")
+        outcome = (
+            f"{len(versions)} releases, {sum(v['bytes'] for v in versions.values()) >> 20} MB"
+            + (f"; build cache {st['cache']['bytes'] >> 20} MB" if st.get("cache") else "")
+            + (f"; {configs}" if configs else "")
+        )
     except (LibrarianError, OSError, ValueError, KeyError) as exc:
         st["error"] = str(exc)
         outcome = f"error: {exc}"
@@ -626,8 +764,11 @@ def cache_dir():
 
 def targets():
     """The boards the newest kept release offers, for /admin's picker: [{board, platform}]."""
-    for v in sorted((d for d in ROOT.iterdir() if d.is_dir() and VERSION_RE.match(d.name)), reverse=True) \
-            if ROOT.is_dir() else []:
+    for v in (
+        sorted((d for d in ROOT.iterdir() if d.is_dir() and VERSION_RE.match(d.name)), reverse=True)
+        if ROOT.is_dir()
+        else []
+    ):
         data = librarian._read_json(v / f"firmware-{v.name}.json", {})
         if data.get("targets"):
             return data["targets"]
@@ -636,6 +777,10 @@ def targets():
 
 def snapshot():
     m = source_mirror()
-    return {"settings": settings(), "status": status(), "targets": targets(),
-            "source": m and {"name": m["name"], "area": m["area"]},
-            "free_mb": librarian._free_bytes(ROOT) >> 20 if ROOT.exists() else None}
+    return {
+        "settings": settings(),
+        "status": status(),
+        "targets": targets(),
+        "source": m and {"name": m["name"], "area": m["area"]},
+        "free_mb": librarian._free_bytes(ROOT) >> 20 if ROOT.exists() else None,
+    }

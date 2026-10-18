@@ -6,6 +6,7 @@ the pool and its index, current and previous versions and pruning, the budget, a
 the install with only the local repository and services kept stopped, what it added and the
 removal of only that (a package two kits share stays), expiry, the hub's half and the doctor.
 python3 tests/sim_toolkits.py"""
+
 import json
 import os
 import re
@@ -14,66 +15,122 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="kits-"))
-(T / "state" / "library").mkdir(parents=True); (T / "state" / "control").mkdir()
+(T / "state" / "library").mkdir(parents=True)
+(T / "state" / "control").mkdir()
 (T / "defs").mkdir()
 for f in (REPO / "toolkits").glob("*.json"):
     shutil.copy(f, T / "defs" / f.name)
-(T / "defs" / "small.json").write_text(json.dumps({"id": "small", "title": "Small", "summary": "s", "consent": "c",
-                                                   "packages": ["gdb", "tcpdump", "strace", "fail2ban"], "remove_after_hours": 24}))
-(T / "defs" / "cap.json").write_text(json.dumps({"id": "cap", "title": "Cap", "summary": "s", "consent": "c", "packages": ["tcpdump"]}))
+(T / "defs" / "small.json").write_text(
+    json.dumps(
+        {
+            "id": "small",
+            "title": "Small",
+            "summary": "s",
+            "consent": "c",
+            "packages": ["gdb", "tcpdump", "strace", "fail2ban"],
+            "remove_after_hours": 24,
+        }
+    )
+)
+(T / "defs" / "cap.json").write_text(
+    json.dumps({"id": "cap", "title": "Cap", "summary": "s", "consent": "c", "packages": ["tcpdump"]})
+)
 (T / "defs" / "bad.json").write_text(json.dumps({"id": "bad", "title": "Bad", "packages": ["--option", "x"]}))
 (T / "defs" / "notjson.json").write_text("{")
-os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_KITS_ROOT=str(T / "cache"), HUB_KITS_DEFS=str(T / "defs"),
-                  HUB_DPKG_STATUS=str(T / "dpkg-status"), HUB_POLICY_RC=str(T / "policy-rc.d"))
+os.environ.update(
+    HUB_STATE_DIR=str(T / "state"),
+    HUB_KITS_ROOT=str(T / "cache"),
+    HUB_KITS_DEFS=str(T / "defs"),
+    HUB_DPKG_STATUS=str(T / "dpkg-status"),
+    HUB_POLICY_RC=str(T / "policy-rc.d"),
+)
 sys.path.insert(0, str(REPO))
-from irate_box.root import kits  # noqa: E402
 from irate_box.msg import args_of, ids  # noqa: E402
+from irate_box.root import kits  # noqa: E402
+
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
 
 # The stand-in archive: name -> (version, depends). libc6 and strace are on the box already.
-ARCHIVE = {"gdb": ("16.3-1", ["libpython3.13", "libc6"]), "libpython3.13": ("3.13.5-2", ["libc6"]),  # libpython3.13's source: python3.13
-           "tcpdump": ("4.99.5-2", ["libpcap0.8"]), "libpcap0.8": ("1.10.5-2", []), "strace": ("6.13-1", []),
-           "fail2ban": ("1.1.0-8", ["python3-systemd"]), "python3-systemd": ("235-1", []), "libc6": ("2.41-12", []),
-           "build-essential": ("12.10", []), "cmake": ("3.31.0-1", []), "pkg-config": ("1.8.1-4", []),
-           "python3-dev": ("3.13.5-2", []), "python3-venv": ("3.13.5-2", []),
-           "platformio": ("6.1.10-1", ["python3-click"]), "python3-click": ("8.2.0-1", []), "python3-protobuf": ("3.21.12-11", []),
-           "protobuf-compiler": ("3.21.12-11", []), "libffi-dev": ("3.4.8-2", [])}
+ARCHIVE = {
+    "gdb": ("16.3-1", ["libpython3.13", "libc6"]),
+    "libpython3.13": ("3.13.5-2", ["libc6"]),  # libpython3.13's source: python3.13
+    "tcpdump": ("4.99.5-2", ["libpcap0.8"]),
+    "libpcap0.8": ("1.10.5-2", []),
+    "strace": ("6.13-1", []),
+    "fail2ban": ("1.1.0-8", ["python3-systemd"]),
+    "python3-systemd": ("235-1", []),
+    "libc6": ("2.41-12", []),
+    "build-essential": ("12.10", []),
+    "cmake": ("3.31.0-1", []),
+    "pkg-config": ("1.8.1-4", []),
+    "python3-dev": ("3.13.5-2", []),
+    "python3-venv": ("3.13.5-2", []),
+    "platformio": ("6.1.10-1", ["python3-click"]),
+    "python3-click": ("8.2.0-1", []),
+    "python3-protobuf": ("3.21.12-11", []),
+    "protobuf-compiler": ("3.21.12-11", []),
+    "libffi-dev": ("3.4.8-2", []),
+}
 installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
 BOARD = {"arch": "armhf"}
 # The build kit's wheelhouse, stood in: what `pip download platformio` fetches.
-WHEELS = {"platformio": [("platformio-6.1.0-py3-none-any.whl", 1000), ("click-8.1.0-py3-none-any.whl", 200)],
-          "protobuf": [], "grpcio-tools": []}  # nanopb's, in the build kit too; none here, so the sums below are platformio's
-(T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
+WHEELS = {
+    "platformio": [("platformio-6.1.0-py3-none-any.whl", 1000), ("click-8.1.0-py3-none-any.whl", 200)],
+    "protobuf": [],
+    "grpcio-tools": [],
+}  # nanopb's, in the build kit too; none here, so the sums below are platformio's
+(T / "dpkg-status").write_text(
+    "".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed))
+)
 calls = []
 policy_seen = []
+
+
 def opt(cmd, key):
     for i, a in enumerate(cmd):
         if a == "-o" and cmd[i + 1].startswith(key + "="):
             return cmd[i + 1].split("=", 1)[1]
     return None
+
+
 def closure(names, have):
     out, todo = set(), list(names)
     while todo:
         p = todo.pop()
         if p in out or p in have:
             continue
-        out.add(p); todo += ARCHIVE[p][1]
+        out.add(p)
+        todo += ARCHIVE[p][1]
     return out
+
+
 class R:
-    def __init__(self, out="", rc=0): self.stdout, self.stderr, self.returncode = out, "", rc
+    def __init__(self, out="", rc=0):
+        self.stdout, self.stderr, self.returncode = out, "", rc
+
+
 def fake(cmd, timeout=0, check=True, env=None):
     calls.append(cmd)
     name = Path(cmd[0]).name
     if name == "dpkg-query" and cmd[1] == "-W":
         return R("".join(f"{p}\tii \t{versions.get(p, ARCHIVE[p][0])}\n" for p in sorted(installed)))
     if name == "dpkg-query" and cmd[1] == "-L":
-        return R("/usr/bin/fail2ban-server\n/usr/lib/systemd/system/fail2ban.service\n" if cmd[2] == "fail2ban" else f"/usr/bin/{cmd[2]}\n")
+        return R(
+            "/usr/bin/fail2ban-server\n/usr/lib/systemd/system/fail2ban.service\n"
+            if cmd[2] == "fail2ban"
+            else f"/usr/bin/{cmd[2]}\n"
+        )
     if name == "dpkg-deb" and cmd[1] == "-f":
         try:
             d = json.loads(Path(cmd[2]).read_text())
@@ -84,7 +141,10 @@ def fake(cmd, timeout=0, check=True, env=None):
     if name == "systemctl":
         return R()
     if name == "apt-cache" and cmd[1] == "show":
-        return R(f"Package: {cmd[-1]}\nVersion: {ARCHIVE[cmd[-1]][0]}\n" if cmd[-1] in ARCHIVE else "", 0 if cmd[-1] in ARCHIVE else 100)
+        return R(
+            f"Package: {cmd[-1]}\nVersion: {ARCHIVE[cmd[-1]][0]}\n" if cmd[-1] in ARCHIVE else "",
+            0 if cmd[-1] in ARCHIVE else 100,
+        )
     if name == "dpkg" and cmd[1:] == ["--print-architecture"]:
         return R(BOARD["arch"] + "\n")
     if name == "dpkg-deb" and cmd[1] == "-x":
@@ -93,7 +153,7 @@ def fake(cmd, timeout=0, check=True, env=None):
         return R()
     if name == "python3" and cmd[1:3] == ["-m", "pip"]:
         dest = Path(cmd[cmd.index("--dest") + 1])
-        pkgs = [a for a in cmd[cmd.index("--dest") + 2:] if not a.startswith("-")]
+        pkgs = [a for a in cmd[cmd.index("--dest") + 2 :] if not a.startswith("-")]
         for p in pkgs:
             for fname, size in WHEELS.get(p, [(f"{p}-1.0-py3-none-any.whl", 500)]):
                 (dest / fname).write_bytes(b"x" * size)
@@ -113,8 +173,17 @@ def fake(cmd, timeout=0, check=True, env=None):
             dest = Path(opt(cmd, "Dir::Cache::archives"))
             for p in closure(pkgs, have):
                 v = ARCHIVE[p][0]
-                (dest / f"{p}_{v}_armhf.deb").write_text(json.dumps({"Package": p, "Version": v, "Architecture": "armhf", "Depends": ", ".join(ARCHIVE[p][1]),
-                                                                    **({"Source": "python3.13"} if p == "libpython3.13" else {})}))
+                (dest / f"{p}_{v}_armhf.deb").write_text(
+                    json.dumps(
+                        {
+                            "Package": p,
+                            "Version": v,
+                            "Architecture": "armhf",
+                            "Depends": ", ".join(ARCHIVE[p][1]),
+                            **({"Source": "python3.13"} if p == "libpython3.13" else {}),
+                        }
+                    )
+                )
             return R()
         if verb == "install":
             assert opt(cmd, "Dir::Etc::sourceparts") == "-" and opt(cmd, "Acquire::http::Proxy") == kits.DEAD_PROXY, cmd
@@ -122,7 +191,7 @@ def fake(cmd, timeout=0, check=True, env=None):
             for pin in [x for x in pkgs if "=" in x]:
                 versions[pin.split("=")[0]] = pin.split("=", 1)[1]
             pkgs = [x.split("=")[0] for x in pkgs]
-            index = (Path(opt(cmd, "Dir::Etc::sourcelist")).read_text().split("file:")[1].split()[0])
+            index = Path(opt(cmd, "Dir::Etc::sourcelist")).read_text().split("file:")[1].split()[0]
             avail = set(re.findall(r"^Package: (\S+)", (Path(index) / "Packages").read_text(), re.M))
             need = closure(pkgs, installed)
             if need - avail:
@@ -137,126 +206,251 @@ def fake(cmd, timeout=0, check=True, env=None):
                 more = False
                 for q in installed - gone:
                     if q in ARCHIVE and set(ARCHIVE[q][1]) & gone:
-                        gone.add(q); more = True
+                        gone.add(q)
+                        more = True
             if "-s" in cmd:
                 return R(rc=100) if gone & keep else R("\n".join(f"Purg {g} [1]" for g in sorted(gone)))
             installed.difference_update(gone)
             return R()
     raise AssertionError(f"unexpected command {cmd}")
+
+
 kits.run = fake
 
 defs = kits.definitions()
-check("the shipped kits load: debug, build, capture, security", {"debug", "build", "capture", "security"} <= set(defs), sorted(defs))
-check("  and the off-grid ones: recovery, network, gpstime (kept, gpsd running), radio",
-      {"recovery", "network", "gpstime", "radio"} <= set(defs) and defs["gpstime"].get("remove_after_hours") is None and defs["gpstime"].get("services") == ["gpsd.socket"], sorted(defs))
+check(
+    "the shipped kits load: debug, build, capture, security",
+    {"debug", "build", "capture", "security"} <= set(defs),
+    sorted(defs),
+)
+check(
+    "  and the off-grid ones: recovery, network, gpstime (kept, gpsd running), radio",
+    {"recovery", "network", "gpstime", "radio"} <= set(defs)
+    and defs["gpstime"].get("remove_after_hours") is None
+    and defs["gpstime"].get("services") == ["gpsd.socket"],
+    sorted(defs),
+)
 check("a kit naming an option, or a broken file, is left out", "bad" not in defs and "notjson" not in defs)
-check("every shipped kit has a consent text and a summary", all(defs[k].get("consent") and defs[k].get("summary") for k in ("debug", "build", "capture", "security")))
+check(
+    "every shipped kit has a consent text and a summary",
+    all(defs[k].get("consent") and defs[k].get("summary") for k in ("debug", "build", "capture", "security")),
+)
 check("the debug kit has valgrind and perf in it", {"valgrind", "linux-perf"} <= set(defs["debug"]["packages"]))
-check("the build kit stays until removed by default", defs["build"]["remove_after_hours"] is None and defs["debug"]["remove_after_hours"] == 24)
+check(
+    "the build kit stays until removed by default",
+    defs["build"]["remove_after_hours"] is None and defs["debug"]["remove_after_hours"] == 24,
+)
 
 # Fetch.
 line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
 man = kits.manifest("small")
 names = sorted(p["name"] for p in man["packages"])
-check("fetch: the kit's packages and what they need, not what the box has", names == ["fail2ban", "gdb", "libpcap0.8", "libpython3.13", "python3-systemd", "tcpdump"], names)
-check("  what the box has already is said", man["on_box"] == ["strace"] and args_of(line, "kits.fetch.on-box") == {"packages": ["strace"]}, line)
-check("  each with its sha256, in the pool", all((kits.POOL / p["file"]).is_file() and kits.sha256(kits.POOL / p["file"]) == p["sha256"] for p in man["packages"]))
+check(
+    "fetch: the kit's packages and what they need, not what the box has",
+    names == ["fail2ban", "gdb", "libpcap0.8", "libpython3.13", "python3-systemd", "tcpdump"],
+    names,
+)
+check(
+    "  what the box has already is said",
+    man["on_box"] == ["strace"] and args_of(line, "kits.fetch.on-box") == {"packages": ["strace"]},
+    line,
+)
+check(
+    "  each with its sha256, in the pool",
+    all(
+        (kits.POOL / p["file"]).is_file() and kits.sha256(kits.POOL / p["file"]) == p["sha256"] for p in man["packages"]
+    ),
+)
 idx = (kits.POOL / "Packages").read_text()
-check("  the index names each file with its size and sha256", idx.count("Filename: ./") == 6 and "SHA256: " in idx and "Package: gdb" in idx)
-check("  one apt source, the pool, trusted", (kits.ROOT / "kits.list").read_text() == f"deb [trusted=yes] file:{kits.POOL} ./\n")
-check("  apt was asked for download only, against a status file of its own", any("--download-only" in c and opt(c, "Dir::State::status") for c in calls))
+check(
+    "  the index names each file with its size and sha256",
+    idx.count("Filename: ./") == 6 and "SHA256: " in idx and "Package: gdb" in idx,
+)
+check(
+    "  one apt source, the pool, trusted",
+    (kits.ROOT / "kits.list").read_text() == f"deb [trusted=yes] file:{kits.POOL} ./\n",
+)
+check(
+    "  apt was asked for download only, against a status file of its own",
+    any("--download-only" in c and opt(c, "Dir::State::status") for c in calls),
+)
 check("  nothing left staged", not list(kits.ROOT.glob("stage-*")))
-check("unchanged on a second fetch", "kits.fetch.unchanged" in ids(kits.fetch("small", budget_mb=10, log=lambda *a: None)) and kits.manifest("small", "previous") is None)
+check(
+    "unchanged on a second fetch",
+    "kits.fetch.unchanged" in ids(kits.fetch("small", budget_mb=10, log=lambda *a: None))
+    and kits.manifest("small", "previous") is None,
+)
 # A new gdb: the old set becomes previous; another new one prunes the oldest.
 ARCHIVE["gdb"] = ("16.3-2", ARCHIVE["gdb"][1])
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("a newer version: current is new, previous is the old set", {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == {"16.3-2"}
-      and {p["version"] for p in kits.manifest("small", "previous")["packages"] if p["name"] == "gdb"} == {"16.3-1"})
-check("  both gdbs in the pool and its index", (kits.POOL / "gdb_16.3-1_armhf.deb").exists() and (kits.POOL / "gdb_16.3-2_armhf.deb").exists()
-      and "Version: 16.3-1" in (kits.POOL / "Packages").read_text())
+check(
+    "a newer version: current is new, previous is the old set",
+    {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == {"16.3-2"}
+    and {p["version"] for p in kits.manifest("small", "previous")["packages"] if p["name"] == "gdb"} == {"16.3-1"},
+)
+check(
+    "  both gdbs in the pool and its index",
+    (kits.POOL / "gdb_16.3-1_armhf.deb").exists()
+    and (kits.POOL / "gdb_16.3-2_armhf.deb").exists()
+    and "Version: 16.3-1" in (kits.POOL / "Packages").read_text(),
+)
 ARCHIVE["gdb"] = ("16.3-3", ARCHIVE["gdb"][1])
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("a third: the oldest is pruned", not (kits.POOL / "gdb_16.3-1_armhf.deb").exists() and (kits.POOL / "gdb_16.3-2_armhf.deb").exists())
+check(
+    "a third: the oldest is pruned",
+    not (kits.POOL / "gdb_16.3-1_armhf.deb").exists() and (kits.POOL / "gdb_16.3-2_armhf.deb").exists(),
+)
 # The budget.
 before = sorted(f.name for f in kits.POOL.iterdir())
 ARCHIVE["gdb"] = ("16.3-4", ARCHIVE["gdb"][1])
-big = (T / "big"); big.write_text("x")
+big = T / "big"
+big.write_text("x")
 real_fake = kits.run
+
+
 def fat(cmd, **kw):
     r = real_fake(cmd, **kw)
     if "--download-only" in cmd:
         d = Path(opt(cmd, "Dir::Cache::archives")) / "gdb_16.3-4_armhf.deb"
         d.write_text(d.read_text() + " " * (2 << 20))
     return r
+
+
 kits.run = fat
 try:
-    kits.fetch("small", budget_mb=1, log=lambda *a: None); check("over the budget: refused", False)
+    kits.fetch("small", budget_mb=1, log=lambda *a: None)
+    check("over the budget: refused", False)
 except ValueError as exc:
-    check(f"over the budget: refused, the pool as it was ({exc})", (args_of(exc.message, "kits.fetch.over-limit") or {}).get("limit") == 1 and sorted(f.name for f in kits.POOL.iterdir()) == before)
+    check(
+        f"over the budget: refused, the pool as it was ({exc})",
+        (args_of(exc.message, "kits.fetch.over-limit") or {}).get("limit") == 1
+        and sorted(f.name for f in kits.POOL.iterdir()) == before,
+    )
 kits.run = real_fake
 ARCHIVE["gdb"] = ("16.3-3", ARCHIVE["gdb"][1])
 
 # Install, with no internet: only the pool, services kept stopped.
 line = kits.install("small", hours=24, log=lambda *a: None)
 st = kits.installed_state()["small"]
-check("install: what it added is recorded, not what was there", sorted(st["added"]) == ["fail2ban", "gdb", "libpcap0.8", "libpython3.13", "python3-systemd", "tcpdump"], st)
-check("  nothing on the box changed version: nothing said", "kits.install.upgraded" not in ids(line) and st["upgraded"] == [], st)
-check("  policy-rc.d in place during the install, gone after", policy_seen == [True] and not Path(os.environ["HUB_POLICY_RC"]).exists())
-check("  a service it brought is disabled and stopped", st["units"] == ["fail2ban.service"]
-      and ["systemctl", "disable", "--now", "fail2ban.service"] in calls)
+check(
+    "install: what it added is recorded, not what was there",
+    sorted(st["added"]) == ["fail2ban", "gdb", "libpcap0.8", "libpython3.13", "python3-systemd", "tcpdump"],
+    st,
+)
+check(
+    "  nothing on the box changed version: nothing said",
+    "kits.install.upgraded" not in ids(line) and st["upgraded"] == [],
+    st,
+)
+check(
+    "  policy-rc.d in place during the install, gone after",
+    policy_seen == [True] and not Path(os.environ["HUB_POLICY_RC"]).exists(),
+)
+check(
+    "  a service it brought is disabled and stopped",
+    st["units"] == ["fail2ban.service"] and ["systemctl", "disable", "--now", "fail2ban.service"] in calls,
+)
 small_def = json.loads((T / "defs" / "small.json").read_text())
-check("  a service the kit is for is left running (the debug kit's core dumps)", json.loads((REPO / "toolkits" / "debug.json").read_text())["services"] == ["systemd-coredump.socket"])
-check("  removed after 24 h by default", 23.9 * 3600 < st["remove_at"] - time.time() <= 24 * 3600 and args_of(line, "kits.install.remove-after") == {"wait": {"seconds": 24 * 3600}})
-check("  every apt call for it had only the pool and a dead proxy", all(opt(c, "Dir::Etc::sourceparts") == "-" for c in calls
-      if c[0] == "apt-get" and "--download-only" not in c and opt(c, "Dir::Etc::sourcelist")))
+check(
+    "  a service the kit is for is left running (the debug kit's core dumps)",
+    json.loads((REPO / "toolkits" / "debug.json").read_text())["services"] == ["systemd-coredump.socket"],
+)
+check(
+    "  removed after 24 h by default",
+    23.9 * 3600 < st["remove_at"] - time.time() <= 24 * 3600
+    and args_of(line, "kits.install.remove-after") == {"wait": {"seconds": 24 * 3600}},
+)
+check(
+    "  every apt call for it had only the pool and a dead proxy",
+    all(
+        opt(c, "Dir::Etc::sourceparts") == "-"
+        for c in calls
+        if c[0] == "apt-get" and "--download-only" not in c and opt(c, "Dir::Etc::sourcelist")
+    ),
+)
 calls.clear()
 kits.remove("small", log=lambda *a: None)
-d = json.loads((T / "defs" / "small.json").read_text()); d["services"] = ["fail2ban.service", "../evil.service"]
+d = json.loads((T / "defs" / "small.json").read_text())
+d["services"] = ["fail2ban.service", "../evil.service"]
 (T / "defs" / "small.json").write_text(json.dumps(d))
 kits.install("small", hours=24, log=lambda *a: None)
-check("a kit's own service is enabled and started, not disabled; a bad name ignored", ["systemctl", "enable", "--now", "fail2ban.service"] in calls
-      and ["systemctl", "disable", "--now", "fail2ban.service"] not in calls and not any("evil" in " ".join(c) for c in calls)
-      and kits.installed_state()["small"]["units"] == [])
-d.pop("services"); (T / "defs" / "small.json").write_text(json.dumps(d))
+check(
+    "a kit's own service is enabled and started, not disabled; a bad name ignored",
+    ["systemctl", "enable", "--now", "fail2ban.service"] in calls
+    and ["systemctl", "disable", "--now", "fail2ban.service"] not in calls
+    and not any("evil" in " ".join(c) for c in calls)
+    and kits.installed_state()["small"]["units"] == [],
+)
+d.pop("services")
+(T / "defs" / "small.json").write_text(json.dumps(d))
 # A package the box has, brought up to the cached version by the install: said and recorded.
 kits.remove("small", log=lambda *a: None)
 versions["libc6"] = "2.41-11"
+
+
 def upgrading(cmd, **kw):
     r = real_fake(cmd, **kw)
     if Path(cmd[0]).name == "apt-get" and "install" in cmd and "--download-only" not in cmd:
         versions.pop("libc6", None)
     return r
+
+
 kits.run = upgrading
 line = kits.install("small", hours=24, log=lambda *a: None)
 kits.run = real_fake
-check("an install that upgrades a package the box had says so, and records it", args_of(line, "kits.install.upgraded") == {"packages": ["libc6 2.41-11 → 2.41-12"]}
-      and kits.installed_state()["small"]["upgraded"] == ["libc6 2.41-11 → 2.41-12"], line)
+check(
+    "an install that upgrades a package the box had says so, and records it",
+    args_of(line, "kits.install.upgraded") == {"packages": ["libc6 2.41-11 → 2.41-12"]}
+    and kits.installed_state()["small"]["upgraded"] == ["libc6 2.41-11 → 2.41-12"],
+    line,
+)
 # Fetching an installed kit still caches it whole (resolved without what kits added).
 calls.clear()
 ARCHIVE["tcpdump"] = ("4.99.5-3", ["libpcap0.8"])
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("fetching while installed still caches every package", len(kits.manifest("small")["packages"]) == 6, kits.manifest("small")["packages"])
+check(
+    "fetching while installed still caches every package",
+    len(kits.manifest("small")["packages"]) == 6,
+    kits.manifest("small")["packages"],
+)
 # A second kit sharing tcpdump: removing the first keeps it.
 kits.fetch("cap", budget_mb=10, log=lambda *a: None)
-check("a kit whose packages are all installed by another still caches them", [p["name"] for p in kits.manifest("cap")["packages"]] == ["libpcap0.8", "tcpdump"]
-      or sorted(p["name"] for p in kits.manifest("cap")["packages"]) == ["libpcap0.8", "tcpdump"])
+check(
+    "a kit whose packages are all installed by another still caches them",
+    [p["name"] for p in kits.manifest("cap")["packages"]] == ["libpcap0.8", "tcpdump"]
+    or sorted(p["name"] for p in kits.manifest("cap")["packages"]) == ["libpcap0.8", "tcpdump"],
+)
 installed.difference_update({"tcpdump", "libpcap0.8"})  # as if cap went in first
 kits.install("cap", hours=None, log=lambda *a: None)
 installed.update({"tcpdump", "libpcap0.8"})
 check("installed with no removal time: kept", kits.installed_state()["cap"]["remove_at"] is None)
 line = kits.remove("small", log=lambda *a: None)
-check("remove: what it added goes, what another kit added stays", "tcpdump" in installed and "gdb" not in installed and "fail2ban" not in installed
-      and "strace" in installed and "libc6" in installed, sorted(installed))
+check(
+    "remove: what it added goes, what another kit added stays",
+    "tcpdump" in installed
+    and "gdb" not in installed
+    and "fail2ban" not in installed
+    and "strace" in installed
+    and "libc6" in installed,
+    sorted(installed),
+)
 check("  and it is no longer listed", "small" not in kits.installed_state())
 try:
-    kits.remove("small"); check("removing what isn't installed: refused", False)
+    kits.remove("small")
+    check("removing what isn't installed: refused", False)
 except ValueError:
     check("removing what isn't installed: refused", True)
 # Expiry.
 kits.set_removal("cap", 1)
-s = kits.installed_state(); s["cap"]["remove_at"] = time.time() - 1; kits._write(kits.INSTALLED, s)
+s = kits.installed_state()
+s["cap"]["remove_at"] = time.time() - 1
+kits._write(kits.INSTALLED, s)
 out = kits.expire()
-check("expire: a kit whose time is up is removed", len(out) == 1 and "cap" not in kits.installed_state() and "tcpdump" not in installed, out)
+check(
+    "expire: a kit whose time is up is removed",
+    len(out) == 1 and "cap" not in kits.installed_state() and "tcpdump" not in installed,
+    out,
+)
 # Tampering, and policy-rc.d that is someone else's.
 victim = kits.POOL / kits.manifest("small")["packages"][0]["file"]
 victim.write_text(victim.read_text() + "x")
@@ -264,257 +458,483 @@ check("a changed file is found", any("has changed since it was fetched" in p for
 kits.write_index()
 check("  and left out of the index apt reads", f"Filename: ./{victim.name}" not in (kits.POOL / "Packages").read_text())
 try:
-    kits.install("small"); check("a cache that fails its check installs nothing", False)
+    kits.install("small")
+    check("a cache that fails its check installs nothing", False)
 except ValueError as exc:
     check("a cache that fails its check installs nothing", exc.message["id"] == "kits.install.cache-bad")
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
 Path(os.environ["HUB_POLICY_RC"]).write_text("#!/bin/sh\nexit 0\n")
 try:
-    kits.install("small"); check("a policy-rc.d of the box's own: refused, and left", False)
+    kits.install("small")
+    check("a policy-rc.d of the box's own: refused, and left", False)
 except ValueError:
-    check("a policy-rc.d of the box's own: refused, and left", Path(os.environ["HUB_POLICY_RC"]).read_text() == "#!/bin/sh\nexit 0\n")
+    check(
+        "a policy-rc.d of the box's own: refused, and left",
+        Path(os.environ["HUB_POLICY_RC"]).read_text() == "#!/bin/sh\nexit 0\n",
+    )
 Path(os.environ["HUB_POLICY_RC"]).unlink()
 for bad in ("../x", "--all", "Debug"):
     try:
-        kits._kit(bad); check(f"no kit named {bad!r}", False)
+        kits._kit(bad)
+        check(f"no kit named {bad!r}", False)
     except ValueError:
         check(f"no kit named {bad!r}", True)
 try:
-    kits.install("small", hours=0); check("hours 0 refused", False)
+    kits.install("small", hours=0)
+    check("hours 0 refused", False)
 except ValueError:
     check("hours 0 refused", True)
 
 # The root helper's actions, and control/kits.json after each.
 from irate_box.root import hub_control  # noqa: E402
+
 msg = hub_control.ACTIONS["kit-install"]({"kit": "small", "hours": 2})
 ks = json.loads((T / "state" / "control" / "kits.json").read_text())
-check("kit-install through the helper; control/kits.json says so", (args_of(msg, "kits.install.done") or {}).get("n") == 6 and "small" in ks["installed"] and ks["kits"]["small"]["cached"]["packages"] == 6, msg)
+check(
+    "kit-install through the helper; control/kits.json says so",
+    (args_of(msg, "kits.install.done") or {}).get("n") == 6
+    and "small" in ks["installed"]
+    and ks["kits"]["small"]["cached"]["packages"] == 6,
+    msg,
+)
 for bad in ({"kit": "../etc"}, {"kit": ["small"]}, {"kit": "small", "hours": "24"}, {"kit": "small", "hours": 0}):
     try:
-        hub_control.ACTIONS["kit-install"](bad); check(f"the helper refuses {bad}", False)
+        hub_control.ACTIONS["kit-install"](bad)
+        check(f"the helper refuses {bad}", False)
     except ValueError:
         check(f"the helper refuses {bad}", True)
 try:
-    hub_control.ACTIONS["kit-fetch"]({"kit": "small", "budget_mb": 1 << 20}); check("a silly budget refused", False)
+    hub_control.ACTIONS["kit-fetch"]({"kit": "small", "budget_mb": 1 << 20})
+    check("a silly budget refused", False)
 except ValueError:
     check("a silly budget refused", True)
 # The doctor.
 from irate_box.finding import message_args as msg_args  # noqa: E402
+
 f = hub_control.kits_findings()
 check("the doctor: the cache matches its manifests", any(x["id"] == "kits-cache" and x["status"] == "ok" for x in f), f)
-s = kits.installed_state(); s["small"]["at"] = time.time() - 9 * 86400; s["debug"] = {"added": [], "at": time.time() - 8 * 86400, "remove_at": None}
+s = kits.installed_state()
+s["small"]["at"] = time.time() - 9 * 86400
+s["debug"] = {"added": [], "at": time.time() - 8 * 86400, "remove_at": None}
 kits._write(kits.INSTALLED, s)
 f = hub_control.kits_findings()
-check("the doctor: debug installed for over a week, and a kit with no removal time, are warnings",
-      any(msg_args(x, "update.kits-installed.debug") == {"n": 8} for x in f) and any(x["status"] == "warn" for x in f), f)
-victim = kits.POOL / kits.manifest("small")["packages"][1]["file"]; victim.write_text("tampered")
+check(
+    "the doctor: debug installed for over a week, and a kit with no removal time, are warnings",
+    any(msg_args(x, "update.kits-installed.debug") == {"n": 8} for x in f) and any(x["status"] == "warn" for x in f),
+    f,
+)
+victim = kits.POOL / kits.manifest("small")["packages"][1]["file"]
+victim.write_text("tampered")
 f = hub_control.kits_findings()
-check("the doctor: a changed file is a problem, the file named", any(x["id"] == "kits-cache" and x["status"] == "problem"
-                                                                    and any(victim.name in e for e in x["evidence"]) for x in f), f)
+check(
+    "the doctor: a changed file is a problem, the file named",
+    any(
+        x["id"] == "kits-cache" and x["status"] == "problem" and any(victim.name in e for e in x["evidence"]) for x in f
+    ),
+    f,
+)
 
 # The hub's half: settings, and the librarian's step.
-from irate_box.library import toolkits, librarian  # noqa: E402
+from irate_box.library import librarian, toolkits  # noqa: E402
+
 queued = []
 librarian._queue_root = lambda req: (queued.append(req), "rid")[1]
+
+
 def offline(*a, **k):
     raise librarian.LibrarianError("no network in the tests")
+
+
 librarian._open = offline  # nothing here reaches the internet
 cfg = toolkits.settings()
-check("settings: 500 MB, every kit kept current, each kit's own removal time", cfg["budget_mb"] == 500 and cfg["kits"]["build"]["remove_after"] is None
-      and cfg["kits"]["debug"]["remove_after"] == 24 and all(k["keep_current"] for k in cfg["kits"].values()))
-for bad in ({"budget_mb": 5}, {"kits": {"nope": {}}}, {"kits": {"debug": {"remove_after": 0}}}, {"kits": {"debug": {"keep_current": "yes"}}}):
+check(
+    "settings: 500 MB, every kit kept current, each kit's own removal time",
+    cfg["budget_mb"] == 500
+    and cfg["kits"]["build"]["remove_after"] is None
+    and cfg["kits"]["debug"]["remove_after"] == 24
+    and all(k["keep_current"] for k in cfg["kits"].values()),
+)
+for bad in (
+    {"budget_mb": 5},
+    {"kits": {"nope": {}}},
+    {"kits": {"debug": {"remove_after": 0}}},
+    {"kits": {"debug": {"keep_current": "yes"}}},
+):
     try:
-        toolkits.set_settings(bad); check(f"settings refuse {bad}", False)
+        toolkits.set_settings(bad)
+        check(f"settings refuse {bad}", False)
     except librarian.LibrarianError:
         check(f"settings refuse {bad}", True)
 toolkits.set_settings({"kits": {"debug": {"remove_after": 4}}})
-check("install uses the kit's removal time unless given", toolkits.action({"action": "install", "kit": "debug"}) == "rid"
-      and queued[-1] == {"action": "kit-install", "kit": "debug", "hours": 4})
+check(
+    "install uses the kit's removal time unless given",
+    toolkits.action({"action": "install", "kit": "debug"}) == "rid"
+    and queued[-1] == {"action": "kit-install", "kit": "debug", "hours": 4},
+)
 check("the page names a kit, never packages", queued[-1].keys() == {"action", "kit", "hours"})
 queued.clear()
-s = kits.installed_state(); s["small"]["remove_at"] = time.time() - 5; kits._write(kits.INSTALLED, s)
+s = kits.installed_state()
+s["small"]["remove_at"] = time.time() - 5
+kits._write(kits.INSTALLED, s)
 (T / "state" / "control" / "kits.json").write_text(json.dumps(kits.status()))
 line = toolkits.step({"check_every_hours": 24})
-check("the librarian: an expired install is removed, and one due kit fetched", [q["action"] for q in queued if q["action"] != "security-deep-audit"] == ["kit-expire", "kit-fetch"], queued)
+check(
+    "the librarian: an expired install is removed, and one due kit fetched",
+    [q["action"] for q in queued if q["action"] != "security-deep-audit"] == ["kit-expire", "kit-fetch"],
+    queued,
+)
 queued.clear()
 toolkits.step({"check_every_hours": 24})
-check("  the next run fetches the next kit, not the same one again", [q.get("kit") for q in queued if q["action"] == "kit-fetch"] != [None]
-      and len({q.get("kit") for q in queued if q["action"] == "kit-fetch"}) == 1, queued)
+check(
+    "  the next run fetches the next kit, not the same one again",
+    [q.get("kit") for q in queued if q["action"] == "kit-fetch"] != [None]
+    and len({q.get("kit") for q in queued if q["action"] == "kit-fetch"}) == 1,
+    queued,
+)
 toolkits.set_settings({"kits": {k: {"keep_current": False} for k in toolkits.definitions()}})
 queued.clear()
-check("nothing kept current: nothing fetched", toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removal period elapsed: removing the kits")
-      and not any(q["action"] == "kit-fetch" for q in queued), queued)
+check(
+    "nothing kept current: nothing fetched",
+    toolkits.step({"check_every_hours": 24}, now=time.time()) in (None, "removal period elapsed: removing the kits")
+    and not any(q["action"] == "kit-fetch" for q in queued),
+    queued,
+)
 
 # Older sets kept for Roll back, swept by age: off by default; a set whose newer set replaced it more than the days ago.
-check("older sets: kept until a refresh brings newer versions, by default", toolkits.settings()["previous_days"] is None)
+check(
+    "older sets: kept until a refresh brings newer versions, by default", toolkits.settings()["previous_days"] is None
+)
 for bad in ({"previous_days": 0}, {"previous_days": 400}, {"previous_days": "30"}):
     try:
-        toolkits.set_settings(bad); check(f"settings refuse {bad}", False)
+        toolkits.set_settings(bad)
+        check(f"settings refuse {bad}", False)
     except librarian.LibrarianError:
         check(f"settings refuse {bad}", True)
 toolkits.set_settings({"previous_days": 30})
 now_ = time.time()
-(T / "state" / "control" / "kits.json").write_text(json.dumps({"kits": {
-    "small": {"cached": {"fetched": now_ - 40 * 86400}, "previous": {"fetched": now_ - 90 * 86400}},
-    "debug": {"cached": {"fetched": now_ - 10 * 86400}, "previous": {"fetched": now_ - 50 * 86400}}}}))
+(T / "state" / "control" / "kits.json").write_text(
+    json.dumps(
+        {
+            "kits": {
+                "small": {"cached": {"fetched": now_ - 40 * 86400}, "previous": {"fetched": now_ - 90 * 86400}},
+                "debug": {"cached": {"fetched": now_ - 10 * 86400}, "previous": {"fetched": now_ - 50 * 86400}},
+            }
+        }
+    )
+)
 queued.clear()
 line = toolkits.step({"check_every_hours": 24}, now=now_)
-check("  set to 30 days: the sweep queued for the older set replaced 40 days ago, said with which; not for 10 days",
-      {"action": "kit-drop-old-previous", "days": 30} in queued and "small" in line and "debug" not in line.split("days:")[-1], (queued, line))
+check(
+    "  set to 30 days: the sweep queued for the older set replaced 40 days ago, said with which; not for 10 days",
+    {"action": "kit-drop-old-previous", "days": 30} in queued
+    and "small" in line
+    and "debug" not in line.split("days:")[-1],
+    (queued, line),
+)
 queued.clear()
 toolkits.step({"check_every_hours": 24}, now=now_ + 60)
 check("  not queued again within the hour", not any(q["action"] == "kit-drop-old-previous" for q in queued), queued)
 toolkits.set_settings({"previous_days": None})
 
 # Roll back: the previous set becomes current; an installed kit's packages go back.
-s_ = kits.installed_state(); s_.pop("debug", None); kits._write(kits.INSTALLED, s_)
+s_ = kits.installed_state()
+s_.pop("debug", None)
+kits._write(kits.INSTALLED, s_)
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
 cur_gdb = {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"}
 prev_gdb = {p["version"] for p in kits.manifest("small", "previous")["packages"] if p["name"] == "gdb"}
 calls.clear()
 line = kits.rollback("small", log=lambda *a: None)
-check("roll back: current and previous swap", {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == prev_gdb
-      and {p["version"] for p in kits.manifest("small", "previous")["packages"] if p["name"] == "gdb"} == cur_gdb, line)
-check("  an installed kit's packages are put back, offline, downgrades allowed", any("--allow-downgrades" in c and opt(c, "Dir::Etc::sourceparts") == "-" for c in calls)
-      or "small" not in kits.installed_state(), calls[-3:])
+check(
+    "roll back: current and previous swap",
+    {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == prev_gdb
+    and {p["version"] for p in kits.manifest("small", "previous")["packages"] if p["name"] == "gdb"} == cur_gdb,
+    line,
+)
+check(
+    "  an installed kit's packages are put back, offline, downgrades allowed",
+    any("--allow-downgrades" in c and opt(c, "Dir::Etc::sourceparts") == "-" for c in calls)
+    or "small" not in kits.installed_state(),
+    calls[-3:],
+)
 kits.rollback("small", log=lambda *a: None)
-check("rolling back twice is back where it was", {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == cur_gdb)
+check(
+    "rolling back twice is back where it was",
+    {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == cur_gdb,
+)
 try:
-    kits.rollback("cap"); check("no previous set: said", False)
+    kits.rollback("cap")
+    check("no previous set: said", False)
 except ValueError as exc:
     check("no previous set: said", exc.message["id"] == "kits.rollback.none")
 # The security kit: debian-cis as a mirror, debsecan's data as a feed, the cached packages
 # in dpkg's status format, and how fresh they are.
 sec = toolkits.definitions()["security"]
-check("the security kit: Lynis, debsecan, fail2ban, nmap and the rest; debian-cis from git; debsecan's feed; daily",
-      {"lynis", "debsecan", "python3-apt", "fail2ban", "nmap", "tcpdump", "tshark", "strace", "socat", "python3-scapy"} == set(sec["packages"])
-      and sec["git"][0]["upstream"] == "https://github.com/ovh/debian-cis" and sec["feeds"] == ["debsecan"] and sec["refresh_hours"] == 24)
+check(
+    "the security kit: Lynis, debsecan, fail2ban, nmap and the rest; debian-cis from git; debsecan's feed; daily",
+    {"lynis", "debsecan", "python3-apt", "fail2ban", "nmap", "tcpdump", "tshark", "strace", "socat", "python3-scapy"}
+    == set(sec["packages"])
+    and sec["git"][0]["upstream"] == "https://github.com/ovh/debian-cis"
+    and sec["feeds"] == ["debsecan"]
+    and sec["refresh_hours"] == 24,
+)
 ks = (kits.ROOT / "kits-status").read_text()
-check("  with the source package where it differs (debsecan matches by source)", "Package: libpython3.13\nStatus: install ok installed\nSource: python3.13\n" in ks, ks)
-check("kits-status lists every cached package as dpkg's status file would", "Package: gdb\nStatus: install ok installed\nVersion: 16.3-3\n" in ks
-      and ks.count("Package: ") == len({(p["name"], p["version"]) for p in kits._referenced().values()}), ks[:200])
+check(
+    "  with the source package where it differs (debsecan matches by source)",
+    "Package: libpython3.13\nStatus: install ok installed\nSource: python3.13\n" in ks,
+    ks,
+)
+check(
+    "kits-status lists every cached package as dpkg's status file would",
+    "Package: gdb\nStatus: install ok installed\nVersion: 16.3-3\n" in ks
+    and ks.count("Package: ") == len({(p["name"], p["version"]) for p in kits._referenced().values()}),
+    ks[:200],
+)
 toolkits.set_settings({"kits": {"security": {"keep_current": True}}})
-from irate_box.library import mirrors  # noqa: E402
 from unittest import mock  # noqa: E402
+
+from irate_box.library import mirrors  # noqa: E402
+
 added = []
-with mock.patch.object(mirrors, "load", return_value=[]), mock.patch.object(mirrors, "add", side_effect=lambda m: added.append(m)):
+with (
+    mock.patch.object(mirrors, "load", return_value=[]),
+    mock.patch.object(mirrors, "add", side_effect=lambda m: added.append(m)),
+):
     toolkits.ensure_git_sources()
-check("debian-cis is mirrored once the security kit is kept current: shallow, master, public", len(added) == 1 and added[0]["name"] == "debian-cis"
-      and added[0]["branches"] == ["master"] and added[0]["history"] == "shallow", added)
-with mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/OVH/debian-cis/"}]), mock.patch.object(mirrors, "add") as add:
+check(
+    "debian-cis is mirrored once the security kit is kept current: shallow, master, public",
+    len(added) == 1
+    and added[0]["name"] == "debian-cis"
+    and added[0]["branches"] == ["master"]
+    and added[0]["history"] == "shallow",
+    added,
+)
+with (
+    mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/OVH/debian-cis/"}]),
+    mock.patch.object(mirrors, "add") as add,
+):
     toolkits.ensure_git_sources()
 check("  not again when a mirror of it exists", not add.called)
 import io
 import zlib  # noqa: E402
+
 (T / "os-release").write_text('NAME="Debian"\nVERSION_CODENAME=trixie\n')
 toolkits.OS_RELEASE = str(T / "os-release")
 good = zlib.compress(b"VERSION 1\nCVE-2026-0001,,x\n")
+
+
 class Resp(io.BytesIO):
-    def __enter__(self): return self
-    def __exit__(self, *a): return False
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
 fetched = []
 with mock.patch.object(librarian, "_open", side_effect=lambda url, **k: (fetched.append(url), Resp(good))[1]):
     line = toolkits.refresh_feed()
-check("debsecan's data: this suite's and GENERIC, from Debian's tracker", fetched == [toolkits.FEED_URL + "trixie", toolkits.FEED_URL + "GENERIC"]
-      and (toolkits.FEED / "trixie").read_bytes() == good and "trixie" in line, fetched)
-check("  and its source for debsecan, a file: URL", toolkits.feeds()["debsecan"]["source"] == f"file://{toolkits.FEED}/" and toolkits.feeds()["debsecan"]["fetched"])
-with mock.patch.object(librarian, "_open", side_effect=lambda url, **k: Resp(zlib.compress(b"<html>captive portal</html>"))):
+check(
+    "debsecan's data: this suite's and GENERIC, from Debian's tracker",
+    fetched == [toolkits.FEED_URL + "trixie", toolkits.FEED_URL + "GENERIC"]
+    and (toolkits.FEED / "trixie").read_bytes() == good
+    and "trixie" in line,
+    fetched,
+)
+check(
+    "  and its source for debsecan, a file: URL",
+    toolkits.feeds()["debsecan"]["source"] == f"file://{toolkits.FEED}/" and toolkits.feeds()["debsecan"]["fetched"],
+)
+with mock.patch.object(
+    librarian, "_open", side_effect=lambda url, **k: Resp(zlib.compress(b"<html>captive portal</html>"))
+):
     try:
-        toolkits.refresh_feed(); check("data in another format is refused, the last copy kept", False)
+        toolkits.refresh_feed()
+        check("data in another format is refused, the last copy kept", False)
     except librarian.LibrarianError:
         check("data in another format is refused, the last copy kept", (toolkits.FEED / "trixie").read_bytes() == good)
 (T / "os-release").write_text("NAME=x\n")
 try:
-    toolkits.refresh_feed(); check("no suite: said", False)
+    toolkits.refresh_feed()
+    check("no suite: said", False)
 except librarian.LibrarianError as exc:
     check("no suite: said", exc.message["id"] == "toolkits.suite.unknown")
-(T / "os-release").write_text('VERSION_CODENAME=trixie\n')
-queued.clear(); fetched.clear()
-with mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/ovh/debian-cis"}]), \
-     mock.patch.object(librarian, "_open", side_effect=lambda url, **k: (fetched.append(url), Resp(good))[1]):
+(T / "os-release").write_text("VERSION_CODENAME=trixie\n")
+queued.clear()
+fetched.clear()
+with (
+    mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/ovh/debian-cis"}]),
+    mock.patch.object(librarian, "_open", side_effect=lambda url, **k: (fetched.append(url), Resp(good))[1]),
+):
     os.utime(toolkits.FEED / "trixie", (time.time() - 2 * 86400,) * 2)
-    st_ = librarian._read_json(toolkits.STATE, {}); st_.pop("feed:debsecan", None); librarian._write_json(toolkits.STATE, st_)
+    st_ = librarian._read_json(toolkits.STATE, {})
+    st_.pop("feed:debsecan", None)
+    librarian._write_json(toolkits.STATE, st_)
     toolkits.step({"check_every_hours": 24})
     n = len(fetched)
     toolkits.step({"check_every_hours": 24})
 check("the librarian refreshes the feed daily, not every run", n == 2 and len(fetched) == 2, fetched)
+
+
 # Freshness, in the doctor: the security kit's cache and its data.
 def man_at(days):
-    m = kits.manifest("small"); m["id"] = "security"; m["fetched"] = time.time() - days * 86400
+    m = kits.manifest("small")
+    m["id"] = "security"
+    m["fetched"] = time.time() - days * 86400
     kits._write(kits.MANIFESTS / "security.json", m)
+
+
 real_state = hub_control.STATE
 hub_control.STATE = T / "state"
-man_at(10); os.utime(toolkits.FEED / "trixie", (time.time() - 40 * 86400,) * 2)
+man_at(10)
+os.utime(toolkits.FEED / "trixie", (time.time() - 40 * 86400,) * 2)
 f = [x for x in hub_control.kits_findings() if x["id"].startswith("kits-age:")]
-check("the doctor: the security kit's cache over a week old is a warning, with when it was downloaded",
-      any(x["status"] == "warn" and (msg_args(x, "update.kits-age.kit") or {}).get("kit") == "security"
-          and msg_args(x, "update.kits-age.kit")["n"] == 10 and "time" in msg_args(x, "update.kits-age.kit")["time"] for x in f), f)
+check(
+    "the doctor: the security kit's cache over a week old is a warning, with when it was downloaded",
+    any(
+        x["status"] == "warn"
+        and (msg_args(x, "update.kits-age.kit") or {}).get("kit") == "security"
+        and msg_args(x, "update.kits-age.kit")["n"] == 10
+        and "time" in msg_args(x, "update.kits-age.kit")["time"]
+        for x in f
+    ),
+    f,
+)
 man_at(40)
 f = [x for x in hub_control.kits_findings() if x["id"].startswith("kits-age:")]
-check("  over a month, a problem", any(x["status"] == "problem" and (msg_args(x, "update.kits-age.kit") or {}).get("n") == 40 for x in f), f)
+check(
+    "  over a month, a problem",
+    any(x["status"] == "problem" and (msg_args(x, "update.kits-age.kit") or {}).get("n") == 40 for x in f),
+    f,
+)
 hub_control.STATE = real_state
 # 64-bit only: bpftrace, bcc and bpftool are left out on a 32-bit board.
-check("the debug kit marks bpftrace, bcc and bpftool 64-bit only", set(kits.definitions()["debug"]["needs_64bit"]) == {"bpftrace", "bpfcc-tools", "bpftool"})
+check(
+    "the debug kit marks bpftrace, bcc and bpftool 64-bit only",
+    set(kits.definitions()["debug"]["needs_64bit"]) == {"bpftrace", "bpfcc-tools", "bpftool"},
+)
 from irate_box.hub import kitdefs  # noqa: E402
+
 dbg = kits.definitions()["debug"]
-for arch_, gone in (("armhf", {"bpftrace", "bpfcc-tools", "bpftool"}), ("arm64", set()), ("amd64", set()), ("i386", {"bpftrace", "bpfcc-tools", "bpftool"})):
+for arch_, gone in (
+    ("armhf", {"bpftrace", "bpfcc-tools", "bpftool"}),
+    ("arm64", set()),
+    ("amd64", set()),
+    ("i386", {"bpftrace", "bpfcc-tools", "bpftool"}),
+):
     keep, left = kitdefs.packages_for(dbg, arch_)
-    check(f"  on {arch_}: {'left out' if gone else 'all kept'}", set(left) == gone and not (gone & set(keep)) and "gdb" in keep, (keep, left))
-d = json.loads((T / "defs" / "small.json").read_text()); d["needs_64bit"] = ["gdb"]
+    check(
+        f"  on {arch_}: {'left out' if gone else 'all kept'}",
+        set(left) == gone and not (gone & set(keep)) and "gdb" in keep,
+        (keep, left),
+    )
+d = json.loads((T / "defs" / "small.json").read_text())
+d["needs_64bit"] = ["gdb"]
 (T / "defs" / "small.json").write_text(json.dumps(d))
 ARCHIVE["gdb"] = ("16.3-9", ARCHIVE["gdb"][1])
 calls.clear()
 line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("fetched on a 32-bit board: left out, and said", args_of(line, "kits.fetch.left-out") == {"arch": "armhf", "why": "gdb (64-bit only)"}
-      and "gdb" not in {p["name"] for p in kits.manifest("small")["packages"]} and kits.manifest("small")["left_out"] == ["gdb"]
-      and not any("gdb" in c for c in calls if c[0] == "apt-get"), line)
+check(
+    "fetched on a 32-bit board: left out, and said",
+    args_of(line, "kits.fetch.left-out") == {"arch": "armhf", "why": "gdb (64-bit only)"}
+    and "gdb" not in {p["name"] for p in kits.manifest("small")["packages"]}
+    and kits.manifest("small")["left_out"] == ["gdb"]
+    and not any("gdb" in c for c in calls if c[0] == "apt-get"),
+    line,
+)
 check("  and the card is told", kits.status()["kits"]["small"]["cached"]["left_out"] == ["gdb"])
 BOARD["arch"] = "arm64"
 line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("on a 64-bit board it comes", "gdb" in {p["name"] for p in kits.manifest("small")["packages"]} and not kits.manifest("small")["left_out"], line)
+check(
+    "on a 64-bit board it comes",
+    "gdb" in {p["name"] for p in kits.manifest("small")["packages"]} and not kits.manifest("small")["left_out"],
+    line,
+)
 BOARD["arch"] = "armhf"
-d.pop("needs_64bit"); (T / "defs" / "small.json").write_text(json.dumps(d))
+d.pop("needs_64bit")
+(T / "defs" / "small.json").write_text(json.dumps(d))
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
-(T / "defs" / "odd.json").write_text(json.dumps({"id": "odd", "title": "Odd", "packages": ["gdb"], "needs_64bit": ["notinkit"]}))
+(T / "defs" / "odd.json").write_text(
+    json.dumps({"id": "odd", "title": "Odd", "packages": ["gdb"], "needs_64bit": ["notinkit"]})
+)
 check("a kit marking a package it doesn't have is left out", "odd" not in kits.definitions())
 (T / "defs" / "odd.json").unlink()
 # The System kit: each package only where it fits, the alternatives cached, never installed.
 sysk = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "system.json").read_text())
 check("the System kit loads, kept installed", kitdefs._ok(sysk, "system") and sysk["remove_after_hours"] is None)
-check("  with the archive tools (zip and unzip among them)",
-      {"zip", "unzip", "xz-utils", "zstd", "bzip2"} <= set(sysk["packages"]))
+check(
+    "  with the archive tools (zip and unzip among them)",
+    {"zip", "unzip", "xz-utils", "zstd", "bzip2"} <= set(sysk["packages"]),
+)
 board = T / "board"
 real_paths = kitdefs.SYSFS, kitdefs.ROOTFS
 kitdefs.SYSFS, kitdefs.ROOTFS = board / "sys", board / "root"
 (board / "root/usr/lib/sysctl.d").mkdir(parents=True)
 (board / "root/usr/lib/sysctl.d/50-default.conf").write_text("")
-(board / "sys/bus/pci/devices").mkdir(parents=True); (board / "sys/block/mmcblk0").mkdir(parents=True)
+(board / "sys/bus/pci/devices").mkdir(parents=True)
+(board / "sys/block/mmcblk0").mkdir(parents=True)
 keep, left = kitdefs.packages_for(sysk, "armhf")
-check("  on a Lyra (armhf, no PCI, an SD card, no AppArmor, the kernel defaults in place): only what fits",
-      set(left) == {"linux-sysctl-defaults", "pciutils", "smartmontools", "apparmor", "apparmor-utils", "dmidecode"} and "exfatprogs" in keep, left)
-check("  each left out with its reason", kitdefs.why_left_out(sysk, left) == "apparmor, apparmor-utils (no AppArmor in the kernel); dmidecode (64-bit only); "
-      "linux-sysctl-defaults (already in place); pciutils (no PCI); smartmontools (no disk that reports SMART)", kitdefs.why_left_out(sysk, left))
-check("  the alternatives fetched, never installed", not {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} & set(keep)
-      and {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} <= set(kitdefs.packages_for(sysk, "armhf", fetching=True)[0]))
+check(
+    "  on a Lyra (armhf, no PCI, an SD card, no AppArmor, the kernel defaults in place): only what fits",
+    set(left) == {"linux-sysctl-defaults", "pciutils", "smartmontools", "apparmor", "apparmor-utils", "dmidecode"}
+    and "exfatprogs" in keep,
+    left,
+)
+check(
+    "  each left out with its reason",
+    kitdefs.why_left_out(sysk, left)
+    == "apparmor, apparmor-utils (no AppArmor in the kernel); dmidecode (64-bit only); "
+    "linux-sysctl-defaults (already in place); pciutils (no PCI); smartmontools (no disk that reports SMART)",
+    kitdefs.why_left_out(sysk, left),
+)
+check(
+    "  the alternatives fetched, never installed",
+    not {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} & set(keep)
+    and {"ifupdown", "dhcpcd-base", "systemd-timesyncd"} <= set(kitdefs.packages_for(sysk, "armhf", fetching=True)[0]),
+)
 (board / "root/usr/lib/sysctl.d/50-default.conf").unlink()
-(board / "sys/bus/pci/devices/0000:00:00.0").mkdir(); (board / "sys/block/nvme0n1").mkdir(); (board / "sys/kernel/security/apparmor").mkdir(parents=True)
+(board / "sys/bus/pci/devices/0000:00:00.0").mkdir()
+(board / "sys/block/nvme0n1").mkdir()
+(board / "sys/kernel/security/apparmor").mkdir(parents=True)
 keep, left = kitdefs.packages_for(sysk, "amd64")
-check("  on a PC (amd64, PCI, NVMe, AppArmor, no kernel defaults): all of it", not left and set(sysk["packages"]) == set(keep), left)
+check(
+    "  on a PC (amd64, PCI, NVMe, AppArmor, no kernel defaults): all of it",
+    not left and set(sysk["packages"]) == set(keep),
+    left,
+)
 kitdefs.SYSFS, kitdefs.ROOTFS = real_paths
 for bad in ({"alternatives": ["gdb"]}, {"only_where": {"gdb": "moon"}}, {"only_where": {"notinkit": "pci"}}):
     check(f"  a kit with {bad} is refused", not kitdefs._ok({"id": "x", "packages": ["gdb"], **bad}, "x"))
 # Kits overlap (Recovery and System both list smartmontools): removing one keeps what another lists,
 # and what that needs, however the two were installed.
 for kid, hours in (("lend", 24), ("keepr", None)):
-    (T / "defs" / f"{kid}.json").write_text(json.dumps({"id": kid, "title": kid, "summary": "s", "consent": "c", "packages": ["platformio"],
-                                                         "remove_after_hours": hours}))
+    (T / "defs" / f"{kid}.json").write_text(
+        json.dumps(
+            {
+                "id": kid,
+                "title": kid,
+                "summary": "s",
+                "consent": "c",
+                "packages": ["platformio"],
+                "remove_after_hours": hours,
+            }
+        )
+    )
     kits.fetch(kid, budget_mb=10, log=lambda *a: None)
 kits.install("lend", hours=24, log=lambda *a: None)
 kits.install("keepr", hours=None, log=lambda *a: None)
-check("two kits listing platformio: the first adds it and python3-click, the second nothing", set(kits.installed_state()["lend"]["added"]) == {"platformio", "python3-click"}
-      and not kits.installed_state()["keepr"]["added"], kits.installed_state())
+check(
+    "two kits listing platformio: the first adds it and python3-click, the second nothing",
+    set(kits.installed_state()["lend"]["added"]) == {"platformio", "python3-click"}
+    and not kits.installed_state()["keepr"]["added"],
+    kits.installed_state(),
+)
 line = kits.remove("lend", log=lambda *a: None)
-check("  removing the first keeps platformio (the other lists it) and python3-click (platformio needs it)", {"platformio", "python3-click"} <= installed and args_of(line, "kits.remove.kept") == {"n": 2}, (line, installed))
+check(
+    "  removing the first keeps platformio (the other lists it) and python3-click (platformio needs it)",
+    {"platformio", "python3-click"} <= installed and args_of(line, "kits.remove.kept") == {"n": 2},
+    (line, installed),
+)
 kits.install("lend", hours=24, log=lambda *a: None)
 kits.remove("keepr", log=lambda *a: None)
 kits.remove("lend", log=lambda *a: None)
@@ -522,129 +942,270 @@ check("  with neither left, both go", not {"platformio", "python3-click"} & inst
 for kid in ("lend", "keepr"):
     (T / "defs" / f"{kid}.json").unlink()
 # The owner's own kits, and extra tools in a shipped kit.
-line = hub_control.ACTIONS["kit-define"]({"kit": {"id": "scanner", "title": "Scanner tools", "summary": "", "packages": ["gdb", "tcpdump", "gdb"],
-                                                  "remove_after_hours": 4}})
+line = hub_control.ACTIONS["kit-define"](
+    {
+        "kit": {
+            "id": "scanner",
+            "title": "Scanner tools",
+            "summary": "",
+            "packages": ["gdb", "tcpdump", "gdb"],
+            "remove_after_hours": 4,
+        }
+    }
+)
 own = kits.definitions().get("scanner")
-check("an own kit: kept by root, marked as the owner's, repeats dropped, its consent names the packages", own and own["owner"] and own["packages"] == ["gdb", "tcpdump"]
-      and "gdb, tcpdump" in own["consent"] and args_of(line, "kits.define.created") == {"title": "Scanner tools", "n": 2} and (kits.ROOT / "owner" / "scanner.json").stat().st_mode & 0o777 == 0o644, (line, own))
-check("  and the hub sees it too (kitdefs, readable)", "scanner" in toolkits.definitions() and toolkits.settings()["kits"]["scanner"]["remove_after"] == 4)
-for bad, why in (({"id": "debug", "title": "x", "packages": ["gdb"]}, "kits.define.shipped"), ({"id": "r2", "title": "x", "packages": ["no-such-pkg"]}, "kits.packages.unknown"),
-                 ({"id": "r2", "title": "x", "packages": ["--force"]}, "kits.packages.invalid"), ({"id": "r2", "title": "", "packages": ["gdb"]}, "kits.define.bad-title"),
-                 ({"id": "../x", "title": "x", "packages": ["gdb"]}, "kits.define.bad-id"), ({"id": "extras", "title": "x", "packages": ["gdb"]}, "kits.define.bad-id"),
-                 ({"id": "r2", "title": "x", "packages": []}, "kits.define.no-packages")):
+check(
+    "an own kit: kept by root, marked as the owner's, repeats dropped, its consent names the packages",
+    own
+    and own["owner"]
+    and own["packages"] == ["gdb", "tcpdump"]
+    and "gdb, tcpdump" in own["consent"]
+    and args_of(line, "kits.define.created") == {"title": "Scanner tools", "n": 2}
+    and (kits.ROOT / "owner" / "scanner.json").stat().st_mode & 0o777 == 0o644,
+    (line, own),
+)
+check(
+    "  and the hub sees it too (kitdefs, readable)",
+    "scanner" in toolkits.definitions() and toolkits.settings()["kits"]["scanner"]["remove_after"] == 4,
+)
+for bad, why in (
+    ({"id": "debug", "title": "x", "packages": ["gdb"]}, "kits.define.shipped"),
+    ({"id": "r2", "title": "x", "packages": ["no-such-pkg"]}, "kits.packages.unknown"),
+    ({"id": "r2", "title": "x", "packages": ["--force"]}, "kits.packages.invalid"),
+    ({"id": "r2", "title": "", "packages": ["gdb"]}, "kits.define.bad-title"),
+    ({"id": "../x", "title": "x", "packages": ["gdb"]}, "kits.define.bad-id"),
+    ({"id": "extras", "title": "x", "packages": ["gdb"]}, "kits.define.bad-id"),
+    ({"id": "r2", "title": "x", "packages": []}, "kits.define.no-packages"),
+):
     try:
-        kits.define(bad); check(f"define refuses: {why}", False)
+        kits.define(bad)
+        check(f"define refuses: {why}", False)
     except ValueError as exc:
         check(f"define refuses: {why}", exc.message["id"] == why, str(exc))
 kits.fetch("scanner", budget_mb=10, log=lambda *a: None)
-check("an own kit is fetched like the others", kits.manifest("scanner") and {p["name"] for p in kits.manifest("scanner")["packages"]} >= {"gdb"})
+check(
+    "an own kit is fetched like the others",
+    kits.manifest("scanner") and {p["name"] for p in kits.manifest("scanner")["packages"]} >= {"gdb"},
+)
 kits.install("scanner", hours=1, log=lambda *a: None)
 try:
-    kits.undefine("scanner"); check("an installed own kit can't be deleted", False)
+    kits.undefine("scanner")
+    check("an installed own kit can't be deleted", False)
 except ValueError:
     check("an installed own kit can't be deleted", True)
 kits.remove("scanner", log=lambda *a: None)
 print_ = hub_control.ACTIONS["kit-undefine"]({"kit": "scanner"})
-check("deleted: its definition and its cache", "scanner" not in kits.definitions() and not kits.manifest("scanner")
-      and json.loads((T / "state" / "control" / "kits.json").read_text())["kits"].get("scanner") is None, print_)
+check(
+    "deleted: its definition and its cache",
+    "scanner" not in kits.definitions()
+    and not kits.manifest("scanner")
+    and json.loads((T / "state" / "control" / "kits.json").read_text())["kits"].get("scanner") is None,
+    print_,
+)
 try:
-    kits.undefine("debug"); check("a shipped kit can't be deleted", False)
+    kits.undefine("debug")
+    check("a shipped kit can't be deleted", False)
 except ValueError:
     check("a shipped kit can't be deleted", True)
 line = hub_control.ACTIONS["kit-extra"]({"kit": "capture", "packages": ["gdb", "tcpdump"]})
 cap = kits.definitions()["capture"]
-check("extra tools in a shipped kit: added to its packages, one it has already left out", cap["packages"] == ["tcpdump", "tshark", "gdb"] and cap["extra"] == ["gdb"], (line, cap))
+check(
+    "extra tools in a shipped kit: added to its packages, one it has already left out",
+    cap["packages"] == ["tcpdump", "tshark", "gdb"] and cap["extra"] == ["gdb"],
+    (line, cap),
+)
 hub_control.ACTIONS["kit-extra"]({"kit": "capture", "packages": []})
-check("  and cleared", kits.definitions()["capture"]["packages"] == ["tcpdump", "tshark"] and "extra" not in kits.definitions()["capture"])
-for bad in ({"kit": "scanner", "packages": ["gdb"]}, {"kit": "capture", "packages": ["no-such-pkg"]}, {"kit": "capture", "packages": "gdb"}):
+check(
+    "  and cleared",
+    kits.definitions()["capture"]["packages"] == ["tcpdump", "tshark"] and "extra" not in kits.definitions()["capture"],
+)
+for bad in (
+    {"kit": "scanner", "packages": ["gdb"]},
+    {"kit": "capture", "packages": ["no-such-pkg"]},
+    {"kit": "capture", "packages": "gdb"},
+):
     try:
-        hub_control.ACTIONS["kit-extra"](bad); check(f"extra refused: {bad}", False)
+        hub_control.ACTIONS["kit-extra"](bad)
+        check(f"extra refused: {bad}", False)
     except ValueError:
         check(f"extra refused: {bad}", True)
 queued.clear()
 toolkits.action({"action": "define", "kit": {"title": "Debug", "packages": "gdb, strace  tcpdump"}})
-check("the page's define: an id from the name (my- when it would clash), packages split", queued[-1]["kit"]["id"] == "my-debug"
-      and queued[-1]["kit"]["packages"] == ["gdb", "strace", "tcpdump"], queued[-1])
+check(
+    "the page's define: an id from the name (my- when it would clash), packages split",
+    queued[-1]["kit"]["id"] == "my-debug" and queued[-1]["kit"]["packages"] == ["gdb", "strace", "tcpdump"],
+    queued[-1],
+)
 toolkits.action({"action": "extra", "kit": "capture", "packages": ["gdb"]})
 check("  and extra", queued[-1] == {"action": "kit-extra", "kit": "capture", "packages": ["gdb"]})
 
 # The wheelhouse: the build kit names Python packages too, fetched with pip
 # into a folder of its own, so a build's `pip install platformio` needs no internet.
-check("the build kit names platformio, and nanopb's protobuf and grpcio-tools, for its wheelhouse", kits.definitions()["build"]["pip"] == ["platformio", "protobuf", "grpcio-tools"])
+check(
+    "the build kit names platformio, and nanopb's protobuf and grpcio-tools, for its wheelhouse",
+    kits.definitions()["build"]["pip"] == ["platformio", "protobuf", "grpcio-tools"],
+)
 line = kits.fetch("build", budget_mb=50, log=lambda *a: None)
 man = kits.manifest("build")
-check("fetch: the wheelhouse too, counted in the kit's size", {w["file"] for w in man["wheels"]} == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
-      and man["bytes"] == sum(p["size"] for p in man["packages"]) + 1200, man)
-check("  each wheel cached with its sha256", all((kits.WHEELHOUSE / w["file"]).is_file() and kits.sha256(kits.WHEELHOUSE / w["file"]) == w["sha256"] for w in man["wheels"]))
+check(
+    "fetch: the wheelhouse too, counted in the kit's size",
+    {w["file"] for w in man["wheels"]} == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+    and man["bytes"] == sum(p["size"] for p in man["packages"]) + 1200,
+    man,
+)
+check(
+    "  each wheel cached with its sha256",
+    all(
+        (kits.WHEELHOUSE / w["file"]).is_file() and kits.sha256(kits.WHEELHOUSE / w["file"]) == w["sha256"]
+        for w in man["wheels"]
+    ),
+)
 check("  no stage left behind", not list(kits.ROOT.glob("stage-*")))
 line = kits.fetch("build", budget_mb=50, log=lambda *a: None)
 check("unchanged on a second fetch (wheels included)", "kits.fetch.unchanged" in ids(line))
 # A newer platformio: the old wheels become previous, and stay cached until nothing refers to them.
 WHEELS["platformio"] = [("platformio-6.2.0-py3-none-any.whl", 1100), ("click-8.1.0-py3-none-any.whl", 200)]
 kits.fetch("build", budget_mb=50, log=lambda *a: None)
-check("a new wheel: current and previous both named, both still in the wheelhouse",
-      {w["file"] for w in kits.manifest("build")["wheels"]} == {"platformio-6.2.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
-      and {w["file"] for w in kits.manifest("build", "previous")["wheels"]} == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
-      and (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists() and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists())
+check(
+    "a new wheel: current and previous both named, both still in the wheelhouse",
+    {w["file"] for w in kits.manifest("build")["wheels"]}
+    == {"platformio-6.2.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+    and {w["file"] for w in kits.manifest("build", "previous")["wheels"]}
+    == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+    and (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists()
+    and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists(),
+)
 # Tampering and pruning reach the wheelhouse too.
 victim = kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl"
 victim.write_bytes(victim.read_bytes() + b"x")
-check("a changed wheel is found by verify", any("has changed since it was fetched" in p for p in kits.verify("build")), kits.verify("build"))
+check(
+    "a changed wheel is found by verify",
+    any("has changed since it was fetched" in p for p in kits.verify("build")),
+    kits.verify("build"),
+)
 WHEELS["platformio"] = [("platformio-6.3.0-py3-none-any.whl", 900), ("click-8.1.0-py3-none-any.whl", 200)]
 kits.fetch("build", budget_mb=50, log=lambda *a: None)
-check("pruning drops a wheel no manifest names any more", not (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists()
-      and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists() and (kits.WHEELHOUSE / "platformio-6.3.0-py3-none-any.whl").exists())
-check("kits.status() counts the wheels and the wheelhouse's bytes", kits.status()["kits"]["build"]["cached"]["wheels"] == 2 and kits.wheelhouse_bytes() > 0)
+check(
+    "pruning drops a wheel no manifest names any more",
+    not (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists()
+    and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists()
+    and (kits.WHEELHOUSE / "platformio-6.3.0-py3-none-any.whl").exists(),
+)
+check(
+    "kits.status() counts the wheels and the wheelhouse's bytes",
+    kits.status()["kits"]["build"]["cached"]["wheels"] == 2 and kits.wheelhouse_bytes() > 0,
+)
 # Debug symbols: a kit from Debian's debug archive alone, its index kept
 # apart, and only the symbols of what is installed here (a -dbgsym depends on its exact version).
-ARCHIVE.update({"nginx": ("1.26.3-3", []), "nginx-dbgsym": ("1.26.3-3", ["nginx"]), "mosquitto-dbgsym": ("2.0.21-1", ["mosquitto"]),
-                "mosquitto": ("2.0.21-1", [])})
+ARCHIVE.update(
+    {
+        "nginx": ("1.26.3-3", []),
+        "nginx-dbgsym": ("1.26.3-3", ["nginx"]),
+        "mosquitto-dbgsym": ("2.0.21-1", ["mosquitto"]),
+        "mosquitto": ("2.0.21-1", []),
+    }
+)
 installed.add("nginx")
-(T / "dpkg-status").write_text("".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed)))
+(T / "dpkg-status").write_text(
+    "".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed))
+)
 (T / "os-release").write_text('PRETTY_NAME="Debian GNU/Linux 13 (trixie)"\nVERSION_CODENAME=trixie\n')
-kits_os = os.environ.get("HUB_OS_RELEASE"); os.environ["HUB_OS_RELEASE"] = str(T / "os-release")
-(T / "defs" / "syms.json").write_text(json.dumps({"id": "syms", "title": "Syms", "summary": "s", "consent": "c", "debug_archive": True,
-                                                   "packages": ["nginx-dbgsym", "mosquitto-dbgsym"]}))
+kits_os = os.environ.get("HUB_OS_RELEASE")
+os.environ["HUB_OS_RELEASE"] = str(T / "os-release")
+(T / "defs" / "syms.json").write_text(
+    json.dumps(
+        {
+            "id": "syms",
+            "title": "Syms",
+            "summary": "s",
+            "consent": "c",
+            "debug_archive": True,
+            "packages": ["nginx-dbgsym", "mosquitto-dbgsym"],
+        }
+    )
+)
 calls.clear()
 line = kits.fetch("syms", budget_mb=50, log=lambda *a: None)
 man = kits.manifest("syms")
 upd = [c for c in calls if c[0].endswith("apt-get") and "update" in c]
 dl = [c for c in calls if c[0].endswith("apt-get") and "--download-only" in c]
-check("symbols: only for what is installed here (nginx), mosquitto's said as left out", [p["name"] for p in man["packages"]] == ["nginx-dbgsym"]
-      and "mosquitto-dbgsym" in man["left_out"], man)
+check(
+    "symbols: only for what is installed here (nginx), mosquitto's said as left out",
+    [p["name"] for p in man["packages"]] == ["nginx-dbgsym"] and "mosquitto-dbgsym" in man["left_out"],
+    man,
+)
 src = (kits.ROOT / "debug.list").read_text()
-check("  from Debian's debug archives alone (the release's, proposed updates', security updates'), with Debian's keyring", src.splitlines() == [
-      f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-debug main",
-      f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-proposed-updates-debug main",
-      f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-security-debug trixie-security-debug main"]
-      and upd and all(c[c.index("-o") + 1:].count(f"Dir::Etc::sourcelist={kits.ROOT / 'debug.list'}") for c in upd + dl), src)
-check("  its index kept apart from the box's own lists", all(f"Dir::State::Lists={kits.DEBUG_LISTS}" in c for c in upd + dl)
-      and all("Dir::Etc::sourceparts=-" in c for c in upd + dl))
-check("the shipped symbols kit loads, from the debug archive", __import__("irate_box.hub.kitdefs", fromlist=["x"])._ok(
-      json.loads((REPO / "toolkits" / "symbols.json").read_text()), "symbols") and json.loads((REPO / "toolkits" / "symbols.json").read_text())["debug_archive"] is True)
+check(
+    "  from Debian's debug archives alone (the release's, proposed updates', security updates'), with Debian's keyring",
+    src.splitlines()
+    == [
+        f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-debug main",
+        f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-debug trixie-proposed-updates-debug main",
+        f"deb [signed-by={kits.DEBIAN_KEYRING}] http://deb.debian.org/debian-security-debug trixie-security-debug main",
+    ]
+    and upd
+    and all(c[c.index("-o") + 1 :].count(f"Dir::Etc::sourcelist={kits.ROOT / 'debug.list'}") for c in upd + dl),
+    src,
+)
+check(
+    "  its index kept apart from the box's own lists",
+    all(f"Dir::State::Lists={kits.DEBUG_LISTS}" in c for c in upd + dl)
+    and all("Dir::Etc::sourceparts=-" in c for c in upd + dl),
+)
+check(
+    "the shipped symbols kit loads, from the debug archive",
+    __import__("irate_box.hub.kitdefs", fromlist=["x"])._ok(
+        json.loads((REPO / "toolkits" / "symbols.json").read_text()), "symbols"
+    )
+    and json.loads((REPO / "toolkits" / "symbols.json").read_text())["debug_archive"] is True,
+)
 # Over the budget, other toolkits' older sets go first (oldest first), and the refresh says so; when even that is not
 # enough, it is refused and nothing is dropped.
-fake_prev = {"id": "cap", "fetched": 1, "bytes": 9 << 20, "packages": [{"name": "huge", "version": "1", "file": "huge_1.deb", "size": 9 << 20, "sha256": "0" * 64, "arch": "armhf"}], "wheels": []}
+fake_prev = {
+    "id": "cap",
+    "fetched": 1,
+    "bytes": 9 << 20,
+    "packages": [
+        {"name": "huge", "version": "1", "file": "huge_1.deb", "size": 9 << 20, "sha256": "0" * 64, "arch": "armhf"}
+    ],
+    "wheels": [],
+}
 (kits.MANIFESTS / "cap.previous.json").write_text(json.dumps(fake_prev))
 try:
-    kits.fetch("small", budget_mb=0, log=lambda *a: None); check("over the budget even without older sets: refused", False)
+    kits.fetch("small", budget_mb=0, log=lambda *a: None)
+    check("over the budget even without older sets: refused", False)
 except ValueError as exc:
-    check("over the budget even without older sets: refused, saying so, and no older set dropped",
-          exc.message["id"] == "kits.fetch.over-limit" and (kits.MANIFESTS / "cap.previous.json").exists(), exc)
+    check(
+        "over the budget even without older sets: refused, saying so, and no older set dropped",
+        exc.message["id"] == "kits.fetch.over-limit" and (kits.MANIFESTS / "cap.previous.json").exists(),
+        exc,
+    )
 line = kits.fetch("small", budget_mb=9, log=lambda *a: None)
-check("over the budget with another kit's older set: that set removed, the refresh done and saying so",
-      not (kits.MANIFESTS / "cap.previous.json").exists() and args_of(line, "kits.fetch.dropped") == {"kits": ["cap"]}, line)
+check(
+    "over the budget with another kit's older set: that set removed, the refresh done and saying so",
+    not (kits.MANIFESTS / "cap.previous.json").exists() and args_of(line, "kits.fetch.dropped") == {"kits": ["cap"]},
+    line,
+)
 
 # Remove older set: the set kept for Roll back goes, and its files with it unless the current sets use them.
 ARCHIVE["gdb"] = ("16.3-5", ARCHIVE["gdb"][1])
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
-old_files = {p["file"] for p in kits.manifest("small", "previous")["packages"]} - {p["file"] for p in kits.manifest("small")["packages"]}
+old_files = {p["file"] for p in kits.manifest("small", "previous")["packages"]} - {
+    p["file"] for p in kits.manifest("small")["packages"]
+}
 line = kits.drop_previous("small", log=lambda *a: None)
-check("Remove older set: gone, its own files pruned, the current ones kept, said with what it freed",
-      kits.manifest("small", "previous") is None and old_files and not any((kits.POOL / f).exists() for f in old_files)
-      and all((kits.POOL / p["file"]).exists() for p in kits.manifest("small")["packages"]) and "mb" in (args_of(line, "kits.drop.done") or {}), (old_files, line))
+check(
+    "Remove older set: gone, its own files pruned, the current ones kept, said with what it freed",
+    kits.manifest("small", "previous") is None
+    and old_files
+    and not any((kits.POOL / f).exists() for f in old_files)
+    and all((kits.POOL / p["file"]).exists() for p in kits.manifest("small")["packages"])
+    and "mb" in (args_of(line, "kits.drop.done") or {}),
+    (old_files, line),
+)
 try:
-    kits.drop_previous("small", log=lambda *a: None); check("no older set: refused", False)
+    kits.drop_previous("small", log=lambda *a: None)
+    check("no older set: refused", False)
 except ValueError as exc:
     check("no older set: refused", exc.message["id"] == "kits.drop.none", exc)
 
@@ -652,31 +1213,65 @@ except ValueError as exc:
 ARCHIVE["gdb"] = ("16.3-6", ARCHIVE["gdb"][1])
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
 (kits.MANIFESTS / "cap.previous.json").write_text(json.dumps(fake_prev))
-old_files = {p["file"] for p in kits.manifest("small", "previous")["packages"]} - {p["file"] for p in kits.manifest("small")["packages"]}
+old_files = {p["file"] for p in kits.manifest("small", "previous")["packages"]} - {
+    p["file"] for p in kits.manifest("small")["packages"]
+}
 had = sorted(k for k in kits.definitions() if kits.manifest(k, "previous"))
 line = kits.drop_all_previous(log=lambda *a: None)
-check("Clear old rollback cache: every older set gone, their own files pruned, the current ones kept, said with how many",
-      kits.manifest("small", "previous") is None and kits.manifest("cap", "previous") is None and old_files
-      and not any((kits.POOL / f).exists() for f in old_files) and all((kits.POOL / p["file"]).exists() for p in kits.manifest("small")["packages"])
-      and len(had) >= 2 and not any(kits.manifest(k, "previous") for k in kits.definitions())
-      and (args_of(line, "kits.drop-all.done") or {}).get("n") == len(had), (had, old_files, line))
-check("  pressed again: nothing to remove, said so", kits.drop_all_previous(log=lambda *a: None)["id"] == "kits.drop-all.none")
+check(
+    "Clear old rollback cache: every older set gone, their own files pruned, the current ones kept, said with how many",
+    kits.manifest("small", "previous") is None
+    and kits.manifest("cap", "previous") is None
+    and old_files
+    and not any((kits.POOL / f).exists() for f in old_files)
+    and all((kits.POOL / p["file"]).exists() for p in kits.manifest("small")["packages"])
+    and len(had) >= 2
+    and not any(kits.manifest(k, "previous") for k in kits.definitions())
+    and (args_of(line, "kits.drop-all.done") or {}).get("n") == len(had),
+    (had, old_files, line),
+)
+check(
+    "  pressed again: nothing to remove, said so",
+    kits.drop_all_previous(log=lambda *a: None)["id"] == "kits.drop-all.none",
+)
 
 # The sweep by age, on root's side: an older set past its days goes; one within them stays.
 ARCHIVE["gdb"] = ("16.3-7", ARCHIVE["gdb"][1])
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
-check("the sweep by age: an older set within its days stays", kits.drop_old_previous(30, log=lambda *a: None)["id"] == "kits.sweep.none"
-      and kits.manifest("small", "previous") is not None)
+check(
+    "the sweep by age: an older set within its days stays",
+    kits.drop_old_previous(30, log=lambda *a: None)["id"] == "kits.sweep.none"
+    and kits.manifest("small", "previous") is not None,
+)
 line = kits.drop_old_previous(30, now=time.time() + 31 * 86400, log=lambda *a: None)
-check("  past them: removed, said with how many", kits.manifest("small", "previous") is None and (args_of(line, "kits.sweep.done") or {}).get("n") == 1, line)
+check(
+    "  past them: removed, said with how many",
+    kits.manifest("small", "previous") is None and (args_of(line, "kits.sweep.done") or {}).get("n") == 1,
+    line,
+)
 
 # The previous set, kept for Roll back: what it keeps beyond the current one (the Toolkits card says so).
-cur = {"packages": [{"name": "ntfs-3g", "version": "3", "file": "ntfs-3g_3.deb", "size": 400}, {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300}],
-       "wheels": [{"file": "w-2.whl", "size": 50}]}
-prev = {"fetched": 1, "bytes": 999, "packages": [{"name": "ntfs-3g", "version": "2", "file": "ntfs-3g_2.deb", "size": 390},
-        {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300}], "wheels": [{"file": "w-1.whl", "size": 40}]}
+cur = {
+    "packages": [
+        {"name": "ntfs-3g", "version": "3", "file": "ntfs-3g_3.deb", "size": 400},
+        {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300},
+    ],
+    "wheels": [{"file": "w-2.whl", "size": 50}],
+}
+prev = {
+    "fetched": 1,
+    "bytes": 999,
+    "packages": [
+        {"name": "ntfs-3g", "version": "2", "file": "ntfs-3g_2.deb", "size": 390},
+        {"name": "tcpdump", "version": "4", "file": "tcpdump_4.deb", "size": 300},
+    ],
+    "wheels": [{"file": "w-1.whl", "size": 40}],
+}
 tr = kits._trailing(cur, prev)
-check("the set kept for Roll back: its date and size, the packages at another version, the bytes only it uses",
-      tr == {"fetched": 1, "bytes": 999, "older": ["ntfs-3g"], "extra_bytes": 430}, tr)
+check(
+    "the set kept for Roll back: its date and size, the packages at another version, the bytes only it uses",
+    tr == {"fetched": 1, "bytes": 999, "older": ["ntfs-3g"], "extra_bytes": 430},
+    tr,
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

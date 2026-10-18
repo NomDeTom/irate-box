@@ -11,6 +11,7 @@ Scheduled downloads (the librarian's hourly run: books, mirrors, toolkits, firmw
 updates) wait while it is metered and say so in STATE/metered-wait.json; a download started by hand
 goes ahead, after the page has asked. stdlib only; no root.
 """
+
 import ipaddress
 import json
 import os
@@ -21,7 +22,7 @@ from pathlib import Path
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 WAIT = STATE / "metered-wait.json"
-PHONE_NETS = (ipaddress.ip_network("172.20.10.0/28"),)   # an iPhone's personal hotspot
+PHONE_NETS = (ipaddress.ip_network("172.20.10.0/28"),)  # an iPhone's personal hotspot
 
 
 def run(*cmd, timeout=15):
@@ -92,8 +93,10 @@ def gate(now=None, run_=None):
         os.replace(tmp, WAIT)
     except OSError:
         pass
-    return (f"Automatic download deferred: the connection {m['connection'] or m['iface']} is metered ({m['how']}). "
-            "Scheduled updates and downloads wait for another connection. A download that you start goes ahead.")
+    return (
+        f"Automatic download deferred: the connection {m['connection'] or m['iface']} is metered ({m['how']}). "
+        "Scheduled updates and downloads wait for another connection. A download that you start goes ahead."
+    )
 
 
 def waiting():

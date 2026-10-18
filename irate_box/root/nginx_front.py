@@ -24,10 +24,18 @@ from pathlib import Path
 PROTOCOL = 1
 TOKENS = re.compile(r"@([A-Z_]+)@")
 PORTS = {
-    "PORT": "80", "ADDON_PORT": "8090", "NOTES_PORT": "8091",
-    "NOTEBOOK_PORT": "8094", "WIKI_PORT": "8092", "GIT_PORT": "8093",
-    "TLS_PORT": "443", "ADDON_TLS_PORT": "8490", "NOTES_TLS_PORT": "8491",
-    "NOTEBOOK_TLS_PORT": "8494", "WIKI_TLS_PORT": "8492", "GIT_TLS_PORT": "8493",
+    "PORT": "80",
+    "ADDON_PORT": "8090",
+    "NOTES_PORT": "8091",
+    "NOTEBOOK_PORT": "8094",
+    "WIKI_PORT": "8092",
+    "GIT_PORT": "8093",
+    "TLS_PORT": "443",
+    "ADDON_TLS_PORT": "8490",
+    "NOTES_TLS_PORT": "8491",
+    "NOTEBOOK_TLS_PORT": "8494",
+    "WIKI_TLS_PORT": "8492",
+    "GIT_TLS_PORT": "8493",
 }
 _local = threading.local()
 _mutex = threading.RLock()
@@ -69,6 +77,7 @@ def locked(function):
     def invoke(*args, **kwargs):
         with front_lock():
             return function(*args, **kwargs)
+
     return invoke
 
 
@@ -115,7 +124,11 @@ def _copy_owned(source, destination):
 
 def _private(directory):
     directory = Path(directory)
-    if any(path.is_symlink() for path in (directory, *directory.parents)) or directory.stat().st_uid != os.geteuid() or directory.stat().st_mode & 0o077:
+    if (
+        any(path.is_symlink() for path in (directory, *directory.parents))
+        or directory.stat().st_uid != os.geteuid()
+        or directory.stat().st_mode & 0o077
+    ):
         raise ValueError("Unsafe nginx transaction directory")
     return directory
 
@@ -152,12 +165,28 @@ def begin(directory, paths, runner=None):
     ports = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub")) / "tls/ports.json"
     if ports.exists():
         saved = json.loads(ports.read_text())
-        for origin, prefix in (("main", ""), ("addons", "ADDON_"), ("notes", "NOTES_"), ("wiki", "WIKI_"), ("git", "GIT_"), ("notebook", "NOTEBOOK_")):
+        for origin, prefix in (
+            ("main", ""),
+            ("addons", "ADDON_"),
+            ("notes", "NOTES_"),
+            ("wiki", "WIKI_"),
+            ("git", "GIT_"),
+            ("notebook", "NOTEBOOK_"),
+        ):
             for scheme, suffix in (("http", "PORT"), ("https", "TLS_PORT")):
                 if origin in saved.get(scheme, {}):
                     previous_values[prefix + suffix] = str(saved[scheme][origin])
     running = runner("systemctl", "is-active", "--quiet", "nginx").returncode == 0 if runner else None
-    _journal(directory, {"protocol": PROTOCOL, "state": "prepared", "entries": entries, "previous_values": previous_values, "was_running": running})
+    _journal(
+        directory,
+        {
+            "protocol": PROTOCOL,
+            "state": "prepared",
+            "entries": entries,
+            "previous_values": previous_values,
+            "was_running": running,
+        },
+    )
 
 
 def recover(directory, finalize=True):
@@ -191,7 +220,9 @@ def fingerprint(path):
     paths = [path, *sorted(path.rglob("*"))] if path.is_dir() and not path.is_symlink() else [path]
     for item in paths:
         metadata = item.lstat()
-        digest.update(json.dumps([str(item.relative_to(path)), metadata.st_mode, metadata.st_uid, metadata.st_gid]).encode())
+        digest.update(
+            json.dumps([str(item.relative_to(path)), metadata.st_mode, metadata.st_uid, metadata.st_gid]).encode()
+        )
         if item.is_symlink():
             digest.update(os.readlink(item).encode())
         elif item.is_file():
@@ -225,8 +256,14 @@ def system(*argv):
     executable = shutil.which(argv[0], path="/usr/sbin:/usr/bin:/sbin:/bin")
     if not executable:
         raise FileNotFoundError(argv[0])
-    return subprocess.run([executable, *argv[1:]], check=False, capture_output=True, text=True, timeout=60,
-                          env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"})  # Reviewed fixed command family; no shell. # nosec B603
+    return subprocess.run(
+        [executable, *argv[1:]],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
+    )  # Reviewed fixed command family; no shell. # nosec B603
 
 
 def _health_once(settings):
@@ -240,13 +277,18 @@ def _health_once(settings):
         context.check_hostname = False
         context.verify_flags |= getattr(ssl, "VERIFY_X509_PARTIAL_CHAIN", 0)
     port = int(settings["TLS_PORT"] if secure else settings["PORT"])
-    connection = http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=context) if secure else http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    connection = (
+        http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=context)
+        if secure
+        else http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    )
     try:
         connection.connect()
         if secure:
             certificate = tls.CHAIN.read_text().split("-----END CERTIFICATE-----", 1)[0] + "-----END CERTIFICATE-----\n"
             if connection.sock.getpeercert(binary_form=True) != ssl.PEM_cert_to_DER_cert(certificate):
                 raise ValueError("The frontend served an unexpected certificate")
+
         def request(path):
             connection.request("GET", path, headers={"Host": "localhost"})
             response = connection.getresponse()
@@ -272,7 +314,11 @@ def _health_once(settings):
     if settings.get("GENERATION"):
         for prefix in ("ADDON_", "NOTES_", "NOTEBOOK_", "WIKI_", "GIT_"):
             port = int(settings[prefix + ("TLS_PORT" if secure else "PORT")])
-            sibling = http.client.HTTPSConnection("127.0.0.1", port, timeout=3, context=context) if secure else http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+            sibling = (
+                http.client.HTTPSConnection("127.0.0.1", port, timeout=3, context=context)
+                if secure
+                else http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+            )
             try:
                 sibling.request("GET", "/_irate_front_ready", headers={"Host": "localhost"})
                 response = sibling.getresponse()
@@ -347,18 +393,23 @@ def settings_from_env():
     state = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
     etc = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
     values = {name: os.environ.get(f"HUB_{name}", default) for name, default in PORTS.items()}
-    values.update({
-        "STATIC": str(code / "web"),
-        "APPS": os.environ.get("HUB_APPS_DIR", "/usr/share/hub/apps"),
-        "GIT_ROOT": str(state / "git"), "FIRMWARE": str(state / "firmware"),
-        "HTPASSWD": os.environ.get("HUB_NGINX_LOGINS", "/etc/nginx/irate-box.htpasswd"),
-        "UNCLAIMED": os.environ.get("HUB_UNCLAIMED_FILE", "/etc/nginx/irate-box-unclaimed"),
-        "ACCESS": str(etc / "nginx-access.conf"),
-        "FRONT": os.environ.get("HUB_NGINX_FRONT", "/etc/nginx/irate-box-front.conf"),
-        "ADDONS": str(state / "addons"), "ADDON_ACCESS": str(etc / "nginx-addons.conf"),
-        "ADDON_GATES": str(etc / "nginx-addon-gates.conf.d"),
-        "TLS": str(etc / "tls/front"), "PAGELOG": str(state / "pagelog/pages.log"),
-    })
+    values.update(
+        {
+            "STATIC": str(code / "web"),
+            "APPS": os.environ.get("HUB_APPS_DIR", "/usr/share/hub/apps"),
+            "GIT_ROOT": str(state / "git"),
+            "FIRMWARE": str(state / "firmware"),
+            "HTPASSWD": os.environ.get("HUB_NGINX_LOGINS", "/etc/nginx/irate-box.htpasswd"),
+            "UNCLAIMED": os.environ.get("HUB_UNCLAIMED_FILE", "/etc/nginx/irate-box-unclaimed"),
+            "ACCESS": str(etc / "nginx-access.conf"),
+            "FRONT": os.environ.get("HUB_NGINX_FRONT", "/etc/nginx/irate-box-front.conf"),
+            "ADDONS": str(state / "addons"),
+            "ADDON_ACCESS": str(etc / "nginx-addons.conf"),
+            "ADDON_GATES": str(etc / "nginx-addon-gates.conf.d"),
+            "TLS": str(etc / "tls/front"),
+            "PAGELOG": str(state / "pagelog/pages.log"),
+        }
+    )
     return values
 
 
@@ -383,17 +434,37 @@ def render(template, values, ipv6=True):
 def prepare(template, parent, values, identity, ipv6=True):
     parent = Path(parent)
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if any(path.is_symlink() for path in (parent, *parent.parents)) or parent.stat().st_uid != os.geteuid() or parent.stat().st_mode & 0o077:
+    if (
+        any(path.is_symlink() for path in (parent, *parent.parents))
+        or parent.stat().st_uid != os.geteuid()
+        or parent.stat().st_mode & 0o077
+    ):
         raise ValueError("nginx staging requires a private directory owned by the installer")
     text = render(Path(template).read_text(), values, ipv6)
     generation = hashlib.sha256((identity + text + secrets.token_hex(16)).encode()).hexdigest()
-    text = re.sub(r"(?m)^server \{", lambda match: match[0] + '\n\tlocation = /_irate_front_ready { default_type text/plain; return 200 "' + generation + '\\n"; }', text)
+    text = re.sub(
+        r"(?m)^server \{",
+        lambda match: (
+            match[0]
+            + '\n\tlocation = /_irate_front_ready { default_type text/plain; return 200 "'
+            + generation
+            + '\\n"; }'
+        ),
+        text,
+    )
     bundle = Path(tempfile.mkdtemp(prefix="nginx-", dir=parent))
     site = bundle / "site.conf"
     site.write_text(text)
     site.chmod(0o600)
-    manifest = {"protocol": PROTOCOL, "source": identity, "generation": generation, "template_sha256": hashlib.sha256(Path(template).read_bytes()).hexdigest(), "settings": values, "ipv6": ipv6,
-                "files": {"site.conf": hashlib.sha256(text.encode()).hexdigest()}}
+    manifest = {
+        "protocol": PROTOCOL,
+        "source": identity,
+        "generation": generation,
+        "template_sha256": hashlib.sha256(Path(template).read_bytes()).hexdigest(),
+        "settings": values,
+        "ipv6": ipv6,
+        "files": {"site.conf": hashlib.sha256(text.encode()).hexdigest()},
+    }
     (bundle / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
     (bundle / "manifest.json").chmod(0o600)
     return bundle
@@ -408,7 +479,11 @@ def read_bundle(bundle):
     if manifest.get("protocol") != PROTOCOL or set(manifest.get("files", {})) != {"site.conf"}:
         raise ValueError("Unsupported nginx bundle protocol or file set")
     site = bundle / "site.conf"
-    if site.is_symlink() or not site.is_file() or hashlib.sha256(site.read_bytes()).hexdigest() != manifest["files"]["site.conf"]:
+    if (
+        site.is_symlink()
+        or not site.is_file()
+        or hashlib.sha256(site.read_bytes()).hexdigest() != manifest["files"]["site.conf"]
+    ):
         raise ValueError("The prepared nginx site changed")
     return manifest, site
 

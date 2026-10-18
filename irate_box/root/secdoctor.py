@@ -192,10 +192,7 @@ def nginx_size(text):
     m = re.fullmatch(r"(\d+)([kKmMgG]?)", text.strip())
     if not m:
         return None
-    return (
-        int(m.group(1))
-        * {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3}[m.group(2).lower()]
-    )
+    return int(m.group(1)) * {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3}[m.group(2).lower()]
 
 
 def parse_caddy(text):
@@ -204,11 +201,7 @@ def parse_caddy(text):
     count. The global-options block has the header ''."""
     stack, out = [], []
     for raw in text.splitlines():
-        line = (
-            raw.split("#", 1)[0].strip()
-            if not re.search(r'["\']', raw)
-            else raw.strip()
-        )
+        line = raw.split("#", 1)[0].strip() if not re.search(r'["\']', raw) else raw.strip()
         if line.startswith("#") or not line:
             continue
         if line == "}":
@@ -232,9 +225,7 @@ def _tls_includes(text):
     pattern = r"(?m)^\s*(?:include|import)\s+(?:\S*/)(nginx-(?:(?:http|policy)-[a-z]+\.inc|[a-z]+\.conf\*)|caddy-(?:(?:http|policy)-[a-z]+\.inc|site-\*\.caddy));?\s*$"
     return re.sub(
         pattern,
-        lambda match: "\n".join(
-            _read(path) or "" for path in sorted(tls.FRONT.glob(match[1]))
-        ),
+        lambda match: "\n".join(_read(path) or "" for path in sorted(tls.FRONT.glob(match[1]))),
         text,
     )
 
@@ -250,14 +241,10 @@ def load_front():
         nginx_text = _tls_includes(nginx_text)
     caddy_texts = [(n, _read(caddy_dir / n)) for n in CADDY_FILES]
     caddy_texts = [(n, _tls_includes(t)) for n, t in caddy_texts if t]
-    caddy_ours = [
-        t for _, t in caddy_texts if re.search(r"(?m)^\s*handle\w*\s+/admin", t)
-    ]
+    caddy_ours = [t for _, t in caddy_texts if re.search(r"(?m)^\s*handle\w*\s+/admin", t)]
     options = []
     if nginx_text is not None:
-        options.append(
-            ("nginx", nginx_up, lambda: (parse_nginx(nginx_text), str(NGINX_CONF)))
-        )
+        options.append(("nginx", nginx_up, lambda: (parse_nginx(nginx_text), str(NGINX_CONF))))
     if caddy_ours:
         options.append(
             (
@@ -293,11 +280,7 @@ def _caddy_routes(parsed, *prefixes):
     out = {}
     for head, lines in groups.items():
         path = next((w for w in head.split()[1:] if w.startswith("/")), "")
-        if (
-            path
-            and any(path.startswith(p) for p in prefixes)
-            and not any(line.startswith("redir ") for line in lines)
-        ):
+        if path and any(path.startswith(p) for p in prefixes) and not any(line.startswith("redir ") for line in lines):
             out[head] = lines
     return out
 
@@ -307,10 +290,7 @@ CADDY_AUTH = ("basic_auth", "basicauth", "forward_auth")
 
 def _caddy_gated(parsed, *prefixes):
     routes = _caddy_routes(parsed, *prefixes)
-    return bool(routes) and all(
-        any(line.split()[0] in CADDY_AUTH for line in lines)
-        for lines in routes.values()
-    )
+    return bool(routes) and all(any(line.split()[0] in CADDY_AUTH for line in lines) for lines in routes.values())
 
 
 def _locations(directives, *prefixes):
@@ -325,9 +305,7 @@ def _locations(directives, *prefixes):
     for head, ds in blocks.items():
         words = head.split()
         path = words[-1].lstrip("^") if len(words) > 1 else ""
-        if any(path.startswith(p) for p in prefixes) and not any(
-            d.startswith("return ") for d in ds
-        ):
+        if any(path.startswith(p) for p in prefixes) and not any(d.startswith("return ") for d in ds):
             out[head] = ds
     return out
 
@@ -336,11 +314,7 @@ def _gated(directives, *prefixes):
     """True when every (non-redirect) location under the prefixes asks for a login."""
     locs = _locations(directives, *prefixes)
     return bool(locs) and all(
-        any(
-            d.split()[0] in ("auth_basic", "auth_request") and d.split()[-1] != "off"
-            for d in ds
-            if d.split()
-        )
+        any(d.split()[0] in ("auth_basic", "auth_request") and d.split()[-1] != "off" for d in ds if d.split())
         for ds in locs.values()
     )
 
@@ -396,15 +370,8 @@ def _front_refuses_notes_capabilities(ctx):
     """Whether the front refuses /notes/.shell, .proxy and .runtime itself (install.sh's
     regex location in nginx, or the @capability matcher in Caddy)."""
     if ctx["front_kind"] == "caddy":
-        text = (
-            json.dumps(ctx["front"])
-            if not isinstance(ctx["front"], str)
-            else ctx["front"]
-        )
-        return (
-            bool(re.search(r"notes/\\+\.\(shell\|proxy\|runtime\)", text))
-            and "403" in text
-        )
+        text = json.dumps(ctx["front"]) if not isinstance(ctx["front"], str) else ctx["front"]
+        return bool(re.search(r"notes/\\+\.\(shell\|proxy\|runtime\)", text)) and "403" in text
     for stack, d in ctx["front"] or []:
         if (
             len(stack) >= 2
@@ -507,11 +474,7 @@ def step_notes(ctx):
                     else []
                 )
                 + idle,
-                evidence=(
-                    []
-                    if read_only
-                    else [f"SB_SHELL_BACKEND={merged['SB_SHELL_BACKEND']}"]
-                ),
+                evidence=([] if read_only else [f"SB_SHELL_BACKEND={merged['SB_SHELL_BACKEND']}"]),
                 ref="F1",
             )
         )
@@ -585,9 +548,9 @@ def step_notes(ctx):
     # the front refusing /notes/.proxy. Read-only mode turns the proxy off as well.
     proxy_t = M("notes.proxy.title", "Notes proxy endpoint")
     families = sh.get("RestrictAddressFamilies", "")
-    no_ip = (
-        families and not families.startswith("~") and "AF_INET" not in families
-    ) or "0.0.0.0/0" in sh.get("IPAddressDeny", "")
+    no_ip = (families and not families.startswith("~") and "AF_INET" not in families) or "0.0.0.0/0" in sh.get(
+        "IPAddressDeny", ""
+    )
     if read_only:
         out.append(
             finding(
@@ -641,8 +604,7 @@ def step_notes(ctx):
                 "warn",
                 M(
                     "notes.proxy.networked",
-                    "The web server refuses /notes/.proxy, but SilverBullet can still reach the "
-                    "loopback address.",
+                    "The web server refuses /notes/.proxy, but SilverBullet can still reach the loopback address.",
                 ),
                 M(
                     "notes.proxy.networked.why",
@@ -686,8 +648,7 @@ def step_notes(ctx):
                 "warn",
                 M(
                     "notes.proxy.signed-in",
-                    "The proxy reaches the hub's loopback API. Only people who can sign in to the notes "
-                    "can use it.",
+                    "The proxy reaches the hub's loopback API. Only people who can sign in to the notes can use it.",
                 ),
                 M(
                     "notes.proxy.signed-in.why",
@@ -721,17 +682,10 @@ def step_notes(ctx):
         )
     confined = (
         sh.get("ProtectSystem") == "strict"
-        and all(
-            p.startswith(str(STATE / "notes"))
-            for p in sh.get("ReadWritePaths", "").split()
-        )
+        and all(p.startswith(str(STATE / "notes")) for p in sh.get("ReadWritePaths", "").split())
         and sh.get("ReadWritePaths")
     )
-    if (
-        sh.get("DynamicUser") != "yes"
-        and sh.get("User") in (HUB_USER, "", "root")
-        and not confined
-    ):
+    if sh.get("DynamicUser") != "yes" and sh.get("User") in (HUB_USER, "", "root") and not confined:
         who = sh.get("User") or "root"
         out.append(
             finding(
@@ -740,8 +694,7 @@ def step_notes(ctx):
                 "warn",
                 M(
                     "notes.user.shared",
-                    "silverbullet.service runs as {user}. That account can write the root helper's "
-                    "request queue.",
+                    "silverbullet.service runs as {user}. That account can write the root helper's request queue.",
                     user=who,
                 ),
                 M(
@@ -826,9 +779,7 @@ def probe_drains():
             s.sendall(first)
             if _raw_response(s) is None:
                 return None
-            s.sendall(
-                b"GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-            )
+            s.sendall(b"GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
             code = _raw_response(s)
     except OSError:
         return None
@@ -1147,9 +1098,7 @@ def step_web_addons(ctx):
             out.append(
                 finding(
                     f"addons-held-{m['id']}",
-                    named(
-                        m["addon"]["title"], M("addons.role.update", "update approval")
-                    ),
+                    named(m["addon"]["title"], M("addons.role.update", "update approval")),
                     "warn",
                     M(
                         "addons.held",
@@ -1158,8 +1107,7 @@ def step_web_addons(ctx):
                     ),
                     fix=M(
                         "addons.held.fix",
-                        "On Add-ons, Web add-ons, read the changes. Then accept the new version, or "
-                        "remove the add-on.",
+                        "On Add-ons, Web add-ons, read the changes. Then accept the new version, or remove the add-on.",
                     ),
                     evidence=c.get("held", []),
                 )
@@ -1294,11 +1242,7 @@ def step_front(ctx):
         return step_front_caddy(ctx)
     out = []
     # F2: request smuggling needs a kept-alive upstream and a hub that leaves bodies unread.
-    ka = [
-        d
-        for s, d in directives
-        if s and s[0].startswith("upstream irate_box_hub") and d.startswith("keepalive")
-    ]
+    ka = [d for s, d in directives if s and s[0].startswith("upstream irate_box_hub") and d.startswith("keepalive")]
     drains = ctx["hub_drains_bodies"]
     if ka and drains is False:
         out.append(
@@ -1378,9 +1322,7 @@ def step_front(ctx):
         )
     else:
         n = nginx_size(server_level[0])
-        bigger = [
-            f"{s[-1].split()[-1]} {d.split()[-1]}" for s, d in sizes if s != ("server",)
-        ]
+        bigger = [f"{s[-1].split()[-1]} {d.split()[-1]}" for s, d in sizes if s != ("server",)]
         if n == 0:
             out.append(
                 finding(
@@ -1420,8 +1362,7 @@ def step_front(ctx):
                     "warn",
                     M(
                         "front.size.large",
-                        "The limit on the size of a request is large for the "
-                        "whole site.",
+                        "The limit on the size of a request is large for the whole site.",
                     ),
                     M(
                         "front.size.large.why",
@@ -1492,11 +1433,7 @@ def step_front(ctx):
         ),
     )
     # A baseline CSP on the hub's own origin, where /admin lives.
-    csp = [
-        d
-        for s, d in directives
-        if d.startswith("add_header Content-Security-Policy") and s and s[0] == "server"
-    ]
+    csp = [d for s, d in directives if d.startswith("add_header Content-Security-Policy") and s and s[0] == "server"]
     csp_t = M("front.csp.title", "Content security policy of the hub")
     if csp:
         out.append(
@@ -1511,8 +1448,7 @@ def step_front(ctx):
                 notes=[
                     M(
                         "front.csp.does",
-                        "It blocks plugins and changes of the base address, and only this address can "
-                        "frame the pages.",
+                        "It blocks plugins and changes of the base address, and only this address can frame the pages.",
                     )
                 ],
                 ref="S4",
@@ -1552,10 +1488,7 @@ def step_front_caddy(ctx):
     drains = ctx["hub_drains_bodies"]
     out = []
     # F2: Go's reverse proxy forwards bodies and reuses upstream connections unless told not to.
-    ka_off = any(
-        not opened and re.match(r"keepalive\s+off\b", line)
-        for _, line, opened in parsed
-    )
+    ka_off = any(not opened and re.match(r"keepalive\s+off\b", line) for _, line, opened in parsed)
     if ka_off:
         out.append(
             finding(
@@ -1590,8 +1523,7 @@ def step_front_caddy(ctx):
                     ),
                     M(
                         "front.keepalive.stopgap.caddy",
-                        "Until the hub is updated, turn keepalive off in each reverse_proxy "
-                        "to the hub.",
+                        "Until the hub is updated, turn keepalive off in each reverse_proxy to the hub.",
                     ),
                 ],
                 commands=["transport http { keepalive off }"],
@@ -1607,8 +1539,7 @@ def step_front_caddy(ctx):
                 (
                     M(
                         "front.keepalive.drained.caddy",
-                        "Caddy keeps its connections to the hub open, and the hub reads every "
-                        "request body.",
+                        "Caddy keeps its connections to the hub open, and the hub reads every request body.",
                     )
                     if drains
                     else M(
@@ -1624,10 +1555,7 @@ def step_front_caddy(ctx):
     site = [
         (st, line)
         for st, line, o in parsed
-        if not o
-        and len(st) == 2
-        and st[1] == "request_body"
-        and line.startswith("max_size")
+        if not o and len(st) == 2 and st[1] == "request_body" and line.startswith("max_size")
     ]
     # a cap placed in the site's own request_body, not inside a handle
     top = [line.split()[-1] for st, line in site]
@@ -1663,11 +1591,7 @@ def step_front_caddy(ctx):
                     "a few large requests from one guest can use up the memory of the box.",
                 ),
                 SIZE_FIX,
-                notes=(
-                    [M("front.size.routes", "Some routes set a limit of their own.")]
-                    if per
-                    else []
-                ),
+                notes=([M("front.size.routes", "Some routes set a limit of their own.")] if per else []),
                 commands=["request_body { max_size 1MB }"],
                 evidence=_some(per),
                 ref="F15",
@@ -1675,19 +1599,11 @@ def step_front_caddy(ctx):
         )
     out += _hub_body(ctx)
     # F24: Caddy (2.6+) replaces an untrusted client's X-Forwarded-For unless trusted_proxies says otherwise.
-    trusted = [
-        line
-        for _, line, opened in parsed
-        if not opened and line.startswith("trusted_proxies")
-    ]
+    trusted = [line for _, line, opened in parsed if not opened and line.startswith("trusted_proxies")]
     header_up = [
-        line
-        for _, line, opened in parsed
-        if not opened and re.match(r"header_up\s+X-Forwarded-For", line, re.I)
+        line for _, line, opened in parsed if not opened and re.match(r"header_up\s+X-Forwarded-For", line, re.I)
     ]
-    if trusted or any(
-        "{http.request.header.X-Forwarded-For}" in line for line in header_up
-    ):
+    if trusted or any("{http.request.header.X-Forwarded-For}" in line for line in header_up):
         out.append(
             finding(
                 "front-xff",
@@ -1736,10 +1652,7 @@ def step_front_caddy(ctx):
         ),
     )
     # Caddy's own admin API (localhost:2019) can rewrite the whole front; builds can reach loopback (F8).
-    if not any(
-        not opened and st == ("",) and line.startswith("admin off")
-        for st, line, opened in parsed
-    ):
+    if not any(not opened and st == ("",) and line.startswith("admin off") for st, line, opened in parsed):
         out.append(
             finding(
                 "front-caddy-admin",
@@ -1913,11 +1826,7 @@ def step_folders(ctx):
     # Root's output folders: who owns them decides whether F3/F13 are open.
     owner = _name_of(ctrl.st_uid)
     results = _lstat(CONTROL / "results")
-    hub_owned = [
-        p
-        for p, st in (("control/", ctrl), ("control/results/", results))
-        if st and st.st_uid not in (0,)
-    ]
+    hub_owned = [p for p, st in (("control/", ctrl), ("control/results/", results)) if st and st.st_uid not in (0,)]
     root_in_hub = []
     try:
         with os.scandir(CONTROL) as it:
@@ -1991,9 +1900,7 @@ def step_folders(ctx):
         truncated = truncated or cut
     # A relative link to its own folder or below (a git checkout's .dockerignore → .gitignore, in
     # ci/home) can't send root anywhere else: counted, not listed.
-    inside = [
-        (p, t) for p, t in links if not t.startswith("/") and ".." not in Path(t).parts
-    ]
+    inside = [(p, t) for p, t in links if not t.startswith("/") and ".." not in Path(t).parts]
     links = [x for x in links if x not in inside]
     # Folders root recreates itself at every install are the interesting ones.
     risky = [
@@ -2037,14 +1944,12 @@ def step_folders(ctx):
                 ),
                 M(
                     "folders.links.fix",
-                    "Look at each link. Remove each one that you did not make, and find out how it got "
-                    "there.",
+                    "Look at each link. Remove each one that you did not make, and find out how it got there.",
                 ),
                 notes=[
                     M(
                         "folders.links.where",
-                        "Notes and the library can hold links on purpose. control/, zim/ and ci/ "
-                        "never should.",
+                        "Notes and the library can hold links on purpose. control/, zim/ and ci/ never should.",
                     )
                 ]
                 + (
@@ -2164,9 +2069,7 @@ def step_code(ctx):
             if seen > MAX_ENTRIES * 4:
                 break
             st = _lstat(os.path.join(dirpath, name))
-            if st and (
-                st.st_uid != 0 or (st.st_mode & 0o022 and not stat.S_ISLNK(st.st_mode))
-            ):
+            if st and (st.st_uid != 0 or (st.st_mode & 0o022 and not stat.S_ISLNK(st.st_mode))):
                 loose.append(os.path.relpath(os.path.join(dirpath, name), CODE))
     if loose:
         out.append(
@@ -2178,8 +2081,7 @@ def step_code(ctx):
                     "code.loose",
                     {
                         "one": "{n} path in the installed code does not belong to root, or others can write it.",
-                        "other": "{n} paths in the installed code do not belong to root, or others can write "
-                        "them.",
+                        "other": "{n} paths in the installed code do not belong to root, or others can write them.",
                     },
                     n=len(loose),
                 ),
@@ -2258,9 +2160,7 @@ def step_code(ctx):
     m = re.search(r"OUR_UNIT\s*=\s*re\.compile\((.*?)\)\s*$", health, re.S | re.M)
     wide = bool(m and re.search(r"syncthing@\[", m.group(1)))
     instances = [
-        u.split()[0]
-        for u in _sc("list-units", "syncthing@*", "--all", "--no-legend").splitlines()
-        if u.split()
+        u.split()[0] for u in _sc("list-units", "syncthing@*", "--all", "--no-legend").splitlines() if u.split()
     ]
     foreign = [u for u in instances if u != f"syncthing@{HUB_USER}.service"]
     allow_t = M("code.allow.title", "Box doctor restart list")
@@ -2386,8 +2286,7 @@ SANDBOX_EXEMPT = {
     "irate-box-control.service": {
         "ProtectSystem=strict": M(
             "units.exempt.control-system",
-            "The root helper installs updates and packages, so it writes across "
-            "the system.",
+            "The root helper installs updates and packages, so it writes across the system.",
         ),
         "ProtectHome": M(
             "units.exempt.control-home",
@@ -2397,8 +2296,7 @@ SANDBOX_EXEMPT = {
     "ttyd.service": {
         line: M(
             "units.exempt.ttyd",
-            "It is the administrator's terminal: a sign-in shell that must see and reach the whole "
-            "box, sudo included.",
+            "It is the administrator's terminal: a sign-in shell that must see and reach the whole box, sudo included.",
         )
         for line in ALL_LINES
     },
@@ -2441,11 +2339,7 @@ def _ci_nft():
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return (
-        r.stdout
-        if r.returncode == 0 and re.search(r'skuid "?hubci"? oif "?lo"? drop', r.stdout)
-        else None
-    )
+    return r.stdout if r.returncode == 0 and re.search(r'skuid "?hubci"? oif "?lo"? drop', r.stdout) else None
 
 
 def step_units(ctx):
@@ -2507,9 +2401,7 @@ def step_units(ctx):
             "",
             "0",
         ):
-            hub_weak.append(
-                f"{u[:-8]}: CapabilityBoundingSet={p['CapabilityBoundingSet'][:60]}"
-            )
+            hub_weak.append(f"{u[:-8]}: CapabilityBoundingSet={p['CapabilityBoundingSet'][:60]}")
     lines = "ProtectSystem=strict, NoNewPrivileges, PrivateTmp, ProtectHome, ProtectProc=invisible"
     if root_weak:
         out.append(
@@ -2533,8 +2425,7 @@ def step_units(ctx):
                 notes=[
                     M(
                         "units.lines",
-                        "The lines are {lines}. CapabilityBoundingSet and SystemCallFilter narrow a unit "
-                        "further.",
+                        "The lines are {lines}. CapabilityBoundingSet and SystemCallFilter narrow a unit further.",
                         lines=lines,
                     )
                 ]
@@ -2581,8 +2472,7 @@ def step_units(ctx):
                 notes=[
                     M(
                         "units.lines",
-                        "The lines are {lines}. CapabilityBoundingSet and SystemCallFilter narrow a unit "
-                        "further.",
+                        "The lines are {lines}. CapabilityBoundingSet and SystemCallFilter narrow a unit further.",
                         lines=lines,
                     )
                 ],
@@ -2608,16 +2498,8 @@ def step_units(ctx):
         deny = ci.get("IPAddressDeny", "").strip()
         private = ci.get("PrivateNetwork") == "yes"
         families = ci.get("RestrictAddressFamilies", "")
-        nft = (
-            None
-            if private or any(x in deny for x in ("127.", "localhost", "::1", "any"))
-            else _ci_nft()
-        )
-        blocks_loopback = (
-            private
-            or nft is not None
-            or any(x in deny for x in ("127.", "localhost", "::1", "any"))
-        )
+        nft = None if private or any(x in deny for x in ("127.", "localhost", "::1", "any")) else _ci_nft()
+        blocks_loopback = private or nft is not None or any(x in deny for x in ("127.", "localhost", "::1", "any"))
         ci_t = M("units.ci.title", "Build isolation from the hub")
         deny_line = ["IPAddressDeny=localhost"]
         if blocks_loopback:
@@ -2634,11 +2516,7 @@ def step_units(ctx):
                         (
                             "PrivateNetwork=yes"
                             if private
-                            else (
-                                "nft: inet irate_box_ci (hubci to lo: DNS only)"
-                                if nft
-                                else f"IPAddressDeny={deny}"
-                            )
+                            else ("nft: inet irate_box_ci (hubci to lo: DNS only)" if nft else f"IPAddressDeny={deny}")
                         )
                     ],
                     ref="F8",
@@ -2654,8 +2532,7 @@ def step_units(ctx):
                     "warn",
                     M(
                         "units.ci.guest",
-                        "Builds can connect to the hub on the loopback address, but the hub refuses them "
-                        "/admin.",
+                        "Builds can connect to the hub on the loopback address, but the hub refuses them /admin.",
                     ),
                     M(
                         "units.ci.guest.why",
@@ -2693,11 +2570,7 @@ def step_units(ctx):
                     ),
                     commands=deny_line,
                     evidence=["irate-box-ci.service"]
-                    + (
-                        [f"RestrictAddressFamilies={families}"]
-                        if families.strip()
-                        else []
-                    ),
+                    + ([f"RestrictAddressFamilies={families}"] if families.strip() else []),
                     ref="F8",
                 )
             )
@@ -2718,11 +2591,7 @@ def load_addons():
     which the OS image ships and no manifest describes."""
     out = []
     folder = next(
-        (
-            d
-            for d in (CODE / "apps.d", Path(__file__).resolve().parents[2] / "apps.d")
-            if d.is_dir()
-        ),
+        (d for d in (CODE / "apps.d", Path(__file__).resolve().parents[2] / "apps.d") if d.is_dir()),
         None,
     )
     for f in sorted(folder.glob("*.json")) if folder else ():
@@ -2764,17 +2633,13 @@ def _requested_options():
     text = _read(ETC / "install-options")
     if text is None:
         return None
-    return {
-        line.strip() for line in text.splitlines() if line.strip().startswith("--with-")
-    }
+    return {line.strip() for line in text.splitlines() if line.strip().startswith("--with-")}
 
 
 def _listening():
     """{port: [addresses]} of every TCP/UDP listener, loopback included; None if ss is missing."""
     try:
-        r = subprocess.run(
-            ("ss", "-H", "-ltnu"), capture_output=True, text=True, timeout=20
-        )
+        r = subprocess.run(("ss", "-H", "-ltnu"), capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
     found = {}
@@ -2783,9 +2648,7 @@ def _listening():
         if len(parts) >= 5:
             addr, _, port = parts[4].rpartition(":")
             if port.isdigit():
-                found.setdefault(int(port), set()).add(
-                    addr.partition("%")[0].strip("[]") or "*"
-                )
+                found.setdefault(int(port), set()).add(addr.partition("%")[0].strip("[]") or "*")
     return {k: sorted(v) for k, v in found.items()}
 
 
@@ -2813,9 +2676,7 @@ def _env_of(show):
 def _mosquitto_conf():
     texts = [_read(MOSQUITTO_DIR / "mosquitto.conf") or ""]
     try:
-        texts += [
-            _read(p) or "" for p in sorted((MOSQUITTO_DIR / "conf.d").glob("*.conf"))
-        ]
+        texts += [_read(p) or "" for p in sorted((MOSQUITTO_DIR / "conf.d").glob("*.conf"))]
     except OSError:
         pass
     return "\n".join(texts)
@@ -2834,9 +2695,7 @@ def _runs_as(a, show):
     return user
 
 
-def _issue(
-    key, status, summary, why=None, fix=None, commands=(), evidence=(), notes=()
-):
+def _issue(key, status, summary, why=None, fix=None, commands=(), evidence=(), notes=()):
     """One point an add-on's checks found: a finding of its own (step_addons gives it its id)."""
     return {
         "key": key,
@@ -2873,8 +2732,7 @@ def probe_mosquitto(ctx, a, show):
                 "problem",
                 M(
                     "mqtt.anonymous.open",
-                    "Clients can connect with no sign-in, and no access list limits "
-                    "their topics.",
+                    "Clients can connect with no sign-in, and no access list limits their topics.",
                 ),
                 M(
                     "mqtt.anonymous.open.why",
@@ -2919,14 +2777,12 @@ def probe_mosquitto(ctx, a, show):
                     "warn",
                     M(
                         "mqtt.anonymous.limited",
-                        "Clients can connect with no sign-in. The access list "
-                        "limits their topics.",
+                        "Clients can connect with no sign-in. The access list limits their topics.",
                     ),
                     ANYONE_TOPICS,
                     M(
                         "mqtt.anonymous.ap",
-                        "When the box runs as an access point, listen on its address only, and use a "
-                        "password file.",
+                        "When the box runs as an access point, listen on its address only, and use a password file.",
                     ),
                     evidence=_some(topics) or [acl.group(1)],
                     notes=(
@@ -2992,12 +2848,8 @@ def probe_ngircd(ctx, a, show):
     """The IRC server's own config (the one irate-box points the unit at)."""
     conf = _read(NGIRCD_DIR / "irate-box.conf")
     if conf is None:
-        return [
-            _issue("config", "warn", UNREAD, evidence=[NGIRCD_DIR / "irate-box.conf"])
-        ]
-    live = "\n".join(
-        line for line in conf.splitlines() if not line.lstrip().startswith((";", "#"))
-    )
+        return [_issue("config", "warn", UNREAD, evidence=[NGIRCD_DIR / "irate-box.conf"])]
+    live = "\n".join(line for line in conf.splitlines() if not line.lstrip().startswith((";", "#")))
     out = []
     if re.search(r"(?mi)^\s*\[Operator\]", live):
         out.append(
@@ -3126,8 +2978,7 @@ def probe_syncthing(ctx, a, show):
                 "problem",
                 M(
                     "syncthing.gui.wide",
-                    "The Syncthing control page listens on addresses other than the "
-                    "loopback address.",
+                    "The Syncthing control page listens on addresses other than the loopback address.",
                 ),
                 M(
                     "syncthing.gui.wide.why",
@@ -3148,8 +2999,7 @@ def probe_syncthing(ctx, a, show):
                 "problem",
                 M(
                     "syncthing.gui.insecure",
-                    "The Syncthing control page accepts requests from other "
-                    "addresses with no password.",
+                    "The Syncthing control page accepts requests from other addresses with no password.",
                 ),
                 M(
                     "syncthing.gui.insecure.why",
@@ -3262,12 +3112,7 @@ def _ttyd_runs(argv):
         cmd = [w for w in cmd[1:] if not w.startswith("-")] or cmd[1:]
     if cmd and os.path.basename(cmd[0]) == "script":
         for i, w in enumerate(cmd[1:], 1):
-            if (
-                w.startswith("-")
-                and not w.startswith("--")
-                and "c" in w[1:]
-                and i + 1 < len(cmd)
-            ):
+            if w.startswith("-") and not w.startswith("--") and "c" in w[1:] and i + 1 < len(cmd):
                 return cmd[i + 1].split()[0]
             if w.startswith("--command="):
                 return w.split("=", 1)[1].split()[0]
@@ -3349,9 +3194,7 @@ def probe_ttyd(ctx, a, show):
 
 def probe_tailscale(ctx, a, show):
     try:
-        r = subprocess.run(
-            ("tailscale", "debug", "prefs"), capture_output=True, text=True, timeout=20
-        )
+        r = subprocess.run(("tailscale", "debug", "prefs"), capture_output=True, text=True, timeout=20)
         prefs = json.loads(r.stdout)
     except (OSError, subprocess.SubprocessError, ValueError):
         return [
@@ -3406,8 +3249,7 @@ def probe_tailscale(ctx, a, show):
                 "warn",
                 M(
                     "tailscale.signed-out",
-                    "Tailscale is installed and running, but not signed in to a "
-                    "tailnet.",
+                    "Tailscale is installed and running, but not signed in to a tailnet.",
                 ),
                 M(
                     "tailscale.signed-out.why",
@@ -3476,24 +3318,13 @@ def step_addons(ctx):
                     ),
                 )
             )
-        wide = [
-            t
-            for t in argv
-            if t in WIDE_WORDS
-            or re.search(r"(?:^|[=:])(0\.0\.0\.0|\[?::\]?)(?::\d+)?$", t)
-        ]
+        wide = [t for t in argv if t in WIDE_WORDS or re.search(r"(?:^|[=:])(0\.0\.0\.0|\[?::\]?)(?::\d+)?$", t)]
         wide += [
             f"{k}={v}"
             for k, v in env.items()
-            if v in WIDE_WORDS
-            and k.upper()
-            in ("HOST", "HOSTNAME", "BIND", "ADDRESS", "LISTEN", "SB_HOSTNAME")
+            if v in WIDE_WORDS and k.upper() in ("HOST", "HOSTNAME", "BIND", "ADDRESS", "LISTEN", "SB_HOSTNAME")
         ]
-        wide += [
-            t
-            for t in argv
-            if re.search(r"(?:insecure|no-?auth|disable-auth|allow-anonymous)", t)
-        ]
+        wide += [t for t in argv if re.search(r"(?:insecure|no-?auth|disable-auth|allow-anonymous)", t)]
         if wide:
             issues.append(
                 _issue(
@@ -3521,14 +3352,12 @@ def step_addons(ctx):
                         "warn",
                         M(
                             "addon.listen.wide",
-                            "Port {port} answers on addresses other than the loopback "
-                            "address.",
+                            "Port {port} answers on addresses other than the loopback address.",
                             port=a["port"],
                         ),
                         M(
                             "addon.listen.wide.why",
-                            "Anyone on the network reaches it directly, not through the web server's "
-                            "sign-in.",
+                            "Anyone on the network reaches it directly, not through the web server's sign-in.",
                         ),
                         M(
                             "addon.listen.wide.fix",
@@ -3559,18 +3388,11 @@ def step_addons(ctx):
                             "It is running, but nothing listens on port {port}.",
                             port=a["port"],
                         ),
-                        fix=M(
-                            "addon.listen.none.fix", "Read its log to find the cause."
-                        ),
+                        fix=M("addon.listen.none.fix", "Read its log to find the cause."),
                         commands=[f"journalctl -u {a['unit']} -n 30"],
                     )
                 )
-        if (
-            a["option"]
-            and requested is not None
-            and a["option"] not in requested
-            and active
-        ):
+        if a["option"] and requested is not None and a["option"] not in requested and active:
             issues.append(
                 _issue(
                     "record",
@@ -3600,8 +3422,7 @@ def step_addons(ctx):
                         "problem",
                         M(
                             "addon.front.open",
-                            "It runs as root, and the web server serves its route with no "
-                            "sign-in.",
+                            "It runs as root, and the web server serves its route with no sign-in.",
                         ),
                         M(
                             "addon.front.open.why",
@@ -3634,8 +3455,7 @@ def step_addons(ctx):
                             "addon.sandbox.weak",
                             {
                                 "one": "Its unit is missing {n} of the 4 standard sandbox lines.",
-                                "other": "Its unit is missing {n} of the 4 standard sandbox "
-                                "lines.",
+                                "other": "Its unit is missing {n} of the 4 standard sandbox lines.",
                             },
                             n=len(weak),
                         ),
@@ -3671,8 +3491,7 @@ def step_addons(ctx):
             else [
                 M(
                     "addon.not-started",
-                    "It is installed but not running or started at boot. "
-                    "This applies once it starts.",
+                    "It is installed but not running or started at boot. This applies once it starts.",
                 )
             ]
         )
@@ -3774,12 +3593,8 @@ def step_addons(ctx):
     return out
 
 
-SECRET_FLAGS = re.compile(
-    r"^--?(credential|password|passwd|pass|secret|token|plaintext)$", re.I
-)
-SECRET_KV = re.compile(
-    r"^(?:--?)?[A-Za-z_-]*(pass(word)?|secret|token|credential)[A-Za-z_-]*=\S+", re.I
-)
+SECRET_FLAGS = re.compile(r"^--?(credential|password|passwd|pass|secret|token|plaintext)$", re.I)
+SECRET_KV = re.compile(r"^(?:--?)?[A-Za-z_-]*(pass(word)?|secret|token|credential)[A-Za-z_-]*=\S+", re.I)
 
 
 def step_cmdlines(ctx):
@@ -3820,9 +3635,7 @@ def step_cmdlines(ctx):
     # unit's own instance, always with hidepid set.
     mount = _read(PROC / "1" / "mounts") or ""
     m = re.search(r"^\S+ /proc proc (\S+)", mount, re.M)
-    hidepid = bool(
-        m and re.search(r"hidepid=(1|2|invisible|noaccess|ptraceable)\b", m.group(1))
-    )
+    hidepid = bool(m and re.search(r"hidepid=(1|2|invisible|noaccess|ptraceable)\b", m.group(1)))
     out = []
     hits = sorted(set(hits))
     moment = M(
@@ -3899,8 +3712,7 @@ def step_cmdlines(ctx):
                 "ok",
                 M(
                     "cmdlines.proc.hidden",
-                    "Each account sees only its own processes (hidepid is "
-                    "set on /proc).",
+                    "Each account sees only its own processes (hidepid is set on /proc).",
                 ),
                 ref="F9",
             )
@@ -3931,9 +3743,7 @@ def step_cmdlines(ctx):
     return out
 
 
-SECRETY = re.compile(
-    r"(?i)(password|passwd|token|secret|credential|api[_-]?key|://[^/\s:@]+:[^/\s@]+@)"
-)
+SECRETY = re.compile(r"(?i)(password|passwd|token|secret|credential|api[_-]?key|://[^/\s:@]+:[^/\s@]+@)")
 
 
 def step_secrets(ctx):
@@ -3987,10 +3797,7 @@ def step_secrets(ctx):
                     "Make each file readable by root only. Where the hub must read a file, make it "
                     "readable by root and the hub's group.",
                 ),
-                commands=[
-                    "sudo chmod 600 "
-                    + " ".join(shlex.quote(f"{ETC}/{n}") for n in readable)
-                ],
+                commands=["sudo chmod 600 " + " ".join(shlex.quote(f"{ETC}/{n}") for n in readable)],
                 evidence=readable,
                 ref="S13",
             )
@@ -4003,8 +3810,7 @@ def step_secrets(ctx):
                 "ok",
                 M(
                     "secrets.closed",
-                    "Only root can read the files that hold secrets in the "
-                    "hub's settings folder.",
+                    "Only root can read the files that hold secrets in the hub's settings folder.",
                 ),
                 evidence=[str(ETC)],
                 ref="S13",
@@ -4050,8 +3856,7 @@ def step_secrets(ctx):
                 ),
                 M(
                     "secrets.install.fix",
-                    "Remove the user name and token from the address, and make the file readable by root "
-                    "only.",
+                    "Remove the user name and token from the address, and make the file readable by root only.",
                 ),
                 commands=[f"sudo chmod 600 {ETC / 'install-options'}"],
                 evidence=[str(ETC / "install-options")],
@@ -4072,10 +3877,7 @@ def step_git(ctx):
     """F17, F18 and the push presets: what pushed content can do."""
     root = STATE / "git"
     push_t = M("git.push.title", "Git push permissions")
-    if (
-        _lstat(root / "cgitrc-public") is None
-        and _lstat(root / "cgitrc-private") is None
-    ):
+    if _lstat(root / "cgitrc-public") is None and _lstat(root / "cgitrc-private") is None:
         return [
             finding(
                 "git",
@@ -4127,8 +3929,7 @@ def step_git(ctx):
                 "ok",
                 M(
                     "git.html.text",
-                    "cgit serves pushed files as text, with its own "
-                    "Content-Security-Policy.",
+                    "cgit serves pushed files as text, with its own Content-Security-Policy.",
                 ),
                 ref="F17",
             )
@@ -4136,11 +3937,7 @@ def step_git(ctx):
     everyone, unhooked, leaky = [], [], []
     for area in ("public", "private"):
         try:
-            repos = [
-                p
-                for p in sorted((root / area).iterdir())
-                if (p / "HEAD").exists() and not p.is_symlink()
-            ][:200]
+            repos = [p for p in sorted((root / area).iterdir()) if (p / "HEAD").exists() and not p.is_symlink()][:200]
         except OSError:
             repos = []
         for r in repos:
@@ -4150,8 +3947,7 @@ def step_git(ctx):
                 everyone.append(r.name)
             if area == "public" and not (
                 (_git_cfg(cfg, "core", "hookspath") or "").endswith("git-hooks-public")
-                and _git_cfg(cfg, "receive", "fsckobjects")
-                in ("true", "yes", "on", "1")
+                and _git_cfg(cfg, "receive", "fsckobjects") in ("true", "yes", "on", "1")
             ):
                 unhooked.append(r.name)
             if level == "nobody" and _git_cfg(cfg, "http", "receivepack") not in (
@@ -4248,8 +4044,7 @@ def step_git(ctx):
                 "ok",
                 M(
                     "git.push.ok",
-                    "Each repository takes pushes as its setting says, and the public "
-                    "ones have their hook.",
+                    "Each repository takes pushes as its setting says, and the public ones have their hook.",
                 ),
                 ref="F18",
             )
@@ -4262,11 +4057,7 @@ def _sudo_lines():
     files = [SUDOERS]
     d = SUDOERS.parent / (SUDOERS.name + ".d")
     try:
-        files += [
-            p
-            for p in sorted(d.iterdir())
-            if "." not in p.name and not p.name.endswith("~")
-        ]
+        files += [p for p in sorted(d.iterdir()) if "." not in p.name and not p.name.endswith("~")]
     except OSError:
         pass
     seen_any = False
@@ -4278,12 +4069,7 @@ def _sudo_lines():
         seen_any = True
         for line in text.replace("\\\n", " ").splitlines():
             s = line.strip()
-            if (
-                s
-                and not s.startswith("#")
-                and not s.startswith("@")
-                and not s.startswith("Defaults")
-            ):
+            if s and not s.startswith("#") and not s.startswith("@") and not s.startswith("Defaults"):
                 out.append((f.name, s))
     return out if seen_any else None
 
@@ -4298,11 +4084,7 @@ def step_accounts(ctx):
         "password, or at the console.",
     )
     rules = _sudo_lines()
-    if (
-        rules is None
-        and not os.path.lexists(SUDOERS)
-        and not os.path.lexists(str(SUDOERS) + ".d")
-    ):
+    if rules is None and not os.path.lexists(SUDOERS) and not os.path.lexists(str(SUDOERS) + ".d"):
         out.append(
             finding(
                 "acct-sudo",
@@ -4326,10 +4108,7 @@ def step_accounts(ctx):
     else:
         nopass = [(f, s) for f, s in rules if "NOPASSWD" in s]
         service = [
-            (f, s)
-            for f, s in nopass
-            if s.split()[0].lstrip("%")
-            in (HUB_USER, CI_USER, "www-data", "nginx", "caddy")
+            (f, s) for f, s in nopass if s.split()[0].lstrip("%") in (HUB_USER, CI_USER, "www-data", "nginx", "caddy")
         ]
         if service:
             out.append(
@@ -4409,8 +4188,7 @@ def step_accounts(ctx):
                         [
                             M(
                                 "acct.sudo.temp",
-                                "A file named with -temp holds a rule that someone meant to "
-                                "remove after a job.",
+                                "A file named with -temp holds a rule that someone meant to remove after a job.",
                             )
                         ]
                         if temp
@@ -4475,12 +4253,7 @@ def step_accounts(ctx):
         empty = []
         for line in shadow.splitlines():
             f = line.split(":")
-            if (
-                len(f) >= 2
-                and f[1] == ""
-                and f[0] in users
-                and not users[f[0]]["shell"].endswith(nologin)
-            ):
+            if len(f) >= 2 and f[1] == "" and f[0] in users and not users[f[0]]["shell"].endswith(nologin):
                 empty.append(f[0])
         if empty:
             out.append(
@@ -4518,11 +4291,7 @@ def step_accounts(ctx):
                 )
             )
     shells_t = M("acct.shells.title", "Service account shells")
-    badsh = [
-        u
-        for u in (HUB_USER, CI_USER)
-        if u in users and not users[u]["shell"].endswith(nologin)
-    ]
+    badsh = [u for u in (HUB_USER, CI_USER) if u in users and not users[u]["shell"].endswith(nologin)]
     if badsh:
         out.append(
             finding(
@@ -4551,8 +4320,7 @@ def step_accounts(ctx):
                 "ok",
                 M(
                     "acct.shells.closed",
-                    "The hub's account and the build account cannot sign in "
-                    "with a shell.",
+                    "The hub's account and the build account cannot sign in with a shell.",
                 ),
                 ref="F19",
             )
@@ -4582,12 +4350,7 @@ def step_accounts_hub(ctx):
         if not h:
             continue  # waiting for its one-time code (make()); it cannot log in yet
         parts = h.split("$")
-        ok = (
-            len(parts) == 6
-            and parts[0] == "scrypt"
-            and parts[1].isdigit()
-            and int(parts[1]) >= accmod.SCRYPT["n"]
-        )
+        ok = len(parts) == 6 and parts[0] == "scrypt" and parts[1].isdigit() and int(parts[1]) >= accmod.SCRYPT["n"]
         if not ok:
             weak.append(name)
     hash_t = M("accounts.hash.title", "Hub account password hashes")
@@ -4637,8 +4400,7 @@ def step_accounts_hub(ctx):
                 "ok",
                 M(
                     "accounts.hash.ok",
-                    "Each hub account's password hash uses the parameters that "
-                    "the hub makes now.",
+                    "Each hub account's password hash uses the parameters that the hub makes now.",
                 ),
                 evidence=[params],
                 about=about,
@@ -4646,16 +4408,8 @@ def step_accounts_hub(ctx):
         )
 
     settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
-    signup = (
-        settings.get("signup")
-        if settings.get("signup") in accmod.SIGNUP
-        else accmod.DEFAULTS["signup"]
-    )
-    http = (
-        settings.get("http")
-        if settings.get("http") in accmod.HTTP
-        else accmod.DEFAULTS["http"]
-    )
+    signup = settings.get("signup") if settings.get("signup") in accmod.SIGNUP else accmod.DEFAULTS["signup"]
+    http = settings.get("http") if settings.get("http") in accmod.HTTP else accmod.DEFAULTS["http"]
     state = acc.read(ETC / "access.json")
     users_apps = sorted(i for i in acc.ROUTED if acc.mode_of(state, i) == "users")
     if signup == "off" or not users_apps:
@@ -4709,9 +4463,7 @@ def step_accounts_hub(ctx):
     if kind == "nginx":
         gates_dir = ETC / "nginx-access.conf.d"
         for i in users_apps:
-            if acc.NGINX_GATE.splitlines()[0] not in (
-                _read(gates_dir / f"gate-{i}.conf") or ""
-            ):
+            if acc.NGINX_GATE.splitlines()[0] not in (_read(gates_dir / f"gate-{i}.conf") or ""):
                 missing.append(i)
     elif kind == "caddy":
         caddy_dir = Path(os.environ.get("HUB_CADDY_DIR", "/etc/caddy"))
@@ -4754,8 +4506,7 @@ def step_accounts_hub(ctx):
                 "ok",
                 M(
                     "accounts.gate.ok",
-                    "The web server checks for a sign-in on each app that is "
-                    "set for users with an account.",
+                    "The web server checks for a sign-in on each app that is set for users with an account.",
                 ),
                 evidence=_some(users_apps),
                 about=about,
@@ -4770,9 +4521,7 @@ def _sshd_passwords():
         from irate_box.root import security
 
         s = security.sshd_settings()
-    except (
-        Exception
-    ):  # noqa: BLE001  (an sshd that will not answer -T is not a password login)
+    except Exception:  # noqa: BLE001  (an sshd that will not answer -T is not a password login)
         return False
     return bool(s) and s.get("passwordauthentication", "yes") == "yes"
 
@@ -4788,9 +4537,7 @@ def _sysctl(name):
 def step_kernel(ctx):
     """The kernel's own protections against the link and process tricks in F3/F9."""
     out = []
-    links = [
-        (n, _sysctl(n)) for n in ("fs.protected_symlinks", "fs.protected_hardlinks")
-    ]
+    links = [(n, _sysctl(n)) for n in ("fs.protected_symlinks", "fs.protected_hardlinks")]
     reg = [(n, _sysctl(n)) for n in ("fs.protected_regular", "fs.protected_fifos")]
     off = [f"{n}=0" for n, v in links if v == 0]
     na = [n for n, v in links + reg if v is None]
@@ -4979,11 +4726,7 @@ def _caddy_servers(parsed):
             order.append(line)
         elif stack:
             blocks.setdefault(stack[0], []).append(line)
-    snippets = {
-        h[1:-1]: lines
-        for h, lines in blocks.items()
-        if h.startswith("(") and h.endswith(")")
-    }
+    snippets = {h[1:-1]: lines for h, lines in blocks.items() if h.startswith("(") and h.endswith(")")}
     out = []
     for head in order:
         m = re.fullmatch(r"(?:https?://)?:(?:(\d+)|\{\$\w+:(\d+)\})", head)
@@ -4991,11 +4734,7 @@ def _caddy_servers(parsed):
             continue
         lines = []
         for line in blocks[head]:
-            name = (
-                line.split()[1]
-                if line.startswith("import ") and len(line.split()) == 2
-                else None
-            )
+            name = line.split()[1] if line.startswith("import ") and len(line.split()) == 2 else None
             lines.extend(snippets.get(name, [line]))
         out.append(([m.group(1) or m.group(2)], "\n".join(lines)))
     return out
@@ -5016,11 +4755,7 @@ def _nginx_servers(text):
                 block = text[start : m.end()]
                 out.append(
                     (
-                        sorted(
-                            set(
-                                re.findall(r"(?m)^\s*listen\s+(?:\[::\]:)?(\d+)", block)
-                            )
-                        ),
+                        sorted(set(re.findall(r"(?m)^\s*listen\s+(?:\[::\]:)?(\d+)", block))),
                         block,
                     )
                 )
@@ -5126,9 +4861,7 @@ SUMMARY_RE = re.compile(r"^(\S+) (\S+)(?: \((.*)\))?$")
 
 
 def _codename():
-    for line in (
-        _read(Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))) or ""
-    ).splitlines():
+    for line in (_read(Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))) or "").splitlines():
         if line.startswith("VERSION_CODENAME="):
             return line.split("=", 1)[1].strip().strip('"')
     return None
@@ -5184,11 +4917,7 @@ def _deb_cmp(a, b):
         return int(epoch or 0), up, rev
 
     def order(c):
-        return (
-            -1
-            if c == "~"
-            else 0 if c == "" else ord(c) if c.isalpha() else ord(c) + 256
-        )
+        return -1 if c == "~" else 0 if c == "" else ord(c) if c.isalpha() else ord(c) + 256
 
     def part(x, y):
         while x or y:
@@ -5199,9 +4928,7 @@ def _deb_cmp(a, b):
                 j += 1
             nx, ny = x[:i], y[:j]
             for k in range(max(len(nx), len(ny))):
-                d = order(nx[k] if k < len(nx) else "") - order(
-                    ny[k] if k < len(ny) else ""
-                )
+                d = order(nx[k] if k < len(nx) else "") - order(ny[k] if k < len(ny) else "")
                 if d:
                     return d
             x, y = x[i:], y[j:]
@@ -5227,18 +4954,14 @@ def newest_only(status_text):
     """
     newest = {}
     for stanza in status_text.split("\n\n"):
-        fields = dict(
-            line.split(": ", 1) for line in stanza.splitlines() if ": " in line
-        )
+        fields = dict(line.split(": ", 1) for line in stanza.splitlines() if ": " in line)
         if "Package" not in fields or "Version" not in fields:
             continue
         key = (fields["Package"], fields.get("Architecture", ""))
         if key not in newest or _deb_cmp(fields["Version"], newest[key][0]) > 0:
             newest[key] = (fields["Version"], stanza.strip("\n"))
     total = sum(1 for st in status_text.split("\n\n") if "Package: " in st)
-    return "".join(st + "\n\n" for _, (_, st) in sorted(newest.items())), total - len(
-        newest
-    )
+    return "".join(st + "\n\n" for _, (_, st) in sorted(newest.items())), total - len(newest)
 
 
 def _debsecan(cmd, env, suite, status=None, timeout=900):
@@ -5273,9 +4996,7 @@ def _debsecan(cmd, env, suite, status=None, timeout=900):
             f"debsecan took over {timeout // 60} minutes (the box's load: {load}); run the doctor again when it is quieter"
         ) from exc
     if r.returncode != 0:
-        raise RuntimeError(
-            (r.stderr.strip().splitlines() or ["debsecan failed"])[-1][:300]
-        )
+        raise RuntimeError((r.stderr.strip().splitlines() or ["debsecan failed"])[-1][:300])
     out = {}
     for line in r.stdout.splitlines():
         m = SUMMARY_RE.match(line.strip())
@@ -5330,9 +5051,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
     for pkg, vulns in installed.items():
         fixed = [(c, n) for c, n in vulns if n["fixed"]]
         if fixed:
-            g = groups.setdefault(
-                source_of.get(pkg) or pkg, {"bins": set(), "cves": {}}
-            )
+            g = groups.setdefault(source_of.get(pkg) or pkg, {"bins": set(), "cves": {}})
             g["bins"].add(pkg)
             for c, n in fixed:
                 g["cves"][c] = n
@@ -5359,8 +5078,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
                     "debsecan.fixed",
                     {
                         "one": "Debian has released a fix for {n} known vulnerability that is not installed.",
-                        "other": "Debian has released fixes for {n} known vulnerabilities that are not "
-                        "installed.",
+                        "other": "Debian has released fixes for {n} known vulnerabilities that are not installed.",
                     },
                     n=len(fixed),
                 ),
@@ -5394,9 +5112,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
                 about={"kind": "setting", "key": "security-updates"},
             )
         )
-    unfixed = sorted(
-        p for p, v in installed.items() if not any(n["fixed"] for _, n in v)
-    )
+    unfixed = sorted(p for p, v in installed.items() if not any(n["fixed"] for _, n in v))
     out.append(
         finding(
             "debsecan-unfixed",
@@ -5407,8 +5123,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
                     "debsecan.unfixed",
                     {
                         "one": "{n} installed package has known vulnerabilities that Debian has not fixed yet.",
-                        "other": "{n} installed packages have known vulnerabilities that Debian has not fixed "
-                        "yet.",
+                        "other": "{n} installed packages have known vulnerabilities that Debian has not fixed yet.",
                     },
                     n=len(unfixed),
                 )
@@ -5522,11 +5237,7 @@ def step_debsecan(ctx):
             ]
         installed = _debsecan(cmd, env, suite)
         kit_of = {}
-        for m in (
-            sorted((KITS_ROOT / "manifests").glob("*.json"))
-            if (KITS_ROOT / "manifests").is_dir()
-            else []
-        ):
+        for m in sorted((KITS_ROOT / "manifests").glob("*.json")) if (KITS_ROOT / "manifests").is_dir() else []:
             if m.name.endswith(".previous.json"):
                 continue
             for p in (json.loads(_read(m) or "{}") or {}).get("packages", []):
@@ -5539,9 +5250,7 @@ def step_debsecan(ctx):
             cached = _debsecan(cmd, env, suite, newest)
         else:
             cached = {}
-        return debsecan_findings(
-            installed, cached, kit_of, feed.stat().st_mtime, _sources()
-        )
+        return debsecan_findings(installed, cached, kit_of, feed.stat().st_mtime, _sources())
     finally:
         _sh.rmtree(work, ignore_errors=True)
 
@@ -5614,12 +5323,7 @@ def _dress_cis(f):
     # A check split out of its section because another source asks the same (cis-5.2.10_disable_root_login):
     # a suggestion as its section is, so beside a fine Security page line it is not a real item.
     one = re.match(r"^cis-(\d+\.\d+)[\d.]*_\w", f.get("id", ""))
-    if (
-        one
-        and f.get("source") == "debian-cis"
-        and f["status"] != "ok"
-        and not f.get("tier")
-    ):
+    if one and f.get("source") == "debian-cis" and f["status"] != "ok" and not f.get("tier"):
         f["tier"] = (secdoctor_xref.cis(one.group(1)) or (None, "suggest"))[1]
         return
     m = CIS_SECTION_RE.match(f.get("id", ""))
@@ -5627,9 +5331,7 @@ def _dress_cis(f):
     if not known or f["status"] == "ok":
         return
     title, tier, what, here = known
-    f["title"] = M(
-        "cis.dressed.title", "{topic} (CIS {section})", topic=title, section=m.group(1)
-    )
+    f["title"] = M("cis.dressed.title", "{topic} (CIS {section})", topic=title, section=m.group(1))
     f["notes"] = [what] + list(f.get("notes") or [])
     f["fix"] = here
     cmd = secdoctor_xref.CIS_CMD.get(m.group(1))
@@ -5647,9 +5349,7 @@ def step_security_page(ctx):
         scan = json.loads(_read(CONTROL / "security.json") or "")
     except ValueError:
         scan = None
-    if not current(
-        scan
-    ):  # none yet, or one an older version wrote: it runs again when the Security page opens
+    if not current(scan):  # none yet, or one an older version wrote: it runs again when the Security page opens
         return [
             finding(
                 "security-page-none",
@@ -5700,9 +5400,7 @@ def step_imports(ctx):
         now_ports = sorted(
             {
                 f"{listener['proto']}/{listener['port']}"
-                for listener in json.loads(
-                    _read(CONTROL / "security.json") or "{}"
-                ).get("listeners", [])
+                for listener in json.loads(_read(CONTROL / "security.json") or "{}").get("listeners", [])
             }
         )
     except (ValueError, KeyError, TypeError):
@@ -5726,14 +5424,8 @@ def step_imports(ctx):
             if kind == "openvas" and r.get("cvss", 0) <= 0:
                 continue
             by_port.setdefault((r["proto"], r["port"]), []).append(r)
-        for (proto, port), rs in sorted(
-            by_port.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))
-        ):
-            about = (
-                {"kind": "service", "key": f"{proto}/{port}"}
-                if isinstance(port, int)
-                else None
-            )
+        for (proto, port), rs in sorted(by_port.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+            about = {"kind": "service", "key": f"{proto}/{port}"} if isinstance(port, int) else None
             where = f"{proto.upper()} {port}" if isinstance(port, int) else None
             if kind == "openvas":
                 worst = max(r["cvss"] for r in rs)
@@ -5767,9 +5459,7 @@ def step_imports(ctx):
                             else None
                         ),
                         notes=[ran],
-                        evidence=[
-                            f"{r['name']} (CVSS {r['cvss']:g})" for r in ranked[:5]
-                        ],
+                        evidence=[f"{r['name']} (CVSS {r['cvss']:g})" for r in ranked[:5]],
                         source="openvas",
                         about=about,
                     )
@@ -5798,8 +5488,7 @@ def step_imports(ctx):
                             ),
                             M(
                                 "imports.nmap.unexpected.fix",
-                                "Find out what answered. Run nmap again to see if the port is "
-                                "still open.",
+                                "Find out what answered. Run nmap again to see if the port is still open.",
                             ),
                             notes=[ran],
                             evidence=[svc] if svc else [],
@@ -5824,11 +5513,7 @@ def step_imports(ctx):
                         )
                     )
         age = (time.time() - stamp) / 86400
-        changed = (
-            now_ports is not None
-            and rep.get("box_ports") is not None
-            and sorted(rep["box_ports"]) != now_ports
-        )
+        changed = now_ports is not None and rep.get("box_ports") is not None and sorted(rep["box_ports"]) != now_ports
         if changed:
             gained = sorted(set(now_ports) - set(rep["box_ports"]))
             lost = sorted(set(rep["box_ports"]) - set(now_ports))
@@ -5911,9 +5596,7 @@ def freshness():
     """Each source's date and its data's date."""
     out = {"doctor": time.time()}
     try:
-        out["security-page"] = json.loads(_read(CONTROL / "security.json") or "{}").get(
-            "at"
-        )
+        out["security-page"] = json.loads(_read(CONTROL / "security.json") or "{}").get("at")
     except ValueError:
         pass
     suite = _codename()
@@ -6042,9 +5725,7 @@ def joint(steps, freshness=None):
                 it["checks"] += [dict(c, source=src) for c in f.get("checks") or []]
                 # A finding with one check of its own: that check's command, or its words, are the item's.
                 own = f.get("checks") or []
-                it["cmd"] = it["cmd"] or (
-                    own[0].get("cmd", "") if len(own) == 1 else ""
-                )
+                it["cmd"] = it["cmd"] or (own[0].get("cmd", "") if len(own) == 1 else "")
                 if not f.get("fix") and len(own) == 1 and own[0].get("say"):
                     f = dict(f, fix=own[0]["say"])
                 it["do"] = it["do"] or secdoctor_xref.do_for(src, f["id"])
@@ -6052,23 +5733,14 @@ def joint(steps, freshness=None):
             if (
                 lead is None
                 or rank[f["status"]] > rank[lead["status"]]
-                or (
-                    f.get("fix")
-                    and not lead.get("fix")
-                    and f["status"] == lead["status"]
-                )
+                or (f.get("fix") and not lead.get("fix") and f["status"] == lead["status"])
             ):
                 if lead is None or rank[f["status"]] > rank[lead["status"]]:
                     it["area"] = st.get("title", "")
                 it["lead"] = f
                 it["status"] = max((it["status"], f["status"]), key=rank.get)
     # A source ran when it said something real, not only "not run yet" / "none imported".
-    ran = {
-        f.get("source", "doctor")
-        for s in steps
-        for f in s["findings"]
-        if not f["id"].endswith("-none")
-    }
+    ran = {f.get("source", "doctor") for s in steps for f in s["findings"] if not f["id"].endswith("-none")}
     for it in items.values():
         it.update(_parts(it.pop("lead") or {}))
         # Who could have said the same: any port-seeing source for a port; for a setting, the
@@ -6078,11 +5750,7 @@ def joint(steps, freshness=None):
             set(KIND_SOURCES["service"])
             if a["kind"] == "service"
             else (
-                {
-                    k
-                    for k, v in secdoctor_xref.XREF.get(a["key"], {}).items()
-                    if isinstance(v, list)
-                }
+                {k for k, v in secdoctor_xref.XREF.get(a["key"], {}).items() if isinstance(v, list)}
                 if a["kind"] == "setting"
                 else set()
             )
@@ -6091,27 +5759,14 @@ def joint(steps, freshness=None):
         it["alone"] = len(it["sources"]) == 1 and len(could - set(it["sources"])) > 0
         it["could_see"] = sorted(could - set(it["sources"]))
         # The Security page's lines in it: the page offers their buttons (from its scan at the time).
-        it["page"] = [
-            entry["id"].removeprefix("page-")
-            for entry in it["lines"]
-            if entry["source"] == "security-page"
-        ]
+        it["page"] = [entry["id"].removeprefix("page-") for entry in it["lines"] if entry["source"] == "security-page"]
         # A tier only when every line not fine has one: a CIS suggestion merged with a real finding is real.
         tiers = it.pop("tiers")
-        it["tier"] = (
-            (tiers[0] if len(set(tiers)) == 1 else "suggest")
-            if tiers and all(tiers)
-            else None
-        )
+        it["tier"] = (tiers[0] if len(set(tiers)) == 1 else "suggest") if tiers and all(tiers) else None
     # Together a problem (secdoctor_xref.COMPOUND): each named finding present and not ok.
-    present = {
-        (f.get("source", "doctor"), f["id"]): f for s in steps for f in s["findings"]
-    }
+    present = {(f.get("source", "doctor"), f["id"]): f for s in steps for f in s["findings"]}
     for c in secdoctor_xref.COMPOUND:
-        if all(
-            (src, i) in present and present[(src, i)]["status"] != "ok"
-            for src, i in c["needs"]
-        ):
+        if all((src, i) in present and present[(src, i)]["status"] != "ok" for src, i in c["needs"]):
             lines = [
                 {
                     "source": src,
@@ -6153,9 +5808,7 @@ def joint(steps, freshness=None):
             i["key"],
         ),
     )
-    agreed = [
-        i for i in items.values() if i["status"] == "ok" and len(i["sources"]) > 1
-    ]
+    agreed = [i for i in items.values() if i["status"] == "ok" and len(i["sources"]) > 1]
     real = [i for i in merged if not i["tier"]]
     after = {
         "problem": sum(1 for i in real if i["status"] == "problem"),
@@ -6185,9 +5838,7 @@ def _local_headers(url):
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(
-            urllib.request.Request(url), timeout=5, context=ctx
-        ) as r:
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=5, context=ctx) as r:
             return r.status, dict(r.headers)
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {})
@@ -6383,11 +6034,7 @@ def step_tls(ctx):
                 about=about,
             )
         )
-    private = (
-        st.get("keys_private")
-        and tls.KEY.exists()
-        and (tls.KEY.stat().st_mode & 0o007) == 0
-    )
+    private = st.get("keys_private") and tls.KEY.exists() and (tls.KEY.stat().st_mode & 0o007) == 0
     keys_t = M("tls.keys.title", "Certificate key permissions")
     if private:
         out.append(
@@ -6430,9 +6077,7 @@ def step_tls(ctx):
             )
         )
     if st.get("on"):
-        got = _local_headers(
-            f"https://127.0.0.1:{(st.get('ports') or {}).get('main', 443)}/"
-        )
+        got = _local_headers(f"https://127.0.0.1:{(st.get('ports') or {}).get('main', 443)}/")
         hsts_t = M("tls.hsts.title", "Strict-Transport-Security")
         if got is None:
             out.append(
@@ -6482,8 +6127,7 @@ def step_tls(ctx):
                     "ok",
                     M(
                         "tls.hsts.none",
-                        "The web server sends no Strict-Transport-Security, so plain "
-                        "HTTP keeps working.",
+                        "The web server sends no Strict-Transport-Security, so plain HTTP keeps working.",
                     ),
                     about=about,
                 )
@@ -6518,8 +6162,7 @@ def step_tls(ctx):
                     "ok",
                     M(
                         "tls.plain.ok",
-                        "Port 80 answers, as the sign-in sheet of the captive portal "
-                        "needs.",
+                        "Port 80 answers, as the sign-in sheet of the captive portal needs.",
                     ),
                     about=about,
                 )
@@ -6553,9 +6196,7 @@ def step_mqtt(ctx):
     private to the hub."""
     about = {"kind": "service", "key": "mosquitto"}
     confs = sorted(MOSQUITTO.glob("conf.d/*.conf")) + (
-        [MOSQUITTO / "mosquitto.conf"]
-        if (MOSQUITTO / "mosquitto.conf").exists()
-        else []
+        [MOSQUITTO / "mosquitto.conf"] if (MOSQUITTO / "mosquitto.conf").exists() else []
     )
     if not confs:
         return [
@@ -6574,11 +6215,7 @@ def step_mqtt(ctx):
         for line in (_read(c) or "").splitlines()
         if line.strip() and not line.strip().startswith("#")
     ]
-    bridges = [
-        f"{name}: {line}"
-        for name, line in lines
-        if re.match(r"(connection|address)\s", line)
-    ]
+    bridges = [f"{name}: {line}" for name, line in lines if re.match(r"(connection|address)\s", line)]
     bridge_t = M("mqtt.bridge.title", "Broker bridge")
     if bridges:
         out.append(
@@ -6649,8 +6286,7 @@ def step_mqtt(ctx):
                 "ok",
                 M(
                     "mqtt.acl.limited",
-                    "Clients with no sign-in can publish and subscribe only under "
-                    "msh/#.",
+                    "Clients with no sign-in can publish and subscribe only under msh/#.",
                 ),
                 ref="S9",
                 about=about,
@@ -6744,9 +6380,7 @@ def _apt_sources(apt_dir):
                 fields = {
                     k.strip().lower(): v.strip()
                     for k, _, v in (
-                        line.partition(":")
-                        for line in stanza.splitlines()
-                        if ":" in line and not line.startswith("#")
+                        line.partition(":") for line in stanza.splitlines() if ":" in line and not line.startswith("#")
                     )
                 }
                 if fields.get("uris"):
@@ -6760,9 +6394,7 @@ def _apt_sources(apt_dir):
                     )
         else:
             for line in text.splitlines():
-                m = re.match(
-                    r"^\s*deb(?:-src)?\s+(?:\[([^\]]*)\]\s+)?(\S+)\s+(\S*)", line
-                )
+                m = re.match(r"^\s*deb(?:-src)?\s+(?:\[([^\]]*)\]\s+)?(\S+)\s+(\S*)", line)
                 if m:
                     out.append(
                         (
@@ -6780,11 +6412,7 @@ def step_image(ctx):
     # apt's trust: a key in trusted.gpg.d vouches for every repository, not its own.
     trusted = APT_DIR / "trusted.gpg.d"
     keys = (
-        sorted(
-            p.name
-            for p in trusted.iterdir()
-            if p.is_file() and not p.name.startswith(DEBIAN_KEYS)
-        )
+        sorted(p.name for p in trusted.iterdir() if p.is_file() and not p.name.startswith(DEBIAN_KEYS))
         if trusted.is_dir()
         else []
     )
@@ -6810,8 +6438,7 @@ def step_image(ctx):
                 ),
                 M(
                     "image.apt.why",
-                    "A key that leaks, or a repository that turns bad, can then sign packages that replace "
-                    "Debian's.",
+                    "A key that leaks, or a repository that turns bad, can then sign packages that replace Debian's.",
                 ),
                 M(
                     "image.apt.fix",
@@ -6839,8 +6466,7 @@ def step_image(ctx):
                 "ok",
                 M(
                     "image.apt.ok",
-                    "Each package source names its own key, and trusted.gpg.d holds "
-                    "only Debian's keys.",
+                    "Each package source names its own key, and trusted.gpg.d holds only Debian's keys.",
                 ),
             )
         )
@@ -6873,17 +6499,11 @@ def step_image(ctx):
         )
     # The kernel: a vendor build has no Debian security tracking (debsecan says so in its coverage; here with its age).
     ver = _read(PROC_VERSION, 4096) or ""
-    built = re.search(
-        r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\w{3}) +(\d+) [\d:]+ \w+ (\d{4})", ver
-    )
+    built = re.search(r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\w{3}) +(\d+) [\d:]+ \w+ (\d{4})", ver)
     release = ver.split()[2] if len(ver.split()) > 2 else "?"
     kernel_t = M("image.kernel.title", "Vendor kernel")
     if ver and ("vendor" in release or "armbian" in ver.lower()):
-        made = (
-            f"{built.group(3)}-{built.group(1)}-{built.group(2).zfill(2)}"
-            if built
-            else None
-        )
+        made = f"{built.group(3)}-{built.group(1)}-{built.group(2).zfill(2)}" if built else None
         out.append(
             finding(
                 "image-kernel",
@@ -6896,9 +6516,7 @@ def step_image(ctx):
                         date=made,
                     )
                     if made
-                    else M(
-                        "image.kernel.vendor-undated", "The box runs a vendor kernel."
-                    )
+                    else M("image.kernel.vendor-undated", "The box runs a vendor kernel.")
                 ),
                 M(
                     "image.kernel.why",
@@ -6963,9 +6581,7 @@ def step_image(ctx):
             name = (re.search(r"(?m)^id=(.*)$", text) or [None, f.stem])[1]
             open_ = "[wifi-security]" not in text
             auto = not re.search(r"(?m)^autoconnect=false\s*$", text)
-            aps.append(
-                f"{name}: wifi-security={'no' if open_ else 'yes'} autoconnect={'yes' if auto else 'no'}"
-            )
+            aps.append(f"{name}: wifi-security={'no' if open_ else 'yes'} autoconnect={'yes' if auto else 'no'}")
             names.append(name)
     ap_t = M("image.ap.title", "Access-point profiles")
     if aps:
@@ -6990,9 +6606,7 @@ def step_image(ctx):
                     "image.ap.fix",
                     "Delete each profile that is not yours. The hub's hotspot is not among them.",
                 ),
-                commands=[
-                    f"sudo nmcli connection delete {shlex.quote(n)}" for n in names
-                ],
+                commands=[f"sudo nmcli connection delete {shlex.quote(n)}" for n in names],
                 evidence=aps,
             )
         )
@@ -7027,9 +6641,7 @@ def step_offline(ctx):
     the kits' cache, the offline bundle against the installed version, the hub's own update state.
     """
     out = []
-    lists, tracker = _age_days(APT_LISTS), _age_days(
-        DEBSECAN_FEED / (_codename() or "x")
-    )
+    lists, tracker = _age_days(APT_LISTS), _age_days(DEBSECAN_FEED / (_codename() or "x"))
     ages = [
         (
             M("offline.age.lists.never", "The package lists were never downloaded.")
@@ -7077,8 +6689,7 @@ def step_offline(ctx):
                 ),
                 M(
                     "offline.lists.fix",
-                    "Let the box reach the internet now and then. Or bring the updates on a USB drive, on "
-                    "Toolkits.",
+                    "Let the box reach the internet now and then. Or bring the updates on a USB drive, on Toolkits.",
                 ),
                 notes=ages,
             )
@@ -7091,7 +6702,7 @@ def step_offline(ctx):
                 "ok",
                 M(
                     "offline.lists.fresh",
-                    "What the box knows about packages is less than 30 days " "old.",
+                    "What the box knows about packages is less than 30 days old.",
                 ),
                 notes=ages,
             )
@@ -7178,9 +6789,7 @@ def step_offline(ctx):
         )
     else:
         current = version != "unknown" and version in str(kit.get("name", ""))
-        made = M(
-            "offline.bundle.made", "It was made on {date}.", date=when(kit.get("at", 0))
-        )
+        made = M("offline.bundle.made", "It was made on {date}.", date=when(kit.get("at", 0)))
         if current:
             out.append(
                 finding(
@@ -7189,7 +6798,7 @@ def step_offline(ctx):
                     "ok",
                     M(
                         "offline.bundle.current",
-                        "The offline kit is of the version installed " "here.",
+                        "The offline kit is of the version installed here.",
                     ),
                     notes=[made],
                     evidence=[str(kit.get("name"))],
@@ -7203,8 +6812,7 @@ def step_offline(ctx):
                     "warn",
                     M(
                         "offline.bundle.old",
-                        "The offline kit is of another version than the "
-                        "one installed here.",
+                        "The offline kit is of another version than the one installed here.",
                     ),
                     M(
                         "offline.bundle.old.why",
@@ -7273,9 +6881,7 @@ def step_offline(ctx):
 # (hub/reach.py; the web servers keep no access logs), SSH from sshd's log, and IPv6 from the box's
 # own addresses: a global one is reachable wherever the router's IPv6 firewall lets traffic in.
 REACH_DAYS = 7
-SSH_FROM = re.compile(
-    r"\b(?:from|by)(?: (?:invalid |authenticating )?user \S+)? ([0-9A-Fa-f:.]+) port \d+"
-)
+SSH_FROM = re.compile(r"\b(?:from|by)(?: (?:invalid |authenticating )?user \S+)? ([0-9A-Fa-f:.]+) port \d+")
 
 
 def _public(addr):
@@ -7322,9 +6928,7 @@ def _ssh_public(days=REACH_DAYS):
         m = SSH_FROM.search(line)
         if m and _public(m.group(1)):
             ok, other = seen.get(m.group(1), (0, 0))
-            seen[m.group(1)] = (
-                (ok + 1, other) if line.startswith("Accepted ") else (ok, other + 1)
-            )
+            seen[m.group(1)] = (ok + 1, other) if line.startswith("Accepted ") else (ok, other + 1)
     return seen
 
 
@@ -7373,12 +6977,7 @@ def _global_v6():
     out = []
     for line in r.stdout.splitlines():
         f = line.split()
-        if (
-            len(f) > 3
-            and f[2] == "inet6"
-            and "deprecated" not in f
-            and _public(f[3].split("/")[0])
-        ):
+        if len(f) > 3 and f[2] == "inet6" and "deprecated" not in f and _public(f[3].split("/")[0]):
             out.append(f"{f[3].split('/')[0]} ({f[1]})")
     return out
 
@@ -7390,9 +6989,7 @@ def step_internet(ctx):
         nets = {
             n: e
             for n, e in nets.items()
-            if isinstance(e, dict)
-            and isinstance(e.get("last"), (int, float))
-            and now - e["last"] < REACH_DAYS * 86400
+            if isinstance(e, dict) and isinstance(e.get("last"), (int, float)) and now - e["last"] < REACH_DAYS * 86400
         }
     except (ValueError, AttributeError):
         nets = {}
@@ -7509,9 +7106,7 @@ def step_internet(ctx):
                             n=accepted,
                         )
                         if accepted
-                        else M(
-                            "reach.ssh.refused", "sshd accepted no sign-in from them."
-                        )
+                        else M("reach.ssh.refused", "sshd accepted no sign-in from them.")
                     )
                 ]
                 + span,
@@ -7586,8 +7181,7 @@ def step_firewall(ctx):
                 "warn",
                 M(
                     "firewall.no-nftables",
-                    "nftables is not installed, so the box's own hotspot "
-                    "firewall cannot run.",
+                    "nftables is not installed, so the box's own hotspot firewall cannot run.",
                 ),
                 M(
                     "firewall.no-nftables.why",
@@ -7596,8 +7190,7 @@ def step_firewall(ctx):
                 ),
                 M(
                     "firewall.no-nftables.fix",
-                    "Update the box, which installs nftables. Then turn the hotspot firewall on, on "
-                    "Security.",
+                    "Update the box, which installs nftables. Then turn the hotspot firewall on, on Security.",
                 ),
                 about=about,
             )
@@ -7801,9 +7394,7 @@ def make_context():
         if drains is None:
             drains = bool(re.search(r"(?m)^DRAINS_REQUEST_BODIES\s*=\s*True\b", server))
         if caps is None:
-            m = re.search(
-                r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S
-            )
+            m = re.search(r"def _read_payload\(self\):(.*?)(?=\n    def )", server, re.S)
             caps = bool(m and re.search(r"MAX_|limit|too large|413", m.group(1)))
     units = {u: _show(u, *UNIT_PROPS) for u in _our_units()}
     addons = load_addons()
@@ -7902,10 +7493,7 @@ def audit(progress=None):
         "root": os.geteuid() == 0,
         "steps": steps,
         "joint": joint(steps, freshness()),
-        "counts": {
-            k: sum(1 for f in flat if f["status"] == k)
-            for k in ("problem", "warn", "ok")
-        },
+        "counts": {k: sum(1 for f in flat if f["status"] == k) for k in ("problem", "warn", "ok")},
         "not_covered": NOT_COVERED,
         "new": new_since(previous, flat),
         "previous_at": (previous or {}).get("at"),
@@ -7933,11 +7521,7 @@ def new_since(previous, findings):
         for f in s.get("findings", [])
         if isinstance(f, dict)
     }
-    return sorted(
-        f["id"]
-        for f in findings
-        if f["status"] != "ok" and was.get(f["id"], "ok") == "ok"
-    )
+    return sorted(f["id"] for f in findings if f["status"] != "ok" and was.get(f["id"], "ok") == "ok")
 
 
 def write_report(report, path=REPORT):
@@ -7962,14 +7546,12 @@ def print_report(report, only_bad=False, out=sys.stdout):
         if only_bad and not shown:
             continue
         print(
-            f"\n[{n}/{len(report['steps'])}] {render(s['title'])}"
-            + (f"  ({s['ref']})" if s["ref"] else ""),
+            f"\n[{n}/{len(report['steps'])}] {render(s['title'])}" + (f"  ({s['ref']})" if s["ref"] else ""),
             file=out,
         )
         for f in shown:
             print(
-                f"  {MARK[f['status']]} {render(f['title'])}"
-                + (f"  [{f['ref']}]" if f.get("ref") else ""),
+                f"  {MARK[f['status']]} {render(f['title'])}" + (f"  [{f['ref']}]" if f.get("ref") else ""),
                 file=out,
             )
             if f["status"] != "ok" or not only_bad:
@@ -7986,11 +7568,7 @@ def print_report(report, only_bad=False, out=sys.stdout):
     c = report["counts"]
     print(
         f"\n{c['problem']} problem(s), {c['warn']} warning(s), {c['ok']} ok."
-        + (
-            ""
-            if report["root"]
-            else " Not run as root: some checks could not read what they need."
-        ),
+        + ("" if report["root"] else " Not run as root: some checks could not read what they need."),
         file=out,
     )
 
@@ -8015,11 +7593,7 @@ if __name__ == "__main__":
     else:
         rep = audit(
             progress=(
-                (
-                    lambda n, t, s: print(
-                        f"[{n}/{t}] {render(s['title'])} ...", file=sys.stderr
-                    )
-                )
+                (lambda n, t, s: print(f"[{n}/{t}] {render(s['title'])} ...", file=sys.stderr))
                 if cmd == "report" and sys.stderr.isatty()
                 else None
             )

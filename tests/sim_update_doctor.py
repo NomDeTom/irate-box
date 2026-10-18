@@ -4,6 +4,7 @@
 each case said by its message ID, its commands, what it saw and the place to go as data, a place only for what is
 not fine; then the checks of a downloaded version and the update actions' answers as messages, the result file
 keeping the English for every reader that expects text. python3 tests/sim_update_doctor.py"""
+
 import io
 import json
 import os
@@ -25,12 +26,21 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="updoctor-"))
 for d in ("state/control/results", "state/control/requests", "etc", "code", "cache"):
     (T / d).mkdir(parents=True)
-os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HUB_RUN_DIR=str(T / "run"), HUB_CODE_DIR=str(T / "code"),
-                  HUB_UPDATE_DIR=str(T / "cache" / "src"), HUB_DOWNLOAD_CACHE=str(T / "cache" / "downloads"), HUB_WEB_SERVER="nginx")
+os.environ.update(
+    HUB_STATE_DIR=str(T / "state"),
+    HUB_ETC_DIR=str(T / "etc"),
+    HUB_RUN_DIR=str(T / "run"),
+    HUB_CODE_DIR=str(T / "code"),
+    HUB_UPDATE_DIR=str(T / "cache" / "src"),
+    HUB_DOWNLOAD_CACHE=str(T / "cache" / "downloads"),
+    HUB_WEB_SERVER="nginx",
+)
 sys.path.insert(0, str(REPO))
-from irate_box.root import hub_control as H  # noqa: E402
-from irate_box.finding import english, message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.finding import english  # noqa: E402
+from irate_box.finding import message_args as msg_args
+from irate_box.finding import message_ids as msg_ids
 from irate_box.msg import is_message, render  # noqa: E402
+from irate_box.root import hub_control as H  # noqa: E402
 
 fails = 0
 
@@ -47,9 +57,21 @@ class Resp(io.BytesIO):
         self.headers = headers or {}
 
 
-def world(*, addrs=("140.82.121.3",), mine=(), connect=True, date=None, tls_error=None, remaining=50, heads="abc1234def refs/heads/main\n",
-          ls_code=0, apt=(0, "Hit:1 https://deb.debian.org/debian trixie InRelease\n"), free_mb=5000):
+def world(
+    *,
+    addrs=("140.82.121.3",),
+    mine=(),
+    connect=True,
+    date=None,
+    tls_error=None,
+    remaining=50,
+    heads="abc1234def refs/heads/main\n",
+    ls_code=0,
+    apt=(0, "Hit:1 https://deb.debian.org/debian trixie InRelease\n"),
+    free_mb=5000,
+):
     """The network, git, apt and the disk as one case wants them."""
+
     def getaddrinfo(host, port, proto=0):
         if addrs is None:
             raise OSError("Temporary failure in name resolution")
@@ -65,11 +87,17 @@ def world(*, addrs=("140.82.121.3",), mine=(), connect=True, date=None, tls_erro
             if tls_error:
                 raise tls_error
             return Resp(headers={"Date": formatdate(date or time.time(), usegmt=True)})
-        return Resp(json.dumps({"resources": {"core": {"remaining": remaining, "limit": 60, "reset": time.time() + 1800}}}).encode())
+        return Resp(
+            json.dumps(
+                {"resources": {"core": {"remaining": remaining, "limit": 60, "reset": time.time() + 1800}}}
+            ).encode()
+        )
 
     def run(*cmd, timeout=120, **kw):
         if cmd[:2] == ("git", "ls-remote"):
-            return subprocess.CompletedProcess(cmd, ls_code, heads if ls_code == 0 else "", "fatal: repository not found\n")
+            return subprocess.CompletedProcess(
+                cmd, ls_code, heads if ls_code == 0 else "", "fatal: repository not found\n"
+            )
         if cmd[0] == "apt-get":
             return subprocess.CompletedProcess(cmd, apt[0], apt[1], "")
         if cmd[0] == "git" and "status" in cmd:
@@ -79,11 +107,18 @@ def world(*, addrs=("140.82.121.3",), mine=(), connect=True, date=None, tls_erro
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     usage = mock.Mock(free=free_mb << 20)
-    return [mock.patch("socket.getaddrinfo", getaddrinfo), mock.patch("socket.create_connection", create_connection),
-            mock.patch.object(H, "_tls_get", tls_get), mock.patch.object(H, "run", run),
-            mock.patch.object(H, "_local_addresses", lambda: set(mine)), mock.patch.object(H.shutil, "disk_usage", lambda p: usage),
-            mock.patch.object(H.kits, "verify", lambda: []), mock.patch.object(H.kits, "definitions", lambda: {}),
-            mock.patch.object(H.kits, "installed_state", lambda: {}), mock.patch.object(H.kits, "pool_bytes", lambda: 0)]
+    return [
+        mock.patch("socket.getaddrinfo", getaddrinfo),
+        mock.patch("socket.create_connection", create_connection),
+        mock.patch.object(H, "_tls_get", tls_get),
+        mock.patch.object(H, "run", run),
+        mock.patch.object(H, "_local_addresses", lambda: set(mine)),
+        mock.patch.object(H.shutil, "disk_usage", lambda p: usage),
+        mock.patch.object(H.kits, "verify", lambda: []),
+        mock.patch.object(H.kits, "definitions", lambda: {}),
+        mock.patch.object(H.kits, "installed_state", lambda: {}),
+        mock.patch.object(H.kits, "pool_bytes", lambda: 0),
+    ]
 
 
 def doctor(**case):
@@ -103,8 +138,12 @@ def well_said(fs):
     bad = []
     for f in fs.values():
         said = [render(m) for m in (f["title"], f["summary"], f.get("why"), f.get("fix"), *f["notes"]) if m is not None]
-        if not (is_message(f["title"]) and is_message(f["summary"])) or any("{" in s for s in said) \
-                or (f["status"] == "ok" and f.get("go")) or not all(isinstance(e, str) for e in f["evidence"] + f["commands"]):
+        if (
+            not (is_message(f["title"]) and is_message(f["summary"]))
+            or any("{" in s for s in said)
+            or (f["status"] == "ok" and f.get("go"))
+            or not all(isinstance(e, str) for e in f["evidence"] + f["commands"])
+        ):
             bad.append(f["id"])
         english(f)
     return bad
@@ -115,68 +154,131 @@ OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n"
 
 # All well: each part fine, nowhere to go.
 fs = doctor()
-check("all well: every check fine, but the schedule (no run recorded yet)",
-      {k for k, f in fs.items() if f["status"] != "ok"} == {"scheduled"}, {k: f["status"] for k, f in fs.items()})
-check("  each said by its own message: options, names, connection, clock, certificate, GitHub, branch, space, cache, sources",
-      msg_args(fs["options"], "update.options.ok") == {"branch": "main", "repo": "https://example.invalid/irate-box"}
-      and "update.dns.ok" in msg_ids(fs["dns"]) and "update.connection.ok" in msg_ids(fs["connection"]) and "update.clock.ok" in msg_ids(fs["clock"])
-      and "update.tls.ok" in msg_ids(fs["tls"]) and msg_args(fs["github-api"], "update.github-api.ok") == {"left": 50, "limit": 60}
-      and msg_args(fs["repo"], "update.repo.ok") == {"branch": "main", "commit": "abc1234"} and "update.space.ok" in msg_ids(fs["space:system"])
-      and "update.cache.empty" in msg_ids(fs["cache"]) and "update.sources.ok" in msg_ids(fs["sources"]), fs)
-check("  no run of the schedule recorded: a warning, the log's command to copy, the librarian named as the place",
-      "update.scheduled.none" in msg_ids(fs["scheduled"]) and fs["scheduled"]["commands"] == ["journalctl -u irate-box-librarian -n 80"]
-      and fs["scheduled"]["go"]["section"] == "sources", fs["scheduled"])
+check(
+    "all well: every check fine, but the schedule (no run recorded yet)",
+    {k for k, f in fs.items() if f["status"] != "ok"} == {"scheduled"},
+    {k: f["status"] for k, f in fs.items()},
+)
+check(
+    "  each said by its own message: options, names, connection, clock, certificate, GitHub, branch, space, cache, sources",
+    msg_args(fs["options"], "update.options.ok") == {"branch": "main", "repo": "https://example.invalid/irate-box"}
+    and "update.dns.ok" in msg_ids(fs["dns"])
+    and "update.connection.ok" in msg_ids(fs["connection"])
+    and "update.clock.ok" in msg_ids(fs["clock"])
+    and "update.tls.ok" in msg_ids(fs["tls"])
+    and msg_args(fs["github-api"], "update.github-api.ok") == {"left": 50, "limit": 60}
+    and msg_args(fs["repo"], "update.repo.ok") == {"branch": "main", "commit": "abc1234"}
+    and "update.space.ok" in msg_ids(fs["space:system"])
+    and "update.cache.empty" in msg_ids(fs["cache"])
+    and "update.sources.ok" in msg_ids(fs["sources"]),
+    fs,
+)
+check(
+    "  no run of the schedule recorded: a warning, the log's command to copy, the librarian named as the place",
+    "update.scheduled.none" in msg_ids(fs["scheduled"])
+    and fs["scheduled"]["commands"] == ["journalctl -u irate-box-librarian -n 80"]
+    and fs["scheduled"]["go"]["section"] == "sources",
+    fs["scheduled"],
+)
 check("  every finding well said, in the shared shape", not well_said(fs), well_said(fs))
 check("  the default branch: no finding about the update branch", "target" not in fs, fs.get("target"))
 
 # A box that followed the branch it was installed from: a warning that names the branch and the file.
 OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nfix-topic\n")
 fs = doctor()
-check("a topic branch recorded: a warning with the branch as data, the cure said, the options file as evidence",
-      fs["target"]["status"] == "warn" and msg_args(fs["target"], "update.target.branch") == {"branch": "fix-topic"}
-      and {"update.target.branch.why", "update.target.branch.fix"} <= msg_ids(fs["target"])
-      and fs["target"]["evidence"] == [str(OPTIONS)], fs["target"])
-check("  a button to ask the repository for its default branch",
-      [a["choice"] for a in fs["target"]["actions"]] == ["poll-target"] and is_message(fs["target"]["actions"][0]["label"]), fs["target"]["actions"])
+check(
+    "a topic branch recorded: a warning with the branch as data, the cure said, the options file as evidence",
+    fs["target"]["status"] == "warn"
+    and msg_args(fs["target"], "update.target.branch") == {"branch": "fix-topic"}
+    and {"update.target.branch.why", "update.target.branch.fix"} <= msg_ids(fs["target"])
+    and fs["target"]["evidence"] == [str(OPTIONS)],
+    fs["target"],
+)
+check(
+    "  a button to ask the repository for its default branch",
+    [a["choice"] for a in fs["target"]["actions"]] == ["poll-target"]
+    and is_message(fs["target"]["actions"][0]["label"]),
+    fs["target"]["actions"],
+)
 check("  every finding well said", not well_said(fs), well_said(fs))
+
 
 # The button: ask the repository which branch it serves by default.
 def poll(out, code=0):
     def run(*cmd, **kw):
         return subprocess.CompletedProcess(cmd, code, out, "fatal: no\n")
+
     with mock.patch.object(H, "run", run):
         try:
             return H.update_poll_target({})
         except H.Refused as exc:
             return exc.args[0] if exc.args else exc
+
+
 SYMREF = "ref: refs/heads/main\tHEAD\nabc1234def\tHEAD\n"
 said = poll(SYMREF)
-check("polling: the default is main, the box follows fix-topic: both said as data",
-      msg_args({"summary": said}, "update.target.poll.differs") == {"repo": "https://example.invalid/irate-box", "default": "main", "branch": "fix-topic"}, said)
+check(
+    "polling: the default is main, the box follows fix-topic: both said as data",
+    msg_args({"summary": said}, "update.target.poll.differs")
+    == {"repo": "https://example.invalid/irate-box", "default": "main", "branch": "fix-topic"},
+    said,
+)
 OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
-check("  the same branch: said so", msg_args({"summary": poll(SYMREF)}, "update.target.poll.same") is not None, poll(SYMREF))
-check("  no symref from the server: said it did not say", msg_args({"summary": poll("abc1234def\tHEAD\n")}, "update.target.poll.unknown") is not None)
-check("  the repository unreadable: refused, and said", "could not read https://example.invalid/irate-box" in str(poll("", 128)), poll("", 128))
+check(
+    "  the same branch: said so",
+    msg_args({"summary": poll(SYMREF)}, "update.target.poll.same") is not None,
+    poll(SYMREF),
+)
+check(
+    "  no symref from the server: said it did not say",
+    msg_args({"summary": poll("abc1234def\tHEAD\n")}, "update.target.poll.unknown") is not None,
+)
+check(
+    "  the repository unreadable: refused, and said",
+    "could not read https://example.invalid/irate-box" in str(poll("", 128)),
+    poll("", 128),
+)
 
 # Changing the source (a fork): checked before any git runs, recorded only once the remote lists the branch.
 GOOD = "https://example.org/fork/irate-box"
 calls = []
+
+
 def source(req, heads="abc1234def\trefs/heads/dev\n", code=0):
     def run(*cmd, **kw):
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, code, heads if code == 0 else "", "fatal: no\n")
+
     with mock.patch.object(H, "run", run):
         try:
             return H.update_set_source(req)
         except H.Refused as exc:
             return exc.args[0] if exc.args else exc
+
+
 before = OPTIONS.read_text()
-for bad in ("http://example.org/x", "git://example.org/x", "file:///srv/x", "ssh://git@example.org/x", "git@example.org:x/y.git",
-            "/home/hub/irate-box", "https://user:pw@example.org/x", "https://example.org/x?a=1", "https://example.org/x#f",
-            "https:///x", "https://example.org/x y", "", "https://example.org:notaport/x"):
+for bad in (
+    "http://example.org/x",
+    "git://example.org/x",
+    "file:///srv/x",
+    "ssh://git@example.org/x",
+    "git@example.org:x/y.git",
+    "/home/hub/irate-box",
+    "https://user:pw@example.org/x",
+    "https://example.org/x?a=1",
+    "https://example.org/x#f",
+    "https:///x",
+    "https://example.org/x y",
+    "",
+    "https://example.org:notaport/x",
+):
     calls.clear()
     got = source({"repo": bad, "branch": "dev", "confirmed": True})
-    check(f"a source of {bad!r}: refused before git runs, nothing recorded", str(got).startswith("Give the repository as an https://") and not calls and OPTIONS.read_text() == before, (got, calls))
+    check(
+        f"a source of {bad!r}: refused before git runs, nothing recorded",
+        str(got).startswith("Give the repository as an https://") and not calls and OPTIONS.read_text() == before,
+        (got, calls),
+    )
 for bad in ("", "-x", "a..b", "a b", "x.lock", "x/", "$(id)"):
     calls.clear()
     got = source({"repo": GOOD, "branch": bad, "confirmed": True})
@@ -185,19 +287,33 @@ calls.clear()
 got = source({"repo": GOOD, "branch": "dev"})
 check("not confirmed: refused before git runs", not calls and OPTIONS.read_text() == before, (got, calls))
 got = source({"repo": GOOD, "branch": "nope", "confirmed": True})
-check("a branch the remote does not list: refused, nothing recorded", "no branch named nope" in str(got) and OPTIONS.read_text() == before, got)
+check(
+    "a branch the remote does not list: refused, nothing recorded",
+    "no branch named nope" in str(got) and OPTIONS.read_text() == before,
+    got,
+)
 got = source({"repo": GOOD, "branch": "dev", "confirmed": True}, code=128)
-check("a repository that cannot be read: refused, nothing recorded", "could not read" in str(got) and OPTIONS.read_text() == before, got)
+check(
+    "a repository that cannot be read: refused, nothing recorded",
+    "could not read" in str(got) and OPTIONS.read_text() == before,
+    got,
+)
 OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n--web\nnginx\n--with-notes\n")
 (T / "cache" / "src").mkdir(parents=True, exist_ok=True)
 (T / "cache" / "src" / "x").write_text("old cache")
 got = source({"repo": GOOD, "branch": "dev", "confirmed": True})
-check("a fork the remote lists: recorded in both copies, the other options kept, the old cache gone",
-      OPTIONS.read_text() == f"--repo\n{GOOD}\n--branch\ndev\n--web\nnginx\n--with-notes\n"
-      and (T / "state" / "install-options").read_text() == OPTIONS.read_text() and not (T / "cache" / "src").exists()
-      and msg_args({"summary": got}, "update.source.saved") == {"repo": GOOD, "branch": "dev"}, got)
-check("  security policy: refused when only the console may change it, the poll left free",
-      "update-set-source" in H.POLICY_ACTIONS and "update-poll-target" not in H.POLICY_ACTIONS)
+check(
+    "a fork the remote lists: recorded in both copies, the other options kept, the old cache gone",
+    OPTIONS.read_text() == f"--repo\n{GOOD}\n--branch\ndev\n--web\nnginx\n--with-notes\n"
+    and (T / "state" / "install-options").read_text() == OPTIONS.read_text()
+    and not (T / "cache" / "src").exists()
+    and msg_args({"summary": got}, "update.source.saved") == {"repo": GOOD, "branch": "dev"},
+    got,
+)
+check(
+    "  security policy: refused when only the console may change it, the poll left free",
+    "update-set-source" in H.POLICY_ACTIONS and "update-poll-target" not in H.POLICY_ACTIONS,
+)
 with mock.patch.object(H, "policy_mode", lambda: "console"):
     try:
         H.policy_check("update-set-source")
@@ -210,62 +326,142 @@ OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n"
 # The hotspot: every name is the box's own; nothing answers; the card is nearly full; a lock left in the cache; apt fails.
 (T / "cache" / "src" / ".git").mkdir(parents=True)
 (T / "cache" / "src" / ".git" / "index.lock").write_text("")
-apt_out = ("Err:5 https://dl.example.org/deb stable InRelease\n  The following signatures were invalid: EXPKEYSIG 1234\n"
-           "E: The repository 'https://dl.example.org/deb stable InRelease' is not signed.\n")
-H.UPDATE_STATE.write_text(json.dumps({"checks": [
-    H._check("python", False, H.M("update.verify.python.title", "Python files compile"),
-             H.M("update.verify.python.failed", {"one": "{n} Python file does not compile.", "other": "{n} Python files do not compile."}, n=1),
-             evidence=["irate_box/x.py: invalid syntax (x.py, line 1)"]),
-    {"name": "install.sh parses", "ok": False, "detail": "line 3: syntax error", "warn": False},   # kept from before the messages
-    {"name": "A warning only", "ok": False, "detail": "", "warn": True}]}))
+apt_out = (
+    "Err:5 https://dl.example.org/deb stable InRelease\n  The following signatures were invalid: EXPKEYSIG 1234\n"
+    "E: The repository 'https://dl.example.org/deb stable InRelease' is not signed.\n"
+)
+H.UPDATE_STATE.write_text(
+    json.dumps(
+        {
+            "checks": [
+                H._check(
+                    "python",
+                    False,
+                    H.M("update.verify.python.title", "Python files compile"),
+                    H.M(
+                        "update.verify.python.failed",
+                        {"one": "{n} Python file does not compile.", "other": "{n} Python files do not compile."},
+                        n=1,
+                    ),
+                    evidence=["irate_box/x.py: invalid syntax (x.py, line 1)"],
+                ),
+                {
+                    "name": "install.sh parses",
+                    "ok": False,
+                    "detail": "line 3: syntax error",
+                    "warn": False,
+                },  # kept from before the messages
+                {"name": "A warning only", "ok": False, "detail": "", "warn": True},
+            ]
+        }
+    )
+)
 fs = doctor(addrs=("192.168.4.1",), mine=("192.168.4.1",), connect=False, free_mb=100, apt=(100, apt_out))
-check("hotspot: the name leads to the box itself, said so, the address as evidence, Network the place to go",
-      fs["dns"]["status"] == "problem" and "update.dns.self" in msg_ids(fs["dns"]) and fs["dns"]["evidence"] == ["192.168.4.1"]
-      and fs["dns"]["go"]["section"] == "network", fs["dns"])
-check("  the connection failed: said with what one failed attempt does not show, the error as evidence",
-      {"update.connection.failed", "update.probe.note"} <= msg_ids(fs["connection"]) and fs["connection"]["evidence"] == ["timed out"], fs["connection"])
-check("  nothing that needs the connection is claimed (certificate, GitHub, branch)", not {"tls", "github-api", "repo", "clock"} & set(fs), sorted(fs))
-check("  space: both short, with how much is free and needed, and Books the place to make room",
-      msg_args(fs["space:system"], "update.space.low") == {"mb": 100, "need": 300} and msg_args(fs["space:cache"], "update.space.low") == {"mb": 100, "need": 200}
-      and fs["space:system"]["go"]["section"] == "books", fs["space:system"])
-check("  a stale cache lock: counted, named, Maintenance the place to clear it",
-    msg_args(fs["cache"], "update.cache.lock") == {"n": 1} and fs["cache"]["evidence"] == ["index.lock"] and fs["cache"]["go"]["section"] == "updoctor", fs["cache"])
-check("  apt fails: the failing source named, a command to find its list file, keep a copy before removing it",
-      "update.sources.failed" in msg_ids(fs["sources"]) and "update.sources.failed.fix" in msg_ids(fs["sources"])
-      and fs["sources"]["commands"] == ["grep -rlF dl.example.org /etc/apt/sources.list /etc/apt/sources.list.d/"]
-      and "https://dl.example.org/deb" in fs["sources"]["evidence"] and "safe place" in render(fs["sources"]["fix"]), fs["sources"])
+check(
+    "hotspot: the name leads to the box itself, said so, the address as evidence, Network the place to go",
+    fs["dns"]["status"] == "problem"
+    and "update.dns.self" in msg_ids(fs["dns"])
+    and fs["dns"]["evidence"] == ["192.168.4.1"]
+    and fs["dns"]["go"]["section"] == "network",
+    fs["dns"],
+)
+check(
+    "  the connection failed: said with what one failed attempt does not show, the error as evidence",
+    {"update.connection.failed", "update.probe.note"} <= msg_ids(fs["connection"])
+    and fs["connection"]["evidence"] == ["timed out"],
+    fs["connection"],
+)
+check(
+    "  nothing that needs the connection is claimed (certificate, GitHub, branch)",
+    not {"tls", "github-api", "repo", "clock"} & set(fs),
+    sorted(fs),
+)
+check(
+    "  space: both short, with how much is free and needed, and Books the place to make room",
+    msg_args(fs["space:system"], "update.space.low") == {"mb": 100, "need": 300}
+    and msg_args(fs["space:cache"], "update.space.low") == {"mb": 100, "need": 200}
+    and fs["space:system"]["go"]["section"] == "books",
+    fs["space:system"],
+)
+check(
+    "  a stale cache lock: counted, named, Maintenance the place to clear it",
+    msg_args(fs["cache"], "update.cache.lock") == {"n": 1}
+    and fs["cache"]["evidence"] == ["index.lock"]
+    and fs["cache"]["go"]["section"] == "updoctor",
+    fs["cache"],
+)
+check(
+    "  apt fails: the failing source named, a command to find its list file, keep a copy before removing it",
+    "update.sources.failed" in msg_ids(fs["sources"])
+    and "update.sources.failed.fix" in msg_ids(fs["sources"])
+    and fs["sources"]["commands"] == ["grep -rlF dl.example.org /etc/apt/sources.list /etc/apt/sources.list.d/"]
+    and "https://dl.example.org/deb" in fs["sources"]["evidence"]
+    and "safe place" in render(fs["sources"]["fix"]),
+    fs["sources"],
+)
 lc = fs.get("last-check", {})
-check("  the last download's failed checks: counted (a warning is not), each said, the new by its message, the old by its words",
-      msg_args(lc, "update.last-check.failed") == {"n": 2} and any(is_message(n) and n["id"] == "update.last-check.item" for n in lc["notes"])
-    and "install.sh parses: line 3: syntax error" in lc["notes"] and any("x.py" in e for e in lc["evidence"]) and lc.get("go") is None, lc)
+check(
+    "  the last download's failed checks: counted (a warning is not), each said, the new by its message, the old by its words",
+    msg_args(lc, "update.last-check.failed") == {"n": 2}
+    and any(is_message(n) and n["id"] == "update.last-check.item" for n in lc["notes"])
+    and "install.sh parses: line 3: syntax error" in lc["notes"]
+    and any("x.py" in e for e in lc["evidence"])
+    and lc.get("go") is None,
+    lc,
+)
 check("  every finding well said", not well_said(fs), well_said(fs))
 
 # The certificate refused; GitHub's rate used up; the branch gone; the clock two hours fast.
 H.UPDATE_STATE.unlink()
 fs = doctor(tls_error=ssl.SSLError("CERTIFICATE_VERIFY_FAILED"), remaining=0, heads="")
-check("a certificate refused: said, the possible causes a note, the clock the place to look first",
-      {"update.tls.failed", "update.tls.failed.causes", "update.tls.failed.fix"} <= msg_ids(fs["tls"]) and fs["tls"]["go"]["section"] == "clock", fs["tls"])
-check("  the rate limit used up: how long to wait, and the token's setting marked",
-      (msg_args(fs["github-api"], "update.github-api.used-up.fix") or {}).get("n") in (29, 30)
-      and fs["github-api"]["go"] == {"section": "sources", "where": H.GO_TOKEN["where"], "mark": "library-token"}, fs["github-api"])
-check("  a branch that is not there: Branch not found, with the repository and the branch as data",
-      msg_args(fs["repo"], "update.repo.no-branch") == {"repo": "https://example.invalid/irate-box", "branch": "main"}, fs["repo"])
+check(
+    "a certificate refused: said, the possible causes a note, the clock the place to look first",
+    {"update.tls.failed", "update.tls.failed.causes", "update.tls.failed.fix"} <= msg_ids(fs["tls"])
+    and fs["tls"]["go"]["section"] == "clock",
+    fs["tls"],
+)
+check(
+    "  the rate limit used up: how long to wait, and the token's setting marked",
+    (msg_args(fs["github-api"], "update.github-api.used-up.fix") or {}).get("n") in (29, 30)
+    and fs["github-api"]["go"] == {"section": "sources", "where": H.GO_TOKEN["where"], "mark": "library-token"},
+    fs["github-api"],
+)
+check(
+    "  a branch that is not there: Branch not found, with the repository and the branch as data",
+    msg_args(fs["repo"], "update.repo.no-branch") == {"repo": "https://example.invalid/irate-box", "branch": "main"},
+    fs["repo"],
+)
 fs = doctor(date=time.time() - 7200)
-check("a clock two hours ahead: said with how far, the command to set it to copy, Clock the place",
-      msg_args(fs["clock"], "update.clock.ahead")["host"] == "github.com"
-      and abs(msg_args(fs["clock"], "update.clock.ahead")["gap"]["seconds"] - 7200) < 60 and fs["clock"]["commands"] == [H.CLOCK_SET]
-      and fs["clock"]["go"]["section"] == "clock", fs["clock"])
+check(
+    "a clock two hours ahead: said with how far, the command to set it to copy, Clock the place",
+    msg_args(fs["clock"], "update.clock.ahead")["host"] == "github.com"
+    and abs(msg_args(fs["clock"], "update.clock.ahead")["gap"]["seconds"] - 7200) < 60
+    and fs["clock"]["commands"] == [H.CLOCK_SET]
+    and fs["clock"]["go"]["section"] == "clock",
+    fs["clock"],
+)
 
 # No install options, and no names at all.
 OPTIONS.unlink()
 fs = doctor(addrs=None)
-check("no install options: said, with why and what to do", {"update.options.none", "update.options.none.why", "update.options.none.fix"} <= msg_ids(fs["options"]), fs["options"])
-check("  no name lookup: said, with what one failure does not show", {"update.dns.failed", "update.probe.note"} <= msg_ids(fs["dns"])
-      and fs["dns"]["evidence"] == ["Temporary failure in name resolution"], fs["dns"])
+check(
+    "no install options: said, with why and what to do",
+    {"update.options.none", "update.options.none.why", "update.options.none.fix"} <= msg_ids(fs["options"]),
+    fs["options"],
+)
+check(
+    "  no name lookup: said, with what one failure does not show",
+    {"update.dns.failed", "update.probe.note"} <= msg_ids(fs["dns"])
+    and fs["dns"]["evidence"] == ["Temporary failure in name resolution"],
+    fs["dns"],
+)
 OPTIONS.write_text("--branch\nmain\n")
 fs = doctor()
-check("options with no repository: a problem of its own, not 'updates come from None'", "update.options.no-repo" in msg_ids(fs["options"])
-      and fs["options"]["status"] == "problem", fs["options"])
+check(
+    "options with no repository: a problem of its own, not 'updates come from None'",
+    "update.options.no-repo" in msg_ids(fs["options"]) and fs["options"]["status"] == "problem",
+    fs["options"],
+)
 OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
 
 # The doctor's own answer, and its report.
@@ -276,14 +472,25 @@ said = H.update_doctor({})
 for p in patches:
     p.stop()
 rep = json.loads(H.DOCTOR_STATE.read_text())
-check("update_doctor: its answer a message, the report written with the findings in the shared shape",
-      said["id"] in ("update.doctor.none", "update.doctor.problems") and all("summary" in f and "title" in f for f in rep["findings"]), (said, rep))
+check(
+    "update_doctor: its answer a message, the report written with the findings in the shared shape",
+    said["id"] in ("update.doctor.none", "update.doctor.problems")
+    and all("summary" in f and "title" in f for f in rep["findings"]),
+    (said, rep),
+)
 
 # The answers the update actions give: messages, the result file keeping the English beside them.
-H.answer("r1", True, H.M("update.cache.cleared", "The update cache is cleared. The next check starts again from the beginning."))
+H.answer(
+    "r1",
+    True,
+    H.M("update.cache.cleared", "The update cache is cleared. The next check starts again from the beginning."),
+)
 r = json.loads((H.RESULTS / "r1.json").read_text())
-check("a result: the English as message (every reader of results expects text), the message beside it",
-      r["message"].startswith("The update cache is cleared.") and r["msg"]["id"] == "update.cache.cleared", r)
+check(
+    "a result: the English as message (every reader of results expects text), the message beside it",
+    r["message"].startswith("The update cache is cleared.") and r["msg"]["id"] == "update.cache.cleared",
+    r,
+)
 H.answer("r2", False, "a plain refusal")
 r = json.loads((H.RESULTS / "r2.json").read_text())
 check("  a plain string: as before, no msg", r["message"] == "a plain refusal" and "msg" not in r, r)
@@ -292,14 +499,28 @@ try:
     refusal = None
 except H.Refused as exc:
     refusal = exc
-check("Install with nothing downloaded: refused by message, its English the exception's text",
-      refusal and refusal.message["id"] == "update.install.none" and str(refusal) == render(refusal.message), refusal)
-state = {"up_to_date": False, "verified": None, "available": "abc1234", "branch": "main", "changes": ["a", "b", "c"], "changes_known": True}
+check(
+    "Install with nothing downloaded: refused by message, its English the exception's text",
+    refusal and refusal.message["id"] == "update.install.none" and str(refusal) == render(refusal.message),
+    refusal,
+)
+state = {
+    "up_to_date": False,
+    "verified": None,
+    "available": "abc1234",
+    "branch": "main",
+    "changes": ["a", "b", "c"],
+    "changes_known": True,
+}
 with mock.patch.object(H, "_check_for_update", lambda progress: (dict(state), [])):
     said = H.update_check({})
-check("a check that finds an update: Update available, with the count of new commits as a plural",
-      said["id"] == "update.check.new" and said["args"] == {"commit": "abc1234", "branch": "main", "n": 3}
-      and render(said) == "Update available: abc1234 on main, with 3 new commits. Download it to verify it.", said)
+check(
+    "a check that finds an update: Update available, with the count of new commits as a plural",
+    said["id"] == "update.check.new"
+    and said["args"] == {"commit": "abc1234", "branch": "main", "n": 3}
+    and render(said) == "Update available: abc1234 on main, with 3 new commits. Download it to verify it.",
+    said,
+)
 with mock.patch.object(H, "_check_for_update", lambda progress: (dict(state, changes_known=False), [])):
     said = H.update_check({})
 check("  from a history it cannot count: a different version, said as that", said["id"] == "update.check.other", said)
@@ -315,18 +536,43 @@ src = T / "src"
 (src / "irate_box" / "good.py").write_text("x = 1\n")
 (src / "irate_box" / "bad.py").write_text("def (:\n")
 checks = {c["id"]: c for c in H.verify_update(src, None, [])}
-check("verification: each check by its ID", {"parses:install.sh", "parses:uninstall.sh", "python", "nginx"} <= set(checks), sorted(checks))
-check("  a script that parses, and one that does not, with the shell's line as evidence",
-      checks["parses:install.sh"]["ok"] and not checks["parses:uninstall.sh"]["ok"] and checks["parses:uninstall.sh"]["evidence"]
-      and checks["parses:uninstall.sh"]["detail"]["id"] == "update.verify.parses.failed", checks["parses:uninstall.sh"])
-check("  a Python file that does not compile: counted, named in the evidence",
-      not checks["python"]["ok"] and checks["python"]["detail"]["args"] == {"n": 1} and "irate_box/bad.py" in checks["python"]["evidence"][0], checks["python"])
-check("  the nginx site missing from the update: said, the file as evidence",
-      checks["nginx"]["detail"]["id"] == "update.verify.nginx.missing" and checks["nginx"]["evidence"] == ["config/irate-box.nginx"], checks["nginx"])
+check(
+    "verification: each check by its ID",
+    {"parses:install.sh", "parses:uninstall.sh", "python", "nginx"} <= set(checks),
+    sorted(checks),
+)
+check(
+    "  a script that parses, and one that does not, with the shell's line as evidence",
+    checks["parses:install.sh"]["ok"]
+    and not checks["parses:uninstall.sh"]["ok"]
+    and checks["parses:uninstall.sh"]["evidence"]
+    and checks["parses:uninstall.sh"]["detail"]["id"] == "update.verify.parses.failed",
+    checks["parses:uninstall.sh"],
+)
+check(
+    "  a Python file that does not compile: counted, named in the evidence",
+    not checks["python"]["ok"]
+    and checks["python"]["detail"]["args"] == {"n": 1}
+    and "irate_box/bad.py" in checks["python"]["evidence"][0],
+    checks["python"],
+)
+check(
+    "  the nginx site missing from the update: said, the file as evidence",
+    checks["nginx"]["detail"]["id"] == "update.verify.nginx.missing"
+    and checks["nginx"]["evidence"] == ["config/irate-box.nginx"],
+    checks["nginx"],
+)
 (src / "irate_box" / "bad.py").unlink()
 py = next(c for c in H.verify_update(src, None, []) if c["id"] == "python")
-check("  Python that compiles: passed, with what compiling does not prove", py["ok"] and py["note"]["id"] == "update.verify.limited", py)
-check("  every check's words said in full", all("{" not in render(c[k]) for c in checks.values() for k in ("name", "detail", "fix") if c.get(k)))
+check(
+    "  Python that compiles: passed, with what compiling does not prove",
+    py["ok"] and py["note"]["id"] == "update.verify.limited",
+    py,
+)
+check(
+    "  every check's words said in full",
+    all("{" not in render(c[k]) for c in checks.values() for k in ("name", "detail", "fix") if c.get(k)),
+)
 
 (src / "config").mkdir()
 (src / "config" / "irate-box.nginx").write_text((REPO / "config" / "irate-box.nginx").read_text())
@@ -339,7 +585,9 @@ def nginx_scratch_check(*cmd, **kwargs):
     readable = bool(includes) and all(path.stat().st_mode & 0o004 for path in includes)
     traversable = all(path.stat().st_mode & 0o001 for path in (scratch, scratch / "tls"))
     nginx_permissions.append(readable and traversable)
-    return subprocess.CompletedProcess(cmd, 0 if readable and traversable else 1, "", "[emerg] TLS include permission denied")
+    return subprocess.CompletedProcess(
+        cmd, 0 if readable and traversable else 1, "", "[emerg] TLS include permission denied"
+    )
 
 
 previous_umask = os.umask(0o077)
@@ -348,23 +596,38 @@ try:
         nginx = H._nginx_check(src, [])
 finally:
     os.umask(previous_umask)
-check("  nginx TLS includes stay readable to the unprivileged checker under umask 077",
-      nginx["ok"] and nginx_permissions == [True], nginx)
+check(
+    "  nginx TLS includes stay readable to the unprivileged checker under umask 077",
+    nginx["ok"] and nginx_permissions == [True],
+    nginx,
+)
 with mock.patch.object(H, "run", return_value=subprocess.CompletedProcess([], 1, "", "[emerg] unknown directive")):
     rejected = H._nginx_check(src, [])
-check("nginx preflight rejection is advisory, not a security gate", rejected["warn"] and rejected["outcome"] == "rejected", rejected)
+check(
+    "nginx preflight rejection is advisory, not a security gate",
+    rejected["warn"] and rejected["outcome"] == "rejected",
+    rejected,
+)
 with mock.patch.object(H, "run", side_effect=FileNotFoundError("nginx")):
     inconclusive = H._nginx_check(src, [])
-check("an unavailable preflight is distinguished from a rejected candidate", inconclusive["warn"] and inconclusive["outcome"] == "inconclusive", inconclusive)
+check(
+    "an unavailable preflight is distinguished from a rejected candidate",
+    inconclusive["warn"] and inconclusive["outcome"] == "inconclusive",
+    inconclusive,
+)
 
 import shutil  # noqa: E402
+
 from irate_box.root import nginx_front  # noqa: E402
 
 render_values = nginx_front.settings_from_env()
 rendered = nginx_front.render((REPO / "config/irate-box.nginx").read_text(), render_values)
 check("target renderer fills every declared placeholder", not nginx_front.TOKENS.search(rendered))
 check("target renderer uses real configured ports", f"https {render_values['TLS_PORT']}" in rendered)
-check("IPv6-disabled rendering drops only IPv6 listeners", nginx_front.render("listen [::]:80;\nlisten 80;\n", {}, ipv6=False) == "listen 80;\n")
+check(
+    "IPv6-disabled rendering drops only IPv6 listeners",
+    nginx_front.render("listen [::]:80;\nlisten 80;\n", {}, ipv6=False) == "listen 80;\n",
+)
 for bad_values, bad_template in [
     (dict(render_values, PORT="0"), "listen @PORT@;"),
     (dict(render_values, STATIC="/tmp/unsafe;include /secret"), "root @STATIC@;"),
@@ -379,7 +642,10 @@ private_stage = T / "private-stage"
 private_stage.mkdir(mode=0o700)
 bundle = nginx_front.prepare(REPO / "config/irate-box.nginx", private_stage, render_values, "a" * 40)
 manifest, site = nginx_front.read_bundle(bundle)
-check("staged bundle records protocol, full source and restrictive modes", manifest["protocol"] == 1 and manifest["source"] == "a" * 40 and site.stat().st_mode & 0o077 == 0)
+check(
+    "staged bundle records protocol, full source and restrictive modes",
+    manifest["protocol"] == 1 and manifest["source"] == "a" * 40 and site.stat().st_mode & 0o077 == 0,
+)
 site.write_text("changed")
 try:
     nginx_front.read_bundle(bundle)
@@ -407,8 +673,13 @@ old_site.write_text("new")
 old_link.unlink()
 new_file.write_text("new")
 nginx_front.recover(transaction)
-check("interrupted activation restores content, modes, links and prior nonexistence",
-    old_site.read_text() == "old" and old_site.stat().st_mode & 0o777 == 0o640 and old_link.is_symlink() and not new_file.exists())
+check(
+    "interrupted activation restores content, modes, links and prior nonexistence",
+    old_site.read_text() == "old"
+    and old_site.stat().st_mode & 0o777 == 0o640
+    and old_link.is_symlink()
+    and not new_file.exists(),
+)
 check("transaction recovery is idempotent", nginx_front.recover(transaction) is False)
 
 for failure in ("none", "validation", "reload", "health", "candidate", "rollback"):
@@ -422,7 +693,11 @@ for failure in ("none", "validation", "reload", "health", "candidate", "rollback
 
     def activate(*argv):
         commands.append(argv)
-        failed = (failure in ("validation", "rollback") and len(commands) == 1) or (failure == "reload" and argv[1] == "reload") or (failure == "rollback" and argv[1] == "reload-or-restart")
+        failed = (
+            (failure in ("validation", "rollback") and len(commands) == 1)
+            or (failure == "reload" and argv[1] == "reload")
+            or (failure == "rollback" and argv[1] == "reload-or-restart")
+        )
         return subprocess.CompletedProcess(argv, int(failed), "", "injected failure" if failed else "")
 
     def probe(values):
@@ -434,11 +709,20 @@ for failure in ("none", "validation", "reload", "health", "candidate", "rollback
         old_site.write_text("tampered")
     try:
         nginx_front.finish(directory, prepared, render_values, runner=activate, probe=probe)
-        check("activation succeeds only with an unchanged healthy candidate", failure == "none" and nginx_front.transaction_state(directory)["state"] == "committed")
+        check(
+            "activation succeeds only with an unchanged healthy candidate",
+            failure == "none" and nginx_front.transaction_state(directory)["state"] == "committed",
+        )
     except ValueError:
         state = nginx_front.transaction_state(directory)["state"]
-        check("activation failure restores the previous files: " + failure, failure != "none" and old_site.read_text() == "old")
-        check("rollback outcome is explicit: " + failure, state == ("recovery-required" if failure == "rollback" else "restored"))
+        check(
+            "activation failure restores the previous files: " + failure,
+            failure != "none" and old_site.read_text() == "old",
+        )
+        check(
+            "rollback outcome is explicit: " + failure,
+            state == ("recovery-required" if failure == "rollback" else "restored"),
+        )
     old_site.write_text("old")
 
 pipeline_state = {"available": candidate[:7], "available_sha": candidate, "up_to_date": False, "branch": "main"}
@@ -456,15 +740,26 @@ def pipeline_fetch(req):
     return H.M("test.download", "Downloaded.")
 
 
-with mock.patch.object(H, "update_check", pipeline_check), mock.patch.object(H, "update_fetch", pipeline_fetch), \
-        mock.patch.object(H, "update_install", lambda req: pipeline_calls.append("install")), \
-        mock.patch.object(H, "_git", return_value=candidate):
+with (
+    mock.patch.object(H, "update_check", pipeline_check),
+    mock.patch.object(H, "update_fetch", pipeline_fetch),
+    mock.patch.object(H, "update_install", lambda req: pipeline_calls.append("install")),
+    mock.patch.object(H, "_git", return_value=candidate),
+):
     H.UPDATE_STATE.unlink(missing_ok=True)
     H.update_reach({"endpoint": "install"})
-    check("combined install checks, downloads and installs in order", pipeline_calls == ["check", "download", "install"], pipeline_calls)
+    check(
+        "combined install checks, downloads and installs in order",
+        pipeline_calls == ["check", "download", "install"],
+        pipeline_calls,
+    )
     pipeline_calls.clear()
     H.update_reach({"endpoint": "install", "candidate": candidate})
-    check("downloaded candidate installs without repeating completed stages", pipeline_calls == ["install"], pipeline_calls)
+    check(
+        "downloaded candidate installs without repeating completed stages",
+        pipeline_calls == ["install"],
+        pipeline_calls,
+    )
     pipeline_calls.clear()
     try:
         H.update_reach({"endpoint": "install", "candidate": "b" * 40})
@@ -489,7 +784,11 @@ if os.environ.get("IRATE_NGINX"):
 
     class Backend(BaseHTTPRequestHandler):
         def do_GET(self):
-            body = json.dumps({"proxied": "X-Forwarded-For" in self.headers, "version": "test"}).encode() if self.path == "/status" else b"<html>healthy</html>"
+            body = (
+                json.dumps({"proxied": "X-Forwarded-For" in self.headers, "version": "test"}).encode()
+                if self.path == "/status"
+                else b"<html>healthy</html>"
+            )
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -521,21 +820,71 @@ if os.environ.get("IRATE_NGINX"):
             Path(values["FRONT"]).write_text('proxy_set_header X-Irate-Front "test";\n')
             Path(values["HTPASSWD"]).write_text("admin:unused\n")
             certificate, key = live / "cert.pem", live / "key.pem"
-            subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1", "-keyout", str(key), "-out", str(certificate)], check=True, capture_output=True)
-            names = {"main": "", "addons": "ADDON_", "notes": "NOTES_", "wiki": "WIKI_", "git": "GIT_", "notebook": "NOTEBOOK_"}
-            with mock.patch.multiple(tls, FRONT=front, CHAIN=certificate, KEY=key, PLAIN_PORTS={name: int(values[prefix + "PORT"]) for name, prefix in names.items()}, TWINS={name: int(values[prefix + "TLS_PORT"]) for name, prefix in names.items()}), mock.patch.object(tls, "settings", return_value={"transport": transport, "admin_http": "allow"}):
+            subprocess.run(
+                [
+                    "openssl",
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "ec",
+                    "-pkeyopt",
+                    "ec_paramgen_curve:P-256",
+                    "-nodes",
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=localhost",
+                    "-addext",
+                    "subjectAltName=DNS:localhost,IP:127.0.0.1",
+                    "-keyout",
+                    str(key),
+                    "-out",
+                    str(certificate),
+                ],
+                check=True,
+                capture_output=True,
+            )
+            names = {
+                "main": "",
+                "addons": "ADDON_",
+                "notes": "NOTES_",
+                "wiki": "WIKI_",
+                "git": "GIT_",
+                "notebook": "NOTEBOOK_",
+            }
+            with (
+                mock.patch.multiple(
+                    tls,
+                    FRONT=front,
+                    CHAIN=certificate,
+                    KEY=key,
+                    PLAIN_PORTS={name: int(values[prefix + "PORT"]) for name, prefix in names.items()},
+                    TWINS={name: int(values[prefix + "TLS_PORT"]) for name, prefix in names.items()},
+                ),
+                mock.patch.object(tls, "settings", return_value={"transport": transport, "admin_http": "allow"}),
+            ):
                 generated = tls._plain_files(transport, "allow")
                 if transport != "http":
                     generated.update(tls._front_files())
                 for path, text in generated.items():
                     path.write_text(text)
                 template = live / "template"
-                template.write_text((REPO / "config/irate-box.nginx").read_text().replace("127.0.0.1:8000", f"127.0.0.1:{backend.server_port}").replace("/etc/nginx/fastcgi_params", str(Path(os.environ.get("IRATE_NGINX_CONF_DIR", "/etc/nginx")) / "fastcgi_params")))
+                template.write_text(
+                    (REPO / "config/irate-box.nginx")
+                    .read_text()
+                    .replace("127.0.0.1:8000", f"127.0.0.1:{backend.server_port}")
+                    .replace(
+                        "/etc/nginx/fastcgi_params",
+                        str(Path(os.environ.get("IRATE_NGINX_CONF_DIR", "/etc/nginx")) / "fastcgi_params"),
+                    )
+                )
                 prior_bundle = nginx_front.prepare(template, private_stage, values, "old")
                 deployed = live / "site.conf"
                 deployed.write_bytes((prior_bundle / "site.conf").read_bytes())
                 configuration = live / "nginx.conf"
-                configuration.write_text(f"user {pwd.getpwuid(os.getuid()).pw_name};\npid {live}/nginx.pid;\nerror_log {live}/error.log;\nevents {{}}\nhttp {{ access_log off; client_body_temp_path {live}/body; proxy_temp_path {live}/proxy; fastcgi_temp_path {live}/fastcgi; uwsgi_temp_path {live}/uwsgi; scgi_temp_path {live}/scgi; include {deployed}; }}\n")
+                configuration.write_text(
+                    f"user {pwd.getpwuid(os.getuid()).pw_name};\npid {live}/nginx.pid;\nerror_log {live}/error.log;\nevents {{}}\nhttp {{ access_log off; client_body_temp_path {live}/body; proxy_temp_path {live}/proxy; fastcgi_temp_path {live}/fastcgi; uwsgi_temp_path {live}/uwsgi; scgi_temp_path {live}/scgi; include {deployed}; }}\n"
+                )
                 command = [os.environ["IRATE_NGINX"], "-p", str(live), "-c", str(configuration)]
 
                 def real_run(*arguments):
@@ -572,7 +921,11 @@ if os.environ.get("IRATE_NGINX"):
                             nginx_front.finish(journal, prepared, values, runner=real_run, probe=live_probe)
                             check("real nginx activates all origins in " + transport, fault == "none")
                         except ValueError as error:
-                            check("real nginx rollback: " + transport + "/" + fault, fault != "none" and nginx_front.transaction_state(journal)["state"] == "restored", str(error))
+                            check(
+                                "real nginx rollback: " + transport + "/" + fault,
+                                fault != "none" and nginx_front.transaction_state(journal)["state"] == "restored",
+                                str(error),
+                            )
                         if fault == "syntax":
                             template.write_text(template.read_text().replace("\ninvalid_directive;\n", ""))
                 finally:

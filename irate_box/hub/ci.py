@@ -42,7 +42,7 @@ from irate_box import confine
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
-ROOT =Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
+ROOT = Path(os.environ.get("HUB_CI_ROOT", "/var/lib/hub/ci"))
 # Builds come only from here: the queue is writable by the hub, and guests may push to public repos.
 PRIVATE = Path(os.environ.get("HUB_GIT_PRIVATE", ROOT.parent / "git" / "private"))
 # The librarian's mirrors (mirrors.py): upstream URL -> the local repository. Builds fetch from
@@ -158,7 +158,9 @@ fi
 """
 
 TEMPLATES = {
-    "meshtasticd": {"title": "Meshtastic firmware: meshtasticd (native)", "script": """#!/bin/bash
+    "meshtasticd": {
+        "title": "Meshtastic firmware: meshtasticd (native)",
+        "script": """#!/bin/bash
 # .irate-ci.sh: build meshtasticd (PlatformIO env "native") on the box. The source is cloned from
 # GitHub's URL, which this box rewrites to its own mirror (Library -> Mirrors), so no internet is
 # needed once the mirror and PlatformIO are in place. Needs the Building kit: its PlatformIO is
@@ -171,28 +173,40 @@ set -euo pipefail
 # What to build: the release the library's build cache is for, which needs no internet, or develop
 # (anything it needs that the cache lacks is downloaded). Set FW_REF to choose.
 FW_REF=${CI_PIO_DEPS_TAG:-develop}
-""" + _PIO_PICK + """[ -d "$HOME/fw/.git" ] || git clone -q --depth 50 https://github.com/meshtastic/firmware "$HOME/fw"
+"""
+        + _PIO_PICK
+        + """[ -d "$HOME/fw/.git" ] || git clone -q --depth 50 https://github.com/meshtastic/firmware "$HOME/fw"
 cd "$HOME/fw"
 git fetch -q --depth 50 origin "$FW_REF" && git checkout -q FETCH_HEAD
 git submodule update -q --init --depth 1
 PIO_ENV=native PIO_ENV_FAMILY=native
-""" + _PIO_SEED + _PIO_BUILD + """echo "== keeping the program"
+"""
+        + _PIO_SEED
+        + _PIO_BUILD
+        + """echo "== keeping the program"
 cp .pio/build/native/meshtasticd "$CI_ARTIFACTS/" 2>/dev/null || cp .pio/build/native/program "$CI_ARTIFACTS/meshtasticd"
-"""},
-    "make": {"title": "Run make", "script": """#!/bin/bash
+""",
+    },
+    "make": {
+        "title": "Run make",
+        "script": """#!/bin/bash
 # .irate-ci.sh: run make, and keep what it builds in out/. Needs the Building kit.
 set -eu
 echo "== building"
 make -j"$(nproc)"
 echo "== keeping the results"
 [ -d out ] && cp -r out/. "$CI_ARTIFACTS/" || true
-"""},
-    "python-test": {"title": "Run a Python test", "script": """#!/bin/bash
+""",
+    },
+    "python-test": {
+        "title": "Run a Python test",
+        "script": """#!/bin/bash
 # .irate-ci.sh: run the repository's tests with the standard library's unittest, and keep a report.
 set -eu
 echo "== testing ($CI_BRANCH at ${CI_COMMIT:0:7})"
 python3 -m unittest discover -v 2>&1 | tee "$CI_ARTIFACTS/test-report.txt"
-"""},
+""",
+    },
 }
 
 
@@ -235,10 +249,18 @@ def queue_build(repo, branch=None):
         raise Refused(M("ci.branch.invalid", "Select a valid branch."))
     commit = _git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}", cwd=repo).stdout.strip()
     if not commit:
-        raise Refused(M("ci.branch.not-found", "Branch not found. {repo} has no branch {branch}.", repo=repo.name, branch=branch))
+        raise Refused(
+            M("ci.branch.not-found", "Branch not found. {repo} has no branch {branch}.", repo=repo.name, branch=branch)
+        )
     if _git("cat-file", "-e", f"{commit}:{SCRIPT}", cwd=repo).returncode != 0:
-        raise Refused(M("ci.script.missing", "Build script missing. The newest commit of {branch} has no {script} at its top.",
-                        branch=branch, script=SCRIPT))
+        raise Refused(
+            M(
+                "ci.script.missing",
+                "Build script missing. The newest commit of {branch} has no {script} at its top.",
+                branch=branch,
+                script=SCRIPT,
+            )
+        )
     QUEUE.mkdir(parents=True, exist_ok=True)
     _put({"repo": str(repo), "branch": branch, "commit": commit, "queued": time.time(), "by": "build-now"})
     return {"branch": branch, "commit": commit}
@@ -278,8 +300,16 @@ def run_view(run, offset=0, limit=64 * 1024):
     for p in sorted(adir.iterdir()) if adir.is_dir() else []:
         if p.is_file() and not p.is_symlink():
             arts.append({"name": p.name, "size": p.stat().st_size})
-    return {"run": run, "status": status, "log": text, "offset": offset, "next": offset + len(text.encode("utf-8")), "size": size,
-            "steps": steps, "artifacts": arts}
+    return {
+        "run": run,
+        "status": status,
+        "log": text,
+        "offset": offset,
+        "next": offset + len(text.encode("utf-8")),
+        "size": size,
+        "steps": steps,
+        "artifacts": arts,
+    }
 
 
 def _git(*args, cwd=None, timeout=600):
@@ -296,7 +326,7 @@ def use_mirrors():
     have = _git("config", "--global", "--get-regexp", r"^url\..*\.insteadof$").stdout.splitlines()
     for line in have:
         key, _, upstream = line.partition(" ")
-        local = key[len("url."):-len(".insteadof")]
+        local = key[len("url.") : -len(".insteadof")]
         if local.startswith("file://") and urls.get(upstream) != local:
             _git("config", "--global", "--unset-all", key, f"^{re.escape(upstream)}$")
     for upstream, local in urls.items():
@@ -325,7 +355,7 @@ def enqueue(stdin=sys.stdin, repo_dir=None):
             continue
         if _git("cat-file", "-e", f"{new}:{SCRIPT}", cwd=repo).returncode != 0:
             continue
-        job = {"repo": str(repo), "branch": ref[len("refs/heads/"):], "commit": new, "queued": time.time()}
+        job = {"repo": str(repo), "branch": ref[len("refs/heads/") :], "commit": new, "queued": time.time()}
         name = f"{time.time_ns()}-{secrets.token_hex(3)}.json"
         tmp = QUEUE / f".{name}"
         tmp.write_text(json.dumps(job))
@@ -380,14 +410,24 @@ def build(job):
     run = repo_runs / str(_next_number(repo_runs))
     (run / "artifacts").mkdir(parents=True)
     started = time.time()
-    _write_status(run, repo=name, branch=job["branch"], commit=job["commit"], queued=job["queued"],
-                  started=started, state="running", **({"by": job["by"]} if job.get("by") in ("build-now",) else {}))
+    _write_status(
+        run,
+        repo=name,
+        branch=job["branch"],
+        commit=job["commit"],
+        queued=job["queued"],
+        started=started,
+        state="running",
+        **({"by": job["by"]} if job.get("by") in ("build-now",) else {}),
+    )
     src = WORK / name
     shutil.rmtree(src, ignore_errors=True)
     with open(run / "log.txt", "w") as log:
+
         def say(text):
             log.write(f"== {text}\n")
             log.flush()
+
         say(f"{name} {job['branch']} {job['commit'][:7]}, on {os.uname().nodename}")
         state = "failed"
         try:
@@ -399,8 +439,14 @@ def build(job):
                 raise RuntimeError(f"Checkout failed: {out.stderr.strip()}")
             _git("submodule", "update", "--init", "--recursive", "--depth", "1", cwd=src, timeout=3600)
             say(f"running {SCRIPT} (time limit {TIME_LIMIT // 60} min)")
-            env = dict(os.environ, CI="1", CI_REPO=name, CI_BRANCH=job["branch"], CI_COMMIT=job["commit"],
-                       CI_ARTIFACTS=str(run / "artifacts"))
+            env = dict(
+                os.environ,
+                CI="1",
+                CI_REPO=name,
+                CI_BRANCH=job["branch"],
+                CI_COMMIT=job["commit"],
+                CI_ARTIFACTS=str(run / "artifacts"),
+            )
             deps = _pio_deps()
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
@@ -411,8 +457,15 @@ def build(job):
                 env["PIP_NO_INDEX"] = "1"
                 env["PIP_FIND_LINKS"] = str(wheelhouse)
                 say(f"PIP_FIND_LINKS={wheelhouse} (the Building kit's wheelhouse)")
-            proc = subprocess.run(["bash", SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
-                                  stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
+            proc = subprocess.run(
+                ["bash", SCRIPT],
+                cwd=src,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                timeout=TIME_LIMIT,
+            )
             state = "passed" if proc.returncode == 0 else "failed"
             say(f"{SCRIPT} exited with {proc.returncode}")
         except subprocess.TimeoutExpired:
@@ -422,8 +475,13 @@ def build(job):
             say(str(exc))
         finally:
             shutil.rmtree(src, ignore_errors=True)
-    _write_status(run, state=state, finished=time.time(), duration=round(time.time() - started),
-                  artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file()))
+    _write_status(
+        run,
+        state=state,
+        finished=time.time(),
+        duration=round(time.time() - started),
+        artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file()),
+    )
     prune(repo_runs)
 
 
@@ -431,7 +489,7 @@ def prune(repo_runs):
     """The newest keep_runs of a repository's runs, plus any marked keep."""
     runs = sorted((p for p in repo_runs.iterdir() if p.name.isdigit()), key=lambda p: int(p.name))
     loose = [p for p in runs if not _status(p).get("keep")]
-    for old in loose[:-settings()["keep_runs"]]:
+    for old in loose[: -settings()["keep_runs"]]:
         shutil.rmtree(old, ignore_errors=True)
 
 
@@ -478,6 +536,7 @@ def run_queue():
     run changes first, oldest first; then the Firmware Factory's, one at a time, in its order
     (factory.order: moved up, then the family built last, then the oldest)."""
     from irate_box.hub import factory  # it imports this module
+
     WORK.mkdir(exist_ok=True)
     prepare_git()
     while True:
@@ -506,7 +565,7 @@ def run_queue():
 
 # --- the Firmware Factory's builds (factory.py queues them) ------------------------------------
 
-FACTORY = "firmware-factory"     # runs/firmware-factory/<n>
+FACTORY = "firmware-factory"  # runs/firmware-factory/<n>
 # PlatformIO's build cache (PLATFORMIO_BUILD_CACHE_DIR, SCons' CacheDir): an object whose source and
 # whole command line were compiled before, by any target, is copied rather than compiled again, so
 # a run of builds goes faster than each alone. Meshtastic's flags are stable for a
@@ -524,7 +583,11 @@ def prune_build_cache(limit=None):
     """Oldest files out until the cache is under its limit. Returns (bytes before, bytes after)."""
     limit = BUILD_CACHE_MAX if limit is None else limit
     root = build_cache()
-    files = [(f.stat().st_mtime, f.stat().st_size, f) for f in root.rglob("*") if f.is_file() and not f.is_symlink()] if root.is_dir() else []
+    files = (
+        [(f.stat().st_mtime, f.stat().st_size, f) for f in root.rglob("*") if f.is_file() and not f.is_symlink()]
+        if root.is_dir()
+        else []
+    )
     before = total = sum(sz for _, sz, _ in files)
     for _, sz, f in sorted(files):
         if total <= limit:
@@ -532,18 +595,26 @@ def prune_build_cache(limit=None):
         f.unlink(missing_ok=True)
         total -= sz
     return before, total
-FACTORY_KEEP = 2                 # each target's newest runs kept (and any marked keep)
+
+
+FACTORY_KEEP = 2  # each target's newest runs kept (and any marked keep)
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 FAMILY_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 # What a target's build leaves that is worth keeping: flash images, update zips, UF2 and hex files,
 # and native's program. Not the .elf or the map.
 # .mt.json: the firmware's manifest of its files (bin/platformio-custom.py), what the web flasher reads.
 ARTIFACT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.(bin|uf2|hex|zip|mt\.json)$|^(meshtasticd|program)$")
-FIRMWARE_SCRIPT = """#!/bin/bash
+FIRMWARE_SCRIPT = (
+    """#!/bin/bash
 # A Firmware Factory build (factory.py): one PlatformIO environment, $FW_ENV, of a source cloned
 # from the box's own copy at the commit asked for; ci.py keeps its files and what it used.
 set -euo pipefail
-""" + _PIO_PICK + 'PIO_ENV=$FW_ENV PIO_ENV_FAMILY=$FW_FAMILY\n' + _PIO_SEED + _PIO_BUILD
+"""
+    + _PIO_PICK
+    + "PIO_ENV=$FW_ENV PIO_ENV_FAMILY=$FW_FAMILY\n"
+    + _PIO_SEED
+    + _PIO_BUILD
+)
 
 
 # An offline build (the Firmware Factory's "Test offline"): the submodules and the build run in a
@@ -628,6 +699,7 @@ class Usage(threading.Thread):
 
     def __enter__(self):
         import resource
+
         self.r0 = resource.getrusage(resource.RUSAGE_CHILDREN)
         self.t0, self.free0, self.net0 = time.time(), shutil.disk_usage(ROOT).free, self.network()
         self._sample()
@@ -636,6 +708,7 @@ class Usage(threading.Thread):
 
     def __exit__(self, *exc):
         import resource
+
         self.stop_ev.set()
         self._sample()
         r1 = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -646,9 +719,11 @@ class Usage(threading.Thread):
             "peak_memory": self.peak or r1.ru_maxrss * 1024,
             "read_bytes": (r1.ru_inblock - self.r0.ru_inblock) * 512,
             "written_bytes": (r1.ru_oublock - self.r0.ru_oublock) * 512,
-            "free_before": self.free0, "free_after": shutil.disk_usage(ROOT).free,
+            "free_before": self.free0,
+            "free_after": shutil.disk_usage(ROOT).free,
             "hottest": self.hottest,
-            "received": None if self.net0 is None or net1 is None else max(0, net1 - self.net0)}
+            "received": None if self.net0 is None or net1 is None else max(0, net1 - self.net0),
+        }
         return False
 
 
@@ -660,7 +735,9 @@ def build_firmware(job):
     if not (str(repo) in _mirror_paths() or repo.parent == PRIVATE.resolve()):
         return  # only the owner's mirrors and private repositories: never a guest's
     env_name, family = job.get("env", ""), job.get("family", "")
-    if not (ENV_RE.match(env_name) and FAMILY_RE.match(family) and re.fullmatch(r"[0-9a-f]{40}", job.get("commit", ""))):
+    if not (
+        ENV_RE.match(env_name) and FAMILY_RE.match(family) and re.fullmatch(r"[0-9a-f]{40}", job.get("commit", ""))
+    ):
         return
     runs = RUNS / FACTORY
     runs.mkdir(parents=True, exist_ok=True)
@@ -676,10 +753,14 @@ def build_firmware(job):
     shutil.rmtree(src, ignore_errors=True)
     state, usage, work_bytes = "failed", None, None
     with open(run / "log.txt", "w") as log:
+
         def say(text):
             log.write(f"== {text}\n")
             log.flush()
-        say(f"{job.get('source')} {job.get('ref')} ({job['commit'][:7]}): {env_name}, family {family}, on {os.uname().nodename}")
+
+        say(
+            f"{job.get('source')} {job.get('ref')} ({job['commit'][:7]}): {env_name}, family {family}, on {os.uname().nodename}"
+        )
         try:
             out = _git("clone", "--quiet", "--no-checkout", str(repo), str(src))
             if out.returncode != 0:
@@ -690,12 +771,21 @@ def build_firmware(job):
             if offline:
                 probe = subprocess.run([*OFFLINE, "true"], capture_output=True, text=True)
                 if probe.returncode != 0:
-                    raise RuntimeError(f"Environment check failed. This box cannot build without the network (unshare: {probe.stderr.strip()[:200]}).")
+                    raise RuntimeError(
+                        f"Environment check failed. This box cannot build without the network (unshare: {probe.stderr.strip()[:200]})."
+                    )
                 say("offline: no network at all (a network namespace of its own), from the submodules on")
-            out = subprocess.run([*netns, "git", "submodule", "update", "--init", "--recursive", "--depth", "1"], cwd=src,
-                                 capture_output=True, text=True, timeout=3600)
+            out = subprocess.run(
+                [*netns, "git", "submodule", "update", "--init", "--recursive", "--depth", "1"],
+                cwd=src,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+            )
             if offline and out.returncode != 0:
-                raise RuntimeError(f"Submodule download failed. The submodules need the network: {out.stderr.strip()[-300:]}")
+                raise RuntimeError(
+                    f"Submodule download failed. The submodules need the network: {out.stderr.strip()[-300:]}"
+                )
             # The project's .pio (its libraries, and what it built) kept outside the source, which is
             # removed after each run: a target's libraries stay for its next build, offline or not,
             # and a rebuild is incremental. As Meshtastic's build containers do (PLATFORMIO_WORKSPACE_DIR).
@@ -710,9 +800,18 @@ def build_firmware(job):
                 # An offline proof compiles everything: only the libraries and tools are taken as given.
                 shutil.rmtree(ws / "build" / env_name, ignore_errors=True)
                 say("offline: this target's earlier build output removed, so all of it is compiled now")
-            env = dict(os.environ, CI="1", CI_REPO=FACTORY, CI_BRANCH=str(job.get("ref")), CI_COMMIT=job["commit"],
-                       CI_ARTIFACTS=str(run / "artifacts"), FW_ENV=env_name, FW_FAMILY=family,
-                       FW_TOOLS_ONLY="1" if keep["tools_only"] else "", PLATFORMIO_WORKSPACE_DIR=str(ws))
+            env = dict(
+                os.environ,
+                CI="1",
+                CI_REPO=FACTORY,
+                CI_BRANCH=str(job.get("ref")),
+                CI_COMMIT=job["commit"],
+                CI_ARTIFACTS=str(run / "artifacts"),
+                FW_ENV=env_name,
+                FW_FAMILY=family,
+                FW_TOOLS_ONLY="1" if keep["tools_only"] else "",
+                PLATFORMIO_WORKSPACE_DIR=str(ws),
+            )
             env.pop("PLATFORMIO_BUILD_CACHE_DIR", None)
             if offline:
                 say("offline: no build cache either, so every object is compiled here and now")
@@ -731,10 +830,19 @@ def build_firmware(job):
                 if not keep["tools_only"]:
                     env["PIP_NO_INDEX"] = "1"
                 env["PIP_FIND_LINKS"] = str(wheelhouse)
-            say(f"{'fetching the tools for' if keep['tools_only'] else 'building'} {env_name} (time limit {TIME_LIMIT // 60} min)")
+            say(
+                f"{'fetching the tools for' if keep['tools_only'] else 'building'} {env_name} (time limit {TIME_LIMIT // 60} min)"
+            )
             with Usage() as usage:
-                proc = subprocess.run([*netns, "bash", "-c", FIRMWARE_SCRIPT], cwd=src, env=env, stdout=log, stderr=subprocess.STDOUT,
-                                      stdin=subprocess.DEVNULL, timeout=TIME_LIMIT)
+                proc = subprocess.run(
+                    [*netns, "bash", "-c", FIRMWARE_SCRIPT],
+                    cwd=src,
+                    env=env,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    timeout=TIME_LIMIT,
+                )
             state = "passed" if proc.returncode == 0 else "failed"
             built = ws / "build" / env_name
             kept = []
@@ -742,8 +850,13 @@ def build_firmware(job):
                 if f.is_file() and not f.is_symlink() and ARTIFACT_RE.match(f.name):
                     shutil.copy2(f, run / "artifacts" / f.name)
                     kept.append(f.name)
-            work_bytes = sum(f.stat().st_size for d in (ws / "build" / env_name, ws / "libdeps" / env_name) if d.is_dir()
-                             for f in d.rglob("*") if f.is_file() and not f.is_symlink())
+            work_bytes = sum(
+                f.stat().st_size
+                for d in (ws / "build" / env_name, ws / "libdeps" / env_name)
+                if d.is_dir()
+                for f in d.rglob("*")
+                if f.is_file() and not f.is_symlink()
+            )
             say(f"PlatformIO exited with {proc.returncode}; kept {', '.join(kept) or 'nothing'}")
         except subprocess.TimeoutExpired:
             state = "timed out"
@@ -756,7 +869,11 @@ def build_firmware(job):
     if res is not None:
         # PlatformIO's own folder afterwards: the toolchains and platforms every build shares.
         pio_home = Path(os.environ.get("HOME", "/nonexistent")) / ".platformio"
-        res["tools_bytes"] = sum(f.stat().st_size for f in pio_home.rglob("*") if f.is_file() and not f.is_symlink()) if pio_home.is_dir() else 0
+        res["tools_bytes"] = (
+            sum(f.stat().st_size for f in pio_home.rglob("*") if f.is_file() and not f.is_symlink())
+            if pio_home.is_dir()
+            else 0
+        )
         # The objects found in the build cache rather than compiled (PlatformIO says "Retrieved"),
         # and the cache's size after pruning.
         try:
@@ -766,8 +883,14 @@ def build_firmware(job):
         except OSError:
             pass
         res["build_cache_bytes"] = prune_build_cache()[1]
-    _write_status(run, state=state, finished=time.time(), duration=round(time.time() - started), resources=res,
-                  artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file()))
+    _write_status(
+        run,
+        state=state,
+        finished=time.time(),
+        duration=round(time.time() - started),
+        resources=res,
+        artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file()),
+    )
     prune_factory(runs)
 
 
@@ -803,17 +926,34 @@ def snapshot(limit=20):
         except OSError:
             pass
     # systemd lists properties in its own order, not the order asked: read them by name.
-    props = dict(l.split("=", 1) for l in subprocess.run(["systemctl", "show", "-p", "MemoryMax", "-p", "MemoryHigh", "irate-box-ci.service"],
-                                                         capture_output=True, text=True).stdout.splitlines() if "=" in l)
+    props = dict(
+        l.split("=", 1)
+        for l in subprocess.run(
+            ["systemctl", "show", "-p", "MemoryMax", "-p", "MemoryHigh", "irate-box-ci.service"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        if "=" in l
+    )
     try:
         mirrors = sorted(json.loads(MIRROR_URLS.read_text()))
     except (OSError, ValueError):
         mirrors = []
-    return {"installed": QUEUE.is_dir(), "queued": queued, "runs": runs[:limit], "script": SCRIPT,
-            "time_limit": TIME_LIMIT, "keep_runs": settings()["keep_runs"], "runs_bytes": used,
-            "memory": {"max": props.get("MemoryMax"), "high": props.get("MemoryHigh")},
-            "mirrored": mirrors, "pio_deps": bool(_pio_deps()), "wheelhouse": bool(_wheelhouse()), "env": ENV_VARS,
-            "templates": {k: {"title": v["title"], "script": v["script"]} for k, v in TEMPLATES.items()}}
+    return {
+        "installed": QUEUE.is_dir(),
+        "queued": queued,
+        "runs": runs[:limit],
+        "script": SCRIPT,
+        "time_limit": TIME_LIMIT,
+        "keep_runs": settings()["keep_runs"],
+        "runs_bytes": used,
+        "memory": {"max": props.get("MemoryMax"), "high": props.get("MemoryHigh")},
+        "mirrored": mirrors,
+        "pio_deps": bool(_pio_deps()),
+        "wheelhouse": bool(_wheelhouse()),
+        "env": ENV_VARS,
+        "templates": {k: {"title": v["title"], "script": v["script"]} for k, v in TEMPLATES.items()},
+    }
 
 
 def run_file(run, name):

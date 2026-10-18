@@ -27,7 +27,7 @@ authority already permits (root/tls.py HOTSPOT). Pure: the root helper acts on t
 """
 
 ADDRESS = "192.168.4.1"
-PREFERRED_24 = (1, 6, 11)        # the 2.4 GHz channels that don't overlap
+PREFERRED_24 = (1, 6, 11)  # the 2.4 GHz channels that don't overlap
 TOP_24 = {"US": 11, "CA": 11, "TW": 11, "MX": 11}  # elsewhere, channels up to 13 (14: Japan, 802.11b only)
 RUNG = {"own-radio": 1, "own-channel": 2, "follow": 3, "choose": 4, "none": 5}
 TEXT = {
@@ -94,11 +94,19 @@ def plan(inv, verdicts, owner=None, tried=None):
         options.append((RUNG[kind], 0 if owner.get("radio") == v["iface"] else 1, v, r, chans, link_ch, kind))
     if not options:
         return {"rung": 5, "kind": "none", "text": TEXT["none"], "iface": None, "address": ADDRESS}
-    options.sort(key=lambda o: (o[1], o[0]))   # the owner's radio first, then the lowest rung
+    options.sort(key=lambda o: (o[1], o[0]))  # the owner's radio first, then the lowest rung
     _, _, v, r, chans, link_ch, kind = options[0]
-    out = {"rung": RUNG[kind], "kind": kind, "text": TEXT[kind], "iface": v["iface"], "phy": v["phy"],
-           "backend": v["backend"], "address": ADDRESS, "uplink": up.get("iface"),
-           "to_try": kind == "own-channel" and tried.get(v["phy"]) is None}
+    out = {
+        "rung": RUNG[kind],
+        "kind": kind,
+        "text": TEXT[kind],
+        "iface": v["iface"],
+        "phy": v["phy"],
+        "backend": v["backend"],
+        "address": ADDRESS,
+        "uplink": up.get("iface"),
+        "to_try": kind == "own-channel" and tried.get(v["phy"]) is None,
+    }
     if kind == "choose" and not owner.get("take_radio"):
         out.update(needs_choice=True, channel=None)
         return out
@@ -106,10 +114,22 @@ def plan(inv, verdicts, owner=None, tried=None):
         ch = pick_channel(chans, owner, near=link_ch)
     else:
         ch = next((c for c in chans if c["channel"] == link_ch), None)
-        if ch is None:   # the link is on a channel the hotspot may not use (DFS): can't follow it there
-            out.update(rung=4, kind="choose", text=TEXT["choose"], needs_choice=True, channel=None,
-                       why=f"the WiFi link is on channel {link_ch}, where a hotspot cannot start")
+        if ch is None:  # the link is on a channel the hotspot may not use (DFS): can't follow it there
+            out.update(
+                rung=4,
+                kind="choose",
+                text=TEXT["choose"],
+                needs_choice=True,
+                channel=None,
+                why=f"the WiFi link is on channel {link_ch}, where a hotspot cannot start",
+            )
             return out
-    out.update(channel=ch["channel"], freq=ch["freq"], band=ch["band"], follows_uplink=kind == "follow",
-               needs_choice=False, drops_uplink=kind == "choose")
+    out.update(
+        channel=ch["channel"],
+        freq=ch["freq"],
+        band=ch["band"],
+        follows_uplink=kind == "follow",
+        needs_choice=False,
+        drops_uplink=kind == "choose",
+    )
     return out

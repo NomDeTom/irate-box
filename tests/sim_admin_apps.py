@@ -30,9 +30,7 @@ def check(name, cond, info=""):
 ms = manifests.load()
 apps = manifests.admin_apps(ms)
 by = {a["id"]: a for a in apps}
-check(
-    "Kiwix owns Books", by.get("wiki", {}).get("sections") == ["books"], by.get("wiki")
-)
+check("Kiwix owns Books", by.get("wiki", {}).get("sections") == ["books"], by.get("wiki"))
 check(
     "installable add-ons are marked for their app pages",
     by.get("irc", {}).get("addon") is True
@@ -41,9 +39,7 @@ check(
 )
 check(
     "an add-on without a tile still has an installation page",
-    by.get("room", {}).get("addon") is True
-    and by["room"]["name"] == "Whiteboard relay"
-    and by["room"]["icon"] == "🤝",
+    by.get("room", {}).get("addon") is True and by["room"]["name"] == "Whiteboard relay" and by["room"]["icon"] == "🤝",
 )
 check(
     "Git owns its repositories and mirrors",
@@ -57,11 +53,7 @@ check(
 )
 check(
     "the folders are marked",
-    all(
-        by[i]["folder"]
-        for i in ("meshtastic", "tools-rf", "tools-general", "tools-electronics")
-        if i in by
-    ),
+    all(by[i]["folder"] for i in ("meshtastic", "tools-rf", "tools-general", "tools-electronics") if i in by),
 )
 check(
     "box widgets without an admin part are left out",
@@ -79,8 +71,7 @@ check(
 )
 check(
     "in the hub's order",
-    [a["id"] for a in apps]
-    == [m["id"] for m in sorted(ms, key=lambda m: m["order"]) if m["id"] in by],
+    [a["id"] for a in apps] == [m["id"] for m in sorted(ms, key=lambda m: m["order"]) if m["id"] in by],
 )
 html = (REPO / "web" / "admin.html").read_text(encoding="utf-8")
 ids = set(re.findall(r'<section\s+class="admin-pane"\s+id="([a-z0-9-]+)"', html))
@@ -118,9 +109,7 @@ hub = subprocess.Popen(
 try:
     for _ in range(50):
         try:
-            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request(
-                "GET", "/status"
-            )
+            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status")
             break
         except OSError:
             time.sleep(0.1)
@@ -137,8 +126,7 @@ try:
     got = json.loads(body)["apps"] if st == 200 else []
     check(
         "/admin/apps answers the admin page",
-        [{k: v for k, v in x.items() if k not in ("switch", "seen")} for x in got]
-        == apps,
+        [{k: v for k, v in x.items() if k not in ("switch", "seen")} for x in got] == apps,
         body[:200],
     )
     seen = {x["id"]: x.get("seen") for x in got}
@@ -161,9 +149,7 @@ try:
     check("  refused without the front's header, as /admin is", st == 403, st)
     check(
         "/admin/apps: who sees it alone for About and the folders, not a switched app",
-        seen.get("about") is True
-        and seen.get("tools-rf") is True
-        and seen.get("draw") is False,
+        seen.get("about") is True and seen.get("tools-rf") is True and seen.get("draw") is False,
         seen,
     )
     sw = {x["id"]: x["switch"] for x in got}

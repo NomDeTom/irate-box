@@ -3,78 +3,162 @@
 """Three small routes to root stay shut: the doctor's restart allow-list names the hub's own
 Syncthing only; ttyd has no credential and listens on a socket the web server reaches;
 kiwix-manage reads a book as the hub, not root. python3 tests/root_routes_guard.py"""
+
 import os
 import re
 import sys
 from pathlib import Path
 from unittest import mock
+
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 os.environ.setdefault("HUB_STATE_DIR", "/nonexistent-state")
 from irate_box.library import zimcheck  # noqa: E402
 from irate_box.root import health, secdoctor  # noqa: E402
+
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
 
 # Restarts
 check("syncthing@hub.service may be restarted", health.OUR_UNIT.match(f"syncthing@{health.HUB_USER}.service"))
 for other in ("root", "lyra", "www-data"):
     check(f"syncthing@{other}.service may not", not health.OUR_UNIT.match(f"syncthing@{other}.service"))
-check("the doctor's own reading of OUR_UNIT is not 'wide'",
-      not re.search(r"syncthing@\[", (REPO / "irate_box/root/health.py").read_text()))
+check(
+    "the doctor's own reading of OUR_UNIT is not 'wide'",
+    not re.search(r"syncthing@\[", (REPO / "irate_box/root/health.py").read_text()),
+)
 
 # ttyd
 install = (REPO / "install.sh").read_text()
-unit = install[install.index("cat >/etc/systemd/system/ttyd.service"):]
-unit = unit[:unit.index("\nEOF")]
+unit = install[install.index("cat >/etc/systemd/system/ttyd.service") :]
+unit = unit[: unit.index("\nEOF")]
 start = next(l for l in unit.splitlines() if l.startswith("ExecStart="))
 check("ttyd's unit has no credential", "--credential" not in start and " -c " not in start, start)
 check("ttyd's unit reads no env file (ttyd.env held the password)", "EnvironmentFile" not in unit, unit)
 check("ttyd listens on its socket", "--interface $TTYD_SOCKET" in unit and "TTYD_SOCKET=/run/ttyd/ttyd.sock" in install)
 check("the install removes an old ttyd.env", 'rm -f "$ETC/ttyd.env"' in install)
 nginx = (REPO / "config/irate-box.nginx").read_text()
-term = nginx[nginx.index("location /term/"):]
-term = term[:term.index("\n\t}")]
+term = nginx[nginx.index("location /term/") :]
+term = term[: term.index("\n\t}")]
 check("nginx's /term/ asks for the admin login", "auth_basic " in term and "auth_basic_user_file" in term, term)
 check("nginx's /term/ goes to ttyd's socket", "proxy_pass http://unix:/run/ttyd/ttyd.sock;" in term, term)
 caddy = (REPO / "config/Caddyfile").read_text()
-term = caddy[caddy.index("handle /term/*"):]
-term = term[:term.index("redir /term")]
-check("Caddy's /term/ asks for the admin login, to ttyd's socket",
-      "basic_auth" in term and "reverse_proxy unix//run/ttyd/ttyd.sock" in term, term)
-leftover = [str(p.relative_to(REPO)) for p in list((REPO / "irate_box").rglob("*.py")) + [REPO / "install.sh"]
-            if "TTYD_CREDENTIAL" in p.read_text()]
+term = caddy[caddy.index("handle /term/*") :]
+term = term[: term.index("redir /term")]
+check(
+    "Caddy's /term/ asks for the admin login, to ttyd's socket",
+    "basic_auth" in term and "reverse_proxy unix//run/ttyd/ttyd.sock" in term,
+    term,
+)
+leftover = [
+    str(p.relative_to(REPO))
+    for p in list((REPO / "irate_box").rglob("*.py")) + [REPO / "install.sh"]
+    if "TTYD_CREDENTIAL" in p.read_text()
+]
 check("nothing writes TTYD_CREDENTIAL any more", not leftover, leftover)
+
+
 def show(argv):
     return {"ExecStart": "{ path=/usr/local/bin/ttyd ; argv[]=" + " ".join(argv) + " ; ignore_errors=no ; }"}
+
+
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "lo", "--port", "7681", "/bin/login"]))
-check("the doctor warns of ttyd on a TCP port", any(i["status"] == "warn" and i["key"] == "listen" and i["summary"]["id"] == "ttyd.listen.tcp" for i in said), said)
+check(
+    "the doctor warns of ttyd on a TCP port",
+    any(i["status"] == "warn" and i["key"] == "listen" and i["summary"]["id"] == "ttyd.listen.tcp" for i in said),
+    said,
+)
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "/bin/login"]))
 check("and not of ttyd on its socket", said == [], said)
-unit_argv = ["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "--writable", "--", "/usr/bin/script", "-qfc", "/bin/login", "/dev/null"]
-said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "--writable", "--", "/usr/bin/setsid", "-w", "/bin/login"]))
+unit_argv = [
+    "/usr/local/bin/ttyd",
+    "--interface",
+    "/run/ttyd/ttyd.sock",
+    "--writable",
+    "--",
+    "/usr/bin/script",
+    "-qfc",
+    "/bin/login",
+    "/dev/null",
+]
+said = secdoctor.probe_ttyd(
+    {},
+    {},
+    show(
+        [
+            "/usr/local/bin/ttyd",
+            "--interface",
+            "/run/ttyd/ttyd.sock",
+            "--writable",
+            "--",
+            "/usr/bin/setsid",
+            "-w",
+            "/bin/login",
+        ]
+    ),
+)
 check("  nor of login in a session of its own (setsid -w /bin/login, as install.sh writes it)", said == [], said)
-said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "--writable", "--", "/usr/bin/setsid", "-w", "/bin/sh"]))
-check("  but setsid around a bare shell is still a bare shell", any(i["status"] == "problem" and i["summary"]["id"] == "ttyd.shell" and i["evidence"] == ["/bin/sh"] for i in said), said)
+said = secdoctor.probe_ttyd(
+    {},
+    {},
+    show(
+        [
+            "/usr/local/bin/ttyd",
+            "--interface",
+            "/run/ttyd/ttyd.sock",
+            "--writable",
+            "--",
+            "/usr/bin/setsid",
+            "-w",
+            "/bin/sh",
+        ]
+    ),
+)
+check(
+    "  but setsid around a bare shell is still a bare shell",
+    any(i["status"] == "problem" and i["summary"]["id"] == "ttyd.shell" and i["evidence"] == ["/bin/sh"] for i in said),
+    said,
+)
 said = secdoctor.probe_ttyd({}, {}, show(unit_argv))
 check("  nor of login given a terminal of its own (script -c /bin/login, as install.sh writes it)", said == [], said)
 said = secdoctor.probe_ttyd({}, {}, show(unit_argv[:-2] + ["/bin/bash", "/dev/null"]))
-check("  but script around a bare shell is still a bare shell", any(i["status"] == "problem" and i["summary"]["id"] == "ttyd.shell" and i["evidence"] == ["/bin/bash"] for i in said), said)
-check("install.sh's unit runs login that way", "--writable -- /usr/bin/setsid -w /bin/login" in (REPO / "install.sh").read_text())
+check(
+    "  but script around a bare shell is still a bare shell",
+    any(
+        i["status"] == "problem" and i["summary"]["id"] == "ttyd.shell" and i["evidence"] == ["/bin/bash"] for i in said
+    ),
+    said,
+)
+check(
+    "install.sh's unit runs login that way",
+    "--writable -- /usr/bin/setsid -w /bin/login" in (REPO / "install.sh").read_text(),
+)
 
 # kiwix-manage
 ran = []
+
+
 def fake_run(cmd, **kw):
     ran.append(cmd)
     return mock.Mock(returncode=1, stderr="no", stdout="")
-with mock.patch.object(zimcheck.shutil, "which", return_value="/usr/bin/kiwix-manage"), \
-     mock.patch.object(zimcheck.shutil, "chown") as chown, \
-     mock.patch.object(zimcheck.subprocess, "run", side_effect=fake_run), \
-     mock.patch.object(zimcheck.os, "geteuid", return_value=0):
+
+
+with (
+    mock.patch.object(zimcheck.shutil, "which", return_value="/usr/bin/kiwix-manage"),
+    mock.patch.object(zimcheck.shutil, "chown") as chown,
+    mock.patch.object(zimcheck.subprocess, "run", side_effect=fake_run),
+    mock.patch.object(zimcheck.os, "geteuid", return_value=0),
+):
     zimcheck.kiwix_problem("/var/lib/hub/zim/x.zim", user="hub")
-    check("as root, kiwix-manage runs through runuser -u hub", ran and ran[-1][:4] == ["runuser", "-u", "hub", "--"], ran)
+    check(
+        "as root, kiwix-manage runs through runuser -u hub", ran and ran[-1][:4] == ["runuser", "-u", "hub", "--"], ran
+    )
     check("its scratch folder is the hub's", chown.called and chown.call_args[0][1:] == ("hub", "hub"), chown.call_args)
     with mock.patch.object(zimcheck, "header_problem", return_value=None):
         zimcheck.problem("/tmp/y.zim", user="hub")
@@ -82,31 +166,51 @@ with mock.patch.object(zimcheck.shutil, "which", return_value="/usr/bin/kiwix-ma
 with mock.patch.object(health.zimcheck, "kiwix_problem", return_value=None) as kp:
     health.kiwix_reads("/var/lib/hub/zim/x.zim")
 check("the health scan asks as the hub", kp.call_args.kwargs.get("user") == health.HUB_USER, kp.call_args)
-check("the USB import checks a copy as the hub",
-      "zimcheck.problem(tmp, user=hub_user)" in (REPO / "irate_box/root/usbstick.py").read_text())
+check(
+    "the USB import checks a copy as the hub",
+    "zimcheck.problem(tmp, user=hub_user)" in (REPO / "irate_box/root/usbstick.py").read_text(),
+)
 
 # Every unit that runs as the hub user carries the sandbox.
-sandbox = install[install.index('HUB_SANDBOX="'):]
-sandbox = sandbox[:sandbox.index('"\n')]
-for opt in ("ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "ProtectHome=yes", "ProtectProc=invisible"):
+sandbox = install[install.index('HUB_SANDBOX="') :]
+sandbox = sandbox[: sandbox.index('"\n')]
+for opt in (
+    "ProtectSystem=strict",
+    "NoNewPrivileges=yes",
+    "PrivateTmp=yes",
+    "ProtectHome=yes",
+    "ProtectProc=invisible",
+):
     check(f"the hub's sandbox has {opt}", opt in sandbox)
 for unit in ("irate-box.service", "irate-box-git.service", "irate-box-librarian.service"):
-    body = install[install.index(f"cat >/etc/systemd/system/{unit} <<EOF"):]
-    body = body[:body.index("\nEOF")]
-    check(f"{unit} uses it, and names what it writes", "$HUB_SANDBOX" in body and "ReadWritePaths=" in body
-          and "ProtectSystem=full" not in body, body[-300:])
+    body = install[install.index(f"cat >/etc/systemd/system/{unit} <<EOF") :]
+    body = body[: body.index("\nEOF")]
+    check(
+        f"{unit} uses it, and names what it writes",
+        "$HUB_SANDBOX" in body and "ReadWritePaths=" in body and "ProtectSystem=full" not in body,
+        body[-300:],
+    )
 
 # No password on a command line during a change or an install.
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check("caddy hash-password reads the password on stdin", '"--plaintext"' not in hc and "--plaintext" not in install)
-check("Syncthing's GUI password goes through its REST API", '"password", "set"' not in hc
-      and "config gui password set" not in install and "hub_control syncthing-gui-password" in install)
+check(
+    "Syncthing's GUI password goes through its REST API",
+    '"password", "set"' not in hc
+    and "config gui password set" not in install
+    and "hub_control syncthing-gui-password" in install,
+)
 
 # SilverBullet's download is checked against digests pinned beside its version.
 from irate_box.root import hub_control  # noqa: E402
+
 for arch in ("x86_64", "aarch64", "armv7"):
     v = hub_control._var(install, f"SB_SHA256_{arch}")
-    check(f"SilverBullet's {arch} digest is pinned, and the updater can read it", bool(v and re.fullmatch(r"[0-9a-f]{64}", v)), v)
+    check(
+        f"SilverBullet's {arch} digest is pinned, and the updater can read it",
+        bool(v and re.fullmatch(r"[0-9a-f]{64}", v)),
+        v,
+    )
 check("install.sh checks the zip before unpacking it", 'sb_sum_ok "$tmp/sb.zip" "$SB_ARCH" || die' in install)
 
 # The update's nginx check copes with a port placeholder it does not know yet.
@@ -117,7 +221,9 @@ check("the nginx check fills an unknown @…_PORT@ with a spare port", 're.sub(r
 # importing it at module level fails there.
 for f in sorted((REPO / "irate_box").glob("[hl]*/*.py")):
     if f.parent.name in ("hub", "library"):
-        check(f"{f.parent.name}/{f.name} does not import root's code at module level",
-              not re.search(r"^(from irate_box\.root|import irate_box\.root)", f.read_text(), re.M))
+        check(
+            f"{f.parent.name}/{f.name} does not import root's code at module level",
+            not re.search(r"^(from irate_box\.root|import irate_box\.root)", f.read_text(), re.M),
+        )
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

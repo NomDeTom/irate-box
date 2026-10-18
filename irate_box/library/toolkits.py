@@ -11,15 +11,16 @@ Settings ($HUB_STATE_DIR/library/toolkits.json):
   kits.<id>.remove_after    hours an install stays by default (the kit's own: 24, the build kit
                             never), or null for never
 """
+
 import os
 import re
 import time
 import zlib
 
+from irate_box.hub import kitdefs
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
-from irate_box.hub import kitdefs
 
 SETTINGS = librarian.LIB_DIR / "toolkits.json"
 STATE = librarian.LIB_DIR / "toolkits-state.json"  # when each kit's fetch was last asked for
@@ -40,12 +41,18 @@ def settings():
     raw = librarian._read_json(SETTINGS, {})
     # previous_days: how long an older set, kept for Roll back, stays after a newer set replaced it (None: until the next
     # refresh replaces it in turn).
-    out = {"budget_mb": raw.get("budget_mb", 500), "deep_audit_days": raw.get("deep_audit_days", 7),
-           "previous_days": raw.get("previous_days"), "kits": {}}
+    out = {
+        "budget_mb": raw.get("budget_mb", 500),
+        "deep_audit_days": raw.get("deep_audit_days", 7),
+        "previous_days": raw.get("previous_days"),
+        "kits": {},
+    }
     for kid, k in definitions().items():
         mine = (raw.get("kits") or {}).get(kid, {})
-        out["kits"][kid] = {"keep_current": mine.get("keep_current", True),
-                            "remove_after": mine.get("remove_after", k.get("remove_after_hours", 24))}
+        out["kits"][kid] = {
+            "keep_current": mine.get("keep_current", True),
+            "remove_after": mine.get("remove_after", k.get("remove_after_hours", 24)),
+        }
     return out
 
 
@@ -58,30 +65,49 @@ def set_settings(changes):
     if "budget_mb" in changes:
         b = changes["budget_mb"]
         if type(b) is not int or not 10 <= b <= 1 << 16:
-            raise LibrarianError(M("toolkits.budget.invalid", "Invalid storage limit. Enter a number of MB from 10 to 65536."))
+            raise LibrarianError(
+                M("toolkits.budget.invalid", "Invalid storage limit. Enter a number of MB from 10 to 65536.")
+            )
         cfg["budget_mb"] = b
     if "deep_audit_days" in changes:
         d = changes["deep_audit_days"]
         if type(d) is not int or not 0 <= d <= 90:
-            raise LibrarianError(M("toolkits.deep-audit.invalid", "Invalid deep audit interval. Enter a number of days from 0 to 90. 0 means never on its own."))
+            raise LibrarianError(
+                M(
+                    "toolkits.deep-audit.invalid",
+                    "Invalid deep audit interval. Enter a number of days from 0 to 90. 0 means never on its own.",
+                )
+            )
         cfg["deep_audit_days"] = d
     if "previous_days" in changes:
         d = changes["previous_days"]
         if d is not None and (type(d) is not int or not 1 <= d <= 365):
-            raise LibrarianError(M("toolkits.previous-days.invalid", "Invalid setting. Enter a number of days from 1 to 365 for older "
-                                   "sets, or null to keep them until a refresh brings newer versions."))
+            raise LibrarianError(
+                M(
+                    "toolkits.previous-days.invalid",
+                    "Invalid setting. Enter a number of days from 1 to 365 for older "
+                    "sets, or null to keep them until a refresh brings newer versions.",
+                )
+            )
         cfg["previous_days"] = d
     for kid, ch in (changes.get("kits") or {}).items():
         if kid not in cfg["kits"] or not isinstance(ch, dict):
             raise LibrarianError(M("toolkits.kit.not-found", "Source not found: toolkit {kit}.", kit=str(kid)))
         if "keep_current" in ch:
             if type(ch["keep_current"]) is not bool:
-                raise LibrarianError(M("toolkits.keep-current.invalid", "Invalid setting. keep_current must be true or false."))
+                raise LibrarianError(
+                    M("toolkits.keep-current.invalid", "Invalid setting. keep_current must be true or false.")
+                )
             cfg["kits"][kid]["keep_current"] = ch["keep_current"]
         if "remove_after" in ch:
             if not _hours_ok(ch["remove_after"]):
-                raise LibrarianError(M("toolkits.remove-after.invalid", "Invalid setting. remove_after must be from 1 to {max} hours, or null for never.",
-                                         max=MAX_HOURS))
+                raise LibrarianError(
+                    M(
+                        "toolkits.remove-after.invalid",
+                        "Invalid setting. remove_after must be from 1 to {max} hours, or null for never.",
+                        max=MAX_HOURS,
+                    )
+                )
             cfg["kits"][kid]["remove_after"] = ch["remove_after"]
     librarian._write_json(SETTINGS, cfg)
     return cfg
@@ -109,22 +135,34 @@ def feeds():
     """Each data feed a kit keeps, with its age."""
     s = suite()
     f = FEED / s if s else None
-    return {"debsecan": {"suite": s, "fetched": f.stat().st_mtime if f and f.is_file() else None,
-                         "source": f"file://{FEED}/"}}
+    return {
+        "debsecan": {
+            "suite": s,
+            "fetched": f.stat().st_mtime if f and f.is_file() else None,
+            "source": f"file://{FEED}/",
+        }
+    }
 
 
 def refresh_feed(log=print):
     """debsecan's data for this box's suite (and GENERIC), checked before it replaces the last."""
     s = suite()
     if not s or not re.match(r"^[a-z]{2,20}$", s):
-        raise LibrarianError(M("toolkits.suite.unknown", "Download failed. The Debian suite of this box is unknown (/etc/os-release)."))
+        raise LibrarianError(
+            M("toolkits.suite.unknown", "Download failed. The Debian suite of this box is unknown (/etc/os-release).")
+        )
     FEED.mkdir(parents=True, exist_ok=True)
     for name in (s, "GENERIC"):
         with librarian._open(FEED_URL + name, timeout=120) as resp:
             raw = resp.read(64 << 20)
         if not zlib.decompress(raw)[:10] == b"VERSION 1\n":
-            raise LibrarianError(M("toolkits.debsecan.unreadable", "Download failed. The debsecan data for {name} is not in a format that the box can read.",
-                                     name=name))
+            raise LibrarianError(
+                M(
+                    "toolkits.debsecan.unreadable",
+                    "Download failed. The debsecan data for {name} is not in a format that the box can read.",
+                    name=name,
+                )
+            )
         tmp = FEED / f".{name}.tmp"
         tmp.write_bytes(raw)
         os.replace(tmp, FEED / name)
@@ -135,6 +173,7 @@ def ensure_git_sources(log=print):
     """The git sources a kit kept current names (the security kit's debian-cis): each a mirror,
     added once if there is none of its upstream; the mirrors' own stage keeps it."""
     from irate_box.library import mirrors
+
     have = {m["upstream"].rstrip("/").lower() for m in mirrors.load()}
     added = []
     cfg = settings()
@@ -144,10 +183,20 @@ def ensure_git_sources(log=print):
         for g in k.get("git", []):
             if g["upstream"].rstrip("/").lower() in have:
                 continue
-            mirrors.add({"name": g["name"], "area": "public", "upstream": g["upstream"], "branches": [g.get("branch", "main")],
-                         "groups": [], "history": "shallow", "budget_mb": 64, "submodules": False,
-                         # Pinned where the kit pins it: root runs that commit alone (deepaudit.py).
-                         **({"follow": "pinned", "pin": g["pin"]} if g.get("pin") else {})})
+            mirrors.add(
+                {
+                    "name": g["name"],
+                    "area": "public",
+                    "upstream": g["upstream"],
+                    "branches": [g.get("branch", "main")],
+                    "groups": [],
+                    "history": "shallow",
+                    "budget_mb": 64,
+                    "submodules": False,
+                    # Pinned where the kit pins it: root runs that commit alone (deepaudit.py).
+                    **({"follow": "pinned", "pin": g["pin"]} if g.get("pin") else {}),
+                }
+            )
             have.add(g["upstream"].rstrip("/").lower())
             added.append(g["name"])
     return added
@@ -162,27 +211,44 @@ def action(payload):
     if what == "define":
         spec = payload.get("kit")
         if not isinstance(spec, dict):
-            raise LibrarianError(M("toolkits.kit.invalid", "Invalid kit. Enter an object with a title and a list of packages."))
+            raise LibrarianError(
+                M("toolkits.kit.invalid", "Invalid kit. Enter an object with a title and a list of packages.")
+            )
         kid = spec.get("id") or re.sub(r"[^a-z0-9]+", "-", str(spec.get("title", "")).lower()).strip("-")[:32]
         if kid in kitdefs.shipped() or kid == "extras":
             kid = f"my-{kid}"[:32]
         pkgs = spec.get("packages")
         if isinstance(pkgs, str):
             pkgs = re.split(r"[\s,]+", pkgs.strip())
-        return librarian._queue_root({"action": "kit-define", "kit": {
-            "id": kid, "title": str(spec.get("title", "")), "summary": str(spec.get("summary", "")),
-            "packages": [p for p in (pkgs or []) if p], "remove_after_hours": spec.get("remove_after_hours", 24)}})
+        return librarian._queue_root(
+            {
+                "action": "kit-define",
+                "kit": {
+                    "id": kid,
+                    "title": str(spec.get("title", "")),
+                    "summary": str(spec.get("summary", "")),
+                    "packages": [p for p in (pkgs or []) if p],
+                    "remove_after_hours": spec.get("remove_after_hours", 24),
+                },
+            }
+        )
     if what == "drop-all-previous":
         return librarian._queue_root({"action": "kit-drop-all-previous"})
     kid = payload.get("kit")
     if what != "status" and kid not in definitions():
-        raise LibrarianError(M("toolkits.kit.unknown", "Unknown kit. Select one of these kits: {kits}.", kits=list(definitions())))
+        raise LibrarianError(
+            M("toolkits.kit.unknown", "Unknown kit. Select one of these kits: {kits}.", kits=list(definitions()))
+        )
     if what == "fetch":
         return librarian._queue_root({"action": "kit-fetch", "kit": kid, "budget_mb": settings()["budget_mb"]})
     if what in ("install", "keep"):
-        hours = payload.get("hours", settings()["kits"][kid]["remove_after"]) if what == "install" else payload.get("hours")
+        hours = (
+            payload.get("hours", settings()["kits"][kid]["remove_after"]) if what == "install" else payload.get("hours")
+        )
         if not _hours_ok(hours):
-            raise LibrarianError(M("toolkits.hours.invalid", "Invalid hours. Enter 1 to {max}, or null for never.", max=MAX_HOURS))
+            raise LibrarianError(
+                M("toolkits.hours.invalid", "Invalid hours. Enter 1 to {max}, or null for never.", max=MAX_HOURS)
+            )
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid, "hours": hours})
     if what in ("remove", "rollback", "drop-previous"):
         return librarian._queue_root({"action": f"kit-{what}", "kit": kid})
@@ -195,8 +261,13 @@ def action(payload):
         return librarian._queue_root({"action": "kit-extra", "kit": kid, "packages": [str(p) for p in pkgs]})
     if what == "undefine":
         return librarian._queue_root({"action": "kit-undefine", "kit": kid})
-    raise LibrarianError(M("toolkits.action.invalid", "Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, drop-all-previous, status, "
-                         "define, undefine or extra."))
+    raise LibrarianError(
+        M(
+            "toolkits.action.invalid",
+            "Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, drop-all-previous, status, "
+            "define, undefine or extra.",
+        )
+    )
 
 
 def step(policy, now=None, log=print):
@@ -214,14 +285,19 @@ def step(policy, now=None, log=print):
     # Older sets past their days (previous_days), swept: counted from when the newer set replaced them.
     days = cfg.get("previous_days")
     if days and now - asked.get("sweep", 0) >= 3600:
-        due = [kid for kid, v in (st.get("kits") or {}).items()
-               if v.get("previous") and now - ((v.get("cached") or {}).get("fetched") or now) >= days * 86400]
+        due = [
+            kid
+            for kid, v in (st.get("kits") or {}).items()
+            if v.get("previous") and now - ((v.get("cached") or {}).get("fetched") or now) >= days * 86400
+        ]
         if due:
             librarian._queue_root({"action": "kit-drop-old-previous", "days": days})
             asked["sweep"] = now
             librarian._write_json(STATE, asked)
             out.append(f"removing older sets past {days} days: {', '.join(due)}")
-    feeding = [kid for kid, k in definitions().items() if cfg["kits"][kid]["keep_current"] and "debsecan" in k.get("feeds", [])]
+    feeding = [
+        kid for kid, k in definitions().items() if cfg["kits"][kid]["keep_current"] and "debsecan" in k.get("feeds", [])
+    ]
     if feeding:
         try:
             added = ensure_git_sources(log)
@@ -241,7 +317,7 @@ def step(policy, now=None, log=print):
         if not cfg["kits"][kid]["keep_current"]:
             continue
         chosen = policy.get("kits_every_hours", policy["check_every_hours"])
-        if not chosen:   # Manual: refreshed only when asked
+        if not chosen:  # Manual: refreshed only when asked
             continue
         every = k.get("refresh_hours") or chosen
         cached = ((st.get("kits") or {}).get(kid) or {}).get("cached") or {}

@@ -48,6 +48,7 @@ class BrokerError(Said, ConnectionError):
 
 # --- the owner's channels ---------------------------------------------------------------------------
 
+
 def channels():
     try:
         data = json.loads(CHANNELS.read_text())
@@ -78,16 +79,28 @@ def _save_channels(chs):
 def add_channel(name, key):
     name = str(name or "").strip()
     if not (1 <= len(name) <= 11) or any(c in name for c in "/#+\0"):
-        raise Refused(M("mesh.channel.name-invalid", "Invalid channel name. Enter the name as Meshtastic shows it: "
-                                                     "1 to 11 characters, without /, #, + or null characters."))
+        raise Refused(
+            M(
+                "mesh.channel.name-invalid",
+                "Invalid channel name. Enter the name as Meshtastic shows it: "
+                "1 to 11 characters, without /, #, + or null characters.",
+            )
+        )
     try:
         meshdecode.expand_key(key)
     except (ValueError, TypeError):
-        raise Refused(M("mesh.channel.key-invalid", "Invalid channel key. Enter the key in base64 as Meshtastic shows it. "
-                                                    "The key must have 0, 1, 16 or 32 bytes."))
+        raise Refused(
+            M(
+                "mesh.channel.key-invalid",
+                "Invalid channel key. Enter the key in base64 as Meshtastic shows it. "
+                "The key must have 0, 1, 16 or 32 bytes.",
+            )
+        )
     chs = [c for c in channels() if c["name"] != name] + [{"name": name, "key": key}]
     if len(chs) > MAX_CHANNELS:
-        raise Refused(M("mesh.channel.limit", "Channel limit reached. The box keeps at most {most} channels.", most=MAX_CHANNELS))
+        raise Refused(
+            M("mesh.channel.limit", "Channel limit reached. The box keeps at most {most} channels.", most=MAX_CHANNELS)
+        )
     _save_channels(chs)
 
 
@@ -102,6 +115,7 @@ def channels_view():
 
 # --- what was heard ------------------------------------------------------------------------------------
 
+
 class Heard:
     def __init__(self, now=time.time):
         self.now = now
@@ -111,7 +125,7 @@ class Heard:
         self.started = now()
         try:
             self.nodes = json.loads(NODES.read_text()).get("nodes", {})
-            self._written = json.dumps({"nodes": self.nodes})   # what the card has already
+            self._written = json.dumps({"nodes": self.nodes})  # what the card has already
         except (OSError, ValueError, AttributeError):
             self.nodes = {}
         self.saved = 0
@@ -122,17 +136,46 @@ class Heard:
             port = d.get("port") or ("encrypted" if d.get("encrypted") else "other")
             self.counts[port] += 1
             n = self.nodes.setdefault(d["from"], {"first": t})
-            n.update(last=t, gateway=d.get("gateway"), snr=d.get("rx_snr"), rssi=d.get("rx_rssi"), hops=d.get("hops"),
-                     channel=d.get("channel_id"), packets=n.get("packets", 0) + 1)
+            n.update(
+                last=t,
+                gateway=d.get("gateway"),
+                snr=d.get("rx_snr"),
+                rssi=d.get("rx_rssi"),
+                hops=d.get("hops"),
+                channel=d.get("channel_id"),
+                packets=n.get("packets", 0) + 1,
+            )
             if port == "nodeinfo":
                 n.update({k: d[k] for k in ("long_name", "short_name", "hw_model", "role") if k in d})
             elif port == "position" and "lat" in d and "lon" in d:
                 n["position"] = {"lat": d["lat"], "lon": d["lon"], "alt": d.get("alt"), "at": t}
             elif port == "telemetry":
-                n["telemetry"] = dict({k: d[k] for k in ("battery", "voltage", "channel_util", "air_util_tx", "uptime",
-                                                          "temperature", "humidity", "pressure") if k in d}, at=t)
-            p = {"at": t, "from": d["from"], "to": d.get("to"), "port": port, "channel": d.get("channel_id"),
-                 "topic": topic[:120], "gateway": d.get("gateway")}
+                n["telemetry"] = dict(
+                    {
+                        k: d[k]
+                        for k in (
+                            "battery",
+                            "voltage",
+                            "channel_util",
+                            "air_util_tx",
+                            "uptime",
+                            "temperature",
+                            "humidity",
+                            "pressure",
+                        )
+                        if k in d
+                    },
+                    at=t,
+                )
+            p = {
+                "at": t,
+                "from": d["from"],
+                "to": d.get("to"),
+                "port": port,
+                "channel": d.get("channel_id"),
+                "topic": topic[:120],
+                "gateway": d.get("gateway"),
+            }
             if port == "text":
                 p["text"] = d.get("text", "")[:240]
             self.packets.append(p)
@@ -169,6 +212,7 @@ class Heard:
 
 # --- the MQTT side --------------------------------------------------------------------------------------
 
+
 def _string(s):
     b = s.encode()
     return struct.pack(">H", len(b)) + b
@@ -193,7 +237,7 @@ def _read_packet(sock):
         b = sock.recv(1)
         if not b:
             raise BrokerError(BROKER_GONE)
-        length += (b[0] & 127) * (128 ** mult)
+        length += (b[0] & 127) * (128**mult)
         mult += 1
         if not b[0] & 128:
             break
@@ -208,7 +252,7 @@ def _read_packet(sock):
 
 def topic_and_payload(flags, body):
     n = struct.unpack(">H", body[:2])[0]
-    topic = body[2:2 + n].decode("utf-8", "replace")
+    topic = body[2 : 2 + n].decode("utf-8", "replace")
     start = 2 + n + (2 if (flags >> 1) & 3 else 0)
     return topic, body[start:]
 
@@ -236,7 +280,15 @@ class Bridge(threading.Thread):
 
     def once(self):
         with socket.create_connection(BROKER, timeout=10) as sock:
-            sock.sendall(_packet(0x10, _string("MQTT") + bytes([4, 0x02]) + struct.pack(">H", 60) + _string(f"irate-box-bridge-{os.getpid()}")))
+            sock.sendall(
+                _packet(
+                    0x10,
+                    _string("MQTT")
+                    + bytes([4, 0x02])
+                    + struct.pack(">H", 60)
+                    + _string(f"irate-box-bridge-{os.getpid()}"),
+                )
+            )
             kind, body = _read_packet(sock)
             if kind >> 4 != 2 or len(body) < 2 or body[1] != 0:
                 raise BrokerError(BROKER_REFUSED)

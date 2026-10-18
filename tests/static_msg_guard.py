@@ -29,6 +29,7 @@ Not messages: commands, paths and code (<code>, <kbd>, <pre>, <samp>), a name or
   no data-i18n on an element with nothing to say (an ID left behind)
 
 python3 tests/static_msg_guard.py  [--list: every ID, its English and where]  [--json: {id: English}]"""
+
 import json
 import re
 import sys
@@ -42,13 +43,59 @@ from irate_box.msg import ID_RE  # noqa: E402
 
 WEB = REPO / "web"
 # Keep these three in step with web/i18n.js.
-INLINE = {"a", "abbr", "b", "cite", "dfn", "em", "i", "mark", "q", "s", "small", "span", "strong", "sub", "sup", "time", "u"}
+INLINE = {
+    "a",
+    "abbr",
+    "b",
+    "cite",
+    "dfn",
+    "em",
+    "i",
+    "mark",
+    "q",
+    "s",
+    "small",
+    "span",
+    "strong",
+    "sub",
+    "sup",
+    "time",
+    "u",
+}
 SKIP = {"script", "style", "code", "kbd", "pre", "samp", "var", "template"}
 # A container (a list, a table row, a section) is a message only when it has words of its own between its
 # children: one that holds only links or paragraphs holds several messages, each child its own.
-CONTAINERS = {"body", "html", "head", "header", "footer", "main", "nav", "section", "article", "aside", "div", "ul", "ol",
-              "dl", "table", "thead", "tbody", "tfoot", "tr", "form", "fieldset", "details", "select", "datalist",
-              "figure", "menu", "hgroup", "search", "optgroup"}
+CONTAINERS = {
+    "body",
+    "html",
+    "head",
+    "header",
+    "footer",
+    "main",
+    "nav",
+    "section",
+    "article",
+    "aside",
+    "div",
+    "ul",
+    "ol",
+    "dl",
+    "table",
+    "thead",
+    "tbody",
+    "tfoot",
+    "tr",
+    "form",
+    "fieldset",
+    "details",
+    "select",
+    "datalist",
+    "figure",
+    "menu",
+    "hgroup",
+    "search",
+    "optgroup",
+}
 TEXT_ATTRS = {"placeholder", "title", "aria-label", "alt", "label", "aria-description", "aria-placeholder"}
 DATA_TEXT = re.compile(r"^data-(says(-\d+)?|why|often-says(-\d+)?)$")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
@@ -109,7 +156,7 @@ class Tree(HTMLParser):
 
 
 def letters(s):
-    return any(ch.isalpha() for ch in s)   # a letter of any script (\p{L}, as web/i18n.js tests)
+    return any(ch.isalpha() for ch in s)  # a letter of any script (\p{L}, as web/i18n.js tests)
 
 
 def no_translate(node):
@@ -151,6 +198,7 @@ def message(el):
                 out.append(f"<{n}/>")
                 count[0] += len(list(descendants(c)))
         return "".join(out)
+
     return re.sub(r"\s+", " ", walk(el)).strip()
 
 
@@ -183,7 +231,7 @@ def text_attrs(node):
         if a in TEXT_ATTRS or (a == "content" and node.tag == "meta" and node.attrs.get("name") == "description"):
             yield a, "data-i18n-" + a
         elif DATA_TEXT.match(a):
-            yield a, "data-i18n-" + a[len("data-"):]
+            yield a, "data-i18n-" + a[len("data-") :]
 
 
 def section_of(node):
@@ -211,7 +259,12 @@ class Page:
     def walk(self, node, in_message):
         for c in node.children:
             if isinstance(c, str):
-                if not in_message and letters(c) and node.tag not in SKIP and not (node.tag != "#root" and no_translate(node)):
+                if (
+                    not in_message
+                    and letters(c)
+                    and node.tag not in SKIP
+                    and not (node.tag != "#root" and no_translate(node))
+                ):
                     self.loose.append((node.line, re.sub(r"\s+", " ", c).strip()))
                 continue
             for a, key in text_attrs(c):
@@ -240,8 +293,9 @@ def collect(found):
     for page in found:
         stem = page.path.stem
         name = f"web/{page.path.name}"
-        said = [(n.line, mid, en, "") for n, mid, en in page.messages] + \
-               [(n.line, mid, en, f" {a}") for n, a, mid, en in page.attributes]
+        said = [(n.line, mid, en, "") for n, mid, en in page.messages] + [
+            (n.line, mid, en, f" {a}") for n, a, mid, en in page.attributes
+        ]
         for line, mid, en, attr in said:
             where = f"{name}:{line}{attr}"
             if mid is None:
@@ -278,17 +332,27 @@ def main():
     def of(kind):
         return [t for k, t in problems if k == kind]
 
-    per_page = ", ".join(f"{p.path.stem} {len(({m for _, m, _ in p.messages} | {m for _, _, m, _ in p.attributes}) - {None})}" for p in found)
+    per_page = ", ".join(
+        f"{p.path.stem} {len(({m for _, m, _ in p.messages} | {m for _, _, m, _ in p.attributes}) - {None})}"
+        for p in found
+    )
     check(f"the pages say something ({len(ids)} IDs: {per_page})", len(ids) > 500, len(ids))
-    check("every piece of text a person reads is in an element with data-i18n (or code, or translate=\"no\")",
-          not of("unmarked") and not of("loose"), of("unmarked") + of("loose"))
+    check(
+        'every piece of text a person reads is in an element with data-i18n (or code, or translate="no")',
+        not of("unmarked") and not of("loose"),
+        of("unmarked") + of("loose"),
+    )
     check("every ID is a message ID, page.section.thing, starting with its page's name", not of("bad-id"), of("bad-id"))
     check("one ID, one English across the pages", not of("two-english"), of("two-english"))
     check("no data-i18n on an element with nothing to say", not of("empty"), of("empty"))
 
-    import msg_guard   # the messages of the code, read with ast (nothing imported from irate_box but the ID form)
-    clash = [f"{mid}: page {en[:50]!r}, code {msg_guard.messages[mid][0]!r} ({msg_guard.messages[mid][1]})"
-             for mid, (en, _) in ids.items() if mid in msg_guard.messages and msg_guard.messages[mid][0] != en]
+    import msg_guard  # the messages of the code, read with ast (nothing imported from irate_box but the ID form)
+
+    clash = [
+        f"{mid}: page {en[:50]!r}, code {msg_guard.messages[mid][0]!r} ({msg_guard.messages[mid][1]})"
+        for mid, (en, _) in ids.items()
+        if mid in msg_guard.messages and msg_guard.messages[mid][0] != en
+    ]
     check("an ID that the code's messages also use says the same thing", not clash, clash)
 
     print("ok" if not fails else f"{fails} failure(s)")

@@ -60,8 +60,7 @@ def _ports(kind, defaults):
     except (OSError, ValueError, AttributeError):
         saved = {}
     return {
-        name: int(os.environ.get(variable, saved.get(name, default)))
-        for name, (variable, default) in defaults.items()
+        name: int(os.environ.get(variable, saved.get(name, default))) for name, (variable, default) in defaults.items()
     }
 
 
@@ -78,9 +77,7 @@ TWINS = _ports(
         "notebook": ("HUB_NOTEBOOK_TLS_PORT", 8494),
     },
 )
-FRONT_GROUP = os.environ.get("HUB_TLS_GROUP") or (
-    "caddy" if os.environ.get("HUB_WEB_SERVER") == "caddy" else ""
-)
+FRONT_GROUP = os.environ.get("HUB_TLS_GROUP") or ("caddy" if os.environ.get("HUB_WEB_SERVER") == "caddy" else "")
 PLAIN_PORTS = _ports(
     "http",
     {
@@ -109,9 +106,7 @@ def settings():
     rec = _record()
     return {
         "transport": rec.get("transport", "both" if rec.get("on") else "http"),
-        "admin_http": rec.get(
-            "admin_http", "block" if rec.get("admin_only") else "allow"
-        ),
+        "admin_http": rec.get("admin_http", "block" if rec.get("admin_only") else "allow"),
     }
 
 
@@ -133,11 +128,7 @@ def _admin_paths(name, state=None):
             else [(name, private.get(name))]
         )
     )
-    paths += [
-        f"/{app}"
-        for app, mode in apps
-        if mode == "private" and re.fullmatch(r"[a-z0-9_-]+", app)
-    ]
+    paths += [f"/{app}" for app, mode in apps if mode == "private" and re.fullmatch(r"[a-z0-9_-]+", app)]
     if name == "main":
         for app in ("drop", "themes"):
             if private.get(app) == "private":
@@ -152,11 +143,7 @@ def _plain_files(transport, admin_http, access_state=None):
     for name, port in PLAIN_PORTS.items():
         target = f"https://$host:{TWINS[name]}$request_uri"
         paths = _admin_paths(name, access_state)
-        path_re = (
-            "^(?:" + "|".join(re.escape(path) for path in paths) + ")(?:/|$)"
-            if paths
-            else "(?!)"
-        )
+        path_re = "^(?:" + "|".join(re.escape(path) for path in paths) + ")(?:/|$)" if paths else "(?!)"
         nginx = ""
         if transport != "https":
             ds = " default_server" if name == "main" else ""
@@ -179,8 +166,12 @@ def _plain_files(transport, admin_http, access_state=None):
                 guard += "if ($irate_plain = P) { return 302 /http-admin-warning?next=$request_uri; }\n"
             else:
                 guard += f"if ($irate_plain = P) {{ return 302 {target}; }}\n"
-        guard += "location = /http-admin-warning { proxy_set_header Host $http_host; proxy_pass http://127.0.0.1:8000; }\n"
-        guard += "location = /http-admin-continue { proxy_set_header Host $http_host; proxy_pass http://127.0.0.1:8000; }\n"
+        guard += (
+            "location = /http-admin-warning { proxy_set_header Host $http_host; proxy_pass http://127.0.0.1:8000; }\n"
+        )
+        guard += (
+            "location = /http-admin-continue { proxy_set_header Host $http_host; proxy_pass http://127.0.0.1:8000; }\n"
+        )
         out[FRONT / f"nginx-policy-{name}.inc"] = guard
         if name == "notebook":
             continue
@@ -229,12 +220,7 @@ def initialise():
     # An older installation may have enabled HTTPS before a new origin was added.  This
     # runs during an authorised install, before its full nginx validation, so bring its
     # TLS includes forward as well as the always-regenerated HTTP includes.
-    if (
-        _record().get("on")
-        and policy["transport"] != "http"
-        and CHAIN.exists()
-        and KEY.exists()
-    ):
+    if _record().get("on") and policy["transport"] != "http" and CHAIN.exists() and KEY.exists():
         files.update(_front_files())
     for path, text in files.items():
         _write(path, text, 0o644)
@@ -249,12 +235,8 @@ def configure(transport, admin_http):
                 "Select a transport and an administrator HTTP policy.",
             )
         )
-    if (transport != "http" or admin_http == "block") and not (
-        CHAIN.exists() and KEY.exists()
-    ):
-        raise Refused(
-            M("https.settings.no-cert", "Generate or import a certificate first.")
-        )
+    if (transport != "http" or admin_http == "block") and not (CHAIN.exists() and KEY.exists()):
+        raise Refused(M("https.settings.no-cert", "Generate or import a certificate first."))
     if transport == "http" and admin_http == "block":
         raise Refused(
             M(
@@ -264,15 +246,8 @@ def configure(transport, admin_http):
         )
     FRONT.mkdir(parents=True, exist_ok=True)
     files = _plain_files(transport, admin_http)
-    files.update(
-        {
-            path: text if transport != "http" else None
-            for path, text in _front_files().items()
-        }
-    )
-    files.update(
-        {FRONT / name: None for name in ("nginx-admin.conf", "caddy-admin.caddy")}
-    )
+    files.update({path: text if transport != "http" else None for path, text in _front_files().items()})
+    files.update({FRONT / name: None for name in ("nginx-admin.conf", "caddy-admin.caddy")})
     before = {path: path.read_text() if path.exists() else None for path in files}
     record_before = RECORD.read_text() if RECORD.exists() else None
 
@@ -316,21 +291,15 @@ def configure(transport, admin_http):
 
 
 def openssl(*args, inp=None):
-    out = subprocess.run(
-        ["openssl", *args], input=inp, capture_output=True, text=True, timeout=60
-    )
+    out = subprocess.run(["openssl", *args], input=inp, capture_output=True, text=True, timeout=60)
     if out.returncode != 0:
-        raise RuntimeError(
-            f"openssl {args[0]}: {(out.stderr or out.stdout).strip().splitlines()[-1:]}"
-        )
+        raise RuntimeError(f"openssl {args[0]}: {(out.stderr or out.stdout).strip().splitlines()[-1:]}")
     return out.stdout
 
 
 def addresses():
     """The box's IPv4 addresses now (not loopback), from `ip`."""
-    out = subprocess.run(
-        ["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True
-    ).stdout
+    out = subprocess.run(["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True).stdout
     found = []
     for m in re.finditer(r"^\d+:\s+(\S+)\s+inet\s+([0-9.]+)/(\d+)", out, re.M):
         iface, addr, plen = m.groups()
@@ -339,28 +308,21 @@ def addresses():
                 {
                     "iface": iface,
                     "address": addr,
-                    "network": str(
-                        ipaddress.ip_network(f"{addr}/{plen}", strict=False)
-                    ),
+                    "network": str(ipaddress.ip_network(f"{addr}/{plen}", strict=False)),
                 }
             )
     return found
 
 
 def hostname():
-    return (
-        re.sub(r"[^a-z0-9-]", "", socket.gethostname().split(".")[0].lower())
-        or "irate-box"
-    )
+    return re.sub(r"[^a-z0-9-]", "", socket.gethostname().split(".")[0].lower()) or "irate-box"
 
 
 def _permitted(nets):
     """The CA's name constraints: the box's names, the hotspot, and the given networks."""
     host = hostname()
     names = [BOX_NAME, f".{BOX_NAME}", f"{host}.local"]
-    ips = [ipaddress.ip_network(f"{HOTSPOT}/32")] + [
-        ipaddress.ip_network(n) for n in nets
-    ]
+    ips = [ipaddress.ip_network(f"{HOTSPOT}/32")] + [ipaddress.ip_network(n) for n in nets]
     out = [f"permitted;DNS:{n}" for n in names]
     out += [f"permitted;IP:{n.network_address}/{n.netmask}" for n in dict.fromkeys(ips)]
     return names, [str(n) for n in dict.fromkeys(ips)], ",".join(out)
@@ -395,11 +357,7 @@ def make_ca(nets=None):
     nets = (
         nets
         if nets is not None
-        else [
-            a["network"]
-            for a in addresses()
-            if a["address"] != HOTSPOT and not a["address"].startswith("100.")
-        ]
+        else [a["network"] for a in addresses() if a["address"] != HOTSPOT and not a["address"].startswith("100.")]
     )
     names, ips, constraints = _permitted(nets)
     CA_DIR.mkdir(parents=True, exist_ok=True)
@@ -462,11 +420,7 @@ def _covered(rec):
     """The names and addresses the server certificate should cover: the CA's names, and the
     box's addresses that the CA's constraints allow."""
     nets = [ipaddress.ip_network(n) for n in rec["ca"]["networks"]]
-    ips = [HOTSPOT] + [
-        a["address"]
-        for a in addresses()
-        if any(ipaddress.ip_address(a["address"]) in n for n in nets)
-    ]
+    ips = [HOTSPOT] + [a["address"] for a in addresses() if any(ipaddress.ip_address(a["address"]) in n for n in nets)]
     names = [n for n in rec["ca"]["names"] if not n.startswith(".")]
     return names, list(dict.fromkeys(ips))
 
@@ -569,10 +523,7 @@ def _nginx_check_and_reload():
         if t.returncode != 0:
             return (
                 False,
-                (
-                    (t.stderr or t.stdout).strip().splitlines()
-                    or ["caddy validate failed"]
-                )[-1],
+                ((t.stderr or t.stdout).strip().splitlines() or ["caddy validate failed"])[-1],
             )
         r = subprocess.run(
             ["systemctl", "restart", "caddy"],
@@ -581,17 +532,13 @@ def _nginx_check_and_reload():
             timeout=60,
         )
         return r.returncode == 0, (r.stderr or "").strip()
-    t = subprocess.run(
-        ["nginx", "-t", "-q"], capture_output=True, text=True, timeout=60
-    )
+    t = subprocess.run(["nginx", "-t", "-q"], capture_output=True, text=True, timeout=60)
     if t.returncode != 0:
         return (
             False,
             ((t.stderr or t.stdout).strip().splitlines() or ["nginx -t failed"])[-1],
         )
-    r = subprocess.run(
-        ["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=60
-    )
+    r = subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=60)
     return r.returncode == 0, (r.stderr or "").strip()
 
 
@@ -602,8 +549,7 @@ def _front_files():
     """
     if _server() == "caddy":
         return {
-            FRONT
-            / f"caddy-site-{name}.caddy": f"# Written by irate-box (root/tls.py): the {name} site's TLS twin.\n"
+            FRONT / f"caddy-site-{name}.caddy": f"# Written by irate-box (root/tls.py): the {name} site's TLS twin.\n"
             f"https://:{TWINS[name]} {{\n\ttls {CHAIN} {KEY}\n\timport irate_box_{'hub' if name == 'main' else name}\n}}\n"
             for name in ("main", "addons", "notes", "wiki", "git")
         }
@@ -624,11 +570,7 @@ def front(on):
     A check that fails takes the includes away again, so the box serves what it did before.
     """
     current = settings()
-    transport = (
-        current["transport"]
-        if on and current["transport"] != "http"
-        else ("both" if on else "http")
-    )
+    transport = current["transport"] if on and current["transport"] != "http" else ("both" if on else "http")
     configure(transport, current["admin_http"] if on else "allow")
     return (
         M(
@@ -652,9 +594,7 @@ def admin_only(on):
     device trusts the box, so they can't lock themselves out)."""
     rec = _record()
     if on and not rec.get("on"):
-        raise Refused(
-            M("https.admin-only.https-off", "HTTPS is disabled. Enable HTTPS first.")
-        )
+        raise Refused(M("https.admin-only.https-off", "HTTPS is disabled. Enable HTTPS first."))
     configure(settings()["transport"], "block" if on else "allow")
     return (
         M("https.admin-only.on", "Administrator pages require HTTPS.")
@@ -733,28 +673,18 @@ def renew():
 # and what passkeys and the https:// captive-portal API need. Checked before it is used: the key
 # matches, it has not expired, its chain reaches a CA the system trusts, and which names it covers.
 # The box never replaces it on its own (due() is None for it); the owner can go back to the box's.
-TRUST = os.environ.get(
-    "HUB_TLS_TRUST"
-)  # a CA bundle for the chain check (tests); the system's by default
-PEM_CERT = re.compile(
-    r"-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+?-----END CERTIFICATE-----"
-)
+TRUST = os.environ.get("HUB_TLS_TRUST")  # a CA bundle for the chain check (tests); the system's by default
+PEM_CERT = re.compile(r"-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+?-----END CERTIFICATE-----")
 PEM_KEY = re.compile(
     r"-----BEGIN (?:EC |RSA )?PRIVATE KEY-----\s+[A-Za-z0-9+/=\s]+?-----END (?:EC |RSA )?PRIVATE KEY-----"
 )
 
 
 def _not_after(cert_file):
-    out = (
-        openssl("x509", "-in", str(cert_file), "-noout", "-enddate")
-        .strip()
-        .split("=", 1)[1]
-    )
+    out = openssl("x509", "-in", str(cert_file), "-noout", "-enddate").strip().split("=", 1)[1]
     import calendar
 
-    return calendar.timegm(
-        time.strptime(re.sub(r"\s+", " ", out), "%b %d %H:%M:%S %Y %Z")
-    )
+    return calendar.timegm(time.strptime(re.sub(r"\s+", " ", out), "%b %d %H:%M:%S %Y %Z"))
 
 
 @locked
@@ -828,9 +758,7 @@ def import_own(chain_pem, key_pem):
         )
         v = subprocess.run(args, capture_output=True, text=True)
         if v.returncode != 0:
-            why = (v.stderr or v.stdout).strip().splitlines()[-1:] or [
-                "openssl verify failed"
-            ]
+            why = (v.stderr or v.stdout).strip().splitlines()[-1:] or ["openssl verify failed"]
             raise Refused(
                 M(
                     "https.import.chain",

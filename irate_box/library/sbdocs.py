@@ -21,6 +21,7 @@ The pages are replaced whole when SilverBullet's version changes, and left alone
     sbdocs.py install TAR SPACE VERSION  into the space (as the hub user); nothing if already there
 Stdlib only, besides git for fetch.
 """
+
 import gzip
 import hashlib
 import io
@@ -35,7 +36,7 @@ from pathlib import Path
 
 REPO = "https://github.com/silverbulletmd/silverbullet"
 FOLDER = "SilverBullet"
-MARK = ".irate-box-sbdocs"           # the version installed, beside the folder
+MARK = ".irate-box-sbdocs"  # the version installed, beside the folder
 LEFT_OUT = ("CONFIG.md", "Library/")  # the site's own configuration: it would act on the owner's space
 FENCES = {"space-lua": "lua", "space-style": "css"}
 ONLINE = re.compile(r"\[([^\]]*)\]\(https://silverbullet\.md/([^)#\s]*)(#[^)\s]*)?\)")
@@ -48,8 +49,13 @@ def fetch(commit, out):
     reproducible tar.gz: sorted names, no times or owners, so the same commit gives the same bytes."""
     with tempfile.TemporaryDirectory(prefix="sbdocs-") as tmp:
         git = ["git", "-C", tmp, "-c", "advice.detachedHead=false"]
-        for cmd in (["init", "-q"], ["remote", "add", "origin", REPO], ["sparse-checkout", "set", "--no-cone", "/docs/"],
-                    ["fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", commit], ["checkout", "-q", "FETCH_HEAD"]):
+        for cmd in (
+            ["init", "-q"],
+            ["remote", "add", "origin", REPO],
+            ["sparse-checkout", "set", "--no-cone", "/docs/"],
+            ["fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", commit],
+            ["checkout", "-q", "FETCH_HEAD"],
+        ):
             subprocess.run(git + cmd, check=True, capture_output=True, timeout=600)
         got = subprocess.run(git + ["rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
         if got != commit:
@@ -93,6 +99,7 @@ def _links(text):
 
     def online(m):
         from urllib.parse import unquote
+
         page = unquote(m.group(2)) or "index"
         label = m.group(1)
         return f"[[{FOLDER}/{page}{m.group(3) or ''}{'|' + label if label else ''}]]"
@@ -135,14 +142,17 @@ def adapt(text):
         while i < len(line):
             if line.startswith("${", i):
                 j = _expression_end(line, i + 1)
-                parts.append(line[i:j]); i = j
+                parts.append(line[i:j])
+                i = j
             elif line[i] == "`":
                 j = line.find("`", i + 1)
                 j = len(line) if j < 0 else j + 1
-                parts.append(line[i:j]); i = j
+                parts.append(line[i:j])
+                i = j
             else:
                 j = min([k for k in (line.find("${", i), line.find("`", i)) if k >= 0] or [len(line)])
-                parts.append(_links(line[i:j])); i = j
+                parts.append(_links(line[i:j]))
+                i = j
         out.append("".join(parts))
     return "".join(out)
 
@@ -166,8 +176,9 @@ def _starting_page(space):
     if not p.is_file():
         return
     t = p.read_text()
-    new = (t.replace("[Manual](https://silverbullet.md/Manual)", f"[[{FOLDER}/Manual|Manual]]")
-            .replace("[Getting Started](https://silverbullet.md/Getting%20Started)", f"[[{FOLDER}/Getting Started|Getting Started]]"))
+    new = t.replace("[Manual](https://silverbullet.md/Manual)", f"[[{FOLDER}/Manual|Manual]]").replace(
+        "[Getting Started](https://silverbullet.md/Getting%20Started)", f"[[{FOLDER}/Getting Started|Getting Started]]"
+    )
     if new != t:
         p.write_text(new)
 
@@ -186,7 +197,7 @@ def install(tar_path, space, version):
         n = 0
         with tarfile.open(tar_path) as tar:
             for m in tar.getmembers():
-                rel = m.name[len("docs/"):] if m.name.startswith("docs/") else None
+                rel = m.name[len("docs/") :] if m.name.startswith("docs/") else None
                 if not m.isfile() or not rel or ".." in Path(rel).parts or rel.startswith("/") or _left_out(rel):
                     continue
                 dest = stage / FOLDER / rel
@@ -200,7 +211,8 @@ def install(tar_path, space, version):
             f"# Offline manual for SilverBullet {version}\n\nThis is a copy of the manual of the SilverBullet that this box runs. "
             f"The links inside the copy open with no internet. Start at [[{FOLDER}/Manual]] or [[{FOLDER}/Getting Started]].\n\n"
             "This folder is replaced when SilverBullet is updated. Save your own notes outside this folder. "
-            "Code examples are displayed, not executed. Community forums require internet access: https://community.silverbullet.md\n")
+            "Code examples are displayed, not executed. Community forums require internet access: https://community.silverbullet.md\n"
+        )
         old = space / f".{FOLDER}.old"
         shutil.rmtree(old, ignore_errors=True)
         if (space / FOLDER).exists():
