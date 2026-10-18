@@ -9,3 +9,7 @@ select = ["B", "D3", "E", "F", "I"]
 ignore = ["E501"]
 
 # [format]: the defaults (double quotes, 4-space indent, a trailing comma keeps one item per line).
+
+[lint.per-file-ignores]
+# The test scripts put the repository on sys.path first, then import the code under test.
+"tests/**" = ["E402"]
