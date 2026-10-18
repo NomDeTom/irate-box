@@ -1,0 +1,8 @@
+# pinact - https://github.com/suzuki-shunsuke/pinact
+version: 3
+rules:
+  # docusaurus2zim has no tags: it is pinned by SHA to a commit on its main branch.
+  - ignore: true
+    conditions:
+      - expr: |
+          ActionName == "NomDeTom/docusaurus2zim"
