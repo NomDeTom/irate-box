@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="helper-busy-"))
 os.environ.update(HUB_STATE_DIR=str(T), HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 fails = 0
 
@@ -51,7 +51,7 @@ check(
     h["stuck"] is False and 230 <= h["busy"] <= 250,
     h,
 )
-import json  # noqa: E402
+import json
 
 log = json.loads(server.HELPER_BUSY_LOG.read_text())
 check(

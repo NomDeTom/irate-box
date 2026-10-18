@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="pagehist-"))
 os.environ["HUB_STATE_DIR"] = str(T)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import pagehistory as ph  # noqa: E402
+from irate_box.hub import pagehistory as ph
 
 fails = 0
 
@@ -92,7 +92,7 @@ check(
     "the sampler writes the record when the log moved, not when it didn't",
     sampler.tick() and ph.FILE.exists() and not sampler.tick(),
 )
-import shutil  # noqa: E402
+import shutil
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

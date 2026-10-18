@@ -20,7 +20,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import msg_guard  # noqa: E402  (its scan of the messages)
+import msg_guard  # its scan of the messages
 
 TERMS = json.loads((REPO / "docs" / "dev" / "terms.json").read_text())
 AVOID = [(re.compile(a["words"], re.I), a["use"]) for a in TERMS["avoid"]]

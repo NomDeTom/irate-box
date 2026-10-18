@@ -16,7 +16,7 @@ T = Path(tempfile.mkdtemp(prefix="overview-net-"))
 os.environ.update(HUB_STATE_DIR=str(T))
 (T / "control").mkdir()
 sys.path.insert(0, str(REPO))
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 fails = 0
 

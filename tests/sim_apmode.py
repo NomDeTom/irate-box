@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.hub import apmode, netinv  # noqa: E402
+from irate_box.hub import apmode, netinv
 
 fails = 0
 
@@ -143,7 +143,7 @@ inv, v = box([], {})
 check("no radios at all: rung 5", apmode.plan(inv, v)["rung"] == 5)
 
 # Applied (root/ap.py): the NetworkManager keyfile, dnsmasq, and the steps, from a plan.
-from irate_box.root import ap  # noqa: E402
+from irate_box.root import ap
 
 inv, v = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up)
 p = apmode.plan(inv, v)
@@ -206,7 +206,7 @@ check(
 )
 
 # Running it (root/ap.py's executor), with the commands stood in and the files in a temp folder.
-import json  # noqa: E401,E402
+import json
 import os
 import subprocess
 import tempfile
@@ -443,7 +443,7 @@ check(
 ap.stop(fake_run)
 
 # The box doctor's hotspot checks (health.check_hotspot).
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 inv, v = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up)
 inv["ap"] = v

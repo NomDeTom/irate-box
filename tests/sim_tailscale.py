@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.hub import server as S  # noqa: E402
+from irate_box.hub import server as S
 
 fails = 0
 

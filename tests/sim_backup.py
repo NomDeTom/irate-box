@@ -19,7 +19,7 @@ T = Path(tempfile.mkdtemp(prefix="backup-"))
 S = T / "state"
 os.environ.update(HUB_STATE_DIR=str(S))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import backup as B  # noqa: E402
+from irate_box.hub import backup as B
 
 fails = 0
 
@@ -248,7 +248,7 @@ check(
 
 # The root's half: the kit's choices checked, and refused over budget before anything is made.
 os.environ.update(HUB_STATE_DIR=str(S), HUB_CONTROL_DIR=str(T / "control"))
-from irate_box.root import hub_control as H  # noqa: E402
+from irate_box.root import hub_control as H
 
 H.STATE, H.ZIM_DIR = S, S / "zim"
 for bad, why in (
@@ -290,8 +290,8 @@ except ValueError as exc:
     )
 
 # The full image onto a "stick": a file standing for the card, written in parts on FAT, joined and read back whole.
-from irate_box.msg import args_of  # noqa: E402
-from irate_box.root import usbstick as U  # noqa: E402
+from irate_box.msg import args_of
+from irate_box.root import usbstick as U
 
 card = T / "card.img"
 card.write_bytes(os.urandom(300_000) + b"\0" * 700_000)
@@ -328,7 +328,7 @@ check(
     and "kits import-dir" in inst,
 )
 # The content export without the hub program: repositories, state and import.sh beside the books and toolkits.
-import subprocess  # noqa: E402
+import subprocess
 
 top = T / "export" / "irate-box"
 top.mkdir(parents=True)
@@ -377,7 +377,7 @@ def run(*a):
     return subprocess.run(
         ["sh", str(stick / "irate-box/import.sh"), *a],
         capture_output=True,
-        text=True,  # noqa: E731
+        text=True,
         env=dict(os.environ, IRATE_BOX_CLI="/bin/true", HUB_STATE_DIR=str(box)),
     )
 

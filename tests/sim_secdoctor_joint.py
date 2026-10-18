@@ -19,12 +19,12 @@ T = Path(tempfile.mkdtemp(prefix="joint-"))
 (T / "control").mkdir()
 os.environ.update(HUB_STATE_DIR=str(T), HUB_KITS_ROOT=str(T / "kits"))
 sys.path.insert(0, str(REPO))
-from irate_box.finding import finding  # noqa: E402
-from irate_box.finding import message_args as msg_args  # noqa: E402
-from irate_box.hub import secimports  # noqa: E402
-from irate_box.msg import M  # noqa: E402
-from irate_box.root import secdoctor as sd  # noqa: E402
-from irate_box.root import secdoctor_xref as xref  # noqa: E402
+from irate_box.finding import finding
+from irate_box.finding import message_args as msg_args
+from irate_box.hub import secimports
+from irate_box.msg import M
+from irate_box.root import secdoctor as sd
+from irate_box.root import secdoctor_xref as xref
 
 fails = 0
 

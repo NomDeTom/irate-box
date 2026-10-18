@@ -20,9 +20,9 @@ os.environ.update(
     HUB_APT_DIR=str(APT), HUB_PROC_VERSION=str(T / "version"), HUB_NM_DIR=str(NM), HUB_STATE_DIR=str(T / "state")
 )
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_args as msg_args  # noqa: E402
+from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.root import secdoctor as sd
 
 sd._sc = lambda *a: ""  # no systemd here: bluetooth is "not running" either way
 fails = 0

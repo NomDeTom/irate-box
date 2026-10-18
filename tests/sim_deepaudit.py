@@ -22,11 +22,11 @@ T = Path(tempfile.mkdtemp(prefix="deep-"))
 (T / "state" / "library").mkdir()
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_GIT_ROOT=str(T / "git"), HUB_KITS_ROOT=str(T / "kits"))
 sys.path.insert(0, str(REPO))
-from irate_box.finding import finding  # noqa: E402
+from irate_box.finding import finding
 from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.msg import M  # noqa: E402
-from irate_box.root import deepaudit as da  # noqa: E402
+from irate_box.msg import M
+from irate_box.root import deepaudit as da
 
 fails = 0
 
@@ -196,7 +196,7 @@ check(
     in l2["lynis-summary"]["listed"],
     l2["lynis-summary"]["listed"],
 )
-from irate_box.root import secdoctor as sd0  # noqa: E402
+from irate_box.root import secdoctor as sd0
 
 doctor = [
     finding(
@@ -386,7 +386,7 @@ check(
     and not da.PROGRESS.exists(),
     line,
 )
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.root import secdoctor as sd
 
 steps = {sid: fn for sid, _, _, fn in sd.STEPS}
 cis_step = steps["debian-cis"]({})
@@ -416,7 +416,7 @@ check(
 check("none yet: said, not counted against the box", [f["status"] for f in steps["lynis"]({})] == ["ok"])
 
 # Weekly, by the librarian, while the security kit is kept current.
-from irate_box.library import librarian, toolkits  # noqa: E402
+from irate_box.library import librarian, toolkits
 
 queued = []
 librarian._queue_root = lambda req: (queued.append(req), "rid")[1]
@@ -438,7 +438,7 @@ queued.clear()
 with mock.patch.object(toolkits, "definitions", return_value={"security": {"id": "security", "packages": ["lynis"]}}):
     toolkits.step({"check_every_hours": 24}, now=time.time() + 30 * 86400)
 check("0 days: never on its own", not [q for q in queued if q["action"] == "security-deep-audit"])
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 check("the root helper runs it", "security-deep-audit" in hub_control.ACTIONS)
 print("ok" if not fails else f"{fails} failure(s)")

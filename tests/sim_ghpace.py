@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="ghpace-"))
 os.environ.update(HUB_STATE_DIR=str(T), GITHUB_TOKEN="")
 sys.path.insert(0, str(REPO))
-from irate_box.library import librarian as L  # noqa: E402
+from irate_box.library import librarian as L
 
 fails = 0
 

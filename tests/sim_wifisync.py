@@ -16,7 +16,7 @@ T = Path(tempfile.mkdtemp(prefix="wifisync-"))
 os.environ.update(HUB_STATE_DIR=str(T), HUB_ETC_DIR=str(T / "etc"))
 (T / "control").mkdir()
 sys.path.insert(0, str(REPO))
-from irate_box.root import hub_control as hc  # noqa: E402
+from irate_box.root import hub_control as hc
 
 fails = 0
 
@@ -96,7 +96,7 @@ check(
     if hasattr(hc, "ACTIONS")
     else '"wifisync": wifisync' in (REPO / "irate_box/root/hub_control.py").read_text(),
 )
-import shutil  # noqa: E402
+import shutil
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

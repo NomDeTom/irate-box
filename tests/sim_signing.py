@@ -28,8 +28,8 @@ os.environ.update(
     HUB_UPDATE_DIR=str(T / "cache" / "src"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.msg import M  # noqa: E402
-from irate_box.root import hub_control, signing  # noqa: E402
+from irate_box.msg import M
+from irate_box.root import hub_control, signing
 
 fails = 0
 

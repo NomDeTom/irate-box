@@ -21,8 +21,8 @@ os.environ.update(
 )
 (T / "etc-hub").mkdir()
 sys.path.insert(0, str(REPO))
-from irate_box import msg  # noqa: E402
-from irate_box.root import clock  # noqa: E402
+from irate_box import msg
+from irate_box.root import clock
 
 fails = 0
 
@@ -235,7 +235,7 @@ check(
     and "clock-sources.firewall-opens" in msg.ids(said),
     (refreshed, said),
 )
-from irate_box.root import firewall  # noqa: E402
+from irate_box.root import firewall
 
 check(
     "  the firewall opens the time to guests while it serves (UDP 123), by the Clock page's switch",
@@ -268,7 +268,7 @@ check(
     and "clock-sources.module" in msg.ids(said),
     (said, unit.exists()),
 )
-import struct  # noqa: E402
+import struct
 
 smp = clock.sample(1792040000.25, -0.5, "<qqdiiii")
 check(
@@ -326,7 +326,7 @@ st = {
     for r in clock.source_states({"service": "chrony", "module": True}, "#? RTC  0 4 0 - +0ns[+0ns] +/- 0ns\n")
 }
 check("  its state from chronyc's RTC line (not GPS's)", st == {"module": "not-answering"}, st)
-from irate_box.root import rtc as real_rtc_mod  # noqa: E402
+from irate_box.root import rtc as real_rtc_mod
 
 real_rtc_mod.ntp_synced = lambda: True
 real_rtc_mod.chrony_reference = lambda: "RTC"
@@ -414,7 +414,7 @@ check(
 )
 
 # --- the doctor's findings, and both sides accepting the choices ---------------------------------------------
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 clock.load = lambda: rec
 clock.source_states = lambda r: [
@@ -436,7 +436,7 @@ check(
     and fs["clock-source:gps"]["fix"] is None,
     fs,
 )
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 for c in ("clock-sources:chrony:1:1:1:1:192.168.1.1", "clock-sources:image:0:0:0:0:router.lan", "clock-undo"):
     check(

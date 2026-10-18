@@ -169,6 +169,6 @@ class Sampler(threading.Thread):
         while not self.stopping.is_set():
             try:
                 self.tick()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - a bad tick must not end the sampling
                 print(f"memhistory: {exc}")
             self.stopping.wait(self.every - time.time() % self.every + 1)

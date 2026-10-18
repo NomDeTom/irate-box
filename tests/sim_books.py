@@ -62,9 +62,9 @@ os.environ["PATH"] = f"{BIN}:{os.environ['PATH']}"
 os.environ["HUB_STATE_DIR"] = str(T / "state")
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests"))
-import zimgen  # noqa: E402
+import zimgen
 
-from irate_box.library import librarian as L  # noqa: E402
+from irate_box.library import librarian as L
 
 fails = 0
 
@@ -203,8 +203,8 @@ check(
 import io
 import time
 import urllib.error
-import urllib.request  # noqa: E402
-from email.message import Message  # noqa: E402
+import urllib.request
+from email.message import Message
 
 gh = {"remaining": 60, "requests": [], "etag": '"v1"'}
 

@@ -24,7 +24,7 @@ os.environ.update(HUB_STATE_DIR=str(T / "unit"))
 (T / "unit").mkdir()
 sys.path.insert(0, str(REPO))
 from irate_box.hub import access
-from irate_box.hub import accounts as A  # noqa: E402
+from irate_box.hub import accounts as A
 
 fails = 0
 

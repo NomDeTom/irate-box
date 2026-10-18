@@ -31,7 +31,7 @@ os.environ.update(
 for d in ("state/library", "git/public", "git/private", "ci/queue", "ci/runs", "ci/work"):
     (T / d).mkdir(parents=True)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import ci, factory, flasher  # noqa: E402
+from irate_box.hub import ci, factory, flasher
 
 fails = 0
 
@@ -525,7 +525,7 @@ check(
     (logs["offline"][0], logs["tools"][0]),
 )
 import os as _os
-import time as _t  # noqa: E402
+import time as _t
 
 for i in range(5):
     f = cache / f"old-{i}"
@@ -824,7 +824,7 @@ check(
 )
 # The hub: the tile and its routes only while the owner shows it.
 import socket
-import urllib.error  # noqa: E402
+import urllib.error
 import urllib.request
 
 
@@ -889,7 +889,7 @@ finally:
     hub.terminate()
     hub.wait()
 # The doctor (health.py): builds waiting over a day, a family that always fails, the disk.
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 health.STATE = T  # its ci/ is the builder's here
 for p in ci.QUEUE.glob("*.json"):

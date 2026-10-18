@@ -20,7 +20,7 @@ work = Path(tempfile.mkdtemp(prefix="visitors-"))
 leases, arp, out = work / "dnsmasq.leases", work / "arp", work / "run" / "counts.json"
 os.environ.update(VISITORS_LEASES=str(leases), VISITORS_ARP=str(arp), VISITORS_OUT=str(out))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import visitors  # noqa: E402
+from irate_box.hub import visitors
 
 fails = 0
 
@@ -125,7 +125,7 @@ finally:
     hub.terminate()
 # The hub's reading of the counts, off and on (the function the People tile uses).
 os.environ.update(HUB_STATE_DIR=str(state), HUB_VISITORS_COUNTS=str(out))
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 server._settings["visitor_counts"] = True
 check(

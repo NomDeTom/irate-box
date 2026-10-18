@@ -16,8 +16,8 @@ from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="nmconnection-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.msg import Refused  # noqa: E402
-from irate_box.root import nmconnection as C  # noqa: E402
+from irate_box.msg import Refused
+from irate_box.root import nmconnection as C
 
 fails = 0
 

@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="git-levels-"))
 os.environ.update(HUB_GIT_ROOT=str(T), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import gitrepos  # noqa: E402
+from irate_box.hub import gitrepos
 
 fails = 0
 
@@ -242,7 +242,7 @@ check("a public repository cannot be switched on", act(action="build", area="pub
 check("on must be true or false", act(action="build", area="private", name="secret", on="yes")[0] == 400)
 os.environ["HUB_CI_ROOT"] = str(T / "ci")
 (T / "ci" / "queue").mkdir(parents=True)
-from irate_box.hub import ci  # noqa: E402
+from irate_box.hub import ci
 
 ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
 w = T / "w"
@@ -252,7 +252,7 @@ subprocess.run(["git", "add", "."], cwd=w, check=True)
 subprocess.run(["git", "commit", "-qm", "c"], cwd=w, env=ENV, check=True)
 subprocess.run(["git", "push", "-q", str(T / "private" / "secret.git"), "main"], cwd=w, check=True, capture_output=True)
 sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=w, capture_output=True, text=True).stdout.strip()
-import contextlib  # noqa: E402
+import contextlib
 import io
 
 
@@ -270,14 +270,14 @@ check(
     "  and the card knows it has the script",
     next(r for r in gitrepos.snapshot()["repos"] if r["name"] == "secret")["has_script"],
 )
-import json  # noqa: E402
+import json
 
 for n, (state, started) in {1: ("failed", 100), 2: ("passed", 200)}.items():
     (T / "ci" / "runs" / "secret" / str(n)).mkdir(parents=True)
     (T / "ci" / "runs" / "secret" / str(n) / "status.json").write_text(
         json.dumps({"state": state, "started": started, "branch": "main", "commit": sha})
     )
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 lb = {r["name"]: r["last_build"] for r in server.git_snapshot()["repos"]}
 check(

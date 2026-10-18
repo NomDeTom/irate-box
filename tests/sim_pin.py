@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # ELIZA is a local add-on (from the catalogue): added as /admin adds it, before the librarian reads its apps.
 (T / "apps.d").mkdir()
 (T / "apps.d" / "eliza.json").write_text((Path(__file__).resolve().parents[1] / "addons" / "eliza.json").read_text())
-from irate_box.library import librarian as L  # noqa: E402
+from irate_box.library import librarian as L
 
 REAL_QUEUE = L._queue_root
 fails = 0
@@ -155,7 +155,7 @@ except L.LibrarianError:
 # Queuing for the root helper as the box lays it out: control/ is root's and the hub
 # can't write in it; only control/requests/ is the hub's. The request must still arrive whole.
 import json
-import stat  # noqa: E402
+import stat
 
 C = T / "control"
 (C / "requests").mkdir(parents=True, exist_ok=True)

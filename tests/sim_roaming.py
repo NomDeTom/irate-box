@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="roaming-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import roaming as R  # noqa: E402
+from irate_box.hub import roaming as R
 from irate_box.hub import uplink as U
 
 fails = 0
@@ -148,9 +148,9 @@ check(
     "roaming.apply(s, old, iface)" in hc and "control.uplink.not-saved" in hc,
 )
 # The box doctor: roaming often with the hotspot on the same radio, said with the choices.
-from irate_box.finding import message_args as msg_args  # noqa: E402
+from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 inv = {
     "radios": [

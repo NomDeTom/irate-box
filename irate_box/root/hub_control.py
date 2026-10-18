@@ -5317,7 +5317,7 @@ def health_fix(req):
     finally:
         try:
             _write_health()
-        except Exception:  # the repair's own answer matters more than a fresh report
+        except Exception:  # noqa: BLE001 - the repair's own answer matters more than a fresh report
             pass
     return msg
 
@@ -5654,7 +5654,7 @@ def pkg_settings(req):
     days, every = req.get("days"), req.get("every")
 
     def num(v, bad):
-        return v if isinstance(v, int) and not isinstance(v, bool) else bad  # noqa: E731
+        return v if isinstance(v, int) and not isinstance(v, bool) else bad
 
     return pkgwatch.set_settings(
         str(req.get("package", "")),
@@ -6375,7 +6375,7 @@ def main():
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 _discard(path)
                 answer(rid, False, _why(exc))
-            except Exception as exc:  # a handler's own bug: answered, and the queue goes on
+            except Exception as exc:  # noqa: BLE001 - a handler's own bug: answered, and the queue goes on
                 _discard(path)
                 answer(
                     rid,

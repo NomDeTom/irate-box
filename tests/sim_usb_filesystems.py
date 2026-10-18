@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="usbfs-"))
 os.environ.update(HUB_PROC=str(T), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
-from irate_box.root import health, usbstick  # noqa: E402
+from irate_box.root import health, usbstick
 
 fails = 0
 

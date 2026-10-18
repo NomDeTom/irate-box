@@ -33,7 +33,7 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 os.environ.update(HUB_STATE_DIR=str(T), HUB_STATUS_URL=f"http://127.0.0.1:{srv.server_port}/status")
 REPO = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, REPO)
-from irate_box.library import selfupdate as U  # noqa: E402
+from irate_box.library import selfupdate as U
 
 (T / "control" / "requests").mkdir(parents=True)
 (T / "control" / "results").mkdir()

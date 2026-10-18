@@ -11,7 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.hub import kitauto as K  # noqa: E402
+from irate_box.hub import kitauto as K
 
 fails = 0
 
@@ -57,7 +57,7 @@ K.set_when(S, "weekly")
 check("every week: not due at 3 days", K.due(S, kit, "1ee7f47", now + K.ASK_GAP + 1) is None)
 check("  due at 8 days", K.due(S, dict(kit, at=now - 8 * 86400), "1ee7f47", now + K.ASK_GAP + 1) == req)
 check("the last kit gone: made again", K.due(S, None, "1ee7f47", now + K.ASK_GAP + 1) == req)
-import shutil  # noqa: E402
+import shutil
 
 shutil.rmtree(S, ignore_errors=True)
 print("ok" if not fails else f"{fails} failure(s)")

@@ -53,7 +53,7 @@ check(
     and all((T / "kit" / "apps" / a).exists() for a in ("draw", "mermaid", "serial", "tools", "flasher", "room")),
     out,
 )
-import shutil  # noqa: E402
+import shutil
 
 shutil.rmtree(T / "apps", ignore_errors=True)
 shutil.rmtree(T / "kit", ignore_errors=True)

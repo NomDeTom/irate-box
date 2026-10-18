@@ -15,7 +15,7 @@ from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="netpolicy-"))
 os.environ.update(HUB_STATE_DIR=str(T))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.hub import netpolicy as N  # noqa: E402
+from irate_box.hub import netpolicy as N
 
 fails = 0
 
@@ -79,7 +79,7 @@ check(
 )
 
 # The librarian's scheduled run stops before it starts anything.
-from irate_box.library import librarian  # noqa: E402
+from irate_box.library import librarian
 
 N.gate = lambda *a, **k: "Automatic download deferred: the connection Phone is metered (set)."
 said = []
@@ -92,9 +92,9 @@ check(
 )
 
 # The Box doctor, after three days of waiting.
-from irate_box.finding import message_args as msg_args  # noqa: E402
+from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 N.WAIT.write_text('{"since": 0, "last": 10, "connection": "Phone", "iface": "wlan0", "how": "set"}')
 check("doctor: nothing within three days", health.metered_findings(now=2 * 86400) == [])

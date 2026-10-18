@@ -11,7 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.root import secdoctor, tls  # noqa: E402
+from irate_box.root import secdoctor, tls
 
 fails = 0
 
@@ -147,7 +147,7 @@ check(
 
 
 def directives(t):
-    return "\n".join(line for line in t.splitlines() if not line.lstrip().startswith("#"))  # noqa: E731
+    return "\n".join(line for line in t.splitlines() if not line.lstrip().startswith("#"))
 
 
 check(

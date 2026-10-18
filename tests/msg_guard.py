@@ -21,7 +21,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.msg import ID_RE, PLACEHOLDER_RE  # noqa: E402
+from irate_box.msg import ID_RE, PLACEHOLDER_RE
 
 CATEGORIES = {"zero", "one", "two", "few", "many", "other"}
 fails = 0

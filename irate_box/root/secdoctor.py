@@ -3471,7 +3471,7 @@ def step_addons(ctx):
             if a["unit"].startswith(prefix):
                 try:
                     issues += probe(ctx, a, show)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - one broken probe must not hide the others
                     issues.append(
                         _issue(
                             "probe",
@@ -5067,7 +5067,7 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
                     " remote" if n["remote"] else "",
                     f" {n['urgency']}" if n["urgency"] else "",
                 )
-            )  # noqa: E731
+            )
 
         out.append(
             finding(
@@ -7427,7 +7427,7 @@ def make_context():
 def run_step(sid, fn, ctx):
     try:
         return fn(ctx)
-    except Exception as exc:  # one broken check must not hide the rest
+    except Exception as exc:  # noqa: BLE001 - one broken check must not hide the rest
         return [
             finding(
                 f"{sid}-error",
@@ -7454,7 +7454,7 @@ def audit(progress=None):
     """The whole report. `progress(n, total, step, findings)` is called after each step."""
     try:
         ctx = make_context()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - no context still gives a report
         ctx = {
             "front": None,
             "front_kind": None,

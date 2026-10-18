@@ -208,5 +208,5 @@ class Reaper(threading.Thread):
         while not self.stopping.wait(self.every):
             try:
                 self.books.reap()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - a bad reap must not end the reaper
                 print(f"notebooks: {exc}")

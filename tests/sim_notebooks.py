@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="notebooks-"))
 os.environ["HUB_STATE_DIR"] = str(state)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import notebooks  # noqa: E402
+from irate_box.hub import notebooks
 
 fails = 0
 
@@ -94,7 +94,7 @@ again = notebooks.Notebooks(lambda path: True, lambda k: True, lambda: dict(sett
 check("a hub starting again lists none (any left running stop)", wanted() == [] and again.wanted == set())
 
 # The root helper's side: the hub's list, checked, at most ten.
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 calls = []
 

@@ -12,7 +12,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="health-accept-"))
 os.environ["HUB_STATE_DIR"] = str(T)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 fails = 0
 

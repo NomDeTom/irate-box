@@ -92,7 +92,7 @@ try:
     )
 finally:
     hub.terminate()
-import shutil  # noqa: E402
+import shutil
 
 shutil.rmtree(state, ignore_errors=True)
 print(f"failures: {fails}")

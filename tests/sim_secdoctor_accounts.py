@@ -15,9 +15,9 @@ os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HU
 (T / "state").mkdir(parents=True)
 (T / "etc").mkdir(parents=True)
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_ids as msg_ids  # noqa: E402
-from irate_box.hub import accounts as accmod  # noqa: E402
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.finding import message_ids as msg_ids
+from irate_box.hub import accounts as accmod
+from irate_box.root import secdoctor as sd
 
 fails = 0
 

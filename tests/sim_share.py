@@ -29,7 +29,7 @@ os.environ.update(
     HUB_AP_DNSMASQ=str(T / "ap-dnsmasq.conf"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.root import firewall, hub_control, security, share  # noqa: E402
+from irate_box.root import firewall, hub_control, security, share
 
 fails = 0
 

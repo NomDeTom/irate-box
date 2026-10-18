@@ -25,7 +25,7 @@ CAT.mkdir()
 (CAT / "eliza.json").write_text((REPO / "addons" / "eliza.json").read_text())
 os.environ["HUB_ADDON_CATALOGUE"] = str(CAT)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import access  # noqa: E402
+from irate_box.hub import access
 from irate_box.hub import manifests as M
 
 fails = 0
@@ -108,7 +108,7 @@ for f in ("broken.json", "named-wrong.json"):
     (T / "apps.d" / f).unlink()
 
 # --- the librarian installs a real bundle as the hub user
-from irate_box.library import librarian as L  # noqa: E402
+from irate_box.library import librarian as L
 
 L.reload_apps()
 
@@ -155,7 +155,7 @@ except L.LibrarianError as exc:
 check("and what was installed stays", (d / "index.html").read_text() == "one")
 
 # --- the hub: add from the catalogue, paste, remove (the fetch stood in)
-from irate_box.hub import server as S  # noqa: E402
+from irate_box.hub import server as S
 
 started = []
 S.library_start = lambda action, fn: started.append(action) or True
@@ -354,9 +354,9 @@ check(
 )
 
 # The MQTT explorer: the hub's own page, cut out of a clone of the hub at the pin.
-import shutil  # noqa: E402
+import shutil
 
-from irate_box.library import adapt_mqtt_explorer as AX  # noqa: E402
+from irate_box.library import adapt_mqtt_explorer as AX
 
 REPO = Path(__file__).resolve().parents[1]
 tree = T / "mx" / "tree"

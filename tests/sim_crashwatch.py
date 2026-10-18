@@ -31,10 +31,10 @@ os.environ.update(
 )
 (T / "etc").mkdir()
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_args as msg_args  # noqa: E402
+from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.msg import render  # noqa: E402
-from irate_box.root import crashwatch as cw  # noqa: E402
+from irate_box.msg import render
+from irate_box.root import crashwatch as cw
 from irate_box.root import health
 
 fails = 0
@@ -482,7 +482,7 @@ check(
 )
 
 # --- the one radio reset (root/radio.py), shared with the uplink watchdog ---
-from irate_box.root import radio  # noqa: E402
+from irate_box.root import radio
 
 
 def fake_sys(gone_after=None):
@@ -687,7 +687,7 @@ def jr(*c, **k):
     return (
         0,
         "[  431.500000] host kernel: aic8800: firmware not answering: resetting the device to load it afresh",
-    )  # noqa: E731
+    )
 
 
 m, age = radio.driver_reset(run=jr)

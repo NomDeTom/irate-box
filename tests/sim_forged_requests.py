@@ -22,8 +22,8 @@ for d in (STATE / "control" / "results", STATE / "control" / "requests", STATE /
     d.mkdir(parents=True)
 os.environ.update(HUB_STATE_DIR=str(STATE), HUB_ETC_DIR=str(T / "etc"), HUB_RUN_DIR=str(T / "run"))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import manifests, uplink  # noqa: E402
-from irate_box.root import health, hub_control, rtc, usbstick  # noqa: E402
+from irate_box.hub import manifests, uplink
+from irate_box.root import health, hub_control, rtc, usbstick
 
 fails = 0
 
@@ -133,7 +133,7 @@ check(
 )
 
 # An app bundle's source is its manifest's; a request chooses the branch at most.
-from irate_box.library import firmware, librarian  # noqa: E402
+from irate_box.library import firmware, librarian
 
 got = librarian.validate_source(
     {
@@ -219,7 +219,7 @@ check(
     redirected.header_items(),
 )
 # Builds only from git/private; a run's file is never a link.
-from irate_box.hub import ci  # noqa: E402
+from irate_box.hub import ci
 
 check(
     "a public repository is not built",
@@ -227,7 +227,7 @@ check(
     and "repo.resolve().parent != PRIVATE.resolve()" in (REPO / "irate_box/hub/ci.py").read_text(),
 )
 # A hue too large for an int does not crash the handler.
-from irate_box.hub import board  # noqa: E402
+from irate_box.hub import board
 
 check("hue 1e999 is ignored, not a crash", board._clean_hue(1e999) is None)
 

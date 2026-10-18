@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="accounts-"))
 os.environ["HUB_STATE_DIR"] = str(T / "state")
 sys.path.insert(0, str(REPO))
-from irate_box.hub import accounts as A  # noqa: E402
+from irate_box.hub import accounts as A
 
 fails = 0
 
@@ -165,7 +165,7 @@ check(
 )
 
 # git over HTTP (stage 4): an account by its basic-auth credentials.
-import base64  # noqa: E402
+import base64
 
 basic = lambda n, pw: "Basic " + base64.b64encode(f"{n}:{pw}".encode()).decode()  # noqa: E731
 A.set_settings(signup="apply")
@@ -194,7 +194,7 @@ A.use_code(A.reset("carol"), "password6")  # as the rest of the test knows it
 A._fails.clear()
 
 # Users mode for apps (stage 2): access.py, and the root helper's files for nginx.
-from irate_box.hub import access  # noqa: E402
+from irate_box.hub import access
 
 st_ = access.clean({"draw": "users", "flasher": "users", "term": "users", "my-addon": "users", "wiki": "users"})
 check(
@@ -299,7 +299,7 @@ check(
     "  the add-on server: its own /_irate_user and login too, the per-add-on gates included before the shared location",
     site.index("include @ADDON_GATES@/*.conf*;") < site.index("location ~ ^/(?<irate_box_addon>"),
 )
-import re as _re  # noqa: E402
+import re as _re
 
 gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
 check(
@@ -311,7 +311,7 @@ check(
 )
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))
 (T / "etc").mkdir()
-from irate_box.root import hub_control as H  # noqa: E402
+from irate_box.root import hub_control as H
 
 H._access_files(st_)
 gd = T / "etc" / "nginx-access.conf.d"
@@ -784,7 +784,7 @@ try:
         pc == 204 and time.time() - t0 < 2,
         pc,
     )
-    import http.client  # noqa: E402
+    import http.client
 
     hc = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     hc.request("GET", "/_irate/admin", headers={"Connection": "close"})

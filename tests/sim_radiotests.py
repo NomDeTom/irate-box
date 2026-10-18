@@ -15,8 +15,8 @@ from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="radiotests-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_SYSFS=str(T / "sys"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.msg import Refused, args_of, ids  # noqa: E402
-from irate_box.root import radiotests as R  # noqa: E402
+from irate_box.msg import Refused, args_of, ids
+from irate_box.root import radiotests as R
 
 fails = 0
 
@@ -136,7 +136,7 @@ st.update(ignore_lock=False)
 st.update(follow=False, ap=11)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check("  a hotspot that stays: said so", R.results()[key]["follows-roam"]["answer"] == "stays")
-from irate_box.root import radio as radio_mod  # noqa: E402
+from irate_box.root import radio as radio_mod
 
 restored = []
 radio_mod.restore_hotspot = lambda *a, **k: restored.append(1) or "The hotspot started again."

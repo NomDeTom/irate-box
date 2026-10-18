@@ -100,11 +100,11 @@ os.environ.update(
     PATH=f"{BIN}:{os.environ['PATH']}",
 )
 sys.path.insert(0, str(REPO))
-from irate_box import msg  # noqa: E402
-from irate_box.finding import message_ids as said  # noqa: E402
-from irate_box.msg import args_of  # noqa: E402
-from irate_box.msg import ids as msg_ids  # noqa: E402
-from irate_box.root import security  # noqa: E402
+from irate_box import msg
+from irate_box.finding import message_ids as said
+from irate_box.msg import args_of
+from irate_box.msg import ids as msg_ids
+from irate_box.root import security
 
 fails = 0
 
@@ -682,7 +682,7 @@ check(
 
 
 def opt(f, choice):
-    return next((a for a in f["actions"] if a["choice"] == choice), None)  # noqa: E731
+    return next((a for a in f["actions"] if a["choice"] == choice), None)
 
 
 check(
@@ -751,7 +751,7 @@ security.run = fake_run
 
 
 def pf():
-    return {f["id"]: f for f in security.proc_findings(security.load_record())}.get("proc-hidden")  # noqa: E731
+    return {f["id"]: f for f in security.proc_findings(security.load_record())}.get("proc-hidden")
 
 
 f = pf()

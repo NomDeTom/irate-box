@@ -25,7 +25,7 @@ os.environ.update(
 for d in ("ci/queue", "ci/runs", "git/private", "git/public", "library"):
     (T / d).mkdir(parents=True)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import ci  # noqa: E402
+from irate_box.hub import ci
 
 fails = 0
 
@@ -353,7 +353,7 @@ rc, calls, out = pio_case("older", True, "Compiling .pio/x.o\\n", 0, installed="
 check("  installed but older: Debian's", rc == 0 and calls == ["debpio"], (rc, calls, out))
 rc, calls, out = pio_case("pip", True, "", 0, mode="pip")
 check("  PIO=pip: the wheelhouse's even with Debian's there", rc == 0 and calls == ["venvpio"], (rc, calls))
-from irate_box.library import firmware as FW  # noqa: E402
+from irate_box.library import firmware as FW
 
 check(
     "the template's left-out libraries are firmware.py's UI_LIBS",

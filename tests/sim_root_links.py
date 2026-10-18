@@ -33,8 +33,8 @@ os.environ.update(
     HUB_APP_TAKEN=str(T / "taken"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.hub import netinv, uplink  # noqa: E402
-from irate_box.root import hub_control, safeio  # noqa: E402
+from irate_box.hub import netinv, uplink
+from irate_box.root import hub_control, safeio
 
 fails = 0
 
@@ -315,7 +315,7 @@ check(
 )
 
 # --- app-install: one read of the staged bundle, into root's own copy ------------------
-import zipfile  # noqa: E402
+import zipfile
 
 staging = hub_control.APP_STAGING
 staging.mkdir(parents=True, exist_ok=True)
@@ -495,7 +495,7 @@ check(
 )
 
 # --- the kit's copies of the hub's folders (audit H1, L20): read as the hub, unpacked by tarfile's data filter ---
-from irate_box.msg import Refused  # noqa: E402
+from irate_box.msg import Refused
 
 repo = STATE / "git" / "public" / "r.git"
 repo.mkdir(parents=True)
@@ -520,7 +520,7 @@ check(
 hub_control.ZIM_DIR.mkdir(parents=True, exist_ok=True)
 book = hub_control.ZIM_DIR / "a.zim"
 book.write_bytes(b"zim one")
-import tarfile  # noqa: E402
+import tarfile
 
 part = T / "kit.tar"
 tarfile.open(part, "w").close()
@@ -550,7 +550,7 @@ check(
 )
 
 # --- root's own state beside $STATE, not in it (audit H2, M1, L18) -----------------------------
-from irate_box.root import crashwatch, nmhandover, otherap  # noqa: E402
+from irate_box.root import crashwatch, nmhandover, otherap
 
 check(
     "root's kept files live beside $STATE",

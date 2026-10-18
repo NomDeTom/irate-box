@@ -9,7 +9,7 @@ from pathlib import Path
 
 REPO = str(__import__("pathlib").Path(__file__).resolve().parents[1])
 sys.path.insert(0, REPO)
-from irate_box.hub import uplink as U  # noqa: E402
+from irate_box.hub import uplink as U
 
 ALL = {"reconnect", "restart", "radio", "reboot", "pin"}
 NO_PIN = ALL - {"pin"}
@@ -333,7 +333,7 @@ check(
 )
 check("  not what cannot be done here", w.by_hand(1220, obs, "reconnect")[0] == [] and "cannot" in w.events[-1]["text"])
 check("  not a made-up step", w.by_hand(1230, obs, "nuke") == ([], "nuke is not a step"))
-import tempfile as _tf  # noqa: E402
+import tempfile as _tf
 
 U.ETC = Path(_tf.mkdtemp())
 U.NOW = U.ETC / "uplink-now.json"
@@ -747,9 +747,9 @@ check(
 )
 w.by_hand(99999, {"link": False, "can": ALL, "guests": 0}, "radio")
 check("  a step asked on /admin says so", w.ladder[-1]["step"] == "radio" and w.ladder[-1]["by"] == "hand")
-import tempfile as _tf2  # noqa: E402
+import tempfile as _tf2
 
-import irate_box.root.safeio as _sio  # noqa: E402
+import irate_box.root.safeio as _sio
 
 _sio.write = lambda path, text, mode=0o644: Path(path).write_text(text)
 L = U.Ladder(Path(_tf2.mkdtemp()) / "uplink-ladder.json")
@@ -833,9 +833,9 @@ check("after reconnecting, a real drop is repaired again", "reconnect" in acts, 
 import json
 import os
 import tempfile
-import time  # noqa: E402
+import time
 
-from irate_box.hub import linkhistory as LH  # noqa: E402
+from irate_box.hub import linkhistory as LH
 
 os.environ["TZ"] = "UTC"
 time.tzset()
@@ -905,7 +905,7 @@ check(
 check("  a day with nothing recorded: no data", out["month"][0].get("up") is None and "date" in out["month"][0])
 # The watchdog's recorder: written once a slot closes, never while the clock is not trusted.
 U.HISTORY = Path(tempfile.mkdtemp()) / "uplink-history.json"
-import irate_box.root.safeio as SIO  # noqa: E402
+import irate_box.root.safeio as SIO
 
 SIO.write = lambda path, text, mode=0o644: Path(path).write_text(text)
 trust = {"ok": False}
@@ -1147,9 +1147,9 @@ c2 = U.validate({"pace": "steady", "steps_off": {"wlan0": ["reconnect"]}})
 check("  no reconnect on a connection: no repeats either", U.effective(c2, "wlan0")["repeat"] == 0)
 
 # The doctor reads how well each step works per connection from the ladder record (health.step_record).
-from irate_box.finding import message_args as msg_args  # noqa: E402
-from irate_box.msg import render  # noqa: E402
-from irate_box.root import health as HL  # noqa: E402
+from irate_box.finding import message_args as msg_args
+from irate_box.msg import render
+from irate_box.root import health as HL
 
 now = 2_000_000_000
 rows = []
@@ -1335,7 +1335,7 @@ check(
 # "Keep retrying": decided by what the profile holds, so a profile written afresh (netplan's, at boot)
 # gets the change again, with the values from before it kept for undo.
 import json as _json
-import tempfile as _tf3  # noqa: E402
+import tempfile as _tf3
 
 U.RECORD = Path(_tf3.mkdtemp()) / "uplink-changes.json"
 held = {"connection.autoconnect-retries": "-1", "connection.auth-retries": "-1"}
@@ -1380,7 +1380,7 @@ check(
 U.run, U._uplink_profile = real_run, real_prof
 
 # A radio reset by the ladder filed as crash watch files a failure, with the kernel's last lines.
-from irate_box.root import crashwatch as CW  # noqa: E402
+from irate_box.root import crashwatch as CW
 
 filed = []
 _fr, _run = CW.file_radio, U.run

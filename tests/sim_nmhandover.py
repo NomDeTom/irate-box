@@ -26,8 +26,8 @@ os.environ.update(
     HUB_UDEV_RULES_DIR=str(T / "udev"),
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.msg import Refused, args_of, ids  # noqa: E402
-from irate_box.root import nmhandover as H  # noqa: E402
+from irate_box.msg import Refused, args_of, ids
+from irate_box.root import nmhandover as H
 
 fails = 0
 

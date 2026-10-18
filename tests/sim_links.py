@@ -13,7 +13,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from irate_box.hub import netinv
-from irate_box.hub import uplink as U  # noqa: E402
+from irate_box.hub import uplink as U
 
 fails = 0
 
@@ -422,10 +422,10 @@ check(
 check("  healthy: up with a gateway that answers", le.healthy() and not lw.healthy())
 
 # --- the box doctor: the links nobody watches ---
-from irate_box.finding import message_args as msg_args  # noqa: E402
+from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.msg import render  # noqa: E402
-from irate_box.root import health  # noqa: E402
+from irate_box.msg import render
+from irate_box.root import health
 
 pi = {
     "iface": "eth0",
@@ -532,8 +532,8 @@ for bad in ("uplink-reconnect:a;b", "uplink-reconnect:", "uplink-reconnect:-x"):
     check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
 
 # --- saved on /admin: each named link's hardware recorded ---
-from irate_box.hub import roaming  # noqa: E402
-from irate_box.root import hub_control as HC  # noqa: E402
+from irate_box.hub import roaming
+from irate_box.root import hub_control as HC
 
 kept = {}
 HC.uplink.load_settings = lambda: S(
@@ -558,7 +558,7 @@ check(
 )
 
 # --- resetting a PCI card and a device on the SoC (root/radio.py) ---
-from irate_box.root import radio  # noqa: E402
+from irate_box.root import radio
 
 R = T / "radio-sys"
 radio.SYS = R

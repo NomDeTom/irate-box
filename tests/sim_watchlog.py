@@ -25,8 +25,8 @@ os.environ.update(
 (PROC / "sys/kernel/random").mkdir(parents=True)
 (PROC / "sys/kernel/random/boot_id").write_text("boot-one\n")
 sys.path.insert(0, str(REPO))
-from irate_box.hub import uplink, watchlog  # noqa: E402
-from irate_box.root import crashwatch as cw  # noqa: E402
+from irate_box.hub import uplink, watchlog
+from irate_box.root import crashwatch as cw
 from irate_box.root import health
 
 fails = 0
@@ -155,7 +155,7 @@ watchlog.LOG.unlink()
 check("  nothing in the last day: said so", health.check_watchers()[0]["summary"]["id"] == "watchers.none")
 
 # The doctor's overview, from the hub: the last start and why, the last repair, the link now.
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 watchlog.add("box", "boot", "Started: it was shut down or restarted cleanly (by hand, or by the system).", at=now + 700)
 watchlog.add("watchdog", "repair", "Reconnect (2 min down).", "wlan0", at=now + 800, step="reconnect")

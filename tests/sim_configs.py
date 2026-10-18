@@ -20,7 +20,7 @@ T = Path(tempfile.mkdtemp(prefix="configs-"))
 os.environ.update(HUB_STATE_DIR=str(T), HUB_GIT_ROOT=str(T / "git"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 real_git = None
-from irate_box.library import firmware, librarian  # noqa: E402
+from irate_box.library import firmware, librarian
 
 real_git = librarian._git
 fails = 0
@@ -127,7 +127,7 @@ except librarian.LibrarianError as exc:
 import subprocess
 from unittest import mock
 
-from irate_box.library import mirrors  # noqa: E402
+from irate_box.library import mirrors
 
 librarian._git = real_git
 ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
@@ -209,8 +209,8 @@ with (
     )
 # A board whose file the release lacks (2.8.1's canaryone .hex, HTTP 404) is left out, not every
 # board after it; the network gone stops the run; flash files off removes those held, not the cache.
-import hashlib  # noqa: E402
-from unittest import mock as _m  # noqa: E402
+import hashlib
+from unittest import mock as _m
 
 FV = "2.8.1.8e6a88d"
 files = {"a.bin": b"a" * 100, "c.bin": b"c" * 50}

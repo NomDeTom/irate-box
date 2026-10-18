@@ -16,7 +16,7 @@ T = Path(tempfile.mkdtemp(prefix="svchist-"))
 os.environ.update(HUB_STATE_DIR=str(T), HUB_RUN_DIR=str(T / "run"), TZ="UTC")
 time.tzset()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.hub import svchistory as S  # noqa: E402
+from irate_box.hub import svchistory as S
 
 fails = 0
 

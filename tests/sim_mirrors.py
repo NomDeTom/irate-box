@@ -26,8 +26,8 @@ for a in ("public", "private"):
     (T / "state" / "git" / a).mkdir(parents=True)
 (T / "state" / "library").mkdir(parents=True)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import gitrepos  # noqa: E402
-from irate_box.library import librarian, mirrors  # noqa: E402
+from irate_box.hub import gitrepos
+from irate_box.library import librarian, mirrors
 
 fails = 0
 
@@ -328,7 +328,7 @@ check(
     g("config", "--get", "irate-box.write", cwd=sp).stdout.strip() == "nobody"
     and g("config", "--get", "irate-box.mirror", cwd=sp).stdout.strip() == f"file://{SUB}",
 )
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 with mock.patch.object(mirrors, "load", return_value=[sm]):
     snap = server.git_snapshot()
@@ -349,7 +349,7 @@ check(
     urls,
 )
 # ci.py, as hubci: the rewrites in its global config, then a checkout with the upstream gone.
-from irate_box.hub import ci  # noqa: E402
+from irate_box.hub import ci
 
 os.environ["HOME"] = str(T / "hubci-home")
 (T / "hubci-home").mkdir()
@@ -465,7 +465,7 @@ check(
     (rc_hand, rc_timer),
 )
 # Monitoring the librarian's runs, so a failing scheduled run is seen.
-import time as _t  # noqa: E402
+import time as _t
 
 
 def crash():
@@ -485,8 +485,8 @@ check(
     and rec["last_scheduled"]["finished"],
     rec,
 )
-from irate_box.finding import message_ids as msg_ids  # noqa: E402
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.finding import message_ids as msg_ids
+from irate_box.root import hub_control
 
 f = hub_control.scheduled_findings()
 check(
@@ -523,7 +523,7 @@ check(
     "a run by hand doesn't count as the timer's",
     json.loads(librarian.LAST_RUN.read_text())["last_scheduled"]["stages"] == ["books", "hub", "mirrors"],
 )
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 props = {
     "irate-box-librarian.timer": {

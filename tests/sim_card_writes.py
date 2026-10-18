@@ -93,7 +93,7 @@ check(
 )
 sys.path.insert(0, str(REPO))
 os.environ["HUB_STATE_DIR"] = str(state)
-from irate_box.hub import meshbridge  # noqa: E402
+from irate_box.hub import meshbridge
 
 b = meshbridge.Heard()
 b.nodes = {"!abc": {"last": time.time()}}

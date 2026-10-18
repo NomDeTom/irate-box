@@ -15,8 +15,8 @@ os.environ.update(
     HUB_STATE_DIR=str(T / "state"), HUB_SYSFS=str(T / "sys"), HUB_PROC=str(T / "proc"), HUB_ETC_DIR=str(T / "etc")
 )
 sys.path.insert(0, str(REPO))
-from irate_box.hub import server  # noqa: E402
-from irate_box.root import health  # noqa: E402
+from irate_box.hub import server
+from irate_box.root import health
 
 fails = 0
 

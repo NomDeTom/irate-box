@@ -39,11 +39,11 @@ os.environ.update(
     HUB_WEB_SERVER="nginx",
 )
 sys.path.insert(0, str(REPO))
-from irate_box.finding import english  # noqa: E402
+from irate_box.finding import english
 from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.msg import is_message, render  # noqa: E402
-from irate_box.root import hub_control as H  # noqa: E402
+from irate_box.msg import is_message, render
+from irate_box.root import hub_control as H
 
 fails = 0
 
@@ -619,9 +619,9 @@ check(
     inconclusive,
 )
 
-import shutil  # noqa: E402
+import shutil
 
-from irate_box.root import nginx_front  # noqa: E402
+from irate_box.root import nginx_front
 
 render_values = nginx_front.settings_from_env()
 rendered = nginx_front.render((REPO / "config/irate-box.nginx").read_text(), render_values)

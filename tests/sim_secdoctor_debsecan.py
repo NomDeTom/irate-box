@@ -18,11 +18,11 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="secdoc-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_KITS_ROOT=str(T / "kits"), HUB_OS_RELEASE=str(T / "os-release"))
 sys.path.insert(0, str(REPO))
-from irate_box.finding import finding  # noqa: E402
+from irate_box.finding import finding
 from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.msg import M  # noqa: E402
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.msg import M
+from irate_box.root import secdoctor as sd
 
 fails = 0
 

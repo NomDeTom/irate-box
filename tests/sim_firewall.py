@@ -54,8 +54,8 @@ os.environ.update(
     HUB_UNIT_DIR=str(T / "units"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_ids as said  # noqa: E402
-from irate_box.root import firewall as fw  # noqa: E402
+from irate_box.finding import message_ids as said
+from irate_box.root import firewall as fw
 from irate_box.root import security
 
 

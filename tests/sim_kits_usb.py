@@ -32,8 +32,8 @@ os.environ.update(
     HUB_APT_KEYRINGS=str(T / "keys"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.msg import args_of  # noqa: E402
-from irate_box.root import kits  # noqa: E402
+from irate_box.msg import args_of
+from irate_box.root import kits
 
 fails = 0
 
@@ -329,7 +329,7 @@ check(
     ],
     line,
 )
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 check("the root helper has both", {"usb-kit-import", "usb-kit-export"} <= set(hub_control.ACTIONS))
 print("ok" if not fails else f"{fails} failure(s)")

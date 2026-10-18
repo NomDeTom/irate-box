@@ -4,7 +4,9 @@ line-length = 120
 
 [lint]
 # I = import sorting (replaces isort; trunk's black and isort are disabled).
-select = ["B", "D3", "E", "F", "I"]
+# BLE = no bare `except Exception` without a `# noqa: BLE001 - reason`.
+# RUF100 = no `# noqa` left behind once the code it excused has gone.
+select = ["B", "BLE", "D3", "E", "F", "I", "RUF100"]
 # The formatter keeps code within 120 columns; it never splits long strings or comments, so don't flag those.
 ignore = ["E501"]
 

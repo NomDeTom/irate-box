@@ -48,8 +48,8 @@ os.environ.update(
     HUB_POLICY_RC=str(T / "policy-rc.d"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.msg import args_of, ids  # noqa: E402
-from irate_box.root import kits  # noqa: E402
+from irate_box.msg import args_of, ids
+from irate_box.root import kits
 
 fails = 0
 
@@ -486,7 +486,7 @@ except ValueError:
     check("hours 0 refused", True)
 
 # The root helper's actions, and control/kits.json after each.
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 msg = hub_control.ACTIONS["kit-install"]({"kit": "small", "hours": 2})
 ks = json.loads((T / "state" / "control" / "kits.json").read_text())
@@ -509,7 +509,7 @@ try:
 except ValueError:
     check("a silly budget refused", True)
 # The doctor.
-from irate_box.finding import message_args as msg_args  # noqa: E402
+from irate_box.finding import message_args as msg_args
 
 f = hub_control.kits_findings()
 check("the doctor: the cache matches its manifests", any(x["id"] == "kits-cache" and x["status"] == "ok" for x in f), f)
@@ -535,7 +535,7 @@ check(
 )
 
 # The hub's half: settings, and the librarian's step.
-from irate_box.library import librarian, toolkits  # noqa: E402
+from irate_box.library import librarian, toolkits
 
 queued = []
 librarian._queue_root = lambda req: (queued.append(req), "rid")[1]
@@ -691,9 +691,9 @@ check(
     ks[:200],
 )
 toolkits.set_settings({"kits": {"security": {"keep_current": True}}})
-from unittest import mock  # noqa: E402
+from unittest import mock
 
-from irate_box.library import mirrors  # noqa: E402
+from irate_box.library import mirrors
 
 added = []
 with (
@@ -716,7 +716,7 @@ with (
     toolkits.ensure_git_sources()
 check("  not again when a mirror of it exists", not add.called)
 import io
-import zlib  # noqa: E402
+import zlib
 
 (T / "os-release").write_text('NAME="Debian"\nVERSION_CODENAME=trixie\n')
 toolkits.OS_RELEASE = str(T / "os-release")
@@ -813,7 +813,7 @@ check(
     "the debug kit marks bpftrace, bcc and bpftool 64-bit only",
     set(kits.definitions()["debug"]["needs_64bit"]) == {"bpftrace", "bpfcc-tools", "bpftool"},
 )
-from irate_box.hub import kitdefs  # noqa: E402
+from irate_box.hub import kitdefs
 
 dbg = kits.definitions()["debug"]
 for arch_, gone in (

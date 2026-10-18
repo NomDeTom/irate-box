@@ -21,8 +21,8 @@ os.environ.update(
     HUB_NM_INTERN=str(T / "intern.conf"),
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box import finding  # noqa: E402
-from irate_box.hub import netinv, nmconf  # noqa: E402
+from irate_box import finding
+from irate_box.hub import netinv, nmconf
 
 fails = 0
 
@@ -138,7 +138,7 @@ check("nothing chosen: no file text", nmconf.dropin_text({"cloned_mac": None}) =
 os.environ.update(HUB_ETC_DIR=str(T / "hub-etc"), HUB_STATE_DIR=str(T / "state"))
 (T / "hub-etc").mkdir()
 (T / "state").mkdir()
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 ran = []
 hub_control.run = lambda *c, **k: ran.append(c) or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()

@@ -25,7 +25,7 @@ T = Path(tempfile.mkdtemp(prefix="mesh-"))
 os.environ["HUB_STATE_DIR"] = str(T)
 sys.path.insert(0, str(REPO))
 from irate_box.hub import meshbridge as B
-from irate_box.hub import meshdecode as M  # noqa: E402
+from irate_box.hub import meshdecode as M
 
 fails = 0
 
@@ -254,7 +254,7 @@ srv.close()
 src = (REPO / "irate_box/hub/meshbridge.py").read_text()
 check("it never publishes", "0x30" not in src.split("class Bridge")[1])
 # The security doctor's rules: never bridged out, anonymous limited to msh/#, keys private.
-from irate_box.root import secdoctor as SD  # noqa: E402
+from irate_box.root import secdoctor as SD
 
 MQ = T / "mosquitto"
 (MQ / "conf.d").mkdir(parents=True)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.root import secdoctor as sd
 
 fails = 0
 
@@ -48,7 +48,7 @@ check(
     ),
     merged,
 )
-import copy  # noqa: E402
+import copy
 
 steps = copy.deepcopy(fx["steps"])
 for s in steps:
@@ -107,15 +107,15 @@ check(
 # CIS checks one by one, Lynis matched by test and by sshd option. Read as the doctor reads its kept report,
 # beside the doctor's and the Security page's own findings above.
 import shutil
-import tempfile  # noqa: E402
+import tempfile
 
 T = Path(tempfile.mkdtemp(prefix="secdeep-"))
 (T / "control").mkdir()
 shutil.copy(REPO / "tests/fixtures/lyra-security-deep-2026-10-09.json", T / "control" / "security-deep.json")
-from irate_box.root import deepaudit  # noqa: E402
+from irate_box.root import deepaudit
 
 deepaudit.REPORT = T / "control" / "security-deep.json"
-import time as _t  # noqa: E402
+import time as _t
 
 _now = _t.time
 _t.time = lambda: json.loads(deepaudit.REPORT.read_text())["at"] + 3600  # an hour after it, not "old"

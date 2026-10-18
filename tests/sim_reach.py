@@ -16,10 +16,10 @@ T = Path(tempfile.mkdtemp(prefix="reach-"))
 os.environ.update(HUB_STATE_DIR=str(T))
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_args as msg_args  # noqa: E402
+from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
-from irate_box.hub import reach  # noqa: E402
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.hub import reach
+from irate_box.root import secdoctor as sd
 
 fails = 0
 

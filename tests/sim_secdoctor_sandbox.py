@@ -13,8 +13,8 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="secdoc-sb-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_ids as msg_ids  # noqa: E402
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.finding import message_ids as msg_ids
+from irate_box.root import secdoctor as sd
 
 fails = 0
 
@@ -106,7 +106,7 @@ check(
 )
 
 # The root units as install.sh writes them, its shared sandbox expanded: the doctor finds no line missing.
-import re  # noqa: E402
+import re
 
 inst = (REPO / "install.sh").read_text()
 shared = {name: body for name, body in re.findall(r'^([A-Z_]+_SANDBOX)="(.*?)"$', inst, re.S | re.M)}
@@ -161,7 +161,7 @@ check(
     and 'meta skuid "hubci" oif "lo" drop' in inst_ci
     and "ExecStartPre=-+/usr/sbin/nft -f $ETC/ci-loopback.nft" in inst_ci,
 )
-from irate_box.root import secdoctor_xref as xr  # noqa: E402
+from irate_box.root import secdoctor_xref as xr
 
 check(
     "  the doctor's finding joins the Security page's fix (proc-hidden), and is no longer information only",
@@ -169,7 +169,7 @@ check(
     and xr.about("security-page", "proc-hidden") == {"kind": "setting", "key": "proc-hidden"}
     and xr.info("doctor", "cmdlines-proc") is None,
 )
-import shutil  # noqa: E402
+import shutil
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

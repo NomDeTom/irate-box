@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="pattern-"))
 os.environ.update(HUB_STATE_DIR=str(T), HUB_LIB_DIR=str(T / "lib"))
 sys.path.insert(0, str(REPO))
-from irate_box.library import librarian as L  # noqa: E402
+from irate_box.library import librarian as L
 
 fails = 0
 
@@ -61,7 +61,7 @@ for bad in ({"mirrors_auto": 2}, {"firmware_auto": 2}, {"kits_every_hours": -1})
         check(f"  {bad} refused", True)
 srv = (REPO / "irate_box/hub/server.py").read_text()
 check("the hub passes every policy key the librarian knows", "for k in librarian.DEFAULT_POLICY" in srv)
-from irate_box.library import toolkits  # noqa: E402
+from irate_box.library import toolkits
 
 queued = []
 L._queue_root = lambda req: queued.append(req) or "r1"

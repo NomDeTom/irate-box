@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box import finding  # noqa: E402
-from irate_box.hub import netinv  # noqa: E402
+from irate_box import finding
+from irate_box.hub import netinv
 
 fails = 0
 
@@ -236,7 +236,7 @@ check(
 netinv.resets_itself = lambda drv: True
 check("  with it: not", ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {}})) == [])
 netinv.resets_itself = _real_resets
-import os as _os0  # noqa: E402
+import os as _os0
 import tempfile as _tf0
 
 _m = Path(_tf0.mkdtemp())
@@ -250,7 +250,7 @@ check("  the module file read for the patch's line", netinv.resets_itself("aic88
 (_m / _os0.uname().release / "updates/dkms/aic8800_fdrv_usb.ko").write_bytes(b"\x7fELF...vendor...")
 netinv.resets_itself.cache_clear()
 check("  a vendor module without it: no", not netinv.resets_itself("aic8800_fdrv"))
-import tempfile as _tf  # noqa: E402
+import tempfile as _tf
 
 d = Path(_tf.mkdtemp())
 (d / "a.nmconnection").write_text("[connection]\nid=Home\nuuid=0c3bb1fa-0f6a-3707-8c8d-4e23598253db\n")
@@ -266,12 +266,12 @@ check(
 # The box doctor shows the inventory's warnings and problems, with the look's age when it's old.
 import json as _json
 import os as _os
-import time as _time  # noqa: E402
+import time as _time
 
-from irate_box.msg import M  # noqa: E402
+from irate_box.msg import M
 
 _os.environ["HUB_STATE_DIR"] = str(d)
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 health.CONTROL = d
 inv = {

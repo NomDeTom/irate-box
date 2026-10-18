@@ -30,8 +30,8 @@ os.environ.update(
     HUB_IMAGE_ROOT=str(IMG),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.msg import args_of, ids  # noqa: E402
-from irate_box.root import hub_control, pkgwatch  # noqa: E402
+from irate_box.msg import args_of, ids
+from irate_box.root import hub_control, pkgwatch
 
 fails = 0
 

@@ -2754,7 +2754,7 @@ def check_usb_filesystems():
     def words(names):
         return list(
             dict.fromkeys(usbstick.FS_WORDS[n] for n in sorted(names, key=lambda n: list(usbstick.FS_WORDS).index(n)))
-        )  # noqa: E731
+        )
 
     yes = [n for n, ok in can.items() if ok]
     no = words(
@@ -3353,7 +3353,7 @@ def scan():
     ):
         try:
             findings += check()
-        except Exception as exc:  # one broken check must not hide the others
+        except Exception as exc:  # noqa: BLE001 - one broken check must not hide the others
             findings.append(
                 finding(
                     f"check:{check.__name__}",

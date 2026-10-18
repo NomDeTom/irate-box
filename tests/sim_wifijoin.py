@@ -16,8 +16,8 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="wifijoin-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_NM_CONNECTIONS=str(T / "nm"))
 sys.path.insert(0, str(REPO))
-from irate_box.msg import Refused  # noqa: E402
-from irate_box.root import wifijoin as W  # noqa: E402
+from irate_box.msg import Refused
+from irate_box.root import wifijoin as W
 
 fails = 0
 

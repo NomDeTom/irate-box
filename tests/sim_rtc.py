@@ -30,9 +30,9 @@ os.environ.update(
 )
 REPO = str(__import__("pathlib").Path(__file__).resolve().parents[1])
 sys.path.insert(0, REPO)
-from irate_box.msg import args_of  # noqa: E402
+from irate_box.msg import args_of
 from irate_box.msg import ids as msg_ids
-from irate_box.root import rtc  # noqa: E402
+from irate_box.root import rtc
 
 fails = 0
 
@@ -335,7 +335,7 @@ check(
 )
 
 # 8. The doctor: the browser's time sets the system clock, marks it trusted, and writes the module
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 fake({"1": {"0x68": ds}})
 rtc.find()

@@ -41,7 +41,7 @@ os.environ.update(
 for d in ("state", "etc", "control"):
     (T / d).mkdir()
 sys.path.insert(0, str(REPO))
-from irate_box.hub import manifests, services  # noqa: E402
+from irate_box.hub import manifests, services
 
 fails = 0
 
@@ -94,7 +94,7 @@ check("  not installed until its present file is there", not services.installed(
 check("  installed once it is", services.installed(tak))
 
 # --- the firewall and the Security page ----------------------------------------------------------
-from irate_box.root import firewall, security  # noqa: E402
+from irate_box.root import firewall, security
 from irate_box.root import secdoctor_xref as xref
 
 check("the firewall: its ports by its id", firewall.service_ports("tak") == ((8087,), (6969,)))
@@ -149,7 +149,7 @@ check(
 )
 
 # --- the box doctor ----------------------------------------------------------------------------------
-from irate_box.root import health  # noqa: E402
+from irate_box.root import health
 
 check(
     "the box doctor: a declared service's unit is the hub's to restart",

@@ -22,7 +22,7 @@ T = Path(tempfile.mkdtemp(prefix="syncthing-gui-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.root import hub_control as H  # noqa: E402
+from irate_box.root import hub_control as H
 
 fails = 0
 

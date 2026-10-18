@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="cutshort-"))
 os.environ.update(HUB_STATE_DIR=str(T), GITHUB_TOKEN="")
 sys.path.insert(0, str(REPO))
-from irate_box.library import librarian as L  # noqa: E402
+from irate_box.library import librarian as L
 
 fails = 0
 
@@ -87,7 +87,7 @@ except TypeError as e:
     check("a download cut short: a LibrarianError", False, f"_download's signature: {e}")
 
 # The mirrors: one mirror's cut-short release listing is that mirror's error; the run goes on.
-from irate_box.library import mirrors as M  # noqa: E402
+from irate_box.library import mirrors as M
 
 M._remote_refs = lambda upstream: {"refs/heads/main": "a" * 40}
 

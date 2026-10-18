@@ -76,7 +76,7 @@ check(
     '"run"' in src and "write_report(rep)" in src,
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.root import secdoctor as sd  # noqa: E402
+from irate_box.root import secdoctor as sd
 
 prev = {
     "at": 1,

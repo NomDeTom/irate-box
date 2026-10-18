@@ -22,8 +22,8 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="tls-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
-from irate_box.msg import Refused  # noqa: E402
-from irate_box.root import safeio, tls  # noqa: E402
+from irate_box.msg import Refused
+from irate_box.root import safeio, tls
 
 fails = 0
 
@@ -375,7 +375,7 @@ if not caddies:
     print("SKIP the Caddyfile with real Caddy: set CADDY=/path/to/caddy[:/path/to/another]")
 tls.front(False)
 os.environ["HUB_WEB_SERVER"] = "nginx"
-from irate_box.hub import access  # noqa: E402
+from irate_box.hub import access
 
 csp = access.addon_csp({"capabilities": {"connect": ["ws://{box}/mqtt", "https://api.github.com"]}})
 check(
@@ -441,7 +441,7 @@ finally:
     hub.terminate()
     hub.wait()
 # The security doctor.
-from irate_box.root import secdoctor  # noqa: E402
+from irate_box.root import secdoctor
 
 answers = {"https": (200, {"Content-Type": "text/html"}), "http": (200, {})}
 secdoctor._local_headers = lambda url: answers["https" if url.startswith("https") else "http"]
@@ -698,7 +698,7 @@ check(
     and '"tls-import": tls_import' in hc,
 )
 # A request that cannot be done is refused, not answered as done (R300).
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 
 def refused_id(fn, req):
@@ -858,7 +858,7 @@ if nginx:
     tls.configure("both", "allow")
 else:
     print("SKIP the nginx template with real nginx: set NGINX=/path/to/nginx")
-import http.client  # noqa: E402
+import http.client
 
 SECRET = "e" * 64
 s_ = socket.socket()

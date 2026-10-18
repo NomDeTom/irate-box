@@ -13,8 +13,8 @@ from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 os.environ.setdefault("HUB_STATE_DIR", "/nonexistent-state")
-from irate_box.library import zimcheck  # noqa: E402
-from irate_box.root import health, secdoctor  # noqa: E402
+from irate_box.library import zimcheck
+from irate_box.root import health, secdoctor
 
 fails = 0
 
@@ -202,7 +202,7 @@ check(
 )
 
 # SilverBullet's download is checked against digests pinned beside its version.
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 for arch in ("x86_64", "aarch64", "armv7"):
     v = hub_control._var(install, f"SB_SHA256_{arch}")

@@ -24,8 +24,8 @@ os.environ.update(
     HUB_UPLINK_RUN=str(T / "run-uplink"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_ids as msg_ids  # noqa: E402
-from irate_box.root import health, led  # noqa: E402
+from irate_box.finding import message_ids as msg_ids
+from irate_box.root import health, led
 
 fails = 0
 
@@ -317,7 +317,7 @@ check(
     led.load_settings()["show"] == "alive" and said["id"] == "led-set.show.alive",
     said,
 )
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 check(
     "the hub passes the same choices on",

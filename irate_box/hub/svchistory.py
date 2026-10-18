@@ -126,7 +126,7 @@ def summarize(hist, now=None):
         return {
             "date": time.strftime("%Y-%m-%d", time.localtime(s)),
             "label": time.strftime("%a %d", time.localtime(s)),
-        }  # noqa: E731
+        }
 
     hour_at = lambda i: (anchor - 71 + i) * HOUR  # noqa: E731
     hour_cols = [time.strftime("%H:00", time.localtime(hour_at(i))) if i % 12 == 0 else "" for i in range(72)]

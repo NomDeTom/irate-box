@@ -17,8 +17,8 @@ T = Path(tempfile.mkdtemp(prefix="idle-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 (T / "etc").mkdir()
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_ids as msg_ids  # noqa: E402
-from irate_box.root import health  # noqa: E402
+from irate_box.finding import message_ids as msg_ids
+from irate_box.root import health
 
 fails = 0
 
