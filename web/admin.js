@@ -3144,10 +3144,11 @@ let updWaiting = null; // { id, action }
 let updPoll = null;
 let updCandidate = null;
 
-// Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in Maintenance.
-function updSay(action, text, ok, extra) {
-  const node =
-    action === "force-install"
+// Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in the doctor's recovery actions.
+function updSay(action, text, ok, extra, fromFinding = false) {
+  const node = fromFinding
+    ? upd.doctorNote
+    : action === "force-install"
       ? upd.forceNote
       : action === "set-source" || action === "poll-source"
         ? upd.sourceNote
@@ -3242,7 +3243,10 @@ function renderUpdoctor(d) {
         type: "button",
         className: "action-btn",
         textContent: a.label,
-        onclick: () => requestUpdate(a.choice),
+        onclick: () => {
+          if (a.confirm && !confirm(a.confirm)) return;
+          requestUpdate(a.choice, null, {}, true);
+        },
       }),
     );
     return findingRow({
@@ -3395,6 +3399,7 @@ function renderUpdate(data) {
               textContent: "Show reason: Updates doctor →",
             })
           : null,
+        updWaiting.finding,
       );
       updWaiting = null;
       renderUpdate(data);
@@ -3432,7 +3437,8 @@ async function loadUpdate() {
   }
 }
 
-async function requestUpdate(action, endpoint = null, extra = {}) {
+// fromFinding: a doctor finding's own button, which asked its question already (Install anyway names the checks it skips) and is answered beside it.
+async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = false) {
   if (
     (action === "install" || endpoint === "install") &&
     !confirm("Install the update now? The hub restarts during the install.")
@@ -3440,6 +3446,7 @@ async function requestUpdate(action, endpoint = null, extra = {}) {
     return;
   if (
     action === "force-install" &&
+    !fromFinding &&
     !confirm(
       `Install the downloaded version although it failed these checks?\n\n${upd.force.dataset.failed}\n\nThe installer still stops on its own errors. The hub restarts during the install.`,
     )
@@ -3449,6 +3456,7 @@ async function requestUpdate(action, endpoint = null, extra = {}) {
     updWaiting = {
       id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate, ...extra })).id,
       action: endpoint === "install" ? "install" : action,
+      finding: fromFinding,
     };
     upd.check.disabled =
       upd.fetch.disabled =
@@ -3471,10 +3479,12 @@ async function requestUpdate(action, endpoint = null, extra = {}) {
         reach: endpoint === "install" ? "Preparing and installing the update…" : "Checking and downloading the update…",
       }[action],
       true,
+      null,
+      fromFinding,
     );
     loadUpdate();
   } catch (err) {
-    updSay(action, err.message, false);
+    updSay(action, err.message, false, null, fromFinding);
   }
 }
 

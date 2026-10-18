@@ -2595,7 +2595,7 @@ def verify_update(src, installed, opts, progress=None, tag=None):
                     ),
                     fix=M(
                         "update.verify.history.rewritten.fix",
-                        "Read the changes. If you made them, use Install anyway on Updates → Maintenance.",
+                        "Read the changes. If you made them, use Install anyway in the Updates doctor.",
                     ),
                 )
             )
@@ -3257,47 +3257,53 @@ def _installed_now():
     )
 
 
+def _force_failed(state):
+    """The failed checks that Install anyway skips: those that failed and are not only warnings."""
+    return [c for c in state.get("checks") or [] if not c.get("ok") and not c.get("warn")]
+
+
+def _force_refusal(state):
+    """Why Install anyway cannot install the fetched version now, as a message, or None when it can. The one rule:
+    the update doctor offers the button by it, and update_force_install refuses by it."""
+    if not (UPDATE_SRC / "install.sh").is_file():
+        return M(
+            "update.force.none",
+            "No update is downloaded yet. Check for updates, then download the update.",
+        )
+    full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    if state.get("checked_sha") != full or not state.get("checks"):
+        return M(
+            "update.force.not-checked",
+            "Install anyway works only on a downloaded version that the box checked. Download the update first.",
+        )
+    if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
+        return M(
+            "update.force.parse",
+            "The downloaded installer does not pass the shell syntax check. Install anyway cannot skip this check.",
+        )
+    if any(c.get("id") == SIGNED_CHECK or c.get("name") == SIGNED_OLD for c in _force_failed(state)):
+        # The point of a signing level (signing.py): not even Install anyway passes it.
+        return M(
+            "update.force.unsigned",
+            "Verification failed. The downloaded version does not meet the signing level of this box. "
+            "Install anyway cannot skip this check. To change the signing level, open Updates, "
+            "then Update verification.",
+        )
+    return None
+
+
 def update_force_install(req):
     """The fetched version, installed although it failed verification (the Updates doctor's
     "Install anyway"): for when the check is what is wrong, as when an update changes the
     code's layout and this box's check cannot read it. Still only the version that was fetched
     and checked, and only if its installer parses; the installer stops on its own errors.
     """
-    if not (UPDATE_SRC / "install.sh").is_file():
-        raise Refused(
-            M(
-                "update.force.none",
-                "No update is downloaded yet. Check for updates, then download the update.",
-            )
-        )
     state = _read_update_state()
-    full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
-    head = full[:7]
-    if state.get("checked_sha") != full or not state.get("checks"):
-        raise Refused(
-            M(
-                "update.force.not-checked",
-                "Install anyway works only on a downloaded version that the box checked. Download the update first.",
-            )
-        )
-    if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
-        raise Refused(
-            M(
-                "update.force.parse",
-                "The downloaded installer does not pass the shell syntax check. Install anyway cannot skip this check.",
-            )
-        )
-    failed = [c for c in state["checks"] if not c["ok"] and not c["warn"]]
-    if any(c.get("id") == SIGNED_CHECK or c.get("name") == SIGNED_OLD for c in failed):
-        # The point of a signing level (signing.py): not even Install anyway passes it.
-        raise Refused(
-            M(
-                "update.force.unsigned",
-                "Verification failed. The downloaded version does not meet the signing level of this box. "
-                "Install anyway cannot skip this check. To change the signing level, open Updates, "
-                "then Update verification.",
-            )
-        )
+    why = _force_refusal(state)
+    if why:
+        raise Refused(why)
+    failed = _force_failed(state)
+    head = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")[:7]
     _install_fetched(state)
     commit = _installed_commit() or head
     if failed:
@@ -3431,6 +3437,14 @@ LIBRARIAN_LOG = "journalctl -u irate-box-librarian -n 80"
 CACHE_CLEAR = M(
     "update.cache.clear.fix",
     "Clear the update cache in this doctor. Then check for updates again.",
+)
+CACHE_CLEAR_ACTION = finding_action(
+    "clear-cache",
+    M("update.cache.clear.button", "Clear the update cache"),
+    M(
+        "update.cache.clear.confirm",
+        "Delete the cached copy of the repository and its downloads? The next check starts again from the beginning.",
+    ),
 )
 
 
@@ -3963,6 +3977,7 @@ def doctor():
                     ),
                     CACHE_CLEAR,
                     evidence=locks,
+                    actions=[CACHE_CLEAR_ACTION],
                 )
             )
         else:
@@ -3980,6 +3995,7 @@ def doctor():
                         ),
                         fix=CACHE_CLEAR,
                         evidence=(status.stderr.strip().splitlines() or [])[-1:],
+                        actions=[CACHE_CLEAR_ACTION],
                     )
                 )
             elif repo and remote != repo:
@@ -4001,6 +4017,7 @@ def doctor():
                                 repo=repo,
                             )
                         ],
+                        actions=[CACHE_CLEAR_ACTION],
                     )
                 )
             else:
@@ -4107,7 +4124,7 @@ def doctor():
                         *(c["fix"] for c in failed if is_message(c.get("fix"))),
                     ],
                     evidence=[e for c in failed for e in c.get("evidence", [])][:6],
-                    go=None,
+                    actions=_force_actions(last),
                 )
             )
     except (OSError, ValueError, AttributeError):
@@ -4115,6 +4132,34 @@ def doctor():
     findings += scheduled_findings()
     findings += kits_findings()
     return findings
+
+
+def _force_actions(state):
+    """Install anyway, for the last download's failed checks, only when update_force_install would run: the button's
+    question lists exactly the checks it skips."""
+    skipped = _force_failed(state)
+    try:
+        if not skipped or _force_refusal(state):
+            return []
+    except Refused:
+        return []
+    return [
+        finding_action(
+            "force-install",
+            M("update.last-check.force", "Install anyway"),
+            M(
+                "update.last-check.force.confirm",
+                {
+                    "one": "Install the downloaded version although it failed this check: {checks}? "
+                    "The installer still stops on its own errors. The hub restarts during the install.",
+                    "other": "Install the downloaded version although it failed these {n} checks: {checks}? "
+                    "The installer still stops on its own errors. The hub restarts during the install.",
+                },
+                n=len(skipped),
+                checks=[c["name"] for c in skipped],
+            ),
+        )
+    ]
 
 
 def _said_check(c):
