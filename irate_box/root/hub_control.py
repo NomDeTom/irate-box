@@ -3407,7 +3407,6 @@ GO_NETWORK, GO_CLOCK, GO_BOOKS, GO_UPDATES = (
 )
 GO_LIBRARIAN = _go("sources", M("go.librarian", "The librarian"))
 GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access"), "library-token")
-GO_MAINT = _go("updoctor", M("go.update-maint", "Updates doctor"))
 # The Update source form's two fields: the link opens the fold, scrolls to the field and marks it.
 GO_SOURCE_REPO = _go("updoctor", M("go.update-source", "Update source"), "update-source-repo")
 GO_SOURCE_BRANCH = _go("updoctor", M("go.update-source", "Update source"), "update-source-branch")
@@ -3964,7 +3963,6 @@ def doctor():
                     ),
                     CACHE_CLEAR,
                     evidence=locks,
-                    go=GO_MAINT,
                 )
             )
         else:
@@ -3982,7 +3980,6 @@ def doctor():
                         ),
                         fix=CACHE_CLEAR,
                         evidence=(status.stderr.strip().splitlines() or [])[-1:],
-                        go=GO_MAINT,
                     )
                 )
             elif repo and remote != repo:
@@ -4004,7 +4001,6 @@ def doctor():
                                 repo=repo,
                             )
                         ],
-                        go=GO_MAINT,
                     )
                 )
             else:

@@ -392,10 +392,10 @@ check(
     fs["space:system"],
 )
 check(
-    "  a stale cache lock: counted, named, Maintenance the place to clear it",
+    "  a stale cache lock: counted, named, no link (the cure is a button on the finding)",
     msg_args(fs["cache"], "update.cache.lock") == {"n": 1}
     and fs["cache"]["evidence"] == ["index.lock"]
-    and fs["cache"]["go"]["section"] == "updoctor",
+    and not fs["cache"].get("go"),
     fs["cache"],
 )
 check(
