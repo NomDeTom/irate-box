@@ -121,10 +121,13 @@ def summarize(hist, now=None):
     for back in range(71, -1, -1):
         s = _midnight(today - back * 86400 + 43200)
         days.append((s, _midnight(s + 36 * 3600)))
-    label = lambda s: {
-        "date": time.strftime("%Y-%m-%d", time.localtime(s)),
-        "label": time.strftime("%a %d", time.localtime(s)),
-    }  # noqa: E731
+
+    def label(s):
+        return {
+            "date": time.strftime("%Y-%m-%d", time.localtime(s)),
+            "label": time.strftime("%a %d", time.localtime(s)),
+        }  # noqa: E731
+
     hour_at = lambda i: (anchor - 71 + i) * HOUR  # noqa: E731
     hour_cols = [time.strftime("%H:00", time.localtime(hour_at(i))) if i % 12 == 0 else "" for i in range(72)]
     hour_full = [

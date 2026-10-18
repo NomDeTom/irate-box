@@ -61,7 +61,8 @@ for key, e in xref.XREF.items():
         name = i.removeprefix("kernel-")
         check(
             f"xref {key}: the Security page still has {i}",
-            f'finding("{i}"' in page_src or (i.startswith("kernel-") and f'"{name}": {{"title"' in page_src),
+            re.search(rf'finding\(\s*"{re.escape(i)}"', page_src) is not None
+            or (i.startswith("kernel-") and re.search(rf'"{re.escape(name)}":\s*{{\s*"title"', page_src) is not None),
             i,
         )
 check(
@@ -345,8 +346,8 @@ check(
 check(
     "every compound rule names findings that exist",
     all(
-        f'finding("{i.removeprefix("page-")}"' in page_src
-        or (i.startswith("page-group-") and 'finding(f"group-{group}"' in page_src)
+        re.search(rf'finding\(\s*"{re.escape(i.removeprefix("page-"))}"', page_src) is not None
+        or (i.startswith("page-group-") and re.search(r'finding\(\s*f"group-{group}"', page_src) is not None)
         for c in xref.COMPOUND
         for s, i in c["needs"]
         if s == "security-page"

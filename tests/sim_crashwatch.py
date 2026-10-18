@@ -681,10 +681,15 @@ put(par / "recovered_at", "470\n")
 m, age = radio.driver_reset()
 check("  counted: a marker and its age from the uptime", m == "aic8800_fdrv:2:470" and age == 30.0, (m, age))
 shutil.rmtree(SYS / "module/aic8800_fdrv/parameters")
-jr = lambda *c, **k: (
-    0,
-    "[  431.500000] host kernel: aic8800: firmware not answering: resetting the device to load it afresh",
-)  # noqa: E731
+
+
+def jr(*c, **k):
+    return (
+        0,
+        "[  431.500000] host kernel: aic8800: firmware not answering: resetting the device to load it afresh",
+    )  # noqa: E731
+
+
 m, age = radio.driver_reset(run=jr)
 check("  no count in sysfs: the journal's line", m == "journal:431.5" and age == 68.5, (m, age))
 check("  nor there: nothing", radio.driver_reset(run=lambda *c, **k: (1, "")) == (None, None))

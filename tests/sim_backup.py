@@ -371,12 +371,17 @@ except ValueError as exc:
     check("onto a stick with nothing chosen: refused", exc.message["id"] == "control.export.empty", str(exc))
 box = T / "otherbox"
 (box / "git/public").mkdir(parents=True)
-run = lambda *a: subprocess.run(
-    ["sh", str(stick / "irate-box/import.sh"), *a],
-    capture_output=True,
-    text=True,  # noqa: E731
-    env=dict(os.environ, IRATE_BOX_CLI="/bin/true", HUB_STATE_DIR=str(box)),
-)
+
+
+def run(*a):
+    return subprocess.run(
+        ["sh", str(stick / "irate-box/import.sh"), *a],
+        capture_output=True,
+        text=True,  # noqa: E731
+        env=dict(os.environ, IRATE_BOX_CLI="/bin/true", HUB_STATE_DIR=str(box)),
+    )
+
+
 out = run("--dry-run")
 check(
     "import.sh --dry-run: says what it would add and replace, changes nothing",

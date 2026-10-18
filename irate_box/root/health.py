@@ -2750,9 +2750,12 @@ def check_usb_filesystems():
     from irate_box.root import usbstick
 
     can = usbstick.readable()
-    words = lambda names: list(
-        dict.fromkeys(usbstick.FS_WORDS[n] for n in sorted(names, key=lambda n: list(usbstick.FS_WORDS).index(n)))
-    )  # noqa: E731
+
+    def words(names):
+        return list(
+            dict.fromkeys(usbstick.FS_WORDS[n] for n in sorted(names, key=lambda n: list(usbstick.FS_WORDS).index(n)))
+        )  # noqa: E731
+
     yes = [n for n, ok in can.items() if ok]
     no = words(
         [
