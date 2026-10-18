@@ -84,15 +84,14 @@ const land = [...d.querySelectorAll('#doctor-findings a.go-btn')].find((a) => /U
 check('a finding links to Update source by name', !!land, t('#doctor-findings .finding'));
 d.getElementById('update-maint').open = false;
 d.getElementById('updoctor').hidden = false; // the page's router shows the pane before the link lands
-w.eval("var _l = landOn; window.landOn = landOn = function () { console.log('DBG landOn ran'); return _l(); }"); land.click();
-
-setTimeout(() => console.log('DBG t100', d.getElementById('update-maint').open, d.getElementById('update-source-branch').className, (() => { const o = []; for (let n = d.getElementById('update-source-branch'); n; n = n.parentElement) if (n.hidden) o.push(n.id || n.tagName); return o; })()), 600);
-const settle = () => {
+check('  its button names the place', /^Go to Update source/.test(land.textContent.trim()), land.textContent);
+land.click();
+// The page lands a moment after the click (landOn waits 50 ms): wait for what it does, not for a fixed time.
+const until = (done, then, left = 40) => (done() || left === 0 ? then() : setTimeout(() => until(done, then, left - 1), 50));
+const branchLanded = () => d.getElementById('update-maint').open && d.getElementById('update-source-branch').classList.contains('landed');
+until(branchLanded, () => {
   check('  it asks the update helper (poll-target), not the box doctor', posted.some(([u, b]) => /\/admin\/update$/.test(u) && /"action":"poll-target"/.test(b)), posted);
-};
-setTimeout(() => {
-  settle();
-  check('  the link opens the fold and marks the Branch field', d.getElementById('update-maint').open && d.getElementById('update-source-branch').classList.contains('landed'),
+  check('  the link opens the fold and marks the Branch field', branchLanded(),
     [d.getElementById('update-maint').open, d.getElementById('update-source-branch').className]);
   const sent = posted.slice(before).filter(([, b]) => b).map(([, b]) => JSON.parse(b));
   check('the source form: declined sends nothing, accepted sends the repository, the branch and the confirmation',
@@ -101,4 +100,4 @@ setTimeout(() => {
   check('  its poll asks about the typed repository', sent.some((b) => b.action === 'poll-source' && b.repo === 'https://example.org/fork/irate-box'), sent);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
-}, 900);
+});
