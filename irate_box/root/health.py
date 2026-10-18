@@ -3653,7 +3653,7 @@ def fix(choice):
         if choice == "rtc-remove":
             return rtc.remove()
     except rtc.RtcError as exc:
-        raise Refused(exc.message)
+        raise Refused(exc.message) from exc
     if kind == "kiwix-rebuild":
         return kiwix_rebuild()
     if kind == "kiwix-off":

@@ -88,14 +88,14 @@ def add_channel(name, key):
         )
     try:
         meshdecode.expand_key(key)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
         raise Refused(
             M(
                 "mesh.channel.key-invalid",
                 "Invalid channel key. Enter the key in base64 as Meshtastic shows it. "
                 "The key must have 0, 1, 16 or 32 bytes.",
             )
-        )
+        ) from exc
     chs = [c for c in channels() if c["name"] != name] + [{"name": name, "key": key}]
     if len(chs) > MAX_CHANNELS:
         raise Refused(

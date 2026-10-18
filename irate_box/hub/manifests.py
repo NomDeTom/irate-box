@@ -275,7 +275,7 @@ def load(folder=None):
         try:
             m = json.loads(path.read_text(encoding="utf-8"))
         except ValueError as exc:
-            raise ManifestError(f"{path.name}: {exc}")
+            raise ManifestError(f"{path.name}: {exc}") from exc
         _check(m, path.name)
         if m["id"] in seen:
             raise ManifestError(f"{path.name}: Duplicate manifest ID {m['id']}. Each manifest needs its own ID")

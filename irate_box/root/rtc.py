@@ -528,7 +528,7 @@ def kernel_rtc_dev(cfg):
         except OSError as exc:
             raise RtcError(
                 M("rtc-module.kernel-refused", "The kernel did not accept the module: {detail}.", detail=str(exc))
-            )
+            ) from exc
     for _ in range(30):
         rtcs = list(node.glob("rtc/rtc*"))
         if rtcs:
@@ -567,7 +567,7 @@ def read_module(cfg):
                 addr=cfg["addr"],
                 detail=str(exc.strerror or exc),
             )
-        )
+        ) from exc
     try:
         epoch, why = read_user(chip, dev)
         return epoch, why, notes(chip, dev)
@@ -846,7 +846,7 @@ def setup(chip, bus, addr):
                     addr=f"{a:#04x}",
                     detail=str(exc.strerror or exc),
                 )
-            )
+            ) from exc
         try:
             if chip not in identify(a, dev.read):
                 raise RtcError(

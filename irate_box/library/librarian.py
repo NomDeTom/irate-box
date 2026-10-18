@@ -240,9 +240,9 @@ class Lock:
         self.fh = open(LOCK_FILE, "w")
         try:
             fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        except BlockingIOError as exc:
             self.fh.close()
-            raise LibrarianError(BUSY)
+            raise LibrarianError(BUSY) from exc
         return self
 
     def __exit__(self, *exc):
@@ -551,8 +551,8 @@ def check_bundle(zip_path, name):
                     M("library.bundle.incomplete", "Archive unsupported. The bundle has no {needs}.", needs=needs)
                 )
             return meta
-    except zipfile.BadZipFile:
-        raise LibrarianError(NOT_ZIP)
+    except zipfile.BadZipFile as exc:
+        raise LibrarianError(NOT_ZIP) from exc
     except (ValueError, KeyError) as exc:
         raise LibrarianError(
             M(
@@ -561,7 +561,7 @@ def check_bundle(zip_path, name):
                 file=BUNDLE_JSON,
                 error=str(exc),
             )
-        )
+        ) from exc
 
 
 def _queue_root(req):
@@ -988,7 +988,7 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
         )
     except urllib.error.HTTPError as exc:
         if exc.code == 304 and (extra or {}).get("If-None-Match"):
-            raise _NotModified(exc.headers)
+            raise _NotModified(exc.headers) from exc
         if exc.headers is not None:
             _note_rate(exc.headers)
         if exc.code == 401:
@@ -998,7 +998,7 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
                     "GitHub refused the token for {url} (HTTP 401). Enter a valid GitHub token.",
                     url=url,
                 )
-            )
+            ) from exc
         if exc.code == 429 or (exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0"):
             _pace_fail()
             raise LibrarianError(
@@ -1007,10 +1007,10 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
                     "GitHub API rate limit reached. The limit depends on authentication: "
                     "60 requests per hour without a token, more with a token.",
                 )
-            )
+            ) from exc
         raise LibrarianError(
             M("library.download.http-error", "Download failed. {url} answered HTTP {code}.", url=url, code=exc.code)
-        )
+        ) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         reason = getattr(exc, "reason", exc)
         raise LibrarianError(
@@ -1020,7 +1020,7 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
                 host=urllib.parse.urlparse(url).hostname,
                 reason=str(reason),
             )
-        )
+        ) from exc
 
 
 # GitHub's API at hundreds of sources. Without a token it allows 60 requests
@@ -1102,8 +1102,8 @@ def adapt_rate():
     try:
         with _open(f"{API}/rate_limit", token(), timeout=20) as resp:
             core = json.load(resp)["resources"]["core"]
-    except (ValueError, KeyError, TypeError):
-        raise LibrarianError(M("library.github.rate-unreadable", "The box cannot read the GitHub rate limit."))
+    except (ValueError, KeyError, TypeError) as exc:
+        raise LibrarianError(M("library.github.rate-unreadable", "The box cannot read the GitHub rate limit.")) from exc
     limit = int(core["limit"])
     p = {k: v for k, v in pace().items() if k == "hits"}
     p.update(budget=max(PACE_FLOOR, limit - RESERVE), limit=limit, failures=0, adapted=int(time.time()))
@@ -1330,13 +1330,13 @@ def _opds(params):
         data = resp.read(4 << 20)
     try:
         root = ET.fromstring(data)
-    except ET.ParseError:
+    except ET.ParseError as exc:
         raise LibrarianError(
             M("library.kiwix.catalogue-unreadable", "Download failed. The box cannot read the Kiwix catalogue.")
-        )
+        ) from exc
     out = []
     for e in root.findall(f"{_ATOM}entry"):
-        g = lambda tag: (e.findtext(f"{_ATOM}{tag}") or "").strip()  # noqa: E731
+        g = lambda tag, e=e: (e.findtext(f"{_ATOM}{tag}") or "").strip()  # noqa: E731
         link = next((l for l in e.findall(f"{_ATOM}link") if l.get("type") == "application/x-zim"), None)
         href = (link.get("href") or "") if link is not None else ""
         if not href.startswith("https://"):
@@ -1537,8 +1537,8 @@ def _extract_zim(zip_path, name, dest):
                 pick = zims[0]
             with zf.open(pick) as src, open(dest, "wb") as out:
                 shutil.copyfileobj(src, out, CHUNK)
-    except zipfile.BadZipFile:
-        raise LibrarianError(NOT_ZIP)
+    except zipfile.BadZipFile as exc:
+        raise LibrarianError(NOT_ZIP) from exc
 
 
 def _check_zim(path, archived=None):

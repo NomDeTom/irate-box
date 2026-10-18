@@ -397,7 +397,7 @@ def handover(name, sleep=time.sleep):
                 "The transfer failed. The box restored the netplan file and every setting. {reason}",
                 reason=getattr(exc, "message", None) or str(exc),
             )
-        )
+        ) from exc
     rec = record()
     rec.append(entry)
     _save(rec)
@@ -484,7 +484,7 @@ def undo(name):
                     backup=kept_in,
                     detail=str(exc),
                 )
-            )
+            ) from exc
     try:
         back = Path(f"/proc/self/fd/{fd}") if fd is not None else Path(kept_in)
         if not (back / Path(entry["file"]).name).exists():

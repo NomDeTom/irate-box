@@ -192,18 +192,18 @@ def undo(uuid):
                     kept=str(kept),
                     detail=str(e),
                 )
-            )
+            ) from e
         try:
             with safeio.create(dest, 0o600) as fh:
                 fh.write(data)
-        except FileExistsError:
+        except FileExistsError as exc:
             raise Refused(
                 M(
                     "other-ap.undo.exists",
                     "{file} exists already, so the box did not restore the profile.",
                     file=str(dest),
                 )
-            )
+            ) from exc
         code, out = run("nmcli", "con", "load", str(dest))
         if code != 0:
             dest.unlink(missing_ok=True)

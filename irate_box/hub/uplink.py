@@ -2698,7 +2698,8 @@ def serve(dry=False):
                 more, _ = lk.w.by_hand(now, lk.obs, asked)
                 actions += [s for s in more if s not in actions]
             share(lk.w, i, dry)  # before acting: a reboot leaves no time after
-            lk.act(now, actions, lambda lk=lk: _report(links, resting, inv, primary, chosen, dry, reboots, time.time()))
+            # inv, primary and chosen do not change in this loop; the callback runs inside the iteration.
+            lk.act(now, actions, lambda lk=lk: _report(links, resting, inv, primary, chosen, dry, reboots, time.time()))  # noqa: B023
             if not dry:
                 try:
                     ladder.add(lk.w.ladder, i, now, [dict(r, i=i) for r in lk.roam_rows])

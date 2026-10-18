@@ -125,7 +125,7 @@ def fake_run(*cmd, timeout=60):
                 if (T / d).is_dir():
                     for f in (T / d).glob("*.yaml"):
                         text = f.read_text()
-                        for name, uuid in re.findall(r"^# makes: (\S+) (\S+)$", text, re.M):
+                        for name, _uuid in re.findall(r"^# makes: (\S+) (\S+)$", text, re.M):
                             put(T / "run/nm" / f"{name}.nmconnection", profile(name, None))
         return 0, ""
     if cmd[:3] == ("nmcli", "con", "reload"):

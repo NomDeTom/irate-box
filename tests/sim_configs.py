@@ -310,9 +310,10 @@ def fake_open(url, auth=None, method="GET", timeout=60, extra=None):
     return Resp(whole[start:], 206) if extra and honour else Resp(whole, 200)
 
 
+# fake_open reads the loop's `honour` as a global.
 real_open, librarian._open = librarian._open, fake_open
 part = T / "part.bin"
-for honour, why in (
+for honour, why in (  # noqa: B007
     (True, "a server that allows ranges: the rest appended"),
     (False, "one that ignores the range (200): started again"),
 ):

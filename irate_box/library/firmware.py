@@ -283,7 +283,7 @@ def _mirror_board(base, vdir, version, mt, policy):
                     "library.download.cut-short",
                 ):
                     raise  # the network, not this board: the whole run stops
-                raise _Unavailable(exc.message)
+                raise _Unavailable(exc.message) from exc
             if not _have(tmp, entry):
                 tmp.unlink(missing_ok=True)
                 raise _Unavailable(
@@ -396,14 +396,14 @@ def _carry_cache(rel, cfg, policy, log):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out, 1 << 20)
-    except zipfile.BadZipFile:
+    except zipfile.BadZipFile as exc:
         raise LibrarianError(
             M(
                 "firmware.cache.incomplete",
                 "Archive damaged or incomplete. {name} is not a complete zip file.",
                 name=deps["name"],
             )
-        )
+        ) from exc
     finally:
         tmp.unlink(missing_ok=True)
     (work / ".irate-box-cache").write_text(cfg["cache"] + "\n")
@@ -526,7 +526,7 @@ def _configs_from_mirror(rel):
     path = str(mirrors.repo_path(m))
     try:
         librarian._git("-C", path, "rev-parse", "--verify", "--quiet", f"refs/tags/{rel['tag']}^{{commit}}")
-    except LibrarianError:
+    except LibrarianError as exc:
         raise LibrarianError(
             M(
                 "firmware.mirror.no-tag",
@@ -534,7 +534,7 @@ def _configs_from_mirror(rel):
                 name=m["name"],
                 tag=rel["tag"],
             )
-        )
+        ) from exc
     files, total = [], 0
     for line in librarian._git(
         "-C", path, "ls-tree", "-r", "-z", f"refs/tags/{rel['tag']}", "--", "bin/config.d/"

@@ -5,6 +5,9 @@ each case said by its message ID, its commands, what it saw and the place to go 
 not fine; then the checks of a downloaded version and the update actions' answers as messages, the result file
 keeping the English for every reader that expects text. python3 tests/sim_update_doctor.py"""
 
+# The stand-ins defined inside the loops below are called in the iteration that defines them, so B023 does not apply.
+# ruff: noqa: B023
+
 import io
 import json
 import os

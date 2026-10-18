@@ -325,7 +325,7 @@ def apply_all(fw, sharing, iface=None):
                 detail=str(exc),
                 command="apt-get install nftables",
             )
-        )
+        ) from exc
     last = lambda r: (r.stderr.strip().splitlines() or ["?"])[-1][:200]  # noqa: E731
     if r.returncode != 0:
         tmp.unlink(missing_ok=True)

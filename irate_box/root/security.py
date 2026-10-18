@@ -1028,13 +1028,13 @@ def unattended_finding(installed, periodic, log_age_days, chosen=None, last_at=N
 def _timers_six(rec_timers, on):
     """apt's two timers every 6 hours (a drop-in of ours each), or as Debian ships them."""
     changed = False
-    for timer, when in TIMER_SIX.items():
+    for timer, schedule in TIMER_SIX.items():
         drop = TIMER_DROPIN / f"{timer}.d" / "52irate-box.conf"
         if on:
             drop.parent.mkdir(parents=True, exist_ok=True)
             drop.write_text(
                 "# Written by irate-box's Updates page: look for security updates every 6 hours.\n"
-                f"[Timer]\nOnCalendar=\nOnCalendar={when}\nRandomizedDelaySec=30min\n"
+                f"[Timer]\nOnCalendar=\nOnCalendar={schedule}\nRandomizedDelaySec=30min\n"
             )
             changed = True
         elif drop.exists():
@@ -2433,7 +2433,7 @@ def _proc(rec, on):
                     path=str(FSTAB),
                     detail=str(exc),
                 )
-            )
+            ) from exc
         rec["proc"] = {"date": time.strftime("%Y-%m-%d"), "fstab": was}
         return M(
             "security-fix.proc.hidden",

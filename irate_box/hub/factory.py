@@ -207,7 +207,7 @@ def targets(src, ref):
     for sec in parser.sections():
         if not sec.startswith("env:") or not ENV_RE.match(sec[4:]):
             continue
-        g = lambda k: parser.get(sec, k, fallback="").strip()  # noqa: E731
+        g = lambda k, sec=sec: parser.get(sec, k, fallback="").strip()  # noqa: E731
         out.append(
             {
                 "env": sec[4:],
@@ -447,8 +447,8 @@ def _job_path(job_id):
     )
     try:
         j = json.loads(p.read_text())
-    except (OSError, ValueError):
-        raise Refused(M("factory.job.started", "Build already started. You can change only a waiting build."))
+    except (OSError, ValueError) as exc:
+        raise Refused(M("factory.job.started", "Build already started. You can change only a waiting build.")) from exc
     if j.get("kind") != "firmware":
         raise Refused(M("factory.job.not-firmware", "This is not a firmware build."))
     return p, j
@@ -716,8 +716,8 @@ def _run(run_number):
     run = confine.under(ci.RUNS, RUNS_NAME, str(run_number))
     try:
         return run, json.loads((run / "status.json").read_text())
-    except (OSError, ValueError):
-        raise Refused(M("factory.run.not-found", "Run not found."))
+    except (OSError, ValueError) as exc:
+        raise Refused(M("factory.run.not-found", "Run not found.")) from exc
 
 
 def _write(path, data):
@@ -751,8 +751,8 @@ def publish(run_number):
         )
     try:
         mt = json.loads(confine.under(run, "artifacts", names[0]).read_text())
-    except (OSError, ValueError):
-        raise Refused(M("factory.publish.manifest-unreadable", "The manifest cannot be read."))
+    except (OSError, ValueError) as exc:
+        raise Refused(M("factory.publish.manifest-unreadable", "The manifest cannot be read.")) from exc
     env, version = st.get("env"), str(mt.get("version", ""))
     if not VERSION_RE.match(version) or mt.get("platformioTarget") != env or not ENV_RE.match(env or ""):
         raise Refused(M("factory.publish.manifest-other", "The manifest does not belong to this build."))
@@ -810,7 +810,7 @@ def unpublish(version, env):
     mt_path = confine.under(folder, f"firmware-{env}-{version}.mt.json")
     try:
         mine = {f.get("name") for f in json.loads(mt_path.read_text()).get("files", [])}
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
         raise Refused(
             M(
                 "factory.unpublish.not-found",
@@ -818,7 +818,7 @@ def unpublish(version, env):
                 version=version,
                 env=env,
             )
-        )
+        ) from exc
     mt_path.unlink()
     others = set()
     for m in folder.glob(f"firmware-*-{version}.mt.json"):
