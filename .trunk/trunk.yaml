@@ -38,6 +38,10 @@ lint:
     - taplo@0.10.0
     - trufflehog@3.99.2
     - yamllint@1.38.0
+  ignore:
+    # Tests use fixed fake passwords, MD5 for fixtures, /tmp paths and subprocess on purpose.
+    - linters: [bandit]
+      paths: [tests/**]
 actions:
   disabled:
     - trunk-announce

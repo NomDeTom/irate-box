@@ -15,6 +15,9 @@ concurrency:
 jobs:
   trunk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write # trunk posts its findings as annotations on the pull request
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: trunk-io/trunk-action@e1234e67a86010d61ddac8d8ebf4b783e2ffd2fa # v2.0.0
