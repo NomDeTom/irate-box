@@ -34,8 +34,10 @@ import stat
 from pathlib import Path
 
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-ROOT_STATE = Path(os.environ.get("HUB_ROOT_STATE_DIR")
-                  or Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")).parent / "irate-box-root")
+ROOT_STATE = Path(
+    os.environ.get("HUB_ROOT_STATE_DIR")
+    or Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")).parent / "irate-box-root"
+)
 
 
 class LinkRefused(OSError):
@@ -47,7 +49,9 @@ def _dir_fd(folder):
         return os.open(folder, DIR_FLAGS)
     except OSError as exc:
         if Path(folder).is_symlink():
-            raise LinkRefused(f"Refused: {folder} is a symbolic link, not a folder. The box does not follow it") from exc
+            raise LinkRefused(
+                f"Refused: {folder} is a symbolic link, not a folder. The box does not follow it"
+            ) from exc
         raise
 
 

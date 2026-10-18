@@ -11,6 +11,7 @@ ports at that moment, so the report can say "imported before the ports changed".
 
 Kept in $HUB_STATE_DIR/security-imports/<kind>.json; the security doctor (root) reads them.
 """
+
 import json
 import os
 import re
@@ -42,7 +43,13 @@ def validate(report):
         raise Refused(KIND_BAD)
     results = report.get("results")
     if not isinstance(results, list) or len(results) > MAX_RESULTS:
-        raise Refused(M("secimport.results.invalid", "Scan data invalid. The results must be a list of at most {most} items.", most=MAX_RESULTS))
+        raise Refused(
+            M(
+                "secimport.results.invalid",
+                "Scan data invalid. The results must be a list of at most {most} items.",
+                most=MAX_RESULTS,
+            )
+        )
     ran = report.get("ran")
     if ran is not None and (not isinstance(ran, (int, float)) or not 946684800 <= ran <= time.time() + 86400):
         raise Refused(M("secimport.ran.invalid", "Scan data invalid. The time of the scan must be a Unix time."))
@@ -51,19 +58,41 @@ def validate(report):
         if not isinstance(r, dict):
             raise Refused(M("secimport.result.invalid", "Scan data invalid. Each result must be an object."))
         port, proto = r.get("port"), r.get("proto", "tcp")
-        if not (port in (None, "general") or (isinstance(port, int) and 0 < port < 65536)) or proto not in ("tcp", "udp"):
-            raise Refused(M("secimport.port.invalid", "Scan data invalid. The port must be 1 to 65535 or general, "
-                                                      "and the protocol must be tcp or udp."))
-        item = {"port": port, "proto": proto, "host": _text(r.get("host"), TEXT["host"]), "service": _text(r.get("service"), TEXT["service"])}
+        if not (port in (None, "general") or (isinstance(port, int) and 0 < port < 65536)) or proto not in (
+            "tcp",
+            "udp",
+        ):
+            raise Refused(
+                M(
+                    "secimport.port.invalid",
+                    "Scan data invalid. The port must be 1 to 65535 or general, and the protocol must be tcp or udp.",
+                )
+            )
+        item = {
+            "port": port,
+            "proto": proto,
+            "host": _text(r.get("host"), TEXT["host"]),
+            "service": _text(r.get("service"), TEXT["service"]),
+        }
         if report["kind"] == "openvas":
             cvss = r.get("cvss", 0)
             if not isinstance(cvss, (int, float)) or not 0 <= cvss <= 10:
                 raise Refused(M("secimport.cvss.invalid", "Scan data invalid. The CVSS score must be 0 to 10."))
             cves = r.get("cves") or []
             if not isinstance(cves, list) or not all(isinstance(c, str) and CVE_RE.match(c) for c in cves[:50]):
-                raise Refused(M("secimport.cves.invalid", "Scan data invalid. The CVEs must be a list of CVE IDs (CVE-YYYY-NNNN)."))
-            item.update(cvss=float(cvss), name=_text(r.get("name"), TEXT["name"]), summary=_text(r.get("summary"), TEXT["summary"]),
-                        solution=_text(r.get("solution"), TEXT["solution"]), cves=cves[:50])
+                raise Refused(
+                    M(
+                        "secimport.cves.invalid",
+                        "Scan data invalid. The CVEs must be a list of CVE IDs (CVE-YYYY-NNNN).",
+                    )
+                )
+            item.update(
+                cvss=float(cvss),
+                name=_text(r.get("name"), TEXT["name"]),
+                summary=_text(r.get("summary"), TEXT["summary"]),
+                solution=_text(r.get("solution"), TEXT["solution"]),
+                cves=cves[:50],
+            )
         else:
             if r.get("state") not in ("open", "open|filtered"):
                 continue
@@ -75,7 +104,7 @@ def validate(report):
 def _box_ports():
     try:
         scan = json.loads(SECURITY_SCAN.read_text())
-        return sorted({f"{l['proto']}/{l['port']}" for l in scan.get("listeners", [])})
+        return sorted({f"{ln['proto']}/{ln['port']}" for ln in scan.get("listeners", [])})
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
@@ -87,9 +116,15 @@ def save(report):
     tmp = confine.under(DIR, f".{kept['kind']}.json.tmp")
     tmp.write_text(json.dumps(kept))
     os.replace(tmp, confine.under(DIR, f"{kept['kind']}.json"))
-    return M("secimports.saved", {"one": "{kind}: {n} result kept. The next run of the doctor includes it.",
-                                  "other": "{kind}: {n} results kept. The next run of the doctor includes them."},
-             kind=kept["kind"], n=len(kept["results"]))
+    return M(
+        "secimports.saved",
+        {
+            "one": "{kind}: {n} result kept. The next run of the doctor includes it.",
+            "other": "{kind}: {n} results kept. The next run of the doctor includes them.",
+        },
+        kind=kept["kind"],
+        n=len(kept["results"]),
+    )
 
 
 def remove(kind):

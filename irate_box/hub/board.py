@@ -66,8 +66,7 @@ def _post(author, text, now, hue, account=None, seen_by=None):
 
 
 class Board:
-    def __init__(self, path, clock, max_threads=MAX_THREADS,
-                 max_posts=MAX_POSTS_PER_THREAD, ttl=THREAD_TTL):
+    def __init__(self, path, clock, max_threads=MAX_THREADS, max_posts=MAX_POSTS_PER_THREAD, ttl=THREAD_TTL):
         self.path = Path(path)
         self.clock = clock
         self.max_threads = max_threads
@@ -106,12 +105,11 @@ class Board:
 
     def _prune(self, state, now):
         """Drop expired and overflowing threads. Returns the surviving list."""
-        alive = [t for t in state["threads"]
-                 if now - t.get("active", 0) <= self.ttl]
+        alive = [t for t in state["threads"] if now - t.get("active", 0) <= self.ttl]
         # Newest activity first, then keep only the head of the list.
         # Id breaks ties so the newest thread wins when two share an activity tick.
         alive.sort(key=lambda t: (t.get("active", 0), t["id"]), reverse=True)
-        state["threads"] = alive[:self.max_threads]
+        state["threads"] = alive[: self.max_threads]
         return state["threads"]
 
     def _visible(self, state, now):
@@ -123,7 +121,7 @@ class Board:
         alive = [t for t in state["threads"] if now - t.get("active", 0) <= self.ttl]
         # Id breaks ties so the newest thread wins when two share an activity tick.
         alive.sort(key=lambda t: (t.get("active", 0), t["id"]), reverse=True)
-        return alive[:self.max_threads]
+        return alive[: self.max_threads]
 
     # --- reads -------------------------------------------------------------
 
@@ -158,9 +156,7 @@ class Board:
     # --- writes ------------------------------------------------------------
 
     def create_thread(self, author, title, text, hue=None, account=None, seen_by=None):
-        author, title, text = (_clean(author, MAX_AUTHOR),
-                               _clean(title, MAX_TITLE),
-                               _clean(text, MAX_TEXT))
+        author, title, text = (_clean(author, MAX_AUTHOR), _clean(title, MAX_TITLE), _clean(text, MAX_TEXT))
         hue = _clean_hue(hue)
         if not author or not title or not text:
             raise Refused(M("board.thread.incomplete", "Author, title and message are required."))
@@ -199,7 +195,7 @@ class Board:
                 # Oldest replies fall off, but never the opening post -- losing it
                 # would leave a thread with a title and no subject.
                 if len(t["posts"]) > self.max_posts:
-                    t["posts"] = [t["posts"][0]] + t["posts"][-(self.max_posts - 1):]
+                    t["posts"] = [t["posts"][0]] + t["posts"][-(self.max_posts - 1) :]
                 t["active"] = now
                 self._prune(state, now)
                 self._save(state)

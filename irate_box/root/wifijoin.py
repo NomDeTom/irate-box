@@ -26,8 +26,8 @@ from irate_box.msg import M, Refused
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RECORD = ETC / "wifi-joined.json"
 KEYFILES = Path(os.environ.get("HUB_NM_CONNECTIONS", "/etc/NetworkManager/system-connections"))
-SECURITY = ("wpa-psk", "sae", "open")   # WPA2 (and WPA3 transition), WPA3 only, no password
-PRIORITY = -10                          # below the owner's own profiles (0): a fallback unless chosen
+SECURITY = ("wpa-psk", "sae", "open")  # WPA2 (and WPA3 transition), WPA3 only, no password
+PRIORITY = -10  # below the owner's own profiles (0): a fallback unless chosen
 SSID_RE = re.compile(r"^[^\x00-\x1f\x7f\\]{1,32}$")
 PSK_RE = re.compile(r"^[\x20-\x7e]{8,63}$|^[0-9A-Fa-f]{64}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -52,6 +52,7 @@ def record():
 
 def _save(rec):
     from irate_box.root import safeio
+
     ETC.mkdir(parents=True, exist_ok=True)
     safeio.write(RECORD, json.dumps(rec, indent=1), 0o600)
 
@@ -59,15 +60,33 @@ def _save(rec):
 def validate(ssid, security, psk, hidden):
     """The network as asked, or Refused saying what is wrong (never echoing the password)."""
     if not isinstance(ssid, str) or not SSID_RE.match(ssid) or len(ssid.encode()) > 32 or ssid != ssid.strip():
-        raise Refused(M("wifi-join.ssid", "Enter a network name (SSID) of 1 to 32 bytes. Do not use control characters, a backslash "
-                     "or a space at either end."))
+        raise Refused(
+            M(
+                "wifi-join.ssid",
+                "Enter a network name (SSID) of 1 to 32 bytes. Do not use control characters, a backslash "
+                "or a space at either end.",
+            )
+        )
     if security not in SECURITY:
-        raise Refused(M("wifi-join.request.security", "The request is not valid: the security must be one of {values}.", values=list(SECURITY)))
+        raise Refused(
+            M(
+                "wifi-join.request.security",
+                "The request is not valid: the security must be one of {values}.",
+                values=list(SECURITY),
+            )
+        )
     if security == "open":
         if psk:
-            raise Refused(M("wifi-join.open-psk", "An open network has no password. Clear the password, or select another security."))
+            raise Refused(
+                M(
+                    "wifi-join.open-psk",
+                    "An open network has no password. Clear the password, or select another security.",
+                )
+            )
     elif not isinstance(psk, str) or not PSK_RE.match(psk):
-        raise Refused(M("wifi-join.psk", "Enter a password of 8 to 63 printable characters, or of 64 hexadecimal digits."))
+        raise Refused(
+            M("wifi-join.psk", "Enter a password of 8 to 63 printable characters, or of 64 hexadecimal digits.")
+        )
     if not isinstance(hidden, bool):
         raise Refused(M("wifi-join.request.hidden", "The request is not valid: hidden must be true or false."))
 
@@ -79,8 +98,18 @@ def _escape(value):
 
 
 def keyfile(name, uid, ssid, security, psk, hidden):
-    lines = ["[connection]", f"id={_escape(name)}", f"uuid={uid}", "type=wifi", "autoconnect=true",
-             f"autoconnect-priority={PRIORITY}", "", "[wifi]", "mode=infrastructure", f"ssid={_escape(ssid)}"]
+    lines = [
+        "[connection]",
+        f"id={_escape(name)}",
+        f"uuid={uid}",
+        "type=wifi",
+        "autoconnect=true",
+        f"autoconnect-priority={PRIORITY}",
+        "",
+        "[wifi]",
+        "mode=infrastructure",
+        f"ssid={_escape(ssid)}",
+    ]
     if hidden:
         lines.append("hidden=true")
     if security != "open":
@@ -105,7 +134,9 @@ def join(ssid, security="wpa-psk", psk="", hidden=False, now=False, wait=60, sle
     validate(ssid, security, psk, hidden)
     code, out = run("nmcli", "-t", "-f", "RUNNING", "general")
     if code != 0 or out.strip() != "running":
-        raise Refused(M("wifi-join.no-nm", "NetworkManager does not run the WiFi of this box, so you cannot add networks here."))
+        raise Refused(
+            M("wifi-join.no-nm", "NetworkManager does not run the WiFi of this box, so you cannot add networks here.")
+        )
     rec = record()
     if any(r.get("ssid") == ssid for r in rec.values()):
         raise Refused(M("wifi-join.exists", "{ssid} is already added here. To change it, forget it first.", ssid=ssid))
@@ -120,11 +151,21 @@ def join(ssid, security="wpa-psk", psk="", hidden=False, now=False, wait=60, sle
     if code != 0:
         path.unlink(missing_ok=True)
         raise Refused(M("wifi-join.load", "NetworkManager did not accept the profile: {detail}", detail=out[-200:]))
-    rec[uid] = {"name": name, "ssid": ssid, "security": security, "hidden": hidden, "file": str(path), "at": time.time()}
+    rec[uid] = {
+        "name": name,
+        "ssid": ssid,
+        "security": security,
+        "hidden": hidden,
+        "file": str(path),
+        "at": time.time(),
+    }
     _save(rec)
     if not now:
-        return M("wifi-join.added", "The box added {ssid}. It joins this network by itself when the networks it knows are out of reach.",
-                 ssid=ssid)
+        return M(
+            "wifi-join.added",
+            "The box added {ssid}. It joins this network by itself when the networks it knows are out of reach.",
+            ssid=ssid,
+        )
     before = _active_wifi()
     code, out = run("nmcli", "connection", "up", "uuid", uid, timeout=wait + 30)
     if code == 0:
@@ -135,10 +176,19 @@ def join(ssid, security="wpa-psk", psk="", hidden=False, now=False, wait=60, sle
                 break
             sleep(10)
     if before:
-        return M("wifi-join.failed-back", "The box added {ssid}, but it could not join it ({detail}). The box is back on the network "
-                 "it was on. It keeps {ssid}, to join when it is in reach.", ssid=ssid, detail=out[-160:])
-    return M("wifi-join.failed", "The box added {ssid}, but it could not join it ({detail}). It keeps {ssid}, to join when it is in reach.",
-             ssid=ssid, detail=out[-160:])
+        return M(
+            "wifi-join.failed-back",
+            "The box added {ssid}, but it could not join it ({detail}). The box is back on the network "
+            "it was on. It keeps {ssid}, to join when it is in reach.",
+            ssid=ssid,
+            detail=out[-160:],
+        )
+    return M(
+        "wifi-join.failed",
+        "The box added {ssid}, but it could not join it ({detail}). It keeps {ssid}, to join when it is in reach.",
+        ssid=ssid,
+        detail=out[-160:],
+    )
 
 
 def forget(uid):
@@ -159,8 +209,16 @@ def forget(uid):
 
 def public():
     """What the page may show: the networks added here, without their passwords."""
-    return [{"uuid": u, "ssid": r["ssid"], "security": r.get("security"), "hidden": r.get("hidden", False), "at": r.get("at")}
-            for u, r in sorted(record().items(), key=lambda x: x[1].get("at", 0))]
+    return [
+        {
+            "uuid": u,
+            "ssid": r["ssid"],
+            "security": r.get("security"),
+            "hidden": r.get("hidden", False),
+            "at": r.get("at"),
+        }
+        for u, r in sorted(record().items(), key=lambda x: x[1].get("at", 0))
+    ]
 
 
 def kept_on_uninstall():
@@ -168,12 +226,18 @@ def kept_on_uninstall():
     rec = record()
     if not rec:
         return ""
-    return ("kept the networks that an administrator added on /admin: " + ", ".join(r["ssid"] for r in rec.values())
-            + "; remove one with: nmcli connection delete uuid UUID (" + ", ".join(rec) + ")")
+    return (
+        "kept the networks that an administrator added on /admin: "
+        + ", ".join(r["ssid"] for r in rec.values())
+        + "; remove one with: nmcli connection delete uuid UUID ("
+        + ", ".join(rec)
+        + ")"
+    )
 
 
 if __name__ == "__main__":
     import sys
+
     if sys.argv[1:] == ["kept"]:
         print(kept_on_uninstall())
     else:

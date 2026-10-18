@@ -73,7 +73,7 @@ API_FILES = {
 }
 
 
-BUILT = "-built"   # factory.py's folders: <version>-built/firmware-<version>-built.json
+BUILT = "-built"  # factory.py's folders: <version>-built/firmware-<version>-built.json
 
 
 def _releases():
@@ -88,8 +88,13 @@ def _releases():
         except (OSError, ValueError):
             continue
         if targets:
-            out.append((folder.name.endswith(BUILT), folder.stat().st_mtime,
-                        {"version": folder.name, "targets": targets, "built": folder.name.endswith(BUILT)}))
+            out.append(
+                (
+                    folder.name.endswith(BUILT),
+                    folder.stat().st_mtime,
+                    {"version": folder.name, "targets": targets, "built": folder.name.endswith(BUILT)},
+                )
+            )
     return [r for _, _, r in sorted(out, key=lambda x: (x[0], x[1]), reverse=True)]
 
 
@@ -109,7 +114,7 @@ def chip(data):
     """ESP Web Tools' chipFamily for a merged image (factory.bin), or None."""
     for at in (0, 0x1000):
         if len(data) > at + 16 and data[at] == 0xE9:
-            return CHIPS.get(int.from_bytes(data[at + 12:at + 14], "little"))
+            return CHIPS.get(int.from_bytes(data[at + 12 : at + 14], "little"))
     return None
 
 
@@ -117,17 +122,24 @@ def partitions(data):
     """The partition table inside a merged image: [{type, subtype, offset, size, label}]."""
     out = []
     for i in range(PART_TABLE, min(len(data), PART_TABLE + 0xC00) - 31, 32):
-        e = data[i:i + 32]
+        e = data[i : i + 32]
         if e[:2] != b"\xaa\x50":
             break
-        out.append({"type": e[2], "subtype": e[3], "offset": int.from_bytes(e[4:8], "little"),
-                    "size": int.from_bytes(e[8:12], "little"), "label": e[12:28].split(b"\0")[0].decode("ascii", "replace")})
+        out.append(
+            {
+                "type": e[2],
+                "subtype": e[3],
+                "offset": int.from_bytes(e[4:8], "little"),
+                "size": int.from_bytes(e[8:12], "little"),
+                "label": e[12:28].split(b"\0")[0].decode("ascii", "replace"),
+            }
+        )
     return out
 
 
 ESP_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,40}(-built)?$")
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
-FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")   # factory.py's, for the files a manifest names
+FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")  # factory.py's, for the files a manifest names
 OTA_RE = re.compile(r"^(mt-esp32[a-z0-9]*-ota|bleota[a-z0-9-]*)\.bin$")
 
 
@@ -168,9 +180,13 @@ def esp_manifest(version, env):
         where = ota if OTA_RE.match(name) else fs if name.startswith("littlefs-") and name.endswith(".bin") else None
         if where and names[name].stat().st_size <= where["size"]:
             parts.append({"path": f"/flasher/firmware/{version}/{name}", "offset": where["offset"]})
-    return {"name": f"Meshtastic for {mt.get('display_name') or env}", "version": version.removesuffix(BUILT),
-            "new_install_prompt_erase": True, "new_install_improv_wait_time": 0,
-            "builds": [{"chipFamily": fam, "parts": parts}]}
+    return {
+        "name": f"Meshtastic for {mt.get('display_name') or env}",
+        "version": version.removesuffix(BUILT),
+        "new_install_prompt_erase": True,
+        "new_install_improv_wait_time": 0,
+        "builds": [{"chipFamily": fam, "parts": parts}],
+    }
 
 
 def esp_targets():
@@ -183,8 +199,16 @@ def esp_targets():
                 continue
             m = esp_manifest(r["version"], t.get("board"))
             if m:
-                out.append({"version": r["version"], "env": t["board"], "name": m["name"], "chip": m["builds"][0]["chipFamily"],
-                            "parts": len(m["builds"][0]["parts"]), "built": r["built"]})
+                out.append(
+                    {
+                        "version": r["version"],
+                        "env": t["board"],
+                        "name": m["name"],
+                        "chip": m["builds"][0]["chipFamily"],
+                        "parts": len(m["builds"][0]["parts"]),
+                        "built": r["built"],
+                    }
+                )
     return out
 
 
@@ -211,24 +235,42 @@ def api(path):
     m = re.fullmatch(r"/flasher/api/esp/([^/]+)/([^/]+)/manifest\.json", path)
     if m:
         man = esp_manifest(m.group(1), m.group(2))
-        return (200, json.dumps(man).encode()) if man else (404, _refused(M("flasher.esp.not-found", "ESP32 build not found on this box.")))
+        return (
+            (200, json.dumps(man).encode())
+            if man
+            else (404, _refused(M("flasher.esp.not-found", "ESP32 build not found on this box.")))
+        )
     if path in API_FILES:
         f = ROOT / API_FILES[path]
-        return (200, f.read_bytes()) if f.is_file() else (404, _refused(M("flasher.not-installed", "The flasher is not installed.")))
+        return (
+            (200, f.read_bytes())
+            if f.is_file()
+            else (404, _refused(M("flasher.not-installed", "The flasher is not installed.")))
+        )
     if path == "/flasher/api/github/firmware/list":
         try:
             out = json.loads((FIRMWARE / "index.json").read_text())
         except (OSError, ValueError):
             out = json.loads(json.dumps(EMPTY_LIST))
-        built = [{"id": "v" + r["version"], "release_notes": "",
-                  "title": f"Meshtastic Firmware {r['version'][:-len(BUILT)]} built on this box "
-                           f"({', '.join(t['board'] for t in r['targets'][:4])}{' …' if len(r['targets']) > 4 else ''})"}
-                 for r in _built()]
+        built = [
+            {
+                "id": "v" + r["version"],
+                "release_notes": "",
+                "title": f"Meshtastic Firmware {r['version'][: -len(BUILT)]} built on this box "
+                f"({', '.join(t['board'] for t in r['targets'][:4])}{' …' if len(r['targets']) > 4 else ''})",
+            }
+            for r in _built()
+        ]
         if built:
             out.setdefault("releases", {}).setdefault("alpha", [])[:0] = built
         return 200, json.dumps(out).encode()
     # Pull-request builds and anything else the hosted API has: not offline.
-    return 404, _refused(M("flasher.offline", "Not available on this box. The box has only the releases it downloaded and its own builds."))
+    return 404, _refused(
+        M(
+            "flasher.offline",
+            "Not available on this box. The box has only the releases it downloaded and its own builds.",
+        )
+    )
 
 
 def _refused(m):

@@ -35,8 +35,9 @@ def clock_trusted():
     if (RUN / "clock-trusted").exists():
         return True
     try:
-        out = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"],
-                             capture_output=True, text=True, timeout=5)
+        out = subprocess.run(
+            ["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True, timeout=5
+        )
         return out.stdout.strip() == "yes"
     except (OSError, subprocess.SubprocessError):
         return False
@@ -45,8 +46,12 @@ def clock_trusted():
 def look(units):
     """{unit: (active?, InvocationID)} for the installed ones, from one `systemctl show`."""
     try:
-        out = subprocess.run(["systemctl", "show", "--property=Id,LoadState,ActiveState,InvocationID", *units],
-                             capture_output=True, text=True, timeout=10).stdout
+        out = subprocess.run(
+            ["systemctl", "show", "--property=Id,LoadState,ActiveState,InvocationID", *units],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return {}
     found = {}
@@ -70,7 +75,7 @@ def record(hist, states, now):
             e = units[unit] = {"first": idx, "s": "000"}
         last = e["first"] + len(e["s"]) // 3 - 1
         if idx < last:
-            continue                    # the clock went back: the hours ahead stand
+            continue  # the clock went back: the hours ahead stand
         if idx - last > KEEP:
             e["first"], e["s"], last = idx, "000", idx
         elif idx > last:
@@ -81,7 +86,7 @@ def record(hist, states, now):
         if len(e["s"]) > 3 * KEEP:
             cut = len(e["s"]) // 3 - KEEP
             e["first"] += cut
-            e["s"] = e["s"][3 * cut:]
+            e["s"] = e["s"][3 * cut :]
     return hist
 
 
@@ -90,7 +95,7 @@ def _hours(e, start, end):
     out = []
     for h in range(start, end):
         i = h - e["first"]
-        g = e["s"][3 * i:3 * i + 3] if 0 <= i < len(e["s"]) // 3 else "000"
+        g = e["s"][3 * i : 3 * i + 3] if 0 <= i < len(e["s"]) // 3 else "000"
         out.append((int(g[0], 16), int(g[1], 16), int(g[2])))
     return out
 
@@ -111,16 +116,26 @@ def summarize(hist, now=None):
     restarts."""
     now = time.time() if now is None else now
     today = _midnight(now)
-    anchor = int(now // HOUR)                 # the hour now in progress
+    anchor = int(now // HOUR)  # the hour now in progress
     days = []
     for back in range(71, -1, -1):
         s = _midnight(today - back * 86400 + 43200)
         days.append((s, _midnight(s + 36 * 3600)))
-    label = lambda s: {"date": time.strftime("%Y-%m-%d", time.localtime(s)), "label": time.strftime("%a %d", time.localtime(s))}  # noqa: E731
+
+    def label(s):
+        return {
+            "date": time.strftime("%Y-%m-%d", time.localtime(s)),
+            "label": time.strftime("%a %d", time.localtime(s)),
+        }
+
     hour_at = lambda i: (anchor - 71 + i) * HOUR  # noqa: E731
     hour_cols = [time.strftime("%H:00", time.localtime(hour_at(i))) if i % 12 == 0 else "" for i in range(72)]
-    hour_full = [time.strftime("%a %d %H:00", time.localtime(hour_at(i)))
-                 + "–" + time.strftime("%H:00", time.localtime(hour_at(i) + HOUR)) for i in range(72)]
+    hour_full = [
+        time.strftime("%a %d %H:00", time.localtime(hour_at(i)))
+        + "–"
+        + time.strftime("%H:00", time.localtime(hour_at(i) + HOUR))
+        for i in range(72)
+    ]
     out = {"month_days": [label(s) for s, _ in days], "hour_cols": hour_cols, "hour_full": hour_full, "units": {}}
     for unit, e in sorted((hist or {}).get("units", {}).items()):
         if not isinstance(e, dict) or not isinstance(e.get("first"), int) or not isinstance(e.get("s"), str):
@@ -129,9 +144,14 @@ def summarize(hist, now=None):
         month = [_cell(_hours(e, int(s // HOUR), int(t // HOUR))) for s, t in days]
         seen = [c for c in hours if c]
         n = sum(c["n"] for c in seen)
-        out["units"][unit] = {"hours": hours, "month": month, "summary": {
-            "up": round(sum(c["up"] * c["n"] for c in seen) / n, 4) if n else None,
-            "restarts": sum(c["restarts"] for c in seen)}}
+        out["units"][unit] = {
+            "hours": hours,
+            "month": month,
+            "summary": {
+                "up": round(sum(c["up"] * c["n"] for c in seen) / n, 4) if n else None,
+                "restarts": sum(c["restarts"] for c in seen),
+            },
+        }
     return out
 
 

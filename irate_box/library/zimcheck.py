@@ -48,8 +48,10 @@ def header_problem(path):
         return f"Unsupported ZIM format: the header states version {major}.{minor}. The box reads versions 5 and 6."
     checksum_pos = struct.unpack_from("<Q", head, 72)[0]
     if checksum_pos + 16 > size:
-        return (f"Book file incomplete: {size >> 20} MB of the {(checksum_pos + 16) >> 20} MB that the header states. "
-                "Possible causes: an interrupted download or copy, or a USB drive removed too early.")
+        return (
+            f"Book file incomplete: {size >> 20} MB of the {(checksum_pos + 16) >> 20} MB that the header states. "
+            "Possible causes: an interrupted download or copy, or a USB drive removed too early."
+        )
     return None
 
 
@@ -70,7 +72,9 @@ def kiwix_problem(path, timeout=300, user=None):
         if r.returncode == 0 and lib.exists() and "<book " in lib.read_text(errors="replace"):
             return None
         msg = (r.stderr or r.stdout).strip().splitlines()
-        return "Book reader unavailable: kiwix-manage cannot read the file" + (f": {msg[-1][:160]}" if msg else "") + "."
+        return (
+            "Book reader unavailable: kiwix-manage cannot read the file" + (f": {msg[-1][:160]}" if msg else "") + "."
+        )
 
 
 def problem(path, user=None):

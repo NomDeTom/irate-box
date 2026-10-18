@@ -12,7 +12,7 @@ from pathlib import Path
 
 WHEN = ("manual", "update", "weekly")
 WEEK = 7 * 86400
-ASK_GAP = 6 * 3600   # an export takes minutes: asked again only after this, so one slow export is not asked twice
+ASK_GAP = 6 * 3600  # an export takes minutes: asked again only after this, so one slow export is not asked twice
 
 
 def _file(state_dir):
@@ -25,7 +25,11 @@ def load(state_dir):
         d = json.loads(_file(state_dir).read_text())
     except (OSError, ValueError):
         d = {}
-    return {"when": d.get("when") if d.get("when") in WHEN else "manual", "request": d.get("request"), "asked": d.get("asked", 0)}
+    return {
+        "when": d.get("when") if d.get("when") in WHEN else "manual",
+        "request": d.get("request"),
+        "asked": d.get("asked", 0),
+    }
 
 
 def _save(state_dir, d):
@@ -71,7 +75,7 @@ def due(state_dir, kit, installed, now=None):
     if d["when"] == "manual" or not req or now - d["asked"] < ASK_GAP:
         return None
     if not kit:
-        return req   # the last kit is gone (deleted, or never finished): made again
+        return req  # the last kit is gone (deleted, or never finished): made again
     if d["when"] == "weekly":
         return req if now - (kit.get("at") or 0) >= WEEK else None
     held = kit_version(kit)

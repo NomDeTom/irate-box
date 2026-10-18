@@ -60,11 +60,7 @@ for r in sorted(HUB_ROUTES):
     )
 for m, src in sorted(MOUNTS.items()):
     text = src.read_text(encoding="utf-8")
-    seen = (
-        re.search(rf"location\s+(?:\^~\s+|=\s+)?{re.escape(m)}", text)
-        if src == NGINX
-        else f'"{m}"' in text
-    )
+    seen = re.search(rf"location\s+(?:\^~\s+|=\s+)?{re.escape(m)}", text) if src == NGINX else f'"{m}"' in text
     check(f"mount {m}: served ({src.relative_to(REPO)})", bool(seen))
 
 

@@ -61,8 +61,14 @@ TAGS_DIR = librarian.LIB_DIR / "tags"
 
 
 def _git(*args, cwd=None, timeout=600):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                          env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=dict(os.environ, GIT_TERMINAL_PROMPT="0"),
+    )
 
 
 def _read(path, default):
@@ -104,51 +110,108 @@ def validate(m):
     if name.endswith(".git"):
         name = name[:-4]
     if not gitrepos.NAME_RE.match(name):
-        raise LibrarianError(M("mirrors.name.invalid", "Invalid mirror name. Use letters, digits, '.', '_' and '-', up to 64 characters."))
+        raise LibrarianError(
+            M(
+                "mirrors.name.invalid",
+                "Invalid mirror name. Use letters, digits, '.', '_' and '-', up to 64 characters.",
+            )
+        )
     area = m.get("area", "public")
     if area not in gitrepos.AREAS:
         raise LibrarianError(M("mirrors.area.invalid", "Invalid destination area. Select public or private."))
     upstream = str(m.get("upstream", "")).strip()
     u = urllib.parse.urlsplit(upstream)
     if u.scheme != "https" or not u.hostname or u.username or u.password or any(c in upstream for c in " \n\t\\"):
-        raise LibrarianError(M("mirrors.upstream.invalid", "Invalid source settings. Enter an https:// URL for the upstream, with no user name or token in it."))
+        raise LibrarianError(
+            M(
+                "mirrors.upstream.invalid",
+                "Invalid source settings. Enter an https:// URL for the upstream, with no user name or token in it.",
+            )
+        )
     branches = m.get("branches") or ["main"]
     if not isinstance(branches, list) or not 1 <= len(branches) <= 10 or not all(_ref_ok(b) for b in branches):
         raise LibrarianError(M("mirrors.branches.invalid", "Invalid branches. Enter 1 to 10 branch names."))
     groups = []
     for g in m.get("groups") or []:
         if not isinstance(g, dict) or g.get("kind") not in KINDS:
-            raise LibrarianError(M("mirrors.group.kind-invalid", "Invalid group kind. Use one of these kinds: {kinds}.", kinds=list(KINDS)))
+            raise LibrarianError(
+                M(
+                    "mirrors.group.kind-invalid",
+                    "Invalid group kind. Use one of these kinds: {kinds}.",
+                    kinds=list(KINDS),
+                )
+            )
         keep = g.get("keep", 1)
         if type(keep) is not int or not 0 <= keep <= MAX_KEEP:
-            raise LibrarianError(M("mirrors.group.keep-invalid", "Invalid source settings. In groups, keep must be from 0 to {max}.", max=MAX_KEEP))
+            raise LibrarianError(
+                M(
+                    "mirrors.group.keep-invalid",
+                    "Invalid source settings. In groups, keep must be from 0 to {max}.",
+                    max=MAX_KEEP,
+                )
+            )
         pattern = str(g.get("pattern") or "*")
         if len(pattern) > 64 or not re.match(r"^[A-Za-z0-9*?._/\-\[\]]+$", pattern):
-            raise LibrarianError(M("mirrors.group.pattern-invalid", "Invalid source settings. In groups, a pattern is a tag glob, for example v*.*.*."))
+            raise LibrarianError(
+                M(
+                    "mirrors.group.pattern-invalid",
+                    "Invalid source settings. In groups, a pattern is a tag glob, for example v*.*.*.",
+                )
+            )
         if g["kind"] != "tags" and not _github(upstream):
-            raise LibrarianError(M("mirrors.group.needs-github", "Invalid source settings. In groups, release and prerelease need a github.com upstream."))
+            raise LibrarianError(
+                M(
+                    "mirrors.group.needs-github",
+                    "Invalid source settings. In groups, release and prerelease need a github.com upstream.",
+                )
+            )
         skip = g.get("skip_revoked", True)
         if type(skip) is not bool:
-            raise LibrarianError(M("mirrors.group.skip-revoked-invalid", "Invalid source settings. In groups, skip_revoked must be true or false."))
+            raise LibrarianError(
+                M(
+                    "mirrors.group.skip-revoked-invalid",
+                    "Invalid source settings. In groups, skip_revoked must be true or false.",
+                )
+            )
         group = {"name": str(g.get("name") or g["kind"])[:32], "kind": g["kind"], "pattern": pattern, "keep": keep}
         if g["kind"] != "tags":
             group["skip_revoked"] = skip
         groups.append(group)
     follow = m.get("follow", "latest")
     pin = str(m.get("pin") or "").strip()
-    if follow not in ("latest", "pinned") or (follow == "pinned" and not (re.fullmatch(r"[0-9a-f]{40}", pin) or _ref_ok(pin))):
-        raise LibrarianError(M("mirrors.follow.invalid", "Invalid source settings. Follow must be latest, or pinned with a pin (a commit or a tag)."))
+    if follow not in ("latest", "pinned") or (
+        follow == "pinned" and not (re.fullmatch(r"[0-9a-f]{40}", pin) or _ref_ok(pin))
+    ):
+        raise LibrarianError(
+            M(
+                "mirrors.follow.invalid",
+                "Invalid source settings. Follow must be latest, or pinned with a pin (a commit or a tag).",
+            )
+        )
     history = m.get("history", "shallow")
     if history not in ("shallow", "full"):
         raise LibrarianError(M("mirrors.history.invalid", "Invalid source settings. History must be shallow or full."))
     if type(m.get("submodules", False)) is not bool:
-        raise LibrarianError(M("mirrors.submodules.invalid", "Invalid source settings. Submodules must be true or false."))
+        raise LibrarianError(
+            M("mirrors.submodules.invalid", "Invalid source settings. Submodules must be true or false.")
+        )
     budget = m.get("budget_mb", 2048)
     if type(budget) is not int or not 1 <= budget <= 1 << 20:
-        raise LibrarianError(M("mirrors.budget.invalid", "Invalid storage limit. Enter a number of MB from 1 to 1048576."))
-    return {"name": name, "area": area, "upstream": upstream, "branches": branches, "groups": groups,
-            "follow": follow, "pin": pin if follow == "pinned" else "", "history": history, "budget_mb": budget,
-            "submodules": bool(m.get("submodules", False))}
+        raise LibrarianError(
+            M("mirrors.budget.invalid", "Invalid storage limit. Enter a number of MB from 1 to 1048576.")
+        )
+    return {
+        "name": name,
+        "area": area,
+        "upstream": upstream,
+        "branches": branches,
+        "groups": groups,
+        "follow": follow,
+        "pin": pin if follow == "pinned" else "",
+        "history": history,
+        "budget_mb": budget,
+        "submodules": bool(m.get("submodules", False)),
+    }
 
 
 def _github(url):
@@ -178,27 +241,45 @@ def _sync_tags(m, refs):
     _git("config", "remote.origin.url", m["upstream"], cwd=path)
     before = {r: sha for r, sha in _local_refs(path).items() if r.startswith("refs/tags/")}
     upstream = {r: sha for r, sha in refs.items() if r.startswith("refs/tags/")}
-    moved = sorted(r[len("refs/tags/"):] for r, sha in before.items() if r in upstream and upstream[r] != sha)
+    moved = sorted(r[len("refs/tags/") :] for r, sha in before.items() if r in upstream and upstream[r] != sha)
     if upstream:
-        out = _git("fetch", "--quiet", "--prune", "--no-write-fetch-head", "--filter=tree:0", "--depth", "1",
-                   "origin", "+refs/tags/*:refs/tags/*", cwd=path, timeout=FETCH_TIMEOUT)
+        out = _git(
+            "fetch",
+            "--quiet",
+            "--prune",
+            "--no-write-fetch-head",
+            "--filter=tree:0",
+            "--depth",
+            "1",
+            "origin",
+            "+refs/tags/*:refs/tags/*",
+            cwd=path,
+            timeout=FETCH_TIMEOUT,
+        )
         if out.returncode != 0:
-            raise LibrarianError(M("mirrors.tags.fetch-failed", "Tag download failed: {output}",
-                                     output=(out.stderr.strip().splitlines() or ["git fetch failed"])[-1][:200]))
+            raise LibrarianError(
+                M(
+                    "mirrors.tags.fetch-failed",
+                    "Tag download failed: {output}",
+                    output=(out.stderr.strip().splitlines() or ["git fetch failed"])[-1][:200],
+                )
+            )
     else:
         for r in before:
             _git("update-ref", "-d", r, cwd=path)
     listed = _git("for-each-ref", "refs/tags", "--format=%(objecttype)\t%(contents:signature)", cwd=path).stdout
     rows = listed.splitlines()  # a signature runs on over lines of its own, which start with neither word
-    count = sum(1 for l in rows if l.startswith(("tag\t", "commit\t")))
-    signed = sum(1 for l in rows if l.startswith("tag\t-----BEGIN"))
+    count = sum(1 for ln in rows if ln.startswith(("tag\t", "commit\t")))
+    signed = sum(1 for ln in rows if ln.startswith("tag\t-----BEGIN"))
     return {"count": count, "signed": signed, "moved": moved}
 
 
 def add(m):
     m = validate(m)
     mirrors = load()
-    if any(x["name"] == m["name"] for x in mirrors) or any(confine.under(gitrepos.ROOT, a, f"{m['name']}.git").exists() for a in gitrepos.AREAS):
+    if any(x["name"] == m["name"] for x in mirrors) or any(
+        confine.under(gitrepos.ROOT, a, f"{m['name']}.git").exists() for a in gitrepos.AREAS
+    ):
         raise LibrarianError(M("mirrors.repo.exists", "Repository already exists: {name}.git.", name=m["name"]))
     mirrors.append(m)
     _write(SETTINGS, {"mirrors": mirrors})
@@ -213,7 +294,12 @@ def change(m):
     if not old:
         raise LibrarianError(_not_found(m["name"]))
     if old["area"] != m["area"]:
-        raise LibrarianError(M("mirrors.area.fixed", "The area of a mirror cannot change. Remove the mirror and add it again in the other area."))
+        raise LibrarianError(
+            M(
+                "mirrors.area.fixed",
+                "The area of a mirror cannot change. Remove the mirror and add it again in the other area.",
+            )
+        )
     _write(SETTINGS, {"mirrors": [m if x["name"] == m["name"] else x for x in mirrors]})
     return m
 
@@ -236,6 +322,7 @@ def remove(name, delete_repo=True):
 
 # --- what the policy names -------------------------------------------------------------------
 
+
 def _version_key(tag):
     """Natural order: v2.10.1 after v2.9.3; a tag's numbers, then its text."""
     return [(0, int(p), "") if p.isdigit() else (1, 0, p) for p in re.split(r"(\d+)", tag) if p]
@@ -244,8 +331,14 @@ def _version_key(tag):
 def _remote_refs(upstream):
     out = _git("ls-remote", "--refs", upstream, timeout=300)
     if out.returncode != 0:
-        raise LibrarianError(M("mirrors.upstream.unreadable", "Source not found. The box cannot read {upstream}: {output}", upstream=upstream,
-                                output=(out.stderr.strip().splitlines() or ["git ls-remote failed"])[-1][:200]))
+        raise LibrarianError(
+            M(
+                "mirrors.upstream.unreadable",
+                "Source not found. The box cannot read {upstream}: {output}",
+                upstream=upstream,
+                output=(out.stderr.strip().splitlines() or ["git ls-remote failed"])[-1][:200],
+            )
+        )
     refs = {}
     for line in out.stdout.splitlines():
         sha, _, ref = line.partition("\t")
@@ -282,7 +375,7 @@ def _releases(m, entry):
 def wanted(m, refs=None, releases=None):
     """{ref: sha} the policy keeps."""
     refs = _remote_refs(m["upstream"]) if refs is None else refs
-    tags = [r[len("refs/tags/"):] for r in refs if r.startswith("refs/tags/")]
+    tags = [r[len("refs/tags/") :] for r in refs if r.startswith("refs/tags/")]
     keep, rel = {}, None
     for g in m["groups"]:
         if g["kind"] == "tags":
@@ -290,26 +383,50 @@ def wanted(m, refs=None, releases=None):
         else:
             if rel is None:
                 rel = _github_releases(m["upstream"]) if releases is None else releases
-            chosen = [r[0] for r in rel if r[1] == (g["kind"] == "prerelease")
-                      and not (g.get("skip_revoked", True) and len(r) > 2 and r[2])
-                      and fnmatch.fnmatchcase(r[0], g["pattern"]) and f"refs/tags/{r[0]}" in refs]
-        for t in chosen[:g["keep"]]:
+            chosen = [
+                r[0]
+                for r in rel
+                if r[1] == (g["kind"] == "prerelease")
+                and not (g.get("skip_revoked", True) and len(r) > 2 and r[2])
+                and fnmatch.fnmatchcase(r[0], g["pattern"])
+                and f"refs/tags/{r[0]}" in refs
+            ]
+        for t in chosen[: g["keep"]]:
             keep[f"refs/tags/{t}"] = refs[f"refs/tags/{t}"]
     for i, b in enumerate(m["branches"]):
         if i == 0 and m["follow"] == "pinned":
             pin = m["pin"]
-            sha = pin if re.fullmatch(r"[0-9a-f]{40}", pin) else refs.get(f"refs/tags/{pin}") or refs.get(f"refs/heads/{pin}")
+            sha = (
+                pin
+                if re.fullmatch(r"[0-9a-f]{40}", pin)
+                else refs.get(f"refs/tags/{pin}") or refs.get(f"refs/heads/{pin}")
+            )
             if not sha:
-                raise LibrarianError(M("mirrors.pin.not-found", "Source not found. The pin {pin} is not in {upstream}.", pin=pin, upstream=m["upstream"]))
+                raise LibrarianError(
+                    M(
+                        "mirrors.pin.not-found",
+                        "Source not found. The pin {pin} is not in {upstream}.",
+                        pin=pin,
+                        upstream=m["upstream"],
+                    )
+                )
             keep[f"refs/heads/{b}"] = sha
         elif f"refs/heads/{b}" in refs:
             keep[f"refs/heads/{b}"] = refs[f"refs/heads/{b}"]
         else:
-            raise LibrarianError(M("mirrors.branch.not-found", "Source not found. {upstream} has no branch {branch}.", upstream=m["upstream"], branch=b))
+            raise LibrarianError(
+                M(
+                    "mirrors.branch.not-found",
+                    "Source not found. {upstream} has no branch {branch}.",
+                    upstream=m["upstream"],
+                    branch=b,
+                )
+            )
     return keep
 
 
 # --- keeping it --------------------------------------------------------------------------------
+
 
 def _ensure_repo(m, path=None, upstream=None, what=None):
     path = path or repo_path(m)
@@ -318,8 +435,14 @@ def _ensure_repo(m, path=None, upstream=None, what=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         out = _git("init", "--quiet", "--bare", f"--initial-branch={m['branches'][0]}", str(path))
         if out.returncode != 0:
-            raise LibrarianError(M("library.git.failed", "Git {what} failed: {output}", what="init",
-                                   output=(out.stderr.strip().splitlines() or [""])[-1]))
+            raise LibrarianError(
+                M(
+                    "library.git.failed",
+                    "Git {what} failed: {output}",
+                    what="init",
+                    output=(out.stderr.strip().splitlines() or [""])[-1],
+                )
+            )
     # Read-only on the box, whatever the area: a mirror is the upstream's, not anyone's here.
     gitrepos.set_write_level(path, "nobody")
     _git("config", "irate-box.mirror", upstream, cwd=path)
@@ -341,7 +464,7 @@ def _submodules_at(path, ref):
     entries = {}
     for line in out.stdout.splitlines():
         key, _, value = line.partition(" ")
-        name, field = key[len("submodule."):].rsplit(".", 1)
+        name, field = key[len("submodule.") :].rsplit(".", 1)
         entries.setdefault(name, {})[field] = value
     for e in entries.values():
         if "path" in e and "url" in e:
@@ -367,19 +490,44 @@ def _sync_submodules(m, path, kept_refs, log):
     for sub_path, w in sorted(want.items()):
         u = urllib.parse.urlsplit(w["url"])
         # https only (file:// in tests, where the "internet" is a folder).
-        if (u.scheme != "https" and not (u.scheme == "file" and os.environ.get("HUB_MIRRORS_TEST_FILE"))) or u.username or u.password:
+        if (
+            (u.scheme != "https" and not (u.scheme == "file" and os.environ.get("HUB_MIRRORS_TEST_FILE")))
+            or u.username
+            or u.password
+        ):
             log(f"mirror {m['name']}: submodule {sub_path} is not an https URL ({w['url']}); left out")
             continue
         name = _sub_name(m, sub_path)
-        spath = _ensure_repo(m, gitrepos.ROOT / m["area"] / f"{name}.git", w["url"], f"Submodule {sub_path} of mirror {m['name']}, a mirror")
+        spath = _ensure_repo(
+            m,
+            gitrepos.ROOT / m["area"] / f"{name}.git",
+            w["url"],
+            f"Submodule {sub_path} of mirror {m['name']}, a mirror",
+        )
         have = {r.rsplit("/", 1)[-1] for r in _local_refs(spath) if r.startswith("refs/kept/")}
         for sha in sorted(w["shas"] - have):
             log(f"mirror {m['name']}: submodule {sub_path} at {sha[:7]}")
-            r = _git("fetch", "--quiet", "--no-tags", "--no-write-fetch-head", *depth, w["url"], f"+{sha}:refs/kept/{sha}",
-                     cwd=spath, timeout=FETCH_TIMEOUT)
+            r = _git(
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "--no-write-fetch-head",
+                *depth,
+                w["url"],
+                f"+{sha}:refs/kept/{sha}",
+                cwd=spath,
+                timeout=FETCH_TIMEOUT,
+            )
             if r.returncode != 0:
-                raise LibrarianError(M("mirrors.submodule.fetch-failed", "Download failed for submodule {path} at {commit}: {output}", path=sub_path,
-                                         commit=sha[:7], output=(r.stderr.strip().splitlines() or ["git fetch failed"])[-1][:200]))
+                raise LibrarianError(
+                    M(
+                        "mirrors.submodule.fetch-failed",
+                        "Download failed for submodule {path} at {commit}: {output}",
+                        path=sub_path,
+                        commit=sha[:7],
+                        output=(r.stderr.strip().splitlines() or ["git fetch failed"])[-1][:200],
+                    )
+                )
         stale = have - w["shas"]
         for sha in stale:
             _git("update-ref", "-d", f"refs/kept/{sha}", cwd=spath)
@@ -395,7 +543,10 @@ def write_urls():
     st, urls = status(), {}
     for m in load():
         pairs = [(m["upstream"], repo_path(m))]
-        pairs += [(s["url"], gitrepos.ROOT / m["area"] / f"{s['repo']}.git") for s in st.get(m["name"], {}).get("submodules", {}).values()]
+        pairs += [
+            (s["url"], gitrepos.ROOT / m["area"] / f"{s['repo']}.git")
+            for s in st.get(m["name"], {}).get("submodules", {}).values()
+        ]
         for url, local in pairs:
             if (local / "HEAD").exists():
                 base = url[:-4] if url.endswith(".git") else url
@@ -424,7 +575,7 @@ def sync(m, check_only=False, log=print):
         extra = [r for r in have if r not in keep]
         entry.update(wanted=sorted(keep), missing=sorted(missing), extra=sorted(extra))
         if check_only:
-            line = (f"{len(missing)} to download, {len(extra)} to remove" if missing or extra else "up to date")
+            line = f"{len(missing)} to download, {len(extra)} to remove" if missing or extra else "up to date"
         else:
             path = _ensure_repo(m)
             depth = ["--depth", "1"] if m["history"] == "shallow" else []
@@ -432,11 +583,26 @@ def sync(m, check_only=False, log=print):
                 # By name where the upstream has it under that name, by commit for a pin.
                 src = ref if refs.get(ref) == sha else sha
                 log(f"mirror {m['name']}: fetching {ref}")
-                out = _git("fetch", "--quiet", "--no-tags", "--no-write-fetch-head", *depth, m["upstream"],
-                           f"+{src}:{ref}", cwd=path, timeout=FETCH_TIMEOUT)
+                out = _git(
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    *depth,
+                    m["upstream"],
+                    f"+{src}:{ref}",
+                    cwd=path,
+                    timeout=FETCH_TIMEOUT,
+                )
                 if out.returncode != 0:
-                    raise LibrarianError(M("mirrors.ref.fetch-failed", "Download failed for {ref}: {output}", ref=ref,
-                                             output=(out.stderr.strip().splitlines() or ["git fetch failed"])[-1][:200]))
+                    raise LibrarianError(
+                        M(
+                            "mirrors.ref.fetch-failed",
+                            "Download failed for {ref}: {output}",
+                            ref=ref,
+                            output=(out.stderr.strip().splitlines() or ["git fetch failed"])[-1][:200],
+                        )
+                    )
             for ref in extra:
                 _git("update-ref", "-d", ref, cwd=path)
             if extra:
@@ -503,6 +669,7 @@ def snapshot():
 
 if __name__ == "__main__":
     import sys
+
     args = sys.argv[1:]
     mode = args.pop(0) if args and args[0] in ("check", "update") else "update"
     with librarian.Lock():

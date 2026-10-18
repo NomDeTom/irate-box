@@ -46,6 +46,7 @@ def rewrite(path, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
     if os.geteuid() == 0:
         from irate_box.root import safeio
+
         safeio.write(path, _lines(rows))
         return
     tmp = path.with_name(path.name + ".tmp")

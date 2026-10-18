@@ -39,23 +39,24 @@ from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
-CACHE = STATE / "factory-targets"            # {commit}.json: the targets at that commit
+CACHE = STATE / "factory-targets"  # {commit}.json: the targets at that commit
 # Paused, the factory's waiting jobs wait here, out of the builder's queue: the queue's path unit
 # starts the builder whenever the queue is not empty, so jobs it may not take must not be in it.
 PAUSED = STATE / "factory-paused"
 HELD = STATE / "factory-held"
-RUNS_NAME = "firmware-factory"              # ci.RUNS/firmware-factory/<n>: the factory's runs
+RUNS_NAME = "firmware-factory"  # ci.RUNS/firmware-factory/<n>: the factory's runs
 MIRRORS = STATE / "library" / "mirrors.json"
 REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,99}$")
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
-MAX_PER_REQUEST = 50     # a sanity cap until the tracking says more
+MAX_PER_REQUEST = 50  # a sanity cap until the tracking says more
 MAX_FILES = 2000
 MAX_BYTES = 8 << 20
 
 
 def _git(*args, cwd=None, inp=None, timeout=120):
-    return subprocess.run(["git", "-c", "safe.directory=*", *args], cwd=cwd, input=inp, capture_output=True,
-                          timeout=timeout)
+    return subprocess.run(
+        ["git", "-c", "safe.directory=*", *args], cwd=cwd, input=inp, capture_output=True, timeout=timeout
+    )
 
 
 def sources():
@@ -69,7 +70,9 @@ def sources():
         name, area = str(m.get("name", "")), m.get("area", "public")
         path = gitrepos.ROOT / area / f"{name}.git"
         if gitrepos.NAME_RE.match(name) and area in gitrepos.AREAS and (path / "HEAD").exists():
-            out.append({"name": name, "area": area, "path": str(path), "mirror": True, "upstream": m.get("upstream", "")})
+            out.append(
+                {"name": name, "area": area, "path": str(path), "mirror": True, "upstream": m.get("upstream", "")}
+            )
             seen.add(str(path))
     private = gitrepos.ROOT / "private"
     for p in sorted(private.glob("*.git")) if private.is_dir() else []:
@@ -88,8 +91,14 @@ def source(name):
 
 def refs(src):
     """Its tags (newest first) and branches, each with its commit: what a build can use."""
-    out = _git("for-each-ref", "--sort=-creatordate", "--format=%(refname)%09%(objectname)%09%(*objectname)",
-               "refs/tags", "refs/heads", cwd=src["path"])
+    out = _git(
+        "for-each-ref",
+        "--sort=-creatordate",
+        "--format=%(refname)%09%(objectname)%09%(*objectname)",
+        "refs/tags",
+        "refs/heads",
+        cwd=src["path"],
+    )
     tags, branches = [], []
     for line in out.stdout.decode("utf-8", "replace").splitlines():
         ref, obj, peeled = (line.split("\t") + ["", ""])[:3]
@@ -108,18 +117,27 @@ def resolve(src, ref):
         out = _git("rev-parse", "--verify", "--quiet", f"refs/{kind}/{ref}^{{commit}}", cwd=src["path"])
         if out.returncode == 0:
             return out.stdout.decode().strip()
-    raise Refused(M("factory.ref.not-found", "Branch or tag not found. {source} has no branch or tag {ref}.", source=src["name"], ref=ref))
+    raise Refused(
+        M(
+            "factory.ref.not-found",
+            "Branch or tag not found. {source} has no branch or tag {ref}.",
+            source=src["name"],
+            ref=ref,
+        )
+    )
 
 
 def _seg_match(pattern, path):
     """A glob from extra_configs against a path, segment by segment ('*' never crosses a '/')."""
     p, q = pattern.strip("/").split("/"), path.split("/")
-    return len(p) == len(q) and all(fnmatch.fnmatchcase(b, a) for a, b in zip(p, q))
+    return len(p) == len(q) and all(fnmatch.fnmatchcase(b, a) for a, b in zip(p, q, strict=False))
 
 
 def _read_blobs(repo, commit, paths):
     """{path: text} for the given paths at commit, in one `git cat-file --batch`."""
-    out = _git("cat-file", "--batch", cwd=repo, inp="".join(f"{commit}:{p}\n" for p in paths).encode(), timeout=300).stdout
+    out = _git(
+        "cat-file", "--batch", cwd=repo, inp="".join(f"{commit}:{p}\n" for p in paths).encode(), timeout=300
+    ).stdout
     texts, i = {}, 0
     for p in paths:
         nl = out.index(b"\n", i)
@@ -127,7 +145,7 @@ def _read_blobs(repo, commit, paths):
         i = nl + 1
         if len(head) == 3 and head[1] == b"blob":
             size = int(head[2])
-            texts[p] = out[i:i + size].decode("utf-8", "replace")
+            texts[p] = out[i : i + size].decode("utf-8", "replace")
             i += size + 1
     return texts
 
@@ -154,7 +172,14 @@ def targets(src, ref):
         pass
     names = _git("ls-tree", "-r", "--name-only", commit, cwd=src["path"]).stdout.decode("utf-8", "replace").splitlines()
     if "platformio.ini" not in names:
-        raise Refused(M("factory.script.missing", "Build script missing. {source} has no platformio.ini at {ref}.", source=src["name"], ref=ref))
+        raise Refused(
+            M(
+                "factory.script.missing",
+                "Build script missing. {source} has no platformio.ini at {ref}.",
+                source=src["name"],
+                ref=ref,
+            )
+        )
     root = _read_blobs(src["path"], commit, ["platformio.ini"]).get("platformio.ini", "")
     top = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
     top.read_string(root)
@@ -182,10 +207,17 @@ def targets(src, ref):
     for sec in parser.sections():
         if not sec.startswith("env:") or not ENV_RE.match(sec[4:]):
             continue
-        g = lambda k: parser.get(sec, k, fallback="").strip()  # noqa: E731
-        out.append({"env": sec[4:], "family": _family(sec, where, parser) or "other", "file": where.get(sec, ""),
-                    "name": g("custom_meshtastic_display_name") or sec[4:], "level": g("board_level"),
-                    "support": g("custom_meshtastic_support_level")})
+        g = lambda k, sec=sec: parser.get(sec, k, fallback="").strip()  # noqa: E731
+        out.append(
+            {
+                "env": sec[4:],
+                "family": _family(sec, where, parser) or "other",
+                "file": where.get(sec, ""),
+                "name": g("custom_meshtastic_display_name") or sec[4:],
+                "level": g("board_level"),
+                "support": g("custom_meshtastic_support_level"),
+            }
+        )
     out.sort(key=lambda t: (t["family"], t["env"]))
     fams = {}
     for t in out:
@@ -199,6 +231,7 @@ def targets(src, ref):
 
 
 # --- the queue -------------------------------------------------------------------------------
+
 
 def _files():
     return [p for d in (ci.QUEUE, HELD) if d.is_dir() for p in sorted(d.glob("*.json"))]
@@ -261,22 +294,44 @@ def queue(name, ref, envs, floor_mb=512):
     if not isinstance(envs, list) or not envs:
         raise Refused(M("factory.targets.none", "Select one or more targets."))
     if len(envs) > MAX_PER_REQUEST:
-        raise Refused(M("factory.targets.too-many", "Select up to {most} targets in one request.", most=MAX_PER_REQUEST))
+        raise Refused(
+            M("factory.targets.too-many", "Select up to {most} targets in one request.", most=MAX_PER_REQUEST)
+        )
     data = targets(src, ref)
     known = {t["env"]: t for t in data["targets"]}
     bad = [e for e in envs if e not in known]
     if bad:
-        raise Refused(M("factory.targets.unknown", "Target not found. {source} has no targets {envs} at {ref}.",
-                        source=name, envs=[str(e) for e in bad[:5]], ref=ref))
+        raise Refused(
+            M(
+                "factory.targets.unknown",
+                "Target not found. {source} has no targets {envs} at {ref}.",
+                source=name,
+                envs=[str(e) for e in bad[:5]],
+                ref=ref,
+            )
+        )
     if free_bytes() < floor_mb << 20:
-        raise Refused(M("factory.storage.low", "Not enough storage to queue a build. The box needs {mb} MB free.", mb=floor_mb))
+        raise Refused(
+            M("factory.storage.low", "Not enough storage to queue a build. The box needs {mb} MB free.", mb=floor_mb)
+        )
     ci.QUEUE.mkdir(parents=True, exist_ok=True)
     batch, now = secrets.token_hex(4), time.time()
     picked = sorted(dict.fromkeys(envs), key=lambda e: (known[e]["family"], e))
     for i, env in enumerate(picked):
-        _put({"kind": "firmware", "repo": src["path"], "source": name, "ref": ref, "commit": data["commit"],
-                 "env": env, "family": known[env]["family"], "name": known[env]["name"], "batch": batch,
-                 "queued": now + i / 1000})
+        _put(
+            {
+                "kind": "firmware",
+                "repo": src["path"],
+                "source": name,
+                "ref": ref,
+                "commit": data["commit"],
+                "env": env,
+                "family": known[env]["family"],
+                "name": known[env]["name"],
+                "batch": batch,
+                "queued": now + i / 1000,
+            }
+        )
     return {"batch": batch, "queued": len(picked), "commit": data["commit"]}
 
 
@@ -284,7 +339,18 @@ def queue(name, ref, envs, floor_mb=512):
 # people use, not the project's CI choice (board_level = pr targets are for the project's CI
 # tests). First a board the owner keeps
 # for the web flasher, then these, then one Meshtastic supports best (support level 1).
-COMMON = ("rak4631", "heltec-v3", "tbeam", "t-echo", "heltec-v4", "tbeam-s3-core", "station-g2", "picow", "pico2w", "rak3172")
+COMMON = (
+    "rak4631",
+    "heltec-v3",
+    "tbeam",
+    "t-echo",
+    "heltec-v4",
+    "tbeam-s3-core",
+    "station-g2",
+    "picow",
+    "pico2w",
+    "rak3172",
+)
 
 
 def suggested(targets_list, flasher=()):
@@ -293,9 +359,13 @@ def suggested(targets_list, flasher=()):
     for fam in sorted({t["family"] for t in targets_list}):
         ts = [t for t in targets_list if t["family"] == fam]
         envs = {t["env"] for t in ts}
-        pick = next((e for e in flasher if e in envs), None) or next((e for e in COMMON if e in envs), None) \
-            or next((t["env"] for t in ts if str(t.get("support")) == "1" and t.get("level") != "pr"), None) \
-            or next((t["env"] for t in ts if str(t.get("support")) == "1"), None) or ts[0]["env"]
+        pick = (
+            next((e for e in flasher if e in envs), None)
+            or next((e for e in COMMON if e in envs), None)
+            or next((t["env"] for t in ts if str(t.get("support")) == "1" and t.get("level") != "pr"), None)
+            or next((t["env"] for t in ts if str(t.get("support")) == "1"), None)
+            or ts[0]["env"]
+        )
         out[fam] = pick
     return out
 
@@ -303,6 +373,7 @@ def suggested(targets_list, flasher=()):
 def _flasher_boards():
     try:
         from irate_box.library import firmware
+
         b = firmware.settings().get("boards")
         return b if isinstance(b, list) else []
     except Exception:  # noqa: BLE001 - only a preference
@@ -320,33 +391,64 @@ def queue_tools(name, ref, family, offline=False, env=None):
     data = targets(src, ref)
     fam = [t for t in data["targets"] if t["family"] == family]
     if not fam:
-        raise Refused(M("factory.family.not-found", "Family not found. {source} has no family {family} at {ref}.",
-                        source=name, family=family, ref=ref))
+        raise Refused(
+            M(
+                "factory.family.not-found",
+                "Family not found. {source} has no family {family} at {ref}.",
+                source=name,
+                family=family,
+                ref=ref,
+            )
+        )
     if env:
         pick = next((t for t in fam if t["env"] == env), None)
         if pick is None:
-            raise Refused(M("factory.family.no-target", "Target not found. {source} has no {family} target {env} at {ref}.",
-                            source=name, family=family, env=env, ref=ref))
+            raise Refused(
+                M(
+                    "factory.family.no-target",
+                    "Target not found. {source} has no {family} target {env} at {ref}.",
+                    source=name,
+                    family=family,
+                    env=env,
+                    ref=ref,
+                )
+            )
     else:
         want = suggested(fam, _flasher_boards())[family]
         pick = next(t for t in fam if t["env"] == want)
     ci.QUEUE.mkdir(parents=True, exist_ok=True)
-    _put({"kind": "firmware", "repo": src["path"], "source": name, "ref": ref, "commit": data["commit"],
-          "env": pick["env"], "family": family, "batch": secrets.token_hex(4), "queued": time.time()}
-         | ({"offline": True, "name": f"{family} offline (by {pick['env']})"} if offline
-            else {"tools_only": True, "name": f"{family}'s tools (by {pick['env']})"}))
+    _put(
+        {
+            "kind": "firmware",
+            "repo": src["path"],
+            "source": name,
+            "ref": ref,
+            "commit": data["commit"],
+            "env": pick["env"],
+            "family": family,
+            "batch": secrets.token_hex(4),
+            "queued": time.time(),
+        }
+        | (
+            {"offline": True, "name": f"{family} offline (by {pick['env']})"}
+            if offline
+            else {"tools_only": True, "name": f"{family}'s tools (by {pick['env']})"}
+        )
+    )
     return {"queued": 1, "env": pick["env"], "commit": data["commit"]}
 
 
 def _job_path(job_id):
     if not re.fullmatch(r"[0-9]{6,24}-[0-9a-f]{6}", job_id or ""):
         raise Refused(M("factory.job.not-waiting", "This is not a waiting build."))
-    p = next((confine.under(d, f"{job_id}.json") for d in (ci.QUEUE, HELD) if (d / f"{job_id}.json").exists()),
-             confine.under(ci.QUEUE, f"{job_id}.json"))
+    p = next(
+        (confine.under(d, f"{job_id}.json") for d in (ci.QUEUE, HELD) if (d / f"{job_id}.json").exists()),
+        confine.under(ci.QUEUE, f"{job_id}.json"),
+    )
     try:
         j = json.loads(p.read_text())
-    except (OSError, ValueError):
-        raise Refused(M("factory.job.started", "Build already started. You can change only a waiting build."))
+    except (OSError, ValueError) as exc:
+        raise Refused(M("factory.job.started", "Build already started. You can change only a waiting build.")) from exc
     if j.get("kind") != "firmware":
         raise Refused(M("factory.job.not-firmware", "This is not a firmware build."))
     return p, j
@@ -392,6 +494,7 @@ def pause(on):
 
 # --- what the page shows ----------------------------------------------------------------------
 
+
 def runs(limit=30):
     out = []
     base = ci.RUNS / RUNS_NAME
@@ -411,9 +514,19 @@ def estimates(history):
     est = {}
     for s in history:
         f, res = s.get("family"), s.get("resources") or {}
-        if f and f not in est and s.get("state") == "passed" and s.get("duration") is not None and not s.get("tools_only"):
-            est[f] = {"seconds": s["duration"], "disk": res.get("work_bytes"), "peak_memory": res.get("peak_memory"),
-                      "built": s.get("finished")}
+        if (
+            f
+            and f not in est
+            and s.get("state") == "passed"
+            and s.get("duration") is not None
+            and not s.get("tools_only")
+        ):
+            est[f] = {
+                "seconds": s["duration"],
+                "disk": res.get("work_bytes"),
+                "peak_memory": res.get("peak_memory"),
+                "built": s.get("finished"),
+            }
     return est
 
 
@@ -429,9 +542,15 @@ def readiness(history):
         if s.get("tools_only"):
             if f not in tools:
                 res = s.get("resources") or {}
-                tools[f] = (M("factory.ready.tools", "Tools downloaded (PlatformIO tools {mb} MB). Build not tested.",
-                                mb=round((res.get("tools_bytes") or 0) / 2 ** 20))
-                            if state == "passed" else M("factory.ready.tools-failed", "Tools download failed. See the log."))
+                tools[f] = (
+                    M(
+                        "factory.ready.tools",
+                        "Tools downloaded (PlatformIO tools {mb} MB). Build not tested.",
+                        mb=round((res.get("tools_bytes") or 0) / 2**20),
+                    )
+                    if state == "passed"
+                    else M("factory.ready.tools-failed", "Tools download failed. See the log.")
+                )
         elif s.get("offline"):
             last_offline.setdefault(f, s)
         elif state == "passed":
@@ -441,12 +560,21 @@ def readiness(history):
         last = last_offline.get(f) or {}
         off = last.get("state")
         # A pass proves the target and revision it built, not the whole family at every revision.
-        out[f] = (M("factory.ready.offline", "Offline build passed for {env} at {ref}.", env=last["env"], ref=last["ref"])
-                  if last.get("env") and last.get("ref")
-                  else M("factory.ready.offline-test", "Offline build passed for the test target.")) if off == "passed" else \
-            (M("factory.ready.offline-failed-built", "Build passed. Offline build failed. See the log.") if off
-             else M("factory.ready.built", "Build passed. Offline build not tested.")) if f in built else \
-            M("factory.ready.offline-failed", "Offline build failed. See the log.")
+        out[f] = (
+            (
+                M("factory.ready.offline", "Offline build passed for {env} at {ref}.", env=last["env"], ref=last["ref"])
+                if last.get("env") and last.get("ref")
+                else M("factory.ready.offline-test", "Offline build passed for the test target.")
+            )
+            if off == "passed"
+            else (
+                M("factory.ready.offline-failed-built", "Build passed. Offline build failed. See the log.")
+                if off
+                else M("factory.ready.built", "Build passed. Offline build not tested.")
+            )
+            if f in built
+            else M("factory.ready.offline-failed", "Offline build failed. See the log.")
+        )
     return out
 
 
@@ -464,28 +592,44 @@ def snapshot():
     waiting = []
     for j in jobs:
         e = est.get(j.get("family"), {}).get("seconds")
-        waiting.append({k: j.get(k) for k in ("id", "source", "ref", "commit", "env", "family", "name", "queued", "up", "batch")}
-                       | {"start": round(t) if known else None, "finish": round(t + e) if known and e is not None else None})
+        waiting.append(
+            {k: j.get(k) for k in ("id", "source", "ref", "commit", "env", "family", "name", "queued", "up", "batch")}
+            | {"start": round(t) if known else None, "finish": round(t + e) if known and e is not None else None}
+        )
         if known and e is not None:
             t += e
         else:
             known = False
-    return {"sources": [{k: s[k] for k in ("name", "area", "mirror", "upstream")} for s in sources()],
-            "paused": PAUSED.exists(), "running": running, "waiting": waiting, "runs": history[:30],
-            "estimates": est, "readiness": readiness(history), "free": free_bytes(), "max_per_request": MAX_PER_REQUEST,
-            "flasher": published()}
+    return {
+        "sources": [{k: s[k] for k in ("name", "area", "mirror", "upstream")} for s in sources()],
+        "paused": PAUSED.exists(),
+        "running": running,
+        "waiting": waiting,
+        "runs": history[:30],
+        "estimates": est,
+        "readiness": readiness(history),
+        "free": free_bytes(),
+        "max_per_request": MAX_PER_REQUEST,
+        "flasher": published(),
+    }
 
 
 # --- the front page's tile (the owner's choice: settings factory_tile) -------------------------------
 # What a guest may download: an ESP32 build's images and update zip, and any UF2 (nRF52, RP2040:
 # dragged onto the board's USB drive). Not native's program, nor a log.
-PUBLIC_RE = {"esp32": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.(bin|zip)$"), "any": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.uf2$")}
+PUBLIC_RE = {
+    "esp32": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.(bin|zip)$"),
+    "any": re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*\.uf2$"),
+}
 
 
 def public_files(run):
     fam = str(run.get("family") or "")
-    return [n for n in run.get("artifacts") or []
-            if PUBLIC_RE["any"].match(n) or (fam.startswith("esp32") and PUBLIC_RE["esp32"].match(n))]
+    return [
+        n
+        for n in run.get("artifacts") or []
+        if PUBLIC_RE["any"].match(n) or (fam.startswith("esp32") and PUBLIC_RE["esp32"].match(n))
+    ]
 
 
 def public_view(limit=12):
@@ -503,18 +647,39 @@ def public_view(limit=12):
         seen.add(s.get("env"))
         files = public_files(s)
         if files:
-            built.append({"run": s["run"].split("/")[1], "env": s.get("env"), "name": s.get("name") or s.get("env"),
-                          "family": s.get("family"), "ref": s.get("ref"), "finished": s.get("finished"), "files": files})
+            built.append(
+                {
+                    "run": s["run"].split("/")[1],
+                    "env": s.get("env"),
+                    "name": s.get("name") or s.get("env"),
+                    "family": s.get("family"),
+                    "ref": s.get("ref"),
+                    "finished": s.get("finished"),
+                    "files": files,
+                }
+            )
         if len(built) >= limit:
             break
     now_ = None
     if running:
         e = est.get(running.get("family"), {}).get("seconds")
-        now_ = {"name": running.get("name") or running.get("env"), "env": running.get("env"), "family": running.get("family"),
-                "ref": running.get("ref"), "started": running.get("started"),
-                "done": round(min(0.99, (time.time() - running["started"]) / e), 2) if e and running.get("started") else None}
-    return {"running": now_, "waiting": len(jobs), "next": [{"name": j.get("name") or j.get("env"), "family": j.get("family")} for j in jobs[:5]],
-            "paused": PAUSED.exists(), "built": built}
+        now_ = {
+            "name": running.get("name") or running.get("env"),
+            "env": running.get("env"),
+            "family": running.get("family"),
+            "ref": running.get("ref"),
+            "started": running.get("started"),
+            "done": round(min(0.99, (time.time() - running["started"]) / e), 2)
+            if e and running.get("started")
+            else None,
+        }
+    return {
+        "running": now_,
+        "waiting": len(jobs),
+        "next": [{"name": j.get("name") or j.get("env"), "family": j.get("family")} for j in jobs[:5]],
+        "paused": PAUSED.exists(),
+        "built": built,
+    }
 
 
 def public_file(run_number, name):
@@ -551,8 +716,8 @@ def _run(run_number):
     run = confine.under(ci.RUNS, RUNS_NAME, str(run_number))
     try:
         return run, json.loads((run / "status.json").read_text())
-    except (OSError, ValueError):
-        raise Refused(M("factory.run.not-found", "Run not found."))
+    except (OSError, ValueError) as exc:
+        raise Refused(M("factory.run.not-found", "Run not found.")) from exc
 
 
 def _write(path, data):
@@ -577,12 +742,17 @@ def publish(run_number):
     arts = set(st.get("artifacts") or [])
     names = [n for n in arts if n.endswith(".mt.json")]
     if len(names) != 1:
-        raise Refused(M("factory.publish.no-manifest", "This build kept no manifest (.mt.json). Native builds and builds from before "
-                                                       "the factory kept manifests cannot be published."))
+        raise Refused(
+            M(
+                "factory.publish.no-manifest",
+                "This build kept no manifest (.mt.json). Native builds and builds from before "
+                "the factory kept manifests cannot be published.",
+            )
+        )
     try:
         mt = json.loads(confine.under(run, "artifacts", names[0]).read_text())
-    except (OSError, ValueError):
-        raise Refused(M("factory.publish.manifest-unreadable", "The manifest cannot be read."))
+    except (OSError, ValueError) as exc:
+        raise Refused(M("factory.publish.manifest-unreadable", "The manifest cannot be read.")) from exc
     env, version = st.get("env"), str(mt.get("version", ""))
     if not VERSION_RE.match(version) or mt.get("platformioTarget") != env or not ENV_RE.match(env or ""):
         raise Refused(M("factory.publish.manifest-other", "The manifest does not belong to this build."))
@@ -592,12 +762,18 @@ def publish(run_number):
     files, plan = [], []
     for entry in mt.get("files") or []:
         name = str(entry.get("name", ""))
-        kept = name if name in arts else name[:-len("-ota.zip")] + ".zip" if name.endswith("-ota.zip") else None
+        kept = name if name in arts else name[: -len("-ota.zip")] + ".zip" if name.endswith("-ota.zip") else None
         if not FILE_RE.match(name) or kept not in arts:
             continue
         data = confine.under(run, "artifacts", kept).read_bytes()
         if entry.get("md5") and hashlib.md5(data).hexdigest() != entry["md5"]:
-            raise Refused(M("factory.publish.digest", "Digest mismatch. {file} does not match the MD5 in the manifest.", file=kept))
+            raise Refused(
+                M(
+                    "factory.publish.digest",
+                    "Digest mismatch. {file} does not match the MD5 in the manifest.",
+                    file=kept,
+                )
+            )
         files.append(entry)
         plan.append((name, data))
     if not files:
@@ -610,11 +786,16 @@ def publish(run_number):
         tmp.write_bytes(data)
         os.chmod(tmp, 0o644)
         os.replace(tmp, confine.under(folder, name))
-    _write(confine.under(folder, f"firmware-{env}-{folder.name}.mt.json"), dict(mt, files=files, built_run=f"{RUNS_NAME}/{run.name}",
-                                                                 built_ref=st.get("ref"), built_source=st.get("source")))
+    _write(
+        confine.under(folder, f"firmware-{env}-{folder.name}.mt.json"),
+        dict(
+            mt, files=files, built_run=f"{RUNS_NAME}/{run.name}", built_ref=st.get("ref"), built_source=st.get("source")
+        ),
+    )
     board_list = _board_list(folder)
-    board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env] + \
-                            [{"board": env, "platform": mt.get("architecture") or st.get("family")}]
+    board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env] + [
+        {"board": env, "platform": mt.get("architecture") or st.get("family")}
+    ]
     board_list["targets"].sort(key=lambda t: t["board"])
     _write(confine.under(folder, f"firmware-{folder.name}.json"), board_list)
     return {"version": folder.name, "env": env}
@@ -623,14 +804,21 @@ def publish(run_number):
 def unpublish(version, env):
     """Take one target out of a release built here; the release goes with its last target. A file
     another target's manifest also names (an ESP32's shared OTA loader) stays."""
-    if not (version.endswith(BUILT) and VERSION_RE.match(version[:-len(BUILT)])) or not ENV_RE.match(env or ""):
+    if not (version.endswith(BUILT) and VERSION_RE.match(version[: -len(BUILT)])) or not ENV_RE.match(env or ""):
         raise Refused(M("factory.unpublish.not-built", "This release was not built on this box."))
     folder = confine.under(FIRMWARE, version)
     mt_path = confine.under(folder, f"firmware-{env}-{version}.mt.json")
     try:
         mine = {f.get("name") for f in json.loads(mt_path.read_text()).get("files", [])}
-    except (OSError, ValueError):
-        raise Refused(M("factory.unpublish.not-found", "Target not found. Release {version} has no target {env}.", version=version, env=env))
+    except (OSError, ValueError) as exc:
+        raise Refused(
+            M(
+                "factory.unpublish.not-found",
+                "Target not found. Release {version} has no target {env}.",
+                version=version,
+                env=env,
+            )
+        ) from exc
     mt_path.unlink()
     others = set()
     for m in folder.glob(f"firmware-*-{version}.mt.json"):
@@ -654,7 +842,7 @@ def published():
     platform, run, ref}]}]."""
     out = []
     for folder in FIRMWARE.glob("*" + BUILT) if FIRMWARE.is_dir() else []:
-        if not (folder.is_dir() and VERSION_RE.match(folder.name[:-len(BUILT)])):
+        if not (folder.is_dir() and VERSION_RE.match(folder.name[: -len(BUILT)])):
             continue
         targets = []
         for t in _board_list(folder).get("targets", []):

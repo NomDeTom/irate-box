@@ -25,8 +25,8 @@ import os
 import re
 from pathlib import Path
 
-from irate_box.msg import M
 from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 SETTINGS = STATE / "hotspot.json"
@@ -36,9 +36,13 @@ DEFAULT = {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"}
 PASSWORD_RE = re.compile(r"^[\x20-\x7e]{8,63}$")  # what WPA accepts as a passphrase
 
 # Refusals said in several places.
-NO_WPA3 = M("hotspot.wpa3.unsupported", "The radio does not report WPA3 (SAE) support. Select a different security mode.")
-BAD_PASSWORD = M("hotspot.password.invalid", "The WPA3 password must have 8 to 63 characters. "
-                 "Use letters, digits, spaces or punctuation.")
+NO_WPA3 = M(
+    "hotspot.wpa3.unsupported", "The radio does not report WPA3 (SAE) support. Select a different security mode."
+)
+BAD_PASSWORD = M(
+    "hotspot.password.invalid",
+    "The WPA3 password must have 8 to 63 characters. Use letters, digits, spaces or punctuation.",
+)
 
 LABEL_SAID = {
     "open": M("hotspot.label.open", "Open: no password"),
@@ -46,15 +50,15 @@ LABEL_SAID = {
     "sae": M("hotspot.label.sae", "WPA3 with a published password"),
     "two": M("hotspot.label.two", "Two networks: one open, one encrypted"),
 }
-LABEL = {mode: m["en"] for mode, m in LABEL_SAID.items()}   # the page's choices, in English (data-says)
+LABEL = {mode: m["en"] for mode, m in LABEL_SAID.items()}  # the page's choices, in English (data-says)
 WHAT = {
     "open": "Guests join with no password. Every WiFi device can join. The WiFi link is not encrypted.",
     "owe": "Guests join with no password. The WiFi link is encrypted with a separate key for each device. "
-           "A device near the hotspot cannot read the WiFi traffic of other devices.",
+    "A device near the hotspot cannot read the WiFi traffic of other devices.",
     "sae": "Guests enter a password that you publish on the Join QR and on the front page. WPA3 gives each device "
-           "its own key. A guest who knows the password cannot read the WiFi traffic of other devices.",
+    "its own key. A guest who knows the password cannot read the WiFi traffic of other devices.",
     "two": "One open network for devices that cannot use encryption. One encrypted network (OWE or WPA3) for "
-           "devices that can. Guests select a network.",
+    "devices that can. Guests select a network.",
 }
 WARNINGS = {
     "open": [
@@ -81,10 +85,14 @@ WARNINGS = {
         "This mode needs a second access-point interface, usually a USB WiFi dongle beside the built-in radio.",
     ],
 }
-WPA2_WARNING = ("If you let WPA2 devices join (WPA3 transition mode), older devices can join. "
-                "WPA2 devices do not get a separate key. A person who knows the password can read their WiFi traffic.")
-ALWAYS = ("In every mode, a person with the right equipment can impersonate the hotspot or change pages in transit. "
-          "HTTPS prevents this on devices that trust the box's certificate.")
+WPA2_WARNING = (
+    "If you let WPA2 devices join (WPA3 transition mode), older devices can join. "
+    "WPA2 devices do not get a separate key. A person who knows the password can read their WiFi traffic."
+)
+ALWAYS = (
+    "In every mode, a person with the right equipment can impersonate the hotspot or change pages in transit. "
+    "HTTPS prevents this on devices that trust the box's certificate."
+)
 
 
 def load():
@@ -110,11 +118,25 @@ def capabilities(inv=None):
             continue
         seen.add(r.get("phy"))
         # The most access points this radio can run at once, from its interface combinations.
-        slots = max([sum(g["max"] for g in c["groups"] if "AP" in g["modes"]) for c in r.get("combinations", [])] or [1])
-        radios.append({"iface": r["iface"], "driver": r.get("driver"), "bus": r.get("bus"), "sae": bool(r.get("sae")),
-                       "ap_slots": slots})
-    return {"known": True, "ap_radios": len(radios), "ap_slots": sum(r["ap_slots"] for r in radios),
-            "sae": any(r["sae"] for r in radios), "radios": radios}
+        slots = max(
+            [sum(g["max"] for g in c["groups"] if "AP" in g["modes"]) for c in r.get("combinations", [])] or [1]
+        )
+        radios.append(
+            {
+                "iface": r["iface"],
+                "driver": r.get("driver"),
+                "bus": r.get("bus"),
+                "sae": bool(r.get("sae")),
+                "ap_slots": slots,
+            }
+        )
+    return {
+        "known": True,
+        "ap_radios": len(radios),
+        "ap_slots": sum(r["ap_slots"] for r in radios),
+        "sae": any(r["sae"] for r in radios),
+        "radios": radios,
+    }
 
 
 def available(caps):
@@ -128,23 +150,37 @@ def available(caps):
         return {"open": why, "owe": why, "sae": why, "two": why}
     out["owe"] = None  # drivers do not report OWE; offered with a warning to test it
     out["sae"] = None if caps["sae"] else "the radio does not report WPA3 (SAE) support"
-    out["two"] = None if caps["ap_slots"] >= 2 else (
-        "this box has one access-point interface. Add a second radio, for example a USB WiFi dongle, to run two networks")
+    out["two"] = (
+        None
+        if caps["ap_slots"] >= 2
+        else (
+            "this box has one access-point interface. Add a second radio, for example a USB WiFi dongle, to run two networks"
+        )
+    )
     return out
 
 
 def unavailable(caps, mode):
     """Why a mode cannot be selected on this box, as a refusal (the same cases as available), or None."""
     if not caps["known"]:
-        return None if mode == "open" else M("hotspot.mode.radios-unchecked",
-                                              "The box has not checked its radios yet. On the Network page, select Look again.")
+        return (
+            None
+            if mode == "open"
+            else M(
+                "hotspot.mode.radios-unchecked",
+                "The box has not checked its radios yet. On the Network page, select Look again.",
+            )
+        )
     if not caps["ap_radios"]:
         return M("hotspot.mode.no-radio", "No radio in this box can run a hotspot.")
     if mode == "sae" and not caps["sae"]:
         return NO_WPA3
     if mode == "two" and caps["ap_slots"] < 2:
-        return M("hotspot.mode.one-interface", "This box has one access-point interface, so it cannot run two networks. "
-                 "To run two networks, add a second radio, for example a USB WiFi dongle.")
+        return M(
+            "hotspot.mode.one-interface",
+            "This box has one access-point interface, so it cannot run two networks. "
+            "To run two networks, add a second radio, for example a USB WiFi dongle.",
+        )
     return None
 
 
@@ -153,7 +189,13 @@ def validate(raw, caps):
         raise Refused(M("hotspot.settings.not-object", "The hotspot settings must be a JSON object."))
     mode = raw.get("mode")
     if mode not in MODES:
-        raise Refused(M("hotspot.mode.unknown", "The hotspot security mode must be one of these values: {values}.", values=list(MODES)))
+        raise Refused(
+            M(
+                "hotspot.mode.unknown",
+                "The hotspot security mode must be one of these values: {values}.",
+                values=list(MODES),
+            )
+        )
     why = unavailable(caps, mode)
     if why:
         raise Refused(why)
@@ -166,8 +208,12 @@ def validate(raw, caps):
     needs_pw = mode == "sae" or (mode == "two" and second == "sae")
     if needs_pw and not PASSWORD_RE.match(password):
         raise Refused(BAD_PASSWORD)
-    return {"mode": mode, "password": password if needs_pw else "", "allow_wpa2": bool(raw.get("allow_wpa2")) and needs_pw,
-            "second": second}
+    return {
+        "mode": mode,
+        "password": password if needs_pw else "",
+        "allow_wpa2": bool(raw.get("allow_wpa2")) and needs_pw,
+        "second": second,
+    }
 
 
 def save(raw, caps=None):
@@ -179,13 +225,14 @@ def save(raw, caps=None):
     return s
 
 
-AP_STATUS = STATE / "control" / "ap.json"   # the root helper's: the hotspot running or not (root/ap.py)
+AP_STATUS = STATE / "control" / "ap.json"  # the root helper's: the hotspot running or not (root/ap.py)
 
 
 def running():
     """The root helper's last word on the hotspot, and the plan it would follow now (apmode.py),
     from the last inventory: what the Network page shows before and after switching it on."""
     from irate_box.hub import apmode
+
     try:
         st = json.loads(AP_STATUS.read_text())
     except (OSError, ValueError):
@@ -193,8 +240,11 @@ def running():
     try:
         inv = json.loads(NETINV.read_text())
         preview = apmode.plan(inv, inv.get("ap") or [], st.get("owner") or {}, st.get("tried") or {})
-        radios = [{"iface": r["iface"], "channels": [c["channel"] for c in apmode.allowed(r, inv.get("country"))]}
-                  for r in inv.get("radios", []) if r.get("ap")]
+        radios = [
+            {"iface": r["iface"], "channels": [c["channel"] for c in apmode.allowed(r, inv.get("country"))]}
+            for r in inv.get("radios", [])
+            if r.get("ap")
+        ]
     except (OSError, ValueError, KeyError):
         preview, radios = None, []
     return dict(st, preview=preview, radios=radios)
@@ -203,9 +253,19 @@ def running():
 def snapshot():
     caps = capabilities()
     run = running()
-    return {"settings": load(), "capabilities": caps, "available": available(caps), "modes": list(MODES),
-            "label": LABEL, "what": WHAT, "warnings": WARNINGS, "wpa2_warning": WPA2_WARNING, "always": ALWAYS,
-            "hotspot_exists": True, "running": run}
+    return {
+        "settings": load(),
+        "capabilities": caps,
+        "available": available(caps),
+        "modes": list(MODES),
+        "label": LABEL,
+        "what": WHAT,
+        "warnings": WARNINGS,
+        "wpa2_warning": WPA2_WARNING,
+        "always": ALWAYS,
+        "hotspot_exists": True,
+        "running": run,
+    }
 
 
 # --- what the hotspot add-on applies -------------------------------------------------------
@@ -214,10 +274,16 @@ def snapshot():
 # them; it checks the choice again against the radios first (validate). Not yet tried on a radio:
 # OWE on the AIC8800 is the first test once AP mode exists.
 
+
 def _ssid_ok(ssid):
     if not ssid or len(ssid.encode()) > 32 or any(c in ssid for c in "\n\r\0"):
-        raise Refused(M("hotspot.ssid.invalid", "The hotspot name (SSID) must have 1 to 32 bytes on one line. "
-                        "A letter with an accent or an emoji uses more than 1 byte."))
+        raise Refused(
+            M(
+                "hotspot.ssid.invalid",
+                "The hotspot name (SSID) must have 1 to 32 bytes on one line. "
+                "A letter with an accent or an emoji uses more than 1 byte.",
+            )
+        )
     return ssid
 
 
@@ -233,8 +299,10 @@ def networks(settings, ssid, second_ssid=None):
     """[(role, security)] for the networks the choice means: one, or two for "two"."""
     mode = settings["mode"]
     if mode == "two":
-        return [("open", {"ssid": _ssid_ok(ssid), "kind": "open"}),
-                ("encrypted", {"ssid": _ssid_ok(second_ssid or _with_suffix(ssid)), "kind": settings["second"]})]
+        return [
+            ("open", {"ssid": _ssid_ok(ssid), "kind": "open"}),
+            ("encrypted", {"ssid": _ssid_ok(second_ssid or _with_suffix(ssid)), "kind": settings["second"]}),
+        ]
     return [("only", {"ssid": _ssid_ok(ssid), "kind": mode})]
 
 
@@ -247,10 +315,18 @@ def nm_properties(settings, kind):
     if kind == "sae":
         if settings.get("allow_wpa2"):
             # NetworkManager has no WPA2/WPA3 transition mode for an access point.
-            raise Refused(M("hotspot.wpa2.needs-hostapd", "WPA3 transition mode needs the hostapd backend. NetworkManager runs the hotspot "
-                            "on this box. To start the hotspot, clear the option that lets older WPA2 devices join."))
-        return {"802-11-wireless-security.key-mgmt": "sae", "802-11-wireless-security.psk": settings["password"],
-                "802-11-wireless-security.pmf": "3"}
+            raise Refused(
+                M(
+                    "hotspot.wpa2.needs-hostapd",
+                    "WPA3 transition mode needs the hostapd backend. NetworkManager runs the hotspot "
+                    "on this box. To start the hotspot, clear the option that lets older WPA2 devices join.",
+                )
+            )
+        return {
+            "802-11-wireless-security.key-mgmt": "sae",
+            "802-11-wireless-security.psk": settings["password"],
+            "802-11-wireless-security.pmf": "3",
+        }
     raise Refused(M("hotspot.security.unknown", "Unknown hotspot security mode {kind}.", kind=kind))
 
 

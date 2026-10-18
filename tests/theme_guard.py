@@ -21,19 +21,11 @@ def check(name, cond, info=""):
 
 
 registry = (WEB / "themes.js").read_text(encoding="utf-8")
-themes_list = registry[
-    registry.index("var THEMES = [") : registry.index(
-        "];", registry.index("var THEMES = [")
-    )
-]
+themes_list = registry[registry.index("var THEMES = [") : registry.index("];", registry.index("var THEMES = ["))]
 ids = re.findall(r"\{ id: '([a-z0-9-]+)'", themes_list)
 # The colours of light and dark a visitor may pick over the box's: each but the box's has its rules in palette.css, and
 # the box's own (/layout.css) apply only where none is picked.
-pal_list = registry[
-    registry.index("var PALETTES = [") : registry.index(
-        "];", registry.index("var PALETTES = [")
-    )
-]
+pal_list = registry[registry.index("var PALETTES = [") : registry.index("];", registry.index("var PALETTES = ["))]
 palettes = re.findall(r"\{ id: '([a-z0-9-]+)'", pal_list)
 palette_css_text = (WEB / "palette.css").read_text(encoding="utf-8")
 check(
@@ -83,25 +75,18 @@ for t in others:
     named = [
         str(p.relative_to(REPO))
         for p in sources
-        if re.search(
-            rf"\b{re.escape(t)}\b", p.read_text(encoding="utf-8", errors="replace")
-        )
+        if re.search(rf"\b{re.escape(t)}\b", p.read_text(encoding="utf-8", errors="replace"))
     ]
     check(f"'{t}' named only in themes.js and themes/", not named, named)
 
-for p in (
-    sorted(WEB.glob("*.html"))
-    + sorted(WEB.glob("guide/*.html"))
-    + [REPO / "irate_box" / "hub" / "server.py"]
-):
+for p in sorted(WEB.glob("*.html")) + sorted(WEB.glob("guide/*.html")) + [REPO / "irate_box" / "hub" / "server.py"]:
     text = p.read_text(encoding="utf-8")
     if "theme-picker" not in text:
         continue
     name = p.relative_to(REPO)
     check(
         f"{name}: loads /themes.js after style.css",
-        re.search(r'style\.css"\s*/?>\s*<script src="/themes\.js"></script>', text)
-        is not None,
+        re.search(r'style\.css"\s*/?>\s*<script src="/themes\.js"></script>', text) is not None,
     )
     check(
         f"{name}: no boot script of its own",
@@ -112,9 +97,7 @@ for p in (
 # Not a theme, but the same kind of drift: every page's 🏠 is labelled "Hub".
 bare = [
     str(p.relative_to(REPO))
-    for p in sorted(WEB.glob("*.html"))
-    + sorted(WEB.glob("guide/*.html"))
-    + [REPO / "irate_box" / "hub" / "server.py"]
+    for p in sorted(WEB.glob("*.html")) + sorted(WEB.glob("guide/*.html")) + [REPO / "irate_box" / "hub" / "server.py"]
     if re.search(r">🏠</a>", p.read_text(encoding="utf-8"))
 ]
 check("every 🏠 link says Hub", not bare, bare)
@@ -126,8 +109,7 @@ css = (WEB / "style.css").read_text(encoding="utf-8")
 grid = re.search(r"\.service-grid \{[^}]*\}", css)
 check(
     "the tile grid's rows all alike, the tallest tile's, with a floor (grid-auto-rows: minmax(..., 1fr))",
-    bool(grid)
-    and re.search(r"grid-auto-rows:\s*minmax\(.+,\s*1fr\);", grid.group(0)) is not None,
+    bool(grid) and re.search(r"grid-auto-rows:\s*minmax\(.+,\s*1fr\);", grid.group(0)) is not None,
     grid and grid.group(0),
 )
 check(

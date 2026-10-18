@@ -43,9 +43,7 @@ def check(name, cond, info=""):
 try:
     for _ in range(50):
         try:
-            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request(
-                "GET", "/status"
-            )
+            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status")
             break
         except OSError:
             time.sleep(0.1)
@@ -70,8 +68,7 @@ try:
     check("nothing decided to begin with", post({})["setup_decided"] == [])
     check(
         "decisions recorded",
-        post({"setup_decided": ["visitors", "https"]})["setup_decided"]
-        == ["visitors", "https"],
+        post({"setup_decided": ["visitors", "https"]})["setup_decided"] == ["visitors", "https"],
     )
     for bad in (["visitors", "nonsense"], "visitors", ["https"] * 19):
         check(
@@ -79,9 +76,7 @@ try:
             post({"setup_decided": bad})["setup_decided"] == ["visitors", "https"],
         )
     check("nothing muted to begin with", post({})["setup_muted"] == [])
-    check(
-        "a step muted", post({"setup_muted": ["backup"]})["setup_muted"] == ["backup"]
-    )
+    check("a step muted", post({"setup_muted": ["backup"]})["setup_muted"] == ["backup"])
     check(
         "refused: an unknown step",
         post({"setup_muted": ["backup", "nonsense"]})["setup_muted"] == ["backup"],

@@ -4,78 +4,154 @@
 without the front's header (anything on loopback), /admin changes refused without the
 /admin page's header or from another origin, and a refused request's body never left on a
 kept-alive connection to poison the next one, refused or not. python3 tests/api_admin_gate.py"""
-import http.client, os, subprocess, sys, tempfile, time
+
+import http.client
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
+
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="admin-gate-")
 port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
 SECRET = "f" * 64
-env = dict(os.environ, HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=state, HUB_ETC_DIR=state, PORT=str(port), HUB_BIND="127.0.0.1")
-hub = subprocess.Popen([str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+env = dict(
+    os.environ, HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=state, HUB_ETC_DIR=state, PORT=str(port), HUB_BIND="127.0.0.1"
+)
+hub = subprocess.Popen(
+    [str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+)
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
+
 try:
     for _ in range(50):
         try:
-            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status"); break
+            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status")
+            break
         except OSError:
             time.sleep(0.1)
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+
     def go(method, path, headers=None, body=None):
         h = {"Host": f"127.0.0.1:{port}", **(headers or {})}
-        c.request(method, path, body=body, headers=h); r = c.getresponse(); r.read(); return r.status
+        c.request(method, path, body=body, headers=h)
+        r = c.getresponse()
+        r.read()
+        return r.status
+
     front = {"X-Irate-Front": SECRET}
     page = {**front, "X-Irate-Admin": "1", "Content-Type": "application/json"}
     check("GET /admin without the front's header: 403", go("GET", "/admin/settings") == 403)
     check("GET /admin with a wrong one: 403", go("GET", "/admin/settings", {"X-Irate-Front": "0" * 64}) == 403)
     check("GET /admin with it: 200", go("GET", "/admin/settings", front) == 200)
     check("guest pages need neither", go("GET", "/status") == 200)
-    check("POST /admin without X-Irate-Admin: 403", go("POST", "/admin/settings", {**front, "Content-Type": "application/json"}, b"{}") == 403)
-    check("POST /admin from another origin: 403", go("POST", "/admin/settings", {**page, "Origin": "http://evil.example"}, b"{}") == 403)
-    check("POST /admin from a cross-site fetch: 403", go("POST", "/admin/settings", {**page, "Sec-Fetch-Site": "cross-site"}, b"{}") == 403)
-    check("POST /admin from the page itself: 200", go("POST", "/admin/settings", {**page, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}, b"{}") == 200)
+    check(
+        "POST /admin without X-Irate-Admin: 403",
+        go("POST", "/admin/settings", {**front, "Content-Type": "application/json"}, b"{}") == 403,
+    )
+    check(
+        "POST /admin from another origin: 403",
+        go("POST", "/admin/settings", {**page, "Origin": "http://evil.example"}, b"{}") == 403,
+    )
+    check(
+        "POST /admin from a cross-site fetch: 403",
+        go("POST", "/admin/settings", {**page, "Sec-Fetch-Site": "cross-site"}, b"{}") == 403,
+    )
+    check(
+        "POST /admin from the page itself: 200",
+        go(
+            "POST",
+            "/admin/settings",
+            {**page, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"},
+            b"{}",
+        )
+        == 200,
+    )
     # A refused request with a body, then another on the same kept-alive connection.
     go("POST", "/admin/settings", {**front, "Content-Type": "application/json"}, b'{"store_save_ttl_hours": 7}')
-    check("after a refused POST, the next request on the connection is itself", go("GET", "/admin/settings", front) == 200)
+    check(
+        "after a refused POST, the next request on the connection is itself", go("GET", "/admin/settings", front) == 200
+    )
     go("POST", "/admin/settings", {"Content-Type": "application/json"}, b'{"x": 1}')
     check("after a refused POST (no secret), likewise", go("POST", "/admin/settings", page, b"{}") == 200)
     # Every route that answers without reading the body: the body is read away
     # after the answer, so the next request on the connection is still itself.
-    for method, path in (("PUT", "/nothing-here"), ("DELETE", "/nothing-here"), ("PATCH", "/nothing-here"),
-                         ("GET", "/status"), ("OPTIONS", "/nothing-here"), ("POST", "/store/" + "x" * 300)):
+    for method, path in (
+        ("PUT", "/nothing-here"),
+        ("DELETE", "/nothing-here"),
+        ("PATCH", "/nothing-here"),
+        ("GET", "/status"),
+        ("OPTIONS", "/nothing-here"),
+        ("POST", "/store/" + "x" * 300),
+    ):
         go(method, path, {"Content-Type": "application/json"}, b'{"store_save_ttl_hours": 7}' * 40)
-        check(f"after {method} {path[:20]} with a body it does not read, the next request is itself",
-              go("GET", "/admin/settings", front) == 200)
+        check(
+            f"after {method} {path[:20]} with a body it does not read, the next request is itself",
+            go("GET", "/admin/settings", front) == 200,
+        )
     # A large one is read away too (up to DRAIN_MAX), not answered by closing on a client still
     # sending; a chunked one, which the hub never reads, closes the connection.
     check("a 2 MB unread body: answered", go("PUT", "/nothing-here", {}, b"x" * (2 << 20)) == 404)
     check("and the next request is itself", go("GET", "/admin/settings", front) == 200)
-    c.request("PUT", "/nothing-here", body=iter([b"x" * 100]), headers={"Host": f"127.0.0.1:{port}"}, encode_chunked=True)
-    r = c.getresponse(); r.read()
+    c.request(
+        "PUT", "/nothing-here", body=iter([b"x" * 100]), headers={"Host": f"127.0.0.1:{port}"}, encode_chunked=True
+    )
+    r = c.getresponse()
+    r.read()
     check("a chunked unread body closes the connection", r.will_close, r.getheaders())
     check("and the next request, on a new one, is itself", go("GET", "/admin/settings", front) == 200)
     # A guest-level change from another site, or from a sibling port
     # (same-site), is refused; one that says nothing of where it came from is not a browser's.
     msg = {"Content-Type": "application/json"}
-    check("POST /messages from a cross-site page: 403", go("POST", "/messages", {**msg, "Sec-Fetch-Site": "cross-site"}, b"{}") == 403)
-    check("POST /messages from a sibling port (same-site): 403", go("POST", "/messages", {**msg, "Sec-Fetch-Site": "same-site"}, b"{}") == 403)
-    check("POST /messages with another Origin: 403", go("POST", "/messages", {**msg, "Origin": "http://evil.example"}, b"{}") == 403)
+    check(
+        "POST /messages from a cross-site page: 403",
+        go("POST", "/messages", {**msg, "Sec-Fetch-Site": "cross-site"}, b"{}") == 403,
+    )
+    check(
+        "POST /messages from a sibling port (same-site): 403",
+        go("POST", "/messages", {**msg, "Sec-Fetch-Site": "same-site"}, b"{}") == 403,
+    )
+    check(
+        "POST /messages with another Origin: 403",
+        go("POST", "/messages", {**msg, "Origin": "http://evil.example"}, b"{}") == 403,
+    )
     check("PUT /api/v2/x cross-site: 403", go("PUT", "/api/v2/x", {"Sec-Fetch-Site": "cross-site"}, b"x") == 403)
-    check("POST /messages from this origin, or with no word of where from: not 403",
-          go("POST", "/messages", {**msg, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}, b"{}") != 403
-          and go("POST", "/messages", msg, b"{}") != 403)
+    check(
+        "POST /messages from this origin, or with no word of where from: not 403",
+        go("POST", "/messages", {**msg, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}, b"{}")
+        != 403
+        and go("POST", "/messages", msg, b"{}") != 403,
+    )
     check("and the connection is still itself after each", go("GET", "/admin/settings", front) == 200)
 
     # The setup gate: "Finish setup" refused while the Security page's last scan
     # says a passwordless sudo rule names an account sshd lets in by password.
     import json as _json
-    ctl = Path(state) / "control"; ctl.mkdir(exist_ok=True)
-    (ctl / "security.json").write_text(_json.dumps({"findings": [{"id": "sudo-nopasswd", "status": "problem", "detail": "claude-temp: lyra.", "actions": []}]}))
+
+    ctl = Path(state) / "control"
+    ctl.mkdir(exist_ok=True)
+    (ctl / "security.json").write_text(
+        _json.dumps(
+            {"findings": [{"id": "sudo-nopasswd", "status": "problem", "detail": "claude-temp: lyra.", "actions": []}]}
+        )
+    )
     same = {**page, "Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
-    check("Finish setup while the scan says sudo-nopasswd is a problem: 409", go("POST", "/admin/settings", same, b'{"setup_done": true}') == 409)
-    (ctl / "security.json").write_text(_json.dumps({"findings": [{"id": "sudo-nopasswd", "status": "warn", "detail": "", "actions": []}]}))
+    check(
+        "Finish setup while the scan says sudo-nopasswd is a problem: 409",
+        go("POST", "/admin/settings", same, b'{"setup_done": true}') == 409,
+    )
+    (ctl / "security.json").write_text(
+        _json.dumps({"findings": [{"id": "sudo-nopasswd", "status": "warn", "detail": "", "actions": []}]})
+    )
     check("  a warning only, or no scan: finished", go("POST", "/admin/settings", same, b'{"setup_done": true}') == 200)
     (ctl / "security.json").unlink()
     check("  no scan at all: finished", go("POST", "/admin/settings", same, b'{"setup_done": false}') == 200)
@@ -83,20 +159,32 @@ try:
     # The security doctor asks the same of the running hub (probes, not code markers).
     sys.path.insert(0, str(REPO))
     from irate_box.root import secdoctor
+
     secdoctor._hub_port = lambda: port
     check("the doctor's drain probe: this hub drains an unread body", secdoctor.probe_drains() is True)
-    check("the doctor's JSON-size probe: this hub refuses a 300 KB JSON body and stays usable", secdoctor.probe_json_cap() is True)
+    check(
+        "the doctor's JSON-size probe: this hub refuses a 300 KB JSON body and stays usable",
+        secdoctor.probe_json_cap() is True,
+    )
     # The hub reads no JSON over 256 KB; the connection stays usable after.
     big = b'{"x": "' + b"y" * (300 * 1024) + b'"}'
     check("a JSON body over 256 KB: 413", go("POST", "/messages", {"Content-Type": "application/json"}, big) == 413)
     check("and the next request is itself", go("GET", "/admin/settings", front) == 200)
     # The store answers without CORS headers.
     c.request("GET", "/api/saves", headers={"Host": f"127.0.0.1:{port}", "Origin": "http://evil.example"})
-    r = c.getresponse(); r.read()
-    check("the store sends no Access-Control-Allow-Origin", r.getheader("Access-Control-Allow-Origin") is None, r.getheaders())
+    r = c.getresponse()
+    r.read()
+    check(
+        "the store sends no Access-Control-Allow-Origin",
+        r.getheader("Access-Control-Allow-Origin") is None,
+        r.getheaders(),
+    )
     # Malformed input is a 400, not a crashed handler; the connection stays usable.
     check("a JSON array body: 400", go("POST", "/messages", {"Content-Type": "application/json"}, b"[1, 2]") == 400)
-    check("Content-Length that is not a number: 400", go("POST", "/messages", {"Content-Type": "application/json", "Content-Length": "abc"}, None) in (400, 411))
+    check(
+        "Content-Length that is not a number: 400",
+        go("POST", "/messages", {"Content-Type": "application/json", "Content-Length": "abc"}, None) in (400, 411),
+    )
     check("and the hub still answers", go("GET", "/status") == 200)
 finally:
     hub.terminate()

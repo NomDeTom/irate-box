@@ -22,14 +22,23 @@ def declared(found=None):
         net, st = m.get("network"), m.get("status") or {}
         if not net:
             continue
-        out.append({"id": m["id"], "name": st.get("name") or (m.get("tile") or {}).get("name") or m["id"],
-                    "unit": st.get("unit"), "listen": [(l["proto"], l["port"]) for l in net["listen"]],
-                    "present": net["present"], "hotspot": net.get("hotspot", "closed"),
-                    "risk": net.get("risk", "warn"), "says": net["says"], "option": (m.get("addon") or {}).get("option")})
+        out.append(
+            {
+                "id": m["id"],
+                "name": st.get("name") or (m.get("tile") or {}).get("name") or m["id"],
+                "unit": st.get("unit"),
+                "listen": [(ln["proto"], ln["port"]) for ln in net["listen"]],
+                "present": net["present"],
+                "hotspot": net.get("hotspot", "closed"),
+                "risk": net.get("risk", "warn"),
+                "says": net["says"],
+                "option": (m.get("addon") or {}).get("option"),
+            }
+        )
     return out
 
 
-PRESENT_ROOT = Path(os.environ.get("HUB_PRESENT_ROOT", "/"))   # where present paths are looked for (tests move it)
+PRESENT_ROOT = Path(os.environ.get("HUB_PRESENT_ROOT", "/"))  # where present paths are looked for (tests move it)
 
 
 def installed(s):

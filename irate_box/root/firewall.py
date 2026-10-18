@@ -41,7 +41,11 @@ DEFAULT_IFACE = "ap0"
 MOSQUITTO = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 # Where a package's unit may be, besides: only on a real box (a test's HUB_UNIT_DIR stands alone).
-UNIT_DIRS = (UNIT_DIR,) if "HUB_UNIT_DIR" in os.environ else (UNIT_DIR, Path("/lib/systemd/system"), Path("/usr/lib/systemd/system"))
+UNIT_DIRS = (
+    (UNIT_DIR,)
+    if "HUB_UNIT_DIR" in os.environ
+    else (UNIT_DIR, Path("/lib/systemd/system"), Path("/usr/lib/systemd/system"))
+)
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 
 # The hub's own doors on the hotspot: the front, the apps' origins and their TLS twins, DNS, DHCP.
@@ -52,20 +56,30 @@ HUB_ONLY_TCP = (53, 80, 443)
 FIREWALL_LEVELS = ("hub", "apps")
 # Never forwarded to while contained (share.py's lan): this host, private and CGNAT (the tailnet's)
 # ranges, link-local, the special-purpose blocks, multicast and above.
-PRIVATE = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
-           "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/3")
+PRIVATE = (
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.0.0.0/24",
+    "192.168.0.0/16",
+    "198.18.0.0/15",
+    "224.0.0.0/3",
+)
 # Interfaces never forwarded into while contained (share.py's tunnels).
 TUNNELS = ("tailscale*", "wg*", "tun*", "tap*", "zt*", "docker*", "br-*", "veth*")
-DNS_MARK = "0x00000153"       # a guest's DNS sent to share.GUEST_DNS_PORT: the only way in there
+DNS_MARK = "0x00000153"  # a guest's DNS sent to share.GUEST_DNS_PORT: the only way in there
 # What the owner may open to guests besides, by name: {name: (tcp ports, udp ports)}. Also: a service an
 # add-on declares (its manifest's network block, services.py), by its id; and a port the owner opened
 # for a service of their own, as "port:tcp/8123".
 PORT_SERVICE = re.compile(r"^port:(tcp|udp)/([0-9]{1,5})$")
 SERVICES = {
-    "mqtt": ((1883,), ()),             # mosquitto, for Meshtastic nodes and the phone app's proxy
+    "mqtt": ((1883,), ()),  # mosquitto, for Meshtastic nodes and the phone app's proxy
     "sync": ((22000,), (22000, 21027)),  # Syncthing's protocol and local discovery
     "ssh": ((22,), ()),
-    "time": ((), (123,)),              # NTP: chrony serving the time, opened by the Clock page's own switch
+    "time": ((), (123,)),  # NTP: chrony serving the time, opened by the Clock page's own switch
 }
 
 
@@ -76,6 +90,7 @@ def hotspot_iface():
         rec = json.loads(RECORD_AP.read_text())
         if rec.get("up") and isinstance(rec.get("plan"), dict):
             from irate_box.root import ap
+
             iface = ap.ap_iface(rec["plan"])
             if IFACE_RE.match(iface):
                 return iface
@@ -83,8 +98,8 @@ def hotspot_iface():
         pass
     try:
         for line in DNSMASQ_CONF.read_text().splitlines():
-            if line.startswith("interface=") and IFACE_RE.match(line[len("interface="):].strip()):
-                return line[len("interface="):].strip()
+            if line.startswith("interface=") and IFACE_RE.match(line[len("interface=") :].strip()):
+                return line[len("interface=") :].strip()
     except OSError:
         pass
     return DEFAULT_IFACE
@@ -105,8 +120,11 @@ def ruleset(iface, fw=None, sharing=None, kept=()):
     services already those on the box (services_here); sharing: share.load()'s dict, or None (off).
     kept: [(address, seconds left)] already let out, carried into the new set (kept_out)."""
     from irate_box.root import share
+
     if not IFACE_RE.match(iface):
-        raise Refused(M("fw-rules.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface)))
+        raise Refused(
+            M("fw-rules.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface))
+        )
     q = f'iifname "{iface}"'
     sharing = sharing if sharing and sharing.get("level") in share.LEVELS[1:] else None
     lv = sharing["level"] if sharing else "off"
@@ -123,16 +141,22 @@ def ruleset(iface, fw=None, sharing=None, kept=()):
         f"table {TABLE} {{",
     ]
     if sharing:
-        out += ["\tset out {", f"\t\ttype {'ether_addr' if c.get('by_mac') else 'ipv4_addr'}", "\t\tflags timeout",
-                f"\t\ttimeout {share.OUT_HOURS}h"]
+        out += [
+            "\tset out {",
+            f"\t\ttype {'ether_addr' if c.get('by_mac') else 'ipv4_addr'}",
+            "\t\tflags timeout",
+            f"\t\ttimeout {share.OUT_HOURS}h",
+        ]
         if kept:
             out.append("\t\telements = { " + ", ".join(f"{a} timeout {max(int(left), 1)}s" for a, left in kept) + " }")
         out.append("\t}")
     out += ["\tchain input {", "\t\ttype filter hook input priority filter; policy accept;"]
     if sharing:
         # The guests' resolver answers only what was sent there (the redirect marks it), never a direct ask.
-        out += [f"\t\t{q} udp dport {share.GUEST_DNS_PORT} ct mark != {DNS_MARK} drop",
-                f"\t\t{q} tcp dport {share.GUEST_DNS_PORT} ct mark != {DNS_MARK} drop"]
+        out += [
+            f"\t\t{q} udp dport {share.GUEST_DNS_PORT} ct mark != {DNS_MARK} drop",
+            f"\t\t{q} tcp dport {share.GUEST_DNS_PORT} ct mark != {DNS_MARK} drop",
+        ]
     if fw:
         out.append(f"\t\t{q} jump hotspot")
     out.append("\t}")
@@ -140,15 +164,17 @@ def ruleset(iface, fw=None, sharing=None, kept=()):
         tcp, udp = ports(fw.get("services", ()), fw.get("level", "apps"))
         if sharing:
             tcp, udp = sorted(set(tcp) | {share.GUEST_DNS_PORT}), sorted(set(udp) | {share.GUEST_DNS_PORT})
-        out += ["\tchain hotspot {",
-                "\t\tct state established,related accept",
-                "\t\tct state invalid drop",
-                "\t\ticmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept",
-                "\t\ticmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept",
-                f"\t\tudp dport {fmt(udp)} accept",
-                f"\t\ttcp dport {fmt(tcp)} accept",
-                "\t\tdrop",
-                "\t}"]
+        out += [
+            "\tchain hotspot {",
+            "\t\tct state established,related accept",
+            "\t\tct state invalid drop",
+            "\t\ticmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept",
+            "\t\ticmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept",
+            f"\t\tudp dport {fmt(udp)} accept",
+            f"\t\ttcp dport {fmt(tcp)} accept",
+            "\t\tdrop",
+            "\t}",
+        ]
     out += ["\tchain forward {", "\t\ttype filter hook forward priority filter; policy accept;"]
     if sharing:
         out.append(f'\t\toifname "{iface}" ct state established,related accept')
@@ -171,9 +197,16 @@ def ruleset(iface, fw=None, sharing=None, kept=()):
         # DNS: the guests' resolver for those let out (everyone at open, or with dns_hold off); the
         # rest keep the hotspot's catch-all, where every name is the hub.
         sel = f"{q} {who} @out" if lv in share.LET_OUT and c.get("dns_hold") else q
-        out += [f"\t\t{sel} {p} dport 53 ct mark set {DNS_MARK} redirect to :{share.GUEST_DNS_PORT}" for p in ("udp", "tcp")]
-        out += ["\t}", "\tchain post {", "\t\ttype nat hook postrouting priority srcnat; policy accept;",
-                f'\t\tip saddr {share.NETWORK} oifname != "{iface}" masquerade', "\t}"]
+        out += [
+            f"\t\t{sel} {p} dport 53 ct mark set {DNS_MARK} redirect to :{share.GUEST_DNS_PORT}" for p in ("udp", "tcp")
+        ]
+        out += [
+            "\t}",
+            "\tchain post {",
+            "\t\ttype nat hook postrouting priority srcnat; policy accept;",
+            f'\t\tip saddr {share.NETWORK} oifname != "{iface}" masquerade',
+            "\t}",
+        ]
     out += ["}", ""]
     return "\n".join(out)
 
@@ -187,8 +220,13 @@ def service_ports(name):
     if m and 0 < int(m.group(2)) < 65536:
         return ((int(m.group(2)),), ()) if m.group(1) == "tcp" else ((), (int(m.group(2)),))
     from irate_box.hub import services
+
     s = services.by_id(name)
-    return (tuple(p for pr, p in s["listen"] if pr == "tcp"), tuple(p for pr, p in s["listen"] if pr == "udp")) if s else ((), ())
+    return (
+        (tuple(p for pr, p in s["listen"] if pr == "tcp"), tuple(p for pr, p in s["listen"] if pr == "udp"))
+        if s
+        else ((), ())
+    )
 
 
 def services_here(wanted):
@@ -203,6 +241,7 @@ def services_here(wanted):
     if "ssh" in wanted:
         have.append("ssh")
     from irate_box.hub import services
+
     for s in services.declared():
         if s["id"] in wanted and services.installed(s):
             have.append(s["id"])
@@ -210,6 +249,7 @@ def services_here(wanted):
     # The time, while the Clock page serves it to the hotspot: that page's switch is its switch.
     try:
         from irate_box.root import clock
+
         if clock.serving():
             have.append("time")
     except Exception:  # noqa: BLE001 - no clock record: nothing served
@@ -238,6 +278,7 @@ def kept_out(sharing):
     hotspot back up) doesn't shut them out while the hub still counts them out. Only when the set holds the same
     kind of address as the new one will (a hardware address, or an IP), and only at a level that lets out."""
     from irate_box.root import share
+
     if not sharing or sharing.get("level") not in share.LET_OUT:
         return []
     want = "ether_addr" if (sharing.get("contain") or {}).get("by_mac") else "ipv4_addr"
@@ -264,6 +305,7 @@ def apply_all(fw, sharing, iface=None):
     now and at every boot; with neither on, the table and its file gone. Raises ValueError, having
     changed nothing, when nft refuses the ruleset."""
     from irate_box.root import share
+
     if not fw and not share.on(sharing or {"level": "off"}):
         remove()
         return
@@ -275,20 +317,46 @@ def apply_all(fw, sharing, iface=None):
         r = run("nft", "-c", "-f", str(tmp))
     except OSError as exc:
         tmp.unlink(missing_ok=True)
-        raise Refused(M("fw-rules.no-nft", "The box did not change the rules, because nft is not installed ({detail}). "
-                     "Run {command}, or update the box. The box kept the previous rules.", detail=str(exc), command="apt-get install nftables"))
+        raise Refused(
+            M(
+                "fw-rules.no-nft",
+                "The box did not change the rules, because nft is not installed ({detail}). "
+                "Run {command}, or update the box. The box kept the previous rules.",
+                detail=str(exc),
+                command="apt-get install nftables",
+            )
+        ) from exc
     last = lambda r: (r.stderr.strip().splitlines() or ["?"])[-1][:200]  # noqa: E731
     if r.returncode != 0:
         tmp.unlink(missing_ok=True)
-        raise Refused(M("fw-rules.rejected", "nft rejected the rules. The box kept the previous rules. nft said: {detail}", detail=last(r)))
+        raise Refused(
+            M(
+                "fw-rules.rejected",
+                "nft rejected the rules. The box kept the previous rules. nft said: {detail}",
+                detail=last(r),
+            )
+        )
     os.replace(tmp, RULES)
     r = run("nft", "-f", str(RULES))
     if r.returncode != 0:
-        raise Refused(M("fw-rules.not-loaded", "The box saved the rules, but nft did not load them. nft said: {detail}", detail=last(r)))
-    r = run("systemctl", "enable", UNIT)   # loads the file at every boot
+        raise Refused(
+            M(
+                "fw-rules.not-loaded",
+                "The box saved the rules, but nft did not load them. nft said: {detail}",
+                detail=last(r),
+            )
+        )
+    r = run("systemctl", "enable", UNIT)  # loads the file at every boot
     if r.returncode != 0:
-        raise Refused(M("fw-rules.not-enabled", "The rules are active, but {unit} is not enabled, so the rules do not load at the next boot. "
-                     "systemctl said: {detail}", unit=UNIT, detail=last(r)))
+        raise Refused(
+            M(
+                "fw-rules.not-enabled",
+                "The rules are active, but {unit} is not enabled, so the rules do not load at the next boot. "
+                "systemctl said: {detail}",
+                unit=UNIT,
+                detail=last(r),
+            )
+        )
 
 
 def remove():
@@ -303,6 +371,7 @@ def remove():
 
 def share_sysctl():
     from irate_box.root import share
+
     return share.SYSCTL
 
 
@@ -313,14 +382,26 @@ SANDBOX = ("ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "Pro
 
 def unit_text(code_dir="/opt/irate-box"):
     """The systemd unit install.sh writes: loads the file when there is one, removes the table on stop."""
-    return "\n".join([
-        "[Unit]", "Description=Irate-Box: what a guest on the hotspot can reach (root/firewall.py)",
-        "Documentation=file://" + code_dir + "/irate_box/root/firewall.py",
-        "DefaultDependencies=no", "Before=network-pre.target", "Wants=network-pre.target", "",
-        "[Service]", "Type=oneshot", "RemainAfterExit=yes", *SANDBOX,
-        f"ExecStart=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
-        f"ExecReload=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
-        # Stopped while guests share the connection: forwarding off too, so nothing passes unfiltered.
-        f"ExecStop=/bin/sh -c 'nft delete table {TABLE} 2>/dev/null; if [ -f {share_sysctl()} ]; then sysctl -q -w net.ipv4.ip_forward=0; fi; true'", "",
-        "[Install]", "WantedBy=multi-user.target", "",
-    ])
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=Irate-Box: what a guest on the hotspot can reach (root/firewall.py)",
+            "Documentation=file://" + code_dir + "/irate_box/root/firewall.py",
+            "DefaultDependencies=no",
+            "Before=network-pre.target",
+            "Wants=network-pre.target",
+            "",
+            "[Service]",
+            "Type=oneshot",
+            "RemainAfterExit=yes",
+            *SANDBOX,
+            f"ExecStart=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
+            f"ExecReload=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
+            # Stopped while guests share the connection: forwarding off too, so nothing passes unfiltered.
+            f"ExecStop=/bin/sh -c 'nft delete table {TABLE} 2>/dev/null; if [ -f {share_sysctl()} ]; then sysctl -q -w net.ipv4.ip_forward=0; fi; true'",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+            "",
+        ]
+    )

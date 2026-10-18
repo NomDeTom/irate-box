@@ -46,6 +46,7 @@ says so in sysfs: `recoveries` and `recovered_at` (seconds since boot) among its
 the kernel's log. `driver_reset()` reads them, so that the uplink watchdog and crash watch stand
 back for DRIVER_GRACE while it works, rather than reset the radio on top of it.
 """
+
 import fcntl
 import json
 import os
@@ -59,14 +60,14 @@ PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 DEV_USB = Path(os.environ.get("HUB_DEV_USB", "/dev/bus/usb"))
 MODULES = Path(os.environ.get("HUB_MODULES_DIR", "/lib/modules"))
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
-AP_RECORD = ETC / "ap.json"          # root/ap.py's: whether the hotspot is up
+AP_RECORD = ETC / "ap.json"  # root/ap.py's: whether the hotspot is up
 AP_UNIT = "irate-box-ap.service"
 PORT_RE = re.compile(r"[0-9]+-[0-9.]+")
 PCI_RE = re.compile(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]")
 MOD_RE = re.compile(r"[A-Za-z0-9_-]+")
-BACK_WAIT = 20                        # seconds for the interface to come back after each way
-USBDEVFS_RESET = 0x5514               # _IO('U', 20)
-DRIVER_GRACE = 90                     # seconds a driver's own reset is left to work
+BACK_WAIT = 20  # seconds for the interface to come back after each way
+USBDEVFS_RESET = 0x5514  # _IO('U', 20)
+DRIVER_GRACE = 90  # seconds a driver's own reset is left to work
 DRIVER_LINE = "aic8800: firmware not answering: resetting the device"
 
 
@@ -140,8 +141,20 @@ def _uptime():
 def _journal_reset(run=_run, grace=DRIVER_GRACE):
     """When the kernel's journal last said the driver reset its device, in seconds since boot, or
     None: for a driver that says so but has no `recovered_at`."""
-    code, out = run("journalctl", "-k", "-b", "-q", "--no-pager", "-o", "short-monotonic",
-                    "--since", f"-{int(grace)}s", "-g", DRIVER_LINE, timeout=15)
+    code, out = run(
+        "journalctl",
+        "-k",
+        "-b",
+        "-q",
+        "--no-pager",
+        "-o",
+        "short-monotonic",
+        "--since",
+        f"-{int(grace)}s",
+        "-g",
+        DRIVER_LINE,
+        timeout=15,
+    )
     if code != 0:
         return None
     at = None
@@ -197,9 +210,13 @@ def _sdio_target(iface):
     if "mmc_host" not in parts or not (dev / "driver").exists():
         return None
     host = parts[parts.index("mmc_host") - 1]
-    host_drv = (SYS / "bus/platform/devices" / host / "driver")
-    return {"func": dev.name, "driver": (dev / "driver").resolve().name, "host": host,
-            "host_driver": host_drv.resolve().name if host_drv.exists() else None}
+    host_drv = SYS / "bus/platform/devices" / host / "driver"
+    return {
+        "func": dev.name,
+        "driver": (dev / "driver").resolve().name,
+        "host": host,
+        "host_driver": host_drv.resolve().name if host_drv.exists() else None,
+    }
 
 
 def _bus_target(iface):
@@ -251,7 +268,7 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
     """Reset the radio behind iface (its USB port and driver as netinv.device_facts gives them).
     One line saying what was done and whether the interface came back."""
     tried = []
-    sdio = None if _usb_target(port) else _sdio_target(iface)   # looked up while the interface is still there
+    sdio = None if _usb_target(port) else _sdio_target(iface)  # looked up while the interface is still there
     onbus = None if _usb_target(port) or sdio else _bus_target(iface)
     nm = run("systemctl", "is-active", "--quiet", "NetworkManager", timeout=10)[0] == 0
     if nm:
@@ -260,7 +277,11 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
     try:
         target = _usb_target(port)
         if target:
-            name = f"USB {target}" + (f" ({product})" if product else "") + ("" if target == port else f", the hub {port} hangs off")
+            name = (
+                f"USB {target}"
+                + (f" ({product})" if product else "")
+                + ("" if target == port else f", the hub {port} hangs off")
+            )
             try:
                 _port_reset(target)
                 tried.append(f"{name} reset at its port")
@@ -347,11 +368,14 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
                 sleep(2)
                 mod = _module_file(driver)
                 code, out = run("modprobe", mod, timeout=60)
-                for h in holders:   # the driver may load its own again; any it has not, by hand
+                for h in holders:  # the driver may load its own again; any it has not, by hand
                     if not (SYS / "module" / h).exists():
                         run("modprobe", h, timeout=60)
-                tried.append((f"Driver {driver} reloaded" + (f" (with {', '.join(holders)})" if holders else "")) if code == 0
-                             else f"Loading {mod} failed: {out[-120:]}")
+                tried.append(
+                    (f"Driver {driver} reloaded" + (f" (with {', '.join(holders)})" if holders else ""))
+                    if code == 0
+                    else f"Loading {mod} failed: {out[-120:]}"
+                )
                 back = code == 0 and _back(iface, wait, sleep, target)
             else:
                 tried.append(f"Driver {driver} would not unload ({out[-120:] or f'rc {code}'})")
@@ -360,6 +384,8 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
             run("systemctl", "start", "NetworkManager", timeout=90)
     if not tried:
         return "This box has no way to reset this radio."
-    said = ". ".join(t[0].upper() + t[1:] for t in tried) + (f". {iface} is back." if back else f". {iface} did not return.")
+    said = ". ".join(t[0].upper() + t[1:] for t in tried) + (
+        f". {iface} is back." if back else f". {iface} did not return."
+    )
     hs = restore_hotspot(run)
     return said + (f" {hs}" if hs else "")

@@ -11,6 +11,7 @@ hotspot code's.
 
 A setting takes effect the next time the connection comes up; the page says so. Root only; stdlib only.
 """
+
 import json
 import os
 import re
@@ -31,24 +32,45 @@ MAC_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 def _int(lo, hi):
     def check(n, v):
         if not re.fullmatch(r"-?\d{1,4}", v) or not lo <= int(v) <= hi:
-            raise Refused(M("nm-conn.setting.range", "Enter a whole number from {lo} to {hi} for {setting}.", lo=lo, hi=hi, setting=n))
+            raise Refused(
+                M(
+                    "nm-conn.setting.range",
+                    "Enter a whole number from {lo} to {hi} for {setting}.",
+                    lo=lo,
+                    hi=hi,
+                    setting=n,
+                )
+            )
         return str(int(v))
+
     return check
 
 
 def _one_of(*allowed):
     def check(n, v):
         if v not in allowed:
-            raise Refused(M("nm-conn.setting.one-of", "Select one of these values for {setting}: {values}.", setting=n,
-                         values=[a or "(none)" for a in allowed]))
+            raise Refused(
+                M(
+                    "nm-conn.setting.one-of",
+                    "Select one of these values for {setting}: {values}.",
+                    setting=n,
+                    values=[a or "(none)" for a in allowed],
+                )
+            )
         return v
+
     return check
 
 
 def _mac_or_empty(n, v):
     if v and not MAC_RE.match(v):
-        raise Refused(M("nm-conn.setting.bssid", "The BSSID is not valid. Enter the BSSID of an access point, "
-                     "for example {example}, or leave it empty.", example="aa:bb:cc:dd:ee:ff"))
+        raise Refused(
+            M(
+                "nm-conn.setting.bssid",
+                "The BSSID is not valid. Enter the BSSID of an access point, for example {example}, or leave it empty.",
+                example="aa:bb:cc:dd:ee:ff",
+            )
+        )
     return v.lower()
 
 
@@ -59,7 +81,11 @@ SETTINGS = {
     "autoconnect_retries": ("connection.autoconnect-retries", _int(-1, 1000), "-1"),
     "auth_retries": ("connection.auth-retries", _int(-1, 1000), "-1"),
     "metered": ("connection.metered", _one_of("yes", "no", "unknown"), "unknown"),
-    "cloned_mac": ("802-11-wireless.cloned-mac-address", _one_of("", "preserve", "permanent", "random", "stable", "stable-ssid"), ""),
+    "cloned_mac": (
+        "802-11-wireless.cloned-mac-address",
+        _one_of("", "preserve", "permanent", "random", "stable", "stable-ssid"),
+        "",
+    ),
     "bssid": ("802-11-wireless.bssid", _mac_or_empty, ""),
     "band": ("802-11-wireless.band", _one_of("", "a", "bg"), ""),
     "channel": ("802-11-wireless.channel", _int(0, 196), "0"),
@@ -90,6 +116,7 @@ def record():
 
 def _save(rec):
     from irate_box.root import safeio
+
     ETC.mkdir(parents=True, exist_ok=True)
     if rec:
         safeio.write(RECORD, json.dumps(rec, indent=1), 0o600)
@@ -107,7 +134,12 @@ def _current(uuid):
         k, _, v = line.partition(":")
         kv[k] = v.replace("\\:", ":")
     if kv.get("802-11-wireless.mode", "infrastructure") not in ("", "infrastructure"):
-        raise Refused(M("nm-conn.hotspot", "You can change only a connection that the box joins here. The hotspot has its own settings."))
+        raise Refused(
+            M(
+                "nm-conn.hotspot",
+                "You can change only a connection that the box joins here. The hotspot has its own settings.",
+            )
+        )
     out_ = {"name": kv.get("connection.id")}
     for n, (key, _c, _d) in SETTINGS.items():
         v = kv.get(key, "")
@@ -129,8 +161,11 @@ def lasts(uuid, integrated):
         u, _, f = line.partition(":")
         if u == uuid:
             if f.startswith(NETPLAN_PROFILES) and not integrated:
-                return False, M("nm-conn.netplan", "netplan writes this connection again at every boot, so the box would lose a setting "
-                                "made for it alone. Transfer the profile to NetworkManager first, on the Network page, under WiFi.")
+                return False, M(
+                    "nm-conn.netplan",
+                    "netplan writes this connection again at every boot, so the box would lose a setting "
+                    "made for it alone. Transfer the profile to NetworkManager first, on the Network page, under WiFi.",
+                )
             return True, None
     return False, NOT_FOUND
 
@@ -148,7 +183,9 @@ def change(uuid, changes, integrated=False):
     args, said = [], []
     for n, v in changes.items():
         if n not in SETTINGS:
-            raise Refused(M("nm-conn.request.setting", "The request is not valid: this page does not set {setting}.", setting=n))
+            raise Refused(
+                M("nm-conn.request.setting", "The request is not valid: this page does not set {setting}.", setting=n)
+            )
         key, check, nm_default = SETTINGS[n]
         v = check(n, nm_default if v == "default" else str(v).strip())
         args += [key, v]
@@ -159,7 +196,7 @@ def change(uuid, changes, integrated=False):
     rec = record()
     old = rec.setdefault(uuid, {"name": now["name"], "old": {}, "at": time.time()})
     for n in changes:
-        old["old"].setdefault(n, now[n])   # the value from before irate-box first changed it
+        old["old"].setdefault(n, now[n])  # the value from before irate-box first changed it
     code, out = run("nmcli", "con", "modify", "uuid", uuid, *args)
     if code != 0:
         raise Refused(M("nm-conn.nmcli", "nmcli did not change the profile: {detail}", detail=out[-200:]))
@@ -169,8 +206,12 @@ def change(uuid, changes, integrated=False):
     if not old["old"]:
         rec.pop(uuid)
     _save(rec)
-    return M("nm-conn.changed", "The box set {changes} on {name}. The change applies the next time the connection starts.",
-             changes=said, name=now["name"])
+    return M(
+        "nm-conn.changed",
+        "The box set {changes} on {name}. The change applies the next time the connection starts.",
+        changes=said,
+        name=now["name"],
+    )
 
 
 def undo(uuid):
@@ -184,7 +225,9 @@ def undo(uuid):
         if code != 0 and "not exist" not in out and "unknown connection" not in out.lower():
             rec[uuid] = entry
             _save(rec)
-            raise Refused(M("nm-conn.undo.nmcli", "nmcli did not restore the earlier settings: {detail}", detail=out[-200:]))
+            raise Refused(
+                M("nm-conn.undo.nmcli", "nmcli did not restore the earlier settings: {detail}", detail=out[-200:])
+            )
     _save(rec)
     return M("nm-conn.undo.done", "The box restored the earlier settings of {name}.", name=entry["name"])
 
@@ -217,4 +260,5 @@ def main(argv):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main(sys.argv[1:]))

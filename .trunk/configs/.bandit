@@ -1,0 +1,4 @@
+[bandit]
+# The box runs system commands by design (systemctl, nmcli, git, apt ...), always as an argument list:
+# B404 import subprocess, B603 subprocess without a shell, B607 a command found on PATH.
+skips = B404,B603,B607

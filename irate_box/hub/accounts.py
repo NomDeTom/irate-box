@@ -33,8 +33,8 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box.msg import M
 from irate_box.hub.refused import Refused
+from irate_box.msg import M
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 FILE = STATE / "accounts.json"
@@ -44,12 +44,12 @@ DEFAULTS = {"signup": "off", "http": "warning"}
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
 RESERVED = {"admin", "root", "hub", "guest", "everyone"}
 MIN_PASSWORD, MAX_PASSWORD = 8, 128
-SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
+SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 SESSION_DAYS = 30
 CODE_HOURS = 24
 FAILS, FAIL_WINDOW = 10, 15 * 60
-SIGNUPS_PER_HOUR = 5        # per address: a box at an event shouldn't fill with one stranger's accounts
-MAX_ASKED = 100             # applications waiting at once
+SIGNUPS_PER_HOUR = 5  # per address: a box at an event shouldn't fill with one stranger's accounts
+MAX_ASKED = 100  # applications waiting at once
 MAX_ACCOUNTS = 1000
 
 # Refusals said in more than one place.
@@ -60,13 +60,19 @@ NO_USERS = M("accounts.signin.off", "Registration closed. This box has no user a
 
 
 def _limit_reached():
-    return M("accounts.limit", {"one": "Account limit reached. This box keeps at most {n} account.",
-                                "other": "Account limit reached. This box keeps at most {n} accounts."}, n=MAX_ACCOUNTS)
+    return M(
+        "accounts.limit",
+        {
+            "one": "Account limit reached. This box keeps at most {n} account.",
+            "other": "Account limit reached. This box keeps at most {n} accounts.",
+        },
+        n=MAX_ACCOUNTS,
+    )
 
 
 _lock = threading.Lock()
-_fails = {}                 # ("name" | "addr", key) -> [times]
-_signups = {}               # addr -> [times]
+_fails = {}  # ("name" | "addr", key) -> [times]
+_signups = {}  # addr -> [times]
 
 
 class AccountError(Refused):
@@ -79,6 +85,7 @@ class Wait(AccountError):
 
 
 # --- the file ----------------------------------------------------------------------------------
+
 
 def _load():
     try:
@@ -114,6 +121,7 @@ def _digest(token):
 
 # --- passwords ---------------------------------------------------------------------------------
 
+
 def hash_password(password):
     salt = secrets.token_bytes(16)
     h = hashlib.scrypt(password.encode(), salt=salt, dklen=32, **SCRYPT)
@@ -125,7 +133,9 @@ def check_password(password, stored):
         kind, n, r, p, salt, h = stored.split("$")
         if kind != "scrypt":
             return False
-        got = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=int(n), r=int(r), p=int(p), dklen=len(h) // 2)
+        got = hashlib.scrypt(
+            password.encode(), salt=bytes.fromhex(salt), n=int(n), r=int(r), p=int(p), dklen=len(h) // 2
+        )
     except (ValueError, AttributeError):
         return False
     return hmac.compare_digest(got.hex(), h)
@@ -137,19 +147,30 @@ _DUMMY = hash_password(secrets.token_hex(8))
 
 def _valid_password(pw):
     if not isinstance(pw, str) or not MIN_PASSWORD <= len(pw) <= MAX_PASSWORD or "\n" in pw:
-        raise AccountError(M("accounts.password.length", "Enter a password of {least} to {most} characters.",
-                             least=MIN_PASSWORD, most=MAX_PASSWORD))
+        raise AccountError(
+            M(
+                "accounts.password.length",
+                "Enter a password of {least} to {most} characters.",
+                least=MIN_PASSWORD,
+                most=MAX_PASSWORD,
+            )
+        )
 
 
 def _valid_name(name):
     if not isinstance(name, str) or not NAME_RE.match(name):
-        raise AccountError(M("accounts.name.invalid", "Invalid username. Use 3 to 32 letters, digits, dots, dashes or underscores."))
+        raise AccountError(
+            M("accounts.name.invalid", "Invalid username. Use 3 to 32 letters, digits, dots, dashes or underscores.")
+        )
     if name.lower() in RESERVED:
-        raise AccountError(M("accounts.name.reserved", "Username reserved. The box keeps {name} for its own use.", name=name))
+        raise AccountError(
+            M("accounts.name.reserved", "Username reserved. The box keeps {name} for its own use.", name=name)
+        )
     return name.lower()
 
 
 # --- the limits --------------------------------------------------------------------------------
+
 
 def _recent(times, window, now):
     return [t for t in times if now - t < window]
@@ -158,8 +179,13 @@ def _recent(times, window, now):
 def _limited(name, addr, now):
     for key in (("name", (name or "").lower()), ("addr", addr or "")):
         if len(_recent(_fails.get(key, []), FAIL_WINDOW, now)) >= FAILS:
-            raise Wait(M("accounts.wait", {"one": "Wait {n} minute before you try again.", "other": "Wait {n} minutes before you try again."},
-                         n=FAIL_WINDOW // 60))
+            raise Wait(
+                M(
+                    "accounts.wait",
+                    {"one": "Wait {n} minute before you try again.", "other": "Wait {n} minutes before you try again."},
+                    n=FAIL_WINDOW // 60,
+                )
+            )
 
 
 def _failed(name, addr, now):
@@ -168,6 +194,7 @@ def _failed(name, addr, now):
 
 
 # --- what the pages and the admin see ----------------------------------------------------------
+
 
 def settings():
     s = dict(DEFAULTS)
@@ -180,24 +207,37 @@ def settings():
 
 
 def _admins(data):
-    return [k for k, a in data["accounts"].items() if a.get("role") == "admin" and a.get("state") == "user" and a.get("hash")]
+    return [
+        k
+        for k, a in data["accounts"].items()
+        if a.get("role") == "admin" and a.get("state") == "user" and a.get("hash")
+    ]
 
 
 def set_settings(signup=None, http=None, keep_admin=False):
     """keep_admin: the box's own admin login is off, so the admin accounts are the only way into
     /admin: sign-up may not go off (no account would log in)."""
     if keep_admin and signup == "off":
-        raise AccountError(M("accounts.settings.keep-admin", "The box's own administrator sign-in is off. Switch it on in Accounts first. "
-                                                             "Otherwise no one can open /admin."))
+        raise AccountError(
+            M(
+                "accounts.settings.keep-admin",
+                "The box's own administrator sign-in is off. Switch it on in Accounts first. "
+                "Otherwise no one can open /admin.",
+            )
+        )
     with _lock:
         data = _load()
         if signup is not None:
             if signup not in SIGNUP:
-                raise AccountError(M("accounts.settings.signup", "Sign-up must be one of: {values}.", values=", ".join(SIGNUP)))
+                raise AccountError(
+                    M("accounts.settings.signup", "Sign-up must be one of: {values}.", values=", ".join(SIGNUP))
+                )
             data["settings"]["signup"] = signup
         if http is not None:
             if http not in HTTP:
-                raise AccountError(M("accounts.settings.http", "HTTP must be one of: {values}.", values=", ".join(HTTP)))
+                raise AccountError(
+                    M("accounts.settings.http", "HTTP must be one of: {values}.", values=", ".join(HTTP))
+                )
             data["settings"]["http"] = http
         _save(data)
     return settings()
@@ -207,17 +247,23 @@ def _public(acc):
     return {k: acc.get(k) for k in ("name", "state", "role", "created", "seen", "by", "https_login")} | {
         "password_set": bool(acc.get("hash")),
         # The admin sees each person's choice to be shown online, and can't change it.
-        "shown_online": bool((acc.get("prefs") or {}).get("show_online"))}
+        "shown_online": bool((acc.get("prefs") or {}).get("show_online")),
+    }
 
 
 # --- a person's own settings: online visibility, locking, who sees their posts per app, colour.
 # Theirs alone, through their own session; the safe choice is each default: not shown by name, no
 # lock, no email.
-PREFS = {"show_online": False, "hue": None, "lock_default": False, "email": "",
-         # Who sees what they post, per app: everyone here, signed-in people, or only them.
-         # Never wider than the app itself (its access); Notes, SilverBullet's one shared notebook,
-         # has no posts of anyone's own to hide.
-         "posts": {"shoutbox": "everyone", "board": "everyone", "saves": "everyone", "drop": "everyone"}}
+PREFS = {
+    "show_online": False,
+    "hue": None,
+    "lock_default": False,
+    "email": "",
+    # Who sees what they post, per app: everyone here, signed-in people, or only them.
+    # Never wider than the app itself (its access); Notes, SilverBullet's one shared notebook,
+    # has no posts of anyone's own to hide.
+    "posts": {"shoutbox": "everyone", "board": "everyone", "saves": "everyone", "drop": "everyone"},
+}
 POST_SEEN = ("everyone", "users", "me")
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}$")
 
@@ -226,7 +272,9 @@ def prefs(name):
     """One account's settings, with the defaults for any not chosen."""
     acc = _load()["accounts"].get(str(name or "").lower())
     out = dict(PREFS, **{k: v for k, v in ((acc or {}).get("prefs") or {}).items() if k in PREFS})
-    out["posts"] = dict(PREFS["posts"], **{k: v for k, v in (out.get("posts") or {}).items() if k in PREFS["posts"] and v in POST_SEEN})
+    out["posts"] = dict(
+        PREFS["posts"], **{k: v for k, v in (out.get("posts") or {}).items() if k in PREFS["posts"] and v in POST_SEEN}
+    )
     return out
 
 
@@ -240,13 +288,28 @@ def set_prefs(token, changes):
     for k in ("show_online", "lock_default"):
         if k in changes and type(changes[k]) is not bool:
             raise AccountError(M("accounts.prefs.bool", "{key} must be true or false.", key=k))
-    if "hue" in changes and changes["hue"] is not None and not (type(changes["hue"]) is int and 0 <= changes["hue"] < 360):
+    if (
+        "hue" in changes
+        and changes["hue"] is not None
+        and not (type(changes["hue"]) is int and 0 <= changes["hue"] < 360)
+    ):
         raise AccountError(M("accounts.prefs.hue", "The hue must be from 0 to 359."))
-    if "posts" in changes and not (isinstance(changes["posts"], dict) and changes["posts"]
-                                   and all(k in PREFS["posts"] and v in POST_SEEN for k, v in changes["posts"].items())):
-        raise AccountError(M("accounts.prefs.posts", "Each entry of posts must name an app ({apps}) and a value ({values}).",
-                             apps=", ".join(PREFS["posts"]), values=", ".join(POST_SEEN)))
-    if "email" in changes and not (changes["email"] == "" or (isinstance(changes["email"], str) and EMAIL_RE.match(changes["email"]))):
+    if "posts" in changes and not (
+        isinstance(changes["posts"], dict)
+        and changes["posts"]
+        and all(k in PREFS["posts"] and v in POST_SEEN for k, v in changes["posts"].items())
+    ):
+        raise AccountError(
+            M(
+                "accounts.prefs.posts",
+                "Each entry of posts must name an app ({apps}) and a value ({values}).",
+                apps=", ".join(PREFS["posts"]),
+                values=", ".join(POST_SEEN),
+            )
+        )
+    if "email" in changes and not (
+        changes["email"] == "" or (isinstance(changes["email"], str) and EMAIL_RE.match(changes["email"]))
+    ):
         raise AccountError(M("accounts.prefs.email", "The email must be an address, or empty."))
     with _lock:
         data = _load()
@@ -266,16 +329,20 @@ def exists(name):
 
 def listing():
     data = _load()
-    return sorted((_public(a) for a in data["accounts"].values()), key=lambda a: (a["state"] != "asked", a["name"].lower()))
+    return sorted(
+        (_public(a) for a in data["accounts"].values()), key=lambda a: (a["state"] != "asked", a["name"].lower())
+    )
 
 
 def counts():
     accs = _load()["accounts"].values()
-    return {s: sum(1 for a in accs if a.get("state") == s) for s in ("asked", "user", "disabled")} | \
-        {"admins": sum(1 for a in accs if a.get("role") == "admin" and a.get("state") == "user")}
+    return {s: sum(1 for a in accs if a.get("state") == s) for s in ("asked", "user", "disabled")} | {
+        "admins": sum(1 for a in accs if a.get("role") == "admin" and a.get("state") == "user")
+    }
 
 
 # --- a person's own actions --------------------------------------------------------------------
+
 
 def signup(name, password, addr=""):
     """A new account: usable at once (open) or waiting for an admin (apply). Returns its state."""
@@ -290,20 +357,42 @@ def signup(name, password, addr=""):
     with _lock:
         recent = _recent(_signups.get(addr, []), 3600, now)
         if len(recent) >= SIGNUPS_PER_HOUR:
-            raise Wait(M("accounts.signup.wait", {"one": "Too many sign-ups from this address. Wait {n} hour before you try again.",
-                                                  "other": "Too many sign-ups from this address. Wait {n} hours before you try again."}, n=1))
+            raise Wait(
+                M(
+                    "accounts.signup.wait",
+                    {
+                        "one": "Too many sign-ups from this address. Wait {n} hour before you try again.",
+                        "other": "Too many sign-ups from this address. Wait {n} hours before you try again.",
+                    },
+                    n=1,
+                )
+            )
         data = _load()
         if key in data["accounts"]:
             raise AccountError(NAME_TAKEN)
         if len(data["accounts"]) >= MAX_ACCOUNTS:
             raise AccountError(_limit_reached())
         if level == "apply" and sum(1 for a in data["accounts"].values() if a.get("state") == "asked") >= MAX_ASKED:
-            raise AccountError(M("accounts.signup.queue-full", {"one": "Too many accounts wait for approval. The limit is {n}. Try again later.",
-                                                                "other": "Too many accounts wait for approval. The limit is {n}. Try again later."},
-                                 n=MAX_ASKED))
+            raise AccountError(
+                M(
+                    "accounts.signup.queue-full",
+                    {
+                        "one": "Too many accounts wait for approval. The limit is {n}. Try again later.",
+                        "other": "Too many accounts wait for approval. The limit is {n}. Try again later.",
+                    },
+                    n=MAX_ASKED,
+                )
+            )
         state = "user" if level == "open" else "asked"
-        data["accounts"][key] = {"name": name, "hash": hash_password(password), "state": state, "role": "user",
-                                 "created": round(now), "seen": None, "by": "signed up"}
+        data["accounts"][key] = {
+            "name": name,
+            "hash": hash_password(password),
+            "state": state,
+            "role": "user",
+            "created": round(now),
+            "seen": None,
+            "by": "signed up",
+        }
         _signups[addr] = recent + [now]
         _save(data)
     return state
@@ -316,7 +405,9 @@ def login(name, password, addr="", https=False):
     with _lock:
         _limited(name, addr, now)
     acc = _load()["accounts"].get((name or "").lower()) if isinstance(name, str) else None
-    ok = check_password(password if isinstance(password, str) else "", acc["hash"] if acc and acc.get("hash") else _DUMMY)
+    ok = check_password(
+        password if isinstance(password, str) else "", acc["hash"] if acc and acc.get("hash") else _DUMMY
+    )
     # With sign-up off the box has no users' accounts, but its admins still sign in here: the one login.
     # Judged after the password check, so the answer takes as long either way.
     if settings()["signup"] == "off" and not (acc and acc.get("role") == "admin"):
@@ -326,9 +417,13 @@ def login(name, password, addr="", https=False):
     with _lock:
         if not ok or not acc:
             _failed(name, addr, now)
-            raise AccountError(M("accounts.signin.failed", "Sign-in failed. The username and password do not match an account."))
+            raise AccountError(
+                M("accounts.signin.failed", "Sign-in failed. The username and password do not match an account.")
+            )
         if acc.get("state") == "asked":
-            raise AccountError(M("accounts.signin.pending", "Account approval pending. An administrator must accept this account."))
+            raise AccountError(
+                M("accounts.signin.pending", "Account approval pending. An administrator must accept this account.")
+            )
         if acc.get("state") != "user":
             raise AccountError(M("accounts.signin.disabled", "Account disabled. An administrator can enable it again."))
         token = secrets.token_urlsafe(32)
@@ -341,7 +436,7 @@ def login(name, password, addr="", https=False):
     return token, _public(acc)
 
 
-_basic_ok = {}   # (name, sha256 of the password) -> when it was last right: a push is several requests
+_basic_ok = {}  # (name, sha256 of the password) -> when it was last right: a push is several requests
 
 
 def _forget_basic(name):
@@ -356,6 +451,7 @@ def check_basic(header, addr=""):
     remembered for a minute, as git asks several times a push and a check takes half a second on
     a small board."""
     import base64
+
     if not isinstance(header, str) or not header.startswith("Basic ") or settings()["signup"] == "off":
         return None
     try:
@@ -422,7 +518,10 @@ def logout(token):
             _save(data)
 
 
-ADMIN_OVER_HTTP = M("accounts.password.https-only", "An administrator password changes only over HTTPS, or at the box's console over SSH.")
+ADMIN_OVER_HTTP = M(
+    "accounts.password.https-only",
+    "An administrator password changes only over HTTPS, or at the box's console over SSH.",
+)
 
 
 def change_password(token, old, new, addr="", https=True):
@@ -444,7 +543,9 @@ def change_password(token, old, new, addr="", https=True):
         _forget_basic(acc["name"])
         # Every other session of the account ends: a password changed because it leaked.
         keep = _digest(token)
-        data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != acc["name"].lower() or k == keep}
+        data["sessions"] = {
+            k: v for k, v in data["sessions"].items() if v.get("name") != acc["name"].lower() or k == keep
+        }
         _save(data)
 
 
@@ -478,6 +579,7 @@ def use_code(code, password, addr="", https=True):
 
 # --- the admin's actions -----------------------------------------------------------------------
 
+
 def _normal(code):
     return code.replace("-", "").replace(" ", "").strip()
 
@@ -488,7 +590,7 @@ def _code(data, key, why):
     raw = "".join(secrets.choice(alphabet) for _ in range(16))
     data["codes"] = {k: v for k, v in data["codes"].items() if v.get("name") != key}
     data["codes"][_digest(raw)] = {"name": key, "expires": round(time.time() + CODE_HOURS * 3600), "why": why}
-    return "-".join(raw[i:i + 4] for i in range(0, 16, 4))
+    return "-".join(raw[i : i + 4] for i in range(0, 16, 4))
 
 
 def make(name, role="user"):
@@ -502,8 +604,15 @@ def make(name, role="user"):
             raise AccountError(NAME_TAKEN)
         if len(data["accounts"]) >= MAX_ACCOUNTS:
             raise AccountError(_limit_reached())
-        data["accounts"][key] = {"name": name, "hash": "", "state": "user", "role": role,
-                                 "created": round(time.time()), "seen": None, "by": "admin"}
+        data["accounts"][key] = {
+            "name": name,
+            "hash": "",
+            "state": "user",
+            "role": role,
+            "created": round(time.time()),
+            "seen": None,
+            "by": "admin",
+        }
         code = _code(data, key, "new")
         _save(data)
     return code
@@ -559,11 +668,18 @@ def change(name, action, keep_admin=False):
         if not acc:
             raise AccountError(NOT_FOUND)
         if keep_admin and action in ("disable", "delete", "user") and _admins(data) == [key]:
-            raise AccountError(M("accounts.last-admin", "This is the last administrator account. The box's own administrator sign-in is off. "
-                                                        "Switch it on first. Otherwise no one can open /admin."))
+            raise AccountError(
+                M(
+                    "accounts.last-admin",
+                    "This is the last administrator account. The box's own administrator sign-in is off. "
+                    "Switch it on first. Otherwise no one can open /admin.",
+                )
+            )
         if action == "accept":
             if acc["state"] != "asked":
-                raise AccountError(M("accounts.accept.not-asked", "You can accept only an account that waits for approval."))
+                raise AccountError(
+                    M("accounts.accept.not-asked", "You can accept only an account that waits for approval.")
+                )
             acc["state"], acc["by"] = "user", "accepted by an administrator"
         elif action == "disable":
             acc["state"] = "disabled"
@@ -575,8 +691,13 @@ def change(name, action, keep_admin=False):
             del data["accounts"][key]
             data["codes"] = {k: v for k, v in data["codes"].items() if v.get("name") != key}
         else:
-            raise AccountError(M("accounts.change.action", "The action must be one of: {values}.",
-                                 values="accept, disable, enable, delete, admin, user"))
+            raise AccountError(
+                M(
+                    "accounts.change.action",
+                    "The action must be one of: {values}.",
+                    values="accept, disable, enable, delete, admin, user",
+                )
+            )
         if action in ("disable", "delete"):
             data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != key}
         _save(data)
@@ -586,6 +707,7 @@ def main(argv):
     """The console's way to an admin account (hub_control set-admin runs this as the hub's user):
     `accounts set-admin NAME`, the password on stdin."""
     import sys
+
     if len(argv) == 2 and argv[0] == "set-admin":
         try:
             set_admin(argv[1], sys.stdin.readline().rstrip("\n"), by="the console")
@@ -598,4 +720,5 @@ def main(argv):
 
 if __name__ == "__main__":
     import sys
+
     main(sys.argv[1:])

@@ -7,7 +7,7 @@ fails=0; ok() { echo "  ok   $*"; }; bad() { echo "  FAIL $*"; fails=$((fails+1)
 admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" "http://$H/admin/git" >/dev/null; }
 ci() { curl -s -u "admin:$PW" "http://$H/admin/ci"; }
 wait_runs() { for _ in $(seq 60); do n=$(ci | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for r in d["runs"] if r["state"]!="running"), d["queued"])'); [ "${n%% *}" -ge "$1" ] && [ "${n##* }" = 0 ] && return 0; sleep 1; done; return 1; }
-W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; cd "$W"
+W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; cd "$W" || exit
 admin '{"action":"create","area":"private","name":"citest"}'; admin '{"action":"create","area":"public","name":"pubci"}'
 [ "$(runuser -u hub -- git -C /var/lib/hub/git/private/citest.git config core.hooksPath)" = /opt/irate-box/scripts/git-hooks ] && ok "private repo has the hub's hooks" || bad "hooksPath"
 [ "$(runuser -u hub -- git -C /var/lib/hub/git/public/pubci.git config core.hooksPath)" = /opt/irate-box/scripts/git-hooks-public ] && ok "public repo has the public guard hook" || bad "public hooksPath"

@@ -24,12 +24,9 @@ for key, v in {
 }.items():
     (PROC / key).parent.mkdir(parents=True, exist_ok=True)
     (PROC / key).write_text(v + "\n")
-(T / "group").write_text(
-    "root:x:0:\ndisk:x:6:lyra\ndocker:x:990:lyra,svc\nsudo:x:27:lyra\n"
-)
+(T / "group").write_text("root:x:0:\ndisk:x:6:lyra\ndocker:x:990:lyra,svc\nsudo:x:27:lyra\n")
 (T / "passwd").write_text(
-    "root:x:0:0::/root:/bin/bash\nlyra:x:1000:1000::/home/lyra:/bin/bash\n"
-    "svc:x:1001:1001::/srv:/usr/sbin/nologin\n"
+    "root:x:0:0::/root:/bin/bash\nlyra:x:1000:1000::/home/lyra:/bin/bash\nsvc:x:1001:1001::/srv:/usr/sbin/nologin\n"
 )
 BIN = T / "bin"
 BIN.mkdir()
@@ -37,7 +34,7 @@ BIN.mkdir()
 (BIN / "gpasswd").write_text(f"""#!/usr/bin/env python3
 import sys
 op, user, group = sys.argv[1:4]
-p = "{T / 'group'}"
+p = "{T / "group"}"
 lines = open(p).read().splitlines()
 for i, l in enumerate(lines):
     f = l.split(":")
@@ -73,9 +70,7 @@ os.environ.update(HUB_ARMBIAN_FIRSTRUN=str(T / "firstrun"))
 # The gates: sudoers, apt, ramlog and journald files of the fixture's own.
 (T / "sudoers.d").mkdir()
 (T / "sudoers.d" / "claude-temp").write_text("lyra ALL=(ALL) NOPASSWD: ALL\n")
-(T / "sudoers").write_text(
-    "root ALL=(ALL:ALL) ALL\n%sudo ALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n"
-)
+(T / "sudoers").write_text("root ALL=(ALL:ALL) ALL\n%sudo ALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n")
 (T / "apt" / "sources.list.d").mkdir(parents=True)
 (T / "apt" / "trusted.gpg.d").mkdir()
 (T / "keyrings").mkdir()
@@ -83,9 +78,7 @@ os.environ.update(HUB_ARMBIAN_FIRSTRUN=str(T / "firstrun"))
     "deb http://download.opensuse.org/repositories/home:/mPWRD:/OS/Debian_13/ /\n"
 )
 (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").write_bytes(b"KEY")
-(T / "apt" / "trusted.gpg.d" / "debian-archive-trixie-stable.asc").write_text(
-    "debian\n"
-)
+(T / "apt" / "trusted.gpg.d" / "debian-archive-trixie-stable.asc").write_text("debian\n")
 (T / "ramlog").write_text("# ramlog\nENABLED=true\nSIZE=50M\n")
 (T / "log").mkdir()
 os.environ.update(
@@ -107,11 +100,11 @@ os.environ.update(
     PATH=f"{BIN}:{os.environ['PATH']}",
 )
 sys.path.insert(0, str(REPO))
-from irate_box import msg  # noqa: E402
-from irate_box.finding import message_ids as said  # noqa: E402
-from irate_box.msg import args_of  # noqa: E402
-from irate_box.msg import ids as msg_ids  # noqa: E402
-from irate_box.root import security  # noqa: E402
+from irate_box import msg
+from irate_box.finding import message_ids as said
+from irate_box.msg import args_of
+from irate_box.msg import ids as msg_ids
+from irate_box.root import security
 
 fails = 0
 
@@ -124,9 +117,7 @@ def check(name, cond, _info=""):
 
 def findings():
     rec = security.load_record()
-    return {
-        f["id"]: f for f in security.kernel_findings(rec) + security.group_findings(rec)
-    }
+    return {f["id"]: f for f in security.kernel_findings(rec) + security.group_findings(rec)}
 
 
 def sysctl(key):
@@ -142,16 +133,14 @@ check(
 )
 check(
     "addresses and log: a warning, with a button",
-    f["kernel-info"]["status"] == "warn"
-    and f["kernel-info"]["actions"][0]["choice"] == "kernel-info-on",
+    f["kernel-info"]["status"] == "warn" and f["kernel-info"]["actions"][0]["choice"] == "kernel-info-on",
 )
 check(
     "docker: lyra listed, not the nologin service account",
     f["group-docker"]["status"] == "warn"
     and f["group-docker"]["evidence"] == ["lyra"]
     and said(f["group-docker"]) == {"group.members", "group-docker.why", "group.fix"}
-    and [a["choice"] for a in f["group-docker"]["actions"]]
-    == ["group-drop:lyra@docker"],
+    and [a["choice"] for a in f["group-docker"]["actions"]] == ["group-drop:lyra@docker"],
     f["group-docker"],
 )
 check("disk: lyra listed", f["group-disk"]["status"] == "warn")
@@ -170,14 +159,12 @@ check(
 f = findings()
 check(
     "links on: ok, with Undo",
-    f["kernel-links"]["status"] == "ok"
-    and f["kernel-links"]["actions"][0]["choice"] == "kernel-links-undo",
+    f["kernel-links"]["status"] == "ok" and f["kernel-links"]["actions"][0]["choice"] == "kernel-links-undo",
 )
 print(security.fix("kernel-info-on", None))
 check(
     "both sets in the one file",
-    "kernel.dmesg_restrict = 1" in drop.read_text()
-    and "fs.protected_hardlinks = 1" in drop.read_text(),
+    "kernel.dmesg_restrict = 1" in drop.read_text() and "fs.protected_hardlinks = 1" in drop.read_text(),
 )
 print(security.fix("kernel-links-undo", None))
 check(
@@ -191,8 +178,7 @@ check(
 f = findings()
 check(
     "links off, Debian's defaults to be had: offered first, the hub's own two beside it",
-    [a["choice"] for a in f["kernel-links"]["actions"]]
-    == ["kernel-links-debian", "kernel-links-on"]
+    [a["choice"] for a in f["kernel-links"]["actions"]] == ["kernel-links-debian", "kernel-links-on"]
     and "kernel-links.debian.fix" in said(f["kernel-links"])
     and f["kernel-links"]["notes"][0]["args"]["package"] == "linux-sysctl-defaults"
     and f["kernel-links"]["actions"][0].get("confirm"),
@@ -203,19 +189,16 @@ check(
     "Debian's defaults: installed, applied, on now",
     (T / "installed").exists()
     and sysctl("fs.protected_symlinks") == "1"
-    and "install -y --no-install-recommends linux-sysctl-defaults"
-    in (T / "apt-log").read_text(),
+    and "install -y --no-install-recommends linux-sysctl-defaults" in (T / "apt-log").read_text(),
 )
 check(
     "  not in the hub's own file (Debian's carries them); the other set still there",
-    "protected_symlinks" not in drop.read_text()
-    and "kptr_restrict" in drop.read_text(),
+    "protected_symlinks" not in drop.read_text() and "kptr_restrict" in drop.read_text(),
 )
 f = findings()
 check(
     "  ok, with Undo",
-    f["kernel-links"]["status"] == "ok"
-    and f["kernel-links"]["actions"][0]["choice"] == "kernel-links-undo",
+    f["kernel-links"]["status"] == "ok" and f["kernel-links"]["actions"][0]["choice"] == "kernel-links-undo",
 )
 print(security.fix("kernel-links-undo", None))
 check(
@@ -243,8 +226,7 @@ check(
 )
 check(
     "  first login never run: a problem, with the marker put aside offered",
-    f["root-firstrun"]["status"] == "problem"
-    and f["root-firstrun"]["actions"][0]["choice"] == "firstrun-off",
+    f["root-firstrun"]["status"] == "problem" and f["root-firstrun"]["actions"][0]["choice"] == "firstrun-off",
 )
 (T / "etc").mkdir(exist_ok=True)
 print(security.fix("root-lock", None))
@@ -254,8 +236,7 @@ check(
     "  locked, the marker aside (kept): both ok, each with its undo",
     (T / "root-pw").read_text() == "L"
     and not (T / "firstrun").exists()
-    and (T / "etc" / "armbian-firstrun.kept").read_text()
-    == "armbian first login pending\n"
+    and (T / "etc" / "armbian-firstrun.kept").read_text() == "armbian first login pending\n"
     and f["root-password"]["status"] == "ok"
     and f["root-password"]["actions"][0]["choice"] == "root-lock-undo"
     and f["root-firstrun"]["status"] == "ok"
@@ -278,15 +259,13 @@ check(
 (T / "root-pw").write_text("NP")
 check(
     "root with no password: a problem",
-    rootf()["root-password"]["status"] == "problem"
-    and "root-password.none" in said(rootf()["root-password"]),
+    rootf()["root-password"]["status"] == "problem" and "root-password.none" in said(rootf()["root-password"]),
 )
 grp = (T / "group").read_text()
 (T / "group").write_text(grp.replace("sudo:x:27:lyra", "sudo:x:27:"))
 check(
     "  nobody else with sudo: no lock offered, and said why",
-    rootf()["root-password"]["actions"] == []
-    and "root-lock.no-sudo" in said(rootf()["root-password"]),
+    rootf()["root-password"]["actions"] == [] and "root-lock.no-sudo" in said(rootf()["root-password"]),
 )
 try:
     security.fix("root-lock", None)
@@ -305,8 +284,7 @@ check(
 f = findings()
 check(
     "docker: svc only (no login), so ok, with Put back",
-    f["group-docker"]["status"] == "ok"
-    and f["group-docker"]["actions"][0]["choice"] == "group-undo:lyra@docker",
+    f["group-docker"]["status"] == "ok" and f["group-docker"]["actions"][0]["choice"] == "group-undo:lyra@docker",
     f["group-docker"],
 )
 for bad in (
@@ -334,9 +312,7 @@ check(
 check("undo_all: no record left", not (T / "etc" / "security-changes.json").exists())
 srv = (REPO / "irate_box" / "hub" / "server.py").read_text()
 
-rx = re.compile(
-    re.search(r'SECURITY_CHOICE_RE\s*=\s*re.compile\(\s*r"(.*?)"\s*\)', srv).group(1)
-)
+rx = re.compile(re.search(r'SECURITY_CHOICE_RE\s*=\s*re.compile\(\s*r"(.*?)"\s*\)', srv).group(1))
 check(
     "the hub passes these choices to the helper",
     all(
@@ -363,13 +339,10 @@ check(
     "not chosen: a warning saying the choices, no buttons (the chips are on Updates), no toolkit in sight",
     nf["status"] == "warn"
     and nf["actions"] == []
-    and said(nf)
-    == {"unattended.unset", "unattended.unset.fix", "unattended.unset.can"},
+    and said(nf) == {"unattended.unset", "unattended.unset.fix", "unattended.unset.can"},
     nf,
 )
-on_by_image = uf(
-    True, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, 2
-)
+on_by_image = uf(True, {"APT::Periodic::Enable": "1", "APT::Periodic::Unattended-Upgrade": "1"}, 2)
 check(
     "  not chosen here but already running (Debian's own package can switch it on): said so, fine",
     on_by_image["status"] == "ok" and "unattended.by-image" in said(on_by_image),
@@ -378,8 +351,7 @@ check(
 check(
     "manual, chosen: fine, an Undo offered",
     uf(False, {}, None, (0, 0))["status"] == "ok"
-    and [a["choice"] for a in uf(False, {}, None, (0, 0))["actions"]]
-    == ["autoupdate-undo"]
+    and [a["choice"] for a in uf(False, {}, None, (0, 0))["actions"]] == ["autoupdate-undo"]
     and said(uf(False, {}, None, (0, 1))) == {"pattern.manual-fetch"},
 )
 check(
@@ -407,12 +379,9 @@ check(
 check(
     "  running: fine; not run in a fortnight: a warning",
     uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 2, (24, 2))["status"] == "ok"
-    and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, (24, 2))["status"]
-    == "warn",
+    and uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 30, (24, 2))["status"] == "warn",
 )
-ran = uf(
-    True, {"APT::Periodic::Unattended-Upgrade": "1"}, 0.5, (24, 2), time.time() - 43200
-)
+ran = uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, 0.5, (24, 2), time.time() - 43200)
 check(
     "  said in whole sentences, with when it last ran (apt's stamp, as the log in RAM is gone after a reboot)",
     said(ran) == {"pattern.day-install", "unattended.last-ran-at"}
@@ -422,13 +391,11 @@ check(
 )
 check(
     "  never run: said so, and when it runs",
-    "unattended.not-run"
-    in said(uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None, (24, 2))),
+    "unattended.not-run" in said(uf(True, {"APT::Periodic::Unattended-Upgrade": "1"}, None, (24, 2))),
 )
 check(
     "  the restore button in plain words",
-    [msg.render(a["label"]) for a in ran["actions"]]
-    == ["Restore the image's settings"],
+    [msg.render(a["label"]) for a in ran["actions"]] == ["Restore the image's settings"],
 )
 check(
     "the old three choices read as the pattern's",
@@ -506,28 +473,26 @@ except ValueError:
     check("  undo twice: refused", True)
 check(
     "  undo_all knows it",
-    "autoupdate-undo"
-    in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1],
+    "autoupdate-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1],
 )
 # Check now, Fetch and Install by hand: one log; with Fetch chosen, a check downloads what it finds.
 security.fix("autoupdate-set:0-1", None)
 sim = "Inst libssl3 [3.0.1] (3.0.2+deb13u1 Debian:13.7/stable [arm64])\nInst vim [1] (2 Other:1 [arm64])\n"
 calls = []
 real_run, real_sub = security.run, security.subprocess.run
-security.run = lambda *c, **k: calls.append(c) or __import__("types").SimpleNamespace(
-    stdout=sim if "-s" in c else "", returncode=0, stderr=""
+security.run = lambda *c, **k: (
+    calls.append(c) or __import__("types").SimpleNamespace(stdout=sim if "-s" in c else "", returncode=0, stderr="")
 )
-security.subprocess.run = lambda argv, **k: calls.append(tuple(argv)) or __import__(
-    "types"
-).SimpleNamespace(returncode=0)
+security.subprocess.run = lambda argv, **k: (
+    calls.append(tuple(argv)) or __import__("types").SimpleNamespace(returncode=0)
+)
 log = T / "control-log"
 got = security.fix("security-check", log)
 check(
     "Check now, manual with Fetch: the lists afresh, then the one security update downloaded, not vim",
     msg_ids(got)[1:] == ["security-fix.lists.done", "security-fix.updates.downloaded"]
     and args_of(got, "security-fix.updates.downloaded") == {"n": 1}
-    and ("apt-get", "install", "-y", "--only-upgrade", "--download-only", "libssl3")
-    in calls
+    and ("apt-get", "install", "-y", "--only-upgrade", "--download-only", "libssl3") in calls
     and "$ apt-get update" in log.read_text(),
     got,
 )
@@ -587,10 +552,7 @@ check(
 
 # SSH forwarding, found from sshd -T's words and offered off.
 def sf(s, rec=None):
-    return {
-        f["id"]: f
-        for f in security.ssh_findings(s, ["lyra"], rec if rec is not None else {})
-    }
+    return {f["id"]: f for f in security.ssh_findings(s, ["lyra"], rec if rec is not None else {})}
 
 
 on = sf(
@@ -605,8 +567,7 @@ on = sf(
 check(
     "ssh forwarding on (the image's default): a warning naming which, with the offer",
     on["ssh-forwarding"]["status"] == "warn"
-    and on["ssh-forwarding"]["evidence"]
-    == ["allowtcpforwarding yes", "x11forwarding yes"]
+    and on["ssh-forwarding"]["evidence"] == ["allowtcpforwarding yes", "x11forwarding yes"]
     and on["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-off",
     on["ssh-forwarding"],
 )
@@ -622,15 +583,12 @@ off = sf(
 )
 check(
     "  off by this page: ok, with Undo",
-    off["ssh-forwarding"]["status"] == "ok"
-    and off["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-undo",
+    off["ssh-forwarding"]["status"] == "ok" and off["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-undo",
 )
 check(
     "  undo_all knows it, fix() takes it",
-    "ssh-forwarding-undo"
-    in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1]
-    and '"ssh-forwarding-off", "ssh-forwarding-undo"'
-    in (REPO / "irate_box/root/security.py").read_text(),
+    "ssh-forwarding-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1]
+    and '"ssh-forwarding-off", "ssh-forwarding-undo"' in (REPO / "irate_box/root/security.py").read_text(),
 )
 
 # The gates: a NOPASSWD rule for an account sshd lets in by
@@ -646,12 +604,7 @@ security.PASSWD_FILE = T / "passwd"
 
 def gate():
     rec = security.load_record()
-    return {
-        f["id"]: f
-        for f in security.sudo_findings(rec)
-        + security.apt_findings(rec)
-        + security.log_findings(rec)
-    }
+    return {f["id"]: f for f in security.sudo_findings(rec) + security.apt_findings(rec) + security.log_findings(rec)}
 
 
 g = gate()
@@ -707,9 +660,7 @@ print(security.fix("apt-signedby:home_mPWRD_OS.gpg", None))
 lst = (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").read_text()
 check(
     "  the key moved to keyrings and named in the source; trusted.gpg.d without it; ok with Undo",
-    lst.startswith(
-        "deb [signed-by=" + str(T / "keyrings" / "home_mPWRD_OS.gpg") + "] http://"
-    )
+    lst.startswith("deb [signed-by=" + str(T / "keyrings" / "home_mPWRD_OS.gpg") + "] http://")
     and (T / "keyrings" / "home_mPWRD_OS.gpg").read_bytes() == b"KEY"
     and not (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists()
     and gate()["apt-trust"]["status"] == "ok",
@@ -724,23 +675,20 @@ check(
 print(security.fix("apt-undo:home_mPWRD_OS.gpg", None))
 check(
     "  undone: both back as they were",
-    (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list")
-    .read_text()
-    .startswith("deb http://")
+    (T / "apt" / "sources.list.d" / "home:mPWRD:OS.list").read_text().startswith("deb http://")
     and (T / "apt" / "trusted.gpg.d" / "home_mPWRD_OS.gpg").exists()
     and not (T / "keyrings" / "home_mPWRD_OS.gpg").exists(),
 )
 
 
 def opt(f, choice):
-    return next((a for a in f["actions"] if a["choice"] == choice), None)  # noqa: E731
+    return next((a for a in f["actions"] if a["choice"] == choice), None)
 
 
 check(
     "logs in RAM (zram on /var/log): warned, In RAM the choice now, the card offered",
     g["logs-ram"]["status"] == "warn"
-    and [(a["label"]["id"], a["on"]) for a in g["logs-ram"]["actions"]]
-    == [("logs.ram", True), ("logs.card", False)]
+    and [(a["label"]["id"], a["on"]) for a in g["logs-ram"]["actions"]] == [("logs.ram", True), ("logs.card", False)]
     and opt(g["logs-ram"], "logs-card"),
 )
 print(security.fix("logs-card", None))
@@ -748,8 +696,7 @@ check(
     "  ramlog off and the journal kept, from the next boot",
     "ENABLED=false" in (T / "ramlog").read_text()
     and "Storage=persistent" in (T / "journald.conf.d" / "irate-box.conf").read_text()
-    and [(a["choice"], a["on"]) for a in gate()["logs-ram"]["actions"]]
-    == [("logs-undo", False), ("logs-card", True)],
+    and [(a["choice"], a["on"]) for a in gate()["logs-ram"]["actions"]] == [("logs-undo", False), ("logs-card", True)],
 )
 (T / "log-on-card").touch()
 check("  on the card: ok", gate()["logs-ram"]["status"] == "ok")
@@ -757,8 +704,7 @@ check("  on the card: ok", gate()["logs-ram"]["status"] == "ok")
 print(security.fix("logs-undo", None))
 check(
     "  undone",
-    "ENABLED=true" in (T / "ramlog").read_text()
-    and not (T / "journald.conf.d" / "irate-box.conf").exists(),
+    "ENABLED=true" in (T / "ramlog").read_text() and not (T / "journald.conf.d" / "irate-box.conf").exists(),
 )
 security.fix("sudo-drop:claude-temp", None)
 security.fix("apt-signedby:home_mPWRD_OS.gpg", None)
@@ -791,9 +737,7 @@ def fake_run(*c, **k):
             n = c[-2].split("hidepid=")[1]
             security.INIT_MOUNTS.write_text(
                 "/dev/mmcblk0p1 / ext4 rw 0 0\n"
-                + plain.replace(
-                    "relatime", "relatime" + ("" if n == "0" else f",hidepid={n}")
-                )
+                + plain.replace("relatime", "relatime" + ("" if n == "0" else f",hidepid={n}"))
             )
         return __import__("types").SimpleNamespace(
             stdout="",
@@ -807,9 +751,7 @@ security.run = fake_run
 
 
 def pf():
-    return {f["id"]: f for f in security.proc_findings(security.load_record())}.get(
-        "proc-hidden"
-    )  # noqa: E731
+    return {f["id"]: f for f in security.proc_findings(security.load_record())}.get("proc-hidden")
 
 
 f = pf()
@@ -839,14 +781,12 @@ check(
 )
 check(
     "  and at each boot: /etc/fstab gains its line, every other line kept as it was",
-    security.FSTAB.read_text()
-    == FSTAB0 + security.PROC_MARK + "\n" + security.PROC_LINE + "\n",
+    security.FSTAB.read_text() == FSTAB0 + security.PROC_MARK + "\n" + security.PROC_LINE + "\n",
     security.FSTAB.read_text(),
 )
 check(
     "  its line keeps the options systemd mounts /proc with (nosuid, nodev, noexec), never defaults, which turn them off at boot",
-    security.PROC_LINE.split()[3].split(",")
-    == ["nosuid", "nodev", "noexec", "hidepid=2"],
+    security.PROC_LINE.split()[3].split(",") == ["nosuid", "nodev", "noexec", "hidepid=2"],
     security.PROC_LINE,
 )
 f = pf()
@@ -854,14 +794,12 @@ check(
     "  ok now, said as set here, with Undo offered",
     f["status"] == "ok"
     and f["notes"][0]["id"] == "proc.set-here"
-    and [(a["choice"], a["on"]) for a in f["actions"]]
-    == [("proc-undo", False), ("proc-hide", True)],
+    and [(a["choice"], a["on"]) for a in f["actions"]] == [("proc-undo", False), ("proc-hide", True)],
     f,
 )
 check(
     "  pressed again: nothing changed, said so",
-    security.fix("proc-hide", None)["id"] == "security-fix.proc.already"
-    and len(mounts) == 1,
+    security.fix("proc-hide", None)["id"] == "security-fix.proc.already" and len(mounts) == 1,
 )
 security.fix("proc-undo", None)
 check(
@@ -904,8 +842,7 @@ security.fix("proc-hide", None)
 security.undo_all()
 check(
     "undo_all puts process visibility back too",
-    security.FSTAB.read_text() == withproc
-    and "hidepid" not in security.INIT_MOUNTS.read_text(),
+    security.FSTAB.read_text() == withproc and "hidepid" not in security.INIT_MOUNTS.read_text(),
 )
 security.INIT_MOUNTS.unlink()
 check(

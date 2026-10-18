@@ -13,6 +13,7 @@ Policy); this is the first of the two locks, not the only one.
 
 Markdown (.md, .markdown) is rendered with Python-Markdown; anything else is shown as text.
 """
+
 import html
 import re
 import sys
@@ -38,7 +39,9 @@ def markdown_html(text):
                         continue
                     # Browsers drop tabs, newlines and controls inside a scheme: java\tscript: is javascript:.
                     v = re.sub(r"[\x00-\x20\x7f]", "", v)
-                    if BAD_SCHEME.match(v) and not (attr == "src" and re.match(r"^data:image/(png|gif|jpeg|webp);", v, re.I)):
+                    if BAD_SCHEME.match(v) and not (
+                        attr == "src" and re.match(r"^data:image/(png|gif|jpeg|webp);", v, re.I)
+                    ):
                         el.set(attr, "#")
                 if el.tag == "a" and el.get("href", "").startswith(("http://", "https://")):
                     el.set("rel", "nofollow noopener noreferrer")

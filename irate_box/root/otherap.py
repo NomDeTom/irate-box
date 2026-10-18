@@ -12,6 +12,7 @@ Records: /etc/hub/other-ap.json ({uuid: {name, ssid, choice: removed|left, kept,
 profiles kept in ROOT_STATE/other-ap/ (root's, beside $STATE; older ones in STATE/other-ap/, read
 only through safeio's checks). Root only; stdlib only.
 """
+
 import json
 import os
 import re
@@ -27,7 +28,7 @@ ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 RECORD = ETC / "other-ap.json"
 KEPT = safeio.ROOT_STATE / "other-ap"
-OLD_KEPT = STATE / "other-ap"   # before 2026-10: the hub owns $STATE and could swap this folder
+OLD_KEPT = STATE / "other-ap"  # before 2026-10: the hub owns $STATE and could swap this folder
 KEYFILES = Path(os.environ.get("HUB_NM_CONNECTIONS", "/etc/NetworkManager/system-connections"))
 OURS = "irate-box-ap"
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -54,7 +55,7 @@ def record():
 def _save(rec):
     ETC.mkdir(parents=True, exist_ok=True)
     if rec:
-        safeio.write(RECORD, json.dumps(rec, indent=1), 0o644)   # names and choices only: the page reads it
+        safeio.write(RECORD, json.dumps(rec, indent=1), 0o644)  # names and choices only: the page reads it
     else:
         RECORD.unlink(missing_ok=True)
 
@@ -63,7 +64,9 @@ def _profile(uuid):
     """(name, ssid, file) of an access-point profile that is not irate-box's, or Refused saying why not."""
     if not isinstance(uuid, str) or not UUID_RE.match(uuid):
         raise Refused(M("other-ap.request.uuid", "The request is not valid: the connection ID is not a UUID."))
-    code, out = run("nmcli", "-t", "-f", "connection.id,802-11-wireless.mode,802-11-wireless.ssid", "con", "show", "uuid", uuid)
+    code, out = run(
+        "nmcli", "-t", "-f", "connection.id,802-11-wireless.mode,802-11-wireless.ssid", "con", "show", "uuid", uuid
+    )
     if code != 0:
         raise Refused(M("other-ap.not-found", "NetworkManager has no connection profile with this ID."))
     kv = dict(line.partition(":")[::2] for line in out.splitlines())
@@ -72,7 +75,7 @@ def _profile(uuid):
     if kv.get("connection.id") == OURS:
         raise Refused(M("other-ap.ours", "This profile is the hotspot of irate-box. Switch it off on the Hotspot tab."))
     code, out = run("nmcli", "-t", "-f", "UUID,FILENAME", "con", "show")
-    f = next((l.partition(":")[2] for l in out.splitlines() if l.startswith(uuid + ":")), "")
+    f = next((ln.partition(":")[2] for ln in out.splitlines() if ln.startswith(uuid + ":")), "")
     return kv.get("connection.id"), kv.get("802-11-wireless.ssid"), f
 
 
@@ -80,8 +83,15 @@ def remove(uuid):
     name, ssid, f = _profile(uuid)
     src = Path(f)
     if not f or not src.is_relative_to(KEYFILES) or not src.is_file():
-        raise Refused(M("other-ap.remove.no-file", "{name} is not a profile file in {folder}, so the box cannot keep a copy to restore it. "
-                     "The box removed nothing.", name=name, folder=str(KEYFILES)))
+        raise Refused(
+            M(
+                "other-ap.remove.no-file",
+                "{name} is not a profile file in {folder}, so the box cannot keep a copy to restore it. "
+                "The box removed nothing.",
+                name=name,
+                folder=str(KEYFILES),
+            )
+        )
     safeio.root_dir("other-ap")
     kept = KEPT / f"{time.strftime('%Y%m%d-%H%M%S')}-{src.name}"
     shutil.copy2(src, kept)
@@ -90,10 +100,22 @@ def remove(uuid):
         kept.unlink(missing_ok=True)
         raise Refused(M("other-ap.remove.nmcli", "nmcli did not delete the profile: {detail}", detail=out[-200:]))
     rec = record()
-    rec[uuid] = {"name": name, "ssid": ssid, "choice": "removed", "kept": str(kept), "file": str(src), "at": time.time()}
+    rec[uuid] = {
+        "name": name,
+        "ssid": ssid,
+        "choice": "removed",
+        "kept": str(kept),
+        "file": str(src),
+        "at": time.time(),
+    }
     _save(rec)
-    return M("other-ap.removed", "The box deleted the profile {name} ({ssid}). It keeps a copy in {kept}. Restore profile brings it back.",
-             name=name, ssid=ssid, kept=str(kept))
+    return M(
+        "other-ap.removed",
+        "The box deleted the profile {name} ({ssid}). It keeps a copy in {kept}. Restore profile brings it back.",
+        name=name,
+        ssid=ssid,
+        kept=str(kept),
+    )
 
 
 def leave(uuid):
@@ -101,8 +123,12 @@ def leave(uuid):
     rec = record()
     rec[uuid] = {"name": name, "ssid": ssid, "choice": "left", "at": time.time()}
     _save(rec)
-    return M("other-ap.ignored", "The box ignores {name} ({ssid}) and no longer lists it. The doctor still warns if the profile starts by itself.",
-             name=name, ssid=ssid)
+    return M(
+        "other-ap.ignored",
+        "The box ignores {name} ({ssid}) and no longer lists it. The doctor still warns if the profile starts by itself.",
+        name=name,
+        ssid=ssid,
+    )
 
 
 def forget(uuid):
@@ -118,7 +144,7 @@ def forget(uuid):
         try:
             fd = safeio.own_dir(OLD_KEPT)
         except OSError:
-            fd = None   # gone, or not root's folder now: nothing of root's to delete there
+            fd = None  # gone, or not root's folder now: nothing of root's to delete there
         if fd is not None:
             try:
                 os.unlink(kept.name, dir_fd=fd)
@@ -128,7 +154,11 @@ def forget(uuid):
                 os.close(fd)
     rec.pop(uuid)
     _save(rec)
-    return M("other-ap.forgotten", "The box deleted the retained copy of {name}. You cannot restore the profile now.", name=r["name"])
+    return M(
+        "other-ap.forgotten",
+        "The box deleted the retained copy of {name}. You cannot restore the profile now.",
+        name=r["name"],
+    )
 
 
 def undo(uuid):
@@ -139,7 +169,13 @@ def undo(uuid):
     if r["choice"] == "removed":
         dest = Path(r["file"])
         if dest.exists():
-            raise Refused(M("other-ap.undo.exists", "{file} exists already, so the box did not restore the profile.", file=str(dest)))
+            raise Refused(
+                M(
+                    "other-ap.undo.exists",
+                    "{file} exists already, so the box did not restore the profile.",
+                    file=str(dest),
+                )
+            )
         kept = Path(r["kept"])
         try:
             if kept.parent == KEPT:
@@ -149,13 +185,25 @@ def undo(uuid):
             else:
                 raise OSError("not a kept copy")
         except OSError as e:
-            raise Refused(M("other-ap.undo.kept", "The box could not read the retained copy {kept}: {detail}",
-                            kept=str(kept), detail=str(e)))
+            raise Refused(
+                M(
+                    "other-ap.undo.kept",
+                    "The box could not read the retained copy {kept}: {detail}",
+                    kept=str(kept),
+                    detail=str(e),
+                )
+            ) from e
         try:
             with safeio.create(dest, 0o600) as fh:
                 fh.write(data)
-        except FileExistsError:
-            raise Refused(M("other-ap.undo.exists", "{file} exists already, so the box did not restore the profile.", file=str(dest)))
+        except FileExistsError as exc:
+            raise Refused(
+                M(
+                    "other-ap.undo.exists",
+                    "{file} exists already, so the box did not restore the profile.",
+                    file=str(dest),
+                )
+            ) from exc
         code, out = run("nmcli", "con", "load", str(dest))
         if code != 0:
             dest.unlink(missing_ok=True)

@@ -46,7 +46,7 @@ def _save(rec):
 
 
 def _profile():
-    prof = uplink._uplink_profile()   # ValueError when NetworkManager does not run the link
+    prof = uplink._uplink_profile()  # ValueError when NetworkManager does not run the link
     return prof
 
 
@@ -68,26 +68,54 @@ def lock(bssid, run=None):
     if not cur:
         code, out = run("nmcli", "-g", "802-11-wireless.bssid", "con", "show", "uuid", prof["uuid"])
         if code:
-            raise Refused(M("roaming.profile.unreadable", "The box could not read the connection profile {name}. "
-                            "NetworkManager reported: {output}", name=prof["name"], output=out.strip()))
+            raise Refused(
+                M(
+                    "roaming.profile.unreadable",
+                    "The box could not read the connection profile {name}. NetworkManager reported: {output}",
+                    name=prof["name"],
+                    output=out.strip(),
+                )
+            )
         old = out.strip().replace("\\:", ":")
     else:
         old = cur["old"]
     code, out = run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", bssid)
     if code:
-        raise Refused(M("roaming.lock.failed", "The box could not lock the connection profile {name} to the access point "
-                        "{bssid}. NetworkManager reported: {output}", name=prof["name"], bssid=bssid, output=out.strip()))
+        raise Refused(
+            M(
+                "roaming.lock.failed",
+                "The box could not lock the connection profile {name} to the access point "
+                "{bssid}. NetworkManager reported: {output}",
+                name=prof["name"],
+                bssid=bssid,
+                output=out.strip(),
+            )
+        )
     code, out = run("nmcli", "-w", "45", "con", "up", "uuid", prof["uuid"], timeout=60)
     if code:
         # Back to what was in force before this call: the lock there was, or the profile's own value.
         run("nmcli", "con", "modify", "uuid", prof["uuid"], "802-11-wireless.bssid", cur["bssid"] if cur else old)
         run("nmcli", "-w", "45", "con", "up", "uuid", prof["uuid"], timeout=60)
         if cur:
-            raise Refused(M("roaming.lock.no-answer-kept", "The access point {bssid} did not answer. The connection profile is "
-                            "still locked to {old}. The box restored the WiFi link settings. NetworkManager reported: {output}",
-                            bssid=bssid, old=cur["bssid"], output=out.strip()[-160:]))
-        raise Refused(M("roaming.lock.no-answer", "The access point {bssid} did not answer. The box removed the lock and restored "
-                        "the WiFi link settings. NetworkManager reported: {output}", bssid=bssid, output=out.strip()[-160:]))
+            raise Refused(
+                M(
+                    "roaming.lock.no-answer-kept",
+                    "The access point {bssid} did not answer. The connection profile is "
+                    "still locked to {old}. The box restored the WiFi link settings. NetworkManager reported: {output}",
+                    bssid=bssid,
+                    old=cur["bssid"],
+                    output=out.strip()[-160:],
+                )
+            )
+        raise Refused(
+            M(
+                "roaming.lock.no-answer",
+                "The access point {bssid} did not answer. The box removed the lock and restored "
+                "the WiFi link settings. NetworkManager reported: {output}",
+                bssid=bssid,
+                output=out.strip()[-160:],
+            )
+        )
     rec["lock"] = {"uuid": prof["uuid"], "name": prof["name"], "bssid": bssid, "old": old, "at": time.time()}
     _save(rec)
     return f"{prof['name']}: locked to {bssid}. The box does not roam and does not scan in the background until you unlock it"
@@ -101,8 +129,14 @@ def unlock(run=None):
         return "not locked"
     code, out = run("nmcli", "con", "modify", "uuid", cur["uuid"], "802-11-wireless.bssid", cur.get("old") or "")
     if code and "not exist" not in out and "unknown connection" not in out.lower():
-        raise Refused(M("roaming.unlock.failed", "The box could not unlock the connection profile {name}. "
-                        "NetworkManager reported: {output}", name=cur["name"], output=out.strip()))
+        raise Refused(
+            M(
+                "roaming.unlock.failed",
+                "The box could not unlock the connection profile {name}. NetworkManager reported: {output}",
+                name=cur["name"],
+                output=out.strip(),
+            )
+        )
     _save(rec)
     # Not reconnected here: the next connection is free to roam again; the page says so.
     return f"{cur['name']}: unlocked from {cur['bssid']} (the link can roam again from its next connection)"
@@ -140,8 +174,9 @@ def no_scan(on, iface, run=None):
         rec["no-scan"] = rec.get("no-scan") or {"at": time.time()}
         _save(rec)
         said = clear_scan(iface, run)
-        return "no background scans while the hotspot shares the radio" + (f": {said}" if said else
-                                                                           " (it does not share it now: nothing to change yet)")
+        return "no background scans while the hotspot shares the radio" + (
+            f": {said}" if said else " (it does not share it now: nothing to change yet)"
+        )
     cur = rec.pop("no-scan", None)
     _save(rec)
     if not cur:
@@ -160,8 +195,9 @@ def apply(new, old, iface, run=None):
         said.append(unlock(run))
     if old.get("roaming") == "no-scan" and new.get("roaming") != "no-scan":
         said.append(no_scan(False, iface, run))
-    if new.get("roaming") == "lock" and (old.get("roaming") != "lock" or old.get("lock_bssid") != new.get("lock_bssid")
-                                         or "lock" not in record()):
+    if new.get("roaming") == "lock" and (
+        old.get("roaming") != "lock" or old.get("lock_bssid") != new.get("lock_bssid") or "lock" not in record()
+    ):
         said.append(lock(new["lock_bssid"], run))
     if new.get("roaming") == "no-scan" and (old.get("roaming") != "no-scan" or "no-scan" not in record()):
         said.append(no_scan(True, iface, run))

@@ -6,31 +6,52 @@ following the newest, falls back as it says when the newest does not fetch, adap
 Network, cloning and the root helper are stood in for. The real fetch of the pinned commit
 from github.com/anthay/ELIZA was checked by hand (librarian app-fetch eliza).
 python3 tests/sim_pin.py"""
-import os, sys, tempfile
+
+import os
+import sys
+import tempfile
 from pathlib import Path
-T = Path(tempfile.mkdtemp(prefix="pin-")); (T / "library").mkdir()
+
+T = Path(tempfile.mkdtemp(prefix="pin-"))
+(T / "library").mkdir()
 os.environ["HUB_STATE_DIR"] = str(T)
 os.environ["HUB_SHARE_DIR"] = str(T / "share")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # ELIZA is a local add-on (from the catalogue): added as /admin adds it, before the librarian reads its apps.
 (T / "apps.d").mkdir()
 (T / "apps.d" / "eliza.json").write_text((Path(__file__).resolve().parents[1] / "addons" / "eliza.json").read_text())
-from irate_box.library import librarian as L  # noqa: E402
+from irate_box.library import librarian as L
+
 REAL_QUEUE = L._queue_root
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
 
 PIN = L.APPS["eliza"]["source"]["pin"]
 NEW = "b" * 40
 world = {"head": NEW, "bad": set(), "offline": False}
 fetched, queued = [], []
+
+
 def resolve(src):
     if world["offline"]:
         raise L.LibrarianError("cannot reach github.com")
-    return {"version": f"git-{world['head']}", "url": src["repo"], "size": 0, "zip": False,
-            "commit": world["head"], "label": f"master at {world['head'][:7]}", "auth": None}
+    return {
+        "version": f"git-{world['head']}",
+        "url": src["repo"],
+        "size": 0,
+        "zip": False,
+        "commit": world["head"],
+        "label": f"master at {world['head'][:7]}",
+        "auth": None,
+    }
+
+
 def fetch_app(src, cand):
     if world["offline"]:
         raise L.LibrarianError("cannot reach github.com")
@@ -40,36 +61,62 @@ def fetch_app(src, cand):
     (L.APP_STAGING).mkdir(parents=True, exist_ok=True)
     (L.APP_STAGING / f"{src['name']}.zip").write_bytes(b"zip")
     return L.APP_STAGING / f"{src['name']}.zip", {"commit": cand["commit"]}
+
+
 def queue(req):
-    queued.append(req); return "r1"
+    queued.append(req)
+    return "r1"
+
+
 def install_local(name, zip_path):  # a local add-on installs itself (no root helper): stood in too
-    queued.append({"action": "install-local", "app": name}); return f"{name}: installed"
+    queued.append({"action": "install-local", "app": name})
+    return f"{name}: installed"
+
+
 L.resolve, L.fetch_app, L._queue_root, L.install_local = resolve, fetch_app, queue, install_local
 
+
 def installed(commit):
-    d = L.app_dir("eliza"); d.mkdir(parents=True, exist_ok=True)
+    d = L.app_dir("eliza")
+    d.mkdir(parents=True, exist_ok=True)
     (d / L.BUNDLE_JSON).write_text(f'{{"app": "eliza", "commit": "{commit}", "ref": "x"}}')
+
+
 def run(mode="update"):
-    fetched.clear(); queued.clear()
+    fetched.clear()
+    queued.clear()
     return L.update(["eliza"], mode=mode, log=lambda *_: None)["eliza"], L.load_status()["eliza"]
+
 
 L.add_source(L.default_app_source("eliza"))
 src = L.load_config()["sources"][0]
 check("a new source follows the pin", src.get("follow") == "pinned", src)
 
 out, st = run("check")
-check("check records the newest and the pinned", st["latest"]["version"] == f"git-{NEW}" and st["pinned"]["version"] == f"git-{PIN}", st)
+check(
+    "check records the newest and the pinned",
+    st["latest"]["version"] == f"git-{NEW}" and st["pinned"]["version"] == f"git-{PIN}",
+    st,
+)
 check("check says the newer is not followed", "newer, not followed" in out, out)
 
 out, st = run()
 check("following the pin, nothing installed: installs the pin", fetched == [PIN] and queued, (out, fetched))
 installed(PIN)
 out, st = run()
-check("the pin installed: up to date, newer reported", out.startswith("up to date") and "newer, not followed" in out and not fetched, out)
+check(
+    "the pin installed: up to date, newer reported",
+    out.startswith("up to date") and "newer, not followed" in out and not fetched,
+    out,
+)
 
 world["offline"] = True
 out, st = run()
-check("offline, pin installed: up to date, the newest unknown", out.startswith("up to date") and "not known" in out and "error" not in st, (out, st.get("error")))
+check(
+    "offline, pin installed: up to date, the newest unknown",
+    out.startswith("up to date") and "not known" in out and "error" not in st,
+    (out, st.get("error")),
+)
 world["offline"] = False
 
 L.add_source(dict(src, follow="latest"))
@@ -84,13 +131,20 @@ check("the newest fails, a build installed: keeps it", "keeping bbbbbbb" in out 
 check("the failure is recorded", st.get("latest_failed", {}).get("version") == f"git-{NEWER}", st)
 
 import shutil
+
 shutil.rmtree(L.app_dir("eliza"))
 out, st = run()
-check("the newest fails, nothing installed: installs the pin", fetched == [PIN] and queued and "failed" in out, (out, fetched))
+check(
+    "the newest fails, nothing installed: installs the pin",
+    fetched == [PIN] and queued and "failed" in out,
+    (out, fetched),
+)
 
 world["bad"] = set()
 out, st = run()
-check("the newest works again: installs it, failure cleared", fetched == [NEWER] and "latest_failed" not in st, (out, st))
+check(
+    "the newest works again: installs it, failure cleared", fetched == [NEWER] and "latest_failed" not in st, (out, st)
+)
 
 try:
     L.add_source({"name": "tools", "kind": "app", "type": "git", "follow": "pinned"})
@@ -100,17 +154,24 @@ except L.LibrarianError:
 
 # Queuing for the root helper as the box lays it out: control/ is root's and the hub
 # can't write in it; only control/requests/ is the hub's. The request must still arrive whole.
-import json, stat  # noqa: E402
+import json
+import stat
+
 C = T / "control"
 (C / "requests").mkdir(parents=True, exist_ok=True)
 C.chmod(0o550)
 try:
     rid = REAL_QUEUE({"action": "app-install", "app": "eliza", "zip": "/x.zip"})
     got = json.loads((C / "requests" / f"{rid}.json").read_text())
-    check("a root request is queued with control/ not writable (root's, F3)", got == {"action": "app-install", "app": "eliza", "zip": "/x.zip", "id": rid}
-          or os.geteuid() == 0, got)
-    check("  written private, nothing left behind", stat.S_IMODE((C / "requests" / f"{rid}.json").stat().st_mode) == 0o600
-          and not list(T.glob(".request-*.tmp")))
+    check(
+        "a root request is queued with control/ not writable (root's, F3)",
+        got == {"action": "app-install", "app": "eliza", "zip": "/x.zip", "id": rid} or os.geteuid() == 0,
+        got,
+    )
+    check(
+        "  written private, nothing left behind",
+        stat.S_IMODE((C / "requests" / f"{rid}.json").stat().st_mode) == 0o600 and not list(T.glob(".request-*.tmp")),
+    )
 except OSError as exc:
     check("a root request is queued with control/ not writable (root's, F3)", False, exc)
 finally:

@@ -8,6 +8,7 @@ Here, not in root/, because the hub cannot read root's code.
                        checking every package name against the box's package lists
   extra tools          <kits root>/owner/extras.json, {shipped kit: [package, ...]}, likewise:
                        added to that kit's packages"""
+
 import json
 import os
 import re
@@ -53,8 +54,12 @@ def packages_for(kit, arch, fetching=False):
     return [p for p in names if p not in skip], sorted(skip)
 
 
-WHY = {"pci": "no PCI", "smart-disk": "no disk that reports SMART", "apparmor": "no AppArmor in the kernel",
-       "no-sysctl-defaults": "already in place"}
+WHY = {
+    "pci": "no PCI",
+    "smart-disk": "no disk that reports SMART",
+    "apparmor": "no AppArmor in the kernel",
+    "no-sysctl-defaults": "already in place",
+}
 
 
 def why_left_out(kit, left):
@@ -67,12 +72,22 @@ def why_left_out(kit, left):
 
 
 def _ok(k, stem):
-    return (isinstance(k, dict) and ID_RE.match(str(k.get("id", ""))) and k["id"] == stem
-            and isinstance(k.get("packages"), list) and k["packages"] and all(isinstance(p, str) and PKG_RE.match(p) for p in k["packages"])
-            and isinstance(k.get("needs_64bit", []), list) and all(p in k["packages"] for p in k.get("needs_64bit", []))
-            and isinstance(k.get("pip", []), list) and all(isinstance(p, str) and PIP_RE.match(p) for p in k.get("pip", []))
-            and isinstance(k.get("alternatives", []), list) and all(isinstance(p, str) and PKG_RE.match(p) and p not in k["packages"] for p in k.get("alternatives", []))
-            and isinstance(k.get("only_where", {}), dict) and all(p in k["packages"] and c in CONDITIONS for p, c in k.get("only_where", {}).items()))
+    return (
+        isinstance(k, dict)
+        and ID_RE.match(str(k.get("id", "")))
+        and k["id"] == stem
+        and isinstance(k.get("packages"), list)
+        and k["packages"]
+        and all(isinstance(p, str) and PKG_RE.match(p) for p in k["packages"])
+        and isinstance(k.get("needs_64bit", []), list)
+        and all(p in k["packages"] for p in k.get("needs_64bit", []))
+        and isinstance(k.get("pip", []), list)
+        and all(isinstance(p, str) and PIP_RE.match(p) for p in k.get("pip", []))
+        and isinstance(k.get("alternatives", []), list)
+        and all(isinstance(p, str) and PKG_RE.match(p) and p not in k["packages"] for p in k.get("alternatives", []))
+        and isinstance(k.get("only_where", {}), dict)
+        and all(p in k["packages"] and c in CONDITIONS for p, c in k.get("only_where", {}).items())
+    )
 
 
 def _load(path):

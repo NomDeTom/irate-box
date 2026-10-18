@@ -44,7 +44,6 @@ import fcntl
 import json
 import os
 import re
-import shutil
 import stat
 import struct
 import subprocess
@@ -61,8 +60,8 @@ CONFIG = ETC / "rtc.json"
 FOUND = STATE / "control" / "rtc-find.json"
 STATUS = STATE / "control" / "rtc-status.json"
 RUN = Path(os.environ.get("HUB_RUN_DIR", "/run/irate-box"))
-TRUSTED = RUN / "clock-trusted"      # health.py writes it when the owner sets the clock
-FROM_RTC = RUN / "clock-from-rtc"    # this boot's clock came from the module
+TRUSTED = RUN / "clock-trusted"  # health.py writes it when the owner sets the clock
+FROM_RTC = RUN / "clock-from-rtc"  # this boot's clock came from the module
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 CODE = Path(__file__).resolve().parents[2]  # irate_box/root/rtc.py → the checkout, whose launcher the units run
 FAKE = os.environ.get("HUB_RTC_FAKE")
@@ -75,7 +74,11 @@ CHIPS = {
     "ds3231": ("DS3231 (temperature-compensated)", [("ds3231", "rtc_ds1307")], True),
     "ds1307": ("DS1307", [("ds1307", "rtc_ds1307")], True),
     "mcp7940x": ("MCP7940N", [("mcp7940x", "rtc_ds1307")], True),
-    "rv8803": ("RV-8803 / RX-8900 (Epson RX-8803, RX-8804)", [("rv8803", "rtc_rv8803"), ("rx8900", "rtc_rv8803")], True),
+    "rv8803": (
+        "RV-8803 / RX-8900 (Epson RX-8803, RX-8804)",
+        [("rv8803", "rtc_rv8803"), ("rx8900", "rtc_rv8803")],
+        True,
+    ),
     "rx8130": ("RX8130CE", [("rx8130", "rtc_ds1307")], True),  # rtc-ds1307 knows it in newer kernels only
     "pcf8563": ("PCF8563 / HYM8563", [("pcf8563", "rtc_pcf8563"), ("hym8563", "rtc_hym8563")], True),
     "pcf8523": ("PCF8523", [("pcf8523", "rtc_pcf8523")], False),
@@ -93,6 +96,7 @@ class RtcError(Exception):
 
 
 # --- I2C --------------------------------------------------------------------------------------------
+
 
 class I2C:
     """Register access to one address on one bus: write the register number, then read on."""
@@ -162,6 +166,7 @@ def buses():
 
 # --- reading and writing the time ---------------------------------------------------------------------
 
+
 def bcd(b):
     return (b >> 4) * 10 + (b & 0x0F)
 
@@ -179,9 +184,17 @@ def onehot(b):
 
 
 # Where each chip keeps the time: (offset of seconds, weekday style)
-LAYOUT = {"ds3231": (0x00, "bcd1"), "ds1307": (0x00, "bcd1"), "mcp7940x": (0x00, "bcd1"),
-          "rv8803": (0x00, "onehot"), "rx8130": (0x10, "onehot"), "pcf8563": (0x02, "bcd0"),
-          "pcf8523": (0x03, "bcd0"), "pcf85063": (0x04, "bcd0"), "rv3028": (0x00, "bcd0")}
+LAYOUT = {
+    "ds3231": (0x00, "bcd1"),
+    "ds1307": (0x00, "bcd1"),
+    "mcp7940x": (0x00, "bcd1"),
+    "rv8803": (0x00, "onehot"),
+    "rx8130": (0x10, "onehot"),
+    "pcf8563": (0x02, "bcd0"),
+    "pcf8523": (0x03, "bcd0"),
+    "pcf85063": (0x04, "bcd0"),
+    "rv3028": (0x00, "bcd0"),
+}
 
 
 def _fields(chip, r):
@@ -205,8 +218,14 @@ def decode(chip, r):
         hour = bcd(hr & 0x3F)
     mon_v = bcd(mon & 0x1F)
     year = 2000 + bcd(yr)
-    if not (bcd_ok(sec, 0, 59) and bcd_ok(mn, 0, 59) and 0 <= hour <= 23 and bcd_ok(day & 0x3F, 1, 31)
-            and 1 <= mon_v <= 12 and bcd_ok(yr, 0, 99)):
+    if not (
+        bcd_ok(sec, 0, 59)
+        and bcd_ok(mn, 0, 59)
+        and 0 <= hour <= 23
+        and bcd_ok(day & 0x3F, 1, 31)
+        and 1 <= mon_v <= 12
+        and bcd_ok(yr, 0, 99)
+    ):
         return None, "the time registers hold no valid date"
     try:
         return calendar.timegm((year, mon_v, bcd(day & 0x3F), hour, bcd(mn), bcd(sec), 0, 0, 0)), None
@@ -259,12 +278,18 @@ def notes(chip, dev):
     if chip == "rx8130":
         c1 = dev.read(0x1F, 1)[0]
         if not c1 & 0x10:
-            out.append("the battery backup switch (INIEN) is off. The module loses the time at every power cut until it is set up")
+            out.append(
+                "the battery backup switch (INIEN) is off. The module loses the time at every power cut until it is set up"
+            )
         if c1 & 0x20:
-            out.append("backup charging (CHGEN) is enabled. Charging suits a supercapacitor or a rechargeable cell. "
-                       "Charging a CR2032 coin cell is a hazard. The box never changes charging")
+            out.append(
+                "backup charging (CHGEN) is enabled. Charging suits a supercapacitor or a rechargeable cell. "
+                "Charging a CR2032 coin cell is a hazard. The box never changes charging"
+            )
     elif chip == "ds3231" and dev.read(0x0E, 1)[0] & 0x80:
-        out.append("its oscillator is set to stop on battery (EOSC). The module loses the time at every power cut until it is set up")
+        out.append(
+            "its oscillator is set to stop on battery (EOSC). The module loses the time at every power cut until it is set up"
+        )
     return out
 
 
@@ -319,6 +344,7 @@ def prepare_user(chip, dev):
 
 # --- finding a module -----------------------------------------------------------------------------------
 
+
 def _time_ok(regs, off, wd_style):
     sec, mn, hr = regs[off] & 0x7F, regs[off + 1] & 0x7F, regs[off + 2] & 0x3F
     if wd_style.startswith("nxp"):
@@ -326,15 +352,29 @@ def _time_ok(regs, off, wd_style):
         wd_ok = wd <= 6
     else:
         wd, day, mon, yr = regs[off + 3], regs[off + 4] & 0x3F, regs[off + 5] & 0x1F, regs[off + 6]
-        wd_ok = (onehot(wd & 0x7F) if wd_style == "onehot" else (wd & 0x07) <= 6 if wd_style == "wd0"
-                 else 1 <= (wd & 0x07) <= 7)
-    return (bcd_ok(sec, 0, 59) and bcd_ok(mn, 0, 59) and (bcd_ok(hr, 0, 23) or hr & 0x40) and bcd_ok(day, 1, 31)
-            and bcd_ok(mon, 1, 12) and bcd_ok(yr, 0, 99) and wd_ok)
+        wd_ok = (
+            onehot(wd & 0x7F)
+            if wd_style == "onehot"
+            else (wd & 0x07) <= 6
+            if wd_style == "wd0"
+            else 1 <= (wd & 0x07) <= 7
+        )
+    return (
+        bcd_ok(sec, 0, 59)
+        and bcd_ok(mn, 0, 59)
+        and (bcd_ok(hr, 0, 23) or hr & 0x40)
+        and bcd_ok(day, 1, 31)
+        and bcd_ok(mon, 1, 12)
+        and bcd_ok(yr, 0, 99)
+        and wd_ok
+    )
 
 
 # What prepare_user did, for setup to say.
-PREPARED = {"inien": M("rtc-module.prepared.inien", "The box enabled the module's battery backup (INIEN)."),
-            "eosc": M("rtc-module.prepared.eosc", "The box set the module's oscillator to run on battery (EOSC cleared).")}
+PREPARED = {
+    "inien": M("rtc-module.prepared.inien", "The box enabled the module's battery backup (INIEN)."),
+    "eosc": M("rtc-module.prepared.eosc", "The box set the module's oscillator to run on battery (EOSC cleared)."),
+}
 
 
 def _time_lost_ok(regs, off):
@@ -439,9 +479,18 @@ def find():
                 dev.close()
             for chip in chips:
                 drv = kernel_driver(chip)
-                out["found"].append({"bus": bus, "addr": f"{addr:#04x}", "chip": chip, "label": CHIPS[chip][0],
-                                     "ambiguous": len(chips) > 1, "kernel": drv and f"{drv['module']} ({drv['kind']})",
-                                     "supported": bool(drv) or CHIPS[chip][2], "time_lost": lost.get(chip)})
+                out["found"].append(
+                    {
+                        "bus": bus,
+                        "addr": f"{addr:#04x}",
+                        "chip": chip,
+                        "label": CHIPS[chip][0],
+                        "ambiguous": len(chips) > 1,
+                        "kernel": drv and f"{drv['module']} ({drv['kind']})",
+                        "supported": bool(drv) or CHIPS[chip][2],
+                        "time_lost": lost.get(chip),
+                    }
+                )
     STATUS.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(FOUND, json.dumps(out, indent=2))  # control/: never through a link
     os.chmod(FOUND, 0o644)
@@ -457,6 +506,7 @@ def _bound_driver(bus, addr):
 
 
 # --- the configured module ---------------------------------------------------------------------------------
+
 
 def load_config():
     try:
@@ -476,14 +526,21 @@ def kernel_rtc_dev(cfg):
         try:
             Path(f"/sys/bus/i2c/devices/i2c-{bus}/new_device").write_text(f"{drv['name']} {addr:#04x}")
         except OSError as exc:
-            raise RtcError(M("rtc-module.kernel-refused", "The kernel did not accept the module: {detail}.", detail=str(exc)))
+            raise RtcError(
+                M("rtc-module.kernel-refused", "The kernel did not accept the module: {detail}.", detail=str(exc))
+            ) from exc
     for _ in range(30):
         rtcs = list(node.glob("rtc/rtc*"))
         if rtcs:
             return Path("/dev") / rtcs[0].name
         time.sleep(0.1)
-    raise RtcError(M("rtc-module.no-kernel-clock", "The kernel driver did not register a clock for the module. "
-                                                    "Check that the module is wired to that bus and address."))
+    raise RtcError(
+        M(
+            "rtc-module.no-kernel-clock",
+            "The kernel driver did not register a clock for the module. "
+            "Check that the module is wired to that bus and address.",
+        )
+    )
 
 
 def read_module(cfg):
@@ -494,12 +551,23 @@ def read_module(cfg):
         try:
             return int((Path("/sys/class/rtc") / dev.name / "since_epoch").read_text()), None, []
         except OSError:
-            return None, "the kernel driver cannot read a valid time from it (its time was never set, or it lost power)", []
+            return (
+                None,
+                "the kernel driver cannot read a valid time from it (its time was never set, or it lost power)",
+                [],
+            )
     try:
         dev = open_i2c(cfg["bus"], int(cfg["addr"], 16))
     except OSError as exc:
-        raise RtcError(M("rtc-module.unreachable", "The box cannot reach the module on bus {bus} at {addr}: {detail}.",
-                         bus=cfg["bus"], addr=cfg["addr"], detail=str(exc.strerror or exc)))
+        raise RtcError(
+            M(
+                "rtc-module.unreachable",
+                "The box cannot reach the module on bus {bus} at {addr}: {detail}.",
+                bus=cfg["bus"],
+                addr=cfg["addr"],
+                detail=str(exc.strerror or exc),
+            )
+        ) from exc
     try:
         epoch, why = read_user(chip, dev)
         return epoch, why, notes(chip, dev)
@@ -512,8 +580,18 @@ def write_module(cfg, epoch):
     if cfg["mode"] == "kernel":
         dev = kernel_rtc_dev(cfg)
         t = time.gmtime(epoch)
-        tm = struct.pack("9i", t.tm_sec, t.tm_min, t.tm_hour, t.tm_mday, t.tm_mon - 1, t.tm_year - 1900,
-                         (t.tm_wday + 1) % 7, t.tm_yday - 1, 0)
+        tm = struct.pack(
+            "9i",
+            t.tm_sec,
+            t.tm_min,
+            t.tm_hour,
+            t.tm_mday,
+            t.tm_mon - 1,
+            t.tm_year - 1900,
+            (t.tm_wday + 1) % 7,
+            t.tm_yday - 1,
+            0,
+        )
         with open(dev, "wb") as fh:
             fcntl.ioctl(fh, RTC_SET_TIME, tm)
         return
@@ -542,8 +620,18 @@ def root_mtime(path):
 
 def floor_time():
     """The latest time the box has certainly reached: a module reading before it is wrong."""
-    marks = [m for m in (root_mtime(p) for p in (Path("/etc/fake-hwclock.data"), STATE / "control" / "health.json",
-                                                 Path("/var/log/irate-box/install-state.json"))) if m]
+    marks = [
+        m
+        for m in (
+            root_mtime(p)
+            for p in (
+                Path("/etc/fake-hwclock.data"),
+                STATE / "control" / "health.json",
+                Path("/var/log/irate-box/install-state.json"),
+            )
+        )
+        if m
+    ]
     return max(marks) if marks else 0
 
 
@@ -561,9 +649,11 @@ def set_system(epoch):
 
 
 # What boot() did (its record's "boot"), as setup says it: boot's own words are a line in the journal.
-BOOT_SAID = {"network time already set": M("rtc-module.set-up.network", "The network had already set the system clock."),
-             "set from the module": M("rtc-module.set-up.set", "The box set the system clock from the module."),
-             "not used": M("rtc-module.set-up.not-used", "The box did not use the module's time.")}
+BOOT_SAID = {
+    "network time already set": M("rtc-module.set-up.network", "The network had already set the system clock."),
+    "set from the module": M("rtc-module.set-up.set", "The box set the system clock from the module."),
+    "not used": M("rtc-module.set-up.not-used", "The box did not use the module's time."),
+}
 
 
 def boot():
@@ -577,8 +667,10 @@ def boot():
         return f"clock module not used: {why}"
     floor = floor_time()
     if epoch < floor - 120:
-        why = (f"it reads {time.strftime('%Y-%m-%d %H:%M', time.gmtime(epoch))} UTC, earlier than the box has "
-               "certainly been: its time is wrong (its time was never set, or it lost power)")
+        why = (
+            f"it reads {time.strftime('%Y-%m-%d %H:%M', time.gmtime(epoch))} UTC, earlier than the box has "
+            "certainly been: its time is wrong (its time was never set, or it lost power)"
+        )
         _status({"boot": "not used", "why": why})
         return f"clock module not used: {why}"
     if ntp_synced():
@@ -614,11 +706,17 @@ def trusted():
 
 NO_MODULE = M("rtc-module.none", "No clock module is set up.")
 # Why the system clock is worth writing to the module (trusted(), or the box setting its own clock).
-SAVED = {"network time": M("rtc-module.saved.network", "The box set the clock module from the system clock, in UTC. "
-                                                      "The system clock has network time."),
-         "set by an administrator": M("rtc-module.saved.administrator", "The box set the clock module from the system clock, in UTC. "
-                                                                        "An administrator set the system clock."),
-         "forced": M("rtc-module.saved", "The box set the clock module from the system clock, in UTC.")}
+SAVED = {
+    "network time": M(
+        "rtc-module.saved.network",
+        "The box set the clock module from the system clock, in UTC. The system clock has network time.",
+    ),
+    "set by an administrator": M(
+        "rtc-module.saved.administrator",
+        "The box set the clock module from the system clock, in UTC. An administrator set the system clock.",
+    ),
+    "forced": M("rtc-module.saved", "The box set the clock module from the system clock, in UTC."),
+}
 
 
 def save(force=False):
@@ -627,8 +725,11 @@ def save(force=False):
         return NO_MODULE
     why = "forced" if force else trusted()
     if not why:
-        return M("rtc-module.not-saved", "The module did not change. The system clock is not known to be correct: it has no network "
-                                         "time, and no administrator set it.")
+        return M(
+            "rtc-module.not-saved",
+            "The module did not change. The system clock is not known to be correct: it has no network "
+            "time, and no administrator set it.",
+        )
     write_module(cfg, time.time())
     _status({**(json.loads(STATUS.read_text()) if STATUS.exists() else {}), "saved": time.time(), "saved_because": why})
     return SAVED[why]
@@ -683,38 +784,80 @@ def write_units():
 
 def setup(chip, bus, addr):
     if chip not in CHIPS:
-        raise RtcError(M("rtc-module.unsupported", "{chip} is not a clock module that this box supports. It supports {chips}.",
-                         chip=chip, chips=list(CHIPS)))
+        raise RtcError(
+            M(
+                "rtc-module.unsupported",
+                "{chip} is not a clock module that this box supports. It supports {chips}.",
+                chip=chip,
+                chips=list(CHIPS),
+            )
+        )
     a = int(addr, 16) if isinstance(addr, str) else addr
     # Only what the last search found: a request may not bind a driver at any bus and
     # address. The search's result is root's own file, read only if it still is.
     if a not in ADDRESSES:
-        raise RtcError(M("rtc-module.bad-address", "{addr} is not an address that a clock module uses.", addr=f"{a:#04x}"))
+        raise RtcError(
+            M("rtc-module.bad-address", "{addr} is not an address that a clock module uses.", addr=f"{a:#04x}")
+        )
     try:
         found = json.loads(safeio.read_own(FOUND)).get("found", [])
     except (OSError, ValueError):
         found = []
     if not any(f.get("chip") == chip and f.get("bus") == int(bus) and f.get("addr") == f"{a:#04x}" for f in found):
-        raise RtcError(M("rtc-module.not-found", "The last search did not find a {chip} on bus {bus} at {addr}. Search again first.",
-                         chip=CHIPS[chip][0], bus=bus, addr=f"{a:#04x}"))
+        raise RtcError(
+            M(
+                "rtc-module.not-found",
+                "The last search did not find a {chip} on bus {bus} at {addr}. Search again first.",
+                chip=CHIPS[chip][0],
+                bus=bus,
+                addr=f"{a:#04x}",
+            )
+        )
     drv = kernel_driver(chip)
     mode = "kernel" if drv else "userspace" if CHIPS[chip][2] else None
     if not mode:
-        raise RtcError(M("rtc-module.no-driver", "The {chip} needs a kernel driver that this kernel does not have: {drivers}.",
-                         chip=CHIPS[chip][0], drivers=[m for _, m in CHIPS[chip][1]]))
-    cfg = {"chip": chip, "bus": int(bus), "addr": f"{a:#04x}", "mode": mode, "driver": drv,
-           "label": CHIPS[chip][0], "set_up": time.time()}
+        raise RtcError(
+            M(
+                "rtc-module.no-driver",
+                "The {chip} needs a kernel driver that this kernel does not have: {drivers}.",
+                chip=CHIPS[chip][0],
+                drivers=[m for _, m in CHIPS[chip][1]],
+            )
+        )
+    cfg = {
+        "chip": chip,
+        "bus": int(bus),
+        "addr": f"{a:#04x}",
+        "mode": mode,
+        "driver": drv,
+        "label": CHIPS[chip][0],
+        "set_up": time.time(),
+    }
     done = []
     if mode == "userspace":
         try:
             dev = open_i2c(cfg["bus"], a)
         except OSError as exc:
-            raise RtcError(M("rtc-module.no-answer", "Nothing answers on bus {bus} at {addr}: {detail}.", bus=bus, addr=f"{a:#04x}",
-                             detail=str(exc.strerror or exc)))
+            raise RtcError(
+                M(
+                    "rtc-module.no-answer",
+                    "Nothing answers on bus {bus} at {addr}: {detail}.",
+                    bus=bus,
+                    addr=f"{a:#04x}",
+                    detail=str(exc.strerror or exc),
+                )
+            ) from exc
         try:
             if chip not in identify(a, dev.read):
-                raise RtcError(M("rtc-module.not-that-chip", "The device on bus {bus} at {addr} does not look like a {chip}.",
-                                 bus=bus, addr=f"{a:#04x}", chip=CHIPS[chip][0]))
+                raise RtcError(
+                    M(
+                        "rtc-module.not-that-chip",
+                        "The device on bus {bus} at {addr} does not look like a {chip}.",
+                        bus=bus,
+                        addr=f"{a:#04x}",
+                        chip=CHIPS[chip][0],
+                    )
+                )
             done = prepare_user(chip, dev)
         finally:
             dev.close()
@@ -726,22 +869,43 @@ def setup(chip, bus, addr):
     write_units()
     epoch, why, _ = read_module(cfg)
     at = {"chip": CHIPS[chip][0], "bus": bus, "addr": f"{a:#04x}"}
-    said = [M("rtc-module.set-up.kernel", "The box set up the {chip} on bus {bus} at {addr}, through the kernel driver.", **at)
-            if mode == "kernel" else
-            M("rtc-module.set-up.own", "The box set up the {chip} on bus {bus} at {addr}, through its own driver.", **at)]
+    said = [
+        M(
+            "rtc-module.set-up.kernel",
+            "The box set up the {chip} on bus {bus} at {addr}, through the kernel driver.",
+            **at,
+        )
+        if mode == "kernel"
+        else M(
+            "rtc-module.set-up.own", "The box set up the {chip} on bus {bus} at {addr}, through its own driver.", **at
+        )
+    ]
     said += [PREPARED[d] for d in done]
     t = trusted()
     if t:
         write_module(cfg, time.time())
-        said.append(M("rtc-module.set-up.saved", "The box set the module from the system clock. The module now keeps the time "
-                                                 "while the box is off."))
+        said.append(
+            M(
+                "rtc-module.set-up.saved",
+                "The box set the module from the system clock. The module now keeps the time while the box is off.",
+            )
+        )
     elif why:
-        said.append(M("rtc-module.set-up.no-time", "The module has no valid time yet ({why}). Set the box clock on Box, Clock. "
-                                                   "This sets the module too.", why=why))
+        said.append(
+            M(
+                "rtc-module.set-up.no-time",
+                "The module has no valid time yet ({why}). Set the box clock on Box, Clock. This sets the module too.",
+                why=why,
+            )
+        )
     else:
         # The same rule as at boot: a module with a valid time beats a clock restored from a file.
         boot()
-        said.append(BOOT_SAID.get((json.loads(STATUS.read_text()) if STATUS.exists() else {}).get("boot"), BOOT_SAID["not used"]))
+        said.append(
+            BOOT_SAID.get(
+                (json.loads(STATUS.read_text()) if STATUS.exists() else {}).get("boot"), BOOT_SAID["not used"]
+            )
+        )
     msg = sentences(*said)
     if not FAKE:
         subprocess.run(["systemctl", "start", "irate-box-rtc.service"], capture_output=True)  # records it as having run
@@ -763,8 +927,11 @@ def remove():
             pass
     CONFIG.unlink(missing_ok=True)
     STATUS.unlink(missing_ok=True)
-    return (M("rtc-module.removed", "The box no longer uses the {chip}. The module keeps its own time.", chip=cfg["label"]) if cfg
-            else M("rtc-module.removed.none", "No clock module was set up."))
+    return (
+        M("rtc-module.removed", "The box no longer uses the {chip}. The module keeps its own time.", chip=cfg["label"])
+        if cfg
+        else M("rtc-module.removed.none", "No clock module was set up.")
+    )
 
 
 def status():
@@ -774,7 +941,9 @@ def status():
         return None
     out = {"config": cfg, "units": {}, "last": None}
     for unit in ("irate-box-rtc.service", "irate-box-rtc-save.timer"):
-        out["units"][unit] = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True).stdout.strip()
+        out["units"][unit] = subprocess.run(
+            ["systemctl", "is-active", unit], capture_output=True, text=True
+        ).stdout.strip()
     try:
         out["last"] = json.loads(STATUS.read_text())
     except (OSError, ValueError):
@@ -814,8 +983,17 @@ def main(argv):
         if argv == ["find"]:
             f = find()
             for x in f["found"]:
-                print(f"bus {x['bus']} {x['addr']}: {x['label']}" + (" (or the other chip at this address)" if x["ambiguous"] else "")
-                      + (f", kernel driver {x['kernel']}" if x["kernel"] else ", own driver" if x["supported"] else ", not supported here"))
+                print(
+                    f"bus {x['bus']} {x['addr']}: {x['label']}"
+                    + (" (or the other chip at this address)" if x["ambiguous"] else "")
+                    + (
+                        f", kernel driver {x['kernel']}"
+                        if x["kernel"]
+                        else ", own driver"
+                        if x["supported"]
+                        else ", not supported here"
+                    )
+                )
             for b in f["busy"]:
                 print(f"bus {b['bus']} {b['addr']}: in use by the kernel ({b['driver']})")
             if not f["found"]:

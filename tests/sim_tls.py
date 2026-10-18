@@ -22,8 +22,8 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="tls-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
-from irate_box.msg import Refused  # noqa: E402
-from irate_box.root import safeio, tls  # noqa: E402
+from irate_box.msg import Refused
+from irate_box.root import safeio, tls
 
 fails = 0
 
@@ -75,14 +75,10 @@ check(
 )
 check(
     "  the CA's key root's only (0700 folder, 0600 file)",
-    stat.S_IMODE(tls.CA_DIR.stat().st_mode) == 0o700
-    and stat.S_IMODE(tls.CA_KEY.stat().st_mode) == 0o600,
+    stat.S_IMODE(tls.CA_DIR.stat().st_mode) == 0o700 and stat.S_IMODE(tls.CA_KEY.stat().st_mode) == 0o600,
 )
 leaf = T / "leaf.crt"
-leaf.write_text(
-    tls.CHAIN.read_text().split("-----END CERTIFICATE-----")[0]
-    + "-----END CERTIFICATE-----\n"
-)
+leaf.write_text(tls.CHAIN.read_text().split("-----END CERTIFICATE-----")[0] + "-----END CERTIFICATE-----\n")
 v = subprocess.run(
     ["openssl", "verify", "-CAfile", str(tls.CA_CERT), str(leaf)],
     capture_output=True,
@@ -180,8 +176,7 @@ check("fresh: nothing due", tls.due() is None)
 now = time.time()
 check(
     "two-thirds of its life gone: due",
-    tls.due(now + 265 * 86400) == "two-thirds of its life gone"
-    and tls.due(now + 260 * 86400) is None,
+    tls.due(now + 265 * 86400) == "two-thirds of its life gone" and tls.due(now + 260 * 86400) is None,
 )
 ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.77", "network": "192.168.1.0/24"}
 check(
@@ -264,10 +259,7 @@ check(
 print(tls.front(False))
 check(
     "off: the twins gone, nginx reloaded, the CA and certificate kept",
-    not list(tls.FRONT.glob("*.conf"))
-    and tls.CA_CERT.exists()
-    and tls.CHAIN.exists()
-    and not tls.status()["on"],
+    not list(tls.FRONT.glob("*.conf")) and tls.CA_CERT.exists() and tls.CHAIN.exists() and not tls.status()["on"],
 )
 nginx_ok["ok"] = False
 try:
@@ -276,9 +268,7 @@ try:
 except Refused as exc:
     check(
         "nginx refusing the twins: undone, and said",
-        not list(tls.FRONT.glob("*.conf"))
-        and exc.message["id"] == "https.settings.refused"
-        and not tls.status()["on"],
+        not list(tls.FRONT.glob("*.conf")) and exc.message["id"] == "https.settings.refused" and not tls.status()["on"],
         str(exc),
     )
 nginx_ok["ok"] = True
@@ -308,8 +298,7 @@ check(
         "caddy-site-wiki.caddy",
     ]
     and all(
-        f"import irate_box_{n}" in (tls.FRONT / f"caddy-site-{n}.caddy").read_text()
-        for n in ("notes", "wiki", "git")
+        f"import irate_box_{n}" in (tls.FRONT / f"caddy-site-{n}.caddy").read_text() for n in ("notes", "wiki", "git")
     )
     and "https://:443 {" in main_site
     and f"tls {tls.CHAIN} {tls.KEY}" in main_site
@@ -332,11 +321,7 @@ cf = (
 )
 for c in caddies:
     ver = subprocess.run([c, "version"], capture_output=True, text=True).stdout
-    text = (
-        cf.replace("basic_auth", "basicauth")
-        if ver.lstrip("v").startswith("2.6")
-        else cf
-    )
+    text = cf.replace("basic_auth", "basicauth") if ver.lstrip("v").startswith("2.6") else cf
     (T / "Caddyfile").write_text(text)
     for state, files in (("with HTTPS on", True), ("with HTTPS off", False)):
         if not files:
@@ -387,20 +372,15 @@ for c in caddies:
                 (r.stderr or r.stdout)[-400:],
             )
 if not caddies:
-    print(
-        "SKIP the Caddyfile with real Caddy: set CADDY=/path/to/caddy[:/path/to/another]"
-    )
+    print("SKIP the Caddyfile with real Caddy: set CADDY=/path/to/caddy[:/path/to/another]")
 tls.front(False)
 os.environ["HUB_WEB_SERVER"] = "nginx"
-from irate_box.hub import access  # noqa: E402
+from irate_box.hub import access
 
-csp = access.addon_csp(
-    {"capabilities": {"connect": ["ws://{box}/mqtt", "https://api.github.com"]}}
-)
+csp = access.addon_csp({"capabilities": {"connect": ["ws://{box}/mqtt", "https://api.github.com"]}})
 check(
     "an add-on's ws:// also as wss:// (the MQTT explorer over HTTPS)",
-    "connect-src 'self' ws://$host/mqtt wss://$host/mqtt https://api.github.com;"
-    in csp,
+    "connect-src 'self' ws://$host/mqtt wss://$host/mqtt https://api.github.com;" in csp,
     csp,
 )
 # The hub's public routes: /certificate.json says only public facts, /certificate/ca.crt is
@@ -428,9 +408,7 @@ hub = subprocess.Popen(
 def get(path):
     for _ in range(100):
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}{path}", timeout=2
-            ) as r:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=2) as r:
                 return r.status, dict(r.headers), r.read()
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers), b""
@@ -463,12 +441,10 @@ finally:
     hub.terminate()
     hub.wait()
 # The security doctor.
-from irate_box.root import secdoctor  # noqa: E402
+from irate_box.root import secdoctor
 
 answers = {"https": (200, {"Content-Type": "text/html"}), "http": (200, {})}
-secdoctor._local_headers = lambda url: answers[
-    "https" if url.startswith("https") else "http"
-]
+secdoctor._local_headers = lambda url: answers["https" if url.startswith("https") else "http"]
 ADDRS[0] = {"iface": "wlan0", "address": "192.168.1.90", "network": "192.168.1.0/24"}
 f = {x["id"]: x for x in secdoctor.step_tls({})}
 check(
@@ -526,9 +502,7 @@ ADDRS[0] = {"iface": "wlan0", "address": "10.0.0.5", "network": "10.0.0.0/24"}
 cov = {x["id"]: x for x in secdoctor.step_tls({})}["tls-covers"]
 check(
     "  moved to another subnet: a problem, saying to make a new CA",
-    cov["status"] == "problem"
-    and cov["fix"]["id"] == "tls.covers.outside.fix"
-    and "10.0.0.5" in cov["evidence"],
+    cov["status"] == "problem" and cov["fix"]["id"] == "tls.covers.outside.fix" and "10.0.0.5" in cov["evidence"],
     cov,
 )
 os.chmod(tls.CA_KEY, 0o644)
@@ -581,9 +555,7 @@ o(
     "-addext",
     "keyUsage=critical,keyCertSign",
 )
-(P / "ca.ext").write_text(
-    "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign\n"
-)
+(P / "ca.ext").write_text("basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign\n")
 o(
     "req",
     "-new",
@@ -611,9 +583,7 @@ o(
     "-out",
     str(P / "inter.crt"),
 )
-(P / "leaf.ext").write_text(
-    "subjectAltName=DNS:box.example.org,DNS:*.box.example.org\nextendedKeyUsage=serverAuth\n"
-)
+(P / "leaf.ext").write_text("subjectAltName=DNS:box.example.org,DNS:*.box.example.org\nextendedKeyUsage=serverAuth\n")
 o(
     "req",
     "-new",
@@ -718,8 +688,7 @@ check(
 print(tls.use_box_own())
 check(
     "back to the box's own: its CA's certificate again",
-    not tls.status()["cert"]["own"]
-    and "irate.home.arpa" in tls.status()["cert"]["names"],
+    not tls.status()["cert"]["own"] and "irate.home.arpa" in tls.status()["cert"]["names"],
 )
 hc = (REPO / "irate_box/root/hub_control.py").read_text()
 check(
@@ -729,7 +698,7 @@ check(
     and '"tls-import": tls_import' in hc,
 )
 # A request that cannot be done is refused, not answered as done (R300).
-from irate_box.root import hub_control  # noqa: E402
+from irate_box.root import hub_control
 
 
 def refused_id(fn, req):
@@ -756,9 +725,7 @@ print(tls.admin_only(True))
 adm = (tls.FRONT / "nginx-policy-main.inc").read_text()
 check(
     "admin over HTTPS only: plain requests sent to the HTTPS twin, nginx reloaded",
-    "return 302 https://$host:443$request_uri;" in adm
-    and reloads
-    and tls.status()["admin_only"],
+    "return 302 https://$host:443$request_uri;" in adm and reloads and tls.status()["admin_only"],
 )
 tls.front(False)
 check(
@@ -782,8 +749,7 @@ for transport in tls.TRANSPORTS:
     caddy_plain = (tls.FRONT / "caddy-http-main.inc").read_text()
     check(
         f"transport {transport}: the HTTP listener follows the mode",
-        bool(plain) == (transport != "https")
-        and caddy_plain.startswith("http://") == (transport != "https"),
+        bool(plain) == (transport != "https") and caddy_plain.startswith("http://") == (transport != "https"),
     )
     check(
         f"transport {transport}: TLS follows the mode",
@@ -792,8 +758,7 @@ for transport in tls.TRANSPORTS:
 tls.configure("discovery", "warning")
 check(
     "discovery mode has only probes and redirects on Caddy HTTP",
-    "@probe path /hotspot-detect.html"
-    in (tls.FRONT / "caddy-http-main.inc").read_text()
+    "@probe path /hotspot-detect.html" in (tls.FRONT / "caddy-http-main.inc").read_text()
     and "import irate_box_hub" not in (tls.FRONT / "caddy-http-main.inc").read_text(),
 )
 check(
@@ -837,14 +802,8 @@ if nginx:
     import re
 
     saved_plain, saved_twins = tls.PLAIN_PORTS, tls.TWINS
-    tls.PLAIN_PORTS = {
-        name: port if port > 1024 else port + 18000
-        for name, port in saved_plain.items()
-    }
-    tls.TWINS = {
-        name: port if port > 1024 else port + 18000
-        for name, port in saved_twins.items()
-    }
+    tls.PLAIN_PORTS = {name: port if port > 1024 else port + 18000 for name, port in saved_plain.items()}
+    tls.TWINS = {name: port if port > 1024 else port + 18000 for name, port in saved_twins.items()}
     values = {
         "PORT": "80",
         "TLS": str(tls.FRONT),
@@ -856,9 +815,7 @@ if nginx:
     for name, port in tls.PLAIN_PORTS.items():
         values[(name.upper() + "_PORT") if name != "main" else "PORT"] = str(port)
     for name, port in tls.TWINS.items():
-        values[(name.upper() + "_TLS_PORT") if name != "main" else "TLS_PORT"] = str(
-            port
-        )
+        values[(name.upper() + "_TLS_PORT") if name != "main" else "TLS_PORT"] = str(port)
     values["ADDON_PORT"], values["ADDON_TLS_PORT"] = (
         values["ADDONS_PORT"],
         values["ADDONS_TLS_PORT"],
@@ -877,10 +834,7 @@ if nginx:
         lambda match: values.get(match[1], str(T / match[1].lower())),
         template,
     )
-    temps = "".join(
-        f"{name}_temp_path {T}/{name};\n"
-        for name in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi")
-    )
+    temps = "".join(f"{name}_temp_path {T}/{name};\n" for name in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"))
     (T / "nginx.conf").write_text(
         f"pid {T}/nginx.pid;\nerror_log stderr;\nevents {{}}\nhttp {{ access_log off;\n{temps}{rendered}\n}}\n"
     )
@@ -904,7 +858,7 @@ if nginx:
     tls.configure("both", "allow")
 else:
     print("SKIP the nginx template with real nginx: set NGINX=/path/to/nginx")
-import http.client  # noqa: E402
+import http.client
 
 SECRET = "e" * 64
 s_ = socket.socket()
@@ -959,9 +913,7 @@ try:
             {"action": "settings", "transport": transport, "admin_http": admin_http},
             "http",
         )
-        check(
-            f"hub: restrictive {transport}/{admin_http} refused over HTTP", code == 409
-        )
+        check(f"hub: restrictive {transport}/{admin_http} refused over HTTP", code == 409)
         code, _ = post(
             {"action": "settings", "transport": transport, "admin_http": admin_http},
             "https",
@@ -970,9 +922,7 @@ try:
             f"hub: restrictive {transport}/{admin_http} accepted over HTTPS",
             code == 202,
         )
-    code, _ = post(
-        {"action": "settings", "transport": "bad", "admin_http": "allow"}, "https"
-    )
+    code, _ = post({"action": "settings", "transport": "bad", "admin_http": "allow"}, "https")
     check("hub: unknown settings refused", code == 400)
     code, body = post({"action": "admin-only", "on": True}, "http")
     check(

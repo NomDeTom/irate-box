@@ -22,12 +22,24 @@ from irate_box import msg
 STATUSES = ("ok", "warn", "problem")
 
 
-def finding(fid, title, status, summary, why=None, fix=None, *, notes=(), commands=(), evidence=(), actions=(), **extra):
+def finding(
+    fid, title, status, summary, why=None, fix=None, *, notes=(), commands=(), evidence=(), actions=(), **extra
+):
     if status not in STATUSES:
         raise ValueError(f"finding {fid}: status {status!r}")
-    return {"id": fid, "title": title, "status": status, "summary": summary, "why": why, "fix": fix,
-            "notes": list(notes), "commands": list(commands), "evidence": [str(e) for e in evidence],
-            "actions": list(actions), **extra}
+    return {
+        "id": fid,
+        "title": title,
+        "status": status,
+        "summary": summary,
+        "why": why,
+        "fix": fix,
+        "notes": list(notes),
+        "commands": list(commands),
+        "evidence": [str(e) for e in evidence],
+        "actions": list(actions),
+        **extra,
+    }
 
 
 def action(choice, label, confirm=None, **extra):

@@ -11,6 +11,7 @@ log lines, commands, evidence or what people write.
   the pages use none of the words to avoid; the guide neither (warnings while tests/guide-pending holds it back)
 
 python3 tests/terms_guard.py  [--write] [--all: every warning, not the first few]"""
+
 import json
 import re
 import sys
@@ -19,7 +20,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import msg_guard  # noqa: E402  (its scan of the messages)
+import msg_guard  # its scan of the messages
 
 TERMS = json.loads((REPO / "docs" / "dev" / "terms.json").read_text())
 AVOID = [(re.compile(a["words"], re.I), a["use"]) for a in TERMS["avoid"]]
@@ -42,8 +43,10 @@ def warn(name, items):
 
 def glossary():
     rows = "".join(f"| {t['term']} | {t['definition']} |\n" for t in TERMS["terms"])
-    return ("<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->\n<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->\n# Glossary\n\n"
-            "*Words that the box pages use.*\n\n| Term | Definition |\n|---|---|\n" + rows)
+    return (
+        "<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->\n<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->\n# Glossary\n\n"
+        "*Words that the box pages use.*\n\n| Term | Definition |\n|---|---|\n" + rows
+    )
 
 
 def hits(text):
@@ -52,6 +55,7 @@ def hits(text):
 
 class Visible(HTMLParser):
     """A page's text as a person sees it: not scripts, styles or attributes."""
+
     def __init__(self):
         super().__init__()
         self.skip, self.text = 0, []
@@ -70,7 +74,7 @@ class Visible(HTMLParser):
 def markdown_prose(md):
     md = re.sub(r"(?s)```.*?```|<!--.*?-->", " ", md)
     md = re.sub(r"`[^`]*`", " ", md)
-    return re.sub(r"\]\([^)]*\)", "]", md)   # a link's target is not prose
+    return re.sub(r"\]\([^)]*\)", "]", md)  # a link's target is not prose
 
 
 if "--write" in sys.argv:
@@ -79,15 +83,19 @@ if "--write" in sys.argv:
 check("docs/user/glossary.md is what docs/dev/terms.json makes (--write)", GLOSSARY.read_text() == glossary())
 
 bad, long_ = [], []
-for mid, (en, where) in sorted(msg_guard.messages.items()):
-    for text in (en.values() if isinstance(en, dict) else [en]):
+for mid, (en, _where) in sorted(msg_guard.messages.items()):
+    for text in en.values() if isinstance(en, dict) else [en]:
         bad += [f"{mid}: {h}" for h in hits(text)]
         long_ += [f"{mid}: {len(s.split())} words" for s in re.split(r"(?<=[.?!])\s+", text) if len(s.split()) > 25]
 check(f"the messages ({len(msg_guard.messages)}) use none of the words to avoid", not bad, bad)
 warn("sentences of messages longer than 25 words", long_)
 
 # The guide: warned while it waits for its own pass (tests/guide-pending, placeholder mode), checked after.
-guide_said = check if not (REPO / "tests" / "guide-pending").is_file() else (lambda name, cond, info="": warn(name.replace("no words", "words"), info))
+guide_said = (
+    check
+    if not (REPO / "tests" / "guide-pending").is_file()
+    else (lambda name, cond, info="": warn(name.replace("no words", "words"), info))
+)
 for md in sorted((REPO / "docs" / "user").glob("*.md")):
     found = hits(markdown_prose(md.read_text()))
     guide_said(f"docs/user/{md.name}: no words to avoid", not found, found)

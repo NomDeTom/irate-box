@@ -152,7 +152,9 @@ def adapt_page(text):
         raise AdaptError("src/eliza.html has changed: not found once: " + ", ".join(missing))
     anchors = ANCHOR.findall(text)
     if len(anchors) != 1:
-        raise AdaptError(f"src/eliza.html has changed: the line the block goes after is there {len(anchors)} times, not once")
+        raise AdaptError(
+            f"src/eliza.html has changed: the line the block goes after is there {len(anchors)} times, not once"
+        )
     note = NOTE.format(mark=MARK, origin=ORIGIN).replace("\n", nl)
     block = BLOCK.replace("\n", nl)
     rest = ANCHOR.sub(lambda m: m.group(0) + block, rest, count=1)

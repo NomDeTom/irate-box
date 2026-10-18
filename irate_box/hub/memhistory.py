@@ -21,10 +21,16 @@ LIMIT = KEEP // EVERY + 1
 
 def memory():
     try:
-        mem = {key: int(value.split()[0]) * 1024
-               for key, value in (line.split(":", 1) for line in (PROC / "meminfo").read_text().splitlines())}
-        return {"total": mem["MemTotal"], "available": mem["MemAvailable"],
-                "swap_total": mem.get("SwapTotal", 0), "swap_free": mem.get("SwapFree", 0)}
+        mem = {
+            key: int(value.split()[0]) * 1024
+            for key, value in (line.split(":", 1) for line in (PROC / "meminfo").read_text().splitlines())
+        }
+        return {
+            "total": mem["MemTotal"],
+            "available": mem["MemAvailable"],
+            "swap_total": mem.get("SwapTotal", 0),
+            "swap_free": mem.get("SwapFree", 0),
+        }
     except (OSError, KeyError, ValueError, IndexError):
         return {}
 
@@ -42,8 +48,14 @@ def disk():
 def _disk_ok(sample):
     """A sample's disk fields when they are sound; a sample from before they were kept, or with bad ones, keeps its memory."""
     t, f = sample.get("disk_total"), sample.get("disk_free")
-    return (isinstance(t, (int, float)) and isinstance(f, (int, float)) and math.isfinite(t) and math.isfinite(f)
-            and t > 0 and 0 <= f <= t)
+    return (
+        isinstance(t, (int, float))
+        and isinstance(f, (int, float))
+        and math.isfinite(t)
+        and math.isfinite(f)
+        and t > 0
+        and 0 <= f <= t
+    )
 
 
 def processes():
@@ -77,12 +89,23 @@ def load():
         return {"samples": []}
     old = _legacy(text)
     samples = old if old is not None else jsonlog.read(FILE)
-    kept = [sample for sample in samples if isinstance(sample, dict)
-            and all(isinstance(sample.get(key), (int, float)) and math.isfinite(sample[key])
-                    for key in ("at", "total", "available", "swap_total", "swap_free"))
-            and sample["total"] > 0 and 0 <= sample["available"] <= sample["total"]
-            and 0 <= sample["swap_free"] <= sample["swap_total"]][-LIMIT:]
-    return {"samples": [s if _disk_ok(s) else {k: v for k, v in s.items() if k not in ("disk_total", "disk_free")} for s in kept]}
+    kept = [
+        sample
+        for sample in samples
+        if isinstance(sample, dict)
+        and all(
+            isinstance(sample.get(key), (int, float)) and math.isfinite(sample[key])
+            for key in ("at", "total", "available", "swap_total", "swap_free")
+        )
+        and sample["total"] > 0
+        and 0 <= sample["available"] <= sample["total"]
+        and 0 <= sample["swap_free"] <= sample["swap_total"]
+    ][-LIMIT:]
+    return {
+        "samples": [
+            s if _disk_ok(s) else {k: v for k, v in s.items() if k not in ("disk_total", "disk_free")} for s in kept
+        ]
+    }
 
 
 def record(hist, mem, now):
@@ -107,9 +130,13 @@ def snapshot(now=None):
     samples = [sample for sample in hist["samples"] if now - KEEP <= sample["at"] <= now]
     fresh = bool(samples) and now - samples[-1]["at"] <= EVERY * 2
     shown = fresh and _processes["at"] == samples[-1]["at"]
-    return {"now": int(now), "every": EVERY,
-            "samples": samples, "processes": _processes["list"] if shown else [],
-            "processes_at": samples[-1]["at"] if shown else None}
+    return {
+        "now": int(now),
+        "every": EVERY,
+        "samples": samples,
+        "processes": _processes["list"] if shown else [],
+        "processes_at": samples[-1]["at"] if shown else None,
+    }
 
 
 class Sampler(threading.Thread):
@@ -142,6 +169,6 @@ class Sampler(threading.Thread):
         while not self.stopping.is_set():
             try:
                 self.tick()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - a bad tick must not end the sampling
                 print(f"memhistory: {exc}")
             self.stopping.wait(self.every - time.time() % self.every + 1)

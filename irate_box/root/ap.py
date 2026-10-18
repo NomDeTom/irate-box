@@ -22,7 +22,7 @@ SHARED_IFACE = "ap0"
 KEYFILE = "/etc/NetworkManager/system-connections/irate-box-ap.nmconnection"
 DNSMASQ_CONF = "/etc/hub/ap-dnsmasq.conf"
 DNSMASQ_UNIT = "irate-box-ap-dns.service"
-LEASES = "/var/lib/misc/dnsmasq.leases"     # the hub counts guests from it (server.py LEASES)
+LEASES = "/var/lib/misc/dnsmasq.leases"  # the hub counts guests from it (server.py LEASES)
 NETWORK = ipaddress.ip_network(f"{apmode.ADDRESS}/24", strict=False)
 DHCP_FIRST, DHCP_LAST = 10, 200
 DEFAULT_SSID = "Irate-Box"
@@ -35,9 +35,15 @@ def hostapd_conf(plan, settings, ssid=DEFAULT_SSID, country=None):
     like). One network, as the NetworkManager route; the security lines from hotspot.py."""
     nets = hotspot.networks(settings, ssid)
     _, net = nets[0]
-    lines = ["# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
-             f"interface={ap_iface(plan)}", "driver=nl80211", f"hw_mode={'a' if plan.get('band') == '5 GHz' else 'g'}",
-             f"channel={int(plan['channel'])}", "wmm_enabled=1", "ieee80211n=1"]
+    lines = [
+        "# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
+        f"interface={ap_iface(plan)}",
+        "driver=nl80211",
+        f"hw_mode={'a' if plan.get('band') == '5 GHz' else 'g'}",
+        f"channel={int(plan['channel'])}",
+        "wmm_enabled=1",
+        "ieee80211n=1",
+    ]
     if country and len(country) == 2 and country.isalpha():
         lines += [f"country_code={country.upper()}", "ieee80211d=1"]
     lines += hotspot.hostapd_lines(settings, net["kind"], net["ssid"])
@@ -49,10 +55,23 @@ SANDBOX = ("ProtectSystem=strict", "NoNewPrivileges=yes", "PrivateTmp=yes", "Pro
 
 
 def hostapd_unit():
-    return "\n".join([
-        "[Unit]", "Description=Irate-Box: the hotspot through hostapd (root/ap.py)", "After=network.target", "",
-        "[Service]", f"ExecStart=/usr/sbin/hostapd {HOSTAPD_CONF}", "Restart=on-failure", *SANDBOX, "ReadWritePaths=-/run/hostapd", "",
-        "[Install]", "WantedBy=multi-user.target", ""])
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=Irate-Box: the hotspot through hostapd (root/ap.py)",
+            "After=network.target",
+            "",
+            "[Service]",
+            f"ExecStart=/usr/sbin/hostapd {HOSTAPD_CONF}",
+            "Restart=on-failure",
+            *SANDBOX,
+            "ReadWritePaths=-/run/hostapd",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+            "",
+        ]
+    )
 
 
 def ap_iface(plan):
@@ -71,30 +90,60 @@ def keyfile(plan, settings, ssid=DEFAULT_SSID):
     role, net = nets[0]
     sec = hotspot.nm_properties(settings, net["kind"])
     band = "a" if plan.get("band") == "5 GHz" else "bg"
-    lines = ["# Written by irate-box (root/ap.py): the hotspot. Edits are overwritten.",
-             "[connection]", f"id={CONNECTION}", "type=wifi", f"interface-name={ap_iface(plan)}",
-             "autoconnect=true", "autoconnect-priority=-10", "",
-             "[wifi]", "mode=ap", f"ssid={_keyfile_value(net['ssid'])}", f"band={band}", f"channel={int(plan['channel'])}", ""]
+    lines = [
+        "# Written by irate-box (root/ap.py): the hotspot. Edits are overwritten.",
+        "[connection]",
+        f"id={CONNECTION}",
+        "type=wifi",
+        f"interface-name={ap_iface(plan)}",
+        "autoconnect=true",
+        "autoconnect-priority=-10",
+        "",
+        "[wifi]",
+        "mode=ap",
+        f"ssid={_keyfile_value(net['ssid'])}",
+        f"band={band}",
+        f"channel={int(plan['channel'])}",
+        "",
+    ]
     if sec:
         lines.append("[wifi-security]")
         for k, v in sec.items():
             lines.append(f"{k.split('.', 1)[1]}={_keyfile_value(v)}")
         lines.append("")
-    lines += ["[ipv4]", "method=manual", f"address1={apmode.ADDRESS}/{NETWORK.prefixlen}", "never-default=true", "",
-              "[ipv6]", "method=disabled", ""]
+    lines += [
+        "[ipv4]",
+        "method=manual",
+        f"address1={apmode.ADDRESS}/{NETWORK.prefixlen}",
+        "never-default=true",
+        "",
+        "[ipv6]",
+        "method=disabled",
+        "",
+    ]
     return "\n".join(lines)
 
 
 def dnsmasq_conf(plan):
     """The box's dnsmasq for the hotspot alone: DHCP for guests, and every name answered with the hub."""
     first, last = NETWORK.network_address + DHCP_FIRST, NETWORK.network_address + DHCP_LAST
-    return "\n".join([
-        "# Written by irate-box (root/ap.py): DHCP and DNS on the hotspot only. Edits are overwritten.",
-        f"interface={ap_iface(plan)}", "bind-dynamic", "except-interface=lo", "no-resolv", "no-hosts",
-        f"dhcp-range={first},{last},{NETWORK.netmask},12h",
-        f"dhcp-option=option:router,{apmode.ADDRESS}", f"dhcp-option=option:dns-server,{apmode.ADDRESS}",
-        f"address=/#/{apmode.ADDRESS}", f"dhcp-leasefile={LEASES}", "dhcp-authoritative", "",
-    ])
+    return "\n".join(
+        [
+            "# Written by irate-box (root/ap.py): DHCP and DNS on the hotspot only. Edits are overwritten.",
+            f"interface={ap_iface(plan)}",
+            "bind-dynamic",
+            "except-interface=lo",
+            "no-resolv",
+            "no-hosts",
+            f"dhcp-range={first},{last},{NETWORK.netmask},12h",
+            f"dhcp-option=option:router,{apmode.ADDRESS}",
+            f"dhcp-option=option:dns-server,{apmode.ADDRESS}",
+            f"address=/#/{apmode.ADDRESS}",
+            f"dhcp-leasefile={LEASES}",
+            "dhcp-authoritative",
+            "",
+        ]
+    )
 
 
 def up_steps(plan):
@@ -108,25 +157,39 @@ def up_steps(plan):
     if plan.get("backend") == "hostapd":
         # No NetworkManager: the address set by hand, hostapd runs the access point.
         if plan.get("drops_uplink") and plan.get("uplink"):
-            raise Refused(M("ap.plan.needs-nm", "The hotspot can take the WiFi link only if NetworkManager runs the link on this box."))
-        steps += [["ip", "addr", "replace", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", iface],
-                  ["ip", "link", "set", iface, "up"], ["systemctl", "restart", HOSTAPD_UNIT],
-                  ["systemctl", "restart", DNSMASQ_UNIT]]
+            raise Refused(
+                M(
+                    "ap.plan.needs-nm",
+                    "The hotspot can take the WiFi link only if NetworkManager runs the link on this box.",
+                )
+            )
+        steps += [
+            ["ip", "addr", "replace", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", iface],
+            ["ip", "link", "set", iface, "up"],
+            ["systemctl", "restart", HOSTAPD_UNIT],
+            ["systemctl", "restart", DNSMASQ_UNIT],
+        ]
         return steps
     if iface == SHARED_IFACE:
         steps.append(["nmcli", "device", "set", SHARED_IFACE, "managed", "yes"])
     if plan.get("drops_uplink") and plan.get("uplink"):
         steps.append(["nmcli", "device", "disconnect", plan["uplink"]])
-    steps += [["nmcli", "connection", "reload"], ["nmcli", "connection", "up", CONNECTION],
-              ["systemctl", "restart", DNSMASQ_UNIT]]
+    steps += [
+        ["nmcli", "connection", "reload"],
+        ["nmcli", "connection", "up", CONNECTION],
+        ["systemctl", "restart", DNSMASQ_UNIT],
+    ]
     return steps
 
 
 def down_steps(plan):
     """The commands that take it down again, leaving the box's own links as they were."""
     if plan.get("backend") == "hostapd":
-        steps = [["systemctl", "stop", DNSMASQ_UNIT], ["systemctl", "stop", HOSTAPD_UNIT],
-                 ["ip", "addr", "flush", "dev", ap_iface(plan)]]
+        steps = [
+            ["systemctl", "stop", DNSMASQ_UNIT],
+            ["systemctl", "stop", HOSTAPD_UNIT],
+            ["ip", "addr", "flush", "dev", ap_iface(plan)],
+        ]
     else:
         steps = [["systemctl", "stop", DNSMASQ_UNIT], ["nmcli", "connection", "down", CONNECTION]]
     if ap_iface(plan) == SHARED_IFACE:
@@ -139,13 +202,23 @@ def down_steps(plan):
 def dnsmasq_unit():
     """The dnsmasq unit for the hotspot (dnsmasq-base's binary; NetworkManager's shared mode isn't
     used, so the DNS answers are the hub's)."""
-    return "\n".join([
-        "[Unit]", "Description=Irate-Box: DHCP and DNS on the hotspot (root/ap.py)",
-        "After=NetworkManager.service", "",
-        "[Service]", f"ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file={DNSMASQ_CONF} --pid-file=",
-        "Restart=on-failure", *SANDBOX, "ReadWritePaths=-/var/lib/misc", "",
-        "[Install]", "WantedBy=multi-user.target", "",
-    ])
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=Irate-Box: DHCP and DNS on the hotspot (root/ap.py)",
+            "After=NetworkManager.service",
+            "",
+            "[Service]",
+            f"ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file={DNSMASQ_CONF} --pid-file=",
+            "Restart=on-failure",
+            *SANDBOX,
+            "ReadWritePaths=-/var/lib/misc",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+            "",
+        ]
+    )
 
 
 # --- running it (the root helper) ------------------------------------------------------------------
@@ -156,15 +229,15 @@ import time  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
-RECORD = ETC / "ap.json"            # what is up, from which plan, since when, and the owner's choices
-TRIED = ETC / "ap-tried.json"       # {phy: True|False}: whether a channel of its own beside the link worked
+RECORD = ETC / "ap.json"  # what is up, from which plan, since when, and the owner's choices
+TRIED = ETC / "ap-tried.json"  # {phy: True|False}: whether a channel of its own beside the link worked
 DISPATCHER = Path(os.environ.get("HUB_NM_DISPATCHER", "/etc/NetworkManager/dispatcher.d")) / "90-irate-box-ap"
 UNITS = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 LINKS = Path(os.environ.get("HUB_LINK_DIR", "/etc/systemd/network"))
 LINK_FILE = "10-irate-box-ap.link"
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
-TRY_WAIT = 20                        # seconds the hotspot must hold its own channel in the try
-DEADMAN = 300                        # seconds before a hotspot that took the box's link undoes itself
+TRY_WAIT = 20  # seconds the hotspot must hold its own channel in the try
+DEADMAN = 300  # seconds before a hotspot that took the box's link undoes itself
 
 
 def _load(path, default):
@@ -190,22 +263,43 @@ BOOT_UNIT = "irate-box-ap.service"
 def link_file():
     """udev keeps ap0's name. Without it a USB radio's second interface is renamed by its address
     (wlx…) as soon as it appears, and the hotspot's profile, made for ap0, finds no device."""
-    return "\n".join([
-        "# Written by irate-box (root/ap.py): the hotspot's interface keeps the name it was given.",
-        "[Match]", f"OriginalName={SHARED_IFACE}", "", "[Link]", "NamePolicy=", f"Name={SHARED_IFACE}", ""])
+    return "\n".join(
+        [
+            "# Written by irate-box (root/ap.py): the hotspot's interface keeps the name it was given.",
+            "[Match]",
+            f"OriginalName={SHARED_IFACE}",
+            "",
+            "[Link]",
+            "NamePolicy=",
+            f"Name={SHARED_IFACE}",
+            "",
+        ]
+    )
 
 
 def boot_unit():
     """At boot, the hotspot as it was: ap0 is gone after a reboot, so it is planned and started again
     (the box's links may have changed meanwhile). Enabled while the hotspot is on, disabled when off."""
-    return "\n".join([
-        "[Unit]", "Description=Irate-Box: the hotspot, again after a reboot (root/ap.py)",
-        "After=NetworkManager.service", "Wants=NetworkManager.service", "",
-        "[Service]", "Type=oneshot", f"ExecStart={CODE}/irate-box hub_control ap-boot", *SANDBOX,
-        # It starts the hotspot as the root helper does: its record and the hub's, NetworkManager's connections,
-        # the guests' rules, their resolver's unit and forwarding's sysctl file.
-        "ReadWritePaths=/etc/hub /var/lib/hub -/etc/NetworkManager /etc/systemd/system /etc/sysctl.d", "",
-        "[Install]", "WantedBy=multi-user.target", ""])
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=Irate-Box: the hotspot, again after a reboot (root/ap.py)",
+            "After=NetworkManager.service",
+            "Wants=NetworkManager.service",
+            "",
+            "[Service]",
+            "Type=oneshot",
+            f"ExecStart={CODE}/irate-box hub_control ap-boot",
+            *SANDBOX,
+            # It starts the hotspot as the root helper does: its record and the hub's, NetworkManager's connections,
+            # the guests' rules, their resolver's unit and forwarding's sysctl file.
+            "ReadWritePaths=/etc/hub /var/lib/hub -/etc/NetworkManager /etc/systemd/system /etc/sysctl.d",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+            "",
+        ]
+    )
 
 
 def refresh_units():
@@ -231,7 +325,9 @@ def boot(run, inv, settings, ssid=DEFAULT_SSID):
     if not rec.get("up"):
         return "The hotspot is off."
     if not rec.get("confirmed", True):
-        return stop(run) + ". The hotspot took the box's WiFi link and nobody confirmed it, so the box restored the link."
+        return (
+            stop(run) + ". The hotspot took the box's WiFi link and nobody confirmed it, so the box restored the link."
+        )
     plan = start(run, inv, settings, rec.get("owner") or {}, ssid)
     if plan.get("needs_choice") or plan["kind"] == "none":
         return "The hotspot did not start again. " + plan["text"]
@@ -241,9 +337,15 @@ def boot(run, inv, settings, ssid=DEFAULT_SSID):
 def dispatcher_hook():
     """NetworkManager runs this on every link change: when the hotspot follows the link's channel
     (rung 3), a link that came up somewhere new moves it."""
-    return "\n".join([
-        "#!/bin/sh", "# Written by irate-box (root/ap.py): the hotspot follows the WiFi link's channel when it must.",
-        '[ "$2" = up ] || exit 0', f'exec "{CODE}/irate-box" hub_control ap-follow "$1" >/dev/null 2>&1', ""])
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "# Written by irate-box (root/ap.py): the hotspot follows the WiFi link's channel when it must.",
+            '[ "$2" = up ] || exit 0',
+            f'exec "{CODE}/irate-box" hub_control ap-follow "$1" >/dev/null 2>&1',
+            "",
+        ]
+    )
 
 
 def _run_all(run, steps, check=True):
@@ -294,11 +396,22 @@ def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, 
         raise
     if plan.get("drops_uplink"):
         # The owner gave up the box's link: unless confirmed from the hotspot in time, it comes back.
-        run("systemd-run", f"--on-active={DEADMAN}", "--unit=irate-box-ap-deadman", "--timer-property=AccuracySec=1s",
-            f"{CODE}/irate-box", "hub_control", "ap-revert")
+        run(
+            "systemd-run",
+            f"--on-active={DEADMAN}",
+            "--unit=irate-box-ap-deadman",
+            "--timer-property=AccuracySec=1s",
+            f"{CODE}/irate-box",
+            "hub_control",
+            "ap-revert",
+        )
     run("systemctl", "enable", BOOT_UNIT)
-    _put(RECORD, json.dumps({"up": True, "plan": plan, "owner": owner, "since": time.time(),
-                             "confirmed": not plan.get("drops_uplink")}))
+    _put(
+        RECORD,
+        json.dumps(
+            {"up": True, "plan": plan, "owner": owner, "since": time.time(), "confirmed": not plan.get("drops_uplink")}
+        ),
+    )
     return plan
 
 
@@ -325,6 +438,7 @@ def confirm(run):
 def channels_now(run):
     """{iface: channel} from `iw dev`."""
     from irate_box.hub import netinv
+
     out = run("iw", "dev")
     return {i: d.get("channel") for i, d in netinv.parse_iw_dev(out.stdout or "").items()}
 
@@ -339,15 +453,16 @@ def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=
     link = plan.get("uplink")
     link_ch = channels_now(run).get(link)
     chans = apmode.allowed(next(r for r in inv["radios"] if r["phy"] == plan["phy"]), inv.get("country"))
-    other = next((c["channel"] for c in chans if c["channel"] in apmode.PREFERRED_24 and c["channel"] != link_ch), None) \
-        or next((c["channel"] for c in chans if c["channel"] != link_ch), None)
+    other = next(
+        (c["channel"] for c in chans if c["channel"] in apmode.PREFERRED_24 and c["channel"] != link_ch), None
+    ) or next((c["channel"] for c in chans if c["channel"] != link_ch), None)
     if other is None:
         return None, plan
-    owner = _load(RECORD, {}).get("owner") or {}   # the owner's own choices, not the try's channel
+    owner = _load(RECORD, {}).get("owner") or {}  # the owner's own choices, not the try's channel
     try:
         start(run, inv, settings, {"channel": other}, ssid)
     except RuntimeError:
-        worked = False   # it wouldn't even start on a channel of its own: that's the answer
+        worked = False  # it wouldn't even start on a channel of its own: that's the answer
     else:
         sleep(wait)
         now = channels_now(run)

@@ -105,6 +105,7 @@ echo "== routes"
 wn=302; [ "$WEB" = caddy ] && wn=301
 for pr in "/ 200" "/style.css 200" "/nope-xyz 404" "/wiki $wn" "/draw 301" "/mermaid 301" "/tools 301" "/serial 301" \
 	"/notes $wn" "/sync 301" "/admin 301" "/term 301" "/sync/ 401" "/term/ 401" "/status 200"; do
+	# shellcheck disable=SC2086 # split "path code" into $1 and $2
 	set -- $pr; check "$2" code "http://$H$1"
 done
 check "/draw/" sh -c "curl -s -o /dev/null -w '%{redirect_url}' http://$H/draw | sed 's|^http://[^/]*||'"
@@ -125,6 +126,7 @@ fi
 
 echo "== captive probes"
 for hp in "captive.apple.com /hotspot-detect.html" "connectivitycheck.gstatic.com /generate_204"; do
+	# shellcheck disable=SC2086 # split "host path" into $1 and $2
 	set -- $hp; check 302 code -H "Host: $1" "http://$H$2"
 done
 

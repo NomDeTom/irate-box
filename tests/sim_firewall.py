@@ -5,12 +5,20 @@ interface alone, the hub's doors, the owner's services, drop last, no forwarding
 where nft is installed; the hotspot's interface found from the record or the dnsmasq config; the
 Security page's finding and its switches against a stand-in nft and systemctl; the unit's text.
 python3 tests/sim_firewall.py"""
-import json, os, shutil, subprocess, sys, tempfile
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
+
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="firewall-"))
 ETC, BIN = T / "etc", T / "bin"
-ETC.mkdir(); BIN.mkdir()
+ETC.mkdir()
+BIN.mkdir()
 # nft and systemctl stand-ins: nft -c accepts anything with "table inet irate_box" in it; "list table"
 # answers by a marker file; systemctl records what it was asked.
 (BIN / "nft").write_text(f"""#!/usr/bin/env python3
@@ -31,38 +39,71 @@ if "disable" in sys.argv:
 """)
 for b in (BIN / "nft", BIN / "systemctl"):
     b.chmod(0o755)
-os.environ.update(HUB_ETC_DIR=str(ETC), HUB_AP_DNSMASQ=str(T / "ap-dnsmasq.conf"), PATH=f"{BIN}:{os.environ['PATH']}",
-                  HUB_PROC_SYS=str(T / "proc"), HUB_GROUP_FILE=str(T / "group"), HUB_PASSWD_FILE=str(T / "passwd"),
-                  HUB_SUDOERS=str(T / "sudoers"), HUB_SUDOERS_DIR=str(T / "sudoers.d"), HUB_APT_DIR=str(T / "apt"),
-                  HUB_MOSQUITTO_DIR=str(T / "mosquitto"), HUB_PRESENT_ROOT=str(T / "present"), HUB_UNIT_DIR=str(T / "units"))
+os.environ.update(
+    HUB_ETC_DIR=str(ETC),
+    HUB_AP_DNSMASQ=str(T / "ap-dnsmasq.conf"),
+    PATH=f"{BIN}:{os.environ['PATH']}",
+    HUB_PROC_SYS=str(T / "proc"),
+    HUB_GROUP_FILE=str(T / "group"),
+    HUB_PASSWD_FILE=str(T / "passwd"),
+    HUB_SUDOERS=str(T / "sudoers"),
+    HUB_SUDOERS_DIR=str(T / "sudoers.d"),
+    HUB_APT_DIR=str(T / "apt"),
+    HUB_MOSQUITTO_DIR=str(T / "mosquitto"),
+    HUB_PRESENT_ROOT=str(T / "present"),
+    HUB_UNIT_DIR=str(T / "units"),
+)
 sys.path.insert(0, str(REPO))
-from irate_box.root import firewall as fw, security  # noqa: E402
-from irate_box.finding import message_ids as said  # noqa: E402
+from irate_box.finding import message_ids as said
+from irate_box.root import firewall as fw
+from irate_box.root import security
+
+
 def note(f, mid):
     """The arguments of a finding's note, by its ID."""
     return next((n.get("args", {}) for n in f["notes"] if n["id"] == mid), {})
+
+
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
 
 # The text. The firewall as the Security page keeps it: a level (hub, or hub and apps) and the services.
 F = lambda services=(), level="apps": {"level": level, "services": list(services)}  # noqa: E731
 text = fw.ruleset("ap0", F(["mqtt", "sync"]))
-lines = [l.strip() for l in text.splitlines()]
-check("one table, inet irate_box, made then deleted first so loading twice is loading once on any kernel", lines[3:5] == ["table inet irate_box", "delete table inet irate_box"] and "table inet irate_box {" in lines)
-check("the hotspot's interface alone is sent to the drop chain; the input policy stays accept",
-      'iifname "ap0" jump hotspot' in lines and "type filter hook input priority filter; policy accept;" in lines)
+lines = [ln.strip() for ln in text.splitlines()]
+check(
+    "one table, inet irate_box, made then deleted first so loading twice is loading once on any kernel",
+    lines[3:5] == ["table inet irate_box", "delete table inet irate_box"] and "table inet irate_box {" in lines,
+)
+check(
+    "the hotspot's interface alone is sent to the drop chain; the input policy stays accept",
+    'iifname "ap0" jump hotspot' in lines and "type filter hook input priority filter; policy accept;" in lines,
+)
 hot = text.split("chain hotspot {")[1].split("\n\t}\n")[0]
-check("the hub's doors, DNS and DHCP, MQTT and Syncthing when chosen; drop last",
-      "tcp dport { 53, 80, 443, 1883, 8090, 8091, 8092, 8093, 8094, 8490, 8491, 8492, 8493, 8494, 22000 } accept" in hot
-      and "udp dport { 53, 67, 21027, 22000 } accept" in hot and hot.strip().endswith("drop") and "established,related accept" in hot, hot)
+check(
+    "the hub's doors, DNS and DHCP, MQTT and Syncthing when chosen; drop last",
+    "tcp dport { 53, 80, 443, 1883, 8090, 8091, 8092, 8093, 8094, 8490, 8491, 8492, 8493, 8494, 22000 } accept" in hot
+    and "udp dport { 53, 67, 21027, 22000 } accept" in hot
+    and hot.strip().endswith("drop")
+    and "established,related accept" in hot,
+    hot,
+)
 check("  SSH only by choice", "22," not in fw.ruleset("ap0", F()) and "{ 22, 53" in fw.ruleset("ap0", F(["ssh"])))
-check("the firewall at hub only: the front, DNS and DHCP; the apps' ports closed", "tcp dport { 53, 80, 443 } accept" in fw.ruleset("ap0", F(level="hub"))
-      and "8090" not in fw.ruleset("ap0", F(level="hub")))
+check(
+    "the firewall at hub only: the front, DNS and DHCP; the apps' ports closed",
+    "tcp dport { 53, 80, 443 } accept" in fw.ruleset("ap0", F(level="hub"))
+    and "8090" not in fw.ruleset("ap0", F(level="hub")),
+)
 check("nothing forwarded to or from the hotspot", 'iifname "ap0" drop' in lines and 'oifname "ap0" drop' in lines)
 try:
-    fw.ruleset("ap0; flush ruleset", F()); check("an interface name that is not one: refused", False)
+    fw.ruleset("ap0; flush ruleset", F())
+    check("an interface name that is not one: refused", False)
 except ValueError:
     check("an interface name that is not one: refused", True)
 real_nft = shutil.which("nft", path="/usr/sbin:/sbin:/usr/bin")
@@ -77,85 +118,183 @@ else:
 check("no record, no config: ap0", fw.hotspot_iface() == "ap0")
 (T / "ap-dnsmasq.conf").write_text("interface=wlan1\nbind-dynamic\n")
 check("  from the dnsmasq config", fw.hotspot_iface() == "wlan1")
-(ETC / "ap.json").write_text(json.dumps({"up": True, "plan": {"kind": "own-radio", "iface": "wlx001122", "channel": 6}}))
+(ETC / "ap.json").write_text(
+    json.dumps({"up": True, "plan": {"kind": "own-radio", "iface": "wlx001122", "channel": 6}})
+)
 check("  from the hotspot's record when it is up", fw.hotspot_iface() == "wlx001122")
 (ETC / "ap.json").write_text(json.dumps({"up": False, "plan": {"kind": "own-radio", "iface": "wlx001122"}}))
 check("  not when it is down", fw.hotspot_iface() == "wlan1")
 (ETC / "ap.json").unlink()
 
+
 # The Security page: off, on, SSH opened and closed, off again; undo_all.
 def finding():
     return security.firewall_findings(security.load_record())[0]
+
+
 f = finding()
-check("firewall off: a warning saying what it would allow, with a switch for each level", f["status"] == "warn"
-      and [(a["choice"], a["on"]) for a in f["actions"]] == [("firewall-off", True), ("firewall-apps", False), ("firewall-hub", False)]
-      and f["notes"][0]["id"] == "firewall.would-open" and f["notes"][0]["args"]["tcp"][:4] == [53, 80, 443, 8090]
-      and f["notes"][0]["args"]["iface"] == "wlan1", f)
+check(
+    "firewall off: a warning saying what it would allow, with a switch for each level",
+    f["status"] == "warn"
+    and [(a["choice"], a["on"]) for a in f["actions"]]
+    == [("firewall-off", True), ("firewall-apps", False), ("firewall-hub", False)]
+    and f["notes"][0]["id"] == "firewall.would-open"
+    and f["notes"][0]["args"]["tcp"][:4] == [53, 80, 443, 8090]
+    and f["notes"][0]["args"]["iface"] == "wlan1",
+    f,
+)
 print(security.fix("firewall-on", None))
 f = finding()
-check("on: the file written for wlan1, checked, the unit enabled and loaded; ok, SSH closed, with the SSH switch and Undo",
-      (ETC / "firewall.nft").read_text().count('iifname "wlan1"') == 2 and "enable irate-box-firewall.service" in (T / "systemctl-log").read_text()
-      and (T / "loaded").exists() and f["status"] == "ok" and "firewall.ssh-closed" in said(f)
-      and [(a["choice"], a["on"]) for a in f["actions"] if a.get("group")] == [("firewall-off", False), ("firewall-apps", True), ("firewall-hub", False),
-                                                                         ("firewall-ssh-off", True), ("firewall-ssh-on", False)], f)
+check(
+    "on: the file written for wlan1, checked, the unit enabled and loaded; ok, SSH closed, with the SSH switch and Undo",
+    (ETC / "firewall.nft").read_text().count('iifname "wlan1"') == 2
+    and "enable irate-box-firewall.service" in (T / "systemctl-log").read_text()
+    and (T / "loaded").exists()
+    and f["status"] == "ok"
+    and "firewall.ssh-closed" in said(f)
+    and [(a["choice"], a["on"]) for a in f["actions"] if a.get("group")]
+    == [
+        ("firewall-off", False),
+        ("firewall-apps", True),
+        ("firewall-hub", False),
+        ("firewall-ssh-off", True),
+        ("firewall-ssh-on", False),
+    ],
+    f,
+)
 check("  no MQTT or Syncthing on this box: not opened", "1883" not in (ETC / "firewall.nft").read_text())
-(T / "mosquitto" / "conf.d").mkdir(parents=True); (T / "mosquitto" / "conf.d" / "irate-box.conf").write_text("listener 1883\n")
+(T / "mosquitto" / "conf.d").mkdir(parents=True)
+(T / "mosquitto" / "conf.d" / "irate-box.conf").write_text("listener 1883\n")
 security.fix("firewall-on", None)
-check("  MQTT installed later: opened at the next switch, Syncthing still not", "1883" in (ETC / "firewall.nft").read_text() and "22000" not in (ETC / "firewall.nft").read_text())
+check(
+    "  MQTT installed later: opened at the next switch, Syncthing still not",
+    "1883" in (ETC / "firewall.nft").read_text() and "22000" not in (ETC / "firewall.nft").read_text(),
+)
 print(security.fix("firewall-ssh-on", None))
 f = finding()
-check("SSH opened: in the ruleset, said, the switch now closes it", "{ 22, 53" in (ETC / "firewall.nft").read_text() and "firewall.ssh-open" in said(f)
-      and "firewall-ssh-off" in [a["choice"] for a in f["actions"]])
+check(
+    "SSH opened: in the ruleset, said, the switch now closes it",
+    "{ 22, 53" in (ETC / "firewall.nft").read_text()
+    and "firewall.ssh-open" in said(f)
+    and "firewall-ssh-off" in [a["choice"] for a in f["actions"]],
+)
 print(security.fix("firewall-ssh-off", None))
 check("  closed again", "{ 22, 53" not in (ETC / "firewall.nft").read_text())
 print(security.fix("firewall-hub", None))
 f = finding()
-check("hub only: the apps' ports closed, said, the switch back to hub and apps", "8090" not in (ETC / "firewall.nft").read_text()
-      and security.load_record()["firewall"]["level"] == "hub" and "firewall.on-hub" in said(f)
-      and [(a["choice"], a["on"]) for a in f["actions"] if a.get("group") == security.REACH] == [("firewall-off", False), ("firewall-apps", False), ("firewall-hub", True)], f)
+check(
+    "hub only: the apps' ports closed, said, the switch back to hub and apps",
+    "8090" not in (ETC / "firewall.nft").read_text()
+    and security.load_record()["firewall"]["level"] == "hub"
+    and "firewall.on-hub" in said(f)
+    and [(a["choice"], a["on"]) for a in f["actions"] if a.get("group") == security.REACH]
+    == [("firewall-off", False), ("firewall-apps", False), ("firewall-hub", True)],
+    f,
+)
 print(security.fix("firewall-apps", None))
-check("  and back", "8090" in (ETC / "firewall.nft").read_text() and security.load_record()["firewall"]["level"] == "apps")
+check(
+    "  and back", "8090" in (ETC / "firewall.nft").read_text() and security.load_record()["firewall"]["level"] == "apps"
+)
 # A declared service (IRC's manifest: network block): no switch while it isn't installed; added after the
 # firewall, closed until the firewall is written again; opened and closed by its own switch.
-check("no IRC on the box: no switch for it, 6667 not opened", not any("irc" in x["choice"] for x in finding()["actions"])
-      and "6667" not in (ETC / "firewall.nft").read_text())
-(T / "present/etc/ngircd").mkdir(parents=True); (T / "present/etc/ngircd/irate-box.conf").write_text("[Global]\n")
+check(
+    "no IRC on the box: no switch for it, 6667 not opened",
+    not any("irc" in x["choice"] for x in finding()["actions"]) and "6667" not in (ETC / "firewall.nft").read_text(),
+)
+(T / "present/etc/ngircd").mkdir(parents=True)
+(T / "present/etc/ngircd/irate-box.conf").write_text("[Global]\n")
 f = finding()
-check("  IRC added later: said closed, its rules unchanged, the switch opens it", "6667" not in (ETC / "firewall.nft").read_text()
-      and note(f, "firewall.svcs-closed")["names"] == ["IRC server (ngIRCd)"] and "firewall-svc-on:irc" in [x["choice"] for x in f["actions"]], f)
+check(
+    "  IRC added later: said closed, its rules unchanged, the switch opens it",
+    "6667" not in (ETC / "firewall.nft").read_text()
+    and note(f, "firewall.svcs-closed")["names"] == ["IRC server (ngIRCd)"]
+    and "firewall-svc-on:irc" in [x["choice"] for x in f["actions"]],
+    f,
+)
 print(security.fix("firewall-svc-on:irc", None))
 f = finding()
-check("  opened: 6667 in the ruleset, said open, the switch now closes it", "6667" in (ETC / "firewall.nft").read_text()
-      and note(f, "firewall.svcs-open")["names"] == ["IRC server (ngIRCd)"] and "firewall-svc-off:irc" in [x["choice"] for x in f["actions"]], f)
+check(
+    "  opened: 6667 in the ruleset, said open, the switch now closes it",
+    "6667" in (ETC / "firewall.nft").read_text()
+    and note(f, "firewall.svcs-open")["names"] == ["IRC server (ngIRCd)"]
+    and "firewall-svc-off:irc" in [x["choice"] for x in f["actions"]],
+    f,
+)
 print(security.fix("firewall-svc-off:irc", None))
-check("  closed by choice: out of the ruleset and the record", "6667" not in (ETC / "firewall.nft").read_text()
-      and "irc" not in security.load_record()["firewall"]["services"])
-for bad in ("firewall-svc-on:nosuch", "firewall-port-on:tcp/0", "firewall-port-on:sctp/80", "firewall-port-on:tcp/99999", "firewall-sideways"):
+check(
+    "  closed by choice: out of the ruleset and the record",
+    "6667" not in (ETC / "firewall.nft").read_text() and "irc" not in security.load_record()["firewall"]["services"],
+)
+for bad in (
+    "firewall-svc-on:nosuch",
+    "firewall-port-on:tcp/0",
+    "firewall-port-on:sctp/80",
+    "firewall-port-on:tcp/99999",
+    "firewall-sideways",
+):
     try:
-        security.fix(bad, None); check(f"{bad}: refused", False)
+        security.fix(bad, None)
+        check(f"{bad}: refused", False)
     except ValueError:
         check(f"{bad}: refused", True)
 # A service nobody declared (the owner's own): kept for the box's network by the firewall, or opened to guests by choice.
-own = [{"proto": "tcp", "port": 8123, "addr": "0.0.0.0", "unit": "homeassistant.service", "pid": 9, "process": "python3", "name": "python3"}]
+own = [
+    {
+        "proto": "tcp",
+        "port": 8123,
+        "addr": "0.0.0.0",
+        "unit": "homeassistant.service",
+        "pid": 9,
+        "process": "python3",
+        "name": "python3",
+    }
+]
 lf = security.listener_findings(own, security.load_record())[0]
-check("an owner's service: a warning saying the firewall keeps hotspot guests off, with stop and open-to-guests", lf["status"] == "warn"
-      and lf["summary"]["id"] == "port.other.closed"
-      and [a["choice"] for a in lf["actions"]] == ["unit-off:homeassistant.service", "firewall-port-on:tcp/8123"], lf)
+check(
+    "an owner's service: a warning saying the firewall keeps hotspot guests off, with stop and open-to-guests",
+    lf["status"] == "warn"
+    and lf["summary"]["id"] == "port.other.closed"
+    and [a["choice"] for a in lf["actions"]] == ["unit-off:homeassistant.service", "firewall-port-on:tcp/8123"],
+    lf,
+)
 print(security.fix("firewall-port-on:tcp/8123", None))
 lf = security.listener_findings(own, security.load_record())[0]
-check("  opened to guests: in the ruleset, said by your choice, the switch closes it", "8123" in (ETC / "firewall.nft").read_text()
-      and lf["summary"]["id"] == "port.other.opened" and lf["actions"][-1]["choice"] == "firewall-port-off:tcp/8123"
-      and note(finding(), "firewall.ports-open")["ports"] == ["TCP 8123"], lf)
+check(
+    "  opened to guests: in the ruleset, said by your choice, the switch closes it",
+    "8123" in (ETC / "firewall.nft").read_text()
+    and lf["summary"]["id"] == "port.other.opened"
+    and lf["actions"][-1]["choice"] == "firewall-port-off:tcp/8123"
+    and note(finding(), "firewall.ports-open")["ports"] == ["TCP 8123"],
+    lf,
+)
 print(security.fix("firewall-port-off:tcp/8123", None))
 check("  closed again", "8123" not in (ETC / "firewall.nft").read_text())
 check("a service the firewall kept whose manifest is gone opens nothing", fw.service_ports("gone-addon") == ((), ()))
 print(security.fix("firewall-svc-on:irc", None))
-lf = security.listener_findings([{"proto": "tcp", "port": 6667, "addr": "0.0.0.0", "unit": "ngircd.service", "pid": 1,
-                                  "process": "ngircd", "name": "IRC server (ngIRCd)"}], {})[0]
-check("the Security page: IRC's port a warning, saying anyone on the network can join, unencrypted", lf["status"] == "warn"
-      and "no accounts and no encryption" in lf["summary"], lf)   # the manifest's own words
+lf = security.listener_findings(
+    [
+        {
+            "proto": "tcp",
+            "port": 6667,
+            "addr": "0.0.0.0",
+            "unit": "ngircd.service",
+            "pid": 1,
+            "process": "ngircd",
+            "name": "IRC server (ngIRCd)",
+        }
+    ],
+    {},
+)[0]
+check(
+    "the Security page: IRC's port a warning, saying anyone on the network can join, unencrypted",
+    lf["status"] == "warn" and "no accounts and no encryption" in lf["summary"],
+    lf,
+)  # the manifest's own words
 inst = (REPO / "install.sh").read_text()
-check("install.sh writes it from the module; uninstall.sh takes it away", "firewall.unit_text" in inst and "irate-box-firewall.service" in (REPO / "uninstall.sh").read_text())
+check(
+    "install.sh writes it from the module; uninstall.sh takes it away",
+    "firewall.unit_text" in inst and "irate-box-firewall.service" in (REPO / "uninstall.sh").read_text(),
+)
 shutil.rmtree(T, ignore_errors=True)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

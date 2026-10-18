@@ -5,62 +5,120 @@ small source package made like Meshtastic's (a zip whose first member, deflated,
 .tar.xz), the order the sources are tried in, and what is said when none works. The git and
 streamed paths need the network: they were checked against v2.8.1.8e6a88d (the same 71 files
 both ways). python3 tests/sim_configs.py"""
-import io, json, os, sys, tarfile, tempfile, zipfile
+
+import io
+import json
+import os
+import sys
+import tarfile
+import tempfile
+import zipfile
 from pathlib import Path
-T = Path(tempfile.mkdtemp(prefix="configs-")); (T / "library").mkdir()
+
+T = Path(tempfile.mkdtemp(prefix="configs-"))
+(T / "library").mkdir()
 os.environ.update(HUB_STATE_DIR=str(T), HUB_GIT_ROOT=str(T / "git"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 real_git = None
-from irate_box.library import firmware, librarian  # noqa: E402
+from irate_box.library import firmware, librarian
+
 real_git = librarian._git
 fails = 0
+
+
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
+
 V = "9.9.9.abcdef0"
-rel = {"version": V, "tag": "v" + V, "source": {"name": f"meshtasticd-{V}-src.zip", "url": "http://unused.invalid/x", "size": 1}}
+rel = {
+    "version": V,
+    "tag": "v" + V,
+    "source": {"name": f"meshtasticd-{V}-src.zip", "url": "http://unused.invalid/x", "size": 1},
+}
+
+
 def package(path, configs):
     tar = io.BytesIO()
     with tarfile.open(fileobj=tar, mode="w:xz") as tf:
+
         def add(name, data=None):
             ti = tarfile.TarInfo(name)
-            if data is None: ti.type = tarfile.DIRTYPE; tf.addfile(ti)
-            else: ti.size = len(data); tf.addfile(ti, io.BytesIO(data))
-        add("meshtasticd"); add("meshtasticd/README.md", b"x" * 5000); add("meshtasticd/bin")
+            if data is None:
+                ti.type = tarfile.DIRTYPE
+                tf.addfile(ti)
+            else:
+                ti.size = len(data)
+                tf.addfile(ti, io.BytesIO(data))
+
+        add("meshtasticd")
+        add("meshtasticd/README.md", b"x" * 5000)
+        add("meshtasticd/bin")
         add("meshtasticd/bin/config.d")
         for rel_path, text in configs.items():
-            if "/" in rel_path: add("meshtasticd/bin/config.d/" + rel_path.rsplit("/", 1)[0])
+            if "/" in rel_path:
+                add("meshtasticd/bin/config.d/" + rel_path.rsplit("/", 1)[0])
             add("meshtasticd/bin/config.d/" + rel_path, text.encode())
         add("meshtasticd/bin/device-install.sh", b"#!/bin/sh\n")
-        add("meshtasticd/src"); add("meshtasticd/src/main.cpp", b"int main(){}" * 1000)
+        add("meshtasticd/src")
+        add("meshtasticd/src/main.cpp", b"int main(){}" * 1000)
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr(f"meshtasticd_{V}.tar.xz", tar.getvalue()); z.writestr(f"meshtasticd_{V}.dsc", "dsc")
+        z.writestr(f"meshtasticd_{V}.tar.xz", tar.getvalue())
+        z.writestr(f"meshtasticd_{V}.dsc", "dsc")
+
+
 held = firmware.ROOT / V / rel["source"]["name"]
-package(held, {"lora-a.yaml": "Lora:\n  CS: 8\n", "OpenWRT/one.yaml": "Lora:\n  CS: 7\n", "display.yml": "Display: x\n"})
+package(
+    held, {"lora-a.yaml": "Lora:\n  CS: 8\n", "OpenWRT/one.yaml": "Lora:\n  CS: 7\n", "display.yml": "Display: x\n"}
+)
 calls = []
+
+
 def git(*a, **k):
-    calls.append(a); raise librarian.LibrarianError("git is not reachable (simulated)")
+    calls.append(a)
+    raise librarian.LibrarianError("git is not reachable (simulated)")
+
+
 librarian._git = git
 r = firmware.sync_configs(rel, log=lambda *a: None)
 d = json.loads(firmware.CONFIGS.read_text())
-check("from the source package held on the box", "cached on this box" in r and d["from"].endswith("cached on this box"), r)
+check(
+    "from the source package held on the box", "cached on this box" in r and d["from"].endswith("cached on this box"), r
+)
 check("  git not even tried", not calls, calls)
-check("  every yaml, with its path below config.d", [f["path"] for f in d["files"]] == ["OpenWRT/one.yaml", "display.yml", "lora-a.yaml"], d["files"])
+check(
+    "  every yaml, with its path below config.d",
+    [f["path"] for f in d["files"]] == ["OpenWRT/one.yaml", "display.yml", "lora-a.yaml"],
+    d["files"],
+)
 check("  the texts as in the package", d["files"][2]["text"] == "Lora:\n  CS: 8\n")
-check("  stops at the folder's end (nothing from bin/ or src/ after it)", all("device-install" not in f["path"] for f in d["files"]))
+check(
+    "  stops at the folder's end (nothing from bin/ or src/ after it)",
+    all("device-install" not in f["path"] for f in d["files"]),
+)
 r = firmware.sync_configs(rel, log=lambda *a: None)
 check("the same release again: not fetched", "already cached" in r, r)
-firmware.CONFIGS.unlink(); held.unlink()
+firmware.CONFIGS.unlink()
+held.unlink()
 rel2 = dict(rel, source=None)
 try:
-    firmware.sync_configs(rel2, log=lambda *a: None); check("nothing works: an error", False)
+    firmware.sync_configs(rel2, log=lambda *a: None)
+    check("nothing works: an error", False)
 except librarian.LibrarianError as exc:
-    check(f"nothing works: says what was tried ({exc})", exc.message["id"] == "firmware.configs.none"
-          and any(t["id"] == "firmware.configs.tried-git" for t in exc.message["args"]["tried"]) and calls)
-bad = firmware.ROOT / V / "bad-src.zip"; bad.write_bytes(b"not a zip at all")
+    check(
+        f"nothing works: says what was tried ({exc})",
+        exc.message["id"] == "firmware.configs.none"
+        and any(t["id"] == "firmware.configs.tried-git" for t in exc.message["args"]["tried"])
+        and calls,
+    )
+bad = firmware.ROOT / V / "bad-src.zip"
+bad.write_bytes(b"not a zip at all")
 try:
-    firmware._configs_from_package(lambda off: firmware._seek(open(bad, "rb"), off)); check("a broken package: refused", False)
+    firmware._configs_from_package(lambda off: firmware._seek(open(bad, "rb"), off))
+    check("a broken package: refused", False)
 except librarian.LibrarianError as exc:
     check(f"a broken package: refused ({exc})", exc.message["id"] == "firmware.package.not-zip")
 
@@ -68,7 +126,9 @@ except librarian.LibrarianError as exc:
 # tried before everything else.
 import subprocess
 from unittest import mock
-from irate_box.library import mirrors  # noqa: E402
+
+from irate_box.library import mirrors
+
 librarian._git = real_git
 ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
 work = T / "work"
@@ -89,95 +149,188 @@ subprocess.run(["git", "clone", "-q", "--bare", str(work), str(bare)], check=Tru
 other = {"name": "something-else", "area": "public", "upstream": "https://github.com/meshtastic/protobufs"}
 with mock.patch.object(mirrors, "load", return_value=[other, fw_mirror]):
     check("the firmware's source mirror is found by its upstream (any case)", firmware.source_mirror() == fw_mirror)
-    check("  and named in the Firmware pane's data", firmware.snapshot()["source"] == {"name": "meshtastic-firmware", "area": "public"})
-    if firmware.CONFIGS.exists(): firmware.CONFIGS.unlink()
+    check(
+        "  and named in the Firmware pane's data",
+        firmware.snapshot()["source"] == {"name": "meshtastic-firmware", "area": "public"},
+    )
+    if firmware.CONFIGS.exists():
+        firmware.CONFIGS.unlink()
     r = firmware.sync_configs(rel, log=lambda *a: None)
     d = json.loads(firmware.CONFIGS.read_text())
-    check("config.d from the mirror, first", "the mirror meshtastic-firmware.git" in r and d["from"].startswith("the mirror"), r)
-    check("  the yaml files below config.d, not the symlink, the text file or one outside",
-          [f["path"] for f in d["files"]] == ["OpenWRT/one.yaml", "lora-a.yaml"], d["files"])
+    check(
+        "config.d from the mirror, first",
+        "the mirror meshtastic-firmware.git" in r and d["from"].startswith("the mirror"),
+        r,
+    )
+    check(
+        "  the yaml files below config.d, not the symlink, the text file or one outside",
+        [f["path"] for f in d["files"]] == ["OpenWRT/one.yaml", "lora-a.yaml"],
+        d["files"],
+    )
     check("  their text", d["files"][1]["text"] == "Lora:\n  CS: 8\n")
     firmware.CONFIGS.unlink()
-    calls.clear(); librarian._git = lambda *a, **k: git(*a) if a[0] == "clone" else (calls.append(a), real_git(*a, **k))[1]
+    calls.clear()
+    librarian._git = lambda *a, **k: git(*a) if a[0] == "clone" else (calls.append(a), real_git(*a, **k))[1]
     r2 = dict(rel, tag="v9.9.8.0000000", version="9.9.8.0000000", source=None)
     try:
         firmware.sync_configs(r2, log=lambda *a: None)
     except librarian.LibrarianError as exc:
-        check("a tag the mirror lacks: falls through to the next source, and says why", any(t["args"]["error"]["id"] == "firmware.mirror.no-tag" and t["args"]["error"]["args"]["tag"] == "v9.9.8.0000000"
-                  for t in exc.message["args"]["tried"] if t["id"] == "firmware.configs.tried-mirror")
-              and any(c[0] == "clone" for c in calls), str(exc))
+        check(
+            "a tag the mirror lacks: falls through to the next source, and says why",
+            any(
+                t["args"]["error"]["id"] == "firmware.mirror.no-tag"
+                and t["args"]["error"]["args"]["tag"] == "v9.9.8.0000000"
+                for t in exc.message["args"]["tried"]
+                if t["id"] == "firmware.configs.tried-mirror"
+            )
+            and any(c[0] == "clone" for c in calls),
+            str(exc),
+        )
     librarian._git = real_git
 with mock.patch.object(mirrors, "load", return_value=[other]):
     check("no mirror of it: None", firmware.source_mirror() is None and firmware.snapshot()["source"] is None)
 
 # The build cache is the builds' now: carried with flash files off.
-with mock.patch.object(firmware, "_releases", return_value=[dict(rel, channel="alpha", deps={"url": "x", "size": 1, "name": "d.zip"})]), \
-     mock.patch.object(firmware, "sync_configs", return_value="configs: held"), \
-     mock.patch.object(firmware, "_carry_cache", return_value={"version": V, "mode": "native", "bytes": 215 << 20}) as carry:
+with (
+    mock.patch.object(
+        firmware, "_releases", return_value=[dict(rel, channel="alpha", deps={"url": "x", "size": 1, "name": "d.zip"})]
+    ),
+    mock.patch.object(firmware, "sync_configs", return_value="configs: held"),
+    mock.patch.object(
+        firmware, "_carry_cache", return_value={"version": V, "mode": "native", "bytes": 215 << 20}
+    ) as carry,
+):
     firmware.set_settings(enabled=False, cache="native")
     out = firmware.sync(log=lambda *a: None)
-    check("flash files off, cache on: the cache is still carried", carry.called and "build cache 215 MB" in out
-          and firmware.status()["cache"]["mode"] == "native", out)
+    check(
+        "flash files off, cache on: the cache is still carried",
+        carry.called and "build cache 215 MB" in out and firmware.status()["cache"]["mode"] == "native",
+        out,
+    )
 # A board whose file the release lacks (2.8.1's canaryone .hex, HTTP 404) is left out, not every
 # board after it; the network gone stops the run; flash files off removes those held, not the cache.
-from unittest import mock as _m  # noqa: E402
-import hashlib  # noqa: E402
+import hashlib
+from unittest import mock as _m
+
 FV = "2.8.1.8e6a88d"
 files = {"a.bin": b"a" * 100, "c.bin": b"c" * 50}
-mts = {"alpha": {"files": [{"name": "a.bin", "bytes": 100, "md5": hashlib.md5(files["a.bin"]).hexdigest()}]},
-       "canary": {"files": [{"name": "gone.hex", "bytes": 10, "md5": "0" * 32}]},
-       "zeta": {"files": [{"name": "c.bin", "bytes": 50, "md5": hashlib.md5(files["c.bin"]).hexdigest()}]}}
+mts = {
+    "alpha": {"files": [{"name": "a.bin", "bytes": 100, "md5": hashlib.md5(files["a.bin"]).hexdigest()}]},
+    "canary": {"files": [{"name": "gone.hex", "bytes": 10, "md5": "0" * 32}]},
+    "zeta": {"files": [{"name": "c.bin", "bytes": 50, "md5": hashlib.md5(files["c.bin"]).hexdigest()}]},
+}
+
+
 def gj(url):
     if url.endswith(f"firmware-{FV}.json"):
         return {"targets": [{"board": b} for b in mts]}
     return mts[url.rsplit("/", 1)[1].split("-")[1]]
+
+
 net = {"down": False}
+
+
 def dl(url, dest, auth=None, name=None, expected=0, resume=False):
     if net["down"]:
-        raise librarian.LibrarianError(librarian.M("library.download.unreachable", "Download failed. The box cannot reach {host}: {reason}",
-                                                    host="release.meshtastic.org", reason="down"))
+        raise librarian.LibrarianError(
+            librarian.M(
+                "library.download.unreachable",
+                "Download failed. The box cannot reach {host}: {reason}",
+                host="release.meshtastic.org",
+                reason="down",
+            )
+        )
     fname = url.rsplit("/", 1)[1]
     if fname not in files:
-        raise librarian.LibrarianError(librarian.M("library.download.http-error", "Download failed. {url} answered HTTP {code}.", url=url, code=404))
+        raise librarian.LibrarianError(
+            librarian.M(
+                "library.download.http-error", "Download failed. {url} answered HTTP {code}.", url=url, code=404
+            )
+        )
     dest.write_bytes(files[fname])
+
+
 policy = {"min_free_mb": 1}
-with _m.patch.object(firmware, "_get_json", gj), _m.patch.object(librarian, "_download", dl), _m.patch.object(firmware, "_publish", lambda p, d: p.write_text(json.dumps(d))):
+with (
+    _m.patch.object(firmware, "_get_json", gj),
+    _m.patch.object(librarian, "_download", dl),
+    _m.patch.object(firmware, "_publish", lambda p, d: p.write_text(json.dumps(d))),
+):
     v = firmware._mirror_version({"version": FV, "channel": "alpha"}, {"boards": "all"}, policy, lambda *a: None)
-    check("a board's file missing from the release: that board left out, the rest kept", v["boards"] == ["alpha", "zeta"]
-          and [u["board"] for u in v["unavailable"]] == ["canary"] and "404" in v["unavailable"][0]["why"], v)
-    check("  and not offered: its manifest not published", not (firmware.ROOT / FV / f"firmware-canary-{FV}.mt.json").exists()
-          and (firmware.ROOT / FV / f"firmware-zeta-{FV}.mt.json").exists())
-    net["down"] = True; (firmware.ROOT / FV / "a.bin").unlink()
+    check(
+        "a board's file missing from the release: that board left out, the rest kept",
+        v["boards"] == ["alpha", "zeta"]
+        and [u["board"] for u in v["unavailable"]] == ["canary"]
+        and "404" in v["unavailable"][0]["why"],
+        v,
+    )
+    check(
+        "  and not offered: its manifest not published",
+        not (firmware.ROOT / FV / f"firmware-canary-{FV}.mt.json").exists()
+        and (firmware.ROOT / FV / f"firmware-zeta-{FV}.mt.json").exists(),
+    )
+    net["down"] = True
+    (firmware.ROOT / FV / "a.bin").unlink()
     try:
         firmware._mirror_version({"version": FV, "channel": "alpha"}, {"boards": "all"}, policy, lambda *a: None)
         check("the network gone: the run stops", False)
     except librarian.LibrarianError as exc:
-        check("the network gone: the run stops", exc.message["id"] == "library.download.unreachable" and not isinstance(exc, firmware._Unavailable), str(exc))
-(firmware.ROOT / FV / "pio-deps").mkdir(parents=True, exist_ok=True); (firmware.ROOT / FV / "pio-deps" / "x").write_text("cache")
+        check(
+            "the network gone: the run stops",
+            exc.message["id"] == "library.download.unreachable" and not isinstance(exc, firmware._Unavailable),
+            str(exc),
+        )
+(firmware.ROOT / FV / "pio-deps").mkdir(parents=True, exist_ok=True)
+(firmware.ROOT / FV / "pio-deps" / "x").write_text("cache")
 gone = firmware._drop_flash_files()
-check("flash files off: those held go, the build cache stays", gone > 0 and (firmware.ROOT / FV / "pio-deps" / "x").exists()
-      and sorted(p.name for p in (firmware.ROOT / FV).iterdir()) == ["pio-deps"], sorted(p.name for p in (firmware.ROOT / FV).iterdir()))
+check(
+    "flash files off: those held go, the build cache stays",
+    gone > 0
+    and (firmware.ROOT / FV / "pio-deps" / "x").exists()
+    and sorted(p.name for p in (firmware.ROOT / FV).iterdir()) == ["pio-deps"],
+    sorted(p.name for p in (firmware.ROOT / FV).iterdir()),
+)
+
 
 # A download cut off part way resumes with a range request (librarian._download).
 class Resp(io.BytesIO):
     def __init__(self, data, status):
-        super().__init__(data); self.status = status; self.headers = {"Content-Length": str(len(data))}
+        super().__init__(data)
+        self.status = status
+        self.headers = {"Content-Length": str(len(data))}
+
+
 whole = bytes(range(256)) * 40
 asked = []
+
+
 def fake_open(url, auth=None, method="GET", timeout=60, extra=None):
     asked.append(extra)
     start = int(extra["Range"][6:-1]) if extra else 0
     return Resp(whole[start:], 206) if extra and honour else Resp(whole, 200)
+
+
+# fake_open reads the loop's `honour` as a global.
 real_open, librarian._open = librarian._open, fake_open
 part = T / "part.bin"
-for honour, why in ((True, "a server that allows ranges: the rest appended"), (False, "one that ignores the range (200): started again")):
-    part.write_bytes(whole[:3000]); asked.clear()
+for honour, why in (  # noqa: B007
+    (True, "a server that allows ranges: the rest appended"),
+    (False, "one that ignores the range (200): started again"),
+):
+    part.write_bytes(whole[:3000])
+    asked.clear()
     librarian._download("http://x/y", part, expected=len(whole), resume=True)
-    check(f"resume: {why}", part.read_bytes() == whole and asked == [{"Range": "bytes=3000-"}], (part.stat().st_size, asked))
-part.write_bytes(b"z" * 99999); asked.clear()
+    check(
+        f"resume: {why}",
+        part.read_bytes() == whole and asked == [{"Range": "bytes=3000-"}],
+        (part.stat().st_size, asked),
+    )
+part.write_bytes(b"z" * 99999)
+asked.clear()
 librarian._download("http://x/y", part, expected=len(whole), resume=True)
 check("resume: a part bigger than the file is not trusted", part.read_bytes() == whole and asked == [None], asked)
-part.write_bytes(whole[:3000]); asked.clear()
+part.write_bytes(whole[:3000])
+asked.clear()
 librarian._download("http://x/y", part, expected=len(whole))
 check("without resume: never a range", part.read_bytes() == whole and asked == [None], asked)
 librarian._open = real_open

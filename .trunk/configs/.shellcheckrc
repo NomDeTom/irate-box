@@ -1,0 +1,7 @@
+# enable=all turned on optional style checks (braces round every variable, [[ ]] over [ ]): about 3,600 issues.
+source-path=SCRIPTDIR
+disable=SC2154
+
+# If you're having issues with shellcheck following source, disable the errors via:
+# disable=SC1090
+# disable=SC1091

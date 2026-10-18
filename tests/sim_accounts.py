@@ -3,14 +3,23 @@
 """Accounts: the store offline (names, scrypt,
 sessions, one-time codes, the limits, the admin's levels), then a hub on a spare port: the cookie's
 flags, the HTTP stance, a page elsewhere refused. python3 tests/sim_accounts.py"""
-import json, os, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="accounts-"))
 os.environ["HUB_STATE_DIR"] = str(T / "state")
 sys.path.insert(0, str(REPO))
-from irate_box.hub import accounts as A  # noqa: E402
+from irate_box.hub import accounts as A
 
 fails = 0
 
@@ -35,251 +44,476 @@ check("off by default, HTTP with a warning", A.settings() == {"signup": "off", "
 check("  no sign-ups while off", refused(A.signup, "alice", "password1", says="accounts.signup.closed"))
 A.set_settings(signup="open")
 check("open: an account usable at once", A.signup("Alice", "password1", "10.0.0.2") == "user")
-check("  names: taken (any case), reserved, malformed", refused(A.signup, "ALICE", "password1", says="accounts.name.taken")
-      and refused(A.signup, "admin", "password1", says="accounts.name.reserved") and refused(A.signup, "a b", "password1", says="accounts.name.invalid") and refused(A.signup, "ab", "password1", says="accounts.name.invalid"))
+check(
+    "  names: taken (any case), reserved, malformed",
+    refused(A.signup, "ALICE", "password1", says="accounts.name.taken")
+    and refused(A.signup, "admin", "password1", says="accounts.name.reserved")
+    and refused(A.signup, "a b", "password1", says="accounts.name.invalid")
+    and refused(A.signup, "ab", "password1", says="accounts.name.invalid"),
+)
 check("  a short password refused", refused(A.signup, "bob", "short", says="accounts.password.length"))
 raw = json.loads((T / "state" / "accounts.json").read_text())
 h = raw["accounts"]["alice"]["hash"]
-check("stored: scrypt with its salt, never the password; the file 600", h.startswith("scrypt$16384$8$1$") and "password1" not in json.dumps(raw)
-      and (T / "state" / "accounts.json").stat().st_mode & 0o777 == 0o600, h)
-t0 = time.time(); token, me = A.login("alice", "password1", "10.0.0.2"); dt = time.time() - t0
+check(
+    "stored: scrypt with its salt, never the password; the file 600",
+    h.startswith("scrypt$16384$8$1$")
+    and "password1" not in json.dumps(raw)
+    and (T / "state" / "accounts.json").stat().st_mode & 0o777 == 0o600,
+    h,
+)
+t0 = time.time()
+token, me = A.login("alice", "password1", "10.0.0.2")
+dt = time.time() - t0
 check("login: by name in any case; a session", me["name"] == "Alice" and A.session(token)["name"] == "Alice", me)
 print(f"note: one scrypt check took {dt * 1000:.0f} ms here")
 check("  the cookie itself never stored", token not in (T / "state" / "accounts.json").read_text())
-check("  a wrong password, an unknown name: the same answer", refused(A.login, "alice", "nope-nope", "10.0.0.3", says="accounts.signin.failed")
-      and refused(A.login, "nobody", "password1", "10.0.0.3", says="accounts.signin.failed"))
+check(
+    "  a wrong password, an unknown name: the same answer",
+    refused(A.login, "alice", "nope-nope", "10.0.0.3", says="accounts.signin.failed")
+    and refused(A.login, "nobody", "password1", "10.0.0.3", says="accounts.signin.failed"),
+)
 for _ in range(9):
     refused(A.login, "alice", "wrong-wrong", "10.0.0.9")
-check("  10 failures in a quarter hour: a wait, even with the right password", refused(A.login, "alice", "password1", "10.0.0.8", kind=A.Wait, says="accounts.wait"))
+check(
+    "  10 failures in a quarter hour: a wait, even with the right password",
+    refused(A.login, "alice", "password1", "10.0.0.8", kind=A.Wait, says="accounts.wait"),
+)
 try:
-    A.login("alice", "password1", "10.0.0.8"); waited = None
+    A.login("alice", "password1", "10.0.0.8")
+    waited = None
 except A.Wait as exc:
     waited = exc.message
-check("  the wait says how long: 15 minutes", waited and waited.get("args") == {"n": 15} and "15 minutes" in str(A.Wait(waited)), waited)
+check(
+    "  the wait says how long: 15 minutes",
+    waited and waited.get("args") == {"n": 15} and "15 minutes" in str(A.Wait(waited)),
+    waited,
+)
 A._fails.clear()
 check("  a session that isn't one: none", A.session("x" * 43) is None and A.session(None) is None)
 A.set_settings(signup="apply")
-check("apply: the account waits", A.signup("bob", "password2", "10.0.0.4") == "asked" and refused(A.login, "bob", "password2", "", says="accounts.signin.pending"))
+check(
+    "apply: the account waits",
+    A.signup("bob", "password2", "10.0.0.4") == "asked"
+    and refused(A.login, "bob", "password2", "", says="accounts.signin.pending"),
+)
 A.change("bob", "accept")
 tb, _ = A.login("bob", "password2")
 check("  accepted: it logs in", A.session(tb)["state"] == "user")
-check("  sign-ups from one address limited", all(A.signup(f"x{i}x", "password9", "10.0.0.7") for i in range(5))
-      and refused(A.signup, "x6x", "password9", "10.0.0.7", kind=A.Wait, says="accounts.signup.wait"))
+check(
+    "  sign-ups from one address limited",
+    all(A.signup(f"x{i}x", "password9", "10.0.0.7") for i in range(5))
+    and refused(A.signup, "x6x", "password9", "10.0.0.7", kind=A.Wait, says="accounts.signup.wait"),
+)
 A.change("bob", "disable")
-check("disable: its sessions end at once, and it can't log in", A.session(tb) is None and refused(A.login, "bob", "password2", "", says="accounts.signin.disabled"))
+check(
+    "disable: its sessions end at once, and it can't log in",
+    A.session(tb) is None and refused(A.login, "bob", "password2", "", says="accounts.signin.disabled"),
+)
 A.change("bob", "enable")
 A.set_settings(signup="assigned")
 code = A.make("carol", "admin")
-check("assigned: no sign-ups; an admin's account with a one-time code", refused(A.signup, "dave", "password3", says="accounts.signup.assigned")
-      and len(code) == 19 and code.count("-") == 3 and refused(A.login, "carol", "anything1", "", says="accounts.signin.failed"))
-check("  the code sets the password (dashes and case don't matter), once", A.use_code(code.lower().replace("-", " "), "password4") == "carol"
-      and A.login("carol", "password4")[1]["role"] == "admin" and refused(A.use_code, code, "password5", says="accounts.code.invalid"))
+check(
+    "assigned: no sign-ups; an admin's account with a one-time code",
+    refused(A.signup, "dave", "password3", says="accounts.signup.assigned")
+    and len(code) == 19
+    and code.count("-") == 3
+    and refused(A.login, "carol", "anything1", "", says="accounts.signin.failed"),
+)
+check(
+    "  the code sets the password (dashes and case don't matter), once",
+    A.use_code(code.lower().replace("-", " "), "password4") == "carol"
+    and A.login("carol", "password4")[1]["role"] == "admin"
+    and refused(A.use_code, code, "password5", says="accounts.code.invalid"),
+)
 tc, _ = A.login("carol", "password4")
 code = A.reset("carol")
-check("reset: a new code, and the account's sessions end", A.session(tc) is None and A.use_code(code, "password6") == "carol")
+check(
+    "reset: a new code, and the account's sessions end",
+    A.session(tc) is None and A.use_code(code, "password6") == "carol",
+)
 ta, _ = A.login("alice", "password1")
 ta2, _ = A.login("alice", "password1")
 A.change_password(ta, "password1", "password7")
-check("change password: the old one wrong refused; done, its other sessions end", A.session(ta) and A.session(ta2) is None
-      and refused(A.change_password, ta, "password1", "password8", says="accounts.password.wrong"))
+check(
+    "change password: the old one wrong refused; done, its other sessions end",
+    A.session(ta)
+    and A.session(ta2) is None
+    and refused(A.change_password, ta, "password1", "password8", says="accounts.password.wrong"),
+)
 A.logout(ta)
 check("logout: the session ends", A.session(ta) is None)
 tb, _ = A.login("bob", "password2")
 A.set_settings(signup="off")
-check("off again: no users' logins, no users' sessions count, no codes that aren't the box's (admins still sign in: one login)",
-      A.session(tb) is None and refused(A.login, "bob", "password2", says="accounts.signin.off")
-      and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="accounts.code.invalid"))
+check(
+    "off again: no users' logins, no users' sessions count, no codes that aren't the box's (admins still sign in: one login)",
+    A.session(tb) is None
+    and refused(A.login, "bob", "password2", says="accounts.signin.off")
+    and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="accounts.code.invalid"),
+)
 A.set_settings(signup="apply")
 check("  on again: the sessions count again", A.session(tb) is not None)
 A.change("x0x", "delete")
-check("delete: gone; the list shows no hash", "x0x" not in [a["name"] for a in A.listing()] and all("hash" not in a for a in A.listing()))
+check(
+    "delete: gone; the list shows no hash",
+    "x0x" not in [a["name"] for a in A.listing()] and all("hash" not in a for a in A.listing()),
+)
 check("counts", A.counts() == {"asked": 4, "user": 3, "disabled": 0, "admins": 1}, A.counts())
-check("bad settings refused", refused(A.set_settings, "everyone", says="accounts.settings.signup") and refused(A.set_settings, None, "sometimes", says="accounts.settings.http"))
+check(
+    "bad settings refused",
+    refused(A.set_settings, "everyone", says="accounts.settings.signup")
+    and refused(A.set_settings, None, "sometimes", says="accounts.settings.http"),
+)
 
 # git over HTTP (stage 4): an account by its basic-auth credentials.
-import base64  # noqa: E402
+import base64
+
 basic = lambda n, pw: "Basic " + base64.b64encode(f"{n}:{pw}".encode()).decode()  # noqa: E731
 A.set_settings(signup="apply")
-check("check_basic: an account's name and password, its role", A.check_basic(basic("carol", "password6"), "10.9.9.9") == {"name": "carol", "role": "admin"})
-t0 = time.time(); A.check_basic(basic("carol", "password6")); quick = time.time() - t0
-check("  a wrong password, the box's own 'admin', garbage, a cookie-less nothing: none", A.check_basic(basic("carol", "nope-nope"), "10.9.9.9") is None
-      and A.check_basic(basic("admin", "whatever"), "") is None and A.check_basic("Basic !!!", "") is None and A.check_basic("", "") is None)
+check(
+    "check_basic: an account's name and password, its role",
+    A.check_basic(basic("carol", "password6"), "10.9.9.9") == {"name": "carol", "role": "admin"},
+)
+t0 = time.time()
+A.check_basic(basic("carol", "password6"))
+quick = time.time() - t0
+check(
+    "  a wrong password, the box's own 'admin', garbage, a cookie-less nothing: none",
+    A.check_basic(basic("carol", "nope-nope"), "10.9.9.9") is None
+    and A.check_basic(basic("admin", "whatever"), "") is None
+    and A.check_basic("Basic !!!", "") is None
+    and A.check_basic("", "") is None,
+)
 check("  a right one remembered for a minute (git asks several times a push)", quick < 0.01, quick)
 A.use_code(A.reset("carol"), "password7")
-check("  not after a reset, that minute included", A.check_basic(basic("carol", "password6"), "10.9.9.9") is None
-      and A.check_basic(basic("carol", "password7"), "10.9.9.9") == {"name": "carol", "role": "admin"})
+check(
+    "  not after a reset, that minute included",
+    A.check_basic(basic("carol", "password6"), "10.9.9.9") is None
+    and A.check_basic(basic("carol", "password7"), "10.9.9.9") == {"name": "carol", "role": "admin"},
+)
 A.use_code(A.reset("carol"), "password6")  # as the rest of the test knows it
 A._fails.clear()
 
 # Users mode for apps (stage 2): access.py, and the root helper's files for nginx.
-from irate_box.hub import access  # noqa: E402
+from irate_box.hub import access
+
 st_ = access.clean({"draw": "users", "flasher": "users", "term": "users", "my-addon": "users", "wiki": "users"})
-check("users mode: a built-in app may be for users, and a local add-on too; not the flasher (its page is cross-site), nor the shell",
-      st_["draw"] == "users" and st_["wiki"] == "users" and st_["my-addon"] == "users" and st_["flasher"] == "public" and st_["term"] == "public", st_)
+check(
+    "users mode: a built-in app may be for users, and a local add-on too; not the flasher (its page is cross-site), nor the shell",
+    st_["draw"] == "users"
+    and st_["wiki"] == "users"
+    and st_["my-addon"] == "users"
+    and st_["flasher"] == "public"
+    and st_["term"] == "public",
+    st_,
+)
 conf = access.nginx_conf(st_)
 check("  nginx: no basic auth for it (the gate asks the hub instead)", "set $irate_box_auth_draw off;" in conf)
 gates = access.nginx_gates(st_)
-check("  a gate for each app for users, and the admin's", sorted(gates) == ["gate-admin.conf", "gate-draw.conf", "gate-wiki.conf"]
-      and "auth_request /_irate_user;" in gates["gate-draw.conf"] and "error_page 401 = @irate_box_login;" in gates["gate-draw.conf"], gates)
-check("  Caddy: forward_auth to the hub's check, which redirects", "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
-      and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"])
+check(
+    "  a gate for each app for users, and the admin's",
+    sorted(gates) == ["gate-admin.conf", "gate-draw.conf", "gate-wiki.conf"]
+    and "auth_request /_irate_user;" in gates["gate-draw.conf"]
+    and "error_page 401 = @irate_box_login;" in gates["gate-draw.conf"],
+    gates,
+)
+check(
+    "  Caddy: forward_auth to the hub's check, which redirects",
+    "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
+    and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"],
+)
 
 # A local add-on in users mode: no per-id location exists
 # ahead of time in the template, so it gets its own, matched before the shared one.
 my_addon = {"id": "my-addon", "capabilities": {}}
 gates = access.addon_gates(st_, [my_addon])
-check("  a local add-on for users gets its own nginx location, the hub's check before the rest",
-      sorted(gates) == ["users-my-addon.conf"]
-      and gates["users-my-addon.conf"].index("auth_request /_irate_user;") < gates["users-my-addon.conf"].index("try_files")
-      and "location ~ ^/my-addon/ {" in gates["users-my-addon.conf"], gates)
+check(
+    "  a local add-on for users gets its own nginx location, the hub's check before the rest",
+    sorted(gates) == ["users-my-addon.conf"]
+    and gates["users-my-addon.conf"].index("auth_request /_irate_user;")
+    < gates["users-my-addon.conf"].index("try_files")
+    and "location ~ ^/my-addon/ {" in gates["users-my-addon.conf"],
+    gates,
+)
 check("  nothing generated for one that is public or off", access.addon_gates(access.clean({}), [my_addon]) == {})
 routes = access.addon_caddy_routes(st_, [my_addon], "HASH")
-check("  Caddy: the same add-on gets forward_auth in its route", "forward_auth 127.0.0.1:8000" in routes and "uri /_irate/user?redirect=1" in routes)
+check(
+    "  Caddy: the same add-on gets forward_auth in its route",
+    "forward_auth 127.0.0.1:8000" in routes and "uri /_irate/user?redirect=1" in routes,
+)
 sn = access.caddy_snippets(access.clean({"tools": "private"}), "HASH")
-check("  Caddy's admin gate: the hub asked (soft), its answer copied onto the request; a private app: the session, else the login",
-      "uri /_irate/admin?soft=1" in sn["admin-gate.caddy"] and "copy_headers X-Irate-Session" in sn["admin-gate.caddy"]
-      and sn["tools.caddy"].index("request_header -X-Irate-Session") < sn["tools.caddy"].index("forward_auth")
-      < sn["tools.caddy"].index("basic_auth @irate_box_basic {\n\t\tadmin HASH") and "not header X-Irate-Session admin" in sn["tools.caddy"], sn["tools.caddy"])
+check(
+    "  Caddy's admin gate: the hub asked (soft), its answer copied onto the request; a private app: the session, else the login",
+    "uri /_irate/admin?soft=1" in sn["admin-gate.caddy"]
+    and "copy_headers X-Irate-Session" in sn["admin-gate.caddy"]
+    and sn["tools.caddy"].index("request_header -X-Irate-Session")
+    < sn["tools.caddy"].index("forward_auth")
+    < sn["tools.caddy"].index("basic_auth @irate_box_basic {\n\t\tadmin HASH")
+    and "not header X-Irate-Session admin" in sn["tools.caddy"],
+    sn["tools.caddy"],
+)
 sn = access.caddy_snippets(access.clean({"tools": "private"}), "HASH", admin_login=False)
-check("  with the box's own login off: a hard check (anyone else sent to log in), no login asked",
-      "uri /_irate/admin?redirect=1" in sn["admin-gate.caddy"] and "redirect=1" in sn["tools.caddy"] and "basic_auth" not in sn["tools.caddy"], sn)
+check(
+    "  with the box's own login off: a hard check (anyone else sent to log in), no login asked",
+    "uri /_irate/admin?redirect=1" in sn["admin-gate.caddy"]
+    and "redirect=1" in sn["tools.caddy"]
+    and "basic_auth" not in sn["tools.caddy"],
+    sn,
+)
 cf = (REPO / "config" / "Caddyfile").read_text()
-check("  the Caddyfile: /admin, the shell, Syncthing and /git-private take the gate before their own login, which stays (no gate file: the login alone); git asks the hub",
-      cf.count("import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*") == 4
-      and cf.count("basic_auth @irate_box_basic {") == 6 and "try_files /guest-push" not in cf
-      and all(cf.index("admin-gate.caddy*", cf.index(r)) < cf.index("basic_auth @irate_box_basic", cf.index(r)) < cf.index("reverse_proxy", cf.index(r))
-              for r in ("handle_path /sync/* {", "handle /term/* {")))
+check(
+    "  the Caddyfile: /admin, the shell, Syncthing and /git-private take the gate before their own login, which stays (no gate file: the login alone); git asks the hub",
+    cf.count("import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*") == 4
+    and cf.count("basic_auth @irate_box_basic {") == 6
+    and "try_files /guest-push" not in cf
+    and all(
+        cf.index("admin-gate.caddy*", cf.index(r))
+        < cf.index("basic_auth @irate_box_basic", cf.index(r))
+        < cf.index("reverse_proxy", cf.index(r))
+        for r in ("handle_path /sync/* {", "handle /term/* {")
+    ),
+)
 g2 = access.nginx_gates(access.clean({"tools": "private", "term": "private"}))
-check("admin gate: the box's own login or an admin's session; a private app gets it, the shell needs none of its own",
-      g2["gate-admin.conf"].endswith("satisfy any;\nauth_request /_irate_admin;\n") and g2["gate-tools.conf"] == g2["gate-admin.conf"] and "gate-term.conf" not in g2, g2)
-check("  with the box's own login off: anyone without an admin session sent to log in",
-      "error_page 401 = @irate_box_login;" in access.nginx_gates({}, admin_login=False)["gate-admin.conf"])
+check(
+    "admin gate: the box's own login or an admin's session; a private app gets it, the shell needs none of its own",
+    g2["gate-admin.conf"].endswith("satisfy any;\nauth_request /_irate_admin;\n")
+    and g2["gate-tools.conf"] == g2["gate-admin.conf"]
+    and "gate-term.conf" not in g2,
+    g2,
+)
+check(
+    "  with the box's own login off: anyone without an admin session sent to log in",
+    "error_page 401 = @irate_box_login;" in access.nginx_gates({}, admin_login=False)["gate-admin.conf"],
+)
 site = (REPO / "config" / "irate-box.nginx").read_text()
-check("  the site: /admin/, /term/ and /sync/ include it; each server block can ask",
-      all(site.index("include @ACCESS@.d/gate-admin.conf*;", site.index(loc)) < site.index("\n\t}\n", site.index(loc)) for loc in ("location /admin/ {", "location /term/ {", "location /sync/ {"))
-      and site.count("location = /_irate_admin") == 4
-      and site.count("proxy_set_header X-Original-URI $request_uri;\n\t\tproxy_pass http://irate_box_hub/_irate/admin;") == 4)
-check("  the add-on server: its own /_irate_user and login too, the per-add-on gates included before the shared location",
-      site.index("include @ADDON_GATES@/*.conf*;") < site.index("location ~ ^/(?<irate_box_addon>"))
-import re as _re  # noqa: E402
+check(
+    "  the site: /admin/, /term/ and /sync/ include it; each server block can ask",
+    all(
+        site.index("include @ACCESS@.d/gate-admin.conf*;", site.index(loc)) < site.index("\n\t}\n", site.index(loc))
+        for loc in ("location /admin/ {", "location /term/ {", "location /sync/ {")
+    )
+    and site.count("location = /_irate_admin") == 4
+    and site.count("proxy_set_header X-Original-URI $request_uri;\n\t\tproxy_pass http://irate_box_hub/_irate/admin;")
+    == 4,
+)
+check(
+    "  the add-on server: its own /_irate_user and login too, the per-add-on gates included before the shared location",
+    site.index("include @ADDON_GATES@/*.conf*;") < site.index("location ~ ^/(?<irate_box_addon>"),
+)
+import re as _re
+
 gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
-check("  the site: every app location with a login has its gate include",
-      all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
-      and site.count("location = /_irate_user") == 5 and site.count("location @irate_box_login") == 6, sorted(gated))
+check(
+    "  the site: every app location with a login has its gate include",
+    all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
+    and site.count("location = /_irate_user") == 5
+    and site.count("location @irate_box_login") == 6,
+    sorted(gated),
+)
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))
 (T / "etc").mkdir()
-from irate_box.root import hub_control as H  # noqa: E402
+from irate_box.root import hub_control as H
+
 H._access_files(st_)
 gd = T / "etc" / "nginx-access.conf.d"
-check("helper: the gates written beside the access include", sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf", "gate-wiki.conf"])
-check("  and the add-on gates directory made, empty here (no real local add-on named my-addon)",
-      (T / "etc" / "nginx-addon-gates.conf.d").is_dir() and not list((T / "etc" / "nginx-addon-gates.conf.d").iterdir()))
+check(
+    "helper: the gates written beside the access include",
+    sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf", "gate-wiki.conf"],
+)
+check(
+    "  and the add-on gates directory made, empty here (no real local add-on named my-addon)",
+    (T / "etc" / "nginx-addon-gates.conf.d").is_dir() and not list((T / "etc" / "nginx-addon-gates.conf.d").iterdir()),
+)
 H._access_files(access.clean({"draw": "users"}))
-check("  and the one no longer for users removed", sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf"])
+check(
+    "  and the one no longer for users removed",
+    sorted(p.name for p in gd.iterdir()) == ["gate-admin.conf", "gate-draw.conf"],
+)
 try:
-    H.access_set({"app": "flasher", "mode": "users"}); check("  the flasher for users: refused", False)
+    H.access_set({"app": "flasher", "mode": "users"})
+    check("  the flasher for users: refused", False)
 except ValueError as exc:
-    check("  the flasher for users: refused", exc.message["id"] == "control.access.no-users" and exc.message["args"]["app"] == "flasher", exc)
+    check(
+        "  the flasher for users: refused",
+        exc.message["id"] == "control.access.no-users" and exc.message["args"]["app"] == "flasher",
+        exc,
+    )
 
 # The box's own admin login switched off and on (stage 3).
 (T / "etc" / "htpasswd").write_text("admin:$6$hash\n")
-H.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, "", "")   # no systemctl here
-H.CONTROL = T / "control"; H.CONTROL.mkdir(exist_ok=True); H.ADMIN_LOGIN_STATE = H.CONTROL / "admin-login.json"
+H.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, "", "")  # no systemctl here
+H.CONTROL = T / "control"
+H.CONTROL.mkdir(exist_ok=True)
+H.ADMIN_LOGIN_STATE = H.CONTROL / "admin-login.json"
 H.STATE = T / "state"
 A.set_settings(signup="apply")
 try:
-    H.admin_login({"on": False}); check("off: refused until an admin account has logged in over HTTPS", False)
+    H.admin_login({"on": False})
+    check("off: refused until an admin account has logged in over HTTPS", False)
 except ValueError as exc:
-    check("off: refused until an admin account has logged in over HTTPS", exc.message["id"] == "control.script-sign-in.off-refused", exc)
+    check(
+        "off: refused until an admin account has logged in over HTTPS",
+        exc.message["id"] == "control.script-sign-in.off-refused",
+        exc,
+    )
 A.login("carol", "password6", https=True)
 out = H.admin_login({"on": False})
-check("  then off: the login file emptied, its hash kept aside, the gates send people to log in, the hub told",
-      "admin:" not in (T / "etc" / "htpasswd").read_text() and (T / "etc" / "admin-login.off").read_text() == "admin:$6$hash\n"
-      and "error_page 401" in (gd / "gate-admin.conf").read_text() and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
-      and out["id"] == "control.script-sign-in.off.accounts" and out["args"]["names"] == ["carol"], out)
-check("  while it is off: the last admin account can't be switched off, made a user or deleted; sign-up can't go off",
-      refused(A.change, "carol", "user", True, says="accounts.last-admin") and refused(A.change, "carol", "delete", True, says="accounts.last-admin")
-      and refused(A.set_settings, "off", None, True, says="accounts.settings.keep-admin"))
+check(
+    "  then off: the login file emptied, its hash kept aside, the gates send people to log in, the hub told",
+    "admin:" not in (T / "etc" / "htpasswd").read_text()
+    and (T / "etc" / "admin-login.off").read_text() == "admin:$6$hash\n"
+    and "error_page 401" in (gd / "gate-admin.conf").read_text()
+    and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
+    and out["id"] == "control.script-sign-in.off.accounts"
+    and out["args"]["names"] == ["carol"],
+    out,
+)
+check(
+    "  while it is off: the last admin account can't be switched off, made a user or deleted; sign-up can't go off",
+    refused(A.change, "carol", "user", True, says="accounts.last-admin")
+    and refused(A.change, "carol", "delete", True, says="accounts.last-admin")
+    and refused(A.set_settings, "off", None, True, says="accounts.settings.keep-admin"),
+)
 H.admin_login({"on": True})
-check("on again: the login as it was; with an admin account ready a browser still goes to the standard sign-in (one login)",
-      (T / "etc" / "htpasswd").read_text() == "admin:$6$hash\n" and not (T / "etc" / "admin-login.off").exists()
-      and "error_page 401 = @irate_box_login" in (gd / "gate-admin.conf").read_text() and "satisfy any" in (gd / "gate-admin.conf").read_text())
+check(
+    "on again: the login as it was; with an admin account ready a browser still goes to the standard sign-in (one login)",
+    (T / "etc" / "htpasswd").read_text() == "admin:$6$hash\n"
+    and not (T / "etc" / "admin-login.off").exists()
+    and "error_page 401 = @irate_box_login" in (gd / "gate-admin.conf").read_text()
+    and "satisfy any" in (gd / "gate-admin.conf").read_text(),
+)
 # No admin account that can sign in: the box's own login is asked for, as before (the bridge for an older box).
 ready_was = H._admin_accounts_ready
 H._admin_accounts_ready = lambda: False
 H._access_files(H.access.read(H.ACCESS_FILE))
-check("  with no admin account ready: the box's own login prompt, as before", "error_page" not in (gd / "gate-admin.conf").read_text())
+check(
+    "  with no admin account ready: the box's own login prompt, as before",
+    "error_page" not in (gd / "gate-admin.conf").read_text(),
+)
 H._admin_accounts_ready = ready_was
 H._access_files(H.access.read(H.ACCESS_FILE))
 check("  and the root helper reads readiness from the accounts themselves", H._admin_accounts_ready() is True)
 H.admin_login({"on": False})
 H.set_login("a-new-password", keep=False)
-check("  a new password (reset-password at the console): on again", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
-      and not (T / "etc" / "admin-login.off").exists() and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True)
+check(
+    "  a new password (reset-password at the console): on again",
+    (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
+    and not (T / "etc" / "admin-login.off").exists()
+    and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True,
+)
 # The first use ended by the owner's admin account: no password made for scripts, the box's own login off.
-H.UNCLAIMED = T / "etc" / "unclaimed"; H.UNCLAIMED.write_text("first use\n")
+H.UNCLAIMED = T / "etc" / "unclaimed"
+H.UNCLAIMED.write_text("first use\n")
 (T / "etc" / "admin-password").write_text("an-old-one\n")
 out = H.claim({})
-check("claim: the first use over, no login of the box's own (the file emptied, none saved), the gates send people to sign in",
-      not H.UNCLAIMED.exists() and not (T / "etc" / "admin-password").exists() and "admin:" not in (T / "etc" / "htpasswd").read_text()
-      and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and "error_page 401" in (gd / "gate-admin.conf").read_text()
-      and out["id"] == "control.setup.done", out)
+check(
+    "claim: the first use over, no login of the box's own (the file emptied, none saved), the gates send people to sign in",
+    not H.UNCLAIMED.exists()
+    and not (T / "etc" / "admin-password").exists()
+    and "admin:" not in (T / "etc" / "htpasswd").read_text()
+    and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
+    and "error_page 401" in (gd / "gate-admin.conf").read_text()
+    and out["id"] == "control.setup.done",
+    out,
+)
 try:
-    H.claim({}); check("  a second claim: refused", False)
+    H.claim({})
+    check("  a second claim: refused", False)
 except ValueError as exc:
     check("  a second claim: refused", exc.message["id"] == "control.setup.already", exc)
 H.set_login("pw-for-scripts")
-check("  script-login at the console afterwards: the login on, its password root's", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
-      and (T / "etc" / "admin-password").read_text() == "pw-for-scripts\n" and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True)
+check(
+    "  script-login at the console afterwards: the login on, its password root's",
+    (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
+    and (T / "etc" / "admin-password").read_text() == "pw-for-scripts\n"
+    and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is True,
+)
 
 # The box's own login's reach (Accounts): off, from the box itself, from the network too; the password only at the console.
 net = T / "etc" / "htpasswd.net"
 (T / "etc" / "admin-password").unlink(missing_ok=True)
 try:
-    H.admin_login({"reach": "local"}); check("reach without a password: refused, the console named", False)
+    H.admin_login({"reach": "local"})
+    check("reach without a password: refused, the console named", False)
 except ValueError as exc:
-    check("reach without a password: refused, the console named", exc.message["id"] == "control.script-sign-in.no-password"
-          and "script-login" in exc.message["args"]["command"], exc)
+    check(
+        "reach without a password: refused, the console named",
+        exc.message["id"] == "control.script-sign-in.no-password" and "script-login" in exc.message["args"]["command"],
+        exc,
+    )
 H.set_login("pw-for-scripts")
 ready = H._https_admins
 H._https_admins = lambda: []
 try:
-    H.admin_login({"reach": "local"}); check("from the box itself with no administrator account: refused (a lockout)", False)
+    H.admin_login({"reach": "local"})
+    check("from the box itself with no administrator account: refused (a lockout)", False)
 except ValueError as exc:
-    check("from the box itself with no administrator account: refused (a lockout), set-admin named",
-          exc.message["id"] == "control.script-sign-in.local-refused" and "set-admin" in exc.message["args"]["command"] and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] != "local", exc)
+    check(
+        "from the box itself with no administrator account: refused (a lockout), set-admin named",
+        exc.message["id"] == "control.script-sign-in.local-refused"
+        and "set-admin" in exc.message["args"]["command"]
+        and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] != "local",
+        exc,
+    )
 H._https_admins = ready
 H.admin_login({"reach": "local"})
 rec = json.loads(H.ADMIN_LOGIN_STATE.read_text())
-check("from the box itself: the login on, the network's copy holding none; said in the record", rec == {"on": True, "reach": "local", "password_set": True}
-      and (T / "etc" / "htpasswd").read_text().startswith("admin:$6$") and "admin:" not in net.read_text(), (rec, net.read_text()))
+check(
+    "from the box itself: the login on, the network's copy holding none; said in the record",
+    rec == {"on": True, "reach": "local", "password_set": True}
+    and (T / "etc" / "htpasswd").read_text().startswith("admin:$6$")
+    and "admin:" not in net.read_text(),
+    (rec, net.read_text()),
+)
 H.admin_login({"reach": "network"})
-check("from the network too: the network's copy the same login", net.read_text() == (T / "etc" / "htpasswd").read_text()
-      and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] == "network")
+check(
+    "from the network too: the network's copy the same login",
+    net.read_text() == (T / "etc" / "htpasswd").read_text()
+    and json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] == "network",
+)
 H.admin_login({"reach": "off"})
-check("off: off, both without a login", json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] == "off" and "admin:" not in net.read_text()
-      and "admin:" not in (T / "etc" / "htpasswd").read_text())
+check(
+    "off: off, both without a login",
+    json.loads(H.ADMIN_LOGIN_STATE.read_text())["reach"] == "off"
+    and "admin:" not in net.read_text()
+    and "admin:" not in (T / "etc" / "htpasswd").read_text(),
+)
 H.admin_login({"reach": "local"})
-check("back on from the box itself: the login as it was", (T / "etc" / "htpasswd").read_text().startswith("admin:$6$") and "admin:" not in net.read_text())
+check(
+    "back on from the box itself: the login as it was",
+    (T / "etc" / "htpasswd").read_text().startswith("admin:$6$") and "admin:" not in net.read_text(),
+)
 try:
-    H.admin_login({"reach": "everywhere"}); check("an unknown reach: refused", False)
+    H.admin_login({"reach": "everywhere"})
+    check("an unknown reach: refused", False)
 except ValueError:
     check("an unknown reach: refused", True)
-check("Caddy, from the box itself: a login from elsewhere dropped before the gate", access.CADDY_FAR_LOGIN in access.caddy_admin_gate(True, True, True)
-      and access.CADDY_FAR_LOGIN not in access.caddy_admin_gate(True, True, False) and access.CADDY_FAR_LOGIN not in access.caddy_admin_gate(False, True, True)
-      and access.CADDY_FAR_LOGIN.replace("\n", "\n\t") in access.caddy_admin_route("$2a$x", admin_login=True, local_only=True))
+check(
+    "Caddy, from the box itself: a login from elsewhere dropped before the gate",
+    access.CADDY_FAR_LOGIN in access.caddy_admin_gate(True, True, True)
+    and access.CADDY_FAR_LOGIN not in access.caddy_admin_gate(True, True, False)
+    and access.CADDY_FAR_LOGIN not in access.caddy_admin_gate(False, True, True)
+    and access.CADDY_FAR_LOGIN.replace("\n", "\n\t")
+    in access.caddy_admin_route("$2a$x", admin_login=True, local_only=True),
+)
 site_text = (REPO / "config" / "irate-box.nginx").read_text()
-check("nginx: every login file read through the map (the box's own address, else the network's copy)",
-      "auth_basic_user_file @HTPASSWD@;" not in site_text and site_text.count("auth_basic_user_file $irate_box_logins;") >= 20
-      and 'default "@HTPASSWD@.net";' in site_text)
+check(
+    "nginx: every login file read through the map (the box's own address, else the network's copy)",
+    "auth_basic_user_file @HTPASSWD@;" not in site_text
+    and site_text.count("auth_basic_user_file $irate_box_logins;") >= 20
+    and 'default "@HTPASSWD@.net";' in site_text,
+)
 H.admin_login({"reach": "network"})  # as the rest of the test knows it
 
 # The same under Caddy: its hashes swapped for an unknown one and back; the gate hard while off.
 CF = T / "Caddyfile"
 REAL = "$2a$14$" + "r" * 53
-CF.write_text(f":80 {{\n\thandle /admin/* {{\n\t\tbasic_auth @irate_box_basic {{\n\t\t\tadmin {REAL}\n\t\t}}\n\t}}\n"
-              f"\thandle /term/* {{\n\t\tbasic_auth {{\n\t\t\tadmin {REAL}\n\t\t}}\n\t}}\n}}\n")
+CF.write_text(
+    f":80 {{\n\thandle /admin/* {{\n\t\tbasic_auth @irate_box_basic {{\n\t\t\tadmin {REAL}\n\t\t}}\n\t}}\n"
+    f"\thandle /term/* {{\n\t\tbasic_auth {{\n\t\t\tadmin {REAL}\n\t\t}}\n\t}}\n}}\n"
+)
 caddy_calls = []
+
+
 def caddy_run(*a, **k):
     caddy_calls.append(a)
     if a[:2] == ("caddy", "hash-password"):
@@ -287,38 +521,66 @@ def caddy_run(*a, **k):
     if a[:2] == ("caddy", "version"):
         return subprocess.CompletedProcess(a, 0, "v2.6.2\n", "")
     return subprocess.CompletedProcess(a, 0, "", "")
+
+
 H.run, H.WEB_SERVER, H.CADDYFILE, H.CADDY_SITE = caddy_run, "caddy", CF, T / "no-site.caddy"
 H.CADDY_ACCESS = T / "caddy-access"
-popen = H.subprocess.Popen; H.subprocess.Popen = lambda *a, **k: caddy_calls.append(a[0])
+popen = H.subprocess.Popen
+H.subprocess.Popen = lambda *a, **k: caddy_calls.append(a[0])
 try:
     out = H.admin_login({"on": False})
     gate = (H.CADDY_ACCESS / "admin-gate.caddy").read_text()
-    check("Caddy, off: every hash swapped for one nobody knows, the real one kept aside, the gate hard, Caddy restarted, the hub told",
-          REAL not in CF.read_text() and CF.read_text().count("$2a$14$" + "u" * 53) == 2
-          and (T / "etc" / "admin-login.off").read_text().strip() == REAL and "redirect=1" in gate
-          and any(c[-2:] == ["restart", "caddy"] for c in caddy_calls if isinstance(c, list))
-          and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False and out["args"]["names"] == ["carol"], (out, CF.read_text()))
+    check(
+        "Caddy, off: every hash swapped for one nobody knows, the real one kept aside, the gate hard, Caddy restarted, the hub told",
+        REAL not in CF.read_text()
+        and CF.read_text().count("$2a$14$" + "u" * 53) == 2
+        and (T / "etc" / "admin-login.off").read_text().strip() == REAL
+        and "redirect=1" in gate
+        and any(c[-2:] == ["restart", "caddy"] for c in caddy_calls if isinstance(c, list))
+        and json.loads(H.ADMIN_LOGIN_STATE.read_text())["on"] is False
+        and out["args"]["names"] == ["carol"],
+        (out, CF.read_text()),
+    )
     H.admin_login({"on": True})
-    check("  on again: the real hash back everywhere; an admin account ready, so a browser goes to sign in, a script's login passes on",
-          CF.read_text().count(REAL) == 2 and not (T / "etc" / "admin-login.off").exists()
-          and "redirect=1&basic=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
+    check(
+        "  on again: the real hash back everywhere; an admin account ready, so a browser goes to sign in, a script's login passes on",
+        CF.read_text().count(REAL) == 2
+        and not (T / "etc" / "admin-login.off").exists()
+        and "redirect=1&basic=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text(),
+    )
     H.admin_login({"on": False})
     H.set_login("another-password", keep=False)
-    check("  a new password while off: on again, the new hash everywhere", not (T / "etc" / "admin-login.off").exists()
-          and CF.read_text().count("$2a$14$" + "u" * 53) == 2 and "redirect=1&basic=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text())
+    check(
+        "  a new password while off: on again, the new hash everywhere",
+        not (T / "etc" / "admin-login.off").exists()
+        and CF.read_text().count("$2a$14$" + "u" * 53) == 2
+        and "redirect=1&basic=1" in (H.CADDY_ACCESS / "admin-gate.caddy").read_text(),
+    )
 finally:
     H.subprocess.Popen, H.WEB_SERVER = popen, "nginx"
 
 # The hub.
 st = T / "hub"
 st.mkdir()
-s_ = socket.socket(); s_.bind(("127.0.0.1", 0)); port = s_.getsockname()[1]; s_.close()
-env = dict(os.environ, HUB_STATE_DIR=str(st), HUB_ETC_DIR=str(st), PORT=str(port), HUB_BIND="127.0.0.1",
-           HUB_UNCLAIMED_FILE=str(st / "unclaimed"))
-hub = subprocess.Popen([str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+s_ = socket.socket()
+s_.bind(("127.0.0.1", 0))
+port = s_.getsockname()[1]
+s_.close()
+env = dict(
+    os.environ,
+    HUB_STATE_DIR=str(st),
+    HUB_ETC_DIR=str(st),
+    PORT=str(port),
+    HUB_BIND="127.0.0.1",
+    HUB_UNCLAIMED_FILE=str(st / "unclaimed"),
+)
+hub = subprocess.Popen(
+    [str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+)
 for _ in range(100):
     try:
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=1); break
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=1)
+        break
     except OSError:
         time.sleep(0.1)
 
@@ -328,7 +590,12 @@ def req(path, body=None, headers=None, https=False, method=None):
     if body is not None:
         h.update({"Content-Type": "application/json", "X-Irate-Account": "1"})
     h.update(headers or {})
-    r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=None if body is None else json.dumps(body).encode(), headers=h, method=method)
+    r = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=None if body is None else json.dumps(body).encode(),
+        headers=h,
+        method=method,
+    )
     try:
         with urllib.request.urlopen(r, timeout=10) as resp:
             return resp.status, json.loads(resp.read() or b"{}"), resp.headers
@@ -338,29 +605,64 @@ def req(path, body=None, headers=None, https=False, method=None):
 
 try:
     code, d, _ = req("/api/account")
-    check("hub: the page's view, off and nobody", code == 200 and d == {"signup": "off", "http": "warning", "https": False, "me": None, "prefs": None, "names_to": "users"}, d)
-    code, d, _ = req("/admin/accounts", {"action": "settings", "signup": "open", "http": "prevented"}, {"X-Irate-Admin": "1"})
+    check(
+        "hub: the page's view, off and nobody",
+        code == 200
+        and d == {"signup": "off", "http": "warning", "https": False, "me": None, "prefs": None, "names_to": "users"},
+        d,
+    )
+    code, d, _ = req(
+        "/admin/accounts", {"action": "settings", "signup": "open", "http": "prevented"}, {"X-Irate-Admin": "1"}
+    )
     check("  the admin sets the levels", code == 200 and d["settings"] == {"signup": "open", "http": "prevented"}, d)
     code, d, _ = req("/api/account", {"action": "signup", "name": "erin", "password": "password1"})
     check("  prevented: no password over plain HTTP", code == 403 and d["message"]["id"] == "accounts.https-only", d)
     code, d, h = req("/api/account", {"action": "signup", "name": "erin", "password": "password1"}, https=True)
     cookie = h.get("Set-Cookie", "")
-    check("  over HTTPS: made and logged in; the cookie HttpOnly, SameSite=Strict, Secure", code == 200 and d["me"]["name"] == "erin"
-          and all(f in cookie for f in ("irate_session=", "HttpOnly", "SameSite=Strict", "Secure", "Path=/")), (code, d, cookie))
+    check(
+        "  over HTTPS: made and logged in; the cookie HttpOnly, SameSite=Strict, Secure",
+        code == 200
+        and d["me"]["name"] == "erin"
+        and all(f in cookie for f in ("irate_session=", "HttpOnly", "SameSite=Strict", "Secure", "Path=/")),
+        (code, d, cookie),
+    )
     tok = cookie.split(";")[0]
     code, d, _ = req("/api/account", headers={"Cookie": tok}, https=True)
     check("  the cookie says who", d["me"]["name"] == "erin" and d["https"] is True, d)
-    code, d, _ = req("/api/account", {"action": "login", "name": "erin", "password": "password1"}, {"X-Irate-Account": ""}, https=True)
+    code, d, _ = req(
+        "/api/account",
+        {"action": "login", "name": "erin", "password": "password1"},
+        {"X-Irate-Account": ""},
+        https=True,
+    )
     check("  without the page's header: refused", code == 403, d)
-    code, d, _ = req("/api/account", {"action": "login", "name": "erin", "password": "password1"}, {"Origin": "http://elsewhere.example"}, https=True)
+    code, d, _ = req(
+        "/api/account",
+        {"action": "login", "name": "erin", "password": "password1"},
+        {"Origin": "http://elsewhere.example"},
+        https=True,
+    )
     check("  from another site's page: refused", code == 403, d)
     code, d, h = req("/api/account", {"action": "logout"}, {"Cookie": tok}, https=True)
-    check("  logout: the cookie cleared, the session gone", "Max-Age=0" in h.get("Set-Cookie", "") and req("/api/account", headers={"Cookie": tok})[1]["me"] is None)
+    check(
+        "  logout: the cookie cleared, the session gone",
+        "Max-Age=0" in h.get("Set-Cookie", "") and req("/api/account", headers={"Cookie": tok})[1]["me"] is None,
+    )
     req("/admin/accounts", {"action": "settings", "http": "warning"}, {"X-Irate-Admin": "1"})
     code, d, h = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})
-    check("  warning: allowed over HTTP, the cookie not Secure there", code == 200 and "Secure" not in h.get("Set-Cookie", ""), h.get("Set-Cookie"))
+    check(
+        "  warning: allowed over HTTP, the cookie not Secure there",
+        code == 200 and "Secure" not in h.get("Set-Cookie", ""),
+        h.get("Set-Cookie"),
+    )
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "frank"}, {"X-Irate-Admin": "1"})
-    check("  the admin makes one: its code given once", code == 200 and len(d.get("code", "")) == 19 and any(a["name"] == "frank" and not a["password_set"] for a in d["accounts"]), d)
+    check(
+        "  the admin makes one: its code given once",
+        code == 200
+        and len(d.get("code", "")) == 19
+        and any(a["name"] == "frank" and not a["password_set"] for a in d["accounts"]),
+        d,
+    )
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "frank"})
     check("  an /admin change without the admin page's header: refused", code == 403)
     # Users mode: the front's check, and the home page.
@@ -374,35 +676,80 @@ try:
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *a, **k):
             return None
-    r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/user?redirect=1", headers={"X-Forwarded-Uri": "/draw/?x=1&y=2"})
+
+    r = urllib.request.Request(
+        f"http://127.0.0.1:{port}/_irate/user?redirect=1", headers={"X-Forwarded-Uri": "/draw/?x=1&y=2"}
+    )
     try:
-        urllib.request.build_opener(NoRedirect).open(r, timeout=5); loc = None
+        urllib.request.build_opener(NoRedirect).open(r, timeout=5)
+        loc = None
     except urllib.error.HTTPError as e:
         loc = (e.code, e.headers.get("Location"))
-    check("  Caddy's (?redirect=1): to the account page, back to where they were going", loc == (302, "/account.html?next=/draw/%3Fx%3D1%26y%3D2"), loc)
-    r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/user?redirect=1", headers={"X-Forwarded-Uri": "//elsewhere.example/"})
+    check(
+        "  Caddy's (?redirect=1): to the account page, back to where they were going",
+        loc == (302, "/account.html?next=/draw/%3Fx%3D1%26y%3D2"),
+        loc,
+    )
+    r = urllib.request.Request(
+        f"http://127.0.0.1:{port}/_irate/user?redirect=1", headers={"X-Forwarded-Uri": "//elsewhere.example/"}
+    )
     try:
-        urllib.request.build_opener(NoRedirect).open(r, timeout=5); loc = None
+        urllib.request.build_opener(NoRedirect).open(r, timeout=5)
+        loc = None
     except urllib.error.HTTPError as e:
         loc = e.headers.get("Location")
     check("  never back to another site", loc == "/account.html?next=/", loc)
     (st / "control").mkdir(exist_ok=True)
     (st / "control" / "access.json").write_text(json.dumps({"draw": "users"}))
+
     def home(cookie=None):
         r = urllib.request.Request(f"http://127.0.0.1:{port}/", headers={"Cookie": cookie} if cookie else {})
         return urllib.request.urlopen(r, timeout=5).read().decode()
-    check("  the home page: an app for users shown to a user, not to a guest", "/app.html#/draw/" in home(tok) and "/app.html#/draw/" not in home())
+
+    check(
+        "  the home page: an app for users shown to a user, not to a guest",
+        "/app.html#/draw/" in home(tok) and "/app.html#/draw/" not in home(),
+    )
     code, _, _ = req("/_irate/admin", headers={"Cookie": tok})
     check("  the admin check: a user's session, 401", code == 401, code)
     (st / "unclaimed").write_text("no password yet\n")
-    seen = {u: req("/_irate/admin", headers={"X-Original-URI": u})[0] for u in ("/admin/", "/admin/settings?x=1", "/term/", "/sync/", "/tools/", "/administer",
-                                                                        "/admin/../term/", "/admin/%2E%2E/sync/", "/admin/./", "//admin/")}
+    seen = {
+        u: req("/_irate/admin", headers={"X-Original-URI": u})[0]
+        for u in (
+            "/admin/",
+            "/admin/settings?x=1",
+            "/term/",
+            "/sync/",
+            "/tools/",
+            "/administer",
+            "/admin/../term/",
+            "/admin/%2E%2E/sync/",
+            "/admin/./",
+            "//admin/",
+        )
+    }
     (st / "unclaimed").unlink()
-    check("  an unclaimed box: /admin opens (the set-the-password page); the shell, Syncthing and private apps don't",
-          seen == {"/admin/": 204, "/admin/settings?x=1": 204, "/term/": 401, "/sync/": 401, "/tools/": 401, "/administer": 401,
-                   "/admin/../term/": 401, "/admin/%2E%2E/sync/": 401, "/admin/./": 204, "//admin/": 401}, seen)
+    check(
+        "  an unclaimed box: /admin opens (the set-the-password page); the shell, Syncthing and private apps don't",
+        seen
+        == {
+            "/admin/": 204,
+            "/admin/settings?x=1": 204,
+            "/term/": 401,
+            "/sync/": 401,
+            "/tools/": 401,
+            "/administer": 401,
+            "/admin/../term/": 401,
+            "/admin/%2E%2E/sync/": 401,
+            "/admin/./": 204,
+            "//admin/": 401,
+        },
+        seen,
+    )
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "gina", "role": "admin"}, {"X-Irate-Admin": "1"})
-    req("/api/account", {"action": "code", "code": d["code"], "password": "password9"}, https=True)  # an admin's: over HTTPS only
+    req(
+        "/api/account", {"action": "code", "code": d["code"], "password": "password9"}, https=True
+    )  # an admin's: over HTTPS only
     _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)
     code, _, _ = req("/_irate/admin", headers={"Cookie": h.get("Set-Cookie", "").split(";")[0]})
     # The box tile's trends: an admin account's session only, and never the processes.
@@ -410,52 +757,106 @@ try:
     t_guest = req("/api/trends")[0]
     t_user = req("/api/trends", headers={"Cookie": tok})[0]
     t_code, t_body, _ = req("/api/trends", headers={"Cookie": gina})
-    check("the trends: a guest and a user refused (403); the admin given the samples, no processes",
-          t_guest == 403 and t_user == 403 and t_code == 200 and isinstance(t_body.get("samples"), list)
-          and "processes" not in t_body and "processes_at" not in t_body, (t_guest, t_user, t_code, t_body))
+    check(
+        "the trends: a guest and a user refused (403); the admin given the samples, no processes",
+        t_guest == 403
+        and t_user == 403
+        and t_code == 200
+        and isinstance(t_body.get("samples"), list)
+        and "processes" not in t_body
+        and "processes_at" not in t_body,
+        (t_guest, t_user, t_code, t_body),
+    )
     _, d, _ = req("/admin/accounts")
-    r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/admin", data=b"", method="POST",
-                               headers={"Cookie": h.get("Set-Cookie", "").split(";")[0], "Content-Length": "40"})
+    r = urllib.request.Request(
+        f"http://127.0.0.1:{port}/_irate/admin",
+        data=b"",
+        method="POST",
+        headers={"Cookie": h.get("Set-Cookie", "").split(";")[0], "Content-Length": "40"},
+    )
     t0 = time.time()
     try:
         pc = urllib.request.urlopen(r, timeout=5).status
     except (urllib.error.HTTPError, OSError) as e:
         pc = getattr(e, "code", str(e))
-    check("  asked as a POST whose body never comes (a gated POST): answered at once, not waited on", pc == 204 and time.time() - t0 < 2, pc)
-    import http.client  # noqa: E402
+    check(
+        "  asked as a POST whose body never comes (a gated POST): answered at once, not waited on",
+        pc == 204 and time.time() - t0 < 2,
+        pc,
+    )
+    import http.client
+
     hc = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     hc.request("GET", "/_irate/admin", headers={"Connection": "close"})
     rr = hc.getresponse()
-    check("  a request that asks to close: the answer says it closes (the web server must not reuse it)",
-          (rr.getheader("Connection") or "").lower() == "close", rr.getheaders())
+    check(
+        "  a request that asks to close: the answer says it closes (the web server must not reuse it)",
+        (rr.getheader("Connection") or "").lower() == "close",
+        rr.getheaders(),
+    )
     hc.close()
-    check("  an admin account's: 204; the Accounts page knows it logged in over HTTPS", code == 204 and d["admin_login"]["on"] is True
-          and d["admin_login"]["https_admins"] == ["gina"], (code, d.get("admin_login")))
+    check(
+        "  an admin account's: 204; the Accounts page knows it logged in over HTTPS",
+        code == 204 and d["admin_login"]["on"] is True and d["admin_login"]["https_admins"] == ["gina"],
+        (code, d.get("admin_login")),
+    )
     gtok = h.get("Set-Cookie", "").split(";")[0]
+
     def caddy_ask(q, cookie=None):
-        r = urllib.request.Request(f"http://127.0.0.1:{port}/_irate/admin?{q}", headers=dict({"X-Forwarded-Uri": "/term/"}, **({"Cookie": cookie} if cookie else {})))
+        r = urllib.request.Request(
+            f"http://127.0.0.1:{port}/_irate/admin?{q}",
+            headers=dict({"X-Forwarded-Uri": "/term/"}, **({"Cookie": cookie} if cookie else {})),
+        )
         try:
             with urllib.request.build_opener(NoRedirect).open(r, timeout=5) as resp:
                 return resp.status, resp.headers.get("X-Irate-Session") or None, None
         except urllib.error.HTTPError as e:
             return e.code, e.headers.get("X-Irate-Session") or None, e.headers.get("Location")
-    check("Caddy's admin gate, the own login on (soft): an admin's session says so; a user's and a guest's pass on to the login",
-          caddy_ask("soft=1", gtok) == (204, "admin", None) and caddy_ask("soft=1", tok) == (204, None, None)
-          and caddy_ask("soft=1") == (204, None, None), (caddy_ask("soft=1", gtok), caddy_ask("soft=1", tok)))
-    check("  the own login off (redirect): an admin's session in; anyone else sent to log in, back to where they were going",
-          caddy_ask("redirect=1", gtok) == (204, "admin", None) and caddy_ask("redirect=1", tok) == (302, None, "/account.html?next=/term/"),
-          (caddy_ask("redirect=1", gtok), caddy_ask("redirect=1", tok)))
+
+    check(
+        "Caddy's admin gate, the own login on (soft): an admin's session says so; a user's and a guest's pass on to the login",
+        caddy_ask("soft=1", gtok) == (204, "admin", None)
+        and caddy_ask("soft=1", tok) == (204, None, None)
+        and caddy_ask("soft=1") == (204, None, None),
+        (caddy_ask("soft=1", gtok), caddy_ask("soft=1", tok)),
+    )
+    check(
+        "  the own login off (redirect): an admin's session in; anyone else sent to log in, back to where they were going",
+        caddy_ask("redirect=1", gtok) == (204, "admin", None)
+        and caddy_ask("redirect=1", tok) == (302, None, "/account.html?next=/term/"),
+        (caddy_ask("redirect=1", gtok), caddy_ask("redirect=1", tok)),
+    )
     # The shoutbox and forum (stage 5): who may post, and the users' marks.
-    utok = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})[2].get("Set-Cookie", "").split(";")[0]
+    utok = (
+        req("/api/account", {"action": "login", "name": "erin", "password": "password1"})[2]
+        .get("Set-Cookie", "")
+        .split(";")[0]
+    )
     code, d, _ = req("/messages", {"name": "Erin", "text": "hello"}, {"X-Irate-Account": ""})
-    check("shoutbox: a guest can't post under an account's name (any case)", code == 403 and d["message"]["id"] == "posting.name.account", d)
+    check(
+        "shoutbox: a guest can't post under an account's name (any case)",
+        code == 403 and d["message"]["id"] == "posting.name.account",
+        d,
+    )
     code, d, _ = req("/messages", {"name": "Someone Else", "text": "as erin"}, {"Cookie": utok})
-    check("  a user posts under their account's name, marked as theirs", code == 201 and d["name"] == "erin" and d["account"] == "erin", d)
+    check(
+        "  a user posts under their account's name, marked as theirs",
+        code == 201 and d["name"] == "erin" and d["account"] == "erin",
+        d,
+    )
     code, d, _ = req("/messages", {"name": "Salty Parrot", "text": "ahoy"})
     check("  a guest under any other name, unmarked", code == 201 and "account" not in d, d)
     code, d, _ = req("/messages", headers={"Cookie": utok})
-    check("  the page told who may post, the marks, and who this is", d["posting"] == {"who": "guests", "marks": True, "me": "erin"}, d.get("posting"))
-    req("/admin/settings", {"shout_who": "users", "board_who": "off", "board_marks": False, "shout_marks": "sometimes"}, {"X-Irate-Admin": "1"})
+    check(
+        "  the page told who may post, the marks, and who this is",
+        d["posting"] == {"who": "guests", "marks": True, "me": "erin"},
+        d.get("posting"),
+    )
+    req(
+        "/admin/settings",
+        {"shout_who": "users", "board_who": "off", "board_marks": False, "shout_marks": "sometimes"},
+        {"X-Irate-Admin": "1"},
+    )
     code, d, _ = req("/messages", {"name": "Salty Parrot", "text": "ahoy"})
     check("users only: a guest refused, told to log in", code == 403 and d.get("login") is True, d)
     code, d, _ = req("/messages", {"name": "x", "text": "still here"}, {"Cookie": utok})
@@ -463,26 +864,51 @@ try:
     code, d, _ = req("/board/threads", {"name": "erin", "title": "t", "text": "x"}, {"Cookie": utok})
     check("forum off: no one posts, users neither", code == 403 and d["message"]["id"] == "board.closed", d)
     code, d, _ = req("/board/threads")
-    check("  marks off told to the page; a setting that isn't one left as it was", d["posting"]["who"] == "off" and d["posting"]["marks"] is False
-          and req("/messages")[1]["posting"]["marks"] is True, d["posting"])
+    check(
+        "  marks off told to the page; a setting that isn't one left as it was",
+        d["posting"]["who"] == "off"
+        and d["posting"]["marks"] is False
+        and req("/messages")[1]["posting"]["marks"] is True,
+        d["posting"],
+    )
     req("/admin/settings", {"board_who": "guests"}, {"X-Irate-Admin": "1"})
     code, d, _ = req("/board/threads", {"name": "anyone", "title": "t", "text": "x"}, {"Cookie": utok})
     tid = d["thread"]["id"]
     code2, d2, _ = req(f"/board/thread/{tid}", {"name": "ERIN", "text": "me too"})
     code3, d3, _ = req(f"/board/thread/{tid}", {"name": "Bosun", "text": "aye"})
     th = req(f"/board/thread/{tid}")[1]
-    check("forum: a user's thread under their name and marked; a guest can't reply as them; a guest's reply unmarked",
-          d["thread"]["author"] == "erin" and d["thread"]["posts"][0]["account"] == "erin" and code2 == 403 and code3 == 201
-          and "account" not in d3["post"] and req("/board/threads")[1]["threads"][0]["account"] == "erin" and th["posting"]["who"] == "guests", (d, d2, d3))
+    check(
+        "forum: a user's thread under their name and marked; a guest can't reply as them; a guest's reply unmarked",
+        d["thread"]["author"] == "erin"
+        and d["thread"]["posts"][0]["account"] == "erin"
+        and code2 == 403
+        and code3 == 201
+        and "account" not in d3["post"]
+        and req("/board/threads")[1]["threads"][0]["account"] == "erin"
+        and th["posting"]["who"] == "guests",
+        (d, d2, d3),
+    )
 
     # Saves tied to accounts: off by default, an admin's choice.
-    code, d, _ = req("/api/saves", {"id": "erins-locked", "kind": "t", "name": "mine", "state": {"v": 1}}, {"Cookie": utok, "X-Lock-New": "aa" * 32 + ":4"})
+    code, d, _ = req(
+        "/api/saves",
+        {"id": "erins-locked", "kind": "t", "name": "mine", "state": {"v": 1}},
+        {"Cookie": utok, "X-Lock-New": "aa" * 32 + ":4"},
+    )
     check("a locked save, made while signed in: carries the account", code == 201 and d["locked"], d)
     code, d, _ = req("/api/saves/erins-locked", {"name": "renamed"}, {"Cookie": utok}, method="PATCH")
-    check("off (the default): logged in as its own account, but on another device (no proof): still locked", code == 403, d)
+    check(
+        "off (the default): logged in as its own account, but on another device (no proof): still locked",
+        code == 403,
+        d,
+    )
     req("/admin/settings", {"saves_cross_device": True}, {"X-Irate-Admin": "1"})
     code, d, _ = req("/api/saves/erins-locked", {"name": "renamed"}, {"Cookie": utok}, method="PATCH")
-    check("on: the save's own account changes it from another device, past the lock", code == 200 and d["name"] == "renamed", d)
+    check(
+        "on: the save's own account changes it from another device, past the lock",
+        code == 200 and d["name"] == "renamed",
+        d,
+    )
     code, d, _ = req("/api/saves/erins-locked", {"name": "nope"}, method="PATCH")
     check("  a guest, even now: still locked", code == 403, d)
     code, d, _ = req("/api/saves/erins-locked", headers={"Cookie": utok}, method="DELETE")

@@ -23,14 +23,41 @@ import os
 import shutil
 from pathlib import Path
 
-LEVELS = ("settings", "data")   # the download's levels; the full image is root's, to a USB stick
+LEVELS = ("settings", "data")  # the download's levels; the full image is root's, to a USB stick
 # Paths relative to $STATE. A file or folder not named here is settings if it is a top-level file and
 # data if it is a folder: something new is kept rather than lost (and listed by `unsorted` for the tests).
-DATA = ("notes", "store", "drop", "board.json", "messages.json", "service-history.json", "security-imports",
-        "mesh/nodes.json", "git", "library/status.json", "library/mirrors-status.json")
-REFETCHED = ("zim", "firmware", "ci", "crashwatch", "control", "kits", "source", "library/archive", "library/tmp",
-             "library/apps", "library/api-cache", "library/debsecan", "library/lock", "library/github-token",
-             "library/progress.json", "helper-busy.json", "boot_id")
+DATA = (
+    "notes",
+    "store",
+    "drop",
+    "board.json",
+    "messages.json",
+    "service-history.json",
+    "security-imports",
+    "mesh/nodes.json",
+    "git",
+    "library/status.json",
+    "library/mirrors-status.json",
+)
+REFETCHED = (
+    "zim",
+    "firmware",
+    "ci",
+    "crashwatch",
+    "control",
+    "kits",
+    "source",
+    "library/archive",
+    "library/tmp",
+    "library/apps",
+    "library/api-cache",
+    "library/debsecan",
+    "library/lock",
+    "library/github-token",
+    "library/progress.json",
+    "helper-busy.json",
+    "boot_id",
+)
 # Syncthing's identity: only when asked for (whoever holds it can pose as the box to its peers).
 SYNCTHING = (".local/state/syncthing", ".config/syncthing")
 SETTINGS_DIRS = ("apps.d", "addons", "factory-targets", "library", "mesh", ".local", ".config")
@@ -44,9 +71,14 @@ def kind_of(rel, git_mirrors=()):
     """settings, data or refetched, for a file's path relative to $STATE (git_mirrors: the mirrors' folders
     under git/). A top-level file is settings, a file in a folder is the folder's (settings folders named in
     SETTINGS_DIRS, the rest data), unless named in DATA or REFETCHED: something new is kept, not lost."""
-    if not rel or _under(rel, REFETCHED) or _under(rel, git_mirrors) or rel.endswith((".tmp", ".part")) \
-            or any(rel.startswith(m) for m in git_mirrors if m.endswith("--")) \
-            or _under(rel, ("git/.incoming",)):
+    if (
+        not rel
+        or _under(rel, REFETCHED)
+        or _under(rel, git_mirrors)
+        or rel.endswith((".tmp", ".part"))
+        or any(rel.startswith(m) for m in git_mirrors if m.endswith("--"))
+        or _under(rel, ("git/.incoming",))
+    ):
         return "refetched"
     if rel.startswith(("git/cgitrc-", "git/mirror-urls.json")):
         return "settings"
@@ -65,8 +97,12 @@ def git_mirrors(state, mirrors=None):
         except (OSError, ValueError, AttributeError):
             mirrors = []
     # A mirror's submodules are mirrors too, beside it as NAME--SUB.git (e.g. meshtastic-firmware--protobufs).
-    return tuple(p for m in mirrors if isinstance(m, dict) and m.get("name")
-                 for p in (f"git/{m.get('area', 'public')}/{m['name']}.git", f"git/{m.get('area', 'public')}/{m['name']}--"))
+    return tuple(
+        p
+        for m in mirrors
+        if isinstance(m, dict) and m.get("name")
+        for p in (f"git/{m.get('area', 'public')}/{m['name']}.git", f"git/{m.get('area', 'public')}/{m['name']}--")
+    )
 
 
 def walk(state, git_mirrors_=None):
@@ -127,6 +163,7 @@ def keep_for(level, with_syncthing, git_mirrors_=()):
             # Folders are walked into unless never backed up; the files inside decide.
             return None if k == "refetched" else info
         return info if k in allowed else None
+
     return keep
 
 
@@ -157,8 +194,12 @@ def apps_size(apps_dir):
     return sum(du(p) for p in apps.iterdir() if not p.name.startswith(".")) if apps and apps.is_dir() else 0
 
 
-def hub_program_size(apps_dir, room=Path("/usr/share/hub/room"), downloads=Path("/var/cache/irate-box/downloads"),
-                     code=Path("/opt/irate-box")):
+def hub_program_size(
+    apps_dir,
+    room=Path("/usr/share/hub/room"),
+    downloads=Path("/var/cache/irate-box/downloads"),
+    code=Path("/opt/irate-box"),
+):
     """About what a kit's hub program weighs: the apps, the collaboration relay, the release files and the code."""
     return apps_size(apps_dir) + sum(du(p) for p in (room, downloads, code) if p.is_dir())
 
@@ -168,18 +209,32 @@ def plan(state, zim_dir, kits_status=None, mirrors=None, apps_dir=None, kit_titl
     state = Path(state)
     gm = git_mirrors(state, mirrors)
     sums = walk(state, gm)
-    books = sorted(({"name": p.stem, "size": p.stat().st_size} for p in Path(zim_dir).glob("*.zim") if p.is_file()),
-                   key=lambda b: b["name"])
-    kits = [{"id": k, "title": (kit_titles or {}).get(k, k),
-             "size": (v.get("cached") or {}).get("export_bytes") or (v.get("cached") or {}).get("bytes") or 0}
-            for k, v in sorted(((kits_status or {}).get("kits") or {}).items()) if (v.get("cached") or {}).get("bytes")]
+    books = sorted(
+        ({"name": p.stem, "size": p.stat().st_size} for p in Path(zim_dir).glob("*.zim") if p.is_file()),
+        key=lambda b: b["name"],
+    )
+    kits = [
+        {
+            "id": k,
+            "title": (kit_titles or {}).get(k, k),
+            "size": (v.get("cached") or {}).get("export_bytes") or (v.get("cached") or {}).get("bytes") or 0,
+        }
+        for k, v in sorted(((kits_status or {}).get("kits") or {}).items())
+        if (v.get("cached") or {}).get("bytes")
+    ]
     repos = []
     for area in ("public", "private"):
         for p in sorted((state / "git" / area).glob("*.git")) if (state / "git" / area).is_dir() else []:
             rel = f"git/{area}/{p.name}"
             repos.append({"name": p.name[:-4], "area": area, "mirror": kind_of(rel, gm) == "refetched", "size": du(p)})
     code = hub_program_size(apps_dir)
-    return {"levels": {"settings": sums["settings"], "data": sums["settings"] + sums["data"]},
-            "syncthing": sums["syncthing"], "left_out": {"books": sums["books"], "firmware": sums["firmware"]},
-            "image": image_estimate(card_size()), "books": books, "kits": kits, "repos": repos,
-            "hub": code}
+    return {
+        "levels": {"settings": sums["settings"], "data": sums["settings"] + sums["data"]},
+        "syncthing": sums["syncthing"],
+        "left_out": {"books": sums["books"], "firmware": sums["firmware"]},
+        "image": image_estimate(card_size()),
+        "books": books,
+        "kits": kits,
+        "repos": repos,
+        "hub": code,
+    }

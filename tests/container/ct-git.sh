@@ -39,7 +39,7 @@ git clone -q "http://$H/git/demo.git" pub 2>/dev/null && ok "anonymous clone (em
 cd pub && echo hello >README && git add README && git commit -qm first && git branch -M main
 git push -q origin main 2>/dev/null && bad "anonymous push went through" || ok "anonymous push refused"
 git push -q "http://admin:$PW@$H/git/demo.git" main 2>/dev/null && ok "push with the login" || bad "push with the login"
-cd "$W"
+cd "$W" || exit
 git clone -q "http://$H/git/demo.git" pub2 2>/dev/null && [ "$(cat pub2/README)" = hello ] && ok "anonymous clone has the commit" || bad "clone after push"
 check 401 code "http://$H/git/demo.git/info/refs?service=git-receive-pack"
 check 200 code "http://$H/git/demo.git/info/refs?service=git-upload-pack"
@@ -64,7 +64,7 @@ check 401 code "http://$H/git-private/secret.git/info/refs?service=git-upload-pa
 git clone -q "http://$H/git-private/secret.git" priv 2>/dev/null && bad "anonymous private clone" || ok "anonymous private clone refused"
 git clone -q "http://admin:$PW@$H/git-private/secret.git" priv 2>/dev/null && ok "private clone with the login" || bad "private clone with the login"
 cd priv && echo s >S && git add S && git commit -qm s && git push -q origin HEAD:main 2>/dev/null && ok "private push" || bad "private push"
-cd "$W"
+cd "$W" || exit
 check 1 sh -c "curl -s -u admin:$PW $GB/git-private/ | grep -c 'secret.git' | sed 's/^[1-9][0-9]*$/1/'"
 
 echo "== push presets"
@@ -72,7 +72,7 @@ preset() { admin "{\"action\":\"preset\",\"area\":\"public\",\"name\":\"demo\",\
 preset public-everything
 cd pub && echo more >>README && git commit -qam second
 git push -q "http://$H/git/demo.git" main 2>/dev/null && ok "public-everything: a guest pushes" || bad "public-everything: a guest pushes"
-cd "$W"
+cd "$W" || exit
 check 401 code "http://$H/git-private/secret.git/info/refs?service=git-receive-pack"
 preset public-admin-writes
 check 401 code "http://$H/git/demo.git/info/refs?service=git-receive-pack"
@@ -88,7 +88,7 @@ admin '{"action":"create","area":"public","name":"big"}' >/dev/null
 git init -q bigrepo && cd bigrepo && head -c 80000000 /dev/urandom >blob && git add blob && git commit -qm big
 out=$(git -c http.postBuffer=200000000 push "http://admin:$PW@$H/git/big.git" HEAD:main 2>&1)
 echo "$out" | grep -qE '413|too large|RPC failed' && ok "an 80 MB push is refused" || bad "80 MB push: $(echo "$out" | tail -2 | tr '\n' ' ')"
-cd "$W"
+cd "$W" || exit
 
 echo "== admin: list, describe, delete"
 check "demo 2 1" sh -c "curl -s -u admin:$PW http://$H/admin/git | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)[\"repos\"] if x[\"name\"]==\"demo\"][0]; print(r[\"name\"], len([1]) + 1 if r[\"last_commit\"] else 0, r[\"branches\"])'"

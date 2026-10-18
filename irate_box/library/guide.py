@@ -31,16 +31,17 @@ SOURCE = CHECKOUT / "docs" / "user"
 WEB = CHECKOUT / "web" / "guide"
 ZIM_NAME = "irate-box-guide"
 ZIM_FILE = f"{ZIM_NAME}.zim"
-BOOK = WEB / ZIM_FILE                    # the book that ships, beside the pages (and downloadable from /guide/)
+BOOK = WEB / ZIM_FILE  # the book that ships, beside the pages (and downloadable from /guide/)
 BOOK_SOURCE = WEB / f"{ZIM_NAME}.source"  # the source hash it was made from
 D2Z_CONFIG = CHECKOUT / "config" / "guide-zim.json"
 
 # --- Markdown, the guide's kind ------------------------------------------------------------------
 
+
 def _inline(text):
     out, pos = [], 0
     for m in re.finditer(r"`([^`]+)`|\*\*(.+?)\*\*|\*(.+?)\*|\[([^\]]+)\]\(([^)\s]+)\)", text):
-        out.append(html.escape(text[pos:m.start()], quote=False))
+        out.append(html.escape(text[pos : m.start()], quote=False))
         code, bold, em, label, href = m.groups()
         if code is not None:
             out.append(f"<code>{html.escape(code, quote=False)}</code>")
@@ -61,27 +62,34 @@ def _list(lines):
     """Lines of one list (items start with "- " or "1. "; deeper lines indented): its HTML."""
     ordered = bool(re.match(r"^\d+\. ", lines[0]))
     items = []
-    for l in lines:
-        if re.match(r"^(- |\d+\. )", l):
-            items.append([re.sub(r"^(- |\d+\. )", "", l)])
+    for ln in lines:
+        if re.match(r"^(- |\d+\. )", ln):
+            items.append([re.sub(r"^(- |\d+\. )", "", ln)])
         else:
-            items[-1].append(l)
+            items[-1].append(ln)
     tag = "ol" if ordered else "ul"
     parts = []
     for it in items:
-        first, rest = it[0], [l[2:] if l.startswith("  ") else l.lstrip() for l in it[1:]]
-        nested = [l for l in rest if re.match(r"^\s*(- |\d+\. )", l)]
-        text = " ".join([first] + [l.strip() for l in rest if l not in nested])
-        sub = _list([l.strip() if re.match(r"^\s*(- |\d+\. )", l) else l for l in nested]) if nested else ""
+        first, rest = it[0], [ln[2:] if ln.startswith("  ") else ln.lstrip() for ln in it[1:]]
+        nested = [ln for ln in rest if re.match(r"^\s*(- |\d+\. )", ln)]
+        text = " ".join([first] + [ln.strip() for ln in rest if ln not in nested])
+        sub = _list([ln.strip() if re.match(r"^\s*(- |\d+\. )", ln) else ln for ln in nested]) if nested else ""
         parts.append(f"<li>{_inline(text)}{sub}</li>")
     return f"<{tag}>" + "".join(parts) + f"</{tag}>"
 
 
 def _table(lines):
-    rows = [[c.strip() for c in l.strip().strip("|").split("|")] for l in lines if not re.match(r"^\s*\|?\s*:?-{3,}", l)]
+    rows = [
+        [c.strip() for c in ln.strip().strip("|").split("|")] for ln in lines if not re.match(r"^\s*\|?\s*:?-{3,}", ln)
+    ]
     head, body = rows[0], rows[1:]
-    return ("<table><thead><tr>" + "".join(f"<th>{_inline(c)}</th>" for c in head) + "</tr></thead><tbody>"
-            + "".join("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in r) + "</tr>" for r in body) + "</tbody></table>")
+    return (
+        "<table><thead><tr>"
+        + "".join(f"<th>{_inline(c)}</th>" for c in head)
+        + "</tr></thead><tbody>"
+        + "".join("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in r) + "</tr>" for r in body)
+        + "</tbody></table>"
+    )
 
 
 def render(md):
@@ -91,18 +99,22 @@ def render(md):
     lines = md.split("\n")
     title, subtitle, out, i = "", "", [], 0
     while i < len(lines):
-        l = lines[i]
-        if not l.strip():
+        ln = lines[i]
+        if not ln.strip():
             i += 1
             continue
-        if l.startswith("```"):
+        if ln.startswith("```"):
             j = i + 1
             while j < len(lines) and not lines[j].startswith("```"):
                 j += 1
-            out.append('<pre class="help-code"><code>' + html.escape("\n".join(lines[i + 1:j]), quote=False) + "</code></pre>")
+            out.append(
+                '<pre class="help-code"><code>'
+                + html.escape("\n".join(lines[i + 1 : j]), quote=False)
+                + "</code></pre>"
+            )
             i = j + 1
             continue
-        h = re.match(r"^(#{1,3}) (.*)$", l)
+        h = re.match(r"^(#{1,3}) (.*)$", ln)
         if h:
             if len(h.group(1)) == 1 and not title:
                 title = h.group(2).strip()
@@ -112,13 +124,17 @@ def render(md):
             i += 1
             continue
         j = i
-        if re.match(r"^(- |\d+\. )", l):
-            while j < len(lines) and lines[j].strip() and (re.match(r"^(- |\d+\. )", lines[j]) or lines[j].startswith(" ")):
+        if re.match(r"^(- |\d+\. )", ln):
+            while (
+                j < len(lines)
+                and lines[j].strip()
+                and (re.match(r"^(- |\d+\. )", lines[j]) or lines[j].startswith(" "))
+            ):
                 j += 1
             out.append(_list(lines[i:j]))
             i = j
             continue
-        if l.lstrip().startswith("|"):
+        if ln.lstrip().startswith("|"):
             while j < len(lines) and lines[j].lstrip().startswith("|"):
                 j += 1
             out.append(_table(lines[i:j]))
@@ -174,16 +190,27 @@ PAGE = """<!DOCTYPE html>
 def pages():
     """The guide's pages, in the index's order: [(stem, markdown)], index first."""
     src = {p.stem: p.read_text() for p in sorted(SOURCE.glob("*.md"))}
-    order = ["index"] + [s for s in re.findall(r"\]\(([a-z0-9-]+)\.md\)", src.get("index", "")) if s in src and s != "index"]
+    order = ["index"] + [
+        s for s in re.findall(r"\]\(([a-z0-9-]+)\.md\)", src.get("index", "")) if s in src and s != "index"
+    ]
     return [(s, src[s]) for s in order + [s for s in src if s not in order]]
 
 
 def page_html(stem, md):
     title, subtitle, body = render(md)
-    nav = ('<a href="/help.html">Quick help</a>' if stem == "index"
-           else '<a href="/guide/index.html">The guide\'s other pages</a> · <a href="/help.html">Quick help</a>')
-    return PAGE.format(src=f"{stem}.md", title_text=html.escape(title), title=_inline(title), subtitle=_inline(subtitle),
-                       body=body, nav=nav)
+    nav = (
+        '<a href="/help.html">Quick help</a>'
+        if stem == "index"
+        else '<a href="/guide/index.html">The guide\'s other pages</a> · <a href="/help.html">Quick help</a>'
+    )
+    return PAGE.format(
+        src=f"{stem}.md",
+        title_text=html.escape(title),
+        title=_inline(title),
+        subtitle=_inline(subtitle),
+        body=body,
+        nav=nav,
+    )
 
 
 def build(out=WEB):
@@ -197,10 +224,12 @@ def build(out=WEB):
 
 # --- the ZIM -------------------------------------------------------------------------------------
 
-ZIM_STYLE = ("body{font-family:system-ui,sans-serif;max-width:46rem;margin:1.5rem auto;padding:0 1rem;line-height:1.55;color:#222}"
-             "h1{color:#5b3fd6}pre{background:#f4f4f6;border:1px solid #ddd;border-radius:6px;padding:.6rem .8rem;overflow-x:auto}"
-             "code{font-size:.9em}table{border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:.2rem .6rem;text-align:left}"
-             ".subtitle{color:#666}@media (prefers-color-scheme:dark){body{background:#16161a;color:#ddd}pre{background:#222;border-color:#333}}")
+ZIM_STYLE = (
+    "body{font-family:system-ui,sans-serif;max-width:46rem;margin:1.5rem auto;padding:0 1rem;line-height:1.55;color:#222}"
+    "h1{color:#5b3fd6}pre{background:#f4f4f6;border:1px solid #ddd;border-radius:6px;padding:.6rem .8rem;overflow-x:auto}"
+    "code{font-size:.9em}table{border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:.2rem .6rem;text-align:left}"
+    ".subtitle{color:#666}@media (prefers-color-scheme:dark){body{background:#16161a;color:#ddd}pre{background:#222;border-color:#333}}"
+)
 
 
 def zim_page(stem, md):
@@ -209,9 +238,11 @@ def zim_page(stem, md):
     title, subtitle, body = render(md)
     body = body.replace('href="/guide/', 'href="').replace(' class="help-note"', "").replace(' class="help-code"', "")
     nav = "" if stem == "index" else '<p><a href="index.html">The guide\'s other pages</a></p>'
-    return (f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
-            f"<title>{html.escape(title)}</title><style>{ZIM_STYLE}</style></head><body><main><h1>{_inline(title)}</h1>"
-            f'<p class="subtitle">{_inline(subtitle)}</p>{body}</main>{nav}</body></html>')
+    return (
+        f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        f"<title>{html.escape(title)}</title><style>{ZIM_STYLE}</style></head><body><main><h1>{_inline(title)}</h1>"
+        f'<p class="subtitle">{_inline(subtitle)}</p>{body}</main>{nav}</body></html>'
+    )
 
 
 def source_hash():
@@ -248,8 +279,10 @@ def write_zim(path, articles, meta, main="index.html", uid=None):
     offs.append(pos)
     cluster = bytes([1]) + b"".join(struct.pack("<I", o) for o in offs) + b"".join(blobs)
     mime_list = b"".join(m.encode() + b"\0" for m in mimes) + b"\0"
-    dirents = [struct.pack("<HBcIII", mime, 0, ns.encode(), 0, 0, i) + url.encode() + b"\0" + t.encode() + b"\0"
-               for i, (ns, url, t, mime, _) in enumerate(entries)]
+    dirents = [
+        struct.pack("<HBcIII", mime, 0, ns.encode(), 0, 0, i) + url.encode() + b"\0" + t.encode() + b"\0"
+        for i, (ns, url, t, mime, _) in enumerate(entries)
+    ]
     n = len(entries)
     mime_pos = 80
     url_ptr_pos = mime_pos + len(mime_list)
@@ -265,10 +298,31 @@ def write_zim(path, articles, meta, main="index.html", uid=None):
     titles = sorted(range(n), key=lambda i: (entries[i][0], entries[i][2] or entries[i][1]))
     main_i = next(i for i, e in enumerate(entries) if e[0] == "A" and e[1] == main)
     uid = uid or uuidlib.uuid4().bytes
-    header = struct.pack("<IHH16sIIQQQQIIQ", 72173914, 5, 0, uid, n, 1, url_ptr_pos, title_ptr_pos, cluster_ptr_pos,
-                         mime_pos, main_i, 0xFFFFFFFF, checksum_pos)
-    data = (header + mime_list + b"".join(struct.pack("<Q", p) for p in url_ptrs) + b"".join(struct.pack("<I", i) for i in titles)
-            + struct.pack("<Q", cluster_pos) + b"".join(dirents) + cluster)
+    header = struct.pack(
+        "<IHH16sIIQQQQIIQ",
+        72173914,
+        5,
+        0,
+        uid,
+        n,
+        1,
+        url_ptr_pos,
+        title_ptr_pos,
+        cluster_ptr_pos,
+        mime_pos,
+        main_i,
+        0xFFFFFFFF,
+        checksum_pos,
+    )
+    data = (
+        header
+        + mime_list
+        + b"".join(struct.pack("<Q", p) for p in url_ptrs)
+        + b"".join(struct.pack("<I", i) for i in titles)
+        + struct.pack("<Q", cluster_pos)
+        + b"".join(dirents)
+        + cluster
+    )
     Path(path).write_bytes(data + hashlib.md5(data).digest())
 
 
@@ -276,9 +330,16 @@ def zim(out, version=""):
     """The guide as one ZIM at `out`; its UUID from the pages' content, so the same guide is the same book."""
     arts = [(f"{stem}.html", render(md)[0], zim_page(stem, md)) for stem, md in pages()]
     digest = hashlib.sha256("".join(a[2] for a in arts).encode()).digest()
-    meta = {"Title": "Irate-Box guide", "Name": ZIM_NAME, "Language": "eng", "Creator": "Irate-Box", "Publisher": "Irate-Box",
-            "Description": "How to set up and look after this box" + (f" ({version})" if version else ""),
-            "Date": time.strftime("%Y-%m-%d"), "Tags": "_category:other;guide"}
+    meta = {
+        "Title": "Irate-Box guide",
+        "Name": ZIM_NAME,
+        "Language": "eng",
+        "Creator": "Irate-Box",
+        "Publisher": "Irate-Box",
+        "Description": "How to set up and look after this box" + (f" ({version})" if version else ""),
+        "Date": time.strftime("%Y-%m-%d"),
+        "Tags": "_category:other;guide",
+    }
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(str(out) + ".part")
     write_zim(tmp, arts, meta, uid=digest[:16])
@@ -292,14 +353,28 @@ def book():
     import os
     import subprocess
     import tempfile
+
     home, py = os.environ.get("D2Z_HOME"), os.environ.get("D2Z_PYTHON")
     if not (home and py and Path(home, "package.py").is_file()):
-        raise SystemExit("guide book: set D2Z_HOME (docusaurus2zim's checkout) and D2Z_PYTHON (a python with zimscraperlib)")
+        raise SystemExit(
+            "guide book: set D2Z_HOME (docusaurus2zim's checkout) and D2Z_PYTHON (a python with zimscraperlib)"
+        )
     with tempfile.TemporaryDirectory() as tmp:
         built = site(Path(tmp) / "site")
         out = Path(tmp) / ZIM_FILE
-        subprocess.run([py, str(Path(home, "package.py")), "--config", str(D2Z_CONFIG), "--build-dir", str(built),
-                        "--output", str(out)], check=True)
+        subprocess.run(
+            [
+                py,
+                str(Path(home, "package.py")),
+                "--config",
+                str(D2Z_CONFIG),
+                "--build-dir",
+                str(built),
+                "--output",
+                str(out),
+            ],
+            check=True,
+        )
         BOOK.write_bytes(out.read_bytes())
     BOOK_SOURCE.write_text(source_hash() + "\n")
     return BOOK
