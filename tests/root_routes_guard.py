@@ -3,7 +3,9 @@
 """Three small routes to root stay shut: the doctor's restart allow-list names the hub's own
 Syncthing only; ttyd has no credential and listens on a socket the web server reaches;
 kiwix-manage reads a book as the hub, not root. python3 tests/root_routes_guard.py"""
-import os, re, sys
+import os
+import re
+import sys
 from pathlib import Path
 from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
@@ -45,7 +47,8 @@ check("Caddy's /term/ asks for the admin login, to ttyd's socket",
 leftover = [str(p.relative_to(REPO)) for p in list((REPO / "irate_box").rglob("*.py")) + [REPO / "install.sh"]
             if "TTYD_CREDENTIAL" in p.read_text()]
 check("nothing writes TTYD_CREDENTIAL any more", not leftover, leftover)
-show = lambda argv: {"ExecStart": "{ path=/usr/local/bin/ttyd ; argv[]=" + " ".join(argv) + " ; ignore_errors=no ; }"}
+def show(argv):
+    return {"ExecStart": "{ path=/usr/local/bin/ttyd ; argv[]=" + " ".join(argv) + " ; ignore_errors=no ; }"}
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "lo", "--port", "7681", "/bin/login"]))
 check("the doctor warns of ttyd on a TCP port", any(i["status"] == "warn" and i["key"] == "listen" and i["summary"]["id"] == "ttyd.listen.tcp" for i in said), said)
 said = secdoctor.probe_ttyd({}, {}, show(["/usr/local/bin/ttyd", "--interface", "/run/ttyd/ttyd.sock", "/bin/login"]))

@@ -3,7 +3,9 @@
 """The code says what it does and why, not who asked or when: lines naming people, the plan or the notes, and
 comments carrying dates, said with their place. A warning by default; --strict fails (for CI, if wanted).
 python3 tests/history_guard.py [--strict]"""
-import re, subprocess, sys
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]

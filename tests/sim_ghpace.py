@@ -4,7 +4,13 @@
 hourly budget just under it; requests are counted over a rolling hour and the budget runs out; three
 rate-limit refusals in a row halve it (never below the floor); a clean scheduled run gives some back.
 The network is stood in for. python3 tests/sim_ghpace.py"""
-import io, json, os, sys, tempfile, time, urllib.error
+import io
+import json
+import os
+import sys
+import tempfile
+import time
+import urllib.error
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="ghpace-"))
@@ -46,7 +52,7 @@ p = L.pace(); p["hits"] = [int(time.time())] * 50; L._write_json(L.PACE_FILE, p)
 check("a spent budget: 0 left", L.pace_left() == 0)
 p["hits"] = []; L._write_json(L.PACE_FILE, p)
 mode["refuse"] = True
-for i in range(2):
+for _i in range(2):
     try: L._open(f"{L.API}/x")
     except L.LibrarianError: pass
 check("two refusals: no back-off yet", L.pace()["budget"] == 50 and L.pace()["failures"] == 2, L.pace())

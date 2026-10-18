@@ -5,7 +5,13 @@ a day and a week, from the leases and the neighbour table; a new day starts agai
 nothing but the numbers reaches its file (no address, no hash); and the hub, against a hub it starts,
 writes the owner's switch for the root path unit and reads the counts only while counting is on.
 python3 tests/sim_visitors.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 work = Path(tempfile.mkdtemp(prefix="visitors-"))

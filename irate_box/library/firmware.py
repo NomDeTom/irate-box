@@ -57,7 +57,6 @@ import re
 import shutil
 import struct
 import tarfile
-import time
 import urllib.request
 import zipfile
 import zlib

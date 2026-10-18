@@ -302,10 +302,10 @@ def caused(e, cause, until=3600, step=30, on_wedge="ladder", **kw):
 a, w = caused("stubborn", "absent", until=86400 * 2, step=60)
 check("the network gone: reconnects only, never a restart, radio reset or reboot, even with the reach at reboot",
       {x for _, x in a} <= {"reconnect", "pin"} and len(a) > 5 and any("not in range" in e["text"] for e in w.events), sorted({x for _, x in a}))
-gaps = [b - t for (t, _), (b, _) in zip(a, a[1:])]
+gaps = [b - t for (t, _), (b, _) in zip(a, a[1:], strict=False)]
 check("  tried again for as long as it takes (the default), the gap growing to an hour (steady)", a[-1][0] > 86400 and max(gaps) <= 3600 + 60, max(gaps))
 a2, _ = caused("stubborn", "absent", until=86400 * 2, step=60, retry="sparing")
-check("  sparing: fewer tries, the gap growing to 6 hours", len(a2) < len(a) and max(b - t for (t, _), (b, _) in zip(a2, a2[1:])) > 3600, (len(a2), len(a)))
+check("  sparing: fewer tries, the gap growing to 6 hours", len(a2) < len(a) and max(b - t for (t, _), (b, _) in zip(a2, a2[1:], strict=False)) > 3600, (len(a2), len(a)))
 a3, w3 = caused("stubborn", "absent", until=86400, step=60, give_up="hour")
 check("  give up after an hour: no tries after it, said once, the page told it has stopped",
       max(t for t, _ in a3) < 3600 + 60 and sum("Stopped trying" in e["text"] for e in w3.events) == 1
@@ -452,7 +452,10 @@ for t in range(3010, 3200, 10):
 check("after reconnecting, a real drop is repaired again", "reconnect" in acts, acts)
 # The links' uptime history (linkhistory.py): five-minute slots, the worst state in each,
 # gaps as no data, the clock going back, 72 days kept; the hour and day buckets the page draws.
-import os, json, tempfile, time  # noqa: E402
+import os
+import json
+import tempfile
+import time  # noqa: E402
 from irate_box.hub import linkhistory as LH  # noqa: E402
 os.environ["TZ"] = "UTC"; time.tzset()
 D0 = 1791331200  # 2026-10-07 00:00 UTC
@@ -611,13 +614,13 @@ check("  no reconnect on a connection: no repeats either", U.effective(c2, "wlan
 
 # The doctor reads how well each step works per connection from the ladder record (health.step_record).
 from irate_box.root import health as HL  # noqa: E402
-from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.finding import message_args as msg_args  # noqa: E402
 from irate_box.msg import render  # noqa: E402
 now = 2_000_000_000
 rows = []
 def outage(t, steps, back_after, wedge_after=None, iface="wlan0"):
     rows.append({"at": t, "k": "down", "i": iface})
-    for k, (s, dt) in enumerate(steps):
+    for _k, (s, dt) in enumerate(steps):
         rows.append({"at": t + dt, "k": "repair", "s": s, "b": "auto", "i": iface})
         if wedge_after == s:
             rows.append({"at": t + dt + 20, "k": "wedged", "i": iface})
@@ -694,7 +697,8 @@ check("none of its own: none kept", U.validate({"per_iface": {"wlan0": {"pace": 
 
 # "Keep retrying": decided by what the profile holds, so a profile written afresh (netplan's, at boot)
 # gets the change again, with the values from before it kept for undo.
-import json as _json, tempfile as _tf3  # noqa: E402
+import json as _json
+import tempfile as _tf3  # noqa: E402
 U.RECORD = Path(_tf3.mkdtemp()) / "uplink-changes.json"
 held = {"connection.autoconnect-retries": "-1", "connection.auth-retries": "-1"}
 def nm_run(*cmd, timeout=60):
@@ -702,7 +706,7 @@ def nm_run(*cmd, timeout=60):
         return 0, f"{held['connection.autoconnect-retries']}\n{held['connection.auth-retries']}"
     if cmd[:3] == ("nmcli", "con", "modify"):
         args = cmd[5:]
-        for k, v in zip(args[::2], args[1::2]):
+        for k, v in zip(args[::2], args[1::2], strict=False):
             held[k] = v
         return 0, ""
     return 0, ""

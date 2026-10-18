@@ -2,7 +2,10 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The security doctor's checks of the hub's own accounts: a weak or hand-edited hash, users mode left over plain HTTP
 with no HTTPS, and an app in users mode whose gate isn't actually wired. python3 tests/sim_secdoctor_accounts.py"""
-import json, os, sys, tempfile
+import json
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="secdoc-acc-"))

@@ -3,7 +3,14 @@
 """The shared notes as a zip, against a hub it starts: /admin/notes/download (the admin's only), every page and
 attachment of SilverBullet's space, none of its hidden files, and never through a link out of the folder; no notes
 folder, a 404. python3 tests/sim_notes_download.py"""
-import http.client, io, os, subprocess, sys, tempfile, time, zipfile
+import http.client
+import io
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import zipfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="notesdl-"))

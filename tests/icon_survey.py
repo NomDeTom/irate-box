@@ -8,7 +8,9 @@ picker's own tab list in emoji.js are not icons the hub uses, so they are left o
 python3 tests/icon_survey.py            the tally
 python3 tests/icon_survey.py --list     and every distinct emoji with where it is used
 python3 tests/icon_survey.py --json     the same numbers as JSON, to keep and compare"""
-import json, re, sys
+import json
+import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]

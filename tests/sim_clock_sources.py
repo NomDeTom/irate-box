@@ -5,7 +5,9 @@ the page's choice read and refused where it must be; the image's own service giv
 in its place with its sources, the pool line of chrony.conf off and back; Restore putting all of it back, packages
 included; chronyc's sources read into states; the doctor's finding per source; the hub and the doctor accepting the
 same choices. python3 tests/sim_clock_sources.py"""
-import json, os, re, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="clock-src-"))
@@ -173,7 +175,6 @@ check("  …and 32-bit before, on a 32-bit system", clock.sock_layout() == ("<qq
 sent = []
 class FakeSock:
     def sendto(self, data, path): sent.append((data, path))
-import socket as socket_mod  # noqa: E402
 real_socket = clock.socket.socket
 clock.socket.socket = lambda *a: FakeSock()
 fake_rtc = types.SimpleNamespace(load_config=lambda: {"chip": "ds3231", "mode": "user"}, read_module=lambda cfg: (1792040000, None, []))

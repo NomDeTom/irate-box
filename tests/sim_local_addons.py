@@ -4,7 +4,12 @@
 left out without stopping the rest, a real bundle installed and rolled back as the hub user, the
 hub's add / paste / remove (in-process, the fetch stood in), tiles off until switched, and the
 add-on server's generated maps. python3 tests/sim_local_addons.py"""
-import io, json, os, sys, tempfile, zipfile
+import io
+import json
+import os
+import sys
+import tempfile
+import zipfile
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="local-addons-"))
 for d in ("library", "control", "apps.d", "addons"):
@@ -140,7 +145,8 @@ def sync():
     S._local_stamp["at"] = None      # as after a hub update: look again
     S.refresh_manifests()
     return json.loads((T / "addons-catalogue.json").read_text())
-copy = lambda: json.loads((T / "apps.d" / "eliza.json").read_text())
+def copy():
+    return json.loads((T / "apps.d" / "eliza.json").read_text())
 entry = json.loads((CAT / "eliza.json").read_text())
 check("before any change: nothing to do", sync().get("eliza", {}).get("status") in (None, "current"))
 entry["tile"]["desc"] = "A description the catalogue changed"

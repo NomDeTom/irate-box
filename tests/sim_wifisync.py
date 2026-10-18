@@ -3,7 +3,10 @@
 """mPWRD-OS's wifisync switched from the Network page (hub_control's "wifisync"), with systemctl stood in for: off and
 on, the image's own state kept from before the first change, undo back to it, and nothing done where it isn't installed.
 python3 tests/sim_wifisync.py"""
-import json, os, sys, tempfile
+import json
+import os
+import sys
+import tempfile
 from pathlib import Path
 from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
@@ -24,7 +27,8 @@ def fake_run(cmd, **kw):
     if cmd[:1] == ["systemctl"] and cmd[1] in ("enable", "disable"):
         state["unit"] = "enabled" if cmd[1] == "enable" else "disabled"
     return mock.Mock(returncode=0, stdout="", stderr="")
-rec = lambda: json.loads((hc.CONTROL / "wifisync.json").read_text())
+def rec():
+    return json.loads((hc.CONTROL / "wifisync.json").read_text())
 with mock.patch.object(hc.netinv, "enabled", lambda unit: state["unit"]), mock.patch.object(hc.subprocess, "run", fake_run), \
         mock.patch.object(hc.netinv, "scan", lambda: {}), mock.patch.object(hc.netinv, "write", lambda *a: None):
     msg = hc.wifisync({"do": "off"})

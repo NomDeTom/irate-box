@@ -3,7 +3,11 @@
 """Overview's network heatmap (server.net_uptime_72h): each link recorded in the last 72 hours, the box's link to
 the network first; a link never up in that time (a port with no cable) left off, as it would be red throughout.
 python3 tests/sim_overview_net.py"""
-import json, os, sys, tempfile, time
+import json
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="overview-net-"))

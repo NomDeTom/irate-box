@@ -4,14 +4,18 @@
 written as a root-only keyfile (the password never on a command line), loaded into NetworkManager below the
 owner's own profiles; joined at once only when asked, and back on the network it was on when that fails;
 forgotten only when added here; kept, and said, at uninstall. python3 tests/sim_wifijoin.py"""
-import json, os, stat, sys, tempfile
+import json
+import os
+import stat
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="wifijoin-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_NM_CONNECTIONS=str(T / "nm"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import wifijoin as W  # noqa: E402
-from irate_box.msg import Refused, args_of, ids  # noqa: E402
+from irate_box.msg import Refused  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails

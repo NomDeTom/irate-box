@@ -15,7 +15,6 @@ translation still fits the English it was made from. Read with ast, nothing impo
 python3 tests/msg_guard.py  [--list: every ID and its English]"""
 import ast
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -48,8 +47,8 @@ def english(node):
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.Dict) and all(isinstance(k, ast.Constant) and isinstance(v, ast.Constant) and isinstance(v.value, str)
-                                          for k, v in zip(node.keys, node.values)):
-        return {k.value: v.value for k, v in zip(node.keys, node.values)}
+                                          for k, v in zip(node.keys, node.values, strict=False)):
+        return {k.value: v.value for k, v in zip(node.keys, node.values, strict=False)}
     return None
 
 

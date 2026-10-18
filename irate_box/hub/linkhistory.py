@@ -75,7 +75,7 @@ def _bucket(states):
     seen = [c for c in states if c != "."]
     if not seen:
         return None
-    drops = sum(1 for a, b in zip(states, states[1:]) if a == "u" and b in DOWN)
+    drops = sum(1 for a, b in zip(states, states[1:], strict=False) if a == "u" and b in DOWN)
     return {"up": round(sum(c == "u" for c in seen) / len(seen), 3), "n": len(seen), "drops": drops,
             "off": "o" in seen}
 
@@ -152,6 +152,6 @@ def summarize(hist, now=None):
                       "month": month, "summary": {
             "up": round(sum(c == "u" for c in seen) / len(seen), 4) if seen else None,
             "hours_seen": round(len(seen) * SLOT / 3600, 1),
-            "drops": sum(1 for a, b in zip(span, span[1:]) if a == "u" and b in DOWN),
+            "drops": sum(1 for a, b in zip(span, span[1:], strict=False) if a == "u" and b in DOWN),
             "longest": {"minutes": longest * SLOT // 60, "at": (base + at) * SLOT} if longest else None}}
     return out

@@ -3,7 +3,13 @@
 """Device locks through the API of a running hub (PORT=… python3 tests/api_locks.py), or start
 one: tests/run.sh does. Checks saves, renames, deletes, renewal and the drop, and that no lock
 value leaks into a listing."""
-import hashlib, json, os, secrets, sys, urllib.request, urllib.error
+import hashlib
+import json
+import os
+import secrets
+import sys
+import urllib.request
+import urllib.error
 H = f"http://127.0.0.1:{os.environ['PORT']}"
 fails = 0
 def check(name, cond, info=""):

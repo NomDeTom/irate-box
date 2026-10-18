@@ -4,7 +4,11 @@
 boot with no LoRa radio, ModemManager with no modem, Bluetooth with nothing paired; each offered to be
 switched off, never done for the owner; switched off, kept as it was and offered back; the failed-unit
 finding not doubled. Every command is stood in. python3 tests/sim_idle.py"""
-import json, os, subprocess, sys, tempfile
+import json
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="idle-"))
@@ -12,8 +16,7 @@ os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 (T / "etc").mkdir()
 sys.path.insert(0, str(REPO))
 from irate_box.root import health  # noqa: E402
-from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
-from irate_box.msg import render  # noqa: E402
+from irate_box.finding import message_ids as msg_ids  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     """info: what a failure looked at, for a debugger; not printed (the doctor's records can hold a unit's own words)."""

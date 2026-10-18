@@ -7,7 +7,16 @@ sender as nonce, in a MeshPacket in a ServiceEnvelope) decoded back: text, posit
 telemetry; a wrong key left as "encrypted"; what the bridge keeps (nodes, packets, texts for /admin
 only, 7 days); the channels file private and never shown; and the MQTT side against a stand-in
 broker on a local socket. python3 tests/sim_mesh.py"""
-import base64, json, os, socket, stat, struct, sys, tempfile, threading, time
+import base64
+import json
+import os
+import socket
+import stat
+import struct
+import sys
+import tempfile
+import threading
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="mesh-"))

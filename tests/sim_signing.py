@@ -6,7 +6,12 @@ checked line by line; signed releases accepted only with a trusted SSH key, the 
 followed; GitHub's level accepting commits signed by its key and refusing an unsigned push (a
 key of our own standing in for GitHub's; skipped where gpg is missing); the root helper's check
 and Install anyway refusing a version not signed as chosen. python3 tests/sim_signing.py"""
-import json, os, shutil, subprocess, sys, tempfile
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="signing-"))

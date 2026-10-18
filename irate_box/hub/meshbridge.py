@@ -15,7 +15,6 @@ allows anyone msh/#). It never publishes. Keys: $HUB_STATE_DIR/mesh/channels.jso
 0600, never sent back to a page. Stdlib only.
 """
 
-import base64
 import collections
 import json
 import os

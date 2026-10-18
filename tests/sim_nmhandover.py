@@ -7,7 +7,6 @@ A file is handed over only when it makes nothing but NetworkManager connections;
 profile netplan made, byte for byte; an older copy in /etc goes aside; the WiFi country is kept;
 NetworkManager's view checked and everything put back when it differs; undo; integration refused.
 python3 tests/sim_nmhandover.py"""
-import json
 import os
 import re
 import shutil
@@ -64,7 +63,7 @@ ran = []
 def gen(root, prof_dir):
     for f in sorted(root.rglob("*.yaml")):
         text = f.read_text()
-        for name, uuid in re.findall(r"^# makes: (\S+) (\S+)$", text, re.M):
+        for name, _uuid in re.findall(r"^# makes: (\S+) (\S+)$", text, re.M):
             put(prof_dir / f"{name}.nmconnection", profile(name, None))
         for n in re.findall(r"^# networkd: (\S+)$", text, re.M):
             put(root / "run/systemd/network" / n if root != T else T / "run/systemd/network" / n, "[Match]\n")

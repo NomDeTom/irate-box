@@ -2,7 +2,12 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """rtc.py against simulated chips (HUB_RTC_FAKE), with systemctl, timedatectl and date stood in
 for; then the doctor's set_clock. Changes nothing on the machine. python3 tests/sim_rtc.py"""
-import json, os, sys, time, calendar, tempfile, subprocess
+import json
+import os
+import sys
+import time
+import calendar
+import tempfile
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="rtcsim-"))
 for d in ("etc", "state/control", "run", "units", "bin"):

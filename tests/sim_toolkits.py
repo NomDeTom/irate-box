@@ -6,7 +6,13 @@ the pool and its index, current and previous versions and pruning, the budget, a
 the install with only the local repository and services kept stopped, what it added and the
 removal of only that (a package two kits share stays), expiry, the hub's half and the doctor.
 python3 tests/sim_toolkits.py"""
-import json, os, re, shutil, sys, tempfile, time
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="kits-"))
@@ -293,7 +299,7 @@ try:
 except ValueError:
     check("a silly budget refused", True)
 # The doctor.
-from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
+from irate_box.finding import message_args as msg_args  # noqa: E402
 f = hub_control.kits_findings()
 check("the doctor: the cache matches its manifests", any(x["id"] == "kits-cache" and x["status"] == "ok" for x in f), f)
 s = kits.installed_state(); s["small"]["at"] = time.time() - 9 * 86400; s["debug"] = {"added": [], "at": time.time() - 8 * 86400, "remove_at": None}
@@ -398,7 +404,8 @@ check("debian-cis is mirrored once the security kit is kept current: shallow, ma
 with mock.patch.object(mirrors, "load", return_value=[{"upstream": "https://github.com/OVH/debian-cis/"}]), mock.patch.object(mirrors, "add") as add:
     toolkits.ensure_git_sources()
 check("  not again when a mirror of it exists", not add.called)
-import io, zlib  # noqa: E402
+import io
+import zlib  # noqa: E402
 (T / "os-release").write_text('NAME="Debian"\nVERSION_CODENAME=trixie\n')
 toolkits.OS_RELEASE = str(T / "os-release")
 good = zlib.compress(b"VERSION 1\nCVE-2026-0001,,x\n")

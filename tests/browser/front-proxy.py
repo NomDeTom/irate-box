@@ -3,7 +3,11 @@
 """For the browser tests: stands where the web server would, in front of a hub started for the test, adding what the
 web server adds (its secret and the admin's mark), and serving the test's own pages under /__test/.
 python3 front-proxy.py LISTEN_PORT HUB_HOST HUB_PORT TEST_DIR   (FRONT_SECRET in the environment)"""
-import http.client, http.server, os, socketserver, sys
+import http.client
+import http.server
+import os
+import socketserver
+import sys
 from pathlib import Path
 
 listen, hub_host, hub_port, test_dir = int(sys.argv[1]), sys.argv[2], int(sys.argv[3]), Path(sys.argv[4])

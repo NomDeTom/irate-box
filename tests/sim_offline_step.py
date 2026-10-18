@@ -2,7 +2,11 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The security doctor's offline-readiness step: a box that has
 not been online for a month, no offline kit; then a fresh one. python3 tests/sim_offline_step.py"""
-import json, os, sys, tempfile, time
+import json
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="offline-step-"))

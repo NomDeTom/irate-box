@@ -4,7 +4,12 @@
 without the front's header (anything on loopback), /admin changes refused without the
 /admin page's header or from another origin, and a refused request's body never left on a
 kept-alive connection to poison the next one, refused or not. python3 tests/api_admin_gate.py"""
-import http.client, os, subprocess, sys, tempfile, time
+import http.client
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="admin-gate-")

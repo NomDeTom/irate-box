@@ -142,7 +142,8 @@ check("  every finding well said", not well_said(fs), well_said(fs))
 
 # The button: ask the repository which branch it serves by default.
 def poll(out, code=0):
-    run = lambda *cmd, **kw: subprocess.CompletedProcess(cmd, code, out, "fatal: no\n")
+    def run(*cmd, **kw):
+        return subprocess.CompletedProcess(cmd, code, out, "fatal: no\n")
     with mock.patch.object(H, "run", run):
         try:
             return H.update_poll_target({})

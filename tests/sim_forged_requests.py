@@ -4,7 +4,13 @@
 still root's, the RTC set up only where a search found one, no linked book exported, no leading
 "-" in a name that becomes an argument, the clock's floor from root's files only and no jump
 years ahead. Runs as any user ("root's" is this user here). python3 tests/sim_forged_requests.py"""
-import json, os, re, sys, tempfile, time, urllib.request
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+import urllib.request
 from pathlib import Path
 from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
@@ -14,7 +20,7 @@ for d in (STATE / "control" / "results", STATE / "control" / "requests", STATE /
     d.mkdir(parents=True)
 os.environ.update(HUB_STATE_DIR=str(STATE), HUB_ETC_DIR=str(T / "etc"), HUB_RUN_DIR=str(T / "run"))
 sys.path.insert(0, str(REPO))
-from irate_box.root import hub_control, health, rtc, safeio, usbstick  # noqa: E402
+from irate_box.root import hub_control, health, rtc, usbstick  # noqa: E402
 from irate_box.hub import uplink, manifests  # noqa: E402
 fails = 0
 def check(name, cond, info=""):

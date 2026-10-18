@@ -303,7 +303,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
         # needed; refused only if the cache would still not fit, and then nothing is dropped.
         drop = []
         if total() > budget_mb << 20:
-            for n, m in sorted(((n, m) for n, m in others.items() if n.endswith(".previous.json")), key=lambda x: x[1].get("fetched", 0)):
+            for n, _m in sorted(((n, m) for n, m in others.items() if n.endswith(".previous.json")), key=lambda x: x[1].get("fetched", 0)):
                 drop.append(n)
                 if total(drop) <= budget_mb << 20:
                     break
@@ -1034,7 +1034,7 @@ def _trailing(cur, prev):
 def status():
     """For the hub (control/kits.json): what is cached, installed, and what's wrong."""
     kits = {}
-    for kid, k in definitions().items():
+    for kid, _k in definitions().items():
         cur, prev = manifest(kid), manifest(kid, "previous")
         kits[kid] = {"cached": cur and {"fetched": cur["fetched"], "packages": len(cur["packages"]), "bytes": cur["bytes"],
                                         "export_bytes": cur["bytes"] + cur.get("index_bytes", 0) // INDEX_XZ_RATIO,

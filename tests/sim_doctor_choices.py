@@ -3,7 +3,9 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Every choice the box doctor offers gets past the hub: the hub's own pattern (server.py) accepts
 each choice health.py does, so no button on the page is refused before it reaches root."""
-import os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]

@@ -6,7 +6,9 @@ A path in bold (Access → Remote access) is checked part by part. Bold that end
 question mark is a lead-in, and bold that starts in lower case is emphasis: neither is a label. Other bold that
 names no control is listed in NOT_LABELS with its reason.
 python3 tests/guide_labels_guard.py"""
-import html, re, sys
+import html
+import re
+import sys
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 fails = 0

@@ -3,7 +3,14 @@
 """The page widths, against a hub it starts: /layout.css public and set from
 the owner's settings, only the offered widths taken (45, 60, 80, 90, 100), the defaults 80 for
 the pages and 45 for the shoutbox and forum. python3 tests/sim_widths.py"""
-import http.client, json, re, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import re
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="widths-")

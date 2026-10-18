@@ -4,7 +4,10 @@
 for the next look), each counted against its page (the longest path it starts with), a failure a 5xx or a 404;
 the log emptied by logrotate read from its start again; the hours kept to 72 days; the summary's cells blank for
 an hour not used, all answered, or with failures. python3 tests/sim_pagehistory.py"""
-import os, sys, tempfile, time
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="pagehist-"))

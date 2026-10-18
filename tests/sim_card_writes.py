@@ -3,7 +3,13 @@
 """The write-intensity ladder, against a hub it starts: /admin/settings takes the four stops and refuses
 others; /admin/box says what has been written to the card since boot where the system tells; the mesh
 nodes are not written again when nothing changed. python3 tests/sim_card_writes.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="cardwrites-"))

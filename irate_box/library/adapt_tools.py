@@ -83,7 +83,8 @@ def index_groups(tools, keep):
         text = (tools / "index.html").read_text(encoding="utf-8")
     except OSError:
         return None
-    plain = lambda s: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s)).replace("&amp;", "&").strip()
+    def plain(s):
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s)).replace("&amp;", "&").strip()
     h2 = h3 = ""
     out, seen = [], set()
     for m in HEADING_OR_LINK.finditer(text):

@@ -4,7 +4,12 @@
 Security page, the security doctor's cross-reference and the box doctor with no code of its own: a made-up
 service (a TAK server: TCP 8087, UDP 6969) in a manifests folder of the test's own. And a service nobody
 declared: the box doctor's options for it. python3 tests/sim_declared_services.py"""
-import json, os, shutil, subprocess, sys, tempfile
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="declared-"))

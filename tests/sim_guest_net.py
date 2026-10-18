@@ -5,7 +5,13 @@ guest on the hotspot is told; tapping through the sheet asks root to let that de
 captive API then says "not captive" to it alone; users only refuses a guest not signed in; nothing
 is let out from off the hotspot, nor when nothing is shared; the owner's level goes to root.
 python3 tests/sim_guest_net.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="guest-net-"))

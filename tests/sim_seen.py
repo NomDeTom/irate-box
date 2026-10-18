@@ -5,7 +5,13 @@ alice chooses, per app, everyone here, signed-in people or only her; what bob (s
 guest read follows it in the shoutbox, the forum, saved work and the file drop, to the listings
 and the reads; the admin's moderation still sees all; a choice that isn't one is refused.
 python3 tests/sim_seen.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="seen-")

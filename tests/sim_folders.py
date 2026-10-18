@@ -4,7 +4,13 @@
 each list page's entries; hiding one takes it off that folder's page only; an entry put in another
 folder shows there too; a folder's own order is followed; a folder with nothing shown loses its
 tile; only real folders and entries are taken. python3 tests/sim_folders.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="folders-")

@@ -4,7 +4,13 @@
 through their own session, each as it allows, the safe choice the default; names online only of
 those who said yes, and only to whom the owner allows (guests get the count alone); the admin's
 list shows each person's choice, never their email. python3 tests/sim_prefs.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="prefs-")

@@ -3,7 +3,13 @@
 """Status tiles, against a hub it starts: the box row arranged by the owner
 (hidden, ordered, two cells wide), the arrangement checked, and /status carrying the different
 devices seen today and this week only while counting is on. python3 tests/sim_status_tiles.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 work = Path(tempfile.mkdtemp(prefix="status-tiles-"))

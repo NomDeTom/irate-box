@@ -7,7 +7,12 @@ owner's mirrors and private repositories; the queue (per-request limits, family 
 pause holding jobs out of the builder's queue, cancel); estimates from what builds used; a build
 with PlatformIO stood in (its files kept, not the .elf; what it used recorded; each target's two
 newest runs kept); the builder taking pushes first. python3 tests/sim_factory.py"""
-import json, os, subprocess, sys, tempfile, time
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="factory-"))
@@ -295,7 +300,8 @@ check("build cache: an ordinary build uses it (kept in the builder's home); coun
       and logs["build"][1].get("build_cache_bytes", 0) >= 3000, (logs["build"][0], logs["build"][1]))
 check("  an offline proof and a tools fetch don't", "cache=none" in logs["offline"][0] and "no build cache either" in logs["offline"][0]
       and "cache=none" in logs["tools"][0], (logs["offline"][0], logs["tools"][0]))
-import os as _os, time as _t  # noqa: E402
+import os as _os
+import time as _t  # noqa: E402
 for i in range(5):
     f = cache / f"old-{i}"; f.write_bytes(b"x" * 1000); _os.utime(f, (_t.time() - 1000 + i, _t.time() - 1000 + i))
 before, after = ci.prune_build_cache(limit=3500)
@@ -456,7 +462,9 @@ check("  a file it lists: served", factory.public_file(run_heltec, "firmware-hel
 check("  one it doesn't (the nRF52's .bin, a log, a path): not", factory.public_file(run_rak, "firmware-rak4631.bin") is None
       and factory.public_file(run_heltec, "log.txt") is None and factory.public_file("../1", "x.bin") is None)
 # The hub: the tile and its routes only while the owner shows it.
-import socket, urllib.request, urllib.error  # noqa: E402
+import socket
+import urllib.request
+import urllib.error  # noqa: E402
 def serve(show):
     st = T / f"hub-{show}"; st.mkdir()
     (st / "settings.json").write_text(json.dumps({"factory_tile": show}))

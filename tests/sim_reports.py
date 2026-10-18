@@ -4,7 +4,13 @@
 visitor; only the owner's reasons are taken; what counts (how many reports) reaches the queue on
 /admin; hidden meanwhile if the owner chose; kept, it leaves the queue and shows again; deleted,
 its report goes; a flood of reports from one visitor is stopped. python3 tests/sim_reports.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="reports-")

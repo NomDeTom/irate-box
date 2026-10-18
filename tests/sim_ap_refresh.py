@@ -3,7 +3,9 @@
 """The hotspot's units brought up to date by an install (ap.refresh_units): one written by an older version
 is written again, one already current is left alone, and one never written (no hotspot set up) is not made.
 python3 tests/sim_ap_refresh.py"""
-import os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="aprefresh-"))

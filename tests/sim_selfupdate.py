@@ -3,7 +3,11 @@
 """The hub's automatic updates (library/selfupdate.py) against a throwaway state folder: the
 root helper's answers written by hand, a stand-in hub for "anyone on it?", the clock and the
 window chosen. python3 tests/sim_selfupdate.py"""
-import json, os, sys, tempfile, threading, time
+import json
+import os
+import sys
+import tempfile
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="selfupdate-"))

@@ -3,7 +3,12 @@
 """Syncthing's GUI password from the root helper (hub_control.syncthing_gui_password) against a
 stand-in Syncthing that isn't listening yet, as just after install.sh's `gui user set` restarts its
 GUI (otherwise /sync/ keeps its old password). python3 tests/sim_syncthing_gui.py"""
-import json, os, socket, sys, tempfile, threading
+import json
+import os
+import socket
+import sys
+import tempfile
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="syncthing-gui-"))

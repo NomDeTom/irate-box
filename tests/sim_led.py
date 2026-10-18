@@ -4,7 +4,11 @@
 each board gives (a vendor board's with no triggers, a Raspberry Pi's ACT left to its SD card, a status-named
 one, none but a power LED and virtual ones), the state shown for each choice, the light driven and given back
 as it was, a stop leaving it off, and the doctor's settings, findings and choices. python3 tests/sim_led.py"""
-import json, os, sys, tempfile, time
+import json
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="led-"))
@@ -12,8 +16,7 @@ os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HU
                   HUB_DEVICE_TREE=str(T / "dt"), HUB_LED_RUN=str(T / "run-led"), HUB_UPLINK_RUN=str(T / "run-uplink"))
 sys.path.insert(0, str(REPO))
 from irate_box.root import led, health  # noqa: E402
-from irate_box.finding import message_args as msg_args, message_ids as msg_ids  # noqa: E402
-from irate_box.msg import render  # noqa: E402
+from irate_box.finding import message_ids as msg_ids  # noqa: E402
 fails = 0
 def check(name, cond, info=""):
     global fails
@@ -74,7 +77,8 @@ led.set_option("led", "auto")
 up = {"at": time.time(), "state": "up", "settings": {"check": 60}, "outage": None}
 def report(**kw):
     put(T / "run-uplink/uplink.json", json.dumps({**up, **kw}))
-yes = lambda unit: True
+def yes(unit):
+    return True
 report()
 check("alive: the hub runs", led.box_state("alive", active=yes) == "ok")
 check("network: the link up", led.box_state("network", active=yes) == "ok")

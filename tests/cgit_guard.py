@@ -6,7 +6,9 @@ send cgit's pages a CSP that allows no script but the box's own; and cgit.css's 
 are all restated from the palette. Runs with or without
 Python-Markdown and Pygments installed (without them, the filters show text).
 python3 tests/cgit_guard.py"""
-import re, subprocess, sys
+import re
+import subprocess
+import sys
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 fails = 0
@@ -93,7 +95,7 @@ def fixed(css):
     return out
 def covered(css):
     out = set()
-    for sels, kind, v in rules(css):
+    for sels, kind, _v in rules(css):
         for s in sels: out.add((s, kind))
     return out
 

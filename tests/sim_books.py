@@ -6,7 +6,10 @@ only its own entry, counted in kiwix-manage runs. kiwix-manage is stood in by a 
 behaves as the real one does: entries keyed by the ZIM's UUID, paths
 relative to the library, and one unreadable file in an `add` writing nothing at all. The books
 are real small ZIMs (tests/zimgen.py). python3 tests/sim_books.py"""
-import json, os, struct, sys, tempfile
+import json
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="books-"))
@@ -127,7 +130,10 @@ check("every matching name, for a bulk action on all of them", L.books_page(kept
 # Checks that fit GitHub's limits: one request per address per run, ETags sent
 # back (a 304 answered from what was kept), the allowance recorded, the most overdue checked first
 # and the rest left for the next run once a few requests are left.
-import io, time, urllib.error, urllib.request  # noqa: E402
+import io
+import time
+import urllib.error
+import urllib.request  # noqa: E402
 from email.message import Message  # noqa: E402
 gh = {"remaining": 60, "requests": [], "etag": '"v1"'}
 class Resp(io.BytesIO):

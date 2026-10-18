@@ -1936,7 +1936,7 @@ class Link:
 
     def act(self, now, actions, status):
         """The steps the watchdog decided on, taken; status(): this link's report, written before a reboot."""
-        w, i = self.w, self.iface
+        w, _i = self.w, self.iface
         if self.up and self.answers:
             self.actor.remember()
             self.ssids_known = None

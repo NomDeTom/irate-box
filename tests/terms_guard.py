@@ -79,7 +79,7 @@ if "--write" in sys.argv:
 check("docs/user/glossary.md is what docs/dev/terms.json makes (--write)", GLOSSARY.read_text() == glossary())
 
 bad, long_ = [], []
-for mid, (en, where) in sorted(msg_guard.messages.items()):
+for mid, (en, _where) in sorted(msg_guard.messages.items()):
     for text in (en.values() if isinstance(en, dict) else [en]):
         bad += [f"{mid}: {h}" for h in hits(text)]
         long_ += [f"{mid}: {len(s.split())} words" for s in re.split(r"(?<=[.?!])\s+", text) if len(s.split()) > 25]

@@ -5,7 +5,13 @@ updated by itself or after a while, compatible with mpwrd-os's tools), offline: 
 first seen, watch / auto / aged, Update and Roll back, a build that doesn't match its index refused, and a
 channel chosen here written the way mpwrd-menu writes it. apt and dpkg are stood in (dpkg's version
 order is the real one when dpkg is here). python3 tests/sim_pkgwatch.py"""
-import hashlib, json, os, shutil, subprocess, sys, tempfile
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="pkgwatch-"))

@@ -5,7 +5,13 @@ small source package made like Meshtastic's (a zip whose first member, deflated,
 .tar.xz), the order the sources are tried in, and what is said when none works. The git and
 streamed paths need the network: they were checked against v2.8.1.8e6a88d (the same 71 files
 both ways). python3 tests/sim_configs.py"""
-import io, json, os, sys, tarfile, tempfile, zipfile
+import io
+import json
+import os
+import sys
+import tarfile
+import tempfile
+import zipfile
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="configs-")); (T / "library").mkdir()
 os.environ.update(HUB_STATE_DIR=str(T), HUB_GIT_ROOT=str(T / "git"))

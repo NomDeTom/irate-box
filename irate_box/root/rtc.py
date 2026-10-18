@@ -44,7 +44,6 @@ import fcntl
 import json
 import os
 import re
-import shutil
 import stat
 import struct
 import subprocess

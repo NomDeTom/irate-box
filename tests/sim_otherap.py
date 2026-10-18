@@ -15,7 +15,7 @@ os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"), HU
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.hub import netinv  # noqa: E402
 from irate_box.root import otherap as O  # noqa: E402
-from irate_box.msg import Refused, args_of, ids  # noqa: E402
+from irate_box.msg import Refused  # noqa: E402
 
 fails = 0
 

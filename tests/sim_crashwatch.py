@@ -5,7 +5,12 @@ kernel's flood counted not copied, a snapshot from a stand-in /proc and /sys, a 
 boot (and not after a clean shutdown), a failing radio told from a link going down and noted (never
 acted on), its old setting carried over to the uplink watchdog, the hang settings, and the doctor's switches. Every command that would
 change the system is stood in. python3 tests/sim_crashwatch.py"""
-import json, os, shutil, subprocess, sys, tempfile
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="crashwatch-"))

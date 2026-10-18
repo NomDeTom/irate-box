@@ -4,7 +4,8 @@
 its /admin/security, scrubbed): nothing the sources said is lost; what several say about one thing
 is one item; every item ends in something to do; the CIS sections tiered as on the page; the counts the page's badge
 shows. When the cross-reference table grows (secdoctor_xref), the counts here move on purpose. python3 tests/sim_secdoctor_lyra.py"""
-import json, sys
+import json
+import sys
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -56,7 +57,8 @@ check("the one to fix is the firewall", [k for k, i in items.items() if i["statu
 # A real board's deep audit (tests/fixtures/lyra-security-deep-2026-10-09.json): its
 # CIS checks one by one, Lynis matched by test and by sshd option. Read as the doctor reads its kept report,
 # beside the doctor's and the Security page's own findings above.
-import os, shutil, tempfile  # noqa: E402
+import shutil
+import tempfile  # noqa: E402
 T = Path(tempfile.mkdtemp(prefix="secdeep-"))
 (T / "control").mkdir()
 shutil.copy(REPO / "tests/fixtures/lyra-security-deep-2026-10-09.json", T / "control" / "security-deep.json")

@@ -3,7 +3,11 @@
 """The root helper busy, not stuck (a kit's minutes-long refresh is not "not answering"): a request waiting behind a job the helper is still running is said as such; one waiting
 with the helper not running, or behind a job running for hours, is still the alarm. systemctl is stood
 in. python3 tests/sim_helper_busy.py"""
-import os, subprocess, sys, tempfile, time
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="helper-busy-"))

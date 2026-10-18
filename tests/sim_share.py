@@ -6,7 +6,11 @@ the firewall with it as one ruleset (root/firewall.py), offline: each level's ru
 containment on and off, the guests' resolver reached only by the redirect, a guest's hardware address
 found, the root helper's share-set and share-allow in a safe order with the system's commands
 recorded, not run, and the Security doctor's findings and switches. python3 tests/sim_share.py"""
-import json, os, subprocess, sys, tempfile
+import json
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="share-"))
@@ -166,7 +170,7 @@ ran.clear()
 hub_control.share_set({"level": "off"})
 order = [" ".join(c[:3]) for c in ran]
 check("off: forwarding off first, then the resolver, then the rules (firewall off: the table gone)",
-      order.index("sysctl -q -w") < order.index(f"systemctl disable --now") < order.index("nft delete table")
+      order.index("sysctl -q -w") < order.index("systemctl disable --now") < order.index("nft delete table")
       and not firewall.RULES.exists() and not share.SYSCTL.exists() and not (T / "units" / share.GUEST_DNS_UNIT).exists()
       and share.load()["level"] == "off" and share.load()["forward_was"] is None, order)
 check("  the containment kept for next time", share.load()["contain"] == ALL)

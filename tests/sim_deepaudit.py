@@ -5,7 +5,13 @@
 into findings, failed CIS checks grouped by section, the accepted-by-design list applied to both;
 debian-cis exported from a stand-in mirror and run with its paths in the environment; the report
 kept and shown by every regular audit; the weekly schedule. python3 tests/sim_deepaudit.py"""
-import json, os, re, subprocess, sys, tempfile, time
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 from unittest import mock
 REPO = Path(__file__).resolve().parents[1]

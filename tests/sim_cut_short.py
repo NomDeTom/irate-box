@@ -4,7 +4,11 @@
 fails that source with a LibrarianError, as a refused connection does, so the run goes on to the next source; and a
 mirror whose release listing is cut short is recorded as that mirror's error. The network is stood in for.
 python3 tests/sim_cut_short.py"""
-import http.client, io, os, sys, tempfile
+import http.client
+import io
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="cutshort-"))

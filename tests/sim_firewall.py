@@ -5,7 +5,12 @@ interface alone, the hub's doors, the owner's services, drop last, no forwarding
 where nft is installed; the hotspot's interface found from the record or the dnsmasq config; the
 Security page's finding and its switches against a stand-in nft and systemctl; the unit's text.
 python3 tests/sim_firewall.py"""
-import json, os, shutil, subprocess, sys, tempfile
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="firewall-"))

@@ -4,7 +4,9 @@
 point, recorded, applied at once and taken off again if that access point does not answer; background
 scans off while the hotspot shares the radio, kept off by the watchdog and put back; both undone by
 choosing again and by undo-all. nmcli and wpa_cli stood in. python3 tests/sim_roaming.py"""
-import json, os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="roaming-"))

@@ -3,7 +3,9 @@
 """Remote access (Tailscale): the hub reads Tailscale's own state while it runs (server.tailscale_backend), so a
 running tailscaled that was never logged in to a Tailscale network is said as such, not as "running". No tailscale
 is run. python3 tests/sim_tailscale.py"""
-import json, subprocess, sys
+import json
+import subprocess
+import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.hub import server as S  # noqa: E402

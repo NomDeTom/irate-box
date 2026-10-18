@@ -369,7 +369,7 @@ def rfkill_for(phy):
 # --- who runs what ------------------------------------------------------------------------
 
 def nm_fields(text):
-    """nmcli -t output (one "a:b:c" per line, colons in values escaped as \\:) → rows of fields."""
+    r"""nmcli -t output (one "a:b:c" per line, colons in values escaped as \\:) → rows of fields."""
     rows = []
     for line in text.splitlines():
         fields, cur, esc = [], "", False

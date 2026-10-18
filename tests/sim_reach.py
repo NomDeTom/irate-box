@@ -3,7 +3,12 @@
 """Reached from the internet: the hub's note of public visitors (hub/reach.py) and
 the security doctor's step that reads it, sshd's log and the box's IPv6 addresses (secdoctor
 step_internet), against a throwaway state folder and stand-in commands. python3 tests/sim_reach.py"""
-import json, os, subprocess, sys, tempfile, time
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="reach-"))
 os.environ.update(HUB_STATE_DIR=str(T))

@@ -4,7 +4,10 @@
 pushes: a guest may push but not force-push or delete; the owner (REMOTE_USER set, as the web
 server does after the admin login) may; nobody may push past the size cap.
 python3 tests/sim_git_public.py"""
-import os, subprocess, sys, tempfile
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="git-public-"))

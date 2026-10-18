@@ -4,7 +4,13 @@
 the kit's .debs and the signed indexes that list them; the import accepts a .deb only when a signed
 InRelease (its signature checked with the box's keys), the Packages file it lists, and the .deb's
 own hash all agree. gpgv and dpkg-deb are stood in. python3 tests/sim_kits_usb.py"""
-import hashlib, json, lzma, os, shutil, sys, tempfile
+import hashlib
+import json
+import lzma
+import os
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="kitsusb-"))
@@ -21,7 +27,8 @@ fails = 0
 def check(name, cond, info=""):
     global fails
     print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")); fails += not cond
-sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+def sha(p):
+    return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 class R:
     def __init__(self, out="", rc=0): self.stdout, self.stderr, self.returncode = out, "", rc
 gpgv_calls = []

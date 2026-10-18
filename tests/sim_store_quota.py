@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The store's budget (audit H3): an item larger than the whole budget is refused before anything is
 evicted, and an item that fits is never evicted by its own write. python3 tests/sim_store_quota.py"""
-import os, shutil, sys, tempfile
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.hub import store  # noqa: E402

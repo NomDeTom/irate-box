@@ -4,7 +4,10 @@
 kind; trimmed to its days; the uplink watchdog's events shared into it before it acts; crash watch's
 radio notes and the driver's own reset in it; why each boot happened; a filed radio failure and a
 filed crash carrying its lines; the box doctor's card. python3 tests/sim_watchlog.py"""
-import os, sys, tempfile, time
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="watchlog-"))

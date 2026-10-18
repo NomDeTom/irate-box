@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The Box doctor's accepted list (server.health_accept): a review finding accepted by its id, kept in the hub's own
 file, sent with the doctor's report and the Network page's; taken back; ids it refuses. python3 tests/sim_health_accept.py"""
-import os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="health-accept-"))

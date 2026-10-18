@@ -51,7 +51,7 @@ def fake_run(*cmd, timeout=60):
         return 0, "\n".join(rows)
     if cmd[:3] == ("nmcli", "con", "modify"):
         u, args = cmd[4], cmd[5:]
-        for k, v in zip(args[::2], args[1::2]):
+        for k, v in zip(args[::2], args[1::2], strict=False):
             values[u][k] = v
         return 0, ""
     return 0, ""

@@ -3,7 +3,10 @@
 """Each repository's push preset: the hub's decision table for nginx's
 auth_request (gitrepos.decide: a fetch or push × each level × the git app's switch), the presets
 an area takes, and http.receivepack following the level. python3 tests/sim_git_levels.py"""
-import os, subprocess, sys, tempfile
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="git-levels-"))
@@ -137,7 +140,8 @@ subprocess.run(["git", "init", "-q", "-b", "main", str(w)], check=True)
 subprocess.run(["git", "add", "."], cwd=w, check=True); subprocess.run(["git", "commit", "-qm", "c"], cwd=w, env=ENV, check=True)
 subprocess.run(["git", "push", "-q", str(T / "private" / "secret.git"), "main"], cwd=w, check=True, capture_output=True)
 sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=w, capture_output=True, text=True).stdout.strip()
-import io, contextlib  # noqa: E402
+import io
+import contextlib  # noqa: E402
 def push_queues():
     before = len(list(ci.QUEUE.glob("*.json")))
     with contextlib.redirect_stdout(io.StringIO()):

@@ -4,7 +4,11 @@
 hourly buckets (up of taken, starts by a new InvocationID), gaps as no data, the clock going back,
 72 days kept; the last 72 hours by hour and 72 days by day the page draws (githubstatus.com's
 format); the sampler writing only while the clock is trusted. python3 tests/sim_svchistory.py"""
-import json, os, sys, tempfile, time
+import json
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="svchist-"))
 os.environ.update(HUB_STATE_DIR=str(T), HUB_RUN_DIR=str(T / "run"), TZ="UTC")

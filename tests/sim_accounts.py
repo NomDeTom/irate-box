@@ -3,7 +3,15 @@
 """Accounts: the store offline (names, scrypt,
 sessions, one-time codes, the limits, the admin's levels), then a hub on a spare port: the cookie's
 flags, the HTTP stance, a page elsewhere refused. python3 tests/sim_accounts.py"""
-import json, os, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]

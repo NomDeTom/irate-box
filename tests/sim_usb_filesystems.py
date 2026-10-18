@@ -3,7 +3,10 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Which filesystems a USB stick may have (usbstick.readable): what the kernel knows, a driver it can load, ntfs-3g for
 NTFS; a stick it cannot read said so, not mounted; the box doctor names both lists."""
-import os, subprocess, sys, tempfile
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]

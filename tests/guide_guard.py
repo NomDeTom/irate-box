@@ -4,7 +4,10 @@
 renders to (run `./irate-box guide build` after an edit); every link between the pages resolves; every page is
 in the index; no vault link ([[…]]); each source page carries its SPDX lines; the ZIM builds, every page in it.
 python3 tests/guide_guard.py"""
-import re, struct, sys, tempfile
+import re
+import struct
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))

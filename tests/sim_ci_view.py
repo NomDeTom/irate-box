@@ -5,7 +5,13 @@ its refusals; keep and delete through the queue (the runs are the builder's), ne
 progress; pruning that spares kept runs and follows the setting; a run's view read from an offset
 with its steps and artifacts; the templates using only what a build is given.
 python3 tests/sim_ci_view.py"""
-import json, os, re, subprocess, sys, tempfile, time
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="ciview-"))
@@ -28,7 +34,8 @@ def repo(area, name, script=True, branch="main"):
     subprocess.run(["git", "clone", "-q", "--bare", str(w), str(bare)], check=True)
     return bare
 fw = repo("private", "fw")
-jobs = lambda: [json.loads(p.read_text()) for p in sorted(ci.QUEUE.glob("*.json"))]
+def jobs():
+    return [json.loads(p.read_text()) for p in sorted(ci.QUEUE.glob("*.json"))]
 out = ci.queue_build(fw)
 check("Build now: the default branch's newest commit, queued as a push would be", out["branch"] == "main" and len(out["commit"]) == 40
       and jobs()[-1]["repo"] == str(fw.resolve()) and jobs()[-1]["by"] == "build-now", jobs())
@@ -133,9 +140,9 @@ for layout in ("native", "whole"):
     check(f"seeding ({layout} cache): the platform's archive in, usage.db not, what was there kept", r.returncode == 0
           and (pio / ".cache/downloads/eb76").read_text() == "new" and not (pio / ".cache/downloads/usage.db").exists()
           and (pio / "packages/framework-portduino/package.json").read_text() == "kept", r.stderr)
-    check(f"  the touchscreen build's libraries left out (an offline build fails on them)", not (fwd / ".pio/libdeps/native/lvgl").exists()
+    check("  the touchscreen build's libraries left out (an offline build fails on them)", not (fwd / ".pio/libdeps/native/lvgl").exists()
           and not (fwd / ".pio/libdeps/native/meshtastic-device-ui").exists())
-    check(f"  the libraries in the project's libdeps, a library already there kept", (fwd / ".pio/libdeps/native/RadioLib/library.json").read_text() == "new"
+    check("  the libraries in the project's libdeps, a library already there kept", (fwd / ".pio/libdeps/native/RadioLib/library.json").read_text() == "new"
           and (fwd / ".pio/libdeps/native/Crypto/library.json").read_text() == "kept", sorted(p.name for p in (fwd / ".pio/libdeps/native").iterdir()))
 # Another family (a Firmware Factory build): the download cache, not native's packages or libraries.
 home, fwd = T / "home-esp", T / "fw-esp"; fwd.mkdir()

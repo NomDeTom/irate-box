@@ -124,12 +124,12 @@ def _expand(key):
             rcon = _xt(rcon)
         elif nk > 6 and i % nk == 4:
             t = [SBOX[b] for b in t]
-        w.append([a ^ b for a, b in zip(w[i - nk], t)])
+        w.append([a ^ b for a, b in zip(w[i - nk], t, strict=False)])
     return [sum(w[4 * r:4 * r + 4], []) for r in range(rounds + 1)]
 
 
 def aes_encrypt_block(round_keys, block):
-    s = [b ^ k for b, k in zip(block, round_keys[0])]
+    s = [b ^ k for b, k in zip(block, round_keys[0], strict=False)]
     last = len(round_keys) - 1
     for r in range(1, last + 1):
         s = [SBOX[b] for b in s]
@@ -141,7 +141,7 @@ def aes_encrypt_block(round_keys, block):
                 t = a[0] ^ a[1] ^ a[2] ^ a[3]
                 m += [a[i] ^ t ^ _xt(a[i] ^ a[(i + 1) % 4]) for i in range(4)]
             s = m
-        s = [b ^ k for b, k in zip(s, round_keys[r])]
+        s = [b ^ k for b, k in zip(s, round_keys[r], strict=False)]
     return bytes(s)
 
 
@@ -153,7 +153,7 @@ def aes_ctr(key, nonce, data):
     counter = int.from_bytes(nonce, "big")
     for i in range(0, len(data), 16):
         stream = aes_encrypt_block(rk, counter.to_bytes(16, "big"))
-        out += bytes(a ^ b for a, b in zip(data[i:i + 16], stream))
+        out += bytes(a ^ b for a, b in zip(data[i:i + 16], stream, strict=False))
         counter = (counter & ~0xFFFFFFFF) | ((counter + 1) & 0xFFFFFFFF)
     return bytes(out)
 

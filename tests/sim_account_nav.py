@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The home page's link to /account.html: "Sign in" for a guest whether sign-up is on or off (admins sign in
 there too), "My account" once signed in, never both; "Admin" for an administrator only. python3 tests/sim_account_nav.py"""
-import os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="account-nav-"))

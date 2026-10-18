@@ -4,7 +4,13 @@
 the state sorted into settings, data and what is fetched again (a real box's layout, in small);
 each level's download holding just its part; the sizes on offer; the kit's choices checked and refused over
 budget; the full image written to a "stick" in parts and readable back. python3 tests/sim_backup.py"""
-import gzip, io, json, os, sys, tarfile, tempfile
+import gzip
+import io
+import json
+import os
+import sys
+import tarfile
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="backup-"))

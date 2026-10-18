@@ -5,7 +5,8 @@ owner's, every one, none; one in trouble kept), the old single "watch this" carr
 held while another works, a cable unplugged waited for (or reconnected, or met with the ladder), a cable link's words,
 the connections that would start by themselves on an unwatched link, and the report with each link's own. No network
 is touched. python3 tests/sim_links.py"""
-import sys, tempfile
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -283,7 +284,8 @@ def device(iface, bus, name, driver, reset=True):
 dev, drv = device("wlp1s0", "pci", "0000:01:00.0", "iwlwifi")
 (R / "bus/pci/rescan").write_text("")
 calls = []
-quiet = lambda *c, timeout=60: (calls.append(c), (1, ""))[1]   # NetworkManager not running here
+def quiet(*c, timeout=60):
+    return (calls.append(c), (1, ""))[1]   # NetworkManager not running here
 check("a PCI card found as one", radio._bus_target("wlp1s0") == {"bus": "pci", "name": "0000:01:00.0", "driver": "iwlwifi"})
 said = radio.reset("wlp1s0", None, "iwlwifi", None, run=quiet, sleep=lambda s: None, wait=1)
 check("  reset: its function reset first, and back", (dev / "reset").read_text() == "1" and "PCI 0000:01:00.0 (iwlwifi) reset" in said, said)

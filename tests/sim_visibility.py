@@ -4,7 +4,13 @@
 it starts: auto follows access; a users-only or private app shown to everyone carries a lock; off
 is never shown; hidden takes the tile away; only real apps and values taken; /admin/access says
 what was chosen. python3 tests/sim_visibility.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="visibility-"))

@@ -6,7 +6,11 @@ ones listed and not counted, a kit's cache flagged; the run with no data, and wi
 debsecan on the installed packages and the kits' cache; the joint report merging what two sources
 say about one package.
 python3 tests/sim_secdoctor_debsecan.py"""
-import json, os, sys, tempfile, time
+import json
+import os
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="secdoc-"))

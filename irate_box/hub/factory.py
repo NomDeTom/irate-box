@@ -114,7 +114,7 @@ def resolve(src, ref):
 def _seg_match(pattern, path):
     """A glob from extra_configs against a path, segment by segment ('*' never crosses a '/')."""
     p, q = pattern.strip("/").split("/"), path.split("/")
-    return len(p) == len(q) and all(fnmatch.fnmatchcase(b, a) for a, b in zip(p, q))
+    return len(p) == len(q) and all(fnmatch.fnmatchcase(b, a) for a, b in zip(p, q, strict=False))
 
 
 def _read_blobs(repo, commit, paths):

@@ -4,7 +4,11 @@
 branches, a mirror kept to its policy (tag groups by version, GitHub's release/prerelease flag
 from a stand-in list, a pin), pruning when the upstream moves on, shallow against full history,
 the budget, and the mirror read-only on the box. python3 tests/sim_mirrors.py"""
-import json, os, subprocess, sys, tempfile
+import json
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from unittest import mock
 REPO = Path(__file__).resolve().parents[1]

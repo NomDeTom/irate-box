@@ -108,7 +108,8 @@ check("the AIC8800 driver without its own reset: found", ids(link_inv(base, radi
 netinv.resets_itself = lambda drv: True
 check("  with it: not", ids(link_inv(base, radio={"driver": "aic8800_fdrv", "params": {}})) == [])
 netinv.resets_itself = _real_resets
-import tempfile as _tf0, os as _os0  # noqa: E402
+import tempfile as _tf0
+import os as _os0  # noqa: E402
 _m = Path(_tf0.mkdtemp()); netinv.MODULES_DIR = _m
 (_m / _os0.uname().release / "updates/dkms").mkdir(parents=True)
 (_m / _os0.uname().release / "updates/dkms/aic8800_fdrv_usb.ko").write_bytes(b"\x7fELF...aic8800: firmware not answering: resetting the device to load it afresh...")
@@ -126,7 +127,9 @@ dup = netinv.duplicate_profiles((str(d),))
 check("  two of three files share one: that pair", len(dup) == 1 and dup[0]["files"] == ["a.nmconnection", "b.nmconnection"], dup)
 
 # The box doctor shows the inventory's warnings and problems, with the look's age when it's old.
-import json as _json, os as _os, time as _time  # noqa: E402
+import json as _json
+import os as _os
+import time as _time  # noqa: E402
 from irate_box.msg import M  # noqa: E402
 _os.environ["HUB_STATE_DIR"] = str(d)
 from irate_box.root import health  # noqa: E402

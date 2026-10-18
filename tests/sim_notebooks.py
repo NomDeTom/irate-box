@@ -5,7 +5,13 @@ choice or by sign-up; opening one within the count and the memory kept free; the
 answered by whose notebook it is only once its socket answers; the idle time, sign-out and communal mode
 taking it off the list; the root helper starting and stopping units to match, names checked and at most
 ten. Then the hub's own answers, against a hub it starts. python3 tests/sim_notebooks.py"""
-import http.client, json, os, subprocess, sys, tempfile, time
+import http.client
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="notebooks-"))
@@ -22,7 +28,8 @@ signup = {"v": "open"}
 up, live = set(), {"alice", "bob", "carol"}
 nb = notebooks.Notebooks(lambda path: path in up, lambda k: k in live, lambda: dict(settings), lambda: signup["v"])
 alice, bob, carol = {"name": "Alice"}, {"name": "bob"}, {"name": "carol"}
-wanted = lambda: json.loads(notebooks.WANTED.read_text())["run"]
+def wanted():
+    return json.loads(notebooks.WANTED.read_text())["run"]
 
 check("by sign-up: private while people may sign up", nb.mode() == "private")
 signup["v"] = "off"

@@ -3,7 +3,11 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """SilverBullet's manual in the notes (library/sbdocs.py): its links re-pointed, nothing of it run, the
 site's configuration left out, the starting page's two links to the copy, a reproducible pack."""
-import io, os, sys, tarfile, tempfile
+import io
+import os
+import sys
+import tarfile
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]

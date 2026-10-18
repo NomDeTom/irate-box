@@ -4,7 +4,9 @@
 the hub inherits, against a copy of such an image's files: repository keys trusted for everything, sources with no Signed-By, a daily channel, a
 vendor kernel, an access-point profile the image left in NetworkManager. Then a clean box, where
 every line must be ok. python3 tests/sim_image_step.py"""
-import os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="image-step-"))

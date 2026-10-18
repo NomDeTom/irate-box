@@ -3,7 +3,9 @@
 """The security doctor's unit sandboxing: a root unit missing a line is reported; a line a unit goes without by
 design (the root helper's writes across the system, the terminal) is not, and is listed with its reason. The root
 units install.sh writes have every other line. python3 tests/sim_secdoctor_sandbox.py"""
-import os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="secdoc-sb-"))

@@ -1638,7 +1638,7 @@ def share_findings():
         out.append(finding("guest-net-rules", t, "problem", M("guest-net.not-loaded", "Guest internet access is set, but its rules are not loaded."),
                            fix=M("guest-net.not-loaded.fix", "On Network, Hotspot, set the level again, or turn the access off."),
                            notes=[SHARE_LEVEL[st["level"]]], commands=["nft list table inet irate_box"]))
-    for k, on in zip(off, turn_on):
+    for k, on in zip(off, turn_on, strict=False):
         out.append(finding(f"guest-net-{k}", M("guest-net.part-off.title", "Guest internet access: {name} is off", name=CONTAIN_HEADING[k]), "warn",
                            M("guest-net.part-off", "You disabled this protection."), CONTAIN_OFF_WHY[k], actions=[on]))
     on_parts = [k for k in share.CONTAIN if st["contain"][k]]

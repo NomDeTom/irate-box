@@ -6,7 +6,15 @@ use: its admin pages free to anyone on the network, the home page saying so, unt
 scripts); after it, an admin's password changes only over HTTPS. Once an admin account can sign in, the admin's routes
 send a browser to that sign-in (a script's login still passes); the header shows Admin only to a signed-in admin.
 python3 tests/sim_one_login.py"""
-import json, os, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="onelogin-"))

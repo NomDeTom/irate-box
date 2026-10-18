@@ -6,7 +6,9 @@ following the newest, falls back as it says when the newest does not fetch, adap
 Network, cloning and the root helper are stood in for. The real fetch of the pinned commit
 from github.com/anthay/ELIZA was checked by hand (librarian app-fetch eliza).
 python3 tests/sim_pin.py"""
-import os, sys, tempfile
+import os
+import sys
+import tempfile
 from pathlib import Path
 T = Path(tempfile.mkdtemp(prefix="pin-")); (T / "library").mkdir()
 os.environ["HUB_STATE_DIR"] = str(T)
@@ -100,7 +102,8 @@ except L.LibrarianError:
 
 # Queuing for the root helper as the box lays it out: control/ is root's and the hub
 # can't write in it; only control/requests/ is the hub's. The request must still arrive whole.
-import json, stat  # noqa: E402
+import json
+import stat  # noqa: E402
 C = T / "control"
 (C / "requests").mkdir(parents=True, exist_ok=True)
 C.chmod(0o550)
