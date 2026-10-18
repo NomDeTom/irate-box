@@ -1,0 +1,11 @@
+# The boxes run Debian trixie (Python 3.13).
+target-version = "py313"
+line-length = 120
+
+[lint]
+# I = import sorting (replaces isort; trunk's black and isort are disabled).
+select = ["B", "D3", "E", "F", "I"]
+# The formatter keeps code within 120 columns; it never splits long strings or comments, so don't flag those.
+ignore = ["E501"]
+
+# [format]: the defaults (double quotes, 4-space indent, a trailing comma keeps one item per line).
