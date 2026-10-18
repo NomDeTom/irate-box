@@ -51,10 +51,10 @@ case "$r" in *error*|"") bad "sync: $r" ;; *) ok "sync finished" ;; esac
 V=$(curl -s http://$H/flasher/api/github/firmware/list | python3 -c 'import json,sys; d=json.load(sys.stdin)["releases"]; print((d["alpha"]+d["stable"])[0]["id"].lstrip("v"))')
 echo "  first listed: $V"
 check 3 sh -c "curl -s http://$H/flasher/api/github/firmware/list | python3 -c 'import json,sys; d=json.load(sys.stdin)[\"releases\"]; print(len(d[\"alpha\"])+len(d[\"stable\"]))'"
-check 200 code http://$H/flasher/firmware/$V/firmware-$V.json
-check 200 code http://$H/flasher/firmware/$V/firmware-rak4631-$V.mt.json
-check 200 code http://$H/flasher/firmware/$V/firmware-rak4631-$V.uf2
-HDR=access-control-allow-origin check '*' hdr http://$H/flasher/firmware/$V/firmware-rak4631-$V.uf2
+check 200 code http://$H/flasher/firmware/"$V"/firmware-"$V".json
+check 200 code http://$H/flasher/firmware/"$V"/firmware-rak4631-"$V".mt.json
+check 200 code http://$H/flasher/firmware/"$V"/firmware-rak4631-"$V".uf2
+HDR=access-control-allow-origin check '*' hdr http://$H/flasher/firmware/"$V"/firmware-rak4631-"$V".uf2
 check 0 sh -c "ls /var/lib/hub/firmware/$V/ | grep -c '\.elf$'"
 check ok sh -c "python3 - <<P
 import json, hashlib

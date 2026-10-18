@@ -42,8 +42,8 @@ dpkg -V ngircd 2>/dev/null | grep -q '/etc/ngircd/ngircd.conf' && bad "Debian's 
 ngircd --configtest -f /etc/ngircd/irate-box.conf >/dev/null 2>&1 && ok "the config passes ngircd --configtest" || bad "configtest fails"
 [ "$(irc_try)" = "registered topic" ] && ok "a client registers and joins #lobby, which has its topic" || bad "client: $(irc_try)"
 t0=$(date +%s); irc_try >/dev/null; [ $(($(date +%s) - t0)) -le 4 ] && ok "registration is quick (no DNS or ident wait)" || bad "registration took $(($(date +%s) - t0)) s"
-code="$(curl -s -o /dev/null -w '%{http_code}' http://$H/irc.html)"; [ "$code" = 200 ] && ok "/irc.html 200" || bad "/irc.html $code"
-curl -s http://$H/status | grep -q 'IRC server (ngIRCd)' && ok "/status lists it" || bad "/status does not list it"
+code="$(curl -s -o /dev/null -w '%{http_code}' http://"$H"/irc.html)"; [ "$code" = 200 ] && ok "/irc.html 200" || bad "/irc.html $code"
+curl -s http://"$H"/status | grep -q 'IRC server (ngIRCd)' && ok "/status lists it" || bad "/status does not list it"
 bash /src/install.sh --src /src >/dev/null 2>&1
 grep -qx -- --with-irc /etc/hub/install-options && [ "$(systemctl is-active ngircd)" = active ] && ok "a rerun naming nothing keeps it" || bad "a rerun dropped it"
 

@@ -11,8 +11,8 @@ fails=0; ok() { echo "  ok   $*"; }; bad() { echo "  FAIL $*"; fails=$((fails + 
 servers=()
 cleanup() {
 	(cd /opt/irate-box && python3 -c "import sys; sys.path.insert(0, '.'); from irate_box.root import hub_control; hub_control.share_set({'level': 'off'})") >/dev/null 2>&1
-	for n in phone outside router; do ip netns del $n 2>/dev/null; done
-	for l in ap0 up0 lan0; do ip link del $l 2>/dev/null; done
+	for n in phone outside router; do ip netns del "$n" 2>/dev/null; done
+	for l in ap0 up0 lan0; do ip link del "$l" 2>/dev/null; done
 }
 trap cleanup EXIT
 pair() { # pair NS BOXIF NSIF BOXADDR NSADDR

@@ -9,17 +9,17 @@ bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 GOOD=$Z/mermaid-docs.zim
 [ -f $GOOD ] || { echo "needs $GOOD"; exit 1; }
 sum0=$(md5sum < $GOOD)
-W=$(mktemp -d); chmod 755 $W
-head -c 5000000 $GOOD > $W/cut.zim; printf '<html>404</html>' > $W/page.zim; cp $GOOD $W/whole.zim; chmod 644 $W/*
+W=$(mktemp -d); chmod 755 "$W"
+head -c 5000000 $GOOD > "$W"/cut.zim; printf '<html>404</html>' > "$W"/page.zim; cp $GOOD "$W"/whole.zim; chmod 644 "$W"/*
 
 echo "== zimcheck"
-cd $C
-r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" $W/whole.zim); [ "$r" = None ] && ok "whole book passes" || bad "whole: $r"
-r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" $W/cut.zim); [[ "$r" == "Book file incomplete"* ]] && ok "truncated: $r" || bad "cut: $r"
-r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" $W/page.zim); [[ "$r" == *HTML* ]] && ok "html: $r" || bad "html: $r"
+cd $C || exit
+r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" "$W"/whole.zim); [ "$r" = None ] && ok "whole book passes" || bad "whole: $r"
+r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" "$W"/cut.zim); [[ "$r" == "Book file incomplete"* ]] && ok "truncated: $r" || bad "cut: $r"
+r=$(python3 -c "import sys; from irate_box.library import zimcheck; print(zimcheck.problem(sys.argv[1]))" "$W"/page.zim); [[ "$r" == *HTML* ]] && ok "html: $r" || bad "html: $r"
 
 echo "== librarian: a truncated download is refused, the book in use untouched"
-python3 -m http.server 18555 --directory $W >/dev/null 2>&1 & HP=$!; sleep 1
+python3 -m http.server 18555 --directory "$W" >/dev/null 2>&1 & HP=$!; sleep 1
 out=$(runuser -u hub -- env HUB_STATE_DIR=/var/lib/hub python3 -c "
 from irate_box.library import librarian
 src = {'name': 'mermaid-docs'}
@@ -44,7 +44,7 @@ print('INSTALLED', st['current']['version'])
 kill $HP
 
 echo "== librarian: a rollback to a damaged archived version is refused"
-A=/var/lib/hub/library/archive/mermaid-docs; mkdir -p $A; cp $W/cut.zim $A/v-old.zim; chown -R hub:hub /var/lib/hub/library/archive; touch $A/v-old.zim
+A=/var/lib/hub/library/archive/mermaid-docs; mkdir -p $A; cp "$W"/cut.zim $A/v-old.zim; chown -R hub:hub /var/lib/hub/library/archive; touch $A/v-old.zim
 sum1=$(md5sum < $GOOD)
 out=$(runuser -u hub -- env HUB_STATE_DIR=/var/lib/hub $C/irate-box librarian rollback mermaid-docs 2>&1); echo "    $out" | tail -1
 [[ "$out" == *"archived version v-old was not put in place"* ]] && ok "rollback refused" || bad "rollback: $out"
@@ -52,7 +52,7 @@ out=$(runuser -u hub -- env HUB_STATE_DIR=/var/lib/hub $C/irate-box librarian ro
 rm -f $A/v-old.zim
 
 echo "== USB import: checked on the stick, and again as copied"
-python3 - $W <<'PY'
+python3 - "$W" <<'PY'
 import sys, os, shutil, contextlib
 sys.path.insert(0, "/opt/irate-box")
 from irate_box.root import usbstick
@@ -81,15 +81,15 @@ print("left:", sorted(os.listdir("/var/lib/hub/zim")))
 PY
 
 echo "== /status says why Kiwix is down"
-why() { sleep 6; curl -s http://127.0.0.1:$P/status | python3 -c "import json,sys; s=[x for x in json.load(sys.stdin)['services'] if x['path']=='/wiki/'][0]; print(s['state'], '|', s.get('why'))"; }
+why() { sleep 6; curl -s http://127.0.0.1:"$P"/status | python3 -c "import json,sys; s=[x for x in json.load(sys.stdin)['services'] if x['path']=='/wiki/'][0]; print(s['state'], '|', s.get('why'))"; }
 systemctl stop kiwix; r=$(why); echo "    $r"; [[ "$r" == "stopped | Kiwix is not running"* ]] && ok "stopped, books fine" || bad "$r"
-mv $Z/library.xml $W/lib.bak; r=$(why); echo "    $r"; [[ "$r" == *"library is empty"* ]] && ok "no library" || bad "$r"
+mv $Z/library.xml "$W"/lib.bak; r=$(why); echo "    $r"; [[ "$r" == *"library is empty"* ]] && ok "no library" || bad "$r"
 # The guide's own book (installed each run) set aside too: these say what a box with only these books shows.
-GUIDE=$Z/irate-box-guide.zim; [ -f $GUIDE ] && mv $GUIDE $W/guide.zim
-mv $GOOD $W/held.zim; cp $W/cut.zim $Z/cut.zim; r=$(why); echo "    $r"; [[ "$r" == *"None of the 1 book can be read"* ]] && ok "only a damaged book" || bad "$r"
+GUIDE=$Z/irate-box-guide.zim; [ -f $GUIDE ] && mv $GUIDE "$W"/guide.zim
+mv $GOOD "$W"/held.zim; cp "$W"/cut.zim $Z/cut.zim; r=$(why); echo "    $r"; [[ "$r" == *"None of the 1 book can be read"* ]] && ok "only a damaged book" || bad "$r"
 rm $Z/cut.zim; r=$(why); echo "    $r"; [[ "$r" == "stopped | No books yet"* ]] && ok "no books" || bad "$r"
-mv $W/held.zim $GOOD; [ -f $W/guide.zim ] && mv $W/guide.zim $GUIDE; mv $W/lib.bak $Z/library.xml; chown hub:hub $GOOD $Z/library.xml; systemctl start kiwix; sleep 6
-r=$(curl -s http://127.0.0.1:$P/status | python3 -c "import json,sys; s=[x for x in json.load(sys.stdin)['services'] if x['path']=='/wiki/'][0]; print(s['state'], s.get('why'))"); [ "$r" = "running None" ] && ok "back: running, no reason shown" || bad "back: $r"
-rm -rf $W
+mv "$W"/held.zim $GOOD; [ -f "$W"/guide.zim ] && mv "$W"/guide.zim $GUIDE; mv "$W"/lib.bak $Z/library.xml; chown hub:hub $GOOD $Z/library.xml; systemctl start kiwix; sleep 6
+r=$(curl -s http://127.0.0.1:"$P"/status | python3 -c "import json,sys; s=[x for x in json.load(sys.stdin)['services'] if x['path']=='/wiki/'][0]; print(s['state'], s.get('why'))"); [ "$r" = "running None" ] && ok "back: running, no reason shown" || bad "back: $r"
+rm -rf "$W"
 echo "failures: $fails"
 exit $fails

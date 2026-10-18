@@ -6,7 +6,7 @@
 # Usage, from the checkout: docker run --rm -v "$PWD":/src:ro debian:trixie bash /src/tests/container/ct-caddy-accounts.sh
 set -u
 apt-get -qq update >/dev/null && apt-get -qq install -y caddy python3 curl git fcgiwrap >/dev/null 2>&1 || { echo "apt failed"; exit 2; }
-cp -r /src /w && cd /w
+cp -r /src /w && cd /w || exit
 caddy version
 PW=right-password
 HASH="$(caddy hash-password --plaintext "$PW")"
@@ -67,7 +67,7 @@ want 200 "/tools/ (private), the login" -u "admin:$PW" "$B/tools/"
 echo "== git, through Caddy, as the hub decides"
 gitok() { local w=$1 what=$2; shift 2; if "$@" >/tmp/git.out 2>&1; then r=ok; else r=refused; fi; if [ "$r" = "$w" ]; then echo "  ok   $what: $r"; else echo "  FAIL $what: $r (want $w)"; tail -2 /tmp/git.out; fails=$((fails+1)); fi; }
 G=127.0.0.1:8088
-push() { rm -rf /tmp/wc && git clone -q "http://$1@$G/git/$2.git" /tmp/wc 2>/dev/null || git init -q /tmp/wc; cd /tmp/wc && echo "$RANDOM" > f && git add f && git commit -qm x && git push -q "http://$1@$G/git/$2.git" HEAD:refs/heads/main; local rc=$?; cd /w; return $rc; }
+push() { rm -rf /tmp/wc && git clone -q "http://$1@$G/git/$2.git" /tmp/wc 2>/dev/null || git init -q /tmp/wc; cd /tmp/wc && echo "$RANDOM" > f && git add f && git commit -qm x && git push -q "http://$1@$G/git/$2.git" HEAD:refs/heads/main; local rc=$?; cd /w || exit; return "$rc"; }
 export GIT_TERMINAL_PROMPT=0
 gitok ok "users-repo: a guest clones" git ls-remote "http://$G/git/users-repo.git"
 gitok refused "users-repo: a guest pushes" push "" users-repo

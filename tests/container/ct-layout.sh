@@ -26,8 +26,8 @@ for u in irate-box irate-box-control irate-box-uplink irate-box-librarian irate-
 done
 [ "$(systemctl is-active irate-box)" = active ] && ok "irate-box active" || bad "irate-box $(systemctl is-active irate-box)"
 [ "$(systemctl is-active irate-box-uplink)" = active ] && ok "irate-box-uplink active" || bad "irate-box-uplink $(systemctl is-active irate-box-uplink)"
-code="$(curl -s -o /dev/null -w '%{http_code}' http://$H/status)"; [ "$code" = 200 ] && ok "/status 200" || bad "/status $code"
-code="$(curl -s -o /dev/null -w '%{http_code}' http://$H/lock.js)"; [ "$code" = 200 ] && ok "/lock.js (web/) 200" || bad "/lock.js $code"
+code="$(curl -s -o /dev/null -w '%{http_code}' http://"$H"/status)"; [ "$code" = 200 ] && ok "/status 200" || bad "/status $code"
+code="$(curl -s -o /dev/null -w '%{http_code}' http://"$H"/lock.js)"; [ "$code" = 200 ] && ok "/lock.js (web/) 200" || bad "/lock.js $code"
 
 echo "== the source offer includes root/"
 tar -tzf /var/lib/hub/source/irate-box-source.tar.gz | grep -q '/irate_box/root/health.py$' && ok "tarball has irate_box/root/health.py" || bad "tarball lacks root/"
