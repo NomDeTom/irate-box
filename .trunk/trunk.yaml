@@ -16,9 +16,14 @@ runtimes:
     - python@3.14.4
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
+  # black and isort: ruff formats Python and sorts its imports.
+  # prettier and shfmt: off until JS/HTML/CSS/JSON/Markdown and shell get a reformat of their own
+  # (223 files, +38k/-19k). While on, the format-on-commit hook would rewrite every file a commit touched.
   disabled:
     - black
     - isort
+    - prettier
+    - shfmt
   enabled:
     - actionlint@1.7.12
     - bandit@1.9.4
@@ -27,11 +32,9 @@ lint:
     - hadolint@2.15.1
     - markdownlint@0.49.1
     - pinact@4.0.0
-    - prettier@3.9.10
     - ruff@0.17.1:
         commands: [lint, format]
     - shellcheck@0.11.0
-    - shfmt@3.14.1
     - taplo@0.10.0
     - trufflehog@3.99.2
     - yamllint@1.38.0
