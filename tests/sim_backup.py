@@ -295,10 +295,12 @@ from irate_box.root import usbstick as U
 
 card = T / "card.img"
 card.write_bytes(os.urandom(300_000) + b"\0" * 700_000)
-stick = T / "stick"
-stick.mkdir()
+# The box mounts the stick itself (usbstick.Mounted, audit M7): its mount, stood in, is this folder.
+U.MOUNT_ROOT = T / "mounts"
+stick = U.MOUNT_ROOT / "sdz1"
+stick.mkdir(parents=True)
 U.IMAGE_PART = 100_000
-U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": str(stick)}
+U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": None}
 U.shutil.disk_usage = lambda p: type("u", (), {"used": 1000, "free": 10**9, "total": 10**9})()
 U.run = lambda *c, **k: type("r", (), {"stdout": "", "returncode": 0, "stderr": ""})()
 seen = []
@@ -314,7 +316,7 @@ check(
     and seen[-1][0] == 1_000_000,
     (len(parts), msg),
 )
-U._find = lambda _s, name: {"name": name, "path": "/dev/mmcblk0p2", "fstype": "ext4", "mountpoint": str(stick)}
+U._find = lambda _s, name: {"name": name, "path": "/dev/mmcblk0p2", "fstype": "ext4", "mountpoint": None}
 try:
     U.export_image("x", disk="/dev/mmcblk0")
     check("the box's own disk as the stick: refused", False)
@@ -352,8 +354,21 @@ for bad in ({}, {"books": []}):
         check("content export with nothing chosen: refused", False)
     except ValueError as exc:
         check("content export with nothing chosen: refused", exc.message["id"] == "control.export.empty", str(exc))
-U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": str(stick)}
 H._kits_status = lambda: None
+elsewhere = T / "media-owner"
+elsewhere.mkdir()
+U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": str(elsewhere)}
+try:
+    H.usb_export_many({"device": "sdz1", "repos": ["public/mine"], "state": "data"})
+    why = None
+except ValueError as exc:
+    why = getattr(exc, "message", {}).get("id")
+check(
+    "onto a stick already mounted elsewhere: refused, nothing written there (M7)",
+    why == "usb.device.mounted-elsewhere" and list(elsewhere.iterdir()) == [],
+    why,
+)
+U._find = lambda _s, name: {"name": name, "path": "/dev/sdz1", "fstype": "vfat", "mountpoint": None}
 msg = H.usb_export_many({"device": "sdz1", "repos": ["public/mine", "private/secret"], "state": "data"})
 check(
     "onto a stick: the repositories and the state in its irate-box/, with import.sh",
