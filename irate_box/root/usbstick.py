@@ -375,14 +375,14 @@ def export_with(device, write):
         return write(folder)
 
 
-def import_kit(device, kit, budget_mb, report=None):
+def import_kit(device, kit, budget_mb, report=None, freshness=None):
     """A toolkit from the stick into the local repository, every .deb checked against Debian's
-    signed indexes (kits.import_usb); the stick read-only."""
+    signed indexes (kits.import_usb); the stick read-only. freshness: as kits.import_usb's."""
     from irate_box.root import kits
 
     dev = _find(None, device)
     with Mounted(dev) as root:
-        return kits.import_usb(root / "irate-box" / "kits", kit, budget_mb, report)
+        return kits.import_usb(root / "irate-box" / "kits", kit, budget_mb, report, freshness=freshness)
 
 
 def export_zim(device, book, zim_dir, report=None):

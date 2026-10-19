@@ -38,6 +38,9 @@ sys.path.insert(0, str(REPO))
 from irate_box.msg import args_of
 from irate_box.root import kits
 
+# The box believes its clock (network time) unless a case says otherwise.
+kits._clock_trusted = lambda: "network time"
+
 fails = 0
 
 
@@ -113,7 +116,7 @@ L = T / "lists"
 (L / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages").write_text(packages)
 ph = sha(L / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages")
 (L / "deb.debian.org_debian_dists_trixie_InRelease").write_text(
-    f"SIGNED BY: good key\nOrigin: Debian\nSHA256:\n {ph} {len(packages)} main/binary-armhf/Packages\n"
+    f"SIGNED BY: good key\nOrigin: Debian\nDate: Fri, 02 Oct 2026 00:00:00 UTC\nSHA256:\n {ph} {len(packages)} main/binary-armhf/Packages\n"
 )
 (L / "other.example_dists_x_main_binary-armhf_Packages").write_text(
     "Package: unrelated\nFilename: a/unrelated.deb\nSHA256: 00\n\n"
@@ -340,6 +343,83 @@ except ValueError as exc:
         args_of(exc.message, "kits.export.unvouched") == {"packages": ["libgdb_1%3a16.3-1_armhf.deb"]},
         str(exc),
     )
+
+
+# M10: a signature shows who made a release, not that it is the latest. Its expiry needs a clock the box believes.
+def on_stick(edit=None, name="deb.debian.org_debian_dists_trixie_InRelease"):
+    s = T / f"t-{abs(hash((edit, name))) % 99999}"
+    shutil.rmtree(s, ignore_errors=True)
+    shutil.copytree(T / "stick", s)
+    lists = s / "irate-box" / "kits" / "armhf" / "small" / "lists"
+    p = lists / "deb.debian.org_debian_dists_trixie_InRelease"
+    if edit:
+        p.write_text(edit(p.read_text()))
+    if name != p.name:
+        p.rename(lists / name)
+    return s / "irate-box" / "kits"
+
+
+def attempt(root, freshness=None):
+    fresh()
+    try:
+        return kits.import_usb(root, "small", 500, freshness=freshness), None
+    except ValueError as exc:
+        return None, getattr(exc, "message", {}).get("id")
+
+
+expired_text = lambda s: s.replace("Origin: Debian\n", "Origin: Debian\nValid-Until: Thu, 01 Jan 2026 00:00:00 UTC\n")  # noqa: E731
+kits._clock_trusted = lambda: None
+line, why = attempt(on_stick())
+check(
+    "clock not believed: refused, saying so, nothing cached",
+    why == "kits.usb.time-untrusted" and not kits.manifest("small"),
+    why,
+)
+line, why = attempt(on_stick(name="deb.debian.org_debian_dists_trixie_x_InRelease"))
+check("  a renamed release file: refused the same", why == "kits.usb.time-untrusted" or line is None, why)
+line, why = attempt(on_stick(), kits.UNKNOWN_TIME)
+check(
+    "  approved: imported, said as unchecked, the kit's manifest records it",
+    why is None
+    and args_of(line, "kits.usb.imported.unchecked") is not None
+    and kits.manifest("small").get("freshness") == kits.UNKNOWN_TIME,
+    (line, why),
+)
+line, why = attempt(on_stick(expired_text), kits.UNKNOWN_TIME)
+check("  approved, past a Valid-Until the clock cannot judge: imported, unchecked", why is None, why)
+older_box = (L / "deb.debian.org_debian_dists_trixie_InRelease").read_text()
+(L / "deb.debian.org_debian_dists_trixie_InRelease").write_text(
+    older_box.replace("Date: Fri, 02 Oct 2026", "Date: Sat, 03 Oct 2026")
+)
+line, why = attempt(on_stick(), kits.UNKNOWN_TIME)
+check("  approved, but older than the release this box holds: refused all the same", why == "kits.usb.older", why)
+(L / "deb.debian.org_debian_dists_trixie_InRelease").write_text(older_box)
+line, why = attempt(on_stick(lambda s: s.replace("Date: Fri, 02 Oct 2026 00:00:00 UTC\n", "")), kits.UNKNOWN_TIME)
+check("  approved, a release with no Date: refused", why == "kits.usb.release-date", why)
+line, why = attempt(
+    on_stick(lambda s: s.replace("Origin: Debian\n", "Origin: Debian\nValid-Until: soon\n")), kits.UNKNOWN_TIME
+)
+check("  approved, an unreadable Valid-Until: refused", why == "kits.usb.release-date", why)
+line, why = attempt(on_stick(lambda s: s.replace("SIGNED BY: good key", "SIGNED BY: someone else")), kits.UNKNOWN_TIME)
+check("  approved, a bad signature: refused (approval is for freshness alone)", why == "kits.usb.signature", why)
+fresh()
+lines = kits.import_dir(on_stick(), 500, freshness=kits.UNKNOWN_TIME)
+check(
+    "  the console's import-dir --unknown-time: imported, its line says unchecked",
+    args_of(lines[0], "kits.usb.imported.unchecked") is not None,
+    lines,
+)
+kits._clock_trusted = lambda: "set by an administrator"
+line, why = attempt(on_stick(expired_text))
+check("clock believed (set by an administrator): an expired release refused", why == "kits.usb.expired", why)
+line, why = attempt(on_stick())
+check(
+    "  a current one: imported as checked, no freshness mark",
+    why is None and "freshness" not in kits.manifest("small"),
+    why,
+)
+kits._clock_trusted = lambda: "network time"
+
 # A kit from Debian's debug archive (the symbols kit): its signed index is in the kits' own lists.
 (L / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages").write_text(packages)
 kits.DEBUG_LISTS.mkdir(parents=True, exist_ok=True)
@@ -361,5 +441,30 @@ check(
 from irate_box.root import hub_control
 
 check("the root helper has both", {"usb-kit-import", "usb-kit-export"} <= set(hub_control.ACTIONS))
+# The hub's approval is the security policy's to allow: hub mode passes it on, console mode refuses it.
+(T / "state" / "control").mkdir(parents=True, exist_ok=True)
+asked = []
+hub_control.usbstick.import_kit = lambda dev, kit, budget, report=None, freshness=None: (
+    asked.append(freshness) or "done"
+)
+hub_control._kits_status = lambda: None
+for mode, want in (("hub", [kits.UNKNOWN_TIME]), ("console", [])):
+    asked.clear()
+    hub_control.policy_mode = lambda mode=mode: mode
+    try:
+        hub_control.usb_kit_import({"device": "sda1", "kit": "small", "freshness": "unknown-time"})
+        why = None
+    except ValueError as exc:
+        why = exc.message["id"]
+    check(
+        f"the hub's approval, policy {mode}: "
+        + ("passed to the import" if want else "refused, the console command said"),
+        asked == want and (why is None if want else why == "kits.usb.unknown-time.console"),
+        (asked, why),
+    )
+asked.clear()
+hub_control.policy_mode = lambda: "console"
+hub_control.usb_kit_import({"device": "sda1", "kit": "small"})
+check("  an import with no approval runs under either policy", asked == [None], asked)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

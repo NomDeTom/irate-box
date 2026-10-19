@@ -5850,6 +5850,9 @@ class Handler(BaseHTTPRequestHandler):
                                 "action": f"usb-{action}",
                                 "device": device,
                                 "kit": payload["kit"][:32],
+                                # The owner's approval to import a release the clock cannot date; root checks
+                                # the security policy before taking it.
+                                **({"freshness": "unknown-time"} if payload.get("freshness") == "unknown-time" else {}),
                             }
                         )
                     },

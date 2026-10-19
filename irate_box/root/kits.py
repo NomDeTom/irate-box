@@ -1273,7 +1273,14 @@ def _verified_release(inrelease, work):
 
 
 def _release_date(text, field):
-    """A Release file's Date or Valid-Until, as a timestamp, or None."""
+    """A Release file's Date or Valid-Until, as a timestamp, or None (absent or unreadable)."""
+    got = _release_field(text, field)
+    return got if isinstance(got, float) else None
+
+
+def _release_field(text, field):
+    """A Release file's Date or Valid-Until: a timestamp, None when the field is absent, "bad" when it is
+    there but unreadable."""
     import email.utils
 
     for line in text.splitlines():
@@ -1281,16 +1288,47 @@ def _release_date(text, field):
             try:
                 return email.utils.parsedate_to_datetime(line.split(":", 1)[1].strip()).timestamp()
             except (TypeError, ValueError):
-                return None
+                return "bad"
     return None
 
 
-def _not_stale(text, name):
+def _clock_trusted():
+    """Why the system clock can be believed (rtc.trusted: network time, or set by an administrator), or None."""
+    from irate_box.root import rtc
+
+    return rtc.trusted()
+
+
+UNKNOWN_TIME = "unknown-time"  # the freshness approval: imported although the clock could not date it
+
+
+def _not_stale(text, name, approved=False):
     """A signed release from a stick must be within its Valid-Until and no older than the same
     release this box already holds: a stick could otherwise replay an old, signed, since-fixed set.
-    ValueError if not."""
-    until = _release_date(text, "Valid-Until")
-    if until is not None and until < time.time():
+    The expiry needs a clock the box can believe. Without one, the import is refused unless approved
+    (approved=True: the owner accepted that freshness is not checked); the rest is checked either way.
+    Returns UNKNOWN_TIME when the expiry went unchecked, else None. Refused if not fresh."""
+    date, until = _release_field(text, "Date"), _release_field(text, "Valid-Until")
+    if not isinstance(date, float) or until == "bad":
+        raise Refused(
+            M(
+                "kits.usb.release-date",
+                "The release file {file} has no readable Date, or an unreadable Valid-Until. Import refused.",
+                file=name,
+            )
+        )
+    clock = _clock_trusted()
+    if not clock and not approved:
+        raise Refused(
+            M(
+                "kits.usb.time-untrusted",
+                "The box cannot check that {file} is still current: its clock has no network time and no "
+                "administrator set it. A signature shows who made a release, not that it is the latest. "
+                "Set the clock on the Clock page, or import without a freshness check.",
+                file=name,
+            )
+        )
+    if clock and until is not None and until < time.time():
         raise Refused(
             M(
                 "kits.usb.expired",
@@ -1300,9 +1338,8 @@ def _not_stale(text, name):
                 date=when(until),
             )
         )
-    date = _release_date(text, "Date")
     mine = APT_LISTS / name
-    if date is not None and mine.is_file() and not mine.is_symlink():
+    if mine.is_file() and not mine.is_symlink():
         own = _release_date(mine.read_text(errors="replace"), "Date")
         if own is not None and date < own:
             raise Refused(
@@ -1315,6 +1352,7 @@ def _not_stale(text, name):
                     ours=when(own),
                 )
             )
+    return None if clock else UNKNOWN_TIME
 
 
 def _sha256_section(release_text):
@@ -1333,9 +1371,11 @@ def _sha256_section(release_text):
     return out
 
 
-def import_usb(src_root, kit_id, budget_mb=500, report=None):
+def import_usb(src_root, kit_id, budget_mb=500, report=None, freshness=None):
     """A kit from a stick (`src_root` its irate-box/kits/) into the pool, every .deb checked against
-    Debian's signatures first. The kit's current set becomes previous, as after a fetch."""
+    Debian's signatures first. The kit's current set becomes previous, as after a fetch.
+    freshness=UNKNOWN_TIME: the owner's approval to import although the clock cannot date the release
+    (its caller has checked that the owner may give it); recorded in the kit's manifest."""
     kit = _kit(kit_id)
     here = arch()
     folder = Path(src_root) / here / kit_id
@@ -1352,6 +1392,7 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
     if not isinstance(man, dict) or not isinstance(man.get("packages"), list):
         raise Refused(M("kits.usb.manifest", "The toolkit manifest on the USB drive is unreadable. Import refused."))
     work = Path(tempfile.mkdtemp(prefix="kit-usb-"))
+    unchecked = None
     try:
         vouch = set()
         for pk in sorted([*(folder / "lists").glob("*_Packages"), *(folder / "lists").glob("*_Packages.xz")]):
@@ -1360,7 +1401,7 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
             if not rel or not rel.is_file() or pk.is_symlink() or rel.is_symlink():
                 continue
             text = _verified_release(rel, work)
-            _not_stale(text, rel.name)
+            unchecked = _not_stale(text, rel.name, approved=freshness == UNKNOWN_TIME) or unchecked
             listed = _sha256_section(text)
             path = m.group("path").replace("_", "/")
             digest, hashes = _stick_index(pk)
@@ -1454,10 +1495,24 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None):
                 "arch": here,
                 "bytes": sum(q["size"] for q in pkgs),
                 "from_usb": time.time(),
+                # Imported on the owner's word that a release the clock could not date is current enough.
+                **({"freshness": UNKNOWN_TIME} if unchecked else {}),
             },
         )
         prune()
         write_index()
+        if unchecked:
+            return M(
+                "kits.usb.imported.unchecked",
+                {
+                    "one": "{title}: {n} package imported, its hash checked against Debian's signed indexes on the USB "
+                    "drive. Their freshness was not checked: the clock could not date them.",
+                    "other": "{title}: {n} packages imported, each hash checked against Debian's signed indexes on the "
+                    "USB drive. Their freshness was not checked: the clock could not date them.",
+                },
+                title=kit["title"],
+                n=len(pkgs),
+            )
         return M(
             "kits.usb.imported",
             {
@@ -1518,8 +1573,10 @@ def status():
     }
 
 
-def import_dir(root, budget_mb=None):
-    """Every kit in a folder of the stick layout (an offline kit's kits/), into the pool. Lines."""
+def import_dir(root, budget_mb=None, freshness=None):
+    """Every kit in a folder of the stick layout (an offline kit's kits/), into the pool. Lines.
+    freshness=UNKNOWN_TIME: root at the console approves releases the clock cannot date (the offline
+    installer and the content import pass --unknown-time); each such kit's line says so."""
     if budget_mb is None:
         try:
             budget_mb = int(
@@ -1534,7 +1591,7 @@ def import_dir(root, budget_mb=None):
         if not (folder / "manifest.json").is_file():
             continue
         try:
-            out.append(import_usb(root, folder.name, budget_mb))
+            out.append(import_usb(root, folder.name, budget_mb, freshness=freshness))
         except (ValueError, OSError) as exc:
             out.append(f"{folder.name}: {exc}")
     return out or [f"no toolkits for this box's architecture ({arch()}) in {root}"]
@@ -1545,8 +1602,11 @@ if __name__ == "__main__":
 
     if os.geteuid() != 0:
         sys.exit("run as root")
-    if len(sys.argv) == 3 and sys.argv[1] == "import-dir":
-        for line in import_dir(sys.argv[2]):
+    args = sys.argv[1:]
+    unknown_time = "--unknown-time" in args
+    args = [a for a in args if a != "--unknown-time"]
+    if len(args) == 2 and args[0] == "import-dir":
+        for line in import_dir(args[1], freshness=UNKNOWN_TIME if unknown_time else None):
             print(line)
         from irate_box.root import safeio
 
@@ -1556,4 +1616,8 @@ if __name__ == "__main__":
         except OSError:
             pass
     else:
-        sys.exit("usage: kits.py import-dir DIR")
+        sys.exit(
+            "usage: kits.py import-dir DIR [--unknown-time]\n"
+            "  --unknown-time  import releases this box's clock cannot date (no network time, not set by an\n"
+            "                  administrator): their freshness is not checked, and each such kit says so"
+        )
