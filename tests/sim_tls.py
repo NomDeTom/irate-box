@@ -208,6 +208,7 @@ check(
     names
     == [
         "nginx-addons.conf",
+        "nginx-admin-site.conf",
         "nginx-git.conf",
         "nginx-main.conf",
         "nginx-notebook.conf",
@@ -288,17 +289,19 @@ tls.front(True)
 sites = sorted(p.name for p in tls.FRONT.glob("caddy-site-*.caddy"))
 main_site = (tls.FRONT / "caddy-site-main.caddy").read_text()
 check(
-    "under Caddy: a twin per origin (the hub, add-ons, notes, books, cgit), each importing its snippet, with the certificate",
+    "under Caddy: a twin per origin (the hub, add-ons, notes, books, cgit, administration), each importing its snippet, with the certificate",
     sites
     == [
         "caddy-site-addons.caddy",
+        "caddy-site-admin.caddy",
         "caddy-site-git.caddy",
         "caddy-site-main.caddy",
         "caddy-site-notes.caddy",
         "caddy-site-wiki.caddy",
     ]
     and all(
-        f"import irate_box_{n}" in (tls.FRONT / f"caddy-site-{n}.caddy").read_text() for n in ("notes", "wiki", "git")
+        f"import irate_box_{n}" in (tls.FRONT / f"caddy-site-{n}.caddy").read_text()
+        for n in ("notes", "wiki", "git", "admin")
     )
     and "https://:443 {" in main_site
     and f"tls {tls.CHAIN} {tls.KEY}" in main_site
@@ -766,6 +769,43 @@ check(
     "/http-admin-warning?next=" in (tls.FRONT / "nginx-policy-main.inc").read_text()
     and "/term" in (tls.FRONT / "caddy-policy-main.inc").read_text(),
 )
+# The administration origin (its own port, 8095 and the twin 8495): all of it is administrators' pages, so the
+# administrator HTTP choice applies to every path, and each transport mode is generated for it as for the rest.
+tls.configure("both", "block")
+adm_policy = (tls.FRONT / "nginx-policy-admin.inc").read_text()
+adm_caddy = (tls.FRONT / "caddy-policy-admin.inc").read_text()
+check(
+    "admin origin, administrator HTTP blocked: every plain path goes to its twin (nginx and Caddy)",
+    "if ($uri !~ ^/) { set $irate_plain ''; }" in adm_policy
+    and "if ($irate_plain = P) { return 302 https://$host:8495$request_uri; }" in adm_policy
+    and "protocol http\n\tpath /*" in adm_caddy
+    and "redir @irate_admin_plain https://{host}:8495{uri} 302" in adm_caddy,
+    (adm_policy, adm_caddy),
+)
+tls.configure("both", "warning")
+check(
+    "  warning: every plain path asks first, unless the answer was given",
+    "/http-admin-warning?next=" in (tls.FRONT / "nginx-policy-admin.inc").read_text()
+    and "$cookie_irate_http_ok" in (tls.FRONT / "nginx-policy-admin.inc").read_text()
+    and "path /*" in (tls.FRONT / "caddy-policy-admin.inc").read_text(),
+)
+for transport in tls.TRANSPORTS:
+    tls.configure(transport, "allow")
+    plain = (tls.FRONT / "nginx-http-admin.inc").read_text()
+    twin = tls.FRONT / "nginx-admin-site.conf"
+    check(
+        f"admin origin, transport {transport}: the plain listener and the twin follow the mode",
+        ("listen 8095;" in plain) == (transport != "https")
+        and twin.exists() == (transport != "http")
+        and (transport == "http" or "listen 8495 ssl;" in twin.read_text()),
+    )
+tls.configure("discovery", "allow")
+check(
+    "  discovery: a plain request to it is sent to the twin whatever the path",
+    'if ($irate_discovery = "P:") { return 302 https://$host:8495$request_uri; }'
+    in (tls.FRONT / "nginx-policy-admin.inc").read_text(),
+)
+tls.configure("discovery", "warning")  # as the checks that follow expect
 private_state = {
     **access.defaults(),
     "drop": "private",

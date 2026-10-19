@@ -50,6 +50,7 @@ map $scheme $irate_box_notes_port { https @NOTES_TLS_PORT@; default @NOTES_PORT@
 map $scheme $irate_box_wiki_port  { https @WIKI_TLS_PORT@;  default @WIKI_PORT@; }
 map $scheme $irate_box_git_port   { https @GIT_TLS_PORT@;   default @GIT_PORT@; }
 map $scheme $irate_box_notebook_port { https @NOTEBOOK_TLS_PORT@; default @NOTEBOOK_PORT@; }
+map $scheme $irate_box_admin_port { https @ADMIN_TLS_PORT@; default @ADMIN_PORT@; }
 # The hub's session cookie is the hub's: an app on a sibling port (notes, books, cgit, Syncthing)
 # gets the rest of the Cookie header without it, so a page there cannot act as the owner.
 # The gates (auth_request) still see the whole header.
@@ -513,32 +514,14 @@ server {
 	}
 	location ~ ^/git-private(/.*)$ { return 302 $scheme://$host:$irate_box_git_port$request_uri; }
 
-	# --- /admin -> the hub's own operator options ------------------------------------
-	# Same login as /term and /sync. First use: while @UNCLAIMED@ exists no password has
-	# been chosen, and /admin is let through with none, where the hub serves only the
-	# set-the-password page. hub_control.py deletes the file when the password is set.
-	location = /admin { return 301 /admin/; }
-	location /admin/ {
-		# "Admin over HTTPS only" (root/tls.py): plain requests sent to the
-		# HTTPS twin, before any login is asked. Present only while that switch is on.
-		include @TLS@/nginx-admin.conf*;
-		set $irate_box_admin_auth "Irate-Box";
-		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
-		auth_basic $irate_box_admin_auth;
-		auth_basic_user_file $irate_box_logins;
-		# Or an admin account's session: gate-admin.conf, from the root helper.
-		include @ACCESS@.d/gate-admin.conf*;
-		# The secret that tells the hub this came through here (server.py FRONT_SECRET), from
-		# a root-only file. Setting a header here drops the server-level ones, so all again.
-		include @FRONT@;
-		proxy_set_header Host $http_host;
-		proxy_set_header X-Forwarded-For $remote_addr;
-		proxy_set_header X-Forwarded-Proto $scheme;
-		proxy_set_header X-Forwarded-Host $http_host;
-		proxy_set_header Upgrade $http_upgrade;
-		proxy_set_header Connection $irate_box_connection;
-		proxy_pass http://irate_box_hub;
-	}
+	# --- /admin -> the administration origin (the server block near the end, port @ADMIN_PORT@) --------
+	# An origin is scheme, host and port, and a path isolates nothing: anything that runs script on the hub's
+	# port (a shoutbox page, a dropped file, a drawing) could call /admin with an administrator's session.
+	# So the administration pages are served only on a port of their own, and here /admin is a redirect to
+	# it, path and query kept (a #fragment survives a redirect). This origin never sends the hub the
+	# front's secret (server.py FRONT_SECRET), so the hub refuses an /admin request that arrives by it.
+	location = /admin { return 302 $scheme://$host:$irate_box_admin_port/admin/; }
+	location /admin/ { return 302 $scheme://$host:$irate_box_admin_port$request_uri; }
 
 	# --- /term -> ttyd (the escape hatch), path passed through (--base-path /term) ----
 	# Gated here only: ttyd has no credential, and listens on a socket only this web
@@ -555,6 +538,104 @@ server {
 
 	# Nothing here sets Strict-Transport-Security. Keep it that way.
 }
+
+# --- the administration origin: /admin ---------------------------------------------------------
+# Its own port, so nothing served on the hub's port (a shoutbox page, a dropped file, a drawing)
+# can call /admin with an administrator's session: an origin is scheme, host and port, and the
+# path isolates nothing. The hub's port redirects /admin here. Only this block sends the hub the
+# front's secret (@FRONT@), and the hub refuses /admin without it; every other block clears the
+# header. The session cookie is the hub's, set on its page: cookies are kept by host, not port, so
+# it is sent here too and signing in is unchanged.
+# What the page loads: its own files (scripts, styles, pictures: off disk), /admin/ (the hub),
+# and the gallery's thumbnails. A page of the hub (a link in the administration pages to Git,
+# Sync, the account page, help) is sent to the hub's origin, where it lives.
+server {
+	include @TLS@/nginx-http-admin.inc;
+	include @TLS@/nginx-policy-admin.inc;
+	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
+	include @TLS@/nginx-admin-site.conf*;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	client_max_body_size 1m;
+	absolute_redirect off;
+	include @ACCESS@;
+	# The session check for an admin account (access.py gate-admin.conf asks it, beside the box's own
+	# login). Every header set again, as setting one drops the server's (Connection above all: see the
+	# hub block's /_irate_user).
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		# Which page: the hub says yes for an unclaimed box only to /admin itself (never the shell).
+		proxy_set_header X-Original-URI $request_uri;
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
+	# Not signed in: the sign-in is the hub's page, which sends the browser back here.
+	location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }
+	# Where a page of the hub is: its own origin.
+	location @irate_box_hub_origin { return 302 $scheme://$host:$irate_box_hub_port$request_uri; }
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $remote_addr;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header X-Forwarded-Host $http_host;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection $irate_box_connection;
+	proxy_set_header X-Irate-Front "";
+	root @STATIC@;
+	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'";
+	add_header Content-Security-Policy $irate_box_csp always;
+	location = / { return 302 /admin/; }
+	location = /admin { return 301 /admin/; }
+	# Same login as /term and /sync. First use: while @UNCLAIMED@ exists no password has been chosen, and
+	# /admin is let through with none, where the hub serves only the set-the-password page.
+	# hub_control.py deletes the file when the password is set.
+	location ^~ /admin/ {
+		set $irate_box_admin_auth "Irate-Box";
+		if (-f @UNCLAIMED@) { set $irate_box_admin_auth off; }
+		auth_basic $irate_box_admin_auth;
+		auth_basic_user_file $irate_box_logins;
+		# Or an admin account's session: gate-admin.conf, from the root helper.
+		include @ACCESS@.d/gate-admin.conf*;
+		# The secret that tells the hub this came through here (server.py FRONT_SECRET), from a root-only
+		# file. Setting a header here drops the server-level ones, so all again.
+		include @FRONT@;
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $irate_box_connection;
+		proxy_pass http://irate_box_hub;
+	}
+	# The gallery's thumbnails, which the Store pane fetches (opaque downloads: the page re-types them).
+	location ~ ^/api/saves/[^/]+/thumb$ {
+		limit_except GET { deny all; }
+		auth_basic "Irate-Box";
+		auth_basic_user_file $irate_box_logins;
+		include @ACCESS@.d/gate-admin.conf*;
+		proxy_pass http://irate_box_hub;
+	}
+	# Pages of the hub, wherever they are linked from (Git, Sync, the account and help pages): its origin.
+	location ~* \.html$ { return 302 $scheme://$host:$irate_box_hub_port$request_uri; }
+	# The page's own files; what the hub makes (the layout, the favicon, the header picture) and
+	# everything else is the hub's.
+	location / {
+		try_files $uri @irate_box_hub_origin;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
+	}
+}
+
 
 # --- the add-on origin: the local add-ons ---------------------------------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's

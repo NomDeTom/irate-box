@@ -49,10 +49,10 @@ UNIT_DIRS = (
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 
 # The hub's own doors on the hotspot: the front, the apps' origins and their TLS twins, DNS, DHCP.
-HUB_TCP = (53, 80, 443, 8090, 8091, 8092, 8093, 8094, 8490, 8491, 8492, 8493, 8494)
+HUB_TCP = (53, 80, 443, 8090, 8091, 8092, 8093, 8094, 8095, 8490, 8491, 8492, 8493, 8494, 8495)
 HUB_UDP = (53, 67)
-# The firewall at "hub": the front, DNS and DHCP only.
-HUB_ONLY_TCP = (53, 80, 443)
+# The firewall at "hub": the front, DNS and DHCP only, and the administration pages (/admin was on the front's port).
+HUB_ONLY_TCP = (53, 80, 443, 8095, 8495)
 FIREWALL_LEVELS = ("hub", "apps")
 # Never forwarded to while contained (share.py's lan): this host, private and CGNAT (the tailnet's)
 # ranges, link-local, the special-purpose blocks, multicast and above.
