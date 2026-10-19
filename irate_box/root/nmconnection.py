@@ -98,7 +98,7 @@ POWERSAVE_WORDS = {"default": "0", "ignore": "1", "disable": "2", "enable": "3"}
 
 def run(*cmd, timeout=60):
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
     except FileNotFoundError:
         return 127, f"{cmd[0]}: not installed"
     except subprocess.TimeoutExpired:

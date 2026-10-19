@@ -118,7 +118,7 @@ def _uid_of(name):
 def _sc(*args):
     """`systemctl` output, or "" when systemd is not there. Only read-only verbs are used."""
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             ("systemctl", "--no-pager", *args),
             capture_output=True,
             text=True,
@@ -2331,7 +2331,7 @@ def _ci_nft():
     loaded. IPAddressDeny does not work on vendor kernels that cannot attach systemd's cgroup programs.
     """
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             ("nft", "list", "table", "inet", "irate_box_ci"),
             capture_output=True,
             text=True,
@@ -2639,7 +2639,7 @@ def _requested_options():
 def _listening():
     """{port: [addresses]} of every TCP/UDP listener, loopback included; None if ss is missing."""
     try:
-        r = subprocess.run(("ss", "-H", "-ltnu"), capture_output=True, text=True, timeout=20)
+        r = subprocess.run(("ss", "-H", "-ltnu"), capture_output=True, text=True, timeout=20)  # noqa: TID251
     except (OSError, subprocess.SubprocessError):
         return None
     found = {}
@@ -3194,7 +3194,7 @@ def probe_ttyd(ctx, a, show):
 
 def probe_tailscale(ctx, a, show):
     try:
-        r = subprocess.run(("tailscale", "debug", "prefs"), capture_output=True, text=True, timeout=20)
+        r = subprocess.run(("tailscale", "debug", "prefs"), capture_output=True, text=True, timeout=20)  # noqa: TID251
         prefs = json.loads(r.stdout)
     except (OSError, subprocess.SubprocessError, ValueError):
         return [
@@ -4893,7 +4893,7 @@ def _debsecan_command(work):
     for d in debs.values():
         if d.name in damaged:
             return None, f"{d.name} in the security kit's cache fails its check"
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             ["dpkg-deb", "-x", str(d), str(work)],
             capture_output=True,
             text=True,
@@ -4980,7 +4980,7 @@ def _debsecan(cmd, env, suite, status=None, timeout=900):
     if status:
         args += ["--status", str(status)]
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             args,
             capture_output=True,
             text=True,
@@ -5019,7 +5019,7 @@ def _debsecan(cmd, env, suite, status=None, timeout=900):
 
 def _sources():
     """{binary package: its source package}, from dpkg."""
-    r = subprocess.run(
+    r = subprocess.run(  # noqa: TID251
         ["dpkg-query", "-W", "-f", "${Package}\t${source:Package}\n"],
         capture_output=True,
         text=True,
@@ -6899,7 +6899,7 @@ def _public(addr):
 def _ssh_public(days=REACH_DAYS):
     """{address: (accepted, other)} from sshd's log, public addresses only; None if unreadable."""
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             (
                 "journalctl",
                 "-q",
@@ -6935,7 +6935,7 @@ def _ssh_public(days=REACH_DAYS):
 def _ssh_log_since(days=REACH_DAYS):
     """The date of sshd's oldest journal line within the window, or "" if none can be read."""
     try:
-        p = subprocess.Popen(
+        p = subprocess.Popen(  # noqa: TID251
             (
                 "journalctl",
                 "-q",
@@ -6966,7 +6966,7 @@ def _ssh_log_since(days=REACH_DAYS):
 
 def _global_v6():
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             ("ip", "-6", "-o", "addr", "show", "scope", "global"),
             capture_output=True,
             text=True,

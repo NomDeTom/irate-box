@@ -322,7 +322,7 @@ def undo_all():
 
 def _active(unit):
     try:
-        return subprocess.run(["systemctl", "is-active", "--quiet", unit], timeout=10).returncode == 0
+        return subprocess.run(["systemctl", "is-active", "--quiet", unit], timeout=10).returncode == 0  # noqa: TID251
     except (OSError, subprocess.SubprocessError):
         return False
 

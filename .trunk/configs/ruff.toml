@@ -6,12 +6,40 @@ line-length = 120
 # I = import sorting (replaces isort; trunk's black and isort are disabled).
 # BLE = no bare `except Exception` without a `# noqa: BLE001 - reason`.
 # RUF100 = no `# noqa` left behind once the code it excused has gone.
-select = ["B", "BLE", "D3", "E", "F", "I", "RUF100"]
+# TID251 = the subprocess boundary (banned-api below); S602/S604/S605 = no shell.
+select = [
+  "B",
+  "BLE",
+  "D3",
+  "E",
+  "F",
+  "I",
+  "RUF100",
+  "S602",
+  "S604",
+  "S605",
+  "TID251",
+]
 # The formatter keeps code within 120 columns; it never splits long strings or comments, so don't flag those.
 ignore = ["E501"]
 
 # [format]: the defaults (double quotes, 4-space indent, a trailing comma keeps one item per line).
 
+# Processes start through a reviewed boundary, not anywhere (subprocess-runtime-safety-plan.md).
+# A new direct call fails the check. Today's carry `# noqa: TID251` (as of 177793a), each to go
+# as its module moves to the guarded runner: grep for it to see what is left.
+[lint.flake8-tidy-imports.banned-api]
+"subprocess.run".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"subprocess.Popen".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"subprocess.call".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"subprocess.check_call".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"subprocess.check_output".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"subprocess.getoutput".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"subprocess.getstatusoutput".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"os.system".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+"os.popen".msg = "Start processes through the module's reviewed runner (subprocess-runtime-safety-plan.md)."
+
 [lint.per-file-ignores]
 # The test scripts put the repository on sys.path first, then import the code under test.
-"tests/**" = ["E402"]
+"tests/**" = ["E402", "TID251"] # tests run commands on purpose
+"tools/**" = ["TID251"]

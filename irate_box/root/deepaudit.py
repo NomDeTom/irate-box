@@ -111,7 +111,7 @@ def _progress(step, n, total):
 def _cis_mirror():
     for area in ("public", "private"):
         for repo in sorted((GIT_ROOT / area).glob("*.git")) if (GIT_ROOT / area).is_dir() else []:
-            r = subprocess.run(
+            r = subprocess.run(  # noqa: TID251
                 ["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "config", "--get", "irate-box.mirror"],
                 capture_output=True,
                 text=True,
@@ -356,7 +356,7 @@ def run_cis(work, pin=None):
                 source="debian-cis",
             )
         ]
-    have = subprocess.run(
+    have = subprocess.run(  # noqa: TID251
         ["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "cat-file", "-e", f"{pin}^{{commit}}"],
         capture_output=True,
         timeout=60,
@@ -386,7 +386,7 @@ def run_cis(work, pin=None):
         ]
     src = work / "debian-cis"
     src.mkdir()
-    arch = subprocess.run(
+    arch = subprocess.run(  # noqa: TID251
         ["git", "-c", f"safe.directory={repo}", "--git-dir", str(repo), "archive", "--format=tar", pin],
         capture_output=True,
         timeout=300,
@@ -402,7 +402,7 @@ def run_cis(work, pin=None):
                 source="debian-cis",
             )
         ]
-    subprocess.run(["tar", "-x", "-C", str(src)], input=arch.stdout, check=True, timeout=300)
+    subprocess.run(["tar", "-x", "-C", str(src)], input=arch.stdout, check=True, timeout=300)  # noqa: TID251
     env = dict(
         os.environ,
         CIS_LIB_DIR=str(src / "lib"),
@@ -414,7 +414,7 @@ def run_cis(work, pin=None):
     )
     (src / "tmp").mkdir(exist_ok=True)
     t = time.time()
-    r = subprocess.run(
+    r = subprocess.run(  # noqa: TID251
         ["nice", "-n", "19", "bash", str(src / "bin" / "hardening.sh"), "--audit-all", "--batch"],
         capture_output=True,
         text=True,
@@ -642,7 +642,7 @@ def _lynis_command(work):
             found[-1].name,
             None,
         )
-    subprocess.run(["dpkg-deb", "-x", str(found[-1]), str(work / "lynis")], check=True, timeout=120)
+    subprocess.run(["dpkg-deb", "-x", str(found[-1]), str(work / "lynis")], check=True, timeout=120)  # noqa: TID251
     base = work / "lynis"
     return (
         [str(base / "usr" / "sbin" / "lynis")],
@@ -673,7 +673,7 @@ def run_lynis(work):
         ]
     report, log = work / "lynis-report.dat", work / "lynis.log"
     t = time.time()
-    subprocess.run(
+    subprocess.run(  # noqa: TID251
         [
             "nice",
             "-n",

@@ -27,7 +27,7 @@ PHONE_NETS = (ipaddress.ip_network("172.20.10.0/28"),)  # an iPhone's personal h
 
 def run(*cmd, timeout=15):
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         return 127, str(exc)
     return p.returncode, (p.stdout + p.stderr).strip()

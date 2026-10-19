@@ -83,7 +83,7 @@ PROTECTED = re.compile(
 
 
 def run(*cmd, timeout=60):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
 
 
 def _have(cmd):
@@ -1118,7 +1118,7 @@ def _autoupdate(rec, how):
     said = []
     if act == 2 and often and not _have("unattended-upgrade"):
         env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-        code = subprocess.run(
+        code = subprocess.run(  # noqa: TID251
             ["apt-get", "install", "-y", "unattended-upgrades"],
             capture_output=True,
             env=env,
@@ -1129,7 +1129,7 @@ def _autoupdate(rec, how):
             debs = sorted(KIT_POOL.glob("unattended-upgrades_*.deb")) if KIT_POOL.is_dir() else []
             if (
                 not debs
-                or subprocess.run(
+                or subprocess.run(  # noqa: TID251
                     ["apt-get", "install", "-y", str(debs[-1])],
                     capture_output=True,
                     env=env,
@@ -1478,7 +1478,7 @@ def _kernel_debian(rec):
     kernel = rec.setdefault("kernel", {})
     old = kernel.get("links", {}).get("old") or {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-    out = subprocess.run(
+    out = subprocess.run(  # noqa: TID251
         ["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
         capture_output=True,
         text=True,
@@ -3211,7 +3211,7 @@ def _apt_logged(log, argv, timeout):
     log.write("$ " + " ".join(argv) + "\n\n")
     log.flush()
     env = dict(os.environ, **APT_ENV, HOME=os.environ.get("HOME", "/root"))
-    code = subprocess.run(
+    code = subprocess.run(  # noqa: TID251
         argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout
     ).returncode
     log.write("\n")

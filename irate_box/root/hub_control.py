@@ -354,7 +354,7 @@ TIMER_EXACT = ("--timer-property=AccuracySec=100ms",)
 
 
 def run(*cmd, timeout=120, **kw):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)  # noqa: TID251
 
 
 # What every action answers, and why it refuses, are messages (msg.py): whole sentences with stable IDs. Names,
@@ -408,7 +408,7 @@ def service(req):
     args = {"enable": ("enable", "--now"), "disable": ("disable", "--now")}.get(op, (op,))
     if unit == "irate-box.service":
         # Restarting the hub from a request the hub made: answer first, then go.
-        subprocess.Popen(["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit])
+        subprocess.Popen(["systemd-run", "--on-active=2", *TIMER_EXACT, "systemctl", "restart", unit])  # noqa: TID251
         return M("control.service.restarting", "The service {unit} is restarting.", unit=unit)
     out = run("systemctl", *args, unit)
     if out.returncode != 0:
@@ -538,7 +538,7 @@ def _set_nginx_login(pw):
                 path=str(NGINX_LOGINS),
             )
         )
-    out = subprocess.run(
+    out = subprocess.run(  # noqa: TID251
         ["openssl", "passwd", "-6", "-stdin"],
         input=pw + "\n",
         capture_output=True,
@@ -571,7 +571,7 @@ def _set_caddy_login(pw):
     if CADDY_ACCESS.is_dir():
         _access_files(access.read(ACCESS_FILE))
     # Restart, not reload: the Caddyfile turns Caddy's admin API off, which reload needs.
-    subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])
+    subprocess.Popen(["systemd-run", "--on-active=1", *TIMER_EXACT, "systemctl", "restart", "caddy"])  # noqa: TID251
     return "Caddy"
 
 
@@ -964,7 +964,7 @@ class _HubTar:
     def __init__(self, folder, names, limit):
         self.folder = folder
         self.err = tempfile.TemporaryFile()
-        self.proc = subprocess.Popen(
+        self.proc = subprocess.Popen(  # noqa: TID251
             ["tar", "-C", str(folder), "-cf", "-", "--", *names],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -1008,7 +1008,7 @@ def _copy_as_hub(src, dest):
 
 def _hash_as_hub(zims):
     """{name: sha256} of the books, hashed by the hub user."""
-    out = subprocess.run(
+    out = subprocess.run(  # noqa: TID251
         ["sha256sum", "-z", "--", *map(str, zims)],
         capture_output=True,
         timeout=7200,
@@ -1484,7 +1484,7 @@ def _access_apply(state, reload=True):
             run("systemctl", "reload", "nginx")
         else:
             # The Caddyfile turns Caddy's admin API off, which reload needs.
-            subprocess.Popen(
+            subprocess.Popen(  # noqa: TID251
                 [
                     "systemd-run",
                     "--on-active=1",
@@ -1756,7 +1756,7 @@ def _reload_web():
         run("systemctl", "reload", "nginx")
     else:
         # The Caddyfile turns Caddy's admin API off, which reload needs.
-        subprocess.Popen(
+        subprocess.Popen(  # noqa: TID251
             [
                 "systemd-run",
                 "--on-active=1",
@@ -2012,7 +2012,7 @@ def console_set_admin(name):
     password never crosses the network in the clear); ends the first use if it is still on.
     """
     pw = _ask_password(f"Password for the administrator account {name}: ")
-    out = subprocess.run(
+    out = subprocess.run(  # noqa: TID251
         [
             "runuser",
             "-u",
@@ -3052,7 +3052,7 @@ def _check_for_update(progress):
         _git("-C", src, "clean", "-fdx")
     else:
         if UPDATE_SRC.exists():
-            subprocess.run(["rm", "-rf", src], check=True)
+            subprocess.run(["rm", "-rf", src], check=True)  # noqa: TID251
         UPDATE_SRC.parent.mkdir(parents=True, exist_ok=True)
         _git(*net, "clone", "--depth", "200", "--branch", branch, repo, src)
     sig = signing.load(ETC)
@@ -3461,7 +3461,7 @@ def _run_install(src, args, action, steps=None):
     ):
         log.write("$ " + " ".join(cmd) + "\n\n")
         log.flush()
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)  # noqa: TID251
         code, seen = _follow_install(proc, progress)
     if code != 0:
         raise Refused(
@@ -6162,7 +6162,7 @@ def wifisync(req):
         want = do == "on"
         if "was" not in rec:
             rec["was"] = now  # the image's own state, before the first change made here
-    r = subprocess.run(
+    r = subprocess.run(  # noqa: TID251
         ["systemctl", "enable" if want else "disable", "--now", WIFISYNC],
         capture_output=True,
         text=True,

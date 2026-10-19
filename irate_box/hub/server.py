@@ -1494,7 +1494,7 @@ def unit_states(units):
     is no systemd to ask (a dev machine): the caller then treats every unit as installed.
     """
     try:
-        out = subprocess.run(
+        out = subprocess.run(  # noqa: TID251
             [
                 "systemctl",
                 "show",
@@ -1643,7 +1643,7 @@ TAILSCALE_MAX_HOURS = 72
 _tailscale_cache = {"at": -1e9, "val": None}
 
 
-def tailscale_backend(run=subprocess.run):
+def tailscale_backend(run=subprocess.run):  # noqa: TID251
     """Tailscale's own state while tailscaled runs, from `tailscale status --json` (the hub may ask: it is only read):
     {"state": "connected" | "needs-login" | another of its states, lowercased, "name", "tailnet", "ip"}; None when it
     can't be asked (not running, no CLI). Cached as the services' states are."""
@@ -2057,7 +2057,7 @@ def meshtasticd_state():
     (the unit restarts it always, up to the limit, then leaves it failed until it is started again).
     """
     try:
-        out = subprocess.run(
+        out = subprocess.run(  # noqa: TID251
             [
                 "systemctl",
                 "show",
@@ -2660,7 +2660,7 @@ def _helper_doing():
     except (OSError, ValueError, AttributeError):
         pass
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             ["systemctl", "show", "irate-box-control.service", "-p", "MainPID"],
             capture_output=True,
             text=True,
@@ -2748,7 +2748,7 @@ def helper_busy():
     waiting without anything being wrong (a kit's refresh of minutes is not "not answering").
     systemctl show is the hub's to ask."""
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             [
                 "systemctl",
                 "show",

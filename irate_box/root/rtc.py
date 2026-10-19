@@ -456,7 +456,7 @@ def kernel_driver(chip):
 def find():
     """Every I2C bus, every clock address: what answers, and what it looks like."""
     if not FAKE:
-        subprocess.run(["modprobe", "i2c-dev"], capture_output=True)
+        subprocess.run(["modprobe", "i2c-dev"], capture_output=True)  # noqa: TID251
     out = {"at": time.time(), "buses": buses(), "found": [], "busy": []}
     for bus in out["buses"]:
         for addr in ADDRESSES:
@@ -522,7 +522,7 @@ def kernel_rtc_dev(cfg):
     if not node.exists():
         drv = cfg.get("driver") or {}
         if drv.get("kind") == "module":
-            subprocess.run(["modprobe", drv["module"]], capture_output=True)
+            subprocess.run(["modprobe", drv["module"]], capture_output=True)  # noqa: TID251
         try:
             Path(f"/sys/bus/i2c/devices/i2c-{bus}/new_device").write_text(f"{drv['name']} {addr:#04x}")
         except OSError as exc:
@@ -603,7 +603,7 @@ def write_module(cfg, epoch):
 
 
 def ntp_synced():
-    out = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True)
+    out = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True)  # noqa: TID251
     return out.stdout.strip() == "yes"
 
 
@@ -643,7 +643,7 @@ def _status(data):
 
 
 def set_system(epoch):
-    r = subprocess.run(["date", "-u", "-s", f"@{int(epoch)}"], capture_output=True, text=True)
+    r = subprocess.run(["date", "-u", "-s", f"@{int(epoch)}"], capture_output=True, text=True)  # noqa: TID251
     if r.returncode:
         raise RtcError(M("rtc-module.date-failed", "The command date failed: {detail}", detail=r.stderr.strip()))
 
@@ -687,7 +687,7 @@ def boot():
 def chrony_reference():
     """chrony's reference now (its refid, e.g. "RTC", "GPS", or a server's address), or None without chrony."""
     try:
-        out = subprocess.run(["chronyc", "-n", "tracking"], capture_output=True, text=True, timeout=10).stdout
+        out = subprocess.run(["chronyc", "-n", "tracking"], capture_output=True, text=True, timeout=10).stdout  # noqa: TID251
     except (OSError, subprocess.TimeoutExpired):
         return None
     m = re.search(r"^Reference ID\s*:\s*\S+\s*\(([^)]*)\)", out, re.M)
@@ -777,9 +777,9 @@ WantedBy=timers.target
 def write_units():
     for name, text in UNITS.items():
         (UNIT_DIR / name).write_text(text.format(state=STATE, etc=ETC, code=CODE))
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
-    subprocess.run(["systemctl", "enable", "irate-box-rtc.service", "irate-box-rtc-save.timer"], capture_output=True)
-    subprocess.run(["systemctl", "start", "irate-box-rtc-save.timer"], capture_output=True)
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)  # noqa: TID251
+    subprocess.run(["systemctl", "enable", "irate-box-rtc.service", "irate-box-rtc-save.timer"], capture_output=True)  # noqa: TID251
+    subprocess.run(["systemctl", "start", "irate-box-rtc-save.timer"], capture_output=True)  # noqa: TID251
 
 
 def setup(chip, bus, addr):
@@ -908,7 +908,7 @@ def setup(chip, bus, addr):
         )
     msg = sentences(*said)
     if not FAKE:
-        subprocess.run(["systemctl", "start", "irate-box-rtc.service"], capture_output=True)  # records it as having run
+        subprocess.run(["systemctl", "start", "irate-box-rtc.service"], capture_output=True)  # records it as having run  # noqa: TID251
     _status({**(json.loads(STATUS.read_text()) if STATUS.exists() else {}), "message": render(msg)})
     return msg
 
@@ -916,10 +916,10 @@ def setup(chip, bus, addr):
 def remove():
     cfg = load_config()
     for unit in ("irate-box-rtc-save.timer", "irate-box-rtc.service"):
-        subprocess.run(["systemctl", "disable", "--now", unit], capture_output=True)
+        subprocess.run(["systemctl", "disable", "--now", unit], capture_output=True)  # noqa: TID251
     for name in UNITS:
         (UNIT_DIR / name).unlink(missing_ok=True)
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)  # noqa: TID251
     if cfg and cfg.get("mode") == "kernel":
         try:
             Path(f"/sys/bus/i2c/devices/i2c-{cfg['bus']}/delete_device").write_text(cfg["addr"])
@@ -941,7 +941,7 @@ def status():
         return None
     out = {"config": cfg, "units": {}, "last": None}
     for unit in ("irate-box-rtc.service", "irate-box-rtc-save.timer"):
-        out["units"][unit] = subprocess.run(
+        out["units"][unit] = subprocess.run(  # noqa: TID251
             ["systemctl", "is-active", unit], capture_output=True, text=True
         ).stdout.strip()
     try:

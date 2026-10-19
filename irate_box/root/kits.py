@@ -62,7 +62,7 @@ DEAD_PROXY = "http://127.0.0.1:9"  # nothing listens there: an install that trie
 
 def run(cmd, timeout=1800, check=True, env=None):
     """Every command goes through here (the tests stand it in)."""
-    out = subprocess.run(
+    out = subprocess.run(  # noqa: TID251
         cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **APT_ENV, **(env or {}))
     )
     if check and out.returncode != 0:

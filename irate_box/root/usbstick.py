@@ -67,7 +67,7 @@ INCLUDE_LOOP = os.environ.get("HUB_USB_INCLUDE_LOOP") == "1"
 
 
 def run(*cmd, timeout=60):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
 
 
 def readable():
@@ -330,7 +330,7 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
             os.replace(tmp, dest)
         finally:
             tmp.unlink(missing_ok=True)
-    out = subprocess.run(
+    out = subprocess.run(  # noqa: TID251
         ["runuser", "-u", hub_user, "--", "env", f"HUB_STATE_DIR={state_dir}", *librarian_cmd, "rebuild-library"],
         capture_output=True,
         text=True,

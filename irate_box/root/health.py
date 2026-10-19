@@ -103,7 +103,7 @@ def watched_units():
 
 def run(*cmd, timeout=60, **kw):
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)  # noqa: TID251
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 

@@ -36,7 +36,7 @@ UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 def run(*cmd, timeout=60):
     """Every command goes through here (the tests stand it in). A missing program answers 127."""
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
     except FileNotFoundError:
         return 127, f"{cmd[0]}: not installed"
     return p.returncode, (p.stdout + p.stderr).strip()

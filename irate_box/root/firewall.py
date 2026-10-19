@@ -258,7 +258,7 @@ def services_here(wanted):
 
 
 def run(*cmd, timeout=60):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
 
 
 def loaded():

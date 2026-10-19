@@ -366,7 +366,7 @@ class SnapshotKeeper:
 
 def journal_tail(n=300):
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             ["journalctl", "-b", "-1", "--no-pager", "-o", "short-monotonic", "-n", str(n * 4)],
             capture_output=True,
             text=True,
@@ -626,7 +626,7 @@ def watchdog_device():
     switch on, else None."""
     if any((SYS / "class/watchdog").glob("watchdog*")) and not _softdog_loaded():
         return "hardware"
-    r = subprocess.run(["modinfo", "softdog"], capture_output=True, text=True)
+    r = subprocess.run(["modinfo", "softdog"], capture_output=True, text=True)  # noqa: TID251
     if r.returncode == 0 or _softdog_loaded():
         return "softdog"
     if _dt_watchdog() and (BOOT / "armbianEnv.txt").is_file() and shutil.which("dtc"):
@@ -684,7 +684,7 @@ def _board_watchdog(on):
         '\t\t__overlay__ { status = "okay"; };\n\t};\n};\n' % node
     )
     dtbo.parent.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(
+    r = subprocess.run(  # noqa: TID251
         ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(dtbo), "-"], input=src, capture_output=True, text=True
     )
     if r.returncode:
@@ -721,7 +721,7 @@ def set_panic(on):
             + "".join(f"{k} = {v}\n" for k, v in HANG_SYSCTL.items()),
         )
         for k, v in HANG_SYSCTL.items():
-            subprocess.run(["sysctl", "-q", "-w", f"{k}={v}"], capture_output=True)
+            subprocess.run(["sysctl", "-q", "-w", f"{k}={v}"], capture_output=True)  # noqa: TID251
         return M(
             "crashwatch-set.panic.on",
             "Restart after kernel fault enabled: the box restarts {wait} after a kernel panic, oops or lockup.",
@@ -729,7 +729,7 @@ def set_panic(on):
         )
     SYSCTL.unlink(missing_ok=True)
     for k in HANG_SYSCTL:
-        subprocess.run(["sysctl", "-q", "-w", f"{k}=0"], capture_output=True)
+        subprocess.run(["sysctl", "-q", "-w", f"{k}=0"], capture_output=True)  # noqa: TID251
     return M(
         "crashwatch-set.panic.off",
         "Restart after kernel fault disabled: a kernel panic or lockup no longer restarts the box.",
@@ -752,7 +752,7 @@ def set_watchdog(on):
             safeio.write(
                 MODULES, "# Written by irate-box (root/crashwatch.py): a watchdog where the board has none.\nsoftdog\n"
             )
-            p = subprocess.run(["modprobe", "softdog"], capture_output=True, text=True)
+            p = subprocess.run(["modprobe", "softdog"], capture_output=True, text=True)  # noqa: TID251
             if p.returncode:
                 MODULES.unlink(missing_ok=True)
                 raise Refused(
@@ -768,7 +768,7 @@ def set_watchdog(on):
             "# Written by irate-box (root/crashwatch.py): systemd feeds the watchdog; a frozen\n"
             f"# system stops feeding it and the box restarts.\n[Manager]\nRuntimeWatchdogSec={WATCHDOG_SEC}\nRebootWatchdogSec=5min\n",
         )
-        subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
+        subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)  # noqa: TID251
         wait = duration(WATCHDOG_SEC)
         if kind == "switched-off":
             return M(
@@ -790,10 +790,10 @@ def set_watchdog(on):
         )
     SYSTEMD_CONF.unlink(missing_ok=True)
     _board_watchdog(False)
-    subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)
+    subprocess.run(["systemctl", "daemon-reexec"], capture_output=True, timeout=120)  # noqa: TID251
     if MODULES.exists():
         MODULES.unlink()
-        subprocess.run(["modprobe", "-r", "softdog"], capture_output=True)
+        subprocess.run(["modprobe", "-r", "softdog"], capture_output=True)  # noqa: TID251
     return M("crashwatch-set.watchdog.off", "Watchdog disabled: a frozen box waits for an administrator to restart it.")
 
 

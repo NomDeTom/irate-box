@@ -61,7 +61,7 @@ TAGS_DIR = librarian.LIB_DIR / "tags"
 
 
 def _git(*args, cwd=None, timeout=600):
-    return subprocess.run(
+    return subprocess.run(  # noqa: TID251
         ["git", *args],
         cwd=cwd,
         capture_output=True,
