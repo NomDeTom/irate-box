@@ -21,6 +21,8 @@ T = Path(tempfile.mkdtemp(prefix="kitsusb-"))
 (T / "keys").mkdir()
 (T / "keys" / "debian-archive-keyring.gpg").write_text("good key")
 (T / "keys" / "debian-archive-removed-keys.gpg").write_text("removed key")
+# A third party's key the owner added for another repository: apt trusts it, a kit must not.
+(T / "keys" / "vendor-archive-keyring.gpg").write_text("vendor key")
 (T / "defs" / "small.json").write_text(
     json.dumps({"id": "small", "title": "Small", "summary": "s", "consent": "c", "packages": ["gdb"]})
 )
@@ -30,6 +32,7 @@ os.environ.update(
     HUB_KITS_DEFS=str(T / "defs"),
     HUB_APT_LISTS=str(T / "lists"),
     HUB_APT_KEYRINGS=str(T / "keys"),
+    HUB_DEBIAN_KEYRING=str(T / "keys" / "debian-archive-keyring.gpg"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import args_of
@@ -68,9 +71,12 @@ def fake(cmd, timeout=0, check=True):
         out = Path(cmd[cmd.index("--output") + 1])
         src = Path(cmd[-1])
         text = src.read_text()
-        good = "SIGNED BY: good key" in text and str(T / "keys" / "debian-archive-keyring.gpg") in cmd
+        rings = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--keyring"]
+        # gpgv accepts a signature by any key in any keyring it is given, as the real one does.
+        signer = next((Path(r).read_text() for r in rings if f"SIGNED BY: {Path(r).read_text()}" in text), None)
+        good = signer is not None
         if good:
-            out.write_text(text.replace("SIGNED BY: good key\n", ""))
+            out.write_text(text.replace(f"SIGNED BY: {signer}\n", ""))
         return R("", 0 if good else 2)
     raise AssertionError(cmd)
 
@@ -158,8 +164,11 @@ check(
     line,
 )
 check(
-    "  the signature checked with the box's keys, never the removed ones",
-    gpgv_calls and all("removed" not in a for a in gpgv_calls[-1]),
+    "  the signature checked with Debian's archive keyring alone",
+    gpgv_calls
+    and [gpgv_calls[-1][i + 1] for i, a in enumerate(gpgv_calls[-1]) if a == "--keyring"]
+    == [str(T / "keys" / "debian-archive-keyring.gpg")],
+    gpgv_calls[-1:],
 )
 check("  and apt can install it: the index written", "Package: gdb" in (kits.POOL / "Packages").read_text())
 
@@ -223,6 +232,26 @@ def resign(k):
 
 
 refused(resign, "an index signed by a key the box doesn't trust")
+
+
+def vendor(k):
+    p = k / "lists" / "deb.debian.org_debian_dists_trixie_InRelease"
+    p.write_text(p.read_text().replace("SIGNED BY: good key", "SIGNED BY: vendor key"))
+
+
+refused(vendor, "an index signed by a third party's key that apt trusts here, its Origin still saying Debian")
+
+# No Debian keyring: no kit is checked, so none imports.
+real_ring = kits.DEBIAN_KEYRING
+kits.DEBIAN_KEYRING = T / "keys" / "absent.gpg"
+fresh()
+try:
+    kits.import_usb(stick, "small", 500)
+    why = None
+except ValueError as exc:
+    why = getattr(exc, "message", {}).get("id")
+kits.DEBIAN_KEYRING = real_ring
+check("no Debian keyring: refused, saying which file is missing", why == "kits.usb.no-keyring", why)
 
 
 # A stick cannot replay an old signed set.
