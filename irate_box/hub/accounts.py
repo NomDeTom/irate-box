@@ -436,7 +436,9 @@ def login(name, password, addr="", https=False):
     return token, _public(acc)
 
 
-_basic_ok = {}  # (name, sha256 of the password) -> when it was last right: a push is several requests
+_basic_ok = {}  # (name, keyed digest of the password) -> when it was last right: a push is several requests
+# The digest's key, new each start: what the cache holds says nothing about a password without it.
+_BASIC_KEY = secrets.token_bytes(32)
 
 
 def _forget_basic(name):
@@ -461,7 +463,7 @@ def check_basic(header, addr=""):
     if not name or name.lower() in RESERVED:
         return None  # "admin" is the box's own login, for the web server to check
     now = time.time()
-    key = (name.lower(), hashlib.sha256(password.encode()).hexdigest())
+    key = (name.lower(), hmac.new(_BASIC_KEY, password.encode(), "sha256").hexdigest())
     acc = _load()["accounts"].get(name.lower())
     eligible = bool(acc and acc.get("state") == "user" and acc.get("hash"))
     if not (eligible and now - _basic_ok.get(key, 0) <= 60):
