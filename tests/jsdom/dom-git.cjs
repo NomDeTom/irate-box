@@ -203,7 +203,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   check('runs kept per repository: a setting', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'settings' && b.keep_runs === 8));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('the grid as Kiwix\'s: minmax(18rem, 1fr)', /\.card-grid \{[^}]*minmax\(18rem, 1fr\)/.test(css));
-  check('a drawer spans the grid', /\.git-drawer \{ grid-column: 1 \/ -1; \}/.test(css));
+  check('a drawer spans the grid', /\.git-drawer \{\s*grid-column: 1 \/ -1;\s*\}/.test(css));
   const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
   const stray = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);

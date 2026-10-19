@@ -79,7 +79,7 @@ setTimeout(() => {
     && secs.every((n) => n.querySelector('.net-line, .net-facts')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
-  check('four tabs: Status, Hardware, Connection settings, Hotspot', tabs.map((x) => x.textContent).join('|') === 'Status|Hardware|Connection settings|Hotspot');
+  check('four tabs: Status, Hardware, Connection settings, Hotspot', tabs.map((x) => x.textContent.replace(/\s+/g, ' ').trim()).join('|') === 'Status|Hardware|Connection settings|Hotspot');
   const panel = (id) => d.getElementById(id);
   check('  each part in its tab: devices on Hardware, the watchdog on access, guests\' security on Hotspot, the log on Status',
     panel('network/hardware').contains(d.getElementById('net-devices')) && panel('network/access').contains(d.getElementById('up-pace'))
@@ -112,7 +112,8 @@ setTimeout(() => {
   check('  Add and connect: warned the page may lose the box, sent, the password cleared from the form', /can lose the connection to the box/.test(asked)
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
-  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
+  // One space wherever the stylesheet has any: the rules are checked by their content, not their layout.
+  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/\s+/g, ' ');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
     && /\.net-device h4 \{[^}]*border-bottom: 1px solid var\(--border\)/.test(css));
   check('labels in a column, above their text on a phone', /\.net-line \{ display: grid; grid-template-columns: 11rem 1fr/.test(css)
@@ -123,7 +124,7 @@ setTimeout(() => {
   check('the event log: one line per event, newest first', evs.length === 3 && /up again/.test(evs[0].textContent)
     && evs.every((li) => li.querySelector('.ev-time') && li.querySelector('.ev-text') && !li.querySelector('.setting-desc')), evs.map((li) => li.innerHTML).join(' | '));
   // jsdom loads no stylesheet here, so the rule itself is checked.
-  check('…with no bullets (style.css)', /\.net-events \{ list-style: none;/.test(fs.readFileSync(`${WEB}/style.css`, 'utf8')));
+  check('…with no bullets (style.css)', /\.net-events \{ list-style: none;/.test(css));
   check('a glossary, folded', d.getElementById('net-glossary') && !d.getElementById('net-glossary').open && d.querySelectorAll('#net-glossary dt').length >= 6);
   console.log('HAZARDS:'); t('#net-hazards li').forEach((r) => console.log('  ', r.slice(0, 160)));
   console.log('STATUS:', t('#up-status')[0]);

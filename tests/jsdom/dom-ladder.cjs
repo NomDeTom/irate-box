@@ -163,7 +163,7 @@ check('the keyboard: Enter zooms onto the event in the readout', JSON.parse(zb.d
 zb.querySelectorAll('.ladder-periods .chip')[0].click();
 check('a period chip clears the zoom: 1 h', zb.dataset.zoom === '[]' && zb.dataset.span === '3600');
 const st = fs.readFileSync(`${WEB}/style.css`, 'utf8');
-check('thin marks, recessive grid, colours from the page\'s tokens (style.css)', /\.ladder-line \{[^}]*stroke: var\(--accent\); stroke-width: 2/.test(st)
-  && /\.ladder-grid \{ stroke: var\(--border\); stroke-width: 1/.test(st) && /\.ladder-mark \{[^}]*stroke: var\(--surface\); stroke-width: 2/.test(st));
+check('thin marks, recessive grid, colours from the page\'s tokens (style.css)', /\.ladder-line \{[^}]*stroke: var\(--accent\);\s*stroke-width: 2/.test(st)
+  && /\.ladder-grid \{\s*stroke: var\(--border\);\s*stroke-width: 1/.test(st) && /\.ladder-mark \{[^}]*stroke: var\(--surface\);\s*stroke-width: 2/.test(st));
 console.log(`failures: ${fails}`);
 process.exit(fails ? 1 : 0);
