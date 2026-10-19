@@ -220,15 +220,50 @@ def _where(f):
     return [f"{f['proto'].upper()} {f['port']}", f["addr"]] + ([f["unit"]] if f["unit"] else [])
 
 
+HUB_UNIT = "irate-box.service"
+
+
+def _hub_port():
+    """The port the hub's own server is configured to listen on (PORT in hub.env, as install.sh writes it)."""
+    try:
+        for line in (ETC / "hub.env").read_text().splitlines():
+            if line.startswith("PORT="):
+                return int(line.split("=", 1)[1].strip())
+    except (OSError, ValueError):
+        pass
+    return 8000
+
+
 def listener_findings(found, rec):
     out = []
     llmnr_done = False
+    hub_port = _hub_port()
     for f in found:
         key = (f["proto"], f["port"])
         fid = f"port-{f['proto']}-{f['port']}"
         name = f["name"] if is_message(f["name"]) else named(f["name"])
         where = _where(f)
-        if f["unit"] in WEB_UNITS and f["proto"] == "tcp":
+        if f["unit"] == HUB_UNIT and f["proto"] == "tcp" and f["port"] == hub_port:
+            # Every listener here is off loopback (parse_ss). The hub's backend is meant to be reached only by the web
+            # server in front of it, which adds the checks; on the network it is reached without them.
+            out.append(
+                finding(
+                    fid,
+                    named("irate-box", M("port.role.hub-backend", "hub backend")),
+                    "problem",
+                    M("port.hub-backend", "The hub's own server listens on the network, not only on this box."),
+                    M(
+                        "port.hub-backend.why",
+                        "Devices on the network can reach it directly, past the web server's access checks and TLS.",
+                    ),
+                    M(
+                        "port.hub-backend.fix",
+                        "Set HUB_BIND=127.0.0.1 in hub.env, then restart the hub. The web server reaches it there.",
+                    ),
+                    evidence=where,
+                )
+            )
+        elif f["unit"] in WEB_UNITS and f["proto"] == "tcp":
             out.append(
                 finding(
                     fid,

@@ -865,5 +865,63 @@ check(
     security.pending_security(SIM) == ["gzip", "libglib2.0-0t64", "openssl"],
     security.pending_security(SIM),
 )
+
+
+# The hub's own backend off loopback is a problem; on loopback, or any other listener of the box, it is not.
+def listeners_of(*rows):
+    """Security's listener findings for ss lines (address, port, unit), as parse_ss reads them."""
+    text = "".join(f'tcp LISTEN 0 128 {addr}:{port} 0.0.0.0:* users:(("prog",pid=5,fd=3))\n' for addr, port, _ in rows)
+    found = security.parse_ss(text)
+    units = {port: unit for _, port, unit in rows}
+    for f in found:
+        f.update(unit=units[f["port"]], name=security.named("prog"))
+    return {f["id"]: f for f in security.listener_findings(found, {})}
+
+
+BACKEND = "irate-box.service"
+for label, addr in (
+    ("a wildcard IPv4 address", "0.0.0.0"),
+    ("a wildcard IPv6 address", "[::]"),
+    ("a LAN address", "192.168.1.5"),
+):
+    got = listeners_of((addr, 8000, BACKEND))["port-tcp-8000"]
+    check(
+        f"the hub's backend on {label}: a problem, said, the port as evidence",
+        got["status"] == "problem" and "port.hub-backend" in said(got) and "TCP 8000" in got["evidence"],
+        got,
+    )
+check(
+    "  on loopback: no listener to report",
+    listeners_of(("127.0.0.1", 8000, BACKEND), ("[::1]", 8000, BACKEND)) == {},
+)
+got = listeners_of(
+    ("0.0.0.0", 80, "nginx.service"),
+    ("0.0.0.0", 443, "caddy.service"),
+    ("0.0.0.0", 8765, BACKEND),
+    ("0.0.0.0", 8000, "irate-box-librarian.service"),
+    ("0.0.0.0", 8001, "other.service"),
+)
+check(
+    "  the web server's front listeners and the box's other services are unchanged",
+    got["port-tcp-80"]["status"] == "ok"
+    and "port.hub-server" in said(got["port-tcp-80"])
+    and got["port-tcp-443"]["status"] == "ok"
+    and "port.hub-server" in said(got["port-tcp-443"])
+    and got["port-tcp-8765"]["status"] == "ok"
+    and "port.ours" in said(got["port-tcp-8765"])
+    and got["port-tcp-8000"]["status"] == "ok"
+    and "port.ours" in said(got["port-tcp-8000"])
+    and "port.hub-backend" not in said(got["port-tcp-8001"]),
+    {k: (v["status"], sorted(said(v))) for k, v in got.items()},
+)
+(T / "etc").mkdir(exist_ok=True)
+(T / "etc" / "hub.env").write_text("PORT=8123\nHUB_BIND=127.0.0.1\n")
+got = listeners_of(("0.0.0.0", 8123, BACKEND), ("0.0.0.0", 8000, BACKEND))
+check(
+    "  found by the configured port: hub.env's PORT, not a fixed 8000",
+    got["port-tcp-8123"]["status"] == "problem" and got["port-tcp-8000"]["status"] == "ok",
+    {k: v["status"] for k, v in got.items()},
+)
+(T / "etc" / "hub.env").unlink()
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
