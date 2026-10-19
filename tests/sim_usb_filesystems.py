@@ -86,5 +86,105 @@ check(
     and s["zims"] == [],
     s,
 )
+# Audit M7: the box writes only to a mount of its own. A drive mounted elsewhere has none of its options
+# (nosymfollow, nosuid, nodev, noexec), and a folder on it could be a link that sends root's writes anywhere.
+import importlib
+
+os.environ["HUB_USB_MOUNTS"] = str(T / "mounts")
+U = importlib.reload(usbstick)
+ran = []
+mount_rc = {"rc": 0}
+
+
+def fake(*cmd, timeout=60):
+    ran.append(list(cmd))
+    return subprocess.CompletedProcess(
+        cmd, mount_rc["rc"] if cmd[0] == "mount" else 0, "", "no such option" if cmd[0] == "mount" else ""
+    )
+
+
+U.run = fake
+elsewhere = T / "media-owner"
+elsewhere.mkdir()
+dev = {"name": "sdb1", "path": "/dev/sdb1", "label": "STICK", "size": 1, "fstype": "vfat", "mountpoint": str(elsewhere)}
+try:
+    with U.Mounted(dev, writable=True):
+        pass
+    why = None
+except U.Refused as exc:
+    why = exc.message["id"]
+check(
+    "writing to a drive mounted elsewhere: refused, said to unmount it, nothing mounted",
+    why == "usb.device.mounted-elsewhere" and not ran,
+    (why, ran),
+)
+with U.Mounted(dev) as root:
+    check("  reading it there: as before", root == elsewhere and not ran)
+for name, call in (
+    ("a book", lambda: U.export_zim("sdb1", "book", T / "zims")),
+    ("a toolkit", lambda: U.export_kit("sdb1", "small")),
+):
+    U._find = lambda _a, _d: dev
+    (T / "zims").mkdir(exist_ok=True)
+    (T / "zims" / "book.zim").write_bytes(b"ZIM")
+    try:
+        call()
+        why = None
+    except (U.Refused, ValueError) as exc:
+        why = getattr(exc, "message", {}).get("id")
+    except Exception as exc:  # noqa: BLE001 - a refusal of another kind is reported, not raised
+        why = type(exc).__name__
+    check(
+        f"  exporting {name} onto it: refused before anything is written there",
+        why == "usb.device.mounted-elsewhere" and list(elsewhere.iterdir()) == [],
+        (why, list(elsewhere.iterdir())),
+    )
+# Every export writes through the same boundary (the image's too, which refuses earlier here: no card to read).
+src = (REPO / "irate_box" / "root" / "usbstick.py").read_text()
+check(
+    "  every export mounts the drive writable through Mounted, nowhere else",
+    src.count("Mounted(dev, writable=True)") == 4
+    and '"rw"' not in src.replace('("rw" if self.writable else "ro")', ""),
+    src.count("Mounted(dev, writable=True)"),
+)
+own = dict(dev, mountpoint=None)
+ran.clear()
+with U.Mounted(own, writable=True) as root:
+    pass
+check(
+    "a drive of no mount: the box mounts it itself, read-write with nosymfollow, nosuid, nodev and noexec, and unmounts it",
+    ran[0][:3] == ["mount", "-o", "rw,nosuid,nodev,noexec,nosymfollow"]
+    and ["umount", str(root)] in ran
+    and not root.exists(),
+    ran,
+)
+mount_rc["rc"] = 32
+ran.clear()
+try:
+    with U.Mounted(own, writable=True):
+        pass
+    why = None
+except U.Refused as exc:
+    why = exc.message["id"]
+check(
+    "  the options refused (an old kernel): no mount at all, not one without them",
+    why == "usb.device.mount-failed" and [c[0] for c in ran] == ["mount"] and not (T / "mounts" / "sdb1").exists(),
+    (why, ran),
+)
+mount_rc["rc"] = 0
+(T / "mounts").mkdir(exist_ok=True)
+(T / "mounts" / "sdb1").symlink_to(T / "elsewhere-again")
+ran.clear()
+try:
+    with U.Mounted(own, writable=True):
+        pass
+    why = None
+except U.Refused as exc:
+    why = exc.message["id"]
+check(
+    "  a link at the box's own mount point: refused, nothing mounted",
+    why == "usb.device.mount-link" and not ran,
+    (why, ran),
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

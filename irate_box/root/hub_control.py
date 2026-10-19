@@ -6671,6 +6671,16 @@ if __name__ == "__main__":
                 ),
             )
         sys.exit(0)
+    # The uninstaller, before it removes the hotspot's firewall (audit M6): the hotspot off and every file of it gone.
+    # Exit 1, saying what is still up, when that cannot be confirmed: the uninstaller then stops, the firewall kept.
+    if sys.argv[1:] == ["ap-remove"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        off, problems = ap.remove(run)
+        if not off:
+            sys.exit("The hotspot could not be confirmed off: " + "; ".join(problems))
+        print("The hotspot is off, and its units, connection and files are removed.")
+        sys.exit(0)
     if len(sys.argv) == 3 and sys.argv[1] == "set-admin":
         if os.geteuid() != 0:
             sys.exit("run as root: sudo /opt/irate-box/irate-box hub_control set-admin NAME")
