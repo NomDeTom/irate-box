@@ -426,6 +426,50 @@ def stop(run):
     return "The hotspot is off."
 
 
+DEADMAN_UNITS = ("irate-box-ap-deadman.timer", "irate-box-ap-deadman.service")
+
+
+def remove(run):
+    """Everything of irate-box's hotspot off and gone, whatever its record says: for the uninstaller (audit M6), run
+    while this code is still installed and before the hotspot's firewall goes. stop() undoes only what the record
+    says is up and keeps the files; this also covers a stale or partial install. Only irate-box's own: its units, the
+    connection irate-box-ap, ap0 (the interface it adds), its files; never another hotspot or a joined network.
+    Returns (off, problems): off only when nothing of it is still running."""
+    for unit in (*DEADMAN_UNITS, BOOT_UNIT, DNSMASQ_UNIT, HOSTAPD_UNIT):
+        run("systemctl", "disable", "--now", unit)
+    run("nmcli", "connection", "down", CONNECTION)
+    run("nmcli", "connection", "delete", CONNECTION)
+    if run("ip", "link", "show", SHARED_IFACE).returncode == 0:
+        run("iw", "dev", SHARED_IFACE, "del")
+    for f in (
+        Path(KEYFILE),
+        Path(DNSMASQ_CONF),
+        Path(HOSTAPD_CONF),
+        UNITS / BOOT_UNIT,
+        UNITS / DNSMASQ_UNIT,
+        UNITS / HOSTAPD_UNIT,
+        DISPATCHER,
+        LINKS / LINK_FILE,
+        RECORD,
+        TRIED,
+    ):
+        f.unlink(missing_ok=True)
+    run("systemctl", "daemon-reload")
+    run("udevadm", "control", "--reload")
+    run("nmcli", "connection", "reload")
+    problems = [
+        f"{unit} is {state}"
+        for unit in (BOOT_UNIT, DNSMASQ_UNIT, HOSTAPD_UNIT)
+        if (state := run("systemctl", "is-active", unit).stdout.strip()) in ("active", "activating", "reloading")
+    ]
+    active = run("nmcli", "-t", "-f", "NAME", "connection", "show", "--active")
+    if active.returncode == 0 and CONNECTION in active.stdout.split():
+        problems.append(f"the connection {CONNECTION} is still active")
+    if run("ip", "link", "show", SHARED_IFACE).returncode == 0:
+        problems.append(f"the interface {SHARED_IFACE} is still there")
+    return not problems, problems
+
+
 def confirm(run):
     """The owner reached the box through the hotspot after giving up its link: keep it so."""
     run("systemctl", "stop", "irate-box-ap-deadman.timer")

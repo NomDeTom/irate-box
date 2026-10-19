@@ -53,9 +53,38 @@ if [ "$YES" != 1 ]; then
 		echo "It deletes the user data in $STATE: notes, private notebooks, accounts, files, posts, books, and Git and build data."
 		echo "It cannot undo this. Make a backup first."
 	fi
+	echo "It turns off the box's hotspot first. A device connected through the hotspot, this one perhaps, loses its connection."
 	[ "$PURGE_PKGS" != 1 ] || echo "It also purges the listed apt packages and the dependencies that nothing else needs. This includes packages that were on the box before the install."
 	read -r -p "Uninstall Irate-Box? Type y to continue, or anything else to stop. [y/N] " answer
 	[ "${answer,,}" = y ] || { echo "Stopped. Nothing was changed."; exit 0; }
+fi
+
+# The hotspot first, while its code is still here (audit M6): off, and its units, connection and files gone. Its
+# firewall (irate-box-firewall.service, below) goes only after that: a hotspot left up without it would hand guests
+# an unfiltered way onto the box. When the hotspot cannot be confirmed off, stop here with the firewall in place.
+say "Turning off the hotspot"
+if [ -x "$CODE/irate-box" ]; then
+	if ! "$CODE/irate-box" hub_control ap-remove; then
+		echo "Stopped: the hotspot is still up, so its firewall stays. Turn the hotspot off on /admin (Network → Hotspot), then run the uninstaller again." >&2
+		exit 1
+	fi
+else
+	# A partial install, its code gone: the same names, by hand.
+	for u in irate-box-ap-deadman.timer irate-box-ap-deadman.service irate-box-ap.service irate-box-ap-dns.service irate-box-ap-hostapd.service; do
+		systemctl disable --now "$u" >/dev/null 2>&1 || true
+	done
+	nmcli connection down irate-box-ap >/dev/null 2>&1 || true
+	nmcli connection delete irate-box-ap >/dev/null 2>&1 || true
+	ip link show ap0 >/dev/null 2>&1 && iw dev ap0 del 2>/dev/null
+	rm -f /etc/NetworkManager/system-connections/irate-box-ap.nmconnection /etc/NetworkManager/dispatcher.d/90-irate-box-ap \
+		/etc/systemd/network/10-irate-box-ap.link "$UNITDIR"/irate-box-ap.service "$UNITDIR"/irate-box-ap-dns.service \
+		"$UNITDIR"/irate-box-ap-hostapd.service "$ETC"/ap-dnsmasq.conf "$ETC"/ap-hostapd.conf "$ETC"/ap.json "$ETC"/ap-tried.json
+	systemctl daemon-reload
+	if systemctl is-active --quiet irate-box-ap-dns.service || systemctl is-active --quiet irate-box-ap-hostapd.service ||
+		nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx irate-box-ap || ip link show ap0 >/dev/null 2>&1; then
+		echo "Stopped: the hotspot is still up, so its firewall stays. Stop it by hand (nmcli connection down irate-box-ap), then run the uninstaller again." >&2
+		exit 1
+	fi
 fi
 
 say "Stopping and disabling services"

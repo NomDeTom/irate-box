@@ -485,5 +485,109 @@ check("  its interface gone: a problem", f["hotspot-iface"]["status"] == "proble
 iw["ap0"] = None
 ap.stop(fake_run)
 check("  off: nothing to check", health.check_hotspot() == [])
+# Uninstalling (audit M6): the hotspot off and every file of it gone, whatever its record says, before its firewall.
+ap.HOSTAPD_CONF = T / "hostapd.conf"
+ap.start(fake_run, inv, settings, keyfile_path=ap.KEYFILE, conf_path=ap.DNSMASQ_CONF)
+ap.HOSTAPD_CONF.write_text("interface=ap0\n")
+mine = [
+    ap.KEYFILE,
+    ap.DNSMASQ_CONF,
+    ap.HOSTAPD_CONF,
+    ap.UNITS / ap.BOOT_UNIT,
+    ap.UNITS / ap.DNSMASQ_UNIT,
+    ap.DISPATCHER,
+    ap.LINKS / ap.LINK_FILE,
+    ap.RECORD,
+]
+check("  a hotspot up, its files written", all(f.exists() for f in mine), [str(f) for f in mine if not f.exists()])
+state = {"ap0": True, "active": set()}
+
+
+def remove_run(*cmd, **kw):
+    calls.append(list(cmd))
+    if cmd[:3] == ("ip", "link", "show"):
+        return subprocess.CompletedProcess(cmd, 0 if state["ap0"] else 1, "", "")
+    if cmd[:3] == ("iw", "dev", "ap0") and cmd[3:] == ("del",):
+        state["ap0"] = False
+    if cmd[:2] == ("systemctl", "is-active"):
+        return subprocess.CompletedProcess(cmd, 0, "active\n" if cmd[2] in state["active"] else "inactive\n", "")
+    if cmd[:3] == ("nmcli", "-t", "-f"):
+        return subprocess.CompletedProcess(
+            cmd, 0, "irate-box-ap\n" if "irate-box-ap" in state["active"] else "home\n", ""
+        )
+    return subprocess.CompletedProcess(cmd, 0, "", "")
+
+
+calls.clear()
+off, problems = ap.remove(remove_run)
+check(
+    "remove: every unit disabled and stopped, the connection deleted, ap0 removed, nothing of it left",
+    off
+    and not problems
+    and all(
+        ["systemctl", "disable", "--now", u] in calls
+        for u in (*ap.DEADMAN_UNITS, ap.BOOT_UNIT, ap.DNSMASQ_UNIT, ap.HOSTAPD_UNIT)
+    )
+    and ["nmcli", "connection", "delete", "irate-box-ap"] in calls
+    and ["iw", "dev", "ap0", "del"] in calls
+    and not any(f.exists() for f in mine),
+    (off, problems, [str(f) for f in mine if f.exists()]),
+)
+check(
+    "  only irate-box's own: no other connection touched",
+    not any(
+        c[:2] == ["nmcli", "connection"] and c[-1] not in ("irate-box-ap",) and c[2] in ("down", "delete")
+        for c in calls
+    ),
+)
+calls.clear()
+off, problems = ap.remove(remove_run)
+check("  again, with nothing left and no record: still fine", off and not problems, problems)
+state.update(ap0=True, active={ap.DNSMASQ_UNIT, "irate-box-ap"})
+
+
+def stuck_run(*cmd, **kw):
+    if cmd[:3] == ("iw", "dev", "ap0"):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 1, "", "busy")
+    return remove_run(*cmd, **kw)
+
+
+off, problems = ap.remove(stuck_run)
+check(
+    "  what will not go down is said, and off is False (the uninstaller then stops, the firewall kept)",
+    not off
+    and any(ap.DNSMASQ_UNIT in p for p in problems)
+    and any("irate-box-ap" in p for p in problems)
+    and any("ap0" in p for p in problems),
+    problems,
+)
+un = (REPO / "uninstall.sh").read_text()
+loop = un.index('say "Stopping and disabling services"')
+check(
+    "uninstall.sh: the hotspot removed first (hub_control ap-remove), stopping with the firewall kept when it is not off",
+    un.index("hub_control ap-remove") < loop < un.index("irate-box-firewall.service", loop)
+    and "exit 1" in un[un.index("hub_control ap-remove") : loop],
+)
+fallback = un[un.index("A partial install, its code gone") : loop]
+check(
+    "  its fallback, for an install whose code is gone, names every unit and file the module does",
+    all(
+        n in fallback
+        for n in (
+            ap.BOOT_UNIT,
+            ap.DNSMASQ_UNIT,
+            ap.HOSTAPD_UNIT,
+            *ap.DEADMAN_UNITS,
+            ap.CONNECTION,
+            ap.LINK_FILE,
+            "90-irate-box-ap",
+            "irate-box-ap.nmconnection",
+            "ap-dnsmasq.conf",
+            "ap-hostapd.conf",
+        )
+    ),
+)
+check("  and it warns that a device on the hotspot loses its connection", "loses its connection" in un[:loop])
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
