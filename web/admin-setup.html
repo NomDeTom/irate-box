@@ -11,8 +11,8 @@
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
 </head>
-<!-- Served at /admin/setup while the box is in its first use (server.py, unclaimed()): its admin pages
-     are free to anyone on the network until this account is made. -->
+<!-- Served at /admin/setup while the box is in its first use (server.py, unclaimed()): the only admin page
+     then (server.py _admin_locked), and whoever on the network makes this account first becomes the administrator. -->
 <body class="admin">
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-setup.header.tip-quick-help" data-i18n="admin-setup.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="admin-setup.header.tip-back-hub" data-i18n="admin-setup.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
@@ -26,7 +26,7 @@
       <p data-i18n="admin-setup.body.box-no-administrator-account"><strong>This box has no administrator account yet.</strong> The person who creates the administrator
         account here controls the box. The account opens the administration pages, the terminal at /term and
         Syncthing at /sync. Later, sign in with it where everyone signs in (👤 Sign in, at the top of the hub).</p>
-      <p data-i18n="admin-setup.body.until-account-exists-anyone">Until the account exists, anyone on this network can use the administration pages. Create the account
+      <p data-i18n="admin-setup.body.until-account-exists-anyone">Until the account exists, anyone on this network can create it and become the administrator. Create the account
         now. If you are a guest and not the administrator, do not use this page.</p>
       <p data-i18n="admin-setup.body.after-step-administration-pages">After this step, the administration pages guide you through the rest: how guests reach the box,
         what the box exposes, add-ons and books. You can skip each step and do it later.</p>

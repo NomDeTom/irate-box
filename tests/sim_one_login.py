@@ -173,12 +173,51 @@ try:
         and "set-admin NAME" in page,
         page[:600],
     )
-    code, page, _ = req("/admin/", raw=True)
+    # Audit M4: until the box has an owner, /admin is the set-up page alone, to anyone; nothing else of it answers.
+    for path in ("/admin", "/admin/", "/admin/factory.html", "/admin/mesh.html"):
+        code, _, h = req(path, raw=True)
+        check(
+            f"  {path}: sent to the set-up page",
+            code == 302 and h.get("Location") == "/admin/setup",
+            (code, h.get("Location")),
+        )
+    settings_before = (st / "settings.json").read_bytes() if (st / "settings.json").exists() else None
+    for path in (
+        "/admin/settings",
+        "/admin/accounts",
+        "/admin/box",
+        "/admin/backup?level=data",
+        "/admin/update",
+        "/admin/usb",
+    ):
+        code, d, _ = req(path)
+        check(
+            f"  GET {path}: refused, set up first",
+            code == 403 and (d.get("message") or {}).get("id") == "setup.first",
+            (code, str(d)[:120]),
+        )
+    before = len(queued())
+    for path, body in (
+        ("/admin/settings", {"signup": "open"}),
+        ("/admin/accounts", {"action": "make", "name": "mallory", "role": "user"}),
+        ("/admin/update", {"action": "check"}),
+        ("/admin/usb", {"action": "scan"}),
+        ("/admin/network", {"action": "scan"}),
+    ):
+        code, d, _ = req(path, body)
+        check(
+            f"  POST {path}: refused, set up first",
+            code == 403 and (d.get("message") or {}).get("id") == "setup.first",
+            (code, str(d)[:120]),
+        )
     check(
-        "  the admin pages themselves, free, with their banner",
-        code == 200 and 'id="first-use"' in page and "admin-main" in page,
-        code,
+        "  and none of it changed a setting or asked the root helper",
+        len(queued()) == before
+        and ((st / "settings.json").read_bytes() if (st / "settings.json").exists() else None) == settings_before,
+        [r.get("action") for r in queued()],
     )
+    code, _, _ = req("/admin/setup/../settings")
+    check("  a path past /admin/setup by dot-dots: refused too", code in (403, 302, 404), code)
     code, page, _ = req("/admin/setup", raw=True)
     check(
         "  the set-up page at /admin/setup, its HTTP warning and the console's way",
@@ -211,6 +250,16 @@ try:
         and any(r.get("action") == "admin-gate" for r in reqs),
         (code, d, [r.get("action") for r in reqs]),
     )
+    code, d, _ = req("/admin/setup?id=" + str(d.get("id", "")))
+    check("  the set-up's progress, asked by its id, answers", code == 200, (code, d))
+    code, d, _ = req("/admin/settings", headers={"Cookie": cookie})
+    check(
+        "  the new administrator's session reaches /admin before the root helper has ended the first use",
+        code == 200 and isinstance(d, dict) and "message" not in d,
+        (code, str(d)[:120]),
+    )
+    code, d, _ = req("/admin/settings")
+    check("  anyone else still refused until then", code == 403, code)
     (st / "unclaimed").unlink()  # what the root helper's claim does
     acct = {"X-Irate-Account": "1", "Cookie": cookie}
     code, d, _ = req(
