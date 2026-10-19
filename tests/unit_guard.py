@@ -59,7 +59,6 @@ EXEMPT = {
         "ProtectKernelLogs=yes": "",
         "ProtectClock=yes": "",
         "SystemCallArchitectures=native": "",
-        "CapabilityBoundingSet=": "",
         "RestrictNamespaces=yes": "user and net only (RestrictNamespaces=user net): an offline build runs in a network namespace of its own",
         "RestrictSUIDSGID=yes": "",
         "RestrictRealtime=yes": "",
