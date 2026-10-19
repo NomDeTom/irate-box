@@ -1585,10 +1585,11 @@ nginx_default_untouched() {
 }
 # Does any nginx config but the hub's listen on port $1? (A second default_server on a port
 # fails nginx -t, but a plain listen would quietly hand the hub the owner's unmatched hosts.)
+# The hub's own: its site, and the files that site includes from $ETC (the front's listeners).
 nginx_serves_port() {
-	nginx -T 2>/dev/null | awk -v ours="$NGINX_SITE" -v p="$1" '
+	nginx -T 2>/dev/null | awk -v ours="$NGINX_SITE" -v etc="$ETC/" -v p="$1" '
 		/^# configuration file / { f = $4; sub(/:$/, "", f); next }
-		f != ours && $1 == "listen" { a = $2; sub(/;$/, "", a); sub(/.*:/, "", a); if (a == p) found = 1 }
+		f != ours && index(f, etc) != 1 && $1 == "listen" { a = $2; sub(/;$/, "", a); sub(/.*:/, "", a); if (a == p) found = 1 }
 		END { exit !found }'
 }
 nginx_config() {
