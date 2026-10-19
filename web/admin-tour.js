@@ -52,7 +52,7 @@ const TOUR = (() => {
       label: "HTTP and HTTPS",
       section: "security",
       target: "#security-https",
-      said: "Generate or import a certificate, then choose HTTP, both transports, HTTPS with HTTP discovery, or HTTPS only. Save applies the choices. Restrictive choices require this page to be opened over HTTPS.",
+      said: "Generate or import a certificate, then select HTTP, both transports, HTTPS with HTTP discovery, or HTTPS only. Save applies the choices. Restrictive choices require this page to be opened over HTTPS.",
     },
     {
       id: "root-policy",

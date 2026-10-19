@@ -3489,7 +3489,7 @@ upd.sourceSave.addEventListener("click", () => {
     repo &&
     branch &&
     confirm(
-      `Install updates from the branch ${branch} of ${repo}?\n\nThe box runs the code it fetches as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
+      `Install updates from the branch ${branch} of ${repo}?\n\nThe box runs the code it downloads as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
     )
   )
     requestUpdate("set-source", null, { repo, branch, confirmed: true });
