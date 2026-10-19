@@ -5,6 +5,17 @@
 // carries its own styles. Inside app.html the hub bar already does both jobs, so the pill
 // only appears when an app is opened on its own.
 (function () {
+  // The app runs on an origin of its own and cannot read the hub's theme: the hub's app bar passes it in the
+  // address (hub-theme=light, dark or auto), and the app reads it from its own storage, where this puts it
+  // (before the app starts: this script is loaded first).
+  try {
+    var theme = new URLSearchParams(location.search).get('hub-theme');
+    if (theme === 'light' || theme === 'dark' || theme === 'auto') {
+      var value = theme === 'auto' ? 'system' : theme;
+      localStorage.setItem('excalidraw-theme', value);   // Excalidraw
+      localStorage.setItem('mode-watcher-mode', value);  // Mermaid
+    }
+  } catch (_) {}
   if (document.getElementById('hub-return')) return;
   try { if (window.parent !== window && window.parent.document.body.classList.contains('app-frame')) return; } catch (_) {}
 

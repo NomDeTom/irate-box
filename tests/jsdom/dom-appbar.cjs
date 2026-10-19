@@ -43,6 +43,11 @@ async function open(path, storage = {}) {
   check('a theme change reloads it with the new base', src.endsWith('&hub-theme=light'), src);
   d = await open('/app.html#/addons/eliza/', {});
   check('Auto is passed as auto', d.getElementById('app').getAttribute('src') === '/addons/eliza/?hub-theme=auto', d.getElementById('app').getAttribute('src'));
+  // Excalidraw and Mermaid are on origins of their own too: the theme is in their address (hub-return.js reads it).
+  d = await open('/app.html#/draw/', { theme: 'dark' });
+  check('Excalidraw gets hub-theme', d.getElementById('app').getAttribute('src') === '/draw/?hub-theme=dark', d.getElementById('app').getAttribute('src'));
+  d = await open('/app.html#/mermaid/?x=1', { theme: 'light' });
+  check('Mermaid gets hub-theme, its own query kept', d.getElementById('app').getAttribute('src') === '/mermaid/?x=1&hub-theme=light', d.getElementById('app').getAttribute('src'));
   d = await open('/app.html#/tools/', { theme: 'dark' });
   check('an app on the hub\'s origin gets no hub-theme', d.getElementById('app').getAttribute('src') === '/tools/', d.getElementById('app').getAttribute('src'));
   console.log(fails ? `${fails} failure(s)` : 'ok');

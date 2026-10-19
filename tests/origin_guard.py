@@ -43,6 +43,9 @@ text = (
     .replace("@GIT_PORT@", "8093")
     .replace("@NOTEBOOK_PORT@", "8094")
     .replace("@ADMIN_PORT@", "8095")
+    .replace("@DRAW_PORT@", "8096")
+    .replace("@MERMAID_PORT@", "8097")
+    .replace("@SYNC_PORT@", "8098")
 )
 text = (
     text.replace("@TLS_PORT@", "443")
@@ -52,13 +55,17 @@ text = (
     .replace("@GIT_TLS_PORT@", "8493")
     .replace("@NOTEBOOK_TLS_PORT@", "8494")
     .replace("@ADMIN_TLS_PORT@", "8495")
+    .replace("@DRAW_TLS_PORT@", "8496")
+    .replace("@MERMAID_TLS_PORT@", "8497")
+    .replace("@SYNC_TLS_PORT@", "8498")
 )
 servers = secdoctor._nginx_servers(text)
 by_port = {tuple(p): b for p, b in servers}
 hub, notes = by_port.get(("80",), ""), by_port.get(("8091",), "")
 check(
-    "seven server blocks: the hub, add-ons, notes, books, cgit, notebooks, administration",
-    sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",), ("8095",)],
+    "ten server blocks: the hub, add-ons, notes, books, cgit, notebooks, administration, Excalidraw, Mermaid, Syncthing",
+    sorted(by_port)
+    == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",), ("8095",), ("8096",), ("8097",), ("8098",)],
     sorted(by_port),
 )
 cgit = by_port.get(("8093",), "")
@@ -96,6 +103,9 @@ for (port,), name in (
     (("8093",), "git"),
     (("8094",), "notebook"),
     (("8095",), "admin-site"),
+    (("8096",), "draw"),
+    (("8097",), "mermaid"),
+    (("8098",), "sync"),
 ):
     check(
         f"TLS twin: the {name} server block includes its own",
@@ -119,6 +129,9 @@ check(
         "irate_box_git_port": ("8493", "8093"),
         "irate_box_notebook_port": ("8494", "8094"),
         "irate_box_admin_port": ("8495", "8095"),
+        "irate_box_draw_port": ("8496", "8096"),
+        "irate_box_mermaid_port": ("8497", "8097"),
+        "irate_box_sync_port": ("8498", "8098"),
     },
     maps,
 )
@@ -257,6 +270,67 @@ check(
     and "include @ACCESS@;" in notes,
 )
 check("the notes port serves nothing but notes", "location / { return 404; }" in notes)
+
+# Excalidraw, Mermaid and Syncthing's web page: an origin each (audit M3, the wider class). The hub's port redirects.
+draw, mermaid_, syncb = (by_port.get((p,), "") for p in ("8096", "8097", "8098"))
+for app, port in (
+    ("draw", "irate_box_draw_port"),
+    ("mermaid", "irate_box_mermaid_port"),
+    ("sync", "irate_box_sync_port"),
+):
+    check(
+        f"/{app}/ on the hub's port redirects to its origin, path and query kept, and keeps the off switch",
+        re.search(
+            rf"location /{app}/ \{{\s*if \(\$irate_box_off_{app}\) \{{ return 404; \}}\s*return 302 \$scheme://\$host:\${port}\$request_uri;",
+            hub,
+        )
+        is not None
+        and f"location = /{app} {{ return 302 $scheme://$host:${port}/{app}/; }}" in hub,
+    )
+check(
+    "the hub's port serves none of them: no static build, no relay, no Syncthing",
+    "alias @APPS@/draw/" not in hub
+    and "alias @APPS@/mermaid/" not in hub
+    and "3002" not in hub
+    and "8384" not in re.sub(r"(?m)^\s*#.*$", "", hub),
+)
+check(
+    "Excalidraw's origin: the static build and its login switch, the relay, the store and gallery without the "
+    "session cookie, the hub's app bar may frame it, the link home goes to the hub",
+    "alias @APPS@/draw/;" in draw
+    and "auth_basic $irate_box_auth_draw;" in draw
+    and "include @ACCESS@.d/gate-draw.conf*;" in draw
+    and "proxy_pass http://127.0.0.1:3002;" in draw
+    and draw.count("proxy_set_header Cookie $irate_box_app_cookie;") == 2
+    and draw.count("client_max_body_size 50m;") == 2
+    and "frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host" in draw
+    and "location = / { return 302 $scheme://$host:$irate_box_hub_port/; }" in draw
+    and "location = /hub-return.js" in draw
+    and "location / { return 404; }" in draw,
+)
+check(
+    "Mermaid's origin: the same, without the relay",
+    "alias @APPS@/mermaid/;" in mermaid_
+    and "include @ACCESS@.d/gate-mermaid.conf*;" in mermaid_
+    and "3002" not in mermaid_
+    and mermaid_.count("proxy_set_header Cookie $irate_box_app_cookie;") == 2
+    and "frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host" in mermaid_
+    and "location / { return 404; }" in mermaid_,
+)
+check(
+    "Syncthing's origin: the box's own login or an admin session, the loopback Host, no hub cookie, nothing else",
+    'auth_basic "Irate-Box";' in syncb
+    and "include @ACCESS@.d/gate-admin.conf*;" in syncb
+    and "proxy_set_header Host 127.0.0.1:8384;" in syncb
+    and "proxy_set_header Cookie $irate_box_app_cookie;" in syncb
+    and "proxy_pass http://127.0.0.1:8384/;" in syncb
+    and "location / { return 404; }" in syncb
+    and "location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }" in syncb,
+)
+check(
+    "none of the three origins sends the hub the front's secret, and each clears the header",
+    all("include @FRONT@" not in b and 'proxy_set_header X-Irate-Front ""' in b for b in (draw, mermaid_, syncb)),
+)
 inst = (REPO / "install.sh").read_text()
 check(
     "install.sh fills in the notes port",
@@ -273,8 +347,17 @@ check(
 installed = secdoctor._nginx_servers(text.replace("@FRONT@", "/etc/nginx/irate-box-front.conf"))
 place = {k: next((tuple(p) for p, b in installed if re.search(pat, b)), None) for k, _, pat in secdoctor.OWN_ORIGIN}
 check(
-    "the doctor sees notes, books, cgit and the administration pages on their own origins",
-    place == {"notes": ("8091",), "wiki": ("8092",), "git": ("8093",), "admin": ("8095",)},
+    "the doctor sees notes, books, cgit, the administration pages, Excalidraw, Mermaid and Syncthing on their own origins",
+    place
+    == {
+        "notes": ("8091",),
+        "wiki": ("8092",),
+        "git": ("8093",),
+        "admin": ("8095",),
+        "draw": ("8096",),
+        "mermaid": ("8097",),
+        "sync": ("8098",),
+    },
     place,
 )
 # The hub's session cookie never reaches an app on a sibling port.
@@ -287,7 +370,7 @@ check(
     and cgit.count("fastcgi_param HTTP_COOKIE $irate_box_app_cookie;") == 2
     and re.search(
         r"location /sync/ \{.*?proxy_set_header Cookie \$irate_box_app_cookie;.*?proxy_pass http://127\.0\.0\.1:8384/;",
-        hub,
+        by_port.get(("8098",), ""),
         re.S,
     )
     is not None,
@@ -295,15 +378,15 @@ check(
 caddy = expand((REPO / "config" / "Caddyfile").read_text())
 check(
     "  and on Caddy",
-    caddy.count('header_up Cookie "irate_session=[^;]*;?\\s*" ""') == 5,
+    caddy.count('header_up Cookie "irate_session=[^;]*;?\\s*" ""') == 9,
     caddy.count("header_up Cookie"),
 )
 # Caddy, the fallback: the same origins (audit M3). Each site with its snippet in place.
 csites = {tuple(p): b for p, b in secdoctor._caddy_servers(secdoctor.parse_caddy(caddy))}
 chub, cnotes, cwiki, cgit_ = (csites.get((p,), "") for p in ("80", "8091", "8092", "8093"))
 check(
-    "Caddy: six sites: the hub, add-ons, notes, books, cgit, administration",
-    sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8095",)],
+    "Caddy: nine sites: the hub, add-ons, notes, books, cgit, administration, Excalidraw, Mermaid, Syncthing",
+    sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8095",), ("8096",), ("8097",), ("8098",)],
     sorted(csites),
 )
 check(
@@ -391,7 +474,38 @@ check(
     and "redir {scheme}://{host}:{irate_box_hub_port}{uri} 302" in cadmin
     and "{$HUB_ADMIN_PORT:8095}" in chub,
 )
-for name in ("notes", "wiki", "git", "admin"):
+cdraw, cmermaid, csync = (csites.get((p,), "") for p in ("8096", "8097", "8098"))
+check(
+    "Caddy: Excalidraw, Mermaid and Syncthing on origins of their own; the hub's port redirects, keeping the off switch",
+    all(
+        re.search(
+            rf"import \S+/{a}-off\.caddy\*\n[^{{}}]*?redir \{{scheme\}}://\{{host\}}:\{{irate_box_{a}_port\}}\{{uri\}} 302",
+            chub,
+        )
+        is not None
+        for a in ("draw", "mermaid", "sync")
+    )
+    and all(
+        f"redir /{a} {{scheme}}://{{host}}:{{irate_box_{a}_port}}/{a}/ 302" in chub for a in ("draw", "mermaid", "sync")
+    )
+    and "HUB_DRAW_ROOT" not in chub
+    and "HUB_MERMAID_ROOT" not in chub
+    and "127.0.0.1:8384" not in chub
+    and "127.0.0.1:3002" not in chub
+    and "/draw.caddy*" in cdraw
+    and "reverse_proxy 127.0.0.1:3002" in cdraw
+    and "/mermaid.caddy*" in cmermaid
+    and "127.0.0.1:3002" not in cmermaid
+    and "reverse_proxy 127.0.0.1:8384" in csync
+    and "admin-gate.caddy*" in csync
+    and "header_up Host {upstream_hostport}" in csync
+    and all(
+        "frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}" in c
+        for c in (cdraw, cmermaid)
+    )
+    and all("HUB_FRONT_SECRET" not in c and "request_header -X-Irate-Front" in c for c in (cdraw, cmermaid, csync)),
+)
+for name in ("notes", "wiki", "git", "admin", "draw", "mermaid", "sync"):
     check(
         f"Caddy: the {name} origin has a TLS twin",
         f'"{name}"' in (REPO / "irate_box/root/tls.py").read_text().split("_front_files", 1)[1].split("out = {}", 1)[0],
@@ -400,7 +514,16 @@ ctx = {"front_kind": "caddy", "front": secdoctor.parse_caddy(caddy)}
 seen = {f["id"]: f["status"] for f in secdoctor.step_origins(ctx)}
 check(
     "the doctor sees notes, books, cgit and the administration pages on their own origins under Caddy too",
-    seen == {"origin-notes": "ok", "origin-wiki": "ok", "origin-git": "ok", "origin-admin": "ok"},
+    seen
+    == {
+        "origin-notes": "ok",
+        "origin-wiki": "ok",
+        "origin-git": "ok",
+        "origin-admin": "ok",
+        "origin-draw": "ok",
+        "origin-mermaid": "ok",
+        "origin-sync": "ok",
+    },
     seen,
 )
 print("ok" if not fails else f"{fails} failure(s)")

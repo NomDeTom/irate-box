@@ -51,6 +51,9 @@ map $scheme $irate_box_wiki_port  { https @WIKI_TLS_PORT@;  default @WIKI_PORT@;
 map $scheme $irate_box_git_port   { https @GIT_TLS_PORT@;   default @GIT_PORT@; }
 map $scheme $irate_box_notebook_port { https @NOTEBOOK_TLS_PORT@; default @NOTEBOOK_PORT@; }
 map $scheme $irate_box_admin_port { https @ADMIN_TLS_PORT@; default @ADMIN_PORT@; }
+map $scheme $irate_box_draw_port { https @DRAW_TLS_PORT@; default @DRAW_PORT@; }
+map $scheme $irate_box_mermaid_port { https @MERMAID_TLS_PORT@; default @MERMAID_PORT@; }
+map $scheme $irate_box_sync_port { https @SYNC_TLS_PORT@; default @SYNC_PORT@; }
 # The hub's session cookie is the hub's: an app on a sibling port (notes, books, cgit, Syncthing)
 # gets the rest of the Cookie header without it, so a page there cannot act as the owner.
 # The gates (auth_request) still see the whole header.
@@ -211,44 +214,19 @@ server {
 		return 302 $scheme://$host:$irate_box_wiki_port$request_uri;
 	}
 
-	# --- /draw -> Excalidraw, static, with the SPA fallback --------------------------
-	# Hashed build output is immutable; everything else must revalidate, or guests keep an
-	# old build after an upgrade. The same split for /mermaid and /serial.
-	location = /draw { return 301 /draw/; }
-	location ^~ /draw/ {
-		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
+	# --- /draw -> Excalidraw, and /mermaid -> mermaid-live-editor, each on an origin of its own ------
+	# (the server blocks at the end, ports @DRAW_PORT@ and @MERMAID_PORT@). What they render is written by
+	# others (a shared link, a drawing from the gallery), so on the hub's origin it could act with the
+	# owner's login. Path and query are kept; the off switch stays here.
+	location = /draw { return 302 $scheme://$host:$irate_box_draw_port/draw/; }
+	location /draw/ {
 		if ($irate_box_off_draw) { return 404; }
-		auth_basic $irate_box_auth_draw;
-		include @ACCESS@.d/gate-draw.conf*;
-		auth_basic_user_file $irate_box_logins;
-		alias @APPS@/draw/;
-		try_files $uri /draw/index.html;
-		add_header Cache-Control "no-cache";
-		add_header Content-Security-Policy $irate_box_csp always;
-		location ^~ /draw/assets/ {
-			try_files $uri /draw/index.html;
-			add_header Cache-Control "public, max-age=31536000, immutable";
-			add_header Content-Security-Policy $irate_box_csp always;
-		}
+		return 302 $scheme://$host:$irate_box_draw_port$request_uri;
 	}
-
-	# --- /mermaid -> mermaid-live-editor, static ------------------------------------
-	location = /mermaid { return 301 /mermaid/; }
-	location ^~ /mermaid/ {
-		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
+	location = /mermaid { return 302 $scheme://$host:$irate_box_mermaid_port/mermaid/; }
+	location /mermaid/ {
 		if ($irate_box_off_mermaid) { return 404; }
-		auth_basic $irate_box_auth_mermaid;
-		include @ACCESS@.d/gate-mermaid.conf*;
-		auth_basic_user_file $irate_box_logins;
-		alias @APPS@/mermaid/;
-		try_files $uri $uri.html /mermaid/index.html;
-		add_header Cache-Control "no-cache";
-		add_header Content-Security-Policy $irate_box_csp always;
-		location ^~ /mermaid/_app/immutable/ {
-			try_files $uri $uri.html /mermaid/index.html;
-			add_header Cache-Control "public, max-age=31536000, immutable";
-			add_header Content-Security-Policy $irate_box_csp always;
-		}
+		return 302 $scheme://$host:$irate_box_mermaid_port$request_uri;
 	}
 
 	# --- /tools -> the calculators, single-file pages --------------------------------
@@ -314,26 +292,17 @@ server {
 		return 302 $scheme://$host:$irate_box_notebook_port/notebook/;
 	}
 
-	# --- /sync -> Syncthing web GUI (add-on, operator only) -------------------------
-	# Prefix stripped. The GUI's own host check rejects anything but a loopback Host header.
-	location = /sync { return 301 /sync/; }
+	# --- /sync -> Syncthing web GUI (add-on, operator only), on an origin of its own (the server block
+	# at the end, port @SYNC_PORT@): it shows names that remote peers send.
+	location = /sync { return 302 $scheme://$host:$irate_box_sync_port/sync/; }
 	location /sync/ {
 		if ($irate_box_off_sync) { return 404; }
-		auth_basic "Irate-Box";
-		auth_basic_user_file $irate_box_logins;
-		include @ACCESS@.d/gate-admin.conf*;
-		proxy_set_header Host 127.0.0.1:8384;
-		proxy_set_header Cookie $irate_box_app_cookie;
-		proxy_set_header X-Forwarded-For $remote_addr;
-		proxy_set_header X-Forwarded-Proto $scheme;
-		proxy_set_header X-Forwarded-Host $http_host;
-		proxy_set_header Upgrade $http_upgrade;
-		proxy_set_header Connection $irate_box_connection;
-		proxy_pass http://127.0.0.1:8384/;
+		return 302 $scheme://$host:$irate_box_sync_port$request_uri;
 	}
 
-	# --- WebSockets: mosquitto (/mqtt) and excalidraw-room (/socket.io/), add-ons ------
-	# nginx closes a proxied connection after 60 s of silence by default; these stay up.
+	# --- WebSockets: mosquitto (/mqtt), an add-on ------------------------------------
+	# nginx closes a proxied connection after 60 s of silence by default; this stays up. (excalidraw-room's
+	# /socket.io/ is on the drawing origin, with the page that opens it.)
 	location = /mqtt {
 		if ($irate_box_off_mqtt) { return 404; }
 		auth_basic $irate_box_auth_mqtt;
@@ -341,10 +310,6 @@ server {
 		auth_basic_user_file $irate_box_logins;
 		proxy_read_timeout 1h;
 		proxy_pass http://127.0.0.1:9001;
-	}
-	location /socket.io/ {
-		proxy_read_timeout 1h;
-		proxy_pass http://127.0.0.1:3002;
 	}
 
 	# --- /flasher -> the Meshtastic web flasher, as a download, and what it fetches -------
@@ -636,6 +601,276 @@ server {
 	}
 }
 
+
+# --- the drawing origin: Excalidraw (/draw/) and its live-collaboration relay -------------------------
+# Its own port, so what a drawing runs (others' drawings, a shared link) is on an origin with no /admin
+# and none of the hub's pages. The same login switch as before (/admin, Apps), the same static build. It
+# also holds what the app reaches on its own origin: the store behind "shareable link" and the gallery
+# (the hub's /api/v2 and /api/saves, without the hub's session cookie) and the relay (/socket.io/).
+server {
+	include @TLS@/nginx-http-draw.inc;
+	include @TLS@/nginx-policy-draw.inc;
+	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
+	include @TLS@/nginx-draw.conf*;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	client_max_body_size 1m;
+	absolute_redirect off;
+	include @ACCESS@;
+	# The session checks the app's gate asks (users mode, private): see the notes origin's.
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_set_header X-Original-URI $request_uri;
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
+	# Not signed in: the sign-in is the hub's page, which sends the browser back here.
+	location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $remote_addr;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header X-Forwarded-Host $http_host;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection $irate_box_connection;
+	proxy_set_header X-Irate-Front "";
+	root @STATIC@;
+	# The hub's app bar frames the app (app.html), so the hub's origin may.
+	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host";
+	add_header Content-Security-Policy $irate_box_csp always;
+	# The hub, from the app's own link back to it.
+	location = / { return 302 $scheme://$host:$irate_box_hub_port/; }
+	location ~* \.html$ { return 302 $scheme://$host:$irate_box_hub_port$request_uri; }
+	# The one script of the hub the app loads (the "Hub" link back).
+	location = /hub-return.js {
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
+	}
+	# Hashed build output is immutable; everything else must revalidate, or guests keep an
+	# old build after an upgrade.
+	location = /draw { return 301 /draw/; }
+	location ^~ /draw/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
+		if ($irate_box_off_draw) { return 404; }
+		auth_basic $irate_box_auth_draw;
+		include @ACCESS@.d/gate-draw.conf*;
+		auth_basic_user_file $irate_box_logins;
+		alias @APPS@/draw/;
+		try_files $uri /draw/index.html;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
+		location ^~ /draw/assets/ {
+			try_files $uri /draw/index.html;
+			add_header Cache-Control "public, max-age=31536000, immutable";
+			add_header Content-Security-Policy $irate_box_csp always;
+		}
+	}
+	# The drawing store and the gallery take whole drawings (store.py MAX_BODY, 50 MB). The hub's session
+	# cookie is not sent on (the store keeps no accounts), so a drawing's script cannot use it.
+	location ^~ /api/v2/ {
+		client_max_body_size 50m;
+		# Setting a header here drops the server's, so all again.
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Cookie $irate_box_app_cookie;
+		proxy_pass http://irate_box_hub;
+	}
+	location ^~ /api/saves {
+		client_max_body_size 50m;
+		# Setting a header here drops the server's, so all again.
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Cookie $irate_box_app_cookie;
+		proxy_pass http://irate_box_hub;
+	}
+	# excalidraw-room, live collaboration. nginx closes a proxied connection after 60 s of silence by default; this stays up.
+	location /socket.io/ {
+		proxy_read_timeout 1h;
+		proxy_pass http://127.0.0.1:3002;
+	}
+	location / { return 404; }
+}
+
+# --- the diagram origin: mermaid-live-editor (/mermaid/) ----------------------------------------
+# Its own port, so a diagram rendered from a link (script in the diagram's text) is on an origin with no
+# /admin. Static files, the gallery's store for its History panel, and the link back to the hub.
+server {
+	include @TLS@/nginx-http-mermaid.inc;
+	include @TLS@/nginx-policy-mermaid.inc;
+	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
+	include @TLS@/nginx-mermaid.conf*;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	client_max_body_size 1m;
+	absolute_redirect off;
+	include @ACCESS@;
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_set_header X-Original-URI $request_uri;
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
+	location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $remote_addr;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header X-Forwarded-Host $http_host;
+	proxy_set_header X-Irate-Front "";
+	root @STATIC@;
+	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host";
+	add_header Content-Security-Policy $irate_box_csp always;
+	location = / { return 302 $scheme://$host:$irate_box_hub_port/; }
+	location ~* \.html$ { return 302 $scheme://$host:$irate_box_hub_port$request_uri; }
+	location = /hub-return.js {
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
+	}
+	location = /mermaid { return 301 /mermaid/; }
+	location ^~ /mermaid/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
+		if ($irate_box_off_mermaid) { return 404; }
+		auth_basic $irate_box_auth_mermaid;
+		include @ACCESS@.d/gate-mermaid.conf*;
+		auth_basic_user_file $irate_box_logins;
+		alias @APPS@/mermaid/;
+		try_files $uri $uri.html /mermaid/index.html;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_csp always;
+		location ^~ /mermaid/_app/immutable/ {
+			try_files $uri $uri.html /mermaid/index.html;
+			add_header Cache-Control "public, max-age=31536000, immutable";
+			add_header Content-Security-Policy $irate_box_csp always;
+		}
+	}
+	location ^~ /api/v2/ {
+		client_max_body_size 50m;
+		# Setting a header here drops the server's, so all again.
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Cookie $irate_box_app_cookie;
+		proxy_pass http://irate_box_hub;
+	}
+	location ^~ /api/saves {
+		client_max_body_size 50m;
+		# Setting a header here drops the server's, so all again.
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Cookie $irate_box_app_cookie;
+		proxy_pass http://irate_box_hub;
+	}
+	location / { return 404; }
+}
+
+# --- the Syncthing origin: its web GUI (/sync/, operator only) ----------------------------------
+# Its own port, so what remote peers name their devices and folders (shown in the GUI) is on an origin with
+# no /admin. Prefix stripped. The GUI's own host check rejects anything but a loopback Host header. The hub's
+# session cookie is not passed on. Gated as it was: the box's own login, or an admin account's session.
+server {
+	include @TLS@/nginx-http-sync.inc;
+	include @TLS@/nginx-policy-sync.inc;
+	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
+	include @TLS@/nginx-sync.conf*;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	absolute_redirect off;
+	include @ACCESS@;
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_set_header X-Original-URI $request_uri;
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
+	location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }
+	proxy_set_header X-Irate-Front "";
+	location = / { return 302 /sync/; }
+	location = /sync { return 301 /sync/; }
+	location /sync/ {
+		if ($irate_box_off_sync) { return 404; }
+		auth_basic "Irate-Box";
+		auth_basic_user_file $irate_box_logins;
+		include @ACCESS@.d/gate-admin.conf*;
+		proxy_http_version 1.1;
+		proxy_set_header Host 127.0.0.1:8384;
+		proxy_set_header Cookie $irate_box_app_cookie;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $irate_box_connection;
+		proxy_set_header X-Irate-Front "";
+		proxy_pass http://127.0.0.1:8384/;
+	}
+	location / { return 404; }
+}
 
 # --- the add-on origin: the local add-ons ---------------------------------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's

@@ -4712,6 +4712,9 @@ OWN_ORIGIN = (
         r"proxy_pass\s+http://127\.0\.0\.1:8081|reverse_proxy\s+127\.0\.0\.1:8081",
     ),
     ("git", "cgit and pushed content", r"cgit\.cgi"),
+    ("draw", "Excalidraw", r"alias\s+\S+/draw/;|root\s+\*\s+\{\$HUB_DRAW_ROOT"),
+    ("mermaid", "Mermaid", r"alias\s+\S+/mermaid/;|root\s+\*\s+\{\$HUB_MERMAID_ROOT"),
+    ("sync", "Syncthing's web page", r"proxy_pass\s+http://127\.0\.0\.1:8384|reverse_proxy\s+127\.0\.0\.1:8384"),
     # The block that sends the hub the front's secret is the one that serves /admin.
     ("admin", "The administration pages", r"irate-box-front\.conf|header_up\s+X-Irate-Front"),
 )

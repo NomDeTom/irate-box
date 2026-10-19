@@ -29,6 +29,9 @@ PORTS = {
     "NOTES_PORT": "8091",
     "NOTEBOOK_PORT": "8094",
     "ADMIN_PORT": "8095",
+    "DRAW_PORT": "8096",
+    "MERMAID_PORT": "8097",
+    "SYNC_PORT": "8098",
     "WIKI_PORT": "8092",
     "GIT_PORT": "8093",
     "TLS_PORT": "443",
@@ -36,6 +39,9 @@ PORTS = {
     "NOTES_TLS_PORT": "8491",
     "NOTEBOOK_TLS_PORT": "8494",
     "ADMIN_TLS_PORT": "8495",
+    "DRAW_TLS_PORT": "8496",
+    "MERMAID_TLS_PORT": "8497",
+    "SYNC_TLS_PORT": "8498",
     "WIKI_TLS_PORT": "8492",
     "GIT_TLS_PORT": "8493",
 }
@@ -175,6 +181,9 @@ def begin(directory, paths, runner=None):
             ("git", "GIT_"),
             ("notebook", "NOTEBOOK_"),
             ("admin", "ADMIN_"),
+            ("draw", "DRAW_"),
+            ("mermaid", "MERMAID_"),
+            ("sync", "SYNC_"),
         ):
             for scheme, suffix in (("http", "PORT"), ("https", "TLS_PORT")):
                 if origin in saved.get(scheme, {}):
@@ -315,7 +324,7 @@ def _health_once(settings):
     finally:
         connection.close()
     if settings.get("GENERATION"):
-        for prefix in ("ADDON_", "NOTES_", "NOTEBOOK_", "WIKI_", "GIT_", "ADMIN_"):
+        for prefix in ("ADDON_", "NOTES_", "NOTEBOOK_", "WIKI_", "GIT_", "ADMIN_", "DRAW_", "MERMAID_", "SYNC_"):
             port = int(settings[prefix + ("TLS_PORT" if secure else "PORT")])
             sibling = (
                 http.client.HTTPSConnection("127.0.0.1", port, timeout=3, context=context)

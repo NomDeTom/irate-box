@@ -34,9 +34,9 @@ function pushTheme() {
 pushTheme();
 document.addEventListener('hub-theme', () => {
   pushTheme();
-  // A web add-on gets a new address, which carries the new theme (and it is on its own
-  // origin, so it could not be reloaded from here anyway).
-  if (target().startsWith('/addons/')) { frame.src = frameSrc(target()); return; }
+  // An app on an origin of its own (a web add-on, Excalidraw, Mermaid) gets a new address, which
+  // carries the new theme (it could not be reloaded from here anyway).
+  if (ownOrigin(target())) { frame.src = frameSrc(target()); return; }
   try { frame.contentWindow.location.reload(); } catch (_) { frame.src = frameSrc(target()); }
 });
 
@@ -44,8 +44,11 @@ document.addEventListener('hub-theme', () => {
 // A web add-on (/addons/<id>/…) is on its own origin, so it cannot
 // read the hub's storage: it is told the theme's base in its address instead, hub-theme=light,
 // dark or auto, beside whatever query it has. Every other app reads its own setting (above).
+// An app that runs on an origin of its own, which the hub's port sends the frame to: the theme goes in its
+// address, since it cannot read the hub's storage (Excalidraw and Mermaid read it from hub-return.js).
+const ownOrigin = (path) => /^\/(addons|draw|mermaid)\//.test(path);
 function frameSrc(path) {
-  if (!path.startsWith('/addons/')) return path;
+  if (!ownOrigin(path)) return path;
   const hash = path.indexOf('#');
   const base = hash < 0 ? path : path.slice(0, hash);
   const frag = hash < 0 ? '' : path.slice(hash);

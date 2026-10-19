@@ -65,7 +65,8 @@ def _ports(kind, defaults):
 
 
 # Each origin's TLS twin (install.sh: TLS_PORT and the rest): the hub's own, then the add-ons',
-# the notes', Kiwix's, cgit's, the notebooks' and the administration pages', beside their plain ports.
+# the notes', Kiwix's, cgit's, the notebooks', the administration pages', Excalidraw's, Mermaid's and
+# Syncthing's, beside their plain ports.
 TWINS = _ports(
     "https",
     {
@@ -76,6 +77,9 @@ TWINS = _ports(
         "git": ("HUB_GIT_TLS_PORT", 8493),
         "notebook": ("HUB_NOTEBOOK_TLS_PORT", 8494),
         "admin": ("HUB_ADMIN_TLS_PORT", 8495),
+        "draw": ("HUB_DRAW_TLS_PORT", 8496),
+        "mermaid": ("HUB_MERMAID_TLS_PORT", 8497),
+        "sync": ("HUB_SYNC_TLS_PORT", 8498),
     },
 )
 FRONT_GROUP = os.environ.get("HUB_TLS_GROUP") or ("caddy" if os.environ.get("HUB_WEB_SERVER") == "caddy" else "")
@@ -89,8 +93,14 @@ PLAIN_PORTS = _ports(
         "git": ("HUB_GIT_PORT", 8093),
         "notebook": ("HUB_NOTEBOOK_PORT", 8094),
         "admin": ("HUB_ADMIN_PORT", 8095),
+        "draw": ("HUB_DRAW_PORT", 8096),
+        "mermaid": ("HUB_MERMAID_PORT", 8097),
+        "sync": ("HUB_SYNC_PORT", 8098),
     },
 )
+# The origins that are the administrator's wholly (the administration pages, Syncthing's GUI): the choice of
+# HTTP for administrators applies to every path on them.
+WHOLE_ORIGIN = ("admin", "sync")
 TRANSPORTS = ("http", "both", "discovery", "https")
 ADMIN_HTTP = ("allow", "warning", "block")
 PROBES = (
@@ -116,9 +126,9 @@ def _admin_paths(name, state=None):
     from irate_box.hub import access
 
     paths = (
-        ["/term", "/sync", "/git", "/git-private"]
+        ["/term", "/git", "/git-private"]
         if name == "main"
-        else (["/git-private"] if name == "git" else ["/"] if name == "admin" else [])
+        else (["/git-private"] if name == "git" else ["/"] if name in WHOLE_ORIGIN else [])
     )
     private = state if state is not None else access.read(ETC / "access.json")
     apps = (
@@ -146,8 +156,8 @@ def _plain_files(transport, admin_http, access_state=None):
         target = f"https://$host:{TWINS[name]}$request_uri"
         paths = _admin_paths(name, access_state)
         path_re = "^(?:" + "|".join(re.escape(path) for path in paths) + ")(?:/|$)" if paths else "(?!)"
-        if name == "admin":
-            path_re = "^/"  # the whole origin is the administration pages
+        if name in WHOLE_ORIGIN:
+            path_re = "^/"  # the whole origin is administrators' pages
         nginx = ""
         if transport != "https":
             ds = " default_server" if name == "main" else ""
@@ -198,7 +208,7 @@ def _plain_files(transport, admin_http, access_state=None):
         if admin_http != "allow" and paths:
             policy = (
                 "@irate_admin_plain {\n\tprotocol http\n\tpath "
-                + ("/*" if name == "admin" else " ".join(path for base in paths for path in (base, base + "/*")))
+                + ("/*" if name in WHOLE_ORIGIN else " ".join(path for base in paths for path in (base, base + "/*")))
                 + "\n"
             )
             if admin_http == "warning":
@@ -555,7 +565,7 @@ def _front_files():
         return {
             FRONT / f"caddy-site-{name}.caddy": f"# Written by irate-box (root/tls.py): the {name} site's TLS twin.\n"
             f"https://:{TWINS[name]} {{\n\ttls {CHAIN} {KEY}\n\timport irate_box_{'hub' if name == 'main' else name}\n}}\n"
-            for name in ("main", "addons", "notes", "wiki", "git", "admin")
+            for name in ("main", "addons", "notes", "wiki", "git", "admin", "draw", "mermaid", "sync")
         }
     out = {}
     for name, port in TWINS.items():
