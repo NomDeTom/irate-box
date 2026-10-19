@@ -66,8 +66,9 @@
       </nav>
 
       <main class="admin-main">
-        <!-- The first use (server.py unclaimed(): /admin/box says first_use): these pages free to anyone on
-           the network until the owner's admin account is made. -->
+        <!-- The first use (server.py unclaimed(): /admin/box says first_use). Only an administrator's session reaches
+           these pages then (the one the set-up page signs in with, before the first use has ended); anyone else is sent
+           to /admin/setup (server.py _admin_locked). -->
         <div
           class="settings-note admin-note bad first-use-banner"
           id="first-use"
@@ -76,7 +77,7 @@
           data-i18n="admin.main.first-use"
         >
           <strong>This box has no administrator account.</strong> Anyone on this
-          network can use these pages until you create one.
+          network can create one until you do.
           <a href="/admin/setup">Set up this box</a> over HTTPS, or at the
           console over SSH.
         </div>

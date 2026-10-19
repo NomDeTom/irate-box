@@ -813,13 +813,13 @@ FIRST_USE_MARK = "<!-- first use -->"
 
 
 def _first_use_note():
-    """The home page's word while the box is in its first use: its admin pages free to anyone on the
-    network until the owner's admin account is made, and how to make it safely."""
+    """The home page's word while the box is in its first use: whoever on the network makes the first admin account
+    becomes the administrator (the set-up page is the only admin page until then), and how to make it safely."""
     if not unclaimed():
         return ""
     return (
         '<section class="first-use-note" role="note"><h2>⚙️ This box is not set up yet</h2>'
-        "<p>Until an administrator account is made, any device on this network can use the administration pages. Make it now "
+        "<p>Until an administrator account is made, any device on this network can make it and become the administrator. Make it now "
         "over HTTPS or at the box's console over SSH (<code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code>). "
         "Over plain HTTP, others on the network can read the password.</p>"
         '<p><a class="action-btn" href="/admin/setup">Set up this box</a> '
@@ -4195,15 +4195,31 @@ class Handler(BaseHTTPRequestHandler):
             )
         return not ok
 
+    # What /admin answers on a box in its first use, to anyone (audit M4): the set-up page, its request's progress
+    # (?id=), and making the first administrator account. Nothing else of /admin: until the box has an owner, the
+    # first person on its network would otherwise read and change every setting.
+    SETUP_PATHS = frozenset(("/admin/setup",))
+
     def _admin_locked(self, path):
-        """A box in its first use has its admin pages free to anyone on its network, but for the box's own
-        login (for scripts: the console's, script-login): the first use ends with the owner's admin account,
-        made on /admin/setup or at the console."""
-        if path == "/admin/password" and unclaimed():
-            self._discard_body()
-            self.send_json(403, refused.say(SETUP_FIRST))
+        """A box in its first use: /admin is the set-up page alone (SETUP_PATHS), to anyone on its network, until the
+        owner makes the first administrator account there or at the console (set-admin). The pages send a browser
+        there; any other /admin request is refused, read or write. An administrator's session passes: the one
+        the set-up page signs in with, before the root helper has ended the first use. The box's own login is never
+        set from here (/admin/password: script-login at the console)."""
+        if not unclaimed() or not (path == "/admin" or path.startswith("/admin/")):
+            return False
+        me = None if path == "/admin/password" else accounts.session(self._session_token())
+        if path in self.SETUP_PATHS or (me is not None and me.get("role") == "admin"):
+            return False
+        self._discard_body()
+        if self.command == "GET" and (path in ("/admin", "/admin/") or path.endswith(".html")):
+            self.send_response(302)
+            self.send_header("Location", "/admin/setup")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
             return True
-        return False
+        self.send_json(403, refused.say(SETUP_FIRST))
+        return True
 
     def _off_hub_name(self):
         """A hotspot guest asking under a name that is not the hub's own (see AP_NET)."""

@@ -1413,8 +1413,8 @@ for app in mermaid draw tools serial; do
 done
 
 # --- config ----------------------------------------------------------------------
-# No password is made here. The box starts in its first use: its admin pages free to anyone on the
-# network ($UNCLAIMED_MARK tells the web server and the hub) until the owner makes the admin account
+# No password is made here. The box starts in its first use: its set-up page open to anyone on the
+# network, and no other admin page ($UNCLAIMED_MARK tells the web server and the hub), until the owner makes the admin account
 # (/admin/setup, or hub_control set-admin at the console). The web server's logins get a placeholder
 # nobody knows, so /sync and /term stay shut; it is never saved or shown. The mark sits beside the web
 # server's config, where its workers can see it (/etc/hub cannot be read by them). --admin-password
