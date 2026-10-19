@@ -2002,6 +2002,9 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
+# No capabilities: the builds run as hubci and need none. The nft line above runs outside the sandbox
+# (its +), and an offline build's own user namespace gets a full set inside it from the kernel.
+CapabilityBoundingSet=
 ReadWritePaths=$STATE/ci
 EOF
 
