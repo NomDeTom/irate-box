@@ -139,17 +139,40 @@ def devices():
 
 
 class Mounted:
-    """The device's files, at its existing mount point or one of ours (removed after)."""
+    """The device's files, at a mount point of ours (removed after), or, to read only, at its existing one.
+    To write (every export), only a mount of the box's own (audit M7): one made elsewhere has neither nosymfollow
+    nor the others, and a folder on it could be a link that sends root's writes anywhere. The owner unmounts it,
+    and the box mounts it itself."""
 
     def __init__(self, dev, writable=False):
         self.dev, self.writable, self.ours = dev, writable, False
 
     def __enter__(self):
         if self.dev.get("mountpoint"):
+            if self.writable:
+                raise Refused(
+                    M(
+                        "usb.device.mounted-elsewhere",
+                        "The box cannot write to {name}: it is already mounted at {mountpoint}. Unmount it, then try "
+                        "again. The box then mounts it itself, so that nothing on the drive can send the box's files "
+                        "somewhere else.",
+                        name=self.dev["name"],
+                        mountpoint=self.dev["mountpoint"],
+                    )
+                )
             return Path(self.dev["mountpoint"])
         if not re.fullmatch(r"[A-Za-z0-9_-]+", self.dev["name"]):
             raise Refused(M("usb.device.bad-name", "The device name {name} is not valid.", name=self.dev["name"]))
         self.path = MOUNT_ROOT / self.dev["name"]
+        # Root's own place for its mounts: a link at it, or in place of it, is not one.
+        if MOUNT_ROOT.is_symlink() or self.path.is_symlink():
+            raise Refused(
+                M(
+                    "usb.device.mount-link",
+                    "The box's mount point {path} is a link. Mount refused.",
+                    path=str(self.path),
+                )
+            )
         self.path.mkdir(parents=True, exist_ok=True)
         # nosymfollow: a stick's own links (ext4 can hold them) lead nowhere root follows.
         opts = ("rw" if self.writable else "ro") + ",nosuid,nodev,noexec,nosymfollow"
