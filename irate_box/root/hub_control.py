@@ -5145,6 +5145,18 @@ def usb_kit_import(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
     if not kits.ID_RE.match(kit):
         raise Refused(KIT_BAD)
+    # Importing a release the clock cannot date is a security decision: the owner's, from the hub only while the
+    # security policy accepts the hub's; otherwise root's, at the console (kits import-dir --unknown-time).
+    freshness = kits.UNKNOWN_TIME if req.get("freshness") == kits.UNKNOWN_TIME else None
+    if freshness and policy_mode() != "hub":
+        raise Refused(
+            M(
+                "kits.usb.unknown-time.console",
+                "The security policy accepts changes only from the console or SSH, so the hub cannot approve an "
+                "import without a freshness check. At the console, mount the USB drive and run sudo "
+                "/opt/irate-box/irate-box kits import-dir <mount point>/irate-box/kits --unknown-time.",
+            )
+        )
     try:
         budget = int(json.loads((STATE / "library" / "toolkits.json").read_text()).get("budget_mb", 500))
     except (OSError, ValueError, TypeError, AttributeError):
@@ -5158,7 +5170,7 @@ def usb_kit_import(req):
                     kit=kit,
                 )
             )
-            return usbstick.import_kit(device, kit, budget, progress.bytes)
+            return usbstick.import_kit(device, kit, budget, progress.bytes, freshness=freshness)
     finally:
         _kits_status()
 

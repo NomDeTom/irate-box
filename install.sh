@@ -852,7 +852,7 @@ make_bundle() {
 		done
 		if [ -d "$here/kits" ]; then
 			echo "==> Toolkits (each package checked against the hashes in signed Debian indexes)"
-			/opt/irate-box/irate-box kits import-dir "$here/kits" | sed 's/^/    /'
+			/opt/irate-box/irate-box kits import-dir "$here/kits" --unknown-time | sed 's/^/    /'
 		fi
 	SETUP
 	chmod 755 "$kit/setup.sh"

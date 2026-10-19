@@ -14032,6 +14032,7 @@ kitsEl.addCancel.addEventListener("click", resetKitForm);
 // Kits by USB drive (usbstick.py, kits.py): the root helper's last stick scan, Import for each kit
 // found for this box's architecture, and a cached kit to copy onto each drive.
 let kitsUsbWaiting = null;
+let kitsUsbAsked = null; // what the waiting request asked: an import refused for the clock is offered again below
 async function loadKitsUsb() {
   let data;
   try {
@@ -14045,6 +14046,25 @@ async function loadKitsUsb() {
     if (done) {
       kitsUsbWaiting = null;
       say(resultSaid(done), done.ok, note);
+      // The clock cannot date the release: the owner may import it anyway, knowing its freshness goes unchecked.
+      // Root decides whether the hub may give that approval (the security policy) and says so if not.
+      const asked = kitsUsbAsked;
+      if (!done.ok && done.msg && done.msg.id === "kits.usb.time-untrusted" && asked && asked.action === "kit-import")
+        note.append(
+          " ",
+          el("button", {
+            type: "button",
+            className: "action-btn small",
+            textContent: "Import without a freshness check",
+            onclick: () =>
+              kitsUsbAsk(
+                { ...asked, freshness: "unknown-time" },
+                "Import this toolkit without checking that its packages are current? Their signatures and hashes " +
+                  "are still checked, but a USB drive could carry an older signed set with problems fixed since. " +
+                  "Set the clock on the Clock page first if you can.",
+              ),
+          }),
+        );
       loadKits();
     }
   }
@@ -14165,6 +14185,7 @@ async function loadKitsUsb() {
 }
 async function kitsUsbAsk(body, confirmText) {
   if (confirmText && !confirm(confirmText)) return;
+  kitsUsbAsked = body;
   try {
     kitsUsbWaiting = (await postJSON("/admin/usb", body)).id;
     say("Working…", true, noteEl("kits-usb-note"));

@@ -51,7 +51,7 @@ if [ -d "$here/kits" ]; then
 		echo "toolkits: would import $(cd "$here/kits" && ls -d */*/ 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ')"
 	else
 		echo "toolkits: importing. Each package is checked against the hashes in signed Debian indexes."
-		"$hub" kits import-dir "$here/kits" | sed 's/^/    /'
+		"$hub" kits import-dir "$here/kits" --unknown-time | sed 's/^/    /'
 	fi
 fi
 ls "$here"/*.zim >/dev/null 2>&1 && echo "books: not imported by this script. Import them on the Books page, in the USB drive section. That page checks each book."
