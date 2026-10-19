@@ -2134,6 +2134,9 @@ def admin_box(proxied):
         "net_uptime": net_uptime_72h(),
         "meshtasticd": meshtasticd_state(),
         "first_use": unclaimed(),
+        # The hub's own origin, which the administration pages (on a port of their own) name in addresses to copy.
+        "hub_port": int(os.environ.get("HUB_PUBLIC_PORT", "80")),
+        "hub_tls_port": int(os.environ.get("HUB_PUBLIC_TLS_PORT", "443")),
         "results": control_results(),
         "pending": (len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0),
     }

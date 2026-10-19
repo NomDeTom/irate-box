@@ -65,7 +65,7 @@ def _ports(kind, defaults):
 
 
 # Each origin's TLS twin (install.sh: TLS_PORT and the rest): the hub's own, then the add-ons',
-# the notes', Kiwix's, cgit's and the notebooks', beside their plain ports.
+# the notes', Kiwix's, cgit's, the notebooks' and the administration pages', beside their plain ports.
 TWINS = _ports(
     "https",
     {
@@ -75,6 +75,7 @@ TWINS = _ports(
         "wiki": ("HUB_WIKI_TLS_PORT", 8492),
         "git": ("HUB_GIT_TLS_PORT", 8493),
         "notebook": ("HUB_NOTEBOOK_TLS_PORT", 8494),
+        "admin": ("HUB_ADMIN_TLS_PORT", 8495),
     },
 )
 FRONT_GROUP = os.environ.get("HUB_TLS_GROUP") or ("caddy" if os.environ.get("HUB_WEB_SERVER") == "caddy" else "")
@@ -87,6 +88,7 @@ PLAIN_PORTS = _ports(
         "wiki": ("HUB_WIKI_PORT", 8092),
         "git": ("HUB_GIT_PORT", 8093),
         "notebook": ("HUB_NOTEBOOK_PORT", 8094),
+        "admin": ("HUB_ADMIN_PORT", 8095),
     },
 )
 TRANSPORTS = ("http", "both", "discovery", "https")
@@ -114,9 +116,9 @@ def _admin_paths(name, state=None):
     from irate_box.hub import access
 
     paths = (
-        ["/admin", "/term", "/sync", "/git", "/git-private"]
+        ["/term", "/sync", "/git", "/git-private"]
         if name == "main"
-        else (["/git-private"] if name == "git" else [])
+        else (["/git-private"] if name == "git" else ["/"] if name == "admin" else [])
     )
     private = state if state is not None else access.read(ETC / "access.json")
     apps = (
@@ -144,6 +146,8 @@ def _plain_files(transport, admin_http, access_state=None):
         target = f"https://$host:{TWINS[name]}$request_uri"
         paths = _admin_paths(name, access_state)
         path_re = "^(?:" + "|".join(re.escape(path) for path in paths) + ")(?:/|$)" if paths else "(?!)"
+        if name == "admin":
+            path_re = "^/"  # the whole origin is the administration pages
         nginx = ""
         if transport != "https":
             ds = " default_server" if name == "main" else ""
@@ -194,7 +198,7 @@ def _plain_files(transport, admin_http, access_state=None):
         if admin_http != "allow" and paths:
             policy = (
                 "@irate_admin_plain {\n\tprotocol http\n\tpath "
-                + " ".join(path for base in paths for path in (base, base + "/*"))
+                + ("/*" if name == "admin" else " ".join(path for base in paths for path in (base, base + "/*")))
                 + "\n"
             )
             if admin_http == "warning":
@@ -551,12 +555,14 @@ def _front_files():
         return {
             FRONT / f"caddy-site-{name}.caddy": f"# Written by irate-box (root/tls.py): the {name} site's TLS twin.\n"
             f"https://:{TWINS[name]} {{\n\ttls {CHAIN} {KEY}\n\timport irate_box_{'hub' if name == 'main' else name}\n}}\n"
-            for name in ("main", "addons", "notes", "wiki", "git")
+            for name in ("main", "addons", "notes", "wiki", "git", "admin")
         }
     out = {}
     for name, port in TWINS.items():
         ds = " default_server" if name == "main" else ""
-        out[FRONT / f"nginx-{name}.conf"] = (
+        # The administration origin's twin is not nginx-admin.conf: that name was the old "admin over HTTPS only"
+        # include in the hub's /admin location, which configure() still removes from an older box.
+        out[FRONT / ("nginx-admin-site.conf" if name == "admin" else f"nginx-{name}.conf")] = (
             f"# Written by irate-box (root/tls.py): this server block's TLS twin.\nlisten {port} ssl{ds};\n"
             f"listen [::]:{port} ssl{ds};\nssl_certificate {CHAIN};\nssl_certificate_key {KEY};\n"
             "ssl_protocols TLSv1.2 TLSv1.3;\n"

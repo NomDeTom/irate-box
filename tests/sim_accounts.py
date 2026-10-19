@@ -335,8 +335,8 @@ check(
 cf = (REPO / "config" / "Caddyfile").read_text()
 check(
     "  the Caddyfile: /admin, the shell, Syncthing and /git-private take the gate before their own login, which stays (no gate file: the login alone); git asks the hub",
-    cf.count("import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*") == 4
-    and cf.count("basic_auth @irate_box_basic {") == 6
+    cf.count("import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/admin-gate.caddy*") == 5
+    and cf.count("basic_auth @irate_box_basic {") == 7
     and "try_files /guest-push" not in cf
     and all(
         cf.index("admin-gate.caddy*", cf.index(r))
@@ -362,11 +362,11 @@ check(
     "  the site: /admin/, /term/ and /sync/ include it; each server block can ask",
     all(
         site.index("include @ACCESS@.d/gate-admin.conf*;", site.index(loc)) < site.index("\n\t}\n", site.index(loc))
-        for loc in ("location /admin/ {", "location /term/ {", "location /sync/ {")
+        for loc in ("location ^~ /admin/ {", "location /term/ {", "location /sync/ {")
     )
-    and site.count("location = /_irate_admin") == 4
+    and site.count("location = /_irate_admin") == 5
     and site.count("proxy_set_header X-Original-URI $request_uri;\n\t\tproxy_pass http://irate_box_hub/_irate/admin;")
-    == 4,
+    == 5,
 )
 check(
     "  the add-on server: its own /_irate_user and login too, the per-add-on gates included before the shared location",
@@ -379,7 +379,7 @@ check(
     "  the site: every app location with a login has its gate include",
     all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
     and site.count("location = /_irate_user") == 5
-    and site.count("location @irate_box_login") == 6,
+    and site.count("location @irate_box_login") == 7,
     sorted(gated),
 )
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))

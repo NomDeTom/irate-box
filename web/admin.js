@@ -2374,6 +2374,11 @@ window.addEventListener("resize", () => {
 let lastBox = null; // /admin/box: the services, for each app page's header
 function renderBox(data) {
   lastBox = data;
+  if (data.hub_port) {
+    const changed = !hubPorts || hubPorts.plain !== data.hub_port || hubPorts.tls !== data.hub_tls_port;
+    hubPorts = { plain: data.hub_port, tls: data.hub_tls_port };
+    if (changed) drawConnectionStep();
+  }
   const rate = cardRate(data.system);
   const rateEl = document.getElementById("card-writes-rate");
   if (rateEl)
@@ -11871,18 +11876,31 @@ async function setSetupDone(done) {
   }
 }
 
-// How guests reach the box: what this page was loaded from.
-(() => {
-  const port = location.port && location.port !== "80" ? location.port : "";
+// The hub's own address, which these pages (on a port of their own) name in what they show and copy: this
+// page's host with the hub's port, which the box tells (/admin/box).
+var hubPorts = null;
+function hubHost() {
+  const secure = location.protocol === "https:";
+  const port = hubPorts ? (secure ? hubPorts.tls : hubPorts.plain) : null;
+  return port && port !== (secure ? 443 : 80) ? `${location.hostname}:${port}` : location.hostname;
+}
+function hubOrigin() {
+  return `${location.protocol}//${hubHost()}`;
+}
+// How guests reach the box: the address of the hub's page, and whether it is on port 80.
+function drawConnectionStep() {
+  const host = hubHost();
+  const port = host.includes(":") ? host.split(":").pop() : "";
   setupStep(
     "connection",
     port
-      ? `At http://${location.host}/ on port ${port}. Something else uses port 80, so a phone that joins a hotspot does not get the captive portal page.`
-      : `At http://${location.host}/ on the network that the box is already on.`,
+      ? `At http://${host}/ on port ${port}. Something else uses port 80, so a phone that joins a hotspot does not get the captive portal page.`
+      : `At http://${host}/ on the network that the box is already on.`,
     port ? "warn" : "ok",
   );
   setupStep("password", "Set.", "ok");
-})();
+}
+drawConnectionStep();
 document
   .getElementById("setup-finish")
   .addEventListener("click", () => setSetupDone(true));
@@ -12268,7 +12286,7 @@ const copyUrl = (r) =>
   actionButton(
     "Copy clone URL",
     () => {
-      const url = `${location.origin}${r.url.replace(/\/$/, "")}`;
+      const url = `${hubOrigin()}${r.url.replace(/\/$/, "")}`;
       navigator.clipboard?.writeText(url).then(
         () => say(`Copied ${url}`, true, git.note),
         () => say(url, true, git.note),
@@ -12901,7 +12919,7 @@ git.form.addEventListener("submit", async (e) => {
       }),
     );
     say(
-      `Created ${f.name.value.replace(/\.git$/, "")}.git. Push to it with: git push http://${location.host}${f.area.value === "public" ? "/git/" : "/git-private/"}${f.name.value.replace(/\.git$/, "")}.git main`,
+      `Created ${f.name.value.replace(/\.git$/, "")}.git. Push to it with: git push http://${hubHost()}${f.area.value === "public" ? "/git/" : "/git-private/"}${f.name.value.replace(/\.git$/, "")}.git main`,
       true,
       git.createNote,
     );

@@ -42,6 +42,7 @@ text = (
     .replace("@WIKI_PORT@", "8092")
     .replace("@GIT_PORT@", "8093")
     .replace("@NOTEBOOK_PORT@", "8094")
+    .replace("@ADMIN_PORT@", "8095")
 )
 text = (
     text.replace("@TLS_PORT@", "443")
@@ -50,13 +51,14 @@ text = (
     .replace("@WIKI_TLS_PORT@", "8492")
     .replace("@GIT_TLS_PORT@", "8493")
     .replace("@NOTEBOOK_TLS_PORT@", "8494")
+    .replace("@ADMIN_TLS_PORT@", "8495")
 )
 servers = secdoctor._nginx_servers(text)
 by_port = {tuple(p): b for p, b in servers}
 hub, notes = by_port.get(("80",), ""), by_port.get(("8091",), "")
 check(
-    "six server blocks: the hub, add-ons, notes, books, cgit, notebooks",
-    sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",)],
+    "seven server blocks: the hub, add-ons, notes, books, cgit, notebooks, administration",
+    sorted(by_port) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",), ("8095",)],
     sorted(by_port),
 )
 cgit = by_port.get(("8093",), "")
@@ -93,6 +95,7 @@ for (port,), name in (
     (("8092",), "wiki"),
     (("8093",), "git"),
     (("8094",), "notebook"),
+    (("8095",), "admin-site"),
 ):
     check(
         f"TLS twin: the {name} server block includes its own",
@@ -115,6 +118,7 @@ check(
         "irate_box_wiki_port": ("8492", "8092"),
         "irate_box_git_port": ("8493", "8093"),
         "irate_box_notebook_port": ("8494", "8094"),
+        "irate_box_admin_port": ("8495", "8095"),
     },
     maps,
 )
@@ -136,13 +140,49 @@ check(
     "  and on Caddy",
     "header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\"" in caddy,
 )
+admin = by_port.get(("8095",), "")
+# The administration pages (audit M3, the wider class): an origin of their own. The hub's port only redirects.
 check(
-    "  /admin over HTTPS only: its include first in /admin/, before the login",
+    "/admin on the hub's port redirects to the administration port (its TLS twin over HTTPS), path and query kept",
+    "location = /admin { return 302 $scheme://$host:$irate_box_admin_port/admin/; }" in hub
+    and "location /admin/ { return 302 $scheme://$host:$irate_box_admin_port$request_uri; }" in hub
+    and "auth_basic" not in re.search(r"location /admin/ \{[^}]*\}", hub)[0],
+)
+check(
+    "  and only the administration port sends the hub the front's secret",
+    "include @FRONT@;" not in hub and admin.count("include @FRONT@;") == 1 and text.count("include @FRONT@;") == 1,
+    text.count("include @FRONT@;"),
+)
+check(
+    "  every other origin clears the header, whatever a client sent",
+    all(block.count('proxy_set_header X-Irate-Front ""') >= 1 for port, block in by_port.items() if port != ("8095",)),
+)
+check(
+    "  the administration port: the login or an admin session, first use, then the hub; the thumbnails the same",
     re.search(
-        r"location /admin/ \{\s*(#[^\n]*\n\s*)*include @TLS@/nginx-admin\.conf\*;\s*set \$irate_box_admin_auth",
-        hub,
+        r"location \^~ /admin/ \{\s*set \$irate_box_admin_auth \"Irate-Box\";\s*if \(-f @UNCLAIMED@\)[^\n]*\n\s*auth_basic \$irate_box_admin_auth;"
+        r"\s*auth_basic_user_file \$irate_box_logins;\s*(#[^\n]*\n\s*)*include @ACCESS@\.d/gate-admin\.conf\*;",
+        admin,
     )
+    is not None
+    and re.search(r"location ~ \^/api/saves/\[\^/\]\+/thumb\$ \{.*?limit_except GET.*?gate-admin", admin, re.S)
     is not None,
+)
+check(
+    "  it proxies only to the hub, and sends the pages of the hub there; no cookie is stripped, none is needed",
+    set(re.findall(r"proxy_pass (\S+);", admin))
+    == {"http://irate_box_hub/_irate/admin", "http://irate_box_hub", "http://127.0.0.1:8000"}
+    and "location ~* \\.html$ { return 302 $scheme://$host:$irate_box_hub_port$request_uri; }" in admin
+    and "try_files $uri @irate_box_hub_origin;" in admin,
+    set(re.findall(r"proxy_pass (\S+);", admin)),
+)
+check(
+    "  an unauthenticated visitor is sent to the hub's sign-in, which sends them back",
+    "location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }" in admin,
+)
+check(
+    "  the old 'admin over HTTPS only' include is gone: the policy include covers the whole origin",
+    "nginx-admin.conf" not in text and "location = /http-admin-warning" in admin,
 )
 
 
@@ -229,10 +269,12 @@ check(
     "the updater's nginx -t fills it in too, the TLS includes and ports among them",
     '"@NOTES_PORT@": "8091"' in hc and '"@TLS@": f"{tmp}/tls"' in hc and '"@GIT_TLS_PORT@": "8493"' in hc,
 )
-place = {k: next((tuple(p) for p, b in servers if re.search(pat, b)), None) for k, _, pat in secdoctor.OWN_ORIGIN}
+# (as installed: the front's secret file has its path)
+installed = secdoctor._nginx_servers(text.replace("@FRONT@", "/etc/nginx/irate-box-front.conf"))
+place = {k: next((tuple(p) for p, b in installed if re.search(pat, b)), None) for k, _, pat in secdoctor.OWN_ORIGIN}
 check(
-    "the doctor sees notes, books and cgit on their own origins",
-    place == {"notes": ("8091",), "wiki": ("8092",), "git": ("8093",)},
+    "the doctor sees notes, books, cgit and the administration pages on their own origins",
+    place == {"notes": ("8091",), "wiki": ("8092",), "git": ("8093",), "admin": ("8095",)},
     place,
 )
 # The hub's session cookie never reaches an app on a sibling port.
@@ -260,8 +302,8 @@ check(
 csites = {tuple(p): b for p, b in secdoctor._caddy_servers(secdoctor.parse_caddy(caddy))}
 chub, cnotes, cwiki, cgit_ = (csites.get((p,), "") for p in ("80", "8091", "8092", "8093"))
 check(
-    "Caddy: five sites: the hub, add-ons, notes, books, cgit",
-    sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",)],
+    "Caddy: six sites: the hub, add-ons, notes, books, cgit, administration",
+    sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8095",)],
     sorted(csites),
 )
 check(
@@ -330,7 +372,26 @@ check(
     "Caddy: no redirect between origins with a fixed port",
     not re.search(r"redir .*://\{host\}:\d", caddy),
 )
-for name in ("notes", "wiki", "git"):
+cadmin = csites.get(("8095",), "")
+check(
+    "Caddy: /admin on the hub's port redirects to the administration port, and only that site sends the secret",
+    "redir /admin {scheme}://{host}:{irate_box_admin_port}/admin/ 302" in chub
+    and "redir /admin/* {scheme}://{host}:{irate_box_admin_port}{uri} 302" in chub
+    and "HUB_FRONT_SECRET" not in chub
+    and cadmin.count("header_up X-Irate-Front {env.HUB_FRONT_SECRET}") == 2
+    and "request_header -X-Irate-Front" in cadmin
+    and "request_header -X-Irate-Front" in chub,
+)
+check(
+    "  the administration site: the login or an admin session, first use, the thumbnails, the hub's pages sent to the hub",
+    "handle /admin/*" in cadmin
+    and "admin-gate.caddy*" in cadmin
+    and "@unclaimed file" in cadmin
+    and "path_regexp ^/api/saves/[^/]+/thumb$" in cadmin
+    and "redir {scheme}://{host}:{irate_box_hub_port}{uri} 302" in cadmin
+    and "{$HUB_ADMIN_PORT:8095}" in chub,
+)
+for name in ("notes", "wiki", "git", "admin"):
     check(
         f"Caddy: the {name} origin has a TLS twin",
         f'"{name}"' in (REPO / "irate_box/root/tls.py").read_text().split("_front_files", 1)[1].split("out = {}", 1)[0],
@@ -338,8 +399,8 @@ for name in ("notes", "wiki", "git"):
 ctx = {"front_kind": "caddy", "front": secdoctor.parse_caddy(caddy)}
 seen = {f["id"]: f["status"] for f in secdoctor.step_origins(ctx)}
 check(
-    "the doctor sees notes, books and cgit on their own origins under Caddy too",
-    seen == {"origin-notes": "ok", "origin-wiki": "ok", "origin-git": "ok"},
+    "the doctor sees notes, books, cgit and the administration pages on their own origins under Caddy too",
+    seen == {"origin-notes": "ok", "origin-wiki": "ok", "origin-git": "ok", "origin-admin": "ok"},
     seen,
 )
 print("ok" if not fails else f"{fails} failure(s)")

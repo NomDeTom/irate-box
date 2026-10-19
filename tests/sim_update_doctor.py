@@ -989,6 +989,7 @@ if os.environ.get("IRATE_NGINX"):
                 "wiki": "WIKI_",
                 "git": "GIT_",
                 "notebook": "NOTEBOOK_",
+                "admin": "ADMIN_",
             }
             with (
                 mock.patch.multiple(

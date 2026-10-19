@@ -44,6 +44,12 @@ for (const [stage, state, labels, disabled] of [
   const buttons = ['check', 'fetch', 'install'].map(name => d.getElementById(`update-${name}`));
   check(`${stage}: three stage-aware actions`, buttons.every((button, index) => button.textContent === labels[index] && button.disabled === disabled[index]));
 }
+// The administration pages are on a port of their own: what they show and copy names the hub's, which the box tells.
+check('the hub address, before the box has said its port: the page host alone', w.eval('hubHost()') === 'box' && w.eval('hubOrigin()') === 'http://box');
+w.eval('hubPorts = { plain: 8080, tls: 8443 }');
+check('  with the hub on port 8080: the host and that port, not this page\'s', w.eval('hubHost()') === 'box:8080' && w.eval('hubOrigin()') === 'http://box:8080', w.eval('hubHost()'));
+w.eval('hubPorts = { plain: 80, tls: 443 }');
+check('  on port 80: the host alone', w.eval('hubHost()') === 'box');
 check('repairs belong to the doctor, not Updates', d.getElementById('update-clear').closest('.admin-pane').id === 'updoctor');
 check('  Install anyway is only a finding\'s button, not a second control in the recovery actions', !d.getElementById('update-force'));
 // Debian's buttons follow the same stages as the hub card's: nothing known, waiting, downloaded.

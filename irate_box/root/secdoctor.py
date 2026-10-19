@@ -4712,6 +4712,8 @@ OWN_ORIGIN = (
         r"proxy_pass\s+http://127\.0\.0\.1:8081|reverse_proxy\s+127\.0\.0\.1:8081",
     ),
     ("git", "cgit and pushed content", r"cgit\.cgi"),
+    # The block that sends the hub the front's secret is the one that serves /admin.
+    ("admin", "The administration pages", r"irate-box-front\.conf|header_up\s+X-Irate-Front"),
 )
 
 
@@ -4808,7 +4810,30 @@ def step_origins(ctx):
             continue
         ports = where[0]
         title = named(name, M("origins.role", "origin"))
-        if ports == hub_ports:
+        if ports == hub_ports and key == "admin":
+            out.append(
+                finding(
+                    f"origin-{key}",
+                    title,
+                    "warn",
+                    M(
+                        "origins.admin-shared",
+                        "The administration pages are served on the same address and port as the hub's pages.",
+                    ),
+                    M(
+                        "origins.admin-shared.why",
+                        "Script in any page of the hub's origin can act with the session of an administrator "
+                        "who opens the administration pages.",
+                    ),
+                    M(
+                        "origins.shared.fix",
+                        "Serve it on a port of its own. An update of the hub does this.",
+                    ),
+                    evidence=[f"port {', '.join(ports)}"],
+                    ref="S4",
+                )
+            )
+        elif ports == hub_ports:
             out.append(
                 finding(
                     f"origin-{key}",
