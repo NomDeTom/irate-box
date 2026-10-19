@@ -193,6 +193,79 @@ check(
 A.use_code(A.reset("carol"), "password6")  # as the rest of the test knows it
 A._fails.clear()
 
+# Every uncached Basic credential costs one password check, a real hash or the dummy, whatever the name is.
+from unittest import mock
+
+A.signup("pendy", "password9", "10.0.1.1")  # sign-up on request: waiting
+A.signup("disy", "password9", "10.0.1.2")
+A.change("disy", "accept")
+A.change("disy", "disable")
+_data = A._load()
+_data["accounts"]["nohash"] = {"name": "nohash", "state": "user", "role": "user"}
+A._save(_data)
+real_check = A.check_password
+seen = []
+
+
+def spy(password, stored):
+    seen.append(stored)
+    return real_check(password, stored)
+
+
+def probe(name, password, addr):
+    seen.clear()
+    with mock.patch.object(A, "check_password", spy):
+        got = A.check_basic(basic(name, password), addr)
+    return got, list(seen)
+
+
+A._basic_ok.clear()
+carol_hash = A._load()["accounts"]["carol"]["hash"]
+got, calls = probe("carol", "wrong-wrong", "10.8.0.1")
+check(
+    "check_basic, uncached wrong password: one check, against the account's hash",
+    got is None and calls == [carol_hash],
+    calls,
+)
+got, calls = probe("carol", "password6", "10.8.0.2")
+check(
+    "  a right password: one check against the hash, and it is accepted",
+    got == {"name": "carol", "role": "admin"} and calls == [carol_hash],
+    (got, calls),
+)
+got, calls = probe("carol", "password6", "10.8.0.2")
+check("  the same again within the minute: remembered, no check", got is not None and calls == [], calls)
+for n, who in enumerate(("nobody-here", "pendy", "disy", "nohash")):
+    for again in ("", "and again, "):
+        got, calls = probe(who, "password9", f"10.8.1.{n}")
+        check(
+            f"  {who} ({again}unknown, waiting, disabled or without a hash): one check, against the dummy, rejected",
+            got is None and calls == [A._DUMMY],
+            (got, calls),
+        )
+check("  no rejection was remembered", all(k[0] == "carol" for k in A._basic_ok), list(A._basic_ok))
+check(
+    "  reserved names and bad syntax: no check at all",
+    probe("admin", "password9", "10.8.2.1") == (None, []) and probe("", "x", "10.8.2.2") == (None, []),
+)
+# The limit counts failures against names that do not exist too, and a throttled request is not checked at all.
+A._fails.clear()
+for _ in range(A.FAILS):
+    probe("nobody-here", "password9", "10.8.3.1")
+got, calls = probe("nobody-here", "password9", "10.8.3.9")
+check("  failures against an unknown name are limited by name", got is None and calls == [], calls)
+A._fails.clear()
+for _ in range(A.FAILS):
+    probe("pendy", "password9", "10.8.4.1")
+got, calls = probe("pendy", "password9", "10.8.4.1")
+check("  and against a waiting account", got is None and calls == [], calls)
+_data = A._load()
+for who in ("pendy", "disy", "nohash"):
+    _data["accounts"].pop(who, None)
+A._save(_data)
+A._basic_ok.clear()
+A._fails.clear()
+
 # Users mode for apps (stage 2): access.py, and the root helper's files for nginx.
 from irate_box.hub import access
 

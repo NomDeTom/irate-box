@@ -463,15 +463,16 @@ def check_basic(header, addr=""):
     now = time.time()
     key = (name.lower(), hashlib.sha256(password.encode()).hexdigest())
     acc = _load()["accounts"].get(name.lower())
-    if not acc or acc.get("state") != "user" or not acc.get("hash"):
-        return None
-    if now - _basic_ok.get(key, 0) > 60:
+    eligible = bool(acc and acc.get("state") == "user" and acc.get("hash"))
+    if not (eligible and now - _basic_ok.get(key, 0) <= 60):
+        # One password check for every name, a real hash or the dummy, and one limit for every name: no timing
+        # or lockout tells an account that exists from one that does not. A rejection is never remembered.
         with _lock:
             try:
                 _limited(name, addr, now)
             except Wait:
                 return None
-        if not check_password(password, acc["hash"]):
+        if not check_password(password, acc["hash"] if eligible else _DUMMY) or not eligible:
             with _lock:
                 _failed(name, addr, now)
             return None
