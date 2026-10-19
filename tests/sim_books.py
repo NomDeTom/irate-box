@@ -442,8 +442,36 @@ check(
     "nightly.link: GitHub's artifact digest carried to the download's check",
     L._resolve_nightly({"repo": "o/r"}, None)["sha256"] == "a" * 64,
 )
-L._newest_artifact = lambda s, a: ({"id": 7}, {"id": 9, "name": "bundle"})
-check("  an artifact with no digest: unchecked, as before", L._resolve_nightly({"repo": "o/r"}, None)["sha256"] is None)
+L._newest_artifact = lambda s, a: (
+    {"id": 7, "head_branch": "main", "created_at": "2026-10-08T00:00:00Z"},
+    {"id": 9, "name": "bundle", "size_in_bytes": 5, "digest": "sha256:" + "aB" * 32},
+)
+check("  mixed-case hex: taken, in lower case", L._resolve_nightly({"repo": "o/r"}, None)["sha256"] == "ab" * 32)
+# No digest GitHub vouches for, no download: each refused by name before anything is fetched.
+for digest, why in (
+    (None, "absent"),
+    ("", "empty"),
+    ("sha1:" + "a" * 40, "another algorithm"),
+    ("sha256:" + "a" * 63, "too short"),
+    ("sha256:" + "g" * 64, "not hex"),
+    ("sha256:" + "a" * 64 + "\n", "a trailing newline"),
+):
+    art = {"id": 9, "name": "bundle"} | ({"digest": digest} if digest is not None else {})
+    L._newest_artifact = lambda s, a, art=art: ({"id": 7}, art)
+    fetched = []
+    real_open = L._open
+    L._open = lambda *a, fetched=fetched, **k: fetched.append(a) or (_ for _ in ()).throw(AssertionError("fetched"))
+    try:
+        L._resolve_nightly({"repo": "o/r"}, None)
+        refused = None
+    except L.LibrarianError as exc:
+        refused = exc.message["id"]
+    L._open = real_open
+    check(
+        f"  a digest {why}: refused before any download",
+        refused == "library.nightly.no-digest" and not fetched,
+        refused,
+    )
 L._newest_artifact = real_newest
 
 print("ok" if not fails else f"{fails} failure(s)")

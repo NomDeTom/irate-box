@@ -1276,8 +1276,20 @@ def _resolve_nightly(src, auth):
     run, art = _newest_artifact(src, auth)
     name = urllib.parse.quote(art["name"], safe="")
     # GitHub's artifacts API gives each artifact's digest ("sha256:<hex>"); nightly.link is a
-    # third party in between, so what it serves is checked against GitHub's own word.
+    # third party in between, so what it serves is checked against GitHub's own word. Without that
+    # word there is nothing to check it by: refused before the download, never taken unchecked.
     digest = str(art.get("digest") or "")
+    if not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest):
+        raise LibrarianError(
+            M(
+                "library.nightly.no-digest",
+                "GitHub gives no SHA-256 digest for the artifact {name} of run {run}, so the box cannot check "
+                "the copy nightly.link serves. Build the artifact again, or use the source GitHub Actions "
+                "artifacts (token), which downloads from GitHub itself.",
+                name=art.get("name", "?"),
+                run=run.get("id", "?"),
+            )
+        )
     return {
         "version": f"run-{run['id']}/{art['id']}",
         "url": f"https://nightly.link/{src['repo']}/actions/runs/{run['id']}/{name}.zip",
@@ -1285,9 +1297,7 @@ def _resolve_nightly(src, auth):
         "zip": True,
         "label": f"run {run['id']} ({run.get('head_branch')}, {run.get('created_at', '')[:10]}) via nightly.link",
         "auth": None,
-        "sha256": digest[7:].lower()
-        if digest.startswith("sha256:") and re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest)
-        else None,
+        "sha256": digest[7:].lower(),
     }
 
 

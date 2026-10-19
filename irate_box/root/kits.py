@@ -1068,12 +1068,6 @@ def drop_all_previous(log=print):
 #   irate-box/kits/<arch>/<kit>/manifest.json, debs/*.deb, lists/*_InRelease, lists/*_Packages
 
 APT_LISTS = Path(os.environ.get("HUB_APT_LISTS", "/var/lib/apt/lists"))
-KEYRING_DIRS = [
-    Path(p)
-    for p in os.environ.get("HUB_APT_KEYRINGS", "/usr/share/keyrings:/etc/apt/trusted.gpg.d:/etc/apt/keyrings").split(
-        ":"
-    )
-]
 LIST_RE = re.compile(r"^(?P<release>.+_dists_[^_]+)_(?P<path>.+_Packages)$")
 
 
@@ -1252,24 +1246,26 @@ def stick_kits(root):
     return out
 
 
-def _keyrings():
-    rings = []
-    for d in KEYRING_DIRS:
-        for k in sorted(d.glob("*")) if d.is_dir() else []:
-            if k.suffix in (".gpg", ".asc", ".pgp") and "removed" not in k.name and k.is_file():
-                rings += ["--keyring", str(k)]
-    return rings
-
-
 def _verified_release(inrelease, work):
-    """The signed content of an InRelease file, checked with this box's keys; ValueError if not."""
+    """The signed content of an InRelease file, checked with Debian's archive keyring alone; Refused if not.
+    Not every key apt trusts here: a key the owner added for another repository must not vouch for a kit,
+    and the release's own Origin line is the release's word, not proof."""
+    if not DEBIAN_KEYRING.is_file():
+        raise Refused(
+            M(
+                "kits.usb.no-keyring",
+                "Debian's archive keyring {file} is missing, so the box cannot check a kit. Import refused. "
+                "Install the package debian-archive-keyring.",
+                file=str(DEBIAN_KEYRING),
+            )
+        )
     out = work / f"{inrelease.name}.verified"
-    r = run(["gpgv", *_keyrings(), "--output", str(out), str(inrelease)], check=False, timeout=120)
+    r = run(["gpgv", "--keyring", str(DEBIAN_KEYRING), "--output", str(out), str(inrelease)], check=False, timeout=120)
     if r.returncode != 0 or not out.exists():
         raise Refused(
             M(
                 "kits.usb.signature",
-                "Signature invalid for {file}. This box's keys do not verify it. Import refused.",
+                "Signature invalid for {file}. Debian's archive keyring does not verify it. Import refused.",
                 file=inrelease.name,
             )
         )
