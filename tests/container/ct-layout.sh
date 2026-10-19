@@ -14,7 +14,7 @@ echo "== root/ is for root"
 [ "$(stat -c '%a %U' $C/irate_box/root)" = "700 root" ] && ok "irate_box/root is 700 root" || bad "irate_box/root is $(stat -c '%a %U' $C/irate_box/root)"
 runuser -u hub -- ls $C/irate_box/root >/dev/null 2>&1 && bad "hub can list root/" || ok "hub cannot list root/"
 out="$(runuser -u hub -- $C/irate-box health 2>&1)"
-[[ "$out" == *"irate_box/root/ is for root"* ]] && ok "launcher tells the hub user root/ is root's" || bad "launcher as hub: $out"
+[[ "$out" == *"unavailable to this user"*"irate_box/root need root"* ]] && ok "launcher tells the hub user root/ is root's" || bad "launcher as hub: $out"
 runuser -u hub -- env HUB_STATE_DIR=/var/lib/hub $C/irate-box librarian status >/dev/null 2>&1 && ok "hub runs the librarian" || bad "hub cannot run the librarian"
 $C/irate-box health summary >/dev/null 2>&1; [ $? -le 1 ] && ok "root runs the doctor" || bad "root cannot run the doctor"
 

@@ -15,7 +15,7 @@ result() { local f=/var/lib/hub/control/results/$1.json; for _ in $(seq 60); do 
 	python3 -c "import json; d=json.load(open('$f')); print(('OK ' if d['ok'] else 'ERR ') + d['message'])"; }
 set_access() {
 	local id r
-	id="$(curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "{\"app\":\"$1\",\"mode\":\"$2\"}" "http://$H/admin/access" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+	id="$(curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "{\"app\":\"$1\",\"mode\":\"$2\"}" "http://127.0.0.1:8095/admin/access" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 	r="$(result "$id")"; [[ $r == OK* ]] && ok "$1 $2: $r" || bad "$1 $2: $r"
 	sleep 2 # nginx reloads at once; Caddy restarts a second later
 	for _ in $(seq 20); do code "http://$H/status" | grep -q 200 && break; sleep 0.5; done
@@ -26,16 +26,16 @@ open_() { local g; g="$(code "$@")"; [ "$g" != 401 ] && ok "$* -> $g (no login)"
 tiles() { curl -s "http://$H/" | grep -o 'class="name">[^<]*' | sed 's/.*>//' | tr '\n' '|'; }
 
 echo "== defaults"
-open_ "http://$H/draw/"
+open_ -L "http://$H/draw/"  # its own origin: the hub's port redirects there
 want 200 "http://$H/flasher/flasher.html"
 want 200 "http://$H/drop.html"
-want 401 "http://$H/sync/"
+want 401 -L "http://$H/sync/"
 [[ "$(tiles)" == *"Excalidraw|"* ]] && ok "Excalidraw tile shown" || bad "tiles: $(tiles)"
 
 echo "== private"
 for a in draw drop git flasher wiki; do set_access $a private; done
-want 401 "http://$H/draw/"
-open_ -u "admin:$PW" "http://$H/draw/"
+want 401 -L "http://$H/draw/"
+open_ -u "admin:$PW" --location-trusted "http://$H/draw/"
 want 401 "http://$H/drop.html"
 want 401 "http://$H/api/drop"
 want 401 "http://$H/api/drop/whatever"
@@ -60,14 +60,14 @@ want 404 -u "admin:$PW" "http://$H/term/"
 [ "$(systemctl is-enabled ttyd 2>/dev/null)" != enabled ] && ok "ttyd disabled ($(systemctl is-enabled ttyd 2>&1))" || bad "ttyd still enabled"
 
 echo "== refused"
-c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"app":"room","mode":"off"}' "http://$H/admin/access")"
+c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"app":"room","mode":"off"}' "http://127.0.0.1:8095/admin/access")"
 [ "$c" = 400 ] && ok "an app with no route: 400" || bad "room -> $c"
-c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"app":"draw","mode":"secret"}' "http://$H/admin/access")"
+c="$(code -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"app":"draw","mode":"secret"}' "http://127.0.0.1:8095/admin/access")"
 [ "$c" = 400 ] && ok "an unknown mode: 400" || bad "mode -> $c"
 
 echo "== back to the defaults"
 for a in draw drop git flasher wiki term; do set_access $a public; done
-open_ "http://$H/draw/"
+open_ -L "http://$H/draw/"
 want 200 "http://$H/drop.html"
 want 200 -L "http://$H/git/"
 want 200 "http://$H/flasher/flasher.html"
