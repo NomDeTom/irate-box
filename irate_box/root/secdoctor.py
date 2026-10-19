@@ -5255,6 +5255,117 @@ def step_debsecan(ctx):
         _sh.rmtree(work, ignore_errors=True)
 
 
+def step_kits_trust(ctx):
+    """What vouches for the toolkits a USB drive brings: Debian's archive keyring (kits verify against it alone),
+    and the kits imported without a freshness check (kits.unchecked: listed while the clock cannot date them, or
+    once it can and a release had expired; a kit found current after all leaves the list by itself)."""
+    from irate_box.root import health, kits
+
+    go_kits = health._go("toolkits", M("go.toolkits", "Toolkits"))
+    out = []
+    if kits.DEBIAN_KEYRING.is_file():
+        out.append(
+            finding(
+                "kits-keyring",
+                M("kits-trust.keyring.title", "Debian's archive keyring"),
+                "ok",
+                M("kits-trust.keyring.ok", "A toolkit from a USB drive is checked against Debian's archive keyring."),
+                evidence=[kits.DEBIAN_KEYRING],
+            )
+        )
+    else:
+        out.append(
+            finding(
+                "kits-keyring",
+                M("kits-trust.keyring.title", "Debian's archive keyring"),
+                "problem",
+                M(
+                    "kits-trust.keyring.missing",
+                    "Debian's archive keyring {file} is missing.",
+                    file=str(kits.DEBIAN_KEYRING),
+                ),
+                M(
+                    "kits-trust.keyring.why",
+                    "Without it the box cannot check a toolkit's packages, so it refuses every import from a USB drive.",
+                ),
+                M("kits-trust.keyring.fix", "Install the package debian-archive-keyring."),
+                commands=["sudo apt install debian-archive-keyring"],
+                evidence=[kits.DEBIAN_KEYRING],
+            )
+        )
+    listed = kits.unchecked()
+    if not listed:
+        out.append(
+            finding(
+                "kits-freshness",
+                M("kits-trust.freshness.title", "Toolkits imported without a freshness check"),
+                "ok",
+                M(
+                    "kits-trust.freshness.none",
+                    "Every toolkit in the cache had its freshness checked, or it has been since.",
+                ),
+            )
+        )
+        return out
+    expired = [k["title"] for k in listed if k["state"] == "expired"]
+    unknown = [k["title"] for k in listed if k["state"] == "unknown"]
+    if expired:
+        out.append(
+            finding(
+                "kits-freshness",
+                M("kits-trust.freshness.title", "Toolkits imported without a freshness check"),
+                "problem",
+                M(
+                    "kits-trust.freshness.expired",
+                    {
+                        "one": "The toolkit {kits} was imported without a freshness check, and its release had expired.",
+                        "other": "The toolkits {kits} were imported without a freshness check, and their releases had expired.",
+                    },
+                    n=len(expired),
+                    kits=expired,
+                ),
+                M(
+                    "kits-trust.freshness.expired.why",
+                    "An expired release can carry packages with problems Debian has fixed since.",
+                ),
+                M(
+                    "kits-trust.freshness.expired.fix",
+                    "On Toolkits, download the toolkit again while the box has an internet connection, or remove it.",
+                ),
+                go=go_kits,
+            )
+        )
+    if unknown:
+        out.append(
+            finding(
+                "kits-freshness-unknown",
+                M("kits-trust.freshness.title", "Toolkits imported without a freshness check"),
+                "warn",
+                M(
+                    "kits-trust.freshness.unknown",
+                    {
+                        "one": "The toolkit {kits} was imported without a freshness check. The clock cannot date it yet.",
+                        "other": "The toolkits {kits} were imported without a freshness check. The clock cannot date them yet.",
+                    },
+                    n=len(unknown),
+                    kits=unknown,
+                ),
+                M(
+                    "kits-trust.freshness.unknown.why",
+                    "A signature shows who made a release, not that it is the latest: a USB drive could carry an "
+                    "older signed set.",
+                ),
+                M(
+                    "kits-trust.freshness.unknown.fix",
+                    "Give the box network time or set its clock on the Clock page. The doctor then checks the "
+                    "releases' dates itself and clears this when they were current.",
+                ),
+                go=health.GO_CLOCK,
+            )
+        )
+    return out
+
+
 def step_deep_cis(ctx):
     return _deep_findings("debian-cis")
 
@@ -7313,6 +7424,7 @@ STEPS = [
         "",
         step_debsecan,
     ),
+    ("kits-trust", M("step.kits-trust", "Toolkits from USB drives: keyring and freshness"), "M9 M10", step_kits_trust),
     (
         "debian-cis",
         M("step.debian-cis", "CIS benchmark (debian-cis, in the deep audit)"),

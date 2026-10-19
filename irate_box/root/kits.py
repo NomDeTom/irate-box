@@ -1392,7 +1392,7 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None, freshness=None):
     if not isinstance(man, dict) or not isinstance(man.get("packages"), list):
         raise Refused(M("kits.usb.manifest", "The toolkit manifest on the USB drive is unreadable. Import refused."))
     work = Path(tempfile.mkdtemp(prefix="kit-usb-"))
-    unchecked = None
+    unchecked = []  # the releases imported on the owner's word, their freshness unchecked
     try:
         vouch = set()
         for pk in sorted([*(folder / "lists").glob("*_Packages"), *(folder / "lists").glob("*_Packages.xz")]):
@@ -1401,7 +1401,10 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None, freshness=None):
             if not rel or not rel.is_file() or pk.is_symlink() or rel.is_symlink():
                 continue
             text = _verified_release(rel, work)
-            unchecked = _not_stale(text, rel.name, approved=freshness == UNKNOWN_TIME) or unchecked
+            if _not_stale(text, rel.name, approved=freshness == UNKNOWN_TIME):
+                # Kept so that once the clock can be believed, the security doctor can date it after all.
+                until = _release_field(text, "Valid-Until")
+                unchecked.append({"file": rel.name, "date": _release_date(text, "Date"), "valid_until": until})
             listed = _sha256_section(text)
             path = m.group("path").replace("_", "/")
             digest, hashes = _stick_index(pk)
@@ -1496,7 +1499,7 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None, freshness=None):
                 "bytes": sum(q["size"] for q in pkgs),
                 "from_usb": time.time(),
                 # Imported on the owner's word that a release the clock could not date is current enough.
-                **({"freshness": UNKNOWN_TIME} if unchecked else {}),
+                **({"freshness": UNKNOWN_TIME, "releases_unchecked": unchecked} if unchecked else {}),
             },
         )
         prune()
@@ -1541,6 +1544,28 @@ def _trailing(cur, prev):
     older = sorted(p["name"] for p in prev.get("packages", []) if p["name"] in now and now[p["name"]] != p["version"])
     extra = sum(x["size"] for x in [*prev.get("packages", []), *prev.get("wheels", [])] if x["file"] not in files)
     return {"fetched": prev["fetched"], "bytes": prev["bytes"], "older": older, "extra_bytes": extra}
+
+
+def unchecked(now=None):
+    """The cached kits imported without a freshness check, as they stand now: [{kit, title, state}], state
+    "unknown" while the clock cannot be believed, "expired" when it can and a release's Valid-Until has passed.
+    A kit whose releases turn out current once the clock is believed is not listed: its mark has done its job.
+    Re-importing with a believed clock, downloading it again or removing it writes a manifest without the mark."""
+    clock, now = _clock_trusted(), now or time.time()
+    out = []
+    for kid, k in definitions().items():
+        cur = manifest(kid)
+        if not cur or cur.get("freshness") != UNKNOWN_TIME:
+            continue
+        rels = cur.get("releases_unchecked") or []
+        if not clock:
+            state = "unknown"
+        elif any(isinstance(r.get("valid_until"), (int, float)) and r["valid_until"] < now for r in rels):
+            state = "expired"
+        else:
+            continue
+        out.append({"kit": kid, "title": k.get("title", kid), "state": state})
+    return out
 
 
 def status():

@@ -418,7 +418,55 @@ check(
     why is None and "freshness" not in kits.manifest("small"),
     why,
 )
+# The security doctor: Debian's keyring, and kits imported unchecked, by how they stand now.
+from irate_box.root import secdoctor
+
+
+def doctor():
+    return {f["id"]: f for f in secdoctor.step_kits_trust({})}
+
+
+kits._clock_trusted = lambda: None
+attempt(on_stick(expired_text), kits.UNKNOWN_TIME)
+fs = doctor()
+check(
+    "doctor: a kit imported unchecked, clock not believed: a warning naming it, the Clock page its place",
+    fs["kits-freshness-unknown"]["status"] == "warn"
+    and "Small" in str(fs["kits-freshness-unknown"]["summary"])
+    and fs["kits-freshness-unknown"]["go"]["section"] == "clock"
+    and fs["kits-keyring"]["status"] == "ok",
+    fs,
+)
 kits._clock_trusted = lambda: "network time"
+fs = doctor()
+check(
+    "  the clock believed, the release had expired: a problem, Toolkits its place",
+    fs["kits-freshness"]["status"] == "problem"
+    and fs["kits-freshness"]["go"]["section"] == "toolkits"
+    and "kits-freshness-unknown" not in fs,
+    fs,
+)
+kits._clock_trusted = lambda: None
+attempt(on_stick(), kits.UNKNOWN_TIME)
+kits._clock_trusted = lambda: "network time"
+fs = doctor()
+check(
+    "  the clock believed, the release current after all: cleared by itself",
+    fs["kits-freshness"]["status"] == "ok" and kits.unchecked() == [],
+    fs,
+)
+attempt(on_stick())
+check("  re-imported with a believed clock: no mark at all", "freshness" not in kits.manifest("small"))
+real_ring = kits.DEBIAN_KEYRING
+kits.DEBIAN_KEYRING = T / "keys" / "absent.gpg"
+fs = doctor()
+check(
+    "doctor: no Debian keyring: a problem, with the package to install",
+    fs["kits-keyring"]["status"] == "problem"
+    and fs["kits-keyring"]["commands"] == ["sudo apt install debian-archive-keyring"],
+    fs["kits-keyring"],
+)
+kits.DEBIAN_KEYRING = real_ring
 
 # A kit from Debian's debug archive (the symbols kit): its signed index is in the kits' own lists.
 (L / "deb.debian.org_debian_dists_trixie_main_binary-armhf_Packages").write_text(packages)
