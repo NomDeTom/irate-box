@@ -252,9 +252,9 @@ setTimeout(() => {
   check('Recovery and monitoring under System holds the recovery settings; the Box doctor links there', !!d.querySelector('#page-recovery #health-settings')
     && !d.querySelector('#health #health-settings') && !!d.querySelector('#health-recovery-summary a[href="#recovery"]')
     && side.indexOf('Recovery and monitoring') > side.indexOf('System'));
-  check('update maintenance in the Updates doctor, folded: the cache, the update source and Install anyway; not on Updates',
-    !!d.querySelector('#updoctor details#update-maint #update-clear') && !!d.querySelector('#update-maint #update-force')
-    && !!d.querySelector('#update-maint #update-source-save') && !d.querySelector('#updates #update-clear, #updates #update-force'));
+  check('update maintenance in the Updates doctor, folded: the cache and the update source; not on Updates (Install anyway is a finding\'s button)',
+    !!d.querySelector('#updoctor details#update-maint #update-clear')
+    && !!d.querySelector('#update-maint #update-source-save') && !d.querySelector('#updates #update-clear, #update-force'));
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));
@@ -404,8 +404,8 @@ setTimeout(() => {
   kb.querySelector('input').click(); d.querySelector('#kit-repos input').click(); kf.elements.state.value = 'settings'; kf.dispatchEvent(new w.Event('change'));
   check('  the mirror and settings instead: within it', /About 116\.5 MB of a/.test(t('#kit-total')[0]) && !d.getElementById('kit-total').classList.contains('bad'), t('#kit-total')[0]);
   kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
-  const force = d.getElementById('update-force');
-  check('Install anyway: offered for a version that failed verification', force && !force.disabled && t('#force-failed .finding').length === 1, t('#force-failed .finding'));
+  check('Install anyway: not a control of its own in the recovery actions (the doctor offers it on its finding)', !d.getElementById('update-force'));
+  check('  a version that failed verification: the summary sends to the update doctor', /update doctor says whether Install anyway/.test(t('#update-summary')[0] || ''), t('#update-summary'));
   check('Install as usual: not offered', d.getElementById('update-install').disabled);
   check('the updates doctor badged', d.querySelector('a[href="#updoctor"]').dataset.badge === '!');
   check('git: the Mirrors list shows what it keeps and its outcome', /keeps master · 2 releases · 2 prereleases · shallow · budget 2048 MB/.test(t('#git-mirrors')[0])
@@ -503,7 +503,6 @@ setTimeout(() => {
   const mf = d.getElementById('git-mirror-add').elements;
   mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
-  force.click();
   const drop = d.getElementById('app-access-drop');
   chipsOf(drop, 'Access').find((c) => c.textContent === 'Administrators').click();
   [...d.getElementById('app-access-drop').querySelectorAll('button')].find((b) => b.textContent === 'Save').click();
@@ -517,7 +516,6 @@ setTimeout(() => {
       JSON.stringify(posted.find((p) => p[0] === '/admin/tiles')));
     check('padlock saved for Kiwix', posted.some((p) => p[0] === '/admin/visibility' && p[1].app === 'wiki' && p[1].locked === 'padlock'), JSON.stringify(posted.filter((p) => p[0] === '/admin/visibility')));
     check('updates: the signing level sent with the keys', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'signing' && p[1].level === 'tags' && /ssh-ed25519/.test(p[1].signers)));
-    check('Install anyway asks the hub', posted.some((p) => p[0] === '/admin/update' && p[1].action === 'force-install'), JSON.stringify(posted));
     check('Private on the drop asks the hub', JSON.stringify(posted.find((p) => p[0] === '/admin/access')) === JSON.stringify(['/admin/access', { app: 'drop', mode: 'private' }]), JSON.stringify(posted));
     check('git: Update on a mirror asks the hub', posted.some((p) => p[0] === '/admin/git' && p[1].action === 'mirror-update' && p[1].name === 'firmware'));
     const keepRev = posted.find((p) => p[1].action === 'mirror-change');

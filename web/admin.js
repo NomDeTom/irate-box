@@ -3116,9 +3116,6 @@ const upd = {
   udFineFold: document.getElementById("updoctor-fine-fold"),
   udFineCount: document.getElementById("updoctor-fine-count"),
   udFine: document.getElementById("updoctor-fine"),
-  force: document.getElementById("update-force"),
-  forceFailed: document.getElementById("force-failed"),
-  forceNote: document.getElementById("force-note"),
 };
 const MARK = { ok: "✅", warn: "⚠️", problem: "❌" };
 // evidence: what a check saw (an error line, a file), as data; note: what the check does not show.
@@ -3144,12 +3141,11 @@ let updWaiting = null; // { id, action }
 let updPoll = null;
 let updCandidate = null;
 
-// Each answer goes under the buttons that asked: the doctor's under its, the cache's and Install anyway's in Maintenance.
-function updSay(action, text, ok, extra) {
-  const node =
-    action === "force-install"
-      ? upd.forceNote
-      : action === "set-source" || action === "poll-source"
+// Each answer goes under the buttons that asked: a finding's and the doctor's under the doctor, the cache's in its recovery actions.
+function updSay(action, text, ok, extra, fromFinding = false) {
+  const node = fromFinding
+    ? upd.doctorNote
+    : action === "set-source" || action === "poll-source"
         ? upd.sourceNote
         : action === "clear-cache"
           ? upd.clearNote
@@ -3242,7 +3238,10 @@ function renderUpdoctor(d) {
         type: "button",
         className: "action-btn",
         textContent: a.label,
-        onclick: () => requestUpdate(a.choice),
+        onclick: () => {
+          if (a.confirm && !confirm(a.confirm)) return;
+          requestUpdate(a.choice, null, {}, true);
+        },
       }),
     );
     return findingRow({
@@ -3317,24 +3316,12 @@ function renderUpdate(data) {
             (ready
               ? "Downloaded and verified. Its downloads are cached. Ready to install."
               : fetched
-                ? "It did not pass verification (below). It cannot be installed."
+                ? "It did not pass verification (below). It cannot be installed. The update doctor says whether Install anyway can skip the failed checks."
                 : "Download it to verify it and download what it needs."),
     );
   }
   const checks = (fetched && s.checks) || [];
   const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
-  upd.forceFailed.hidden = !failedChecks.length;
-  upd.forceFailed.replaceChildren(
-    ...failedChecks.map((c) =>
-      findingRow({
-        state: "problem",
-        title: c.name,
-        detail: c.detail,
-        how: c.fix || "",
-        evidence: c.evidence || [],
-      }),
-    ),
-  );
   upd.checks.hidden = !checks.length;
   upd.checks.replaceChildren(
     ...checks.map((c) =>
@@ -3395,6 +3382,7 @@ function renderUpdate(data) {
               textContent: "Show reason: Updates doctor →",
             })
           : null,
+        updWaiting.finding,
       );
       updWaiting = null;
       renderUpdate(data);
@@ -3409,8 +3397,6 @@ function renderUpdate(data) {
   upd.doctor.disabled = upd.clear.disabled = busy;
   upd.fetch.disabled = busy || fetched;
   upd.install.disabled = busy || (fetched && !ready);
-  upd.force.disabled = busy || !failedChecks.length;
-  upd.force.dataset.failed = failedChecks.map((c) => c.name).join("\n");
   clearTimeout(updPoll);
   if (busy) updPoll = setTimeout(loadUpdate, p ? 1000 : 2000);
 }
@@ -3432,28 +3418,23 @@ async function loadUpdate() {
   }
 }
 
-async function requestUpdate(action, endpoint = null, extra = {}) {
+// fromFinding: a doctor finding's own button, which asked its question already (Install anyway names the checks it skips) and is answered beside it.
+// Install anyway is only a finding's button: the doctor offers it by the same rule the helper installs by.
+async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = false) {
   if (
     (action === "install" || endpoint === "install") &&
     !confirm("Install the update now? The hub restarts during the install.")
-  )
-    return;
-  if (
-    action === "force-install" &&
-    !confirm(
-      `Install the downloaded version although it failed these checks?\n\n${upd.force.dataset.failed}\n\nThe installer still stops on its own errors. The hub restarts during the install.`,
-    )
   )
     return;
   try {
     updWaiting = {
       id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate, ...extra })).id,
       action: endpoint === "install" ? "install" : action,
+      finding: fromFinding,
     };
     upd.check.disabled =
       upd.fetch.disabled =
       upd.install.disabled =
-      upd.force.disabled =
         true;
     updSay(
       action,
@@ -3471,10 +3452,12 @@ async function requestUpdate(action, endpoint = null, extra = {}) {
         reach: endpoint === "install" ? "Preparing and installing the update…" : "Checking and downloading the update…",
       }[action],
       true,
+      null,
+      fromFinding,
     );
     loadUpdate();
   } catch (err) {
-    updSay(action, err.message, false);
+    updSay(action, err.message, false, null, fromFinding);
   }
 }
 
@@ -3506,7 +3489,7 @@ upd.sourceSave.addEventListener("click", () => {
     repo &&
     branch &&
     confirm(
-      `Install updates from the branch ${branch} of ${repo}?\n\nThe box runs the code it fetches as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
+      `Install updates from the branch ${branch} of ${repo}?\n\nThe box runs the code it downloads as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
     )
   )
     requestUpdate("set-source", null, { repo, branch, confirmed: true });
@@ -3609,7 +3592,6 @@ auto.form.addEventListener("submit", async (e) => {
     say(err.message, false, auto.note);
   }
 });
-upd.force.addEventListener("click", () => requestUpdate("force-install"));
 loadUpdate();
 
 // --- security --------------------------------------------------------------------------

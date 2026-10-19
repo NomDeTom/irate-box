@@ -127,10 +127,8 @@ setTimeout(() => {
     items.some((i) => /^✅ Shell syntax of install\.sh — The shell finds no syntax error in it\.$/.test(i))
     && items.some((i) => /^❌ Shell syntax of uninstall\.sh — The shell finds a syntax error in it\..*line 2/.test(i))
     && items.some((i) => /Python files compile — 1 file compiles\..*does not prove that the update is safe/.test(i)), items.join(' | '));
-  check('  Install anyway lists the failed checks, by their names', t(d.getElementById('force-failed')).includes('Shell syntax of uninstall.sh')
-    && d.getElementById('update-force').dataset.failed.includes('Shell syntax of uninstall.sh'), t(d.getElementById('force-failed')));
 
-  const all = ['doctor-findings', 'updoctor-fine', 'update-checks', 'force-failed'].map((id) => d.getElementById(id).textContent).join(' ');
+  const all = ['doctor-findings', 'updoctor-fine', 'update-checks'].map((id) => d.getElementById(id).textContent).join(' ');
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);
   // The doctor's answer, said from its message (as the result file keeps it), under its button.

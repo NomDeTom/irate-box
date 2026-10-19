@@ -5381,7 +5381,7 @@
             </div>
             <p class="setting-desc action-note" id="update-clear-note" role="status" hidden></p>
             <h3 data-i18n="admin.update.source">Update source</h3>
-            <p class="setting-desc" data-i18n="admin.update.source.desc">The repository and branch this box installs updates from, for example a fork. The box runs the code it fetches as root, so use only a repository you trust. The signing level above still applies.</p>
+            <p class="setting-desc" data-i18n="admin.update.source.desc">The repository and branch this box installs updates from, for example a fork. The box runs the code it downloads as root, so use only a repository you trust. The signing level above still applies.</p>
             <div class="library-buttons">
               <label data-i18n="admin.update.source.repo">Repository <input type="url" id="update-source-repo" size="48" placeholder="https://github.com/owner/irate-box" translate="no" autocomplete="off" spellcheck="false" /></label>
               <label data-i18n="admin.update.source.branch">Branch <input type="text" id="update-source-branch" size="16" placeholder="main" translate="no" autocomplete="off" spellcheck="false" /></label>
@@ -5391,13 +5391,6 @@
               <button class="action-btn" type="button" id="update-source-save" data-i18n="admin.update.source.save">Use this repository and branch</button>
             </div>
             <p class="setting-desc action-note" id="update-source-note" role="status" hidden></p>
-            <h3 data-i18n="admin.update.force">Install anyway</h3>
-            <p class="setting-desc" data-i18n="admin.update.force.desc">For a trusted update with a known checker failure. Review the failed checks below. Signing requirements and installer syntax checks cannot be skipped.</p>
-            <div class="findings" id="force-failed" hidden></div>
-            <div class="library-buttons">
-              <button class="action-btn" type="button" id="update-force" data-i18n="admin.update.force.install" disabled>Install the downloaded version anyway</button>
-            </div>
-            <p class="setting-desc action-note" id="force-note" role="status" hidden></p>
           </details>
         </section>
       </main>

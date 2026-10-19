@@ -72,6 +72,10 @@ def world(
     ls_code=0,
     apt=(0, "Hit:1 https://deb.debian.org/debian trixie InRelease\n"),
     free_mb=5000,
+    head_sha="",
+    bash_code=0,
+    status_code=0,
+    remote="https://example.invalid/irate-box",
 ):
     """The network, git, apt and the disk as one case wants them."""
 
@@ -103,10 +107,14 @@ def world(
             )
         if cmd[0] == "apt-get":
             return subprocess.CompletedProcess(cmd, apt[0], apt[1], "")
+        if cmd[:2] == ("bash", "-n"):
+            return subprocess.CompletedProcess(cmd, bash_code, "", "")
+        if cmd[0] == "git" and "rev-parse" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, head_sha + "\n", "")
         if cmd[0] == "git" and "status" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, "", "")
+            return subprocess.CompletedProcess(cmd, status_code, "", "fatal: not a git repository\n")
         if cmd[0] == "git" and "get-url" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, "https://example.invalid/irate-box\n", "")
+            return subprocess.CompletedProcess(cmd, 0, remote + "\n", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     usage = mock.Mock(free=free_mb << 20)
@@ -196,6 +204,11 @@ check(
     and {"update.target.branch.why", "update.target.branch.fix"} <= msg_ids(fs["target"])
     and fs["target"]["evidence"] == [str(OPTIONS)],
     fs["target"],
+)
+check(
+    "  its link lands on the Branch field",
+    fs["target"]["go"]["mark"] == "update-source-branch",
+    fs["target"].get("go"),
 )
 check(
     "  a button to ask the repository for its default branch",
@@ -387,10 +400,10 @@ check(
     fs["space:system"],
 )
 check(
-    "  a stale cache lock: counted, named, Maintenance the place to clear it",
+    "  a stale cache lock: counted, named, no link (the cure is a button on the finding)",
     msg_args(fs["cache"], "update.cache.lock") == {"n": 1}
     and fs["cache"]["evidence"] == ["index.lock"]
-    and fs["cache"]["go"]["section"] == "updoctor",
+    and not fs["cache"].get("go"),
     fs["cache"],
 )
 check(
@@ -413,6 +426,65 @@ check(
     lc,
 )
 check("  every finding well said", not well_said(fs), well_said(fs))
+CLEAR = [("clear-cache", "update.cache.clear.button", "update.cache.clear.confirm")]
+
+
+def cure(f):
+    return [(a["choice"], a["label"]["id"], a["confirm"]["id"]) for a in f["actions"]]
+
+
+check("  the lock has the button to clear the update cache, behind a question", cure(fs["cache"]) == CLEAR, fs["cache"])
+check("  no Install anyway without a downloaded version that was checked", not lc["actions"], lc["actions"])
+
+# A cache that cannot be read, and one copied from another repository: the same button.
+(T / "cache" / "src" / ".git" / "index.lock").unlink()
+fs = doctor(status_code=128)
+check(
+    "a cache that cannot be read: the same button, behind the same question",
+    "update.cache.damaged" in msg_ids(fs["cache"]) and cure(fs["cache"]) == CLEAR,
+    fs["cache"],
+)
+fs = doctor(remote="https://example.invalid/other")
+check(
+    "  a cache from another repository: a warning, the same button",
+    fs["cache"]["status"] == "warn" and cure(fs["cache"]) == CLEAR,
+    fs["cache"],
+)
+fs = doctor()
+check("  a cache that is intact: no button", fs["cache"]["status"] == "ok" and not fs["cache"]["actions"], fs["cache"])
+
+
+# The last download's failed checks and Install anyway: offered by the rule update_force_install refuses by.
+def failed_check(cid, name, warn=False):
+    return {"id": cid, "name": name, "ok": False, "detail": "", "warn": warn}
+
+
+def force_case(checks, sha="a" * 40, **case):
+    (T / "cache" / "src" / "install.sh").write_text("#!/bin/bash\n")
+    H.UPDATE_STATE.write_text(json.dumps({"checked_sha": "a" * 40, "checks": checks}))
+    return doctor(head_sha=sha, **case)["last-check"]
+
+
+lc = force_case([failed_check("python", "Python files compile"), failed_check("nginx", "nginx accepts it", warn=True)])
+check(
+    "Install anyway on the last check: one button, its question lists exactly the checks it skips (not the warning)",
+    [a["choice"] for a in lc["actions"]] == ["force-install"]
+    and lc["actions"][0]["label"]["id"] == "update.last-check.force"
+    and msg_args({"summary": lc["actions"][0]["confirm"]}, "update.last-check.force.confirm")
+    == {"n": 1, "checks": ["Python files compile"]},
+    lc["actions"],
+)
+lc = force_case([failed_check("python", "Python files compile"), failed_check("signed", "Signed as this box requires")])
+check("  not when the signing level failed", not lc["actions"], lc["actions"])
+lc = force_case([{"name": H.SIGNED_OLD, "ok": False, "detail": "", "warn": False}])
+check("  nor when it failed in a state kept before the checks had IDs", not lc["actions"], lc["actions"])
+lc = force_case([failed_check("python", "Python files compile")], bash_code=2)
+check("  nor when the downloaded installer does not parse", not lc["actions"], lc["actions"])
+lc = force_case([failed_check("python", "Python files compile")], sha="b" * 40)
+check("  nor when the checked version is not the one downloaded", not lc["actions"], lc["actions"])
+lc = force_case([failed_check("nginx", "nginx accepts it", warn=True)])
+check("  nor when only a warning failed: nothing to skip", not lc["actions"], lc["actions"])
+(T / "cache" / "src" / "install.sh").unlink()
 
 # The certificate refused; GitHub's rate used up; the branch gone; the clock two hours fast.
 H.UPDATE_STATE.unlink()
@@ -433,6 +505,17 @@ check(
     "  a branch that is not there: Branch not found, with the repository and the branch as data",
     msg_args(fs["repo"], "update.repo.no-branch") == {"repo": "https://example.invalid/irate-box", "branch": "main"},
     fs["repo"],
+)
+check(
+    "  and its link lands on the Branch field of Update source, which the page marks",
+    fs["repo"]["go"]["section"] == "updoctor" and fs["repo"]["go"]["mark"] == "update-source-branch",
+    fs["repo"].get("go"),
+)
+fs = doctor(ls_code=128)
+check(
+    "a repository that cannot be read: the link lands on the Repository field",
+    fs["repo"]["status"] == "problem" and fs["repo"]["go"]["mark"] == "update-source-repo",
+    fs["repo"].get("go"),
 )
 fs = doctor(date=time.time() - 7200)
 check(

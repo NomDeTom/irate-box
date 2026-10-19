@@ -44,7 +44,8 @@ for (const [stage, state, labels, disabled] of [
   const buttons = ['check', 'fetch', 'install'].map(name => d.getElementById(`update-${name}`));
   check(`${stage}: three stage-aware actions`, buttons.every((button, index) => button.textContent === labels[index] && button.disabled === disabled[index]));
 }
-check('repairs belong to the doctor, not Updates', ['update-clear', 'update-force'].every(id => d.getElementById(id).closest('.admin-pane').id === 'updoctor'));
+check('repairs belong to the doctor, not Updates', d.getElementById('update-clear').closest('.admin-pane').id === 'updoctor');
+check('  Install anyway is only a finding\'s button, not a second control in the recovery actions', !d.getElementById('update-force'));
 // Debian's buttons follow the same stages as the hub card's: nothing known, waiting, downloaded.
 {
   const debian = (waiting, fetched) => {
@@ -65,6 +66,33 @@ w.eval(`renderUpdoctor({ at: 1790950000, findings: [
 const ask = [...d.querySelectorAll('#doctor-findings button.action-btn')].filter((b) => /default branch/.test(b.textContent));
 check('the branch warning has one button to ask the repository', ask.length === 1, t('#doctor-findings .finding'));
 ask[0].click();
+// The cache's and the last check's buttons: each asks first, and Install anyway's question lists the checks it skips.
+w.eval(`renderUpdoctor({ at: 1790950000, findings: [
+  { id: 'cache', title: 'Update cache', status: 'problem', summary: 'Stale cache lock.',
+    actions: [{ choice: 'clear-cache', label: 'Clear the update cache', confirm: 'Delete the cached copy of the repository and its downloads?' }] },
+  { id: 'last-check', title: 'Last update check', status: 'problem', summary: 'The downloaded version failed 2 checks.',
+    actions: [{ choice: 'force-install', label: 'Install anyway',
+      confirm: 'Install the downloaded version although it failed these 2 checks: Python files compile and Shell syntax? The installer still stops on its own errors.' }] }] })`);
+const doctorButton = (label) => [...d.querySelectorAll('#doctor-findings button.action-btn')].filter((b) => b.textContent === label);
+check('the cache finding has a Clear the update cache button, and the last check an Install anyway button',
+  doctorButton('Clear the update cache').length === 1 && doctorButton('Install anyway').length === 1, t('#doctor-findings .finding'));
+const asks = [];
+const sentBefore = posted.length;
+w.confirm = (text) => { asks.push(text); return false; };
+doctorButton('Clear the update cache')[0].click();
+doctorButton('Install anyway')[0].click();
+check('  declined, they send nothing', posted.length === sentBefore && asks.length === 2, [posted.length - sentBefore, asks]);
+check('  Install anyway asks once, listing exactly the checks it skips', asks.filter((a) => /Python files compile and Shell syntax/.test(a)).length === 1
+  && /Delete the cached copy/.test(asks[0]), asks);
+w.confirm = (text) => { asks.push(text); return true; };
+doctorButton('Clear the update cache')[0].click();
+doctorButton('Install anyway')[0].click();
+check('  accepted, each asks once more (Install anyway is not asked a second time by the page)', asks.length === 4, asks);
+w.eval(`renderUpdoctor({ at: 1790950000, findings: [
+  { id: 'last-check', title: 'Last update check', status: 'problem', summary: 'The downloaded version failed 1 check: Signed.' }] })`);
+check('Install anyway is absent when the finding does not offer it (signing or installer syntax failed)', !doctorButton('Install anyway').length
+  && !doctorButton('Clear the update cache').length, t('#doctor-findings .finding'));
+const accepted = () => posted.slice(sentBefore).filter(([, b]) => b).map(([, b]) => JSON.parse(b).action);
 // The source form: asked first, changed only after a confirmation that names the repository.
 d.getElementById('update-source-repo').value = 'https://example.org/fork/irate-box';
 d.getElementById('update-source-branch').value = 'dev';
@@ -75,11 +103,25 @@ const before = posted.length;
 w.confirm = (text) => { asked = text; return true; };
 d.getElementById('update-source-save').click();
 d.getElementById('update-source-poll').click();
-const settle = () => {
+// A finding's link lands on the setting it names: the fold opened, the field marked.
+w.eval(`renderUpdoctor({ at: 1790950000, findings: [
+  { id: 'repo', title: 'Repository', status: 'problem', summary: 'Branch not found.', fix: 'Correct the branch.',
+    go: { section: 'updoctor', where: 'Update source', mark: 'update-source-branch' } }] })`);
+[...d.querySelectorAll('#updoctor-summary button')][0].click();
+const land = [...d.querySelectorAll('#doctor-findings a.go-btn')].find((a) => /Update source/.test(a.textContent));
+check('a finding links to Update source by name', !!land, t('#doctor-findings .finding'));
+d.getElementById('update-maint').open = false;
+d.getElementById('updoctor').hidden = false; // the page's router shows the pane before the link lands
+check('  its button names the place', /^Go to Update source/.test(land.textContent.trim()), land.textContent);
+land.click();
+// The page lands a moment after the click (landOn waits 50 ms): wait for what it does, not for a fixed time.
+const until = (done, then, left = 40) => (done() || left === 0 ? then() : setTimeout(() => until(done, then, left - 1), 50));
+const branchLanded = () => d.getElementById('update-maint').open && d.getElementById('update-source-branch').classList.contains('landed');
+until(branchLanded, () => {
   check('  it asks the update helper (poll-target), not the box doctor', posted.some(([u, b]) => /\/admin\/update$/.test(u) && /"action":"poll-target"/.test(b)), posted);
-};
-setTimeout(() => {
-  settle();
+  check('  the link opens the fold and marks the Branch field', branchLanded(),
+    [d.getElementById('update-maint').open, d.getElementById('update-source-branch').className]);
+  check('the cache and Install anyway buttons, accepted, post their actions to the update helper', ['clear-cache', 'force-install'].every((a) => accepted().includes(a)), accepted());
   const sent = posted.slice(before).filter(([, b]) => b).map(([, b]) => JSON.parse(b));
   check('the source form: declined sends nothing, accepted sends the repository, the branch and the confirmation',
     posted.slice(0, before).every(([, b]) => !/set-source/.test(b)) && sent.some((b) => b.action === 'set-source' && b.repo === 'https://example.org/fork/irate-box' && b.branch === 'dev' && b.confirmed === true), sent);
@@ -87,4 +129,4 @@ setTimeout(() => {
   check('  its poll asks about the typed repository', sent.some((b) => b.action === 'poll-source' && b.repo === 'https://example.org/fork/irate-box'), sent);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
-}, 50);
+});
