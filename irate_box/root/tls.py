@@ -291,7 +291,7 @@ def configure(transport, admin_http):
 
 
 def openssl(*args, inp=None):
-    out = subprocess.run(["openssl", *args], input=inp, capture_output=True, text=True, timeout=60)
+    out = subprocess.run(["openssl", *args], input=inp, capture_output=True, text=True, timeout=60)  # noqa: TID251
     if out.returncode != 0:
         raise RuntimeError(f"openssl {args[0]}: {(out.stderr or out.stdout).strip().splitlines()[-1:]}")
     return out.stdout
@@ -299,7 +299,7 @@ def openssl(*args, inp=None):
 
 def addresses():
     """The box's IPv4 addresses now (not loopback), from `ip`."""
-    out = subprocess.run(["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True).stdout
+    out = subprocess.run(["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True).stdout  # noqa: TID251
     found = []
     for m in re.finditer(r"^\d+:\s+(\S+)\s+inet\s+([0-9.]+)/(\d+)", out, re.M):
         iface, addr, plen = m.groups()
@@ -507,7 +507,7 @@ def _nginx_check_and_reload():
     """The front's own check, then a reload; (ok, why). Stood in by the tests. (Named for nginx,
     its first; Caddy's is caddy validate on its live config.)"""
     if _server() == "caddy":
-        t = subprocess.run(
+        t = subprocess.run(  # noqa: TID251
             [
                 "caddy",
                 "validate",
@@ -525,20 +525,20 @@ def _nginx_check_and_reload():
                 False,
                 ((t.stderr or t.stdout).strip().splitlines() or ["caddy validate failed"])[-1],
             )
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: TID251
             ["systemctl", "restart", "caddy"],
             capture_output=True,
             text=True,
             timeout=60,
         )
         return r.returncode == 0, (r.stderr or "").strip()
-    t = subprocess.run(["nginx", "-t", "-q"], capture_output=True, text=True, timeout=60)
+    t = subprocess.run(["nginx", "-t", "-q"], capture_output=True, text=True, timeout=60)  # noqa: TID251
     if t.returncode != 0:
         return (
             False,
             ((t.stderr or t.stdout).strip().splitlines() or ["nginx -t failed"])[-1],
         )
-    r = subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=60)
+    r = subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=60)  # noqa: TID251
     return r.returncode == 0, (r.stderr or "").strip()
 
 
@@ -738,7 +738,7 @@ def import_own(chain_pem, key_pem):
                 )
             )
         if (
-            subprocess.run(
+            subprocess.run(  # noqa: TID251
                 ["openssl", "x509", "-in", str(leaf), "-noout", "-checkend", "0"],
                 capture_output=True,
             ).returncode
@@ -756,7 +756,7 @@ def import_own(chain_pem, key_pem):
             + (["-untrusted", str(rest)] if len(certs) > 1 else [])
             + [str(leaf)]
         )
-        v = subprocess.run(args, capture_output=True, text=True)
+        v = subprocess.run(args, capture_output=True, text=True)  # noqa: TID251
         if v.returncode != 0:
             why = (v.stderr or v.stdout).strip().splitlines()[-1:] or ["openssl verify failed"]
             raise Refused(
@@ -767,7 +767,7 @@ def import_own(chain_pem, key_pem):
                     detail=why[0][:200],
                 )
             )
-        san = subprocess.run(
+        san = subprocess.run(  # noqa: TID251
             ["openssl", "x509", "-in", str(leaf), "-noout", "-ext", "subjectAltName"],
             capture_output=True,
             text=True,

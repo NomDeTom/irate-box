@@ -73,7 +73,7 @@ DRIVER_LINE = "aic8800: firmware not answering: resetting the device"
 
 def _run(*cmd, timeout=60):
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
         return p.returncode, (p.stdout + p.stderr).strip()
     except subprocess.TimeoutExpired:
         return 124, "timed out"

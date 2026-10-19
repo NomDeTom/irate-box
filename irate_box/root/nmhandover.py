@@ -65,7 +65,7 @@ VOLATILE = ("connection.timestamp", "GENERAL.", "IP4.", "IP6.", "DHCP4.", "DHCP6
 
 def run(*cmd, timeout=60):
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
     except FileNotFoundError:
         return 127, f"{cmd[0]}: not installed"
     except subprocess.TimeoutExpired:

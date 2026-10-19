@@ -362,7 +362,7 @@ def book():
     with tempfile.TemporaryDirectory() as tmp:
         built = site(Path(tmp) / "site")
         out = Path(tmp) / ZIM_FILE
-        subprocess.run(
+        subprocess.run(  # noqa: TID251
             [
                 py,
                 str(Path(home, "package.py")),

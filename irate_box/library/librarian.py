@@ -580,7 +580,7 @@ def _queue_root(req):
 
 
 def _git(*args, timeout=300):
-    out = subprocess.run(["git", *args], capture_output=True, text=True, timeout=timeout)
+    out = subprocess.run(["git", *args], capture_output=True, text=True, timeout=timeout)  # noqa: TID251
     if out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
         what = args[2] if args[0] == "-C" and len(args) > 2 else args[0]
@@ -648,7 +648,7 @@ def _pack_git(src, cand, part):
                 path.unlink()
         adapt = APPS[name]["source"].get("adapt")
         if adapt:
-            out = subprocess.run(
+            out = subprocess.run(  # noqa: TID251
                 [str(CHECKOUT / "irate-box"), Path(adapt).stem, str(tree), str(CHECKOUT / "web")],
                 capture_output=True,
                 text=True,
@@ -1584,7 +1584,7 @@ def _kiwix(*args):
         raise LibrarianError(
             M("library.kiwix.manage-missing", "Cache dependencies missing. Install kiwix-tools to get kiwix-manage.")
         )
-    return subprocess.run(
+    return subprocess.run(  # noqa: TID251
         [manage, *map(str, args)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     ).returncode
 

@@ -1431,7 +1431,7 @@ def run(*cmd, timeout=60):
     if not shutil.which(cmd[0]):
         return 127, f"{cmd[0]} not found"
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
         return p.returncode, (p.stdout + p.stderr).strip()
     except subprocess.TimeoutExpired:
         return 124, "timed out"
@@ -1864,7 +1864,7 @@ class Actor:
 
     def _reboot(self):
         run("sync")
-        subprocess.Popen(["systemctl", "reboot"])
+        subprocess.Popen(["systemctl", "reboot"])  # noqa: TID251
         return "rebooting"
 
     def pin(self):
@@ -1914,7 +1914,7 @@ class DropWatcher(threading.Thread):
     def run(self):
         while True:
             try:
-                proc = subprocess.Popen(["ip", "-o", "monitor", "link"], stdout=subprocess.PIPE, text=True)
+                proc = subprocess.Popen(["ip", "-o", "monitor", "link"], stdout=subprocess.PIPE, text=True)  # noqa: TID251
             except OSError:
                 return
             for line in proc.stdout:

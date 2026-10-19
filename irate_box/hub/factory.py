@@ -54,7 +54,7 @@ MAX_BYTES = 8 << 20
 
 
 def _git(*args, cwd=None, inp=None, timeout=120):
-    return subprocess.run(
+    return subprocess.run(  # noqa: TID251
         ["git", "-c", "safe.directory=*", *args], cwd=cwd, input=inp, capture_output=True, timeout=timeout
     )
 

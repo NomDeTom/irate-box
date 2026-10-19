@@ -313,7 +313,7 @@ def run_view(run, offset=0, limit=64 * 1024):
 
 
 def _git(*args, cwd=None, timeout=600):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
 
 
 def use_mirrors():
@@ -457,7 +457,7 @@ def build(job):
                 env["PIP_NO_INDEX"] = "1"
                 env["PIP_FIND_LINKS"] = str(wheelhouse)
                 say(f"PIP_FIND_LINKS={wheelhouse} (the Building kit's wheelhouse)")
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: TID251
                 ["bash", SCRIPT],
                 cwd=src,
                 env=env,
@@ -769,13 +769,13 @@ def build_firmware(job):
             if out.returncode != 0:
                 raise RuntimeError(f"Checkout failed: {out.stderr.strip()}")
             if offline:
-                probe = subprocess.run([*OFFLINE, "true"], capture_output=True, text=True)
+                probe = subprocess.run([*OFFLINE, "true"], capture_output=True, text=True)  # noqa: TID251
                 if probe.returncode != 0:
                     raise RuntimeError(
                         f"Environment check failed. This box cannot build without the network (unshare: {probe.stderr.strip()[:200]})."
                     )
                 say("offline: no network at all (a network namespace of its own), from the submodules on")
-            out = subprocess.run(
+            out = subprocess.run(  # noqa: TID251
                 [*netns, "git", "submodule", "update", "--init", "--recursive", "--depth", "1"],
                 cwd=src,
                 capture_output=True,
@@ -834,7 +834,7 @@ def build_firmware(job):
                 f"{'fetching the tools for' if keep['tools_only'] else 'building'} {env_name} (time limit {TIME_LIMIT // 60} min)"
             )
             with Usage() as usage:
-                proc = subprocess.run(
+                proc = subprocess.run(  # noqa: TID251
                     [*netns, "bash", "-c", FIRMWARE_SCRIPT],
                     cwd=src,
                     env=env,
@@ -928,7 +928,7 @@ def snapshot(limit=20):
     # systemd lists properties in its own order, not the order asked: read them by name.
     props = dict(
         ln.split("=", 1)
-        for ln in subprocess.run(
+        for ln in subprocess.run(  # noqa: TID251
             ["systemctl", "show", "-p", "MemoryMax", "-p", "MemoryHigh", "irate-box-ci.service"],
             capture_output=True,
             text=True,

@@ -35,7 +35,7 @@ def clock_trusted():
     if (RUN / "clock-trusted").exists():
         return True
     try:
-        out = subprocess.run(
+        out = subprocess.run(  # noqa: TID251
             ["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True, timeout=5
         )
         return out.stdout.strip() == "yes"
@@ -46,7 +46,7 @@ def clock_trusted():
 def look(units):
     """{unit: (active?, InvocationID)} for the installed ones, from one `systemctl show`."""
     try:
-        out = subprocess.run(
+        out = subprocess.run(  # noqa: TID251
             ["systemctl", "show", "--property=Id,LoadState,ActiveState,InvocationID", *units],
             capture_output=True,
             text=True,

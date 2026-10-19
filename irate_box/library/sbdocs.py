@@ -56,8 +56,8 @@ def fetch(commit, out):
             ["fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", commit],
             ["checkout", "-q", "FETCH_HEAD"],
         ):
-            subprocess.run(git + cmd, check=True, capture_output=True, timeout=600)
-        got = subprocess.run(git + ["rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+            subprocess.run(git + cmd, check=True, capture_output=True, timeout=600)  # noqa: TID251
+        got = subprocess.run(git + ["rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()  # noqa: TID251
         if got != commit:
             raise ValueError(f"fetched {got}, not {commit}")
         pack(Path(tmp) / "docs", out)

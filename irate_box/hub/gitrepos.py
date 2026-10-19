@@ -79,7 +79,7 @@ HOOKS_PUBLIC = Path(__file__).resolve().parents[2] / "scripts" / "git-hooks-publ
 
 
 def _git(*args, cwd=None):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=60)
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=60)  # noqa: TID251
 
 
 def _size(path):

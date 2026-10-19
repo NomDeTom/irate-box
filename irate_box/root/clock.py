@@ -75,7 +75,7 @@ STATE_WORDS = {
 
 def run(*cmd, timeout=120):
     try:
-        return subprocess.run(
+        return subprocess.run(  # noqa: TID251
             cmd,
             capture_output=True,
             text=True,

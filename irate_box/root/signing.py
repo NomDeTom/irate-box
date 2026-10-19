@@ -100,7 +100,7 @@ def public(data):
 
 
 def _git(src, *args, env=None, timeout=60):
-    return subprocess.run(["git", "-C", str(src), *args], capture_output=True, text=True, env=env, timeout=timeout)
+    return subprocess.run(["git", "-C", str(src), *args], capture_output=True, text=True, env=env, timeout=timeout)  # noqa: TID251
 
 
 def newest_tag(src):
@@ -188,7 +188,7 @@ def check_commits(src, revs, key_file):
         ring = Path(tmp) / "github.gpg"
         ring.write_bytes(keyring)
         for rev in revs:
-            raw = subprocess.run(
+            raw = subprocess.run(  # noqa: TID251
                 ["git", "-C", str(src), "cat-file", "commit", rev], capture_output=True, timeout=60
             ).stdout
             sig, payload = _split_commit(raw)
@@ -197,7 +197,7 @@ def check_commits(src, revs, key_file):
                 return False, M("update.signed.unsigned", "The commit {commit} is not signed.", commit=short), []
             (Path(tmp) / "sig").write_bytes(sig)
             (Path(tmp) / "payload").write_bytes(payload)
-            out = subprocess.run(
+            out = subprocess.run(  # noqa: TID251
                 [
                     "gpgv",
                     "--status-fd",

@@ -256,7 +256,7 @@ def system(*argv):
     executable = shutil.which(argv[0], path="/usr/sbin:/usr/bin:/sbin:/bin")
     if not executable:
         raise FileNotFoundError(argv[0])
-    return subprocess.run(
+    return subprocess.run(  # noqa: TID251
         [executable, *argv[1:]],
         check=False,
         capture_output=True,

@@ -119,7 +119,7 @@ def run(*cmd, timeout=15):
     if not shutil.which(cmd[0]):
         return 127, ""
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
         return p.returncode, p.stdout
     except (OSError, subprocess.SubprocessError):
         return 1, ""

@@ -69,7 +69,7 @@ APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "non
 
 def run(cmd, timeout=900, cwd=None):
     """Every command goes through here (the tests stand it in)."""
-    return subprocess.run(
+    return subprocess.run(  # noqa: TID251
         cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=dict(os.environ, **APT_ENV)
     )
 
@@ -478,7 +478,7 @@ def set_settings(pid, channel, mode, days, every=None):
 def dearmor(armored):
     """An armoured key as the binary keyring apt's trusted.gpg.d holds (gpg --dearmor); None without gpg."""
     try:
-        p = subprocess.run(["gpg", "--dearmor"], input=armored, capture_output=True, timeout=60)
+        p = subprocess.run(["gpg", "--dearmor"], input=armored, capture_output=True, timeout=60)  # noqa: TID251
     except OSError:
         return None
     return p.stdout if p.returncode == 0 and p.stdout else None

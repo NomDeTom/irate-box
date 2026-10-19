@@ -66,7 +66,7 @@ def kiwix_problem(path, timeout=300, user=None):
             shutil.chown(d, user, user)  # the scratch library is written as that user
             cmd = ["runuser", "-u", user, "--", *cmd]
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
         except (OSError, subprocess.SubprocessError) as exc:
             return f"Book reader unavailable: kiwix-manage could not run ({exc})."
         if r.returncode == 0 and lib.exists() and "<book " in lib.read_text(errors="replace"):

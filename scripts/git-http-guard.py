@@ -51,7 +51,7 @@ def main():
         body.seek(0)
         env = dict(os.environ, CONTENT_LENGTH=str(total))
         env.pop("HTTP_TRANSFER_ENCODING", None)
-        return subprocess.run([BACKEND], stdin=body, env=env, close_fds=True).returncode
+        return subprocess.run([BACKEND], stdin=body, env=env, close_fds=True).returncode  # noqa: TID251
 
 
 if __name__ == "__main__":
