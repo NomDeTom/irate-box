@@ -990,6 +990,9 @@ if os.environ.get("IRATE_NGINX"):
                 "git": "GIT_",
                 "notebook": "NOTEBOOK_",
                 "admin": "ADMIN_",
+                "draw": "DRAW_",
+                "mermaid": "MERMAID_",
+                "sync": "SYNC_",
             }
             with (
                 mock.patch.multiple(

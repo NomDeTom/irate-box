@@ -362,11 +362,15 @@ check(
     "  the site: /admin/, /term/ and /sync/ include it; each server block can ask",
     all(
         site.index("include @ACCESS@.d/gate-admin.conf*;", site.index(loc)) < site.index("\n\t}\n", site.index(loc))
-        for loc in ("location ^~ /admin/ {", "location /term/ {", "location /sync/ {")
+        for loc in (
+            "location ^~ /admin/ {",
+            "location /term/ {",
+            "location /sync/ {\n\t\tif ($irate_box_off_sync) { return 404; }\n\t\tauth_basic",
+        )
     )
-    and site.count("location = /_irate_admin") == 5
+    and site.count("location = /_irate_admin") == 8
     and site.count("proxy_set_header X-Original-URI $request_uri;\n\t\tproxy_pass http://irate_box_hub/_irate/admin;")
-    == 5,
+    == 8,
 )
 check(
     "  the add-on server: its own /_irate_user and login too, the per-add-on gates included before the shared location",
@@ -378,8 +382,8 @@ gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
 check(
     "  the site: every app location with a login has its gate include",
     all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
-    and site.count("location = /_irate_user") == 5
-    and site.count("location @irate_box_login") == 7,
+    and site.count("location = /_irate_user") == 7
+    and site.count("location @irate_box_login") == 10,
     sorted(gated),
 )
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))

@@ -367,6 +367,9 @@ NOTES_PORT=8091                     # SilverBullet's own origin; /notes/ on the 
 NOTEBOOK_PORT=8094                  # the notebooks per login: an origin apart from the shared notes'
 NB_SOCKETS=/run/irate-box-notebooks # a notebook's socket: <name>/sb.sock under it
 ADMIN_PORT=8095                     # /admin's own origin; /admin/ on the hub's port redirects there
+DRAW_PORT=8096                      # Excalidraw's, with its collaboration relay; /draw/ redirects there
+MERMAID_PORT=8097                   # Mermaid's; /mermaid/ redirects there
+SYNC_PORT=8098                      # Syncthing's web GUI; /sync/ redirects there
 # HTTPS: each origin's TLS twin, listening only once the box has a
 # certificate (/admin → Security, HTTPS; root/tls.py writes the includes in $ETC/tls/front).
 TLS_PORT=443
@@ -374,6 +377,9 @@ ADDON_TLS_PORT=8490
 NOTES_TLS_PORT=8491
 NOTEBOOK_TLS_PORT=8494
 ADMIN_TLS_PORT=8495
+DRAW_TLS_PORT=8496
+MERMAID_TLS_PORT=8497
+SYNC_TLS_PORT=8498
 WIKI_TLS_PORT=8492
 GIT_TLS_PORT=8493
 ROOM=/usr/share/hub/room
@@ -1484,6 +1490,9 @@ HUB_NOTEBOOK_PORT=$NOTEBOOK_PORT
 # The administration pages' own origin (/admin/ redirects there), and the hub's own ports, which they name in
 # the addresses they show (the pages are on another port).
 HUB_ADMIN_PORT=$ADMIN_PORT
+HUB_DRAW_PORT=$DRAW_PORT
+HUB_MERMAID_PORT=$MERMAID_PORT
+HUB_SYNC_PORT=$SYNC_PORT
 HUB_PUBLIC_PORT=$HUB_PORT
 HUB_PUBLIC_TLS_PORT=$TLS_PORT
 HUB_WIKI_PORT=$WIKI_PORT
@@ -1591,6 +1600,8 @@ nginx_prepare() {
 	HUB_NGINX_LOGINS="$NGINX_LOGINS" HUB_UNCLAIMED_FILE="$UNCLAIMED_MARK" HUB_NGINX_FRONT="$NGINX_FRONT" \
 	HUB_PORT="$HUB_PORT" HUB_ADDON_PORT="$ADDON_PORT" HUB_NOTES_PORT="$NOTES_PORT" HUB_NOTEBOOK_PORT="$NOTEBOOK_PORT" \
 	HUB_ADMIN_PORT="$ADMIN_PORT" HUB_ADMIN_TLS_PORT="$ADMIN_TLS_PORT" \
+	HUB_DRAW_PORT="$DRAW_PORT" HUB_DRAW_TLS_PORT="$DRAW_TLS_PORT" HUB_MERMAID_PORT="$MERMAID_PORT" HUB_MERMAID_TLS_PORT="$MERMAID_TLS_PORT" \
+	HUB_SYNC_PORT="$SYNC_PORT" HUB_SYNC_TLS_PORT="$SYNC_TLS_PORT" \
 	HUB_WIKI_PORT="$WIKI_PORT" HUB_GIT_PORT="$GIT_PORT" HUB_TLS_PORT="$TLS_PORT" HUB_ADDON_TLS_PORT="$ADDON_TLS_PORT" \
 	HUB_NOTES_TLS_PORT="$NOTES_TLS_PORT" HUB_NOTEBOOK_TLS_PORT="$NOTEBOOK_TLS_PORT" HUB_WIKI_TLS_PORT="$WIKI_TLS_PORT" HUB_GIT_TLS_PORT="$GIT_TLS_PORT" \
 		"$CODE/irate-box" nginx_front "$@"
@@ -1601,6 +1612,8 @@ control_dirs
 HUB_WEB_SERVER="${WEB}" HUB_ETC_DIR="${ETC}" HUB_STATE_DIR="${STATE}" HUB_PORT="${HUB_PORT}" \
 	HUB_ADDON_PORT="${ADDON_PORT}" HUB_NOTES_PORT="${NOTES_PORT}" HUB_WIKI_PORT="${WIKI_PORT}" HUB_GIT_PORT="${GIT_PORT}" HUB_NOTEBOOK_PORT="${NOTEBOOK_PORT}" \
 	HUB_ADMIN_PORT="${ADMIN_PORT}" HUB_ADMIN_TLS_PORT="${ADMIN_TLS_PORT}" \
+	HUB_DRAW_PORT="${DRAW_PORT}" HUB_DRAW_TLS_PORT="${DRAW_TLS_PORT}" HUB_MERMAID_PORT="${MERMAID_PORT}" HUB_MERMAID_TLS_PORT="${MERMAID_TLS_PORT}" \
+	HUB_SYNC_PORT="${SYNC_PORT}" HUB_SYNC_TLS_PORT="${SYNC_TLS_PORT}" \
 	HUB_TLS_PORT="${TLS_PORT}" HUB_ADDON_TLS_PORT="${ADDON_TLS_PORT}" HUB_NOTES_TLS_PORT="${NOTES_TLS_PORT}" HUB_WIKI_TLS_PORT="${WIKI_TLS_PORT}" \
 	HUB_GIT_TLS_PORT="${GIT_TLS_PORT}" HUB_NOTEBOOK_TLS_PORT="${NOTEBOOK_TLS_PORT}" "${CODE}/irate-box" tls initialise
 access_install() {
@@ -1755,6 +1768,12 @@ if [ "$WEB" = caddy ]; then
 		Environment=HUB_PORT=$HUB_PORT
 		Environment=HUB_ADMIN_PORT=$ADMIN_PORT
 		Environment=HUB_ADMIN_TLS_PORT=$ADMIN_TLS_PORT
+		Environment=HUB_DRAW_PORT=$DRAW_PORT
+		Environment=HUB_DRAW_TLS_PORT=$DRAW_TLS_PORT
+		Environment=HUB_MERMAID_PORT=$MERMAID_PORT
+		Environment=HUB_MERMAID_TLS_PORT=$MERMAID_TLS_PORT
+		Environment=HUB_SYNC_PORT=$SYNC_PORT
+		Environment=HUB_SYNC_TLS_PORT=$SYNC_TLS_PORT
 		Environment=HUB_ADDON_PORT=$ADDON_PORT
 		Environment=HUB_NOTES_PORT=$NOTES_PORT
 		Environment=HUB_WIKI_PORT=$WIKI_PORT
