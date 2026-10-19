@@ -209,7 +209,27 @@ class _Quiet:
         pass
 
 
-(Path(hub_control.ETC) / "install-options").write_text(f"--repo\n{src}\n--branch\nmain\n")
+REWRITES = []
+
+
+def served_at(path):
+    """A valid https address that git, in this test only, serves from a local repository: git's own insteadOf, set in
+    the test's environment. The updater accepts only https, so its fixtures cannot be local paths, and nothing in
+    production can switch that rule off."""
+    url = f"https://git.invalid/{Path(path).name}"
+    REWRITES.append((url, str(path)))
+    os.environ["GIT_CONFIG_COUNT"] = str(len(REWRITES))
+    for i, (https, local) in enumerate(REWRITES):
+        os.environ[f"GIT_CONFIG_KEY_{i}"] = f"url.{local}.insteadOf"
+        os.environ[f"GIT_CONFIG_VALUE_{i}"] = https
+    return url
+
+
+# git's allow-list (hub_control._source_protocols) lets the fixtures' own file transport through for these two runs only;
+# the rule itself is asserted, unchanged, further down.
+REAL_PROTOCOLS = hub_control._source_protocols
+hub_control._source_protocols = lambda level=None: [*REAL_PROTOCOLS(level), "-c", "protocol.file.allow=always"]
+(Path(hub_control.ETC) / "install-options").write_text(f"--repo\n{served_at(src)}\n--branch\nmain\n")
 shutil.rmtree(hub_control.UPDATE_SRC, ignore_errors=True)
 st, _ = hub_control._check_for_update(_Quiet())
 held = git(hub_control.UPDATE_SRC, "tag", "-l", "v*").split()
@@ -225,7 +245,7 @@ bare = T / "no-tags"
 subprocess.run(["git", "clone", "-q", "--bare", "--no-tags", str(src), str(bare)], check=True)
 for t in git(bare, "tag", "-l").split():
     git(bare, "tag", "-d", t)
-(Path(hub_control.ETC) / "install-options").write_text(f"--repo\n{bare}\n--branch\nmain\n")
+(Path(hub_control.ETC) / "install-options").write_text(f"--repo\n{served_at(bare)}\n--branch\nmain\n")
 shutil.rmtree(hub_control.UPDATE_SRC, ignore_errors=True)
 st, _ = hub_control._check_for_update(_Quiet())
 check(
@@ -233,6 +253,189 @@ check(
     st["release_tag"] is None and (st["tags_problem"] or {}).get("id") == "update.check.no-tags-yet",
     st.get("tags_problem"),
 )
+
+# What may be an update source depends on the address and the signing level (update-source-policy): the same
+# function decides at every place a source is set or used; a refusal runs no git command and leaves the cache alone.
+from unittest import mock
+
+hub_control._source_protocols = REAL_PROTOCOLS  # the fixtures' file transport (above) is for the fixtures only
+OPTIONS_FILE = Path(hub_control.ETC) / "install-options"
+SIGNING_FILE = Path(hub_control.ETC) / signing.FILE_NAME
+keep = hub_control.UPDATE_SRC
+shutil.rmtree(keep, ignore_errors=True)
+keep.mkdir(parents=True)
+(keep / "marker").write_text("cache")
+ALWAYS = [
+    "ext::sh -c 'touch /tmp/x'",
+    "ext::touch",
+    "fd::17",
+    "-oProxyCommand=touch",
+    "--upload-pack=x",
+    "https://user@example.invalid/irate-box",
+    "https://user:pw@example.invalid/irate-box",
+    "https://example.invalid/irate-box?x=1",
+    "https://example.invalid/irate-box#frag",
+    "http://user:pw@box.local/irate-box",
+    "ssh://git@example.invalid/irate-box",
+    "git+ssh://example.invalid/irate-box",
+    "git@example.invalid:owner/irate-box.git",
+    "example.invalid:owner/irate-box",
+    "../irate-box",
+    "irate-box",
+    "https://",
+    "https:///irate-box",
+    "file://host/srv/irate-box",
+    "/srv/irate box",
+]
+SIGNED_ONLY = [
+    "http://box.local:8000/irate-box",
+    "http://192.168.4.7/irate-box",
+    "git://box.local/irate-box",
+    "/srv/irate-box",
+    "file:///srv/irate-box",
+]
+HTTPS = ["https://example.invalid/irate-box", "https://[2001:db8::1]:8443/owner/irate-box.git"]
+ran = []
+
+
+def no_git(*cmd, **kw):
+    ran.append(cmd)
+    raise AssertionError(f"ran {cmd}")
+
+
+def level_is(level):
+    SIGNING_FILE.write_text(json.dumps({"level": level, "signers": [line_tom] if level == "tags" else []}))
+
+
+def refusals(addr):
+    """The message IDs of the check for updates, the branch question and the update-source form for a recorded
+    address, with every way of running git or removing the cache stood in by a failure."""
+    OPTIONS_FILE.write_text(f"--repo\n{addr}\n--branch\nmain\n")
+    got = []
+    with (
+        mock.patch.object(hub_control, "run", no_git),
+        mock.patch.object(hub_control.subprocess, "run", no_git),
+        mock.patch.object(hub_control.shutil, "rmtree", no_git),
+    ):
+        for call in (
+            lambda: hub_control._check_for_update(_Quiet()),
+            lambda: hub_control.update_poll_target({}),
+            lambda: hub_control.update_set_source({"repo": addr, "branch": "main", "confirmed": True}),
+        ):
+            try:
+                call()
+                got.append(None)
+            except hub_control.Refused as exc:
+                got.append(exc.message["id"])
+            except AssertionError as exc:
+                got.append(str(exc))
+    return got
+
+
+BAD_ID = {"update.check.source-bad", "update.source.repo.bad"}
+matrix = {}
+for level in signing.LEVELS:
+    level_is(level)
+    for addr in ALWAYS:
+        matrix[(level, addr)] = refusals(addr)
+level_is("off")
+for addr in SIGNED_ONLY:
+    matrix[("off", addr)] = refusals(addr)
+check(
+    "update source: refused at every level - a sign-in, query or fragment, a leading -, ext:: and other helpers, ssh, scp-style, relative",
+    all(set(matrix[(lv, a)]) <= BAD_ID and len(set(matrix[(lv, a)])) == 2 for lv in signing.LEVELS for a in ALWAYS),
+    {k: v for k, v in matrix.items() if k[1] in ALWAYS and not set(v) <= BAD_ID},
+)
+check(
+    "  signing off: http://, git://, a local path and file:// are refused, said to be a matter of signing",
+    all(
+        matrix[("off", a)] == ["update.check.source-level", "update.check.source-level", "update.source.level"]
+        for a in SIGNED_ONLY
+    ),
+    {a: matrix[("off", a)] for a in SIGNED_ONLY},
+)
+check(
+    "  and none of it runs git or touches the cache",
+    not ran and (keep / "marker").read_text() == "cache",
+    ran,
+)
+for level in ("github", "tags"):
+    level_is(level)
+    got = {}
+    seen = []
+
+    def spy(*cmd, **kw):
+        seen.append(cmd)  # noqa: B023
+        return subprocess.CompletedProcess(cmd, 1, "", "stand-in")
+
+    for addr in SIGNED_ONLY + HTTPS:
+        OPTIONS_FILE.write_text(f"--repo\n{addr}\n--branch\nmain\n")
+        seen.clear()
+        shutil.rmtree(keep, ignore_errors=True)  # no cache yet: the first command is the clone
+        with mock.patch.object(hub_control, "run", spy):
+            try:
+                hub_control._check_for_update(_Quiet())
+            except hub_control.Refused as exc:
+                got[addr] = (exc.message["id"], seen[0] if seen else None)
+    allowed = ["git", "-c", "protocol.allow=never"] + [
+        a for s in ("https", "http", "git", "file") for a in ("-c", f"protocol.{s}.allow=always")
+    ]
+    check(
+        f"  signing {level}: http://, git://, a local path, file:// and https:// reach git, with git's own allow-list",
+        all(
+            v[0] == "update.git.failed" and list(v[1][: len(allowed)]) == allowed and v[1][len(allowed)] == "clone"
+            for v in got.values()
+        )
+        and len(got) == len(SIGNED_ONLY + HTTPS),
+        got,
+    )
+level_is("off")
+OPTIONS_FILE.write_text(f"--repo\n{HTTPS[0]}\n--branch\nmain\n")
+seen = []
+
+
+def spy_off(*cmd, **kw):
+    seen.append(cmd)
+    return subprocess.CompletedProcess(cmd, 1, "", "stand-in")
+
+
+shutil.rmtree(keep, ignore_errors=True)
+with mock.patch.object(hub_control, "run", spy_off):
+    try:
+        hub_control._check_for_update(_Quiet())
+    except hub_control.Refused:
+        pass
+check(
+    "  signing off: https:// reaches git with nothing but https allowed",
+    seen
+    and list(seen[0][:5]) == ["git", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always"]
+    and seen[0][5] == "clone",
+    seen,
+)
+# Used again every time: lowering signing under an http:// source refuses the next check, and the doctor says so.
+level_is("github")
+OPTIONS_FILE.write_text(f"--repo\n{SIGNED_ONLY[0]}\n--branch\nmain\n")
+keep.mkdir(parents=True, exist_ok=True)
+(keep / "marker").write_text("cache")
+reply = hub_control.update_signing({"level": "off", "signers": ""})
+check(
+    "lowering signing under a recorded http:// source: saved, with a warning that names the source",
+    reply["id"] == "update.signing.source-refused"
+    and reply["args"]["repo"] == SIGNED_ONLY[0]
+    and json.loads(SIGNING_FILE.read_text())["level"] == "off",
+    reply,
+)
+check(
+    "  the next check refuses, with no git command and the cache untouched",
+    refusals(SIGNED_ONLY[0])[0] == "update.check.source-level" and not ran and (keep / "marker").read_text() == "cache",
+    ran,
+)
+reply = hub_control.update_signing({"level": "github", "signers": ""})
+check("  raising it again: no warning", reply["id"] == "update.signing.github", reply)
+OPTIONS_FILE.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
+reply = hub_control.update_signing({"level": "off", "signers": ""})
+check("  an https:// source is never in the way", reply["id"] == "update.signing.off", reply)
+shutil.rmtree(keep, ignore_errors=True)
 
 # --- merged on GitHub: GitHub's key, a key of our own standing in for it ---
 if not (shutil.which("gpg") and shutil.which("gpgv")):

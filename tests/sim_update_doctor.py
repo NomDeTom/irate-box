@@ -101,7 +101,7 @@ def world(
         )
 
     def run(*cmd, timeout=120, **kw):
-        if cmd[:2] == ("git", "ls-remote"):
+        if cmd[0] == "git" and "ls-remote" in cmd:
             return subprocess.CompletedProcess(
                 cmd, ls_code, heads if ls_code == 0 else "", "fatal: repository not found\n"
             )
@@ -292,13 +292,29 @@ for bad in (
     got = source({"repo": bad, "branch": "dev", "confirmed": True})
     check(
         f"a source of {bad!r}: refused before git runs, nothing recorded",
-        str(got).startswith("Give the repository as an https://") and not calls and OPTIONS.read_text() == before,
+        ("cannot be used" in str(got) or "Updates are not signed" in str(got))
+        and not calls
+        and OPTIONS.read_text() == before,
         (got, calls),
     )
 for bad in ("", "-x", "a..b", "a b", "x.lock", "x/", "$(id)"):
     calls.clear()
     got = source({"repo": GOOD, "branch": bad, "confirmed": True})
     check(f"a branch of {bad!r}: refused before git runs", not calls and OPTIONS.read_text() == before, (got, calls))
+(T / "etc" / "update-signing.json").write_text(json.dumps({"level": "github", "signers": []}))
+for ok in ("http://example.org/x", "git://example.org/x", "file:///srv/x", "/home/hub/irate-box"):
+    calls.clear()
+    got = source({"repo": ok, "branch": "dev", "confirmed": True})
+    check(
+        f"signing on: a source of {ok!r} is asked about its branch, with git's allow-list on the command",
+        calls
+        and calls[0][:3] == ("git", "-c", "protocol.allow=never")
+        and "protocol.https.allow=always" in calls[0]
+        and "ls-remote" in calls[0],
+        (got, calls),
+    )
+(T / "etc" / "update-signing.json").unlink()
+OPTIONS.write_text(before)
 calls.clear()
 got = source({"repo": GOOD, "branch": "dev"})
 check("not confirmed: refused before git runs", not calls and OPTIONS.read_text() == before, (got, calls))
@@ -548,6 +564,42 @@ check(
     "update.options.no-repo" in msg_ids(fs["options"]) and fs["options"]["status"] == "problem",
     fs["options"],
 )
+OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
+SIGNING = T / "etc" / "update-signing.json"
+for bad, ids in (
+    ("/srv/irate-box", {"update.check.source-level"}),
+    ("file:///srv/irate-box", {"update.check.source-level"}),
+    ("git://example.invalid/irate-box", {"update.check.source-level"}),
+    ("http://example.invalid/irate-box", {"update.check.source-level"}),
+    ("ssh://git@example.invalid/irate-box", {"update.check.source-bad"}),
+    ("ext::sh -c x", {"update.check.source-bad"}),
+    ("https://user:pw@example.invalid/irate-box", {"update.check.source-bad"}),
+):
+    OPTIONS.write_text(f"--repo\n{bad}\n--branch\nmain\n")
+    fs = doctor()
+    check(
+        f"a recorded source the signing level does not allow ({bad}): a problem, said, the Update source the place; "
+        "the repository is not asked",
+        fs["options"]["status"] == "problem"
+        and msg_ids(fs["options"]) & ids
+        and "update.options.bad-source.fix" in msg_ids(fs["options"])
+        and fs["options"]["go"]["mark"] == "update-source-repo"
+        and "repo" not in fs,
+        fs["options"],
+    )
+# With signing on, a source off the web is fine, except where it is never fine.
+SIGNING.write_text(json.dumps({"level": "github", "signers": []}))
+for ok in ("/srv/irate-box", "http://example.invalid/irate-box", "git://example.invalid/irate-box"):
+    OPTIONS.write_text(f"--repo\n{ok}\n--branch\nmain\n")
+    fs = doctor()
+    check(
+        f"  signing on: {ok} is a fine source, and the repository is asked",
+        fs["options"]["status"] == "ok" and "repo" in fs,
+        fs["options"],
+    )
+OPTIONS.write_text("--repo\nssh://git@example.invalid/irate-box\n--branch\nmain\n")
+check("  and ssh is not", doctor()["options"]["status"] == "problem")
+SIGNING.unlink()
 OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
 
 # The doctor's own answer, and its report.
