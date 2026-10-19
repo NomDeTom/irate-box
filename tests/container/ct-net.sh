@@ -3,7 +3,6 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Network page checks inside the test container, after install.sh --uplink standard,strict.
 # Usage: ct-net.sh PORT
-H=127.0.0.1:$1
 PW="$(cat /etc/hub/admin-password)"
 fails=0
 ok() { echo "  ok   $*"; }

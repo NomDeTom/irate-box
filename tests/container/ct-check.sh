@@ -80,7 +80,7 @@ rm -f /etc/hub/admin-password
 cp /etc/nginx/irate-box.htpasswd /etc/hub/admin-login.off 2>/dev/null || echo "kept aside" >/etc/hub/admin-login.off
 bash /src/install.sh --src /src >/dev/null 2>&1
 [ ! -e "$U" ] && ok "the installer again: not the first use" || bad "the installer made the box free again (its first-use mark is back)"
-grep -qx -- --port /etc/hub/install-options && bad "the installer again moved the hub off port $PORT (it counted its own listeners as someone else's)" || ok "the installer again: the hub keeps port $PORT"
+if grep -qx -- --port /etc/hub/install-options; then bad "the installer again moved the hub off port $PORT (it counted its own listeners as someone else's)"; else ok "the installer again: the hub keeps port $PORT"; fi
 r=$(code "http://127.0.0.1:8095/admin/"); [ "$r" != 200 ] && ok "/admin/ not open to a guest ($r)" || bad "/admin/ open to a guest after the installer"
 printf '%s\n%s\n' "$PW1" "$PW1" | /opt/irate-box/irate-box hub_control script-login >/dev/null 2>&1
 rm -f /tmp/pw.keep

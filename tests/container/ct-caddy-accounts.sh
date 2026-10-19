@@ -61,7 +61,7 @@ api /admin/accounts '{"action":"settings","signup":"apply"}' >/dev/null
 for who in gina:admin erin:user; do
 	n=${who%%:*}; r=${who##*:}
 	resp="$(api /admin/accounts "{\"action\":\"make\",\"name\":\"$n\",\"role\":\"$r\"}")"; code="$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("code",""))')"
-	[ "$r" = admin ] && export ACCT_HTTPS=1 || unset ACCT_HTTPS
+	if [ "$r" = admin ]; then export ACCT_HTTPS=1; else unset ACCT_HTTPS; fi
 	acct "{\"action\":\"code\",\"code\":\"$code\",\"password\":\"password9\"}" >/dev/null
 done
 GTOK="$(ACCT_HTTPS=1 acct '{"action":"login","name":"gina","password":"password9"}')"

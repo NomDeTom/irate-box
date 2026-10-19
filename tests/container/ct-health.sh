@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Health page checks inside the test container. Usage: ct-health.sh PORT
-H=127.0.0.1:$1
 PW="$(cat /etc/hub/admin-password)"
 fails=0
 ok() { echo "  ok   $*"; }
