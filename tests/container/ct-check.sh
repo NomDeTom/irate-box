@@ -13,7 +13,7 @@ bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 check() { local want=$1; shift; local got; got="$("$@" 2>/dev/null)"; [ "$got" = "$want" ] && ok "$* -> $got" || bad "$* -> $got (want $want)"; }
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@"; }
 # Wait (up to 20 s; Caddy restarts after a change) until $1 is the working password.
-until_pw() { for _ in $(seq 40); do [ "$(code -u "admin:$1" "http://$H/admin/")" = 200 ] && return 0; sleep 0.5; done; return 1; }
+until_pw() { for _ in $(seq 40); do [ "$(code -u "admin:$1" "http://127.0.0.1:8095/admin/")" = 200 ] && return 0; sleep 0.5; done; return 1; }
 set_pw() { # current new: at the console (over plain HTTP the hub refuses an admin password change)
 	local out
 	out="$(printf '%s\n%s\n' "$2" "$2" | /opt/irate-box/irate-box hub_control script-login 2>&1)" && echo "OK ${out##*$'\n'}" || echo "ERR $out"
@@ -45,27 +45,29 @@ echo "== first use"
 U=/etc/$WEB/irate-box-unclaimed
 if [ -n "$CLAIM" ]; then
 	[ -f "$U" ] && ok "unclaimed mark at $U" || bad "no unclaimed mark at $U"
-	check 200 code "http://$H/admin/"
-	id="$(curl -s -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "{\"password\":\"$PW1\",\"over_http\":true}" "http://$H/admin/setup" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+	# Unclaimed, /admin is the set-up page alone (#341): a browser is sent there, the page itself is open.
+	check 302 code "http://127.0.0.1:8095/admin/"
+	check 200 code "http://127.0.0.1:8095/admin/setup"
+	id="$(curl -s -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "{\"password\":\"$PW1\",\"over_http\":true}" "http://127.0.0.1:8095/admin/setup" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 	r="$(result "$id")"; [[ $r == OK* ]] && ok "claim: $r" || bad "claim: $r"
 	[ -f "$U" ] && bad "unclaimed mark still there" || ok "unclaimed mark gone"
 	until_pw "$PW1" || bad "the claimed password never started working"
 fi
 # Start from PW1, whatever an earlier run left.
 until_pw "$PW1" || { until_pw "$PW2" && set_pw "$PW2" "$PW1" >/dev/null && until_pw "$PW1"; } || bad "neither test password works"
-check 401 code "http://$H/admin/"
-t=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' -u "admin:$PW1" "http://$H/admin/")
+check 401 code "http://127.0.0.1:8095/admin/"
+t=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' -u "admin:$PW1" "http://127.0.0.1:8095/admin/")
 [ "${t%% *}" = 200 ] && ok "/admin/ with the password: $t" || bad "/admin/ with the password: $t"
-t2=$(curl -s -o /dev/null -w '%{time_total}' -u "admin:$PW1" "http://$H/admin/settings")
+t2=$(curl -s -o /dev/null -w '%{time_total}' -u "admin:$PW1" "http://127.0.0.1:8095/admin/settings")
 ok "second authenticated request: ${t2}s"
-check 401 code -u admin:wrong "http://$H/admin/"
+check 401 code -u admin:wrong "http://127.0.0.1:8095/admin/"
 
 echo "== password change"
-check 403 code -u "admin:$PW1" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"password":"over-plain-http"}' "http://$H/admin/password"
+check 403 code -u "admin:$PW1" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{"password":"over-plain-http"}' "http://127.0.0.1:8095/admin/password"
 r="$(set_pw "$PW1" "$PW2")"; [[ $r == OK* ]] && ok "change: $r" || bad "change: $r"
 until_pw "$PW2"
-check 200 code -u "admin:$PW2" "http://$H/admin/"
-check 401 code -u "admin:$PW1" "http://$H/admin/"
+check 200 code -u "admin:$PW2" "http://127.0.0.1:8095/admin/"
+check 401 code -u "admin:$PW1" "http://127.0.0.1:8095/admin/"
 # back to PW1 for later runs
 set_pw "$PW2" "$PW1" >/dev/null; until_pw "$PW1" || bad "could not set the password back"
 
@@ -78,7 +80,8 @@ rm -f /etc/hub/admin-password
 cp /etc/nginx/irate-box.htpasswd /etc/hub/admin-login.off 2>/dev/null || echo "kept aside" >/etc/hub/admin-login.off
 bash /src/install.sh --src /src >/dev/null 2>&1
 [ ! -e "$U" ] && ok "the installer again: not the first use" || bad "the installer made the box free again (its first-use mark is back)"
-r=$(code "http://$H/admin/"); [ "$r" != 200 ] && ok "/admin/ not open to a guest ($r)" || bad "/admin/ open to a guest after the installer"
+if grep -qx -- --port /etc/hub/install-options; then bad "the installer again moved the hub off port $PORT (it counted its own listeners as someone else's)"; else ok "the installer again: the hub keeps port $PORT"; fi
+r=$(code "http://127.0.0.1:8095/admin/"); [ "$r" != 200 ] && ok "/admin/ not open to a guest ($r)" || bad "/admin/ open to a guest after the installer"
 printf '%s\n%s\n' "$PW1" "$PW1" | /opt/irate-box/irate-box hub_control script-login >/dev/null 2>&1
 rm -f /tmp/pw.keep
 until_pw "$PW1" || bad "the box's own login not back for the rest"
@@ -86,25 +89,27 @@ echo "== the box's own login: from the box itself, or the network too (Accounts)
 IP=$(hostname -I | awk '{print $1}')
 reach() {
 	local id; id="$(curl -s -u "admin:$PW1" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' \
-		-d "{\"action\":\"admin-login\",\"reach\":\"$1\"}" "http://$H/admin/accounts" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+		-d "{\"action\":\"admin-login\",\"reach\":\"$1\"}" "http://127.0.0.1:8095/admin/accounts" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 	result "$id"
 }
-r="$(reach local)"; [[ $r == OK* ]] && ok "reach: from the box itself ($r)" || bad "reach local: $r"
+# With no administrator account that has signed in over HTTPS the box refuses to narrow script sign-in to
+# the box itself (it would lock everyone else out of the administration pages); no such sign-in exists here.
+r="$(reach local)"; [[ $r == ERR*"No administrator account"* ]] && ok "reach: from the box itself refused while no admin has signed in over HTTPS" || bad "reach local: $r"
 sleep 2
-check 200 code -u "admin:$PW1" "http://127.0.0.1/admin/"
-r=$(code -u "admin:$PW1" "http://$IP/admin/"); [ "$r" != 200 ] && ok "from another address the login counts for nothing ($r)" || bad "the login worked from $IP"
+check 200 code -u "admin:$PW1" "http://127.0.0.1:8095/admin/"
+r=$(code -u "admin:$PW1" "http://$IP:8095/admin/"); [ "$r" != 200 ] && ok "from another address the login counts for nothing ($r)" || bad "the login worked from $IP"
 r="$(reach network)"; [[ $r == OK* ]] && ok "reach: from the network too" || bad "reach network: $r"
 sleep 2
-check 200 code -u "admin:$PW1" "http://$IP/admin/"
+check 200 code -u "admin:$PW1" "http://$IP:8095/admin/"
 
 echo "== routes"
-# Under nginx, /wiki and /notes live on their own origin (a port of their own, for origin
-# isolation), so the main origin sends a cross-origin 302 to that port; under Caddy they stay on
-# the main origin and 301 to their trailing slash, like /draw, /mermaid, /tools, /serial, /sync,
-# /admin and /term do on both fronts.
+# /draw, /mermaid, /sync and /admin (and /wiki and /notes under nginx) live on origins of their own,
+# each a port of its own, so the hub's port sends a cross-origin 302 there (the pages themselves
+# are checked on those ports, e.g. /admin/ above). Under Caddy the bare /wiki and /notes only 301 to
+# their trailing slash, like /tools, /serial and /term on both fronts.
 wn=302; [ "$WEB" = caddy ] && wn=301
-for pr in "/ 200" "/style.css 200" "/nope-xyz 404" "/wiki $wn" "/draw 301" "/mermaid 301" "/tools 301" "/serial 301" \
-	"/notes $wn" "/sync 301" "/admin 301" "/term 301" "/sync/ 401" "/term/ 401" "/status 200"; do
+for pr in "/ 200" "/style.css 200" "/nope-xyz 404" "/wiki $wn" "/draw 302" "/mermaid 302" "/tools 301" "/serial 301" \
+	"/notes $wn" "/sync 302" "/admin 302" "/term 301" "/sync/ 302" "/term/ 401" "/status 200"; do
 	# shellcheck disable=SC2086 # split "path code" into $1 and $2
 	set -- $pr; check "$2" code "http://$H$1"
 done

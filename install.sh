@@ -1197,7 +1197,14 @@ id -u "$HUB_USER" >/dev/null 2>&1 ||
 install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE" # /var/lib is root's: no link to fear here
 state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/notes" "$STATE/addons" "$STATE/apps.d"
 install -d -m 755 "$CODE" "$APPS"
-install -d -m 750 "$ETC"
+install -d -m 750 -g root "$ETC"
+# Caddy runs as its own user and reads the front's includes and the server key under $ETC/tls (root/tls.py
+# gives the key to its group): the group may pass through $ETC, not list it. Every file in it that holds a
+# secret is root's alone (600); nginx's master reads as root, so nginx needs none of this.
+if [ "$WEB" = caddy ] && getent group caddy >/dev/null; then
+	chgrp caddy "$ETC"
+	chmod 710 "$ETC"
+fi
 
 # --- the hub ---------------------------------------------------------------------
 if [ -n "$SRC" ]; then
@@ -1585,10 +1592,11 @@ nginx_default_untouched() {
 }
 # Does any nginx config but the hub's listen on port $1? (A second default_server on a port
 # fails nginx -t, but a plain listen would quietly hand the hub the owner's unmatched hosts.)
+# The hub's own: its site, and the files that site includes from $ETC (the front's listeners).
 nginx_serves_port() {
-	nginx -T 2>/dev/null | awk -v ours="$NGINX_SITE" -v p="$1" '
+	nginx -T 2>/dev/null | awk -v ours="$NGINX_SITE" -v etc="$ETC/" -v p="$1" '
 		/^# configuration file / { f = $4; sub(/:$/, "", f); next }
-		f != ours && $1 == "listen" { a = $2; sub(/;$/, "", a); sub(/.*:/, "", a); if (a == p) found = 1 }
+		f != ours && index(f, etc) != 1 && $1 == "listen" { a = $2; sub(/;$/, "", a); sub(/.*:/, "", a); if (a == p) found = 1 }
 		END { exit !found }'
 }
 nginx_config() {

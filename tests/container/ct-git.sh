@@ -17,7 +17,7 @@ ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 check() { local want=$1; shift; local got; got="$("$@" 2>/dev/null)"; [ "$got" = "$want" ] && ok "$* -> $got" || bad "$* -> $got (want $want)"; }
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@"; }
-admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" "http://$H/admin/git"; }
+admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" "http://127.0.0.1:8095/admin/git"; }
 W=$(mktemp -d); cd "$W" || exit 1
 for area in public private; do for n in demo secret big; do admin "{\"action\":\"delete\",\"area\":\"$area\",\"name\":\"$n\"}" >/dev/null; done; done
 
@@ -27,10 +27,10 @@ want_group=www-data; [ "$WEB" = caddy ] && want_group=caddy
 check "$want_group" stat -c '%G' /run/irate-box-git.sock
 
 echo "== admin: create"
-check 401 code -X POST -d '{}' "http://$H/admin/git"
-check "demo" sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"demo\",\"description\":\"a demo\"}' http://$H/admin/git | python3 -c 'import json,sys; print(\" \".join(r[\"name\"] for r in json.load(sys.stdin)[\"repos\"] if r[\"name\"] != \"irate-box-source\"))'"
+check 401 code -X POST -d '{}' "http://127.0.0.1:8095/admin/git"
+check "demo" sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"demo\",\"description\":\"a demo\"}' http://127.0.0.1:8095/admin/git | python3 -c 'import json,sys; print(\" \".join(r[\"name\"] for r in json.load(sys.stdin)[\"repos\"] if r[\"name\"] != \"irate-box-source\"))'"
 admin '{"action":"create","area":"private","name":"secret.git"}' >/dev/null
-check "a name is letters, digits, '.', '_' and '-', up to 64, starting with a letter or digit" sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"../evil\"}' http://$H/admin/git | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"error\"])'"
+check "Invalid repository name. Use letters, digits, '.', '_' and '-', up to 64 characters. Start with a letter or digit." sh -c "curl -s -u admin:$PW -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d '{\"action\":\"create\",\"area\":\"public\",\"name\":\"../evil\"}' http://127.0.0.1:8095/admin/git | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"error\"])'"
 check "hub" stat -c '%U' /var/lib/hub/git/public/demo.git
 check "true" runuser -u hub -- git -C /var/lib/hub/git/public/demo.git config http.receivepack
 
@@ -91,7 +91,7 @@ echo "$out" | grep -qE '413|too large|RPC failed' && ok "an 80 MB push is refuse
 cd "$W" || exit
 
 echo "== admin: list, describe, delete"
-check "demo 2 1" sh -c "curl -s -u admin:$PW http://$H/admin/git | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)[\"repos\"] if x[\"name\"]==\"demo\"][0]; print(r[\"name\"], len([1]) + 1 if r[\"last_commit\"] else 0, r[\"branches\"])'"
+check "demo 2 1" sh -c "curl -s -u admin:$PW http://127.0.0.1:8095/admin/git | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)[\"repos\"] if x[\"name\"]==\"demo\"][0]; print(r[\"name\"], len([1]) + 1 if r[\"last_commit\"] else 0, r[\"branches\"])'"
 admin '{"action":"describe","area":"public","name":"demo","description":"renamed desc"}' >/dev/null
 check "renamed desc" cat /var/lib/hub/git/public/demo.git/description
 admin '{"action":"delete","area":"public","name":"big"}' >/dev/null

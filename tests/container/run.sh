@@ -65,9 +65,9 @@ install_hub() {
 claim() {
 	local pw=$1 i got
 	cexec bash -c "curl -s -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' \
-		-d '{\"password\":\"$pw\",\"over_http\":true}' http://127.0.0.1:80/admin/setup >/dev/null" || return 1
+		-d '{\"password\":\"$pw\",\"over_http\":true}' http://127.0.0.1:8095/admin/setup >/dev/null" || return 1
 	for i in $(seq 60); do
-		got=$(cexec bash -c "curl -s -o /dev/null -w '%{http_code}' -u 'admin:$pw' http://127.0.0.1:80/admin/" 2>/dev/null)
+		got=$(cexec bash -c "curl -s -o /dev/null -w '%{http_code}' -u 'admin:$pw' http://127.0.0.1:8095/admin/" 2>/dev/null)
 		[ "$got" = 200 ] && return 0
 		sleep 0.5
 	done

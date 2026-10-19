@@ -17,6 +17,18 @@ import sys; sys.path.insert(0, '/w')
 from irate_box.hub import access
 for n, t in access.caddy_snippets({'tools': 'private'}, sys.argv[1], 'basicauth', admin_login=sys.argv[2] == 'on').items():
     open('/tmp/access/' + n, 'w').write(t)" "$HASH" "$1"; }
+# The front's includes (config/Caddyfile imports them): generated as the root helper does, plain HTTP.
+mkdir -p /tmp/front
+python3 -c "
+import sys; sys.path.insert(0, '/w')
+from irate_box.root import tls
+for path, text in tls._plain_files('http', 'allow').items():
+    open('/tmp/front/' + path.name, 'w').write(text)"
+# The hub's site is the front's (http://:80 { import irate_box_hub }); the test serves it on 8088.
+sed -i 's|http://:80 {|http://:8088 {|' /tmp/front/caddy-http-main.inc
+export HUB_TLS_FRONT=/tmp/front HUB_PORT=8088
+A=http://127.0.0.1:8095   # the administration origin: /admin is not served on the hub's port
+GO=http://127.0.0.1:8093  # the git origin: cgit's pages likewise
 # Repositories: one users may push to, one only the admin, one private (gitrepos' own config keys).
 mkrepo() { git init -q --bare "/tmp/git/$1/$2.git" && git -C "/tmp/git/$1/$2.git" symbolic-ref HEAD refs/heads/main \
 	&& git -C "/tmp/git/$1/$2.git" config irate-box.write "$3" \
@@ -39,28 +51,32 @@ caddy_up
 B=http://127.0.0.1:8088
 fails=0
 want() { local w=$1 what=$2; shift 2; local g; g="$(curl -s -o /dev/null -w '%{http_code}' "$@")"; if [ "$g" = "$w" ]; then echo "  ok   $what: $g"; else echo "  FAIL $what: $g (want $w)"; fails=$((fails+1)); fi; }
-api() { curl -s -u "admin:$PW" -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$2" "$B$1"; }
-acct() { curl -s -D /tmp/h -H 'Content-Type: application/json' -H 'X-Irate-Account: 1' -d "$1" "$B/api/account" >/dev/null; grep -i '^set-cookie' /tmp/h | sed -E 's/^[Ss]et-[Cc]ookie: ([^;]*).*/\1/' | tr -d '\r'; }
+api() { curl -s -u "admin:$PW" -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$2" "$A$1"; }
+# An administrator's password is taken only over HTTPS: those requests go to the hub direct, saying (as the
+# front does) that they came over HTTPS. The session cookie then works over this plain-HTTP front too.
+acct() { local via=("$B" -H 'X-Irate-Test: plain'); [ "${ACCT_HTTPS:-}" = 1 ] && via=(http://127.0.0.1:8000 -H 'X-Forwarded-For: 127.0.0.1' -H 'X-Forwarded-Proto: https')
+	curl -s -D /tmp/h -H 'Content-Type: application/json' -H 'X-Irate-Account: 1' "${via[@]:1}" -d "$1" "${via[0]}/api/account" >/dev/null; grep -i '^set-cookie' /tmp/h | sed -E 's/^[Ss]et-[Cc]ookie: ([^;]*).*/\1/' | tr -d '\r'; }
 # An admin account and a user's, each logged in.
 api /admin/accounts '{"action":"settings","signup":"apply"}' >/dev/null
 for who in gina:admin erin:user; do
 	n=${who%%:*}; r=${who##*:}
 	resp="$(api /admin/accounts "{\"action\":\"make\",\"name\":\"$n\",\"role\":\"$r\"}")"; code="$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("code",""))')"
+	if [ "$r" = admin ]; then export ACCT_HTTPS=1; else unset ACCT_HTTPS; fi
 	acct "{\"action\":\"code\",\"code\":\"$code\",\"password\":\"password9\"}" >/dev/null
 done
-GTOK="$(acct '{"action":"login","name":"gina","password":"password9"}')"
+GTOK="$(ACCT_HTTPS=1 acct '{"action":"login","name":"gina","password":"password9"}')"
 UTOK="$(acct '{"action":"login","name":"erin","password":"password9"}')"
 [ -n "$GTOK" ] && [ -n "$UTOK" ] && echo "  ok   two accounts logged in" || { echo "  FAIL accounts: '$GTOK' '$UTOK'"; tail -3 /tmp/hub.log; fails=$((fails+1)); }
 echo "== the box's own login on"
-want 401 "/admin/, nothing" "$B/admin/settings"
-want 200 "/admin/, the login" -u "admin:$PW" "$B/admin/settings"
-want 401 "/admin/, a wrong password" -u "admin:nope" "$B/admin/settings"
-want 200 "/admin/, an admin's session" -H "Cookie: $GTOK" "$B/admin/settings"
-want 401 "/admin/, a user's session" -H "Cookie: $UTOK" "$B/admin/settings"
-want 401 "/admin/, a forged X-Irate-Session" -H "X-Irate-Session: admin" "$B/admin/settings"
+want 401 "/admin/, nothing" "$A/admin/settings"
+want 200 "/admin/, the login" -u "admin:$PW" "$A/admin/settings"
+want 401 "/admin/, a wrong password" -u "admin:nope" "$A/admin/settings"
+want 200 "/admin/, an admin's session" -H "Cookie: $GTOK" "$A/admin/settings"
+want 401 "/admin/, a user's session" -H "Cookie: $UTOK" "$A/admin/settings"
+want 401 "/admin/, a forged X-Irate-Session" -H "X-Irate-Session: admin" "$A/admin/settings"
 want 502 "/term/, an admin's session (past the gate; no ttyd here)" -H "Cookie: $GTOK" "$B/term/"
 want 401 "/term/, a user's session" -H "Cookie: $UTOK" "$B/term/"
-want 502 "/sync/, the login (past the gate; no Syncthing)" -u "admin:$PW" "$B/sync/"
+want 302 "/sync/, sent to its own origin (Syncthing's, past the gate there)" -u "admin:$PW" "$B/sync/"
 want 401 "/tools/ (private), nothing" "$B/tools/"
 want 200 "/tools/ (private), an admin's session" -H "Cookie: $GTOK" "$B/tools/"
 want 200 "/tools/ (private), the login" -u "admin:$PW" "$B/tools/"
@@ -82,19 +98,20 @@ gitok refused "private: a guest" git ls-remote "http://$G/git-private/secret.git
 gitok refused "private: a user's account" git ls-remote "http://erin:password9@$G/git-private/secret.git"
 gitok ok "private: an admin account" git ls-remote "http://gina:password9@$G/git-private/secret.git"
 gitok ok "private: the box's own login" git ls-remote "http://admin:$PW@$G/git-private/secret.git"
-g="$(curl -s -o /dev/null -w '%{http_code}' -H "Cookie: $GTOK" "$B/git-private/")"
+g="$(curl -s -o /dev/null -w '%{http_code}' -H "Cookie: $GTOK" "$GO/git-private/")"
 case "$g" in 401|302) echo "  FAIL private cgit view, an admin's session: $g"; fails=$((fails+1)) ;; *) echo "  ok   private cgit view, an admin's session: past the gate ($g; no cgit here)" ;; esac
-want 401 "private cgit view, a guest" "$B/git-private/"
-want 401 "private cgit view, a user's session" -H "Cookie: $UTOK" "$B/git-private/"
+want 401 "private cgit view, a guest" "$GO/git-private/"
+want 401 "private cgit view, a user's session" -H "Cookie: $UTOK" "$GO/git-private/"
 echo "== the box's own login off (an unknown hash, the hard gate), as hub_control.admin_login does"
 kill $CADDY; wait $CADDY 2>/dev/null
 render "$(caddy hash-password --plaintext "$(head -c 24 /dev/urandom | base64)")"; gen off
 caddy_up
-want 302 "/admin/, the old login: sent to log in" -u "admin:$PW" "$B/admin/settings"
-loc="$(curl -s -o /dev/null -w '%{redirect_url}' "$B/admin/settings")"
-[ "$loc" = "$B/account.html?next=/admin/settings" ] && echo "  ok   … to /account.html?next=/admin/settings" || { echo "  FAIL redirect: $loc"; fails=$((fails+1)); }
-want 200 "/admin/, an admin's session" -H "Cookie: $GTOK" "$B/admin/settings"
-want 302 "/admin/, a user's session" -H "Cookie: $UTOK" "$B/admin/settings"
+want 302 "/admin/, the old login: sent to log in" -u "admin:$PW" "$A/admin/settings"
+loc="$(curl -s -o /dev/null -w '%{redirect_url}' "$A/admin/settings")"
+# (the admin origin's /account.html then redirects on to the hub's origin)
+[ "$loc" = "$A/account.html?next=/admin/settings" ] && echo "  ok   … to /account.html?next=/admin/settings" || { echo "  FAIL redirect: $loc"; fails=$((fails+1)); }
+want 200 "/admin/, an admin's session" -H "Cookie: $GTOK" "$A/admin/settings"
+want 302 "/admin/, a user's session" -H "Cookie: $UTOK" "$A/admin/settings"
 want 302 "/term/, the old login" -u "admin:$PW" "$B/term/"
 want 502 "/term/, an admin's session" -H "Cookie: $GTOK" "$B/term/"
 want 302 "/tools/ (private), the old login" -u "admin:$PW" "$B/tools/"
@@ -104,7 +121,7 @@ gitok refused "private, own login off: the old login" git ls-remote "http://admi
 echo "== no gate files (an older helper): the login alone"
 kill $CADDY; wait $CADDY 2>/dev/null
 rm -f /tmp/access/*; render "$HASH"; caddy_up
-want 401 "/admin/, an admin's session" -H "Cookie: $GTOK" "$B/admin/settings"
-want 200 "/admin/, the login" -u "admin:$PW" "$B/admin/settings"
+want 401 "/admin/, an admin's session" -H "Cookie: $GTOK" "$A/admin/settings"
+want 200 "/admin/, the login" -u "admin:$PW" "$A/admin/settings"
 echo "failures: $fails"
 exit $fails

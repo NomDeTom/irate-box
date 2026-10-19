@@ -3,14 +3,13 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Network page checks inside the test container, after install.sh --uplink standard,strict.
 # Usage: ct-net.sh PORT
-H=127.0.0.1:$1
 PW="$(cat /etc/hub/admin-password)"
 fails=0
 ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 j() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
-get() { curl -s -u "admin:$PW" "http://$H/admin/network"; }
-post() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" -w '\n%{http_code}' "http://$H/admin/network"; }
+get() { curl -s -u "admin:$PW" "http://127.0.0.1:8095/admin/network"; }
+post() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" -w '\n%{http_code}' "http://127.0.0.1:8095/admin/network"; }
 result() { local f=/var/lib/hub/control/results/$1.json; for _ in $(seq 120); do [ -s "$f" ] && break; sleep 0.5; done
 	python3 -c "import json; d=json.load(open('$f')); print(('OK ' if d['ok'] else 'ERR ') + d['message'])"; }
 idof() { head -1 | j 'd["id"]'; }
@@ -72,5 +71,5 @@ id="$(post '{"action":"forget","uuid":"1111aaaa-0000-4000-8000-000000000001"}' |
 [ "$(get | j 'd["joined"]')" = "[]" ] && ok "none listed" || bad "joined listed"
 
 echo "== unprivileged"
-c="$(curl -s -o /dev/null -w '%{http_code}' "http://$H/admin/network")"; [ "$c" = 401 ] && ok "needs the login" || bad "no login -> $c"
+c="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8095/admin/network")"; [ "$c" = 401 ] && ok "needs the login" || bad "no login -> $c"
 echo "failures: $fails"
