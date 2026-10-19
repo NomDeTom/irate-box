@@ -2100,6 +2100,14 @@ def _option(opts, name, default=None):
     return opts[opts.index(name) + 1] if name in opts and opts.index(name) + 1 < len(opts) else default
 
 
+def _subcommand(args):
+    """The git subcommand in an argument list that may start with -c NAME=VALUE and -C DIR pairs."""
+    args = list(args)
+    while len(args) > 2 and args[0] in ("-c", "-C"):
+        args = args[2:]
+    return args[0]
+
+
 def _git(*args):
     out = run("git", *args, timeout=600)
     if out.returncode != 0:
@@ -2108,7 +2116,7 @@ def _git(*args):
             M(
                 "update.git.failed",
                 "The command {command} failed: {output}",
-                command=f"git {args[0] if args[0] != '-C' else args[2]}",
+                command=f"git {_subcommand(args)}",
                 output=_last_line(out.stderr or out.stdout),
             )
         )
@@ -2537,6 +2545,23 @@ def update_signing(req):
         lambda path, text: safeio.write(path, text, mode=0o600),
     )
     safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
+    # Not a block: the setting is saved. But an owner who lowers signing under a source that then stops working is told.
+    try:
+        recorded = _option(_install_options(), "--repo")
+    except ValueError:
+        recorded = None
+    try:
+        if recorded:
+            _source_check(recorded, data["level"])
+    except Refused:
+        return M(
+            "update.signing.source-refused",
+            "Signing is now {level}, and the recorded update source {repo} is refused at this level. "
+            "The next check for updates fails until you give an https:// repository under Update source "
+            "or select signed updates again.",
+            level=data["level"],
+            repo=recorded,
+        )
     if data["level"] == "off":
         return M(
             "update.signing.off",
@@ -2895,6 +2920,112 @@ def _nginx_check(src, opts):
     }
 
 
+# What may be an update source (update-source-policy): the transport protects the code only when signing does not.
+# Never, at any level: a sign-in or query in the address, a leading "-", a "<transport>::" remote helper (ext::
+# runs commands), ssh and scp-style addresses. Signing off: https. Signing github or tags (the code is vouched for
+# by its signatures): also http, git, and a local path or file://.
+SOURCE_SCHEMES = {
+    "off": ("https",),
+    "github": ("https", "http", "git", "file"),
+    "tags": ("https", "http", "git", "file"),
+}
+
+
+def _source_level():
+    """The signing level, read from root's own file each time a source is set or used."""
+    return signing.load(ETC)["level"]
+
+
+def _source_form(value):
+    """(address, scheme) for an address of a form that is allowed at some level, or None. The scheme is git's own
+    name for the transport: https, http, git or file (a local path too)."""
+    if not value or len(value) > 300 or not value.isprintable() or value.startswith("-"):
+        return None
+    if any(c in value for c in " \\?#") or re.match(r"^[A-Za-z0-9+.-]*::", value):
+        return None
+    if value.startswith("/"):
+        return value, "file"
+    try:
+        parts = urllib.parse.urlsplit(value)
+        host, _ = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if parts.username is not None or parts.password is not None or "@" in parts.netloc or parts.query or parts.fragment:
+        return None
+    if parts.scheme in ("https", "http", "git") and host and "://" in value:
+        return value, parts.scheme
+    if parts.scheme == "file" and not parts.netloc and parts.path.startswith("/"):
+        return value, "file"
+    return None
+
+
+def _source_check(value, level=None):
+    """The address, if it may be an update source at this signing level (the current one when not given); a
+    Refused that says what is wrong with it otherwise. The one rule: every place that sets or uses a source asks."""
+    level = level or _source_level()
+    value = str(value).strip()
+    form = _source_form(value)
+    if not form:
+        raise Refused(
+            M(
+                "update.source.repo.bad",
+                "That repository address cannot be used. Give an https:// address. A local path, file://, http:// "
+                "or git:// address works with signed updates. Never accepted: a user name, password, "
+                "query or fragment, ssh and scp-style addresses, and git's remote helpers such as ext::.",
+            )
+        )
+    if form[1] not in SOURCE_SCHEMES[level]:
+        raise Refused(
+            M(
+                "update.source.level",
+                "Updates are not signed, so the repository must be an https:// address. {repo} works once "
+                "updates are signed: select GitHub's signatures or signed releases under Updates, then "
+                "Update verification.",
+                repo=value,
+            )
+        )
+    return value
+
+
+def _source_protocols(level=None):
+    """git's own allow-list for a source, as the arguments before the subcommand: no transport but the ones this
+    level allows, so that a redirect or a submodule cannot reach another."""
+    level = level or _source_level()
+    return [
+        "-c",
+        "protocol.allow=never",
+        *(a for s in SOURCE_SCHEMES[level] for a in ("-c", f"protocol.{s}.allow=always")),
+    ]
+
+
+def _recorded_source(repo):
+    """The recorded update repository, if the rule allows it at the current signing level, checked every time it is
+    used: lowering signing later refuses the next check. Refused with what to do, before git or the cache is
+    touched."""
+    try:
+        return _source_check(repo)
+    except Refused as exc:
+        if exc.message["id"] == "update.source.level":
+            raise Refused(
+                M(
+                    "update.check.source-level",
+                    "Updates come from {repo}, which the box accepts only when updates are signed. "
+                    "Select GitHub's signatures or signed releases under Updates, then Update verification. "
+                    "Or give an https:// repository under Update source.",
+                    repo=repo,
+                )
+            ) from None
+        raise Refused(
+            M(
+                "update.check.source-bad",
+                "Updates come from {repo}, which is not an address the box accepts. "
+                "Run the installer again with --repo and a repository address, "
+                "without a user name, password, query or fragment.",
+                repo=repo,
+            )
+        ) from None
+
+
 def _check_for_update(progress):
     """Bring the cache up to the recorded branch and work out what is new: two steps.
     Returns (state for update.json, install options)."""
@@ -2903,16 +3034,8 @@ def _check_for_update(progress):
     branch = _option(opts, "--branch", "main")
     if not repo:
         raise Refused(NO_REPO)
-    if repo.startswith(("http://", "git://")):
-        # Code that root will run, over a transport anyone on the way can rewrite.
-        raise Refused(
-            M(
-                "update.check.unencrypted",
-                "Updates come from {repo} over an unencrypted link. "
-                "Run the installer again with an https:// address for the repository.",
-                repo=repo,
-            )
-        )
+    repo = _recorded_source(repo)
+    net = _source_protocols()
     progress.step(
         M(
             "update.progress.branch",
@@ -2924,14 +3047,14 @@ def _check_for_update(progress):
     src = str(UPDATE_SRC)
     if (UPDATE_SRC / ".git").is_dir():
         _git("-C", src, "remote", "set-url", "origin", repo)
-        _git("-C", src, "fetch", "--depth", "200", "origin", branch)
+        _git(*net, "-C", src, "fetch", "--depth", "200", "origin", branch)
         _git("-C", src, "reset", "--hard", "FETCH_HEAD")
         _git("-C", src, "clean", "-fdx")
     else:
         if UPDATE_SRC.exists():
             subprocess.run(["rm", "-rf", src], check=True)
         UPDATE_SRC.parent.mkdir(parents=True, exist_ok=True)
-        _git("clone", "--depth", "200", "--branch", branch, repo, src)
+        _git(*net, "clone", "--depth", "200", "--branch", branch, repo, src)
     sig = signing.load(ETC)
     tag = None
     # The release tags (v*), fetched whatever the signing level, so the box holds them: needed when
@@ -2939,6 +3062,7 @@ def _check_for_update(progress):
     tags_said = None
     got = run(
         "git",
+        *net,
         "-C",
         src,
         "fetch",
@@ -2952,6 +3076,7 @@ def _check_for_update(progress):
         # git says nothing when no tag matches: tell that apart from a fetch that failed.
         remote = run(
             "git",
+            *net,
             "-C",
             src,
             "ls-remote",
@@ -3471,19 +3596,48 @@ def doctor():
         opts = _install_options()
         repo, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
         if repo:
-            findings.append(
-                finding(
-                    "options",
-                    title,
-                    "ok",
-                    M(
-                        "update.options.ok",
-                        "Updates come from the branch {branch} of {repo}.",
-                        branch=branch,
-                        repo=repo,
-                    ),
+            try:
+                _recorded_source(repo)
+                bad_source = None
+            except Refused as exc:
+                bad_source = exc.message
+            if bad_source:
+                # git is not run against it: not here, not in a check, not in an install
+                findings.append(
+                    finding(
+                        "options",
+                        title,
+                        "problem",
+                        bad_source,
+                        M(
+                            "update.options.bad-source.why",
+                            "Updates run as root. Without signed updates, only an https:// repository is trusted "
+                            "as their source.",
+                        ),
+                        M(
+                            "update.options.bad-source.fix",
+                            "Give an https:// repository under Update source in this doctor's recovery actions. "
+                            "Or select GitHub's signatures or signed releases under Updates, then Update verification.",
+                        ),
+                        evidence=[ETC / "install-options"],
+                        go=GO_SOURCE_REPO,
+                    )
                 )
-            )
+                repo = None
+            else:
+                findings.append(
+                    finding(
+                        "options",
+                        title,
+                        "ok",
+                        M(
+                            "update.options.ok",
+                            "Updates come from the branch {branch} of {repo}.",
+                            branch=branch,
+                            repo=repo,
+                        ),
+                    )
+                )
         else:
             findings.append(
                 finding(
@@ -3847,7 +4001,7 @@ def doctor():
     # 6. The repository and branch exist and answer.
     title = M("update.repo.title", "Repository")
     if repo and reachable:
-        out = run("git", "ls-remote", "--heads", repo, branch, timeout=60)
+        out = run("git", *_source_protocols(), "ls-remote", "--heads", repo, branch, timeout=60)
         if out.returncode != 0:
             findings.append(
                 finding(
@@ -4496,36 +4650,14 @@ SOURCE_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,99}$")
 
 
 def _source_repo(value):
-    """A repository address root may fetch and run code from: https, a host, no sign-in, no query. Anything
+    """A repository address root may fetch and run code from, at the current signing level (_source_check). Anything
     else is refused before git runs."""
-    value = str(value).strip()
-    bad = M(
-        "update.source.repo.bad",
-        "Give the repository as an https:// address, without a user name, password, query or fragment.",
-    )
-    if not value or len(value) > 300 or not value.isprintable() or " " in value:
-        raise Refused(bad)
-    try:
-        parts = urllib.parse.urlsplit(value)
-        host, _ = parts.hostname, parts.port
-    except ValueError:
-        raise Refused(bad) from None
-    if (
-        parts.scheme != "https"
-        or not host
-        or parts.username is not None
-        or parts.password is not None
-        or parts.query
-        or parts.fragment
-        or "\\" in value
-    ):
-        raise Refused(bad)
-    return value
+    return _source_check(value)
 
 
 def update_set_source(req):
-    """Point updates at another repository or branch (a fork). The address must be https and the remote must
-    list the branch; only then is the root-owned record changed, and the cache that held the old source
+    """Point updates at another repository or branch (a fork). The address must be one the signing level allows
+    (_source_check) and the remote must list the branch; only then is the root-owned record changed, and the cache that held the old source
     cleared. Whoever can do this chooses the code root installs next, so it is a security-policy action."""
     repo = _source_repo(req.get("repo", ""))
     branch = str(req.get("branch", "")).strip()
@@ -4541,7 +4673,7 @@ def update_set_source(req):
             )
         )
     opts = _install_options()
-    out = run("git", "ls-remote", "--heads", repo, branch, timeout=60)
+    out = run("git", *_source_protocols(), "ls-remote", "--heads", repo, branch, timeout=60)
     if out.returncode != 0:
         raise Refused(M("update.target.poll.failed", "The box could not read {repo}.", repo=repo))
     if not any(line.endswith(f"\trefs/heads/{branch}") for line in out.stdout.splitlines()):
@@ -4578,20 +4710,10 @@ def update_poll_target(req):
     except ValueError:
         raise Refused(NO_REPO) from None
     repo, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
-    if req.get("repo"):
-        repo = _source_repo(req["repo"])
-    if not repo:
+    if not (req.get("repo") or repo):
         raise Refused(NO_REPO)
-    if repo.startswith(("http://", "git://")):
-        raise Refused(
-            M(
-                "update.check.unencrypted",
-                "Updates come from {repo} over an unencrypted link. "
-                "Run the installer again with an https:// address for the repository.",
-                repo=repo,
-            )
-        )
-    out = run("git", "ls-remote", "--symref", repo, "HEAD", timeout=60)
+    repo = _source_repo(req["repo"]) if req.get("repo") else _recorded_source(repo)
+    out = run("git", *_source_protocols(), "ls-remote", "--symref", repo, "HEAD", timeout=60)
     if out.returncode != 0:
         raise Refused(M("update.target.poll.failed", "The box could not read {repo}.", repo=repo))
     default = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out.stdout, re.M)

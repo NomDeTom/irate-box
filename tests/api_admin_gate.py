@@ -188,5 +188,47 @@ try:
     check("and the hub still answers", go("GET", "/status") == 200)
 finally:
     hub.terminate()
+
+
+# The address it binds: loopback unless HUB_BIND says otherwise (the web server in front is what the network reaches).
+def listening_on(p):
+    """The local address of the TCP listener on port p, from /proc/net/tcp, or None."""
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            rows = Path(table).read_text().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            cols = row.split()
+            addr, _, hexport = cols[1].rpartition(":")
+            if cols[3] == "0A" and int(hexport, 16) == p:
+                return addr
+    return None
+
+
+def start(**extra):
+    p = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+    e = {k: v for k, v in os.environ.items() if k != "HUB_BIND"}
+    e.update(HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=state, HUB_ETC_DIR=state, PORT=str(p), **extra)
+    proc = subprocess.Popen(
+        [str(REPO / "irate-box"), "server"], env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    for _ in range(50):
+        if listening_on(p):
+            break
+        time.sleep(0.1)
+    return proc, p
+
+
+for label, extra, want in (
+    ("HUB_BIND unset: the hub listens on loopback only", {}, "0100007F"),
+    ("  HUB_BIND set: the override is kept", {"HUB_BIND": "0.0.0.0"}, "00000000"),
+):
+    proc, p = start(**extra)
+    try:
+        got = listening_on(p)
+    finally:
+        proc.terminate()
+    check(label, got == want, got)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

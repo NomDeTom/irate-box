@@ -197,7 +197,7 @@ check(
 )
 (T / "etc" / "install-options").write_text("--repo\nhttp://example.invalid/irate-box\n--branch\nmain\n")
 check(
-    "updates from an http:// repository are refused before any fetch",
+    "updates from an http:// repository are refused before any fetch while updates are not signed",
     refused(hub_control._check_for_update, hub_control.Progress("check", 2, path=T / "p.json")),
 )
 # "Verified" is matched on the whole hash.
@@ -351,5 +351,133 @@ check(
     and not hub_control.HELPER_DOING.exists(),
     seen,
 )
+
+# The installer records an update source only if it is one the updater accepts, and says so before any change.
+import subprocess  # the installer's own functions and refusals, run as the tests' user. # nosec B404
+
+_script = inst.splitlines()
+_from = next(i for i, ln in enumerate(_script) if ln.startswith("update_source_ok() {"))
+_to = next(i for i, ln in enumerate(_script) if ln.startswith('if [ -z "$MAKE_BUNDLE" ]'))
+SOURCE_FUNCS = "\n".join(_script[_from:_to])
+
+
+def recorded(repo, given=1, src=""):
+    """What the installer would record as the update source for these arguments: (exit code, stdout, stderr)."""
+    out = subprocess.run(  # nosec B603 B607
+        [
+            "bash",
+            "-c",
+            f'SRC="$1" REPO="$2" REPO_GIVEN="$3"\n{SOURCE_FUNCS}\nupdate_source',
+            "x",
+            src,
+            repo,
+            str(given),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return out.returncode, out.stdout, out.stderr
+
+
+NEVER = (
+    "ext::sh -c 'touch /tmp/x'",
+    "ext::touch",
+    "-oProxyCommand=touch",
+    "ssh://git@example.invalid/irate-box",
+    "git@example.invalid:owner/irate-box.git",
+    "example.invalid:owner/irate-box",
+    "../irate-box",
+    "irate-box",
+    "https://",
+    "https:///irate-box",
+    "file://host/srv/irate-box",
+    "https://user:secret@example.invalid/irate-box",
+    "http://user@box.local/irate-box",
+    "https://example.invalid/irate-box?x=1",
+    "https://example.invalid/irate-box#frag",
+    "https://example.invalid/irate box",
+    "https://exa\\mple.invalid/irate-box",
+    "",
+)
+check(
+    "the installer refuses a sign-in, query or fragment, ssh, scp-style, a helper such as ext::, a leading -, a relative path",
+    all(recorded(r)[0] == 1 and "--repo https://" in recorded(r)[2] and recorded(r)[1] == "" for r in NEVER),
+    [(r, recorded(r)) for r in NEVER if recorded(r)[0] != 1],
+)
+ACCEPTED = (
+    "https://github.com/NomDeTom/irate-box",
+    "https://example.invalid:8443/a/b.git",
+    "https://[2001:db8::1]/irate-box",
+    "http://192.168.4.7:8000/irate-box",
+    "http://box.local/irate-box",
+    "git://box.local/irate-box",
+    "/srv/irate-box",
+    "file:///srv/irate-box",
+)
+check(
+    "  and records https://, http://, git://, an absolute path and file:// as given",
+    all(recorded(r) == (0, r, "") for r in ACCEPTED),
+    [(r, recorded(r)) for r in ACCEPTED if recorded(r) != (0, r, "")],
+)
+# What it says when the source is not https: the box updates from it only once updates are signed.
+check(
+    "  and says, for one that is not https, that updates from it need signing",
+    'case "$rec_repo" in\nhttps://*) ;;\n*) notice "Updates come from $rec_repo, which is not an https:// address.'
+    in inst
+    and "only once updates are signed" in inst,
+)
+# --src: a local tree. Its remote is the update source only when the rule accepts it.
+checkout = T / "checkout"
+checkout.mkdir()
+for args in (["init", "-q"], ["remote", "add", "origin", "https://tok3n@example.invalid/owner/irate-box"]):
+    subprocess.run(["git", "-C", str(checkout), *args], check=True, capture_output=True)  # nosec B603 B607
+check(
+    "  a checkout's https remote is recorded, its token stripped",
+    recorded("https://github.com/NomDeTom/irate-box", 0, str(checkout))
+    == (0, "https://example.invalid/owner/irate-box", ""),
+    recorded("https://github.com/NomDeTom/irate-box", 0, str(checkout)),
+)
+subprocess.run(  # nosec B603 B607
+    ["git", "-C", str(checkout), "remote", "set-url", "origin", "http://box.local:8000/irate-box"],
+    check=True,
+    capture_output=True,
+)
+check(
+    "  a checkout's http:// remote is recorded too (with the notice), not refused",
+    recorded("https://github.com/NomDeTom/irate-box", 0, str(checkout)) == (0, "http://box.local:8000/irate-box", ""),
+    recorded("https://github.com/NomDeTom/irate-box", 0, str(checkout)),
+)
+subprocess.run(  # nosec B603 B607
+    ["git", "-C", str(checkout), "remote", "set-url", "origin", "git@example.invalid:owner/irate-box.git"],
+    check=True,
+    capture_output=True,
+)
+code, out, err = recorded("https://github.com/NomDeTom/irate-box", 0, str(checkout))
+check(
+    "  a checkout whose remote is ssh does not become the update source silently",
+    code == 1 and out == "" and "--repo https://" in err,
+    (code, out, err),
+)
+check(
+    "  an explicit --repo stands for it",
+    recorded("https://example.invalid/fork/irate-box", 1, str(checkout))
+    == (0, "https://example.invalid/fork/irate-box", ""),
+)
+code, out, err = recorded("ssh://git@example.invalid/irate-box", 1, str(checkout))
+check("  an explicit --repo that is never accepted is refused too", code == 1 and out == "", (code, out, err))
+# Run for real, the installer refuses before it asks for root or changes anything.
+for bad in ("git@example.invalid:owner/irate-box.git", "ext::touch", "https://user:pw@example.invalid/x"):
+    real = subprocess.run(  # nosec B603 B607
+        ["bash", str(REPO / "install.sh"), "--repo", bad],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    check(
+        f"install.sh --repo {bad}: exit 2 and the reason, before the root check",
+        real.returncode == 2 and "updates cannot come from" in real.stderr and "root" not in real.stdout,
+        (real.returncode, real.stderr),
+    )
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

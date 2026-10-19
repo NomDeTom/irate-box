@@ -153,7 +153,7 @@ The installer keeps user data and the administrator password.
 EOF
 }
 
-SRC="" REPO="https://github.com/NomDeTom/irate-box" BRANCH="main" APPS_SRC="" DL_CACHE=""
+SRC="" REPO="https://github.com/NomDeTom/irate-box" REPO_GIVEN=0 BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto
@@ -177,6 +177,7 @@ while [ $# -gt 0 ]; do
 		;;
 	--repo)
 		REPO="$2"
+		REPO_GIVEN=1
 		shift 2
 		;;
 	--branch)
@@ -309,6 +310,39 @@ for z in ${ZIMS[@]+"${ZIMS[@]}"}; do
 		;;
 	esac
 done
+
+# The repository the box takes its updates from: root runs what it brings (hub_control.py _source_check is the same
+# rule, applied again at every check, with the signing level). Never accepted: a sign-in, query or fragment in the
+# address, a leading "-", git's <transport>:: forms, ssh and scp-style addresses, a relative path. https always;
+# http://, git://, file:// and an absolute path are recorded too, but the box updates from them only once signing is
+# on (Updates, then Update verification), which this script does not set. A checkout given with --src is a local
+# tree: its own remote becomes the update source only if the rule accepts it; otherwise --repo must say one.
+update_source_ok() {
+	case "$1" in -* | *[[:space:]\\?#]*) return 1 ;; esac
+	[ "${#1}" -le 300 ] || return 1
+	case "$1" in
+	/* | file:///*) return 0 ;;
+	https://* | http://* | git://*) [[ $1 =~ ^(https?|git)://(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9][A-Za-z0-9.-]*)(:[0-9]+)?(/.*)?$ ]] ;;
+	*) return 1 ;;
+	esac
+}
+update_source() { # prints the address to record, or says why there is none
+	local rec_repo="$REPO"
+	if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
+		rec_repo="$(git -C "$SRC" remote get-url origin 2>/dev/null || echo "$REPO")"
+		# A token in the remote's URL is not recorded (install-options is world-readable).
+		rec_repo="$(printf '%s' "$rec_repo" | sed -E 's#^([a-z+]+://)[^/@]*@#\1#')"
+		if ! update_source_ok "$rec_repo" && [ "$REPO_GIVEN" = 1 ]; then rec_repo="$REPO"; fi
+	fi
+	if ! update_source_ok "$rec_repo"; then
+		echo "install.sh: updates cannot come from $rec_repo. Updates run as root. Give the repository as an https:// address (or, for signed updates, http://, git://, file:// or an absolute path) without a user name, password, query or fragment. ssh, scp-style and ext:: addresses are not accepted. Run again with --repo https://…" >&2
+		return 1
+	fi
+	printf '%s' "$rec_repo"
+}
+if [ -z "$MAKE_BUNDLE" ]; then
+	update_source >/dev/null || exit 2
+fi
 
 # An add-on being removed is not installed by this run, whatever else asks for it.
 for r in "${REMOVE[@]}"; do
@@ -1237,19 +1271,16 @@ fi
 # can neither choose the repository an update comes from nor add options to it. Paths
 # (--src, --apps, --zim) and the password are not recorded: apps and books stay as they
 # are, and the password file is kept.
-rec_repo="$REPO" rec_branch="$BRANCH"
+rec_repo="$(update_source)" || die "the update repository is not an address the box accepts"
+case "$rec_repo" in
+https://*) ;;
+*) notice "Updates come from $rec_repo, which is not an https:// address. The box updates from it only once updates are signed: select GitHub's signatures or signed releases under Updates, then Update verification. Until then its checks for updates fail." ;;
+esac
+rec_branch="$BRANCH"
 if [ -n "$SRC" ] && git -C "$SRC" rev-parse >/dev/null 2>&1; then
-	rec_repo="$(git -C "$SRC" remote get-url origin 2>/dev/null || echo "$REPO")"
-	# A token in the remote's URL is not recorded (install-options is world-readable).
-	rec_repo="$(printf '%s' "$rec_repo" | sed -E 's#^([a-z+]+://)[^/@]*@#\1#')"
 	rec_branch="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH")"
 	[ "$rec_branch" = HEAD ] && rec_branch="$BRANCH"
 fi
-case "$rec_repo" in
-http://* | git://*)
-	notice "Updates come from $rec_repo, which uses unencrypted HTTP. The box's updater refuses it, because any device on the path could supply code that root runs. To receive updates, rerun with --repo https://…"
-	;;
-esac
 {
 	printf '%s\n' --repo "$rec_repo" --branch "$rec_branch" --web "$WEB"
 	[ "$WITH_NOTES" = 1 ] && echo --with-notes

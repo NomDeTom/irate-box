@@ -73,7 +73,9 @@ MAX_MESSAGES = 200
 # exist on this hardware. See hubclock.py.
 SHOUT_TTL = 24 * 3600
 PORT = int(os.environ.get("PORT", 8000))
-BIND = os.environ.get("HUB_BIND", "0.0.0.0")  # 127.0.0.1 behind the web server
+BIND = os.environ.get(
+    "HUB_BIND", "127.0.0.1"
+)  # the web server fronts it; set another address only with a protected front
 # Where captive-portal probes are sent. Unset, the redirect is relative and lands on
 # whatever address the probe arrived at -- fine on localhost, and on the AP every name
 # resolves to the hub anyway. The Pi's unit sets the real origin, http://192.168.4.1/,
