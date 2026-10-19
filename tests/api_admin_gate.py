@@ -76,6 +76,51 @@ try:
         )
         == 200,
     )
+    # The administration pages have an origin of their own (their port): the page's own requests carry that
+    # port in Host, and Origin must be that very origin. The hub's port (the origin of any page that
+    # could have been scripted) does not do, nor a different port of the same host.
+    admin_host = {"Host": "127.0.0.1:8095"}
+    bare = {"X-Irate-Admin": "1", "Content-Type": "application/json"}  # a page's headers, without the front's secret
+    check(
+        "POST /admin from the administration origin itself (Origin and Host both its port): 200",
+        go(
+            "POST",
+            "/admin/settings",
+            {**page, **admin_host, "Origin": "http://127.0.0.1:8095", "Sec-Fetch-Site": "same-origin"},
+            b"{}",
+        )
+        == 200,
+    )
+    check(
+        "  from the hub's origin, same host, another port: 403",
+        go(
+            "POST",
+            "/admin/settings",
+            {**page, **admin_host, "Origin": "http://127.0.0.1:80", "Sec-Fetch-Site": "same-site"},
+            b"{}",
+        )
+        == 403,
+    )
+    check(
+        "  and by Origin alone, with the hub's host and port in the Host header: 403",
+        go("POST", "/admin/settings", {**page, **admin_host, "Origin": "http://127.0.0.1"}, b"{}") == 403,
+    )
+    # The second layer: the hub refuses /admin unless the web server of the administration origin said so
+    # (X-Irate-Front, a secret from a root-only file, which every other origin of the front clears). A client
+    # cannot send it: not its absence, not a guess, not a copy of the header's name.
+    for label, headers in (
+        ("none", {}),
+        ("an empty one", {"X-Irate-Front": ""}),
+        ("a guess", {"X-Irate-Front": "0" * 64}),
+        ("the secret with a letter changed", {"X-Irate-Front": SECRET[:-1] + "0"}),
+        ("the secret's first half", {"X-Irate-Front": SECRET[:32]}),
+        ("the secret in another header", {"X-Irate-Frontier": SECRET, "X-Forwarded-Front": SECRET}),
+    ):
+        check(
+            f"/admin from the hub's origin ({label}): 403",
+            go("GET", "/admin/settings", headers) == 403
+            and go("POST", "/admin/settings", {**bare, **headers}, b"{}") == 403,
+        )
     # A refused request with a body, then another on the same kept-alive connection.
     go("POST", "/admin/settings", {**front, "Content-Type": "application/json"}, b'{"store_save_ttl_hours": 7}')
     check(
