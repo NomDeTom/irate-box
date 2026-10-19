@@ -44,7 +44,8 @@ for (const [stage, state, labels, disabled] of [
   const buttons = ['check', 'fetch', 'install'].map(name => d.getElementById(`update-${name}`));
   check(`${stage}: three stage-aware actions`, buttons.every((button, index) => button.textContent === labels[index] && button.disabled === disabled[index]));
 }
-check('repairs belong to the doctor, not Updates', ['update-clear', 'update-force'].every(id => d.getElementById(id).closest('.admin-pane').id === 'updoctor'));
+check('repairs belong to the doctor, not Updates', d.getElementById('update-clear').closest('.admin-pane').id === 'updoctor');
+check('  Install anyway is only a finding\'s button, not a second control in the recovery actions', !d.getElementById('update-force'));
 // Debian's buttons follow the same stages as the hub card's: nothing known, waiting, downloaded.
 {
   const debian = (waiting, fetched) => {
