@@ -12,7 +12,9 @@ const Q = new URLSearchParams(location.search);
 const W = Number(Q.get('w') || 1280);
 const STATIC = Q.get('static') === '1';
 const f = document.getElementById('f');
-f.src = Q.get('src') || '/admin/';
+// ?src= is a page of this site only: its path, never another origin or a scheme of its own.
+const SRC = new URL(Q.get('src') || '/admin/', location.href);
+f.src = SRC.origin === location.origin ? SRC.pathname + SRC.search : '/admin/';
 f.style.width = `${W}px`;
 const DEFAULT_LINKS = ['rgb(0, 0, 238)', 'rgb(85, 26, 139)', 'rgb(0, 0, 255)'];
 // Where text may be as big as the page's own: headings, controls, and the names of things.
