@@ -4772,7 +4772,7 @@ def _doctor_again():
     try:
         safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": doctor()}, indent=2))
     except Exception:  # noqa: BLE001 - the action that asked is done; the report is a courtesy
-        pass
+        return  # the old report stays, and the page says it is out of date
 
 
 def update_doctor(req):
