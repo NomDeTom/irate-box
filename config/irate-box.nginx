@@ -867,6 +867,10 @@ server {
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection $irate_box_connection;
 		proxy_set_header X-Irate-Front "";
+		# Syncthing sends X-Frame-Options: SAMEORIGIN, which keeps it out of the hub's app bar (another origin, the
+		# hub's port): dropped, and the hub's port named as the one that may frame it, as Draw's and Mermaid's do.
+		proxy_hide_header X-Frame-Options;
+		add_header Content-Security-Policy "frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host" always;
 		proxy_pass http://127.0.0.1:8384/;
 	}
 	location / { return 404; }
