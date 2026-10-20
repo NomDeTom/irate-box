@@ -3641,136 +3641,54 @@ function scanButtons(f, busy) {
     return b;
   });
 }
-// The Security page's, the Security doctor's and Updates' choices are set, then saved: each chosen thing waits, marked,
-// with what it does said in its page's bar (no pop-up per switch). Each page's Save sends only what was chosen on
-// that page, and its Discard forgets only those: a choice left waiting elsewhere is never sent unseen.
-const SEC_PAGES = ["security", "secdoctor", "updates"];
-const SEC_PAGE_NAME = {
-  security: "Security",
-  secdoctor: "the Security doctor",
-  updates: "Updates",
+// The Security page's, the Security doctor's and Updates' choices are settings: each finding's is a section of one
+// value (the choice picked, '' for none), saved from the footer under it, its question asked once at Save. A cure
+// (one right answer) and its Undo are actions: they act at once, after their question.
+const secSecs = new Map(); // finding id -> its section
+const secOffer = (fid, choice) => {
+  const f = ((secData && secData.scan && secData.scan.findings) || []).find(
+    (x) => x.id === fid,
+  );
+  return f && (f.actions || []).find((a) => a.choice === choice);
 };
-const secPending = new Map(); // finding id -> {f, a, page}
-const secChosen = (fid, a) =>
-  secPending.has(fid) && secPending.get(fid).a.choice === a.choice;
-const secPageOf = (node) =>
-  node && node.closest && node.closest(".admin-pane")
-    ? node.closest(".admin-pane").id
-    : "security";
-const secOnPage = (page) =>
-  [...secPending.entries()].filter(([, v]) => v.page === page);
-function secChoose(f, a, from) {
-  // Chosen again, or the choice it has now: nothing to save for it.
-  if (secChosen(f.id, a) || a.on) secPending.delete(f.id);
-  else secPending.set(f.id, { f, a, page: secPageOf(from) });
-  if (secData) renderSecurity(secData);
-}
-function drawSecPending(busy) {
-  document.querySelectorAll(".sec-pending").forEach((bar) => {
-    const page = secPageOf(bar);
-    const list = secOnPage(page).map(([, v]) => v);
-    // Chosen on another page: said here with a way there, never saved from here.
-    const elsewhere = SEC_PAGES.filter((p) => p !== page)
-      .map((p) => [p, secOnPage(p).length])
-      .filter(([, n]) => n);
-    const away = elsewhere.length
-      ? el(
-          "p",
-          { className: "setting-desc" },
-          "Also waiting, saved from their own page: ",
-          ...elsewhere.flatMap(([p, n], i) => [
-            i ? ", " : "",
-            el("a", {
-              href: `#${p}`,
-              textContent: `${n} on ${SEC_PAGE_NAME[p]}`,
-            }),
-          ]),
-        )
-      : null;
-    bar.hidden = !list.length && !away;
-    if (!list.length) {
-      bar.replaceChildren(...(away ? [away] : []));
-      return;
-    }
-    bar.replaceChildren(
-      el("p", {
-        className: "setting-name",
-        textContent: `${list.length} change${list.length === 1 ? "" : "s"} not saved yet`,
-      }),
-      ...(away ? [away] : []),
-      el(
-        "ul",
-        { className: "sec-pending-list" },
-        ...list.map(({ f, a }) =>
-          el(
-            "li",
-            {},
-            el("strong", { textContent: `${f.title}: ` }),
-            a.label,
-            a.confirm
-              ? el("span", {
-                  className: "setting-desc",
-                  textContent: ` ${a.confirm.replace(/\?$/, ".")}`,
-                })
-              : null,
-          ),
-        ),
-      ),
-      el(
-        "div",
-        { className: "library-buttons" },
-        el("button", {
-          type: "button",
-          className: "action-btn",
-          textContent: "Discard",
-          disabled: busy,
-          onclick: () => {
-            secOnPage(page).forEach(([k]) => secPending.delete(k));
-            if (secData) renderSecurity(secData);
-          },
-        }),
-        el("button", {
-          type: "button",
-          className: "action-btn primary",
-          textContent: "Save changes",
-          disabled: busy,
-          onclick: () => secSavePending(page),
-        }),
-      ),
-    );
+function secSection(f) {
+  if (secSecs.has(f.id)) return secSecs.get(f.id);
+  const sec = AW.section({
+    id: `sec-${f.id}`,
+    label: f.title,
+    saved: { choice: "" },
+    ask: (c) => {
+      const a = secOffer(f.id, c.choice);
+      return a && a.confirm ? a.confirm : null;
+    },
+    save: async (c) => {
+      const j = AW.job();
+      secRequest({ action: "fix", choice: c.choice }, f.id, j.done);
+      await j;
+      // Done: nothing waits any more (the scan says what is in effect now).
+      setTimeout(() => sec.update({ choice: "" }));
+    },
+    busy: () => !!(secWaiting && secWaiting.fid === f.id),
+    onChange: () => secData && renderSecurity(secData),
   });
+  secSecs.set(f.id, sec);
+  return sec;
 }
-async function secSavePending(page) {
-  const list = secOnPage(page);
-  const ids = [];
-  let failed = null;
-  // Each change sent in turn; one the hub refuses, and those after it, stay chosen (and shown) for another Save.
-  for (const [key, { a }] of list) {
-    try {
-      ids.push(
-        (await postJSON("/admin/security", { action: "fix", choice: a.choice }))
-          .id,
-      );
-      secPending.delete(key);
-    } catch (err) {
-      failed = err.message;
-      break;
-    }
-  }
-  if (ids.length) {
-    secWaiting = { id: ids[ids.length - 1], ids, fid: "scan" };
-    secNote = null;
-  }
-  if (failed) {
-    secNote = {
-      fid: "scan",
-      text: `${ids.length} of ${list.length} changes were sent to the root helper. The next change failed: ${failed.replace(/\.?$/, ".")} ${list.length - ids.length} change${list.length - ids.length === 1 ? " is" : "s are"} still selected and not saved.`,
-      ok: false,
-    };
-    if (ids.length) secWaiting.keepNote = secNote;
-  }
-  loadSecurity();
+const secChosen = (fid, a) => {
+  const sec = secSecs.get(fid);
+  return !!sec && sec.dirty() && sec.get("choice") === a.choice;
+};
+function secChoose(f, a) {
+  // A cure acts at once (the one in effect already: nothing to do).
+  if (secKind(f) === "cure") return a.on ? undefined : secFix(f.id, a);
+  // Chosen again, or the choice it has now: nothing to save for it.
+  secSection(f).set("choice", secChosen(f.id, a) || a.on ? "" : a.choice);
 }
+// The footer under a finding whose choice is held for Save.
+const secFoot = (f) =>
+  secKind(f) === "cure" || !(f.actions || []).length
+    ? []
+    : [secSection(f).foot, secSection(f).reason];
 
 // --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
@@ -4045,7 +3963,8 @@ function secChipRows(f, busy) {
         "div",
         { className: "chip-group", role: "group", "aria-label": label },
         ...choices.map((a) => {
-          const pend = secPending.get(f.id);
+          const sec = secSecs.get(f.id);
+          const pend = sec && sec.dirty() ? { a: { choice: sec.get("choice") } } : null;
           const sel = pend ? pend.a.choice === a.choice : !!a.on;
           const b = el("button", {
             type: "button",
@@ -4146,18 +4065,18 @@ function secChoiceCard(f, busy, note) {
     ...findingLines(f),
     ...rows,
     buttons,
+    ...secFoot(f),
     note,
   );
 }
 // A choice waiting for Save that the newest scan no longer offers (in effect now, or its finding gone): dropped,
-// never sent; one still offered follows the scan's newest wording.
+// never sent.
 function secPrune(scan) {
   if (!scan) return;
-  for (const [fid, v] of [...secPending]) {
-    const f = (scan.findings || []).find((x) => x.id === fid);
-    const a = f && (f.actions || []).find((x) => x.choice === v.a.choice);
-    if (!a || a.on) secPending.delete(fid);
-    else secPending.set(fid, { ...v, f, a });
+  for (const [fid, sec] of secSecs) {
+    if (!sec.dirty() || sec.saving()) continue;
+    const a = secOffer(fid, sec.get("choice"));
+    if (!a || a.on) sec.discard();
   }
 }
 function renderSecurity(data) {
@@ -4165,7 +4084,6 @@ function renderSecurity(data) {
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
   secPrune(scan);
-  drawSecPending(busy);
   if (secWaiting) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
     if (done) {
@@ -4210,7 +4128,7 @@ function renderSecurity(data) {
         f.status === "ok"
           ? ""
           : f.fix || (f.actions.length ? "" : "Information only."),
-      controls: scanButtons(f, busy),
+      controls: [...scanButtons(f, busy), ...secFoot(f)],
       note: noteUnder(f.id),
       ...extra,
     });
@@ -4281,7 +4199,10 @@ function renderSecurity(data) {
       ? by("update").map((f) =>
           row(f, {
             how: f.status === "ok" ? "" : f.fix,
-            controls: f.id === "security-updates" ? [] : scanButtons(f, busy),
+            controls:
+              f.id === "security-updates"
+                ? []
+                : [...scanButtons(f, busy), ...secFoot(f)],
             badge: updBadge(f),
           }),
         )
@@ -4396,6 +4317,7 @@ function renderSecurity(data) {
                 ...scanButtons(f, busy),
               )
             : null,
+          ...(f ? secFoot(f) : []),
           f ? noteUnder(f.id) : null,
         ),
       );
@@ -5331,8 +5253,7 @@ const hl = {
   fine: document.getElementById("health-fine"),
   glance: document.getElementById("health-glance"),
   setGroups: document.getElementById("health-settings-groups"),
-  setSave: document.getElementById("health-settings-save"),
-  setDiscard: document.getElementById("health-settings-discard"),
+  setFoot: document.getElementById("health-settings-foot"),
   setNote: document.getElementById("health-settings-note"),
   fineFold: document.getElementById("health-fine-fold"),
   fineCount: document.getElementById("health-fine-count"),
@@ -5531,57 +5452,90 @@ function renderGlance(data, rep) {
   );
 }
 
-// The doctor's own settings: each a row of choices; Save sends the changes to the root helper one after another,
-// says what waits, then what was done, and looks again so the page shows them as they are.
-let hsPick = {},
+// The doctor's own settings as a section: each a row of choices; Save sends the changes to the root helper one
+// after another, says what waits, then what was done, and looks again so the page shows them as they are. A
+// question an option carries is asked once, at Save, with any other.
+let hsGroups = [],
   hsFrom = "",
   hsSaving = null;
-function renderDoctorSettings(data, rep) {
-  const st = rep && rep.settings;
-  const groups = (st && st.groups) || [];
-  const from = JSON.stringify(groups.map((g) => [g.key, g.current]));
-  if (from !== hsFrom && !hsSaving) {
-    // a new report: the settings as they are now, unless the owner is mid-change
-    const dirty = Object.keys(hsPick).some((k) =>
-      groups.find((g) => g.key === k && g.current !== hsPick[k]),
-    );
-    if (!dirty || !hsFrom) {
-      hsPick = Object.fromEntries(groups.map((g) => [g.key, g.current]));
-    }
-    hsFrom = from;
+const docSec = AW.section({
+  id: "doctor-settings",
+  label: "The Box doctor's settings",
+  saved: null,
+  ask: (c) => {
+    const asks = Object.entries(c)
+      .map(([k, v]) => {
+        const g = hsGroups.find((x) => x.key === k);
+        const o = g && g.options.find((x) => x.value === v);
+        return o && o.confirm;
+      })
+      .filter(Boolean);
+    return asks.length ? asks.join("\n\n") : null;
+  },
+  save: (c) => doctorSave(c),
+  onChange: () => drawDoctorGroups(),
+});
+hl.setFoot.append(docSec.foot, docSec.reason);
+function drawDoctorGroups() {
+  if (!hsGroups.length) {
     hl.setGroups.replaceChildren(
-      ...groups.map((g) => {
-        const box = el("div", { id: `hs-${g.key}` });
-        AW.choices(
-          box,
-          `hs-${g.key}`,
-          g.options.map((o) => ({ value: o.value, title: o.label })),
-          {
-            value: hsPick[g.key],
-            onChange: (v) => {
-              hsPick[g.key] = v;
-              showDoctorSave(groups);
-            },
-          },
-        );
-        box.setAttribute("aria-label", g.label);
-        return el(
-          "div",
-          { className: "up-group" },
-          el("span", { className: "setting-name", textContent: g.label }),
-          el("p", { className: "setting-desc", textContent: g.desc }),
-          box,
-        );
+      el("p", {
+        className: "setting-desc",
+        textContent: "Shown after the next check.",
       }),
     );
-    if (!groups.length)
-      hl.setGroups.replaceChildren(
-        el("p", {
-          className: "setting-desc",
-          textContent: "Shown after the next check.",
-        }),
-      );
+    return;
   }
+  hl.setGroups.replaceChildren(
+    ...hsGroups.map((g) => {
+      const box = el("div", { id: `hs-${g.key}` });
+      AW.choices(
+        box,
+        `hs-${g.key}`,
+        g.options.map((o) => ({ value: o.value, title: o.label })),
+        {
+          value: docSec.get(g.key),
+          onChange: (v) => docSec.set(g.key, v, true),
+        },
+      );
+      box.setAttribute("aria-label", g.label);
+      return el(
+        "div",
+        { className: "up-group" },
+        el("span", { className: "setting-name", textContent: g.label }),
+        el("p", { className: "setting-desc", textContent: g.desc }),
+        box,
+      );
+    }),
+  );
+}
+// Sent one after another; one the hub refuses stops the rest, and those already sent are still waited for and said.
+async function doctorSave(changes) {
+  const ids = [];
+  let failed = null;
+  for (const [k, v] of Object.entries(changes)) {
+    const g = hsGroups.find((x) => x.key === k);
+    const o = g.options.find((x) => x.value === v);
+    try {
+      ids.push(
+        (await postJSON("/admin/health", { action: "fix", choice: o.choice }))
+          .id,
+      );
+    } catch (err) {
+      failed = err.message;
+      break;
+    }
+  }
+  if (!ids.length) throw new Error(failed);
+  const j = AW.job();
+  hsSaving = { ids, failed, of: Object.keys(changes).length, job: j };
+  say("Saving. Sent to the root helper.", true, hl.setNote);
+  loadHealth();
+  return j;
+}
+function renderDoctorSettings(data, rep) {
+  const st = rep && rep.settings;
+  hsGroups = (st && st.groups) || [];
   if (hsSaving) {
     const done = hsSaving.ids.map((id) =>
       (data.results || []).find((r) => r.id === id),
@@ -5589,18 +5543,19 @@ function renderDoctorSettings(data, rep) {
     if (done.every(Boolean)) {
       const bad = done.filter((r) => !r.ok);
       const left = hsSaving.of - done.length;
-      say(
+      const ok = !bad.length && !hsSaving.failed;
+      const text =
         (bad.length
           ? bad.map(resultSaid).join(" ")
           : `Saved: ${done.map(resultSaid).join(" ")}`) +
-          (hsSaving.failed
-            ? ` ${done.length} of ${hsSaving.of} changes were sent. The next change failed: ${hsSaving.failed.replace(/\.?$/, ".")} ${left} change${left === 1 ? " is" : "s are"} still selected and not saved.`
-            : ""),
-        !bad.length && !hsSaving.failed,
-        hl.setNote,
-      );
+        (hsSaving.failed
+          ? ` ${done.length} of ${hsSaving.of} changes were sent. The next change failed: ${hsSaving.failed.replace(/\.?$/, ".")} ${left} change${left === 1 ? " is" : "s are"} still selected and not saved.`
+          : "");
+      const j = hsSaving.job;
       hsSaving = null;
       hsFrom = "";
+      say(text, ok, hl.setNote);
+      j.done(ok, ok ? "" : text);
       hlRequest({ action: "scan" }, "scan");
     } else {
       const ahead = ((data.queue && data.queue.waiting) || []).length;
@@ -5615,52 +5570,13 @@ function renderDoctorSettings(data, rep) {
       );
     }
   }
-  showDoctorSave(groups);
-}
-function showDoctorSave(groups) {
-  const changed = groups.filter(
-    (g) => hsPick[g.key] !== undefined && hsPick[g.key] !== g.current,
-  );
-  hl.setSave.disabled = hl.setDiscard.disabled = !!hsSaving || !changed.length;
-  hl.setDiscard.onclick = () => {
-    hsPick = {};
-    hsFrom = "";
-    if (hlLast) renderHealth(hlLast);
-  };
-  hl.setSave.textContent = hsSaving
-    ? "Saving…"
-    : changed.length
-      ? `Save (${changed.length} unsaved)`
-      : "Save";
-  hl.setSave.onclick = async () => {
-    for (const g of changed) {
-      const o = g.options.find((x) => x.value === hsPick[g.key]);
-      if (o.confirm && !confirm(o.confirm)) return;
-    }
-    // Sent one after another; one the hub refuses stops the rest, and those already sent are still waited for and said.
-    const ids = [];
-    let failed = null;
-    for (const g of changed) {
-      const o = g.options.find((x) => x.value === hsPick[g.key]);
-      try {
-        ids.push(
-          (await postJSON("/admin/health", { action: "fix", choice: o.choice }))
-            .id,
-        );
-      } catch (err) {
-        failed = err.message;
-        break;
-      }
-    }
-    if (!ids.length) {
-      say(failed, false, hl.setNote);
-      return;
-    }
-    hsSaving = { ids, failed, of: changed.length };
-    showDoctorSave(groups);
-    say("Saving. Sent to the root helper.", true, hl.setNote);
-    loadHealth();
-  };
+  // A new report: the settings as they are now; a change in progress kept over them.
+  const from = JSON.stringify(hsGroups.map((g) => [g.key, g.current]));
+  if (from !== hsFrom && !docSec.saving()) {
+    hsFrom = from;
+    docSec.update(Object.fromEntries(hsGroups.map((g) => [g.key, g.current])));
+    if (!hsGroups.length) drawDoctorGroups();
+  }
 }
 document
   .getElementById("health-search")
@@ -10462,34 +10378,22 @@ function accessSlot(id) {
   return accessNodes.get(id).node;
 }
 
-function accessSet(a, mode) {
-  if (mode === a.mode) return;
-  if (
-    mode === "off" &&
-    a.unit &&
-    !confirm(`Disable ${a.title}? Its service stops until you enable it again.`)
-  )
-    return;
-  if (
-    mode === "public" &&
-    a.mode !== "public" &&
-    !a.login &&
-    !confirm(
-      `Let guests open ${a.title}? Every device on the network of the box can open it without a sign-in.`,
-    )
-  )
-    return;
-  postJSON("/admin/access", { app: a.id, mode }).then(
-    (r) => {
-      accessWaiting = { id: r.id, app: a.id };
-      accessNote = null;
-      loadAccess();
-    },
-    (err) => {
-      accessNote = { app: a.id, text: err.message, ok: false };
-      loadAccess();
-    },
-  );
+// What a change of access needs saying, asked once at Save.
+function accessAsk(a, mode) {
+  if (mode === "off" && a.unit)
+    return `Disable ${a.title}? Its service stops until you enable it again.`;
+  if (mode === "public" && a.mode !== "public" && !a.login)
+    return `Let guests open ${a.title}? Every device on the network of the box can open it without a sign-in.`;
+  return null;
+}
+// The change, as a job: done when the root helper's answer comes back with the poll (renderAccess).
+async function accessSet(a, mode) {
+  const j = AW.job();
+  const r = await postJSON("/admin/access", { app: a.id, mode });
+  accessWaiting = { id: r.id, app: a.id, job: j };
+  accessNote = null;
+  loadAccess();
+  return j;
 }
 
 function renderAccess(data) {
@@ -10501,8 +10405,9 @@ function renderAccess(data) {
         text: resultSaid(done),
         ok: done.ok,
       };
-      if (done.ok) accessDrafts.delete(accessWaiting.app);
+      const j = accessWaiting.job;
       accessWaiting = null;
+      if (j) j.done(done.ok, resultSaid(done));
       return loadAccess();
     }
   }
@@ -10853,16 +10758,54 @@ loadSignInOffer();
 // The apps row's order, on "All apps": each tile with who opens it and who sees it; moved
 // with ↑/↓, held until Save, kept by the hub (/admin/tiles).
 let tilesData = null;
-let tilesDraft = null;
+let tilesDraft = null; // the section's draft, as the list's controls change it
+// Home tiles as one section: its value the whole arrangement (freshTilesDraft's shape, visibility and the locked
+// action as changes only), so a change undone turns Save off; reloaded, a draft is kept over the saved one.
+const tilesSec = AW.section({
+  id: "home-tiles",
+  label: "Home tiles",
+  saved: null,
+  why: (c, v) =>
+    Object.values(v.all.icon || {}).some((x) => x && !ICON_OK(x))
+      ? "A tile icon is not valid: use emoji, or up to four letters and digits."
+      : null,
+  save: (c, v) => saveTiles(v.all),
+  onChange: () => {
+    tilesDraft = JSON.parse(JSON.stringify(tilesSec.get("all")));
+    drawTileOrder();
+  },
+});
+const tilesTouched = () =>
+  tilesSec.set("all", JSON.parse(JSON.stringify(tilesDraft)), true);
 async function loadTileOrder() {
   try {
     tilesData = await getJSON("/admin/tiles");
   } catch (e) {
     return;
   }
-  tilesDraft = freshTilesDraft();
-  drawTileOrder();
+  tilesSec.update({ all: freshTilesDraft() });
   renderInventory();
+}
+async function saveTiles(d) {
+  const appOf = (id) => lastAccess && lastAccess.apps.find((x) => x.id === id);
+  tilesData = await postJSON("/admin/tiles", {
+    state: { order: d.order, size: d.size || {}, icon: d.icon || {} },
+  });
+  for (const [id, v] of Object.entries(d.seen)) {
+    const a = appOf(id),
+      auto = a ? seenOf(a.mode, "auto") : "guests";
+    await postJSON("/admin/visibility", {
+      app: id,
+      visible: v === auto ? "auto" : v,
+    });
+  }
+  for (const [id, v] of Object.entries(d.lock))
+    await postJSON("/admin/visibility", { app: id, locked: v });
+  // Saved: the arrangement read back (visibility and the locked action as they are now, no changes left).
+  setTimeout(() => {
+    tilesSec.update({ all: freshTilesDraft() });
+    loadAccess();
+  });
 }
 // Home tiles' draft: the order, sizes and icons (/admin/tiles), and who sees each tile and what a
 // locked one does (/admin/visibility), changed ones only. All held until Save.
@@ -10904,9 +10847,17 @@ function tileWords(id) {
 function drawTileOrder(openId) {
   const box = document.getElementById("tile-order-box");
   if (!box || !tilesData || !tilesDraft) return;
+  // The row open before a redraw stays open (the poll and the other controls draw the list again).
+  if (!openId) {
+    const was = box.querySelector('.aw-row-head[aria-expanded="true"]');
+    openId = was ? was.closest(".aw-row").dataset.awId : null;
+  }
   const byId = new Map(tilesData.tiles.map((x) => [x.id, x]));
   const order = tilesDraft.order.filter((i) => byId.has(i));
-  const redraw = (id) => drawTileOrder(id);
+  const redraw = (id) => {
+    tilesTouched();
+    drawTileOrder(id);
+  };
   const move = (id, d) => {
     const i = order.indexOf(id),
       k = i + d;
@@ -10915,8 +10866,6 @@ function drawTileOrder(openId) {
     tilesDraft.order = order;
     redraw(id);
   };
-  const saved = tilesData.tiles.map((x) => x.id);
-  const mapOf = (m) => JSON.stringify(Object.entries(m || {}).sort());
   const appOf = (id) => lastAccess && lastAccess.apps.find((x) => x.id === id);
   const folderIds = new Set(
     (AL.apps() || []).filter((x) => x.folder).map((x) => x.id),
@@ -10929,12 +10878,6 @@ function drawTileOrder(openId) {
   };
   const lockNow = (id) =>
     ((lastAccess && lastAccess.locked_as) || {})[id] || "signin";
-  const dirty =
-    order.join() !== saved.join() ||
-    mapOf(tilesDraft.size) !== mapOf(tilesData.state.size) ||
-    mapOf(tilesDraft.icon) !== mapOf(tilesData.state.icon) ||
-    Object.keys(tilesDraft.seen).length ||
-    Object.keys(tilesDraft.lock).length;
   const items = order.map((id) => {
     const t = byId.get(id),
       a = appOf(id),
@@ -11037,57 +10980,10 @@ function drawTileOrder(openId) {
         ].filter(Boolean),
     };
   });
-  const badIcon = Object.values(tilesDraft.icon || {}).some(
-    (v) => v && !ICON_OK(v),
-  );
-  const note = AW.h("span", {
-    class: "note",
-    text: dirty ? "Unsaved changes." : "Changes apply after you select Save.",
-  });
   box.replaceChildren(
     AW.shortList(items, { id: "tile-order-list" }),
-    AW.h(
-      "div",
-      { class: "aw-foot" },
-      note,
-      AW.btn("Discard", {
-        disabled: !dirty,
-        onclick: () => {
-          tilesDraft = freshTilesDraft();
-          drawTileOrder();
-        },
-      }),
-      AW.btn("Save", {
-        class: "action-btn primary",
-        disabled: !dirty || badIcon,
-        onclick: async () => {
-          try {
-            tilesData = await postJSON("/admin/tiles", {
-              state: {
-                order,
-                size: tilesDraft.size || {},
-                icon: tilesDraft.icon || {},
-              },
-            });
-            for (const [id, v] of Object.entries(tilesDraft.seen)) {
-              const a = appOf(id),
-                auto = a ? seenOf(a.mode, "auto") : "guests";
-              await postJSON("/admin/visibility", {
-                app: id,
-                visible: v === auto ? "auto" : v,
-              });
-            }
-            for (const [id, v] of Object.entries(tilesDraft.lock))
-              await postJSON("/admin/visibility", { app: id, locked: v });
-            tilesDraft = freshTilesDraft();
-            drawTileOrder();
-            loadAccess();
-          } catch (err) {
-            note.textContent = err.message;
-          }
-        },
-      }),
-    ),
+    tilesSec.foot,
+    tilesSec.reason,
   );
   const open =
     openId &&
@@ -11138,7 +11034,6 @@ const seenOf = (mode, visible) =>
     : { public: "guests", users: "users", private: "admin", off: "hidden" }[
         mode
       ] || "guests";
-const accessDrafts = new Map(); // app id -> { mode }
 function tileOrderNow() {
   return tilesDraft
     ? tilesDraft.order.slice()
@@ -11174,74 +11069,49 @@ function chipRow(label, opts, cur, set, disabledOf = () => false) {
 // The block: who can open an app. Its tile (who sees it, what a locked one does, its place,
 // size and icon) is arranged on Home tiles; the app's page shows that as a summary.
 function accessBlock(id, a) {
-  const base = { mode: a.mode };
-  const d = accessDrafts.get(id) || { ...base };
-  const redraw = () => {
-    accessDrafts.set(id, d);
-    fillAccessBlocks();
-  };
-  const dirty = d.mode !== base.mode;
-  const waiting = !!(accessWaiting && accessWaiting.app === id);
+  // A section per app (drawn in its row and on its page alike, the draft shared by id); root's, answered by poll:
+  // the draft stays until it is done (renderAccess), so Cancel or a failure keeps it.
+  const sec = AW.section({
+    id: `access-${id}`,
+    label: `Access to ${a.title}`,
+    saved: { mode: a.mode },
+    ask: (c) => accessAsk(a, c.mode),
+    save: (c) => accessSet(a, c.mode),
+    busy: () => !!(accessWaiting && accessWaiting.app === id),
+    onChange: () => fillAccessBlocks(),
+  });
+  const mode = sec.get("mode");
+  const waiting = sec.saving();
   const note =
-    accessNote && accessNote.app === id
+    accessNote && accessNote.app === id && accessNote.ok
       ? el("span", {
-          className: `setting-desc action-note${accessNote.ok ? "" : " bad"}`,
+          className: "setting-desc action-note",
           role: "status",
           textContent: accessNote.text,
         })
       : null;
-  // Root's, answered by poll: the draft stays until it is done (renderAccess), so Cancel or a failure keeps it.
-  const save = () => accessSet(a, d.mode);
   const seen =
-    d.mode === "off"
+    mode === "off"
       ? "Disabled: no tile."
-      : `Visibility: ${seenWords(seenOf(d.mode, a.visible), d.mode)}`;
+      : `Visibility: ${seenWords(seenOf(mode, a.visible), mode)}`;
   return el(
     "div",
     { className: "access-set" },
     chipRow(
       "Access",
       OPEN_CHIPS,
-      d.mode,
-      (v) => {
-        d.mode = v;
-        redraw();
-      },
+      mode,
+      (v) => sec.set("mode", v),
       (v) => waiting || (v === "users" && !a.users),
     ),
     el("p", {
       className: "setting-desc",
       textContent: waiting
         ? "Changing…"
-        : `${accessDesc({ ...a, mode: d.mode })} ${seen}`,
+        : `${accessDesc({ ...a, mode })} ${seen}`,
     }),
-    el(
-      "div",
-      { className: "aw-foot" },
-      el("span", {
-        className: "note",
-        textContent: dirty
-          ? "Unsaved changes."
-          : "Changes apply after you select Save.",
-      }),
-      el("button", {
-        type: "button",
-        className: "action-btn",
-        textContent: "Discard",
-        disabled: !dirty,
-        onclick: () => {
-          accessDrafts.delete(id);
-          fillAccessBlocks();
-        },
-      }),
-      el("button", {
-        type: "button",
-        className: "action-btn primary",
-        textContent: "Save",
-        disabled: !dirty || waiting,
-        onclick: save,
-      }),
-    ),
+    sec.foot,
+    sec.reason,
     note,
   );
 }
@@ -12522,12 +12392,37 @@ function managePanel(r, data, cls) {
     buildNow,
     r.can_build ? buildSetup(r) : null,
   );
+  // Its description: a section of one value (a redraw of the list keeps what is being typed).
   const desc = el("textarea", {
     rows: 2,
     maxLength: 200,
-    value: r.description || "",
     className: "git-desc",
   });
+  const descSec = AW.section({
+    id: `git-desc-${repoKey(r)}`,
+    label: `Description of ${r.name}.git`,
+    saved: { description: r.description || "" },
+    save: async (c) =>
+      (await act(
+        {
+          action: "describe",
+          area: r.area,
+          name: r.name,
+          description: c.description,
+        },
+        null,
+        "Saved.",
+      )())
+        ? "Saved."
+        : false,
+    onChange: () => {
+      desc.value = descSec.get("description");
+    },
+  });
+  desc.value = descSec.get("description");
+  desc.addEventListener("input", () =>
+    descSec.set("description", desc.value, true),
+  );
   const about = el(
     "section",
     {},
@@ -12537,21 +12432,8 @@ function managePanel(r, data, cls) {
       textContent: "A line on what it is, shown on its card and in cgit.",
     }),
     desc,
-    actionButton(
-      "Save",
-      () =>
-        act(
-          {
-            action: "describe",
-            area: r.area,
-            name: r.name,
-            description: desc.value,
-          },
-          null,
-          "Saved.",
-        )(),
-      { className: "small" },
-    ),
+    descSec.foot,
+    descSec.reason,
   );
   const others = data.repos.filter(
     (o) => !(o.area === r.area && o.name === r.name) && !o.mirror_of,
@@ -14524,7 +14406,7 @@ const acctEl = {
   login: document.getElementById("accounts-admin-login"),
   loginChoices: document.getElementById("accounts-admin-login-choices"),
 };
-let acctWaiting = null; // the root helper's request for the box's own login
+let acctWaiting = null; // the root helper's request for the box's own login (an AW.job, with its id)
 async function loadAccounts() {
   try {
     renderAccounts(await getJSON("/admin/accounts"));
@@ -14551,7 +14433,32 @@ const LOGIN_REACH = [
     "Any device that has the password can use it. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.",
   ],
 ];
-let acctReachDraft = null; // the reach selected on the page, not saved yet
+// The reach as a section: a chip only selects; Save applies it, after one question saying what the change stops.
+let acctLast = null,
+  acctAdmins = "";
+const reachSec = AW.section({
+  id: "script-sign-in",
+  label: "Script sign-in",
+  saved: null,
+  ask: (c) => `${reachChange(c.reach, acctAdmins).says} Save this change?`,
+  why: (c) =>
+    reachChange(c.reach, acctAdmins).lockout
+      ? "Create an administrator account first."
+      : null,
+  save: async (c) => {
+    const j = AW.job();
+    j.id = (
+      await postJSON("/admin/accounts", {
+        action: "admin-login",
+        reach: c.reach,
+      })
+    ).id;
+    acctWaiting = j;
+    loadAccounts();
+    return j;
+  },
+  onChange: () => acctLast && renderAccounts(acctLast),
+});
 // What saving a reach stops, said before it is saved; and whether it would leave no way into /admin from another device.
 function reachChange(v, admins) {
   const accounts = admins
@@ -14591,75 +14498,46 @@ function renderAccounts(d) {
     https_admins: [],
     results: [],
   };
+  acctLast = d;
   if (acctWaiting) {
-    const done = (al.results || []).find((r) => r.id === acctWaiting);
+    const done = (al.results || []).find((r) => r.id === acctWaiting.id);
     if (done) {
+      const j = acctWaiting;
       acctWaiting = null;
-      say(resultSaid(done), done.ok, acctEl.note);
+      j.done(done.ok, resultSaid(done));
     } else setTimeout(loadAccounts, 1000);
   }
   const admins = al.https_admins.join(", ");
-  if (acctReachDraft === al.reach) acctReachDraft = null;
-  const pick = (reach) => {
-    if (!acctWaiting) {
-      acctReachDraft = reach === al.reach ? null : reach;
-      renderAccounts(d);
-    }
-  };
-  const save = async () => {
-    const reach = acctReachDraft;
-    if (!reach || acctWaiting) return;
-    if (!confirm(`${reachChange(reach, admins).says} Save this change?`))
-      return;
-    try {
-      acctWaiting = (
-        await postJSON("/admin/accounts", { action: "admin-login", reach })
-      ).id;
-      acctReachDraft = null;
-      loadAccounts();
-    } catch (err) {
-      say(err.message, false, acctEl.note);
-    }
-  };
-  const discard = () => {
-    acctReachDraft = null;
-    renderAccounts(d);
-  };
+  acctAdmins = admins;
+  // The saved reach, when it changes: the section draws the page again (onChange) over it.
+  if (
+    !reachSec.saving() &&
+    (!reachSec.loaded() || reachSec.savedValue("reach") !== al.reach)
+  )
+    return reachSec.update({ reach: al.reach });
+  const draft = reachSec.get("reach");
   // A reach other than off needs a password, set at the console.
-  const blocked = (v) => !!acctWaiting || (v !== "off" && !al.password_set);
-  const change = acctReachDraft && reachChange(acctReachDraft, admins);
+  const blocked = (v) =>
+    reachSec.disabled() || (v !== "off" && !al.password_set);
+  const change = reachSec.dirty() && reachChange(draft, admins);
   acctEl.loginChoices.replaceChildren(
     chipRow(
       "Script sign-in",
       LOGIN_REACH.map(([v, w]) => [v, w]),
-      acctReachDraft || al.reach,
-      pick,
+      draft,
+      (v) => reachSec.set("reach", v),
       blocked,
     ),
     ...(change
       ? [
-          el(
-            "div",
-            { className: "reach-change" },
-            el("p", {
-              className: "setting-desc",
-              textContent: `Selected, not saved. ${change.says}`,
-            }),
-            el(
-              "span",
-              { className: "library-buttons" },
-              actionButton("Save changes", save, {
-                disabled: !!acctWaiting || change.lockout,
-                title: change.lockout
-                  ? "Create an administrator account first."
-                  : "",
-              }),
-              " ",
-              actionButton("Discard", discard),
-            ),
-          ),
+          el("p", {
+            className: "setting-desc reach-change",
+            textContent: `Selected, not saved. ${change.says}`,
+          }),
         ]
       : []),
+    reachSec.foot,
+    reachSec.reason,
   );
   const said = (LOGIN_REACH.find(([v]) => v === al.reach) || LOGIN_REACH[0])[2];
   acctEl.login.textContent =
@@ -15157,11 +15035,32 @@ function paletteEditor(st, onSaved) {
     for (const m of ["light", "dark"])
       if (!(saved[m] || {}).accent)
         saved[m] = { ...(saved[m] || {}), accent: st.accent };
-  let draft = JSON.parse(JSON.stringify(saved));
-  let mode = "light";
+  let mode = "light"; // the mode shown: a view, not a setting
   const box = el("div", { className: "aw-settings palette-editor" });
-  const same = () => JSON.stringify(draft) === JSON.stringify(saved);
+  // A section of one value, the whole palette; colours that fail the contrast check are asked about once, at Save.
+  const pal = AW.section({
+    id: "appearance-palette",
+    label: "Colours",
+    saved: { palette: saved },
+    ask: (c) => {
+      const short = [
+        ...paletteShort("light", c.palette),
+        ...paletteShort("dark", c.palette),
+      ];
+      return short.length
+        ? `Save the failing colours anyway? Some people will find the text that fails the 4.5:1 ratio hard to read (${short.length} pair${short.length === 1 ? "" : "s"}).`
+        : null;
+    },
+    save: async (c) => {
+      await postJSON("/admin/settings", { palette: c.palette, accent: "" });
+      reloadLayoutCss();
+      setTimeout(onSaved);
+    },
+    onChange: () => draw(),
+  });
+  const put = (next) => pal.set("palette", next);
   const draw = () => {
+    const draft = pal.get("palette");
     const c = paletteShown(mode, draft);
     const modeChips = el(
       "div",
@@ -15187,16 +15086,13 @@ function paletteEditor(st, onSaved) {
     const presets = el(
       "div",
       { className: "chip-group", role: "group", "aria-label": "Presets" },
-      ...PALETTE_PRESETS.map(([id, label, pal]) => {
-        const on = JSON.stringify(pal) === JSON.stringify(draft);
+      ...PALETTE_PRESETS.map(([id, label, preset]) => {
+        const on = JSON.stringify(preset) === JSON.stringify(draft);
         const b = el("button", {
           type: "button",
           className: "chip" + (on ? " selected" : ""),
           textContent: label,
-          onclick: () => {
-            draft = JSON.parse(JSON.stringify(pal));
-            draw();
-          },
+          onclick: () => put(preset),
         });
         b.dataset.preset = id;
         b.setAttribute("aria-pressed", String(on));
@@ -15223,13 +15119,12 @@ function paletteEditor(st, onSaved) {
       const pick = el("input", { type: "color", value: c[role] });
       pick.setAttribute("aria-label", `${label}, ${mode}`);
       pick.dataset.role = role;
-      pick.addEventListener("change", () => {
-        draft[mode] = {
-          ...(draft[mode] || {}),
-          [role]: pick.value.toLowerCase(),
-        };
-        draw();
-      });
+      pick.addEventListener("change", () =>
+        put({
+          ...draft,
+          [mode]: { ...(draft[mode] || {}), [role]: pick.value.toLowerCase() },
+        }),
+      );
       const back = el("button", {
         type: "button",
         className: "action-btn small",
@@ -15238,9 +15133,10 @@ function paletteEditor(st, onSaved) {
         onclick: () => {
           const m = { ...(draft[mode] || {}) };
           delete m[role];
-          if (Object.keys(m).length) draft[mode] = m;
-          else delete draft[mode];
-          draw();
+          const next = { ...draft };
+          if (Object.keys(m).length) next[mode] = m;
+          else delete next[mode];
+          put(next);
         },
       });
       return el(
@@ -15281,7 +15177,6 @@ function paletteEditor(st, onSaved) {
       ...paletteShort("light", draft),
       ...paletteShort("dark", draft),
     ];
-    const ack = el("input", { type: "checkbox" });
     const report = el(
       "div",
       { className: "palette-report", role: "status" },
@@ -15302,43 +15197,6 @@ function paletteEditor(st, onSaved) {
               "These text pairs meet 4.5:1 or more in both modes (WCAG AA for text). This check does not cover focus, layout or the other themes.",
           }),
     );
-    const ackLine = short.length
-      ? el(
-          "label",
-          { className: "inline palette-ack" },
-          ack,
-          " Save the failing colours anyway. Some people will find the text that fails the 4.5:1 ratio hard to read.",
-        )
-      : null;
-    const note = el("small", { className: "setting-desc", role: "status" });
-    const save = el("button", {
-      type: "button",
-      className: "action-btn primary",
-      textContent: "Save",
-      disabled: same() || !!short.length,
-    });
-    ack.addEventListener("change", () => {
-      save.disabled = same() || (short.length && !ack.checked);
-    });
-    const discard = el("button", {
-      type: "button",
-      className: "action-btn",
-      textContent: "Discard",
-      disabled: same(),
-      onclick: () => {
-        draft = JSON.parse(JSON.stringify(saved));
-        draw();
-      },
-    });
-    save.addEventListener("click", async () => {
-      try {
-        await postJSON("/admin/settings", { palette: draft, accent: "" });
-        reloadLayoutCss();
-        onSaved();
-      } catch (e) {
-        note.textContent = e.message;
-      }
-    });
     box.replaceChildren(
       el(
         "div",
@@ -15365,20 +15223,8 @@ function paletteEditor(st, onSaved) {
       ...roles,
       preview,
       report,
-      ...(ackLine ? [ackLine] : []),
-      el(
-        "div",
-        { className: "aw-foot" },
-        el("span", {
-          className: "note",
-          textContent: same()
-            ? "Changes apply after you select Save."
-            : "Unsaved changes.",
-        }),
-        discard,
-        save,
-      ),
-      note,
+      pal.foot,
+      pal.reason,
     );
   };
   draw();
@@ -15681,9 +15527,47 @@ function cardRate(sys) {
 
 // ---- Folders: each folder's page arranges its entries. The
 // administrator can hide an entry from a folder, order a folder's entries, and put an entry in other
-// folders as well. The draft is the whole arrangement; Save sends it, Discard puts it back.
+// folders as well. Each folder is a section with its own Save and Discard, on its own page; "Also included in"
+// changes the other folder's section, saved from that folder's page.
 let folders = null,
   folderDraft = null;
+const folderSecs = new Map(); // folder -> its section
+const folderFull = (v) => ({
+  hidden: [...((v || {}).hidden || [])],
+  order: [...((v || {}).order || [])],
+  extra: [...((v || {}).extra || [])],
+});
+const folderOne = (f, state) => folderNorm({ [f]: (state || {})[f] || {} })[f] || {};
+function folderSec(f) {
+  if (folderSecs.has(f)) return folderSecs.get(f);
+  const fol = (folders.folders || []).find((x) => x.id === f);
+  const sec = AW.section({
+    id: `folder-${f}`,
+    label: `Folder: ${fol ? fol.title : f}`,
+    saved: null,
+    save: async (c, v) => {
+      const state = { ...(folders.state || {}), [f]: folderFull(v.all) };
+      folders = await postJSON("/admin/folders", { state });
+      setTimeout(folderSaved);
+    },
+    onChange: () => {
+      folderDraft[f] = folderFull(sec.get("all"));
+      fillFolderBlocks();
+    },
+  });
+  folderSecs.set(f, sec);
+  return sec;
+}
+// The saved arrangement into every folder's section (a draft kept over it).
+function folderSaved() {
+  for (const fol of folders.folders)
+    folderSec(fol.id).update({ all: folderOne(fol.id, folders.state) });
+}
+// After a change on the page: each folder's section told its draft.
+function folderTouched() {
+  for (const fol of folders.folders)
+    folderSec(fol.id).set("all", folderOne(fol.id, folderDraft), true);
+}
 const folderOpen = {}; // folder -> the entry left open, so a change keeps it in view
 const KIND_WORD = {
   switches: "starting switches",
@@ -15696,7 +15580,11 @@ async function loadFolders() {
   } catch (e) {
     return;
   }
-  folderDraft = JSON.parse(JSON.stringify(folders.state || {}));
+  if (!folderDraft)
+    folderDraft = Object.fromEntries(
+      folders.folders.map((x) => [x.id, folderFull((folders.state || {})[x.id])]),
+    );
+  folderSaved();
   fillFolderBlocks();
 }
 function fillFolderBlocks() {
@@ -15724,10 +15612,9 @@ function drawFolderIndex() {
   const list = document.getElementById("folder-index-list");
   const apps = AL.apps();
   if (!list || !apps) return;
-  const dirty =
-    !!folders &&
-    JSON.stringify(folderNorm(folderDraft)) !==
-      JSON.stringify(folderNorm(folders.state));
+  const changed = folders
+    ? folders.folders.filter((x) => folderSec(x.id).dirty())
+    : [];
   const rows = apps
     .filter((a) => a.folder)
     .map((a) => {
@@ -15775,8 +15662,8 @@ function drawFolderIndex() {
       id: "folder-index-note",
       role: "status",
     });
-  note.textContent = dirty
-    ? "Unsaved folder changes. Select Save all folder changes or Discard all folder changes on the page of any folder. Save all folder changes applies the changes to every folder."
+  note.textContent = changed.length
+    ? `Unsaved changes in ${changed.map((x) => x.title).join(", ")}. Each folder's page has its own Save and Discard.`
     : "";
   if (!note.isConnected) list.after(note);
 }
@@ -15843,9 +15730,6 @@ function drawFolder(block, f) {
     .map((h, i) => ({ h, i }))
     .sort((a, b) => pos(a.h) - pos(b.h) || a.i - b.i)
     .map((x) => pool.get(x.h));
-  const dirty =
-    JSON.stringify(folderNorm(folderDraft)) !==
-    JSON.stringify(folderNorm(folders.state));
   const move = (e, d) => {
     const order = list.map((x) => x.href),
       i = order.indexOf(e.href),
@@ -15854,6 +15738,7 @@ function drawFolder(block, f) {
     [order[i], order[j]] = [order[j], order[i]];
     st.order = order;
     folderOpen[f] = e.href;
+    folderTouched();
     fillFolderBlocks();
   };
   const items = list.map((e) => {
@@ -15880,6 +15765,7 @@ function drawFolder(block, f) {
                 onclick: () => {
                   setInFolder(f, e.href, !shown);
                   folderOpen[f] = e.href;
+                  folderTouched();
                   fillFolderBlocks();
                 },
               },
@@ -15910,6 +15796,7 @@ function drawFolder(block, f) {
                       onclick: () => {
                         setInFolder(x.id, e.href, !on);
                         folderOpen[f] = e.href;
+                        folderTouched();
                         fillFolderBlocks();
                       },
                     },
@@ -15932,49 +15819,27 @@ function drawFolder(block, f) {
     };
   });
   const shownCount = list.filter((e) => inFolder(f, e.href)).length;
-  // One draft for every folder: say which folders a Save changes, by name.
-  const changed = folders.folders.filter(
-    (x) =>
-      JSON.stringify(folderNorm({ [x.id]: folderDraft[x.id] || {} })) !==
-      JSON.stringify(folderNorm({ [x.id]: (folders.state || {})[x.id] || {} })),
+  // A change made here to another folder (Also included in) is saved from that folder's page: said here.
+  const others = folders.folders.filter(
+    (x) => x.id !== f && folderSec(x.id).dirty(),
   );
-  const note = AW.h("span", {
-    class: "note",
-    text: dirty
-      ? `Unsaved changes in ${changed.map((x) => x.title).join(", ")}. Save all folder changes applies them. Discard all folder changes restores the saved arrangement.`
-      : "Changes apply after you select Save all folder changes.",
-  });
+  const sec = folderSec(f);
   block.replaceChildren(
     AW.h("p", {
       class: "setting-desc",
       text: `${shownCount} of ${list.length} visible on its page. The entries come from the manifests of apps, from the index of an app and from start switches on one page.`,
     }),
     AW.shortList(items, { id: "folder-list-" + f }),
-    AW.h(
-      "div",
-      { class: "aw-foot" },
-      note,
-      AW.btn("Discard all folder changes", {
-        disabled: !dirty,
-        onclick: () => {
-          folderDraft = JSON.parse(JSON.stringify(folders.state || {}));
-          fillFolderBlocks();
-        },
-      }),
-      AW.btn("Save all folder changes", {
-        class: "action-btn primary",
-        disabled: !dirty,
-        onclick: async () => {
-          try {
-            folders = await postJSON("/admin/folders", { state: folderDraft });
-            folderDraft = JSON.parse(JSON.stringify(folders.state));
-            fillFolderBlocks();
-          } catch (err) {
-            note.textContent = err.message;
-          }
-        },
-      }),
-    ),
+    sec.foot,
+    sec.reason,
+    ...(others.length
+      ? [
+          AW.h("p", {
+            class: "setting-desc",
+            text: `Also changed, and saved from their own pages: ${others.map((x) => x.title).join(", ")}.`,
+          }),
+        ]
+      : []),
   );
   const open =
     folderOpen[f] &&
@@ -16054,18 +15919,51 @@ function setSize(draft, id, v) {
   if (v === "single") delete draft.size[id];
   else draft.size[id] = v;
 }
+// The arrangement in one shape, so the same arrangement compares the same: every tile in order, the hidden ones
+// and the sizes sorted.
+function stNorm(state) {
+  const pos = (i) => {
+    const n = (state.order || []).indexOf(i);
+    return n < 0 ? 1e6 : n;
+  };
+  return {
+    order: stTiles.tiles
+      .map((x, i) => ({ id: x.id, i }))
+      .sort((a, b) => pos(a.id) - pos(b.id) || a.i - b.i)
+      .map((x) => x.id),
+    hidden: [...(state.hidden || [])].sort(),
+    size: Object.fromEntries(Object.entries(state.size || {}).sort()),
+  };
+}
+// Status tiles as one section: its value the arrangement.
+const stSec = AW.section({
+  id: "status-tiles",
+  label: "Status tiles",
+  saved: null,
+  save: async (c, v) => {
+    stTiles = await postJSON("/admin/status-tiles", { state: v.all });
+    setTimeout(() => stSec.update({ all: stNorm(stTiles.state) }));
+  },
+  onChange: () => {
+    stDraft = JSON.parse(JSON.stringify(stSec.get("all")));
+    drawStatusTiles();
+  },
+});
 async function loadStatusTiles() {
   try {
     stTiles = await getJSON("/admin/status-tiles");
   } catch (e) {
     return;
   }
-  stDraft = JSON.parse(JSON.stringify(stTiles.state));
-  drawStatusTiles();
+  stSec.update({ all: stNorm(stTiles.state) });
 }
 function drawStatusTiles(openId) {
   const box = document.getElementById("status-tiles-box");
-  if (!box || !stTiles) return;
+  if (!box || !stTiles || !stDraft) return;
+  if (!openId) {
+    const was = box.querySelector('.aw-row-head[aria-expanded="true"]');
+    openId = was ? was.closest(".aw-row").dataset.awId : null;
+  }
   const byId = new Map(stTiles.tiles.map((x) => [x.id, x]));
   const pos = (i) => {
     const n = stDraft.order.indexOf(i);
@@ -16080,7 +15978,11 @@ function drawStatusTiles(openId) {
       ? [...new Set([...stDraft[k], id])]
       : stDraft[k].filter((x) => x !== id);
   };
-  const redraw = (id) => drawStatusTiles(id);
+  const redraw = (id) => {
+    stDraft = stNorm(stDraft);
+    stSec.set("all", JSON.parse(JSON.stringify(stDraft)), true);
+    drawStatusTiles(id);
+  };
   const move = (id, d) => {
     const order = list.map((x) => x.id),
       i = order.indexOf(id),
@@ -16090,13 +15992,6 @@ function drawStatusTiles(openId) {
     stDraft.order = order;
     redraw(id);
   };
-  const norm = (s) =>
-    JSON.stringify(
-      ["order", "hidden"]
-        .map((k) => [...(s[k] || [])].sort())
-        .concat([s.order || []], [Object.entries(s.size || {}).sort()]),
-    );
-  const dirty = norm(stDraft) !== norm(stTiles.state);
   const items = list.map((t) => {
     const shown = !stDraft.hidden.includes(t.id),
       size = (stDraft.size || {})[t.id] || "single";
@@ -16148,37 +16043,10 @@ function drawStatusTiles(openId) {
       ],
     };
   });
-  const note = AW.h("span", {
-    class: "note",
-    text: dirty ? "Unsaved changes." : "Changes apply after you select Save.",
-  });
   box.replaceChildren(
     AW.shortList(items, { id: "status-tiles-list" }),
-    AW.h(
-      "div",
-      { class: "aw-foot" },
-      note,
-      AW.btn("Discard", {
-        disabled: !dirty,
-        onclick: () => {
-          stDraft = JSON.parse(JSON.stringify(stTiles.state));
-          redraw();
-        },
-      }),
-      AW.btn("Save", {
-        class: "action-btn primary",
-        disabled: !dirty,
-        onclick: async () => {
-          try {
-            stTiles = await postJSON("/admin/status-tiles", { state: stDraft });
-            stDraft = JSON.parse(JSON.stringify(stTiles.state));
-            redraw();
-          } catch (err) {
-            note.textContent = err.message;
-          }
-        },
-      }),
-    ),
+    stSec.foot,
+    stSec.reason,
   );
   const open =
     openId &&

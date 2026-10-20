@@ -113,12 +113,15 @@ const type = (input, value) => {
   ev('netWaiting = null');
 
   // 3. Access: Cancel at the question keeps the draft.
-  ev('accessDrafts.set("x", { mode: "off" })');
   const acc = ev('accessBlock')('x', { id: 'x', mode: 'public', unit: 'x.service', title: 'X', visible: 'guests' });
+  d.body.append(acc);
+  [...acc.querySelectorAll('.chip')].find((c) => t(c) === 'Disabled').click();
   confirms = false;
-  button(acc, 'Save').click();
+  acc.querySelector('.aw-save').click();
+  await wait();
   confirms = true;
-  check("an app's access: Cancel at the question keeps the change", ev('accessDrafts.has("x")') && posted.every(([u]) => u !== '/admin/access'));
+  check("an app's access: Cancel at the question keeps the change", AW.unsaved().some((x) => x.id === 'access-x') && posted.every(([u]) => u !== '/admin/access'));
+  acc.querySelector('.aw-discard').click();
 
   // 4. Opening another card asks before a changed one is closed.
   let mark;
@@ -164,27 +167,42 @@ const type = (input, value) => {
   mod.replaceWith((mod = blocks(2)));
   check('  and lets it go once the saved value is the same', !button(mod, 'Save') || button(mod, 'Save').disabled);
 
-  // 6. The Security bar drops a choice the newest scan no longer offers.
-  ev(`secPending.set('ssh-root', { f: { id: 'ssh-root' }, a: { choice: 'ssh-root-off' }, page: 'security' });
-    secPending.set('llmnr', { f: { id: 'llmnr' }, a: { choice: 'llmnr-off' }, page: 'security' });
-    secPending.set('gone', { f: { id: 'gone' }, a: { choice: 'gone-off' }, page: 'security' });`);
-  ev('secPrune')({ findings: [{ id: 'ssh-root', actions: [{ choice: 'ssh-root-off', on: true }] }, { id: 'llmnr', actions: [{ choice: 'llmnr-off', label: 'Disable LLMNR' }] }] });
-  check('the Security bar: a choice in effect now, or whose finding has gone, is dropped; one still offered stays',
-    ev('[...secPending.keys()].join()') === 'llmnr' && ev('secPending.get("llmnr").a.label') === 'Disable LLMNR');
-  ev('secPending.clear()');
+  // 6. A Security choice the newest scan no longer offers is dropped, never sent.
+  const realSec = w.renderSecurity;
+  w.renderSecurity = () => {}; // the page drawn again: not needed for what is checked here
+  const finding = (id, choice, extra = {}) => ({ id, title: id, status: 'warn', actions: [{ choice, label: `Do ${id}`, ...extra }] });
+  w.secScan = { findings: [finding('ports-x', 'x-off'), finding('ports-y', 'y-off'), finding('ports-z', 'z-off')] };
+  ev('secData = { scan: window.secScan }');
+  for (const id of ['ports-x', 'ports-y', 'ports-z']) ev('secSection')(w.secScan.findings.find((f) => f.id === id)).set('choice', `${id.slice(-1)}-off`);
+  const newer = { findings: [finding('ports-x', 'x-off', { on: true }), finding('ports-y', 'y-off', { label: 'Switch y off' })] };
+  w.secScan = newer;
+  ev('secData = { scan: window.secScan }');
+  ev('secPrune')(newer);
+  const still = ['ports-x', 'ports-y', 'ports-z'].filter((id) => ev('secSecs').get(id).dirty());
+  check('Security: a choice in effect now, or whose finding has gone, is dropped; one still offered stays', still.join() === 'ports-y', still.join());
+  ev('secSecs').get('ports-y').discard();
+  w.renderSecurity = realSec;
 
-  // 7. The doctor's settings: a sequence that fails halfway says what was sent.
+  // 7. The doctor's settings: a sequence that fails halfway says what was sent, and keeps what was not.
   let n = 0;
-  answer['/admin/health'] = () => (++n === 1 ? [202, { id: 'h1' }] : [500, { error: 'The queue is full.' }]);
+  answer['/admin/health'] = (body) => (body.action === 'scan' ? [202, { id: 'scan' }] : ++n === 1 ? [202, { id: 'h1' }] : [500, { error: 'The queue is full.' }]);
   const groups = [{ key: 'g1', current: 'a', options: [{ value: 'a', choice: 'x-a' }, { value: 'b', choice: 'x-b' }] },
     { key: 'g2', current: 'a', options: [{ value: 'a', choice: 'y-a' }, { value: 'b', choice: 'y-b' }] }];
-  ev('hsPick = { g1: "b", g2: "b" }');
-  ev('showDoctorSave')(groups);
-  await ev('hl.setSave.onclick()');
-  check("the doctor's settings: the request sent before a refusal is still waited for", ev('hsSaving && hsSaving.ids.join()') === 'h1');
+  ev('renderDoctorSettings')({ results: [], queue: {} }, { settings: { groups } });
+  const doc = ev('docSec');
+  doc.set('g1', 'b');
+  doc.set('g2', 'b');
+  const saving = doc.save();
+  await wait();
+  check("the doctor's settings: the request sent before a refusal is still waited for", ev('hsSaving && hsSaving.ids.join()') === 'h1' && doc.saving());
   ev('renderDoctorSettings')({ results: [{ id: 'h1', ok: true, message: 'Done.' }], queue: {} }, { settings: { groups } });
+  await saving;
   const hn = t(ev('hl.setNote'));
   check('  and said: one of two sent, the next refused, one still selected', /1 of 2 changes were sent\. The next change failed: The queue is full\. 1 change is still selected/.test(hn), hn);
+  // The rescan: g1 now as chosen; g2 still a change not saved.
+  ev('renderDoctorSettings')({ results: [], queue: {} }, { settings: { groups: [{ ...groups[0], current: 'b' }, groups[1]] } });
+  check('  after the rescan: the change sent is saved, the one refused still waits', JSON.stringify(doc.changes()) === '{"g2":"b"}', JSON.stringify(doc.changes()));
+  doc.discard();
 
   // 8. Git: a cancelled question draws the repository as it is again.
   let redrawn = 0;

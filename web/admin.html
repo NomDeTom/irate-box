@@ -588,26 +588,7 @@
               <a href="#net-watchdog-card">Network → Network recovery</a>.
             </p>
             <div id="health-settings-groups"></div>
-            <div class="library-buttons">
-              <button
-                class="action-btn"
-                type="button"
-                id="health-settings-discard"
-                disabled
-                data-i18n="admin.recovery.health-settings-discard"
-              >
-                Discard
-              </button>
-              <button
-                class="action-btn primary"
-                type="button"
-                id="health-settings-save"
-                disabled
-                data-i18n="admin.recovery.health-settings-save"
-              >
-                Save
-              </button>
-            </div>
+            <div id="health-settings-foot"></div>
             <p
               class="setting-desc action-note"
               id="health-settings-note"
@@ -4046,7 +4027,6 @@
             hidden
           ></p>
           <p class="sec-counts" id="security-counts"></p>
-          <div class="sec-pending" hidden></div>
           <!-- The box's choices by subject, each in its place whether it waits for a choice or is set. -->
           <div id="security-findings"></div>
           <h3 data-i18n="admin.security.h-hub-security-limits">
@@ -4636,7 +4616,6 @@
                   itself.</span
                 >
                 <div class="findings" id="updates-security"></div>
-                <div class="sec-pending" hidden></div>
                 <div id="debian-buttons"></div>
                 <details class="field-help update-auto" id="debian-auto-fold">
                   <summary data-i18n="admin.updates.summary-automatic-updates">
@@ -5095,7 +5074,6 @@
             role="status"
             hidden
           ></p>
-          <div class="sec-pending" hidden></div>
           <!-- Each source and how fresh it is: what it covers in its title. -->
           <p
             class="fresh-strip"

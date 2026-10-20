@@ -329,7 +329,9 @@ const AW = (() => {
   //   6 every section with unsaved changes is listed (AW.unsaved), for the sidebar's mark and leaving the page
   // opts: {id, label, saved: {key: value} | null, save(changes, draft) → Promise (false: not saved, said already;
   //        a string: said when saved; throws: the reason), ask(changes, draft) → a question or null,
-  //        idle: the footer's words while nothing has changed, onChange(section): draw the controls again}
+  //        idle: the footer's words while nothing has changed, onChange(section): draw the controls again,
+  //        busy() → true while a save of it is in flight elsewhere (a copy drawn again while its job runs),
+  //        why(changes, draft) → why these changes cannot be saved as they are (Save off, the reason under it)}
   const same = (a, b) => a === b || (a !== null && b !== null && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
   const copy = (v) => (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
   const sections = new Map();   // id -> the section last made with it (its draft outlives a redraw)
@@ -364,27 +366,28 @@ const AW = (() => {
     s.foot = h('div', { class: 'aw-foot', 'data-section': opts.id || '' }, note, discardB, saveB);
     s.reason = why;
     s.loaded = () => saved !== null;
-    s.saving = () => saving;
+    s.saving = () => saving || !!(opts.busy && opts.busy());
     s.get = (k) => draft[k];
     s.savedValue = (k) => (saved ? saved[k] : undefined);
     s.values = () => copy(draft);
     s.changes = () => (saved ? Object.fromEntries(Object.keys(draft).filter((k) => k in saved && !same(draft[k], saved[k])).map((k) => [k, copy(draft[k])])) : {});
     s.dirty = () => Object.keys(s.changes()).length > 0;
     s.elsewhereKeys = () => [...elsewhere];
-    s.disabled = () => !saved || saving;
+    s.disabled = () => !saved || s.saving();
     s.attached = () => s.foot.isConnected;
     s.page = () => { const p = s.foot.closest && s.foot.closest('.admin-pane'); return p ? p.id : ''; };
     const paint = () => {
-      const dirty = s.dirty();
-      saveB.disabled = !dirty || saving || !saved;
-      discardB.disabled = !dirty || saving || !saved;
+      const dirty = s.dirty(), busy = s.saving();
+      const cannot = saved && dirty && !busy && opts.why ? opts.why(s.changes(), s.values()) || '' : '';
+      saveB.disabled = !dirty || busy || !saved || !!cannot;
+      discardB.disabled = !dirty || busy || !saved;
       s.foot.classList.toggle('aw-dirty', dirty);
       saveB.classList.toggle('idle', !dirty);   // outlined while there is nothing to save
-      note.textContent = !saved ? 'Reading the current settings…' : saving ? 'Saving…'
+      note.textContent = !saved ? 'Reading the current settings…' : busy ? 'Saving…'
         : dirty ? (elsewhere.size ? 'Unsaved changes. Changed elsewhere since you started: Save replaces it, Discard shows it.' : 'Unsaved changes.')
           : said || opts.idle || IDLE;
-      why.textContent = reason;
-      why.hidden = !reason;
+      why.textContent = reason || cannot;
+      why.hidden = !(reason || cannot);
       tellUnsaved();
     };
     const redraw = () => { paint(); if (opts.onChange) opts.onChange(s); };
@@ -419,8 +422,9 @@ const AW = (() => {
       redraw();
     };
     s.save = async () => {
-      if (!saved || saving || !s.dirty()) return false;
+      if (!saved || s.saving() || !s.dirty()) return false;
       const changes = s.changes();
+      if (opts.why && opts.why(changes, s.values())) return false;
       const q = opts.ask ? opts.ask(changes, s.values()) : null;
       if (q && !window.confirm(q)) return false;
       saving = true;
