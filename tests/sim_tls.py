@@ -795,6 +795,17 @@ check(
     and "$cookie_irate_http_ok" in (tls.FRONT / "nginx-policy-admin.inc").read_text()
     and "path /*" in (tls.FRONT / "caddy-policy-admin.inc").read_text(),
 )
+# The warning page and its answer are on the admin origin too; the guard must let them through, or /admin/ over HTTP
+# redirects to the warning, and the warning to itself (found on the Pi 3B, 2026-10-21: too many redirects).
+adm_policy = (tls.FRONT / "nginx-policy-admin.inc").read_text()
+adm_caddy = (tls.FRONT / "caddy-policy-admin.inc").read_text()
+check(
+    "  warning: the warning page and its answer are never sent to the warning (nginx and Caddy)",
+    adm_policy.index("if ($uri ~ ^/http-admin-(?:warning|continue)$) { set $irate_plain ''; }")
+    < adm_policy.index("if ($irate_plain = P) { return 302 /http-admin-warning")
+    and "\tnot path /http-admin-warning /http-admin-continue\n" in adm_caddy,
+    (adm_policy, adm_caddy),
+)
 for transport in tls.TRANSPORTS:
     tls.configure(transport, "allow")
     plain = (tls.FRONT / "nginx-http-admin.inc").read_text()

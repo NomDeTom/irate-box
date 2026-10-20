@@ -175,6 +175,9 @@ def _plain_files(transport, admin_http, access_state=None):
             guard += f'if ($irate_discovery = "P:") {{ return 302 {target}; }}\n'
         if admin_http != "allow" and paths:
             guard += f"if ($uri !~ {path_re}) {{ set $irate_plain ''; }}\n"
+            # The warning page and its answer are never behind the guard: on an origin that is all administrators'
+            # pages (WHOLE_ORIGIN), the guard's own redirect would otherwise send them back to the warning.
+            guard += "if ($uri ~ ^/http-admin-(?:warning|continue)$) { set $irate_plain ''; }\n"
             if admin_http == "warning":
                 guard += "if ($cookie_irate_http_ok = 1) { set $irate_plain ''; }\n"
                 guard += "if ($irate_plain = P) { return 302 /http-admin-warning?next=$request_uri; }\n"
@@ -213,6 +216,7 @@ def _plain_files(transport, admin_http, access_state=None):
             )
             if admin_http == "warning":
                 policy += "\tnot header Cookie *irate_http_ok=1*\n"
+            policy += "\tnot path /http-admin-warning /http-admin-continue\n"
             policy += "}\nroute {\n"
             dest = (
                 "/http-admin-warning?next={uri}"
