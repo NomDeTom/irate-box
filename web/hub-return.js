@@ -6,14 +6,22 @@
 // only appears when an app is opened on its own.
 (function () {
   // The app runs on an origin of its own and cannot read the hub's theme: the hub's app bar passes it in the
-  // address (hub-theme=light, dark or auto), and the app reads it from its own storage, where this puts it
-  // (before the app starts: this script is loaded first).
+  // address (hub-theme=light, dark or auto), and the app reads it from its own storage, where this puts it.
+  // Excalidraw loads this script first, so it reads the new value. Mermaid's build adds it later, after its own
+  // theme is read: a change is announced as another tab's write would be (a storage event), which it follows at
+  // once; without that it took the new theme only at its next load (seen on the Lyra, 2026-10-20).
   try {
     var theme = new URLSearchParams(location.search).get('hub-theme');
     if (theme === 'light' || theme === 'dark' || theme === 'auto') {
       var value = theme === 'auto' ? 'system' : theme;
-      localStorage.setItem('excalidraw-theme', value);   // Excalidraw
-      localStorage.setItem('mode-watcher-mode', value);  // Mermaid
+      ['excalidraw-theme', 'mode-watcher-mode'].forEach(function (key) {   // Excalidraw's, Mermaid's
+        var was = localStorage.getItem(key);
+        if (was === value) return;
+        localStorage.setItem(key, value);
+        try {
+          window.dispatchEvent(new StorageEvent('storage', { key: key, oldValue: was, newValue: value, storageArea: localStorage, url: location.href }));
+        } catch (_) {}
+      });
     }
   } catch (_) {}
   if (document.getElementById('hub-return')) return;

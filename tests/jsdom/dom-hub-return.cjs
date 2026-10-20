@@ -25,5 +25,16 @@ got = run('http://box:8096/draw/?hub-theme=evil', { 'excalidraw-theme': 'light' 
 check('anything else is ignored: the app\'s own choice stands', got.draw === 'light' && got.mermaid === null, JSON.stringify(got));
 got = run('http://box:8096/draw/');
 check('no theme in the address: nothing written, the link back still drawn', got.draw === null && got.mermaid === null && got.pill, JSON.stringify(got));
+// Mermaid reads its theme before its build adds this script: a change is announced as a storage event, as another
+// tab's write would be, so it follows at once (on the Lyra it took the new theme only at the next load).
+{
+  const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://box:8097/mermaid/?hub-theme=light', runScripts: 'outside-only' });
+  dom.window.localStorage.setItem('mode-watcher-mode', 'dark');
+  dom.window.localStorage.setItem('excalidraw-theme', 'light');
+  const heard = [];
+  dom.window.addEventListener('storage', (e) => heard.push(`${e.key}:${e.oldValue}>${e.newValue}`));
+  dom.window.eval(js);
+  check('a theme changed: announced to the app at once, only for the key that changed', heard.join() === 'mode-watcher-mode:dark>light', heard.join());
+}
 console.log(fails ? `${fails} failure(s)` : 'ok');
 process.exit(fails ? 1 : 0);
