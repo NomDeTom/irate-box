@@ -437,13 +437,17 @@ def kernel_driver(chip):
     or None. Built in (or already loaded): /sys/bus/i2c/drivers/rtc-*. Loadable: the module's
     i2c alias. (Built-in drivers' aliases are not listed anywhere, hence sysfs.)"""
     if FAKE:
-        drivers = set(json.loads(Path(FAKE).read_text()).get("drivers", []))
+        # The test's own kernel, all of it: the machine running the test has modules of its own (a CI runner's kernel
+        # can alias a DS3231), which would make the answer depend on where it runs.
+        fake = json.loads(Path(FAKE).read_text())
+        drivers = set(fake.get("drivers", []))
+        aliases = "\n".join(fake.get("aliases", []))
     else:
         drivers = {d.name for d in Path("/sys/bus/i2c/drivers").glob("*")}
-    try:
-        aliases = (Path("/lib/modules") / os.uname().release / "modules.alias").read_text()
-    except OSError:
-        aliases = ""
+        try:
+            aliases = (Path("/lib/modules") / os.uname().release / "modules.alias").read_text()
+        except OSError:
+            aliases = ""
     for name, module in CHIPS[chip][1]:
         if module.replace("_", "-") in drivers:
             return {"kind": "builtin", "name": name, "module": module}
