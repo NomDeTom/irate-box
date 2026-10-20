@@ -24,6 +24,7 @@ mkdir -p "$state" "$work/site"
 port=$((20000 + RANDOM % 20000))
 secret=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 hub=""
+# shellcheck disable=SC2329  # run by the trap below
 cleanup() {
 	[ -z "$hub" ] || kill "$hub" 2>/dev/null
 	docker rm -f "$net-web" >/dev/null 2>&1
