@@ -93,9 +93,12 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service \
 	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service irate-box-firewall.service \
 	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service \
-	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service; do
+	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service \
+	irate-box-notebooks.path irate-box-notebooks.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
+# The notebooks per login that are running (a template, started by irate-box-notebooks.service): stopped.
+systemctl stop 'irate-box-notebook@*.service' >/dev/null 2>&1 || true
 # Guests' onward internet (root/share.py): its rules went with irate-box-firewall.service above (one
 # table with the hotspot firewall); the guests' resolver goes; forwarding goes back to what the box had before
 # sharing, and its sysctl file goes.
@@ -196,6 +199,7 @@ rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-gi
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
 	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-firewall.service "$UNITDIR"/irate-box-control.{path,service} \
 	"$UNITDIR"/irate-box-visitors.service "$UNITDIR"/irate-box-visitors-switch.{path,service} \
+	"$UNITDIR"/irate-box-notebooks.{path,service} "$UNITDIR"/irate-box-notebook@.service \
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
 	"$UNITDIR/syncthing@$HUB_USER.service.d/irate-box.conf" "$UNITDIR/ngircd.service.d/irate-box.conf"
 rmdir "$UNITDIR/caddy.service.d" "$UNITDIR/syncthing@$HUB_USER.service.d" "$UNITDIR/ngircd.service.d" 2>/dev/null || true
