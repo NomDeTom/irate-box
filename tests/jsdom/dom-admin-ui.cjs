@@ -270,7 +270,7 @@ setTimeout(() => {
     && side.indexOf('Recovery and monitoring') > side.indexOf('System'));
   check('update maintenance in the Updates doctor, folded: the cache and the update source; not on Updates (Install anyway is a finding\'s button)',
     !!d.querySelector('#updoctor details#update-maint #update-clear')
-    && !!d.querySelector('#update-maint #update-source-save') && !d.querySelector('#updates #update-clear, #update-force'));
+    && !!d.querySelector('#update-maint #update-source-foot .aw-save') && !d.querySelector('#updates #update-clear, #update-force'));
   check('the security doctor has its own pane', !!d.querySelector('#secdoctor #audit-run') && !d.querySelector('#security #audit-run'));
   check('the updates doctor has its own pane', !!d.querySelector('#updoctor #update-doctor') && !d.querySelector('#updates #update-doctor'));
   check('Access has no Terminal card setting', !d.getElementById('show_term_card') && !t('#access h3').some((x) => /Terminal/.test(x)));

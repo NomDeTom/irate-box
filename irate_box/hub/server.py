@@ -2187,6 +2187,7 @@ UPDATE_STATE = CONTROL_DIR / "update.json"
 UPDATE_LOG = CONTROL_DIR / "update.log"
 UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
+BRANCHES_STATE = CONTROL_DIR / "update-branches.json"  # root's: what the repository said of its branches
 SIGNING_STATE = CONTROL_DIR / "update-signing.json"  # root's: the level, and the keys' names
 # Guests' onward internet (root/share.py): the level root keeps, and the devices this hub has asked
 # root to let out (for the captive API's answer; root's table holds the real list, each for 12 h).
@@ -2288,6 +2289,25 @@ def update_snapshot():
         doctor = finding.current(json.loads(DOCTOR_STATE.read_text()))
     except (OSError, ValueError):
         doctor = None
+    # The doctor's report is stale once a check, a download or a new source came after it.
+    stale = False
+    try:
+        ran = json.loads(DOCTOR_STATE.read_text()).get("at") or 0
+        since = max((p.stat().st_mtime for p in (UPDATE_STATE, INSTALL_OPTIONS) if p.exists()), default=0)
+        stale = bool(ran) and since > ran + 1
+    except (OSError, ValueError, AttributeError):
+        pass
+    # Where updates come from now (install.sh's world-readable copy), and what the repository said of its branches.
+    try:
+        opts = INSTALL_OPTIONS.read_text().split()
+        source = {k: opts[opts.index(f"--{k}") + 1] for k in ("repo", "branch") if f"--{k}" in opts[:-1]}
+        source.setdefault("branch", "main")
+    except OSError:
+        source = None
+    try:
+        branches = json.loads(BRANCHES_STATE.read_text())
+    except (OSError, ValueError):
+        branches = None
     # Only update requests: a queued app install or service change is not the update's.
     pending = _pending_actions("update-")
     # Automatic updates: the librarian's policy for them, and what its last step did.
@@ -2313,6 +2333,9 @@ def update_snapshot():
         "pending": pending,
         "progress": update_progress(),
         "doctor": doctor,
+        "doctor_stale": stale,
+        "source": source,
+        "branches": branches,
         "results": control_results(5),
         "auto": auto,
         "signing": sig,

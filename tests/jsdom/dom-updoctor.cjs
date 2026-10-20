@@ -99,15 +99,34 @@ w.eval(`renderUpdoctor({ at: 1790950000, findings: [
 check('Install anyway is absent when the finding does not offer it (signing or installer syntax failed)', !doctorButton('Install anyway').length
   && !doctorButton('Clear the update cache').length, t('#doctor-findings .finding'));
 const accepted = () => posted.slice(sentBefore).filter(([, b]) => b).map(([, b]) => JSON.parse(b).action);
-// The source form: asked first, changed only after a confirmation that names the repository.
-d.getElementById('update-source-repo').value = 'https://example.org/fork/irate-box';
-d.getElementById('update-source-branch').value = 'dev';
+// The source form: a section filled with the recorded source; asked first, changed only after a confirmation that
+// names the repository.
+w.drawSource({ source: { repo: 'https://github.com/NomDeTom/irate-box', branch: 'fix-tls-upgrade-includes' },
+  branches: { repo: 'https://github.com/NomDeTom/irate-box', default: 'main', branches: ['main', 'fix-tls-upgrade-includes', 'dev'],
+    branch: 'fix-tls-upgrade-includes', installed: 'b913cf4', standing: 'elsewhere' } });
+const srcRepo = d.getElementById('update-source-repo'), srcBranch = d.getElementById('update-source-branch');
+const srcSave = d.querySelector('#update-source-foot .aw-save');
+check('the source form: filled with the recorded repository and branch, Save off', srcRepo.value === 'https://github.com/NomDeTom/irate-box'
+  && srcBranch.value === 'fix-tls-upgrade-includes' && srcSave.disabled);
+const srcChips = () => [...d.querySelectorAll('#update-source-choices .chip')];
+check('  the repository\'s branches offered, the default first and named so', srcChips().map((c) => c.textContent).join('|') === 'main (default)|fix-tls-upgrade-includes|dev',
+  srcChips().map((c) => c.textContent).join('|'));
+check('  the followed branch left behind: said, and what to select', !d.getElementById('update-source-warn').hidden
+  && /does not contain the installed version b913cf4; main does/.test(t('#update-source-warn')[0]) && /Select main and save/.test(t('#update-source-warn')[0]), t('#update-source-warn')[0]);
+srcChips()[0].click();
+check('  a branch chosen from them: the field follows, Save on', srcBranch.value === 'main' && !srcSave.disabled);
+d.querySelector('#update-source-foot .aw-discard').click();
+srcRepo.value = 'https://example.org/fork/irate-box';
+srcRepo.dispatchEvent(new w.Event('input'));
+srcBranch.value = 'dev';
+srcBranch.dispatchEvent(new w.Event('input'));
+check('  another repository typed: its branches are not offered (they are another repository\'s)', !srcChips().length || srcChips().every((c) => !c.classList.contains('selected')));
 let asked = '';
 w.confirm = (text) => { asked = text; return false; };
-d.getElementById('update-source-save').click();
+srcSave.click();
 const before = posted.length;
 w.confirm = (text) => { asked = text; return true; };
-d.getElementById('update-source-save').click();
+srcSave.click();
 d.getElementById('update-source-poll').click();
 // A finding's link lands on the setting it names: the fold opened, the field marked.
 w.eval(`renderUpdoctor({ at: 1790950000, findings: [
