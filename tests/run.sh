@@ -103,6 +103,7 @@ run sim_git_public.py
 run sim_git_levels.py
 run origin_guard.py
 run unit_guard.py
+run uninstall_guard.py
 run sim_mirrors.py
 run sim_ci_view.py
 run sim_factory.py
