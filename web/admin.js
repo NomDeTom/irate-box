@@ -3074,7 +3074,9 @@ const upd = {
   sourceRepo: document.getElementById("update-source-repo"),
   sourceBranch: document.getElementById("update-source-branch"),
   sourcePoll: document.getElementById("update-source-poll"),
-  sourceSave: document.getElementById("update-source-save"),
+  sourceChoices: document.getElementById("update-source-choices"),
+  sourceList: document.getElementById("update-source-branches"),
+  sourceWarn: document.getElementById("update-source-warn"),
   sourceNote: document.getElementById("update-source-note"),
   doctorWhen: document.getElementById("doctor-when"),
   findings: document.getElementById("doctor-findings"),
@@ -3144,7 +3146,7 @@ function renderUpdateProgress(p) {
 // The update doctor, in the other doctors' shape: the counters (which double as the filter), one row per
 // finding with what to do (a command to copy, the place it is changed), and what was fine folded away.
 let udShow = "all";
-function renderUpdoctor(d) {
+function renderUpdoctor(d, stale) {
   const all = d
     ? [...d.findings].sort((a, b) => RANK[a.status] - RANK[b.status])
     : [];
@@ -3153,8 +3155,12 @@ function renderUpdoctor(d) {
     warn: all.filter((f) => f.status === "warn").length,
   };
   upd.doctorWhen.textContent = d
-    ? `Last checked ${new Date(d.at * 1000).toLocaleString()}.`
+    ? `Last checked ${new Date(d.at * 1000).toLocaleString()}.` +
+      (stale
+        ? " Out of date: a check for updates or a change of source came after it. Run the doctor again."
+        : "")
     : "Not run yet. It runs when you select the button. It also runs when a check for updates fails.";
+  upd.doctorWhen.classList.toggle("warn", !!stale);
   upd.udSummary.replaceChildren(
     ...(!d
       ? []
@@ -3303,7 +3309,8 @@ function renderUpdate(data) {
     ),
   );
   const d = AW.localise(data.doctor);
-  renderUpdoctor(d);
+  renderUpdoctor(d, data.doctor_stale);
+  drawSource(data);
   const doctorProblems = d
     ? d.findings.filter((f) => f.status === "problem").length
     : 0;
@@ -3351,6 +3358,7 @@ function renderUpdate(data) {
           : null,
         updWaiting.finding,
       );
+      if (updWaiting.job) updWaiting.job.done(!failed, resultSaid(done));
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -3412,8 +3420,8 @@ async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = 
         install: "Installing the update…",
         "force-install": "Installing the downloaded version anyway…",
         doctor: "Running the update doctor. It can take up to two minutes…",
-        "poll-target": "Asking the repository for its default branch…",
-        "poll-source": "Asking the repository for its default branch…",
+        "poll-target": "Asking the repository for its branches…",
+        "poll-source": "Asking the repository for its branches…",
         "set-source": "Changing where updates come from…",
         "clear-cache": "Clearing the update cache…",
         reach: endpoint === "install" ? "Preparing and installing the update…" : "Checking and downloading the update…",
@@ -3444,25 +3452,124 @@ upd.clear.addEventListener("click", () => {
 upd.install.addEventListener("click", () => {
   if (meteredOk("Preparing and installing the update")) requestUpdate("reach", "install");
 });
-// Where updates come from (a fork, say): asked of the repository first, then changed after a confirmation that
-// names it. The root helper checks the address and the branch again, and refuses it when policy is console-only.
-upd.sourcePoll.addEventListener("click", () =>
-  requestUpdate("poll-source", null, { repo: upd.sourceRepo.value.trim() }),
-);
-upd.sourceSave.addEventListener("click", () => {
-  const repo = upd.sourceRepo.value.trim();
-  const branch = upd.sourceBranch.value.trim();
-  if (
-    repo &&
-    branch &&
-    confirm(
-      `Install updates from the branch ${branch} of ${repo}?\n\nThe box runs the code it downloads as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
-    )
-  )
-    requestUpdate("set-source", null, { repo, branch, confirmed: true });
-  else if (!repo || !branch)
-    updSay("set-source", "Give a repository and a branch.", false);
+// Where updates come from (a fork, say): a section, filled with the recorded source. The repository is asked for its
+// branches (the default first, offered as choices) and how the branch this box follows stands against the installed
+// version; a change is saved after one question that names it. The root helper checks the address and the branch
+// again, and refuses it when policy is console-only.
+let updLast = null;
+const srcSec = AW.section({
+  id: "update-source",
+  label: "Update source",
+  saved: null,
+  why: (c, v) =>
+    !v.repo.trim() || !v.branch.trim()
+      ? "Give a repository and a branch."
+      : null,
+  ask: (c, v) =>
+    `Install updates from the branch ${v.branch.trim()} of ${v.repo.trim()}?\n\nThe box runs the code it downloads as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
+  save: async (c, v) => {
+    const j = AW.job();
+    updWaiting = {
+      id: (
+        await postJSON("/admin/update", {
+          action: "set-source",
+          repo: v.repo.trim(),
+          branch: v.branch.trim(),
+          confirmed: true,
+        })
+      ).id,
+      action: "set-source",
+      job: j,
+    };
+    loadUpdate();
+    return j;
+  },
+  onChange: () => updLast && drawSource(updLast),
 });
+document
+  .getElementById("update-source-foot")
+  .append(srcSec.foot, srcSec.reason);
+for (const [input, key] of [
+  [upd.sourceRepo, "repo"],
+  [upd.sourceBranch, "branch"],
+])
+  // Drawn again as typed (the fields themselves are kept): the branches offered follow the repository.
+  input.addEventListener("input", () => srcSec.set(key, input.value));
+const STANDING_SAYS = {
+  gone: (b) => `The repository no longer has the branch ${b.branch}. The box finds no updates.`,
+  behind: (b) =>
+    `The branch ${b.branch} is behind the installed version ${b.installed}. The box finds no updates on it, and installing from it would go back.`,
+  elsewhere: (b) =>
+    `The branch ${b.branch} does not contain the installed version ${b.installed}; ${b.default} does. Every update from ${b.branch} would fail the check that it continues from the installed version.`,
+  merged: (b) => `The branch ${b.branch} is already merged into ${b.default}.`,
+};
+function drawSource(data) {
+  updLast = data;
+  const src = data.source;
+  if (
+    src &&
+    src.repo &&
+    !srcSec.saving() &&
+    (!srcSec.loaded() ||
+      srcSec.savedValue("repo") !== src.repo ||
+      srcSec.savedValue("branch") !== src.branch)
+  )
+    return srcSec.update({ repo: src.repo, branch: src.branch });
+  if (!srcSec.loaded()) return;
+  const v = srcSec.values();
+  if (upd.sourceRepo.value !== v.repo) upd.sourceRepo.value = v.repo;
+  if (upd.sourceBranch.value !== v.branch) upd.sourceBranch.value = v.branch;
+  upd.sourceRepo.disabled = upd.sourceBranch.disabled = srcSec.disabled();
+  // What the repository said, when it is the one in the form: its branches to pick from, the default first.
+  const b = data.branches;
+  const known = b && b.repo === v.repo.trim() ? b : null;
+  const names = known ? known.branches || [] : [];
+  upd.sourceList.replaceChildren(
+    ...names.map((n) => el("option", { value: n })),
+  );
+  upd.sourceChoices.replaceChildren(
+    ...(names.length
+      ? [
+          el(
+            "div",
+            { className: "chip-group", role: "group" },
+            el("span", {
+              className: "setting-desc",
+              textContent: "Branches: ",
+            }),
+            ...names.slice(0, 8).map((n) => {
+              const chip = el("button", {
+                type: "button",
+                className: "chip" + (n === v.branch ? " selected" : ""),
+                textContent: n === known.default ? `${n} (default)` : n,
+                disabled: srcSec.disabled(),
+                onclick: () => srcSec.set("branch", n),
+              });
+              chip.setAttribute("aria-pressed", String(n === v.branch));
+              return chip;
+            }),
+          ),
+        ]
+      : []),
+  );
+  // The branch this box follows, as the repository last said it stands: left behind, or fine.
+  const says =
+    known &&
+    known.branch === srcSec.savedValue("branch") &&
+    STANDING_SAYS[known.standing];
+  upd.sourceWarn.hidden = !says;
+  upd.sourceWarn.textContent = says
+    ? `${says(known)} Select ${known.default || "main"} and save.`
+    : "";
+}
+upd.sourcePoll.addEventListener("click", () =>
+  requestUpdate("poll-source", null, {
+    repo:
+      upd.sourceRepo.value.trim() === (updLast && updLast.source && updLast.source.repo)
+        ? ""
+        : upd.sourceRepo.value.trim(),
+  }),
+);
 
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
 // and what its last step did. The form is filled from the hub only while nobody is editing it.

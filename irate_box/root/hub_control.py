@@ -226,6 +226,9 @@ UPDATE_LOG = CONTROL / "update.log"
 UPDATE_PROGRESS = CONTROL / "update-progress.json"
 SIGNING_PUBLIC = CONTROL / "update-signing.json"
 DOCTOR_STATE = CONTROL / "doctor.json"
+# What the last "Ask the repository" found: its default branch, its branches, and how the branch this box follows
+# stands against the installed version (update_poll_target); the page offers them and the doctor says them.
+BRANCHES_STATE = CONTROL / "update-branches.json"
 SECURITY_STATE = CONTROL / "security.json"
 AUDIT_STATE = CONTROL / "security-audit.json"
 USB_STATE = CONTROL / "usb.json"
@@ -2134,6 +2137,29 @@ def _installed_commit():
     return match.group(1) if match else None
 
 
+def _relation(gitdir, installed, head="HEAD"):
+    """How a commit stands against the installed one, in a git directory that has both: "same", "ahead" (it continues
+    from the installed commit), "behind" (the installed commit already contains it: installing it goes back),
+    "diverged" (neither: a branch merged elsewhere, or a history rewritten), or "unknown" (the installed commit is not
+    in that history)."""
+    if not installed:
+        return "unknown"
+    git = ("git", "-C", str(gitdir))
+    if run(*git, "cat-file", "-e", f"{installed}^{{commit}}").returncode != 0:
+        return "unknown"
+    if run(*git, "rev-parse", "--verify", "-q", f"{head}^{{commit}}").returncode != 0:
+        return "unknown"
+    a = _git(*git[1:], "rev-parse", f"{installed}^{{commit}}")
+    b = _git(*git[1:], "rev-parse", f"{head}^{{commit}}")
+    if a == b:
+        return "same"
+    if run(*git, "merge-base", "--is-ancestor", a, b).returncode == 0:
+        return "ahead"
+    if run(*git, "merge-base", "--is-ancestor", b, a).returncode == 0:
+        return "behind"
+    return "diverged"
+
+
 def _write_update_state(data):
     safeio.write(UPDATE_STATE, json.dumps(data, indent=2))
 
@@ -2606,6 +2632,25 @@ def verify_update(src, installed, opts, progress=None, tag=None):
                     ),
                 )
             )
+        elif known and _relation(src, installed) == "behind":
+            checks.append(
+                _check(
+                    "history",
+                    False,
+                    title,
+                    M(
+                        "update.verify.history.behind",
+                        "The downloaded version is older than the installed commit {commit}, which already "
+                        "contains it. Installing it would go back.",
+                        commit=installed,
+                    ),
+                    fix=M(
+                        "update.verify.history.behind.fix",
+                        "Change the branch under Update source in the update doctor, usually to the repository's "
+                        "default branch.",
+                    ),
+                )
+            )
         elif known:
             checks.append(
                 _check(
@@ -2619,8 +2664,10 @@ def verify_update(src, installed, opts, progress=None, tag=None):
                         commit=installed,
                     ),
                     fix=M(
-                        "update.verify.history.rewritten.fix",
-                        "Read the changes. If you made them, use Install anyway in the Updates doctor.",
+                        "update.verify.history.diverged.fix",
+                        "If the branch was made for one change and merged into another, change the branch under "
+                        "Update source in the update doctor, usually to the repository's default branch. Use "
+                        "Install anyway only for a history you changed yourself.",
                     ),
                 )
             )
@@ -3134,7 +3181,11 @@ def _check_for_update(progress):
     known = bool(installed) and run("git", "-C", src, "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
     span = f"{installed}..HEAD" if known else "-10"
     changes = [c for c in _git("-C", src, "log", "--format=%h %cs %s", span).splitlines() if c]
+    relation = _relation(src, installed)
     up_to_date = bool(installed) and head.startswith(installed[:7]) or (known and not changes)
+    if relation == "diverged":
+        # The commits counted are the branch's own, not new ones: nothing here continues from what runs.
+        changes = []
     state = {
         "repo": repo,
         "branch": branch,
@@ -3142,6 +3193,7 @@ def _check_for_update(progress):
         "available_sha": full,
         "available_date": _git("-C", src, "log", "-1", "--format=%cs"),
         "installed": installed,
+        "relation": relation,
         "up_to_date": up_to_date,
         "changes": changes[:50],
         "changes_known": known,
@@ -3178,6 +3230,25 @@ def update_check(req):
         state, _ = _check_for_update(progress)
     _write_update_state(state)
     commit, branch, n = state["available"], state["branch"], len(state["changes"])
+    if state.get("relation") == "behind":
+        return M(
+            "update.check.behind",
+            "The branch {branch} is behind the installed version {installed}: it holds nothing newer, so this box "
+            "receives no updates from it. Change the branch under Update source in the update doctor, usually to "
+            "the repository's default branch.",
+            branch=branch,
+            installed=state["installed"],
+        )
+    if state.get("relation") == "diverged":
+        return M(
+            "update.check.diverged",
+            "The branch {branch} ({commit}) does not continue from the installed version {installed}. A branch made "
+            "for one change is merged into another and then left behind. Change the branch under Update source in "
+            "the update doctor, usually to the repository's default branch.",
+            branch=branch,
+            commit=commit,
+            installed=state["installed"],
+        )
     if state["up_to_date"]:
         return _up_to_date(state)
     # The changes are counted only when the history continues from the installed commit.
@@ -3249,6 +3320,7 @@ def update_fetch(req):
     )
     _write_update_state(state)
     if failed:
+        _doctor_again()
         return M(
             "update.fetch.failed",
             {
@@ -3408,6 +3480,13 @@ def _force_refusal(state):
         return M(
             "update.force.not-checked",
             "Install anyway works only on a downloaded version that the box checked. Download the update first.",
+        )
+    if _relation(UPDATE_SRC, _installed_commit()) == "behind":
+        # Install anyway is for a check that is wrong, never for going back to an older version.
+        return M(
+            "update.force.older",
+            "The downloaded version is older than the installed one, which already contains it. Install anyway "
+            "does not go back. Change the branch under Update source instead.",
         )
     if run("bash", "-n", str(UPDATE_SRC / "install.sh")).returncode != 0:
         return M(
@@ -3682,8 +3761,60 @@ def doctor():
 
     # 1b. A target the installer picked up by accident. The installer records the branch of the
     # checkout it ran from, so an install from a topic branch leaves the box following that branch,
-    # which is merged and deleted soon after. Only said when the branch is not the default.
-    if repo and branch != "main":
+    # which is merged and deleted soon after. Said as a problem when the repository (asked last) says the branch is
+    # gone, behind the installed version, or merged into the default; else a warning when it is not main.
+    try:
+        asked = json.loads(BRANCHES_STATE.read_text())
+    except (OSError, ValueError):
+        asked = {}
+    standing = asked.get("standing") if asked.get("branch") == branch and asked.get("repo") == repo else None
+    left = {
+        "gone": M(
+            "update.target.gone",
+            "Updates follow the branch {branch}, which the repository no longer has. The box finds no updates.",
+            branch=branch,
+        ),
+        "behind": M(
+            "update.target.behind",
+            "Updates follow the branch {branch}, which is behind the installed version. The box finds no updates.",
+            branch=branch,
+        ),
+        "elsewhere": M(
+            "update.target.elsewhere",
+            "Updates follow the branch {branch}, which does not contain the installed version. The default branch "
+            "{default} does. Every update would fail the check that it continues from the installed version.",
+            branch=branch,
+            default=asked.get("default") or "main",
+        ),
+        "merged": M(
+            "update.target.merged",
+            "Updates follow the branch {branch}, which is already merged into the default branch {default}.",
+            branch=branch,
+            default=asked.get("default") or "main",
+        ),
+    }.get(standing)
+    if repo and left:
+        findings.append(
+            finding(
+                "target",
+                M("update.target.title", "Update branch"),
+                "problem",
+                left,
+                M(
+                    "update.target.left.why",
+                    "A branch made for one change is merged and then left behind. Install anyway would go back, or "
+                    "skip the check that guards against a history taken over.",
+                ),
+                M(
+                    "update.target.left.fix",
+                    "Select {default} under Update source in this doctor's recovery actions.",
+                    default=asked.get("default") or "main",
+                ),
+                evidence=[ETC / "install-options", BRANCHES_STATE],
+                go=GO_SOURCE_BRANCH,
+            )
+        )
+    elif repo and branch != "main":
         findings.append(
             finding(
                 "target",
@@ -4277,10 +4408,20 @@ def doctor():
                         },
                         n=len(failed),
                     ),
-                    fix=M(
-                        "update.last-check.fix",
-                        "Review the evidence here. Clear a broken cache or, for a trusted version with a known checker failure, select Install anyway in this doctor. Signing and installer syntax checks cannot be skipped.",
+                    fix=(
+                        M(
+                            "update.last-check.fix.branch",
+                            "The branch this box follows does not lead on from the installed version. Change the "
+                            "branch under Update source, usually to the repository's default branch, then check "
+                            "for updates again.",
+                        )
+                        if any(c.get("id") == "history" for c in failed)
+                        else M(
+                            "update.last-check.fix",
+                            "Review the evidence here. Clear a broken cache or, for a trusted version with a known checker failure, select Install anyway in this doctor. Signing and installer syntax checks cannot be skipped.",
+                        )
                     ),
+                    go=GO_SOURCE_BRANCH if any(c.get("id") == "history" for c in failed) else None,
                     notes=[
                         *(_said_check(c) for c in failed),
                         *(c["fix"] for c in failed if is_message(c.get("fix"))),
@@ -4625,6 +4766,15 @@ def kits_findings(now=None):
     return out
 
 
+def _doctor_again():
+    """The update doctor run again, so its report is not older than what just changed (a failed verification, a new
+    source). Its own failure leaves the old report, said as stale on the page."""
+    try:
+        safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": doctor()}, indent=2))
+    except Exception:  # noqa: BLE001 - the action that asked is done; the report is a courtesy
+        return  # the old report stays, and the page says it is out of date
+
+
 def update_doctor(req):
     findings = doctor()
     safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2))
@@ -4702,6 +4852,12 @@ def update_set_source(req):
     safeio.write(ETC / "install-options", text, mode=0o644)
     safeio.write(STATE / "install-options", text, mode=0o644)
     update_clear_cache({})
+    # The new branch asked about, and the doctor run again: neither says what was true of the old one.
+    try:
+        update_poll_target({})
+    except Refused:
+        BRANCHES_STATE.unlink(missing_ok=True)
+    _doctor_again()
     return M(
         "update.source.saved",
         "Updates now come from the branch {branch} of {repo}. The next check starts from there.",
@@ -4710,21 +4866,109 @@ def update_set_source(req):
     )
 
 
+def _branch_standing(repo, default, branch, installed):
+    """How the branch this box follows stands, from the repository's own history: the default branch and that branch
+    fetched without their files (commits only) into a scratch repository. "ahead"/"same" are fine; "behind" (the
+    installed version already contains it), "elsewhere" (the default branch contains the installed version, the
+    followed branch does not: merged into it and left behind), "merged" (the default branch contains the followed
+    one); "unknown" when the history could not be read."""
+    with tempfile.TemporaryDirectory(prefix="update-branches-") as tmp:
+        git = ("git", *_source_protocols(), "-C", tmp)
+        if run("git", "init", "-q", "--bare", tmp).returncode != 0:
+            return "unknown"
+        refs = [f"+refs/heads/{n}:refs/heads/{n}" for n in dict.fromkeys((default, branch)) if n]
+        if run(*git, "fetch", "-q", "--no-tags", "--filter=tree:0", repo, *refs, timeout=180).returncode != 0:
+            return "unknown"
+        standing = _relation(tmp, installed, f"refs/heads/{branch}")
+        if standing in ("ahead", "same") or not default or default == branch:
+            return standing
+        if standing == "behind":
+            return "behind"
+        on_default = _relation(tmp, installed, f"refs/heads/{default}") in ("ahead", "same")
+        if standing == "diverged" and on_default:
+            return "elsewhere"
+        if (
+            run(
+                "git", "-C", tmp, "merge-base", "--is-ancestor", f"refs/heads/{branch}", f"refs/heads/{default}"
+            ).returncode
+            == 0
+        ):
+            return "merged"
+        return standing
+
+
 def update_poll_target(req):
-    """Ask the recorded repository which branch it serves by default, and say how it compares with the
-    branch this box follows. The doctor's "Update branch" warning offers it. Changes nothing."""
+    """Ask the repository which branch it serves by default and which branches it has, and how the branch this box
+    follows stands against the installed version. Kept for the page (BRANCHES_STATE): the Update source form offers
+    the branches, the default first, and the doctor says a branch left behind. Changes nothing else."""
     try:
         opts = _install_options()
     except ValueError:
         raise Refused(NO_REPO) from None
-    repo, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
-    if not (req.get("repo") or repo):
+    recorded, branch = _option(opts, "--repo"), _option(opts, "--branch", "main")
+    if not (req.get("repo") or recorded):
         raise Refused(NO_REPO)
-    repo = _source_repo(req["repo"]) if req.get("repo") else _recorded_source(repo)
-    out = run("git", *_source_protocols(), "ls-remote", "--symref", repo, "HEAD", timeout=60)
+    repo = _source_repo(req["repo"]) if req.get("repo") else _recorded_source(recorded)
+    out = run("git", *_source_protocols(), "ls-remote", "--symref", repo, "HEAD", "refs/heads/*", timeout=60)
     if out.returncode != 0:
         raise Refused(M("update.target.poll.failed", "The box could not read {repo}.", repo=repo))
-    default = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out.stdout, re.M)
+    found = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out.stdout, re.M)
+    default = found.group(1) if found else None
+    branches = sorted(
+        {m.group(1) for m in re.finditer(r"\trefs/heads/(\S+)$", out.stdout, re.M)},
+        key=lambda n: (n != default, n),
+    )[:100]
+    # How the followed branch stands: only for the repository this box follows (another one is asked about first).
+    same_repo = not req.get("repo") or repo == recorded
+    installed = _installed_commit()
+    # Gone only when the repository listed its branches and this one is not among them.
+    gone = same_repo and bool(branches) and branch not in branches
+    standing = _branch_standing(repo, default, branch, installed) if same_repo and branch in branches else None
+    safeio.write(
+        BRANCHES_STATE,
+        json.dumps(
+            {
+                "at": time.time(),
+                "repo": repo,
+                "default": default,
+                "branches": branches,
+                "branch": branch if same_repo else None,
+                "installed": installed,
+                "standing": "gone" if gone else standing,
+            },
+            indent=2,
+        ),
+    )
+    if gone:
+        return M(
+            "update.target.poll.gone",
+            "{repo} no longer has the branch {branch} that this box follows. Select {default} under Update source.",
+            repo=repo,
+            branch=branch,
+            default=default or "main",
+        )
+    said = {"repo": repo, "default": default or "main", "branch": branch, "installed": installed or "?"}
+    if standing == "behind":
+        return M(
+            "update.target.poll.behind",
+            "{repo} serves {default} by default. This box follows {branch}, which is behind the installed version "
+            "{installed}. Select {default} under Update source.",
+            **said,
+        )
+    if standing == "elsewhere":
+        return M(
+            "update.target.poll.elsewhere",
+            "{repo} serves {default} by default, which contains the installed version {installed}. This box follows "
+            "{branch}, which does not. Select {default} under Update source.",
+            **said,
+        )
+    if standing == "merged":
+        return M(
+            "update.target.poll.merged",
+            "{repo} serves {default} by default, which already contains {branch}, the branch this box follows. "
+            "Select {default} under Update source.",
+            **{k: v for k, v in said.items() if k != "installed"},
+        )
     if not default:
         return M(
             "update.target.poll.unknown",
@@ -4732,7 +4976,7 @@ def update_poll_target(req):
             repo=repo,
             branch=branch,
         )
-    if default.group(1) == branch:
+    if default == branch:
         return M(
             "update.target.poll.same",
             "{repo} serves {branch} by default, which is the branch this box follows.",
@@ -4743,7 +4987,7 @@ def update_poll_target(req):
         "update.target.poll.differs",
         "{repo} serves {default} by default. This box follows {branch}.",
         repo=repo,
-        default=default.group(1),
+        default=default,
         branch=branch,
     )
 

@@ -1078,6 +1078,154 @@ if os.environ.get("IRATE_NGINX"):
 else:
     print("SKIP real nginx activation tests (set IRATE_NGINX to an isolated nginx binary)")
 
+# --- Item 148: a branch left behind (the Lyra followed a merged topic branch, 2026-10-19) ---
+# A real repository: main A-B-C (C installed), a topic branch from A (diverged from C), "old" at B (behind C).
+G = T / "branches"
+GIT_ENV = dict(
+    os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"
+)
+
+
+def git(*args, cwd=G):
+    return subprocess.run(
+        ["git", *args], cwd=cwd, env=GIT_ENV, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+G.mkdir()
+git("init", "-q", "-b", "main")
+for n in "ABC":
+    git("commit", "-q", "--allow-empty", "-m", n)
+    if n == "A":
+        git("branch", "topic")
+    if n == "B":
+        git("branch", "old")
+installed = git("rev-parse", "--short=7", "main")
+git("switch", "-q", "topic")
+git("commit", "-q", "--allow-empty", "-m", "T1")
+git("switch", "-q", "main")
+check(
+    "how a commit stands against the installed one: same, behind, diverged; a newer one ahead",
+    [H._relation(G, installed, r) for r in ("main", "old", "topic")] == ["same", "behind", "diverged"],
+    [H._relation(G, installed, r) for r in ("main", "old", "topic")],
+)
+git("commit", "-q", "--allow-empty", "-m", "D")
+check("  ahead", H._relation(G, installed, "main") == "ahead")
+check("  unknown: the installed commit not in that history", H._relation(G, "deadbee", "main") == "unknown")
+
+# The standing the poll records, from the repository's own history (fetched commits only, no files).
+with mock.patch.object(H, "_source_protocols", lambda level=None: []):
+    standing = {b: H._branch_standing(str(G), "main", b, installed) for b in ("main", "old", "topic")}
+    merged_unknown = H._branch_standing(str(G), "main", "old", "1234567")
+check(
+    "the followed branch's standing: main ahead, old behind, topic elsewhere (main has the installed version)",
+    standing == {"main": "ahead", "old": "behind", "topic": "elsewhere"},
+    standing,
+)
+check(
+    "  a branch main already contains, the installed commit unknown: merged", merged_unknown == "merged", merged_unknown
+)
+
+# The poll: the branches listed (the default first), the standing kept for the page and the doctor.
+OPTIONS.write_text("--repo\nhttps://example.invalid/irate-box\n--branch\ntopic\n")
+heads = "ref: refs/heads/main\tHEAD\nabc\tHEAD\nabc\trefs/heads/main\ndef\trefs/heads/topic\nfed\trefs/heads/old\n"
+with (
+    mock.patch.object(H, "_branch_standing", lambda repo, default, branch, inst: "elsewhere"),
+    mock.patch.object(H, "_installed_commit", lambda: installed),
+):
+    said = poll(heads)
+kept = json.loads(H.BRANCHES_STATE.read_text())
+check(
+    "polling a branch left behind: said, with the default to select",
+    said["id"] == "update.target.poll.elsewhere"
+    and said["args"]["default"] == "main"
+    and said["args"]["branch"] == "topic",
+    said,
+)
+check(
+    "  kept for the page: the branches, the default first, the standing",
+    kept["branches"] == ["main", "old", "topic"]
+    and kept["default"] == "main"
+    and kept["standing"] == "elsewhere"
+    and kept["branch"] == "topic",
+    kept,
+)
+fs = doctor()
+check(
+    "  the doctor says it as a problem, what to select, the Branch field to go to; no Install anyway",
+    fs["target"]["status"] == "problem"
+    and msg_args(fs["target"], "update.target.elsewhere") == {"branch": "topic", "default": "main"}
+    and msg_args(fs["target"], "update.target.left.fix") == {"default": "main"}
+    and fs["target"]["go"]["mark"] == "update-source-branch"
+    and not fs["target"].get("actions"),
+    fs["target"],
+)
+with mock.patch.object(H, "_installed_commit", lambda: installed):
+    said = poll("ref: refs/heads/main\tHEAD\nabc\tHEAD\nabc\trefs/heads/main\n")
+check(
+    "  a branch the repository no longer has: gone, said, and the doctor says it",
+    said["id"] == "update.target.poll.gone"
+    and json.loads(H.BRANCHES_STATE.read_text())["standing"] == "gone"
+    and doctor()["target"]["summary"]["id"] == "update.target.gone",
+    said,
+)
+H.BRANCHES_STATE.unlink()
+
+# The check: a branch behind or diverged said as that, not as an update.
+for relation, mid in (("behind", "update.check.behind"), ("diverged", "update.check.diverged")):
+    with mock.patch.object(
+        H,
+        "_check_for_update",
+        lambda progress: (
+            {
+                "up_to_date": relation == "behind",
+                "verified": None,
+                "available": "abc1234",
+                "branch": "topic",
+                "changes": [],
+                "changes_known": True,
+                "relation": relation,
+                "installed": installed,
+            },
+            [],
+        ),
+    ):
+        said = H.update_check({})
+    check(f"a check on a branch {relation}: said so, with where to change it", said["id"] == mid, said)
+
+# Verification of an older version: its own reason, and Install anyway refuses to go back.
+src = Path(os.environ["HUB_UPDATE_DIR"])
+shutil.rmtree(src, ignore_errors=True)
+git("clone", "-q", "-b", "old", str(G), str(src), cwd=T)
+(src / "install.sh").write_text("#!/bin/bash\necho ok\n")
+history = next(c for c in H.verify_update(src, installed, []) if c["id"] == "history")
+check(
+    "verifying a version older than the installed one: failed, said as going back, the cure the branch",
+    not history["ok"]
+    and history["detail"]["id"] == "update.verify.history.behind"
+    and history["fix"]["id"] == "update.verify.history.behind.fix",
+    history,
+)
+full = git("rev-parse", "HEAD", cwd=src)
+with mock.patch.object(H, "_installed_commit", lambda: installed):
+    why = H._force_refusal({"checked_sha": full, "checks": [history]})
+    actions = H._force_actions({"checked_sha": full, "checks": [history]})
+check(
+    "  Install anyway refuses it, and the doctor offers no Install anyway",
+    why["id"] == "update.force.older" and actions == [],
+    why,
+)
+H.UPDATE_STATE.write_text(json.dumps({"checks": [history], "checked_sha": full}))
+fs = doctor()
+check(
+    "  the last check's finding points at the branch, not at Install anyway",
+    fs["last-check"]["fix"]["id"] == "update.last-check.fix.branch"
+    and fs["last-check"]["go"]["mark"] == "update-source-branch",
+    fs["last-check"],
+)
+H.UPDATE_STATE.unlink()
+shutil.rmtree(src, ignore_errors=True)
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
