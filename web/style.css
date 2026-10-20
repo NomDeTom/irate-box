@@ -3771,6 +3771,15 @@ label > .select-chips {
   color: var(--muted);
   margin-right: auto;
 }
+/* A section with unsaved changes says so in the text colour, not the muted one; why a save failed, under it. */
+.aw-foot.aw-dirty .note {
+  color: var(--text);
+  font-weight: 600;
+}
+.aw-reason {
+  margin: 0.3rem 0 0;
+  color: var(--bad, #b00020);
+}
 .aw-settings {
   display: flex;
   flex-direction: column;

@@ -379,6 +379,7 @@ const AW = (() => {
       saveB.disabled = !dirty || saving || !saved;
       discardB.disabled = !dirty || saving || !saved;
       s.foot.classList.toggle('aw-dirty', dirty);
+      saveB.classList.toggle('idle', !dirty);   // outlined while there is nothing to save
       note.textContent = !saved ? 'Reading the current settings…' : saving ? 'Saving…'
         : dirty ? (elsewhere.size ? 'Unsaved changes. Changed elsewhere since you started: Save replaces it, Discard shows it.' : 'Unsaved changes.')
           : said || opts.idle || IDLE;
@@ -633,85 +634,80 @@ const AW = (() => {
     watchSetters();
     (root || document).querySelectorAll('select').forEach(chipSelect);
   }
-  // A Save button in a form stays unfilled (outlined) until something in the form has been changed by
-  // its user. Events from
-  // people only: a form the page fills from the hub raises none, so it starts quiet; a submit, or a
-  // reset, quiets it again. The button is never disabled here: it still works.
-  // Beside it, a Discard (unless the form has its own): the form's values as they were before its user
-  // began changing them (taken as a person first reaches into the form), put back; off until then.
-  const isSave = (b) => b.classList.contains('primary') && b.type === 'submit' && /^Save/.test(b.textContent.trim());
-  const fields = (f) => [...f.elements].filter((e) => e.name && !['button', 'submit', 'reset', 'file'].includes(e.type));
-  function quietSaves(root) {
-    (root || document).querySelectorAll('form').forEach((f) => {
-      if (f._quiet) return;
-      const btns = () => [...f.querySelectorAll('button')].filter(isSave);
-      if (!btns().length) return;
-      f._quiet = true;
-      let snap = null, restoring = false, dirty = false;
-      f._unsaved = () => dirty;   // the page's polling leaves a changed form alone (unsaved, in admin.js)
-      const own = [...f.querySelectorAll('button')].some((b) => /^Discard/.test(b.textContent.trim()));
-      const discard = own ? null : btn('Discard', { class: 'action-btn aw-discard', disabled: true, title: 'Restore the values from before your changes' });
-      if (discard) {
-        const save = btns()[0];
-        if (!save.parentElement.classList.contains('library-buttons')) {
-          const actions = h('div', { class: 'library-buttons' });
-          save.before(actions);
-          actions.append(save);
+  // ---- A plain form as a section: its named fields are the draft ----
+  // The page gives the saved values (f.section.fill, from each poll) and never writes the fields itself; the
+  // form's Save and Discard become the section's footer, where its Save button was. A value kept outside the
+  // fields (the firmware's boards) is opts.extra: {key: {set(value)}}, and the page calls section.set for it.
+  //   opts: the section's (save, ask, idle, label), and extra
+  const FIELD = (e) => e.name && !['button', 'submit', 'reset', 'file'].includes(e.type) && !e.closest('[data-aw-ignore]');
+  function form(f, opts = {}) {
+    if (f.section) return f.section;
+    const named = (n) => [...f.elements].filter((e) => FIELD(e) && (!n || e.name === n));
+    const read = (n) => {
+      const els = named(n);
+      if (!els.length) return undefined;
+      if (els[0].type === 'radio') { const c = els.find((x) => x.checked); return c ? c.value : ''; }
+      return els[0].type === 'checkbox' ? els[0].checked : els[0].value;
+    };
+    const extra = opts.extra || {};
+    let writing = false;
+    const offByUs = new Set();
+    const s = section({ ...opts, id: opts.id || f.id, saved: null, onChange: () => paint() });
+    // The draft into the fields; each field written raises change, so what follows a field (chips, a part shown
+    // only for one choice) follows it here too. Off until the values are read.
+    function paint() {
+      writing = true;
+      for (const [k, v] of Object.entries(s.values())) {
+        if (k in extra) { extra[k].set(v); continue; }
+        for (const e of named(k)) {
+          const was = e.type === 'radio' || e.type === 'checkbox' ? e.checked : e.value;
+          if (e.type === 'radio') e.checked = e.value === String(v);
+          else if (e.type === 'checkbox') e.checked = !!v;
+          else e.value = v == null ? '' : String(v);
+          if (was !== (e.type === 'radio' || e.type === 'checkbox' ? e.checked : e.value)) e.dispatchEvent(new Event('change', { bubbles: true }));
         }
-        save.before(discard);
       }
-      const take = () => { if (!snap) snap = fields(f).map((e) => [e, e.value, e.checked]); };
-      f.addEventListener('pointerdown', take, true);
-      f.addEventListener('focusin', (e) => { if (e.target !== discard) take(); }, true);
-      // Nothing to save: the button unfilled and off (it looked like one to press, and pressing it did nothing new).
-      const set = (d) => {
-        dirty = d;
-        btns().forEach((b) => { b.classList.toggle('idle', !dirty); b.disabled = !dirty; });
-        if (discard) discard.disabled = !dirty || !snap;
-        if (!dirty) snap = null;
-      };
-      set(false);
-      if (discard) discard.addEventListener('click', () => {
-        const was = snap || [];
-        restoring = true;
-        for (const [e, value, checked] of was) {
-          if (e.value === value && e.checked === checked) continue;
-          e.value = value;
-          e.checked = checked;
-          e.dispatchEvent(new Event('input', { bubbles: true }));
-          e.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        restoring = false;
-        delete f.dataset.dirty;
-        set(false);
-        f.dispatchEvent(new Event('discard'));   // for what the form keeps outside its fields (the firmware's boards)
-      });
-      // A field that only looks (a filter box, data-aw-ignore) changes nothing to save.
-      const touch = (e) => { if (!restoring && e.target.closest && !e.target.closest('button[type=submit], [data-aw-ignore]')) set(true); };
-      f.addEventListener('input', touch);
-      f.addEventListener('change', touch);
-      f.addEventListener('click', (e) => { if (e.target.closest('.chip, .choice-tile')) set(true); });
-      // Saved: quiet again at once, unless the page then says the save failed (f._failed(), its changes kept).
-      f.addEventListener('submit', () => set(false));
-      f._failed = () => set(true);
-      f.addEventListener('reset', () => setTimeout(() => set(false)));
-    });
+      writing = false;
+      if (s.loaded()) { offByUs.forEach((e) => { e.disabled = false; if (e._chipsDraw) e._chipsDraw(); }); offByUs.clear(); }
+    }
+    for (const e of named()) if (!e.disabled) { e.disabled = true; offByUs.add(e); if (e._chipsDraw) e._chipsDraw(); }
+    // Values as the fields hold them: a tick true or false, everything else a string.
+    s.fill = (values) => {
+      const out = {};
+      for (const [k, v] of Object.entries(values || {})) {
+        const e = named(k)[0];
+        out[k] = k in extra ? v : e && e.type === 'checkbox' ? !!v : v == null ? '' : String(v);
+      }
+      s.update(out);
+    };
+    const touch = (e) => {
+      if (writing || !e.target || !FIELD(e.target) || !s.loaded()) return;
+      s.set(e.target.name, read(e.target.name), true);
+    };
+    f.addEventListener('input', touch);
+    f.addEventListener('change', touch);
+    f.addEventListener('submit', (e) => { e.preventDefault(); s.save(); });
+    const old = [...f.querySelectorAll('button')];
+    const saveOld = old.find((b) => b.type === 'submit' && /^Save/.test(b.textContent.trim()));
+    if (saveOld) saveOld.replaceWith(s.foot); else f.append(s.foot);
+    s.foot.after(s.reason);
+    old.filter((b) => /^Discard/.test(b.textContent.trim())).forEach((b) => b.remove());
+    f.section = s;
+    return s;
   }
   if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
     const start = () => {
       updatePatterns(document);
       chipSelects(document);
-      quietSaves(document);
       new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => {
         if (n.nodeType !== 1) return;
         updatePatterns(n.parentNode || n);
         if (n.tagName === 'SELECT') chipSelect(n); else chipSelects(n);
-        quietSaves(n.tagName === 'FORM' ? n.parentNode : n);
       }))).observe(document.body, { childList: true, subtree: true });
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, quietSaves };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

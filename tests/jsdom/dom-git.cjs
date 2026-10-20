@@ -198,6 +198,7 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
     && /Queued: fw-ci\.git main at cccccc/.test(t(d.getElementById('git-note'))), t(d.getElementById('git-note')));
   const kf = d.getElementById('ci-keep-form');
   kf.elements.keep.value = '8';
+  kf.elements.keep.dispatchEvent(new w.Event('input', { bubbles: true }));
   kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
   await wait();
   check('runs kept per repository: a setting', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'settings' && b.keep_runs === 8));

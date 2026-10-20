@@ -127,8 +127,9 @@ function page(file, url, fetcher, scripts) {
   const sform = d.getElementById('accounts-settings');
   check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Approval/Administrator creates | Blocked/Warning/Accepted'
     && [...sform.querySelectorAll('.chip-says')].length === 2);
-  sform.elements.signup.value = 'assigned'; sform.elements.http.value = 'prevented';
-  sform.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();
+  // As a person changes them (each raises change), then the section's Save.
+  for (const [n, v] of [['signup', 'assigned'], ['http', 'prevented']]) { sform.elements[n].value = v; sform.elements[n].dispatchEvent(new a.w.Event('change', { bubbles: true })); }
+  sform.querySelector('.aw-save').click(); await wait();
   check('  Save: both levels sent', aposted.some((b) => b.action === 'settings' && b.signup === 'assigned' && b.http === 'prevented'));
   await wait(50);
   const cdBox = d.getElementById('saves-cross-device-box');

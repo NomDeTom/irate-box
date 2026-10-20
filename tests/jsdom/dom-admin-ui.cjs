@@ -70,6 +70,7 @@ vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom
 const dom = new JSDOM(html, { url: 'http://box/admin/#clock', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
 const posted = [];
+const accountsData = { settings: { signup: 'open', http: 'warning' }, counts: { user: 0, admins: 0, asked: 0, disabled: 0 }, accounts: [] };
 w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST') {
     posted.push([u, JSON.parse(opts.body)]);
@@ -79,9 +80,10 @@ w.fetch = async (u, opts = {}) => {
       if (posted[posted.length - 1][1].action === 'flush-cache') return new Response(JSON.stringify({ ...fwFix, status: { ...fwFix.status, cache: null } }), { status: 200 });
       return new Response(JSON.stringify(fwFix), { status: 200 });
     }
-    if (u === '/admin/accounts') return new Response(JSON.stringify({ settings: { signup: 'open', http: 'warning' }, counts: { user: 0, admins: 0, asked: 0, disabled: 0 }, accounts: [] }), { status: 200 });
+    if (u === '/admin/accounts') return new Response(JSON.stringify(accountsData), { status: 200 });
     return new Response('{"id":"x"}', { status: 202 });
   }
+  if (u === '/admin/accounts') return new Response(JSON.stringify(accountsData), { status: 200 });
   if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
   if (u === '/admin/apps') return new Response(JSON.stringify({ apps: adminApps() }), { status: 200 });
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
@@ -201,12 +203,13 @@ setTimeout(() => {
   check('moderation: a reported message is marked where all the messages are listed; an unreported one is not',
     /reported ×3/.test(t('#mod-messages .admin-item')[0]) && !/reported/.test(t('#mod-messages .admin-item')[1]), t('#mod-messages .admin-item').join(' | '));
   {
-    const f = d.getElementById('accounts-settings'), sb = f.querySelector('button.primary');
-    check('save buttons: unfilled and off while there is nothing to save', sb.classList.contains('idle') && sb.disabled);
+    const f = d.getElementById('accounts-settings'), sb = f.querySelector('.aw-save');
+    w.renderAccounts(accountsData); // its values read, as when its page is opened
+    check('save buttons: off while there is nothing to save', sb.disabled);
     f.querySelector('.select-chips .chip:not(.selected)').click();
-    check('  a change filled it and turned it on', !sb.classList.contains('idle') && !sb.disabled);
-    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    setTimeout(() => check('  saved: unfilled and off again', sb.classList.contains('idle') && sb.disabled), 20);
+    check('  a change turned it on', !sb.disabled);
+    sb.click();
+    setTimeout(() => check('  saved: off again', sb.disabled), 20);
   }
   check('GitHub token: an Adapt to rate limit button, and the state said (not adapted, no Stop button)', !!d.getElementById('library-adapt')
     && /Not adapted/.test(d.getElementById('library-pace-state').textContent) && d.getElementById('library-adapt-off').hidden);
@@ -313,11 +316,11 @@ setTimeout(() => {
       && d.getElementById('debian-pattern').closest('details').id === 'debian-auto-fold');
     // An unsaved edit survives the next poll, focus or not, and the title still says what is saved.
     af.elements.hub_check_every_hours.value = '6';
-    af.dispatchEvent(new w.Event('change'));
+    af.elements.hub_check_every_hours.dispatchEvent(new w.Event('change', { bubbles: true }));
     w.renderAuto(update.auto);
     check('  an unsaved change kept through a poll; the title still the saved one, marked changed', af.elements.hub_check_every_hours.value === '6'
       && /^Checks once a day/.test(t('#update-auto-says')[0]) && /not saved/.test(t('#update-auto-says')[0]), `${af.elements.hub_check_every_hours.value} ${t('#update-auto-says')[0]}`);
-    delete af.dataset.dirty;
+    af.section.discard();
     w.renderAuto(update.auto);
     // One press, one request, however often the librarian's part was redrawn.
     for (let i = 0; i < 3; i++) w.renderLibrary(library);
@@ -327,10 +330,10 @@ setTimeout(() => {
     // The librarian's policy: an unsaved change kept through a redraw.
     const lp = d.getElementById('library-policy');
     lp.elements.min_free_mb.value = '900';
-    lp.dispatchEvent(new w.Event('input'));
+    lp.elements.min_free_mb.dispatchEvent(new w.Event('input', { bubbles: true }));
     w.renderLibrary(library);
     check('the librarian\'s policy: an unsaved change kept through a redraw', lp.elements.min_free_mb.value === '900', lp.elements.min_free_mb.value);
-    delete lp.dataset.dirty;
+    lp.section.discard();
     w.renderLibrary(library);
   }
   check('books and apps: the scheduled choice offered', !!d.querySelector('#library-policy select[name="auto_install"]'));
@@ -479,12 +482,16 @@ setTimeout(() => {
     const f = d.getElementById('update-signing-form');
     check('updates: the signing level as three choices, merged on GitHub chosen', f && f.querySelectorAll('input[type=radio][name=level]').length === 3
       && f.elements.level.value === 'github' && d.getElementById('update-signers-label').hidden);
-    f.elements.level.value = 'tags'; f.dispatchEvent(new w.Event('change'));
+    f.elements.level.value = 'tags';
+    f.querySelector('input[name=level][value=tags]').dispatchEvent(new w.Event('change', { bubbles: true }));
     check('  signed releases: the box for the keys shows', !d.getElementById('update-signers-label').hidden);
-    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    check('  with no key: not sent, said why', /at least one key/.test(t('#update-signing-note')[0]) && !posted.some((p) => p[1] && p[1].action === 'signing'));
-    f.elements.signers.value = 'owner@box ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB laptop';
-    f.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    f.querySelector('.aw-save').click();
+    setTimeout(() => {
+      check('  with no key: not sent, said why under its Save', /at least one key/.test(f.querySelector('.aw-reason').textContent) && !posted.some((p) => p[1] && p[1].action === 'signing'));
+      f.elements.signers.value = 'owner@box ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB laptop';
+      f.elements.signers.dispatchEvent(new w.Event('input', { bubbles: true }));
+      f.querySelector('.aw-save').click();
+    }, 5);
   }
   // The words of the old menu are gone: no Library pane, no Health group.
   check('no old pane names in the page\'s words', !/Library →|Library pane|under Health|under Add-ons/.test(d.body.textContent + js));
@@ -500,7 +507,8 @@ setTimeout(() => {
   [...d.querySelectorAll('#fw-source button')].find((b) => b.textContent === 'Mirror source code').click();
   check('git: the build cache\'s three choices as radio buttons, not a dropdown', cacheForm.querySelectorAll('input[type=radio][name=cache]').length === 3 && !cacheForm.querySelector('select'));
   cacheForm.elements.cache.value = 'whole';
-  cacheForm.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  cacheForm.querySelector('input[name=cache][value=whole]').dispatchEvent(new w.Event('change', { bubbles: true }));
+  cacheForm.querySelector('.aw-save').click();
   const mf = d.getElementById('git-mirror-add').elements;
   mf.upstream.value = 'https://github.com/meshtastic/firmware'; mf.name.value = 'fw2'; mf.releases.value = '2'; mf.prereleases.value = '2'; mf.branches.value = 'master develop';
   d.getElementById('git-mirror-add').dispatchEvent(new w.Event('submit', { cancelable: true }));

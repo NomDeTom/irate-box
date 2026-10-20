@@ -56,12 +56,13 @@ const type = (input, value) => {
   answer['/admin/packages'] = refuse;
   check('  and one the hub refuses', (await ev('pkgAct({ action: "settings", package: "x" })')) === false);
   const budget = d.getElementById('kits-budget');
-  budget.dataset.saved = '500';
+  budget.section.fill({ budget: 500, previous: '' });
   type(budget.elements.budget, '700');
-  budget.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  budget.querySelector('.aw-save').click();
   await wait();
-  check("the toolkits' budget refused: still 700 on the page, not marked saved, Save still on",
-    budget.elements.budget.value === '700' && budget.dataset.saved === '500' && !budget.querySelector('[type="submit"]').disabled);
+  check("the toolkits' budget refused: still 700 on the page, not saved, the reason under Save, Save still on",
+    budget.elements.budget.value === '700' && budget.section.savedValue('budget') === '500' && /Refused for the test/.test(t(budget.querySelector('.aw-reason')))
+    && !budget.querySelector('.aw-save').disabled);
   // The widgets: a save that resolves false keeps its changes.
   const block = AW.settings([{ key: 'k', label: 'K', kind: 'toggle', value: false }], { save: async () => false });
   d.body.append(block);
@@ -73,18 +74,27 @@ const type = (input, value) => {
   // 2. A draft stays until the request is done and well.
   answer['/admin/security'] = refuse;
   const deb = d.getElementById('debian-pattern');
+  deb.section.fill({ often: deb.elements.often.options[0].value, act: deb.elements.act.options[0].value });
   type(deb.elements.often, deb.elements.often.options[1].value);
-  deb.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  deb.querySelector('.aw-save').click();
   await wait();
-  check("Debian's pattern refused: still marked changed, Save on again", deb.dataset.dirty === '1'
-    && !deb.querySelector('button[type="submit"]').disabled);
+  check("Debian's pattern refused: still changed, Save on again", deb.section.dirty() && !deb.querySelector('.aw-save').disabled);
+  answer['/admin/security'] = () => [202, { id: 's1' }];
+  deb.querySelector('.aw-save').click();
+  await wait();
+  check('  sent: "Saving…" until the root helper answers', t(deb.querySelector('.aw-foot .note')) === 'Saving…' && deb.section.dirty());
+  ev('secWaiting').onDone(false, 'apt is locked.');
+  await wait();
+  check('  the root helper failed: still changed, its reason under Save', deb.section.dirty() && /apt is locked/.test(t(deb.querySelector('.aw-reason'))));
+  ev('secWaiting = null');
   answer['/admin/library'] = refuse;
   const surf = d.getElementById('mirrors-policy');
   const sel = surf.querySelector('select[name]');
+  surf.section.fill(Object.fromEntries([...surf.querySelectorAll('select[name]')].map((x) => [x.name, x.options[0].value])));
   type(sel, [...sel.options].find((o) => o.value !== sel.value).value);
-  surf.dispatchEvent(new w.Event('submit', { cancelable: true }));
+  surf.querySelector('.aw-save').click();
   await wait();
-  check("a refresh policy refused: still marked changed, so the page's polling leaves it", surf.dataset.dirty === '1');
+  check("a refresh policy refused: still changed, so the page's polling leaves it", surf.section.dirty());
   answer['/admin/network'] = refuse;
   ev('defaultsDirty = { powersave: "2" }');
   const dsave = ev('net.defaultsSave');
@@ -203,11 +213,10 @@ const type = (input, value) => {
 
   // 10. Firmware: the filter changes nothing; Discard puts the boards back.
   ev('fwChosen = new Set(["rak4631"]); renderFirmware(fwData)');
-  ff.elements.keep_alpha.value = '1';
-  ff._failed && ff.querySelector('.aw-discard').click();
+  ff.section.discard();
   const filter = d.getElementById('fw-filter');
   type(filter, 'hel');
-  check('Firmware: typing in the board filter marks nothing changed', !ff._unsaved() && ff.querySelector('.aw-discard').disabled);
+  check('Firmware: typing in the board filter marks nothing changed', !ff.section.dirty() && ff.querySelector('.aw-discard').disabled);
   type(filter, '');
   const tick = [...d.querySelectorAll('#fw-boards input')].find((i) => i.parentElement.textContent.includes('heltec-v3'));
   tick.dispatchEvent(new w.Event('pointerdown', { bubbles: true }));

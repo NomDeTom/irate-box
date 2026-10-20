@@ -95,11 +95,6 @@ const GETS_AT_ONCE = 3;
 
 // Every answer goes in the note right under the control that asked for it.
 const noteEl = (id) => document.getElementById(id);
-// A form its user is changing, or has changed and not saved: the page's polling leaves its fields alone.
-const held = (form) =>
-  form.contains(document.activeElement) ||
-  !!form.dataset.dirty ||
-  !!(form._unsaved && form._unsaved());
 function say(text, ok, at) {
   at.textContent = text;
   at.classList.toggle("bad", !ok);
@@ -837,11 +832,7 @@ function renderLibrary(snap) {
     lib.allNote.className = allNote.className;
   }
 
-  for (const [k, v] of Object.entries(snap.policy)) {
-    const field = lib.policy.elements[k];
-    if (field && document.activeElement !== field && !lib.policy.dataset.dirty)
-      field.value = String(v);
-  }
+  libPolicy.fill(snap.policy);
   lastPolicy = snap.policy;
   fillSurfaces(snap.policy);
   // GitHub's hourly allowance, as the last check saw it (librarian.py: rate): low, the scheduled
@@ -940,68 +931,41 @@ lib.add.addEventListener("submit", async (e) => {
     );
   }
 });
-lib.policy.addEventListener("submit", async (e) => {
-  e.preventDefault();
+// The librarian's policy, and the mirrors', the firmware mirror's and the toolkits' cache's own pair in it: each
+// a section (AW.form). The poll gives the saved policy; a Save sends the changes.
+const libPolicySave = async (changes) => {
   const body = { action: "policy" };
-  for (const k of [
-    "keep_old",
-    "check_every_hours",
-    "min_free_mb",
-    "books_budget_mb",
-    "auto_install",
-  ])
-    body[k] = Number(lib.policy.elements[k].value);
-  const at = noteEl("library-policy-note");
-  try {
-    const snap = await libPost(body);
-    delete lib.policy.dataset.dirty;
-    renderLibrary(snap);
-    say("Saved.", true, at);
-  } catch (err) {
-    say(err.message, false, at);
-    lib.policy._failed();
-  }
+  for (const [k, v] of Object.entries(changes)) body[k] = Number(v);
+  renderLibrary(await libPost(body));
+};
+const libPolicy = AW.form(lib.policy, {
+  label: "Library policy",
+  save: async (c) => {
+    await libPolicySave(c);
+    return "Saved.";
+  },
 });
-// Changed and not saved: kept through the page's polling, focus or not.
-for (const ev of ["input", "change"])
-  lib.policy.addEventListener(ev, () => {
-    lib.policy.dataset.dirty = "1";
-  });
-// The mirrors', the firmware mirror's and the toolkits' cache's own pair, in the librarian's policy.
-const surfaceForms = [...document.querySelectorAll("form.surface-policy")];
+const surfaceForms = [...document.querySelectorAll("form.surface-policy")].map(
+  (f) =>
+    AW.form(f, {
+      label: "Update policy",
+      save: async (c) => {
+        await libPolicySave(c);
+        return "Saved. The librarian applies it at the next hourly cycle.";
+      },
+    }),
+);
 function fillSurfaces(policy) {
-  for (const f of surfaceForms) {
-    if (f.contains(document.activeElement) || f.dataset.dirty) continue;
-    f.querySelectorAll("select[name]").forEach((s) => {
-      if (policy[s.name] != null) s.value = String(policy[s.name]);
-    });
+  for (const sec of surfaceForms) {
+    const names = [
+      ...sec.foot.closest("form").querySelectorAll("select[name]"),
+    ].map((x) => x.name);
+    sec.fill(
+      Object.fromEntries(
+        names.filter((n) => policy[n] != null).map((n) => [n, policy[n]]),
+      ),
+    );
   }
-}
-for (const f of surfaceForms) {
-  f.addEventListener("change", () => {
-    f.dataset.dirty = "1";
-  });
-  f.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const body = { action: "policy" };
-    f.querySelectorAll("select[name]").forEach((s) => {
-      if (s.name in (lastPolicy || {})) body[s.name] = Number(s.value);
-    });
-    const at = f.nextElementSibling;
-    try {
-      const snap = await libPost(body);
-      delete f.dataset.dirty;
-      renderLibrary(snap);
-      say(
-        "Saved. The librarian applies it at the next hourly cycle.",
-        true,
-        at,
-      );
-    } catch (err) {
-      say(err.message, false, at);
-      f._failed();
-    }
-  });
 }
 let lastPolicy = null;
 document
@@ -1011,21 +975,16 @@ document
       libAct("all", { action: b.dataset.mirrorsAll, names: ["mirrors"] }),
     ),
   );
-lib.token.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
-    renderLibrary(
-      await libPost({
-        action: "token",
-        value: lib.token.elements.value.value.trim(),
-      }),
-    );
-    lib.token.reset();
-    say("Token saved.", true, noteEl("library-token-note"));
-  } catch (err) {
-    say(err.message, false, noteEl("library-token-note"));
-  }
+// The token is never read back: its field starts empty, and empties again once saved.
+const libToken = AW.form(lib.token, {
+  label: "GitHub token",
+  save: async (c) => {
+    renderLibrary(await libPost({ action: "token", value: c.value.trim() }));
+    setTimeout(() => libToken.fill({ value: "" }));
+    return "Token saved.";
+  },
 });
+libToken.fill({ value: "" });
 document
   .getElementById("library-token-clear")
   .addEventListener("click", async () => {
@@ -3043,35 +3002,26 @@ const storeForm = document.getElementById("store-settings");
 async function loadStoreSettings() {
   try {
     const s = await getJSON("/admin/settings");
-    storeForm.elements.store_max_total_mb.value = s.store_max_total_mb;
-    storeForm.elements.store_save_ttl_hours.value = s.store_save_ttl_hours;
-    storeForm.elements.drop_max_total_mb.value = s.drop_max_total_mb;
-    storeForm.elements.drop_ttl_hours.value = s.drop_ttl_hours;
+    storeSec.fill({
+      store_max_total_mb: s.store_max_total_mb,
+      store_save_ttl_hours: s.store_save_ttl_hours,
+      drop_max_total_mb: s.drop_max_total_mb,
+      drop_ttl_hours: s.drop_ttl_hours,
+    });
   } catch (_) {
     /* the landing-page block already reports a failed read */
   }
 }
-storeForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
-    await postJSON("/admin/settings", {
-      store_max_total_mb: Number(storeForm.elements.store_max_total_mb.value),
-      store_save_ttl_hours: Number(
-        storeForm.elements.store_save_ttl_hours.value,
-      ),
-      drop_max_total_mb: Number(storeForm.elements.drop_max_total_mb.value),
-      drop_ttl_hours: Number(storeForm.elements.drop_ttl_hours.value),
-    });
-    say(
-      "Saved. The new storage limit applies when the box next writes data.",
-      true,
-      noteEl("store-settings-note"),
+const storeSec = AW.form(storeForm, {
+  label: "Storage limits",
+  save: async (c) => {
+    await postJSON(
+      "/admin/settings",
+      Object.fromEntries(Object.entries(c).map(([k, v]) => [k, Number(v)])),
     );
-    loadStoreSettings();
     loadStore();
-  } catch (err) {
-    say(err.message, false, noteEl("store-settings-note"));
-  }
+    return "Saved. The new storage limit applies when the box next writes data.";
+  },
 });
 
 // --- password -----------------------------------------------------------------------
@@ -3547,23 +3497,20 @@ const AUTO_STEP = {
 };
 function renderAuto(a) {
   if (!a) return;
-  // An edit not saved yet is kept through polling, focus or not; the fold's title says what is saved.
-  if (!auto.form.contains(document.activeElement) && !auto.form.dataset.dirty) {
-    for (const k of [
-      "hub_check_every_hours",
-      "hub_auto",
-      "hub_window_start",
-      "hub_window_end",
-    ])
-      auto.form.elements[k].value = String(a[k]);
-  }
+  // The section keeps an edit not saved yet through polling; the fold's title says what is saved.
+  autoSec.fill({
+    hub_check_every_hours: a.hub_check_every_hours,
+    hub_auto: a.hub_auto,
+    hub_window_start: a.hub_window_start,
+    hub_window_end: a.hub_window_end,
+  });
   const hh = (h) => `${String(h).padStart(2, "0")}:00`;
   auto.says.textContent =
     AW.patternSays(a.hub_check_every_hours, a.hub_auto).replace(/\.$/, "") +
     (Number(a.hub_check_every_hours) && Number(a.hub_auto) === 2
       ? `, between ${hh(a.hub_window_start)} and ${hh(a.hub_window_end)}.`
       : ".") +
-    (auto.form.dataset.dirty ? " (Changed below, not saved.)" : "");
+    (autoSec.dirty() ? " (Changed below, not saved.)" : "");
   auto.window.hidden = auto.form.elements.hub_auto.value !== "2";
   const st = a.state || {};
   const parts = [];
@@ -3585,37 +3532,17 @@ function renderAuto(a) {
 auto.form.elements.hub_auto.addEventListener("change", () => {
   auto.window.hidden = auto.form.elements.hub_auto.value !== "2";
 });
-for (const ev of ["input", "change"])
-  auto.form.addEventListener(ev, () => {
-    auto.form.dataset.dirty = "1";
-  });
-auto.form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const body = { action: "policy" };
-  for (const k of [
-    "hub_check_every_hours",
-    "hub_auto",
-    "hub_window_start",
-    "hub_window_end",
-  ])
-    body[k] = Number(auto.form.elements[k].value);
-  if (body.hub_auto === 2 && body.hub_window_start === body.hub_window_end) {
-    say("The start time and the end time must differ.", false, auto.note);
-    return;
-  }
-  try {
+const autoSec = AW.form(auto.form, {
+  label: "Automatic updates",
+  save: async (c, v) => {
+    if (v.hub_auto === "2" && v.hub_window_start === v.hub_window_end)
+      throw new Error("The start time and the end time must differ.");
+    const body = { action: "policy" };
+    for (const [k, x] of Object.entries(c)) body[k] = Number(x);
     await libPost(body);
-    delete auto.form.dataset.dirty;
-    say(
-      "Saved. The librarian applies it at the next hourly cycle.",
-      true,
-      auto.note,
-    );
     loadUpdate();
-  } catch (err) {
-    say(err.message, false, auto.note);
-    auto.form._failed();
-  }
+    return "Saved. The librarian applies it at the next hourly cycle.";
+  },
 });
 loadUpdate();
 
@@ -4255,7 +4182,14 @@ function renderSecurity(data) {
           .join(" "),
         ok: all.every((r) => r.ok) && !secWaiting.keepNote,
       };
-      if (secWaiting.onDone) secWaiting.onDone(all.every((r) => r.ok));
+      if (secWaiting.onDone)
+        secWaiting.onDone(
+          all.every((r) => r.ok),
+          all
+            .filter((r) => !r.ok)
+            .map(resultSaid)
+            .join(" "),
+        );
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -5134,7 +5068,7 @@ async function loadSecurity() {
   }
 }
 
-// onDone(ok): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
+// onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
 async function secRequest(body, fid, onDone) {
   try {
     secWaiting = {
@@ -5146,7 +5080,7 @@ async function secRequest(body, fid, onDone) {
     loadSecurity();
   } catch (err) {
     secNote = { fid, text: err.message, ok: false };
-    if (onDone) onDone(false);
+    if (onDone) onDone(false, err.message);
     loadSecurity();
   }
 }
@@ -5189,17 +5123,10 @@ function drawDebianPattern(lines, busy) {
   const u = lines.find((f) => f.id === "unattended"),
     w = lines.find((f) => f.id === "security-updates");
   const pat = u && u.pattern;
-  if (
-    pat &&
-    !deb.form.contains(document.activeElement) &&
-    !deb.form.dataset.dirty
-  ) {
-    deb.form.elements.often.value = String(pat.often);
-    deb.form.elements.act.value = String(pat.act);
-  }
+  if (pat) debSec.fill({ often: pat.often, act: pat.act });
   deb.says.textContent = pat
     ? AW.patternSays(pat.often, pat.act) +
-      (deb.form.dataset.dirty ? " (Changed below, not saved.)" : "")
+      (debSec.dirty() ? " (Changed below, not saved.)" : "")
     : "Not known until the box is scanned.";
   const waiting = w ? w.waiting || 0 : 0,
     fetched = w ? w.fetched || 0 : 0;
@@ -5227,26 +5154,18 @@ function drawDebianPattern(lines, busy) {
     },
   });
 }
-deb.form.addEventListener("input", () => {
-  deb.form.dataset.dirty = "1";
-});
-deb.form.addEventListener("change", () => {
-  deb.form.dataset.dirty = "1";
-});
-deb.form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  // Changed until the root helper has done it: a refusal or a failure keeps the choice on the page.
-  secRequest(
-    {
-      action: "fix",
-      choice: `autoupdate-set:${deb.form.elements.often.value}-${deb.form.elements.act.value}`,
-    },
-    "unattended",
-    (ok) => {
-      if (ok) delete deb.form.dataset.dirty;
-      else deb.form._failed();
-    },
-  );
+// Saved once the root helper has done it: until then "Saving…", and a refusal or a failure keeps the choice.
+const debSec = AW.form(deb.form, {
+  label: "Debian's security updates",
+  save: (c, v) => {
+    const j = AW.job();
+    secRequest(
+      { action: "fix", choice: `autoupdate-set:${v.often}-${v.act}` },
+      "unattended",
+      j.done,
+    );
+    return j;
+  },
 });
 
 function secFix(fid, action) {
@@ -13033,8 +12952,7 @@ function renderCi(data) {
   noteEl("ci-limits").textContent =
     `Each build: up to ${Math.round(data.time_limit / 3600)} hours, ${memText}, ` +
     `the lowest CPU priority. The runs use ${size(data.runs_bytes || 0)}. The box retains the newest ${data.keep_runs} runs for each repository, and every run marked Retain run.`;
-  const kf = document.getElementById("ci-keep-form");
-  if (!held(kf)) kf.elements.keep.value = data.keep_runs;
+  ciKeep.fill({ keep: data.keep_runs });
   noteEl("ci-offline").textContent =
     "Without internet access: " +
     ((data.mirrored || []).length
@@ -13243,22 +13161,17 @@ async function ciChange(run, action) {
     say(err.message, false, git.note);
   }
 }
-document
-  .getElementById("ci-keep-form")
-  .addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      renderCi(
-        await postJSON("/admin/ci", {
-          action: "settings",
-          keep_runs: Number(e.target.elements.keep.value),
-        }),
-      );
-      say("Saved.", true, git.note);
-    } catch (err) {
-      say(err.message, false, git.note);
-    }
-  });
+const ciKeep = AW.form(document.getElementById("ci-keep-form"), {
+  label: "Runs kept",
+  save: async (c) => {
+    const out = await postJSON("/admin/ci", {
+      action: "settings",
+      keep_runs: Number(c.keep),
+    });
+    setTimeout(() => renderCi(out));
+    return "Saved.";
+  },
+});
 
 // "Set up builds", in a repository's Manage: what a script gets, and templates to start from.
 function buildSetup(r) {
@@ -13352,14 +13265,14 @@ function renderFirmware(data) {
   const cfg = data.settings;
   const st = data.status || {};
   const f = fw.form.elements;
-  if (!held(fw.form)) {
-    f.enabled.checked = cfg.enabled;
-    f.configs.checked = cfg.configs !== false;
-    f.keep_alpha.value = cfg.keep_alpha;
-    f.keep_beta.value = cfg.keep_beta;
-    f.all_boards.checked = cfg.boards === "all";
-    fwChosen = new Set(cfg.boards === "all" ? [] : cfg.boards);
-  }
+  fwSec.fill({
+    enabled: cfg.enabled,
+    configs: cfg.configs !== false,
+    keep_alpha: cfg.keep_alpha,
+    keep_beta: cfg.keep_beta,
+    all_boards: cfg.boards === "all",
+    boards: cfg.boards === "all" ? [] : [...cfg.boards].sort(),
+  });
   const running = data.running
     ? data.progress
       ? ` Working: ${data.progress.name} (${size(data.progress.done)}${data.progress.total ? ` of ${size(data.progress.total)}` : ""}).`
@@ -13376,7 +13289,7 @@ function renderFirmware(data) {
   const targets = (data.targets || []).filter(
     (t) => !q || t.board.includes(q) || t.platform.includes(q),
   );
-  if (!held(fw.cacheForm)) fw.cacheForm.elements.cache.value = cfg.cache;
+  fwCache.fill({ cache: cfg.cache });
   fw.cacheStatus.replaceChildren(
     ...(st.cache
       ? [
@@ -13450,10 +13363,12 @@ function renderFirmware(data) {
             { className: "inline" },
             el("input", {
               type: "checkbox",
+              dataset: { board: t.board },
               checked: fwChosen.has(t.board),
               onchange: (e) => {
                 if (e.target.checked) fwChosen.add(t.board);
                 else fwChosen.delete(t.board);
+                fwSec.set("boards", [...fwChosen].sort());
               },
             }),
             ` ${t.board} `,
@@ -13519,57 +13434,45 @@ async function loadFirmware() {
   }
 }
 fw.filter.addEventListener("input", () => fwData && renderFirmware(fwData));
-// Discard: the boards as saved too (they are kept in fwChosen, not in the form's fields).
-fw.form.addEventListener("discard", () => {
-  if (!fwData) return;
-  const b = fwData.settings.boards;
-  fwChosen = new Set(b === "all" ? [] : b);
-  renderFirmware(fwData);
-});
-fw.form.elements.all_boards.addEventListener(
-  "change",
-  () => fwData && renderFirmware(fwData),
-);
-fw.form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const f = fw.form.elements;
-  try {
+// The boards ticked are kept in fwChosen (the list is drawn again as the filter changes), not in a field: the
+// section's extra value, drawn back into the list on Discard.
+const fwSec = AW.form(fw.form, {
+  label: "Firmware",
+  extra: {
+    boards: {
+      set: (v) => {
+        fwChosen = new Set(v || []);
+        fw.boards
+          .querySelectorAll("input[type=checkbox]")
+          .forEach((i) => {
+            i.checked = fwChosen.has(i.dataset.board);
+          });
+      },
+    },
+  },
+  save: async (c, v) => {
     fwData = await postJSON("/admin/firmware", {
       action: "settings",
-      enabled: f.enabled.checked,
-      configs: f.configs.checked,
-      keep_alpha: Number(f.keep_alpha.value),
-      keep_beta: Number(f.keep_beta.value),
-      boards: f.all_boards.checked ? "all" : [...fwChosen],
+      enabled: v.enabled,
+      configs: v.configs,
+      keep_alpha: Number(v.keep_alpha),
+      keep_beta: Number(v.keep_beta),
+      boards: v.all_boards ? "all" : v.boards,
     });
-    renderFirmware(fwData);
-    say(
-      "Saved. Select Update now to download the missing files. The schedule handles the rest.",
-      true,
-      fw.note,
-    );
-  } catch (err) {
-    say(err.message, false, fw.note);
-    fw.form._failed();
-  }
+    setTimeout(() => renderFirmware(fwData));
+    return "Saved. Select Update now to download the missing files. The schedule handles the rest.";
+  },
 });
-fw.cacheForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
+const fwCache = AW.form(fw.cacheForm, {
+  label: "Build cache",
+  save: async (c) => {
     fwData = await postJSON("/admin/firmware", {
       action: "settings",
-      cache: fw.cacheForm.elements.cache.value,
+      cache: c.cache,
     });
-    renderFirmware(fwData);
-    say(
-      "Saved. The library downloads or removes the cache on its schedule. Update now on the Firmware page does it now.",
-      true,
-      fw.cacheNote,
-    );
-  } catch (err) {
-    say(err.message, false, fw.cacheNote);
-    fw.cacheForm._failed();
-  }
+    setTimeout(() => renderFirmware(fwData));
+    return "Saved. The library downloads or removes the cache on its schedule. Update now on the Firmware page does it now.";
+  },
 });
 for (const [id, action] of [
   ["fw-check", "check"],
@@ -13702,14 +13605,10 @@ function renderKits(data) {
       : "Not checked yet.") +
     (feed && feed.fetched ? ` debsecan's data: ${dayOf(feed.fetched)}.` : "") +
     (kitsWaiting.size ? " Working…" : "");
-  if (!kitsEl.budget.contains(document.activeElement) && !kitsBudgetDirty()) {
-    kitsEl.budget.elements.budget.value = cfg.budget_mb;
-    kitsEl.budget.dataset.saved = cfg.budget_mb;
-    kitsEl.budget.elements.previous.value =
-      cfg.previous_days == null ? "" : String(cfg.previous_days);
-    kitsEl.budget.dataset.previous = kitsEl.budget.elements.previous.value;
-    kitsBudgetSync();
-  }
+  kitsBudget.fill({
+    budget: cfg.budget_mb,
+    previous: cfg.previous_days == null ? "" : cfg.previous_days,
+  });
   kitsEl.problems.replaceChildren(
     ...(st.problems || []).map((p) =>
       checkItem(
@@ -14318,41 +14217,18 @@ async function loadKits() {
   }
 }
 // The budget waits for Save; Discard puts back the saved one.
-function kitsBudgetDirty() {
-  const f = kitsEl.budget;
-  return (
-    f.dataset.saved !== undefined &&
-    (f.elements.budget.value !== String(f.dataset.saved) ||
-      f.elements.previous.value !== (f.dataset.previous || ""))
-  );
-}
-function kitsBudgetSync() {
-  const dirty = kitsBudgetDirty();
-  kitsEl.budget.querySelector('[type="submit"]').disabled = !dirty;
-  document.getElementById("kits-budget-discard").disabled = !dirty;
-}
-kitsEl.budget.elements.budget.addEventListener("input", kitsBudgetSync);
-kitsEl.budget.elements.previous.addEventListener("change", kitsBudgetSync);
-document.getElementById("kits-budget-discard").addEventListener("click", () => {
-  kitsEl.budget.elements.budget.value = kitsEl.budget.dataset.saved;
-  kitsEl.budget.elements.previous.value = kitsEl.budget.dataset.previous || "";
-  kitsBudgetSync();
-});
-kitsEl.budget.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const mb = Number(kitsEl.budget.elements.budget.value),
-    prev = kitsEl.budget.elements.previous.value;
-  if (
-    !(await kitAct({
-      action: "settings",
-      budget_mb: mb,
-      previous_days: prev === "" ? null : Number(prev),
-    }))
-  )
-    return kitsBudgetSync();
-  kitsEl.budget.dataset.saved = mb;
-  kitsEl.budget.dataset.previous = prev;
-  kitsBudgetSync();
+// The cache's budget and how long an older set is kept: a section of the toolkits' page.
+const kitsBudget = AW.form(kitsEl.budget, {
+  label: "Toolkits' cache budget",
+  save: async (c, v) => {
+    renderKits(
+      await postJSON("/admin/kits", {
+        action: "settings",
+        budget_mb: Number(v.budget),
+        previous_days: v.previous === "" ? null : Number(v.previous),
+      }),
+    );
+  },
 });
 document
   .getElementById("kits-refresh-all")
@@ -14796,10 +14672,7 @@ function renderAccounts(d) {
     (al.reach !== "off" && !admins
       ? " To disable it or limit it to the box itself, first create an administrator account and sign in with it over HTTPS."
       : "");
-  if (!held(acctEl.settings)) {
-    acctEl.settings.elements.signup.value = d.settings.signup;
-    acctEl.settings.elements.http.value = d.settings.http;
-  }
+  acctSettings.fill({ signup: d.settings.signup, http: d.settings.http });
   const c = d.counts;
   acctEl.counts.textContent = `${c.user} user${c.user === 1 ? "" : "s"} (${c.admins} administrator${c.admins === 1 ? "" : "s"}), ${c.asked} waiting for approval, ${c.disabled} disabled.`;
   const when = (t) => (t ? ago(Date.now() / 1000 - t) : "never");
@@ -15014,14 +14887,17 @@ async function acctAct(body) {
     return false;
   }
 }
-acctEl.settings.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const ok = await acctAct({
-    action: "settings",
-    signup: acctEl.settings.elements.signup.value,
-    http: acctEl.settings.elements.http.value,
-  });
-  if (!ok) acctEl.settings._failed();
+const acctSettings = AW.form(acctEl.settings, {
+  label: "Account settings",
+  save: async (c, v) => {
+    const d = await postJSON("/admin/accounts", {
+      action: "settings",
+      signup: v.signup,
+      http: v.http,
+    });
+    setTimeout(() => renderAccounts(d));
+    return "Saved.";
+  },
 });
 acctEl.make.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -16535,13 +16411,15 @@ function sigShowKeys() {
 function drawSigning(sig, results) {
   if (!sigEl.form || !sig) return;
   if (sigWaiting) {
-    const done = (results || []).find((r) => r.id === sigWaiting);
+    const done = (results || []).find((r) => r.id === sigWaiting.id);
     if (done) {
+      sigWaiting.done(done.ok, resultSaid(done));
       sigWaiting = null;
-      say(resultSaid(done), done.ok, sigEl.note);
+      if (done.ok) say(resultSaid(done), true, sigEl.note);
     }
   }
-  if (!held(sigEl.form)) sigEl.form.elements.level.value = sig.level;
+  // The keys are root's: the box below starts empty, and what is in it is sent with a Save.
+  sigSec.fill({ level: sig.level, signers: sigSec.savedValue("signers") ?? "" });
   const says = document.getElementById("update-signing-says");
   if (says) says.textContent = SIG_WORDS[sig.level] || sig.level;
   sigShowKeys();
@@ -16550,40 +16428,29 @@ function drawSigning(sig, results) {
       ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ""})`).join(", ")}. Saving replaces the list with the keys in the box above.`
       : `Now: ${SIG_WORDS[sig.level] || sig.level}.`;
 }
-if (sigEl.form) {
-  sigEl.form.addEventListener("change", sigShowKeys);
-  sigEl.form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const level = sigEl.form.elements.level.value;
-    const signers = sigEl.form.elements.signers.value;
-    if (level === "tags" && !signers.trim()) {
-      say(
+sigEl.form.addEventListener("change", sigShowKeys);
+const sigSec = AW.form(sigEl.form, {
+  label: "Update signing",
+  ask: (c, v) =>
+    v.level === "off" ? "Install updates without a signature check?" : null,
+  save: async (c, v) => {
+    if (v.level === "tags" && !v.signers.trim())
+      throw new Error(
         "Signed releases need at least one key. Paste it in the box.",
-        false,
-        sigEl.note,
       );
-      return;
-    }
-    if (
-      level === "off" &&
-      !confirm("Install updates without a signature check?")
-    )
-      return;
-    try {
-      sigWaiting = (
-        await postJSON("/admin/update", { action: "signing", level, signers })
-      ).id;
-      say(
-        "Request sent. The root helper applies the change.",
-        true,
-        sigEl.note,
-      );
-      setTimeout(loadUpdate, 1500);
-    } catch (err) {
-      say(err.message, false, sigEl.note);
-    }
-  });
-}
+    const j = AW.job();
+    j.id = (
+      await postJSON("/admin/update", {
+        action: "signing",
+        level: v.level,
+        signers: v.signers,
+      })
+    ).id;
+    sigWaiting = j;
+    setTimeout(loadUpdate, 1500);
+    return j;
+  },
+});
 
 // ---- All apps: one line per app, from what the other loaders already hold (the manifests, access,
 // the librarian, the installer's add-ons, the web add-ons, the tiles). It edits nothing: each line
