@@ -429,11 +429,12 @@ try:
     code, _, body = get("/certificate.json")
     pub = json.loads(body)
     check(
-        "/certificate.json: on, the fingerprint, the names, the expiry; nothing else",
+        "/certificate.json: on, the fingerprint, the names and addresses it covers, the expiry; nothing else",
         code == 200
         and pub["on"]
         and pub["fingerprint"] == tls.status()["ca"]["fingerprint"]
-        and set(pub) == {"set_up", "on", "port", "fingerprint", "names", "expires"},
+        and set(pub) == {"set_up", "on", "port", "fingerprint", "names", "addresses", "expires"}
+        and pub["addresses"] == tls.status()["cert"]["addresses"],
         pub,
     )
     code, headers, body = get("/certificate/ca.crt")

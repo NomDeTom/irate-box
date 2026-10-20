@@ -22,6 +22,12 @@
   <section>
     <p id="cert-state" data-i18n="certificate.body.cert-state">Loading certificate details</p>
     <p id="cert-check" role="status"></p>
+    <p id="cert-open" class="cert-open" hidden></p>
+    <p id="cert-again" hidden><button type="button" id="cert-recheck" class="head-btn" data-i18n="certificate.body.check-again">Check again</button></p>
+    <div id="cert-elsewhere" hidden>
+      <p data-i18n="certificate.body.other-addresses">The certificate covers these HTTPS addresses of the box:</p>
+      <ul id="cert-links"></ul>
+    </div>
   </section>
 
   <section id="cert-about" hidden>

@@ -9,7 +9,7 @@
   // address (hub-theme=light, dark or auto), and the app reads it from its own storage, where this puts it.
   // Excalidraw loads this script first, so it reads the new value. Mermaid's build adds it later, after its own
   // theme is read: a change is announced as another tab's write would be (a storage event), which it follows at
-  // once; without that it took the new theme only at its next load (seen on the Lyra, 2026-10-20).
+  // once; without that it took the new theme only at its next load.
   try {
     var theme = new URLSearchParams(location.search).get('hub-theme');
     if (theme === 'light' || theme === 'dark' || theme === 'auto') {
