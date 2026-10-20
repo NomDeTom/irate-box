@@ -57,18 +57,32 @@ const PLATFORMS = [
 const $ = (id) => document.getElementById(id);
 const make = (tag, text) => { const e = document.createElement(tag); if (text != null) e.textContent = text; return e; };
 
-function httpsUrl(port) {
-  return `https://${location.hostname}${port && port !== 443 ? `:${port}` : ''}/`;
+// The host as a URL writes it: an IPv6 address in brackets.
+const urlHost = (h) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h);
+const bare = (h) => h.replace(/^\[|\]$/g, '').toLowerCase();
+
+function httpsUrl(port, host = location.hostname) {
+  return `https://${urlHost(host)}${port && port !== 443 ? `:${port}` : ''}/`;
 }
 
-async function trusted(port) {
-  // An opaque request: it succeeds only if this device accepts the box's certificate.
+async function trusted(port, host) {
+  // An opaque request: it succeeds only if this device accepts the box's certificate for that address.
   try {
-    await fetch(`${httpsUrl(port)}certificate.json`, { mode: 'no-cors', cache: 'no-store' });
+    await fetch(`${httpsUrl(port, host)}certificate.json`, { mode: 'no-cors', cache: 'no-store' });
     return true;
   } catch (_) {
     return false;
   }
+}
+
+const link = (href, text = href) => { const a = make('a', text); a.href = href; return a; };
+
+// The answer of the self-check, with the full HTTPS address to open when it is trusted.
+function said(check, open, text, href) {
+  check.textContent = text;
+  open.replaceChildren();
+  open.hidden = !href;
+  if (href) open.append(make('span', 'Open '), link(href), make('span', '.'));
 }
 
 async function start() {
@@ -111,14 +125,48 @@ async function start() {
       + 'Compare its SHA-256 fingerprint with the fingerprint on this page before you trust it. '
       + 'Step-by-step instructions for these devices will follow after tests on real devices.'));
   }
-  if (location.protocol === 'https:') {
-    $('cert-check').textContent = 'You are on HTTPS. If your browser shows no warning, this device trusts the box.';
-  } else if (d.on) {
-    $('cert-check').textContent = 'Checking whether this device trusts the box…';
-    $('cert-check').textContent = (await trusted(port))
-      ? `✓ This device trusts the box. You can use ${httpsUrl(port)}.`
-      : 'This device does not trust the box yet, or the HTTPS connection failed. Install the certificate below.';
+  // The addresses the certificate covers, this page's own first. Opened at any other, the browser warns
+  // whatever is installed: say so, and offer the addresses it does cover.
+  const here = bare(location.hostname);
+  const covered = [...(d.names || []), ...(d.addresses || [])].filter((h) => h && !h.startsWith('.'));
+  const coversHere = covered.some((h) => bare(h) === here);
+  if (!coversHere && covered.length) $('cert-https').href = httpsUrl(port, covered[0]);
+  const list = $('cert-links');
+  covered.forEach((h) => {
+    const li = make('li');
+    li.append(link(httpsUrl(port, h) + location.pathname.slice(1)));
+    list.append(li);
+  });
+  $('cert-elsewhere').hidden = !d.on || !covered.length || (coversHere && covered.length < 2);
+  const check = $('cert-check');
+  const open = $('cert-open');
+  const again = $('cert-again');
+  if (!d.on) return;
+  if (!coversHere) {
+    said(check, open, `The certificate does not cover ${location.hostname}, the address this page was opened at. `
+      + 'Over HTTPS at that address, every browser warns, even with the certificate installed. Use one of the addresses below.');
+    return;
   }
+  const hub = httpsUrl(port);
+  if (location.protocol === 'https:') {
+    said(check, open, 'You are on HTTPS. If your browser showed no warning, this device trusts the box and the certificate is installed.', hub);
+    return;
+  }
+  const run = async () => {
+    again.hidden = true;
+    said(check, open, 'Checking whether this device trusts the box…');
+    if (await trusted(port, here)) {
+      said(check, open, '✓ The certificate is installed: this device trusts the box.', hub);
+    } else {
+      said(check, open, '✗ Not installed yet: this device does not trust the box, or the HTTPS connection failed. '
+        + 'Install the certificate below, then select Check again.');
+      again.hidden = false;
+    }
+  };
+  $('cert-recheck').onclick = run;
+  // Back from the device's settings: the page is shown again, so check again.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !again.hidden) run(); });
+  await run();
 }
 
 start();

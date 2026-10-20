@@ -5186,6 +5186,13 @@ body.certificate details li {
 body.certificate .cert-fingerprint {
   overflow-wrap: anywhere;
 }
+body.certificate .cert-open a {
+  overflow-wrap: anywhere;
+}
+body.certificate #cert-links {
+  margin: 0.3rem 0 0;
+  padding-left: 1.4rem;
+}
 
 /* The WiFi card: with a section open (a network's settings, adding one), its two columns stack so that section has the
    card's whole width. The networks seen, in columns. */

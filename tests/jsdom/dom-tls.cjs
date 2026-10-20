@@ -298,13 +298,16 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
       async (u) => {
         if (u === "/certificate.json") return json(info);
         if (u.startsWith("https://")) {
-          if (trusts) return new Response("", { status: 200 });
+          pub.asked.push(u);
+          if (typeof trusts === "function" ? trusts() : trusts)
+            return new Response("", { status: 200 });
           throw new TypeError("Failed to fetch");
         }
         return new Response("{}", { status: 404 });
       },
       ["certificate.js"],
     );
+  pub.asked = [];
   let p = pub({ set_up: false }, false);
   await wait();
   check(
@@ -317,7 +320,8 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     on: true,
     port: 443,
     fingerprint: "AB:CD:EF",
-    names: ["irate.home.arpa", "lyra.local"],
+    names: ["irate.home.arpa", "box.local"],
+    addresses: ["192.168.4.1", "192.168.1.26"],
     expires: now + 300 * 86400,
   };
   p = pub(info, false);
@@ -326,7 +330,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     "/certificate: the download, its fingerprint, what it may vouch for",
     !p.d.getElementById("cert-about").hidden &&
       t(p.d.getElementById("cert-fingerprint")) === "AB:CD:EF" &&
-      t(p.d.getElementById("cert-names")) === "irate.home.arpa, lyra.local" &&
+      t(p.d.getElementById("cert-names")) === "irate.home.arpa, box.local" &&
       p.d.getElementById("cert-download").getAttribute("href") ===
         "/certificate/ca.crt",
   );
@@ -347,28 +351,69 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     t(p.d.getElementById("cert-steps")),
   );
   check(
-    "  the self-check: not trusted yet",
-    /does not trust the box yet/.test(t(p.d.getElementById("cert-check"))),
+    "  the self-check: not installed yet, and Check again offered",
+    /✗ Not installed yet: this device does not trust the box/.test(
+      t(p.d.getElementById("cert-check")),
+    ) &&
+      !p.d.getElementById("cert-again").hidden &&
+      p.d.getElementById("cert-open").hidden,
     t(p.d.getElementById("cert-check")),
   );
   check(
     "  never past the warning: the warning is not to be gone past",
     /do not go past it/.test(t(p.d.getElementById("cert-about"))),
   );
-  p = pub(info, true);
+  check(
+    "  every HTTPS address the certificate covers, as full links to this page",
+    [...p.d.querySelectorAll("#cert-links a")].map((a) => a.href).join(" ") ===
+      "https://irate.home.arpa/certificate.html https://box.local/certificate.html " +
+        "https://192.168.4.1/certificate.html https://192.168.1.26/certificate.html",
+    [...p.d.querySelectorAll("#cert-links a")].map((a) => a.href).join(" "),
+  );
+  // Installed meanwhile: Check again says so, with the full HTTPS address to open.
+  let installed = false;
+  p = pub(info, () => installed);
+  await wait();
+  installed = true;
+  p.d.getElementById("cert-recheck").click();
+  await wait();
+  const opened = p.d.querySelector("#cert-open a");
+  check(
+    "  Check again after installing: installed, and the full HTTPS link offered",
+    /✓ The certificate is installed: this device trusts the box\./.test(
+      t(p.d.getElementById("cert-check")),
+    ) &&
+      p.d.getElementById("cert-again").hidden &&
+      opened &&
+      opened.href === "https://box.local/" &&
+      t(p.d.getElementById("cert-open")) === "Open https://box.local/.",
+    t(p.d.getElementById("cert-check")) + " | " + t(p.d.getElementById("cert-open")),
+  );
+  p = pub(info, true, "http://box.local:8080/certificate.html");
   await wait();
   check(
-    "  trusted: said, with the HTTPS address",
-    /✓ This device trusts the box\. You can use https:\/\/box\.local\/\./.test(
-      t(p.d.getElementById("cert-check")),
-    ),
-    t(p.d.getElementById("cert-check")),
+    "  checked at the address the page was opened at",
+    pub.asked.at(-1) === "https://box.local/certificate.json",
+    pub.asked.at(-1),
   );
   p = pub(info, false, "https://box.local/certificate.html");
   await wait();
   check(
-    "  opened over HTTPS: it is trusted already",
-    /You are on HTTPS\./.test(t(p.d.getElementById("cert-check"))),
+    "  opened over HTTPS: said, with the link",
+    /You are on HTTPS\./.test(t(p.d.getElementById("cert-check"))) &&
+      p.d.querySelector("#cert-open a").href === "https://box.local/",
+  );
+  // Opened at an address the certificate does not cover: every browser would warn, so no check; its addresses.
+  const asked = pub.asked.length;
+  p = pub(info, true, "http://10.0.0.9/certificate.html");
+  await wait();
+  check(
+    "  an address the certificate does not cover: said, the covered addresses offered, nothing checked",
+    /does not cover 10\.0\.0\.9/.test(t(p.d.getElementById("cert-check"))) &&
+      !p.d.getElementById("cert-elsewhere").hidden &&
+      p.d.getElementById("cert-https").href === "https://irate.home.arpa/" &&
+      pub.asked.length === asked,
+    t(p.d.getElementById("cert-check")),
   );
   check("public: no page errors", !p.errors.length, p.errors.join(" | "));
   console.log(`failures: ${fails}`);

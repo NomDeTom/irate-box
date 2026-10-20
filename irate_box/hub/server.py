@@ -5019,6 +5019,7 @@ class Handler(BaseHTTPRequestHandler):
                         "port": (st.get("ports") or {}).get("main", 443),
                         "fingerprint": (st.get("ca") or {}).get("fingerprint"),
                         "names": cert.get("names", []),
+                        "addresses": cert.get("addresses", []),
                         "expires": cert.get("expires"),
                     },
                 )
