@@ -79,6 +79,7 @@ w.fetch = async (u, opts = {}) => {
       if (posted[posted.length - 1][1].action === 'flush-cache') return new Response(JSON.stringify({ ...fwFix, status: { ...fwFix.status, cache: null } }), { status: 200 });
       return new Response(JSON.stringify(fwFix), { status: 200 });
     }
+    if (u === '/admin/accounts') return new Response(JSON.stringify({ settings: { signup: 'open', http: 'warning' }, counts: { user: 0, admins: 0, asked: 0, disabled: 0 }, accounts: [] }), { status: 200 });
     return new Response('{"id":"x"}', { status: 202 });
   }
   if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });

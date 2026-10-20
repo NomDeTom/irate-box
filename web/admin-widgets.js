@@ -213,9 +213,11 @@ const AW = (() => {
   const listId = (opts, kind) => opts.id || `aw-${kind}-${++serial}`;
 
   // ---- One open at a time (in a pane): entries and cards alike ----
+  // A card with unsaved changes asks before it closes; kept, it stays open and the other does not open (false).
   function closeOthers(scope, keep) {
-    scope.querySelectorAll('.aw-card.open').forEach((c) => c !== keep && closeCard(c, true));
+    const kept = [...scope.querySelectorAll('.aw-card.open')].filter((c) => c !== keep && !closeCard(c));
     scope.querySelectorAll('.aw-row-head[aria-expanded="true"]').forEach((hd) => hd !== keep && foldRow(hd, false));
+    return !kept.length;
   }
   function foldRow(head, open) {
     const detail = head.nextElementSibling;
@@ -273,7 +275,7 @@ const AW = (() => {
   }
   const openStack = [];
   function openCard(card, it, opts) {
-    if (AW.single) closeOthers(scopeOf(card), card);
+    if (AW.single && !closeOthers(scopeOf(card), card)) return null;
     let dirty = false;
     const foot = h('div', { class: 'aw-foot', hidden: true });
     const saveB = btn(opts.saveLabel || 'Save', { class: 'action-btn primary', disabled: true });
@@ -284,7 +286,8 @@ const AW = (() => {
     discard.addEventListener('click', () => { fill(); setDirty(false); });
     saveB.addEventListener('click', async () => {
       saveB.disabled = true;
-      try { const r = opts.save && opts.save(it); if (r && r.then) await r; setDirty(false); } catch (e) { setDirty(true); foot.querySelector('.note').textContent = String(e.message || e); }
+      // A save that resolves false did not happen (refused, cancelled or failed, and said so): the changes stay.
+      try { let r = opts.save && opts.save(it); if (r && r.then) r = await r; setDirty(r === false); } catch (e) { setDirty(true); foot.querySelector('.note').textContent = String(e.message || e); }
     });
     foot.append(h('span', { class: 'note', text: 'Changes apply after you select Save. Actions run immediately.' }), discard, saveB);
     const drawer = h('div', { class: 'aw-drawer', role: 'region', 'aria-label': it.title },
@@ -300,29 +303,39 @@ const AW = (() => {
     return drawer;
   }
   function closeCard(card, force) {
-    if (!card._drawer) return;
-    if (!force && card._dirty() && !window.confirm('Discard the unsaved changes?')) return;
+    if (!card._drawer) return true;
+    if (!force && card._dirty() && !window.confirm('Discard the unsaved changes?')) return false;
     card._drawer.remove();
     card._drawer = null;
     card.classList.remove('open');
     card.querySelector('.aw-card-head').setAttribute('aria-expanded', 'false');
     const i = openStack.indexOf(card);
     if (i >= 0) openStack.splice(i, 1);
+    return true;
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openStack.length) closeCard(openStack[openStack.length - 1]); });
 
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts ----
   //   rows: [{key, label, kind: 'toggle'|'choice'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
   //           max (text), unset, shown, warn (colour)}]
-  //   opts: {save(values) → Promise|void}: changed values are held until Save; Discard puts them back.
+  //   opts: {save(values) → Promise|void, id}: changed values are held until Save; Discard puts them back.
+  //   With an id, a block drawn again (the page's polling, another block's Save) keeps its unsaved changes.
+  const keptDrafts = new Map();   // id -> {key: value} changed and not saved
   function settings(rows, opts = {}) {
     const values = Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key, r.value]));
     const draft = { ...values };
+    const kept = opts.id && keptDrafts.get(opts.id);
+    if (kept) for (const [k, v] of Object.entries(kept)) if (k in draft) draft[k] = v;
     const box = h('div', { class: 'aw-settings', 'data-aw-scope': opts.scope ? '' : null });
     const saveB = btn('Save', { class: 'action-btn primary', disabled: true });
     const discard = btn('Discard', { disabled: true });
     const changed = () => rows.some((r) => r.key && draft[r.key] !== values[r.key]);
-    const sync = () => { saveB.disabled = discard.disabled = !changed(); };
+    const sync = () => {
+      saveB.disabled = discard.disabled = !changed();
+      if (!opts.id) return;
+      const out = Object.fromEntries(Object.keys(draft).filter((k) => draft[k] !== values[k]).map((k) => [k, draft[k]]));
+      if (Object.keys(out).length) keptDrafts.set(opts.id, out); else keptDrafts.delete(opts.id);
+    };
     const draw = () => box.replaceChildren(...rows.map(row), opts.save ? h('div', { class: 'aw-foot' },
       h('span', { class: 'note', text: 'Changes apply after you select Save.' }), discard, saveB) : null);
     function row(r) {
@@ -363,10 +376,15 @@ const AW = (() => {
     saveB.addEventListener('click', async () => {
       saveB.disabled = true;
       const out = Object.fromEntries(Object.keys(draft).filter((k) => draft[k] !== values[k]).map((k) => [k, draft[k]]));
-      try { const r = opts.save(out); if (r && r.then) await r; Object.assign(values, draft); } catch (e) { box.querySelector('.aw-foot .note').textContent = String(e.message || e); }
+      try {
+        let r = opts.save(out); if (r && r.then) r = await r;
+        // false: not saved (refused or cancelled, and said so): the changes stay.
+        if (r !== false) { Object.assign(values, draft); if (opts.id) keptDrafts.delete(opts.id); }
+      } catch (e) { box.querySelector('.aw-foot .note').textContent = String(e.message || e); }
       sync();
     });
     draw();
+    sync();
     box.values = () => ({ ...draft });
     return box;
   }
@@ -505,7 +523,8 @@ const AW = (() => {
       const btns = () => [...f.querySelectorAll('button')].filter(isSave);
       if (!btns().length) return;
       f._quiet = true;
-      let snap = null, restoring = false;
+      let snap = null, restoring = false, dirty = false;
+      f._unsaved = () => dirty;   // the page's polling leaves a changed form alone (unsaved, in admin.js)
       const own = [...f.querySelectorAll('button')].some((b) => /^Discard/.test(b.textContent.trim()));
       const discard = own ? null : btn('Discard', { class: 'action-btn aw-discard', disabled: true, title: 'Restore the values from before your changes' });
       if (discard) {
@@ -521,7 +540,8 @@ const AW = (() => {
       f.addEventListener('pointerdown', take, true);
       f.addEventListener('focusin', (e) => { if (e.target !== discard) take(); }, true);
       // Nothing to save: the button unfilled and off (it looked like one to press, and pressing it did nothing new).
-      const set = (dirty) => {
+      const set = (d) => {
+        dirty = d;
         btns().forEach((b) => { b.classList.toggle('idle', !dirty); b.disabled = !dirty; });
         if (discard) discard.disabled = !dirty || !snap;
         if (!dirty) snap = null;
@@ -540,12 +560,16 @@ const AW = (() => {
         restoring = false;
         delete f.dataset.dirty;
         set(false);
+        f.dispatchEvent(new Event('discard'));   // for what the form keeps outside its fields (the firmware's boards)
       });
-      const touch = (e) => { if (!restoring && e.target.closest && !e.target.closest('button[type=submit]')) set(true); };
+      // A field that only looks (a filter box, data-aw-ignore) changes nothing to save.
+      const touch = (e) => { if (!restoring && e.target.closest && !e.target.closest('button[type=submit], [data-aw-ignore]')) set(true); };
       f.addEventListener('input', touch);
       f.addEventListener('change', touch);
       f.addEventListener('click', (e) => { if (e.target.closest('.chip, .choice-tile')) set(true); });
-      f.addEventListener('submit', () => setTimeout(() => set(false)));
+      // Saved: quiet again at once, unless the page then says the save failed (f._failed(), its changes kept).
+      f.addEventListener('submit', () => set(false));
+      f._failed = () => set(true);
       f.addEventListener('reset', () => setTimeout(() => set(false)));
     });
   }

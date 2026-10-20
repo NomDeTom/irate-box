@@ -95,6 +95,11 @@ const GETS_AT_ONCE = 3;
 
 // Every answer goes in the note right under the control that asked for it.
 const noteEl = (id) => document.getElementById(id);
+// A form its user is changing, or has changed and not saved: the page's polling leaves its fields alone.
+const held = (form) =>
+  form.contains(document.activeElement) ||
+  !!form.dataset.dirty ||
+  !!(form._unsaved && form._unsaved());
 function say(text, ok, at) {
   at.textContent = text;
   at.classList.toggle("bad", !ok);
@@ -133,7 +138,13 @@ async function save(box) {
     boxes.forEach((b) => {
       if (typeof data[b.id] === "boolean") b.checked = data[b.id];
     });
-    say("Saved. It takes effect at the next boot.", true, settingNote(box));
+    say(
+      box.closest(".settings").dataset.atBoot !== undefined
+        ? "Saved. It takes effect at the next boot."
+        : "Saved.",
+      true,
+      settingNote(box),
+    );
   } catch (_) {
     box.checked = !box.checked;
     say("Could not save. The setting is unchanged.", false, settingNote(box));
@@ -948,6 +959,7 @@ lib.policy.addEventListener("submit", async (e) => {
     say("Saved.", true, at);
   } catch (err) {
     say(err.message, false, at);
+    lib.policy._failed();
   }
 });
 // Changed and not saved: kept through the page's polling, focus or not.
@@ -977,8 +989,9 @@ for (const f of surfaceForms) {
     });
     const at = f.nextElementSibling;
     try {
+      const snap = await libPost(body);
       delete f.dataset.dirty;
-      renderLibrary(await libPost(body));
+      renderLibrary(snap);
       say(
         "Saved. The librarian applies it at the next hourly cycle.",
         true,
@@ -986,6 +999,7 @@ for (const f of surfaceForms) {
       );
     } catch (err) {
       say(err.message, false, at);
+      f._failed();
     }
   });
 }
@@ -1546,8 +1560,9 @@ async function loadPackages() {
         ]),
   );
 }
+// True once the root helper has the request; false when cancelled or refused (said under the package).
 async function pkgAct(body, confirmText) {
-  if (confirmText && !confirm(confirmText)) return;
+  if (confirmText && !confirm(confirmText)) return false;
   try {
     pkgWaiting = {
       id: (await postJSON("/admin/packages", body)).id,
@@ -1560,8 +1575,10 @@ async function pkgAct(body, confirmText) {
       true,
     );
     setTimeout(loadPackages, 2000);
+    return true;
   } catch (err) {
     pkgSay(body.package, err.message, false);
+    return false;
   }
 }
 function pkgCard(id, p) {
@@ -1675,6 +1692,7 @@ function pkgCard(id, p) {
       },
     ],
     {
+      id: `pkg-${id}`,
       save: (v) => {
         const all = {
           channel: s.channel,
@@ -2860,6 +2878,7 @@ function renderReports(data, del) {
         },
       ],
       {
+        id: "moderation",
         save: async (changed) => {
           const r = await postJSON("/admin/settings", changed);
           loadModeration();
@@ -3595,6 +3614,7 @@ auto.form.addEventListener("submit", async (e) => {
     loadUpdate();
   } catch (err) {
     say(err.message, false, auto.note);
+    auto.form._failed();
   }
 });
 loadUpdate();
@@ -4202,10 +4222,22 @@ function secChoiceCard(f, busy, note) {
     note,
   );
 }
+// A choice waiting for Save that the newest scan no longer offers (in effect now, or its finding gone): dropped,
+// never sent; one still offered follows the scan's newest wording.
+function secPrune(scan) {
+  if (!scan) return;
+  for (const [fid, v] of [...secPending]) {
+    const f = (scan.findings || []).find((x) => x.id === fid);
+    const a = f && (f.actions || []).find((x) => x.choice === v.a.choice);
+    if (!a || a.on) secPending.delete(fid);
+    else secPending.set(fid, { ...v, f, a });
+  }
+}
 function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
+  secPrune(scan);
   drawSecPending(busy);
   if (secWaiting) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
@@ -4223,6 +4255,7 @@ function renderSecurity(data) {
           .join(" "),
         ok: all.every((r) => r.ok) && !secWaiting.keepNote,
       };
+      if (secWaiting.onDone) secWaiting.onDone(all.every((r) => r.ok));
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -5101,13 +5134,19 @@ async function loadSecurity() {
   }
 }
 
-async function secRequest(body, fid) {
+// onDone(ok): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
+async function secRequest(body, fid, onDone) {
   try {
-    secWaiting = { id: (await postJSON("/admin/security", body)).id, fid };
+    secWaiting = {
+      id: (await postJSON("/admin/security", body)).id,
+      fid,
+      onDone,
+    };
     secNote = null;
     loadSecurity();
   } catch (err) {
     secNote = { fid, text: err.message, ok: false };
+    if (onDone) onDone(false);
     loadSecurity();
   }
 }
@@ -5196,13 +5235,17 @@ deb.form.addEventListener("change", () => {
 });
 deb.form.addEventListener("submit", (e) => {
   e.preventDefault();
-  delete deb.form.dataset.dirty;
+  // Changed until the root helper has done it: a refusal or a failure keeps the choice on the page.
   secRequest(
     {
       action: "fix",
       choice: `autoupdate-set:${deb.form.elements.often.value}-${deb.form.elements.act.value}`,
     },
     "unattended",
+    (ok) => {
+      if (ok) delete deb.form.dataset.dirty;
+      else deb.form._failed();
+    },
   );
 });
 
@@ -5626,11 +5669,15 @@ function renderDoctorSettings(data, rep) {
     );
     if (done.every(Boolean)) {
       const bad = done.filter((r) => !r.ok);
+      const left = hsSaving.of - done.length;
       say(
-        bad.length
+        (bad.length
           ? bad.map(resultSaid).join(" ")
-          : `Saved: ${done.map(resultSaid).join(" ")}`,
-        !bad.length,
+          : `Saved: ${done.map(resultSaid).join(" ")}`) +
+          (hsSaving.failed
+            ? ` ${done.length} of ${hsSaving.of} changes were sent. The next change failed: ${hsSaving.failed.replace(/\.?$/, ".")} ${left} change${left === 1 ? " is" : "s are"} still selected and not saved.`
+            : ""),
+        !bad.length && !hsSaving.failed,
         hl.setNote,
       );
       hsSaving = null;
@@ -5671,7 +5718,9 @@ function showDoctorSave(groups) {
       const o = g.options.find((x) => x.value === hsPick[g.key]);
       if (o.confirm && !confirm(o.confirm)) return;
     }
+    // Sent one after another; one the hub refuses stops the rest, and those already sent are still waited for and said.
     const ids = [];
+    let failed = null;
     for (const g of changed) {
       const o = g.options.find((x) => x.value === hsPick[g.key]);
       try {
@@ -5680,11 +5729,15 @@ function showDoctorSave(groups) {
             .id,
         );
       } catch (err) {
-        say(err.message, false, hl.setNote);
-        return;
+        failed = err.message;
+        break;
       }
     }
-    hsSaving = { ids };
+    if (!ids.length) {
+      say(failed, false, hl.setNote);
+      return;
+    }
+    hsSaving = { ids, failed, of: changed.length };
     showDoctorSave(groups);
     say("Saving. Sent to the root helper.", true, hl.setNote);
     loadHealth();
@@ -8135,6 +8188,7 @@ function renderNetwork(data) {
     if (done) {
       netNotes[netWaiting.where] = { text: resultSaid(done), ok: done.ok };
       if (netWaiting.where === "up" && done.ok) upDirty = false;
+      if (done.ok && netWaiting.onOk) netWaiting.onOk();
       netWaiting = null;
       return renderNetwork(data);
     }
@@ -8599,7 +8653,6 @@ net.defaultsSave.addEventListener("click", () => {
     )
   )
     return;
-  defaultsDirty = {};
   netRequest(
     {
       action: "defaults",
@@ -8607,6 +8660,9 @@ net.defaultsSave.addEventListener("click", () => {
       ...(defaultsScope ? { iface: defaultsScope } : {}),
     },
     "defaults",
+    () => {
+      defaultsDirty = {};
+    },
   );
 });
 
@@ -9097,8 +9153,13 @@ function connSettings(p, inv, data, busy, radio) {
         )
       )
         return;
-      connDirty[p.uuid] = {};
-      netRequest({ action: "connection", uuid: p.uuid, changes }, "connection");
+      netRequest(
+        { action: "connection", uuid: p.uuid, changes },
+        "connection",
+        () => {
+          connDirty[p.uuid] = {};
+        },
+      );
     },
     { disabled: busy || !Object.keys(dirty).length },
   );
@@ -9399,9 +9460,14 @@ function hazardControls(h) {
     : null;
 }
 
-async function netRequest(body, where) {
+// onOk: run when the root helper reports the request done and well (a draft cleared only then).
+async function netRequest(body, where, onOk) {
   try {
-    netWaiting = { id: (await postJSON("/admin/network", body)).id, where };
+    netWaiting = {
+      id: (await postJSON("/admin/network", body)).id,
+      where,
+      onOk,
+    };
     delete netNotes[where];
   } catch (err) {
     netNotes[where] = { text: err.message, ok: false };
@@ -10521,6 +10587,7 @@ function renderAccess(data) {
         text: resultSaid(done),
         ok: done.ok,
       };
+      if (done.ok) accessDrafts.delete(accessWaiting.app);
       accessWaiting = null;
       return loadAccess();
     }
@@ -10857,6 +10924,7 @@ async function loadSignInOffer() {
         },
       ],
       {
+        id: "sign-in-offer",
         save: async (changed) => {
           await postJSON("/admin/settings", changed);
           await loadSignInOffer();
@@ -11208,10 +11276,8 @@ function accessBlock(id, a) {
           textContent: accessNote.text,
         })
       : null;
-  const save = () => {
-    accessDrafts.delete(id);
-    accessSet(a, d.mode);
-  }; // root's, answered by poll
+  // Root's, answered by poll: the draft stays until it is done (renderAccess), so Cancel or a failure keeps it.
+  const save = () => accessSet(a, d.mode);
   const seen =
     d.mode === "off"
       ? "Disabled: no tile."
@@ -12383,7 +12449,11 @@ function repoCard(r, data) {
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(r, data, cls) {
   const act = (body, confirmText, done) => async () => {
-    if (confirmText && !confirm(confirmText)) return false;
+    // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
+    if (confirmText && !confirm(confirmText)) {
+      renderGit(gitData);
+      return false;
+    }
     try {
       const out = await postJSON("/admin/git", body);
       if (body.action === "move") gitView.open = `${body.to}/${r.name}`;
@@ -12964,8 +13034,7 @@ function renderCi(data) {
     `Each build: up to ${Math.round(data.time_limit / 3600)} hours, ${memText}, ` +
     `the lowest CPU priority. The runs use ${size(data.runs_bytes || 0)}. The box retains the newest ${data.keep_runs} runs for each repository, and every run marked Retain run.`;
   const kf = document.getElementById("ci-keep-form");
-  if (!kf.contains(document.activeElement))
-    kf.elements.keep.value = data.keep_runs;
+  if (!held(kf)) kf.elements.keep.value = data.keep_runs;
   noteEl("ci-offline").textContent =
     "Without internet access: " +
     ((data.mirrored || []).length
@@ -13283,7 +13352,7 @@ function renderFirmware(data) {
   const cfg = data.settings;
   const st = data.status || {};
   const f = fw.form.elements;
-  if (!fw.form.contains(document.activeElement)) {
+  if (!held(fw.form)) {
     f.enabled.checked = cfg.enabled;
     f.configs.checked = cfg.configs !== false;
     f.keep_alpha.value = cfg.keep_alpha;
@@ -13307,8 +13376,7 @@ function renderFirmware(data) {
   const targets = (data.targets || []).filter(
     (t) => !q || t.board.includes(q) || t.platform.includes(q),
   );
-  if (!fw.cacheForm.contains(document.activeElement))
-    fw.cacheForm.elements.cache.value = cfg.cache;
+  if (!held(fw.cacheForm)) fw.cacheForm.elements.cache.value = cfg.cache;
   fw.cacheStatus.replaceChildren(
     ...(st.cache
       ? [
@@ -13451,6 +13519,13 @@ async function loadFirmware() {
   }
 }
 fw.filter.addEventListener("input", () => fwData && renderFirmware(fwData));
+// Discard: the boards as saved too (they are kept in fwChosen, not in the form's fields).
+fw.form.addEventListener("discard", () => {
+  if (!fwData) return;
+  const b = fwData.settings.boards;
+  fwChosen = new Set(b === "all" ? [] : b);
+  renderFirmware(fwData);
+});
 fw.form.elements.all_boards.addEventListener(
   "change",
   () => fwData && renderFirmware(fwData),
@@ -13475,6 +13550,7 @@ fw.form.addEventListener("submit", async (e) => {
     );
   } catch (err) {
     say(err.message, false, fw.note);
+    fw.form._failed();
   }
 });
 fw.cacheForm.addEventListener("submit", async (e) => {
@@ -13492,6 +13568,7 @@ fw.cacheForm.addEventListener("submit", async (e) => {
     );
   } catch (err) {
     say(err.message, false, fw.cacheNote);
+    fw.cacheForm._failed();
   }
 });
 for (const [id, action] of [
@@ -13571,13 +13648,14 @@ function hoursPicker(value) {
 }
 const pickedHours = (sel) => (sel.value === "never" ? null : Number(sel.value));
 
+// True once the hub or the root helper has it; false when cancelled or refused (said in the note).
 async function kitAct(body, quiet) {
   if (
     body.action === "fetch" &&
     !quiet &&
     !meteredOk("Downloading the toolkit")
   )
-    return;
+    return false;
   try {
     const data = await postJSON("/admin/kits", body);
     if (data.id) kitsWaiting.add(data.id);
@@ -13590,8 +13668,10 @@ async function kitAct(body, quiet) {
         kitsEl.note,
       );
     renderKits(data);
+    return true;
   } catch (err) {
     say(err.message, false, kitsEl.note);
+    return false;
   }
 }
 
@@ -13993,10 +14073,18 @@ async function kitSave(it) {
     .trim()
     .split(/[\s,]+/)
     .filter(Boolean);
-  if (Object.keys(ch).length)
-    await kitAct({ action: "settings", kits: { [k.id]: ch } });
-  if (!k.owner && extra.join(" ") !== (k.extra || []).join(" "))
-    await kitAct({ action: "extra", kit: k.id, packages: extra });
+  if (
+    Object.keys(ch).length &&
+    !(await kitAct({ action: "settings", kits: { [k.id]: ch } }))
+  )
+    return false;
+  if (
+    !k.owner &&
+    extra.join(" ") !== (k.extra || []).join(" ") &&
+    !(await kitAct({ action: "extra", kit: k.id, packages: extra }))
+  )
+    return false;
+  return true;
 }
 // The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
 function customBody() {
@@ -14254,11 +14342,14 @@ kitsEl.budget.addEventListener("submit", async (e) => {
   e.preventDefault();
   const mb = Number(kitsEl.budget.elements.budget.value),
     prev = kitsEl.budget.elements.previous.value;
-  await kitAct({
-    action: "settings",
-    budget_mb: mb,
-    previous_days: prev === "" ? null : Number(prev),
-  });
+  if (
+    !(await kitAct({
+      action: "settings",
+      budget_mb: mb,
+      previous_days: prev === "" ? null : Number(prev),
+    }))
+  )
+    return kitsBudgetSync();
   kitsEl.budget.dataset.saved = mb;
   kitsEl.budget.dataset.previous = prev;
   kitsBudgetSync();
@@ -14705,8 +14796,10 @@ function renderAccounts(d) {
     (al.reach !== "off" && !admins
       ? " To disable it or limit it to the box itself, first create an administrator account and sign in with it over HTTPS."
       : "");
-  acctEl.settings.elements.signup.value = d.settings.signup;
-  acctEl.settings.elements.http.value = d.settings.http;
+  if (!held(acctEl.settings)) {
+    acctEl.settings.elements.signup.value = d.settings.signup;
+    acctEl.settings.elements.http.value = d.settings.http;
+  }
   const c = d.counts;
   acctEl.counts.textContent = `${c.user} user${c.user === 1 ? "" : "s"} (${c.admins} administrator${c.admins === 1 ? "" : "s"}), ${c.asked} waiting for approval, ${c.disabled} disabled.`;
   const when = (t) => (t ? ago(Date.now() / 1000 - t) : "never");
@@ -14829,6 +14922,7 @@ async function loadNotebooksAdmin() {
         },
       ],
       {
+        id: "notebooks",
         save: async (changed) => {
           await postJSON("/admin/settings", changed);
           loadNotebooksAdmin();
@@ -14893,6 +14987,7 @@ function codeBox(name, code) {
     note,
   );
 }
+// True when the hub did it; false when cancelled or refused (said in the note).
 async function acctAct(body) {
   if (
     body.action === "delete" &&
@@ -14900,30 +14995,33 @@ async function acctAct(body) {
       `Delete the account ${body.name}? This person can no longer sign in. You cannot undo this.`,
     )
   )
-    return;
+    return false;
   if (
     body.action === "admin" &&
     !confirm(
       `Give ${body.name} the administrator role? An administrator can change every setting of the box.`,
     )
   )
-    return;
+    return false;
   try {
     const d = await postJSON("/admin/accounts", body);
     if (d.code) showCode(body.name, d.code);
     say("Done.", true, acctEl.note);
     renderAccounts(d);
+    return true;
   } catch (err) {
     say(err.message, false, acctEl.note);
+    return false;
   }
 }
-acctEl.settings.addEventListener("submit", (e) => {
+acctEl.settings.addEventListener("submit", async (e) => {
   e.preventDefault();
-  acctAct({
+  const ok = await acctAct({
     action: "settings",
     signup: acctEl.settings.elements.signup.value,
     http: acctEl.settings.elements.http.value,
   });
+  if (!ok) acctEl.settings._failed();
 });
 acctEl.make.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -15558,6 +15656,7 @@ async function loadAppearance() {
       },
     ],
     {
+      id: "appearance-hub",
       save: async (changed) => {
         if ("hub_title" in changed && !changed.hub_title.trim())
           throw new Error("The hub needs a name.");
@@ -15601,6 +15700,7 @@ async function loadAppearance() {
         row("board_width", "Forum", "its tab on the hub page"),
       ],
       {
+        id: "appearance-widths",
         save: async (changed) => {
           const now = await postJSON("/admin/settings", changed);
           document.body.style.setProperty(
@@ -15637,7 +15737,7 @@ async function loadAppearance() {
           ],
         },
       ],
-      { save: (changed) => postJSON("/admin/settings", changed) },
+      { id: "appearance-emoji", save: (changed) => postJSON("/admin/settings", changed) },
     ),
   );
 }
@@ -15691,6 +15791,7 @@ async function loadCardWrites() {
         },
       ],
       {
+        id: "card-writes",
         save: async (changed) => {
           await postJSON("/admin/settings", changed);
           loadCardWrites();
@@ -16036,6 +16137,7 @@ function fillWidthBlocks() {
           },
         ],
         {
+          id: `width-${key}`,
           save: async (changed) => {
             appearanceSettings = await postJSON("/admin/settings", changed);
             loadAppearance();
@@ -16240,7 +16342,7 @@ async function loadNamesTo() {
           note: "Names appear only for users who chose to be shown on their own account page. Guests see only the number of users.",
         },
       ],
-      { save: (changed) => postJSON("/admin/settings", changed) },
+      { id: "names", save: (changed) => postJSON("/admin/settings", changed) },
     ),
   );
 }
@@ -16268,7 +16370,7 @@ async function loadSavesCrossDevice() {
           note: "Disabled: only the device that made or locked a save can change it. Enabled: a signed-in user can change or remove any save of their own account on any device. This overrides the device lock for saves that belong to an account. Saves of guests do not change.",
         },
       ],
-      { save: (changed) => postJSON("/admin/settings", changed) },
+      { id: "saves", save: (changed) => postJSON("/admin/settings", changed) },
     ),
   );
 }
@@ -16439,8 +16541,7 @@ function drawSigning(sig, results) {
       say(resultSaid(done), done.ok, sigEl.note);
     }
   }
-  if (!sigEl.form.contains(document.activeElement))
-    sigEl.form.elements.level.value = sig.level;
+  if (!held(sigEl.form)) sigEl.form.elements.level.value = sig.level;
   const says = document.getElementById("update-signing-says");
   if (says) says.textContent = SIG_WORDS[sig.level] || sig.level;
   sigShowKeys();
