@@ -666,9 +666,13 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-mermaid.inc
 			}
 			request_header -X-Irate-Session
 		}
+		# Syncthing's X-Frame-Options: SAMEORIGIN keeps it out of the hub's app bar (another origin): dropped, and
+		# the hub's port named as the one that may frame it, as Draw's and Mermaid's do.
+		header Content-Security-Policy "frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}"
 		reverse_proxy 127.0.0.1:8384 {
 			header_up Host {upstream_hostport}
 			header_up Cookie "irate_session=[^;]*;?\s*" ""
+			header_down -X-Frame-Options
 		}
 	}
 	handle {

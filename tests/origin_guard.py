@@ -328,6 +328,11 @@ check(
     and "location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }" in syncb,
 )
 check(
+    "  the hub's app bar may frame it: Syncthing's own SAMEORIGIN dropped, the hub's port named",
+    "proxy_hide_header X-Frame-Options;" in syncb
+    and "frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host" in syncb,
+)
+check(
     "none of the three origins sends the hub the front's secret, and each clears the header",
     all("include @FRONT@" not in b and 'proxy_set_header X-Irate-Front ""' in b for b in (draw, mermaid_, syncb)),
 )
@@ -501,8 +506,9 @@ check(
     and "header_up Host {upstream_hostport}" in csync
     and all(
         "frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}" in c
-        for c in (cdraw, cmermaid)
+        for c in (cdraw, cmermaid, csync)
     )
+    and "header_down -X-Frame-Options" in csync
     and all("HUB_FRONT_SECRET" not in c and "request_header -X-Irate-Front" in c for c in (cdraw, cmermaid, csync)),
 )
 for name in ("notes", "wiki", "git", "admin", "draw", "mermaid", "sync"):
