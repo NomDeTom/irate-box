@@ -4449,6 +4449,9 @@ html:has(> body.admin) {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.25rem 0.6rem;
+  /* The card's whole width, in a card that is itself a column (.sec-choice: a .setting, align-items: flex-start),
+     or a short title's state wraps under it instead of standing at the right. */
+  align-self: stretch;
 }
 .ftitle {
   margin: 0;
