@@ -1382,6 +1382,12 @@ body.admin button.link-button {
 .admin-side {
   position: sticky;
   top: 1rem;
+  /* Taller than the window (many pages, groups open): it scrolls on its own, not with the pane. */
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .admin-menu {
   display: none;
@@ -1836,6 +1842,8 @@ body.about h3 {
   .admin-side {
     position: relative;
     top: 0;
+    max-height: none;
+    overflow: visible;
   }
   .admin-menu {
     display: flex;
@@ -3884,6 +3892,8 @@ html:has(> body.admin) {
   .admin-side {
     position: relative;
     top: 0;
+    max-height: none;
+    overflow: visible;
   }
   .admin-menu {
     display: flex;
