@@ -166,12 +166,18 @@ h2 {
 }
 
 /* A sub-heading inside an admin pane: space above it, so it never sits on the buttons of the setting before it.
-   Cards (.net-card, .git-card, .net-device) set their own, later in this file. */
-.admin-pane h4 {
+   Of no weight (:where), so a card's own heading rule (.ftitle, .net-card h4, …) always wins: a finding's title
+   took this 1.75rem above it, an empty line at the top of every finding card. */
+:where(.admin-pane) h4 {
   margin: 1.75rem 0 0.4rem;
   font-size: 1rem;
 }
-.admin-pane h4:first-child {
+:where(.admin-pane) h4:first-child {
+  margin-top: 0;
+}
+/* A card's first line sits at its padding, the same space as below its last: nothing in it adds a margin above. */
+:is(.finding, .net-card, .net-device, .setting, .aw-card, .git-card, .lib-card, .aw-settings) > :first-child,
+.fhead > * {
   margin-top: 0;
 }
 /* A card straight after a pane's buttons or their note (shown or hidden): apart from them, not on them (Box doctor's Summary). */
@@ -1188,6 +1194,16 @@ body.app-frame iframe {
 }
 .state-missing {
   color: var(--muted);
+}
+/* What a thing is (a link's kind, its role), not how it stands: quiet, no state colour. */
+.kind-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2, color-mix(in srgb, var(--muted) 12%, transparent));
+  color: var(--muted);
+  white-space: nowrap;
 }
 /* The same picker as the home page header, sitting in the hub bar instead. */
 .app-bar .theme-picker {
@@ -2732,6 +2748,33 @@ body.drop > section + section {
 .net-device h4 .state {
   color: var(--muted);
 }
+/* A network card's header (netHead): the line under it as the old heading had, the heading itself plain. */
+.net-head {
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border);
+}
+.net-head > h4.ftitle {
+  flex: 0 1 auto; /* its kind beside the name; only the state goes to the right */
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 1rem;
+}
+.net-card > .net-head {
+  margin-bottom: 0.25rem;
+}
+/* A list that belongs to a labelled line (Hotspot support's conditions): under its value, not across the card. */
+@media (min-width: 561px) {
+  .net-section > .net-line + .net-conditions {
+    margin-left: calc(11rem + 0.6rem);
+  }
+}
+/* The Security doctor's sources, said as a line: one too old in the warning colour. */
+.fresh-src.warn {
+  color: var(--warn);
+  font-weight: 600;
+}
 .net-line {
   display: grid;
   grid-template-columns: 11rem 1fr;
@@ -3528,14 +3571,13 @@ label > .select-chips {
   color: var(--accent);
   border-color: var(--accent);
 }
+/* A state: a word or two, as written (capitals are wider and harder to read), its colour its meaning. */
 .ok-pill,
 .warn-pill,
 .bad-pill,
 .info-pill {
   display: inline-block;
-  font-size: 0.68rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
   border: 1px solid;
   padding: 0.05rem 0.35rem;
   border-radius: 3px;
@@ -3558,10 +3600,9 @@ label > .select-chips {
   vertical-align: 0.1em;
 }
 .fresh-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
   margin: 0.4rem 0 0.8rem;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 .field-help {
   border: 1px solid var(--border);
@@ -4391,6 +4432,8 @@ html:has(> body.admin) {
     animation: none;
   }
 }
+/* A card's header, the same everywhere: what it is about first, then its state at the right (under it on a phone),
+   then what else is said of it (when, from where) on a line of its own. The state is beside the heading, not in it. */
 .fhead {
   display: flex;
   flex-wrap: wrap;
@@ -4401,9 +4444,13 @@ html:has(> body.admin) {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
+  flex: 1 1 14rem;
+}
+.fhead > .fstate {
+  margin-left: auto;
 }
 .fmeta {
-  margin-left: auto;
+  flex-basis: 100%;
   color: var(--muted);
   font-size: 0.75rem;
 }
@@ -4512,11 +4559,9 @@ a.action-btn.go-btn {
 }
 .fstate {
   display: inline-block;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 0.05rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.05rem 0.45rem;
   border-radius: 3px;
   border: 1px solid currentColor;
   color: var(--muted);

@@ -3793,13 +3793,14 @@ const secFoot = (f) =>
 // --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
 // link to where it is chosen, a command to type, or plainly nothing (the hub's own work, a fact).
+// A word or two, the counters' own ("to fix", "to review"): a state, never a sentence.
 const STATE_WORD = {
-  problem: "Action required",
-  warn: "Needs review",
+  problem: "To fix",
+  warn: "To review",
   ok: "Passed",
   suggest: "Suggestion",
-  info: "Information",
-  "not-here": "Not applicable",
+  info: "Info",
+  "not-here": "Not here",
   accepted: "Accepted",
   fixed: "Repaired",
 };
@@ -3853,12 +3854,13 @@ function findingRow(r) {
     el(
       "div",
       { className: "fhead" },
+      // What it is about first, then how it stands (at the right), then when and where from on its own line.
+      el("h4", { className: "ftitle", textContent: r.title }),
+      r.badge || null,
       el("span", {
         className: `fstate fstate-${state}`,
         textContent: STATE_WORD[state] || state,
       }),
-      el("h4", { className: "ftitle", textContent: r.title }),
-      r.badge || null,
       r.meta ? el("span", { className: "fmeta", textContent: r.meta }) : null,
     ),
     r.detail ? el("p", { className: "fdetail", textContent: r.detail }) : null,
@@ -4144,22 +4146,21 @@ function secChoiceCard(f, busy, note) {
   return el(
     "div",
     { className: "setting sec-choice", id: `sec-${f.id}` },
+    // The header as every card's: the title, then how it stands at the right, beside the heading, not in it.
     el(
-      "span",
-      { className: "setting-name" },
-      f.title,
-      " ",
-      // Said as what it offers: a choice to make (chips), one fix (a button), or something to read and decide on.
+      "div",
+      { className: "fhead" },
+      el("span", { className: "setting-name ftitle", textContent: f.title }),
       el("span", {
         className: `fstate fstate-${f.status === "ok" ? "ok" : f.status}`,
         textContent:
           f.status === "ok"
             ? "Set"
             : rows.length
-              ? "Waiting for your choice"
+              ? "To select"
               : rest.actions.length
-                ? "Fix available"
-                : "Needs review",
+                ? "To fix"
+                : "To review",
       }),
     ),
     ...findingLines(f),
@@ -4786,18 +4787,25 @@ function renderJoint(j, data) {
   // should be; what it covers and what it said in the pill's title.
   const fresh = (j && j.freshness) || {};
   const now = Date.now() / 1000;
+  // Said as a line of text (a badge is for a state, not a sentence); a source too old is marked as a warning.
+  const srcs = Object.keys((j && j.sources) || {});
   box("joint-fresh").replaceChildren(
-    ...Object.keys((j && j.sources) || {}).map((src) => {
+    ...(srcs.length ? ["Sources: "] : []),
+    ...srcs.flatMap((src, i) => {
       const c = j.sources[src],
         at = fresh[src],
         old = !at || now - at > (STALE_DAYS[src] || 30) * 86400;
-      return el("span", {
-        className: old ? "warn-pill" : "info-pill",
-        title:
-          `${(j.coverage || {})[src] || ""} To fix: ${c.problem || 0}. To review: ${c.warn || 0}.`.trim(),
-        textContent: `${SOURCE_WORDS[src] || src}: ${at ? ago(now - at) : "never"}${old ? ", stale" : ""}`,
-      });
+      return [
+        i ? ", " : "",
+        el("span", {
+          className: old ? "fresh-src warn" : "fresh-src",
+          title:
+            `${(j.coverage || {})[src] || ""} To fix: ${c.problem || 0}. To review: ${c.warn || 0}.`.trim(),
+          textContent: `${SOURCE_WORDS[src] || src} ${at ? ago(now - at) : "never"}${old ? " (out of date)" : ""}`,
+        }),
+      ];
     }),
+    ...(srcs.length ? ["."] : []),
   );
   return counts;
 }
@@ -7568,6 +7576,24 @@ function netHazards(inv) {
   }));
 }
 
+// A network card's header, as every card's: what it is about, then what kind of thing it is
+// (quiet tags), then how it stands at the right; the heading holds the name alone.
+function netHead(title, kinds = [], state = null) {
+  return el(
+    "div",
+    { className: "fhead net-head" },
+    el("h4", { className: "ftitle", textContent: title }),
+    ...kinds
+      .filter(Boolean)
+      .map((k) => el("span", { className: "kind-tag", textContent: k })),
+    state
+      ? el("span", {
+          className: `fstate fstate-${state}`,
+          textContent: STATE_WORD[state] || state,
+        })
+      : null,
+  );
+}
 function deviceCard(inv, d, wifi, hazards) {
   const line = (label, text) =>
     el(
@@ -7620,12 +7646,7 @@ function deviceCard(inv, d, wifi, hazards) {
       (d.manager ? ` With ${d.manager} for the address.` : "")
     : "—";
   const kids = [
-    el(
-      "h4",
-      {},
-      el("span", { textContent: d.iface }),
-      el("span", { className: "state", textContent: kind }),
-    ),
+    netHead(d.iface, [kind]),
     section(line("Device type", what || "—")),
     section(line("Now", now)),
     section(line("Connection manager", managed)),
@@ -7696,7 +7717,7 @@ function deviceCard(inv, d, wifi, hazards) {
   if (look.length)
     kids.push(
       section(
-        line("Needs review", ""),
+        line("To review", ""),
         el("ul", { className: "net-facts" }, ...look.map(fact)),
       ),
     );
@@ -7867,23 +7888,15 @@ function drawRoaming(inv, u, wifi) {
             className: "setting-desc",
             textContent: "None in the last scan.",
           }),
+      // What this box can do, as facts beside the version they depend on: no state badges in running text.
       el("p", {
         className: "net-label",
         textContent: "Roaming options on this box",
       }),
-      el(
-        "ul",
-        { className: "net-choice-pills" },
-        ...["roam", "no-scan", "lock"].map((c) =>
-          el(
-            "li",
-            {},
-            el("span", {
-              className: f.choices.includes(c) ? "ok-pill" : "info-pill",
-              textContent: f.choices.includes(c) ? "yes" : "no",
-            }),
-            ` ${ROAM_WORDS[c][0]}${f.choices.includes(c) ? "" : `: ${f.why[c]}`}`,
-          ),
+      ...["roam", "no-scan", "lock"].map((c) =>
+        netLine(
+          ROAM_WORDS[c][0],
+          f.choices.includes(c) ? "Available" : `Not available: ${f.why[c]}`,
         ),
       ),
       f.nm_version ? netLine("NetworkManager", f.nm_version) : null,
@@ -7907,21 +7920,10 @@ function drawNetTabs(data, inv, u) {
       el(
         "div",
         { className: "net-card setting" },
-        el(
-          "h4",
-          {},
-          el("span", { textContent: d.iface }),
-          el("span", {
-            className: "state",
-            textContent: "carrier" in d ? "Wired" : "WiFi",
-          }),
-          up && up.iface === d.iface
-            ? el("span", {
-                className: "info-pill",
-                textContent: "the box's link",
-              })
-            : null,
-        ),
+        netHead(d.iface, [
+          "carrier" in d ? "Wired" : "WiFi",
+          up && up.iface === d.iface ? "The box's link" : null,
+        ]),
         netLine("Now", linkNow(inv, d)),
         uptimeSection(d.iface),
       ),
@@ -8191,18 +8193,7 @@ function renderNetwork(data) {
         el(
           "div",
           { className: "net-device setting" },
-          el(
-            "h4",
-            {},
-            el("span", { textContent: h.title }),
-            el("span", {
-              className:
-                { problem: "bad-pill", warn: "warn-pill", ok: "ok-pill" }[
-                  h.status
-                ] || "info-pill",
-              textContent: STATE_WORD[h.status] || h.status,
-            }),
-          ),
+          netHead(h.title, [], h.status),
           h.detail
             ? el("p", { className: "setting-desc", textContent: h.detail })
             : null,

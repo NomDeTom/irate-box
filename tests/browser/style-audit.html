@@ -2,12 +2,19 @@
 <!-- SPDX-License-Identifier: MIT -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 <!-- The style audit's page (tests/browser/style-audit.sh): /admin in a frame as wide as ?w= says, every pane shown in
-     turn and looked over for what makes a page look broken. Its findings go in body[data-out] as JSON. -->
+     turn and looked over for what makes a page look broken. Its findings go in body[data-out] as JSON.
+     ?src= another page in the frame: with ?static=1, a page saved from a page test (tests/browser/card-audit.sh), its
+     scripts gone and its findings drawn, each pane shown here by hand. -->
 <html><head><meta charset="utf-8"><title>style audit</title><style>body{margin:0}</style></head>
-<body><iframe id="f" src="/admin/" style="border:0;height:2400px"></iframe>
+<body><iframe id="f" style="border:0;height:2400px"></iframe>
 <script>
-const W = Number(new URLSearchParams(location.search).get('w') || 1280);
+const Q = new URLSearchParams(location.search);
+const W = Number(Q.get('w') || 1280);
+const STATIC = Q.get('static') === '1';
 const f = document.getElementById('f');
+// ?src= is a page of this site only: its path, never another origin or a scheme of its own.
+const SRC = new URL(Q.get('src') || '/admin/', location.href);
+f.src = SRC.origin === location.origin ? SRC.pathname + SRC.search : '/admin/';
 f.style.width = `${W}px`;
 const DEFAULT_LINKS = ['rgb(0, 0, 238)', 'rgb(85, 26, 139)', 'rgb(0, 0, 255)'];
 // Where text may be as big as the page's own: headings, controls, and the names of things.
@@ -16,6 +23,9 @@ const BIG_OK = 'h1, h2, h3, h4, h5, summary, legend, button, input, select, text
   + '.admin-tile, .hm-cell, code, kbd, pre, .tour-list, .krab, .admin-art, svg, .setup-steps, .net-line .net-label, .svc-name, '
   + '.inv-name, .palette-preview, .stat, strong, .admin-list';
 const CARDS = '.net-card, .setting, .findings, form, details, .admin-tile, .item-list, .net-device, .up-group, .attention';
+// The boxes whose first line is measured, and the states looked at (a word or two, beside a title).
+const BOXES = '.net-card, .net-device, .setting, .finding, .aw-card, .git-card, .lib-card, .aw-settings';
+const STATES = '.fstate, .ok-pill, .warn-pill, .bad-pill';
 const said = (el) => {
   const id = el.id ? `#${el.id}` : '';
   const cls = el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).slice(0, 2).join('.')}` : '';
@@ -38,11 +48,38 @@ function audit(win, doc, pane) {
     if (r.width && r.right > box.right + 2 && st.position !== 'fixed' && !el.closest('.admin-art, [data-art]')) add('wider than its pane', el, ` (${Math.round(r.right - box.right)} px over)`);
     if (el.matches('dl') && !el.parentElement.closest(CARDS)) add('a list of terms loose in the pane, in no card', el);
   }
-  for (const card of pane.querySelectorAll('.net-card, .setting')) {
-    const first = [...card.children].find((c) => shown(c, win));
+  // A card's first line at its padding: the space above its first line of text about that below its last, wherever a
+  // margin inside pushed the first one down (a heading's margin in a card: an empty line at its top).
+  const textLines = (card) => {
+    const walk = doc.createTreeWalker(card, 4);
+    let n, first = null, last = null;
+    while ((n = walk.nextNode())) {
+      if (!n.textContent.trim() || !shown(n.parentElement, win)) continue;
+      const r = doc.createRange();
+      r.selectNodeContents(n);
+      const b = r.getBoundingClientRect();
+      if (!b.height) continue;
+      first = first || b;
+      if (!last || b.bottom > last.bottom) last = b;
+    }
+    return [first, last];
+  };
+  for (const card of pane.querySelectorAll(BOXES)) {
+    if (!shown(card, win)) continue;
+    const st = win.getComputedStyle(card), box = card.getBoundingClientRect();
+    const [first, last] = textLines(card);
     if (!first) continue;
-    const gap = first.getBoundingClientRect().top - card.getBoundingClientRect().top - parseFloat(win.getComputedStyle(card).paddingTop);
-    if (gap > 12) add('a gap above a card\'s first line', first, ` (${Math.round(gap)} px)`);
+    const above = first.top - box.top - parseFloat(st.borderTopWidth) - parseFloat(st.paddingTop);
+    const below = box.bottom - parseFloat(st.borderBottomWidth) - parseFloat(st.paddingBottom) - last.bottom;
+    if (above > 12 && above > below + 10) add('a gap above a card\'s first line', card, ` (${Math.round(above)} px above, ${Math.round(Math.max(below, 0))} px below)`);
+  }
+  // A state: beside its card's title, after it, never inside a heading; a word or two, not a sentence.
+  for (const b of pane.querySelectorAll(STATES)) {
+    if (!shown(b, win)) continue;
+    if (b.closest('h1, h2, h3, h4, h5, h6')) add('a state inside a heading', b);
+    const next = b.nextElementSibling;
+    if (next && next.matches('h1, h2, h3, h4, h5, h6, .ftitle')) add('a state before its card\'s title', b);
+    if (b.getBoundingClientRect().width > 160) add('a state badge as long as a sentence', b, ` (${Math.round(b.getBoundingClientRect().width)} px)`);
   }
   return out;
 }
@@ -53,8 +90,17 @@ f.addEventListener('load', async () => {
   const panes = [...doc.querySelectorAll('.admin-pane[id]')];
   const findings = [];
   for (const pane of panes) {
-    win.location.hash = `#${pane.id}`;
-    await wait(900);
+    if (STATIC) {
+      // No scripts in a saved page: its pane's page shown, the others hidden, the folds and tabs open.
+      const page = pane.closest('.admin-page') || pane;
+      doc.querySelectorAll('.admin-page').forEach((p) => { p.hidden = p !== page; });
+      page.querySelectorAll('details').forEach((d) => { d.open = true; });
+      page.querySelectorAll('[role="tabpanel"]').forEach((t) => { t.hidden = false; });
+      await wait(50);
+    } else {
+      win.location.hash = `#${pane.id}`;
+      await wait(900);
+    }
     if (!shown(pane, win)) { findings.push({ pane: pane.id, rule: 'not shown by its own link', what: pane.id }); continue; }
     findings.push(...audit(win, doc, pane));
   }

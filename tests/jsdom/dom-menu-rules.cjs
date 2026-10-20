@@ -116,7 +116,7 @@ check('settings: Save sends only what changed', JSON.stringify(sent) === JSON.st
 click([...st.querySelectorAll('[data-setting="when"] .chip')][0]);
 click([...st.querySelectorAll('.aw-foot .action-btn')].find((b) => b.textContent === 'Discard'));
 check('settings: Discard puts back what was saved', st.querySelector('[data-setting="when"] .chip.selected').textContent === 'by hand');
-check('settings: a setup decision is marked where it lives', !!st.querySelector('[data-decision-row="https"] .info-pill'));
+check('settings: a setup decision is marked where it lives, as a label (not a state)', !!st.querySelector('[data-decision-row="https"] .kind-tag'));
 
 // ---- findings: worst first, the cure beside it ----
 let acted = null;
