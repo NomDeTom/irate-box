@@ -258,8 +258,8 @@ const AW = (() => {
 
   // ---- Cards (3a–3c): the drawer opens inside the card, which widens to the row ----
   //   items: [{id, title, summary, badges}]
-  //   opts:  {id, body(item, setDirty) → nodes, save(item) → Promise|void, saveLabel}
-  //   A drawer with settings (setDirty called) shows Save and Discard; Discard rebuilds the body.
+  //   opts:  {id, body(item, setDirty) → nodes, save(item) → Promise|void (false: not saved, said already)}
+  //   A drawer with settings (setDirty called) is a section: Save and Discard; Discard rebuilds the body.
   function cards(items, opts = {}) {
     const id = listId(opts, 'cards');
     const grid = h('div', { class: 'aw-cards', id, 'data-list': 'cards', 'data-count': items.length });
@@ -276,26 +276,32 @@ const AW = (() => {
   const openStack = [];
   function openCard(card, it, opts) {
     if (AW.single && !closeOthers(scopeOf(card), card)) return null;
-    let dirty = false;
-    const foot = h('div', { class: 'aw-foot', hidden: true });
-    const saveB = btn(opts.saveLabel || 'Save', { class: 'action-btn primary', disabled: true });
-    const discard = btn('Discard', { disabled: true });
-    const setDirty = (d = true) => { dirty = d; saveB.disabled = discard.disabled = !d; foot.hidden = false; };
+    // The drawer's settings are a section: the body says whether it differs from what is saved (setDirty), the
+    // section gives the footer, Saving…, the reason on failure and the unsaved list. Discard draws the body again.
     const body = h('div', { class: 'aw-drawer-body' });
     const fill = () => { body.replaceChildren(...[opts.body ? opts.body(it, setDirty) : dl(it.detail)].flat(Infinity).filter(Boolean)); };
-    discard.addEventListener('click', () => { fill(); setDirty(false); });
-    saveB.addEventListener('click', async () => {
-      saveB.disabled = true;
-      // A save that resolves false did not happen (refused, cancelled or failed, and said so): the changes stay.
-      try { let r = opts.save && opts.save(it); if (r && r.then) r = await r; setDirty(r === false); } catch (e) { setDirty(true); foot.querySelector('.note').textContent = String(e.message || e); }
+    const sec = section({
+      id: `card-${card.closest('[data-list="cards"]') ? card.closest('[data-list="cards"]').id : 'cards'}-${it.id}`,
+      label: it.title,
+      saved: { changed: false },
+      fresh: true,
+      idle: 'Changes apply after you select Save. Actions run immediately.',
+      save: async () => {
+        const r = opts.save ? await opts.save(it) : true;
+        if (r !== false) setTimeout(() => { sec.update({ changed: false }); });
+        return r;
+      },
+      onChange: () => { if (!sec.dirty() && !sec.saving()) fill(); },
     });
-    foot.append(h('span', { class: 'note', text: 'Changes apply after you select Save. Actions run immediately.' }), discard, saveB);
+    function setDirty(d = true) { sec.set('changed', !!d, true); sec.foot.hidden = false; }
+    sec.foot.hidden = true;   // shown once the body has settings (setDirty called)
     const drawer = h('div', { class: 'aw-drawer', role: 'region', 'aria-label': it.title },
       btn('✕', { class: 'action-btn aw-close', 'data-act': 'close', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => closeCard(card) }),
-      body, foot);
+      body, sec.foot, sec.reason);
     fill();
     card._drawer = drawer;
-    card._dirty = () => dirty;
+    card._dirty = () => sec.dirty();
+    card._saving = () => sec.saving();
     card.classList.add('open');
     card.querySelector('.aw-card-head').setAttribute('aria-expanded', 'true');
     card.append(drawer);
@@ -304,7 +310,8 @@ const AW = (() => {
   }
   function closeCard(card, force) {
     if (!card._drawer) return true;
-    if (!force && card._dirty() && !window.confirm('Discard the unsaved changes?')) return false;
+    // A drawer being saved closes without asking: its save goes on.
+    if (!force && card._dirty() && !card._saving() && !window.confirm('Discard the unsaved changes?')) return false;
     card._drawer.remove();
     card._drawer = null;
     card.classList.remove('open');
@@ -331,7 +338,8 @@ const AW = (() => {
   //        a string: said when saved; throws: the reason), ask(changes, draft) → a question or null,
   //        idle: the footer's words while nothing has changed, onChange(section): draw the controls again,
   //        busy() → true while a save of it is in flight elsewhere (a copy drawn again while its job runs),
-  //        why(changes, draft) → why these changes cannot be saved as they are (Save off, the reason under it)}
+  //        why(changes, draft) → why these changes cannot be saved as they are (Save off, the reason under it),
+  //        fresh: true starts from the saved values, not a draft left by an earlier copy (a card opened again)}
   const same = (a, b) => a === b || (a !== null && b !== null && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
   const copy = (v) => (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
   const sections = new Map();   // id -> the section last made with it (its draft outlives a redraw)
@@ -344,7 +352,7 @@ const AW = (() => {
     document.dispatchEvent(new CustomEvent('aw-unsaved'));
   }
   function section(opts = {}) {
-    const before = opts.id ? sections.get(opts.id) : null;
+    const before = opts.id && !opts.fresh ? sections.get(opts.id) : null;
     let saved = opts.saved == null ? null : copy(opts.saved);
     let draft = saved ? copy(saved) : {};
     const elsewhere = new Set();

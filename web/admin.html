@@ -2711,8 +2711,8 @@
             its password at the box console or over SSH:
             <code>sudo /opt/irate-box/irate-box hub_control script-login</code>.
             The choices below set how far this sign-in reaches. Select one, then
-            select Save changes. The page says what the change stops before you
-            save it.
+            select Save. The page says what the change stops before you save
+            it.
           </p>
           <div id="accounts-admin-login-choices"></div>
           <p
@@ -4081,25 +4081,7 @@
                   hub</code
                 >
               </p>
-              <p class="library-buttons">
-                <button
-                  class="action-btn"
-                  id="policy-discard"
-                  type="button"
-                  disabled
-                  data-i18n="admin.security.policy-discard"
-                >
-                  Discard</button
-                ><button
-                  class="action-btn primary"
-                  id="policy-save"
-                  type="button"
-                  disabled
-                  data-i18n="admin.security.policy-save"
-                >
-                  Save
-                </button>
-              </p>
+              <div id="policy-foot"></div>
               <p
                 class="setting-desc action-note"
                 id="policy-note"
@@ -4229,25 +4211,7 @@
             ></div>
             <p class="setting-desc" id="tls-session-note"></p>
             <p class="setting-desc" id="tls-draft-note"></p>
-            <p class="library-buttons">
-              <button
-                class="action-btn"
-                id="tls-discard"
-                type="button"
-                disabled
-                data-i18n="admin.security.policy-discard"
-              >
-                Discard</button
-              ><button
-                class="action-btn primary"
-                id="tls-save"
-                type="button"
-                disabled
-                data-i18n="admin.security.policy-save"
-              >
-                Save
-              </button>
-            </p>
+            <div id="tls-foot"></div>
             <p
               class="setting-desc action-note"
               id="tls-note"

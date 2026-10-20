@@ -117,6 +117,18 @@ let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 setTimeout(() => {
   const d = w.document, t = (s) => [...d.querySelectorAll(s)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
+  {
+    // The save-patterns guard on the page as drawn (tests/save_guard.py reads the source): every Save is a section's,
+    // in its footer with Discard just before it, and off while nothing has changed.
+    const saves = [...d.querySelectorAll('button')].filter((b) => /^Save\b/.test(b.textContent.trim()));
+    const odd = saves.filter((b) => !b.classList.contains('aw-save') || !b.parentElement.classList.contains('aw-foot')
+      || !b.previousElementSibling || !b.previousElementSibling.classList.contains('aw-discard'));
+    check(`save guard: every Save on the pages a section's, Discard just before it (${saves.length} of them)`, saves.length >= 25 && !odd.length,
+      odd.map((b) => (b.closest('[id]') || {}).id).join(', '));
+    const on = saves.filter((b) => !b.disabled);
+    check('  each off while nothing has changed, and nothing counted unsaved', !on.length && !w.AW.unsaved().length,
+      on.map((b) => (b.closest('[id]') || {}).id).join(', ') + ' / ' + w.AW.unsaved().map((x) => x.id).join(', '));
+  }
   const side = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
   // The app-first menu: Overview, Apps (a page per app, from the manifests), Moderation, System
   // (accounts under System, not Box), the Doctors last; nothing left over.

@@ -146,13 +146,13 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   await wait();
   check(
     "selecting a policy only stages it",
-    posted.length === beforeDraft && !d.getElementById("tls-save").disabled,
+    posted.length === beforeDraft && !d.querySelector("#tls-foot .aw-save").disabled,
   );
-  d.getElementById("tls-discard").click();
+  d.querySelector("#tls-foot .aw-discard").click();
   check(
     "Discard restores applied settings without a request",
     posted.length === beforeDraft &&
-      d.getElementById("tls-save").disabled &&
+      d.querySelector("#tls-foot .aw-save").disabled &&
       d
         .querySelector('#tls-admin-http [data-value="allow"]')
         .getAttribute("aria-checked") === "true",
@@ -243,37 +243,37 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   sd.querySelector('#tls-transport [data-value="discovery"]').click();
   check(
     "HTTPS session enables restrictive selection but sends nothing",
-    securePosted.length === 0 && !sd.getElementById("tls-save").disabled,
+    securePosted.length === 0 && !sd.querySelector("#tls-foot .aw-save").disabled,
   );
-  sd.getElementById("tls-save").click();
+  sd.querySelector("#tls-foot .aw-save").click();
   await wait();
   check(
     "Save applies the selected transport once",
     securePosted.length === 1 &&
       securePosted[0].transport === "discovery" &&
       securePosted[0].action === "settings" &&
-      sd.getElementById("tls-save").disabled,
+      sd.querySelector("#tls-foot .aw-save").disabled,
   );
   sd.querySelector('#policy-choices [data-value="console"]').click();
   check(
     "root lock is staged, not immediate",
-    securePosted.length === 1 && !sd.getElementById("policy-save").disabled,
+    securePosted.length === 1 && !sd.querySelector("#policy-foot .aw-save").disabled,
   );
   page.confirm = false;
-  sd.getElementById("policy-save").click();
+  sd.querySelector("#policy-foot .aw-save").click();
   await wait();
   check(
     "root lock cannot save without confirmation",
     securePosted.length === 1,
   );
-  sd.getElementById("policy-discard").click();
+  sd.querySelector("#policy-foot .aw-discard").click();
   check(
     "Discard clears the staged root lock",
-    sd.getElementById("policy-save").disabled,
+    sd.querySelector("#policy-foot .aw-save").disabled,
   );
   sd.querySelector('#policy-choices [data-value="console"]').click();
   page.confirm = true;
-  sd.getElementById("policy-save").click();
+  sd.querySelector("#policy-foot .aw-save").click();
   await wait();
   check(
     "confirmed lock is saved, then the hub cannot reverse it",

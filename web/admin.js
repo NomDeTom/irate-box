@@ -3626,7 +3626,7 @@ function scanButtons(f, busy) {
       textContent: a.label,
       disabled: busy,
       title: secChosen(f.id, a)
-        ? "Selected. Select Save changes to apply this change. Select the button again to cancel the selection."
+        ? "Selected. Select Save below to apply this change. Select the button again to cancel the selection."
         : "",
       onclick: (ev) => secChoose(f, a, ev.currentTarget),
     });
@@ -5724,6 +5724,7 @@ function renderHealth(data) {
     const done = (data.results || []).find((r) => r.id === hlWaiting.id);
     if (done) {
       hlNote = { fid: hlWaiting.fid, text: resultSaid(done), ok: done.ok };
+      if (hlWaiting.onDone) hlWaiting.onDone(done.ok, resultSaid(done));
       hlWaiting = null;
       return renderHealth(data);
     }
@@ -5965,9 +5966,33 @@ const CLOCK_STATE = {
   "not-found": ["warn", "Not found"],
   unknown: ["ok", "Not reported"],
 };
-let clkDraft = null,
-  clkSaved = "";
-function renderClockSources(c, busy) {
+// The clock's sources as a section: its value the choice (service, pool, GPS, module, serve, local server); the
+// page's polls redraw the states, and a draft is kept over a saved choice that changes.
+let clkLast = null;
+const clkSec = AW.section({
+  id: "clock-sources",
+  label: "Time sources",
+  saved: null,
+  why: (c, v) =>
+    !v.pool && !v.gps && !v.module && !v.local
+      ? "Select at least one source: with none, nothing sets the clock."
+      : null,
+  ask: (c, v) => clockAsk(v, clkLast.c),
+  save: (c, v) => {
+    const j = AW.job();
+    hlRequest(
+      {
+        action: "fix",
+        choice: `clock-sources:${v.service}:${v.pool ? 1 : 0}:${v.gps ? 1 : 0}:${v.module ? 1 : 0}:${v.serve ? 1 : 0}:${v.local || "-"}`,
+      },
+      "clock-sources",
+      j.done,
+    );
+    return j;
+  },
+  onChange: () => clkLast && renderClockSources(clkLast.c, clkLast.busy, true),
+});
+function renderClockSources(c, busy, own) {
   const box = document.getElementById("clock-sources");
   if (!box) return;
   if (!c) {
@@ -5976,8 +6001,10 @@ function renderClockSources(c, busy) {
     );
     return;
   }
+  clkLast = { c, busy };
   if (
-    clkDraft &&
+    !own &&
+    clkSec.dirty() &&
     box.contains(document.activeElement) &&
     document.activeElement.tagName === "INPUT"
   )
@@ -5991,20 +6018,26 @@ function renderClockSources(c, busy) {
     serve: !!c.serve,
     local: c.local || "",
   };
-  const savedKey = JSON.stringify(saved);
-  if (savedKey !== clkSaved) {
-    clkSaved = savedKey;
-    clkDraft = null;
-  }
-  const d = clkDraft || { ...saved };
+  // The saved choice, when it changes: the section draws this again (onChange) with a draft kept over it.
+  if (
+    !clkSec.saving() &&
+    (!clkSec.loaded() ||
+      JSON.stringify(saved) !==
+        JSON.stringify(
+          Object.fromEntries(
+            Object.keys(saved).map((k) => [k, clkSec.savedValue(k)]),
+          ),
+        ))
+  )
+    return clkSec.update(saved);
+  const d = clkSec.values();
   const set = (k, v) => {
-    clkDraft = { ...d, ...(clkDraft || {}), [k]: v };
     if (k === "service" && v === "image") {
-      clkDraft.gps = false;
-      clkDraft.module = false;
-      clkDraft.serve = false;
+      clkSec.set("gps", false, true);
+      clkSec.set("module", false, true);
+      clkSec.set("serve", false, true);
     }
-    renderClockSources(c, busy);
+    clkSec.set(k, v);
   };
   const tick = (key, label, desc, disabled) =>
     el(
@@ -6013,7 +6046,7 @@ function renderClockSources(c, busy) {
       el("input", {
         type: "checkbox",
         checked: !!d[key],
-        disabled: busy || disabled,
+        disabled: busy || disabled || clkSec.disabled(),
         onchange: (e) => set(key, e.target.checked),
       }),
       el(
@@ -6033,59 +6066,35 @@ function renderClockSources(c, busy) {
     disabled: busy,
     "aria-label": "A time server on the local network",
   });
-  const note = el("p", { className: "setting-desc" });
-  const footBox = el("div", { className: "library-buttons" });
-  const foot = () => {
-    const cur = clkDraft || d;
-    const diff = !!clkDraft && JSON.stringify(clkDraft) !== savedKey;
-    const none = !cur.pool && !cur.gps && !cur.module && !cur.local;
-    note.textContent = diff
-      ? none
-        ? "Select at least one source: with none, nothing sets the clock."
-        : "Unsaved changes."
-      : "";
-    footBox.replaceChildren(
-      actionButton(
-        "Discard",
-        () => {
-          clkDraft = null;
-          renderClockSources(c, busy);
-        },
-        { disabled: busy || !diff },
-      ),
-      " ",
-      actionButton("Save", () => saveClock(cur, c), {
-        className: "primary",
-        disabled: busy || !diff || none,
-      }),
-      ...(c.changed
-        ? [
-            " ",
-            actionButton(
-              "Restore the image's settings",
-              () => {
-                if (
-                  confirm(
-                    "Put the clock's sources back as the image had them? Anything this page installed is removed, and what it removed is installed again.",
-                  )
-                ) {
-                  clkDraft = null;
-                  hlRequest(
-                    { action: "fix", choice: "clock-undo" },
-                    "clock-sources",
-                  );
-                }
-              },
-              { disabled: busy },
-            ),
-          ]
-        : []),
-    );
-  };
-  addr.addEventListener("input", () => {
-    clkDraft = { ...d, ...(clkDraft || {}), local: addr.value.trim() };
-    foot();
-  });
+  // Restore: an action, at once after its question.
+  const footBox = el(
+    "div",
+    { className: "library-buttons" },
+    ...(c.changed
+      ? [
+          actionButton(
+            "Restore the image's settings",
+            () => {
+              if (
+                confirm(
+                  "Put the clock's sources back as the image had them? Anything this page installed is removed, and what it removed is installed again.",
+                )
+              ) {
+                clkSec.discard();
+                hlRequest(
+                  { action: "fix", choice: "clock-undo" },
+                  "clock-sources",
+                );
+              }
+            },
+            { disabled: busy },
+          ),
+        ]
+      : []),
+  );
+  addr.addEventListener("input", () =>
+    clkSec.set("local", addr.value.trim(), true),
+  );
   const states = (c.sources || []).map((r) => {
     const [st, word] = CLOCK_STATE[r.state] || ["ok", r.state];
     return el(
@@ -6171,11 +6180,13 @@ function renderClockSources(c, busy) {
           el("ul", { className: "net-facts" }, ...states),
         )
       : null,
-    el("div", { className: "aw-foot" }, note, footBox),
+    clkSec.foot,
+    clkSec.reason,
+    footBox,
   );
-  foot();
 }
-function saveClock(cur, c) {
+// The one question at Save: what the choice installs, removes or opens.
+function clockAsk(cur, c) {
   const words = [];
   if (cur.service === "chrony" && !c.chrony_installed)
     words.push("chrony is installed and systemd-timesyncd removed");
@@ -6198,29 +6209,20 @@ function saveClock(cur, c) {
   ]
     .filter(Boolean)
     .join(", ");
-  if (
-    !confirm(
-      `Use ${cur.service === "chrony" ? "chrony" : "the image's own time service"}, asking ${what}?` +
-        `${words.length ? ` ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`,
-    )
-  )
-    return;
-  clkDraft = null;
-  hlRequest(
-    {
-      action: "fix",
-      choice: `clock-sources:${cur.service}:${cur.pool ? 1 : 0}:${cur.gps ? 1 : 0}:${cur.module ? 1 : 0}:${cur.serve ? 1 : 0}:${cur.local || "-"}`,
-    },
-    "clock-sources",
+  return (
+    `Use ${cur.service === "chrony" ? "chrony" : "the image's own time service"}, asking ${what}?` +
+    `${words.length ? ` ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`
   );
 }
 
-async function hlRequest(body, fid) {
+// onDone(ok, why): told whether the root helper did it, or false when the hub refused it.
+async function hlRequest(body, fid, onDone) {
   try {
-    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid };
+    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid, onDone };
     hlNote = null;
   } catch (err) {
     hlNote = { fid, text: err.message, ok: false };
+    if (onDone) onDone(false, err.message);
   }
   loadHealth();
 }
@@ -13880,7 +13882,7 @@ function editKit(k, mine) {
     mine.remove_after == null ? "never" : String(mine.remove_after);
   kitsEl.addTitle.textContent = `Change ${k.title}`;
   kitsEl.addCancel.hidden = false;
-  kitsEl.add.querySelector("button[type=submit]").textContent = "Save toolkit";
+  kitsEl.add.querySelector("button[type=submit]").textContent = "Update toolkit";
   // In the custom card's drawer: open it if it isn't.
   const card = kitsEl.grid.querySelector('.aw-card[data-aw-id="kit-custom"]');
   if (card && !card.classList.contains("open"))
@@ -14158,9 +14160,49 @@ const tlsEl = {
 };
 let tlsWaiting = null;
 let tlsData = null;
-let tlsDraft = null,
-  policyDraft = null,
-  tlsOperation = null;
+let tlsOperation = null,
+  tlsJob = null; // the section's save waiting for the root helper (AW.job)
+// HTTPS's two choices, and the security policy: a section each, saved by the root helper (renderTls says when).
+const tlsLocked = () =>
+  !!tlsData && (tlsData.policy || {}).mode === "console";
+const tlsSave = (body) => {
+  const j = AW.job();
+  tlsJob = j;
+  tlsAct(body);
+  return j;
+};
+const tlsSec = AW.section({
+  id: "https-settings",
+  label: "HTTPS",
+  saved: null,
+  why: (c, v) =>
+    tlsLocked()
+      ? "Security policy is locked. Changes require the console or SSH."
+      : v.transport === "http" && v.admin_http === "block"
+        ? "Closing the administration pages over HTTP needs HTTPS on."
+        : null,
+  ask: (c, v) =>
+    v.transport === "https"
+      ? "Disable HTTP entirely? Captive-portal discovery over HTTP will stop. Continue?"
+      : null,
+  save: (c, v) => tlsSave({ action: "settings", ...v }),
+  onChange: () => drawTlsChoices(),
+});
+const policySec = AW.section({
+  id: "security-policy",
+  label: "Security policy",
+  saved: null,
+  ask: () =>
+    "Once saved, security policy can only be changed over a root-capable SSH session or the local console. The hub cannot undo this. Continue?",
+  why: () =>
+    tlsLocked()
+      ? "Security policy is locked. Changes require the console or SSH."
+      : null,
+  save: (c) => tlsSave({ action: "policy", mode: c.mode, confirmed: true }),
+  onChange: () => drawTlsChoices(),
+});
+document.getElementById("tls-foot").append(tlsSec.foot, tlsSec.reason);
+document.getElementById("policy-foot").append(policySec.foot, policySec.reason);
 const TLS_TRANSPORT = [
   ["http", "HTTPS disabled"],
   ["both", "HTTP and HTTPS"],
@@ -14205,8 +14247,22 @@ function drawTlsChoices() {
     transport: tlsData.transport || (tlsData.on ? "both" : "http"),
     admin_http: tlsData.admin_http || (tlsData.admin_only ? "block" : "allow"),
   };
-  const draft = tlsDraft || applied,
-    mode = policyDraft || (tlsData.policy || {}).mode || "hub";
+  // The applied settings, when they change: a choice not saved yet kept over them.
+  const appliedMode = (tlsData.policy || {}).mode || "hub";
+  if (
+    !tlsSec.saving() &&
+    (!tlsSec.loaded() ||
+      tlsSec.savedValue("transport") !== applied.transport ||
+      tlsSec.savedValue("admin_http") !== applied.admin_http)
+  )
+    return tlsSec.update(applied);
+  if (
+    !policySec.saving() &&
+    (!policySec.loaded() || policySec.savedValue("mode") !== appliedMode)
+  )
+    return policySec.update({ mode: appliedMode });
+  const draft = tlsSec.values(),
+    mode = policySec.get("mode");
   tlsChoices(
     tlsEl.transport,
     TLS_TRANSPORT,
@@ -14216,10 +14272,7 @@ function drawTlsChoices() {
       locked ||
       (value !== "http" && !tlsData.set_up) ||
       (!secure && ["discovery", "https"].includes(value)),
-    (value) => {
-      tlsDraft = { ...draft, transport: value };
-      drawTlsChoices();
-    },
+    (value) => tlsSec.set("transport", value),
   );
   tlsChoices(
     tlsEl.adminHttp,
@@ -14230,36 +14283,16 @@ function drawTlsChoices() {
       locked ||
       (value === "block" && (!secure || draft.transport === "http")) ||
       ["discovery", "https"].includes(draft.transport),
-    (value) => {
-      tlsDraft = { ...draft, admin_http: value };
-      drawTlsChoices();
-    },
+    (value) => tlsSec.set("admin_http", value),
   );
   tlsChoices(
     document.getElementById("policy-choices"),
     ROOT_POLICY,
     mode,
     () => busy || locked,
-    (value) => {
-      policyDraft = value;
-      drawTlsChoices();
-    },
+    (value) => policySec.set("mode", value),
   );
-  const changed =
-    draft.transport !== applied.transport ||
-    draft.admin_http !== applied.admin_http;
-  document.getElementById("tls-save").disabled =
-    busy ||
-    locked ||
-    !changed ||
-    (draft.transport === "http" && draft.admin_http === "block");
-  document.getElementById("tls-discard").disabled = busy || !tlsDraft;
-  document.getElementById("policy-save").disabled =
-    busy ||
-    locked ||
-    !policyDraft ||
-    mode === ((tlsData.policy || {}).mode || "hub");
-  document.getElementById("policy-discard").disabled = busy || !policyDraft;
+  const changed = tlsSec.dirty();
   document.getElementById("policy-state").textContent = locked
     ? "Applied: console/SSH only. The hub cannot change security policy."
     : "Applied: hub administrators may change policy. This trusts the hub to convey administrator approval.";
@@ -14289,9 +14322,9 @@ function renderTls(d) {
         done.ok,
         tlsOperation === "policy" ? noteEl("policy-note") : tlsEl.note,
       );
+      if (tlsJob) tlsJob.done(done.ok, resultSaid(done));
+      tlsJob = null;
       if (done.ok) {
-        if (tlsOperation === "policy") policyDraft = null;
-        else tlsDraft = null;
         document
           .getElementById(
             tlsOperation === "policy" ? "security-policy" : "security-https",
@@ -14343,40 +14376,14 @@ async function tlsAct(body) {
     );
     loadTls();
   } catch (err) {
-    say(err.message, false, tlsEl.note);
+    if (tlsJob) {
+      tlsJob.done(false, err.message);
+      tlsJob = null;
+    } else say(err.message, false, tlsEl.note);
   }
 }
 tlsEl.make.addEventListener("click", () => tlsAct({ action: "make" }));
 tlsEl.box.addEventListener("click", () => tlsAct({ action: "box" }));
-document.getElementById("tls-discard").addEventListener("click", () => {
-  tlsDraft = null;
-  drawTlsChoices();
-});
-document.getElementById("policy-discard").addEventListener("click", () => {
-  policyDraft = null;
-  drawTlsChoices();
-});
-document.getElementById("policy-save").addEventListener("click", () => {
-  if (
-    !policyDraft ||
-    !confirm(
-      "Once saved, security policy can only be changed over a root-capable SSH session or the local console. The hub cannot undo this. Continue?",
-    )
-  )
-    return;
-  tlsAct({ action: "policy", mode: policyDraft, confirmed: true });
-});
-document.getElementById("tls-save").addEventListener("click", () => {
-  if (!tlsDraft) return;
-  if (
-    tlsDraft.transport === "https" &&
-    !confirm(
-      "Disable HTTP entirely? Captive-portal discovery over HTTP will stop. Continue?",
-    )
-  )
-    return;
-  tlsAct({ action: "settings", ...tlsDraft });
-});
 tlsEl.own.addEventListener("submit", (e) => {
   e.preventDefault();
   const f = tlsEl.own.elements;
@@ -14416,7 +14423,7 @@ async function loadAccounts() {
     acctEl.counts.textContent = "Could not read the accounts.";
   }
 }
-// The box's own login (for scripts): its reach, from the safest. A chip only selects; Save changes applies it,
+// The box's own login (for scripts): its reach, from the safest. A chip only selects; Save applies it,
 // after the page has said what the change stops. The password only at the console.
 const LOGIN_REACH = [
   [
