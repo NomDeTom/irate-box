@@ -1382,6 +1382,12 @@ body.admin button.link-button {
 .admin-side {
   position: sticky;
   top: 1rem;
+  /* Taller than the window (many pages, groups open): it scrolls on its own, not with the pane. */
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .admin-menu {
   display: none;
@@ -1836,6 +1842,8 @@ body.about h3 {
   .admin-side {
     position: relative;
     top: 0;
+    max-height: none;
+    overflow: visible;
   }
   .admin-menu {
     display: flex;
@@ -3884,6 +3892,8 @@ html:has(> body.admin) {
   .admin-side {
     position: relative;
     top: 0;
+    max-height: none;
+    overflow: visible;
   }
   .admin-menu {
     display: flex;
@@ -4439,6 +4449,9 @@ html:has(> body.admin) {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.25rem 0.6rem;
+  /* The card's whole width, in a card that is itself a column (.sec-choice: a .setting, align-items: flex-start),
+     or a short title's state wraps under it instead of standing at the right. */
+  align-self: stretch;
 }
 .ftitle {
   margin: 0;
@@ -4545,11 +4558,6 @@ a.action-btn.go-btn {
 }
 .fchecks .fdo-cmd code {
   font-size: 0.75rem;
-}
-.faccept {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.4rem;
 }
 .findings.compact .finding {
   padding: 0.35rem 0.7rem;

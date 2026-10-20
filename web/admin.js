@@ -3848,6 +3848,22 @@ const evidenceList = (items) =>
 // r: {id, state, title, detail, why, notes[], evidence[], how, commands[], controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
 function findingRow(r) {
   const state = r.state || "warn";
+  // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request. It sits
+  // with the card's other actions, before the folds of detail, not after them.
+  const accept = r.accept
+    ? el("button", {
+        type: "button",
+        className: "action-btn small",
+        textContent: r.accept.on ? "Reopen" : r.accept.label || "Accept risk",
+        title: r.accept.on
+          ? "Return this finding to the unresolved list."
+          : r.accept.hint ||
+            "Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.",
+        onclick: () =>
+          (r.accept.act || secAccept)(r.accept.key, r.accept.title, !r.accept.on),
+      })
+    : null;
+  const controls = [...(r.controls || []), accept].filter(Boolean);
   return el(
     "article",
     { className: `finding finding-${state}`, id: r.id || "" },
@@ -3869,7 +3885,7 @@ function findingRow(r) {
       el("p", { className: "fdetail fnote", textContent: n }),
     ),
     evidenceList(r.evidence || []),
-    r.how || (r.controls || []).length || (r.commands || []).length
+    r.how || controls.length || (r.commands || []).length
       ? el(
           "div",
           { className: "fdo" },
@@ -3890,8 +3906,8 @@ function findingRow(r) {
           (r.commands || []).length
             ? el("div", { className: "fdo-cmds" }, ...r.commands.map(copyBox))
             : null,
-          (r.controls || []).length
-            ? el("div", { className: "fdo-controls" }, ...r.controls)
+          controls.length
+            ? el("div", { className: "fdo-controls" }, ...controls)
             : null,
         )
       : null,
@@ -3964,30 +3980,6 @@ function findingRow(r) {
               ),
             ),
           ),
-        )
-      : null,
-    // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request.
-    r.accept
-      ? el(
-          "div",
-          { className: "faccept" },
-          el("button", {
-            type: "button",
-            className: "action-btn small",
-            textContent: r.accept.on
-              ? "Reopen"
-              : r.accept.label || "Accept risk",
-            title: r.accept.on
-              ? "Return this finding to the unresolved list."
-              : r.accept.hint ||
-                "Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.",
-            onclick: () =>
-              (r.accept.act || secAccept)(
-                r.accept.key,
-                r.accept.title,
-                !r.accept.on,
-              ),
-          }),
         )
       : null,
   );
