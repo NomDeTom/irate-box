@@ -315,56 +315,191 @@ const AW = (() => {
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openStack.length) closeCard(openStack[openStack.length - 1]); });
 
-  // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts ----
+  // ---- A section: a group of settings saved together (a card, a block, one network, one app's access) ----
+  // Every section keeps the same rules (the save-patterns plan):
+  //   1 its draft is compared with the saved values: Save and Discard are off while nothing differs, "Unsaved
+  //     changes" shows only while something does; until the box's values are read (saved null) it says so,
+  //     its controls are off and nothing counts as changed
+  //   2 one footer at its end: Discard, then Save (the primary); the words are always Save and Discard
+  //   3 one question at Save (opts.ask), never one per pick
+  //   4 "Saving…" until the save resolves (a queued job: until the root helper answers, AW.job); the draft
+  //     cleared only on success; on failure it stays, with the reason under the footer
+  //   5 the page's polling (update) never overwrites a changed value; a saved value changed underneath one
+  //     ("Changed elsewhere") is said, and the draft kept
+  //   6 every section with unsaved changes is listed (AW.unsaved), for the sidebar's mark and leaving the page
+  // opts: {id, label, saved: {key: value} | null, save(changes, draft) → Promise (false: not saved, said already;
+  //        a string: said when saved; throws: the reason), ask(changes, draft) → a question or null,
+  //        idle: the footer's words while nothing has changed, onChange(section): draw the controls again}
+  const same = (a, b) => a === b || (a !== null && b !== null && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
+  const copy = (v) => (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
+  const sections = new Map();   // id -> the section last made with it (its draft outlives a redraw)
+  const IDLE = 'Changes apply after you select Save.';
+  let unsavedWas = '';
+  function tellUnsaved() {
+    const now = unsaved().map((x) => x.id).join('|');
+    if (now === unsavedWas || typeof document === 'undefined') return;
+    unsavedWas = now;
+    document.dispatchEvent(new CustomEvent('aw-unsaved'));
+  }
+  function section(opts = {}) {
+    const before = opts.id ? sections.get(opts.id) : null;
+    let saved = opts.saved == null ? null : copy(opts.saved);
+    let draft = saved ? copy(saved) : {};
+    const elsewhere = new Set();
+    let saving = false, reason = '', said = '';
+    const s = { id: opts.id || null, label: opts.label || '', opts };
+    // A redraw of the same section: its unsaved changes carried over, as the page's polling would (rule 5).
+    if (before && before.dirty() && saved) {
+      for (const [k, v] of Object.entries(before.changes())) {
+        if (!(k in saved)) continue;
+        draft[k] = copy(v);
+        if (!same(before.savedValue(k), saved[k])) elsewhere.add(k);
+      }
+      for (const k of before.elsewhereKeys()) if (k in saved && !same(draft[k], saved[k])) elsewhere.add(k);
+    }
+    const saveB = btn('Save', { class: 'action-btn primary aw-save', disabled: true });
+    const discardB = btn('Discard', { class: 'action-btn aw-discard', disabled: true });
+    const note = h('span', { class: 'note', role: 'status' });
+    const why = h('p', { class: 'setting-desc aw-reason', role: 'status', hidden: true });
+    s.foot = h('div', { class: 'aw-foot', 'data-section': opts.id || '' }, note, discardB, saveB);
+    s.reason = why;
+    s.loaded = () => saved !== null;
+    s.saving = () => saving;
+    s.get = (k) => draft[k];
+    s.savedValue = (k) => (saved ? saved[k] : undefined);
+    s.values = () => copy(draft);
+    s.changes = () => (saved ? Object.fromEntries(Object.keys(draft).filter((k) => k in saved && !same(draft[k], saved[k])).map((k) => [k, copy(draft[k])])) : {});
+    s.dirty = () => Object.keys(s.changes()).length > 0;
+    s.elsewhereKeys = () => [...elsewhere];
+    s.disabled = () => !saved || saving;
+    s.attached = () => s.foot.isConnected;
+    s.page = () => { const p = s.foot.closest && s.foot.closest('.admin-pane'); return p ? p.id : ''; };
+    const paint = () => {
+      const dirty = s.dirty();
+      saveB.disabled = !dirty || saving || !saved;
+      discardB.disabled = !dirty || saving || !saved;
+      s.foot.classList.toggle('aw-dirty', dirty);
+      note.textContent = !saved ? 'Reading the current settings…' : saving ? 'Saving…'
+        : dirty ? (elsewhere.size ? 'Unsaved changes. Changed elsewhere since you started: Save replaces it, Discard shows it.' : 'Unsaved changes.')
+          : said || opts.idle || IDLE;
+      why.textContent = reason;
+      why.hidden = !reason;
+      tellUnsaved();
+    };
+    const redraw = () => { paint(); if (opts.onChange) opts.onChange(s); };
+    // quiet: the control drew itself (a field being typed in): only the footer follows.
+    s.set = (k, v, quiet) => {
+      if (!saved || saving) return;
+      draft[k] = copy(v);
+      if (same(draft[k], saved[k])) elsewhere.delete(k);
+      said = '';
+      if (quiet) paint(); else redraw();
+    };
+    // The page's polling: the saved values as they are now. A value not changed here follows them; a changed one
+    // stays, said as changed elsewhere when the saved value moved under it.
+    s.update = (now) => {
+      if (now == null) return;
+      now = copy(now);
+      if (!saved || saving) { if (!saving) { saved = now; draft = copy(now); redraw(); } return; }
+      for (const k of Object.keys(now)) {
+        const mine = k in draft && !same(draft[k], saved[k]);
+        if (!mine) draft[k] = copy(now[k]);
+        else if (!same(saved[k], now[k])) elsewhere.add(k);
+        if (same(draft[k], now[k])) elsewhere.delete(k);
+      }
+      saved = now;
+      redraw();
+    };
+    s.discard = () => {
+      if (!saved || saving) return;
+      draft = copy(saved);
+      elsewhere.clear();
+      reason = '';
+      redraw();
+    };
+    s.save = async () => {
+      if (!saved || saving || !s.dirty()) return false;
+      const changes = s.changes();
+      const q = opts.ask ? opts.ask(changes, s.values()) : null;
+      if (q && !window.confirm(q)) return false;
+      saving = true;
+      reason = '';
+      said = '';
+      paint();
+      let r;
+      try {
+        r = opts.save ? await opts.save(changes, s.values()) : true;
+      } catch (e) {
+        r = false;
+        reason = String((e && e.message) || e || 'Not saved.');
+      }
+      saving = false;
+      if (r !== false) {
+        Object.assign(saved, copy(changes));
+        elsewhere.clear();
+        said = typeof r === 'string' ? r : '';
+      }
+      redraw();
+      return r !== false;
+    };
+    s.fail = (text) => { reason = text || ''; paint(); };
+    saveB.addEventListener('click', () => s.save());
+    discardB.addEventListener('click', () => s.discard());
+    if (opts.id) sections.set(opts.id, s);
+    paint();
+    return s;
+  }
+  // The sections with unsaved changes on the page now: [{id, label, page}].
+  function unsaved() {
+    return [...sections.values()].filter((x) => x.attached() && x.dirty()).map((x) => ({ id: x.id, label: x.label, page: x.page() }));
+  }
+  // A job the root helper runs: a promise a section's save returns, settled when the page's poll sees the answer.
+  //   const j = AW.job(); … j.done(ok, why) — ok false rejects with why (the reason under the footer).
+  function job() {
+    let ok, no;
+    const p = new Promise((a, b) => { ok = a; no = b; });
+    p.done = (fine, why) => (fine ? ok(why || true) : no(new Error(why || 'The root helper could not do it.')));
+    return p;
+  }
+
+  // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts, as a section ----
   //   rows: [{key, label, kind: 'toggle'|'choice'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
   //           max (text), unset, shown, warn (colour)}]
-  //   opts: {save(values) → Promise|void, id}: changed values are held until Save; Discard puts them back.
-  //   With an id, a block drawn again (the page's polling, another block's Save) keeps its unsaved changes.
-  const keptDrafts = new Map();   // id -> {key: value} changed and not saved
+  //   opts: {save(changes) → Promise|void, id, label, ask, idle}: the section's (above); no save, no footer.
   function settings(rows, opts = {}) {
-    const values = Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key, r.value]));
-    const draft = { ...values };
-    const kept = opts.id && keptDrafts.get(opts.id);
-    if (kept) for (const [k, v] of Object.entries(kept)) if (k in draft) draft[k] = v;
     const box = h('div', { class: 'aw-settings', 'data-aw-scope': opts.scope ? '' : null });
-    const saveB = btn('Save', { class: 'action-btn primary', disabled: true });
-    const discard = btn('Discard', { disabled: true });
-    const changed = () => rows.some((r) => r.key && draft[r.key] !== values[r.key]);
-    const sync = () => {
-      saveB.disabled = discard.disabled = !changed();
-      if (!opts.id) return;
-      const out = Object.fromEntries(Object.keys(draft).filter((k) => draft[k] !== values[k]).map((k) => [k, draft[k]]));
-      if (Object.keys(out).length) keptDrafts.set(opts.id, out); else keptDrafts.delete(opts.id);
-    };
-    const draw = () => box.replaceChildren(...rows.map(row), opts.save ? h('div', { class: 'aw-foot' },
-      h('span', { class: 'note', text: 'Changes apply after you select Save.' }), discard, saveB) : null);
+    const saved = Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key, r.value]));
+    const s = section({ ...opts, saved, onChange: () => draw() });
+    const draw = () => box.replaceChildren(...rows.map(row), ...(opts.save ? [s.foot, s.reason] : []));
     function row(r) {
       let ctl;
+      const v = s.get(r.key), off = s.disabled();
       if (r.kind === 'toggle') {
-        ctl = h('button', { type: 'button', class: 'chip-btn' + (draft[r.key] ? ' active' : ''), 'aria-pressed': String(!!draft[r.key]),
-          onclick: (e) => { draft[r.key] = !draft[r.key]; e.currentTarget.classList.toggle('active', draft[r.key]);
-            e.currentTarget.setAttribute('aria-pressed', String(draft[r.key])); e.currentTarget.textContent = draft[r.key] ? 'On' : 'Off'; sync(); } },
-          draft[r.key] ? 'On' : 'Off');
+        ctl = h('button', { type: 'button', class: 'chip-btn' + (v ? ' active' : ''), 'aria-pressed': String(!!v), disabled: off,
+          onclick: () => s.set(r.key, !s.get(r.key)) }, v ? 'On' : 'Off');
       } else if (r.kind === 'choice') {
         ctl = h('div', { class: 'chip-group', role: 'group', 'aria-label': r.label }, r.options.map((o) => {
-          const [v, t] = Array.isArray(o) ? o : [o, o];
-          return h('button', { type: 'button', class: 'chip' + (draft[r.key] === v ? ' selected' : ''), 'aria-pressed': String(draft[r.key] === v),
-            onclick: (e) => { draft[r.key] = v; e.currentTarget.parentNode.querySelectorAll('.chip').forEach((c) => {
-              c.classList.toggle('selected', c === e.currentTarget); c.setAttribute('aria-pressed', String(c === e.currentTarget)); }); sync(); } }, t);
+          const [ov, t] = Array.isArray(o) ? o : [o, o];
+          return h('button', { type: 'button', class: 'chip' + (same(v, ov) ? ' selected' : ''), 'aria-pressed': String(same(v, ov)), disabled: off,
+            onclick: () => s.set(r.key, ov) }, t);
         }));
       } else if (r.kind === 'button') ctl = btn(r.text || r.label, { onclick: r.onclick });
-      else if (r.kind === 'text') ctl = h('input', { type: 'text', value: draft[r.key] ?? '', maxlength: r.max || null, 'aria-label': r.label, oninput: (e) => { draft[r.key] = e.target.value; sync(); } });
-      else if (r.kind === 'colour') {
+      else if (r.kind === 'text') {
+        ctl = h('input', { type: 'text', value: v ?? '', maxlength: r.max || null, 'aria-label': r.label, disabled: off, 'data-aw-key': r.key,
+          oninput: (e) => s.set(r.key, e.target.value, true) });
+      } else if (r.kind === 'colour') {
         // A colour, or '' for the theme's own (r.unset names it); r.warn(value) says what's wrong with one, live.
-        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status' });
-        const pick = h('input', { type: 'color', value: draft[r.key] || r.shown || '#000000', 'aria-label': r.label });
-        const own = btn(r.unset || 'Default', { 'aria-pressed': String(!draft[r.key]) });
-        const show = () => { own.setAttribute('aria-pressed', String(!draft[r.key])); own.classList.toggle('active', !draft[r.key]);
-          warn.textContent = (draft[r.key] && r.warn && r.warn(draft[r.key])) || ''; };
-        pick.addEventListener('input', () => { draft[r.key] = pick.value.toLowerCase(); show(); sync(); });
-        own.addEventListener('click', () => { draft[r.key] = ''; show(); sync(); });
+        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (v && r.warn && r.warn(v)) || '' });
+        const pick = h('input', { type: 'color', value: v || r.shown || '#000000', 'aria-label': r.label, disabled: off, 'data-aw-key': r.key });
+        const own = btn(r.unset || 'Default', { 'aria-pressed': String(!v), class: 'action-btn' + (!v ? ' active' : ''), disabled: off });
+        pick.addEventListener('input', () => {
+          s.set(r.key, pick.value.toLowerCase(), true);
+          warn.textContent = (r.warn && r.warn(s.get(r.key))) || '';
+          own.setAttribute('aria-pressed', 'false');
+          own.classList.remove('active');
+        });
+        own.addEventListener('click', () => s.set(r.key, ''));
         ctl = h('span', { class: 'aw-colour' }, pick, own, warn);
-        show();
       }
       else ctl = h('span', { class: 'output-value', text: r.value ?? '' });
       return h('div', { class: 'aw-field', 'data-setting': r.key || null, 'data-decision-row': r.decision || null },
@@ -372,20 +507,9 @@ const AW = (() => {
         r.decision ? h('span', { class: 'info-pill', title: 'Asked in the setup steps', text: 'setup decision' }) : null,
         r.note ? h('small', { class: 'setting-desc', text: r.note }) : null);
     }
-    discard.addEventListener('click', () => { Object.assign(draft, values); draw(); sync(); });
-    saveB.addEventListener('click', async () => {
-      saveB.disabled = true;
-      const out = Object.fromEntries(Object.keys(draft).filter((k) => draft[k] !== values[k]).map((k) => [k, draft[k]]));
-      try {
-        let r = opts.save(out); if (r && r.then) r = await r;
-        // false: not saved (refused or cancelled, and said so): the changes stay.
-        if (r !== false) { Object.assign(values, draft); if (opts.id) keptDrafts.delete(opts.id); }
-      } catch (e) { box.querySelector('.aw-foot .note').textContent = String(e.message || e); }
-      sync();
-    });
     draw();
-    sync();
-    box.values = () => ({ ...draft });
+    box.section = s;
+    box.values = s.values;
     return box;
   }
 
@@ -587,7 +711,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, choices, chipSelect, chipSelects, quietSaves };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, quietSaves };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
