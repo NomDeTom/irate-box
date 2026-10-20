@@ -10851,6 +10851,7 @@ function tileWords(id) {
 function drawTileOrder(openId) {
   const box = document.getElementById("tile-order-box");
   if (!box || !tilesData || !tilesDraft) return;
+  const asked = openId; // a row to open, asked for by a control (not the poll)
   // The row open before a redraw stays open (the poll and the other controls draw the list again).
   if (!openId) {
     const was = box.querySelector('.aw-row-head[aria-expanded="true"]');
@@ -10984,6 +10985,18 @@ function drawTileOrder(openId) {
         ].filter(Boolean),
     };
   });
+  // Drawn again only when what it shows changed (a poll of access that brings nothing new leaves it, a filter
+  // typed and a selection in it too).
+  const key = JSON.stringify([
+    items.map(({ detail, ...x }) => x),
+    tilesDraft,
+    lockAll,
+  ]);
+  if (key === box.dataset.key && !asked && box.childElementCount) {
+    fillTileBlocks();
+    return;
+  }
+  box.dataset.key = key;
   box.replaceChildren(
     AW.shortList(items, { id: "tile-order-list" }),
     tilesSec.foot,

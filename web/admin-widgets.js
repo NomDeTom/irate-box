@@ -618,8 +618,13 @@ const AW = (() => {
     // Short chip labels, one line saying what the chosen one means: an option's data-says text, shown under the chips and changing with them.
     const says = [...sel.options].some((o) => o.dataset.says) ? h('p', { class: 'setting-desc chip-says' }) : null;
     if (says) group.after(says);
+    let drawn = '';
     const draw = () => {
       const opts = [...sel.options];
+      // Drawn again only when something about them changed (a poll setting the same value redraws nothing).
+      const key = JSON.stringify([sel.disabled, opts.map((o) => [o.value, o.textContent, o.selected, o.disabled, o.title])]);
+      if (key === drawn) return;
+      drawn = key;
       const few = opts.length > 0 && opts.length <= CHIPS_AT;
       sel.hidden = few;
       group.hidden = !few;
@@ -715,7 +720,45 @@ const AW = (() => {
     f.section = s;
     return s;
   }
+  // ---- A selection survives the page's polling ----
+  // While someone has text selected in a block, drawing that block again with the same content is skipped, so the
+  // selection (and a copy in progress) is not taken away by a poll that brings nothing new. Content that changed is
+  // drawn as ever; with nothing selected, nothing is different.
+  const escapeHTML = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\u00a0/g, '&nbsp;');
+  function selectionIn(node) {
+    const sel = typeof document.getSelection === 'function' ? document.getSelection() : null;
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
+    const r = sel.getRangeAt(0);
+    return node.contains(r.startContainer) || node.contains(r.endContainer) || r.intersectsNode(node);
+  }
+  let kept = false;
+  function keepSelections() {
+    if (kept || typeof Element === 'undefined' || typeof Node === 'undefined') return;
+    kept = true;
+    const rc = Element.prototype.replaceChildren;
+    Element.prototype.replaceChildren = function (...nodes) {
+      // A block with fields is always drawn: a value typed or a tick is not in its HTML, so "the same" can't be told.
+      const fields = (n) => n && n.nodeType === 1 && (n.matches('input, select, textarea') || n.querySelector('input, select, textarea'));
+      if (selectionIn(this) && !nodes.some(fields)) {
+        const html = nodes.map((n) => (n == null ? '' : typeof n === 'string' ? escapeHTML(n) : n.nodeType === 3 ? escapeHTML(n.data) : n.outerHTML || '')).join('');
+        if (html === this.innerHTML) return undefined;
+      }
+      return rc.apply(this, nodes);
+    };
+    const tc = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+    if (tc && tc.set) {
+      Object.defineProperty(Node.prototype, 'textContent', { configurable: true, enumerable: tc.enumerable,
+        get() { return tc.get.call(this); },
+        set(v) {
+          // Only a block of plain text: setting it with its own words again changes nothing there.
+          if (this.nodeType === 1 && v != null && String(v) === tc.get.call(this) && [...this.childNodes].every((c) => c.nodeType === 3)
+            && selectionIn(this)) return;
+          tc.set.call(this, v);
+        } });
+    }
+  }
   if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+    keepSelections();
     const start = () => {
       updatePatterns(document);
       chipSelects(document);
