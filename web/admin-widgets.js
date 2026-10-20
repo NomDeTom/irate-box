@@ -525,7 +525,7 @@ const AW = (() => {
       else ctl = h('span', { class: 'output-value', text: r.value ?? '' });
       return h('div', { class: 'aw-field', 'data-setting': r.key || null, 'data-decision-row': r.decision || null },
         h('span', { class: 'aw-label', text: r.label }), ctl,
-        r.decision ? h('span', { class: 'info-pill', title: 'Asked in the setup steps', text: 'setup decision' }) : null,
+        r.decision ? h('span', { class: 'kind-tag', title: 'Asked in the setup steps', text: 'Setup decision' }) : null,
         r.note ? h('small', { class: 'setting-desc', text: r.note }) : null);
     }
     draw();

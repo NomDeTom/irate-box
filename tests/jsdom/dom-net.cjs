@@ -87,7 +87,8 @@ setTimeout(() => {
     && panel('network/status').contains(d.getElementById('up-events')));
   const sc = [...d.querySelectorAll('#net-status-cards .net-card')];
   check('Status: a card per link, with its uptime', sc.length === 1 && /wlan0/.test(sc[0].querySelector('h4').textContent) && !!sc[0].querySelector('.net-uptime')
-    && /the box's link/.test(sc[0].textContent), sc.map((c) => c.textContent.slice(0, 80)));
+    && /The box's link/.test(sc[0].textContent) && sc[0].querySelector('h4').textContent === 'wlan0', sc.map((c) => c.textContent.slice(0, 80)));
+  check('  its kind and role as labels beside the name, not in its heading', [...sc[0].querySelectorAll('.fhead > .kind-tag')].map((x) => x.textContent).join('|') === "WiFi|The box's link");
   check('  one line for the whole', /reaches your network through wlan0 \(WiFi\)/.test(t('#net-overview')[0]), t('#net-overview')[0]);
   check('Access: WiFi now, and the networks it knows', /ExampleWiFi/.test(t('#net-wifi-now')[0]) && d.querySelectorAll('#net-saved li').length >= 1
     && /in use/.test(t('#net-saved')[0]), t('#net-saved')[0]);
@@ -161,7 +162,7 @@ setTimeout(() => {
   check('  the background scan in words', /Looks for a stronger access point every 30 s while the signal is weaker than -65 dBm, every 5 min while it is stronger/
     .test(t('#net-roaming')[0]), t('#net-roaming')[0]);
   check('  Hardware lists the access points and the choices that work here', /aa:00:00:00:00:03\s*Channel 11/.test(t('#net-roam-caps')[0])
-    && /yes\s*Lock to/.test(t('#net-roam-caps')[0]), t('#net-roam-caps')[0]);
+    && /Lock to one access point\s*Available/.test(t('#net-roam-caps')[0]) && !d.querySelector('#net-roam-caps .ok-pill'), t('#net-roam-caps')[0]);
   tiles('up-roaming')[2].querySelector('input').click();
   const lockAps = d.getElementById('up-lock-aps');
   check('  choosing the lock shows the access points, the strongest preselected', !lockAps.hidden && lockAps.querySelectorAll('input').length === 3

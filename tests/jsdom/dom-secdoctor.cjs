@@ -99,7 +99,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   // The joint report on the page: one list, each item ending in what to do.
   const rows = () => [...d.querySelectorAll('#joint-items .finding')];
   check('the counters: after merging, less what is not for this box', /^3 all\s*1 to fix\s*2 to review$/.test(t(d.getElementById('joint-summary'))), t(d.getElementById('joint-summary')));
-  check('one list, worst first: what it is about, the sources that agree', rows().length === 3 && /^Action required/.test(t(rows()[0])) && /Kernel link protections/.test(t(rows()[0]))
+  check('one list, worst first: what it is about, the sources that agree', rows().length === 3 && /^Kernel link protections\s*To fix/.test(t(rows()[0]))
     && /2 sources agree/.test(t(rows()[0])), rows().map(t).join(' || '));
   const kl = rows()[0];
   check('  a cure is a button on its item (the Security page\'s, from its scan now), not a block of its own', [...kl.querySelectorAll('button')].some((b) => t(b) === "Install Debian's defaults")
@@ -115,7 +115,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const infoRow = d.getElementById('find-finding-doctor-units-root');
   check('information only: folded apart under For information, not counted, said as that with why',
     !d.getElementById('joint-info-fold').hidden && d.getElementById('joint-info').contains(infoRow) && /\(1\)/.test(t(d.getElementById('joint-info-count')))
-    && !d.getElementById('joint-items').contains(infoRow) && /^Information$/i.test(t(infoRow.querySelector('.fstate')))
+    && !d.getElementById('joint-items').contains(infoRow) && /^Info$/.test(t(infoRow.querySelector('.fstate')))
     && /Information only: nothing you can change on this box fixes this\. irate-box's own work: an update adds the missing lines/.test(t(infoRow.querySelector('.fhow'))),
     infoRow && t(infoRow));
   check('not for this box: folded apart, not counted', !d.getElementById('joint-nothere-fold').hidden && /AppArmor/.test(t(d.getElementById('joint-nothere'))) && /\(1\)/.test(t(d.getElementById('joint-nothere-count'))));
@@ -142,10 +142,10 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('  accepted: out of the list and the counts, in its own fold with Reopen', !rows().some((r) => /Bluetooth/.test(t(r)))
     && /Bluetooth/.test(t(d.getElementById('joint-accepted'))) && /Reopen/.test(t(d.getElementById('joint-accepted'))) && /^2 all/.test(t(d.getElementById('joint-summary'))));
   w.renderSecurity(sec);
-  const pills = [...d.querySelectorAll('#joint-fresh span')];
-  check('each source in one strip at the top: how fresh, what it covers in its title', pills.length === 3
-    && pills.some((x) => /^nmap: 1(\.0)? days? ago|^nmap: 24 h ago/.test(t(x)) && /Only which ports answer/.test(x.title)), pills.map(t).join(' | '));
-  check('  none stale here (the newest is a day old, under nmap\'s 30)', !pills.some((x) => x.className === 'warn-pill'), pills.map((x) => x.className + ':' + t(x)).join(' | '));
+  const pills = [...d.querySelectorAll('#joint-fresh .fresh-src')];
+  check('each source in one line at the top, as text: how fresh, what it covers in its title', pills.length === 3 && /^Sources: /.test(t(d.getElementById('joint-fresh')))
+    && pills.some((x) => /^nmap 1(\.0)? days? ago|^nmap 24 h ago/.test(t(x)) && /Only which ports answer/.test(x.title)), pills.map(t).join(' | '));
+  check('  none out of date here (the newest is a day old, under nmap\'s 30)', !pills.some((x) => x.classList.contains('warn')), pills.map((x) => x.className + ':' + t(x)).join(' | '));
   check('the badge counts what is to fix after merging (1), not every source\'s (3)', d.querySelector('a[href="#secdoctor"]').dataset.badge === '1', d.querySelector('a[href="#secdoctor"]').dataset.badge);
   check('no emoji to decode in the list', !/[✅⚠❌]/.test(t(d.getElementById('joint-items'))));
   check('the imported report is listed, with Remove', /nmap scan\.xml: 3 results/.test(t(d.getElementById('import-list'))) && [...d.querySelectorAll('#import-list button')].some((b) => t(b) === 'Remove'));
@@ -171,13 +171,13 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
   // Each line of the scan where it belongs, in the same shape.
   const ids = (sel) => [...d.querySelectorAll(`${sel} .ftitle`)].map(t).join('|');
-  const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .setting-name`)].map((n) => n.firstChild.textContent.trim()).join('|');
+  const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .fhead > .ftitle`)].map((n) => n.textContent.trim()).join('|');
   check('Security: the choices by subject, in the scan\'s order', titlesIn('#security-exposure') === 'Cockpit' && titlesIn('#security-login') === 'SSH password login|Passwordless sudo',
     `${titlesIn('#security-exposure')} / ${titlesIn('#security-login')}`);
-  check('  each says what it offers or that it is set (one fix here: Fix available)', /Fix available/.test(t(d.getElementById('sec-ssh-password').querySelector('.fstate'))));
+  check('  each says what it offers or that it is set (one fix here: To fix), beside its title', /^To fix$/.test(t(d.getElementById('sec-ssh-password').querySelector('.fhead > .fstate'))));
   const sudoCard = d.getElementById('sec-sudo-nopasswd');
-  check('  one fix and no choice: said as Fix available, not Waiting for your choice', !!sudoCard && /Fix available/.test(t(sudoCard.querySelector('.fstate')))
-    && !/Waiting for your choice/.test(t(sudoCard)), sudoCard && t(sudoCard));
+  check('  one fix and no choice: said as To fix, not To select', !!sudoCard && /^To fix$/.test(t(sudoCard.querySelector('.fstate')))
+    && !/To select/.test(t(sudoCard)), sudoCard && t(sudoCard));
   {
     // The Security doctor: a choice is linked to where it is made; a repair with one right answer stays a button.
     const ssh = w.jointDo({ page: ['ssh-password'], do: null }, sec, false).controls;

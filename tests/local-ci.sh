@@ -66,11 +66,12 @@ done
 echo "   ok"
 
 # The pages as a browser draws them (beyond CI, which has no browser image): the style audit of every admin pane, the
-# tile rows, the theme picker. Skipped, and said so, without Docker or the irate-chrome image (NO_BROWSER=1 skips them).
+# same audit on pages full of findings (card-audit: needs jsdom, as tests/jsdom/run.sh does), the tile rows, the
+# theme picker. Skipped, and said so, without Docker or the irate-chrome image (NO_BROWSER=1 skips them).
 step "Pages in a browser (tests/browser)"
 if [ "${NO_BROWSER:-0}" != 1 ] && [ "${NO_DOCKER:-0}" != 1 ] && command -v docker >/dev/null 2>&1 \
 	&& docker image inspect "${CHROME_IMAGE:-irate-chrome}" >/dev/null 2>&1; then
-	for t in tests/browser/style-audit.sh tests/browser/tile-rows.sh tests/browser/theme-picker.sh; do
+	for t in tests/browser/style-audit.sh tests/browser/card-audit.sh tests/browser/tile-rows.sh tests/browser/theme-picker.sh; do
 		echo "   $t"
 		out=$(bash "$t" 2>&1) || { printf '%s\n' "$out" | grep -E '^FAIL|^ {7}' | head -20; rc=$((rc + 1)); }
 	done
