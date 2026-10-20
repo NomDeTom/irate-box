@@ -226,9 +226,33 @@ def _plain_files(transport, admin_http, access_state=None):
 
 
 @locked
+def _https_by_default():
+    """HTTPS beside HTTP from the start (HUB_TLS_DEFAULT=both, the installer's default; --no-https gives off): on a box
+    that has never had a certificate made, imported or turned off (no record), its CA and certificate are made and
+    both transports recorded, the administration pages open over either. Only the files: the installer checks the
+    web server's configuration with them and activates it (and puts the old one back if it fails). A failure here
+    leaves the box on HTTP, said, and the install goes on."""
+    if os.environ.get("HUB_TLS_DEFAULT") != "both" or RECORD.exists():
+        return
+    try:
+        _new_ca(None)
+        make_cert()
+    except (OSError, subprocess.SubprocessError, Refused, ValueError) as exc:
+        print(
+            f"HTTPS not set up at install, the box stays on HTTP (Security, HTTPS makes it later): {exc}",
+            file=sys.stderr,
+        )
+        return
+    rec = _record()
+    rec.update(transport="both", admin_http="allow", on=True, admin_only=False)
+    _write(RECORD, json.dumps(rec), 0o644)
+    publish()
+
+
 def initialise():
     FRONT.mkdir(parents=True, exist_ok=True)
     _write(TLS / "ports.json", json.dumps({"http": PLAIN_PORTS, "https": TWINS}), 0o644)
+    _https_by_default()
     policy = settings()
     files = _plain_files(**policy)
     # An older installation may have enabled HTTPS before a new origin was added.  This
@@ -368,6 +392,14 @@ def _write(path, text, mode, group=None):
 def make_ca(nets=None):
     """The CA, made once (and again only when asked: a new CA must be installed again)."""
     previous = settings() if _record().get("cert") else None
+    _new_ca(previous, nets)
+    make_cert()
+    configure(**previous) if previous else front(True)
+    return _record()
+
+
+def _new_ca(previous, nets=None):
+    """The CA's key and certificate, and its record, made; the web server is not touched."""
     nets = (
         nets
         if nets is not None
@@ -420,9 +452,6 @@ def make_ca(nets=None):
         "fingerprint": fingerprint(CA_CERT),
     }
     _write(RECORD, json.dumps(rec), 0o644)
-    make_cert()
-    configure(**previous) if previous else front(True)
-    return _record()
 
 
 def fingerprint(cert):

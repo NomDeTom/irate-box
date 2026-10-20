@@ -73,6 +73,7 @@ run sim_seen.py
 run sim_svchistory.py
 run sim_rtc.py
 run sim_tls.py
+run sim_tls_default.py
 run sim_mesh.py
 run sim_accounts.py
 run sim_selfupdate.py
