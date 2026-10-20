@@ -95,26 +95,22 @@ const type = (input, value) => {
   surf.querySelector('.aw-save').click();
   await wait();
   check("a refresh policy refused: still changed, so the page's polling leaves it", surf.section.dirty());
+  // The NetworkManager defaults, a section: refused, then queued, then done.
   answer['/admin/network'] = refuse;
-  ev('defaultsDirty = { powersave: "2" }');
-  const dsave = ev('net.defaultsSave');
-  dsave.disabled = false;
-  dsave.click();
-  await wait();
-  check('NetworkManager defaults refused: the picks kept', ev('defaultsDirty.powersave') === '2');
+  const def = ev('defSec');
+  def.update({ powersave: 'default' });
+  def.set('powersave', '2');
+  await def.save();
+  check('NetworkManager defaults refused: the pick kept, the reason under Save', def.get('powersave') === '2' && def.dirty() && /Refused for the test/.test(t(def.reason)));
   answer['/admin/network'] = () => [202, { id: 'n1' }];
-  let cleared = false;
-  await ev('netRequest')({ action: 'connection' }, 'connection', () => { cleared = true; });
-  check("one network's settings: not cleared when only queued", !cleared && ev('netWaiting && netWaiting.id') === 'n1');
-  // The answer, as renderNetwork takes it from the poll: onOk only when the root helper did it.
-  ev('netWaiting').onOk();
-  check('  cleared once it is done', cleared);
-  ev('netWaiting = null');
-  dsave.click();
+  const queued = def.save();
   await wait();
-  check('  the NetworkManager defaults the same: kept while queued', ev('defaultsDirty.powersave') === '2');
-  ev('netWaiting.onOk(); netWaiting = null');
-  check('  and cleared once done', !Object.keys(ev('defaultsDirty')).length);
+  check('  sent: kept while queued, "Saving…"', def.dirty() && def.saving() && ev('netWaiting && netWaiting.id') === 'n1');
+  // The answer, as renderNetwork takes it from the poll.
+  ev('netWaiting').onDone(true, 'Done.');
+  await queued;
+  check('  saved once the root helper has done it', !def.dirty() && def.savedValue('powersave') === '2');
+  ev('netWaiting = null');
 
   // 3. Access: Cancel at the question keeps the draft.
   ev('accessDrafts.set("x", { mode: "off" })');

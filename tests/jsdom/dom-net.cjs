@@ -151,8 +151,8 @@ setTimeout(() => {
     && sens.value === '3' && /3 failed checks, or link drops, within 30 min/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
   check('no forgiveness left on the page', !d.getElementById('up-forgive') && !/[Ff]orgiveness/.test(d.getElementById('network').textContent));
   check('"what this will do" is shown', /^What this will do: it checks the link every/.test(t('#up-will')[0]), t('#up-will')[0]);
-  const save = d.getElementById('up-save');
-  check('Save is off until something changes', save.disabled && save.textContent === 'Save');
+  const save = d.querySelector('#up-foot .aw-save'), upNote = () => t('#up-foot .aw-foot .note')[0];
+  check('Save is off until something changes', save.disabled && save.textContent === 'Save' && /^Changes apply after/.test(upNote()), upNote());
   // Roaming: three tiles, roam normally chosen; a checkbox apart to ignore it.
   check('roaming: three tiles, Roam normally chosen, the ignore checkbox off', vals('up-roaming') === 'roam no-scan lock'
     && tiles('up-roaming')[0].classList.contains('chosen') && !d.getElementById('up-ignore-roams').checked, vals('up-roaming'));
@@ -169,7 +169,7 @@ setTimeout(() => {
   tiles('up-roaming')[0].querySelector('input').click();
   check('  back to roaming: the picker goes', lockAps.hidden);
   pace[3].querySelector('input').click();
-  check('choosing urgent marks it, and Save comes on', pace[3].classList.contains('chosen') && !save.disabled && /unsaved/.test(save.textContent));
+  check('choosing urgent marks it, and Save comes on, "Unsaved changes." beside it', pace[3].classList.contains('chosen') && !save.disabled && upNote() === 'Unsaved changes.');
   check('the sentence follows: urgent reboots after 30 min', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
   reach[3].querySelector('input').click();
   check('reach radio: the sentence says it never reboots', /resets the radio after 8 min/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);
@@ -184,7 +184,7 @@ setTimeout(() => {
   save.click();
   // Once that is saved, Save is off again; a bad value typed in turns it on, and is refused.
   setTimeout(() => {
-    check('saved: Save off again', save.disabled && save.textContent === 'Save');
+    check('saved: Save off again', save.disabled && save.textContent === 'Save' && upNote() !== 'Unsaved changes.', upNote());
     chk.value = 'abc'; chk.dispatchEvent(new w.Event('input'));
     save.click();
   }, 1500);
@@ -193,7 +193,7 @@ setTimeout(() => {
     check('Save posts both dials, the rest, and custom values', sent && sent.settings.pace === 'urgent' && sent.settings.reach === 'radio'
       && sent.settings.guests === 'protect' && sent.settings.on_wedge === 'ladder' && sent.settings.sensitivity === 2
       && sent.settings.overrides.check === 45 && sent.settings.overrides.steps.reboot === null, JSON.stringify(posted));
-    check('a bad custom value is refused on the page', posted.filter((p) => p.action === 'settings').length === 1 && /a number/.test(t('#up-note')[0] || ''), t('#up-note')[0]);
+    check('a bad custom value is refused on the page, said under Save', posted.filter((p) => p.action === 'settings').length === 1 && /a number/.test(t('#up-foot .aw-reason')[0] || ''), t('#up-foot .aw-reason')[0]);
     // A review item here can be acted on here: another hotspot profile deleted or ignored, any one accepted.
     const apCard = [...d.querySelectorAll('#net-hazards .net-device')].find((c) => /Another hotspot profile/.test(c.textContent));
     const apBtn = (word) => apCard && [...apCard.querySelectorAll('button')].find((b) => b.textContent === word);
@@ -204,6 +204,11 @@ setTimeout(() => {
     if (apBtn('Accept')) apBtn('Accept').click();
     check('  Accept: on the Box doctor\'s list, as net:<its id>', posted.some((b) => b.health && b.health.action === 'accept' && b.health.key === 'net:other-ap:33564e5b-5cb3-4b45-ac5f-a092c4f7ddba'),
       JSON.stringify(posted.slice(-2)));
+    // One Save and Discard per section: the box defaults' own under their card, none beside the retries.
+    const words = [...d.querySelectorAll('#network button, #hotspot button')].map((b) => b.textContent.trim());
+    check('Network: no Save named otherwise, none "(unsaved)", no second pair for the box defaults', !words.some((x) => /^Save .|\(unsaved\)/.test(x))
+      && d.querySelectorAll('#net-defaults-foot .aw-save').length === 1 && !d.querySelector('#up-retries-group .aw-save'), words.filter((x) => /^Save/.test(x)).join('|'));
+    check('  each network\'s own settings: Discard beside its Save', [...d.querySelectorAll('.net-conn-settings')].every((c) => !c.querySelector('.aw-save') || c.querySelector('.aw-discard')));
     check('no page errors', errors.length === 0, errors.join(' | '));
     console.log(fails ? `${fails} failure(s)` : 'ok');
     process.exit(fails ? 1 : 0);

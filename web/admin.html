@@ -3415,25 +3415,7 @@
                     NetworkManager default" removes the irate-box line again.
                   </p>
                   <div class="net-defaults" id="net-defaults"></div>
-                  <span class="library-buttons"
-                    ><button
-                      class="action-btn"
-                      type="button"
-                      id="net-defaults-discard"
-                      disabled
-                      data-i18n="admin.network.net-defaults-discard"
-                    >
-                      Discard</button
-                    ><button
-                      class="action-btn"
-                      type="button"
-                      id="net-defaults-save"
-                      disabled
-                      data-i18n="admin.network.net-defaults-save"
-                    >
-                      Save default settings
-                    </button></span
-                  >
+                  <div id="net-defaults-foot"></div>
                   <p
                     class="setting-desc action-note"
                     id="net-defaults-note"
@@ -3585,25 +3567,22 @@
                       </p>
                       <div class="net-defaults" id="net-retry-defaults"></div>
                       <div id="up-profile"></div>
-                      <span class="library-buttons"
-                        ><button
-                          class="action-btn"
-                          type="button"
-                          id="net-retry-discard"
-                          disabled
-                          data-i18n="admin.network.net-retry-discard"
-                        >
-                          Discard</button
-                        ><button
-                          class="action-btn"
-                          type="button"
-                          id="net-retry-save"
-                          disabled
-                          data-i18n="admin.network.net-retry-save"
-                        >
-                          Save retry settings
-                        </button></span
+                      <p
+                        class="setting-desc"
+                        id="net-retry-where"
+                        data-i18n="admin.network.net-retry-where"
                       >
+                        These are box defaults of NetworkManager. Save or
+                        discard them with the other box defaults.
+                      </p>
+                      <button
+                        class="action-btn small"
+                        type="button"
+                        id="net-retry-go"
+                        data-i18n="admin.network.net-retry-go"
+                      >
+                        Go to the box defaults
+                      </button>
                     </div>
                     <div class="up-group">
                       <label
@@ -3775,24 +3754,8 @@
                     id="up-will"
                     role="status"
                   ></p>
+                  <div id="up-foot"></div>
                   <div class="library-buttons">
-                    <button
-                      class="action-btn"
-                      type="button"
-                      id="up-discard"
-                      disabled
-                      data-i18n="admin.network.up-discard"
-                    >
-                      Discard
-                    </button>
-                    <button
-                      class="action-btn"
-                      type="button"
-                      id="up-save"
-                      data-i18n="admin.network.up-save"
-                    >
-                      Save
-                    </button>
                     <button
                       class="action-btn"
                       type="button"
@@ -3997,26 +3960,7 @@
                 </label>
               </div>
               <ul class="admin-checks" id="hs-warnings"></ul>
-              <div class="library-buttons">
-                <button
-                  class="action-btn"
-                  type="button"
-                  id="hs-discard"
-                  disabled
-                  data-i18n="admin.network.hs-discard"
-                >
-                  Discard
-                </button>
-                <button
-                  class="action-btn primary"
-                  type="button"
-                  id="hs-save"
-                  disabled
-                  data-i18n="admin.network.hs-save"
-                >
-                  Save
-                </button>
-              </div>
+              <div id="hs-foot"></div>
               <p
                 class="setting-desc action-note"
                 id="hs-note"
@@ -4051,25 +3995,7 @@
                   data-i18n-aria-label="admin.network.aria-guest-internet-access"
                 ></div>
                 <p class="setting-desc" id="guest-net-said"></p>
-                <p class="library-buttons">
-                  <button
-                    class="action-btn"
-                    type="button"
-                    id="guest-net-discard"
-                    disabled
-                    data-i18n="admin.network.guest-net-discard"
-                  >
-                    Discard</button
-                  ><button
-                    class="action-btn primary"
-                    type="button"
-                    id="guest-net-save"
-                    disabled
-                    data-i18n="admin.network.guest-net-save"
-                  >
-                    Save
-                  </button>
-                </p>
+                <div id="guest-net-foot"></div>
               </div>
               <p
                 class="setting-desc action-note"

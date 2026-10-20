@@ -6368,8 +6368,6 @@ const net = {
   cableReach: document.getElementById("up-cablereach"),
   custom: document.getElementById("up-custom"),
   fields: document.getElementById("up-fields"),
-  save: document.getElementById("up-save"),
-  discard: document.getElementById("up-discard"),
   hold: document.getElementById("up-hold"),
   stall: document.getElementById("up-stall"),
   unhold: document.getElementById("up-unhold"),
@@ -6377,8 +6375,6 @@ const net = {
   profile: document.getElementById("up-profile"),
   handover: document.getElementById("net-handover"),
   defaults: document.getElementById("net-defaults"),
-  defaultsSave: document.getElementById("net-defaults-save"),
-  defaultsDiscard: document.getElementById("net-defaults-discard"),
   defaultsNote: document.getElementById("net-defaults-note"),
   events: document.getElementById("up-events"),
 };
@@ -6401,7 +6397,50 @@ let netData = null;
 let netWaiting = null; // { id, where: 'scan' | 'up' }
 let netNotes = {};
 let netPoll = null;
-let upDirty = false;
+// Network recovery as a section: its one value is the settings object readUpForm() makes from the page (the picks,
+// the fields, the steps and the links watched); the page draws it, and draws the saved one again on Discard. Its
+// saved value is the hub's, read back through the page the same way, so the two compare like for like.
+let upChosenKey = "";
+const upSec = AW.section({
+  id: "net-recovery",
+  label: "Network recovery",
+  saved: null,
+  ask: (c, v) => upAsk(v.all),
+  save: () => upSave(),
+  onChange: () => upShow(upSec.get("all")),
+});
+document.getElementById("up-foot").append(upSec.foot, upSec.reason);
+// A pick or a field changed: the draft follows the page; a number that is not one says why under Save.
+function upTouched() {
+  try {
+    upSec.set("all", readUpForm(), true);
+    upSec.fail("");
+  } catch (err) {
+    upSec.fail(err.message);
+  }
+}
+function upShow(all) {
+  if (!netData || !all) return;
+  fillUpForm(all, netData.levels);
+  drawUpScope(netData.inventory);
+  renderUpSteps(netData.inventory, all);
+  renderUpWatch(netData.inventory, netData.uplink);
+}
+// The hub's saved settings, as the page reads them; the draft, if any, drawn again over them after.
+function upRebase(chosen) {
+  const draft = upSec.dirty() ? upSec.get("all") : null;
+  upSaved = chosen;
+  upChosenKey = JSON.stringify(chosen) + "|" + upScope;
+  upShow(chosen);
+  let norm = null;
+  try {
+    norm = readUpForm();
+  } catch (_) {
+    /* a saved value the page cannot show: left as it is */
+  }
+  if (draft) upShow(draft);
+  if (norm) upSec.update({ all: norm });
+}
 // What is chosen on the page (each as radio cards), before Save: two dials, pace and reach, guests,
 // a wedged driver, and the sensitivity, a number of missed checks within the pace's window.
 const upPick = {
@@ -6538,7 +6577,7 @@ function drawUpScope(inv) {
                   return;
                 const per = { ...(upSaved.per_iface || {}) };
                 delete per[upScope];
-                upDirty = false;
+                upSec.discard();
                 netRequest(
                   {
                     action: "settings",
@@ -6554,26 +6593,14 @@ function drawUpScope(inv) {
         ]),
   );
 }
-net.discard.addEventListener("click", () => {
-  upDirty = false;
-  if (netData && upSaved) {
-    fillUpForm(upSaved, netData.levels);
-    drawUpScope(netData.inventory);
-  }
-  showUpSave();
-});
 upScopeBox.addEventListener("change", () => {
-  if (upDirty && !confirm("Discard the unsaved selections?")) {
+  if (upSec.dirty() && !confirm("Discard the unsaved selections?")) {
     upScopeBox.value = upScope;
     return;
   }
   upScope = upScopeBox.value;
-  upDirty = false;
-  if (netData && upSaved) {
-    fillUpForm(upSaved, netData.levels);
-    drawUpScope(netData.inventory);
-  }
-  showUpSave();
+  upSec.discard();
+  if (netData && upSaved) upRebase(upSaved);
 });
 
 // The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
@@ -6620,9 +6647,8 @@ function buildUpFields(levels) {
     }
     input.dataset.key = key;
     input.addEventListener("input", () => {
-      upDirty = true;
       if (netData) showUpPreset(netData.levels);
-      showUpSave();
+      upTouched();
     });
     net.fields.append(
       el("label", {}, el("span", { textContent: label }), input),
@@ -6978,20 +7004,13 @@ function drawRoamTiles(levels) {
 function upChoose(change, levels) {
   Object.assign(upPick, change);
   if (change.roaming && change.roaming !== "lock") upPick.lock_bssid = null;
-  upDirty = true;
   showUpPreset(levels);
-  showUpSave();
+  upTouched();
 }
 
-function showUpSave() {
-  const busy = !!netWaiting || (netData && netData.pending > 0);
-  net.save.disabled = net.discard.disabled = busy || !upDirty;
-  net.save.textContent = upDirty ? "Save (unsaved)" : "Save";
-}
-
+// The page drawn from a settings object: the saved one, or the draft (upSaved stays the hub's).
 function fillUpForm(chosen, levels) {
   buildUpChoices(levels);
-  upSaved = chosen;
   const view = upScope
     ? { ...chosen, ...((chosen.per_iface || {})[upScope] || {}) }
     : chosen;
@@ -7138,8 +7157,7 @@ function renderUpSteps(inv, chosen) {
           });
           input.dataset.step = step;
           input.addEventListener("change", () => {
-            upDirty = true;
-            showUpSave();
+            upTouched();
           });
           return el(
             "label",
@@ -7204,8 +7222,7 @@ function renderUpWatch(inv, u) {
       sel.addEventListener("change", () => {
         if (sel.value === "") delete upWatch[iface];
         else upWatch[iface] = sel.value === "on";
-        upDirty = true;
-        showUpSave();
+        upTouched();
       });
       const now = watching[iface];
       const l = known[iface] || {};
@@ -8106,8 +8123,7 @@ function renderNetwork(data) {
     const done = (data.results || []).find((r) => r.id === netWaiting.id);
     if (done) {
       netNotes[netWaiting.where] = { text: resultSaid(done), ok: done.ok };
-      if (netWaiting.where === "up" && done.ok) upDirty = false;
-      if (done.ok && netWaiting.onOk) netWaiting.onOk();
+      if (netWaiting.onDone) netWaiting.onDone(done.ok, resultSaid(done));
       netWaiting = null;
       return renderNetwork(data);
     }
@@ -8186,12 +8202,16 @@ function renderNetwork(data) {
 
   // Network recovery
   buildUpFields(levels);
-  if (!upDirty) {
-    fillUpForm((u && u.chosen) || levels.default, levels);
-    drawUpScope(inv);
-    renderUpSteps(data.inventory, (u && u.chosen) || {});
-  }
-  if (!upDirty || !net.watchRows.childElementCount) renderUpWatch(inv, u);
+  // The saved settings again only when they changed (or the scope did): a draft is kept over them, said as
+  // changed elsewhere if they moved under it.
+  const chosen = (u && u.chosen) || levels.default;
+  if (
+    !upSec.saving() &&
+    JSON.stringify(chosen) + "|" + upScope !== upChosenKey
+  )
+    upRebase(chosen);
+  if (!upSec.dirty()) drawUpScope(inv);
+  if (!upSec.dirty() || !net.watchRows.childElementCount) renderUpWatch(inv, u);
   net.status.textContent = upStatusText(u);
   // Stalled: the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
@@ -8233,7 +8253,6 @@ function renderNetwork(data) {
         ]
       : []),
   );
-  showUpSave();
   const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
   net.hold.hidden = !!held;
   net.unhold.hidden = !held;
@@ -8388,22 +8407,40 @@ async function loadNetwork() {
 
 // NetworkManager's box defaults: each with the value in use and the file it comes from; a change goes
 // to irate-box's own drop-in. Choices kept while the page polls, until saved.
-let defaultsDirty = {};
 let defaultsScope = ""; // '' the whole box, else an interface
 const PER_IFACE = ["auth_retries", "cloned_mac", "powersave", "scan_mac"];
 const RETRY_DEFAULTS = ["autoconnect_retries", "auth_retries"];
-function syncRetryButtons() {
-  document.getElementById("net-retry-save").disabled =
-    net.defaultsSave.disabled;
-  document.getElementById("net-retry-discard").disabled =
-    net.defaultsDiscard.disabled;
-}
+// One section for the box defaults, the retries beside Network recovery included: one Save and one Discard, under
+// the defaults' card. Each value is a setting's choice as the page offers it ("default": irate-box sets nothing).
+let defaultsSavedKey = "";
+const defSec = AW.section({
+  id: "net-defaults",
+  label: "NetworkManager defaults",
+  saved: null,
+  ask: () =>
+    "Save these box defaults? NetworkManager reads them again at once. Connections use them the next time they connect.",
+  save: (changes) => {
+    const j = AW.job();
+    netRequest(
+      {
+        action: "defaults",
+        changes,
+        ...(defaultsScope ? { iface: defaultsScope } : {}),
+      },
+      "defaults",
+      j.done,
+    );
+    return j;
+  },
+  onChange: () => renderDefaults(netData && netData.inventory, false),
+});
 document
-  .getElementById("net-retry-save")
-  .addEventListener("click", () => net.defaultsSave.click());
-document
-  .getElementById("net-retry-discard")
-  .addEventListener("click", () => net.defaultsDiscard.click());
+  .getElementById("net-defaults-foot")
+  .append(defSec.foot, defSec.reason);
+document.getElementById("net-retry-go").addEventListener("click", () => {
+  const card = document.getElementById("net-defaults-card");
+  if (card.scrollIntoView) card.scrollIntoView({ block: "center" });
+});
 function renderDefaults(inv, busy) {
   const d =
     inv &&
@@ -8426,15 +8463,26 @@ function renderDefaults(inv, busy) {
   );
   scope.value = defaultsScope;
   scope.addEventListener("change", () => {
+    if (
+      defSec.dirty() &&
+      !confirm("Discard the unsaved changes to the box defaults?")
+    ) {
+      scope.value = defaultsScope;
+      return;
+    }
+    defSec.discard();
     defaultsScope = scope.value;
-    defaultsDirty = {};
     renderDefaults(netData && netData.inventory, false);
   });
+  const savedNow = {};
   const names = defaultsScope ? PER_IFACE : Object.keys(d.settings);
   const mineIf = (d.ifaces_mine || {})[defaultsScope] || {};
   const rows = names.map((name) => {
     const s = d.settings[name];
-    const sel = el("select", { "aria-label": s.label, disabled: busy });
+    const sel = el("select", {
+      "aria-label": s.label,
+      disabled: busy || defSec.disabled(),
+    });
     const boxNow =
       s.value === null
         ? `NetworkManager's own: ${s.nm_default}`
@@ -8457,18 +8505,11 @@ function renderDefaults(inv, busy) {
       opts.push([cur, `${cur} tries`]);
     for (const [v, label] of opts)
       sel.append(el("option", { value: v, textContent: label }));
-    const chosen =
-      name in defaultsDirty
-        ? defaultsDirty[name]
-        : cur !== null
-          ? cur
-          : "default";
-    sel.value = opts.some(([v]) => v === chosen) ? chosen : "default";
-    sel.addEventListener("change", () => {
-      defaultsDirty[name] = sel.value;
-      net.defaultsSave.disabled = net.defaultsDiscard.disabled = false;
-      syncRetryButtons();
-    });
+    const known = (v) => (opts.some(([o]) => o === v) ? v : "default");
+    savedNow[name] = known(cur !== null ? cur : "default");
+    const chosen = defSec.loaded() ? defSec.get(name) : undefined;
+    sel.value = chosen !== undefined ? known(chosen) : savedNow[name];
+    sel.addEventListener("change", () => defSec.set(name, sel.value, true));
     let now;
     if (defaultsScope) {
       const e = d.ifaces[defaultsScope][name];
@@ -8553,38 +8594,16 @@ function renderDefaults(inv, busy) {
         ]
       : []),
   );
-  net.defaultsSave.disabled = net.defaultsDiscard.disabled =
-    busy || !Object.keys(defaultsDirty).length;
-  syncRetryButtons();
+  // The saved values, each time they (or the scope) change: a choice not saved yet is kept over them.
+  const key = defaultsScope + "|" + JSON.stringify(savedNow);
+  if (key !== defaultsSavedKey && !defSec.saving()) {
+    defaultsSavedKey = key;
+    defSec.update(savedNow);
+  }
+  // What the root helper did; a failure is said under Save.
   const dn = netNotes.defaults;
-  say(dn ? dn.text : "", dn ? dn.ok : true, net.defaultsNote);
+  say(dn && dn.ok ? dn.text : "", true, net.defaultsNote);
 }
-net.defaultsDiscard.addEventListener("click", () => {
-  defaultsDirty = {};
-  renderDefaults(netData && netData.inventory, false);
-});
-net.defaultsSave.addEventListener("click", () => {
-  const changes = { ...defaultsDirty };
-  if (!Object.keys(changes).length) return;
-  if (
-    !confirm(
-      "Save these box defaults? NetworkManager reads them again at once. Connections use them the next time they connect.",
-    )
-  )
-    return;
-  netRequest(
-    {
-      action: "defaults",
-      changes,
-      ...(defaultsScope ? { iface: defaultsScope } : {}),
-    },
-    "defaults",
-    () => {
-      defaultsDirty = {};
-    },
-  );
-});
-
 // mPWRD-OS's wifisync, which switches the WiFi radio off while meshtasticd's WiFi setting is off: a switch, with
 // undo back to how the image had it. Shown only where it is installed.
 function renderWifisync(inv, data, busy) {
@@ -8996,13 +9015,30 @@ const CONN_FIELDS = [
     '0 is the NetworkManager default of 45 s. A longer time can hide a dead link as "connecting".',
   ],
 ];
-const connDirty = {};
 const connOpen = new Set();
+// One network's own settings: a section each (its id the connection's), drawn again with the list and its draft kept.
 function connSettings(p, inv, data, busy, radio) {
   const ho = inv && inv.handover;
   const lasts = !p.netplan || (ho && ho.integrated);
   const changed = (data.conn_changes || {})[p.uuid];
-  const dirty = connDirty[p.uuid] || (connDirty[p.uuid] = {});
+  const sec = AW.section({
+    id: `net-conn-${p.uuid}`,
+    label: `Settings for ${p.ssid || p.name}`,
+    saved: Object.fromEntries(CONN_FIELDS.map(([n, , , now]) => [n, now(p)])),
+    ask: (c) =>
+      `Change ${Object.keys(c).length} setting${Object.keys(c).length === 1 ? "" : "s"} of ${p.ssid || p.name}? ` +
+      "They take effect the next time the box connects. Undo restores the previous settings.",
+    save: (changes) => {
+      const j = AW.job();
+      netRequest(
+        { action: "connection", uuid: p.uuid, changes },
+        "connection",
+        j.done,
+      );
+      return j;
+    },
+    onChange: () => netData && renderNetwork(netData),
+  });
   const fields = CONN_FIELDS.map(([name, label, kind, now, help]) => {
     let input;
     const cur = now(p);
@@ -9041,11 +9077,8 @@ function connSettings(p, inv, data, busy, radio) {
         disabled: busy || !lasts,
       });
     }
-    input.value = name in dirty ? dirty[name] : cur;
-    input.addEventListener("change", () => {
-      dirty[name] = input.value;
-      save.disabled = false;
-    });
+    input.value = sec.get(name) ?? cur;
+    input.addEventListener("change", () => sec.set(name, input.value, true));
     return el(
       "label",
       { className: "net-default" },
@@ -9056,32 +9089,6 @@ function connSettings(p, inv, data, busy, radio) {
         : null,
     );
   });
-  const save = actionButton(
-    "Save network settings",
-    () => {
-      const changes = Object.fromEntries(
-        Object.entries(dirty).filter(
-          ([n, v]) => v !== CONN_FIELDS.find((f) => f[0] === n)[3](p),
-        ),
-      );
-      if (!Object.keys(changes).length) return;
-      if (
-        !confirm(
-          `Change ${Object.keys(changes).length} setting${Object.keys(changes).length === 1 ? "" : "s"} of ${p.ssid || p.name}? ` +
-            "They take effect the next time the box connects. Undo restores the previous settings.",
-        )
-      )
-        return;
-      netRequest(
-        { action: "connection", uuid: p.uuid, changes },
-        "connection",
-        () => {
-          connDirty[p.uuid] = {};
-        },
-      );
-    },
-    { disabled: busy || !Object.keys(dirty).length },
-  );
   const cn = netNotes.connection;
   const box = el(
     "details",
@@ -9115,8 +9122,8 @@ function connSettings(p, inv, data, busy, radio) {
         )
       : null,
     el("div", { className: "net-defaults" }, ...fields),
-    lasts ? el("span", { className: "library-buttons" }, save) : null,
-    cn
+    ...(lasts ? [sec.foot, sec.reason] : []),
+    cn && cn.ok
       ? el("p", {
           className: `setting-desc action-note${cn.ok ? "" : " bad"}`,
           role: "status",
@@ -9379,17 +9386,18 @@ function hazardControls(h) {
     : null;
 }
 
-// onOk: run when the root helper reports the request done and well (a draft cleared only then).
-async function netRequest(body, where, onOk) {
+// onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
+async function netRequest(body, where, onDone) {
   try {
     netWaiting = {
       id: (await postJSON("/admin/network", body)).id,
       where,
-      onOk,
+      onDone,
     };
     delete netNotes[where];
   } catch (err) {
     netNotes[where] = { text: err.message, ok: false };
+    if (onDone) onDone(false, err.message);
   }
   loadNetwork();
 }
@@ -9445,42 +9453,42 @@ joinForm.addEventListener("submit", (e) => {
 document
   .getElementById("net-join-now")
   .addEventListener("click", () => joinAsk(true));
-net.save.addEventListener("click", () => {
-  let settings;
+// One question at Save for what needs saying, from the settings as they would be saved.
+function upAsk(all) {
+  let settings = all;
   try {
     settings = readUpForm();
-  } catch (err) {
-    netNotes.up = { text: err.message, ok: false };
-    renderNetwork(netData);
-    return;
+  } catch (_) {
+    /* said under Save already; save() says it again */
   }
   const was = (netData && netData.uplink && netData.uplink.chosen) || {};
+  const asks = [];
   if (
     settings.roaming === "lock" &&
-    (was.roaming !== "lock" || was.lock_bssid !== settings.lock_bssid) &&
-    !confirm(
+    (was.roaming !== "lock" || was.lock_bssid !== settings.lock_bssid)
+  )
+    asks.push(
       `Lock your WiFi profile to ${settings.lock_bssid}? The box reconnects to it now. The box is briefly disconnected from the network. It stays with this access point and does not move to another one until you disable the lock. If this access point does not answer, the box removes the lock.`,
-    )
-  )
-    return;
-  if (
-    settings.roaming === "no-scan" &&
-    was.roaming !== "no-scan" &&
-    !confirm(
+    );
+  if (settings.roaming === "no-scan" && was.roaming !== "no-scan")
+    asks.push(
       "Disable the wpa_supplicant background scans while the hotspot shares the radio? This changes the running WiFi settings, not the WiFi profile. Selecting another option restores them.",
-    )
-  )
-    return;
+    );
   if (
     settings.guests === "ignore" &&
-    ["restart", "radio", "reboot"].includes(settings.reach) &&
-    !confirm(
-      `This setting lets the box ${settings.reach === "restart" ? "restart the network service" : settings.reach === "radio" ? "reset the radio" : "reset the radio and reboot the box"} while guests are on the hotspot. Continue?`,
-    )
+    ["restart", "radio", "reboot"].includes(settings.reach)
   )
-    return;
-  netRequest({ action: "settings", settings }, "up");
-});
+    asks.push(
+      `This setting lets the box ${settings.reach === "restart" ? "restart the network service" : settings.reach === "radio" ? "reset the radio" : "reset the radio and reboot the box"} while guests are on the hotspot. Continue?`,
+    );
+  return asks.length ? asks.join("\n\n") : null;
+}
+function upSave() {
+  const settings = readUpForm(); // a number that is not one: its reason under Save
+  const j = AW.job();
+  netRequest({ action: "settings", settings }, "up", j.done);
+  return j;
+}
 net.hold.addEventListener("click", () =>
   netRequest({ action: "hold", minutes: 60 }, "up"),
 );
@@ -9631,16 +9639,63 @@ const hs = {
   wpa2Label: document.getElementById("hs-wpa2-label"),
   wpa2Desc: document.getElementById("hs-wpa2-desc"),
   warnings: document.getElementById("hs-warnings"),
-  save: document.getElementById("hs-save"),
-  discard: document.getElementById("hs-discard"),
   note: document.getElementById("hs-note"),
 };
-let hsData = null;
-// The hotspot's choices wait for Save; a reload of the page's data leaves a change in progress alone.
-let hsDirty = false;
+let hsData = null,
+  hsSavedKey = "";
+// The hotspot's own WiFi as a section: the mode, the second network, the password and WPA2; a reload of the page's
+// data keeps a change in progress (and says if the saved settings moved under it).
+const hsSec = AW.section({
+  id: "hotspot-security",
+  label: "Hotspot security",
+  saved: null,
+  ask: (c, v) =>
+    v.mode !== "open"
+      ? `Use "${hsData.label[v.mode]}" for the hotspot? Read the warnings under the choices first.`
+      : null,
+  save: async (c, v) => {
+    const r = await postJSON("/admin/hotspot", { settings: v });
+    loadHotspot();
+    return resultSaid(r);
+  },
+  onChange: () => hsDraw(hsSec.values()),
+});
+document.getElementById("hs-foot").append(hsSec.foot, hsSec.reason);
+// What the page shows, into the draft (the controls drew themselves).
 function hsTouched() {
-  hsDirty = true;
-  hs.save.disabled = hs.discard.disabled = false;
+  for (const [k, v] of Object.entries({
+    mode: hsChosen(),
+    second: hs.second.value,
+    password: hs.password.value,
+    allow_wpa2: hs.wpa2.checked,
+  }))
+    hsSec.set(k, v, true);
+}
+// The draft (or the saved settings) drawn.
+function hsDraw(v) {
+  if (!hsData || !v) return;
+  const data = hsData;
+  AW.choices(
+    hs.modes,
+    "hs-mode",
+    data.modes.map((m) => ({
+      value: m,
+      title: data.label[m],
+      desc: data.what[m],
+      why: data.available[m],
+    })),
+    {
+      value: v.mode,
+      onChange: () => {
+        hsTouched();
+        hsShowFields();
+      },
+    },
+  );
+  hs.second.value = v.second;
+  hs.password.value = v.password || "";
+  hs.wpa2.checked = !!v.allow_wpa2;
+  hsShowFields();
 }
 
 function hsChosen() {
@@ -9673,37 +9728,24 @@ function hsShowFields() {
 }
 
 function renderHotspot(data) {
+  const first = !hsData;
   hsData = data;
-  hs.save.disabled = hs.discard.disabled = !hsDirty;
-  if (hsDirty) {
-    hsShowFields();
-    drawGuestNet(data.share || "off", data.results);
-    return;
-  }
-  const s = data.settings;
-  AW.choices(
-    hs.modes,
-    "hs-mode",
-    data.modes.map((m) => ({
-      value: m,
-      title: data.label[m],
-      desc: data.what[m],
-      why: data.available[m],
-    })),
-    {
-      value: s.mode,
-      onChange: () => {
-        hsTouched();
-        hsShowFields();
-      },
-    },
-  );
-  hs.second.value = s.second;
-  hs.password.value = s.password || "";
-  hs.wpa2.checked = !!s.allow_wpa2;
   hs.wpa2Desc.textContent =
     "Let older WPA2 devices join too (WPA3 transition mode).";
-  hsShowFields();
+  const s = data.settings;
+  const saved = {
+    mode: s.mode,
+    second: s.second,
+    password: s.password || "",
+    allow_wpa2: !!s.allow_wpa2,
+  };
+  // Drawn again only when the saved settings change: a field being typed in is not taken away.
+  const key = JSON.stringify(saved);
+  if (key !== hsSavedKey && !hsSec.saving()) {
+    hsSavedKey = key;
+    hsSec.update(saved);
+  } else if (first) hsDraw(hsSec.values());
+  else hsShowFields();
   drawGuestNet(data.share || "off", data.results);
 }
 
@@ -9732,41 +9774,56 @@ const GUEST_NET = [
     "Every device on the hotspot reaches the internet at once, with the same containment rules. The captive portal page stops appearing.",
   ],
 ];
-let guestNetSaved = "off",
-  guestNetDraft = null,
-  guestNetWaiting = null;
-function drawGuestNet(level, results) {
+// Guests' internet as a section of one value. Saved when the box reports the level asked for (the root helper
+// applies it); after 40 s without that, the Save is said to have failed and the choice kept.
+let guestNetWaiting = null;
+const guestSec = AW.section({
+  id: "guest-internet",
+  label: "Guest internet access",
+  saved: null,
+  ask: (c) =>
+    c.level !== "off"
+      ? `Share the internet connection of this box with guests (${GUEST_NET.find((x) => x[0] === c.level)[1]})? The box attributes their online activity to your internet connection.`
+      : null,
+  save: async (c) => {
+    await postJSON("/admin/hotspot", { action: "share", level: c.level });
+    const j = AW.job();
+    guestNetWaiting = { level: c.level, at: Date.now(), job: j };
+    setTimeout(loadHotspot, 1500);
+    return j;
+  },
+  onChange: () => drawGuestNet(),
+});
+document.getElementById("guest-net-foot").append(guestSec.foot, guestSec.reason);
+function drawGuestNet(level) {
   const box = document.getElementById("guest-net-chips");
   if (!box) return;
-  // Asked: done when the box says the level it was asked for (or, after 40 s, said to look again).
-  if (guestNetWaiting && level === guestNetWaiting.level) {
-    guestNetWaiting = null;
-    guestNetDraft = null;
-    say(
-      `Saved: ${GUEST_NET.find((x) => x[0] === level)[2]}`,
-      true,
-      noteEl("guest-net-note"),
-    );
-  } else if (guestNetWaiting && Date.now() - guestNetWaiting.at > 40000) {
-    guestNetWaiting = null;
-    say(
-      "The box has not applied the change yet. Check the Security doctor, or try again.",
-      false,
-      noteEl("guest-net-note"),
-    );
-  } else if (guestNetWaiting) setTimeout(loadHotspot, 2000);
-  guestNetSaved = level;
-  const cur = guestNetDraft || level;
+  if (level !== undefined) {
+    // Asked: done when the box says the level it was asked for (or, after 40 s, said to look again).
+    const w = guestNetWaiting;
+    if (w && level === w.level) {
+      guestNetWaiting = null;
+      w.job.done(true, `Saved: ${GUEST_NET.find((x) => x[0] === level)[2]}`);
+    } else if (w && Date.now() - w.at > 40000) {
+      guestNetWaiting = null;
+      w.job.done(
+        false,
+        "The box has not applied the change yet. Check the Security doctor, or try again.",
+      );
+    } else if (w) setTimeout(loadHotspot, 2000);
+    if (!guestNetWaiting && guestSec.savedValue("level") !== level)
+      return guestSec.update({ level });
+  }
+  const cur = guestSec.get("level");
+  if (!cur) return;
   box.replaceChildren(
     ...GUEST_NET.map(([v, label]) => {
       const b = el("button", {
         type: "button",
         className: "chip" + (v === cur ? " selected" : ""),
         textContent: label,
-        onclick: () => {
-          guestNetDraft = v === guestNetSaved ? null : v;
-          drawGuestNet(guestNetSaved);
-        },
+        disabled: guestSec.disabled(),
+        onclick: () => guestSec.set("level", v),
       });
       b.setAttribute("role", "radio");
       b.setAttribute("aria-checked", String(v === cur));
@@ -9778,40 +9835,7 @@ function drawGuestNet(level, results) {
     (["users-web", "sheet-web", "sheet-all"].includes(cur)
       ? " The box authorises each device for 12 hours at a time."
       : "");
-  document.getElementById("guest-net-save").disabled = document.getElementById(
-    "guest-net-discard",
-  ).disabled = !guestNetDraft || !!guestNetWaiting;
 }
-document.getElementById("guest-net-discard").addEventListener("click", () => {
-  guestNetDraft = null;
-  drawGuestNet(guestNetSaved);
-});
-document
-  .getElementById("guest-net-save")
-  .addEventListener("click", async () => {
-    const level = guestNetDraft;
-    if (!level) return;
-    if (
-      level !== "off" &&
-      !confirm(
-        `Share the internet connection of this box with guests (${GUEST_NET.find((x) => x[0] === level)[1]})? The box attributes their online activity to your internet connection.`,
-      )
-    )
-      return;
-    try {
-      await postJSON("/admin/hotspot", { action: "share", level });
-      guestNetWaiting = { level, at: Date.now() };
-      say(
-        "Request sent. The root helper applies it.",
-        true,
-        noteEl("guest-net-note"),
-      );
-      drawGuestNet(guestNetSaved);
-      setTimeout(loadHotspot, 1500);
-    } catch (err) {
-      say(err.message, false, noteEl("guest-net-note"));
-    }
-  });
 
 async function loadHotspot() {
   try {
@@ -9831,10 +9855,6 @@ hs.wpa2.addEventListener("change", () => {
   hsShowFields();
 });
 hs.password.addEventListener("input", hsTouched);
-hs.discard.addEventListener("click", () => {
-  hsDirty = false;
-  if (hsData) renderHotspot(hsData);
-});
 hs.generate.addEventListener("click", () => {
   // Easy to read out and type on a phone: no 0/O, 1/l/I. getRandomValues works on plain HTTP.
   const abc = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -9850,31 +9870,6 @@ hs.generate.addEventListener("click", () => {
     .map((i) => chars.slice(i, i + 4).join(""))
     .join("-");
   hsTouched();
-});
-hs.save.addEventListener("click", async () => {
-  const mode = hsChosen();
-  if (
-    mode !== "open" &&
-    !confirm(
-      `Use "${hsData.label[mode]}" for the hotspot? Read the warnings under the choices first.`,
-    )
-  )
-    return;
-  try {
-    const r = await postJSON("/admin/hotspot", {
-      settings: {
-        mode,
-        second: hs.second.value,
-        password: hs.password.value,
-        allow_wpa2: hs.wpa2.checked,
-      },
-    });
-    hsDirty = false;
-    say(resultSaid(r), true, hs.note);
-    loadHotspot();
-  } catch (err) {
-    say(err.message, false, hs.note);
-  }
 });
 loadHotspot();
 
