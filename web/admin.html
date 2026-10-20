@@ -4316,12 +4316,9 @@
           aria-labelledby="updates-title"
         >
           <h2 id="updates-title" data-i18n="admin.updates.title">Updates</h2>
-          <p class="setting-desc" data-i18n="admin.updates.each-card-shows-one">
-            Each card shows one item that the box updates. It shows the state,
-            how often the box checks for updates and what the box does with an
-            update. It also has the buttons Check now, Download and Install. If
-            an update fails, the <a href="#updoctor">Updates doctor</a> shows
-            the reason.
+          <p class="setting-desc" data-i18n="admin.updates.failed-see-doctor">
+            If an update fails, the <a href="#updoctor">Updates doctor</a> says
+            why.
           </p>
           <div class="update-cards">
             <div
@@ -4365,6 +4362,8 @@
                     id="update-fetch"
                     data-update="fetch"
                     data-i18n="admin.update.reach.download"
+                    title="Downloads everything the installer needs now, so nothing is downloaded during the installation."
+                    data-i18n-title="admin.updates.fetch-tip"
                   >
                     Check for updates and download
                   </button>
@@ -4378,6 +4377,14 @@
                     Check for updates, download and install
                   </button>
                 </div>
+                <p
+                  class="setting-desc"
+                  data-i18n="admin.updates.install-keeps"
+                >
+                  Installing keeps the accounts, settings, apps, books and data.
+                  The hub server restarts during the installation, and this page
+                  reconnects by itself.
+                </p>
                 <div class="admin-progress" id="update-progress" hidden>
                   <progress
                     class="admin-bar"
@@ -4440,6 +4447,13 @@
                     role="status"
                     hidden
                   ></p>
+                  <p
+                    class="setting-desc"
+                    data-i18n="admin.updates.auto-verified-only"
+                  >
+                    The box installs only a version that passed verification. A
+                    version that fails verification waits here for you.
+                  </p>
                 </details>
                 <details class="field-help" id="update-signing">
                   <summary
@@ -4533,35 +4547,6 @@
                     role="status"
                     hidden
                   ></p>
-                </details>
-                <details class="field-help">
-                  <summary data-i18n="admin.updates.summary-update-process">
-                    Update process
-                  </summary>
-                  <p
-                    class="setting-desc"
-                    data-i18n="admin.updates.check-asks-repository-box"
-                  >
-                    Check asks the repository that the box was installed from
-                    what is new. Download verifies that version and downloads
-                    what its installer needs, so the box downloads nothing in
-                    the middle of an installation. Install runs the installer
-                    again with the same options. The box keeps apps, books, data
-                    and the password. The hub server restarts during the
-                    installation, and this page reconnects by itself.
-                  </p>
-                  <p
-                    class="setting-desc"
-                    data-i18n="admin.updates.librarian-check-updates-itself"
-                  >
-                    The librarian can check for updates by itself in its hourly
-                    round. It then shows, downloads or installs them, as you
-                    select. The box installs only a version that passed
-                    verification. It installs inside the hours you set, when
-                    nobody uses the hub and nothing else runs. The hub server
-                    restarts during the installation. A version that fails
-                    verification waits for you here.
-                  </p>
                 </details>
               </div>
             </div>
