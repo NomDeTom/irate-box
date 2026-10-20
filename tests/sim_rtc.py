@@ -69,8 +69,11 @@ both[0:7] = [0x15, 0x30, 0x08, 0x20, 0x02, 0x10, 0x26]
 both[0x10:0x17] = [0x15, 0x30, 0x08, 0x20, 0x02, 0x10, 0x26]
 
 
-def fake(buses, drivers=()):
-    (T / "fake.json").write_text(json.dumps({"buses": buses, "busy": ["2:0x14"], "drivers": list(drivers)}))
+def fake(buses, drivers=(), aliases=()):
+    # The test's kernel whole: its drivers and its modules' aliases (never the machine's own, which differ by host).
+    (T / "fake.json").write_text(
+        json.dumps({"buses": buses, "busy": ["2:0x14"], "drivers": list(drivers), "aliases": list(aliases)})
+    )
 
 
 # 1. find
@@ -205,6 +208,10 @@ check(
     k,
 )
 check("kernel: no DS3231 driver → own driver", rtc.kernel_driver("ds3231") is None)
+fake({"2": {"0x51": pcf}}, aliases=["alias i2c:ds3231 rtc_ds1307"])
+k = rtc.kernel_driver("ds3231")
+check("kernel: a module that aliases the DS3231, in the test's kernel → that module", k and k["kind"] == "module", k)
+fake({"2": {"0x51": pcf}}, drivers=["rtc-hym8563"])
 
 # 6. setup (own driver), boot, save, remove
 fake({"1": {"0x68": ds}})
