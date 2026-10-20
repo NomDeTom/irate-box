@@ -454,9 +454,9 @@ const AW = (() => {
     paint();
     return s;
   }
-  // The sections with unsaved changes on the page now: [{id, label, page}].
+  // The sections with unsaved changes on the page now: [{id, label, page, el}] (el: its footer, to find where it is).
   function unsaved() {
-    return [...sections.values()].filter((x) => x.attached() && x.dirty()).map((x) => ({ id: x.id, label: x.label, page: x.page() }));
+    return [...sections.values()].filter((x) => x.attached() && x.dirty()).map((x) => ({ id: x.id, label: x.label, page: x.page(), el: x.foot }));
   }
   // A job the root helper runs: a promise a section's save returns, settled when the page's poll sees the answer.
   //   const j = AW.job(); … j.done(ok, why) — ok false rejects with why (the reason under the footer).
@@ -468,7 +468,7 @@ const AW = (() => {
   }
 
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts, as a section ----
-  //   rows: [{key, label, kind: 'toggle'|'choice'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
+  //   rows: [{key, label, kind: 'toggle'|'choice'|'multi'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
   //           max (text), unset, shown, warn (colour)}]
   //   opts: {save(changes) → Promise|void, id, label, ask, idle}: the section's (above); no save, no footer.
   function settings(rows, opts = {}) {
@@ -487,6 +487,14 @@ const AW = (() => {
           const [ov, t] = Array.isArray(o) ? o : [o, o];
           return h('button', { type: 'button', class: 'chip' + (same(v, ov) ? ' selected' : ''), 'aria-pressed': String(same(v, ov)), disabled: off,
             onclick: () => s.set(r.key, ov) }, t);
+        }));
+      } else if (r.kind === 'multi') {
+        // Any of a few, as filter chips: the value the chosen ones, in the options' order.
+        const on = new Set(v || []);
+        ctl = h('div', { class: 'filter-chips', role: 'group', 'aria-label': r.label }, r.options.map((o) => {
+          const [ov, t] = Array.isArray(o) ? o : [o, o];
+          return h('button', { type: 'button', class: 'filter-chip' + (on.has(ov) ? ' active' : ''), 'aria-pressed': String(on.has(ov)), disabled: off,
+            onclick: () => s.set(r.key, r.options.map((x) => (Array.isArray(x) ? x[0] : x)).filter((x) => (x === ov ? !on.has(x) : on.has(x)))) }, t);
         }));
       } else if (r.kind === 'button') ctl = btn(r.text || r.label, { onclick: r.onclick });
       else if (r.kind === 'text') {

@@ -220,7 +220,19 @@ const type = (input, value) => {
 
   // 9. A switch that acts at once says when.
   answer['/admin/settings'] = (b) => [200, b];
-  const flip = async (id) => { const box = d.getElementById(id); box.checked = !box.checked; box.dispatchEvent(new w.Event('change')); await wait(); return t(ev('settingNote')(box)); };
+  // Held until Save now (rule 7: a lasting choice is a setting); its footer says when it applies.
+  const flip = async (id) => {
+    const g = ev('settingGroups').find((x) => x.boxes.some((b) => b.id === id));
+    g.sec.update(Object.fromEntries(g.boxes.map((b) => [b.id, false])));
+    const box = d.getElementById(id);
+    box.checked = true;
+    box.dispatchEvent(new w.Event('change'));
+    const sentBefore = posted.length;
+    const held = posted.length === sentBefore && !g.sec.foot.querySelector('.aw-save').disabled;
+    g.sec.foot.querySelector('.aw-save').click();
+    await wait();
+    return held ? t(g.sec.foot.querySelector('.note')) : 'sent at once';
+  };
   check('the factory tile: "Saved.", not "at the next boot"', (await flip('factory_tile')) === 'Saved.');
   check('visitor counts: the same', (await flip('visitor_counts')) === 'Saved.');
   check("the shoutbox's delete at boot: at the next boot", /next boot/.test(await flip('shout_reset_on_boot')));

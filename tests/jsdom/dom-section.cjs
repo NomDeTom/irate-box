@@ -128,6 +128,16 @@ const place = (s, page = 'p1') => { d.getElementById(page).append(s.foot, s.reas
   await wait();
   check('   Save sends only the changes', JSON.stringify(sent[sent.length - 1]) === '{"on":true,"name":"ab"}' && !block.section.dirty());
 
+  // Any of a few (moderation's reasons): filter chips, the value in the options' order; one that must keep one says why.
+  const multi = AW.settings([{ key: 'r', label: 'Reasons', kind: 'multi', value: ['spam'], options: ['spam', 'abuse', 'other'] }],
+    { id: 'multi', save: async () => {}, why: (c, v) => (v.r.length ? null : 'Offer at least one reason.') });
+  d.getElementById('p1').append(multi);
+  const chipsOf = () => [...multi.querySelectorAll('.filter-chip')];
+  chipsOf()[2].click();
+  check('multi: a chip added, in the options\' order, held for Save', JSON.stringify(multi.values().r) === '["spam","other"]' && !multi.querySelector('.aw-save').disabled);
+  chipsOf()[0].click();
+  chipsOf()[2].click();
+  check('  none left: Save off, and why', multi.querySelector('.aw-save').disabled && /at least one/.test(t(multi.querySelector('.aw-reason'))));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 })();

@@ -101,8 +101,50 @@ function say(text, ok, at) {
   at.hidden = !text;
 }
 
-const boxes = document.querySelectorAll('.settings input[type="checkbox"]');
-// Each group of checkboxes names the note its answers go in (data-note).
+// The switches in a .settings group (delete at boot, the factory tile, visitor counts): a section per group, held until
+// Save; each group names the note its answers go in (data-note). The delete-at-boot ones say when they apply.
+const settingGroups = [...document.querySelectorAll(".settings")]
+  .filter((g) => g.querySelector('input[type="checkbox"]'))
+  .map((g) => {
+    const boxes = [...g.querySelectorAll('input[type="checkbox"]')];
+    const sec = AW.section({
+      id: `switches-${boxes.map((b) => b.id).join("-")}`,
+      label: boxes
+        .map((b) => {
+          const n = b.parentElement.querySelector(".setting-name");
+          return n ? n.textContent.trim() : b.id;
+        })
+        .join(", "),
+      saved: null,
+      save: async (c) => {
+        const data = await postJSON("/admin/settings", c);
+        // What the hub stored, not what was sent: they differ if it rejected the value.
+        setTimeout(() =>
+          sec.update(
+            Object.fromEntries(
+              boxes
+                .filter((b) => typeof data[b.id] === "boolean")
+                .map((b) => [b.id, data[b.id]]),
+            ),
+          ),
+        );
+        return g.dataset.atBoot !== undefined
+          ? "Saved. It takes effect at the next boot."
+          : "Saved.";
+      },
+      onChange: () =>
+        boxes.forEach((b) => {
+          b.checked = !!sec.get(b.id);
+          b.disabled = sec.disabled();
+        }),
+    });
+    boxes.forEach((b) => {
+      b.disabled = true;
+      b.addEventListener("change", () => sec.set(b.id, b.checked, true));
+    });
+    g.after(sec.foot, sec.reason);
+    return { boxes, sec };
+  });
 const settingNote = (box) => noteEl(box.closest(".settings").dataset.note);
 
 async function load() {
@@ -110,43 +152,24 @@ async function load() {
     const r = await fetch("/admin/settings");
     if (!r.ok) throw new Error(r.status);
     const data = await r.json();
-    boxes.forEach((b) => {
-      if (typeof data[b.id] === "boolean") b.checked = data[b.id];
-    });
+    for (const { boxes, sec } of settingGroups)
+      sec.update(
+        Object.fromEntries(
+          boxes
+            .filter((b) => typeof data[b.id] === "boolean")
+            .map((b) => [b.id, data[b.id]]),
+        ),
+      );
     applySetup(data.setup_done === true);
   } catch (_) {
-    if (boxes.length)
-      say("Could not read the current settings.", false, settingNote(boxes[0]));
+    if (settingGroups.length)
+      say(
+        "Could not read the current settings.",
+        false,
+        settingNote(settingGroups[0].boxes[0]),
+      );
   }
 }
-
-async function save(box) {
-  try {
-    const r = await fetch("/admin/settings", {
-      method: "POST",
-      headers: ADMIN_HEADERS,
-      body: JSON.stringify({ [box.id]: box.checked }),
-    });
-    if (!r.ok) throw new Error(r.status);
-    const data = await r.json();
-    // Show what the hub stored, not what we sent -- they differ if it rejected the value.
-    boxes.forEach((b) => {
-      if (typeof data[b.id] === "boolean") b.checked = data[b.id];
-    });
-    say(
-      box.closest(".settings").dataset.atBoot !== undefined
-        ? "Saved. It takes effect at the next boot."
-        : "Saved.",
-      true,
-      settingNote(box),
-    );
-  } catch (_) {
-    box.checked = !box.checked;
-    say("Could not save. The setting is unchanged.", false, settingNote(box));
-  }
-}
-
-boxes.forEach((b) => b.addEventListener("change", () => save(b)));
 load();
 
 // --- remote access --------------------------------------------------------------
@@ -2770,52 +2793,18 @@ function renderReports(data, del) {
   });
   const box = document.getElementById("report-settings");
   if (!box || !rs) return;
-  // The reasons offered (any of them), how many reports count, and whether to hide meanwhile.
+  // The reasons offered (any of them), how many reports count, and whether to hide meanwhile: one section.
   const chosen = new Set(rs.reasons);
-  const reasons = AW.h(
-    "div",
-    { class: "filter-chips", role: "group", "aria-label": "Reasons offered" },
-    rs.all_reasons.map((r) =>
-      AW.h(
-        "button",
-        {
-          type: "button",
-          class: "filter-chip" + (chosen.has(r) ? " active" : ""),
-          "aria-pressed": String(chosen.has(r)),
-          onclick: async () => {
-            const next = rs.all_reasons.filter((x) =>
-              x === r ? !chosen.has(r) : chosen.has(x),
-            );
-            if (!next.length) return;
-            try {
-              await postJSON("/admin/settings", { report_reasons: next });
-              loadModeration();
-            } catch (err) {
-              say(err.message, false, noteEl("mod-note"));
-            }
-          },
-        },
-        r,
-      ),
-    ),
-  );
   box.replaceChildren(
-    AW.h(
-      "div",
-      { class: "aw-settings" },
-      AW.h(
-        "div",
-        { class: "aw-field" },
-        AW.h("span", { class: "aw-label", text: "Reasons offered" }),
-        reasons,
-        AW.h("small", {
-          class: "setting-desc",
-          text: "Each selection is saved at once.",
-        }),
-      ),
-    ),
     AW.settings(
       [
+        {
+          key: "report_reasons",
+          label: "Reasons offered",
+          kind: "multi",
+          value: rs.all_reasons.filter((r) => chosen.has(r)),
+          options: rs.all_reasons,
+        },
         {
           key: "report_threshold",
           label: "Reports required for queue",
@@ -2838,6 +2827,10 @@ function renderReports(data, del) {
       ],
       {
         id: "moderation",
+        why: (c, v) =>
+          v.report_reasons && !v.report_reasons.length
+            ? "Offer at least one reason."
+            : null,
         save: async (changed) => {
           const r = await postJSON("/admin/settings", changed);
           loadModeration();
@@ -10453,11 +10446,23 @@ const TAB_SEEN = {
   users: "signed-in users",
   hidden: "nobody",
 };
+// Its tab's visibility on the hub page: a section per app (the same setting as on Home tiles), held until Save.
 function fillSeenBlocks() {
   if (!lastAccess) return;
   document.querySelectorAll(".seen-block[data-app]").forEach((block) => {
     const app = block.dataset.app,
       cur = ((lastAccess.pages || {})[app] || "auto").replace("auto", "guests");
+    const sec = AW.section({
+      id: `tab-seen-${app}`,
+      label: "Visibility of its tab",
+      saved: { visible: cur },
+      save: async (c) => {
+        await postJSON("/admin/visibility", { app, visible: c.visible });
+        setTimeout(loadAccess);
+      },
+      onChange: () => fillSeenBlocks(),
+    });
+    const v = sec.get("visible");
     block.replaceChildren(
       el(
         "span",
@@ -10466,23 +10471,20 @@ function fillSeenBlocks() {
           className: "setting-desc",
           textContent: "Visibility of its tab on the hub page:",
         }),
-        ...Object.entries(TAB_SEEN).map(([v, label]) => {
+        ...Object.entries(TAB_SEEN).map(([k, label]) => {
           const b = el("button", {
             type: "button",
-            className: "chip" + (cur === v ? " selected" : ""),
+            className: "chip" + (v === k ? " selected" : ""),
             textContent: label,
-            onclick: () => {
-              if (v !== cur)
-                postJSON("/admin/visibility", { app, visible: v }).then(
-                  loadAccess,
-                  (err) => say(err.message, false, block),
-                );
-            },
+            disabled: sec.disabled(),
+            onclick: () => sec.set("visible", k),
           });
-          b.setAttribute("aria-pressed", String(cur === v));
+          b.setAttribute("aria-pressed", String(v === k));
           return b;
         }),
       ),
+      sec.foot,
+      sec.reason,
     );
   });
 }
@@ -14784,15 +14786,30 @@ acctEl.make.addEventListener("submit", (e) => {
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
 // each app's own page.
-const postingForms = [...document.querySelectorAll(".posting-form")];
-const fillPosting = (st) =>
-  postingForms.forEach((form) =>
-    [...form.elements].forEach((f) => {
-      if (!(f.name in st)) return;
-      if (f.type === "checkbox") f.checked = st[f.name] === true;
-      else f.value = st[f.name];
+// Who may post, and the users' marks: a section per form (AW.form), held until Save.
+const postingForms = [...document.querySelectorAll(".posting-form")].map(
+  (form) =>
+    AW.form(form, {
+      label: "Posting rules",
+      save: async (c) => {
+        const out = {};
+        for (const [k, v] of Object.entries(c)) out[k] = v;
+        fillPosting(await postJSON("/admin/settings", out));
+        return "Saved.";
+      },
     }),
-  );
+);
+const fillPosting = (st) =>
+  postingForms.forEach((sec) => {
+    const form = sec.foot.closest("form");
+    sec.fill(
+      Object.fromEntries(
+        [...form.elements]
+          .filter((f) => f.name && f.name in st)
+          .map((f) => [f.name, st[f.name]]),
+      ),
+    );
+  });
 async function loadPosting() {
   try {
     fillPosting(await getJSON("/admin/settings"));
@@ -14800,23 +14817,6 @@ async function loadPosting() {
     /* the page says if the hub can't be read */
   }
 }
-postingForms.forEach((form) =>
-  form.addEventListener("change", async (e) => {
-    const f = e.target,
-      note = noteEl(form.dataset.note);
-    try {
-      fillPosting(
-        await postJSON("/admin/settings", {
-          [f.name]: f.type === "checkbox" ? f.checked : f.value,
-        }),
-      );
-      say("Saved.", true, note);
-    } catch (err) {
-      say(err.message, false, note);
-      loadPosting();
-    }
-  }),
-);
 const postingShown = () =>
   paneShown("shoutbox-settings") || paneShown("board-settings");
 window.addEventListener("hashchange", () => {
