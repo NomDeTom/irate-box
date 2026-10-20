@@ -127,8 +127,9 @@ function page(file, url, fetcher, scripts) {
   const sform = d.getElementById('accounts-settings');
   check('  chips with short labels, one line saying the present setting', [...sform.querySelectorAll('.select-chips')].map((g) => [...g.querySelectorAll('.chip')].map((c) => t(c)).join('/')).join(' | ') === 'Off/Open/Approval/Administrator creates | Blocked/Warning/Accepted'
     && [...sform.querySelectorAll('.chip-says')].length === 2);
-  sform.elements.signup.value = 'assigned'; sform.elements.http.value = 'prevented';
-  sform.dispatchEvent(new a.w.Event('submit', { cancelable: true })); await wait();
+  // As a person changes them (each raises change), then the section's Save.
+  for (const [n, v] of [['signup', 'assigned'], ['http', 'prevented']]) { sform.elements[n].value = v; sform.elements[n].dispatchEvent(new a.w.Event('change', { bubbles: true })); }
+  sform.querySelector('.aw-save').click(); await wait();
   check('  Save: both levels sent', aposted.some((b) => b.action === 'settings' && b.signup === 'assigned' && b.http === 'prevented'));
   await wait(50);
   const cdBox = d.getElementById('saves-cross-device-box');
@@ -145,8 +146,9 @@ function page(file, url, fetcher, scripts) {
   check('script sign-in: a chip only selects, nothing sent', sent() === 0 && /^Selected, not saved\./.test(t(reachBox(d))));
   check('  local, with no administrator account signed in over HTTPS: the lockout said, Save disabled',
     /including the one you are using now/.test(t(reachBox(d))) && /no other device could open the administration pages/.test(t(reachBox(d)))
-    && [...reachBox(d).querySelectorAll('button')].find((b) => t(b) === 'Save changes').disabled);
-  [...reachBox(d).querySelectorAll('button')].find((b) => t(b) === 'Discard').click(); await wait();
+    && d.querySelector('#accounts-admin-login-choices .aw-save').disabled
+    && /Create an administrator account first/.test(t(d.querySelector('#accounts-admin-login-choices .aw-reason'))));
+  d.querySelector('#accounts-admin-login-choices .aw-discard').click(); await wait();
   check('  Discard: the selection gone, the chip back on the saved reach', !reachBox(d) && reachChip(d, 'Network scripts permitted').getAttribute('aria-pressed') === 'true');
   state = Object.assign({}, state, { admin_login: { on: true, reach: 'network', password_set: true, https_admins: ['carol'], results: [] } });
   const a2 = page('admin.html', 'http://box.local/admin/#accounts', async (u, o = {}) => {
@@ -157,11 +159,11 @@ function page(file, url, fetcher, scripts) {
   }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait(300);
   reachChip(a2.d, 'Local scripts only').click(); await wait();
-  const save2 = [...reachBox(a2.d).querySelectorAll('button')].find((b) => t(b) === 'Save changes');
+  const save2 = a2.d.querySelector('#accounts-admin-login-choices .aw-save');
   check('  with an administrator account: the accounts that still sign in named, Save enabled',
     /The administrator accounts \(carol\) can still sign in from any device/.test(t(reachBox(a2.d))) && !save2.disabled && sent() === 0);
   save2.click(); await wait();
-  check('  Save changes: the reach sent', aposted.some((b) => b.action === 'admin-login' && b.reach === 'local'));
+  check('  Save: the reach sent', aposted.some((b) => b.action === 'admin-login' && b.reach === 'local'));
   check('admin, script sign-in: no errors', !a2.errors.length, a2.errors.join(' | '));
   check('admin: no errors', !a.errors.length, a.errors.join(' | '));
   console.log(`failures: ${fails}`);

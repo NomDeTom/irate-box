@@ -214,6 +214,7 @@ const AL = (() => {
     }
     Object.keys(badges).forEach(paint);
     hiddenLinks.forEach((id) => hide(id, true));
+    markUnsaved();
     list.append(el('p', { class: 'side-foot' }, autoBtn));
     built = true;
     onBuild.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
@@ -273,8 +274,41 @@ const AL = (() => {
     if (p) { p.link.hidden = !!yes; rollUp(p.group); }
   }
 
+  // ---- Unsaved changes (AW.unsaved: the sections changed and not saved) ----
+  // A mark on the sidebar entry of each page holding one, and on a group's head, so folding doesn't hide it.
+  const unsavedOn = (p) => (typeof AW === 'undefined' ? [] : AW.unsaved().filter((x) => x.el && p.el.contains(x.el)));
+  function markUnsaved() {
+    for (const p of pages) {
+      const these = unsavedOn(p);
+      p.link.classList.toggle('unsaved', !!these.length);
+      if (these.length) p.link.title = `Unsaved changes: ${these.map((x) => x.label || 'a setting').join(', ')}`;
+      else p.link.removeAttribute('title');
+    }
+    for (const g of groups.values()) g.head.classList.toggle('unsaved', !!g.box.querySelector('a.unsaved:not([hidden])'));
+  }
+  if (typeof document !== 'undefined') document.addEventListener('aw-unsaved', markUnsaved);
+  // Leaving a page with unsaved changes asks first (its drafts are kept either way, as pages are hidden, not
+  // destroyed); No stays on it. Closing the tab or reloading asks the browser's own question.
+  let shownHash = location.hash;
+  window.addEventListener('hashchange', (e) => {
+    const from = pageFor(shownHash).page, to = pageFor(location.hash).page;
+    const left = from && from !== to ? unsavedOn(from) : [];
+    if (left.length && !window.confirm(`${from.title} has unsaved changes (${left.map((x) => x.label || 'a setting').join(', ')}). `
+      + 'Go to the other page anyway? The changes stay on this page, not saved, until you save or discard them.')) {
+      history.replaceState(null, '', shownHash || location.pathname);
+      e.stopImmediatePropagation(); // the page's loaders are not told: nothing changed
+      return;
+    }
+    shownHash = location.hash;
+    show();
+  }, true);
+  window.addEventListener('beforeunload', (e) => {
+    if (typeof AW === 'undefined' || !AW.unsaved().length) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
   menu.addEventListener('click', () => { const open = side.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });
-  window.addEventListener('hashchange', show);
   build(null);
   show();
   // The apps' pages: a fetch away. When they're in, the page is rebuilt and the loaders told (a

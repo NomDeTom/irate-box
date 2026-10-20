@@ -200,42 +200,39 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const sent = () => posted.some(([u, b]) => u === '/admin/security' && b.action === 'fix' && b.choice === 'sudo-drop:90-lyra');
   sudo.click();
   await wait();
-  const bar = d.querySelector('#security .sec-pending');
+  const foot = (fid) => d.querySelector(`.aw-foot[data-section="sec-${fid}"]`);
   const sudo2 = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));
   check('  set, not sent: shown Off, marked, nothing posted, no pop-up', !sent() && t(sudo2) === 'Passwordless sudo: Off'
     && sudo2.classList.contains('pending') && asked === 0, t(sudo2));
-  check('  the bar at the top lists it, with Discard and Save', !bar.hidden && /1 change not saved yet/.test(t(bar))
-    && /Passwordless sudo/.test(t(bar)) && [...bar.querySelectorAll('button')].map(t).join('|') === 'Discard|Save changes', t(bar));
-  {
-    // Saved only from the page it was chosen on: the Security doctor's bar points there and offers no Save of it.
-    const other = d.querySelector('#secdoctor .sec-pending');
-    check('  the Security doctor\'s bar points to it on Security, with no Save of its own', !other.hidden
-      && !!other.querySelector('a[href="#security"]') && /1 on Security/.test(t(other)) && !other.querySelectorAll('button').length, t(other));
-    check('  Updates\' bar the same', !!d.querySelector('#updates .sec-pending a[href="#security"]'));
-  }
-  [...bar.querySelectorAll('button')].find((b) => t(b) === 'Discard').click();
+  check('  its own footer under it: Unsaved changes, Discard and Save; no bar', /Unsaved changes/.test(t(foot('sudo-nopasswd')))
+    && [...foot('sudo-nopasswd').querySelectorAll('button')].map(t).join('|') === 'Discard|Save' && !d.querySelector('.sec-pending'), t(foot('sudo-nopasswd')));
+  foot('sudo-nopasswd').querySelector('.aw-discard').click();
   await wait();
-  check('  Discard: back to On, the bar gone, nothing posted', !sent() && d.querySelector('#security .sec-pending').hidden
+  check('  Discard: back to On, nothing posted', !sent() && !/Unsaved changes/.test(t(foot('sudo-nopasswd')))
     && t([...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)))) === 'Passwordless sudo: On');
   [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b))).click();
   await wait();
-  [...d.querySelector('#security .sec-pending').querySelectorAll('button')].find((b) => /^Save/.test(t(b))).click();
+  foot('sudo-nopasswd').querySelector('.aw-save').click();
   await wait();
-  check('  Off asks root to take the rule out, on Save, with no pop-up', sent() && asked === 0);
+  check('  Off asks root to take the rule out, on Save: one question there, what it does', sent() && asked === 1);
   {
-    // A Save the hub refuses part-way: what was not sent stays chosen, and the note says so.
-    const realPost = w.postJSON;
-    let n = 0;
-    w.postJSON = async (u, b) => { if (u === '/admin/security' && b.action === 'fix' && n++ >= 1) throw new Error('the helper is busy.'); return realPost(u, b); };
+    // Two choices, two sections: one the hub refuses stays chosen, its reason under its own Save; the other is sent.
     w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });
-    [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Turn password login off').click();
+    const pwBtn = [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Turn password login off');
+    const offBtn = [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Switch off');
+    const fidOf = (b) => b.closest('[id^="sec-"]').id.replace(/^sec-/, '');
+    const pwFid = fidOf(pwBtn), offFid = fidOf(offBtn);
+    const offChoice = sec.scan.findings.find((f) => f.id === offFid).actions.find((a) => a.label === 'Switch off').choice;
+    const realPost = w.postJSON;
+    w.postJSON = async (u, b) => { if (u === '/admin/security' && b.choice === offChoice) throw new Error('the helper is busy.'); return realPost(u, b); };
+    pwBtn.click();
     [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Switch off').click();
     await wait();
-    [...d.querySelector('#security .sec-pending').querySelectorAll('button')].find((b) => /^Save/.test(t(b))).click();
+    foot(offFid).querySelector('.aw-save').click();
     await wait();
-    const bar = d.querySelector('#security .sec-pending');
-    check('a Save refused part-way: the unsent change stays chosen, the note says how many went', !bar.hidden && /1 change not saved yet/.test(t(bar))
-      && /1 of 2 changes were sent/.test(t(d.getElementById('security-note'))), `${t(bar)} / ${t(d.getElementById('security-note'))}`);
+    check('a Save the hub refuses: that change stays chosen, the reason under its Save; the other still waits for its own Save',
+      /Unsaved changes/.test(t(foot(offFid))) && /the helper is busy/.test(t(foot(offFid).nextElementSibling)) && /Unsaved changes/.test(t(foot(pwFid))),
+      `${t(foot(offFid))} / ${t(foot(pwFid))}`);
     w.postJSON = realPost;
   }
   check('no stray null or undefined on the page', !stray.length, stray.join(','));

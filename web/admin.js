@@ -101,8 +101,50 @@ function say(text, ok, at) {
   at.hidden = !text;
 }
 
-const boxes = document.querySelectorAll('.settings input[type="checkbox"]');
-// Each group of checkboxes names the note its answers go in (data-note).
+// The switches in a .settings group (delete at boot, the factory tile, visitor counts): a section per group, held until
+// Save; each group names the note its answers go in (data-note). The delete-at-boot ones say when they apply.
+const settingGroups = [...document.querySelectorAll(".settings")]
+  .filter((g) => g.querySelector('input[type="checkbox"]'))
+  .map((g) => {
+    const boxes = [...g.querySelectorAll('input[type="checkbox"]')];
+    const sec = AW.section({
+      id: `switches-${boxes.map((b) => b.id).join("-")}`,
+      label: boxes
+        .map((b) => {
+          const n = b.parentElement.querySelector(".setting-name");
+          return n ? n.textContent.trim() : b.id;
+        })
+        .join(", "),
+      saved: null,
+      save: async (c) => {
+        const data = await postJSON("/admin/settings", c);
+        // What the hub stored, not what was sent: they differ if it rejected the value.
+        setTimeout(() =>
+          sec.update(
+            Object.fromEntries(
+              boxes
+                .filter((b) => typeof data[b.id] === "boolean")
+                .map((b) => [b.id, data[b.id]]),
+            ),
+          ),
+        );
+        return g.dataset.atBoot !== undefined
+          ? "Saved. It takes effect at the next boot."
+          : "Saved.";
+      },
+      onChange: () =>
+        boxes.forEach((b) => {
+          b.checked = !!sec.get(b.id);
+          b.disabled = sec.disabled();
+        }),
+    });
+    boxes.forEach((b) => {
+      b.disabled = true;
+      b.addEventListener("change", () => sec.set(b.id, b.checked, true));
+    });
+    g.after(sec.foot, sec.reason);
+    return { boxes, sec };
+  });
 const settingNote = (box) => noteEl(box.closest(".settings").dataset.note);
 
 async function load() {
@@ -110,37 +152,24 @@ async function load() {
     const r = await fetch("/admin/settings");
     if (!r.ok) throw new Error(r.status);
     const data = await r.json();
-    boxes.forEach((b) => {
-      if (typeof data[b.id] === "boolean") b.checked = data[b.id];
-    });
+    for (const { boxes, sec } of settingGroups)
+      sec.update(
+        Object.fromEntries(
+          boxes
+            .filter((b) => typeof data[b.id] === "boolean")
+            .map((b) => [b.id, data[b.id]]),
+        ),
+      );
     applySetup(data.setup_done === true);
   } catch (_) {
-    if (boxes.length)
-      say("Could not read the current settings.", false, settingNote(boxes[0]));
+    if (settingGroups.length)
+      say(
+        "Could not read the current settings.",
+        false,
+        settingNote(settingGroups[0].boxes[0]),
+      );
   }
 }
-
-async function save(box) {
-  try {
-    const r = await fetch("/admin/settings", {
-      method: "POST",
-      headers: ADMIN_HEADERS,
-      body: JSON.stringify({ [box.id]: box.checked }),
-    });
-    if (!r.ok) throw new Error(r.status);
-    const data = await r.json();
-    // Show what the hub stored, not what we sent -- they differ if it rejected the value.
-    boxes.forEach((b) => {
-      if (typeof data[b.id] === "boolean") b.checked = data[b.id];
-    });
-    say("Saved. It takes effect at the next boot.", true, settingNote(box));
-  } catch (_) {
-    box.checked = !box.checked;
-    say("Could not save. The setting is unchanged.", false, settingNote(box));
-  }
-}
-
-boxes.forEach((b) => b.addEventListener("change", () => save(b)));
 load();
 
 // --- remote access --------------------------------------------------------------
@@ -826,11 +855,7 @@ function renderLibrary(snap) {
     lib.allNote.className = allNote.className;
   }
 
-  for (const [k, v] of Object.entries(snap.policy)) {
-    const field = lib.policy.elements[k];
-    if (field && document.activeElement !== field && !lib.policy.dataset.dirty)
-      field.value = String(v);
-  }
+  libPolicy.fill(snap.policy);
   lastPolicy = snap.policy;
   fillSurfaces(snap.policy);
   // GitHub's hourly allowance, as the last check saw it (librarian.py: rate): low, the scheduled
@@ -929,65 +954,41 @@ lib.add.addEventListener("submit", async (e) => {
     );
   }
 });
-lib.policy.addEventListener("submit", async (e) => {
-  e.preventDefault();
+// The librarian's policy, and the mirrors', the firmware mirror's and the toolkits' cache's own pair in it: each
+// a section (AW.form). The poll gives the saved policy; a Save sends the changes.
+const libPolicySave = async (changes) => {
   const body = { action: "policy" };
-  for (const k of [
-    "keep_old",
-    "check_every_hours",
-    "min_free_mb",
-    "books_budget_mb",
-    "auto_install",
-  ])
-    body[k] = Number(lib.policy.elements[k].value);
-  const at = noteEl("library-policy-note");
-  try {
-    const snap = await libPost(body);
-    delete lib.policy.dataset.dirty;
-    renderLibrary(snap);
-    say("Saved.", true, at);
-  } catch (err) {
-    say(err.message, false, at);
-  }
+  for (const [k, v] of Object.entries(changes)) body[k] = Number(v);
+  renderLibrary(await libPost(body));
+};
+const libPolicy = AW.form(lib.policy, {
+  label: "Library policy",
+  save: async (c) => {
+    await libPolicySave(c);
+    return "Saved.";
+  },
 });
-// Changed and not saved: kept through the page's polling, focus or not.
-for (const ev of ["input", "change"])
-  lib.policy.addEventListener(ev, () => {
-    lib.policy.dataset.dirty = "1";
-  });
-// The mirrors', the firmware mirror's and the toolkits' cache's own pair, in the librarian's policy.
-const surfaceForms = [...document.querySelectorAll("form.surface-policy")];
+const surfaceForms = [...document.querySelectorAll("form.surface-policy")].map(
+  (f) =>
+    AW.form(f, {
+      label: "Update policy",
+      save: async (c) => {
+        await libPolicySave(c);
+        return "Saved. The librarian applies it at the next hourly cycle.";
+      },
+    }),
+);
 function fillSurfaces(policy) {
-  for (const f of surfaceForms) {
-    if (f.contains(document.activeElement) || f.dataset.dirty) continue;
-    f.querySelectorAll("select[name]").forEach((s) => {
-      if (policy[s.name] != null) s.value = String(policy[s.name]);
-    });
+  for (const sec of surfaceForms) {
+    const names = [
+      ...sec.foot.closest("form").querySelectorAll("select[name]"),
+    ].map((x) => x.name);
+    sec.fill(
+      Object.fromEntries(
+        names.filter((n) => policy[n] != null).map((n) => [n, policy[n]]),
+      ),
+    );
   }
-}
-for (const f of surfaceForms) {
-  f.addEventListener("change", () => {
-    f.dataset.dirty = "1";
-  });
-  f.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const body = { action: "policy" };
-    f.querySelectorAll("select[name]").forEach((s) => {
-      if (s.name in (lastPolicy || {})) body[s.name] = Number(s.value);
-    });
-    const at = f.nextElementSibling;
-    try {
-      delete f.dataset.dirty;
-      renderLibrary(await libPost(body));
-      say(
-        "Saved. The librarian applies it at the next hourly cycle.",
-        true,
-        at,
-      );
-    } catch (err) {
-      say(err.message, false, at);
-    }
-  });
 }
 let lastPolicy = null;
 document
@@ -997,21 +998,16 @@ document
       libAct("all", { action: b.dataset.mirrorsAll, names: ["mirrors"] }),
     ),
   );
-lib.token.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
-    renderLibrary(
-      await libPost({
-        action: "token",
-        value: lib.token.elements.value.value.trim(),
-      }),
-    );
-    lib.token.reset();
-    say("Token saved.", true, noteEl("library-token-note"));
-  } catch (err) {
-    say(err.message, false, noteEl("library-token-note"));
-  }
+// The token is never read back: its field starts empty, and empties again once saved.
+const libToken = AW.form(lib.token, {
+  label: "GitHub token",
+  save: async (c) => {
+    renderLibrary(await libPost({ action: "token", value: c.value.trim() }));
+    setTimeout(() => libToken.fill({ value: "" }));
+    return "Token saved.";
+  },
 });
+libToken.fill({ value: "" });
 document
   .getElementById("library-token-clear")
   .addEventListener("click", async () => {
@@ -1546,8 +1542,9 @@ async function loadPackages() {
         ]),
   );
 }
+// True once the root helper has the request; false when cancelled or refused (said under the package).
 async function pkgAct(body, confirmText) {
-  if (confirmText && !confirm(confirmText)) return;
+  if (confirmText && !confirm(confirmText)) return false;
   try {
     pkgWaiting = {
       id: (await postJSON("/admin/packages", body)).id,
@@ -1560,8 +1557,10 @@ async function pkgAct(body, confirmText) {
       true,
     );
     setTimeout(loadPackages, 2000);
+    return true;
   } catch (err) {
     pkgSay(body.package, err.message, false);
+    return false;
   }
 }
 function pkgCard(id, p) {
@@ -1675,6 +1674,7 @@ function pkgCard(id, p) {
       },
     ],
     {
+      id: `pkg-${id}`,
       save: (v) => {
         const all = {
           channel: s.channel,
@@ -2793,52 +2793,18 @@ function renderReports(data, del) {
   });
   const box = document.getElementById("report-settings");
   if (!box || !rs) return;
-  // The reasons offered (any of them), how many reports count, and whether to hide meanwhile.
+  // The reasons offered (any of them), how many reports count, and whether to hide meanwhile: one section.
   const chosen = new Set(rs.reasons);
-  const reasons = AW.h(
-    "div",
-    { class: "filter-chips", role: "group", "aria-label": "Reasons offered" },
-    rs.all_reasons.map((r) =>
-      AW.h(
-        "button",
-        {
-          type: "button",
-          class: "filter-chip" + (chosen.has(r) ? " active" : ""),
-          "aria-pressed": String(chosen.has(r)),
-          onclick: async () => {
-            const next = rs.all_reasons.filter((x) =>
-              x === r ? !chosen.has(r) : chosen.has(x),
-            );
-            if (!next.length) return;
-            try {
-              await postJSON("/admin/settings", { report_reasons: next });
-              loadModeration();
-            } catch (err) {
-              say(err.message, false, noteEl("mod-note"));
-            }
-          },
-        },
-        r,
-      ),
-    ),
-  );
   box.replaceChildren(
-    AW.h(
-      "div",
-      { class: "aw-settings" },
-      AW.h(
-        "div",
-        { class: "aw-field" },
-        AW.h("span", { class: "aw-label", text: "Reasons offered" }),
-        reasons,
-        AW.h("small", {
-          class: "setting-desc",
-          text: "Each selection is saved at once.",
-        }),
-      ),
-    ),
     AW.settings(
       [
+        {
+          key: "report_reasons",
+          label: "Reasons offered",
+          kind: "multi",
+          value: rs.all_reasons.filter((r) => chosen.has(r)),
+          options: rs.all_reasons,
+        },
         {
           key: "report_threshold",
           label: "Reports required for queue",
@@ -2860,6 +2826,11 @@ function renderReports(data, del) {
         },
       ],
       {
+        id: "moderation",
+        why: (c, v) =>
+          v.report_reasons && !v.report_reasons.length
+            ? "Offer at least one reason."
+            : null,
         save: async (changed) => {
           const r = await postJSON("/admin/settings", changed);
           loadModeration();
@@ -3024,35 +2995,26 @@ const storeForm = document.getElementById("store-settings");
 async function loadStoreSettings() {
   try {
     const s = await getJSON("/admin/settings");
-    storeForm.elements.store_max_total_mb.value = s.store_max_total_mb;
-    storeForm.elements.store_save_ttl_hours.value = s.store_save_ttl_hours;
-    storeForm.elements.drop_max_total_mb.value = s.drop_max_total_mb;
-    storeForm.elements.drop_ttl_hours.value = s.drop_ttl_hours;
+    storeSec.fill({
+      store_max_total_mb: s.store_max_total_mb,
+      store_save_ttl_hours: s.store_save_ttl_hours,
+      drop_max_total_mb: s.drop_max_total_mb,
+      drop_ttl_hours: s.drop_ttl_hours,
+    });
   } catch (_) {
     /* the landing-page block already reports a failed read */
   }
 }
-storeForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
-    await postJSON("/admin/settings", {
-      store_max_total_mb: Number(storeForm.elements.store_max_total_mb.value),
-      store_save_ttl_hours: Number(
-        storeForm.elements.store_save_ttl_hours.value,
-      ),
-      drop_max_total_mb: Number(storeForm.elements.drop_max_total_mb.value),
-      drop_ttl_hours: Number(storeForm.elements.drop_ttl_hours.value),
-    });
-    say(
-      "Saved. The new storage limit applies when the box next writes data.",
-      true,
-      noteEl("store-settings-note"),
+const storeSec = AW.form(storeForm, {
+  label: "Storage limits",
+  save: async (c) => {
+    await postJSON(
+      "/admin/settings",
+      Object.fromEntries(Object.entries(c).map(([k, v]) => [k, Number(v)])),
     );
-    loadStoreSettings();
     loadStore();
-  } catch (err) {
-    say(err.message, false, noteEl("store-settings-note"));
-  }
+    return "Saved. The new storage limit applies when the box next writes data.";
+  },
 });
 
 // --- password -----------------------------------------------------------------------
@@ -3528,23 +3490,20 @@ const AUTO_STEP = {
 };
 function renderAuto(a) {
   if (!a) return;
-  // An edit not saved yet is kept through polling, focus or not; the fold's title says what is saved.
-  if (!auto.form.contains(document.activeElement) && !auto.form.dataset.dirty) {
-    for (const k of [
-      "hub_check_every_hours",
-      "hub_auto",
-      "hub_window_start",
-      "hub_window_end",
-    ])
-      auto.form.elements[k].value = String(a[k]);
-  }
+  // The section keeps an edit not saved yet through polling; the fold's title says what is saved.
+  autoSec.fill({
+    hub_check_every_hours: a.hub_check_every_hours,
+    hub_auto: a.hub_auto,
+    hub_window_start: a.hub_window_start,
+    hub_window_end: a.hub_window_end,
+  });
   const hh = (h) => `${String(h).padStart(2, "0")}:00`;
   auto.says.textContent =
     AW.patternSays(a.hub_check_every_hours, a.hub_auto).replace(/\.$/, "") +
     (Number(a.hub_check_every_hours) && Number(a.hub_auto) === 2
       ? `, between ${hh(a.hub_window_start)} and ${hh(a.hub_window_end)}.`
       : ".") +
-    (auto.form.dataset.dirty ? " (Changed below, not saved.)" : "");
+    (autoSec.dirty() ? " (Changed below, not saved.)" : "");
   auto.window.hidden = auto.form.elements.hub_auto.value !== "2";
   const st = a.state || {};
   const parts = [];
@@ -3566,36 +3525,17 @@ function renderAuto(a) {
 auto.form.elements.hub_auto.addEventListener("change", () => {
   auto.window.hidden = auto.form.elements.hub_auto.value !== "2";
 });
-for (const ev of ["input", "change"])
-  auto.form.addEventListener(ev, () => {
-    auto.form.dataset.dirty = "1";
-  });
-auto.form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const body = { action: "policy" };
-  for (const k of [
-    "hub_check_every_hours",
-    "hub_auto",
-    "hub_window_start",
-    "hub_window_end",
-  ])
-    body[k] = Number(auto.form.elements[k].value);
-  if (body.hub_auto === 2 && body.hub_window_start === body.hub_window_end) {
-    say("The start time and the end time must differ.", false, auto.note);
-    return;
-  }
-  try {
+const autoSec = AW.form(auto.form, {
+  label: "Automatic updates",
+  save: async (c, v) => {
+    if (v.hub_auto === "2" && v.hub_window_start === v.hub_window_end)
+      throw new Error("The start time and the end time must differ.");
+    const body = { action: "policy" };
+    for (const [k, x] of Object.entries(c)) body[k] = Number(x);
     await libPost(body);
-    delete auto.form.dataset.dirty;
-    say(
-      "Saved. The librarian applies it at the next hourly cycle.",
-      true,
-      auto.note,
-    );
     loadUpdate();
-  } catch (err) {
-    say(err.message, false, auto.note);
-  }
+    return "Saved. The librarian applies it at the next hourly cycle.";
+  },
 });
 loadUpdate();
 
@@ -3686,7 +3626,7 @@ function scanButtons(f, busy) {
       textContent: a.label,
       disabled: busy,
       title: secChosen(f.id, a)
-        ? "Selected. Select Save changes to apply this change. Select the button again to cancel the selection."
+        ? "Selected. Select Save below to apply this change. Select the button again to cancel the selection."
         : "",
       onclick: (ev) => secChoose(f, a, ev.currentTarget),
     });
@@ -3694,136 +3634,54 @@ function scanButtons(f, busy) {
     return b;
   });
 }
-// The Security page's, the Security doctor's and Updates' choices are set, then saved: each chosen thing waits, marked,
-// with what it does said in its page's bar (no pop-up per switch). Each page's Save sends only what was chosen on
-// that page, and its Discard forgets only those: a choice left waiting elsewhere is never sent unseen.
-const SEC_PAGES = ["security", "secdoctor", "updates"];
-const SEC_PAGE_NAME = {
-  security: "Security",
-  secdoctor: "the Security doctor",
-  updates: "Updates",
+// The Security page's, the Security doctor's and Updates' choices are settings: each finding's is a section of one
+// value (the choice picked, '' for none), saved from the footer under it, its question asked once at Save. A cure
+// (one right answer) and its Undo are actions: they act at once, after their question.
+const secSecs = new Map(); // finding id -> its section
+const secOffer = (fid, choice) => {
+  const f = ((secData && secData.scan && secData.scan.findings) || []).find(
+    (x) => x.id === fid,
+  );
+  return f && (f.actions || []).find((a) => a.choice === choice);
 };
-const secPending = new Map(); // finding id -> {f, a, page}
-const secChosen = (fid, a) =>
-  secPending.has(fid) && secPending.get(fid).a.choice === a.choice;
-const secPageOf = (node) =>
-  node && node.closest && node.closest(".admin-pane")
-    ? node.closest(".admin-pane").id
-    : "security";
-const secOnPage = (page) =>
-  [...secPending.entries()].filter(([, v]) => v.page === page);
-function secChoose(f, a, from) {
-  // Chosen again, or the choice it has now: nothing to save for it.
-  if (secChosen(f.id, a) || a.on) secPending.delete(f.id);
-  else secPending.set(f.id, { f, a, page: secPageOf(from) });
-  if (secData) renderSecurity(secData);
-}
-function drawSecPending(busy) {
-  document.querySelectorAll(".sec-pending").forEach((bar) => {
-    const page = secPageOf(bar);
-    const list = secOnPage(page).map(([, v]) => v);
-    // Chosen on another page: said here with a way there, never saved from here.
-    const elsewhere = SEC_PAGES.filter((p) => p !== page)
-      .map((p) => [p, secOnPage(p).length])
-      .filter(([, n]) => n);
-    const away = elsewhere.length
-      ? el(
-          "p",
-          { className: "setting-desc" },
-          "Also waiting, saved from their own page: ",
-          ...elsewhere.flatMap(([p, n], i) => [
-            i ? ", " : "",
-            el("a", {
-              href: `#${p}`,
-              textContent: `${n} on ${SEC_PAGE_NAME[p]}`,
-            }),
-          ]),
-        )
-      : null;
-    bar.hidden = !list.length && !away;
-    if (!list.length) {
-      bar.replaceChildren(...(away ? [away] : []));
-      return;
-    }
-    bar.replaceChildren(
-      el("p", {
-        className: "setting-name",
-        textContent: `${list.length} change${list.length === 1 ? "" : "s"} not saved yet`,
-      }),
-      ...(away ? [away] : []),
-      el(
-        "ul",
-        { className: "sec-pending-list" },
-        ...list.map(({ f, a }) =>
-          el(
-            "li",
-            {},
-            el("strong", { textContent: `${f.title}: ` }),
-            a.label,
-            a.confirm
-              ? el("span", {
-                  className: "setting-desc",
-                  textContent: ` ${a.confirm.replace(/\?$/, ".")}`,
-                })
-              : null,
-          ),
-        ),
-      ),
-      el(
-        "div",
-        { className: "library-buttons" },
-        el("button", {
-          type: "button",
-          className: "action-btn",
-          textContent: "Discard",
-          disabled: busy,
-          onclick: () => {
-            secOnPage(page).forEach(([k]) => secPending.delete(k));
-            if (secData) renderSecurity(secData);
-          },
-        }),
-        el("button", {
-          type: "button",
-          className: "action-btn primary",
-          textContent: "Save changes",
-          disabled: busy,
-          onclick: () => secSavePending(page),
-        }),
-      ),
-    );
+function secSection(f) {
+  if (secSecs.has(f.id)) return secSecs.get(f.id);
+  const sec = AW.section({
+    id: `sec-${f.id}`,
+    label: f.title,
+    saved: { choice: "" },
+    ask: (c) => {
+      const a = secOffer(f.id, c.choice);
+      return a && a.confirm ? a.confirm : null;
+    },
+    save: async (c) => {
+      const j = AW.job();
+      secRequest({ action: "fix", choice: c.choice }, f.id, j.done);
+      await j;
+      // Done: nothing waits any more (the scan says what is in effect now).
+      setTimeout(() => sec.update({ choice: "" }));
+    },
+    busy: () => !!(secWaiting && secWaiting.fid === f.id),
+    onChange: () => secData && renderSecurity(secData),
   });
+  secSecs.set(f.id, sec);
+  return sec;
 }
-async function secSavePending(page) {
-  const list = secOnPage(page);
-  const ids = [];
-  let failed = null;
-  // Each change sent in turn; one the hub refuses, and those after it, stay chosen (and shown) for another Save.
-  for (const [key, { a }] of list) {
-    try {
-      ids.push(
-        (await postJSON("/admin/security", { action: "fix", choice: a.choice }))
-          .id,
-      );
-      secPending.delete(key);
-    } catch (err) {
-      failed = err.message;
-      break;
-    }
-  }
-  if (ids.length) {
-    secWaiting = { id: ids[ids.length - 1], ids, fid: "scan" };
-    secNote = null;
-  }
-  if (failed) {
-    secNote = {
-      fid: "scan",
-      text: `${ids.length} of ${list.length} changes were sent to the root helper. The next change failed: ${failed.replace(/\.?$/, ".")} ${list.length - ids.length} change${list.length - ids.length === 1 ? " is" : "s are"} still selected and not saved.`,
-      ok: false,
-    };
-    if (ids.length) secWaiting.keepNote = secNote;
-  }
-  loadSecurity();
+const secChosen = (fid, a) => {
+  const sec = secSecs.get(fid);
+  return !!sec && sec.dirty() && sec.get("choice") === a.choice;
+};
+function secChoose(f, a) {
+  // A cure acts at once (the one in effect already: nothing to do).
+  if (secKind(f) === "cure") return a.on ? undefined : secFix(f.id, a);
+  // Chosen again, or the choice it has now: nothing to save for it.
+  secSection(f).set("choice", secChosen(f.id, a) || a.on ? "" : a.choice);
 }
+// The footer under a finding whose choice is held for Save.
+const secFoot = (f) =>
+  secKind(f) === "cure" || !(f.actions || []).length
+    ? []
+    : [secSection(f).foot, secSection(f).reason];
 
 // --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
@@ -4098,7 +3956,8 @@ function secChipRows(f, busy) {
         "div",
         { className: "chip-group", role: "group", "aria-label": label },
         ...choices.map((a) => {
-          const pend = secPending.get(f.id);
+          const sec = secSecs.get(f.id);
+          const pend = sec && sec.dirty() ? { a: { choice: sec.get("choice") } } : null;
           const sel = pend ? pend.a.choice === a.choice : !!a.on;
           const b = el("button", {
             type: "button",
@@ -4199,14 +4058,25 @@ function secChoiceCard(f, busy, note) {
     ...findingLines(f),
     ...rows,
     buttons,
+    ...secFoot(f),
     note,
   );
+}
+// A choice waiting for Save that the newest scan no longer offers (in effect now, or its finding gone): dropped,
+// never sent.
+function secPrune(scan) {
+  if (!scan) return;
+  for (const [fid, sec] of secSecs) {
+    if (!sec.dirty() || sec.saving()) continue;
+    const a = secOffer(fid, sec.get("choice"));
+    if (!a || a.on) sec.discard();
+  }
 }
 function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
   const busy = data.pending > 0 || !!secWaiting;
-  drawSecPending(busy);
+  secPrune(scan);
   if (secWaiting) {
     const done = (data.results || []).find((r) => r.id === secWaiting.id);
     if (done) {
@@ -4223,6 +4093,14 @@ function renderSecurity(data) {
           .join(" "),
         ok: all.every((r) => r.ok) && !secWaiting.keepNote,
       };
+      if (secWaiting.onDone)
+        secWaiting.onDone(
+          all.every((r) => r.ok),
+          all
+            .filter((r) => !r.ok)
+            .map(resultSaid)
+            .join(" "),
+        );
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -4243,7 +4121,7 @@ function renderSecurity(data) {
         f.status === "ok"
           ? ""
           : f.fix || (f.actions.length ? "" : "Information only."),
-      controls: scanButtons(f, busy),
+      controls: [...scanButtons(f, busy), ...secFoot(f)],
       note: noteUnder(f.id),
       ...extra,
     });
@@ -4314,7 +4192,10 @@ function renderSecurity(data) {
       ? by("update").map((f) =>
           row(f, {
             how: f.status === "ok" ? "" : f.fix,
-            controls: f.id === "security-updates" ? [] : scanButtons(f, busy),
+            controls:
+              f.id === "security-updates"
+                ? []
+                : [...scanButtons(f, busy), ...secFoot(f)],
             badge: updBadge(f),
           }),
         )
@@ -4429,6 +4310,7 @@ function renderSecurity(data) {
                 ...scanButtons(f, busy),
               )
             : null,
+          ...(f ? secFoot(f) : []),
           f ? noteUnder(f.id) : null,
         ),
       );
@@ -5101,13 +4983,19 @@ async function loadSecurity() {
   }
 }
 
-async function secRequest(body, fid) {
+// onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
+async function secRequest(body, fid, onDone) {
   try {
-    secWaiting = { id: (await postJSON("/admin/security", body)).id, fid };
+    secWaiting = {
+      id: (await postJSON("/admin/security", body)).id,
+      fid,
+      onDone,
+    };
     secNote = null;
     loadSecurity();
   } catch (err) {
     secNote = { fid, text: err.message, ok: false };
+    if (onDone) onDone(false, err.message);
     loadSecurity();
   }
 }
@@ -5150,17 +5038,10 @@ function drawDebianPattern(lines, busy) {
   const u = lines.find((f) => f.id === "unattended"),
     w = lines.find((f) => f.id === "security-updates");
   const pat = u && u.pattern;
-  if (
-    pat &&
-    !deb.form.contains(document.activeElement) &&
-    !deb.form.dataset.dirty
-  ) {
-    deb.form.elements.often.value = String(pat.often);
-    deb.form.elements.act.value = String(pat.act);
-  }
+  if (pat) debSec.fill({ often: pat.often, act: pat.act });
   deb.says.textContent = pat
     ? AW.patternSays(pat.often, pat.act) +
-      (deb.form.dataset.dirty ? " (Changed below, not saved.)" : "")
+      (debSec.dirty() ? " (Changed below, not saved.)" : "")
     : "Not known until the box is scanned.";
   const waiting = w ? w.waiting || 0 : 0,
     fetched = w ? w.fetched || 0 : 0;
@@ -5188,22 +5069,18 @@ function drawDebianPattern(lines, busy) {
     },
   });
 }
-deb.form.addEventListener("input", () => {
-  deb.form.dataset.dirty = "1";
-});
-deb.form.addEventListener("change", () => {
-  deb.form.dataset.dirty = "1";
-});
-deb.form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  delete deb.form.dataset.dirty;
-  secRequest(
-    {
-      action: "fix",
-      choice: `autoupdate-set:${deb.form.elements.often.value}-${deb.form.elements.act.value}`,
-    },
-    "unattended",
-  );
+// Saved once the root helper has done it: until then "Saving…", and a refusal or a failure keeps the choice.
+const debSec = AW.form(deb.form, {
+  label: "Debian's security updates",
+  save: (c, v) => {
+    const j = AW.job();
+    secRequest(
+      { action: "fix", choice: `autoupdate-set:${v.often}-${v.act}` },
+      "unattended",
+      j.done,
+    );
+    return j;
+  },
 });
 
 function secFix(fid, action) {
@@ -5369,8 +5246,7 @@ const hl = {
   fine: document.getElementById("health-fine"),
   glance: document.getElementById("health-glance"),
   setGroups: document.getElementById("health-settings-groups"),
-  setSave: document.getElementById("health-settings-save"),
-  setDiscard: document.getElementById("health-settings-discard"),
+  setFoot: document.getElementById("health-settings-foot"),
   setNote: document.getElementById("health-settings-note"),
   fineFold: document.getElementById("health-fine-fold"),
   fineCount: document.getElementById("health-fine-count"),
@@ -5569,72 +5445,110 @@ function renderGlance(data, rep) {
   );
 }
 
-// The doctor's own settings: each a row of choices; Save sends the changes to the root helper one after another,
-// says what waits, then what was done, and looks again so the page shows them as they are.
-let hsPick = {},
+// The doctor's own settings as a section: each a row of choices; Save sends the changes to the root helper one
+// after another, says what waits, then what was done, and looks again so the page shows them as they are. A
+// question an option carries is asked once, at Save, with any other.
+let hsGroups = [],
   hsFrom = "",
   hsSaving = null;
-function renderDoctorSettings(data, rep) {
-  const st = rep && rep.settings;
-  const groups = (st && st.groups) || [];
-  const from = JSON.stringify(groups.map((g) => [g.key, g.current]));
-  if (from !== hsFrom && !hsSaving) {
-    // a new report: the settings as they are now, unless the owner is mid-change
-    const dirty = Object.keys(hsPick).some((k) =>
-      groups.find((g) => g.key === k && g.current !== hsPick[k]),
-    );
-    if (!dirty || !hsFrom) {
-      hsPick = Object.fromEntries(groups.map((g) => [g.key, g.current]));
-    }
-    hsFrom = from;
+const docSec = AW.section({
+  id: "doctor-settings",
+  label: "The Box doctor's settings",
+  saved: null,
+  ask: (c) => {
+    const asks = Object.entries(c)
+      .map(([k, v]) => {
+        const g = hsGroups.find((x) => x.key === k);
+        const o = g && g.options.find((x) => x.value === v);
+        return o && o.confirm;
+      })
+      .filter(Boolean);
+    return asks.length ? asks.join("\n\n") : null;
+  },
+  save: (c) => doctorSave(c),
+  onChange: () => drawDoctorGroups(),
+});
+hl.setFoot.append(docSec.foot, docSec.reason);
+function drawDoctorGroups() {
+  if (!hsGroups.length) {
     hl.setGroups.replaceChildren(
-      ...groups.map((g) => {
-        const box = el("div", { id: `hs-${g.key}` });
-        AW.choices(
-          box,
-          `hs-${g.key}`,
-          g.options.map((o) => ({ value: o.value, title: o.label })),
-          {
-            value: hsPick[g.key],
-            onChange: (v) => {
-              hsPick[g.key] = v;
-              showDoctorSave(groups);
-            },
-          },
-        );
-        box.setAttribute("aria-label", g.label);
-        return el(
-          "div",
-          { className: "up-group" },
-          el("span", { className: "setting-name", textContent: g.label }),
-          el("p", { className: "setting-desc", textContent: g.desc }),
-          box,
-        );
+      el("p", {
+        className: "setting-desc",
+        textContent: "Shown after the next check.",
       }),
     );
-    if (!groups.length)
-      hl.setGroups.replaceChildren(
-        el("p", {
-          className: "setting-desc",
-          textContent: "Shown after the next check.",
-        }),
-      );
+    return;
   }
+  hl.setGroups.replaceChildren(
+    ...hsGroups.map((g) => {
+      const box = el("div", { id: `hs-${g.key}` });
+      AW.choices(
+        box,
+        `hs-${g.key}`,
+        g.options.map((o) => ({ value: o.value, title: o.label })),
+        {
+          value: docSec.get(g.key),
+          onChange: (v) => docSec.set(g.key, v, true),
+        },
+      );
+      box.setAttribute("aria-label", g.label);
+      return el(
+        "div",
+        { className: "up-group" },
+        el("span", { className: "setting-name", textContent: g.label }),
+        el("p", { className: "setting-desc", textContent: g.desc }),
+        box,
+      );
+    }),
+  );
+}
+// Sent one after another; one the hub refuses stops the rest, and those already sent are still waited for and said.
+async function doctorSave(changes) {
+  const ids = [];
+  let failed = null;
+  for (const [k, v] of Object.entries(changes)) {
+    const g = hsGroups.find((x) => x.key === k);
+    const o = g.options.find((x) => x.value === v);
+    try {
+      ids.push(
+        (await postJSON("/admin/health", { action: "fix", choice: o.choice }))
+          .id,
+      );
+    } catch (err) {
+      failed = err.message;
+      break;
+    }
+  }
+  if (!ids.length) throw new Error(failed);
+  const j = AW.job();
+  hsSaving = { ids, failed, of: Object.keys(changes).length, job: j };
+  say("Saving. Sent to the root helper.", true, hl.setNote);
+  loadHealth();
+  return j;
+}
+function renderDoctorSettings(data, rep) {
+  const st = rep && rep.settings;
+  hsGroups = (st && st.groups) || [];
   if (hsSaving) {
     const done = hsSaving.ids.map((id) =>
       (data.results || []).find((r) => r.id === id),
     );
     if (done.every(Boolean)) {
       const bad = done.filter((r) => !r.ok);
-      say(
-        bad.length
+      const left = hsSaving.of - done.length;
+      const ok = !bad.length && !hsSaving.failed;
+      const text =
+        (bad.length
           ? bad.map(resultSaid).join(" ")
-          : `Saved: ${done.map(resultSaid).join(" ")}`,
-        !bad.length,
-        hl.setNote,
-      );
+          : `Saved: ${done.map(resultSaid).join(" ")}`) +
+        (hsSaving.failed
+          ? ` ${done.length} of ${hsSaving.of} changes were sent. The next change failed: ${hsSaving.failed.replace(/\.?$/, ".")} ${left} change${left === 1 ? " is" : "s are"} still selected and not saved.`
+          : "");
+      const j = hsSaving.job;
       hsSaving = null;
       hsFrom = "";
+      say(text, ok, hl.setNote);
+      j.done(ok, ok ? "" : text);
       hlRequest({ action: "scan" }, "scan");
     } else {
       const ahead = ((data.queue && data.queue.waiting) || []).length;
@@ -5649,46 +5563,13 @@ function renderDoctorSettings(data, rep) {
       );
     }
   }
-  showDoctorSave(groups);
-}
-function showDoctorSave(groups) {
-  const changed = groups.filter(
-    (g) => hsPick[g.key] !== undefined && hsPick[g.key] !== g.current,
-  );
-  hl.setSave.disabled = hl.setDiscard.disabled = !!hsSaving || !changed.length;
-  hl.setDiscard.onclick = () => {
-    hsPick = {};
-    hsFrom = "";
-    if (hlLast) renderHealth(hlLast);
-  };
-  hl.setSave.textContent = hsSaving
-    ? "Saving…"
-    : changed.length
-      ? `Save (${changed.length} unsaved)`
-      : "Save";
-  hl.setSave.onclick = async () => {
-    for (const g of changed) {
-      const o = g.options.find((x) => x.value === hsPick[g.key]);
-      if (o.confirm && !confirm(o.confirm)) return;
-    }
-    const ids = [];
-    for (const g of changed) {
-      const o = g.options.find((x) => x.value === hsPick[g.key]);
-      try {
-        ids.push(
-          (await postJSON("/admin/health", { action: "fix", choice: o.choice }))
-            .id,
-        );
-      } catch (err) {
-        say(err.message, false, hl.setNote);
-        return;
-      }
-    }
-    hsSaving = { ids };
-    showDoctorSave(groups);
-    say("Saving. Sent to the root helper.", true, hl.setNote);
-    loadHealth();
-  };
+  // A new report: the settings as they are now; a change in progress kept over them.
+  const from = JSON.stringify(hsGroups.map((g) => [g.key, g.current]));
+  if (from !== hsFrom && !docSec.saving()) {
+    hsFrom = from;
+    docSec.update(Object.fromEntries(hsGroups.map((g) => [g.key, g.current])));
+    if (!hsGroups.length) drawDoctorGroups();
+  }
 }
 document
   .getElementById("health-search")
@@ -5843,6 +5724,7 @@ function renderHealth(data) {
     const done = (data.results || []).find((r) => r.id === hlWaiting.id);
     if (done) {
       hlNote = { fid: hlWaiting.fid, text: resultSaid(done), ok: done.ok };
+      if (hlWaiting.onDone) hlWaiting.onDone(done.ok, resultSaid(done));
       hlWaiting = null;
       return renderHealth(data);
     }
@@ -6084,9 +5966,33 @@ const CLOCK_STATE = {
   "not-found": ["warn", "Not found"],
   unknown: ["ok", "Not reported"],
 };
-let clkDraft = null,
-  clkSaved = "";
-function renderClockSources(c, busy) {
+// The clock's sources as a section: its value the choice (service, pool, GPS, module, serve, local server); the
+// page's polls redraw the states, and a draft is kept over a saved choice that changes.
+let clkLast = null;
+const clkSec = AW.section({
+  id: "clock-sources",
+  label: "Time sources",
+  saved: null,
+  why: (c, v) =>
+    !v.pool && !v.gps && !v.module && !v.local
+      ? "Select at least one source: with none, nothing sets the clock."
+      : null,
+  ask: (c, v) => clockAsk(v, clkLast.c),
+  save: (c, v) => {
+    const j = AW.job();
+    hlRequest(
+      {
+        action: "fix",
+        choice: `clock-sources:${v.service}:${v.pool ? 1 : 0}:${v.gps ? 1 : 0}:${v.module ? 1 : 0}:${v.serve ? 1 : 0}:${v.local || "-"}`,
+      },
+      "clock-sources",
+      j.done,
+    );
+    return j;
+  },
+  onChange: () => clkLast && renderClockSources(clkLast.c, clkLast.busy, true),
+});
+function renderClockSources(c, busy, own) {
   const box = document.getElementById("clock-sources");
   if (!box) return;
   if (!c) {
@@ -6095,8 +6001,10 @@ function renderClockSources(c, busy) {
     );
     return;
   }
+  clkLast = { c, busy };
   if (
-    clkDraft &&
+    !own &&
+    clkSec.dirty() &&
     box.contains(document.activeElement) &&
     document.activeElement.tagName === "INPUT"
   )
@@ -6110,20 +6018,26 @@ function renderClockSources(c, busy) {
     serve: !!c.serve,
     local: c.local || "",
   };
-  const savedKey = JSON.stringify(saved);
-  if (savedKey !== clkSaved) {
-    clkSaved = savedKey;
-    clkDraft = null;
-  }
-  const d = clkDraft || { ...saved };
+  // The saved choice, when it changes: the section draws this again (onChange) with a draft kept over it.
+  if (
+    !clkSec.saving() &&
+    (!clkSec.loaded() ||
+      JSON.stringify(saved) !==
+        JSON.stringify(
+          Object.fromEntries(
+            Object.keys(saved).map((k) => [k, clkSec.savedValue(k)]),
+          ),
+        ))
+  )
+    return clkSec.update(saved);
+  const d = clkSec.values();
   const set = (k, v) => {
-    clkDraft = { ...d, ...(clkDraft || {}), [k]: v };
     if (k === "service" && v === "image") {
-      clkDraft.gps = false;
-      clkDraft.module = false;
-      clkDraft.serve = false;
+      clkSec.set("gps", false, true);
+      clkSec.set("module", false, true);
+      clkSec.set("serve", false, true);
     }
-    renderClockSources(c, busy);
+    clkSec.set(k, v);
   };
   const tick = (key, label, desc, disabled) =>
     el(
@@ -6132,7 +6046,7 @@ function renderClockSources(c, busy) {
       el("input", {
         type: "checkbox",
         checked: !!d[key],
-        disabled: busy || disabled,
+        disabled: busy || disabled || clkSec.disabled(),
         onchange: (e) => set(key, e.target.checked),
       }),
       el(
@@ -6152,59 +6066,35 @@ function renderClockSources(c, busy) {
     disabled: busy,
     "aria-label": "A time server on the local network",
   });
-  const note = el("p", { className: "setting-desc" });
-  const footBox = el("div", { className: "library-buttons" });
-  const foot = () => {
-    const cur = clkDraft || d;
-    const diff = !!clkDraft && JSON.stringify(clkDraft) !== savedKey;
-    const none = !cur.pool && !cur.gps && !cur.module && !cur.local;
-    note.textContent = diff
-      ? none
-        ? "Select at least one source: with none, nothing sets the clock."
-        : "Unsaved changes."
-      : "";
-    footBox.replaceChildren(
-      actionButton(
-        "Discard",
-        () => {
-          clkDraft = null;
-          renderClockSources(c, busy);
-        },
-        { disabled: busy || !diff },
-      ),
-      " ",
-      actionButton("Save", () => saveClock(cur, c), {
-        className: "primary",
-        disabled: busy || !diff || none,
-      }),
-      ...(c.changed
-        ? [
-            " ",
-            actionButton(
-              "Restore the image's settings",
-              () => {
-                if (
-                  confirm(
-                    "Put the clock's sources back as the image had them? Anything this page installed is removed, and what it removed is installed again.",
-                  )
-                ) {
-                  clkDraft = null;
-                  hlRequest(
-                    { action: "fix", choice: "clock-undo" },
-                    "clock-sources",
-                  );
-                }
-              },
-              { disabled: busy },
-            ),
-          ]
-        : []),
-    );
-  };
-  addr.addEventListener("input", () => {
-    clkDraft = { ...d, ...(clkDraft || {}), local: addr.value.trim() };
-    foot();
-  });
+  // Restore: an action, at once after its question.
+  const footBox = el(
+    "div",
+    { className: "library-buttons" },
+    ...(c.changed
+      ? [
+          actionButton(
+            "Restore the image's settings",
+            () => {
+              if (
+                confirm(
+                  "Put the clock's sources back as the image had them? Anything this page installed is removed, and what it removed is installed again.",
+                )
+              ) {
+                clkSec.discard();
+                hlRequest(
+                  { action: "fix", choice: "clock-undo" },
+                  "clock-sources",
+                );
+              }
+            },
+            { disabled: busy },
+          ),
+        ]
+      : []),
+  );
+  addr.addEventListener("input", () =>
+    clkSec.set("local", addr.value.trim(), true),
+  );
   const states = (c.sources || []).map((r) => {
     const [st, word] = CLOCK_STATE[r.state] || ["ok", r.state];
     return el(
@@ -6290,11 +6180,13 @@ function renderClockSources(c, busy) {
           el("ul", { className: "net-facts" }, ...states),
         )
       : null,
-    el("div", { className: "aw-foot" }, note, footBox),
+    clkSec.foot,
+    clkSec.reason,
+    footBox,
   );
-  foot();
 }
-function saveClock(cur, c) {
+// The one question at Save: what the choice installs, removes or opens.
+function clockAsk(cur, c) {
   const words = [];
   if (cur.service === "chrony" && !c.chrony_installed)
     words.push("chrony is installed and systemd-timesyncd removed");
@@ -6317,29 +6209,20 @@ function saveClock(cur, c) {
   ]
     .filter(Boolean)
     .join(", ");
-  if (
-    !confirm(
-      `Use ${cur.service === "chrony" ? "chrony" : "the image's own time service"}, asking ${what}?` +
-        `${words.length ? ` ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`,
-    )
-  )
-    return;
-  clkDraft = null;
-  hlRequest(
-    {
-      action: "fix",
-      choice: `clock-sources:${cur.service}:${cur.pool ? 1 : 0}:${cur.gps ? 1 : 0}:${cur.module ? 1 : 0}:${cur.serve ? 1 : 0}:${cur.local || "-"}`,
-    },
-    "clock-sources",
+  return (
+    `Use ${cur.service === "chrony" ? "chrony" : "the image's own time service"}, asking ${what}?` +
+    `${words.length ? ` ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`
   );
 }
 
-async function hlRequest(body, fid) {
+// onDone(ok, why): told whether the root helper did it, or false when the hub refused it.
+async function hlRequest(body, fid, onDone) {
   try {
-    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid };
+    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid, onDone };
     hlNote = null;
   } catch (err) {
     hlNote = { fid, text: err.message, ok: false };
+    if (onDone) onDone(false, err.message);
   }
   loadHealth();
 }
@@ -6396,8 +6279,6 @@ const net = {
   cableReach: document.getElementById("up-cablereach"),
   custom: document.getElementById("up-custom"),
   fields: document.getElementById("up-fields"),
-  save: document.getElementById("up-save"),
-  discard: document.getElementById("up-discard"),
   hold: document.getElementById("up-hold"),
   stall: document.getElementById("up-stall"),
   unhold: document.getElementById("up-unhold"),
@@ -6405,8 +6286,6 @@ const net = {
   profile: document.getElementById("up-profile"),
   handover: document.getElementById("net-handover"),
   defaults: document.getElementById("net-defaults"),
-  defaultsSave: document.getElementById("net-defaults-save"),
-  defaultsDiscard: document.getElementById("net-defaults-discard"),
   defaultsNote: document.getElementById("net-defaults-note"),
   events: document.getElementById("up-events"),
 };
@@ -6429,7 +6308,50 @@ let netData = null;
 let netWaiting = null; // { id, where: 'scan' | 'up' }
 let netNotes = {};
 let netPoll = null;
-let upDirty = false;
+// Network recovery as a section: its one value is the settings object readUpForm() makes from the page (the picks,
+// the fields, the steps and the links watched); the page draws it, and draws the saved one again on Discard. Its
+// saved value is the hub's, read back through the page the same way, so the two compare like for like.
+let upChosenKey = "";
+const upSec = AW.section({
+  id: "net-recovery",
+  label: "Network recovery",
+  saved: null,
+  ask: (c, v) => upAsk(v.all),
+  save: () => upSave(),
+  onChange: () => upShow(upSec.get("all")),
+});
+document.getElementById("up-foot").append(upSec.foot, upSec.reason);
+// A pick or a field changed: the draft follows the page; a number that is not one says why under Save.
+function upTouched() {
+  try {
+    upSec.set("all", readUpForm(), true);
+    upSec.fail("");
+  } catch (err) {
+    upSec.fail(err.message);
+  }
+}
+function upShow(all) {
+  if (!netData || !all) return;
+  fillUpForm(all, netData.levels);
+  drawUpScope(netData.inventory);
+  renderUpSteps(netData.inventory, all);
+  renderUpWatch(netData.inventory, netData.uplink);
+}
+// The hub's saved settings, as the page reads them; the draft, if any, drawn again over them after.
+function upRebase(chosen) {
+  const draft = upSec.dirty() ? upSec.get("all") : null;
+  upSaved = chosen;
+  upChosenKey = JSON.stringify(chosen) + "|" + upScope;
+  upShow(chosen);
+  let norm = null;
+  try {
+    norm = readUpForm();
+  } catch (_) {
+    /* a saved value the page cannot show: left as it is */
+  }
+  if (draft) upShow(draft);
+  if (norm) upSec.update({ all: norm });
+}
 // What is chosen on the page (each as radio cards), before Save: two dials, pace and reach, guests,
 // a wedged driver, and the sensitivity, a number of missed checks within the pace's window.
 const upPick = {
@@ -6566,7 +6488,7 @@ function drawUpScope(inv) {
                   return;
                 const per = { ...(upSaved.per_iface || {}) };
                 delete per[upScope];
-                upDirty = false;
+                upSec.discard();
                 netRequest(
                   {
                     action: "settings",
@@ -6582,26 +6504,14 @@ function drawUpScope(inv) {
         ]),
   );
 }
-net.discard.addEventListener("click", () => {
-  upDirty = false;
-  if (netData && upSaved) {
-    fillUpForm(upSaved, netData.levels);
-    drawUpScope(netData.inventory);
-  }
-  showUpSave();
-});
 upScopeBox.addEventListener("change", () => {
-  if (upDirty && !confirm("Discard the unsaved selections?")) {
+  if (upSec.dirty() && !confirm("Discard the unsaved selections?")) {
     upScopeBox.value = upScope;
     return;
   }
   upScope = upScopeBox.value;
-  upDirty = false;
-  if (netData && upSaved) {
-    fillUpForm(upSaved, netData.levels);
-    drawUpScope(netData.inventory);
-  }
-  showUpSave();
+  upSec.discard();
+  if (netData && upSaved) upRebase(upSaved);
 });
 
 // The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
@@ -6648,9 +6558,8 @@ function buildUpFields(levels) {
     }
     input.dataset.key = key;
     input.addEventListener("input", () => {
-      upDirty = true;
       if (netData) showUpPreset(netData.levels);
-      showUpSave();
+      upTouched();
     });
     net.fields.append(
       el("label", {}, el("span", { textContent: label }), input),
@@ -7006,20 +6915,13 @@ function drawRoamTiles(levels) {
 function upChoose(change, levels) {
   Object.assign(upPick, change);
   if (change.roaming && change.roaming !== "lock") upPick.lock_bssid = null;
-  upDirty = true;
   showUpPreset(levels);
-  showUpSave();
+  upTouched();
 }
 
-function showUpSave() {
-  const busy = !!netWaiting || (netData && netData.pending > 0);
-  net.save.disabled = net.discard.disabled = busy || !upDirty;
-  net.save.textContent = upDirty ? "Save (unsaved)" : "Save";
-}
-
+// The page drawn from a settings object: the saved one, or the draft (upSaved stays the hub's).
 function fillUpForm(chosen, levels) {
   buildUpChoices(levels);
-  upSaved = chosen;
   const view = upScope
     ? { ...chosen, ...((chosen.per_iface || {})[upScope] || {}) }
     : chosen;
@@ -7166,8 +7068,7 @@ function renderUpSteps(inv, chosen) {
           });
           input.dataset.step = step;
           input.addEventListener("change", () => {
-            upDirty = true;
-            showUpSave();
+            upTouched();
           });
           return el(
             "label",
@@ -7232,8 +7133,7 @@ function renderUpWatch(inv, u) {
       sel.addEventListener("change", () => {
         if (sel.value === "") delete upWatch[iface];
         else upWatch[iface] = sel.value === "on";
-        upDirty = true;
-        showUpSave();
+        upTouched();
       });
       const now = watching[iface];
       const l = known[iface] || {};
@@ -8134,7 +8034,7 @@ function renderNetwork(data) {
     const done = (data.results || []).find((r) => r.id === netWaiting.id);
     if (done) {
       netNotes[netWaiting.where] = { text: resultSaid(done), ok: done.ok };
-      if (netWaiting.where === "up" && done.ok) upDirty = false;
+      if (netWaiting.onDone) netWaiting.onDone(done.ok, resultSaid(done));
       netWaiting = null;
       return renderNetwork(data);
     }
@@ -8213,12 +8113,16 @@ function renderNetwork(data) {
 
   // Network recovery
   buildUpFields(levels);
-  if (!upDirty) {
-    fillUpForm((u && u.chosen) || levels.default, levels);
-    drawUpScope(inv);
-    renderUpSteps(data.inventory, (u && u.chosen) || {});
-  }
-  if (!upDirty || !net.watchRows.childElementCount) renderUpWatch(inv, u);
+  // The saved settings again only when they changed (or the scope did): a draft is kept over them, said as
+  // changed elsewhere if they moved under it.
+  const chosen = (u && u.chosen) || levels.default;
+  if (
+    !upSec.saving() &&
+    JSON.stringify(chosen) + "|" + upScope !== upChosenKey
+  )
+    upRebase(chosen);
+  if (!upSec.dirty()) drawUpScope(inv);
+  if (!upSec.dirty() || !net.watchRows.childElementCount) renderUpWatch(inv, u);
   net.status.textContent = upStatusText(u);
   // Stalled: the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
@@ -8260,7 +8164,6 @@ function renderNetwork(data) {
         ]
       : []),
   );
-  showUpSave();
   const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
   net.hold.hidden = !!held;
   net.unhold.hidden = !held;
@@ -8415,22 +8318,40 @@ async function loadNetwork() {
 
 // NetworkManager's box defaults: each with the value in use and the file it comes from; a change goes
 // to irate-box's own drop-in. Choices kept while the page polls, until saved.
-let defaultsDirty = {};
 let defaultsScope = ""; // '' the whole box, else an interface
 const PER_IFACE = ["auth_retries", "cloned_mac", "powersave", "scan_mac"];
 const RETRY_DEFAULTS = ["autoconnect_retries", "auth_retries"];
-function syncRetryButtons() {
-  document.getElementById("net-retry-save").disabled =
-    net.defaultsSave.disabled;
-  document.getElementById("net-retry-discard").disabled =
-    net.defaultsDiscard.disabled;
-}
+// One section for the box defaults, the retries beside Network recovery included: one Save and one Discard, under
+// the defaults' card. Each value is a setting's choice as the page offers it ("default": irate-box sets nothing).
+let defaultsSavedKey = "";
+const defSec = AW.section({
+  id: "net-defaults",
+  label: "NetworkManager defaults",
+  saved: null,
+  ask: () =>
+    "Save these box defaults? NetworkManager reads them again at once. Connections use them the next time they connect.",
+  save: (changes) => {
+    const j = AW.job();
+    netRequest(
+      {
+        action: "defaults",
+        changes,
+        ...(defaultsScope ? { iface: defaultsScope } : {}),
+      },
+      "defaults",
+      j.done,
+    );
+    return j;
+  },
+  onChange: () => renderDefaults(netData && netData.inventory, false),
+});
 document
-  .getElementById("net-retry-save")
-  .addEventListener("click", () => net.defaultsSave.click());
-document
-  .getElementById("net-retry-discard")
-  .addEventListener("click", () => net.defaultsDiscard.click());
+  .getElementById("net-defaults-foot")
+  .append(defSec.foot, defSec.reason);
+document.getElementById("net-retry-go").addEventListener("click", () => {
+  const card = document.getElementById("net-defaults-card");
+  if (card.scrollIntoView) card.scrollIntoView({ block: "center" });
+});
 function renderDefaults(inv, busy) {
   const d =
     inv &&
@@ -8453,15 +8374,26 @@ function renderDefaults(inv, busy) {
   );
   scope.value = defaultsScope;
   scope.addEventListener("change", () => {
+    if (
+      defSec.dirty() &&
+      !confirm("Discard the unsaved changes to the box defaults?")
+    ) {
+      scope.value = defaultsScope;
+      return;
+    }
+    defSec.discard();
     defaultsScope = scope.value;
-    defaultsDirty = {};
     renderDefaults(netData && netData.inventory, false);
   });
+  const savedNow = {};
   const names = defaultsScope ? PER_IFACE : Object.keys(d.settings);
   const mineIf = (d.ifaces_mine || {})[defaultsScope] || {};
   const rows = names.map((name) => {
     const s = d.settings[name];
-    const sel = el("select", { "aria-label": s.label, disabled: busy });
+    const sel = el("select", {
+      "aria-label": s.label,
+      disabled: busy || defSec.disabled(),
+    });
     const boxNow =
       s.value === null
         ? `NetworkManager's own: ${s.nm_default}`
@@ -8484,18 +8416,11 @@ function renderDefaults(inv, busy) {
       opts.push([cur, `${cur} tries`]);
     for (const [v, label] of opts)
       sel.append(el("option", { value: v, textContent: label }));
-    const chosen =
-      name in defaultsDirty
-        ? defaultsDirty[name]
-        : cur !== null
-          ? cur
-          : "default";
-    sel.value = opts.some(([v]) => v === chosen) ? chosen : "default";
-    sel.addEventListener("change", () => {
-      defaultsDirty[name] = sel.value;
-      net.defaultsSave.disabled = net.defaultsDiscard.disabled = false;
-      syncRetryButtons();
-    });
+    const known = (v) => (opts.some(([o]) => o === v) ? v : "default");
+    savedNow[name] = known(cur !== null ? cur : "default");
+    const chosen = defSec.loaded() ? defSec.get(name) : undefined;
+    sel.value = chosen !== undefined ? known(chosen) : savedNow[name];
+    sel.addEventListener("change", () => defSec.set(name, sel.value, true));
     let now;
     if (defaultsScope) {
       const e = d.ifaces[defaultsScope][name];
@@ -8580,36 +8505,16 @@ function renderDefaults(inv, busy) {
         ]
       : []),
   );
-  net.defaultsSave.disabled = net.defaultsDiscard.disabled =
-    busy || !Object.keys(defaultsDirty).length;
-  syncRetryButtons();
+  // The saved values, each time they (or the scope) change: a choice not saved yet is kept over them.
+  const key = defaultsScope + "|" + JSON.stringify(savedNow);
+  if (key !== defaultsSavedKey && !defSec.saving()) {
+    defaultsSavedKey = key;
+    defSec.update(savedNow);
+  }
+  // What the root helper did; a failure is said under Save.
   const dn = netNotes.defaults;
-  say(dn ? dn.text : "", dn ? dn.ok : true, net.defaultsNote);
+  say(dn && dn.ok ? dn.text : "", true, net.defaultsNote);
 }
-net.defaultsDiscard.addEventListener("click", () => {
-  defaultsDirty = {};
-  renderDefaults(netData && netData.inventory, false);
-});
-net.defaultsSave.addEventListener("click", () => {
-  const changes = { ...defaultsDirty };
-  if (!Object.keys(changes).length) return;
-  if (
-    !confirm(
-      "Save these box defaults? NetworkManager reads them again at once. Connections use them the next time they connect.",
-    )
-  )
-    return;
-  defaultsDirty = {};
-  netRequest(
-    {
-      action: "defaults",
-      changes,
-      ...(defaultsScope ? { iface: defaultsScope } : {}),
-    },
-    "defaults",
-  );
-});
-
 // mPWRD-OS's wifisync, which switches the WiFi radio off while meshtasticd's WiFi setting is off: a switch, with
 // undo back to how the image had it. Shown only where it is installed.
 function renderWifisync(inv, data, busy) {
@@ -9021,13 +8926,30 @@ const CONN_FIELDS = [
     '0 is the NetworkManager default of 45 s. A longer time can hide a dead link as "connecting".',
   ],
 ];
-const connDirty = {};
 const connOpen = new Set();
+// One network's own settings: a section each (its id the connection's), drawn again with the list and its draft kept.
 function connSettings(p, inv, data, busy, radio) {
   const ho = inv && inv.handover;
   const lasts = !p.netplan || (ho && ho.integrated);
   const changed = (data.conn_changes || {})[p.uuid];
-  const dirty = connDirty[p.uuid] || (connDirty[p.uuid] = {});
+  const sec = AW.section({
+    id: `net-conn-${p.uuid}`,
+    label: `Settings for ${p.ssid || p.name}`,
+    saved: Object.fromEntries(CONN_FIELDS.map(([n, , , now]) => [n, now(p)])),
+    ask: (c) =>
+      `Change ${Object.keys(c).length} setting${Object.keys(c).length === 1 ? "" : "s"} of ${p.ssid || p.name}? ` +
+      "They take effect the next time the box connects. Undo restores the previous settings.",
+    save: (changes) => {
+      const j = AW.job();
+      netRequest(
+        { action: "connection", uuid: p.uuid, changes },
+        "connection",
+        j.done,
+      );
+      return j;
+    },
+    onChange: () => netData && renderNetwork(netData),
+  });
   const fields = CONN_FIELDS.map(([name, label, kind, now, help]) => {
     let input;
     const cur = now(p);
@@ -9066,11 +8988,8 @@ function connSettings(p, inv, data, busy, radio) {
         disabled: busy || !lasts,
       });
     }
-    input.value = name in dirty ? dirty[name] : cur;
-    input.addEventListener("change", () => {
-      dirty[name] = input.value;
-      save.disabled = false;
-    });
+    input.value = sec.get(name) ?? cur;
+    input.addEventListener("change", () => sec.set(name, input.value, true));
     return el(
       "label",
       { className: "net-default" },
@@ -9081,27 +9000,6 @@ function connSettings(p, inv, data, busy, radio) {
         : null,
     );
   });
-  const save = actionButton(
-    "Save network settings",
-    () => {
-      const changes = Object.fromEntries(
-        Object.entries(dirty).filter(
-          ([n, v]) => v !== CONN_FIELDS.find((f) => f[0] === n)[3](p),
-        ),
-      );
-      if (!Object.keys(changes).length) return;
-      if (
-        !confirm(
-          `Change ${Object.keys(changes).length} setting${Object.keys(changes).length === 1 ? "" : "s"} of ${p.ssid || p.name}? ` +
-            "They take effect the next time the box connects. Undo restores the previous settings.",
-        )
-      )
-        return;
-      connDirty[p.uuid] = {};
-      netRequest({ action: "connection", uuid: p.uuid, changes }, "connection");
-    },
-    { disabled: busy || !Object.keys(dirty).length },
-  );
   const cn = netNotes.connection;
   const box = el(
     "details",
@@ -9135,8 +9033,8 @@ function connSettings(p, inv, data, busy, radio) {
         )
       : null,
     el("div", { className: "net-defaults" }, ...fields),
-    lasts ? el("span", { className: "library-buttons" }, save) : null,
-    cn
+    ...(lasts ? [sec.foot, sec.reason] : []),
+    cn && cn.ok
       ? el("p", {
           className: `setting-desc action-note${cn.ok ? "" : " bad"}`,
           role: "status",
@@ -9399,12 +9297,18 @@ function hazardControls(h) {
     : null;
 }
 
-async function netRequest(body, where) {
+// onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
+async function netRequest(body, where, onDone) {
   try {
-    netWaiting = { id: (await postJSON("/admin/network", body)).id, where };
+    netWaiting = {
+      id: (await postJSON("/admin/network", body)).id,
+      where,
+      onDone,
+    };
     delete netNotes[where];
   } catch (err) {
     netNotes[where] = { text: err.message, ok: false };
+    if (onDone) onDone(false, err.message);
   }
   loadNetwork();
 }
@@ -9460,42 +9364,42 @@ joinForm.addEventListener("submit", (e) => {
 document
   .getElementById("net-join-now")
   .addEventListener("click", () => joinAsk(true));
-net.save.addEventListener("click", () => {
-  let settings;
+// One question at Save for what needs saying, from the settings as they would be saved.
+function upAsk(all) {
+  let settings = all;
   try {
     settings = readUpForm();
-  } catch (err) {
-    netNotes.up = { text: err.message, ok: false };
-    renderNetwork(netData);
-    return;
+  } catch (_) {
+    /* said under Save already; save() says it again */
   }
   const was = (netData && netData.uplink && netData.uplink.chosen) || {};
+  const asks = [];
   if (
     settings.roaming === "lock" &&
-    (was.roaming !== "lock" || was.lock_bssid !== settings.lock_bssid) &&
-    !confirm(
+    (was.roaming !== "lock" || was.lock_bssid !== settings.lock_bssid)
+  )
+    asks.push(
       `Lock your WiFi profile to ${settings.lock_bssid}? The box reconnects to it now. The box is briefly disconnected from the network. It stays with this access point and does not move to another one until you disable the lock. If this access point does not answer, the box removes the lock.`,
-    )
-  )
-    return;
-  if (
-    settings.roaming === "no-scan" &&
-    was.roaming !== "no-scan" &&
-    !confirm(
+    );
+  if (settings.roaming === "no-scan" && was.roaming !== "no-scan")
+    asks.push(
       "Disable the wpa_supplicant background scans while the hotspot shares the radio? This changes the running WiFi settings, not the WiFi profile. Selecting another option restores them.",
-    )
-  )
-    return;
+    );
   if (
     settings.guests === "ignore" &&
-    ["restart", "radio", "reboot"].includes(settings.reach) &&
-    !confirm(
-      `This setting lets the box ${settings.reach === "restart" ? "restart the network service" : settings.reach === "radio" ? "reset the radio" : "reset the radio and reboot the box"} while guests are on the hotspot. Continue?`,
-    )
+    ["restart", "radio", "reboot"].includes(settings.reach)
   )
-    return;
-  netRequest({ action: "settings", settings }, "up");
-});
+    asks.push(
+      `This setting lets the box ${settings.reach === "restart" ? "restart the network service" : settings.reach === "radio" ? "reset the radio" : "reset the radio and reboot the box"} while guests are on the hotspot. Continue?`,
+    );
+  return asks.length ? asks.join("\n\n") : null;
+}
+function upSave() {
+  const settings = readUpForm(); // a number that is not one: its reason under Save
+  const j = AW.job();
+  netRequest({ action: "settings", settings }, "up", j.done);
+  return j;
+}
 net.hold.addEventListener("click", () =>
   netRequest({ action: "hold", minutes: 60 }, "up"),
 );
@@ -9646,16 +9550,63 @@ const hs = {
   wpa2Label: document.getElementById("hs-wpa2-label"),
   wpa2Desc: document.getElementById("hs-wpa2-desc"),
   warnings: document.getElementById("hs-warnings"),
-  save: document.getElementById("hs-save"),
-  discard: document.getElementById("hs-discard"),
   note: document.getElementById("hs-note"),
 };
-let hsData = null;
-// The hotspot's choices wait for Save; a reload of the page's data leaves a change in progress alone.
-let hsDirty = false;
+let hsData = null,
+  hsSavedKey = "";
+// The hotspot's own WiFi as a section: the mode, the second network, the password and WPA2; a reload of the page's
+// data keeps a change in progress (and says if the saved settings moved under it).
+const hsSec = AW.section({
+  id: "hotspot-security",
+  label: "Hotspot security",
+  saved: null,
+  ask: (c, v) =>
+    v.mode !== "open"
+      ? `Use "${hsData.label[v.mode]}" for the hotspot? Read the warnings under the choices first.`
+      : null,
+  save: async (c, v) => {
+    const r = await postJSON("/admin/hotspot", { settings: v });
+    loadHotspot();
+    return resultSaid(r);
+  },
+  onChange: () => hsDraw(hsSec.values()),
+});
+document.getElementById("hs-foot").append(hsSec.foot, hsSec.reason);
+// What the page shows, into the draft (the controls drew themselves).
 function hsTouched() {
-  hsDirty = true;
-  hs.save.disabled = hs.discard.disabled = false;
+  for (const [k, v] of Object.entries({
+    mode: hsChosen(),
+    second: hs.second.value,
+    password: hs.password.value,
+    allow_wpa2: hs.wpa2.checked,
+  }))
+    hsSec.set(k, v, true);
+}
+// The draft (or the saved settings) drawn.
+function hsDraw(v) {
+  if (!hsData || !v) return;
+  const data = hsData;
+  AW.choices(
+    hs.modes,
+    "hs-mode",
+    data.modes.map((m) => ({
+      value: m,
+      title: data.label[m],
+      desc: data.what[m],
+      why: data.available[m],
+    })),
+    {
+      value: v.mode,
+      onChange: () => {
+        hsTouched();
+        hsShowFields();
+      },
+    },
+  );
+  hs.second.value = v.second;
+  hs.password.value = v.password || "";
+  hs.wpa2.checked = !!v.allow_wpa2;
+  hsShowFields();
 }
 
 function hsChosen() {
@@ -9688,37 +9639,24 @@ function hsShowFields() {
 }
 
 function renderHotspot(data) {
+  const first = !hsData;
   hsData = data;
-  hs.save.disabled = hs.discard.disabled = !hsDirty;
-  if (hsDirty) {
-    hsShowFields();
-    drawGuestNet(data.share || "off", data.results);
-    return;
-  }
-  const s = data.settings;
-  AW.choices(
-    hs.modes,
-    "hs-mode",
-    data.modes.map((m) => ({
-      value: m,
-      title: data.label[m],
-      desc: data.what[m],
-      why: data.available[m],
-    })),
-    {
-      value: s.mode,
-      onChange: () => {
-        hsTouched();
-        hsShowFields();
-      },
-    },
-  );
-  hs.second.value = s.second;
-  hs.password.value = s.password || "";
-  hs.wpa2.checked = !!s.allow_wpa2;
   hs.wpa2Desc.textContent =
     "Let older WPA2 devices join too (WPA3 transition mode).";
-  hsShowFields();
+  const s = data.settings;
+  const saved = {
+    mode: s.mode,
+    second: s.second,
+    password: s.password || "",
+    allow_wpa2: !!s.allow_wpa2,
+  };
+  // Drawn again only when the saved settings change: a field being typed in is not taken away.
+  const key = JSON.stringify(saved);
+  if (key !== hsSavedKey && !hsSec.saving()) {
+    hsSavedKey = key;
+    hsSec.update(saved);
+  } else if (first) hsDraw(hsSec.values());
+  else hsShowFields();
   drawGuestNet(data.share || "off", data.results);
 }
 
@@ -9747,41 +9685,56 @@ const GUEST_NET = [
     "Every device on the hotspot reaches the internet at once, with the same containment rules. The captive portal page stops appearing.",
   ],
 ];
-let guestNetSaved = "off",
-  guestNetDraft = null,
-  guestNetWaiting = null;
-function drawGuestNet(level, results) {
+// Guests' internet as a section of one value. Saved when the box reports the level asked for (the root helper
+// applies it); after 40 s without that, the Save is said to have failed and the choice kept.
+let guestNetWaiting = null;
+const guestSec = AW.section({
+  id: "guest-internet",
+  label: "Guest internet access",
+  saved: null,
+  ask: (c) =>
+    c.level !== "off"
+      ? `Share the internet connection of this box with guests (${GUEST_NET.find((x) => x[0] === c.level)[1]})? The box attributes their online activity to your internet connection.`
+      : null,
+  save: async (c) => {
+    await postJSON("/admin/hotspot", { action: "share", level: c.level });
+    const j = AW.job();
+    guestNetWaiting = { level: c.level, at: Date.now(), job: j };
+    setTimeout(loadHotspot, 1500);
+    return j;
+  },
+  onChange: () => drawGuestNet(),
+});
+document.getElementById("guest-net-foot").append(guestSec.foot, guestSec.reason);
+function drawGuestNet(level) {
   const box = document.getElementById("guest-net-chips");
   if (!box) return;
-  // Asked: done when the box says the level it was asked for (or, after 40 s, said to look again).
-  if (guestNetWaiting && level === guestNetWaiting.level) {
-    guestNetWaiting = null;
-    guestNetDraft = null;
-    say(
-      `Saved: ${GUEST_NET.find((x) => x[0] === level)[2]}`,
-      true,
-      noteEl("guest-net-note"),
-    );
-  } else if (guestNetWaiting && Date.now() - guestNetWaiting.at > 40000) {
-    guestNetWaiting = null;
-    say(
-      "The box has not applied the change yet. Check the Security doctor, or try again.",
-      false,
-      noteEl("guest-net-note"),
-    );
-  } else if (guestNetWaiting) setTimeout(loadHotspot, 2000);
-  guestNetSaved = level;
-  const cur = guestNetDraft || level;
+  if (level !== undefined) {
+    // Asked: done when the box says the level it was asked for (or, after 40 s, said to look again).
+    const w = guestNetWaiting;
+    if (w && level === w.level) {
+      guestNetWaiting = null;
+      w.job.done(true, `Saved: ${GUEST_NET.find((x) => x[0] === level)[2]}`);
+    } else if (w && Date.now() - w.at > 40000) {
+      guestNetWaiting = null;
+      w.job.done(
+        false,
+        "The box has not applied the change yet. Check the Security doctor, or try again.",
+      );
+    } else if (w) setTimeout(loadHotspot, 2000);
+    if (!guestNetWaiting && guestSec.savedValue("level") !== level)
+      return guestSec.update({ level });
+  }
+  const cur = guestSec.get("level");
+  if (!cur) return;
   box.replaceChildren(
     ...GUEST_NET.map(([v, label]) => {
       const b = el("button", {
         type: "button",
         className: "chip" + (v === cur ? " selected" : ""),
         textContent: label,
-        onclick: () => {
-          guestNetDraft = v === guestNetSaved ? null : v;
-          drawGuestNet(guestNetSaved);
-        },
+        disabled: guestSec.disabled(),
+        onclick: () => guestSec.set("level", v),
       });
       b.setAttribute("role", "radio");
       b.setAttribute("aria-checked", String(v === cur));
@@ -9793,40 +9746,7 @@ function drawGuestNet(level, results) {
     (["users-web", "sheet-web", "sheet-all"].includes(cur)
       ? " The box authorises each device for 12 hours at a time."
       : "");
-  document.getElementById("guest-net-save").disabled = document.getElementById(
-    "guest-net-discard",
-  ).disabled = !guestNetDraft || !!guestNetWaiting;
 }
-document.getElementById("guest-net-discard").addEventListener("click", () => {
-  guestNetDraft = null;
-  drawGuestNet(guestNetSaved);
-});
-document
-  .getElementById("guest-net-save")
-  .addEventListener("click", async () => {
-    const level = guestNetDraft;
-    if (!level) return;
-    if (
-      level !== "off" &&
-      !confirm(
-        `Share the internet connection of this box with guests (${GUEST_NET.find((x) => x[0] === level)[1]})? The box attributes their online activity to your internet connection.`,
-      )
-    )
-      return;
-    try {
-      await postJSON("/admin/hotspot", { action: "share", level });
-      guestNetWaiting = { level, at: Date.now() };
-      say(
-        "Request sent. The root helper applies it.",
-        true,
-        noteEl("guest-net-note"),
-      );
-      drawGuestNet(guestNetSaved);
-      setTimeout(loadHotspot, 1500);
-    } catch (err) {
-      say(err.message, false, noteEl("guest-net-note"));
-    }
-  });
 
 async function loadHotspot() {
   try {
@@ -9846,10 +9766,6 @@ hs.wpa2.addEventListener("change", () => {
   hsShowFields();
 });
 hs.password.addEventListener("input", hsTouched);
-hs.discard.addEventListener("click", () => {
-  hsDirty = false;
-  if (hsData) renderHotspot(hsData);
-});
 hs.generate.addEventListener("click", () => {
   // Easy to read out and type on a phone: no 0/O, 1/l/I. getRandomValues works on plain HTTP.
   const abc = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -9865,31 +9781,6 @@ hs.generate.addEventListener("click", () => {
     .map((i) => chars.slice(i, i + 4).join(""))
     .join("-");
   hsTouched();
-});
-hs.save.addEventListener("click", async () => {
-  const mode = hsChosen();
-  if (
-    mode !== "open" &&
-    !confirm(
-      `Use "${hsData.label[mode]}" for the hotspot? Read the warnings under the choices first.`,
-    )
-  )
-    return;
-  try {
-    const r = await postJSON("/admin/hotspot", {
-      settings: {
-        mode,
-        second: hs.second.value,
-        password: hs.password.value,
-        allow_wpa2: hs.wpa2.checked,
-      },
-    });
-    hsDirty = false;
-    say(resultSaid(r), true, hs.note);
-    loadHotspot();
-  } catch (err) {
-    say(err.message, false, hs.note);
-  }
 });
 loadHotspot();
 
@@ -10482,34 +10373,22 @@ function accessSlot(id) {
   return accessNodes.get(id).node;
 }
 
-function accessSet(a, mode) {
-  if (mode === a.mode) return;
-  if (
-    mode === "off" &&
-    a.unit &&
-    !confirm(`Disable ${a.title}? Its service stops until you enable it again.`)
-  )
-    return;
-  if (
-    mode === "public" &&
-    a.mode !== "public" &&
-    !a.login &&
-    !confirm(
-      `Let guests open ${a.title}? Every device on the network of the box can open it without a sign-in.`,
-    )
-  )
-    return;
-  postJSON("/admin/access", { app: a.id, mode }).then(
-    (r) => {
-      accessWaiting = { id: r.id, app: a.id };
-      accessNote = null;
-      loadAccess();
-    },
-    (err) => {
-      accessNote = { app: a.id, text: err.message, ok: false };
-      loadAccess();
-    },
-  );
+// What a change of access needs saying, asked once at Save.
+function accessAsk(a, mode) {
+  if (mode === "off" && a.unit)
+    return `Disable ${a.title}? Its service stops until you enable it again.`;
+  if (mode === "public" && a.mode !== "public" && !a.login)
+    return `Let guests open ${a.title}? Every device on the network of the box can open it without a sign-in.`;
+  return null;
+}
+// The change, as a job: done when the root helper's answer comes back with the poll (renderAccess).
+async function accessSet(a, mode) {
+  const j = AW.job();
+  const r = await postJSON("/admin/access", { app: a.id, mode });
+  accessWaiting = { id: r.id, app: a.id, job: j };
+  accessNote = null;
+  loadAccess();
+  return j;
 }
 
 function renderAccess(data) {
@@ -10521,7 +10400,9 @@ function renderAccess(data) {
         text: resultSaid(done),
         ok: done.ok,
       };
+      const j = accessWaiting.job;
       accessWaiting = null;
+      if (j) j.done(done.ok, resultSaid(done));
       return loadAccess();
     }
   }
@@ -10567,11 +10448,23 @@ const TAB_SEEN = {
   users: "signed-in users",
   hidden: "nobody",
 };
+// Its tab's visibility on the hub page: a section per app (the same setting as on Home tiles), held until Save.
 function fillSeenBlocks() {
   if (!lastAccess) return;
   document.querySelectorAll(".seen-block[data-app]").forEach((block) => {
     const app = block.dataset.app,
       cur = ((lastAccess.pages || {})[app] || "auto").replace("auto", "guests");
+    const sec = AW.section({
+      id: `tab-seen-${app}`,
+      label: "Visibility of its tab",
+      saved: { visible: cur },
+      save: async (c) => {
+        await postJSON("/admin/visibility", { app, visible: c.visible });
+        setTimeout(loadAccess);
+      },
+      onChange: () => fillSeenBlocks(),
+    });
+    const v = sec.get("visible");
     block.replaceChildren(
       el(
         "span",
@@ -10580,23 +10473,20 @@ function fillSeenBlocks() {
           className: "setting-desc",
           textContent: "Visibility of its tab on the hub page:",
         }),
-        ...Object.entries(TAB_SEEN).map(([v, label]) => {
+        ...Object.entries(TAB_SEEN).map(([k, label]) => {
           const b = el("button", {
             type: "button",
-            className: "chip" + (cur === v ? " selected" : ""),
+            className: "chip" + (v === k ? " selected" : ""),
             textContent: label,
-            onclick: () => {
-              if (v !== cur)
-                postJSON("/admin/visibility", { app, visible: v }).then(
-                  loadAccess,
-                  (err) => say(err.message, false, block),
-                );
-            },
+            disabled: sec.disabled(),
+            onclick: () => sec.set("visible", k),
           });
-          b.setAttribute("aria-pressed", String(cur === v));
+          b.setAttribute("aria-pressed", String(v === k));
           return b;
         }),
       ),
+      sec.foot,
+      sec.reason,
     );
   });
 }
@@ -10857,6 +10747,7 @@ async function loadSignInOffer() {
         },
       ],
       {
+        id: "sign-in-offer",
         save: async (changed) => {
           await postJSON("/admin/settings", changed);
           await loadSignInOffer();
@@ -10871,16 +10762,54 @@ loadSignInOffer();
 // The apps row's order, on "All apps": each tile with who opens it and who sees it; moved
 // with ↑/↓, held until Save, kept by the hub (/admin/tiles).
 let tilesData = null;
-let tilesDraft = null;
+let tilesDraft = null; // the section's draft, as the list's controls change it
+// Home tiles as one section: its value the whole arrangement (freshTilesDraft's shape, visibility and the locked
+// action as changes only), so a change undone turns Save off; reloaded, a draft is kept over the saved one.
+const tilesSec = AW.section({
+  id: "home-tiles",
+  label: "Home tiles",
+  saved: null,
+  why: (c, v) =>
+    Object.values(v.all.icon || {}).some((x) => x && !ICON_OK(x))
+      ? "A tile icon is not valid: use emoji, or up to four letters and digits."
+      : null,
+  save: (c, v) => saveTiles(v.all),
+  onChange: () => {
+    tilesDraft = JSON.parse(JSON.stringify(tilesSec.get("all")));
+    drawTileOrder();
+  },
+});
+const tilesTouched = () =>
+  tilesSec.set("all", JSON.parse(JSON.stringify(tilesDraft)), true);
 async function loadTileOrder() {
   try {
     tilesData = await getJSON("/admin/tiles");
   } catch (e) {
     return;
   }
-  tilesDraft = freshTilesDraft();
-  drawTileOrder();
+  tilesSec.update({ all: freshTilesDraft() });
   renderInventory();
+}
+async function saveTiles(d) {
+  const appOf = (id) => lastAccess && lastAccess.apps.find((x) => x.id === id);
+  tilesData = await postJSON("/admin/tiles", {
+    state: { order: d.order, size: d.size || {}, icon: d.icon || {} },
+  });
+  for (const [id, v] of Object.entries(d.seen)) {
+    const a = appOf(id),
+      auto = a ? seenOf(a.mode, "auto") : "guests";
+    await postJSON("/admin/visibility", {
+      app: id,
+      visible: v === auto ? "auto" : v,
+    });
+  }
+  for (const [id, v] of Object.entries(d.lock))
+    await postJSON("/admin/visibility", { app: id, locked: v });
+  // Saved: the arrangement read back (visibility and the locked action as they are now, no changes left).
+  setTimeout(() => {
+    tilesSec.update({ all: freshTilesDraft() });
+    loadAccess();
+  });
 }
 // Home tiles' draft: the order, sizes and icons (/admin/tiles), and who sees each tile and what a
 // locked one does (/admin/visibility), changed ones only. All held until Save.
@@ -10922,9 +10851,18 @@ function tileWords(id) {
 function drawTileOrder(openId) {
   const box = document.getElementById("tile-order-box");
   if (!box || !tilesData || !tilesDraft) return;
+  const asked = openId; // a row to open, asked for by a control (not the poll)
+  // The row open before a redraw stays open (the poll and the other controls draw the list again).
+  if (!openId) {
+    const was = box.querySelector('.aw-row-head[aria-expanded="true"]');
+    openId = was ? was.closest(".aw-row").dataset.awId : null;
+  }
   const byId = new Map(tilesData.tiles.map((x) => [x.id, x]));
   const order = tilesDraft.order.filter((i) => byId.has(i));
-  const redraw = (id) => drawTileOrder(id);
+  const redraw = (id) => {
+    tilesTouched();
+    drawTileOrder(id);
+  };
   const move = (id, d) => {
     const i = order.indexOf(id),
       k = i + d;
@@ -10933,8 +10871,6 @@ function drawTileOrder(openId) {
     tilesDraft.order = order;
     redraw(id);
   };
-  const saved = tilesData.tiles.map((x) => x.id);
-  const mapOf = (m) => JSON.stringify(Object.entries(m || {}).sort());
   const appOf = (id) => lastAccess && lastAccess.apps.find((x) => x.id === id);
   const folderIds = new Set(
     (AL.apps() || []).filter((x) => x.folder).map((x) => x.id),
@@ -10947,12 +10883,6 @@ function drawTileOrder(openId) {
   };
   const lockNow = (id) =>
     ((lastAccess && lastAccess.locked_as) || {})[id] || "signin";
-  const dirty =
-    order.join() !== saved.join() ||
-    mapOf(tilesDraft.size) !== mapOf(tilesData.state.size) ||
-    mapOf(tilesDraft.icon) !== mapOf(tilesData.state.icon) ||
-    Object.keys(tilesDraft.seen).length ||
-    Object.keys(tilesDraft.lock).length;
   const items = order.map((id) => {
     const t = byId.get(id),
       a = appOf(id),
@@ -11055,57 +10985,22 @@ function drawTileOrder(openId) {
         ].filter(Boolean),
     };
   });
-  const badIcon = Object.values(tilesDraft.icon || {}).some(
-    (v) => v && !ICON_OK(v),
-  );
-  const note = AW.h("span", {
-    class: "note",
-    text: dirty ? "Unsaved changes." : "Changes apply after you select Save.",
-  });
+  // Drawn again only when what it shows changed (a poll of access that brings nothing new leaves it, a filter
+  // typed and a selection in it too).
+  const key = JSON.stringify([
+    items.map(({ detail, ...x }) => x),
+    tilesDraft,
+    lockAll,
+  ]);
+  if (key === box.dataset.key && !asked && box.childElementCount) {
+    fillTileBlocks();
+    return;
+  }
+  box.dataset.key = key;
   box.replaceChildren(
     AW.shortList(items, { id: "tile-order-list" }),
-    AW.h(
-      "div",
-      { class: "aw-foot" },
-      note,
-      AW.btn("Discard", {
-        disabled: !dirty,
-        onclick: () => {
-          tilesDraft = freshTilesDraft();
-          drawTileOrder();
-        },
-      }),
-      AW.btn("Save", {
-        class: "action-btn primary",
-        disabled: !dirty || badIcon,
-        onclick: async () => {
-          try {
-            tilesData = await postJSON("/admin/tiles", {
-              state: {
-                order,
-                size: tilesDraft.size || {},
-                icon: tilesDraft.icon || {},
-              },
-            });
-            for (const [id, v] of Object.entries(tilesDraft.seen)) {
-              const a = appOf(id),
-                auto = a ? seenOf(a.mode, "auto") : "guests";
-              await postJSON("/admin/visibility", {
-                app: id,
-                visible: v === auto ? "auto" : v,
-              });
-            }
-            for (const [id, v] of Object.entries(tilesDraft.lock))
-              await postJSON("/admin/visibility", { app: id, locked: v });
-            tilesDraft = freshTilesDraft();
-            drawTileOrder();
-            loadAccess();
-          } catch (err) {
-            note.textContent = err.message;
-          }
-        },
-      }),
-    ),
+    tilesSec.foot,
+    tilesSec.reason,
   );
   const open =
     openId &&
@@ -11156,7 +11051,6 @@ const seenOf = (mode, visible) =>
     : { public: "guests", users: "users", private: "admin", off: "hidden" }[
         mode
       ] || "guests";
-const accessDrafts = new Map(); // app id -> { mode }
 function tileOrderNow() {
   return tilesDraft
     ? tilesDraft.order.slice()
@@ -11192,76 +11086,49 @@ function chipRow(label, opts, cur, set, disabledOf = () => false) {
 // The block: who can open an app. Its tile (who sees it, what a locked one does, its place,
 // size and icon) is arranged on Home tiles; the app's page shows that as a summary.
 function accessBlock(id, a) {
-  const base = { mode: a.mode };
-  const d = accessDrafts.get(id) || { ...base };
-  const redraw = () => {
-    accessDrafts.set(id, d);
-    fillAccessBlocks();
-  };
-  const dirty = d.mode !== base.mode;
-  const waiting = !!(accessWaiting && accessWaiting.app === id);
+  // A section per app (drawn in its row and on its page alike, the draft shared by id); root's, answered by poll:
+  // the draft stays until it is done (renderAccess), so Cancel or a failure keeps it.
+  const sec = AW.section({
+    id: `access-${id}`,
+    label: `Access to ${a.title}`,
+    saved: { mode: a.mode },
+    ask: (c) => accessAsk(a, c.mode),
+    save: (c) => accessSet(a, c.mode),
+    busy: () => !!(accessWaiting && accessWaiting.app === id),
+    onChange: () => fillAccessBlocks(),
+  });
+  const mode = sec.get("mode");
+  const waiting = sec.saving();
   const note =
-    accessNote && accessNote.app === id
+    accessNote && accessNote.app === id && accessNote.ok
       ? el("span", {
-          className: `setting-desc action-note${accessNote.ok ? "" : " bad"}`,
+          className: "setting-desc action-note",
           role: "status",
           textContent: accessNote.text,
         })
       : null;
-  const save = () => {
-    accessDrafts.delete(id);
-    accessSet(a, d.mode);
-  }; // root's, answered by poll
   const seen =
-    d.mode === "off"
+    mode === "off"
       ? "Disabled: no tile."
-      : `Visibility: ${seenWords(seenOf(d.mode, a.visible), d.mode)}`;
+      : `Visibility: ${seenWords(seenOf(mode, a.visible), mode)}`;
   return el(
     "div",
     { className: "access-set" },
     chipRow(
       "Access",
       OPEN_CHIPS,
-      d.mode,
-      (v) => {
-        d.mode = v;
-        redraw();
-      },
+      mode,
+      (v) => sec.set("mode", v),
       (v) => waiting || (v === "users" && !a.users),
     ),
     el("p", {
       className: "setting-desc",
       textContent: waiting
         ? "Changing…"
-        : `${accessDesc({ ...a, mode: d.mode })} ${seen}`,
+        : `${accessDesc({ ...a, mode })} ${seen}`,
     }),
-    el(
-      "div",
-      { className: "aw-foot" },
-      el("span", {
-        className: "note",
-        textContent: dirty
-          ? "Unsaved changes."
-          : "Changes apply after you select Save.",
-      }),
-      el("button", {
-        type: "button",
-        className: "action-btn",
-        textContent: "Discard",
-        disabled: !dirty,
-        onclick: () => {
-          accessDrafts.delete(id);
-          fillAccessBlocks();
-        },
-      }),
-      el("button", {
-        type: "button",
-        className: "action-btn primary",
-        textContent: "Save",
-        disabled: !dirty || waiting,
-        onclick: save,
-      }),
-    ),
+    sec.foot,
+    sec.reason,
     note,
   );
 }
@@ -12383,7 +12250,11 @@ function repoCard(r, data) {
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(r, data, cls) {
   const act = (body, confirmText, done) => async () => {
-    if (confirmText && !confirm(confirmText)) return false;
+    // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
+    if (confirmText && !confirm(confirmText)) {
+      renderGit(gitData);
+      return false;
+    }
     try {
       const out = await postJSON("/admin/git", body);
       if (body.action === "move") gitView.open = `${body.to}/${r.name}`;
@@ -12538,12 +12409,37 @@ function managePanel(r, data, cls) {
     buildNow,
     r.can_build ? buildSetup(r) : null,
   );
+  // Its description: a section of one value (a redraw of the list keeps what is being typed).
   const desc = el("textarea", {
     rows: 2,
     maxLength: 200,
-    value: r.description || "",
     className: "git-desc",
   });
+  const descSec = AW.section({
+    id: `git-desc-${repoKey(r)}`,
+    label: `Description of ${r.name}.git`,
+    saved: { description: r.description || "" },
+    save: async (c) =>
+      (await act(
+        {
+          action: "describe",
+          area: r.area,
+          name: r.name,
+          description: c.description,
+        },
+        null,
+        "Saved.",
+      )())
+        ? "Saved."
+        : false,
+    onChange: () => {
+      desc.value = descSec.get("description");
+    },
+  });
+  desc.value = descSec.get("description");
+  desc.addEventListener("input", () =>
+    descSec.set("description", desc.value, true),
+  );
   const about = el(
     "section",
     {},
@@ -12553,21 +12449,8 @@ function managePanel(r, data, cls) {
       textContent: "A line on what it is, shown on its card and in cgit.",
     }),
     desc,
-    actionButton(
-      "Save",
-      () =>
-        act(
-          {
-            action: "describe",
-            area: r.area,
-            name: r.name,
-            description: desc.value,
-          },
-          null,
-          "Saved.",
-        )(),
-      { className: "small" },
-    ),
+    descSec.foot,
+    descSec.reason,
   );
   const others = data.repos.filter(
     (o) => !(o.area === r.area && o.name === r.name) && !o.mirror_of,
@@ -12963,9 +12846,7 @@ function renderCi(data) {
   noteEl("ci-limits").textContent =
     `Each build: up to ${Math.round(data.time_limit / 3600)} hours, ${memText}, ` +
     `the lowest CPU priority. The runs use ${size(data.runs_bytes || 0)}. The box retains the newest ${data.keep_runs} runs for each repository, and every run marked Retain run.`;
-  const kf = document.getElementById("ci-keep-form");
-  if (!kf.contains(document.activeElement))
-    kf.elements.keep.value = data.keep_runs;
+  ciKeep.fill({ keep: data.keep_runs });
   noteEl("ci-offline").textContent =
     "Without internet access: " +
     ((data.mirrored || []).length
@@ -13174,22 +13055,17 @@ async function ciChange(run, action) {
     say(err.message, false, git.note);
   }
 }
-document
-  .getElementById("ci-keep-form")
-  .addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      renderCi(
-        await postJSON("/admin/ci", {
-          action: "settings",
-          keep_runs: Number(e.target.elements.keep.value),
-        }),
-      );
-      say("Saved.", true, git.note);
-    } catch (err) {
-      say(err.message, false, git.note);
-    }
-  });
+const ciKeep = AW.form(document.getElementById("ci-keep-form"), {
+  label: "Runs kept",
+  save: async (c) => {
+    const out = await postJSON("/admin/ci", {
+      action: "settings",
+      keep_runs: Number(c.keep),
+    });
+    setTimeout(() => renderCi(out));
+    return "Saved.";
+  },
+});
 
 // "Set up builds", in a repository's Manage: what a script gets, and templates to start from.
 function buildSetup(r) {
@@ -13283,14 +13159,14 @@ function renderFirmware(data) {
   const cfg = data.settings;
   const st = data.status || {};
   const f = fw.form.elements;
-  if (!fw.form.contains(document.activeElement)) {
-    f.enabled.checked = cfg.enabled;
-    f.configs.checked = cfg.configs !== false;
-    f.keep_alpha.value = cfg.keep_alpha;
-    f.keep_beta.value = cfg.keep_beta;
-    f.all_boards.checked = cfg.boards === "all";
-    fwChosen = new Set(cfg.boards === "all" ? [] : cfg.boards);
-  }
+  fwSec.fill({
+    enabled: cfg.enabled,
+    configs: cfg.configs !== false,
+    keep_alpha: cfg.keep_alpha,
+    keep_beta: cfg.keep_beta,
+    all_boards: cfg.boards === "all",
+    boards: cfg.boards === "all" ? [] : [...cfg.boards].sort(),
+  });
   const running = data.running
     ? data.progress
       ? ` Working: ${data.progress.name} (${size(data.progress.done)}${data.progress.total ? ` of ${size(data.progress.total)}` : ""}).`
@@ -13307,8 +13183,7 @@ function renderFirmware(data) {
   const targets = (data.targets || []).filter(
     (t) => !q || t.board.includes(q) || t.platform.includes(q),
   );
-  if (!fw.cacheForm.contains(document.activeElement))
-    fw.cacheForm.elements.cache.value = cfg.cache;
+  fwCache.fill({ cache: cfg.cache });
   fw.cacheStatus.replaceChildren(
     ...(st.cache
       ? [
@@ -13382,10 +13257,12 @@ function renderFirmware(data) {
             { className: "inline" },
             el("input", {
               type: "checkbox",
+              dataset: { board: t.board },
               checked: fwChosen.has(t.board),
               onchange: (e) => {
                 if (e.target.checked) fwChosen.add(t.board);
                 else fwChosen.delete(t.board);
+                fwSec.set("boards", [...fwChosen].sort());
               },
             }),
             ` ${t.board} `,
@@ -13451,48 +13328,45 @@ async function loadFirmware() {
   }
 }
 fw.filter.addEventListener("input", () => fwData && renderFirmware(fwData));
-fw.form.elements.all_boards.addEventListener(
-  "change",
-  () => fwData && renderFirmware(fwData),
-);
-fw.form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const f = fw.form.elements;
-  try {
+// The boards ticked are kept in fwChosen (the list is drawn again as the filter changes), not in a field: the
+// section's extra value, drawn back into the list on Discard.
+const fwSec = AW.form(fw.form, {
+  label: "Firmware",
+  extra: {
+    boards: {
+      set: (v) => {
+        fwChosen = new Set(v || []);
+        fw.boards
+          .querySelectorAll("input[type=checkbox]")
+          .forEach((i) => {
+            i.checked = fwChosen.has(i.dataset.board);
+          });
+      },
+    },
+  },
+  save: async (c, v) => {
     fwData = await postJSON("/admin/firmware", {
       action: "settings",
-      enabled: f.enabled.checked,
-      configs: f.configs.checked,
-      keep_alpha: Number(f.keep_alpha.value),
-      keep_beta: Number(f.keep_beta.value),
-      boards: f.all_boards.checked ? "all" : [...fwChosen],
+      enabled: v.enabled,
+      configs: v.configs,
+      keep_alpha: Number(v.keep_alpha),
+      keep_beta: Number(v.keep_beta),
+      boards: v.all_boards ? "all" : v.boards,
     });
-    renderFirmware(fwData);
-    say(
-      "Saved. Select Update now to download the missing files. The schedule handles the rest.",
-      true,
-      fw.note,
-    );
-  } catch (err) {
-    say(err.message, false, fw.note);
-  }
+    setTimeout(() => renderFirmware(fwData));
+    return "Saved. Select Update now to download the missing files. The schedule handles the rest.";
+  },
 });
-fw.cacheForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
+const fwCache = AW.form(fw.cacheForm, {
+  label: "Build cache",
+  save: async (c) => {
     fwData = await postJSON("/admin/firmware", {
       action: "settings",
-      cache: fw.cacheForm.elements.cache.value,
+      cache: c.cache,
     });
-    renderFirmware(fwData);
-    say(
-      "Saved. The library downloads or removes the cache on its schedule. Update now on the Firmware page does it now.",
-      true,
-      fw.cacheNote,
-    );
-  } catch (err) {
-    say(err.message, false, fw.cacheNote);
-  }
+    setTimeout(() => renderFirmware(fwData));
+    return "Saved. The library downloads or removes the cache on its schedule. Update now on the Firmware page does it now.";
+  },
 });
 for (const [id, action] of [
   ["fw-check", "check"],
@@ -13571,13 +13445,14 @@ function hoursPicker(value) {
 }
 const pickedHours = (sel) => (sel.value === "never" ? null : Number(sel.value));
 
+// True once the hub or the root helper has it; false when cancelled or refused (said in the note).
 async function kitAct(body, quiet) {
   if (
     body.action === "fetch" &&
     !quiet &&
     !meteredOk("Downloading the toolkit")
   )
-    return;
+    return false;
   try {
     const data = await postJSON("/admin/kits", body);
     if (data.id) kitsWaiting.add(data.id);
@@ -13590,8 +13465,10 @@ async function kitAct(body, quiet) {
         kitsEl.note,
       );
     renderKits(data);
+    return true;
   } catch (err) {
     say(err.message, false, kitsEl.note);
+    return false;
   }
 }
 
@@ -13622,14 +13499,10 @@ function renderKits(data) {
       : "Not checked yet.") +
     (feed && feed.fetched ? ` debsecan's data: ${dayOf(feed.fetched)}.` : "") +
     (kitsWaiting.size ? " Working…" : "");
-  if (!kitsEl.budget.contains(document.activeElement) && !kitsBudgetDirty()) {
-    kitsEl.budget.elements.budget.value = cfg.budget_mb;
-    kitsEl.budget.dataset.saved = cfg.budget_mb;
-    kitsEl.budget.elements.previous.value =
-      cfg.previous_days == null ? "" : String(cfg.previous_days);
-    kitsEl.budget.dataset.previous = kitsEl.budget.elements.previous.value;
-    kitsBudgetSync();
-  }
+  kitsBudget.fill({
+    budget: cfg.budget_mb,
+    previous: cfg.previous_days == null ? "" : cfg.previous_days,
+  });
   kitsEl.problems.replaceChildren(
     ...(st.problems || []).map((p) =>
       checkItem(
@@ -13993,10 +13866,18 @@ async function kitSave(it) {
     .trim()
     .split(/[\s,]+/)
     .filter(Boolean);
-  if (Object.keys(ch).length)
-    await kitAct({ action: "settings", kits: { [k.id]: ch } });
-  if (!k.owner && extra.join(" ") !== (k.extra || []).join(" "))
-    await kitAct({ action: "extra", kit: k.id, packages: extra });
+  if (
+    Object.keys(ch).length &&
+    !(await kitAct({ action: "settings", kits: { [k.id]: ch } }))
+  )
+    return false;
+  if (
+    !k.owner &&
+    extra.join(" ") !== (k.extra || []).join(" ") &&
+    !(await kitAct({ action: "extra", kit: k.id, packages: extra }))
+  )
+    return false;
+  return true;
 }
 // The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
 function customBody() {
@@ -14014,7 +13895,7 @@ function editKit(k, mine) {
     mine.remove_after == null ? "never" : String(mine.remove_after);
   kitsEl.addTitle.textContent = `Change ${k.title}`;
   kitsEl.addCancel.hidden = false;
-  kitsEl.add.querySelector("button[type=submit]").textContent = "Save toolkit";
+  kitsEl.add.querySelector("button[type=submit]").textContent = "Update toolkit";
   // In the custom card's drawer: open it if it isn't.
   const card = kitsEl.grid.querySelector('.aw-card[data-aw-id="kit-custom"]');
   if (card && !card.classList.contains("open"))
@@ -14230,38 +14111,18 @@ async function loadKits() {
   }
 }
 // The budget waits for Save; Discard puts back the saved one.
-function kitsBudgetDirty() {
-  const f = kitsEl.budget;
-  return (
-    f.dataset.saved !== undefined &&
-    (f.elements.budget.value !== String(f.dataset.saved) ||
-      f.elements.previous.value !== (f.dataset.previous || ""))
-  );
-}
-function kitsBudgetSync() {
-  const dirty = kitsBudgetDirty();
-  kitsEl.budget.querySelector('[type="submit"]').disabled = !dirty;
-  document.getElementById("kits-budget-discard").disabled = !dirty;
-}
-kitsEl.budget.elements.budget.addEventListener("input", kitsBudgetSync);
-kitsEl.budget.elements.previous.addEventListener("change", kitsBudgetSync);
-document.getElementById("kits-budget-discard").addEventListener("click", () => {
-  kitsEl.budget.elements.budget.value = kitsEl.budget.dataset.saved;
-  kitsEl.budget.elements.previous.value = kitsEl.budget.dataset.previous || "";
-  kitsBudgetSync();
-});
-kitsEl.budget.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const mb = Number(kitsEl.budget.elements.budget.value),
-    prev = kitsEl.budget.elements.previous.value;
-  await kitAct({
-    action: "settings",
-    budget_mb: mb,
-    previous_days: prev === "" ? null : Number(prev),
-  });
-  kitsEl.budget.dataset.saved = mb;
-  kitsEl.budget.dataset.previous = prev;
-  kitsBudgetSync();
+// The cache's budget and how long an older set is kept: a section of the toolkits' page.
+const kitsBudget = AW.form(kitsEl.budget, {
+  label: "Toolkits' cache budget",
+  save: async (c, v) => {
+    renderKits(
+      await postJSON("/admin/kits", {
+        action: "settings",
+        budget_mb: Number(v.budget),
+        previous_days: v.previous === "" ? null : Number(v.previous),
+      }),
+    );
+  },
 });
 document
   .getElementById("kits-refresh-all")
@@ -14312,9 +14173,49 @@ const tlsEl = {
 };
 let tlsWaiting = null;
 let tlsData = null;
-let tlsDraft = null,
-  policyDraft = null,
-  tlsOperation = null;
+let tlsOperation = null,
+  tlsJob = null; // the section's save waiting for the root helper (AW.job)
+// HTTPS's two choices, and the security policy: a section each, saved by the root helper (renderTls says when).
+const tlsLocked = () =>
+  !!tlsData && (tlsData.policy || {}).mode === "console";
+const tlsSave = (body) => {
+  const j = AW.job();
+  tlsJob = j;
+  tlsAct(body);
+  return j;
+};
+const tlsSec = AW.section({
+  id: "https-settings",
+  label: "HTTPS",
+  saved: null,
+  why: (c, v) =>
+    tlsLocked()
+      ? "Security policy is locked. Changes require the console or SSH."
+      : v.transport === "http" && v.admin_http === "block"
+        ? "Closing the administration pages over HTTP needs HTTPS on."
+        : null,
+  ask: (c, v) =>
+    v.transport === "https"
+      ? "Disable HTTP entirely? Captive-portal discovery over HTTP will stop. Continue?"
+      : null,
+  save: (c, v) => tlsSave({ action: "settings", ...v }),
+  onChange: () => drawTlsChoices(),
+});
+const policySec = AW.section({
+  id: "security-policy",
+  label: "Security policy",
+  saved: null,
+  ask: () =>
+    "Once saved, security policy can only be changed over a root-capable SSH session or the local console. The hub cannot undo this. Continue?",
+  why: () =>
+    tlsLocked()
+      ? "Security policy is locked. Changes require the console or SSH."
+      : null,
+  save: (c) => tlsSave({ action: "policy", mode: c.mode, confirmed: true }),
+  onChange: () => drawTlsChoices(),
+});
+document.getElementById("tls-foot").append(tlsSec.foot, tlsSec.reason);
+document.getElementById("policy-foot").append(policySec.foot, policySec.reason);
 const TLS_TRANSPORT = [
   ["http", "HTTPS disabled"],
   ["both", "HTTP and HTTPS"],
@@ -14359,8 +14260,22 @@ function drawTlsChoices() {
     transport: tlsData.transport || (tlsData.on ? "both" : "http"),
     admin_http: tlsData.admin_http || (tlsData.admin_only ? "block" : "allow"),
   };
-  const draft = tlsDraft || applied,
-    mode = policyDraft || (tlsData.policy || {}).mode || "hub";
+  // The applied settings, when they change: a choice not saved yet kept over them.
+  const appliedMode = (tlsData.policy || {}).mode || "hub";
+  if (
+    !tlsSec.saving() &&
+    (!tlsSec.loaded() ||
+      tlsSec.savedValue("transport") !== applied.transport ||
+      tlsSec.savedValue("admin_http") !== applied.admin_http)
+  )
+    return tlsSec.update(applied);
+  if (
+    !policySec.saving() &&
+    (!policySec.loaded() || policySec.savedValue("mode") !== appliedMode)
+  )
+    return policySec.update({ mode: appliedMode });
+  const draft = tlsSec.values(),
+    mode = policySec.get("mode");
   tlsChoices(
     tlsEl.transport,
     TLS_TRANSPORT,
@@ -14370,10 +14285,7 @@ function drawTlsChoices() {
       locked ||
       (value !== "http" && !tlsData.set_up) ||
       (!secure && ["discovery", "https"].includes(value)),
-    (value) => {
-      tlsDraft = { ...draft, transport: value };
-      drawTlsChoices();
-    },
+    (value) => tlsSec.set("transport", value),
   );
   tlsChoices(
     tlsEl.adminHttp,
@@ -14384,36 +14296,16 @@ function drawTlsChoices() {
       locked ||
       (value === "block" && (!secure || draft.transport === "http")) ||
       ["discovery", "https"].includes(draft.transport),
-    (value) => {
-      tlsDraft = { ...draft, admin_http: value };
-      drawTlsChoices();
-    },
+    (value) => tlsSec.set("admin_http", value),
   );
   tlsChoices(
     document.getElementById("policy-choices"),
     ROOT_POLICY,
     mode,
     () => busy || locked,
-    (value) => {
-      policyDraft = value;
-      drawTlsChoices();
-    },
+    (value) => policySec.set("mode", value),
   );
-  const changed =
-    draft.transport !== applied.transport ||
-    draft.admin_http !== applied.admin_http;
-  document.getElementById("tls-save").disabled =
-    busy ||
-    locked ||
-    !changed ||
-    (draft.transport === "http" && draft.admin_http === "block");
-  document.getElementById("tls-discard").disabled = busy || !tlsDraft;
-  document.getElementById("policy-save").disabled =
-    busy ||
-    locked ||
-    !policyDraft ||
-    mode === ((tlsData.policy || {}).mode || "hub");
-  document.getElementById("policy-discard").disabled = busy || !policyDraft;
+  const changed = tlsSec.dirty();
   document.getElementById("policy-state").textContent = locked
     ? "Applied: console/SSH only. The hub cannot change security policy."
     : "Applied: hub administrators may change policy. This trusts the hub to convey administrator approval.";
@@ -14443,9 +14335,9 @@ function renderTls(d) {
         done.ok,
         tlsOperation === "policy" ? noteEl("policy-note") : tlsEl.note,
       );
+      if (tlsJob) tlsJob.done(done.ok, resultSaid(done));
+      tlsJob = null;
       if (done.ok) {
-        if (tlsOperation === "policy") policyDraft = null;
-        else tlsDraft = null;
         document
           .getElementById(
             tlsOperation === "policy" ? "security-policy" : "security-https",
@@ -14497,40 +14389,14 @@ async function tlsAct(body) {
     );
     loadTls();
   } catch (err) {
-    say(err.message, false, tlsEl.note);
+    if (tlsJob) {
+      tlsJob.done(false, err.message);
+      tlsJob = null;
+    } else say(err.message, false, tlsEl.note);
   }
 }
 tlsEl.make.addEventListener("click", () => tlsAct({ action: "make" }));
 tlsEl.box.addEventListener("click", () => tlsAct({ action: "box" }));
-document.getElementById("tls-discard").addEventListener("click", () => {
-  tlsDraft = null;
-  drawTlsChoices();
-});
-document.getElementById("policy-discard").addEventListener("click", () => {
-  policyDraft = null;
-  drawTlsChoices();
-});
-document.getElementById("policy-save").addEventListener("click", () => {
-  if (
-    !policyDraft ||
-    !confirm(
-      "Once saved, security policy can only be changed over a root-capable SSH session or the local console. The hub cannot undo this. Continue?",
-    )
-  )
-    return;
-  tlsAct({ action: "policy", mode: policyDraft, confirmed: true });
-});
-document.getElementById("tls-save").addEventListener("click", () => {
-  if (!tlsDraft) return;
-  if (
-    tlsDraft.transport === "https" &&
-    !confirm(
-      "Disable HTTP entirely? Captive-portal discovery over HTTP will stop. Continue?",
-    )
-  )
-    return;
-  tlsAct({ action: "settings", ...tlsDraft });
-});
 tlsEl.own.addEventListener("submit", (e) => {
   e.preventDefault();
   const f = tlsEl.own.elements;
@@ -14562,7 +14428,7 @@ const acctEl = {
   login: document.getElementById("accounts-admin-login"),
   loginChoices: document.getElementById("accounts-admin-login-choices"),
 };
-let acctWaiting = null; // the root helper's request for the box's own login
+let acctWaiting = null; // the root helper's request for the box's own login (an AW.job, with its id)
 async function loadAccounts() {
   try {
     renderAccounts(await getJSON("/admin/accounts"));
@@ -14570,7 +14436,7 @@ async function loadAccounts() {
     acctEl.counts.textContent = "Could not read the accounts.";
   }
 }
-// The box's own login (for scripts): its reach, from the safest. A chip only selects; Save changes applies it,
+// The box's own login (for scripts): its reach, from the safest. A chip only selects; Save applies it,
 // after the page has said what the change stops. The password only at the console.
 const LOGIN_REACH = [
   [
@@ -14589,7 +14455,32 @@ const LOGIN_REACH = [
     "Any device that has the password can use it. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.",
   ],
 ];
-let acctReachDraft = null; // the reach selected on the page, not saved yet
+// The reach as a section: a chip only selects; Save applies it, after one question saying what the change stops.
+let acctLast = null,
+  acctAdmins = "";
+const reachSec = AW.section({
+  id: "script-sign-in",
+  label: "Script sign-in",
+  saved: null,
+  ask: (c) => `${reachChange(c.reach, acctAdmins).says} Save this change?`,
+  why: (c) =>
+    reachChange(c.reach, acctAdmins).lockout
+      ? "Create an administrator account first."
+      : null,
+  save: async (c) => {
+    const j = AW.job();
+    j.id = (
+      await postJSON("/admin/accounts", {
+        action: "admin-login",
+        reach: c.reach,
+      })
+    ).id;
+    acctWaiting = j;
+    loadAccounts();
+    return j;
+  },
+  onChange: () => acctLast && renderAccounts(acctLast),
+});
 // What saving a reach stops, said before it is saved; and whether it would leave no way into /admin from another device.
 function reachChange(v, admins) {
   const accounts = admins
@@ -14629,75 +14520,46 @@ function renderAccounts(d) {
     https_admins: [],
     results: [],
   };
+  acctLast = d;
   if (acctWaiting) {
-    const done = (al.results || []).find((r) => r.id === acctWaiting);
+    const done = (al.results || []).find((r) => r.id === acctWaiting.id);
     if (done) {
+      const j = acctWaiting;
       acctWaiting = null;
-      say(resultSaid(done), done.ok, acctEl.note);
+      j.done(done.ok, resultSaid(done));
     } else setTimeout(loadAccounts, 1000);
   }
   const admins = al.https_admins.join(", ");
-  if (acctReachDraft === al.reach) acctReachDraft = null;
-  const pick = (reach) => {
-    if (!acctWaiting) {
-      acctReachDraft = reach === al.reach ? null : reach;
-      renderAccounts(d);
-    }
-  };
-  const save = async () => {
-    const reach = acctReachDraft;
-    if (!reach || acctWaiting) return;
-    if (!confirm(`${reachChange(reach, admins).says} Save this change?`))
-      return;
-    try {
-      acctWaiting = (
-        await postJSON("/admin/accounts", { action: "admin-login", reach })
-      ).id;
-      acctReachDraft = null;
-      loadAccounts();
-    } catch (err) {
-      say(err.message, false, acctEl.note);
-    }
-  };
-  const discard = () => {
-    acctReachDraft = null;
-    renderAccounts(d);
-  };
+  acctAdmins = admins;
+  // The saved reach, when it changes: the section draws the page again (onChange) over it.
+  if (
+    !reachSec.saving() &&
+    (!reachSec.loaded() || reachSec.savedValue("reach") !== al.reach)
+  )
+    return reachSec.update({ reach: al.reach });
+  const draft = reachSec.get("reach");
   // A reach other than off needs a password, set at the console.
-  const blocked = (v) => !!acctWaiting || (v !== "off" && !al.password_set);
-  const change = acctReachDraft && reachChange(acctReachDraft, admins);
+  const blocked = (v) =>
+    reachSec.disabled() || (v !== "off" && !al.password_set);
+  const change = reachSec.dirty() && reachChange(draft, admins);
   acctEl.loginChoices.replaceChildren(
     chipRow(
       "Script sign-in",
       LOGIN_REACH.map(([v, w]) => [v, w]),
-      acctReachDraft || al.reach,
-      pick,
+      draft,
+      (v) => reachSec.set("reach", v),
       blocked,
     ),
     ...(change
       ? [
-          el(
-            "div",
-            { className: "reach-change" },
-            el("p", {
-              className: "setting-desc",
-              textContent: `Selected, not saved. ${change.says}`,
-            }),
-            el(
-              "span",
-              { className: "library-buttons" },
-              actionButton("Save changes", save, {
-                disabled: !!acctWaiting || change.lockout,
-                title: change.lockout
-                  ? "Create an administrator account first."
-                  : "",
-              }),
-              " ",
-              actionButton("Discard", discard),
-            ),
-          ),
+          el("p", {
+            className: "setting-desc reach-change",
+            textContent: `Selected, not saved. ${change.says}`,
+          }),
         ]
       : []),
+    reachSec.foot,
+    reachSec.reason,
   );
   const said = (LOGIN_REACH.find(([v]) => v === al.reach) || LOGIN_REACH[0])[2];
   acctEl.login.textContent =
@@ -14705,8 +14567,7 @@ function renderAccounts(d) {
     (al.reach !== "off" && !admins
       ? " To disable it or limit it to the box itself, first create an administrator account and sign in with it over HTTPS."
       : "");
-  acctEl.settings.elements.signup.value = d.settings.signup;
-  acctEl.settings.elements.http.value = d.settings.http;
+  acctSettings.fill({ signup: d.settings.signup, http: d.settings.http });
   const c = d.counts;
   acctEl.counts.textContent = `${c.user} user${c.user === 1 ? "" : "s"} (${c.admins} administrator${c.admins === 1 ? "" : "s"}), ${c.asked} waiting for approval, ${c.disabled} disabled.`;
   const when = (t) => (t ? ago(Date.now() / 1000 - t) : "never");
@@ -14829,6 +14690,7 @@ async function loadNotebooksAdmin() {
         },
       ],
       {
+        id: "notebooks",
         save: async (changed) => {
           await postJSON("/admin/settings", changed);
           loadNotebooksAdmin();
@@ -14893,6 +14755,7 @@ function codeBox(name, code) {
     note,
   );
 }
+// True when the hub did it; false when cancelled or refused (said in the note).
 async function acctAct(body) {
   if (
     body.action === "delete" &&
@@ -14900,30 +14763,36 @@ async function acctAct(body) {
       `Delete the account ${body.name}? This person can no longer sign in. You cannot undo this.`,
     )
   )
-    return;
+    return false;
   if (
     body.action === "admin" &&
     !confirm(
       `Give ${body.name} the administrator role? An administrator can change every setting of the box.`,
     )
   )
-    return;
+    return false;
   try {
     const d = await postJSON("/admin/accounts", body);
     if (d.code) showCode(body.name, d.code);
     say("Done.", true, acctEl.note);
     renderAccounts(d);
+    return true;
   } catch (err) {
     say(err.message, false, acctEl.note);
+    return false;
   }
 }
-acctEl.settings.addEventListener("submit", (e) => {
-  e.preventDefault();
-  acctAct({
-    action: "settings",
-    signup: acctEl.settings.elements.signup.value,
-    http: acctEl.settings.elements.http.value,
-  });
+const acctSettings = AW.form(acctEl.settings, {
+  label: "Account settings",
+  save: async (c, v) => {
+    const d = await postJSON("/admin/accounts", {
+      action: "settings",
+      signup: v.signup,
+      http: v.http,
+    });
+    setTimeout(() => renderAccounts(d));
+    return "Saved.";
+  },
 });
 acctEl.make.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -14937,15 +14806,30 @@ acctEl.make.addEventListener("submit", (e) => {
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
 // each app's own page.
-const postingForms = [...document.querySelectorAll(".posting-form")];
-const fillPosting = (st) =>
-  postingForms.forEach((form) =>
-    [...form.elements].forEach((f) => {
-      if (!(f.name in st)) return;
-      if (f.type === "checkbox") f.checked = st[f.name] === true;
-      else f.value = st[f.name];
+// Who may post, and the users' marks: a section per form (AW.form), held until Save.
+const postingForms = [...document.querySelectorAll(".posting-form")].map(
+  (form) =>
+    AW.form(form, {
+      label: "Posting rules",
+      save: async (c) => {
+        const out = {};
+        for (const [k, v] of Object.entries(c)) out[k] = v;
+        fillPosting(await postJSON("/admin/settings", out));
+        return "Saved.";
+      },
     }),
-  );
+);
+const fillPosting = (st) =>
+  postingForms.forEach((sec) => {
+    const form = sec.foot.closest("form");
+    sec.fill(
+      Object.fromEntries(
+        [...form.elements]
+          .filter((f) => f.name && f.name in st)
+          .map((f) => [f.name, st[f.name]]),
+      ),
+    );
+  });
 async function loadPosting() {
   try {
     fillPosting(await getJSON("/admin/settings"));
@@ -14953,23 +14837,6 @@ async function loadPosting() {
     /* the page says if the hub can't be read */
   }
 }
-postingForms.forEach((form) =>
-  form.addEventListener("change", async (e) => {
-    const f = e.target,
-      note = noteEl(form.dataset.note);
-    try {
-      fillPosting(
-        await postJSON("/admin/settings", {
-          [f.name]: f.type === "checkbox" ? f.checked : f.value,
-        }),
-      );
-      say("Saved.", true, note);
-    } catch (err) {
-      say(err.message, false, note);
-      loadPosting();
-    }
-  }),
-);
 const postingShown = () =>
   paneShown("shoutbox-settings") || paneShown("board-settings");
 window.addEventListener("hashchange", () => {
@@ -15188,11 +15055,32 @@ function paletteEditor(st, onSaved) {
     for (const m of ["light", "dark"])
       if (!(saved[m] || {}).accent)
         saved[m] = { ...(saved[m] || {}), accent: st.accent };
-  let draft = JSON.parse(JSON.stringify(saved));
-  let mode = "light";
+  let mode = "light"; // the mode shown: a view, not a setting
   const box = el("div", { className: "aw-settings palette-editor" });
-  const same = () => JSON.stringify(draft) === JSON.stringify(saved);
+  // A section of one value, the whole palette; colours that fail the contrast check are asked about once, at Save.
+  const pal = AW.section({
+    id: "appearance-palette",
+    label: "Colours",
+    saved: { palette: saved },
+    ask: (c) => {
+      const short = [
+        ...paletteShort("light", c.palette),
+        ...paletteShort("dark", c.palette),
+      ];
+      return short.length
+        ? `Save the failing colours anyway? Some people will find the text that fails the 4.5:1 ratio hard to read (${short.length} pair${short.length === 1 ? "" : "s"}).`
+        : null;
+    },
+    save: async (c) => {
+      await postJSON("/admin/settings", { palette: c.palette, accent: "" });
+      reloadLayoutCss();
+      setTimeout(onSaved);
+    },
+    onChange: () => draw(),
+  });
+  const put = (next) => pal.set("palette", next);
   const draw = () => {
+    const draft = pal.get("palette");
     const c = paletteShown(mode, draft);
     const modeChips = el(
       "div",
@@ -15218,16 +15106,13 @@ function paletteEditor(st, onSaved) {
     const presets = el(
       "div",
       { className: "chip-group", role: "group", "aria-label": "Presets" },
-      ...PALETTE_PRESETS.map(([id, label, pal]) => {
-        const on = JSON.stringify(pal) === JSON.stringify(draft);
+      ...PALETTE_PRESETS.map(([id, label, preset]) => {
+        const on = JSON.stringify(preset) === JSON.stringify(draft);
         const b = el("button", {
           type: "button",
           className: "chip" + (on ? " selected" : ""),
           textContent: label,
-          onclick: () => {
-            draft = JSON.parse(JSON.stringify(pal));
-            draw();
-          },
+          onclick: () => put(preset),
         });
         b.dataset.preset = id;
         b.setAttribute("aria-pressed", String(on));
@@ -15254,13 +15139,12 @@ function paletteEditor(st, onSaved) {
       const pick = el("input", { type: "color", value: c[role] });
       pick.setAttribute("aria-label", `${label}, ${mode}`);
       pick.dataset.role = role;
-      pick.addEventListener("change", () => {
-        draft[mode] = {
-          ...(draft[mode] || {}),
-          [role]: pick.value.toLowerCase(),
-        };
-        draw();
-      });
+      pick.addEventListener("change", () =>
+        put({
+          ...draft,
+          [mode]: { ...(draft[mode] || {}), [role]: pick.value.toLowerCase() },
+        }),
+      );
       const back = el("button", {
         type: "button",
         className: "action-btn small",
@@ -15269,9 +15153,10 @@ function paletteEditor(st, onSaved) {
         onclick: () => {
           const m = { ...(draft[mode] || {}) };
           delete m[role];
-          if (Object.keys(m).length) draft[mode] = m;
-          else delete draft[mode];
-          draw();
+          const next = { ...draft };
+          if (Object.keys(m).length) next[mode] = m;
+          else delete next[mode];
+          put(next);
         },
       });
       return el(
@@ -15312,7 +15197,6 @@ function paletteEditor(st, onSaved) {
       ...paletteShort("light", draft),
       ...paletteShort("dark", draft),
     ];
-    const ack = el("input", { type: "checkbox" });
     const report = el(
       "div",
       { className: "palette-report", role: "status" },
@@ -15333,43 +15217,6 @@ function paletteEditor(st, onSaved) {
               "These text pairs meet 4.5:1 or more in both modes (WCAG AA for text). This check does not cover focus, layout or the other themes.",
           }),
     );
-    const ackLine = short.length
-      ? el(
-          "label",
-          { className: "inline palette-ack" },
-          ack,
-          " Save the failing colours anyway. Some people will find the text that fails the 4.5:1 ratio hard to read.",
-        )
-      : null;
-    const note = el("small", { className: "setting-desc", role: "status" });
-    const save = el("button", {
-      type: "button",
-      className: "action-btn primary",
-      textContent: "Save",
-      disabled: same() || !!short.length,
-    });
-    ack.addEventListener("change", () => {
-      save.disabled = same() || (short.length && !ack.checked);
-    });
-    const discard = el("button", {
-      type: "button",
-      className: "action-btn",
-      textContent: "Discard",
-      disabled: same(),
-      onclick: () => {
-        draft = JSON.parse(JSON.stringify(saved));
-        draw();
-      },
-    });
-    save.addEventListener("click", async () => {
-      try {
-        await postJSON("/admin/settings", { palette: draft, accent: "" });
-        reloadLayoutCss();
-        onSaved();
-      } catch (e) {
-        note.textContent = e.message;
-      }
-    });
     box.replaceChildren(
       el(
         "div",
@@ -15396,20 +15243,8 @@ function paletteEditor(st, onSaved) {
       ...roles,
       preview,
       report,
-      ...(ackLine ? [ackLine] : []),
-      el(
-        "div",
-        { className: "aw-foot" },
-        el("span", {
-          className: "note",
-          textContent: same()
-            ? "Changes apply after you select Save."
-            : "Unsaved changes.",
-        }),
-        discard,
-        save,
-      ),
-      note,
+      pal.foot,
+      pal.reason,
     );
   };
   draw();
@@ -15558,6 +15393,7 @@ async function loadAppearance() {
       },
     ],
     {
+      id: "appearance-hub",
       save: async (changed) => {
         if ("hub_title" in changed && !changed.hub_title.trim())
           throw new Error("The hub needs a name.");
@@ -15601,6 +15437,7 @@ async function loadAppearance() {
         row("board_width", "Forum", "its tab on the hub page"),
       ],
       {
+        id: "appearance-widths",
         save: async (changed) => {
           const now = await postJSON("/admin/settings", changed);
           document.body.style.setProperty(
@@ -15637,7 +15474,7 @@ async function loadAppearance() {
           ],
         },
       ],
-      { save: (changed) => postJSON("/admin/settings", changed) },
+      { id: "appearance-emoji", save: (changed) => postJSON("/admin/settings", changed) },
     ),
   );
 }
@@ -15691,6 +15528,7 @@ async function loadCardWrites() {
         },
       ],
       {
+        id: "card-writes",
         save: async (changed) => {
           await postJSON("/admin/settings", changed);
           loadCardWrites();
@@ -15709,9 +15547,47 @@ function cardRate(sys) {
 
 // ---- Folders: each folder's page arranges its entries. The
 // administrator can hide an entry from a folder, order a folder's entries, and put an entry in other
-// folders as well. The draft is the whole arrangement; Save sends it, Discard puts it back.
+// folders as well. Each folder is a section with its own Save and Discard, on its own page; "Also included in"
+// changes the other folder's section, saved from that folder's page.
 let folders = null,
   folderDraft = null;
+const folderSecs = new Map(); // folder -> its section
+const folderFull = (v) => ({
+  hidden: [...((v || {}).hidden || [])],
+  order: [...((v || {}).order || [])],
+  extra: [...((v || {}).extra || [])],
+});
+const folderOne = (f, state) => folderNorm({ [f]: (state || {})[f] || {} })[f] || {};
+function folderSec(f) {
+  if (folderSecs.has(f)) return folderSecs.get(f);
+  const fol = (folders.folders || []).find((x) => x.id === f);
+  const sec = AW.section({
+    id: `folder-${f}`,
+    label: `Folder: ${fol ? fol.title : f}`,
+    saved: null,
+    save: async (c, v) => {
+      const state = { ...(folders.state || {}), [f]: folderFull(v.all) };
+      folders = await postJSON("/admin/folders", { state });
+      setTimeout(folderSaved);
+    },
+    onChange: () => {
+      folderDraft[f] = folderFull(sec.get("all"));
+      fillFolderBlocks();
+    },
+  });
+  folderSecs.set(f, sec);
+  return sec;
+}
+// The saved arrangement into every folder's section (a draft kept over it).
+function folderSaved() {
+  for (const fol of folders.folders)
+    folderSec(fol.id).update({ all: folderOne(fol.id, folders.state) });
+}
+// After a change on the page: each folder's section told its draft.
+function folderTouched() {
+  for (const fol of folders.folders)
+    folderSec(fol.id).set("all", folderOne(fol.id, folderDraft), true);
+}
 const folderOpen = {}; // folder -> the entry left open, so a change keeps it in view
 const KIND_WORD = {
   switches: "starting switches",
@@ -15724,7 +15600,11 @@ async function loadFolders() {
   } catch (e) {
     return;
   }
-  folderDraft = JSON.parse(JSON.stringify(folders.state || {}));
+  if (!folderDraft)
+    folderDraft = Object.fromEntries(
+      folders.folders.map((x) => [x.id, folderFull((folders.state || {})[x.id])]),
+    );
+  folderSaved();
   fillFolderBlocks();
 }
 function fillFolderBlocks() {
@@ -15752,10 +15632,9 @@ function drawFolderIndex() {
   const list = document.getElementById("folder-index-list");
   const apps = AL.apps();
   if (!list || !apps) return;
-  const dirty =
-    !!folders &&
-    JSON.stringify(folderNorm(folderDraft)) !==
-      JSON.stringify(folderNorm(folders.state));
+  const changed = folders
+    ? folders.folders.filter((x) => folderSec(x.id).dirty())
+    : [];
   const rows = apps
     .filter((a) => a.folder)
     .map((a) => {
@@ -15803,8 +15682,8 @@ function drawFolderIndex() {
       id: "folder-index-note",
       role: "status",
     });
-  note.textContent = dirty
-    ? "Unsaved folder changes. Select Save all folder changes or Discard all folder changes on the page of any folder. Save all folder changes applies the changes to every folder."
+  note.textContent = changed.length
+    ? `Unsaved changes in ${changed.map((x) => x.title).join(", ")}. Each folder's page has its own Save and Discard.`
     : "";
   if (!note.isConnected) list.after(note);
 }
@@ -15871,9 +15750,6 @@ function drawFolder(block, f) {
     .map((h, i) => ({ h, i }))
     .sort((a, b) => pos(a.h) - pos(b.h) || a.i - b.i)
     .map((x) => pool.get(x.h));
-  const dirty =
-    JSON.stringify(folderNorm(folderDraft)) !==
-    JSON.stringify(folderNorm(folders.state));
   const move = (e, d) => {
     const order = list.map((x) => x.href),
       i = order.indexOf(e.href),
@@ -15882,6 +15758,7 @@ function drawFolder(block, f) {
     [order[i], order[j]] = [order[j], order[i]];
     st.order = order;
     folderOpen[f] = e.href;
+    folderTouched();
     fillFolderBlocks();
   };
   const items = list.map((e) => {
@@ -15908,6 +15785,7 @@ function drawFolder(block, f) {
                 onclick: () => {
                   setInFolder(f, e.href, !shown);
                   folderOpen[f] = e.href;
+                  folderTouched();
                   fillFolderBlocks();
                 },
               },
@@ -15938,6 +15816,7 @@ function drawFolder(block, f) {
                       onclick: () => {
                         setInFolder(x.id, e.href, !on);
                         folderOpen[f] = e.href;
+                        folderTouched();
                         fillFolderBlocks();
                       },
                     },
@@ -15960,49 +15839,27 @@ function drawFolder(block, f) {
     };
   });
   const shownCount = list.filter((e) => inFolder(f, e.href)).length;
-  // One draft for every folder: say which folders a Save changes, by name.
-  const changed = folders.folders.filter(
-    (x) =>
-      JSON.stringify(folderNorm({ [x.id]: folderDraft[x.id] || {} })) !==
-      JSON.stringify(folderNorm({ [x.id]: (folders.state || {})[x.id] || {} })),
+  // A change made here to another folder (Also included in) is saved from that folder's page: said here.
+  const others = folders.folders.filter(
+    (x) => x.id !== f && folderSec(x.id).dirty(),
   );
-  const note = AW.h("span", {
-    class: "note",
-    text: dirty
-      ? `Unsaved changes in ${changed.map((x) => x.title).join(", ")}. Save all folder changes applies them. Discard all folder changes restores the saved arrangement.`
-      : "Changes apply after you select Save all folder changes.",
-  });
+  const sec = folderSec(f);
   block.replaceChildren(
     AW.h("p", {
       class: "setting-desc",
       text: `${shownCount} of ${list.length} visible on its page. The entries come from the manifests of apps, from the index of an app and from start switches on one page.`,
     }),
     AW.shortList(items, { id: "folder-list-" + f }),
-    AW.h(
-      "div",
-      { class: "aw-foot" },
-      note,
-      AW.btn("Discard all folder changes", {
-        disabled: !dirty,
-        onclick: () => {
-          folderDraft = JSON.parse(JSON.stringify(folders.state || {}));
-          fillFolderBlocks();
-        },
-      }),
-      AW.btn("Save all folder changes", {
-        class: "action-btn primary",
-        disabled: !dirty,
-        onclick: async () => {
-          try {
-            folders = await postJSON("/admin/folders", { state: folderDraft });
-            folderDraft = JSON.parse(JSON.stringify(folders.state));
-            fillFolderBlocks();
-          } catch (err) {
-            note.textContent = err.message;
-          }
-        },
-      }),
-    ),
+    sec.foot,
+    sec.reason,
+    ...(others.length
+      ? [
+          AW.h("p", {
+            class: "setting-desc",
+            text: `Also changed, and saved from their own pages: ${others.map((x) => x.title).join(", ")}.`,
+          }),
+        ]
+      : []),
   );
   const open =
     folderOpen[f] &&
@@ -16036,6 +15893,7 @@ function fillWidthBlocks() {
           },
         ],
         {
+          id: `width-${key}`,
           save: async (changed) => {
             appearanceSettings = await postJSON("/admin/settings", changed);
             loadAppearance();
@@ -16081,18 +15939,51 @@ function setSize(draft, id, v) {
   if (v === "single") delete draft.size[id];
   else draft.size[id] = v;
 }
+// The arrangement in one shape, so the same arrangement compares the same: every tile in order, the hidden ones
+// and the sizes sorted.
+function stNorm(state) {
+  const pos = (i) => {
+    const n = (state.order || []).indexOf(i);
+    return n < 0 ? 1e6 : n;
+  };
+  return {
+    order: stTiles.tiles
+      .map((x, i) => ({ id: x.id, i }))
+      .sort((a, b) => pos(a.id) - pos(b.id) || a.i - b.i)
+      .map((x) => x.id),
+    hidden: [...(state.hidden || [])].sort(),
+    size: Object.fromEntries(Object.entries(state.size || {}).sort()),
+  };
+}
+// Status tiles as one section: its value the arrangement.
+const stSec = AW.section({
+  id: "status-tiles",
+  label: "Status tiles",
+  saved: null,
+  save: async (c, v) => {
+    stTiles = await postJSON("/admin/status-tiles", { state: v.all });
+    setTimeout(() => stSec.update({ all: stNorm(stTiles.state) }));
+  },
+  onChange: () => {
+    stDraft = JSON.parse(JSON.stringify(stSec.get("all")));
+    drawStatusTiles();
+  },
+});
 async function loadStatusTiles() {
   try {
     stTiles = await getJSON("/admin/status-tiles");
   } catch (e) {
     return;
   }
-  stDraft = JSON.parse(JSON.stringify(stTiles.state));
-  drawStatusTiles();
+  stSec.update({ all: stNorm(stTiles.state) });
 }
 function drawStatusTiles(openId) {
   const box = document.getElementById("status-tiles-box");
-  if (!box || !stTiles) return;
+  if (!box || !stTiles || !stDraft) return;
+  if (!openId) {
+    const was = box.querySelector('.aw-row-head[aria-expanded="true"]');
+    openId = was ? was.closest(".aw-row").dataset.awId : null;
+  }
   const byId = new Map(stTiles.tiles.map((x) => [x.id, x]));
   const pos = (i) => {
     const n = stDraft.order.indexOf(i);
@@ -16107,7 +15998,11 @@ function drawStatusTiles(openId) {
       ? [...new Set([...stDraft[k], id])]
       : stDraft[k].filter((x) => x !== id);
   };
-  const redraw = (id) => drawStatusTiles(id);
+  const redraw = (id) => {
+    stDraft = stNorm(stDraft);
+    stSec.set("all", JSON.parse(JSON.stringify(stDraft)), true);
+    drawStatusTiles(id);
+  };
   const move = (id, d) => {
     const order = list.map((x) => x.id),
       i = order.indexOf(id),
@@ -16117,13 +16012,6 @@ function drawStatusTiles(openId) {
     stDraft.order = order;
     redraw(id);
   };
-  const norm = (s) =>
-    JSON.stringify(
-      ["order", "hidden"]
-        .map((k) => [...(s[k] || [])].sort())
-        .concat([s.order || []], [Object.entries(s.size || {}).sort()]),
-    );
-  const dirty = norm(stDraft) !== norm(stTiles.state);
   const items = list.map((t) => {
     const shown = !stDraft.hidden.includes(t.id),
       size = (stDraft.size || {})[t.id] || "single";
@@ -16175,37 +16063,10 @@ function drawStatusTiles(openId) {
       ],
     };
   });
-  const note = AW.h("span", {
-    class: "note",
-    text: dirty ? "Unsaved changes." : "Changes apply after you select Save.",
-  });
   box.replaceChildren(
     AW.shortList(items, { id: "status-tiles-list" }),
-    AW.h(
-      "div",
-      { class: "aw-foot" },
-      note,
-      AW.btn("Discard", {
-        disabled: !dirty,
-        onclick: () => {
-          stDraft = JSON.parse(JSON.stringify(stTiles.state));
-          redraw();
-        },
-      }),
-      AW.btn("Save", {
-        class: "action-btn primary",
-        disabled: !dirty,
-        onclick: async () => {
-          try {
-            stTiles = await postJSON("/admin/status-tiles", { state: stDraft });
-            stDraft = JSON.parse(JSON.stringify(stTiles.state));
-            redraw();
-          } catch (err) {
-            note.textContent = err.message;
-          }
-        },
-      }),
-    ),
+    stSec.foot,
+    stSec.reason,
   );
   const open =
     openId &&
@@ -16240,7 +16101,7 @@ async function loadNamesTo() {
           note: "Names appear only for users who chose to be shown on their own account page. Guests see only the number of users.",
         },
       ],
-      { save: (changed) => postJSON("/admin/settings", changed) },
+      { id: "names", save: (changed) => postJSON("/admin/settings", changed) },
     ),
   );
 }
@@ -16268,7 +16129,7 @@ async function loadSavesCrossDevice() {
           note: "Disabled: only the device that made or locked a save can change it. Enabled: a signed-in user can change or remove any save of their own account on any device. This overrides the device lock for saves that belong to an account. Saves of guests do not change.",
         },
       ],
-      { save: (changed) => postJSON("/admin/settings", changed) },
+      { id: "saves", save: (changed) => postJSON("/admin/settings", changed) },
     ),
   );
 }
@@ -16433,14 +16294,15 @@ function sigShowKeys() {
 function drawSigning(sig, results) {
   if (!sigEl.form || !sig) return;
   if (sigWaiting) {
-    const done = (results || []).find((r) => r.id === sigWaiting);
+    const done = (results || []).find((r) => r.id === sigWaiting.id);
     if (done) {
+      sigWaiting.done(done.ok, resultSaid(done));
       sigWaiting = null;
-      say(resultSaid(done), done.ok, sigEl.note);
+      if (done.ok) say(resultSaid(done), true, sigEl.note);
     }
   }
-  if (!sigEl.form.contains(document.activeElement))
-    sigEl.form.elements.level.value = sig.level;
+  // The keys are root's: the box below starts empty, and what is in it is sent with a Save.
+  sigSec.fill({ level: sig.level, signers: sigSec.savedValue("signers") ?? "" });
   const says = document.getElementById("update-signing-says");
   if (says) says.textContent = SIG_WORDS[sig.level] || sig.level;
   sigShowKeys();
@@ -16449,40 +16311,29 @@ function drawSigning(sig, results) {
       ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ""})`).join(", ")}. Saving replaces the list with the keys in the box above.`
       : `Now: ${SIG_WORDS[sig.level] || sig.level}.`;
 }
-if (sigEl.form) {
-  sigEl.form.addEventListener("change", sigShowKeys);
-  sigEl.form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const level = sigEl.form.elements.level.value;
-    const signers = sigEl.form.elements.signers.value;
-    if (level === "tags" && !signers.trim()) {
-      say(
+sigEl.form.addEventListener("change", sigShowKeys);
+const sigSec = AW.form(sigEl.form, {
+  label: "Update signing",
+  ask: (c, v) =>
+    v.level === "off" ? "Install updates without a signature check?" : null,
+  save: async (c, v) => {
+    if (v.level === "tags" && !v.signers.trim())
+      throw new Error(
         "Signed releases need at least one key. Paste it in the box.",
-        false,
-        sigEl.note,
       );
-      return;
-    }
-    if (
-      level === "off" &&
-      !confirm("Install updates without a signature check?")
-    )
-      return;
-    try {
-      sigWaiting = (
-        await postJSON("/admin/update", { action: "signing", level, signers })
-      ).id;
-      say(
-        "Request sent. The root helper applies the change.",
-        true,
-        sigEl.note,
-      );
-      setTimeout(loadUpdate, 1500);
-    } catch (err) {
-      say(err.message, false, sigEl.note);
-    }
-  });
-}
+    const j = AW.job();
+    j.id = (
+      await postJSON("/admin/update", {
+        action: "signing",
+        level: v.level,
+        signers: v.signers,
+      })
+    ).id;
+    sigWaiting = j;
+    setTimeout(loadUpdate, 1500);
+    return j;
+  },
+});
 
 // ---- All apps: one line per app, from what the other loaders already hold (the manifests, access,
 // the librarian, the installer's add-ons, the web add-ons, the tiles). It edits nothing: each line

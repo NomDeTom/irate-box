@@ -588,26 +588,7 @@
               <a href="#net-watchdog-card">Network → Network recovery</a>.
             </p>
             <div id="health-settings-groups"></div>
-            <div class="library-buttons">
-              <button
-                class="action-btn"
-                type="button"
-                id="health-settings-discard"
-                disabled
-                data-i18n="admin.recovery.health-settings-discard"
-              >
-                Discard
-              </button>
-              <button
-                class="action-btn primary"
-                type="button"
-                id="health-settings-save"
-                disabled
-                data-i18n="admin.recovery.health-settings-save"
-              >
-                Save
-              </button>
-            </div>
+            <div id="health-settings-foot"></div>
             <p
               class="setting-desc action-note"
               id="health-settings-note"
@@ -1317,6 +1298,7 @@
               <input
                 id="fw-filter"
                 type="search"
+                data-aw-ignore
                 placeholder="filter: rak, heltec, t-deck…"
                 data-i18n-placeholder="admin.firmware.placeholder-filter-rak-heltec-t"
             /></label>
@@ -1629,23 +1611,6 @@
                 max="65536"
                 step="10"
               />
-              <button
-                class="action-btn"
-                type="button"
-                id="kits-budget-discard"
-                disabled
-                data-i18n="admin.toolkits.kits-budget-discard"
-              >
-                Discard
-              </button>
-              <button
-                class="action-btn primary"
-                type="submit"
-                disabled
-                data-i18n="admin.toolkits.btn-save"
-              >
-                Save
-              </button>
             </div>
           </form>
           <p class="library-buttons">
@@ -2220,7 +2185,7 @@
             role="status"
             hidden
           ></p>
-          <div class="settings" data-note="shout-fresh-note">
+          <div class="settings" data-note="shout-fresh-note" data-at-boot>
             <label
               class="setting"
               data-i18n="admin.shoutbox-settings.label-delete-all-shoutbox-messages"
@@ -2312,7 +2277,7 @@
             role="status"
             hidden
           ></p>
-          <div class="settings" data-note="board-fresh-note">
+          <div class="settings" data-note="board-fresh-note" data-at-boot>
             <label
               class="setting"
               data-i18n="admin.board-settings.label-delete-all-threads-boot"
@@ -2746,8 +2711,8 @@
             its password at the box console or over SSH:
             <code>sudo /opt/irate-box/irate-box hub_control script-login</code>.
             The choices below set how far this sign-in reaches. Select one, then
-            select Save changes. The page says what the change stops before you
-            save it.
+            select Save. The page says what the change stops before you save
+            it.
           </p>
           <div id="accounts-admin-login-choices"></div>
           <p
@@ -3431,25 +3396,7 @@
                     NetworkManager default" removes the irate-box line again.
                   </p>
                   <div class="net-defaults" id="net-defaults"></div>
-                  <span class="library-buttons"
-                    ><button
-                      class="action-btn"
-                      type="button"
-                      id="net-defaults-discard"
-                      disabled
-                      data-i18n="admin.network.net-defaults-discard"
-                    >
-                      Discard</button
-                    ><button
-                      class="action-btn"
-                      type="button"
-                      id="net-defaults-save"
-                      disabled
-                      data-i18n="admin.network.net-defaults-save"
-                    >
-                      Save default settings
-                    </button></span
-                  >
+                  <div id="net-defaults-foot"></div>
                   <p
                     class="setting-desc action-note"
                     id="net-defaults-note"
@@ -3601,25 +3548,22 @@
                       </p>
                       <div class="net-defaults" id="net-retry-defaults"></div>
                       <div id="up-profile"></div>
-                      <span class="library-buttons"
-                        ><button
-                          class="action-btn"
-                          type="button"
-                          id="net-retry-discard"
-                          disabled
-                          data-i18n="admin.network.net-retry-discard"
-                        >
-                          Discard</button
-                        ><button
-                          class="action-btn"
-                          type="button"
-                          id="net-retry-save"
-                          disabled
-                          data-i18n="admin.network.net-retry-save"
-                        >
-                          Save retry settings
-                        </button></span
+                      <p
+                        class="setting-desc"
+                        id="net-retry-where"
+                        data-i18n="admin.network.net-retry-where"
                       >
+                        These are box defaults of NetworkManager. Save or
+                        discard them with the other box defaults.
+                      </p>
+                      <button
+                        class="action-btn small"
+                        type="button"
+                        id="net-retry-go"
+                        data-i18n="admin.network.net-retry-go"
+                      >
+                        Go to the box defaults
+                      </button>
                     </div>
                     <div class="up-group">
                       <label
@@ -3791,24 +3735,8 @@
                     id="up-will"
                     role="status"
                   ></p>
+                  <div id="up-foot"></div>
                   <div class="library-buttons">
-                    <button
-                      class="action-btn"
-                      type="button"
-                      id="up-discard"
-                      disabled
-                      data-i18n="admin.network.up-discard"
-                    >
-                      Discard
-                    </button>
-                    <button
-                      class="action-btn"
-                      type="button"
-                      id="up-save"
-                      data-i18n="admin.network.up-save"
-                    >
-                      Save
-                    </button>
                     <button
                       class="action-btn"
                       type="button"
@@ -4013,26 +3941,7 @@
                 </label>
               </div>
               <ul class="admin-checks" id="hs-warnings"></ul>
-              <div class="library-buttons">
-                <button
-                  class="action-btn"
-                  type="button"
-                  id="hs-discard"
-                  disabled
-                  data-i18n="admin.network.hs-discard"
-                >
-                  Discard
-                </button>
-                <button
-                  class="action-btn primary"
-                  type="button"
-                  id="hs-save"
-                  disabled
-                  data-i18n="admin.network.hs-save"
-                >
-                  Save
-                </button>
-              </div>
+              <div id="hs-foot"></div>
               <p
                 class="setting-desc action-note"
                 id="hs-note"
@@ -4067,25 +3976,7 @@
                   data-i18n-aria-label="admin.network.aria-guest-internet-access"
                 ></div>
                 <p class="setting-desc" id="guest-net-said"></p>
-                <p class="library-buttons">
-                  <button
-                    class="action-btn"
-                    type="button"
-                    id="guest-net-discard"
-                    disabled
-                    data-i18n="admin.network.guest-net-discard"
-                  >
-                    Discard</button
-                  ><button
-                    class="action-btn primary"
-                    type="button"
-                    id="guest-net-save"
-                    disabled
-                    data-i18n="admin.network.guest-net-save"
-                  >
-                    Save
-                  </button>
-                </p>
+                <div id="guest-net-foot"></div>
               </div>
               <p
                 class="setting-desc action-note"
@@ -4136,7 +4027,6 @@
             hidden
           ></p>
           <p class="sec-counts" id="security-counts"></p>
-          <div class="sec-pending" hidden></div>
           <!-- The box's choices by subject, each in its place whether it waits for a choice or is set. -->
           <div id="security-findings"></div>
           <h3 data-i18n="admin.security.h-hub-security-limits">
@@ -4191,25 +4081,7 @@
                   hub</code
                 >
               </p>
-              <p class="library-buttons">
-                <button
-                  class="action-btn"
-                  id="policy-discard"
-                  type="button"
-                  disabled
-                  data-i18n="admin.security.policy-discard"
-                >
-                  Discard</button
-                ><button
-                  class="action-btn primary"
-                  id="policy-save"
-                  type="button"
-                  disabled
-                  data-i18n="admin.security.policy-save"
-                >
-                  Save
-                </button>
-              </p>
+              <div id="policy-foot"></div>
               <p
                 class="setting-desc action-note"
                 id="policy-note"
@@ -4339,25 +4211,7 @@
             ></div>
             <p class="setting-desc" id="tls-session-note"></p>
             <p class="setting-desc" id="tls-draft-note"></p>
-            <p class="library-buttons">
-              <button
-                class="action-btn"
-                id="tls-discard"
-                type="button"
-                disabled
-                data-i18n="admin.security.policy-discard"
-              >
-                Discard</button
-              ><button
-                class="action-btn primary"
-                id="tls-save"
-                type="button"
-                disabled
-                data-i18n="admin.security.policy-save"
-              >
-                Save
-              </button>
-            </p>
+            <div id="tls-foot"></div>
             <p
               class="setting-desc action-note"
               id="tls-note"
@@ -4726,7 +4580,6 @@
                   itself.</span
                 >
                 <div class="findings" id="updates-security"></div>
-                <div class="sec-pending" hidden></div>
                 <div id="debian-buttons"></div>
                 <details class="field-help update-auto" id="debian-auto-fold">
                   <summary data-i18n="admin.updates.summary-automatic-updates">
@@ -5185,7 +5038,6 @@
             role="status"
             hidden
           ></p>
-          <div class="sec-pending" hidden></div>
           <!-- Each source and how fresh it is: what it covers in its title. -->
           <p
             class="fresh-strip"

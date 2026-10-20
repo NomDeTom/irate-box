@@ -44,27 +44,34 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
   const page = d.getElementById('page-app-tools-rf');
   check('the RF folder\'s page opens, with what\'s in it', page && !page.hidden && !!block(), page && page.hidden);
   check('  one line per entry, each saying what it is', block().querySelectorAll('.aw-row').length === 3 && /a download/i.test(t(row('Serial download'))));
-  const save = () => button(block(), 'Save all folder changes');
+  const save = () => block().querySelector('.aw-save');
   check('Save waits for a change', save().disabled);
   click(row('Airtime').querySelector('.aw-row-head'));
   click(button(row('Airtime'), 'Visible in this folder: On'));
   check('hiding an entry: marked hidden, Save offered', /hidden/i.test(t(row('Airtime').querySelector('.p'))) && !save().disabled);
   check('  its line stays open after the change', row('Airtime').querySelector('.aw-row-head').getAttribute('aria-expanded') === 'true');
   click(button(row('Airtime'), 'Electronics'));
-  const foot = () => t(block().querySelector('.aw-foot .note'));
-  check('the Save note names every folder a Save changes', /Unsaved changes in RF & LoRa, Electronics/.test(foot()), foot());
+  check('a change to another folder: said here, saved from that folder\'s page', /Also changed, and saved from their own pages: Electronics/.test(t(block())),
+    t(block()));
+  const elec = () => d.querySelector('.folder-block[data-folder="tools-electronics"]');
+  check('  that folder\'s own Save offered there', elec() && !elec().querySelector('.aw-save').disabled);
   click(button(row('Airtime'), '↓ Later'));
   check('moved: the order changes', [...block().querySelectorAll('.aw-row .t')].map(t).join('|') === 'Frame|Airtime|Serial download', [...block().querySelectorAll('.aw-row .t')].map(t).join('|'));
   click(save());
   await wait();
   const st = (posted[0] || {}).state || {};
-  check('Save sends the whole arrangement: hidden here, put in Electronics, the order',
-    JSON.stringify(st['tools-rf'].hidden) === '["/app.html#/tools/air.html"]' && (st['tools-electronics'].extra || []).includes('/app.html#/tools/air.html')
+  check('Save sends this folder\'s arrangement (hidden here, the order), not another folder\'s unsaved change',
+    JSON.stringify(st['tools-rf'].hidden) === '["/app.html#/tools/air.html"]' && !((st['tools-electronics'] || {}).extra || []).includes('/app.html#/tools/air.html')
     && st['tools-rf'].order[0] === '/app.html#/tools/frame.html', JSON.stringify(st));
-  check('  and Save waits again', save().disabled);
+  check('  and Save waits again; Electronics still unsaved', save().disabled && !elec().querySelector('.aw-save').disabled);
+  click(elec().querySelector('.aw-save'));
+  await wait();
+  const st2 = (posted[1] || {}).state || {};
+  check('Electronics saved from its page: put in, and RF as saved', (st2['tools-electronics'].extra || []).includes('/app.html#/tools/air.html')
+    && JSON.stringify(st2['tools-rf'].hidden) === '["/app.html#/tools/air.html"]', JSON.stringify(st2));
   click(row('Frame').querySelector('.aw-row-head'));
   click(button(row('Frame'), 'Visible in this folder: On'));
-  click(button(block(), 'Discard all folder changes'));
+  click(block().querySelector('.aw-discard'));
   check('Discard puts back what was saved', !/hidden/i.test(t(row('Frame').querySelector('.p'))) && save().disabled);
   check('no page errors', !errors.length, errors.join('; '));
   console.log(`failures: ${fails}`);

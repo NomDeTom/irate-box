@@ -53,6 +53,7 @@ const report = (clock) => ({ report: { at: Date.now() / 1000, findings: [], sett
   check('Save: one choice, every source in it', posted.some((b) => b.action === 'fix' && b.choice === 'clock-sources:chrony:1:1:0:1:192.168.1.1'), JSON.stringify(posted));
   // Nothing at all chosen: Save stays off.
   w.renderHealth(report({ service: 'image', pool: true, gps: false, local: '', changed: true, daemon: 'systemd-timesyncd', chrony_installed: false, gps_device: false, sources: [] }));
+  await wait(); // the Save before it settles as the poll's answer comes
   tickOf("The internet's pool").click(); await wait();
   check('no source at all: Save off, said why', btn('Save').disabled && /Select at least one source/.test(t(box())));
   btn('Discard').click(); await wait();

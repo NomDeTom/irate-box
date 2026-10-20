@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // Appearance → Colours in jsdom: light and dark edited apart; presets set both; every pair the page draws as words
-// checked at 4.5:1 and the shortfalls named; a palette that falls short saved only once acknowledged; the old single
+// checked at 4.5:1 and the shortfalls named; a palette that falls short saved only once its question is answered; the old single
 // accent taken in as both modes' and cleared on Save. Usage: [JSDOM=/path/to/node_modules/jsdom] node dom-palette.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
@@ -26,7 +26,9 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/settings') return new Response(JSON.stringify(settings), { status: 200 });
   return new Response('{}', { status: 404 });
 };
-w.confirm = () => true;
+const asked = [];
+let answer = true;
+w.confirm = (q) => { asked.push(q); return answer; };
 w.eval(js);
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
@@ -51,14 +53,18 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const rep = t(ed().querySelector('.palette-report'));
   check('Standard: the dark theme\'s quieter text and link on a tile named, with their ratios', /Dark: Secondary text on a tile, 3\.4:1/.test(rep)
     && /Dark: Link on a tile, 4\.2:1/.test(rep) && /Dark: Button text on the accent colour, 4\.0:1/.test(rep) && !/Light:/.test(rep), rep);
-  check('  so Save waits for the acknowledgement', saveB().disabled && !!ed().querySelector('.palette-ack input'));
-  ed().querySelector('.palette-ack input').click();
-  check('  ticked, Save is offered', !saveB().disabled);
+  // Saving them anyway is asked once, at Save; No keeps the change, sends nothing.
+  answer = false;
+  saveB().click();
+  await new Promise((r) => setTimeout(r, 20));
+  answer = true;
+  check('  so Save asks first, once, saying the text fails 4.5:1', asked.length === 1 && /^Save the failing colours anyway\?.*4\.5:1/.test(asked[0])
+    && !saveB().disabled, asked.join(' | '));
   // A preset that passes: nothing to acknowledge.
   chip('Teal').click();
   check('a preset chosen: Custom palette gone', !chip('Custom palette'));
   check('Teal: every pair passes in both modes, Save offered at once', /4\.5:1 or more in both modes/.test(t(ed().querySelector('.palette-report')))
-    && !ed().querySelector('.palette-ack') && !saveB().disabled);
+    && !saveB().disabled);
   check('  each mode its own accent: light deeper than dark', accentPick().value === '#0f766e');
   chip('Dark').click();
   check('  the dark one', accentPick().value === '#2dd4bf' && chip('Dark').getAttribute('aria-pressed') === 'true');

@@ -53,15 +53,15 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   check('  a finding with no glance: the first sentence of what it found', g['The WiFi radio'] === 'Watching: wlan0 (AIC8800DC).', g['The WiFi radio']);
   check('  the last start: when, and why in a few words (the reason, not its explanation)', g['Last boot'] === '2 h ago: The uplink watchdog rebooted it.', g['Last boot']);
   check('  a frozen box stays stopped; snapshots kept', g['Frozen-system recovery'].startsWith('Stays stopped') && g['Snapshot interval'] === 'Every 30 s.', g);
-  const save = d.getElementById('health-settings-save');
+  const save = d.querySelector('#health-settings-foot .aw-save'), footNote = () => d.querySelector('#health-settings-foot .aw-foot .note').textContent;
   check('the settings: a row each, the current choice chosen, Save idle', d.querySelectorAll('#health-settings-groups .up-group').length === 2
     && d.querySelector('#hs-panic input[value="off"]').checked && save.disabled && save.textContent === 'Save', save.textContent);
   const on = d.querySelector('#hs-panic input[value="on"]');
   on.checked = true;
   on.dispatchEvent(new w.Event('change', { bubbles: true }));
-  check('  a choice made: not saved yet, said on the button', !save.disabled && save.textContent === 'Save (1 unsaved)', save.textContent);
+  check('  a choice made: not saved yet, said beside Save', !save.disabled && save.textContent === 'Save' && footNote() === 'Unsaved changes.', footNote());
   check('  nothing sent before Save', posted.filter((b) => b.action === 'fix').length === 0);
-  const discard = d.getElementById('health-settings-discard');
+  const discard = d.querySelector('#health-settings-foot .aw-discard');
   check('  Discard on with it', !discard.disabled);
   discard.click();
   check('  Discard: the choice as saved again, Save and Discard idle, nothing sent', d.querySelector('#hs-panic input[value="off"]').checked
@@ -77,7 +77,7 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   await later(100);
   const note = d.getElementById('health-settings-note');
   check('  while it waits: said, with what the root helper is busy with', /Waiting for the root helper \(busy with kit-fetch, 1 waiting\)/.test(note.textContent)
-    && save.disabled && save.textContent === 'Saving…', note.textContent);
+    && save.disabled && footNote() === 'Saving…', note.textContent);
   fixture.results.unshift({ id: 'p1', ok: true, message: 'the box restarts 10 s after a kernel panic, oops or lockup', at: now });
   fixture.queue = { waiting: [], done: [] };
   await w.eval('loadHealth()');

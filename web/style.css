@@ -1459,6 +1459,14 @@ body.admin button.link-button {
   color: var(--accent);
   font-weight: 600;
 }
+/* A page with unsaved changes (a section changed and not saved): a dot before its name, and on its group's head. */
+.admin-side-list a.unsaved::before,
+.admin-side-group.unsaved .side-group-name::before {
+  content: "●";
+  margin-right: 0.35rem;
+  color: var(--warn);
+  font-size: 0.7em;
+}
 .admin-side-list a[data-badge]::after {
   content: attr(data-badge);
   margin-left: auto;
@@ -3770,6 +3778,15 @@ label > .select-chips {
   font-size: 0.78rem;
   color: var(--muted);
   margin-right: auto;
+}
+/* A section with unsaved changes says so in the text colour, not the muted one; why a save failed, under it. */
+.aw-foot.aw-dirty .note {
+  color: var(--text);
+  font-weight: 600;
+}
+.aw-reason {
+  margin: 0.3rem 0 0;
+  color: var(--bad, #b00020);
 }
 .aw-settings {
   display: flex;

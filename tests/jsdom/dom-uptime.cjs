@@ -202,7 +202,7 @@ setTimeout(() => {
     tick('eth0', 'radio').checked = false; tick('eth0', 'radio').dispatchEvent(new w.Event('change'));
     check('  what Save sends: the unticked steps of each connection', JSON.stringify(w.readUpForm().steps_off) === JSON.stringify({ wlan0: ['restart'], eth0: ['radio'] }),
       JSON.stringify(w.readUpForm().steps_off));
-    check('  a change marks the form as not saved yet', /unsaved/.test(d.getElementById('up-save').textContent));
+    check('  a change marks the form as not saved yet', /Unsaved changes/.test(d.querySelector('#up-foot .aw-foot .note').textContent));
     const mesh = d.getElementById('overview-mesh');
     check('meshtasticd: its 72 hours under the network\'s, one row', (on.compareDocumentPosition(mesh) & 4) && mesh.querySelectorAll('.hm-row:not(.hm-head)').length === 1
       && /^meshtasticd, /.test(mesh.querySelector('.hm-row:not(.hm-head) .hm-cell').getAttribute('aria-label')));

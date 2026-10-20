@@ -87,6 +87,7 @@ run doctor_guard.py
 run msg_guard.py
 run terms_guard.py
 run static_msg_guard.py
+run save_guard.py
 run sim_netinv.py
 run sim_apmode.py
 run sim_syncthing_gui.py
