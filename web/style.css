@@ -4556,11 +4556,6 @@ a.action-btn.go-btn {
 .fchecks .fdo-cmd code {
   font-size: 0.75rem;
 }
-.faccept {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.4rem;
-}
 .findings.compact .finding {
   padding: 0.35rem 0.7rem;
 }

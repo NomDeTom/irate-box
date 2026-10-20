@@ -127,6 +127,16 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('the search finds by what is said', rows().length === 1 && /Bluetooth/.test(t(rows()[0])));
   d.getElementById('joint-search').value = '';
   d.getElementById('joint-search').dispatchEvent(new w.Event('input'));
+  {
+    // Accept sits with the card's actions, ahead of the folds of detail, not under all of them.
+    const card = rows().find((r) => /Bluetooth/.test(t(r)));
+    const acc = [...card.querySelectorAll('button')].find((b) => /Accept risk/.test(t(b)));
+    const fold = card.querySelector('details');
+    check('Accept risk: in the card\'s action row, before any fold of detail',
+      acc && acc.parentElement.classList.contains('fdo-controls')
+      && (!fold || (acc.compareDocumentPosition(fold) & w.Node.DOCUMENT_POSITION_FOLLOWING)),
+      acc && acc.parentElement.className);
+  }
   [...rows().find((r) => /Bluetooth/.test(t(r))).querySelectorAll('button')].find((b) => /Accept risk/.test(t(b))).click();
   await wait();
   {
