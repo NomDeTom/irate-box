@@ -2522,7 +2522,7 @@ async function control(s, op) {
 // --- moderation ------------------------------------------------------------------
 function renderModeration(data) {
   const now = data.now;
-  const del = (body, what) => async () => {
+  const del = (body, what) => async (e) => {
     if (!await AW.confirmHere(`Delete ${what}?`, { anchor: e.currentTarget })) return;
     try {
       renderModeration(await postJSON("/admin/moderation", body));
@@ -2553,11 +2553,14 @@ function renderModeration(data) {
             el("span", { className: "admin-text", textContent: m.text }),
             actionButton(
               "Delete message",
-              del({
-                action: "delete_message",
-                created: m.created,
-                name: m.name,
-              }),
+              del(
+                {
+                  action: "delete_message",
+                  created: m.created,
+                  name: m.name,
+                },
+                `the message from ${m.name}`,
+              ),
               { className: "small" },
             ),
           ),
@@ -2876,7 +2879,7 @@ function renderStore(data) {
     ...["scenes", "rooms", "files"].map((ns) =>
       actionButton(
         `Clear ${NS_LABEL[ns]}`,
-        async () => {
+        async (e) => {
           if (
             !await AW.confirmHere(
               `Delete all ${NS_LABEL[ns]}? This cannot be undone. Links to them stop working.`, { anchor: e.currentTarget })
@@ -2905,19 +2908,52 @@ function renderStore(data) {
       say(err.message, false, noteEl("store-note"));
     }
   };
+  // Rename: the name becomes a text field in place, with Rename and Cancel (Enter renames, Escape cancels).
+  const rename = (s, title, opener) => {
+    const field = el("input", {
+      value: s.name,
+      maxLength: 64,
+      "aria-label": "New name",
+    });
+    const done = () => {
+      form.replaceWith(title);
+      opener.hidden = false;
+    };
+    const save = () => {
+      const name = field.value.trim();
+      if (!name || name === s.name) return done();
+      act({ action: "rename", id: s.id, name })();
+    };
+    const form = el(
+      "span",
+      { className: "library-buttons store-rename" },
+      field,
+      actionButton("Rename", save, { className: "small primary" }),
+      actionButton("Cancel", done, { className: "small" }),
+    );
+    field.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") save();
+      else if (e.key === "Escape") done();
+    });
+    title.replaceWith(form);
+    opener.hidden = true;
+    field.focus();
+    field.select();
+  };
   document.getElementById("store-saves").replaceChildren(
     ...(data.saves.length
-      ? data.saves.map((s) =>
-          el(
+      ? data.saves.map((s) => {
+          const title = el("strong", {
+            textContent: `${s.locked ? "🔒 " : ""}${s.name}`,
+          });
+          return el(
             "div",
             { className: "admin-item admin-save" },
             s.thumb ? thumbFor(s.id) : el("span", { className: "admin-thumb" }),
             el(
               "span",
               {},
-              el("strong", {
-                textContent: `${s.locked ? "🔒 " : ""}${s.name}`,
-              }),
+              title,
               el("span", {
                 className: "setting-desc",
                 textContent:
@@ -2930,15 +2966,9 @@ function renderStore(data) {
             el(
               "span",
               { className: "library-buttons" },
-              actionButton(
-                "Rename",
-                () => {
-                  const name = prompt("New name", s.name);
-                  if (name && name.trim() && name !== s.name)
-                    act({ action: "rename", id: s.id, name: name.trim() })();
-                },
-                { className: "small" },
-              ),
+              actionButton("Rename", (e) => rename(s, title, e.currentTarget), {
+                className: "small",
+              }),
               actionButton(
                 "Delete",
                 async (e) => {
@@ -2948,8 +2978,8 @@ function renderStore(data) {
                 { className: "small" },
               ),
             ),
-          ),
-        )
+          );
+        })
       : [
           el("p", {
             className: "setting-desc",
@@ -10156,7 +10186,7 @@ document
 document
   .getElementById("offline-scan")
   .addEventListener("click", () => bkSticks(true));
-bku.imageGo.addEventListener("click", async () => {
+bku.imageGo.addEventListener("click", async (e) => {
   const d = usbSticks.find((x) => x.name === bku.stick.value);
   if (
     !d ||

@@ -84,8 +84,8 @@
         show.textContent = 'Hide key';
       });
       const forget = el('button', { type: 'button', className: 'small', textContent: 'Remove key from this browser' });
-      forget.addEventListener('click', () => {
-        if (there && !confirm(`Remove the key for "${name}" from this browser? This browser can then no longer change or delete the item. Other devices that hold the key can still change or delete it. The administrator can also delete it.`)) return;
+      forget.addEventListener('click', async () => {
+        if (there && !(await askHere(`Remove the key for "${name}" from this browser? This browser can then no longer change or delete the item. Other devices that hold the key can still change or delete it. The administrator can also delete it.`, { anchor: forget, label: 'Remove key' }))) return;
         HubLock.forget(kind, id);
         render();
       });
