@@ -2379,16 +2379,20 @@ def step_units(ctx):
             if not ok
         ]
         kept = SANDBOX_EXEMPT.get(u, {})
+        # The lines one reason lets off, said once with that reason (ttyd's five share one).
+        by_reason = {}
+        for name in weak:
+            if name in kept:
+                by_reason.setdefault(msg_key(kept[name]), (kept[name], []))[1].append(name)
         exempt += [
             M(
                 "units.exempt.one",
                 "{unit} runs without {line}. {reason}",
                 unit=u[:-8],
-                line=name,
-                reason=kept[name],
+                line=names[0] if len(names) == 1 else names,
+                reason=reason,
             )
-            for name in weak
-            if name in kept
+            for reason, names in by_reason.values()
         ]
         weak = [name for name in weak if name not in kept]
         # A root unit is reported for any line it lacks: a flaw in one is root, so each missing line
@@ -5775,6 +5779,15 @@ def msg_key(m):
     return m.get("id") if isinstance(m, dict) else str(m)
 
 
+# The sources that say a finding in the box's own words; the tools' (debian-cis, Lynis…) are their own.
+PLAIN_SOURCES = ("doctor", "security-page")
+
+
+def _lead_order(f, src):
+    """How well a line leads its item, of lines as bad as each other: a fix first, then plain words."""
+    return (bool(f.get("fix")), src in PLAIN_SOURCES)
+
+
 def joint(steps, freshness=None):
     """The joint report: every finding that is not fine, once. Findings about
     the same thing (a setting, a port, Debian's security updates) are merged into one item saying which
@@ -5783,7 +5796,8 @@ def joint(steps, freshness=None):
     tier: "suggest" or "not-here", counted apart from what is to fix or look at. Also: items only one
     source saw where others could have (worth a look, or a false positive); each source's counts, what
     it covers, and how fresh it is; and the counts after merging, which the page's badge shows. An item
-    says what its leading line says (the worst; of those, the first with a fix), part by part.
+    says what its leading line says (the worst; of those, the first with a fix, the box's own
+    words before a tool's), part by part.
     """
     rank = {"ok": 0, "warn": 1, "problem": 2}
     items, sources = {}, {}
@@ -5805,8 +5819,17 @@ def joint(steps, freshness=None):
                     continue
                 a = {"kind": "finding", "key": f"{src}:{f['id']}"}
             key = f"{a['kind']}:{a['key']}"
+            section = a["key"].removeprefix("cis-") if a["kind"] == "setting" and a["key"].startswith("cis-") else None
             if a["kind"] == "setting" and a["key"] in secdoctor_xref.XREF:
                 label = secdoctor_xref.title(a["key"])
+            elif section and secdoctor_xref.cis(section):
+                # The section's topic, also where only Lynis's test speaks to it (its words are its line's).
+                label = M(
+                    "cis.dressed.title",
+                    "{topic} (CIS {section})",
+                    topic=secdoctor_xref.cis(section)[0],
+                    section=section,
+                )
             elif a["kind"] == "service":
                 proto, _, port = a["key"].partition("/")
                 label = (
@@ -5869,10 +5892,15 @@ def joint(steps, freshness=None):
                     f = dict(f, fix=own[0]["say"])
                 it["do"] = it["do"] or secdoctor_xref.do_for(src, f["id"])
             lead = it["lead"]
+            # Of lines as bad as each other: one with a fix, and of those one in the box's own words
+            # (the doctor's, the Security page's) before a tool's.
             if (
                 lead is None
                 or rank[f["status"]] > rank[lead["status"]]
-                or (f.get("fix") and not lead.get("fix") and f["status"] == lead["status"])
+                or (
+                    f["status"] == lead["status"]
+                    and _lead_order(f, src) > _lead_order(lead, lead.get("source", "doctor"))
+                )
             ):
                 if lead is None or rank[f["status"]] > rank[lead["status"]]:
                     it["area"] = st.get("title", "")
@@ -5882,6 +5910,13 @@ def joint(steps, freshness=None):
     ran = {f.get("source", "doctor") for s in steps for f in s["findings"] if not f["id"].endswith("-none")}
     for it in items.values():
         it.update(_parts(it.pop("lead") or {}))
+        # A CIS section only Lynis's test speaks to: the section's own words, as debian-cis's are dressed
+        # (_dress_cis), not "read Lynis's notes".
+        a = it["about"]
+        known = a["kind"] == "setting" and a["key"].startswith("cis-") and secdoctor_xref.cis(a["key"][4:])
+        if known and "debian-cis" not in it["sources"]:
+            it["notes"] = [known[2]] + it["notes"]
+            it["fix"] = known[3]
         # Who could have said the same: any port-seeing source for a port; for a setting, the
         # sources the cross-reference table lists for it.
         a = it["about"]

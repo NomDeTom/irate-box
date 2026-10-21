@@ -368,5 +368,61 @@ check(
     and xref.cis("99.2")[1] == "not-here",
     (xref.cis("3.4"), xref.cis("99.2")),
 )
+
+# An item says what its leading line says: of lines as bad as each other and each with a fix, the box's
+# own words (the Security page's) before a tool's, though debian-cis's step comes first.
+j = sd.joint(
+    [
+        {
+            "title": "Deep audit",
+            "findings": [
+                F(
+                    "cis-4.2.2.3_journald_write_persistent",
+                    "CIS 4.2.2.3",
+                    "warn",
+                    fix="Set Storage=persistent.",
+                    source="debian-cis",
+                    about={"kind": "setting", "key": "logs"},
+                )
+            ],
+        },
+        {
+            "title": "Security page",
+            "findings": [
+                F("page-logs-ram", "Logs kept in RAM", "warn", fix="Keep the logs on the card.", source="security-page")
+            ],
+        },
+        {
+            "title": "Deep audit",
+            "findings": [
+                F(
+                    "lynis-NETW-3200",
+                    "Lynis NETW-3200",
+                    "warn",
+                    source="lynis",
+                    about={"kind": "setting", "key": "cis-3.4"},
+                )
+            ],
+        },
+    ]
+)
+by = {i["key"]: i for i in j["items"]}
+check(
+    "the Security page's words lead an item over debian-cis's, both with a fix",
+    by["setting:logs"]["summary"]["id"] == "test.page-logs-ram"
+    and by["setting:logs"]["fix"]["id"] == "test.page-logs-ram.fix",
+    by["setting:logs"]["summary"],
+)
+check(
+    "a CIS section only Lynis speaks to takes the section's topic as its title",
+    by["setting:cis-3.4"]["title"]["id"] == "cis.dressed.title"
+    and msg_args(by["setting:cis-3.4"], "cis.dressed.title")["section"] == "3.4",
+    by["setting:cis-3.4"]["title"],
+)
+check(
+    "  and ends in the section's own words, not Lynis's notes",
+    by["setting:cis-3.4"]["fix"]["id"] == "cis.3-4.here" and by["setting:cis-3.4"]["notes"][0]["id"] == "cis.3-4.what",
+    (by["setting:cis-3.4"]["fix"], by["setting:cis-3.4"]["notes"]),
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

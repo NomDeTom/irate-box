@@ -128,6 +128,18 @@ XREF = {
 }
 _BY = {(src, i): key for key, e in XREF.items() for src, ids in e.items() if isinstance(ids, list) for i in ids}
 
+# debian-cis's checks that share a key but ask apart: each its own topic, so their titles differ.
+CHECK_TOPIC = {
+    "disable_x11_forwarding": M("xref.ssh-forwarding.x11", "SSH: X11 forwarding"),
+    "disable_ssh_allow_tcp_forwarding": M("xref.ssh-forwarding.tcp", "SSH: TCP forwarding"),
+}
+
+
+def check_topic(check):
+    """A debian-cis check's own topic (CHECK_TOPIC, by its name without its number), or None."""
+    return CHECK_TOPIC.get(check.split("_", 1)[1] if "_" in check else check)
+
+
 # Lynis's tests that ask what a CIS section asks (its key is that section's, "cis-5.3"), so the two
 # merge into one item; and, for the settings Lynis reports one by one, the section the rest fall in.
 LYNIS_CIS = {
