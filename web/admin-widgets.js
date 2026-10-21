@@ -351,6 +351,32 @@ const AW = (() => {
     unsavedWas = now;
     document.dispatchEvent(new CustomEvent('aw-unsaved'));
   }
+  // A question drawn on the page, not the browser's pop-up (the admin pages plan, phase 5): the words, then
+  // Confirm and Cancel, beside what was pressed (anchor, else the focused control). Resolves true or false.
+  // One at a time: a new one answers the last one No. Cancel has the focus; Escape cancels.
+  let asked = null;
+  function confirmHere(text, opts = {}) {
+    if (asked) asked(false);
+    const at = opts.anchor || (document.activeElement !== document.body ? document.activeElement : null);
+    return new Promise((resolve) => {
+      const box = h('div', { class: 'aw-ask', role: 'alertdialog', 'aria-label': opts.label || 'Confirm' });
+      const answer = (yes) => {
+        if (asked !== answer) return;
+        asked = null;
+        box.remove();
+        resolve(yes);
+      };
+      asked = answer;
+      const no = btn('Cancel', { class: 'action-btn', onclick: () => answer(false) });
+      box.append(h('p', { class: 'setting-desc', text }),
+        h('span', { class: 'library-buttons' }, btn(opts.label || 'Confirm', { class: 'action-btn primary', onclick: () => answer(true) }), no));
+      box.addEventListener('keydown', (e) => { if (e.key === 'Escape') answer(false); });
+      const place = at && at.isConnected ? at.closest('.library-buttons, .aw-foot, .setting-actions') || at : null;
+      if (place && place.parentNode) place.after(box);
+      else document.querySelector('.admin-main, main, body').prepend(box);
+      no.focus();
+    });
+  }
   function section(opts = {}) {
     const before = opts.id && !opts.fresh ? sections.get(opts.id) : null;
     let saved = opts.saved == null ? null : copy(opts.saved);
@@ -434,7 +460,8 @@ const AW = (() => {
       const changes = s.changes();
       if (opts.why && opts.why(changes, s.values())) return false;
       const q = opts.ask ? opts.ask(changes, s.values()) : null;
-      if (q && !window.confirm(q)) return false;
+      if (q && !(await confirmHere(q, { anchor: s.foot, label: 'Save' }))) return false;
+      if (!s.dirty() || s.saving()) return false; // changed or saved while the question stood
       saving = true;
       reason = '';
       said = '';
@@ -542,7 +569,9 @@ const AW = (() => {
     const sorted = [...items].sort((a, b) => (RANK[a.status] ?? 2) - (RANK[b.status] ?? 2));
     return shortList(sorted.map((f) => ({ ...f, badges: [f.status].concat(f.badges || []), detail: () => [
       f.detail ? h('p', { class: 'setting-desc', text: f.detail }) : null,
-      (f.actions || []).map((a) => btn(a.label, { onclick: () => { if (!a.confirm || window.confirm(a.confirm)) opts.act && opts.act(a.choice, f); } })),
+      (f.actions || []).map((a) => btn(a.label, { onclick: async (e) => {
+        if (!a.confirm || (await confirmHere(a.confirm, { anchor: e.currentTarget, label: a.label }))) opts.act && opts.act(a.choice, f);
+      } })),
     ] })), { id: opts.id });
   }
 
@@ -806,7 +835,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, drawKept, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, drawKept, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

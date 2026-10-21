@@ -13,6 +13,7 @@ const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|getContext/.test(e.message)) errors.push('jsdom: ' + e.message); });
 const dom = new JSDOM(html, { url: 'http://box/admin/#appearance', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
+require("./answer-asks.cjs")(w); // its questions on the page answered by its confirm stub
 const posted = [];
 let settings = { hub_title: 'Hub', hub_subtitle: '', accent: '#ffd400', palette: {}, krab_art: true, page_width: 80, admin_width: 80,
   shout_width: 45, board_width: 45, emoji_set: '13.1', card_writes: 'thrifty' };

@@ -3284,6 +3284,21 @@ button.danger {
   gap: 0.4rem;
   align-items: center;
 }
+/* A question drawn on the page beside what was pressed, not the browser's pop-up (AW.confirmHere). */
+.aw-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  margin: 0.4rem 0;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+.aw-ask p {
+  margin: 0;
+  flex: 1 1 16rem;
+}
 .kit-details summary {
   cursor: pointer;
   font-size: 0.85rem;

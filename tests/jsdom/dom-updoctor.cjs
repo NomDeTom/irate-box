@@ -9,6 +9,7 @@ const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const dom = new JSDOM(html, { url: 'http://box/admin/#updoctor', runScripts: 'outside-only', pretendToBeVisual: true });
 const w = dom.window;
+require("./answer-asks.cjs")(w); // its questions on the page answered by its confirm stub
 w.fetch = async () => new Response('{}', { status: 404 });
 w.scrollTo = () => {};
 let fails = 0;
