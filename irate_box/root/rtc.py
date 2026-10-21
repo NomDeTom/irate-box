@@ -17,8 +17,9 @@ Nothing here changes the device tree, /boot or the kernel. Two ways to drive a m
              DS3231, DS1307, MCP7940, RV-8803, RX8130 and PCF8563/HYM8563 only; the register
              maps follow the kernel's drivers (rtc-ds1307.c, rtc-rv8803.c, rtc-pcf8563.c).
 
-At boot (irate-box-rtc.service, before fake-hwclock restores its saved time) the system clock
-is set from the module, unless the module lost its time (its own flag says so) or reads
+At boot (irate-box-rtc.service, after fake-hwclock restores its saved time, so the module's
+reading wins; not before it, since fake-hwclock comes before the root fsck and this unit after
+the file systems: that loop left root read-only) the system clock is set from the module, unless the module lost its time (its own flag says so) or reads
 earlier than a time the box has certainly reached. Hourly and at shutdown the module is set
 from the system clock, but only when that clock is trustworthy: set from the network, or set by
 the owner (health.py's "Set the clock from this browser"). A clock that came from the module
@@ -743,8 +744,8 @@ UNITS = {
     "irate-box-rtc.service": """[Unit]
 Description=Irate-Box: set the system clock from the clock module (rtc.py), and save it at shutdown
 DefaultDependencies=no
-After=systemd-modules-load.service local-fs.target
-Before=fake-hwclock-load.service time-sync.target sysinit.target shutdown.target
+After=systemd-modules-load.service local-fs.target fake-hwclock-load.service
+Before=time-sync.target sysinit.target shutdown.target
 Conflicts=shutdown.target
 
 [Service]

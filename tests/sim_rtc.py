@@ -244,8 +244,11 @@ check(
 )
 unit = (T / "units/irate-box-rtc.service").read_text()
 check(
-    "unit: before fake-hwclock, no default dependencies",
-    "Before=fake-hwclock-load.service" in unit and "DefaultDependencies=no" in unit,
+    "unit: after fake-hwclock (it runs before the root fsck: no loop), no default dependencies",
+    "fake-hwclock-load.service" in unit.split("After=", 1)[1].split("\n", 1)[0]
+    and "fake-hwclock" not in unit.split("Before=", 1)[1].split("\n", 1)[0]
+    and "DefaultDependencies=no" in unit,
+    unit,
 )
 check("unit: runs the module through the launcher", f"ExecStart={REPO}/irate-box rtc boot" in unit, unit)
 (T / "date.log").unlink(missing_ok=True)
