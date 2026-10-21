@@ -145,7 +145,7 @@ def namespace_ok(iface):
     """Whether the driver lets this radio move into another network namespace (cfg80211's
     WIPHY_FLAG_NETNS_OK), asked by moving it into a namespace and straight back. mac80211 drivers allow it;
     a full-MAC driver must set the flag itself, and aic8800_fdrv doesn't (a one-line fix in its wiphy flags).
-    The suite's pairs need it on the joining side. Never asked of the radio carrying the box's own link."""
+    The suite's pairs need it on the joining side. Never asked of the radio the box's main route leaves by."""
     phy = phy_of(iface)
     probe = PREFIX + "probe"
     run("nmcli", "device", "set", iface, "managed", "no")
@@ -635,6 +635,9 @@ def main():
     )
     home = home_network(args.home) if args.home else (None, None)
     home_on = home_device(args.home) if args.home else None
+    # The interface the box's main route leaves by: the one thing never moved, as the run's own link may be on it.
+    first_route = re.search(r"default via \S+ dev (\S+)", run("ip", "route", "show", "default")[1])
+    main_route = first_route.group(1) if first_route else None
     report = {
         "board": read("/proc/device-tree/model").rstrip("\x00") or "unknown board",
         "kernel": run("uname", "-r")[1],
@@ -648,7 +651,7 @@ def main():
         for iface in radios:
             say(f"identify {iface}")
             report["radios"][iface] = {"identify": identify(iface)}
-            if iface != home_on:
+            if iface != main_route:
                 report["radios"][iface]["identify"]["namespace"] = namespace_ok(iface)
         can_host = [iface for iface in radios if "AP" in report["radios"][iface]["identify"].get("modes", [])]
         for iface in radios:
