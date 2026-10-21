@@ -7420,10 +7420,10 @@ function radioTests(inv, iface, section, line) {
   if (!t || !(t.can || []).length) return [];
   return [
     section(
-      line("Tested on this radio", ""),
+      line("Radio tests", ""),
       el(
         "ul",
-        { className: "net-facts" },
+        { className: "net-facts radio-tests" },
         ...t.can.map((exp) => {
           const got = (t.found || {})[exp];
           return el(
@@ -7433,7 +7433,7 @@ function radioTests(inv, iface, section, line) {
             " ",
             got
               ? `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}. `
-              : "Not tested yet. ",
+              : "Not run. ",
             radioTestButton(
               iface,
               exp,
