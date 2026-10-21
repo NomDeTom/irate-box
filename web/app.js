@@ -118,8 +118,8 @@ function setHidden(hide) {
   quietUntil = Date.now() + SETTLE_MS;
 }
 
-function onScroll(e) {
-  const el = e.target.scrollingElement || e.target;  // a document scrolls its root
+function onScroll(event) {
+  const el = event.target.scrollingElement || event.target;  // a document scrolls its root
   const y = el.scrollTop;
   if (typeof y !== 'number') return;
   const prev = lastY.get(el);
@@ -233,8 +233,8 @@ const gitArea = target().startsWith('/git-private/') ? '/git-private/' : target(
 if (repos && gitArea) {
   repos.hidden = false;
   repos.href = gitArea;
-  repos.addEventListener('click', (e) => {
-    e.preventDefault();
+  repos.addEventListener('click', (event) => {
+    event.preventDefault();
     shown = gitArea;
     frame.src = gitArea;
   });

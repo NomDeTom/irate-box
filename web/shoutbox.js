@@ -113,8 +113,8 @@ async function poll() {
   } catch (_) {}
 }
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
   const name = nameInput.value.trim();
   const text = msgInput.value.trim();
   if (!name || !text) return;

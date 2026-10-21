@@ -71,26 +71,26 @@ const Heatmap = (() => {
       g.setAttribute('aria-activedescendant', cell.id);
       show(cell);
     };
-    const pick = (ev) => { const c = ev.target.closest && ev.target.closest('.hm-cell'); if (c && g.contains(c)) show(c); };
+    const pick = (event) => { const c = event.target.closest && event.target.closest('.hm-cell'); if (c && g.contains(c)) show(c); };
     g.addEventListener('pointerover', pick);
     g.addEventListener('click', pick);
-    g.addEventListener('pointerleave', (ev) => { if (ev.pointerType !== 'touch' && document.activeElement !== g) hide(); });
+    g.addEventListener('pointerleave', (event) => { if (event.pointerType !== 'touch' && document.activeElement !== g) hide(); });
     g.addEventListener('focus', () => { const rs = rows(); if (rs.length) at(on && g.contains(on) ? on : rs[0][rs[0].length - 1]); });
     g.addEventListener('blur', hide);
-    g.addEventListener('keydown', (ev) => {
+    g.addEventListener('keydown', (event) => {
       const rs = rows();
       if (!rs.length) return;
       let ri = rs.findIndex((r) => r.includes(on)), ci = ri >= 0 ? rs[ri].indexOf(on) : -1;
       if (ri < 0) { ri = 0; ci = rs[0].length - 1; }
       const moves = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
-      if (moves[ev.key]) {
-        ri = Math.max(0, Math.min(rs.length - 1, ri + moves[ev.key][0]));
-        ci = Math.max(0, Math.min(rs[ri].length - 1, ci + moves[ev.key][1]));
-      } else if (ev.key === 'Home') ci = 0;
-      else if (ev.key === 'End') ci = rs[ri].length - 1;
-      else if (ev.key === 'Escape') { hide(); return; }
+      if (moves[event.key]) {
+        ri = Math.max(0, Math.min(rs.length - 1, ri + moves[event.key][0]));
+        ci = Math.max(0, Math.min(rs[ri].length - 1, ci + moves[event.key][1]));
+      } else if (event.key === 'Home') ci = 0;
+      else if (event.key === 'End') ci = rs[ri].length - 1;
+      else if (event.key === 'Escape') { hide(); return; }
       else return;
-      ev.preventDefault();
+      event.preventDefault();
       at(rs[ri][ci]);
     });
   }

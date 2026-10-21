@@ -6,7 +6,7 @@
 // the header and tiles hidden; Escape or the button brings them back.
 // Back to this page from the browser's back-forward cache (after signing in or out): drawn afresh, so its header
 // buttons are those of whoever is signed in now.
-window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+window.addEventListener('pageshow', (event) => { if (event.persisted) location.reload(); });
 (() => {
   const tabs = document.querySelectorAll('.home-tabs [data-tab]');
   const panes = { shout: document.getElementById('tab-shout'), board: document.getElementById('tab-board') };
@@ -41,9 +41,9 @@ window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload();
   }
 
   expand.addEventListener('click', () => setFull(!document.body.classList.contains('full')));
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener('keydown', (event) => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
-    if (e.key === 'Escape' && !typing && document.body.classList.contains('full')) setFull(false);
+    if (event.key === 'Escape' && !typing && document.body.classList.contains('full')) setFull(false);
   });
   window.addEventListener('hashchange', showTab);
   showTab();

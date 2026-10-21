@@ -72,12 +72,12 @@
     pop.hidden = !open;
     help.setAttribute('aria-expanded', String(open));
   }
-  help.addEventListener('click', function (e) {
-    e.stopPropagation();
+  help.addEventListener('click', function (event) {
+    event.stopPropagation();
     setOpen(pop.hidden);
   });
-  document.addEventListener('click', function (e) { if (!pop.contains(e.target)) setOpen(false); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+  document.addEventListener('click', function (event) { if (!pop.contains(event.target)) setOpen(false); });
+  document.addEventListener('keydown', function (event) { if (event.key === 'Escape') setOpen(false); });
 
   document.head.appendChild(css);
   document.body.appendChild(pop);

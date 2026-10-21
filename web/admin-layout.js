@@ -290,22 +290,22 @@ const AL = (() => {
   // Leaving a page with unsaved changes asks first (its drafts are kept either way, as pages are hidden, not
   // destroyed); No stays on it. Closing the tab or reloading asks the browser's own question.
   let shownHash = location.hash;
-  window.addEventListener('hashchange', (e) => {
+  window.addEventListener('hashchange', (event) => {
     const from = pageFor(shownHash).page, to = pageFor(location.hash).page;
     const left = from && from !== to ? unsavedOn(from) : [];
     if (left.length && !window.confirm(`${from.title} has unsaved changes (${left.map((x) => x.label || 'a setting').join(', ')}). `
       + 'Go to the other page anyway? The changes stay on this page, not saved, until you save or discard them.')) {
       history.replaceState(null, '', shownHash || location.pathname);
-      e.stopImmediatePropagation(); // the page's loaders are not told: nothing changed
+      event.stopImmediatePropagation(); // the page's loaders are not told: nothing changed
       return;
     }
     shownHash = location.hash;
     show();
   }, true);
-  window.addEventListener('beforeunload', (e) => {
+  window.addEventListener('beforeunload', (event) => {
     if (typeof AW === 'undefined' || !AW.unsaved().length) return;
-    e.preventDefault();
-    e.returnValue = '';
+    event.preventDefault();
+    event.returnValue = '';
   });
 
   menu.addEventListener('click', () => { const open = side.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });

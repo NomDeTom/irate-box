@@ -85,25 +85,25 @@ if (picker && themes) {
       more.setAttribute('aria-pressed', String(!!shown));
     }
   };
-  picker.addEventListener('click', (e) => {
-    if (more && e.target.closest('.theme-more')) { openMenu(menu.hidden); return; }
-    const p = e.target.closest('[data-palette-choice]');
+  picker.addEventListener('click', (event) => {
+    if (more && event.target.closest('.theme-more')) { openMenu(menu.hidden); return; }
+    const p = event.target.closest('[data-palette-choice]');
     if (p) { themes.choosePalette(p.dataset.paletteChoice); openMenu(false); showChoice(); return; }
-    const b = e.target.closest('[data-theme-choice]');
+    const b = event.target.closest('[data-theme-choice]');
     if (!b) return;
     themes.choose(b.dataset.themeChoice);
     openMenu(false);
     showChoice();
   });
   if (menu) {
-    document.addEventListener('click', (e) => { if (!picker.contains(e.target)) openMenu(false); });
-    picker.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !menu.hidden) { openMenu(false); more.focus(); }
-      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !menu.hidden) {
+    document.addEventListener('click', (event) => { if (!picker.contains(event.target)) openMenu(false); });
+    picker.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !menu.hidden) { openMenu(false); more.focus(); }
+      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !menu.hidden) {
         const items = [...menu.querySelectorAll('button')];
         const i = items.indexOf(document.activeElement);
-        items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
-        e.preventDefault();
+        items[(i + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+        event.preventDefault();
       }
     });
   }
@@ -113,8 +113,8 @@ if (picker && themes) {
 
 // A choice made in another tab arrives as a storage event: follow it live, so an open
 // admin page (or app) does not stay in the old theme until it is reloaded.
-window.addEventListener('storage', (e) => {
-  if (!themes || (e.key !== 'theme' && e.key !== 'hub-theme' && e.key !== 'hub-palette' && e.key !== null)) return;
+window.addEventListener('storage', (event) => {
+  if (!themes || (event.key !== 'theme' && event.key !== 'hub-theme' && event.key !== 'hub-palette' && event.key !== null)) return;
   const t = themes.current();
   themes.show(t);
   if (themes.showPalette) themes.showPalette(themes.palette());
@@ -289,12 +289,12 @@ if (helpButton && helpPop) {
     helpPop.hidden = !open;
     helpButton.setAttribute('aria-expanded', String(open));
   };
-  helpButton.addEventListener('click', (e) => {
-    e.stopPropagation();
+  helpButton.addEventListener('click', (event) => {
+    event.stopPropagation();
     setHelp(helpPop.hidden);
   });
-  document.addEventListener('click', (e) => { if (!helpPop.contains(e.target)) setHelp(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setHelp(false); });
+  document.addEventListener('click', (event) => { if (!helpPop.contains(event.target)) setHelp(false); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setHelp(false); });
   window.addEventListener('blur', () => setHelp(false));
 }
 

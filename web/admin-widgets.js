@@ -197,10 +197,10 @@ const AW = (() => {
       count.textContent = `${shown} of ${items.length}`;
     };
     q.addEventListener('input', apply);
-    const chips = tags.map((t) => h('button', { type: 'button', class: 'filter-chip', 'aria-pressed': 'false', onclick: (e) => {
+    const chips = tags.map((t) => h('button', { type: 'button', class: 'filter-chip', 'aria-pressed': 'false', onclick: (event) => {
       if (active.has(t)) active.delete(t); else active.add(t);
-      e.currentTarget.classList.toggle('active', active.has(t));
-      e.currentTarget.setAttribute('aria-pressed', String(active.has(t)));
+      event.currentTarget.classList.toggle('active', active.has(t));
+      event.currentTarget.setAttribute('aria-pressed', String(active.has(t)));
       apply();
     } }, t));
     const bar = h('div', { class: 'aw-filter', 'data-filter-for': list.id }, q, chips.length ? h('div', { class: 'filter-chips' }, chips) : null, count);
@@ -320,7 +320,7 @@ const AW = (() => {
     if (i >= 0) openStack.splice(i, 1);
     return true;
   }
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openStack.length) closeCard(openStack[openStack.length - 1]); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && openStack.length) closeCard(openStack[openStack.length - 1]); });
 
   // ---- A section: a group of settings saved together (a card, a block, one network, one app's access) ----
   // Every section keeps the same rules (the save-patterns plan):
@@ -371,7 +371,7 @@ const AW = (() => {
       const no = btn('Cancel', { class: 'action-btn', onclick: () => answer(false) });
       box.append(h('p', { class: 'setting-desc', text }),
         h('span', { class: 'library-buttons' }, btn(opts.label || 'Confirm', { class: 'action-btn primary', onclick: () => answer(true) }), no));
-      box.addEventListener('keydown', (e) => { if (e.key === 'Escape') answer(false); });
+      box.addEventListener('keydown', (event) => { if (event.key === 'Escape') answer(false); });
       const place = at && at.isConnected ? at.closest('.library-buttons, .aw-foot, .setting-actions') || at : null;
       if (place && place.parentNode) place.after(box);
       else document.querySelector('.admin-main, main, body').prepend(box);
@@ -536,7 +536,7 @@ const AW = (() => {
       } else if (r.kind === 'button') ctl = btn(r.text || r.label, { onclick: r.onclick });
       else if (r.kind === 'text') {
         ctl = h('input', { type: 'text', value: v ?? '', maxlength: r.max || null, 'aria-label': r.label, disabled: off, 'data-aw-key': r.key,
-          oninput: (e) => s.set(r.key, e.target.value, true) });
+          oninput: (event) => s.set(r.key, event.target.value, true) });
       } else if (r.kind === 'colour') {
         // A colour, or '' for the theme's own (r.unset names it); r.warn(value) says what's wrong with one, live.
         const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (v && r.warn && r.warn(v)) || '' });
@@ -571,8 +571,8 @@ const AW = (() => {
     const sorted = [...items].sort((a, b) => (RANK[a.status] ?? 2) - (RANK[b.status] ?? 2));
     return shortList(sorted.map((f) => ({ ...f, badges: [f.status].concat(f.badges || []), detail: () => [
       f.detail ? h('p', { class: 'setting-desc', text: f.detail }) : null,
-      (f.actions || []).map((a) => btn(a.label, { onclick: async (e) => {
-        if (!a.confirm || (await confirmHere(a.confirm, { anchor: e.currentTarget, label: a.label }))) opts.act && opts.act(a.choice, f);
+      (f.actions || []).map((a) => btn(a.label, { onclick: async (event) => {
+        if (!a.confirm || (await confirmHere(a.confirm, { anchor: event.currentTarget, label: a.label }))) opts.act && opts.act(a.choice, f);
       } })),
     ] })), { id: opts.id });
   }
@@ -621,10 +621,10 @@ const AW = (() => {
     }));
     if (!box._choicesWired) {
       box._choicesWired = true;
-      box.addEventListener('change', (e) => {
-        if (e.target.type !== 'radio') return;
+      box.addEventListener('change', (event) => {
+        if (event.target.type !== 'radio') return;
         box.querySelectorAll('.choice-tile').forEach((t) => t.classList.toggle('chosen', t.querySelector('input').checked));
-        if (box._onChange) box._onChange(e.target.value);
+        if (box._onChange) box._onChange(event.target.value);
       });
     }
     box._onChange = opts.onChange || null;
@@ -736,13 +736,13 @@ const AW = (() => {
       }
       s.update(out);
     };
-    const touch = (e) => {
-      if (writing || !e.target || !FIELD(e.target) || !s.loaded()) return;
-      s.set(e.target.name, read(e.target.name), true);
+    const touch = (event) => {
+      if (writing || !event.target || !FIELD(event.target) || !s.loaded()) return;
+      s.set(event.target.name, read(event.target.name), true);
     };
     f.addEventListener('input', touch);
     f.addEventListener('change', touch);
-    f.addEventListener('submit', (e) => { e.preventDefault(); s.save(); });
+    f.addEventListener('submit', (event) => { event.preventDefault(); s.save(); });
     const old = [...f.querySelectorAll('button')];
     const saveOld = old.find((b) => b.type === 'submit' && /^Save/.test(b.textContent.trim()));
     if (saveOld) saveOld.replaceWith(s.foot); else f.append(s.foot);
