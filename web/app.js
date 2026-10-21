@@ -64,8 +64,8 @@ function target() {
   try { path = decodeURIComponent(location.hash.slice(1)); } catch (_) { return '/'; }
   if (!path.startsWith('/')) return '/';
   try {
-    const u = new URL(path, location.origin);
-    return u.origin === location.origin ? u.pathname + u.search + u.hash : '/';
+    const url = new URL(path, location.origin);
+    return url.origin === location.origin ? url.pathname + url.search + url.hash : '/';
   } catch (_) { return '/'; }
 }
 

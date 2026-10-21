@@ -1835,27 +1835,27 @@ function tile(label, value) {
 // hour and one of 72 days by day (githubstatus.com's format), from the hub's five-minute samples
 // (svchistory.py); a dot where it started (a reboot starts them all). Under the table: the legend
 // and each service's week in words.
-function serviceStrips(service, u, pages) {
+function serviceStrips(service, uptime, pages) {
   // A page the web server serves itself has no unit: its use instead (pagehistory.py), the hours it was loaded.
   if (!service.unit && pages && service.path && (pages.pages || {})[service.path]) {
-    u = { ...pages, units: { [service.path]: pages.pages[service.path] } };
+    uptime = { ...pages, units: { [service.path]: pages.pages[service.path] } };
     service = { ...service, unit: service.path };
   }
-  const rec = u && service.unit && (u.units || {})[service.unit];
+  const rec = uptime && service.unit && (uptime.units || {})[service.unit];
   if (!rec) return el("span", { className: "setting-desc", textContent: "—" });
-  const dayLabel = (back) => u.month_days[71 - back].label;
+  const dayLabel = (back) => uptime.month_days[71 - back].label;
   return el(
     "div",
     { className: "svc-strips" },
     Heatmap.grid({
       bare: true,
       caption: `${service.name}, the last 72 hours by hour`,
-      cols: u.hour_cols,
+      cols: uptime.hour_cols,
       rows: [
         {
           label: service.name,
           cells: rec.hours,
-          where: (i) => `${service.name}, ${u.hour_full[i]}`,
+          where: (i) => `${service.name}, ${uptime.hour_full[i]}`,
         },
       ],
     }),
@@ -1873,9 +1873,9 @@ function serviceStrips(service, u, pages) {
     }),
   );
 }
-function renderServiceUptime(services, u, pages) {
+function renderServiceUptime(services, uptime, pages) {
   const body = document.getElementById("svc-uptime-body");
-  const units = (u && u.units) || {};
+  const units = (uptime && uptime.units) || {};
   const mine = services.filter((service) => service.unit && units[service.unit]);
   const used = services.filter(
     (service) => !service.unit && service.path && pages && (pages.pages || {})[service.path],
@@ -1961,15 +1961,15 @@ function renderServiceUptime(services, u, pages) {
 
 // The network on the Overview: each link's last 72 hours by hour, the box's link to the network
 // first, with its summary in words; the days and the details on Network.
-function renderOverviewNet(u) {
+function renderOverviewNet(uptime) {
   const box = document.getElementById("overview-net");
   if (!box) return;
-  const ifaces = Object.keys(u || {});
+  const ifaces = Object.keys(uptime || {});
   if (!ifaces.length) {
     box.replaceChildren();
     return;
   }
-  const first = u[ifaces[0]],
+  const first = uptime[ifaces[0]],
     sm = first.summary;
   const said =
     sm.up == null
@@ -1988,8 +1988,8 @@ function renderOverviewNet(u) {
       cols: first.hour_cols,
       rows: ifaces.map((i) => ({
         label: i,
-        cells: u[i].hours,
-        where: (k) => `${i}, ${u[i].hour_full[k]}`,
+        cells: uptime[i].hours,
+        where: (k) => `${i}, ${uptime[i].hour_full[k]}`,
       })),
     }),
     Heatmap.legend(),
@@ -2028,25 +2028,25 @@ function meshWords(m, sm) {
       : "";
   return `meshtasticd is ${now}${week}`;
 }
-function renderOverviewMesh(m, u) {
+function renderOverviewMesh(m, uptime) {
   const box = document.getElementById("overview-mesh");
   if (!box) return;
   if (!m) {
     box.replaceChildren();
     return;
   }
-  const rec = u && (u.units || {})["meshtasticd.service"];
+  const rec = uptime && (uptime.units || {})["meshtasticd.service"];
   box.replaceChildren(
     el("h3", { textContent: "Meshtastic (meshtasticd), the last 72 hours" }),
     rec
       ? Heatmap.grid({
           caption: "meshtasticd, the last 72 hours by hour",
-          cols: u.hour_cols,
+          cols: uptime.hour_cols,
           rows: [
             {
               label: "meshtasticd",
               cells: rec.hours,
-              where: (k) => `meshtasticd, ${u.hour_full[k]}`,
+              where: (k) => `meshtasticd, ${uptime.hour_full[k]}`,
             },
           ],
         })
@@ -2845,11 +2845,11 @@ function thumbFor(id) {
 }
 
 function renderStore(data) {
-  const u = data.usage;
-  const pct = Math.min(100, Math.round((100 * u.total) / u.max_total));
+  const usage = data.usage;
+  const pct = Math.min(100, Math.round((100 * usage.total) / usage.max_total));
   document.getElementById("store-usage").textContent =
-    `${size(u.total)} of ${size(u.max_total)} used (${pct}%): ` +
-    Object.entries(u.namespaces)
+    `${size(usage.total)} of ${size(usage.max_total)} used (${pct}%): ` +
+    Object.entries(usage.namespaces)
       .map(
         ([ns, v]) =>
           `${v.files} ${NS_LABEL[ns] || ns} file${v.files === 1 ? "" : "s"} (${size(v.bytes)})`,
@@ -2887,7 +2887,7 @@ function renderStore(data) {
             say(err.message, false, noteEl("store-note"));
           }
         },
-        { disabled: !u.namespaces[ns].files, className: "small" },
+        { disabled: !usage.namespaces[ns].files, className: "small" },
       ),
     ),
   );
@@ -5161,9 +5161,9 @@ deb.buttons = AW.updateButtons({
 });
 deb.box.replaceChildren(deb.buttons);
 function drawDebianPattern(lines, busy) {
-  const u = lines.find((finding) => finding.id === "unattended"),
+  const unattended = lines.find((finding) => finding.id === "unattended"),
     w = lines.find((finding) => finding.id === "security-updates");
-  const pat = u && u.pattern;
+  const pat = unattended && unattended.pattern;
   if (pat) debSec.fill({ often: pat.often, act: pat.act });
   deb.says.textContent = pat
     ? AW.patternSays(pat.often, pat.act) +
@@ -7207,9 +7207,9 @@ const WATCH_SAY = {
   on: "Monitored",
   off: "Not monitored",
 };
-function renderUpWatch(inv, u) {
+function renderUpWatch(inv, uplink) {
   const box = net.watchRows;
-  const known = (u && u.inventory) || {};
+  const known = (uplink && uplink.inventory) || {};
   const links = inv
     ? [
         ...inv.radios
@@ -7235,7 +7235,7 @@ function renderUpWatch(inv, u) {
     );
     return;
   }
-  const watching = (u && u.links) || {};
+  const watching = (uplink && uplink.links) || {};
   box.replaceChildren(
     ...links.map(([iface, kind]) => {
       const sel = el(
@@ -7302,76 +7302,76 @@ const when = (t) =>
     minute: "2-digit",
   });
 
-function upStatusText(u) {
-  if (!u)
+function upStatusText(uplink) {
+  if (!uplink)
     return "The watchdog has not reported yet. The irate-box-uplink service starts with the box, or when you save here.";
-  if (u.stale)
-    return `The watchdog has not reported since ${new Date(u.at * 1000).toLocaleString()}: is irate-box-uplink running?`;
-  if (u.state === "no-link")
-    return u.watching
-      ? `Monitoring ${u.watching}.`
+  if (uplink.stale)
+    return `The watchdog has not reported since ${new Date(uplink.at * 1000).toLocaleString()}: is irate-box-uplink running?`;
+  if (uplink.state === "no-link")
+    return uplink.watching
+      ? `Monitoring ${uplink.watching}.`
       : "No link to monitor. The box has no route to a network and no WiFi client interface.";
-  const others = Object.entries(u.links || {}).filter(
-    ([i, l]) => i !== u.iface && l.watched,
+  const others = Object.entries(uplink.links || {}).filter(
+    ([i, l]) => i !== uplink.iface && l.watched,
   );
-  const one = upLinkText(u);
+  const one = upLinkText(uplink);
   return others.length
     ? `${one} Also monitoring: ${others.map(([i, l]) => `${i}, ${l.state}${l.state === "stalled" && l.stall ? ` (${l.stall.text})` : ""}`).join(", ")}.`
     : one;
 }
-function upLinkText(u) {
-  if (u.state === "off")
-    return `${u.iface} was disconnected manually with nmcli device disconnect. The watchdog does not act on it until it is connected again.`;
-  const l = u.link || {};
+function upLinkText(uplink) {
+  if (uplink.state === "off")
+    return `${uplink.iface} was disconnected manually with nmcli device disconnect. The watchdog does not act on it until it is connected again.`;
+  const l = uplink.link || {};
   const on = l.ssid
-    ? `${u.iface}: ${l.ssid} via ${l.bssid}, channel ${l.channel}, ${l.signal} dBm`
-    : u.iface;
+    ? `${uplink.iface}: ${l.ssid} via ${l.bssid}, channel ${l.channel}, ${l.signal} dBm`
+    : uplink.iface;
   const parts = [];
-  if (u.state === "up") {
-    parts.push(`Up on ${on}. The gateway (${u.gateway}) answers.`);
-  } else if (u.state === "checking") {
+  if (uplink.state === "up") {
+    parts.push(`Up on ${on}. The gateway (${uplink.gateway}) answers.`);
+  } else if (uplink.state === "checking") {
     parts.push(
-      `Checking ${u.iface}: ${u.misses} failed check${u.misses === 1 ? "" : "s"} within ${dur((u.settings || {}).window || 0)}. ` +
-        `${(u.settings || {}).sensitivity} failed checks start recovery.`,
+      `Checking ${uplink.iface}: ${uplink.misses} failed check${uplink.misses === 1 ? "" : "s"} within ${dur((uplink.settings || {}).window || 0)}. ` +
+        `${(uplink.settings || {}).sensitivity} failed checks start recovery.`,
     );
   } else {
-    const o = u.outage;
+    const o = uplink.outage;
     parts.push(
       o
-        ? `Down for ${minutes(Math.round(u.at - o.since))} on ${u.iface}.`
-        : `Down on ${u.iface}.`,
+        ? `Down for ${minutes(Math.round(uplink.at - o.since))} on ${uplink.iface}.`
+        : `Down on ${uplink.iface}.`,
     );
     const tried = o ? o.done.filter((step) => !(o.skipped || []).includes(step)) : [];
     if (tried.length) parts.push(`Tried: ${tried.join(", ")}.`);
     if (o && (o.skipped || []).length)
       parts.push(`Not possible here: ${o.skipped.join(", ")}.`);
-    if (u.next)
+    if (uplink.next)
       parts.push(
-        `Next recovery action: ${u.next.label} at ${when(u.next.at)}.`,
+        `Next recovery action: ${uplink.next.label} at ${when(uplink.next.at)}.`,
       );
-    if (u.state === "stalled" && u.stall) parts.push(u.stall.text);
-    else if (u.wedged) parts.push(`Possible driver failure: ${u.wedged}.`);
-    const ep = u.episode;
+    if (uplink.state === "stalled" && uplink.stall) parts.push(uplink.stall.text);
+    else if (uplink.wedged) parts.push(`Possible driver failure: ${uplink.wedged}.`);
+    const ep = uplink.episode;
     if (ep && ep.outages > 1)
       parts.push(
         `Outage ${ep.outages} since ${when(ep.since)}` +
           (ep.failed.length ? `. Did not hold: ${ep.failed.join(", ")}.` : "."),
       );
   }
-  if (u.pinned)
+  if (uplink.pinned)
     parts.push(
-      `Locked to ${u.pinned.bssid} since ${when(u.pinned.at)}, until the next drop.`,
+      `Locked to ${uplink.pinned.bssid} since ${when(uplink.pinned.at)}, until the next drop.`,
     );
-  if (u.paused_until && u.paused_until > Date.now() / 1000)
-    parts.push(`Recovery paused until ${when(u.paused_until)}.`);
-  if (u.drops_in_window)
+  if (uplink.paused_until && uplink.paused_until > Date.now() / 1000)
+    parts.push(`Recovery paused until ${when(uplink.paused_until)}.`);
+  if (uplink.drops_in_window)
     parts.push(
-      `${u.drops_in_window} drop${u.drops_in_window === 1 ? "" : "s"} lately.`,
+      `${uplink.drops_in_window} drop${uplink.drops_in_window === 1 ? "" : "s"} lately.`,
     );
   parts.push(
-    `Run by ${u.backend}. Possible repairs: ${(u.repairs || []).join(", ") || "none (monitoring only)"}.`,
+    `Run by ${uplink.backend}. Possible repairs: ${(uplink.repairs || []).join(", ") || "none (monitoring only)"}.`,
   );
-  if (u.dry_run)
+  if (uplink.dry_run)
     parts.push("Dry run: it decides and logs. It runs no repair actions.");
   return parts.join(" ");
 }
@@ -7477,9 +7477,9 @@ function signalWords(dbm) {
 // format), from the watchdog's five-minute record (linkhistory.py), drawn by heatmap.js.
 // Always shown, not folded: a folded one closed itself on the pane's redraws.
 function uptimeSection(iface, data = netData) {
-  const u = data && data.uptime && data.uptime[iface];
+  const uptime = data && data.uptime && data.uptime[iface];
   const fold = el("div", { className: "net-uptime" });
-  const sm = u && u.summary;
+  const sm = uptime && uptime.summary;
   const time = (t) =>
     new Date(t * 1000).toLocaleString([], {
       weekday: "short",
@@ -7504,7 +7504,7 @@ function uptimeSection(iface, data = netData) {
       liveAs(el("span", { textContent: said }), "uptime"),
     ),
   );
-  if (!u) {
+  if (!uptime) {
     fold.append(
       el("p", {
         className: "setting-desc",
@@ -7523,8 +7523,8 @@ function uptimeSection(iface, data = netData) {
     liveAs(
       Heatmap.grid({
         caption: `${iface}, the last 72 hours by hour`,
-        cols: u.hour_cols,
-        rows: [{ label: iface, cells: u.hours, where: (i) => u.hour_full[i] }],
+        cols: uptime.hour_cols,
+        rows: [{ label: iface, cells: uptime.hours, where: (i) => uptime.hour_full[i] }],
       }),
       "hours",
     ),
@@ -7544,13 +7544,13 @@ function uptimeSection(iface, data = netData) {
       Heatmap.grid({
         caption: `${iface}, the last 72 days by day`,
         cols: Array.from({ length: 72 }, (_, i) =>
-          i % 12 ? "" : day(u.month[i].date),
+          i % 12 ? "" : day(uptime.month[i].date),
         ),
         rows: [
           {
             label: iface,
-            cells: u.month.map((c) => (c.n ? c : null)),
-            where: (i) => day(u.month[i].date),
+            cells: uptime.month.map((c) => (c.n ? c : null)),
+            where: (i) => day(uptime.month[i].date),
           },
         ],
       }),
@@ -7562,9 +7562,9 @@ function uptimeSection(iface, data = netData) {
     el("p", {
       className: "setting-desc",
       textContent:
-        u.kind === "uplink"
+        uptime.kind === "uplink"
           ? "Up means the link was up and the gateway answered. A drop is the link going down after being up. A link that you disabled is not counted."
-          : u.kind === "hotspot"
+          : uptime.kind === "hotspot"
             ? "Up means the hotspot was running: its interface up and serving."
             : "This shows only whether the link was up: a cable in, or joined to a network. The gateway is checked on the link of the box to your network.",
     }),
@@ -7824,7 +7824,7 @@ function bgscanWords(v) {
     sec % 60 === 0 && sec >= 60 ? `${sec / 60} min` : `${sec} s`;
   return `looks for a stronger access point every ${t(+m[1])} while the signal is weaker than ${m[2]} dBm, every ${t(+m[3])} while it is stronger.`;
 }
-function drawRoaming(inv, u, wifi) {
+function drawRoaming(inv, uplink, wifi) {
   const box = document.getElementById("net-roaming"),
     caps = document.getElementById("net-roam-caps");
   const radio = wifi.find((x) => x.roaming),
@@ -7834,9 +7834,9 @@ function drawRoaming(inv, u, wifi) {
     caps.replaceChildren();
     return;
   }
-  const chosen = (u && u.chosen) || {};
+  const chosen = (uplink && uplink.chosen) || {};
   const n = roaming.aps.length,
-    hour = u && !u.stale ? u.roams_hour || 0 : null;
+    hour = uplink && !uplink.stale ? uplink.roams_hour || 0 : null;
   const lines = [
     netLine(
       "Roaming",
@@ -7858,8 +7858,8 @@ function drawRoaming(inv, u, wifi) {
     lines.push(netLine("Background scan", cap1(bgscanWords(roaming.bgscan))));
   const lockGone =
     chosen.roaming === "lock" &&
-    u &&
-    u.state !== "up" &&
+    uplink &&
+    uplink.state !== "up" &&
     !roaming.aps.some((accessPoint) => accessPoint.bssid === chosen.lock_bssid);
   if (lockGone) {
     lines.push(
@@ -7943,14 +7943,14 @@ function drawRoaming(inv, u, wifi) {
   );
 }
 
-function drawNetTabs(data, inv, u) {
+function drawNetTabs(data, inv, uplink) {
   const up = inv && inv.uplink;
   // Status: one line for the whole, then a card per link the box could reach a network by.
   netTabs.overview.textContent = !inv
     ? "Not checked yet."
     : !up || !up.iface
       ? "The box has no link to a network right now."
-      : `The box reaches your network through ${up.iface} (${up.kind === "wifi" ? "WiFi" : "wired"}). ${upStatusText(u)}`;
+      : `The box reaches your network through ${up.iface} (${up.kind === "wifi" ? "WiFi" : "wired"}). ${upStatusText(uplink)}`;
   const links = inv
     ? [...inv.radios.filter((radio) => radio.type !== "AP"), ...inv.wired]
     : [];
@@ -8102,7 +8102,7 @@ function drawNetTabs(data, inv, u) {
             }),
           ]),
     );
-  drawRoaming(inv, u, wifi);
+  drawRoaming(inv, uplink, wifi);
   const wired = inv ? inv.wired : [];
   netTabs.wiredCard.hidden = !!inv && !wired.length;
   AW.drawKept(netTabs.wiredNow, [
@@ -8187,7 +8187,7 @@ function renderNetwork(data) {
     }
   }
   const inv = data.inventory;
-  let u = data.uplink;
+  let uplink = data.uplink;
   const levels = data.levels;
   // What the box has
   net.when.textContent = inv
@@ -8223,7 +8223,7 @@ function renderNetwork(data) {
         ]
       : []),
   ]);
-  drawNetTabs(data, inv, u);
+  drawNetTabs(data, inv, uplink);
   AW.drawKept(net.hazards, [
     ...hz
       .filter((h) => !(h.iface && shownIfaces.has(h.iface)))
@@ -8251,31 +8251,31 @@ function renderNetwork(data) {
   buildUpFields();
   // The saved settings again only when they changed (or the scope did): a draft is kept over them, said as
   // changed elsewhere if they moved under it.
-  const chosen = (u && u.chosen) || levels.default;
+  const chosen = (uplink && uplink.chosen) || levels.default;
   if (
     !upSec.saving() &&
     JSON.stringify(chosen) + "|" + upScope !== upChosenKey
   )
     upRebase(chosen);
   if (!upSec.dirty()) drawUpScope(inv);
-  if (!upSec.dirty() || !net.watchRows.childElementCount) renderUpWatch(inv, u);
-  net.status.textContent = upStatusText(u);
+  if (!upSec.dirty() || !net.watchRows.childElementCount) renderUpWatch(inv, uplink);
+  net.status.textContent = upStatusText(uplink);
   // Stalled: the step that could help, one press away; the watchdog's
   // guards (guests on the hotspot, the reboot caps) still apply, and its log says what it did.
   // Or a wedged driver, with a radio reset possible: offered by hand whatever the ladder is doing.
   const wedgedRadio =
-    u &&
-    !u.stale &&
-    u.wedged &&
-    (u.repairs || []).includes("radio") &&
-    !((u.outage || {}).done || []).includes("radio");
+    uplink &&
+    !uplink.stale &&
+    uplink.wedged &&
+    (uplink.repairs || []).includes("radio") &&
+    !((uplink.outage || {}).done || []).includes("radio");
   const need =
-    u &&
-    !u.stale &&
-    ((u.state === "stalled" && u.stall && u.stall.needs) ||
+    uplink &&
+    !uplink.stale &&
+    ((uplink.state === "stalled" && uplink.stall && uplink.stall.needs) ||
       (wedgedRadio && "radio"));
-  if (need && !(u.stall && u.stall.needs))
-    u = { ...u, stall: { needs: "radio", label: "reset the radio" } };
+  if (need && !(uplink.stall && uplink.stall.needs))
+    uplink = { ...uplink, stall: { needs: "radio", label: "reset the radio" } };
   net.stall.hidden = !need;
   net.stall.replaceChildren(
     ...(need
@@ -8284,7 +8284,7 @@ function renderNetwork(data) {
             type: "button",
             className: "action-btn primary",
             disabled: busy,
-            textContent: `${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now`,
+            textContent: `${uplink.stall.label[0].toUpperCase()}${uplink.stall.label.slice(1)} now`,
             onclick: () => netRequest({ action: "do", step: need }, "up"),
           }),
           // What it costs, beside it: an action acts at once (admin pages plan, phase 5).
@@ -8298,7 +8298,7 @@ function renderNetwork(data) {
         ]
       : []),
   );
-  const held = u && u.chosen && u.chosen.hold_until > Date.now() / 1000;
+  const held = uplink && uplink.chosen && uplink.chosen.hold_until > Date.now() / 1000;
   net.hold.hidden = !!held;
   net.unhold.hidden = !held;
   net.hold.disabled = net.unhold.disabled = busy;
@@ -8310,7 +8310,7 @@ function renderNetwork(data) {
   renderVisible(inv, busy);
   renderOtherAp(inv, data, busy);
   renderWifisync(inv, data, busy);
-  const change = u && u.profile_change;
+  const change = uplink && uplink.profile_change;
   const prof =
     inv && inv.uplink && inv.uplink.backend === "networkmanager"
       ? inv.uplink.profile
@@ -8386,7 +8386,7 @@ function renderNetwork(data) {
   lead.hidden = !(inv && inv.uplink && inv.uplink.backend === "networkmanager");
   lead.textContent =
     "NetworkManager runs this box's WiFi and network connections, and irate-box makes its changes through it.";
-  const evs = (u && u.events) || [];
+  const evs = (uplink && uplink.events) || [];
   // One line per event: when, then what.
   AW.drawKept(net.events, [
     ...evs
@@ -8410,7 +8410,7 @@ function renderNetwork(data) {
             className: "ev-text",
             textContent:
               entry.iface &&
-              Object.values((u && u.links) || {}).filter((l) => l.watched)
+              Object.values((uplink && uplink.links) || {}).filter((l) => l.watched)
                 .length > 1
                 ? `${entry.iface}: ${entry.text}`
                 : entry.text,
@@ -8418,7 +8418,7 @@ function renderNetwork(data) {
         ),
       ),
   ]);
-  const down = u && !u.stale && u.state !== "up";
+  const down = uplink && !uplink.stale && uplink.state !== "up";
   badge("network", down ? "!" : "");
 
   const stale = !inv || Date.now() / 1000 - inv.at > 60 * 60;
@@ -13013,7 +13013,7 @@ function renderCi(data) {
     ((data.mirrored || []).length
       ? `git downloads of ${data.mirrored.length} URL${data.mirrored.length === 1 ? "" : "s"} in a build use the mirrors of this box (${data.mirrored
           .slice(0, 3)
-          .map((u) => u.replace(/^https:\/\//, ""))
+          .map((url) => url.replace(/^https:\/\//, ""))
           .join(", ")}${data.mirrored.length > 3 ? "…" : ""}).`
       : "no mirrors exist yet, so a build that downloads from the internet needs internet access (Git → Mirrors).") +
     (data.pio_deps
@@ -13458,7 +13458,7 @@ function renderFirmware(data) {
                     ? `. Boards not in this release: ${info.missing.join(", ")}`
                     : "") +
                   (info.unavailable && info.unavailable.length
-                    ? `. Omitted because a file is missing from the release: ${info.unavailable.map((u) => u.board).join(", ")}`
+                    ? `. Omitted because a file is missing from the release: ${info.unavailable.map((entry) => entry.board).join(", ")}`
                     : "") +
                   (st.cache && st.cache.version === v
                     ? `. Build cache (${st.cache.mode}): ${size(st.cache.bytes)}`

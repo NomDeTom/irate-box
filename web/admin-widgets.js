@@ -32,7 +32,7 @@ const AW = (() => {
     const absolute = Math.abs(Number(seconds) || 0);
     const whole = UNITS.find(([size]) => absolute >= size && absolute % size === 0 && absolute / size < 100);
     if (whole) return [absolute / whole[0], whole[1]];
-    const [size, unit, , places] = UNITS.find((u) => absolute >= u[2]);
+    const [size, unit, , places] = UNITS.find((row) => absolute >= row[2]);
     return [Math.floor((absolute / size) * 10 ** places + 0.5) / 10 ** places, unit];
   }
   function sayArg(v) {

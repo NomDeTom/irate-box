@@ -14,8 +14,8 @@ const next = (() => {
   // Resolved as the browser would (it drops tabs and newlines, so "/\t/elsewhere" is "//elsewhere"),
   // and kept only if it is still this origin.
   try {
-    const u = new URL(n, location.origin);
-    return u.origin === location.origin ? u.pathname + u.search + u.hash : '';
+    const url = new URL(n, location.origin);
+    return url.origin === location.origin ? url.pathname + url.search + url.hash : '';
   } catch { return ''; }
 })();
 

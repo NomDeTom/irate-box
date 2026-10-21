@@ -94,12 +94,12 @@
     const mbs = (b) => (b == null ? '?' : `${Math.round(b / 2 ** 20)} MB`);
     const published = new Set((data.flasher || []).flatMap((rel) => rel.targets.map((t) => t.run)));
     fac.runs.replaceChildren(...(data.runs.filter((run) => run.state !== 'running').map((run) => {
-      const u = run.resources || {};
-      const used = run.resources ? [`${facDur(run.duration)}`, `CPU ${facDur(u.cpu)}`, `peak memory ${mbs(u.peak_memory)}`, `disk ${mbs(u.work_bytes)}`,
-        u.hottest != null ? `peak temperature ${Math.round(u.hottest)} °C` : null,
-        run.offline ? 'network disabled during build' : u.received ? `network bytes received during build: ${mbs(u.received)}` : u.received === 0 ? 'no network bytes received during build' : null,
-        run.tools_only && u.tools_bytes ? `PlatformIO tools: ${mbs(u.tools_bytes)}` : null,
-        u.from_cache ? `build cache hits: ${u.from_cache} of ${u.from_cache + (u.compiled || 0)} objects` : null].filter(Boolean).join(', ') : facDur(run.duration);
+      const resources = run.resources || {};
+      const used = run.resources ? [`${facDur(run.duration)}`, `CPU ${facDur(resources.cpu)}`, `peak memory ${mbs(resources.peak_memory)}`, `disk ${mbs(resources.work_bytes)}`,
+        resources.hottest != null ? `peak temperature ${Math.round(resources.hottest)} °C` : null,
+        run.offline ? 'network disabled during build' : resources.received ? `network bytes received during build: ${mbs(resources.received)}` : resources.received === 0 ? 'no network bytes received during build' : null,
+        run.tools_only && resources.tools_bytes ? `PlatformIO tools: ${mbs(resources.tools_bytes)}` : null,
+        resources.from_cache ? `build cache hits: ${resources.from_cache} of ${resources.from_cache + (resources.compiled || 0)} objects` : null].filter(Boolean).join(', ') : facDur(run.duration);
       const file = (n) => `/admin/ci/file?run=${encodeURIComponent(run.run)}&name=${encodeURIComponent(n)}`;
       return el('div', { className: 'admin-item' },
         el('span', { className: `state state-${run.state === 'passed' ? 'running' : 'stopped'}`, textContent: run.state === 'passed' ? (run.tools_only ? 'Dependencies downloaded' : run.offline ? 'Built offline' : 'Built') : run.state }),
