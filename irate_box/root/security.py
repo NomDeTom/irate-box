@@ -27,6 +27,8 @@ from irate_box.msg import M, Refused, is_message, named, render, sentences, when
 from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
+# Whether the hotspot is up now (root/ap.py writes it): a port is open to hotspot guests only while it is.
+AP_STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "control" / "ap.json"
 RECORD = ETC / "security-changes.json"
 SSHD_DROPIN = Path(os.environ.get("HUB_SSHD_DROPIN", "/etc/ssh/sshd_config.d/01-irate-box.conf"))
 RESOLVED_DROPIN = Path(os.environ.get("HUB_RESOLVED_DROPIN", "/etc/systemd/resolved.conf.d/irate-box.conf"))
@@ -200,7 +202,7 @@ def listeners():
         found_manifests = []
     out = run("ss", "-H", "-ltnup")
     found = parse_ss(out.stdout)
-    sockets = None
+    sockets, packages = None, {}
     for f in found:
         unit = _unit_of(f["pid"]) if f["pid"] else None
         if f["process"] == "systemd" or unit in (None, "init.scope"):
@@ -212,7 +214,42 @@ def listeners():
         f["name"] = KNOWN_PORTS.get((f["proto"], f["port"])) or (
             named(own) if own else M("port.name.unknown", "Unknown program")
         )
+        f["owner"] = _owner(f, decl, packages)
     return found
+
+
+def _package_of(path, cache):
+    """The Debian package a file belongs to (dpkg -S), or None."""
+    if not path:
+        return None
+    if path not in cache:
+        out = run("dpkg-query", "-S", path)
+        # "nginx-core: /usr/sbin/nginx"; a file in two packages: "a, b: /path" (the first is said).
+        line = out.stdout.splitlines()[0] if out.returncode == 0 and out.stdout else ""
+        cache[path] = line.split(": ", 1)[0].split(",")[0].strip() if ": " in line else None
+        cache[path] = cache[path] or None
+    return cache[path]
+
+
+def _owner(f, decl, cache):
+    """What a listener belongs to, for the table's Belongs to column: the app or add-on that declares it, the
+    hub's own units, else the package of its program (or of its unit's file), else nobody known: a
+    program that may be left over and could be stopped."""
+    if decl:
+        return {"kind": "app", "name": decl.get("name") or decl.get("id")}
+    if f.get("unit") and OUR_UNITS.match(f["unit"]):
+        return {"kind": "hub", "name": "irate-box"}
+    exe = None
+    if f.get("pid"):
+        try:
+            exe = os.readlink(f"/proc/{f['pid']}/exe")
+        except OSError:
+            exe = None
+    pkg = _package_of(exe, cache)
+    if not pkg and f.get("unit"):
+        frag = run("systemctl", "show", "-p", "FragmentPath", "--value", f["unit"]).stdout.strip()
+        pkg = _package_of(frag, cache)
+    return {"kind": "package", "name": pkg} if pkg else {"kind": "unknown", "name": exe or f.get("process")}
 
 
 def _where(f):
@@ -234,8 +271,16 @@ def _hub_port():
     return 8000
 
 
+def _hotspot_up():
+    try:
+        return json.loads(AP_STATE.read_text()).get("up") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def listener_findings(found, rec):
     out = []
+    hotspot = _hotspot_up()
     llmnr_done = False
     hub_port = _hub_port()
     for f in found:
@@ -440,6 +485,12 @@ def listener_findings(found, rec):
                 else M(
                     "port.other.no-firewall",
                     "Not part of the hub. The hotspot firewall is off, so devices on the hotspot can reach it too.",
+                )
+                if hotspot
+                else M(
+                    "port.other.no-firewall-down",
+                    "Not part of the hub. Devices on your own network can reach it. The hotspot is off now. "
+                    "While it is on, its guests can reach it too, as the hotspot firewall is off.",
                 )
             )
             out.append(

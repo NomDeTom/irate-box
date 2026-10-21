@@ -4281,23 +4281,25 @@
           </article>
 
           <h3 id="security-ports" data-i18n="admin.security.ports">
-            Listening on the network
+            Network listeners
           </h3>
           <p
             class="setting-desc"
             data-i18n="admin.security.table-lists-every-service"
           >
-            This table lists every service that answers from outside the box,
-            and whether it should. It omits services that listen on loopback
-            only.
+            One row for each program that answers from outside the box: its
+            ports, what it belongs to, and whether it should be reachable. It
+            omits programs that listen on loopback only, and the random ports a
+            program uses for its own outgoing connections.
           </p>
           <table class="admin-table" id="security-listeners">
             <thead>
               <tr>
-                <th data-i18n="admin.security.col-port">Port</th>
                 <th data-i18n="admin.security.col-service">Service</th>
+                <th data-i18n="admin.security.col-ports">Ports</th>
                 <th data-i18n="admin.security.col-address">Address</th>
-                <th data-i18n="admin.security.col-expected">Expected?</th>
+                <th data-i18n="admin.security.col-belongs">Belongs to</th>
+                <th data-i18n="admin.security.col-expected">Expected exposure</th>
               </tr>
             </thead>
             <tbody></tbody>

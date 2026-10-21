@@ -1050,5 +1050,25 @@ security._cockpit(rec, "network")
 security._cockpit(rec, "undo")
 check("  opened here, then undone: off again, not running", ck == {"enabled": False, "active": False}, ck)
 security.run, security._systemctl, security.listeners = was_run, was_sc, was_listeners
+# The Network listeners table's Belongs to column: the package of a listener's program, from dpkg-query -S.
+(BIN / "dpkg-query").write_text(
+    "#!/usr/bin/env python3\nimport sys\n"
+    "known = {'/usr/sbin/rpcbind': 'rpcbind: /usr/sbin/rpcbind', '/usr/bin/two': 'a, b: /usr/bin/two'}\n"
+    "line = known.get(sys.argv[-1])\nprint(line) if line else sys.exit(1)\n"
+)
+cache = {}
+check(
+    "owner: a program's package; a file in two packages, the first; none for a file no package owns",
+    security._package_of("/usr/sbin/rpcbind", cache) == "rpcbind"
+    and security._package_of("/usr/bin/two", cache) == "a"
+    and security._package_of("/opt/old/mystery", cache) is None
+    and security._package_of(None, cache) is None,
+    cache,
+)
+check(
+    "  an app's port is the app's; the hub's units are the hub's",
+    security._owner({"unit": "x.service"}, {"name": "Meshtastic"}, {}) == {"kind": "app", "name": "Meshtastic"}
+    and security._owner({"unit": "nginx.service"}, None, {}) == {"kind": "hub", "name": "irate-box"},
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
