@@ -148,9 +148,9 @@ const settingNote = (box) => noteEl(box.closest(".settings").dataset.note);
 
 async function load() {
   try {
-    const r = await fetch("/admin/settings");
-    if (!r.ok) throw new Error(r.status);
-    const data = await r.json();
+    const response = await fetch("/admin/settings");
+    if (!response.ok) throw new Error(response.status);
+    const data = await response.json();
     for (const { boxes, sec } of settingGroups)
       sec.update(
         Object.fromEntries(
@@ -203,8 +203,8 @@ function showRemote(data) {
   // The setup tour's Tailscale step shows only where the box has it.
   if (window.TOUR) TOUR.has("tailscale", !remote.hidden);
   if (remote.hidden) return;
-  radios.forEach((r) => {
-    r.checked = r.value === data.want.mode;
+  radios.forEach((radio) => {
+    radio.checked = radio.value === data.want.mode;
   });
   if (data.want.mode === "timed") hours.value = data.want.hours;
   hours.max = data.max_hours;
@@ -213,27 +213,27 @@ function showRemote(data) {
 
 async function loadRemote() {
   try {
-    const r = await fetch("/admin/tailscale");
-    if (!r.ok) throw new Error(r.status);
-    showRemote(await r.json());
+    const response = await fetch("/admin/tailscale");
+    if (!response.ok) throw new Error(response.status);
+    showRemote(await response.json());
   } catch (_) {
     remote.hidden = true;
   }
 }
 
 async function saveRemote() {
-  const mode = [...radios].find((r) => r.checked)?.value;
+  const mode = [...radios].find((radio) => radio.checked)?.value;
   if (!mode) return;
   const body = { mode };
   if (mode === "timed") body.hours = Number(hours.value);
   try {
-    const r = await fetch("/admin/tailscale", {
+    const response = await fetch("/admin/tailscale", {
       method: "POST",
       headers: ADMIN_HEADERS,
       body: JSON.stringify(body),
     });
-    if (!r.ok) throw new Error(r.status);
-    showRemote(await r.json());
+    if (!response.ok) throw new Error(response.status);
+    showRemote(await response.json());
     say("Saved. Tailscale changes within a few seconds.", true, remoteNote);
     [2000, 5000, 10000].forEach((ms) => setTimeout(loadRemote, ms));
   } catch (_) {
@@ -242,9 +242,9 @@ async function saveRemote() {
   }
 }
 
-radios.forEach((r) => r.addEventListener("change", saveRemote));
+radios.forEach((radio) => radio.addEventListener("change", saveRemote));
 hours.addEventListener("change", () => {
-  const timed = [...radios].find((r) => r.value === "timed");
+  const timed = [...radios].find((radio) => radio.value === "timed");
   timed.checked = true;
   saveRemote();
 });
@@ -331,9 +331,9 @@ function hubError(data, status) {
 
 // A result of the root helper in the reader's language: its message (msg.py), or its messages, where it has
 // them, else its English.
-function resultSaid(r) {
-  if (Array.isArray(r.msg)) return r.msg.map((m) => AW.say(m)).join(" ");
-  return r.msg ? AW.say(r.msg) : r.message;
+function resultSaid(result) {
+  if (Array.isArray(result.msg)) return result.msg.map((m) => AW.say(m)).join(" ");
+  return result.msg ? AW.say(result.msg) : result.message;
 }
 // A progress step's label: a message from the root helper, said; text as it is.
 const said = (v) => (v && typeof v === "object" ? AW.say(v) : v || "");
@@ -342,13 +342,13 @@ const errorSaid = (st) =>
   st.error_message ? AW.say(st.error_message) : st.error;
 
 async function libPost(body) {
-  const r = await fetch("/admin/library", {
+  const response = await fetch("/admin/library", {
     method: "POST",
     headers: ADMIN_HEADERS,
     body: JSON.stringify(body),
   });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw hubError(data, r.status);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw hubError(data, response.status);
   return data;
 }
 
@@ -889,9 +889,9 @@ function renderLibrary(snap) {
 
 async function loadLibrary() {
   try {
-    const r = await fetch("/admin/library?books=0");
-    if (!r.ok) throw new Error(r.status);
-    renderLibrary(await r.json());
+    const response = await fetch("/admin/library?books=0");
+    if (!response.ok) throw new Error(response.status);
+    renderLibrary(await response.json());
   } catch (_) {
     lib.states.forEach((n) => {
       n.textContent = "Could not read the library settings.";
@@ -1280,11 +1280,11 @@ async function searchCatalogue(more) {
   catStart = more ? catStart + 20 : 0;
   say("Asking Kiwix's catalogue…", true, cat.note);
   try {
-    const r = await fetch(
+    const response = await fetch(
       `/admin/catalogue?${new URLSearchParams({ q: f.q.value.trim(), language: f.language.value.trim(), start: String(catStart) })}`,
     );
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw hubError(d, r.status);
+    const d = await response.json().catch(() => ({}));
+    if (!response.ok) throw hubError(d, response.status);
     say(
       `${d.total} book${d.total === 1 ? "" : "s"} in the catalogue match.`,
       true,
@@ -1479,7 +1479,7 @@ async function loadPackages() {
     return;
   }
   if (pkgWaiting) {
-    const done = (d.results || []).find((r) => r.id === pkgWaiting.id);
+    const done = (d.results || []).find((result) => result.id === pkgWaiting.id);
     if (done) {
       pkgSay(
         pkgWaiting.pkg,
@@ -1781,18 +1781,18 @@ const ago = (secs) => {
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 };
 async function getJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
 }
 async function postJSON(url, body) {
-  const r = await fetch(url, {
+  const response = await fetch(url, {
     method: "POST",
     headers: ADMIN_HEADERS,
     body: JSON.stringify(body),
   });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw hubError(data, r.status);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw hubError(data, response.status);
   return data;
 }
 const actionButton = (label, onclick, extra = {}) =>
@@ -2468,15 +2468,15 @@ function renderBox(data) {
 
   const results = data.results || [];
   document.getElementById("control-results").replaceChildren(
-    ...results.slice(0, 4).map((r) =>
+    ...results.slice(0, 4).map((result) =>
       el("p", {
-        className: `setting-desc${r.ok ? "" : " bad"}`,
-        textContent: resultSaid(r),
+        className: `setting-desc${result.ok ? "" : " bad"}`,
+        textContent: resultSaid(result),
       }),
     ),
   );
   if (waitingFor) {
-    const done = results.find((r) => r.id === waitingFor.id);
+    const done = results.find((result) => result.id === waitingFor.id);
     if (done) {
       // A service's answer is already at the top of the list above; the password's is not.
       if (waitingFor.at === controlNote) say("", true, controlNote);
@@ -2523,7 +2523,7 @@ function renderModeration(data) {
   };
   renderReports(data, del);
   // What was reported, marked where the content is listed too, so it is all in one place.
-  const reportedN = new Map((data.queue || []).map((r) => [r.key, r.count]));
+  const reportedN = new Map((data.queue || []).map((report) => [report.key, report.count]));
   const flag = (key) =>
     reportedN.has(key)
       ? AW.pill(`reported ×${reportedN.get(key)}`, "bad")
@@ -2653,16 +2653,16 @@ function renderReports(data, del) {
     q.replaceChildren(
       queue.length
         ? AW.shortList(
-            queue.map((r) => ({
-              id: r.key,
-              title: r.text.slice(0, 80) || "(empty)",
-              summary: `${r.where}${r.by ? ` · by ${r.by}` : ""} · ${r.count} report${r.count === 1 ? "" : "s"}`,
-              badges: Object.keys(r.reasons || {}),
+            queue.map((report) => ({
+              id: report.key,
+              title: report.text.slice(0, 80) || "(empty)",
+              summary: `${report.where}${report.by ? ` · by ${report.by}` : ""} · ${report.count} report${report.count === 1 ? "" : "s"}`,
+              badges: Object.keys(report.reasons || {}),
               detail: () => [
-                AW.h("p", { class: "admin-text", text: r.text }),
+                AW.h("p", { class: "admin-text", text: report.text }),
                 AW.dl(
                   Object.fromEntries(
-                    Object.entries(r.reasons || {}).map(([k, n]) => [
+                    Object.entries(report.reasons || {}).map(([k, n]) => [
                       k,
                       `${n}`,
                     ]),
@@ -2674,7 +2674,7 @@ function renderReports(data, del) {
                       renderModeration(
                         await postJSON("/admin/moderation", {
                           action: "keep",
-                          key: r.key,
+                          key: report.key,
                         }),
                       );
                     } catch (err) {
@@ -2684,11 +2684,11 @@ function renderReports(data, del) {
                 }),
                 " ",
                 // A notes page is changed or deleted in Notes itself; the rest from here.
-                r.link
+                report.link
                   ? AW.h(
                       "a",
                       {
-                        href: r.link,
+                        href: report.link,
                         class: "action-btn",
                         target: "_blank",
                         rel: "noopener",
@@ -2696,37 +2696,37 @@ function renderReports(data, del) {
                       "Open notebook",
                     )
                   : AW.btn(
-                      r.key.startsWith("shoutbox:")
+                      report.key.startsWith("shoutbox:")
                         ? "Delete message"
-                        : r.drop
+                        : report.drop
                           ? "Delete file"
-                          : r.index === 0
+                          : report.index === 0
                             ? "Delete thread"
                             : "Delete post",
                       {
-                        onclick: r.key.startsWith("shoutbox:")
+                        onclick: report.key.startsWith("shoutbox:")
                           ? del(
                               {
                                 action: "delete_message",
-                                created: Number(r.key.split(":")[1]),
-                                name: r.by,
+                                created: Number(report.key.split(":")[1]),
+                                name: report.by,
                               },
                               "this message",
                             )
-                          : r.drop
+                          : report.drop
                             ? del(
-                                { action: "delete_drop", id: r.drop },
+                                { action: "delete_drop", id: report.drop },
                                 "this file",
                               )
                             : del(
-                                r.index === 0
-                                  ? { action: "delete_thread", id: r.thread }
+                                report.index === 0
+                                  ? { action: "delete_thread", id: report.thread }
                                   : {
                                       action: "delete_post",
-                                      id: r.thread,
-                                      index: r.index,
+                                      id: report.thread,
+                                      index: report.index,
                                     },
-                                r.index === 0
+                                report.index === 0
                                   ? "the whole thread"
                                   : "this post",
                               ),
@@ -2741,17 +2741,17 @@ function renderReports(data, del) {
   // Each app's slice of it, on its own page: the same lines, its posts only.
   lastReports = [data, del];
   document.querySelectorAll(".flagged-block[data-app]").forEach((b) => {
-    const mine = queue.filter((r) => r.key.startsWith(b.dataset.app + ":"));
+    const mine = queue.filter((report) => report.key.startsWith(b.dataset.app + ":"));
     b.replaceChildren(
       mine.length
         ? AW.shortList(
-            mine.map((r) => ({
-              id: "own-" + r.key,
-              title: r.text.slice(0, 80) || "(empty)",
-              summary: `${r.where}${r.by ? ` · by ${r.by}` : ""} · ${r.count} report${r.count === 1 ? "" : "s"}`,
-              badges: Object.keys(r.reasons || {}),
+            mine.map((report) => ({
+              id: "own-" + report.key,
+              title: report.text.slice(0, 80) || "(empty)",
+              summary: `${report.where}${report.by ? ` · by ${report.by}` : ""} · ${report.count} report${report.count === 1 ? "" : "s"}`,
+              badges: Object.keys(report.reasons || {}),
               detail: () => [
-                AW.h("p", { class: "admin-text", text: r.text }),
+                AW.h("p", { class: "admin-text", text: report.text }),
                 AW.h(
                   "a",
                   { href: "#moderation", class: "action-btn" },
@@ -2775,7 +2775,7 @@ function renderReports(data, del) {
           key: "report_reasons",
           label: "Reasons offered",
           kind: "multi",
-          value: rs.all_reasons.filter((r) => chosen.has(r)),
+          value: rs.all_reasons.filter((reason) => chosen.has(reason)),
           options: rs.all_reasons,
         },
         {
@@ -2805,9 +2805,9 @@ function renderReports(data, del) {
             ? "Offer at least one reason."
             : null,
         save: async (changed) => {
-          const r = await postJSON("/admin/settings", changed);
+          const reply = await postJSON("/admin/settings", changed);
           loadModeration();
-          return r;
+          return reply;
         },
       },
     ),
@@ -2835,7 +2835,7 @@ function thumbFor(id) {
   const img = el("img", { className: "admin-thumb", alt: "" });
   // Thumbnails are served as opaque downloads, so they are fetched and re-typed.
   fetch(`/api/saves/${id}/thumb`)
-    .then((r) => (r.ok ? r.blob() : null))
+    .then((response) => (response.ok ? response.blob() : null))
     .then((b) => {
       if (b)
         img.src = URL.createObjectURL(new Blob([b], { type: "image/png" }));
@@ -3327,7 +3327,7 @@ function renderUpdate(data) {
   );
 
   if (updWaiting) {
-    const done = (data.results || []).find((r) => r.id === updWaiting.id);
+    const done = (data.results || []).find((result) => result.id === updWaiting.id);
     if (done) {
       const failed =
         !done.ok ||
@@ -3828,50 +3828,50 @@ const evidenceList = (items) =>
       )
     : null;
 // r: {id, state, title, detail, why, notes[], evidence[], how, commands[], controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
-function findingRow(r) {
-  const state = r.state || "warn";
+function findingRow(finding) {
+  const state = finding.state || "warn";
   // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request. It sits
   // with the card's other actions, before the folds of detail, not after them.
-  const accept = r.accept
+  const accept = finding.accept
     ? el("button", {
         type: "button",
         className: "action-btn small",
-        textContent: r.accept.on ? "Reopen" : r.accept.label || "Accept risk",
-        title: r.accept.on
+        textContent: finding.accept.on ? "Reopen" : finding.accept.label || "Accept risk",
+        title: finding.accept.on
           ? "Return this finding to the unresolved list."
-          : r.accept.hint ||
+          : finding.accept.hint ||
             "Accepting changes the unresolved count. It does not change the security of the box. The finding moves to Accepted.",
         onclick: () =>
-          (r.accept.act || secAccept)(r.accept.key, r.accept.title, !r.accept.on),
+          (finding.accept.act || secAccept)(finding.accept.key, finding.accept.title, !finding.accept.on),
       })
     : null;
-  const controls = [...(r.controls || []), accept].filter(Boolean);
+  const controls = [...(finding.controls || []), accept].filter(Boolean);
   return el(
     "article",
-    { className: `finding finding-${state}`, id: r.id || "" },
+    { className: `finding finding-${state}`, id: finding.id || "" },
     el(
       "div",
       { className: "fhead" },
       // What it is about first, then how it stands (at the right), then when and where from on its own line.
-      el("h4", { className: "ftitle", textContent: r.title }),
-      r.badge || null,
+      el("h4", { className: "ftitle", textContent: finding.title }),
+      finding.badge || null,
       el("span", {
         className: `fstate fstate-${state}`,
         textContent: STATE_WORD[state] || state,
       }),
-      r.meta ? el("span", { className: "fmeta", textContent: r.meta }) : null,
+      finding.meta ? el("span", { className: "fmeta", textContent: finding.meta }) : null,
     ),
-    r.detail ? el("p", { className: "fdetail", textContent: r.detail }) : null,
-    r.why ? el("p", { className: "fdetail fwhy", textContent: r.why }) : null,
-    ...(r.notes || []).map((n) =>
+    finding.detail ? el("p", { className: "fdetail", textContent: finding.detail }) : null,
+    finding.why ? el("p", { className: "fdetail fwhy", textContent: finding.why }) : null,
+    ...(finding.notes || []).map((n) =>
       el("p", { className: "fdetail fnote", textContent: n }),
     ),
-    evidenceList(r.evidence || []),
-    r.how || controls.length || (r.commands || []).length
+    evidenceList(finding.evidence || []),
+    finding.how || controls.length || (finding.commands || []).length
       ? el(
           "div",
           { className: "fdo" },
-          r.how
+          finding.how
             ? el(
                 "p",
                 { className: "fhow" },
@@ -3882,30 +3882,30 @@ function findingRow(r) {
                       ? "Undo action: "
                       : "Recommended action: ",
                 }),
-                r.how,
+                finding.how,
               )
             : null,
-          (r.commands || []).length
-            ? el("div", { className: "fdo-cmds" }, ...r.commands.map(copyBox))
+          (finding.commands || []).length
+            ? el("div", { className: "fdo-cmds" }, ...finding.commands.map(copyBox))
             : null,
           controls.length
             ? el("div", { className: "fdo-controls" }, ...controls)
             : null,
         )
       : null,
-    r.note || null,
+    finding.note || null,
     // The deep audit's checks one by one (deepaudit.cis_findings): what each wants, what it found, its own fix.
-    (r.checks || []).length
+    (finding.checks || []).length
       ? el(
           "details",
           { className: "fsaid fchecks" },
           el("summary", {
-            textContent: `Each check, with its fix (${r.checks.length})`,
+            textContent: `Each check, with its fix (${finding.checks.length})`,
           }),
           el(
             "ul",
             {},
-            ...r.checks.map((c) =>
+            ...finding.checks.map((c) =>
               el(
                 "li",
                 {},
@@ -3933,15 +3933,15 @@ function findingRow(r) {
           ),
         )
       : null,
-    (r.said || []).length
+    (finding.said || []).length
       ? el(
           "details",
           { className: "fsaid" },
-          el("summary", { textContent: `Source results (${r.said.length})` }),
+          el("summary", { textContent: `Source results (${finding.said.length})` }),
           el(
             "ul",
             {},
-            ...r.said.map((l) =>
+            ...finding.said.map((l) =>
               el(
                 "li",
                 {},
@@ -3976,13 +3976,13 @@ const noteUnder = (fid) =>
     : null;
 async function secAccept(key, title, yes) {
   try {
-    const r = await postJSON("/admin/security", {
+    const reply = await postJSON("/admin/security", {
       action: yes ? "accept" : "unaccept",
       key,
       title,
     });
     if (secData) {
-      secData.accepted = r.accepted;
+      secData.accepted = reply.accepted;
       renderSecurity(secData);
     }
   } catch (err) {
@@ -4005,7 +4005,7 @@ async function healthRepair(choice, label) {
 // Told by each health report: the repair's place in the queue, then its answer, where it was asked.
 function secRepairFollow(data) {
   if (!secRepair) return;
-  const done = (data.results || []).find((r) => r.id === secRepair.id);
+  const done = (data.results || []).find((result) => result.id === secRepair.id);
   const q = data.queue || {};
   if (done) {
     say(`${secRepair.label}: ${resultSaid(done)}`, done.ok, sec.auditNote);
@@ -4149,8 +4149,8 @@ function portRanges(ls) {
       const ps = [...by[proto]].sort((a, b) => a - b);
       const runs = [];
       for (const p of ps) {
-        const r = runs[runs.length - 1];
-        if (r && p === r[1] + 1) r[1] = p;
+        const run = runs[runs.length - 1];
+        if (run && p === run[1] + 1) run[1] = p;
         else runs.push([p, p]);
       }
       return `${proto.toUpperCase()} ${runs.map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a}, ${b}` : `${a}–${b}`)).join(", ")}`;
@@ -4169,10 +4169,10 @@ function renderSecurity(data) {
   const busy = data.pending > 0 || !!secWaiting;
   secPrune(scan);
   if (secWaiting) {
-    const done = (data.results || []).find((r) => r.id === secWaiting.id);
+    const done = (data.results || []).find((result) => result.id === secWaiting.id);
     if (done) {
       const all = (secWaiting.ids || [secWaiting.id])
-        .map((id) => (data.results || []).find((r) => r.id === id))
+        .map((id) => (data.results || []).find((result) => result.id === id))
         .filter(Boolean);
       secNote = {
         fid: secWaiting.fid,
@@ -4182,13 +4182,13 @@ function renderSecurity(data) {
         ]
           .filter(Boolean)
           .join(" "),
-        ok: all.every((r) => r.ok) && !secWaiting.keepNote,
+        ok: all.every((result) => result.ok) && !secWaiting.keepNote,
       };
       if (secWaiting.onDone)
         secWaiting.onDone(
-          all.every((r) => r.ok),
+          all.every((result) => result.ok),
           all
-            .filter((r) => !r.ok)
+            .filter((result) => !result.ok)
             .map(resultSaid)
             .join(" "),
         );
@@ -4870,7 +4870,7 @@ function parseNmapXml(text) {
     kind: "nmap",
     ran: start,
     results: results.filter(
-      (r) => r.state === "open" || r.state === "open|filtered",
+      (result) => result.state === "open" || result.state === "open|filtered",
     ),
   };
 }
@@ -4884,29 +4884,29 @@ function splitPort(text) {
 function parseOpenvasXml(text) {
   const doc = xmlDoc(text);
   const results = [];
-  for (const r of doc.getElementsByTagName("result")) {
-    const nvt = [...r.children].find((c) => c.tagName === "nvt");
+  for (const result of doc.getElementsByTagName("result")) {
+    const nvt = [...result.children].find((c) => c.tagName === "nvt");
     if (!nvt) continue;
     const tags = kid(nvt, "tags");
     const tag = (name) =>
       (
         (tags.match(new RegExp(`(?:^|\\|)${name}=([^|]*)`)) || [])[1] || ""
       ).trim();
-    const cvss = parseFloat(kid(r, "severity") || kid(nvt, "cvss_base")) || 0;
+    const cvss = parseFloat(kid(result, "severity") || kid(nvt, "cvss_base")) || 0;
     if (cvss <= 0) continue;
     const cves = [...nvt.getElementsByTagName("ref")]
       .filter((x) => x.getAttribute("type") === "cve")
       .map((x) => x.getAttribute("id"))
       .concat(kid(nvt, "cve").match(/CVE-\d{4}-\d{4,7}/g) || []);
     results.push({
-      ...splitPort(kid(r, "port")),
+      ...splitPort(kid(result, "port")),
       host:
         (
-          r.getElementsByTagName("host")[0] || { firstChild: null }
+          result.getElementsByTagName("host")[0] || { firstChild: null }
         ).firstChild?.textContent?.trim() || "",
       cvss,
       name: kid(nvt, "name"),
-      summary: tag("summary") || kid(r, "description").slice(0, 600),
+      summary: tag("summary") || kid(result, "description").slice(0, 600),
       solution: kid(nvt, "solution") || tag("solution"),
       cves: [...new Set(cves)].slice(0, 50),
     });
@@ -4950,7 +4950,7 @@ function csvRows(text) {
     row.push(field);
     rows.push(row);
   }
-  return rows.filter((r) => r.some((x) => x.trim()));
+  return rows.filter((cells) => cells.some((x) => x.trim()));
 }
 function parseOpenvasCsv(text) {
   const [head, ...rows] = csvRows(text);
@@ -4969,19 +4969,19 @@ function parseOpenvasCsv(text) {
   if (col.cvss < 0 || col.name < 0)
     throw new Error("OpenVAS CSV must include CVSS and NVT Name columns.");
   const results = rows
-    .map((r) => ({
-      port: /^\d+$/.test(r[col.port] || "") ? Number(r[col.port]) : "general",
-      proto: (r[col.proto] || "tcp").toLowerCase() === "udp" ? "udp" : "tcp",
-      host: r[col.ip] || "",
-      cvss: parseFloat(r[col.cvss]) || 0,
-      name: r[col.name] || "",
-      summary: r[col.summary] || "",
-      solution: col.solution >= 0 ? r[col.solution] : "",
+    .map((row) => ({
+      port: /^\d+$/.test(row[col.port] || "") ? Number(row[col.port]) : "general",
+      proto: (row[col.proto] || "tcp").toLowerCase() === "udp" ? "udp" : "tcp",
+      host: row[col.ip] || "",
+      cvss: parseFloat(row[col.cvss]) || 0,
+      name: row[col.name] || "",
+      summary: row[col.summary] || "",
+      solution: col.solution >= 0 ? row[col.solution] : "",
       cves: (
-        (col.cves >= 0 ? r[col.cves] : "").match(/CVE-\d{4}-\d{4,7}/g) || []
+        (col.cves >= 0 ? row[col.cves] : "").match(/CVE-\d{4}-\d{4,7}/g) || []
       ).slice(0, 50),
     }))
-    .filter((r) => r.cvss > 0);
+    .filter((port) => port.cvss > 0);
   const t = col.time >= 0 && rows[0] ? Date.parse(rows[0][col.time]) : NaN;
   return {
     kind: "openvas",
@@ -5235,19 +5235,19 @@ document.getElementById("import-form").addEventListener("submit", async (event) 
     const text = file.text
       ? await file.text()
       : await new Promise((ok, no) => {
-          const r = new FileReader();
-          r.onload = () => ok(r.result);
-          r.onerror = () => no(r.error);
-          r.readAsText(file);
+          const reader = new FileReader();
+          reader.onload = () => ok(reader.result);
+          reader.onerror = () => no(reader.error);
+          reader.readAsText(file);
         });
     const report = parseScanReport(text, file.name);
-    const r = await postJSON("/admin/security", { action: "import", report });
+    const reply = await postJSON("/admin/security", { action: "import", report });
     say(
-      `${report.kind === "nmap" ? "nmap" : "OpenVAS"}: ${report.results.length} results read. ${resultSaid(r) || ""}`,
+      `${report.kind === "nmap" ? "nmap" : "OpenVAS"}: ${report.results.length} results read. ${resultSaid(reply) || ""}`,
       true,
       importNote,
     );
-    secWaiting = { id: r.id, fid: "audit" };
+    secWaiting = { id: reply.id, fid: "audit" };
     loadSecurity();
   } catch (err) {
     say(err.message, false, importNote);
@@ -5272,11 +5272,11 @@ function renderImports(imports) {
           "Remove",
           async () => {
             try {
-              const r = await postJSON("/admin/security", {
+              const reply = await postJSON("/admin/security", {
                 action: "import-remove",
                 kind,
               });
-              secWaiting = { id: r.id, fid: "audit" };
+              secWaiting = { id: reply.id, fid: "audit" };
               loadSecurity();
             } catch (err) {
               say(err.message, false, importNote);
@@ -5484,11 +5484,11 @@ function renderGlance(data, rep) {
   const brief = (f) => f.glance || first(f.summary);
   // Why the box last started: the reason only ("Unclean shutdown"), the explanation stays in the findings below.
   const why = (t) => {
-    const r = String(t || "")
+    const reason = String(t || "")
       .replace(/^Started: /, "")
       .split(/[:.]/)[0]
       .trim();
-    return r ? r[0].toUpperCase() + r.slice(1) : "Started";
+    return reason ? reason[0].toUpperCase() + reason.slice(1) : "Started";
   };
   const w = data.watchers || {};
   const st = rep && rep.settings;
@@ -5656,10 +5656,10 @@ function renderDoctorSettings(data, rep) {
   hsGroups = (st && st.groups) || [];
   if (hsSaving) {
     const done = hsSaving.ids.map((id) =>
-      (data.results || []).find((r) => r.id === id),
+      (data.results || []).find((result) => result.id === id),
     );
     if (done.every(Boolean)) {
-      const bad = done.filter((r) => !r.ok);
+      const bad = done.filter((result) => !result.ok);
       const left = hsSaving.of - done.length;
       const ok = !bad.length && !hsSaving.failed;
       const text =
@@ -5772,8 +5772,8 @@ const HELPER_WORDS = {
   "content-export": "Backup: content export",
   "backup-image": "Backup: image",
 };
-const helperWords = (r) =>
-  `${HELPER_WORDS[r.action] || r.action.replace(/-/g, " ")}${r.detail ? ` (${r.detail})` : ""}`;
+const helperWords = (result) =>
+  `${HELPER_WORDS[result.action] || result.action.replace(/-/g, " ")}${result.detail ? ` (${result.detail})` : ""}`;
 const spanOf = (secs) =>
   ago(secs).replace(/ ago$/, "").replace("just now", "under a minute");
 function renderHelperQueue(q) {
@@ -5797,10 +5797,10 @@ function renderHelperQueue(q) {
   );
   doneFold.hidden = !(q.done || []).length;
   done.replaceChildren(
-    ...(q.done || []).map((r) =>
+    ...(q.done || []).map((result) =>
       el("li", {
-        className: r.ok ? "" : "bad",
-        textContent: `${r.ok ? "✓" : "✗"} ${r.ago != null ? ago(r.ago) : ""}: ${resultSaid(r)}`,
+        className: result.ok ? "" : "bad",
+        textContent: `${result.ok ? "✓" : "✗"} ${result.ago != null ? ago(result.ago) : ""}: ${resultSaid(result)}`,
       }),
     ),
   );
@@ -5846,7 +5846,7 @@ function renderHealth(data) {
     data.progress && data.progress.action === "repair" ? data.progress : null;
   const busy = data.pending > 0 || !!hlWaiting || !!p;
   if (hlWaiting) {
-    const done = (data.results || []).find((r) => r.id === hlWaiting.id);
+    const done = (data.results || []).find((result) => result.id === hlWaiting.id);
     if (done) {
       hlNote = { fid: hlWaiting.fid, text: resultSaid(done), ok: done.ok };
       if (hlWaiting.onDone) hlWaiting.onDone(done.ok, resultSaid(done));
@@ -6052,7 +6052,7 @@ function renderHealth(data) {
 // Accept a review finding (or take it back): the hub keeps the list; the page draws it again at once.
 async function hlAccept(key, title, yes) {
   try {
-    const r = await postJSON("/admin/health", {
+    const reply = await postJSON("/admin/health", {
       action: yes ? "accept" : "unaccept",
       key,
       title,
@@ -6064,7 +6064,7 @@ async function hlAccept(key, title, yes) {
         : "Reopened. It is in the review list again.",
       ok: true,
     };
-    if (hlLast) renderHealth({ ...hlLast, accepted: r.accepted || {} });
+    if (hlLast) renderHealth({ ...hlLast, accepted: reply.accepted || {} });
   } catch (error) {
     hlNote = { fid: key, text: error.message, ok: false };
     if (hlLast) renderHealth(hlLast);
@@ -6216,13 +6216,13 @@ function renderClockSources(c, busy, own) {
   addr.addEventListener("input", () =>
     clkSec.set("local", addr.value.trim(), true),
   );
-  const states = (c.sources || []).map((r) => {
-    const [st, word] = CLOCK_STATE[r.state] || ["ok", r.state];
+  const states = (c.sources || []).map((source) => {
+    const [st, word] = CLOCK_STATE[source.state] || ["ok", source.state];
     return el(
       "li",
       {},
       el("span", { className: `fstate fstate-${st}`, textContent: word }),
-      ` ${r.name[0].toUpperCase()}${r.name.slice(1)}`,
+      ` ${source.name[0].toUpperCase()}${source.name.slice(1)}`,
     );
   });
   const imageName =
@@ -6575,8 +6575,8 @@ function drawUpScope(inv) {
   const links = inv
     ? [
         ...inv.radios
-          .filter((r) => r.type === "managed")
-          .map((r) => [r.iface, "WiFi"]),
+          .filter((radio) => radio.type === "managed")
+          .map((radio) => [radio.iface, "WiFi"]),
         ...inv.wired.map((w) => [w.iface, "wired"]),
       ]
     : [];
@@ -6706,16 +6706,16 @@ function stepsInWords(p) {
   if (!Object.keys(st).length) return "only records it";
   const parts = [];
   if ("reconnect" in st) {
-    let r = st.reconnect
+    let reconnect = st.reconnect
       ? `reconnects after ${dur(st.reconnect)}`
       : "reconnects at once";
     if (p.repeat)
-      r +=
+      reconnect +=
         `, then again every ${dur(p.repeat)}` +
         (p.backoff > 1 && p.max_repeat
           ? ` (the interval grows ×${p.backoff}, up to ${dur(p.max_repeat)})`
           : "");
-    parts.push(r);
+    parts.push(reconnect);
   }
   if ("restart" in st)
     parts.push(`restarts the network service after ${dur(st.restart)}`);
@@ -6830,12 +6830,12 @@ const ROAM_WORDS = {
 const uplinkRadio = () => {
   const inv = netData && netData.inventory;
   const up = inv && inv.uplink;
-  return inv && up ? inv.radios.find((r) => r.iface === up.iface) : null;
+  return inv && up ? inv.radios.find((radio) => radio.iface === up.iface) : null;
 };
 function drawLockAps() {
   const box = net.lockAps,
-    r = uplinkRadio(),
-    aps = (r && r.roaming && r.roaming.aps) || [];
+    radio = uplinkRadio(),
+    aps = (radio && radio.roaming && radio.roaming.aps) || [];
   box.hidden = upPick.roaming !== "lock";
   if (box.hidden) return;
   if (!upPick.lock_bssid && aps.length) upPick.lock_bssid = aps[0].bssid; // the strongest, preselected
@@ -6856,7 +6856,7 @@ function drawLockAps() {
             { className: "inline" },
             input,
             ` ${a.bssid}: channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ""}, signal ${a.signal}%` +
-              `${r.link && r.link.bssid === a.bssid ? " (in use now)" : ""}`,
+              `${radio.link && radio.link.bssid === a.bssid ? " (in use now)" : ""}`,
           );
         })
       : [
@@ -7007,8 +7007,8 @@ function buildUpChoices(levels) {
 
 // The roaming tiles: the ones the hardware scan says can't work here greyed, with why.
 function drawRoamTiles(levels) {
-  const r = uplinkRadio(),
-    facts = r && r.roaming,
+  const radio = uplinkRadio(),
+    facts = radio && radio.roaming,
     why = (facts && facts.why) || {};
   const key = JSON.stringify(why);
   if (net.roaming.dataset.why === key && net.roaming.childElementCount) return;
@@ -7157,8 +7157,8 @@ function renderUpSteps(inv, chosen) {
   const links = inv
     ? [
         ...inv.radios
-          .filter((r) => r.type !== "AP")
-          .map((r) => [r.iface, "WiFi"]),
+          .filter((radio) => radio.type !== "AP")
+          .map((radio) => [radio.iface, "WiFi"]),
         ...inv.wired.map((w) => [w.iface, "wired"]),
       ]
     : [];
@@ -7213,8 +7213,8 @@ function renderUpWatch(inv, u) {
   const links = inv
     ? [
         ...inv.radios
-          .filter((r) => r.type === "managed")
-          .map((r) => [r.iface, "WiFi"]),
+          .filter((radio) => radio.type === "managed")
+          .map((radio) => [radio.iface, "WiFi"]),
         ...inv.wired.map((w) => [w.iface, "wired"]),
       ]
     : [];
@@ -7827,8 +7827,8 @@ function bgscanWords(v) {
 function drawRoaming(inv, u, wifi) {
   const box = document.getElementById("net-roaming"),
     caps = document.getElementById("net-roam-caps");
-  const r = wifi.find((x) => x.roaming),
-    f = r && r.roaming;
+  const radio = wifi.find((x) => x.roaming),
+    f = radio && radio.roaming;
   if (!f) {
     box.replaceChildren();
     caps.replaceChildren();
@@ -7888,7 +7888,7 @@ function drawRoaming(inv, u, wifi) {
     el(
       "div",
       { className: "net-device setting" },
-      el("h4", {}, el("span", { textContent: `${r.iface}: roaming` })),
+      el("h4", {}, el("span", { textContent: `${radio.iface}: roaming` })),
       el("p", {
         className: "net-label",
         textContent: `Access points sharing ${f.ssid}`,
@@ -7903,7 +7903,7 @@ function drawRoaming(inv, u, wifi) {
                 {
                   className:
                     "net-ap-tile" +
-                    (r.link && r.link.bssid === a.bssid ? " in-use" : ""),
+                    (radio.link && radio.link.bssid === a.bssid ? " in-use" : ""),
                 },
                 el("span", { className: "net-ap-bssid", textContent: a.bssid }),
                 el("span", {
@@ -7918,7 +7918,7 @@ function drawRoaming(inv, u, wifi) {
                 }),
                 el("span", {
                   className: "setting-desc",
-                  textContent: `${a.signal}%${r.link && r.link.bssid === a.bssid ? ", in use" : ""}`,
+                  textContent: `${a.signal}%${radio.link && radio.link.bssid === a.bssid ? ", in use" : ""}`,
                 }),
               ),
             ),
@@ -7952,7 +7952,7 @@ function drawNetTabs(data, inv, u) {
       ? "The box has no link to a network right now."
       : `The box reaches your network through ${up.iface} (${up.kind === "wifi" ? "WiFi" : "wired"}). ${upStatusText(u)}`;
   const links = inv
-    ? [...inv.radios.filter((r) => r.type !== "AP"), ...inv.wired]
+    ? [...inv.radios.filter((radio) => radio.type !== "AP"), ...inv.wired]
     : [];
   AW.drawKept(netTabs.statusCards, [
     ...links.map((d) =>
@@ -7980,27 +7980,27 @@ function drawNetTabs(data, inv, u) {
     });
   }
   // Connection settings: its WiFi now, the networks it knows (NetworkManager's saved ones), its wired port.
-  const wifi = inv ? inv.radios.filter((r) => r.type === "managed") : [];
+  const wifi = inv ? inv.radios.filter((radio) => radio.type === "managed") : [];
   AW.drawKept(netTabs.wifiNow, [
     ...(wifi.length
-      ? wifi.map((r) =>
+      ? wifi.map((radio) =>
           el(
             "div",
             {},
-            netLine(r.iface, linkNow(inv, r), "now"),
-            r.link && r.link.bssid
+            netLine(radio.iface, linkNow(inv, radio), "now"),
+            radio.link && radio.link.bssid
               ? netLine(
                   "Access point",
-                  `${r.link.bssid}${r.profile && r.profile.bssid_lock ? " (locked to it)" : ""}`,
+                  `${radio.link.bssid}${radio.profile && radio.profile.bssid_lock ? " (locked to it)" : ""}`,
                 )
               : null,
-            r.profile
+            radio.profile
               ? netLine(
                   "Profile",
-                  `${r.profile.name}${r.profile.autoconnect ? "" : ", autoconnect off"}`,
+                  `${radio.profile.name}${radio.profile.autoconnect ? "" : ", autoconnect off"}`,
                 )
               : null,
-            meteredNow && meteredNow.iface === r.iface
+            meteredNow && meteredNow.iface === radio.iface
               ? netLine(
                   "Metered",
                   meteredNow.metered
@@ -8022,7 +8022,7 @@ function drawNetTabs(data, inv, u) {
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
   const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== "ap");
   const current = new Set(
-    wifi.map((r) => r.profile && r.profile.uuid).filter(Boolean),
+    wifi.map((radio) => radio.profile && radio.profile.uuid).filter(Boolean),
   );
   const mine = new Map((data.joined || []).map((j) => [j.uuid, j]));
   const busy = data.pending > 0 || !!netWaiting;
@@ -8063,7 +8063,7 @@ function drawNetTabs(data, inv, u) {
                     data,
                     busy,
                     current.has(p.uuid)
-                      ? wifi.find((r) => r.profile && r.profile.uuid === p.uuid)
+                      ? wifi.find((radio) => radio.profile && radio.profile.uuid === p.uuid)
                       : null,
                   ),
                   mine.has(p.uuid)
@@ -8124,11 +8124,11 @@ function drawNetTabs(data, inv, u) {
 // radio serving it is said as a fault, not as "Not running".
 function drawApHealth(data = netData) {
   const inv = data && data.inventory;
-  const wifi = inv ? inv.radios.filter((r) => r.type !== "AP") : [];
-  const aps = inv ? inv.radios.filter((r) => r.type === "AP") : [];
+  const wifi = inv ? inv.radios.filter((radio) => radio.type !== "AP") : [];
+  const aps = inv ? inv.radios.filter((radio) => radio.type === "AP") : [];
   const on = apRun ? !!apRun.up : null;
   const lines = aps.flatMap((a) => {
-    const shared = wifi.find((r) => r.phy === a.phy);
+    const shared = wifi.find((radio) => radio.phy === a.phy);
     const n = (a.stations || []).length;
     return [
       netLine(
@@ -8178,7 +8178,7 @@ function renderNetwork(data) {
   netData = data;
   const busy = data.pending > 0 || !!netWaiting;
   if (netWaiting) {
-    const done = (data.results || []).find((r) => r.id === netWaiting.id);
+    const done = (data.results || []).find((result) => result.id === netWaiting.id);
     if (done) {
       netNotes[netWaiting.where] = { text: resultSaid(done), ok: done.ok };
       if (netWaiting.onDone) netWaiting.onDone(done.ok, resultSaid(done));
@@ -8201,7 +8201,7 @@ function renderNetwork(data) {
   // can run the hotspot and on what conditions, and the warnings that are about it.
   const shownIfaces = new Set(
     inv
-      ? [...inv.radios.map((r) => r.iface), ...inv.wired.map((w) => w.iface)]
+      ? [...inv.radios.map((radio) => radio.iface), ...inv.wired.map((w) => w.iface)]
       : [],
   );
   // A review item accepted (on this page or the Box doctor's, one list: "net:<id>") is said as that and sorts with the passed.
@@ -8218,7 +8218,7 @@ function renderNetwork(data) {
   AW.drawKept(net.devices, [
     ...(inv
       ? [
-          ...inv.radios.map((r) => deviceCard(inv, r, true, hz)),
+          ...inv.radios.map((radio) => deviceCard(inv, radio, true, hz)),
           ...inv.wired.map((w) => deviceCard(inv, w, false, hz)),
         ]
       : []),
@@ -8591,7 +8591,7 @@ function renderDefaults(inv, busy) {
   // The retries go beside the watchdog's own (Network recovery), for the whole box.
   const retries = defaultsScope
     ? []
-    : rows.filter((r) => RETRY_DEFAULTS.includes(r.dataset.name));
+    : rows.filter((row) => RETRY_DEFAULTS.includes(row.dataset.name));
   document.getElementById("net-retry-defaults").replaceChildren(...retries);
   document.getElementById("up-retries-group").hidden =
     !retries.length && !net.profile.childElementCount;
@@ -8623,7 +8623,7 @@ function renderDefaults(inv, busy) {
     ),
   ];
   net.defaults.replaceChildren(
-    ...rows.filter((r) => !retries.includes(r)),
+    ...rows.filter((row) => !retries.includes(row)),
     ...(notes.length
       ? [
           el(
@@ -8810,9 +8810,9 @@ function renderVisible(inv, busy) {
   const shared =
     inv &&
     inv.radios.some(
-      (r) =>
-        r.type === "AP" &&
-        inv.radios.some((m) => m.type === "managed" && m.phy === r.phy),
+      (radio) =>
+        radio.type === "AP" &&
+        inv.radios.some((m) => m.type === "managed" && m.phy === radio.phy),
     );
   const scanAgain = actionButton(
     "Run scan",
@@ -9276,18 +9276,18 @@ function applyChangesHidden() {
   if (!sec || changesHidden === null) return;
   const rows = [...sec.querySelectorAll("[data-change]")];
   let hiddenNow = 0;
-  for (const r of rows) {
-    const id = r.dataset.change,
+  for (const row of rows) {
+    const id = row.dataset.change,
       isHidden = changesHidden.includes(id);
-    r.hidden = isHidden && !changesShowAll;
+    row.hidden = isHidden && !changesShowAll;
     hiddenNow += isHidden;
-    let b = r.querySelector(":scope > .change-hide");
+    let b = row.querySelector(":scope > .change-hide");
     if (!b) {
       b = el("button", {
         type: "button",
         className: "link-button change-hide",
       });
-      r.append(" ", b);
+      row.append(" ", b);
     }
     b.textContent = isHidden ? "Show this change" : "Hide this change";
     b.title = isHidden
@@ -9304,7 +9304,7 @@ function applyChangesHidden() {
   for (const id of ["net-handover", "net-other-ap", "net-wifisync"]) {
     const part = document.getElementById(id),
       own = part ? [...part.querySelectorAll("[data-change]")] : [];
-    if (part) part.hidden = own.length > 0 && own.every((r) => r.hidden);
+    if (part) part.hidden = own.length > 0 && own.every((change) => change.hidden);
   }
   let more = document.getElementById("net-changes-more");
   if (!more) {
@@ -9533,12 +9533,12 @@ function renderAp(run) {
   const radio = apEl.radio.value;
   apFill(
     apEl.radio,
-    (run.radios || []).map((r) => r.iface),
+    (run.radios || []).map((runRadio) => runRadio.iface),
     (run.owner || {}).radio || radio,
   );
   const chans = (
     (run.radios || []).find(
-      (r) => r.iface === (apEl.radio.value || (p && p.iface)),
+      (runRadio) => runRadio.iface === (apEl.radio.value || (p && p.iface)),
     ) ||
     (run.radios || [])[0] || { channels: [] }
   ).channels;
@@ -9638,9 +9638,9 @@ const hsSec = AW.section({
   warn: (c, v) =>
     v.mode !== "open" ? "Read the warnings under the choices." : null,
   save: async (c, v) => {
-    const r = await postJSON("/admin/hotspot", { settings: v });
+    const reply = await postJSON("/admin/hotspot", { settings: v });
     loadHotspot();
-    return resultSaid(r);
+    return resultSaid(reply);
   },
   onChange: () => hsDraw(hsSec.values()),
 });
@@ -9683,8 +9683,8 @@ function hsDraw(v) {
 }
 
 function hsChosen() {
-  const r = hs.modes.querySelector('input[name="hs-mode"]:checked');
-  return r ? r.value : "open";
+  const checked = hs.modes.querySelector('input[name="hs-mode"]:checked');
+  return checked ? checked.value : "open";
 }
 
 function hsShowFields() {
@@ -10071,10 +10071,10 @@ function drawPicks() {
   );
   pickList(
     kitEl.repos,
-    p.repos.map((r) => ({ ...r, value: `${r.area}/${r.name}` })),
+    p.repos.map((repo) => ({ ...repo, value: `${repo.area}/${repo.name}` })),
     "repo",
-    (r) =>
-      `${r.name}${r.area === "private" ? " (administrators only)" : ""}${r.mirror ? ", a mirror" : ""} (${size(r.size)})`,
+    (repo) =>
+      `${repo.name}${repo.area === "private" ? " (administrators only)" : ""}${repo.mirror ? ", a mirror" : ""} (${size(repo.size)})`,
   );
   stickEl.hubSize.textContent = `about ${size(p.hub)} (its code, apps and release files)`;
   drawPresets();
@@ -10095,7 +10095,7 @@ function kitBytes() {
     picked(kitEl.repos).reduce(
       (n, v) =>
         n +
-        ((p.repos.find((r) => `${r.area}/${r.name}` === v) || {}).size || 0),
+        ((p.repos.find((repo) => `${repo.area}/${repo.name}` === v) || {}).size || 0),
       0,
     ) +
     (f.state.value === "none" ? 0 : p.levels[f.state.value])
@@ -10151,7 +10151,7 @@ async function bkSticks(scan) {
     const d = await getJSON("/admin/usb");
     usbSticks = (d.scan && d.scan.devices) || [];
     if (bkWaiting) {
-      const done = (d.results || []).find((r) => r.id === bkWaiting.id);
+      const done = (d.results || []).find((result) => result.id === bkWaiting.id);
       if (done) {
         say(resultSaid(done), done.ok, bkWaiting.note);
         bkWaiting = null;
@@ -10204,7 +10204,7 @@ let kitWaiting = null;
 let kitPoll = null;
 function renderKit(d) {
   if (kitWaiting) {
-    const done = (d.results || []).find((r) => r.id === kitWaiting);
+    const done = (d.results || []).find((result) => result.id === kitWaiting);
     if (done) {
       say(resultSaid(done), done.ok, kitEl.note);
       kitWaiting = null;
@@ -10414,8 +10414,8 @@ function accessWarn(a, mode) {
 // The change, as a job: done when the root helper's answer comes back with the poll (renderAccess).
 async function accessSet(a, mode) {
   const j = AW.job();
-  const r = await postJSON("/admin/access", { app: a.id, mode });
-  accessWaiting = { id: r.id, app: a.id, job: j };
+  const reply = await postJSON("/admin/access", { app: a.id, mode });
+  accessWaiting = { id: reply.id, app: a.id, job: j };
   accessNote = null;
   loadAccess();
   return j;
@@ -10423,7 +10423,7 @@ async function accessSet(a, mode) {
 
 function renderAccess(data) {
   if (accessWaiting) {
-    const done = (data.results || []).find((r) => r.id === accessWaiting.id);
+    const done = (data.results || []).find((result) => result.id === accessWaiting.id);
     if (done) {
       accessNote = {
         app: accessWaiting.app,
@@ -10617,15 +10617,15 @@ function fillHeadBlocks() {
   const manifests = AL.apps() || [];
   document.querySelectorAll(".head-block[data-app]").forEach((block) => {
     const id = block.dataset.app;
-    const r = rows.find((x) => x.id === id);
+    const row = rows.find((x) => x.id === id);
     const m = manifests.find((x) => x.id === id) || {};
     const a = lastAccess && lastAccess.apps.find((x) => x.id === id);
     const svc = lastBox && (lastBox.services || []).find((x) => x.app === id);
     const buttons = [];
     if (
       m.href &&
-      r &&
-      ["installed", "builtin"].includes(r.state) &&
+      row &&
+      ["installed", "builtin"].includes(row.state) &&
       !(a && a.mode === "off")
     ) {
       buttons.push(
@@ -10641,7 +10641,7 @@ function fillHeadBlocks() {
     const addon =
       lastAddons && (lastAddons.addons || []).find((x) => x.id === id);
     // Its install card on this page says what adding it means first (its consent text, addonButtons).
-    if (r && r.kind === "addon" && addon && addon.added === false)
+    if (row && row.kind === "addon" && addon && addon.added === false)
       buttons.push(
         el("a", {
           className: "action-btn primary",
@@ -10650,23 +10650,23 @@ function fillHeadBlocks() {
         }),
       );
     const held =
-      r &&
-      r.kind === "local" &&
+      row &&
+      row.kind === "local" &&
       lastLocal &&
       (lastLocal.added || []).find(
         (x) => x.id === id && x.catalogue && x.catalogue.status === "held",
       );
     if (held)
       buttons.push(approveButton(held, lastLocal, "action-btn primary"));
-    if (r && r.kind === "local" && r.state !== "installed")
+    if (row && row.kind === "local" && row.state !== "installed")
       buttons.push(
         el("a", {
           className: "action-btn",
-          href: r.offered ? "#local-catalogue" : "#local-added",
+          href: row.offered ? "#local-catalogue" : "#local-added",
           textContent: "Add from the catalogue",
         }),
       );
-    if (r && r.kind === "app" && r.state === "available")
+    if (row && row.kind === "app" && row.state === "available")
       buttons.push(
         el("a", {
           className: "action-btn",
@@ -10696,7 +10696,7 @@ function fillHeadBlocks() {
         ),
       );
     }
-    const facts = r ? [INV_KIND[r.kind] || r.kind, ...r.facts] : ["Loading."];
+    const facts = row ? [INV_KIND[row.kind] || row.kind, ...row.facts] : ["Loading."];
     if (svc && svc.unit)
       facts.push(`Service: ${STATE_LABEL[svc.state] || svc.state}`);
     block.replaceChildren(
@@ -10707,7 +10707,7 @@ function fillHeadBlocks() {
           ...facts.map((t) =>
             el("span", { className: "inv-fact", textContent: t }),
           ),
-          ...(r ? r.attention : []).map((t) =>
+          ...(row ? row.attention : []).map((t) =>
             el("span", { className: "inv-fact bad", textContent: t }),
           ),
         ),
@@ -11030,7 +11030,7 @@ function drawTileOrder(openId) {
   );
   const open =
     openId &&
-    [...box.querySelectorAll(".aw-row")].find((r) => r.dataset.awId === openId);
+    [...box.querySelectorAll(".aw-row")].find((row) => row.dataset.awId === openId);
   if (open) {
     AW.foldRow(open.querySelector(".aw-row-head"), true);
     if (tileFocusScroll && open.scrollIntoView)
@@ -11402,7 +11402,7 @@ function renderAddons(data) {
   const p = data.progress;
   const busy = data.pending > 0 || !!adoWaiting || !!p;
   if (adoWaiting) {
-    const done = (data.results || []).find((r) => r.id === adoWaiting.id);
+    const done = (data.results || []).find((result) => result.id === adoWaiting.id);
     if (done) {
       adoNote = {
         addon: adoWaiting.addon,
@@ -11950,7 +11950,7 @@ function renderUsb(data) {
   const p = data.progress;
   const busy = data.pending > 0 || !!usbWaiting || !!p;
   if (usbWaiting) {
-    const done = (data.results || []).find((r) => r.id === usbWaiting.id);
+    const done = (data.results || []).find((result) => result.id === usbWaiting.id);
     if (done) {
       usbNote = { at: usbWaiting.at, text: resultSaid(done), ok: done.ok };
       usbWaiting = null;
@@ -12119,36 +12119,36 @@ const PUSH_WORDS = {
   admin: "administrators push",
   nobody: "read-only",
 };
-const builds = (r) => r.can_build && r.build && r.has_script;
-const repoKey = (r) => `${r.area}/${r.name}`;
+const builds = (repo) => repo.can_build && repo.build && repo.has_script;
+const repoKey = (repo) => `${repo.area}/${repo.name}`;
 const GIT_KINDS = [
   ["all", "All", () => true],
-  ["mine", "Local repositories", (r) => !r.mirror_of],
-  ["mirrors", "Mirrors", (r) => !!r.mirror_of],
+  ["mine", "Local repositories", (repo) => !repo.mirror_of],
+  ["mirrors", "Mirrors", (repo) => !!repo.mirror_of],
   ["builds", "Builds", builds],
 ];
 const GIT_AREAS = [
   ["all", "All access", () => true],
-  ["public", "Guests", (r) => r.area === "public"],
-  ["private", "Administrators", (r) => r.area === "private"],
+  ["public", "Guests", (repo) => repo.area === "public"],
+  ["private", "Administrators", (repo) => repo.area === "private"],
 ];
 
 // One sentence for the card: who sees it, who pushes, whether pushes are built.
-function accessSentence(r) {
+function accessSentence(repo) {
   const see =
-    r.area === "public"
+    repo.area === "public"
       ? "Anyone on the network can see and clone it."
       : "Only administrators can see and clone it.";
-  const push = r.mirror_of
+  const push = repo.mirror_of
     ? "Nobody can push to it. The librarian updates it."
     : {
         everyone: "Anyone can push to it.",
         admin: "Only administrators can push to it.",
         nobody: "Nobody can push to it.",
-      }[r.write];
-  const build = builds(r)
+      }[repo.write];
+  const build = builds(repo)
     ? " The box builds each push."
-    : r.can_build && r.has_script && !r.build
+    : repo.can_build && repo.has_script && !repo.build
       ? " Builds are disabled."
       : "";
   return `${see} ${push}${build}`;
@@ -12163,13 +12163,13 @@ function renderGit(data) {
     return;
   }
   renderMirrors(data);
-  const total = data.repos.reduce((n, r) => n + r.size, 0);
+  const total = data.repos.reduce((n, repo) => n + repo.size, 0);
   git.usage.textContent =
     `${data.repos.length} repositor${data.repos.length === 1 ? "y" : "ies"}, ${size(total)}` +
     (data.free != null ? `, ${size(data.free)} free on the card` : "") +
     `. A single push can be up to ${size(data.max_push)}.`;
   // Submodule mirrors have no card of their own: Git → Mirrors lists them under their parent.
-  const shown = data.repos.filter((r) => !r.submodule_of);
+  const shown = data.repos.filter((repo) => !repo.submodule_of);
   const chips = (box, list, key) =>
     box.replaceChildren(
       ...list.map(([id, label, test]) =>
@@ -12193,18 +12193,18 @@ function renderGit(data) {
   const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
   const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
   const list = shown.filter(
-    (r) =>
-      kindTest(r) &&
-      areaTest(r) &&
+    (repo) =>
+      kindTest(repo) &&
+      areaTest(repo) &&
       (!q ||
-        r.name.toLowerCase().includes(q) ||
-        (r.description || "").toLowerCase().includes(q)),
+        repo.name.toLowerCase().includes(q) ||
+        (repo.description || "").toLowerCase().includes(q)),
   );
   const cards = [];
-  for (const r of list) {
-    cards.push(repoCard(r, data));
-    if (gitView.open === repoKey(r))
-      cards.push(managePanel(r, data, "git-drawer"));
+  for (const repo of list) {
+    cards.push(repoCard(repo, data));
+    if (gitView.open === repoKey(repo))
+      cards.push(managePanel(repo, data, "git-drawer"));
   }
   if (!list.length)
     cards.push(
@@ -12300,11 +12300,11 @@ const closeButton = () =>
     },
     { className: "small" },
   );
-const copyUrl = (r) =>
+const copyUrl = (repo) =>
   actionButton(
     "Copy clone URL",
     () => {
-      const url = `${hubOrigin()}${r.url.replace(/\/$/, "")}`;
+      const url = `${hubOrigin()}${repo.url.replace(/\/$/, "")}`;
       navigator.clipboard?.writeText(url).then(
         () => say(`Copied ${url}`, true, git.note),
         () => say(url, true, git.note),
@@ -12313,17 +12313,17 @@ const copyUrl = (r) =>
     { className: "small" },
   );
 
-function repoCard(r, data) {
-  const m = r.mirror_of
-    ? (data.mirrors || []).find((x) => x.name === r.name && x.area === r.area)
+function repoCard(repo, data) {
+  const m = repo.mirror_of
+    ? (data.mirrors || []).find((x) => x.name === repo.name && x.area === repo.area)
     : null;
   const ms = (m && m.status) || {};
-  const b = r.last_build;
+  const b = repo.last_build;
   const badges = [
-    [r.area === "public" ? "Guests" : "Administrators", `badge-${r.area}`],
-    [r.mirror_of ? "read-only" : PUSH_WORDS[r.write], "badge-push"],
-    r.mirror_of ? ["Mirror", "badge-mirror"] : null,
-    builds(r)
+    [repo.area === "public" ? "Guests" : "Administrators", `badge-${repo.area}`],
+    [repo.mirror_of ? "read-only" : PUSH_WORDS[repo.write], "badge-push"],
+    repo.mirror_of ? ["Mirror", "badge-mirror"] : null,
+    builds(repo)
       ? [
           b
             ? `${STATE_ICON[b.state] || ""} build ${b.state}${b.started ? `, ${commitDate(b.started)}` : ""}`
@@ -12332,24 +12332,24 @@ function repoCard(r, data) {
         ]
       : null,
   ].filter(Boolean);
-  const facts = r.mirror_of
+  const facts = repo.mirror_of
     ? [
-        `from ${r.mirror_of.replace(/^https:\/\//, "")}`,
+        `from ${repo.mirror_of.replace(/^https:\/\//, "")}`,
         ms.updated ? `updated ${commitDate(ms.updated)}` : "not downloaded yet",
-        size(r.size),
+        size(repo.size),
       ]
     : [
-        r.last_commit ? `Last commit ${commitDate(r.last_commit)}` : "Empty",
-        r.branches
-          ? `${r.branches} branch${r.branches === 1 ? "" : "es"}`
+        repo.last_commit ? `Last commit ${commitDate(repo.last_commit)}` : "Empty",
+        repo.branches
+          ? `${repo.branches} branch${repo.branches === 1 ? "" : "es"}`
           : null,
-        size(r.size),
+        size(repo.size),
       ];
-  const open = gitView.open === repoKey(r);
+  const open = gitView.open === repoKey(repo);
   return el(
     "div",
     { className: `git-card${open ? " open" : ""}` },
-    el("h4", {}, el("a", { href: r.url, textContent: `${r.name}.git` })),
+    el("h4", {}, el("a", { href: repo.url, textContent: `${repo.name}.git` })),
     el(
       "p",
       { className: "badges" },
@@ -12357,12 +12357,12 @@ function repoCard(r, data) {
         el("span", { className: `badge ${cls}`, textContent: text }),
       ),
     ),
-    r.description
+    repo.description
       ? el(
           "p",
           { className: "git-about" },
           el("span", { className: "git-label", textContent: "About " }),
-          r.description,
+          repo.description,
         )
       : null,
     el("p", {
@@ -12371,13 +12371,13 @@ function repoCard(r, data) {
     }),
     el("p", {
       className: "setting-desc git-access",
-      textContent: accessSentence(r),
+      textContent: accessSentence(repo),
     }),
     el(
       "p",
       { className: "library-buttons" },
-      copyUrl(r),
-      r.mirror_of
+      copyUrl(repo),
+      repo.mirror_of
         ? el("a", {
             href: "#mirrors",
             className: "button-link small",
@@ -12387,7 +12387,7 @@ function repoCard(r, data) {
             actionButton(
               "Manage",
               () => {
-                gitView.open = open ? null : repoKey(r);
+                gitView.open = open ? null : repoKey(repo);
                 renderGit(gitData);
               },
               { className: "small" },
@@ -12399,7 +12399,7 @@ function repoCard(r, data) {
 }
 
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
-function managePanel(r, data, cls) {
+function managePanel(repo, data, cls) {
   // Only Delete asks, on the page (confirmText): a move can be moved back (admin pages plan, phase 5).
   const act = (body, confirmText, done) => async (event) => {
     // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
@@ -12412,7 +12412,7 @@ function managePanel(r, data, cls) {
     }
     try {
       const out = await postJSON("/admin/git", body);
-      if (body.action === "move") gitView.open = `${body.to}/${r.name}`;
+      if (body.action === "move") gitView.open = `${body.to}/${repo.name}`;
       if (body.action === "delete") gitView.open = null;
       renderGit(out);
       say(done || "", true, git.note);
@@ -12429,7 +12429,7 @@ function managePanel(r, data, cls) {
       { className: "inline" },
       el("input", {
         type: "radio",
-        name: `${group}-${repoKey(r)}`,
+        name: `${group}-${repoKey(repo)}`,
         value,
         checked,
         onchange: onpick,
@@ -12445,22 +12445,22 @@ function managePanel(r, data, cls) {
       "see",
       "public",
       "Everyone on the network",
-      r.area === "public",
+      repo.area === "public",
       act(
-        { action: "move", area: r.area, name: r.name, to: "public" },
+        { action: "move", area: repo.area, name: repo.name, to: "public" },
         null,
-        `${r.name}.git is now visible to guests.`,
+        `${repo.name}.git is now visible to guests.`,
       ),
     ),
     radio(
       "see",
       "private",
       "Only administrators",
-      r.area === "private",
+      repo.area === "private",
       act(
-        { action: "move", area: r.area, name: r.name, to: "private" },
+        { action: "move", area: repo.area, name: repo.name, to: "private" },
         null,
-        `${r.name}.git is now visible to administrators only.`,
+        `${repo.name}.git is now visible to administrators only.`,
       ),
     ),
     el("p", {
@@ -12469,7 +12469,7 @@ function managePanel(r, data, cls) {
         "Moving it changes its clone URL. Clones elsewhere need git remote set-url.",
     }),
   );
-  const presets = (data.presets || {})[r.area] || [];
+  const presets = (data.presets || {})[repo.area] || [];
   const WHO = {
     everyone: "Anyone",
     users: "Users (account name and password)",
@@ -12485,11 +12485,11 @@ function managePanel(r, data, cls) {
         "push",
         p.name,
         WHO[p.write],
-        p.name === r.preset,
+        p.name === repo.preset,
         act(
-          { action: "preset", area: r.area, name: r.name, preset: p.name },
+          { action: "preset", area: repo.area, name: repo.name, preset: p.name },
           null,
-          `${r.name}.git: ${p.text}.`,
+          `${repo.name}.git: ${p.text}.`,
         ),
       ),
     ),
@@ -12507,17 +12507,17 @@ function managePanel(r, data, cls) {
       : null,
   );
   const buildNow =
-    r.can_build && r.build && r.has_script
+    repo.can_build && repo.build && repo.has_script
       ? actionButton(
           "Build now",
           async () => {
             try {
               const out = await postJSON("/admin/ci", {
                 action: "build",
-                repo: r.name,
+                repo: repo.name,
               });
               say(
-                `Queued: ${r.name}.git ${out.branch} at ${out.commit.slice(0, 7)}. Its run shows under Builds.`,
+                `Queued: ${repo.name}.git ${out.branch} at ${out.commit.slice(0, 7)}. Its run shows under Builds.`,
                 true,
                 git.note,
               );
@@ -12533,24 +12533,24 @@ function managePanel(r, data, cls) {
     "fieldset",
     { className: "git-q" },
     el("legend", { textContent: "Build on push?" }),
-    r.can_build
+    repo.can_build
       ? el(
           "label",
           { className: "inline" },
           el("input", {
             type: "checkbox",
             className: "git-build",
-            checked: r.build,
+            checked: repo.build,
             onchange: (event) =>
               act(
                 {
                   action: "build",
-                  area: r.area,
-                  name: r.name,
+                  area: repo.area,
+                  name: repo.name,
                   on: event.target.checked,
                 },
                 null,
-                `${r.name}.git: builds ${event.target.checked ? "enabled" : "disabled"}.`,
+                `${repo.name}.git: builds ${event.target.checked ? "enabled" : "disabled"}.`,
               )(),
           }),
           " Build each push that has a .irate-ci.sh",
@@ -12558,16 +12558,16 @@ function managePanel(r, data, cls) {
       : null,
     el("p", {
       className: "setting-desc",
-      textContent: r.can_build
-        ? r.has_script
+      textContent: repo.can_build
+        ? repo.has_script
           ? "Its newest commit has a .irate-ci.sh. A build runs as a dedicated user in a sandbox at the lowest priority (Builds, below)."
           : "Its newest commit has no .irate-ci.sh yet. Add one at the top of the repository to build."
-        : r.area === "public"
+        : repo.area === "public"
           ? "Repositories that guests can push to never build, because anyone could push code that runs."
           : "Only for repositories that only administrators can push to.",
     }),
     buildNow,
-    r.can_build ? buildSetup() : null,
+    repo.can_build ? buildSetup() : null,
   );
   // Its description: a section of one value (a redraw of the list keeps what is being typed).
   const desc = el("textarea", {
@@ -12576,15 +12576,15 @@ function managePanel(r, data, cls) {
     className: "git-desc",
   });
   const descSec = AW.section({
-    id: `git-desc-${repoKey(r)}`,
-    label: `Description of ${r.name}.git`,
-    saved: { description: r.description || "" },
+    id: `git-desc-${repoKey(repo)}`,
+    label: `Description of ${repo.name}.git`,
+    saved: { description: repo.description || "" },
     save: async (c) =>
       (await act(
         {
           action: "describe",
-          area: r.area,
-          name: r.name,
+          area: repo.area,
+          name: repo.name,
           description: c.description,
         },
         null,
@@ -12613,7 +12613,7 @@ function managePanel(r, data, cls) {
     descSec.reason,
   );
   const others = data.repos.filter(
-    (o) => !(o.area === r.area && o.name === r.name) && !o.mirror_of,
+    (o) => !(o.area === repo.area && o.name === repo.name) && !o.mirror_of,
   );
   const target = el(
     "select",
@@ -12651,7 +12651,7 @@ function managePanel(r, data, cls) {
               act(
                 {
                   action: "publish",
-                  from: { area: r.area, name: r.name },
+                  from: { area: repo.area, name: repo.name },
                   to: { area: toArea, name: toName },
                   refs: refs.value.trim().split(/\s+/),
                 },
@@ -12673,14 +12673,14 @@ function managePanel(r, data, cls) {
     el(
       "div",
       { className: "git-manage-head" },
-      el("strong", { textContent: `Manage ${r.name}.git` }),
+      el("strong", { textContent: `Manage ${repo.name}.git` }),
       closeButton(),
     ),
     el(
       "section",
       {},
       el("h4", { textContent: "Access" }),
-      el("p", { className: "setting-desc", textContent: accessSentence(r) }),
+      el("p", { className: "setting-desc", textContent: accessSentence(repo) }),
       see,
       push,
       build,
@@ -12697,10 +12697,10 @@ function managePanel(r, data, cls) {
           "Deleting it removes its history. Clones elsewhere keep their own history. You cannot restore this repository.",
       }),
       actionButton(
-        `Delete repository ${r.name}.git`,
+        `Delete repository ${repo.name}.git`,
         act(
-          { action: "delete", area: r.area, name: r.name },
-          `Delete the repository ${r.name}.git and all its history? Clones elsewhere keep their own history. You cannot restore this repository.`,
+          { action: "delete", area: repo.area, name: repo.name },
+          `Delete the repository ${repo.name}.git and all its history? Clones elsewhere keep their own history. You cannot restore this repository.`,
           "Deleted.",
         ),
         { className: "small danger" },
@@ -12761,8 +12761,8 @@ function renderMirrors(data) {
           const relGroups = m.groups.filter((g) => g.kind !== "tags");
           const skipping = relGroups.some((g) => g.skip_revoked !== false);
           const revoked = ((st.releases || {}).list || [])
-            .filter((r) => r[2])
-            .map((r) => r[0]);
+            .filter((release) => release[2])
+            .map((release) => release[0]);
           const relNote = !relGroups.length
             ? null
             : [
@@ -13024,7 +13024,7 @@ function renderCi(data) {
       : " The Building toolkit has no wheelhouse yet, so a pip install in a build still needs internet access.");
   ciRuns.replaceChildren(
     ...(data.runs.length
-      ? data.runs.map((r) =>
+      ? data.runs.map((run) =>
           el(
             "div",
             { className: "admin-item" },
@@ -13033,16 +13033,16 @@ function renderCi(data) {
               {},
               el("strong", {
                 textContent:
-                  `${STATE_ICON[r.state] || ""} ${r.repo} · ${r.branch} · ${r.commit.slice(0, 7)}` +
-                  (r.keep ? " · retained" : ""),
+                  `${STATE_ICON[run.state] || ""} ${run.repo} · ${run.branch} · ${run.commit.slice(0, 7)}` +
+                  (run.keep ? " · retained" : ""),
               }),
               el("span", {
                 className: "setting-desc",
                 textContent: [
-                  r.state,
-                  r.by === "build-now" ? "built manually" : null,
-                  r.duration != null ? minutes(r.duration) : null,
-                  r.started ? commitDate(r.started) : null,
+                  run.state,
+                  run.by === "build-now" ? "built manually" : null,
+                  run.duration != null ? minutes(run.duration) : null,
+                  run.started ? commitDate(run.started) : null,
                 ]
                   .filter(Boolean)
                   .join(" · "),
@@ -13051,7 +13051,7 @@ function renderCi(data) {
             el(
               "span",
               { className: "library-buttons" },
-              actionButton("View", () => openRun(r.run), {
+              actionButton("View", () => openRun(run.run), {
                 className: "small",
               }),
             ),
@@ -13069,7 +13069,7 @@ function renderCi(data) {
     /* no storage */
   }
   const newBad = data.runs.filter(
-    (r) => r.finished && r.finished > seen && r.state !== "passed",
+    (run) => run.finished && run.finished > seen && run.state !== "passed",
   ).length;
   if (paneShown("git")) {
     try {
@@ -13080,7 +13080,7 @@ function renderCi(data) {
   }
   badge("git", !paneShown("git") && newBad ? String(newBad) : "");
   clearTimeout(ciPoll);
-  if (data.queued || data.runs.some((r) => r.state === "running"))
+  if (data.queued || data.runs.some((run) => run.state === "running"))
     ciPoll = setTimeout(loadCi, 5000);
 }
 
@@ -13629,10 +13629,10 @@ function renderKits(data) {
   const cfg = data.settings;
   const kits = Object.values(data.kits || {});
   // Answers to what this page asked: shown, and the waiting ends.
-  for (const r of data.results || []) {
-    if (kitsWaiting.has(r.id)) {
-      kitsWaiting.delete(r.id);
-      say(resultSaid(r), r.ok, kitsEl.note);
+  for (const result of data.results || []) {
+    if (kitsWaiting.has(result.id)) {
+      kitsWaiting.delete(result.id);
+      say(resultSaid(result), result.ok, kitsEl.note);
     }
   }
   const cached = kits.filter((k) => ((st.kits || {})[k.id] || {}).cached);
@@ -14085,7 +14085,7 @@ async function loadKitsUsb() {
   }
   const note = noteEl("kits-usb-note");
   if (kitsUsbWaiting) {
-    const done = (data.results || []).find((r) => r.id === kitsUsbWaiting);
+    const done = (data.results || []).find((result) => result.id === kitsUsbWaiting);
     if (done) {
       kitsUsbWaiting = null;
       say(resultSaid(done), done.ok, note);
@@ -14472,7 +14472,7 @@ async function loadTls() {
 function renderTls(d) {
   tlsData = d;
   if (tlsWaiting) {
-    const done = (d.results || []).find((r) => r.id === tlsWaiting);
+    const done = (d.results || []).find((result) => result.id === tlsWaiting);
     if (done) {
       say(
         resultSaid(done),
@@ -14523,8 +14523,8 @@ function renderTls(d) {
 }
 async function tlsAct(body) {
   try {
-    const r = await postJSON("/admin/tls", body);
-    tlsWaiting = r.id;
+    const reply = await postJSON("/admin/tls", body);
+    tlsWaiting = reply.id;
     tlsOperation = body.action;
     say(
       "Working…",
@@ -14666,7 +14666,7 @@ function renderAccounts(d) {
   acctLast = d;
   if (d.admin_login) drawPasswordStep(d.admin_login);
   if (acctWaiting) {
-    const done = (al.results || []).find((r) => r.id === acctWaiting.id);
+    const done = (al.results || []).find((result) => result.id === acctWaiting.id);
     if (done) {
       const j = acctWaiting;
       acctWaiting = null;
@@ -15467,10 +15467,10 @@ function pictureRow(which) {
       return;
     }
     const data = await new Promise((ok, fail) => {
-      const r = new FileReader();
-      r.onload = () => ok(String(r.result).split(",")[1] || "");
-      r.onerror = fail;
-      r.readAsDataURL(f);
+      const reader = new FileReader();
+      reader.onload = () => ok(String(reader.result).split(",")[1] || "");
+      reader.onerror = fail;
+      reader.readAsDataURL(f);
     });
     send({ data });
   });
@@ -16000,7 +16000,7 @@ function drawFolder(block, f) {
   const open =
     folderOpen[f] &&
     [...block.querySelectorAll(".aw-row")].find(
-      (r) => r.dataset.awId === folderOpen[f],
+      (row) => row.dataset.awId === folderOpen[f],
     );
   if (open) AW.foldRow(open.querySelector(".aw-row-head"), true);
 }
@@ -16205,7 +16205,7 @@ function drawStatusTiles(openId) {
   );
   const open =
     openId &&
-    [...box.querySelectorAll(".aw-row")].find((r) => r.dataset.awId === openId);
+    [...box.querySelectorAll(".aw-row")].find((row) => row.dataset.awId === openId);
   if (open) AW.foldRow(open.querySelector(".aw-row-head"), true);
 }
 loadStatusTiles();
@@ -16429,7 +16429,7 @@ function sigShowKeys() {
 function drawSigning(sig, results) {
   if (!sigEl.form || !sig) return;
   if (sigWaiting) {
-    const done = (results || []).find((r) => r.id === sigWaiting.id);
+    const done = (results || []).find((result) => result.id === sigWaiting.id);
     if (done) {
       sigWaiting.done(done.ok, resultSaid(done));
       sigWaiting = null;
@@ -16517,44 +16517,44 @@ function inventoryRows() {
     for (const [id, a] of Object.entries(libApps)) add(id, a.title, "app");
   const offered = local ? (local.catalogue || []).filter((c) => !c.added) : [];
   for (const c of offered) add(c.id, c.title, "local").offered = true;
-  for (const r of rows.values()) {
-    const a = access.get(r.id);
+  for (const row of rows.values()) {
+    const a = access.get(row.id);
     let state = "unknown";
-    if (r.kind === "builtin") state = "builtin";
-    else if (r.offered) state = "available";
-    else if (r.kind === "addon") {
-      const x = addons.get(r.id);
+    if (row.kind === "builtin") state = "builtin";
+    else if (row.offered) state = "available";
+    else if (row.kind === "addon") {
+      const x = addons.get(row.id);
       if (x)
         state =
           x.added === null ? "unknown" : x.added ? "installed" : "available";
       if (x && x.added && x.active === false && !(a && a.mode === "off"))
-        r.attention.push("Service not running");
-    } else if (r.kind === "app" && libApps) {
-      const lib = libApps[r.id];
+        row.attention.push("Service not running");
+    } else if (row.kind === "app" && libApps) {
+      const lib = libApps[row.id];
       state = lib ? (lib.installed ? "installed" : "available") : "unknown";
-      const st = (lastLibrary.status || {})[r.id] || {};
+      const st = (lastLibrary.status || {})[row.id] || {};
       if (st.install_result && !st.install_result.ok)
-        r.attention.push("Install failed");
-      if (st.error) r.attention.push("Update check failed");
+        row.attention.push("Install failed");
+      if (st.error) row.attention.push("Update check failed");
       const target =
         lib && lib.pin && (st.follow || "pinned") === "pinned"
           ? st.pinned
           : st.latest;
       if (target && st.current && target.version !== st.current.version)
-        r.attention.push("Newer build known");
-    } else if (r.kind === "local" && local) {
-      const x = (local.added || []).find((y) => y.id === r.id);
+        row.attention.push("Newer build known");
+    } else if (row.kind === "local" && local) {
+      const x = (local.added || []).find((y) => y.id === row.id);
       state = x
         ? x.installed && x.installed.commit
           ? "installed"
           : "fetching"
         : "unknown";
       if (x && x.catalogue && x.catalogue.status === "held")
-        r.attention.push("Consent required");
+        row.attention.push("Consent required");
     }
-    r.state = state;
+    row.state = state;
     if (state !== "builtin")
-      r.facts.push(
+      row.facts.push(
         {
           installed: "Installed",
           available: "Not installed",
@@ -16562,23 +16562,23 @@ function inventoryRows() {
           unknown: "Installation status unavailable",
         }[state],
       );
-    if (a) r.facts.push(INV_OPENS[a.mode] || a.mode);
+    if (a) row.facts.push(INV_OPENS[a.mode] || a.mode);
     if (a && a.mode !== "off" && tileIds) {
-      r.facts.push(
-        !tileIds.has(r.id)
+      row.facts.push(
+        !tileIds.has(row.id)
           ? "No home tile"
           : a.visible && a.visible !== "auto"
             ? `Visibility: ${SEEN_LABEL[a.visible] || a.visible}`
             : "Visibility: as its access",
       );
     }
-    r.href = pages.has("page-app-" + r.id)
-      ? "#page-app-" + r.id
-      : r.kind === "local"
-        ? r.offered
+    row.href = pages.has("page-app-" + row.id)
+      ? "#page-app-" + row.id
+      : row.kind === "local"
+        ? row.offered
           ? "#local-catalogue"
           : "#local-added"
-        : r.kind === "addon"
+        : row.kind === "addon"
           ? "#addons"
           : "#apps";
   }
@@ -16589,32 +16589,32 @@ function renderInventory() {
   if (!list || !AL.apps()) return;
   const q = document.getElementById("inv-q").value.trim().toLowerCase();
   const all = inventoryRows();
-  const want = (r) =>
+  const want = (row) =>
     invShow === "all" ||
-    r.state === invShow ||
-    (invShow === "available" && r.state === "fetching");
+    row.state === invShow ||
+    (invShow === "available" && row.state === "fetching");
   const shown = all.filter(
-    (r) =>
-      want(r) &&
-      (!q || `${r.name} ${INV_KIND[r.kind]}`.toLowerCase().includes(q)),
+    (row) =>
+      want(row) &&
+      (!q || `${row.name} ${INV_KIND[row.kind]}`.toLowerCase().includes(q)),
   );
   list.replaceChildren(
-    ...shown.map((r) =>
+    ...shown.map((row) =>
       el(
         "li",
         { className: "inv-row" },
-        el("a", { className: "inv-name", href: r.href, textContent: r.name }),
+        el("a", { className: "inv-name", href: row.href, textContent: row.name }),
         el("span", {
           className: "inv-kind",
-          textContent: INV_KIND[r.kind] || r.kind,
+          textContent: INV_KIND[row.kind] || row.kind,
         }),
         el(
           "span",
           { className: "inv-facts" },
-          ...r.facts.map((t) =>
+          ...row.facts.map((t) =>
             el("span", { className: "inv-fact", textContent: t }),
           ),
-          ...r.attention.map((t) =>
+          ...row.attention.map((t) =>
             el("span", { className: "inv-fact bad", textContent: t }),
           ),
         ),

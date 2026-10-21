@@ -87,12 +87,12 @@ function drawMap(nodes) {
 
 async function refresh() {
   try {
-    const r = await fetch('/mesh.json', { cache: 'no-store' });
-    if (r.status === 404) {
+    const response = await fetch('/mesh.json', { cache: 'no-store' });
+    if (response.status === 404) {
       $('mesh-state').textContent = 'Mesh view disabled or restricted. An administrator can change this in /admin → Access, under the MQTT broker.';
       return;
     }
-    render(await r.json());
+    render(await response.json());
   } catch (_) {
     $('mesh-state').textContent = 'The box did not answer.';
   }

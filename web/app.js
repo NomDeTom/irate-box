@@ -191,7 +191,7 @@ function drawReport(path) {
   if (reportSlot.hidden) { reportSlot.replaceChildren(); return; }
   const draw = () => { if (reportFor === page) reportSlot.replaceChildren(reportButton('notes', { page }, reportReasons)); };
   if (reportReasons) { draw(); return; }
-  fetch('/api/report').then((r) => r.json()).then((d) => { reportReasons = d.reasons || []; draw(); }).catch(() => {});
+  fetch('/api/report').then((response) => response.json()).then((d) => { reportReasons = d.reasons || []; draw(); }).catch(() => {});
 }
 
 // Loads catch ordinary links; the interval catches single-page apps (SilverBullet,
@@ -214,7 +214,7 @@ frame.src = frameSrc(shown);
 const up = document.getElementById('app-up');
 const from = new URLSearchParams(location.search).get('from');
 if (up && from && /^[a-z0-9-]+$/.test(from)) {
-  fetch('/menus.json').then((r) => (r.ok ? r.json() : {})).then((lists) => {
+  fetch('/menus.json').then((response) => (response.ok ? response.json() : {})).then((lists) => {
     const list = lists[from];
     if (!list) return;
     up.href = list.href;

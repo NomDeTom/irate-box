@@ -108,8 +108,8 @@ function renderMessages(data) {
 
 async function poll() {
   try {
-    const r = await fetch('/messages');
-    if (r.ok) renderMessages(await r.json());
+    const response = await fetch('/messages');
+    if (response.ok) renderMessages(await response.json());
   } catch (_) {}
 }
 
@@ -119,12 +119,12 @@ form.addEventListener('submit', async (event) => {
   const text = msgInput.value.trim();
   if (!name || !text) return;
   try {
-    const r = await fetch('/messages', {
+    const response = await fetch('/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(withHue({ name, text })),
     });
-    if (!r.ok) { postNote.textContent = (await r.json().catch(() => ({}))).error || `Message not sent (HTTP ${r.status}).`; return; }
+    if (!response.ok) { postNote.textContent = (await response.json().catch(() => ({}))).error || `Message not sent (HTTP ${response.status}).`; return; }
     msgInput.value = '';
     await poll();
   } catch (_) {}

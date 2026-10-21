@@ -28,9 +28,9 @@
   async function load() {
     clearTimeout(poll);
     try {
-      const r = await fetch('/admin/mesh');
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      render(await r.json());
+      const response = await fetch('/admin/mesh');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      render(await response.json());
     } catch (_) { view.state.textContent = 'Could not load mesh data'; }
     poll = setTimeout(load, 15000);
   }

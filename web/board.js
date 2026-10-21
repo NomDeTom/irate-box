@@ -43,9 +43,9 @@ function applyPosting(p) {
   }
 }
 const mark = (x) => (x.account && marks ? '<span class="verified" title="Posted by a signed-in account">✓</span>' : '');
-async function posted(r, i) {
-  if (r.ok) { notes[i].textContent = ''; return true; }
-  notes[i].textContent = (await r.json().catch(() => ({}))).error || `${i === 0 ? 'Thread not posted' : 'Reply not posted'} (HTTP ${r.status}).`;
+async function posted(response, i) {
+  if (response.ok) { notes[i].textContent = ''; return true; }
+  notes[i].textContent = (await response.json().catch(() => ({}))).error || `${i === 0 ? 'Thread not posted' : 'Reply not posted'} (HTTP ${response.status}).`;
   return false;
 }
 
@@ -104,12 +104,12 @@ async function refresh() {
 
   try {
     if (id === null) {
-      const r = await fetch('/board/threads');
-      if (r.ok) renderThreads(await r.json());
+      const response = await fetch('/board/threads');
+      if (response.ok) renderThreads(await response.json());
     } else {
-      const r = await fetch(`/board/thread/${id}`);
-      if (r.ok) {
-        renderThread(await r.json());
+      const response = await fetch(`/board/thread/${id}`);
+      if (response.ok) {
+        renderThread(await response.json());
       } else {
         // Decayed out from under us while we were reading it.
         location.hash = '#board';
@@ -127,13 +127,13 @@ threadForm.addEventListener('submit', async (event) => {
   });
   if (!body.name || !body.title || !body.text) return;
   try {
-    const r = await fetch('/board/threads', {
+    const response = await fetch('/board/threads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (await posted(r, 0)) {
-      const { thread } = await r.json();
+    if (await posted(response, 0)) {
+      const { thread } = await response.json();
       document.getElementById('t-title').value = '';
       document.getElementById('t-text').value = '';
       document.getElementById('new-thread').open = false;
@@ -149,12 +149,12 @@ replyForm.addEventListener('submit', async (event) => {
   const text = document.getElementById('r-text').value.trim();
   if (id === null || !name || !text) return;
   try {
-    const r = await fetch(`/board/thread/${id}`, {
+    const response = await fetch(`/board/thread/${id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(withHue({ name, text })),
     });
-    if (!(await posted(r, 1))) return;
+    if (!(await posted(response, 1))) return;
     document.getElementById('r-text').value = '';
     await refresh();
   } catch (_) {}

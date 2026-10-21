@@ -151,9 +151,9 @@ if (grid || document.querySelector('[data-service]')) {
   async function refreshStatus() {
     let data;
     try {
-      const r = await fetch('/status');
-      if (!r.ok) return;
-      data = await r.json();
+      const response = await fetch('/status');
+      if (!response.ok) return;
+      data = await response.json();
     } catch (_) { return; }
     // Presence. The count is whoever has a page open; `joined` (dnsmasq leases) only
     // exists on the box, so it is shown as a second line when the hub can see it.
@@ -235,9 +235,9 @@ if (factoryCard) {
   const refreshFactory = async () => {
     let d;
     try {
-      const r = await fetch('/factory.json');
-      if (!r.ok) return;
-      d = await r.json();
+      const response = await fetch('/factory.json');
+      if (!response.ok) return;
+      d = await response.json();
     } catch (_) { return; }
     const run = d.running;
     const waiting = d.waiting ? `. Queued: ${d.waiting}` : '';
@@ -339,7 +339,7 @@ if (systemCard) {
     more.textContent = 'Seven days and the largest processes: Overview in administration →';
     panel.replaceChildren(svg, say, more);
   };
-  fetch('/api/trends').then((r) => (r.ok ? r.json() : null)).then((first) => {
+  fetch('/api/trends').then((response) => (response.ok ? response.json() : null)).then((first) => {
     if (!first) return;
     const panel = document.createElement('section');
     panel.id = 'box-trends';
@@ -359,7 +359,7 @@ if (systemCard) {
       panel.hidden = !open;
       if (!open) return;
       let h = first;
-      try { const r = await fetch('/api/trends'); if (r.ok) h = await r.json(); } catch (_) { /* the first answer stands */ }
+      try { const response = await fetch('/api/trends'); if (response.ok) h = await response.json(); } catch (_) { /* the first answer stands */ }
       drawTrends(panel, h);
     });
     systemCard.append(toggle);

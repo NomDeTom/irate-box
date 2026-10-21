@@ -25,9 +25,9 @@ function note(text, ok) {
 }
 
 async function post(body) {
-  const r = await fetch('/api/account', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify(body) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  const response = await fetch('/api/account', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify(body) });
+  const d = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(d.error || `HTTP ${response.status}`);
   return d;
 }
 

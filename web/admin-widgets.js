@@ -287,9 +287,9 @@ const AW = (() => {
       fresh: true,
       idle: 'Changes apply after you select Save. Actions run immediately.',
       save: async () => {
-        const r = opts.save ? await opts.save(it) : true;
-        if (r !== false) setTimeout(() => { sec.update({ changed: false }); });
-        return r;
+        const saved = opts.save ? await opts.save(it) : true;
+        if (saved !== false) setTimeout(() => { sec.update({ changed: false }); });
+        return saved;
       },
       onChange: () => { if (!sec.dirty() && !sec.saving()) fill(); },
     });
@@ -468,21 +468,21 @@ const AW = (() => {
       reason = '';
       said = '';
       paint();
-      let r;
+      let outcome;
       try {
-        r = opts.save ? await opts.save(changes, s.values()) : true;
+        outcome = opts.save ? await opts.save(changes, s.values()) : true;
       } catch (error) {
-        r = false;
+        outcome = false;
         reason = String((error && error.message) || error || 'Not saved.');
       }
       saving = false;
-      if (r !== false) {
+      if (outcome !== false) {
         Object.assign(saved, copy(changes));
         elsewhere.clear();
-        said = typeof r === 'string' ? r : '';
+        said = typeof outcome === 'string' ? outcome : '';
       }
       redraw();
-      return r !== false;
+      return outcome !== false;
     };
     s.fail = (text) => { reason = text || ''; paint(); };
     saveB.addEventListener('click', () => s.save());
@@ -510,52 +510,52 @@ const AW = (() => {
   //   opts: {save(changes) → Promise|void, id, label, ask, idle}: the section's (above); no save, no footer.
   function settings(rows, opts = {}) {
     const box = h('div', { class: 'aw-settings', 'data-aw-scope': opts.scope ? '' : null });
-    const saved = Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key, r.value]));
+    const saved = Object.fromEntries(rows.filter((spec) => spec.key).map((spec) => [spec.key, spec.value]));
     const s = section({ ...opts, saved, onChange: () => draw() });
     const draw = () => box.replaceChildren(...rows.map(row), ...(opts.save ? [s.foot, s.reason] : []));
-    function row(r) {
+    function row(spec) {
       let ctl;
-      const v = s.get(r.key), off = s.disabled();
-      if (r.kind === 'toggle') {
+      const v = s.get(spec.key), off = s.disabled();
+      if (spec.kind === 'toggle') {
         ctl = h('button', { type: 'button', class: 'chip-btn' + (v ? ' active' : ''), 'aria-pressed': String(!!v), disabled: off,
-          onclick: () => s.set(r.key, !s.get(r.key)) }, v ? 'On' : 'Off');
-      } else if (r.kind === 'choice') {
-        ctl = h('div', { class: 'chip-group', role: 'group', 'aria-label': r.label }, r.options.map((o) => {
+          onclick: () => s.set(spec.key, !s.get(spec.key)) }, v ? 'On' : 'Off');
+      } else if (spec.kind === 'choice') {
+        ctl = h('div', { class: 'chip-group', role: 'group', 'aria-label': spec.label }, spec.options.map((o) => {
           const [ov, t] = Array.isArray(o) ? o : [o, o];
           return h('button', { type: 'button', class: 'chip' + (same(v, ov) ? ' selected' : ''), 'aria-pressed': String(same(v, ov)), disabled: off,
-            onclick: () => s.set(r.key, ov) }, t);
+            onclick: () => s.set(spec.key, ov) }, t);
         }));
-      } else if (r.kind === 'multi') {
+      } else if (spec.kind === 'multi') {
         // Any of a few, as filter chips: the value the chosen ones, in the options' order.
         const on = new Set(v || []);
-        ctl = h('div', { class: 'filter-chips', role: 'group', 'aria-label': r.label }, r.options.map((o) => {
+        ctl = h('div', { class: 'filter-chips', role: 'group', 'aria-label': spec.label }, spec.options.map((o) => {
           const [ov, t] = Array.isArray(o) ? o : [o, o];
           return h('button', { type: 'button', class: 'filter-chip' + (on.has(ov) ? ' active' : ''), 'aria-pressed': String(on.has(ov)), disabled: off,
-            onclick: () => s.set(r.key, r.options.map((x) => (Array.isArray(x) ? x[0] : x)).filter((x) => (x === ov ? !on.has(x) : on.has(x)))) }, t);
+            onclick: () => s.set(spec.key, spec.options.map((x) => (Array.isArray(x) ? x[0] : x)).filter((x) => (x === ov ? !on.has(x) : on.has(x)))) }, t);
         }));
-      } else if (r.kind === 'button') ctl = btn(r.text || r.label, { onclick: r.onclick });
-      else if (r.kind === 'text') {
-        ctl = h('input', { type: 'text', value: v ?? '', maxlength: r.max || null, 'aria-label': r.label, disabled: off, 'data-aw-key': r.key,
-          oninput: (event) => s.set(r.key, event.target.value, true) });
-      } else if (r.kind === 'colour') {
+      } else if (spec.kind === 'button') ctl = btn(spec.text || spec.label, { onclick: spec.onclick });
+      else if (spec.kind === 'text') {
+        ctl = h('input', { type: 'text', value: v ?? '', maxlength: spec.max || null, 'aria-label': spec.label, disabled: off, 'data-aw-key': spec.key,
+          oninput: (event) => s.set(spec.key, event.target.value, true) });
+      } else if (spec.kind === 'colour') {
         // A colour, or '' for the theme's own (r.unset names it); r.warn(value) says what's wrong with one, live.
-        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (v && r.warn && r.warn(v)) || '' });
-        const pick = h('input', { type: 'color', value: v || r.shown || '#000000', 'aria-label': r.label, disabled: off, 'data-aw-key': r.key });
-        const own = btn(r.unset || 'Default', { 'aria-pressed': String(!v), class: 'action-btn' + (!v ? ' active' : ''), disabled: off });
+        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (v && spec.warn && spec.warn(v)) || '' });
+        const pick = h('input', { type: 'color', value: v || spec.shown || '#000000', 'aria-label': spec.label, disabled: off, 'data-aw-key': spec.key });
+        const own = btn(spec.unset || 'Default', { 'aria-pressed': String(!v), class: 'action-btn' + (!v ? ' active' : ''), disabled: off });
         pick.addEventListener('input', () => {
-          s.set(r.key, pick.value.toLowerCase(), true);
-          warn.textContent = (r.warn && r.warn(s.get(r.key))) || '';
+          s.set(spec.key, pick.value.toLowerCase(), true);
+          warn.textContent = (spec.warn && spec.warn(s.get(spec.key))) || '';
           own.setAttribute('aria-pressed', 'false');
           own.classList.remove('active');
         });
-        own.addEventListener('click', () => s.set(r.key, ''));
+        own.addEventListener('click', () => s.set(spec.key, ''));
         ctl = h('span', { class: 'aw-colour' }, pick, own, warn);
       }
-      else ctl = h('span', { class: 'output-value', text: r.value ?? '' });
-      return h('div', { class: 'aw-field', 'data-setting': r.key || null, 'data-decision-row': r.decision || null },
-        h('span', { class: 'aw-label', text: r.label }), ctl,
-        r.decision ? h('span', { class: 'kind-tag', title: 'Asked in the setup steps', text: 'Setup decision' }) : null,
-        r.note ? h('small', { class: 'setting-desc', text: r.note }) : null);
+      else ctl = h('span', { class: 'output-value', text: spec.value ?? '' });
+      return h('div', { class: 'aw-field', 'data-setting': spec.key || null, 'data-decision-row': spec.decision || null },
+        h('span', { class: 'aw-label', text: spec.label }), ctl,
+        spec.decision ? h('span', { class: 'kind-tag', title: 'Asked in the setup steps', text: 'Setup decision' }) : null,
+        spec.note ? h('small', { class: 'setting-desc', text: spec.note }) : null);
     }
     draw();
     box.section = s;
@@ -759,8 +759,8 @@ const AW = (() => {
   function selectionIn(node) {
     const sel = typeof document.getSelection === 'function' ? document.getSelection() : null;
     if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
-    const r = sel.getRangeAt(0);
-    return node.contains(r.startContainer) || node.contains(r.endContainer) || r.intersectsNode(node);
+    const range = sel.getRangeAt(0);
+    return node.contains(range.startContainer) || node.contains(range.endContainer) || range.intersectsNode(node);
   }
   let kept = false;
   function keepSelections() {

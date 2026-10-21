@@ -38,9 +38,9 @@ function row(name, detail, state) {
 async function refresh() {
   let data;
   try {
-    const r = await fetch('/status');
-    if (!r.ok) throw new Error(r.status);
-    data = await r.json();
+    const response = await fetch('/status');
+    if (!response.ok) throw new Error(response.status);
+    data = await response.json();
   } catch (_) {
     note.textContent = 'The hub server did not answer.';
     note.hidden = false;

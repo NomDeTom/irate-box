@@ -17,10 +17,10 @@ const KD = (() => {
   function classify(rgba, n) {
     const k = new Uint8Array(n);
     for (let i = 0; i < n; i++) {
-      const r = rgba[i * 4], g = rgba[i * 4 + 1], b = rgba[i * 4 + 2], a = rgba[i * 4 + 3];
-      if (a < 128) continue;
-      if (r > 150 && b > 150 && g < 110) k[i] = 1;
-      else if (g > 150 && r < 110 && b < 110) k[i] = 2;
+      const red = rgba[i * 4], green = rgba[i * 4 + 1], blue = rgba[i * 4 + 2], alpha = rgba[i * 4 + 3];
+      if (alpha < 128) continue;
+      if (red > 150 && blue > 150 && green < 110) k[i] = 1;
+      else if (green > 150 && red < 110 && blue < 110) k[i] = 2;
     }
     return k;
   }
@@ -51,8 +51,8 @@ const KD = (() => {
   }
   // Each blob joins one of nPink yellow-light groups or nGreen blue groups; returns a group per label
   function assign(list, nPink, nGreen, seed) {
-    const r = rng(seed), g = new Int16Array(list.length + 1);
-    for (const b of list) g[b.id] = b.kind === 1 ? Math.floor(r() * nPink) : nPink + Math.floor(r() * nGreen);
+    const random = rng(seed), g = new Int16Array(list.length + 1);
+    for (const b of list) g[b.id] = b.kind === 1 ? Math.floor(random() * nPink) : nPink + Math.floor(random() * nGreen);
     return g;
   }
   // Or every blob a group of its own (a scene with a few lights, each blinking for itself),
@@ -71,9 +71,9 @@ const KD = (() => {
     for (let i = 0; i < w * h; i++) out[i] = Math.min(255, Math.round(halo[i] * 255 * 2.2));
     return { core, halo: out };
   }
-  function blur(src, w, h, r) { // three box passes each way ~ a gaussian
+  function blur(src, w, h, radius) { // three box passes each way ~ a gaussian
     let a = new Float32Array(src), b = new Float32Array(w * h);
-    const R = Math.max(1, Math.round(r / 1.7));
+    const R = Math.max(1, Math.round(radius / 1.7));
     for (let pass = 0; pass < 3; pass++) {
       for (let y = 0; y < h; y++) { let s = 0; const o = y * w;
         for (let x = -R; x <= R; x++) s += a[o + Math.min(w - 1, Math.max(0, x))];
@@ -89,30 +89,30 @@ const KD = (() => {
   // Blink patterns, as Web Animations on an element (the only DOM this file touches)
   // A yellow light's pattern: 3-9 steps, on and off in random lengths, in one of three moods
   // (mostly on, mostly off, even), over a cycle of 2.5-11 s that starts at a random point.
-  function blink(r, el) {
-    const mood = r(), n = 3 + Math.floor(r() * 7), dur = 2500 + r() * 8500;
-    let on = r() < .5, t = 0; const w = [], ks = [];
+  function blink(random, el) {
+    const mood = random(), n = 3 + Math.floor(random() * 7), dur = 2500 + random() * 8500;
+    let on = random() < .5, t = 0; const w = [], ks = [];
     for (let i = 0; i < n; i++) { on = !on;
       const base = mood < .33 ? (on ? 3 : .5) : mood < .66 ? (on ? .5 : 3) : 1.2;
-      w.push(base * (.3 + r() * 1.4)); }
-    const sum = w.reduce((a, b) => a + b, 0); on = r() < .5;
+      w.push(base * (.3 + random() * 1.4)); }
+    const sum = w.reduce((a, b) => a + b, 0); on = random() < .5;
     for (let i = 0; i < n; i++) { on = !on; ks.push({ offset: t, opacity: on ? 1 : 0, easing: 'step-end' }); t += w[i] / sum; }
     ks.push({ offset: 1, opacity: ks[0].opacity });
-    el.animate(ks, { duration: dur, iterations: Infinity, delay: -r() * dur });
+    el.animate(ks, { duration: dur, iterations: Infinity, delay: -random() * dur });
   }
   // A blue light: a slow glow up and down between a random dimmest and full, sometimes with a dip.
-  function glow(r, el) {
-    const dur = 3000 + r() * 6500, lo = .15 + r() * .35, dip = r() < .3;
+  function glow(random, el) {
+    const dur = 3000 + random() * 6500, lo = .15 + random() * .35, dip = random() < .3;
     const ks = [{ offset: 0, opacity: 1 }, { offset: .5, opacity: lo }, { offset: 1, opacity: 1 }];
-    if (dip) ks.splice(2, 0, { offset: .62 + r() * .1, opacity: Math.min(1, lo + .4) }, { offset: .72, opacity: lo + .05 });
-    el.animate(ks, { duration: dur, iterations: Infinity, easing: 'ease-in-out', delay: -r() * dur });
+    if (dip) ks.splice(2, 0, { offset: .62 + random() * .1, opacity: Math.min(1, lo + .4) }, { offset: .72, opacity: lo + .05 });
+    el.animate(ks, { duration: dur, iterations: Infinity, easing: 'ease-in-out', delay: -random() * dur });
   }
   // The edge's flutter: 5-9 random brightnesses held for a moment each, a cycle of .5-1.6 s.
-  function flutter(r, el) {
-    const n = 5 + Math.floor(r() * 5), ks = [];
-    for (let i = 0; i < n; i++) ks.push({ offset: i / n, opacity: .2 + r() * .75, easing: 'step-end' });
+  function flutter(random, el) {
+    const n = 5 + Math.floor(random() * 5), ks = [];
+    for (let i = 0; i < n; i++) ks.push({ offset: i / n, opacity: .2 + random() * .75, easing: 'step-end' });
     ks.push({ offset: 1, opacity: ks[0].opacity });
-    el.animate(ks, { duration: 500 + r() * 1100, iterations: Infinity, delay: -r() * 1000 });
+    el.animate(ks, { duration: 500 + random() * 1100, iterations: Infinity, delay: -random() * 1000 });
   }
   return { classify, blobs, assign, each, masks, rng, blink, glow, flutter };
 })();
@@ -150,8 +150,8 @@ const KD = (() => {
       const d = document.createElement('i'), h = layer(lit, halo);
       d.append(h, layer(lit, core)); out.push(d);
       if (still) continue;
-      const r = KD.rng(sc.seed * 1000 + g);
-      if (g < np) { KD.blink(r, d); KD.flutter(r, h); } else { KD.glow(r, d); h.style.opacity = .7; }
+      const random = KD.rng(sc.seed * 1000 + g);
+      if (g < np) { KD.blink(random, d); KD.flutter(random, h); } else { KD.glow(random, d); h.style.opacity = .7; }
     }
     return out;
   }

@@ -28,9 +28,9 @@
       act.addEventListener('click', async () => {
         act.disabled = true;
         try {
-          const r = await fetch('/api/guest-net', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agree: true }) });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+          const response = await fetch('/api/guest-net', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agree: true }) });
+          const j = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(j.error || `HTTP ${response.status}`);
           p.textContent = `Done. This device can reach ${d.level === 'sheet-all' ? 'the internet' : 'the web'} in a few seconds.`;
           act.remove();
         } catch (err) { p.textContent = `Request failed: ${err.message}. Select the button to try again.`; act.disabled = false; }
@@ -39,5 +39,5 @@
     box.replaceChildren(p, act);
     box.hidden = false;
   }
-  fetch('/api/guest-net').then((r) => (r.ok ? r.json() : null)).then((d) => d && show(d)).catch(() => {});
+  fetch('/api/guest-net').then((response) => (response.ok ? response.json() : null)).then((d) => d && show(d)).catch(() => {});
 })();

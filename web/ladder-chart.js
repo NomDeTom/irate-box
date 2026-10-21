@@ -34,13 +34,13 @@ const LadderChart = (() => {
   // The line and the bands: the level at each moment, from the start of the record (so the window
   // opens at the level it was at), the heaviest rung an outage reached held until it ended.
   // Rows that are not events: the symptoms (m) and the roams between access points.
-  const isEvent = (r) => r.k !== 'm' && r.k !== 'roam';
+  const isEvent = (record) => record.k !== 'm' && record.k !== 'roam';
 
   // The spans with no record, merged: the server's (the five-minute history's empty slots) and, for
   // each start of the watchdog, from its last check before it stopped to its start.
   function holes(rows, gaps) {
     const all = (gaps || []).filter((g) => Array.isArray(g) && g[1] > g[0]).map((g) => [g[0], g[1]]);
-    for (const r of rows) if (r.k === 'start' && typeof r.last === 'number' && r.last < r.at) all.push([r.last, r.at]);
+    for (const record of rows) if (record.k === 'start' && typeof record.last === 'number' && record.last < record.at) all.push([record.last, record.at]);
     all.sort((a, b) => a[0] - b[0]);
     const out = [];
     for (const g of all) { const p = out[out.length - 1]; if (p && g[0] <= p[1]) p[1] = Math.max(p[1], g[1]); else out.push(g); }
@@ -61,23 +61,23 @@ const LadderChart = (() => {
     at(from, 0);
     const evs = rows.filter(isEvent).concat(hs.map(([a, b]) => ({ at: a, k: 'hole', end: b })))
       .sort((a, b) => a.at - b.at || (a.k === 'hole' ? 1 : b.k === 'hole' ? -1 : 0));   // a recorded event before a gap starting with it
-    for (const r of evs) {
-      if (r.at > to) break;
-      if (r.k === 'hole') {
-        if (open != null) bands.push([open, r.at]);
+    for (const record of evs) {
+      if (record.at > to) break;
+      if (record.k === 'hole') {
+        if (open != null) bands.push([open, record.at]);
         open = null;
-        at(r.at, lv);
+        at(record.at, lv);
         lv = 0;
-        if (r.end <= from) { seg().splice(0, seg().length, [from, 0]); continue; }
-        if (r.at <= from) seg().length = 0;
-        holeEnd = r.end;
-        segs.push(r.end < to ? [[r.end, 0]] : []);
+        if (record.end <= from) { seg().splice(0, seg().length, [from, 0]); continue; }
+        if (record.at <= from) seg().length = 0;
+        holeEnd = record.end;
+        segs.push(record.end < to ? [[record.end, 0]] : []);
         continue;
       }
-      if (r.k === 'down') { lv = Math.max(lv, 1); open = r.at; at(r.at, lv); }
-      else if (r.k === 'up' || r.k === 'start') { if (open != null) bands.push([open, r.at]); open = null; lv = 0; at(r.at, 0); }
-      else if (r.k === 'repair' && r.s) { if (open != null) { lv = Math.max(lv, level(r.s)); at(r.at, lv); } }
-      if (r.at >= from && (r.k === 'repair' || (r.k === 'flap' && r.s) || r.k === 'held' || r.k === 'stalled') && r.s) marks.push(r);
+      if (record.k === 'down') { lv = Math.max(lv, 1); open = record.at; at(record.at, lv); }
+      else if (record.k === 'up' || record.k === 'start') { if (open != null) bands.push([open, record.at]); open = null; lv = 0; at(record.at, 0); }
+      else if (record.k === 'repair' && record.s) { if (open != null) { lv = Math.max(lv, level(record.s)); at(record.at, lv); } }
+      if (record.at >= from && (record.k === 'repair' || (record.k === 'flap' && record.s) || record.k === 'held' || record.k === 'stalled') && record.s) marks.push(record);
     }
     if (open != null) bands.push([open, to]);
     if (seg().length) seg().push([to, lv]);
@@ -91,11 +91,11 @@ const LadderChart = (() => {
     : s < 2 * 86400 ? `${Math.floor(s / 3600)} h${Math.round((s % 3600) / 60) ? ` ${Math.round((s % 3600) / 60)} min` : ''}` : `${Math.round(s / 86400)} days`);
 
   function summary(rows, from, to = Infinity, hs = []) {
-    const seen = rows.filter((r) => r.at >= from && r.at <= to && isEvent(r));
-    const outages = seen.filter((r) => r.k === 'down').length;
+    const seen = rows.filter((record) => record.at >= from && record.at <= to && isEvent(record));
+    const outages = seen.filter((record) => record.k === 'down').length;
     const steps = {};
-    for (const r of seen) if (r.k === 'repair' && r.s) steps[r.s] = (steps[r.s] || 0) + 1;
-    const held = seen.filter((r) => r.k === 'held').length, stalls = seen.filter((r) => r.k === 'stalled').length;
+    for (const record of seen) if (record.k === 'repair' && record.s) steps[record.s] = (steps[record.s] || 0) + 1;
+    const held = seen.filter((record) => record.k === 'held').length, stalls = seen.filter((record) => record.k === 'stalled').length;
     const said = Object.entries(steps).map(([s, n]) => `${n} ${NAMES[s]}${n === 1 ? '' : 's'}`).join(', ');
     const blank = hs.reduce((n, [a, b]) => n + Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
     return `${outages} outage${outages === 1 ? '' : 's'}` + (said ? `; steps taken: ${said}` : '; no steps taken')
@@ -109,43 +109,43 @@ const LadderChart = (() => {
   // An axis tick: the date over a day, the minute under, the second under a quarter of an hour.
   const tick = (t, span) => new Date(t * 1000).toLocaleString([], span > 86400 ? { month: 'short', day: 'numeric' }
     : span < 900 ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
-  const NAMED = (r) => (r.s ? `${NAMES[r.s] || r.s}${r.k === 'held' ? ' (held)' : r.k === 'stalled' ? ' needed' : r.k === 'skip' ? ' (not possible)' : ''}`
-    : r.k === 'down' ? 'down' : r.k === 'up' ? 'back up' : r.k === 'start' ? 'watching again' : r.k);
+  const NAMED = (record) => (record.s ? `${NAMES[record.s] || record.s}${record.k === 'held' ? ' (held)' : record.k === 'stalled' ? ' needed' : record.k === 'skip' ? ' (not possible)' : ''}`
+    : record.k === 'down' ? 'down' : record.k === 'up' ? 'back up' : record.k === 'start' ? 'watching again' : record.k);
 
   // The symptoms: a column for each five-minute slot with misses (its most within the window), muted
   // below the sensitivity's line and in the accent at or above it (the box stepped in); the line
   // itself, as it was set over time, labelled.
   function symptoms(svg, rows, from, now, x) {   // now: the window's end
-    const all = rows.filter((r) => r.k === 'm');
-    const sym = all.filter((r) => r.at + 300 >= from && r.at <= now);
-    const before = all.filter((r) => r.at < from).pop();
+    const all = rows.filter((record) => record.k === 'm');
+    const sym = all.filter((slot) => slot.at + 300 >= from && slot.at <= now);
+    const before = all.filter((slot) => slot.at < from).pop();
     let th = before ? before.th : (sym[0] || all[all.length - 1] || {}).th;
-    const top = Math.max(2, th || 0, ...sym.map((r) => Math.max(r.n, r.th || 0))) + 1;
+    const top = Math.max(2, th || 0, ...sym.map((slot) => Math.max(slot.n, slot.th || 0))) + 1;
     const ys = (v) => T + SYM_H - (v / top) * SYM_H;
     svg.append(make('text', { x: L - 8, y: T + 10, class: 'ladder-axis', 'text-anchor': 'end' }, 'missed'));
     svg.append(make('text', { x: L - 8, y: T + 22, class: 'ladder-axis', 'text-anchor': 'end' }, 'checks'));
     svg.append(make('line', { x1: L, x2: W - R, y1: ys(0), y2: ys(0), class: 'ladder-grid' }));
     svg.append(make('text', { x: L - 8, y: ys(0) + 4, class: 'ladder-axis', 'text-anchor': 'end' }, '0'));
     let dUnder = '', dOver = '';
-    for (const r of sym) {
-      const x0 = Math.max(x(r.at), L), x1 = Math.min(x(r.at + 300), W - R), wdt = Math.max(x1 - x0 - 0.5, 1.2);
-      if (!r.n) continue;
-      const seg = `M${x0},${ys(0)}V${ys(r.n)}h${wdt}V${ys(0)}Z`;
-      if (r.th && r.n >= r.th) dOver += seg; else dUnder += seg;
+    for (const slot of sym) {
+      const x0 = Math.max(x(slot.at), L), x1 = Math.min(x(slot.at + 300), W - R), wdt = Math.max(x1 - x0 - 0.5, 1.2);
+      if (!slot.n) continue;
+      const seg = `M${x0},${ys(0)}V${ys(slot.n)}h${wdt}V${ys(0)}Z`;
+      if (slot.th && slot.n >= slot.th) dOver += seg; else dUnder += seg;
     }
     if (dUnder) svg.append(make('path', { d: dUnder, class: 'ladder-sym' }));
     if (dOver) svg.append(make('path', { d: dOver, class: 'ladder-sym over' }));
     if (th) {
       let d = `M${L},${ys(th)}`;
-      for (const r of sym) if (r.th && r.th !== th) { th = r.th; d += `H${Math.max(x(r.at), L)}V${ys(th)}`; }
+      for (const slot of sym) if (slot.th && slot.th !== th) { th = slot.th; d += `H${Math.max(x(slot.at), L)}V${ys(th)}`; }
       d += `H${W - R}`;
       svg.append(make('path', { d, class: 'ladder-th' }));
       svg.append(make('text', { x: W - R, y: ys(th) - 4, class: 'ladder-axis', 'text-anchor': 'end' }, `sensitivity ${th}`));
     }
     // A roam between access points: a short tick on the baseline, muted, one each.
-    const roams = rows.filter((r) => r.k === 'roam' && r.at >= from && r.at <= now);
-    if (roams.length) svg.append(make('path', { d: roams.map((r) => `M${x(r.at)},${ys(0)}v-7`).join(''), class: 'ladder-roam' }));
-    return { most: Math.max(0, ...sym.map((r) => r.n)), over: sym.filter((r) => r.th && r.n >= r.th).length, roams: roams.length };
+    const roams = rows.filter((record) => record.k === 'roam' && record.at >= from && record.at <= now);
+    if (roams.length) svg.append(make('path', { d: roams.map((roam) => `M${x(roam.at)},${ys(0)}v-7`).join(''), class: 'ladder-roam' }));
+    return { most: Math.max(0, ...sym.map((slot) => slot.n)), over: sym.filter((slot) => slot.th && slot.n >= slot.th).length, roams: roams.length };
   }
 
   // draw(box, rows, hs, from, to, now, zoom): zoom(a, b) asks for the span [a, b].
@@ -172,7 +172,7 @@ const LadderChart = (() => {
       if (x(b) - x(a) > 54) svg.append(make('text', { x: (x(a) + x(b)) / 2, y: H - B - 6, class: 'ladder-axis', 'text-anchor': 'middle' }, 'no record'));
     }
     const sy = symptoms(svg, rows, from, to, x);
-    const symSaid = rows.some((r) => r.k === 'm') ? ` At most ${sy.most} missed check${sy.most === 1 ? '' : 's'} within the pace's window;`
+    const symSaid = rows.some((record) => record.k === 'm') ? ` At most ${sy.most} missed check${sy.most === 1 ? '' : 's'} within the pace's window;`
       + ` at or over the line in ${sy.over} five-minute spell${sy.over === 1 ? '' : 's'}.` : '';
     const roamSaid = sy.roams ? ` ${sy.roams} roam${sy.roams === 1 ? '' : 's'} between access points (the ticks on the baseline).` : '';
     svg.setAttribute('aria-label', svg.getAttribute('aria-label') + symSaid + roamSaid);
@@ -200,7 +200,7 @@ const LadderChart = (() => {
       else svg.append(make('circle', { cx, cy, r: 4.5, class: cls }));
     }
     // Hover and keys: a crosshair that snaps to the nearest event, its words in the tooltip.
-    const seen = rows.filter((r) => r.at >= from && r.at <= to && isEvent(r));
+    const seen = rows.filter((record) => record.at >= from && record.at <= to && isEvent(record));
     const cross = make('line', { y1: T, y2: H - B, class: 'ladder-cross', visibility: 'hidden' });
     const sel = make('rect', { y: T, height: H - B - T, class: 'ladder-sel', visibility: 'hidden' });
     svg.append(cross, sel);
@@ -211,15 +211,15 @@ const LadderChart = (() => {
     const show = (i) => {
       if (!seen.length) return;
       cur = Math.max(0, Math.min(i, seen.length - 1));
-      const r = seen[cur], px = x(r.at);
+      const record = seen[cur], px = x(record.at);
       cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
-      tip.replaceChildren(make('strong', {}, NAMED(r)),
-      make('span', {}, ` ${when(r.at, span)}${r.b ? `, ${BY[r.b]}` : ''}${r.i ? ` (${r.i})` : ''}`), make('br'), make('span', { class: 'ladder-tip-text' }, r.t || ''));
+      tip.replaceChildren(make('strong', {}, NAMED(record)),
+      make('span', {}, ` ${when(record.at, span)}${record.b ? `, ${BY[record.b]}` : ''}${record.i ? ` (${record.i})` : ''}`), make('br'), make('span', { class: 'ladder-tip-text' }, record.t || ''));
       tip.classList.add('on');
     };
     const nearest = (t) => {
       let best = -1, dist = Infinity;
-      seen.forEach((r, i) => { const dd = Math.abs(r.at - t); if (dd < dist) { dist = dd; best = i; } });
+      seen.forEach((record, i) => { const dd = Math.abs(record.at - t); if (dd < dist) { dist = dd; best = i; } });
       return best;
     };
     // A click or tap: the cluster around the nearest event, events closer than a fiftieth of the
@@ -279,9 +279,9 @@ const LadderChart = (() => {
     const tb = table.querySelector('table');
     tb.append(make('tr', {}, null));
     tb.firstChild.append(make('th', {}, 'Time'), make('th', {}, 'Event'), make('th', {}, 'Recovery step'), make('th', {}, 'Initiator'));
-    for (const r of seen.slice().reverse()) {
+    for (const record of seen.slice().reverse()) {
       const tr = make('tr');
-      tr.append(make('td', {}, when(r.at, span)), make('td', {}, r.t || r.k), make('td', {}, r.s ? NAMES[r.s] || r.s : ''), make('td', {}, r.b ? BY[r.b] : ''));
+      tr.append(make('td', {}, when(record.at, span)), make('td', {}, record.t || record.k), make('td', {}, record.s ? NAMES[record.s] || record.s : ''), make('td', {}, record.b ? BY[record.b] : ''));
       tb.append(tr);
     }
     const frame = make('div', { class: 'ladder-frame' });
@@ -300,7 +300,7 @@ const LadderChart = (() => {
   // [from, to]) across redraws, until Zoom out or a period is chosen.
   function render(box, rows, opts = {}) {
     const now = opts.now ?? Date.now() / 1000;
-    rows = (rows || []).filter((r) => r && typeof r.at === 'number').sort((a, b) => a.at - b.at);
+    rows = (rows || []).filter((record) => record && typeof record.at === 'number').sort((a, b) => a.at - b.at);
     const hs = holes(rows, opts.gaps);
     const chart = make('div', { class: 'ladder-chart' });
     const chips = make('div', { class: 'chip-group ladder-periods', role: 'radiogroup', 'aria-label': 'Over the last' });

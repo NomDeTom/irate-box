@@ -88,8 +88,8 @@ function said(check, open, text, href) {
 async function start() {
   let d;
   try {
-    const r = await fetch('/certificate.json', { cache: 'no-store' });
-    d = await r.json();
+    const response = await fetch('/certificate.json', { cache: 'no-store' });
+    d = await response.json();
   } catch (_) {
     $('cert-state').textContent = 'The box did not answer.';
     return;

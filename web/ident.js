@@ -142,13 +142,13 @@ function buildHuePanel() {
 }
 
 function positionHuePanel() {
-  const r = activeSwatch.getBoundingClientRect();
+  const rect = activeSwatch.getBoundingClientRect();
   const w = huePanel.offsetWidth;
-  let left = r.left + window.scrollX;
+  let left = rect.left + window.scrollX;
   if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8;
   if (left < 8) left = 8;
   huePanel.style.left = `${left}px`;
-  huePanel.style.top = `${r.bottom + window.scrollY + 6}px`;
+  huePanel.style.top = `${rect.bottom + window.scrollY + 6}px`;
 }
 
 function closeHuePanel() {

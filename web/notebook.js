@@ -33,8 +33,8 @@ function actions(st) {
 async function open() {
   let st;
   try {
-    const r = await fetch('/api/notebook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify({ action: 'open' }) });
-    st = await r.json();
+    const response = await fetch('/api/notebook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify({ action: 'open' }) });
+    st = await response.json();
   } catch (_) { $('nb-state').textContent = 'Could not reach the hub server.'; return; }
   if (st.state === 'ready') { $('nb-state').textContent = 'Opening notebook'; location.replace(target(st)); return; }
   $('nb-state').textContent = WORDS[st.state] || st.state;

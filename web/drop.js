@@ -15,7 +15,7 @@
   lockBox.checked = localStorage.getItem('drop-lock') === '1';
   // Signed in, and no selection made in this browser yet: the account's own default.
   if (localStorage.getItem('drop-lock') === null) {
-    fetch('/api/account').then((r) => (r.ok ? r.json() : null)).then((d) => {
+    fetch('/api/account').then((response) => (response.ok ? response.json() : null)).then((d) => {
       if (d && d.prefs && localStorage.getItem('drop-lock') === null) lockBox.checked = !!d.prefs.lock_default;
     }).catch(() => {});
   }
@@ -45,8 +45,8 @@
   async function refresh() {
     if (list.querySelector('.aw-ask')) return; // a question is open in the list: the next poll draws it again
     try {
-      const r = await fetch('/api/drop');
-      const data = await r.json();
+      const response = await fetch('/api/drop');
+      const data = await response.json();
       maxFile = data.max_file;
       limits.textContent = `Everyone who can open this page can download these files. Maximum file size: ${size(data.max_file)}. ` +
         (data.ttl ? `Retention period: ${Math.round(data.ttl / 3600)} hours of powered-on time. ` : '') +
@@ -83,13 +83,13 @@
     if (!c) return;
     button.disabled = true;
     try {
-      const r = await fetch(`/api/drop/${encodeURIComponent(f.id)}`, { method: 'DELETE', headers: c.headers });
-      if (r.ok) {
+      const response = await fetch(`/api/drop/${encodeURIComponent(f.id)}`, { method: 'DELETE', headers: c.headers });
+      if (response.ok) {
         HubLock.forget('drop', f.id);
         delete notDeleted[f.id];
       } else {
-        const data = await r.json().catch(() => ({}));
-        notDeleted[f.id] = `File not deleted: ${data.error || `error ${r.status}`}`;
+        const data = await response.json().catch(() => ({}));
+        notDeleted[f.id] = `File not deleted: ${data.error || `error ${response.status}`}`;
       }
     } catch (_) {
       notDeleted[f.id] = 'File not deleted: the connection dropped.';

@@ -314,7 +314,7 @@ const AL = (() => {
   // The apps' pages: a fetch away. When they're in, the page is rebuilt and the loaders told (a
   // hashchange), as a section they wait for may only now be showing.
   const ready = fetch('/admin/apps', { headers: { 'X-Irate-Admin': '1' } })
-    .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then((response) => (response.ok ? response.json() : null)).catch(() => null)
     .then((data) => {
       appList = data && Array.isArray(data.apps) ? data.apps : [];
       build(appList);
