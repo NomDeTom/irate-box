@@ -69,6 +69,65 @@ const LOADERS = ['loadLibrary', 'loadPackages', 'loadBox', 'loadModeration', 'lo
   r.selectNodeContents(list);
   list.replaceChildren(Object.assign(d.createElement('li'), { textContent: 'two' }));
   check('text that changed is drawn while selected', box.textContent === 'after' && list.textContent === 'two');
+  sel.removeAllRanges();
+
+  // AW.drawKept (admin pages plan, phase 4): a block whose cards hold fields, or values that move at every poll.
+  const card = (name, signal, value = '') => {
+    const c = d.createElement('div');
+    c.className = 'card';
+    const p = d.createElement('p');
+    p.textContent = `${name}, a WiFi adapter.`;
+    const live = d.createElement('span');
+    live.setAttribute('data-live', 'now');
+    live.textContent = `signal ${signal} dBm`;
+    const f = d.createElement('input');
+    f.value = value;
+    c.append(p, live, f);
+    return c;
+  };
+  const host = d.createElement('div');
+  d.body.append(host);
+  w.AW.drawKept(host, [card('wlan0', -60), card('wlan1', -70)]);
+  const [c0, c1] = host.children;
+  const rs = d.createRange();
+  rs.selectNodeContents(c0.querySelector('p'));
+  sel.addRange(rs);
+  w.AW.drawKept(host, [card('wlan0', -61), card('wlan1', -70)]);
+  check('drawKept: a card that holds a field, only its signal moved: the same card, the selection kept, the signal drawn',
+    host.children[0] === c0 && !sel.isCollapsed && c0.querySelector('[data-live]').textContent === 'signal -61 dBm', host.innerHTML);
+  w.AW.drawKept(host, [card('wlan0', -61), card('wlan1 (now the hotspot)', -70)]);
+  check('  a card whose words changed is drawn again, the others kept', host.children[0] === c0 && host.children[1] !== c1
+    && /hotspot/.test(host.children[1].textContent) && !sel.isCollapsed);
+  w.AW.drawKept(host, [card('wlan0', -61, 'typed'), card('wlan1 (now the hotspot)', -70)]);
+  check('  a field\'s value counts', host.children[0] !== c0 && host.children[0].querySelector('input').value === 'typed');
+  const foot = card('wlan0', -61);
+  foot.append(Object.assign(d.createElement('div'), { className: 'aw-foot' }));
+  const before = host.children[1];
+  w.AW.drawKept(host, [foot, card('wlan1 (now the hotspot)', -70)]);
+  check('  a block with a settings section (its Save) is always drawn', host.children[1] !== before && host.children[0] === foot);
+  sel.removeAllRanges();
+
+  // The Network page itself: its inventory drawn, then again with the signal moved, then with a card changed.
+  const fx = JSON.parse(fs.readFileSync(`${__dirname}/netinv-fixture.json`, 'utf8'));
+  const netData = JSON.parse(kept.get('/admin/network')[1]);
+  const draw = (inv) => w.renderNetwork({ ...netData, inventory: inv, pending: 0 });
+  const radio = (inv) => inv.radios.find((r) => r.iface === 'wlan0');
+  draw(structuredClone(fx));
+  const dev = d.querySelector('#net-devices > .net-device');
+  const rn = d.createRange();
+  rn.selectNodeContents(dev.querySelector('.net-line'));
+  sel.addRange(rn);
+  const moved = structuredClone(fx);
+  radio(moved).link.signal -= 7;
+  draw(moved);
+  const now = [...dev.querySelectorAll('[data-live="now"]')].map((n) => n.textContent).join(' ');
+  check('Network: a poll where only the signal moved keeps the radio\'s card and the selection in it, the signal drawn',
+    d.querySelector('#net-devices > .net-device') === dev && !sel.isCollapsed && now.includes(`signal ${radio(moved).link.signal} dBm`), now);
+  const other = structuredClone(moved);
+  radio(other).power_save = radio(other).power_save === 'on' ? 'off' : 'on';
+  draw(other);
+  check('  a poll that changes what the card says draws it again', d.querySelector('#net-devices > .net-device') !== dev);
+  sel.removeAllRanges();
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 })();
