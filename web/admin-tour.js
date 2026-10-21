@@ -10,14 +10,8 @@
 // (the setting setup_decided). Nothing here is a second copy of a setting.
 const TOUR = (() => {
   "use strict";
-  // The decisions: words, the section they live in, and the part of it to highlight (a selector,
-  // or a finder for a part drawn later, such as one of the security findings).
-  const finding = (re) => () =>
-    [
-      ...document.querySelectorAll(
-        "#security-findings .sec-choice, #security-findings .finding",
-      ),
-    ].find((li) => re.test(li.textContent));
+  // The decisions: words, the section they live in, and the part of it to highlight (a selector).
+  // only: a service the step is about, shown only where the box has it (has(), told by admin.js).
   const DECISIONS = [
     {
       id: "visitors",
@@ -81,7 +75,7 @@ const TOUR = (() => {
       id: "ssh",
       label: "SSH password authentication",
       section: "security",
-      target: finding(/SSH password/),
+      target: "#sec-ssh-password",
       said: "The box keeps the image setting until you change it. If SSH accepts keys only and you have no key, you cannot sign in over SSH.",
     },
     {
@@ -89,14 +83,16 @@ const TOUR = (() => {
       label: "Remote access (Tailscale)",
       section: "access",
       target: "#remote-section",
-      said: "The box keeps the setting that it found. This step shows only where the image has Tailscale.",
+      only: "tailscale",
+      said: "The box keeps the setting that it found.",
     },
     {
       id: "cockpit",
       label: "Cockpit (root sign-in on port 9090)",
       section: "security",
-      target: finding(/Cockpit/),
-      said: "While Cockpit runs, every guest can reach its sign-in page. This step shows only where the image has Cockpit.",
+      target: "#sec-cockpit",
+      only: "cockpit",
+      said: "While Cockpit runs on the network, every guest can reach its sign-in page.",
     },
     {
       id: "terminal",
@@ -115,16 +111,15 @@ const TOUR = (() => {
       id: "password",
       label: "Administrator password",
       section: "access",
-      target: "#access form, #access",
-      said: "You set this at first use. You can change it here at any time.",
+      target: "#password-form",
+      said: "Your administrator account signs you in to these pages, the terminal and Syncthing. The box also has its own sign-in for scripts, the user admin. When the first run makes an account, the user admin has no password. Set one here over HTTPS if you use scripts.",
     },
     {
       id: "connection",
       label: "How guests reach the box",
-      section: "network/hardware",
-      fallback: "network",
-      target: "#net-devices",
-      said: "Phones and laptops find the hub through the network that the box is on, or through the box's own hotspot.",
+      section: "security",
+      target: "#sec-firewall",
+      said: "Phones and laptops find the hub through the network that the box is on, or through the box's own hotspot. Two settings decide what a guest on the hotspot reaches: the hotspot firewall, here, and Guest internet access, a later step. Set both.",
     },
     {
       id: "security",
@@ -136,9 +131,9 @@ const TOUR = (() => {
     {
       id: "addons",
       label: "Add-ons",
-      section: "addons",
-      target: "#addons-list",
-      said: "The hub works without add-ons. Add the add-ons that this box needs.",
+      section: "app-inventory",
+      target: "#inv-list",
+      said: "The hub works without add-ons. Select Available to see the add-ons and apps that this box can add, then add the ones it needs.",
     },
     {
       id: "books",
@@ -155,7 +150,11 @@ const TOUR = (() => {
     target: "#backup a[download]",
     said: "Download the box's state now that you have set it up: settings, accounts, saved work and the library sources. Keep the file off the box.",
   };
-  const STEPS = [...OWN, ...DECISIONS, BACKUP];
+  const ALL = [...OWN, ...DECISIONS, BACKUP];
+  // The services the box has, as admin.js learns them: a step marked only shows once its service is known
+  // to be there (Tailscale: /admin/tailscale; Cockpit: the Security page's setting).
+  const present = {};
+  let STEPS = ALL.filter((s) => !s.only);
   const KIND = Object.fromEntries([
     ...OWN.map((s) => [s.id, "step"]),
     ...DECISIONS.map((s) => [s.id, "decision"]),
@@ -210,6 +209,25 @@ const TOUR = (() => {
       await postJSON("/admin/settings", { setup_muted: [...muted] });
     } catch (_) {
       /* shown as chosen; tried again with the next change */
+    }
+    drawList();
+  }
+  let waiting = null; // the step a reload was on, until its service is known
+  function has(service, yes) {
+    if (present[service] === !!yes) return;
+    present[service] = !!yes;
+    const now = at != null ? STEPS[at].id : waiting;
+    STEPS = ALL.filter((s) => !s.only || present[s.only]);
+    const i = now ? STEPS.findIndex((s) => s.id === now) : -1;
+    if (at != null) {
+      if (i >= 0) {
+        at = i;
+        show(); // its count in the bar ("3 of 16") follows
+      } else stop(); // the step's service has gone
+    } else if (waiting && i >= 0) {
+      waiting = null;
+      at = i;
+      show();
     }
     drawList();
   }
@@ -309,7 +327,7 @@ const TOUR = (() => {
     }
     at = i;
     try {
-      sessionStorage.setItem("irate-tour", String(i));
+      sessionStorage.setItem("irate-tour", STEPS[i].id); // its id: the steps shown can change (has)
     } catch (_) {
       /* this page's own memory only */
     }
@@ -457,8 +475,14 @@ const TOUR = (() => {
       /* none */
     }
     if (saved != null) {
-      at = Number(saved);
-      show();
+      // An id, or the index an older page kept; a step whose service is not known yet waits for has().
+      const i = /^\d+$/.test(saved)
+        ? Number(saved)
+        : STEPS.findIndex((s) => s.id === saved);
+      if (i >= 0 && i < STEPS.length) {
+        at = i;
+        show();
+      } else if (ALL.some((s) => s.id === saved)) waiting = saved;
     }
   }
   window.addEventListener("hashchange", () => {
@@ -476,7 +500,11 @@ const TOUR = (() => {
   });
   return {
     DECISIONS,
-    STEPS,
+    get STEPS() {
+      return STEPS;
+    },
+    ALL,
+    has,
     go,
     stop,
     decided: () => new Set(decided),

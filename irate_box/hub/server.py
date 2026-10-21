@@ -5378,7 +5378,9 @@ class Handler(BaseHTTPRequestHandler):
             if not unclaimed():
                 self.send_json(
                     403,
-                    refused.say(M("setup.done", "The administrator password is already set.")),
+                    refused.say(
+                        M("setup.done", "This box is already set up. Sign in to change its accounts or passwords.")
+                    ),
                 )
             elif not self._https() and payload.get("over_http") is not True:
                 # The first password over plain HTTP only when the owner chooses it, having been told.

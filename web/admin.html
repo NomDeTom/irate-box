@@ -442,11 +442,14 @@
           </h3>
           <p
             class="setting-desc"
-            data-i18n="admin.access.user-password-open-admin"
+            data-i18n="admin.access.box-own-sign-in-scripts"
           >
-            User <code>admin</code> and this password open /admin, /sync and
-            /term. Syncthing uses them too. After you change the password, the
-            browser asks for the new one.
+            The box's own sign-in, for scripts: the user <code>admin</code> and
+            this password. An administrator account signs in to these pages, the
+            terminal and Syncthing. On a box with no account, the user
+            <code>admin</code> does. When the first run makes an account, that
+            user has no password until you set one here. Setting one enables script sign-in
+            again.
           </p>
           <form id="password-form" class="library-form">
             <label data-i18n="admin.access.label-new-password"

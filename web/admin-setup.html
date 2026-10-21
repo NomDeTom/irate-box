@@ -28,15 +28,15 @@
         Syncthing at /sync. Later, sign in with it where everyone signs in (👤 Sign in, at the top of the hub).</p>
       <p data-i18n="admin-setup.body.until-account-exists-anyone">Until the account exists, anyone on this network can create it and become the administrator. Create the account
         now. If you are a guest and not the administrator, do not use this page.</p>
-      <p data-i18n="admin-setup.body.after-step-administration-pages">After this step, the administration pages guide you through the rest: how guests reach the box,
-        what the box exposes, add-ons and books. You can skip each step and do it later.</p>
+      <p data-i18n="admin-setup.body.after-step-administration-pages-sign-in">After this step, the administration pages guide you through the rest: the box's own
+        sign-in for scripts, how guests reach the box, what the box exposes, add-ons and books. You can skip each step and do it later.</p>
     </div>
     <!-- Over HTTP: the safer ways first, and the form only when selected (setup-http). -->
     <div class="settings-note admin-note bad" id="setup-http" hidden>
       <p data-i18n="admin-setup.body.page-open-over-http"><strong>This page is open over HTTP.</strong> Other devices on this network can read a password that
         you type here. Use one of these safer ways:</p>
       <ul>
-        <li data-i18n="admin-setup.body.box-https-enabled-open">If this box has HTTPS enabled, open <a id="setup-https-link" href="#">the same page over HTTPS</a>.</li>
+        <li data-i18n="admin-setup.body.open-same-page-https">Open <a id="setup-https-link" href="#">the same page over HTTPS</a>. If the browser warns that the connection is not private, first install the box's certificate on this device: <a href="/certificate">the certificate page</a>.</li>
         <li data-i18n="admin-setup.body.box-console-over-ssh">At the box console over SSH, run: <code>sudo /opt/irate-box/irate-box hub_control set-admin NAME</code></li>
       </ul>
       <label data-i18n="admin-setup.body.label-set-password-over-http"><input type="checkbox" id="setup-http-ok"> Set the password over HTTP anyway. I understand that

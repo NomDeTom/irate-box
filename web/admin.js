@@ -201,6 +201,8 @@ function remoteText(data) {
 
 function showRemote(data) {
   remote.hidden = data.state === "missing";
+  // The setup tour's Tailscale step shows only where the box has it.
+  if (window.TOUR) TOUR.has("tailscale", !remote.hidden);
   if (remote.hidden) return;
   radios.forEach((r) => {
     r.checked = r.value === data.want.mode;
@@ -4179,6 +4181,12 @@ function portRanges(ls) {
 function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
+  // The setup tour's Cockpit step shows only where the box has it: the page's Cockpit setting.
+  if (scan && window.TOUR)
+    TOUR.has(
+      "cockpit",
+      (scan.findings || []).some((f) => f.id === "cockpit"),
+    );
   const busy = data.pending > 0 || !!secWaiting;
   secPrune(scan);
   if (secWaiting) {
@@ -7519,7 +7527,7 @@ function uptimeSection(iface, data = netData) {
       "p",
       { className: "net-line" },
       el("span", { className: "net-label", textContent: "Uptime" }),
-      el("span", { textContent: said }),
+      liveAs(el("span", { textContent: said }), "uptime"),
     ),
   );
   if (!u) {
@@ -7538,11 +7546,14 @@ function uptimeSection(iface, data = netData) {
       className: "setting-desc",
       textContent: "The last 72 hours, by hour:",
     }),
-    Heatmap.grid({
-      caption: `${iface}, the last 72 hours by hour`,
-      cols: u.hour_cols,
-      rows: [{ label: iface, cells: u.hours, where: (i) => u.hour_full[i] }],
-    }),
+    liveAs(
+      Heatmap.grid({
+        caption: `${iface}, the last 72 hours by hour`,
+        cols: u.hour_cols,
+        rows: [{ label: iface, cells: u.hours, where: (i) => u.hour_full[i] }],
+      }),
+      "hours",
+    ),
   );
   const day = (iso) =>
     new Date(`${iso}T12:00:00`).toLocaleDateString([], {
@@ -7555,19 +7566,22 @@ function uptimeSection(iface, data = netData) {
       className: "setting-desc",
       textContent: "The last 72 days, by day:",
     }),
-    Heatmap.grid({
-      caption: `${iface}, the last 72 days by day`,
-      cols: Array.from({ length: 72 }, (_, i) =>
-        i % 12 ? "" : day(u.month[i].date),
-      ),
-      rows: [
-        {
-          label: iface,
-          cells: u.month.map((c) => (c.n ? c : null)),
-          where: (i) => day(u.month[i].date),
-        },
-      ],
-    }),
+    liveAs(
+      Heatmap.grid({
+        caption: `${iface}, the last 72 days by day`,
+        cols: Array.from({ length: 72 }, (_, i) =>
+          i % 12 ? "" : day(u.month[i].date),
+        ),
+        rows: [
+          {
+            label: iface,
+            cells: u.month.map((c) => (c.n ? c : null)),
+            where: (i) => day(u.month[i].date),
+          },
+        ],
+      }),
+      "days",
+    ),
     Heatmap.legend(),
   );
   fold.append(
@@ -7648,13 +7662,7 @@ function powerSaveLine(d) {
 }
 
 function deviceCard(inv, d, wifi, hazards) {
-  const line = (label, text) =>
-    el(
-      "p",
-      { className: "net-line" },
-      el("span", { className: "net-label", textContent: label }),
-      el("span", { textContent: text }),
-    );
+  const line = netLine;
   // Each labelled part a section of its own, a hairline between them, so the parts don't run together.
   const section = (...parts) =>
     el("div", { className: "net-section" }, ...parts);
@@ -7702,7 +7710,7 @@ function deviceCard(inv, d, wifi, hazards) {
   const kids = [
     netHead(d.iface, [kind]),
     section(line("Device type", what || "—")),
-    section(line("Current connection", now)),
+    section(line("Current connection", now, "now")),
     section(line("Connection manager", managed)),
   ];
   if (wifi && (d.power_save || d.powersave_from))
@@ -7800,13 +7808,19 @@ const netTabs = {
 };
 const bandOf = (f) =>
   f ? (f < 3000 ? "2.4 GHz" : f < 5925 ? "5 GHz" : "6 GHz") : "";
-const netLine = (label, text) =>
+// live: a value that moves at every poll (a signal), put in place on its own (AW.drawKept).
+const netLine = (label, text, live) =>
   el(
     "p",
     { className: "net-line" },
     el("span", { className: "net-label", textContent: label }),
-    el("span", { textContent: text }),
+    liveAs(el("span", { textContent: text }), live),
   );
+// A node marked as live (AW.drawKept): drawn again in place, not counted in what its card shows.
+function liveAs(node, name) {
+  if (name) node.setAttribute("data-live", name);
+  return node;
+}
 function linkNow(inv, d) {
   if (d.link && d.link.ssid)
     return `On ${d.link.ssid}, channel ${d.link.channel}${d.link.freq ? ` (${bandOf(d.link.freq)})` : ""}, signal ${d.link.signal} dBm (${signalWords(d.link.signal)}).`;
@@ -7971,7 +7985,7 @@ function drawNetTabs(data, inv, u) {
   const links = inv
     ? [...inv.radios.filter((r) => r.type !== "AP"), ...inv.wired]
     : [];
-  netTabs.statusCards.replaceChildren(
+  AW.drawKept(netTabs.statusCards, [
     ...links.map((d) =>
       el(
         "div",
@@ -7980,11 +7994,11 @@ function drawNetTabs(data, inv, u) {
           "carrier" in d ? "Wired" : "WiFi",
           up && up.iface === d.iface ? "The box's link" : null,
         ]),
-        netLine("Current connection", linkNow(inv, d)),
+        netLine("Current connection", linkNow(inv, d), "now"),
         uptimeSection(d.iface),
       ),
     ),
-  );
+  ]);
   const netLadKey =
     String((data.ladder || []).length) + JSON.stringify(data.ladder_gaps || []);
   if (
@@ -7998,13 +8012,13 @@ function drawNetTabs(data, inv, u) {
   }
   // Connection settings: its WiFi now, the networks it knows (NetworkManager's saved ones), its wired port.
   const wifi = inv ? inv.radios.filter((r) => r.type === "managed") : [];
-  netTabs.wifiNow.replaceChildren(
+  AW.drawKept(netTabs.wifiNow, [
     ...(wifi.length
       ? wifi.map((r) =>
           el(
             "div",
             {},
-            netLine(r.iface, linkNow(inv, r)),
+            netLine(r.iface, linkNow(inv, r), "now"),
             r.link && r.link.bssid
               ? netLine(
                   "Access point",
@@ -8035,7 +8049,7 @@ function drawNetTabs(data, inv, u) {
               : "Not checked yet.",
           }),
         ]),
-  );
+  ]);
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
   const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== "ap");
   const current = new Set(
@@ -8123,7 +8137,7 @@ function drawNetTabs(data, inv, u) {
   drawRoaming(inv, u, wifi);
   const wired = inv ? inv.wired : [];
   netTabs.wiredCard.hidden = !!inv && !wired.length;
-  netTabs.wiredNow.replaceChildren(
+  AW.drawKept(netTabs.wiredNow, [
     ...wired.map((w) =>
       netLine(
         w.iface,
@@ -8133,7 +8147,7 @@ function drawNetTabs(data, inv, u) {
             : ""),
       ),
     ),
-  );
+  ]);
   drawApHealth();
 }
 
@@ -8185,10 +8199,10 @@ function drawApHealth(data = netData) {
   const hist = Object.keys((data && data.uptime) || {}).filter(
     (i) => data.uptime[i].kind === "hotspot",
   );
-  netTabs.apHealth.replaceChildren(
+  AW.drawKept(netTabs.apHealth, [
     ...lines.filter(Boolean),
     ...hist.map((i) => uptimeSection(i, data)),
-  );
+  ]);
 }
 
 function renderNetwork(data) {
@@ -8233,16 +8247,16 @@ function renderNetwork(data) {
         )
         .sort((x, y) => (RANK[x.status] ?? 2) - (RANK[y.status] ?? 2))
     : [];
-  net.devices.replaceChildren(
+  AW.drawKept(net.devices, [
     ...(inv
       ? [
           ...inv.radios.map((r) => deviceCard(inv, r, true, hz)),
           ...inv.wired.map((w) => deviceCard(inv, w, false, hz)),
         ]
       : []),
-  );
+  ]);
   drawNetTabs(data, inv, u);
-  net.hazards.replaceChildren(
+  AW.drawKept(net.hazards, [
     ...hz
       .filter((h) => !(h.iface && shownIfaces.has(h.iface)))
       .map((h) =>
@@ -8259,7 +8273,7 @@ function renderNetwork(data) {
           hazardControls(h),
         ),
       ),
-  );
+  ]);
   const sn = netNotes.scan;
   say(sn ? sn.text : "", sn ? sn.ok : true, net.scanNote);
   const jn = netNotes.join;
@@ -8413,7 +8427,7 @@ function renderNetwork(data) {
     "NetworkManager runs this box's WiFi and network connections, and irate-box makes its changes through it.";
   const evs = (u && u.events) || [];
   // One line per event: when, then what.
-  net.events.replaceChildren(
+  AW.drawKept(net.events, [
     ...evs
       .slice(-25)
       .reverse()
@@ -8442,7 +8456,7 @@ function renderNetwork(data) {
           }),
         ),
       ),
-  );
+  ]);
   const down = u && !u.stale && u.state !== "up";
   badge("network", down ? "!" : "");
 
@@ -11996,6 +12010,7 @@ const setupList = document.getElementById("setup-steps");
 
 // Each setup step's state, as the part of the page that knows it says; the tour draws the list.
 const SETUP_STATE = {};
+window.SETUP_STATE = SETUP_STATE; // the tour reads it there too (scripts evaluated one by one, as in the page tests)
 function setupStep(step, text, status) {
   SETUP_STATE[step] = { text, status };
   if (window.TOUR) TOUR.drawList();
@@ -12038,7 +12053,19 @@ function drawConnectionStep() {
       : `At http://${host}/ on the network that the box is already on.`,
     port ? "warn" : "ok",
   );
-  setupStep("password", "Set.", "ok");
+}
+// The box's own login (the user admin, for scripts), as the accounts data has it: no password after
+// the first run made an account, until one is set on Access.
+function drawPasswordStep(al) {
+  setupStep(
+    "password",
+    !al.password_set
+      ? "No password yet. Scripts cannot sign in as admin."
+      : al.on
+        ? "Set. Scripts can sign in as admin."
+        : "Set. Script sign-in is off (Accounts).",
+    al.password_set ? "ok" : "",
+  );
 }
 drawConnectionStep();
 document
@@ -14795,6 +14822,7 @@ function renderAccounts(d) {
     results: [],
   };
   acctLast = d;
+  if (d.admin_login) drawPasswordStep(d.admin_login);
   if (acctWaiting) {
     const done = (al.results || []).find((r) => r.id === acctWaiting.id);
     if (done) {
@@ -15120,7 +15148,7 @@ if (postingShown()) loadPosting();
 window.addEventListener("hashchange", () => {
   if (paneShown("accounts")) loadAccounts();
 });
-if (paneShown("accounts")) loadAccounts();
+loadAccounts(); // once on any page: the setup's password step says what the box's own login has
 
 // --- the mesh (meshbridge.py, /admin/mesh) ----------------------------------------------------------
 const meshEl = {
