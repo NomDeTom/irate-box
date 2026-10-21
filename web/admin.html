@@ -3348,6 +3348,18 @@
                               Add and connect
                             </button>
                           </span>
+                          <p
+                            class="setting-desc"
+                            id="net-join-says"
+                            data-i18n="admin.network.join-says"
+                          >
+                            Add network: the box joins it when the networks it
+                            knows are out of range. Add and connect: the box
+                            leaves its current network now, and this page can
+                            lose the box until you are on that network too. If
+                            the box cannot join within 1 minute, it reconnects
+                            to the previous network.
+                          </p>
                         </form>
                       </details>
                       <p
@@ -3827,10 +3839,12 @@
                   class="inline"
                   id="ap-take-label"
                   hidden
-                  data-i18n="admin.network.ap-take-label"
+                  data-i18n="admin.network.ap-take-label-5-minutes"
                   ><input type="checkbox" id="ap-take" /> Use this radio for the
-                  hotspot. The box leaves your WiFi while the hotspot
-                  runs</label
+                  hotspot. The box leaves your WiFi while the hotspot runs.
+                  Join the hotspot network and open the hub within 5 minutes,
+                  then select Keep hotspot settings, or the box reconnects to
+                  your WiFi</label
                 >
                 <span class="library-buttons">
                   <button

@@ -6583,12 +6583,6 @@ function drawUpScope(inv) {
             : `${upScope} follows the settings for every connection. A choice here becomes its own setting. `,
           own
             ? actionButton("Use default connection settings", () => {
-                if (
-                  !confirm(
-                    `Remove the overrides for ${upScope}? It then follows the settings for every connection.`,
-                  )
-                )
-                  return;
                 const per = { ...(upSaved.per_iface || {}) };
                 delete per[upScope];
                 upSec.discard();
@@ -6607,8 +6601,8 @@ function drawUpScope(inv) {
         ]),
   );
 }
-upScopeBox.addEventListener("change", () => {
-  if (upSec.dirty() && !confirm("Discard the unsaved selections?")) {
+upScopeBox.addEventListener("change", async (e) => {
+  if (upSec.dirty() && !await AW.confirmHere("Discard the unsaved selections?", { anchor: e.currentTarget })) {
     upScopeBox.value = upScope;
     return;
   }
@@ -7400,15 +7394,18 @@ const TEST_LABEL = {
   "radio-reset": "Test radio reset",
   "driver-reset": "Test driver timeout recovery",
 };
+// A radio test's button, what the test does beside it: it runs at once.
 function radioTestButton(iface, exp, label) {
   const busy = !!netWaiting || (netData && netData.pending > 0);
-  return actionButton(
-    label,
-    () => {
-      if (confirm(`${RADIO_TEST_SAYS[exp]} Run the test now?`))
-        netRequest({ action: "radiotest", iface, exp }, "scan");
-    },
-    { className: "small", disabled: busy },
+  return el(
+    "span",
+    { className: "radio-test" },
+    actionButton(
+      label,
+      () => netRequest({ action: "radiotest", iface, exp }, "scan"),
+      { className: "small", disabled: busy },
+    ),
+    el("span", { className: "setting-desc", textContent: ` ${RADIO_TEST_SAYS[exp]}` }),
   );
 }
 function radioTests(inv, iface, section, line) {
@@ -7852,12 +7849,7 @@ function drawRoaming(inv, u, wifi) {
         actionButton(
           "Disable access-point lock",
           () => {
-            if (
-              confirm(
-                "Disable the access-point lock? The box can then join any of your access points.",
-              )
-            )
-              netRequest(
+            netRequest(
                 {
                   action: "settings",
                   settings: { ...chosen, roaming: "roam", lock_bssid: null },
@@ -8056,11 +8048,10 @@ function drawNetTabs(data, inv, u) {
                   mine.has(p.uuid)
                     ? actionButton(
                         "Remove saved network",
-                        () => {
+                        async (e) => {
                           if (
-                            confirm(
-                              `Remove the saved network ${p.ssid || p.name}? The box deletes its profile and does not join it automatically again.`,
-                            )
+                            await AW.confirmHere(
+                              `Remove the saved network ${p.ssid || p.name}? The box deletes its profile and does not join it automatically again.`, { anchor: e.currentTarget })
                           )
                             netRequest(
                               { action: "forget", uuid: p.uuid },
@@ -8273,17 +8264,15 @@ function renderNetwork(data) {
             className: "action-btn primary",
             disabled: busy,
             textContent: `${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now`,
-            onclick: () => {
-              if (
-                confirm(
-                  `${u.stall.label[0].toUpperCase()}${u.stall.label.slice(1)} now? ` +
-                    (need === "reboot"
-                      ? "The box restarts. All its services are unavailable for 1 to 2 minutes."
-                      : "The WiFi and the hotspot stop for a moment."),
-                )
-              )
-                netRequest({ action: "do", step: need }, "up");
-            },
+            onclick: () => netRequest({ action: "do", step: need }, "up"),
+          }),
+          // What it costs, beside it: an action acts at once (admin pages plan, phase 5).
+          el("span", {
+            className: "setting-desc",
+            textContent:
+              need === "reboot"
+                ? " The box restarts. All its services are unavailable for 1 to 2 minutes."
+                : " The WiFi and the hotspot stop for a moment.",
           }),
         ]
       : []),
@@ -8355,12 +8344,7 @@ function renderNetwork(data) {
         actionButton(
           "Enable automatic retries",
           () => {
-            if (
-              confirm(
-                `Change two settings of the WiFi profile ${prof} so that it retries without limit? Wrong passwords are also retried. Undo restores the previous settings.`,
-              )
-            )
-              netRequest({ action: "profile", on: true }, "up");
+            netRequest({ action: "profile", on: true }, "up");
           },
           { disabled: busy },
         ),
@@ -8497,10 +8481,10 @@ function renderDefaults(inv, busy) {
     ),
   );
   scope.value = defaultsScope;
-  scope.addEventListener("change", () => {
+  scope.addEventListener("change", async (e) => {
     if (
       defSec.dirty() &&
-      !confirm("Discard the unsaved changes to the box defaults?")
+      !await AW.confirmHere("Discard the unsaved changes to the box defaults?", { anchor: e.currentTarget })
     ) {
       scope.value = defaultsScope;
       return;
@@ -8737,12 +8721,7 @@ function renderOtherAp(inv, data, busy) {
         actionButton(
           "Delete profile",
           () => {
-            if (
-              confirm(
-                `Delete the profile ${p.name}? The box keeps a copy. Restore profile brings it back.`,
-              )
-            )
-              netRequest(
+            netRequest(
                 { action: "otherap", uuid: p.uuid, do: "remove" },
                 "otherap",
               );
@@ -8777,11 +8756,10 @@ function renderOtherAp(inv, data, busy) {
         " ",
         actionButton(
           "Delete retained copy permanently",
-          () => {
+          async (e) => {
             if (
-              confirm(
-                `Delete the retained copy of ${c.name} permanently? You cannot restore it afterwards.`,
-              )
+              await AW.confirmHere(
+                `Delete the retained copy of ${c.name} permanently? You cannot restore it afterwards.`, { anchor: e.currentTarget })
             )
               netRequest({ action: "otherap", uuid, do: "forget" }, "otherap");
           },
@@ -8817,16 +8795,7 @@ function renderVisible(inv, busy) {
     );
   const scanAgain = actionButton(
     "Run scan",
-    () => {
-      if (
-        shared &&
-        !confirm(
-          "Scan for networks now? The hotspot shares this radio, so guests can lose it for a moment.",
-        )
-      )
-        return;
-      netRequest({ action: "scan", rescan: true }, "scan");
-    },
+    () => netRequest({ action: "scan", rescan: true }, "scan"),
     { disabled: busy, className: "small" },
   );
   const f = joinForm.elements;
@@ -8838,6 +8807,9 @@ function renderVisible(inv, busy) {
         ? `Networks the box can see (from ${inv ? new Date(inv.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "its last look"}). Select one, then enter its password. `
         : "No networks were seen in the last scan. ",
       scanAgain,
+      shared
+        ? " The hotspot shares this radio, so guests can lose it for a moment."
+        : "",
     ),
     ...(nets.length
       ? [
@@ -9143,10 +9115,7 @@ function connSettings(p, inv, data, busy, radio) {
           actionButton(
             "Undo",
             () => {
-              if (
-                confirm(`Restore the previous settings of ${p.ssid || p.name}?`)
-              )
-                netRequest(
+              netRequest(
                   { action: "connection", uuid: p.uuid, undo: true },
                   "connection",
                 );
@@ -9201,16 +9170,7 @@ function renderHandover(inv, busy) {
             actionButton(
               "Manage with NetworkManager",
               () => {
-                if (
-                  confirm(
-                    `Manage ${names || f.name} with NetworkManager? The box moves ${f.name} aside and keeps it. NetworkManager manages ${f.connections.length === 1 ? "the connection" : "them"} from now on. ` +
-                      "Nothing is disconnected. If the NetworkManager view of a connection changes, the box restores everything at once." +
-                      (f.regdom
-                        ? ` The WiFi country it sets (${f.regdom}) is kept.`
-                        : ""),
-                  )
-                )
-                  netRequest({ action: "handover", name: f.name }, "handover");
+                netRequest({ action: "handover", name: f.name }, "handover");
               },
               { disabled: busy },
             ),
@@ -9247,12 +9207,7 @@ function renderHandover(inv, busy) {
           actionButton(
             "Restore netplan management",
             () => {
-              if (
-                confirm(
-                  `Restore netplan management with ${d.name}? netplan writes its connections again at every boot.`,
-                )
-              )
-                netRequest(
+              netRequest(
                   { action: "handover", name: d.name, undo: true },
                   "handover",
                 );
@@ -9365,12 +9320,7 @@ function hazardControls(h) {
       actionButton(
         "Delete profile",
         () => {
-          if (
-            confirm(
-              "Delete this hotspot profile? The box keeps a copy. Restore profile, under Changes made here, brings it back.",
-            )
-          )
-            netRequest(
+          netRequest(
               { action: "otherap", uuid: ap[1], do: "remove" },
               "otherap",
             );
@@ -9452,21 +9402,7 @@ function joinAsk(now) {
   const f = joinForm.elements;
   if (!joinForm.reportValidity()) return;
   const ssid = f.ssid.value;
-  if (
-    now &&
-    !confirm(
-      `Join ${ssid} now? The box leaves its current network. This page can lose the connection to the box until you are on ${ssid} too. ` +
-        "If the box cannot join within 1 minute, it reconnects to the previous network.",
-    )
-  )
-    return;
-  if (
-    !now &&
-    !confirm(
-      `Add ${ssid} to the networks that the box knows? The box joins it automatically when the other known networks are out of range.`,
-    )
-  )
-    return;
+  // What each button does is said under them (#net-join-says): it acts at once.
   netRequest(
     {
       action: "join",
@@ -9638,12 +9574,6 @@ apEl.form.addEventListener("submit", (e) => {
       );
       return;
     }
-    if (
-      !confirm(
-        "The box leaves your WiFi while the hotspot runs. Join the hotspot network and open the hub within 5 minutes. Then select Keep hotspot settings. If you do not, the box reconnects to your WiFi automatically.",
-      )
-    )
-      return;
     body.take_radio = true;
   }
   apAct(body);
