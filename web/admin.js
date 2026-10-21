@@ -4058,7 +4058,11 @@ function secChipRows(f, busy) {
         { className: "chip-group", role: "group", "aria-label": label },
         ...choices.map((a) => {
           const sec = secSecs.get(f.id);
-          const pend = sec && sec.dirty() ? { a: { choice: sec.get("choice") } } : null;
+          // Pending only in the group it was chosen in: the finding's other groups show how they are.
+          const pend =
+            sec && sec.dirty() && choices.some((c) => c.choice === sec.get("choice"))
+              ? { a: { choice: sec.get("choice") } }
+              : null;
           const sel = pend ? pend.a.choice === a.choice : !!a.on;
           const b = el("button", {
             type: "button",
@@ -4129,35 +4133,45 @@ function findingLines(f) {
       : null,
   ];
 }
+// One of the box's settings, not a finding: what it is now, its values with the one in effect marked, and
+// Save and Discard. It stays in its place whatever it is set to. What the doctor makes of it is the
+// Security doctor's, which links here; this says only that there is one.
 function secChoiceCard(f, busy, note) {
   const rows = secChipRows(f, busy);
   const rest = { ...f, actions: (f.actions || []).filter((a) => !a.group) };
   const buttons = rest.actions.length
     ? el("div", { className: "library-buttons" }, ...scanButtons(rest, busy))
     : null;
+  const p = findingParts(f);
   return el(
     "div",
     { className: "setting sec-choice", id: `sec-${f.id}` },
-    // The header as every card's: the title, then how it stands at the right, beside the heading, not in it.
-    el(
-      "div",
-      { className: "fhead" },
-      el("span", { className: "setting-name ftitle", textContent: f.title }),
-      el("span", {
-        className: `fstate fstate-${f.status === "ok" ? "ok" : f.status}`,
-        textContent:
-          f.status === "ok"
-            ? "Set"
-            : rows.length
-              ? "To select"
-              : rest.actions.length
-                ? "To fix"
-                : "To review",
-      }),
-    ),
-    ...findingLines(f),
+    el("span", { className: "setting-name", textContent: f.title }),
+    el("span", { className: "setting-desc", textContent: p.detail }),
     ...rows,
     buttons,
+    // With nothing to choose here (no key for SSH yet, say), what would make a choice possible.
+    !rows.length && !buttons && f.status !== "ok" && f.fix
+      ? el("span", { className: "setting-desc", textContent: f.fix })
+      : null,
+    p.why
+      ? el("span", { className: "setting-desc fwhy", textContent: p.why })
+      : null,
+    ...p.notes.map((n) =>
+      el("span", { className: "setting-desc", textContent: n }),
+    ),
+    evidenceList(p.evidence),
+    // What to type where the page cannot put it in effect itself (the firewall's rules not loaded, say).
+    f.status !== "ok" && p.commands.length
+      ? el("div", { className: "fdo-cmds" }, ...p.commands.map(copyBox))
+      : null,
+    f.status !== "ok"
+      ? el("a", {
+          className: "setting-desc",
+          href: "#secdoctor",
+          textContent: "The Security doctor has a finding about this setting.",
+        })
+      : null,
     ...secFoot(f),
     note,
   );
@@ -4228,8 +4242,7 @@ function renderSecurity(data) {
   // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
   // choice or is set, so a setting can always be found and changed back.
   const choices = lines.filter((f) => secKind(f) === "choice");
-  const waiting = choices.filter((f) => f.status !== "ok"),
-    set = choices.filter((f) => f.status === "ok");
+  const waiting = choices.filter((f) => f.status !== "ok");
   const card = (f) => secChoiceCard(f, busy, noteUnder(f.id));
   sec.findings.replaceChildren(
     ...(!scan
@@ -4247,7 +4260,7 @@ function renderSecurity(data) {
                 { className: "sec-subject", id: `security-${key}` },
                 el("h3", { textContent: title }),
                 el("p", { className: "setting-desc", textContent: words }),
-                el("div", { className: "findings" }, ...mine.map(card)),
+                el("div", { className: "sec-settings" }, ...mine.map(card)),
               )
             : null;
         }).filter(Boolean)),
@@ -4425,18 +4438,11 @@ function renderSecurity(data) {
   sec.counts.replaceChildren(
     ...[
       [
-        waiting.length,
-        `to review`,
-        waiting.length ? "warn" : "ok",
-        "security-findings",
-      ],
-      [
         ports,
         `port${ports === 1 ? "" : "s"} to review`,
         ports ? "warn" : "ok",
         "security-ports",
       ],
-      [set.length, "set", "ok", "security-findings"],
     ].map(([n, word, st, to]) =>
       el(
         "a",

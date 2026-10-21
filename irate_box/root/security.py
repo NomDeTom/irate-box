@@ -596,6 +596,17 @@ def keys_on_box():
     return have
 
 
+def _ssh_chips(rec, what, group, on_label, off_label, is_on, confirm_off, confirm_on=None):
+    """Both values of an SSH setting as chips, always: the one in effect marked; the other undoes what
+    this page set, or sets it here."""
+    ours = what in rec.get("ssh", {}) or what in rec.get("ssh_on", {})
+    other = f"ssh-{what}-undo" if ours else f"ssh-{what}-{'off' if is_on else 'on'}"
+    return [
+        _chip(group, other if not is_on else f"ssh-{what}-on", on_label, is_on, None if ours else confirm_on),
+        _chip(group, other if is_on else f"ssh-{what}-off", off_label, not is_on, None if ours else confirm_off),
+    ]
+
+
 def ssh_findings(settings, keys, rec):
     if settings is None:
         return [finding("ssh", M("ssh.title", "SSH"), "ok", M("ssh.none", "This box has no SSH server."))]
@@ -649,6 +660,22 @@ def ssh_findings(settings, keys, rec):
         )
     title = M("ssh-password.title", "SSH password sign-in")
     pw = settings.get("passwordauthentication", "yes")
+    pw_chips = _ssh_chips(
+        rec,
+        "password",
+        M("ssh-password.group", "SSH sign-in with"),
+        M("ssh-password.chip-on", "A password or a key"),
+        M("ssh-password.chip-off", "A key only"),
+        pw == "yes",
+        M(
+            "ssh-password.off.confirm",
+            "Disable SSH password sign-in? Then only keys work, for {accounts}.",
+            accounts=keys,
+        )
+        if keys
+        else None,
+        M("ssh-password.on.confirm", "Enable SSH password sign-in? Then any device on the network can try passwords."),
+    )
     if pw == "yes" and keys:
         out.append(
             finding(
@@ -672,17 +699,7 @@ def ssh_findings(settings, keys, rec):
                         accounts=keys,
                     )
                 ],
-                actions=[
-                    action(
-                        "ssh-password-off",
-                        M("ssh-password.off", "Disable password sign-in"),
-                        M(
-                            "ssh-password.off.confirm",
-                            "Disable SSH password sign-in? Then only keys work, for {accounts}.",
-                            accounts=keys,
-                        ),
-                    )
-                ],
+                actions=pw_chips,
             )
         )
     elif pw == "yes":
@@ -705,6 +722,7 @@ def ssh_findings(settings, keys, rec):
                         "If you disable passwords now, nobody can sign in over SSH.",
                     )
                 ],
+                actions=pw_chips,
             )
         )
     else:
@@ -714,7 +732,7 @@ def ssh_findings(settings, keys, rec):
                 title,
                 "ok",
                 M("ssh-password.keys-only", "SSH accepts keys only, not passwords."),
-                actions=[action("ssh-password-undo", UNDO)] if "password" in ours else [],
+                actions=pw_chips,
             )
         )
     # Forwarding: Debian's and Armbian's defaults leave TCP, agent
@@ -724,6 +742,23 @@ def ssh_findings(settings, keys, rec):
     fwd = [
         k for k in ("allowtcpforwarding", "allowagentforwarding", "x11forwarding") if settings.get(k, "yes") == "yes"
     ]
+    fwd_chips = _ssh_chips(
+        rec,
+        "forwarding",
+        M("ssh-forwarding.group", "Forwarding through SSH"),
+        ON,
+        OFF,
+        bool(fwd),
+        M(
+            "ssh-forwarding.off.confirm",
+            "Disable SSH TCP, agent and X11 forwarding? Sign-ins and copies "
+            "with scp still work. Tunnels through the box stop.",
+        ),
+        M(
+            "ssh-forwarding.on.confirm",
+            "Enable SSH TCP, agent and X11 forwarding? A user who can sign in can then tunnel through the box.",
+        ),
+    )
     if fwd:
         out.append(
             finding(
@@ -745,17 +780,7 @@ def ssh_findings(settings, keys, rec):
                     )
                 ],
                 evidence=[f"{k} yes" for k in fwd],
-                actions=[
-                    action(
-                        "ssh-forwarding-off",
-                        M("ssh-forwarding.off", "Disable forwarding"),
-                        M(
-                            "ssh-forwarding.off.confirm",
-                            "Disable SSH TCP, agent and X11 forwarding? Sign-ins and copies "
-                            "with scp still work. Tunnels through the box stop.",
-                        ),
-                    )
-                ],
+                actions=fwd_chips,
             )
         )
     else:
@@ -765,7 +790,7 @@ def ssh_findings(settings, keys, rec):
                 title,
                 "ok",
                 M("ssh-forwarding.off-state", "SSH does not forward TCP, agent or X11 connections."),
-                actions=[action("ssh-forwarding-undo", UNDO)] if "forwarding" in ours else [],
+                actions=fwd_chips,
             )
         )
     return out
@@ -1571,11 +1596,33 @@ def group_findings(rec):
             continue
         risky = sorted(members[group] & logins)
         title = M("group.title", "The {group} group", group=group)
-        undo = [
-            action(f"group-undo:{k}", M("group.undo", "Put {account} back", account=k.split("@")[0]))
-            for k in ours
-            if k.endswith("@" + group)
-        ]
+        # Each account in it, or taken out here, with both values: in the group, or not.
+        removed = sorted(k.split("@")[0] for k in ours if k.endswith("@" + group))
+        undo = []
+        for u in sorted(set(members[group] & logins) | set(removed)):
+            label = M("group.account", "{account}", account=u)
+            if u in removed and u not in members[group]:
+                undo += [
+                    _chip(label, f"group-undo:{u}@{group}", M("group.member", "In the group"), False),
+                    _chip(label, f"group-drop:{u}@{group}", M("group.not-member", "Not in the group"), True),
+                ]
+            else:
+                undo += [
+                    _chip(label, f"group-undo:{u}@{group}", M("group.member", "In the group"), True),
+                    _chip(
+                        label,
+                        f"group-drop:{u}@{group}",
+                        M("group.not-member", "Not in the group"),
+                        False,
+                        M(
+                            "group.drop.confirm",
+                            "Remove {account} from the {group} group? The change applies from "
+                            "the next sign-in of {account}.",
+                            account=u,
+                            group=group,
+                        ),
+                    ),
+                ]
         if not risky:
             out.append(
                 finding(
@@ -1606,21 +1653,7 @@ def group_findings(rec):
                     "Remove each account that does not need it. The change applies from the account's next sign-in.",
                 ),
                 evidence=risky,
-                actions=[
-                    action(
-                        f"group-drop:{u}@{group}",
-                        M("group.drop", "Remove {account}", account=u),
-                        M(
-                            "group.drop.confirm",
-                            "Remove {account} from the {group} group? The change applies from "
-                            "the next sign-in of {account}.",
-                            account=u,
-                            group=group,
-                        ),
-                    )
-                    for u in risky
-                ]
-                + undo,
+                actions=undo,
             )
         )
     return out
@@ -3045,19 +3078,22 @@ def _systemctl(*args):
         )
 
 
-def _write_sshd_dropin(ssh):
-    """The one drop-in for both SSH settings; it sorts first, and sshd keeps the first value it reads."""
-    if not ssh:
+def _write_sshd_dropin(ssh, on=()):
+    """The one drop-in for the SSH settings: `ssh` the ones set off here, `on` the ones set on here
+    (where the image had them off). It sorts first, and sshd keeps the first value it reads."""
+    if not ssh and not on:
         SSHD_DROPIN.unlink(missing_ok=True)
     else:
         SSHD_DROPIN.parent.mkdir(parents=True, exist_ok=True)
         lines = ["# Written by irate-box's Security page (/admin). Undo there, or delete this file."]
         if "root" in ssh:
             lines.append("PermitRootLogin no")
-        if "password" in ssh:
-            lines += ["PasswordAuthentication no", "KbdInteractiveAuthentication no"]
-        if "forwarding" in ssh:
-            lines += ["AllowTcpForwarding no", "AllowAgentForwarding no", "X11Forwarding no"]
+        for what, keys in (
+            ("password", ("PasswordAuthentication", "KbdInteractiveAuthentication")),
+            ("forwarding", ("AllowTcpForwarding", "AllowAgentForwarding", "X11Forwarding")),
+        ):
+            if what in ssh or what in on:
+                lines += [f"{k} {'no' if what in ssh else 'yes'}" for k in keys]
         SSHD_DROPIN.write_text("\n".join(lines) + "\n")
     sshd = shutil.which("sshd") or "/usr/sbin/sshd"
     check = run(sshd, "-t")
@@ -3092,23 +3128,32 @@ SSH_SAID = {
     ("forwarding", False): M(
         "security-fix.ssh.forwarding-restored", "SSH forwarding is restored to its previous state."
     ),
+    ("password", "on"): M("security-fix.ssh.password-on", "SSH password sign-in enabled."),
+    ("forwarding", "on"): M("security-fix.ssh.forwarding-on", "SSH forwarding enabled: TCP, agent and X11."),
 }
 
 
 def _ssh(rec, what, on):
-    ssh = set(rec.get("ssh", {}))
-    if on and what == "password" and not keys_on_box():
+    """on: True sets it off here, False undoes what this page set (off or on), "on" sets it on here."""
+    ssh, ssh_on = set(rec.get("ssh", {})), set(rec.get("ssh_on", {}))
+    if on is True and what == "password" and not keys_on_box():
         raise Refused(
             M(
                 "security-fix.ssh.no-keys",
                 "No account has an SSH key on the box. Without passwords, no account could sign in over SSH.",
             )
         )
-    (ssh.add if on else ssh.discard)(what)
-    _write_sshd_dropin(ssh)
-    rec["ssh"] = {k: rec.get("ssh", {}).get(k, time.strftime("%Y-%m-%d")) for k in ssh}
-    if not rec["ssh"]:
-        rec.pop("ssh")
+    ssh.discard(what)
+    ssh_on.discard(what)
+    if on is True:
+        ssh.add(what)
+    elif on == "on":
+        ssh_on.add(what)
+    _write_sshd_dropin(ssh, ssh_on)
+    for key, keep in (("ssh", ssh), ("ssh_on", ssh_on)):
+        rec[key] = {k: rec.get(key, {}).get(k, time.strftime("%Y-%m-%d")) for k in keep}
+        if not rec[key]:
+            rec.pop(key)
     return SSH_SAID[(what, on)]
 
 
@@ -3330,10 +3375,9 @@ def fix(choice, updates_log):
     rec = load_record()
     if choice in ("ssh-root-off", "ssh-root-undo"):
         msg = _ssh(rec, "root", choice.endswith("off"))
-    elif choice in ("ssh-password-off", "ssh-password-undo"):
-        msg = _ssh(rec, "password", choice.endswith("off"))
-    elif choice in ("ssh-forwarding-off", "ssh-forwarding-undo"):
-        msg = _ssh(rec, "forwarding", choice.endswith("off"))
+    elif choice in [f"ssh-{w}-{m}" for w in ("password", "forwarding") for m in ("off", "on", "undo")]:
+        _, what, mode = choice.split("-")
+        msg = _ssh(rec, what, {"off": True, "on": "on", "undo": False}[mode])
     elif choice in ("cockpit-loopback", "cockpit-off", "cockpit-undo"):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
@@ -3390,8 +3434,8 @@ def undo_all():
     # password back. They stay as they are (the page's own Undo still puts them back before then).
     for choice in (
         (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else [])
-        + (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else [])
-        + (["ssh-forwarding-undo"] if "forwarding" in rec.get("ssh", {}) else [])
+        + (["ssh-password-undo"] if "password" in {**rec.get("ssh", {}), **rec.get("ssh_on", {})} else [])
+        + (["ssh-forwarding-undo"] if "forwarding" in {**rec.get("ssh", {}), **rec.get("ssh_on", {})} else [])
         + (["cockpit-undo"] if "cockpit" in rec else [])
         + (["llmnr-undo"] if rec.get("llmnr") else [])
         + [f"unit-undo:{u}" for u in rec.get("units", {})]
