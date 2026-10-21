@@ -3268,15 +3268,6 @@ button.danger {
 .kit-consent p {
   margin: 0.2rem 0;
 }
-<<<<<<< HEAD
-/* A question drawn on the page beside what was pressed, not the browser's pop-up (AW.confirmHere). */
-.aw-ask {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 0.8rem;
-  margin: 0.4rem 0;
-=======
 /* A consent or a change asked for on the card, not in a pop-up (agreeRow, askRow in admin.js): the text,
    the box to tick, then the buttons, one under the other, in the kits' consent frame. */
 .agree-row {
@@ -3284,21 +3275,29 @@ button.danger {
   flex-direction: column;
   gap: 0.3rem;
   margin: 0.3rem 0;
->>>>>>> origin/main
   border: 1px solid var(--warn);
   border-radius: var(--radius);
   padding: 0.5rem 0.7rem;
 }
-<<<<<<< HEAD
-.aw-ask p {
-  margin: 0;
-  flex: 1 1 16rem;
-=======
 .agree-row label {
   display: flex;
   gap: 0.4rem;
   align-items: center;
->>>>>>> origin/main
+}
+/* A question drawn on the page beside what was pressed, not the browser's pop-up (AW.confirmHere). */
+.aw-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  margin: 0.4rem 0;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+.aw-ask p {
+  margin: 0;
+  flex: 1 1 16rem;
 }
 .kit-details summary {
   cursor: pointer;
