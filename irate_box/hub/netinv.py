@@ -48,6 +48,11 @@ try:  # the WiFi country's list and saved value; a copy on its own reports neith
 except ImportError:
     wificountry = None
 
+try:  # the WiFi chips irate-box knows (hub/known_radios.json); a copy on its own knows none
+    from irate_box.hub import knownradios
+except ImportError:
+    knownradios = None
+
 try:
     from irate_box.finding import english, finding
     from irate_box.msg import M, named
@@ -401,6 +406,23 @@ def roaming_facts(r, nm, run_=None):
         "nm_version": (nm or {}).get("version"),
         "choices": [c for c in ROAMING if c not in why],
         "why": why,
+    }
+
+
+def known_facts(radio):
+    """What irate-box knows of this radio's chip (hub/known_radios.json), by its USB ID or else its driver: the
+    chip's name, whether its driver is in the kernel, whether it can be a hotspot, notes, where its driver comes
+    from, and who has tested it. None for a chip the table doesn't have."""
+    row = knownradios.lookup((radio.get("usb") or {}).get("id"), radio.get("driver")) if knownradios else None
+    if not row:
+        return None
+    return {
+        "chip": row["chip"],
+        "in_kernel": row.get("in_kernel"),
+        "hotspot": row.get("hotspot"),
+        "notes": row.get("notes", []),
+        "source": row.get("source"),
+        "tested_by": [result["by"] for result in row.get("tested", [])],
     }
 
 
@@ -917,6 +939,7 @@ def scan(focus=None):
             "manager": manager_of(iface, ifupdown, networkd) if owner == "wpa_supplicant" else None,
             "rfkill": rfkill_for(phy),
         }
+        r["known"] = known_facts(r)
         if info.get("type") == "managed":
             r["link"] = parse_link(run("iw", "dev", iface, "link")[1])
             ps = re.search(r"Power save: (\S+)", run("iw", "dev", iface, "get", "power_save")[1])
@@ -964,6 +987,8 @@ def scan(focus=None):
         # The WiFi country is a setting on the Network page now: the one saved for boot, and the list to choose from.
         "country_saved": wificountry.saved() if wificountry else None,
         "countries": sorted(wificountry.countries().items(), key=lambda pair: pair[1]) if wificountry else [],
+        # Known WiFi dongles plugged in but still in USB storage mode (no WiFi interface yet).
+        "stuck_dongles": knownradios.stuck() if knownradios else [],
     }
     if inv["root"]:
         try:
