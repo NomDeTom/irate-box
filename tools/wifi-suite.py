@@ -531,23 +531,60 @@ def soak(ap_iface, client_iface, home_iface, minutes):
 # --- recovery -------------------------------------------------------------------------------------------
 
 
+def wifi_interface_dir(iface):
+    """The USB interface the radio's WiFi driver is bound to. Usually the network device's own parent; on a
+    combined dongle whose driver hangs the network device on the USB device (aic8800_fdrv), the interface
+    beside the Bluetooth and storage ones."""
+    device = Path(os.path.realpath(SYS / "class/net" / iface / "device"))
+    if ":" in device.name:
+        return device
+    for interface in sorted(device.glob("*:*")):
+        driver = Path(os.path.realpath(interface / "driver")).name if (interface / "driver").exists() else ""
+        if driver and driver not in ("btusb", "usb-storage", "uas") and not driver.startswith("aic_bt"):
+            return interface
+    return None
+
+
+def eject_storage(usb):
+    """A dongle back in storage mode after a reset: its drive unmounted and ejected, so it switches to WiFi."""
+    for block in usb.glob("*:*/host*/target*/*/block/*"):
+        disk = "/dev/" + block.name
+        for line in run("lsblk", "-nro", "MOUNTPOINT", disk)[1].splitlines():
+            if line.strip():
+                run("umount", line.strip())
+        return run("eject", disk)[0] == 0
+    return False
+
+
 def recovery(iface):
+    """The radio's WiFi driver unbound from it and bound again, timed until a network interface is back. A
+    dongle that returns in USB storage mode (the AIC8800D80 does) is said so, ejected, and timed to the end."""
     usb = usb_device(iface)
     if not usb:
         return {"skipped": "not a USB radio"}
-    interface_dir = Path(os.path.realpath(SYS / "class/net" / iface / "device"))
-    driver = interface_dir.joinpath("driver").resolve().name
-    port = interface_dir.name
+    interface = wifi_interface_dir(iface)
+    if not interface:
+        return {"skipped": "no WiFi driver found on the dongle's interfaces"}
+    driver = Path(os.path.realpath(interface / "driver")).name
+    result = {"driver": driver}
     started = time.time()
-    Path(f"/sys/bus/usb/drivers/{driver}/unbind").write_text(port)
+    Path(f"/sys/bus/usb/drivers/{driver}/unbind").write_text(interface.name)
     time.sleep(1)
-    Path(f"/sys/bus/usb/drivers/{driver}/bind").write_text(port)
-    while time.time() - started < 60:
-        names = [path.name for path in (interface_dir / "net").glob("*")] if (interface_dir / "net").exists() else []
+    try:
+        Path(f"/sys/bus/usb/drivers/{driver}/bind").write_text(interface.name)
+    except OSError as error:
+        result["bind"] = f"refused ({error.strerror}): the dongle dropped off the bus and came back"
+    while time.time() - started < 90:
+        usb_id = f"{read(usb / 'idVendor')}:{read(usb / 'idProduct')}"
+        if usb_id in STORAGE_MODE and "storage_mode_after" not in result:
+            result["storage_mode_after"] = round(time.time() - started, 1)
+            time.sleep(3)
+            result["ejected"] = eject_storage(usb)
+        names = sorted({path.name for path in usb.glob("**/net/*") if path.name.startswith("wl")})
         if names:
-            return {"back": True, "seconds": round(time.time() - started, 1), "iface_after": names[0]}
+            return {**result, "back": True, "seconds": round(time.time() - started, 1), "iface_after": names[0]}
         time.sleep(0.5)
-    return {"back": False, "seconds": 60}
+    return {**result, "back": False, "seconds": 90}
 
 
 # --- putting back, and the run --------------------------------------------------------------------------
@@ -653,6 +690,9 @@ def main():
             report["radios"][iface] = {"identify": identify(iface)}
             if iface != main_route:
                 report["radios"][iface]["identify"]["namespace"] = namespace_ok(iface)
+                if iface == home_on:
+                    # moved out and back, its profile may have come up on another radio
+                    home_up(args.home, home_on)
         can_host = [iface for iface in radios if "AP" in report["radios"][iface]["identify"].get("modes", [])]
         for iface in radios:
             radio = report["radios"][iface]
