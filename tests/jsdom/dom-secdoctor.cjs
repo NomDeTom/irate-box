@@ -227,7 +227,7 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   await wait();
   foot('sudo-nopasswd').querySelector('.aw-save').click();
   await wait();
-  check('  Off asks root to take the rule out, on Save: one question there, what it does', sent() && asked === 1);
+  check('  Off asks root to take the rule out, on Save: sent at once, no question', sent() && asked === 0);
   {
     // Two choices, two sections: one the hub refuses stays chosen, its reason under its own Save; the other is sent.
     w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });

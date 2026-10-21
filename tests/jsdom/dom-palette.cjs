@@ -54,13 +54,10 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   const rep = t(ed().querySelector('.palette-report'));
   check('Standard: the dark theme\'s quieter text and link on a tile named, with their ratios', /Dark: Secondary text on a tile, 3\.4:1/.test(rep)
     && /Dark: Link on a tile, 4\.2:1/.test(rep) && /Dark: Button text on the accent colour, 4\.0:1/.test(rep) && !/Light:/.test(rep), rep);
-  // Saving them anyway is asked once, at Save; No keeps the change, sends nothing.
-  answer = false;
-  saveB().click();
-  await new Promise((r) => setTimeout(r, 20));
-  answer = true;
-  check('  so Save asks first, once, saying the text fails 4.5:1', asked.length === 1 && /^Save the failing colours anyway\?.*4\.5:1/.test(asked[0])
-    && !saveB().disabled, asked.join(' | '));
+  // Its shortfall is a warning beside Save, not a question: it is a setting.
+  const palWarn = ed().querySelector('.aw-warn');
+  check('  so Save has a warning beside it, saying the text fails 4.5:1; no question', palWarn && !palWarn.hidden && /fail the 4\.5:1 ratio/.test(t(palWarn))
+    && !asked.length && !saveB().disabled, palWarn && t(palWarn));
   // A preset that passes: nothing to acknowledge.
   chip('Teal').click();
   check('a preset chosen: Custom palette gone', !chip('Custom palette'));

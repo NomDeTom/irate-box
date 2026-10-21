@@ -122,11 +122,8 @@ srcRepo.dispatchEvent(new w.Event('input'));
 srcBranch.value = 'dev';
 srcBranch.dispatchEvent(new w.Event('input'));
 check('  another repository typed: its branches are not offered (they are another repository\'s)', !srcChips().length || srcChips().every((c) => !c.classList.contains('selected')));
-let asked = '';
-w.confirm = (text) => { asked = text; return false; };
-srcSave.click();
+const srcWarn = t('#update-source-foot .aw-warn')[0] || '';
 const before = posted.length;
-w.confirm = (text) => { asked = text; return true; };
 srcSave.click();
 d.getElementById('update-source-poll').click();
 // A finding's link lands on the setting it names: the fold opened, the field marked.
@@ -149,9 +146,9 @@ until(branchLanded, () => {
     [d.getElementById('update-maint').open, d.getElementById('update-source-branch').className]);
   check('the cache and Install anyway buttons, accepted, post their actions to the update helper', ['clear-cache', 'force-install'].every((a) => accepted().includes(a)), accepted());
   const sent = posted.slice(before).filter(([, b]) => b).map(([, b]) => JSON.parse(b));
-  check('the source form: declined sends nothing, accepted sends the repository, the branch and the confirmation',
+  check('the source form: nothing sent before Save; Save sends the repository, the branch and the confirmation, with no question',
     posted.slice(0, before).every(([, b]) => !/set-source/.test(b)) && sent.some((b) => b.action === 'set-source' && b.repo === 'https://example.org/fork/irate-box' && b.branch === 'dev' && b.confirmed === true), sent);
-  check('  the question names the repository and warns about root', /fork\/irate-box/.test(asked) && /as root/.test(asked), asked);
+  check('  its warning beside Save, while not saved: the box runs it as root', /as root/.test(srcWarn), srcWarn);
   check('  its poll asks about the typed repository', sent.some((b) => b.action === 'poll-source' && b.repo === 'https://example.org/fork/irate-box'), sent);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
