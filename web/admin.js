@@ -201,6 +201,8 @@ function remoteText(data) {
 
 function showRemote(data) {
   remote.hidden = data.state === "missing";
+  // The setup tour's Tailscale step shows only where the box has it.
+  if (window.TOUR) TOUR.has("tailscale", !remote.hidden);
   if (remote.hidden) return;
   radios.forEach((r) => {
     r.checked = r.value === data.want.mode;
@@ -4179,6 +4181,12 @@ function portRanges(ls) {
 function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
+  // The setup tour's Cockpit step shows only where the box has it: the page's Cockpit setting.
+  if (scan && window.TOUR)
+    TOUR.has(
+      "cockpit",
+      (scan.findings || []).some((f) => f.id === "cockpit"),
+    );
   const busy = data.pending > 0 || !!secWaiting;
   secPrune(scan);
   if (secWaiting) {
@@ -11883,6 +11891,7 @@ const setupList = document.getElementById("setup-steps");
 
 // Each setup step's state, as the part of the page that knows it says; the tour draws the list.
 const SETUP_STATE = {};
+window.SETUP_STATE = SETUP_STATE; // the tour reads it there too (scripts evaluated one by one, as in the page tests)
 function setupStep(step, text, status) {
   SETUP_STATE[step] = { text, status };
   if (window.TOUR) TOUR.drawList();
@@ -11925,7 +11934,19 @@ function drawConnectionStep() {
       : `At http://${host}/ on the network that the box is already on.`,
     port ? "warn" : "ok",
   );
-  setupStep("password", "Set.", "ok");
+}
+// The box's own login (the user admin, for scripts), as the accounts data has it: no password after
+// the first run made an account, until one is set on Access.
+function drawPasswordStep(al) {
+  setupStep(
+    "password",
+    !al.password_set
+      ? "No password yet. Scripts cannot sign in as admin."
+      : al.on
+        ? "Set. Scripts can sign in as admin."
+        : "Set. Script sign-in is off (Accounts).",
+    al.password_set ? "ok" : "",
+  );
 }
 drawConnectionStep();
 document
@@ -14682,6 +14703,7 @@ function renderAccounts(d) {
     results: [],
   };
   acctLast = d;
+  if (d.admin_login) drawPasswordStep(d.admin_login);
   if (acctWaiting) {
     const done = (al.results || []).find((r) => r.id === acctWaiting.id);
     if (done) {
@@ -15007,7 +15029,7 @@ if (postingShown()) loadPosting();
 window.addEventListener("hashchange", () => {
   if (paneShown("accounts")) loadAccounts();
 });
-if (paneShown("accounts")) loadAccounts();
+loadAccounts(); // once on any page: the setup's password step says what the box's own login has
 
 // --- the mesh (meshbridge.py, /admin/mesh) ----------------------------------------------------------
 const meshEl = {
