@@ -328,14 +328,15 @@ const AW = (() => {
   //     changes" shows only while something does; until the box's values are read (saved null) it says so,
   //     its controls are off and nothing counts as changed
   //   2 one footer at its end: Discard, then Save (the primary); the words are always Save and Discard
-  //   3 one question at Save (opts.ask), never one per pick
+  //   3 no question at Save: a setting is saved as set. What a change costs or conflicts with is a short warning in
+  //     the footer while it is not saved (opts.warn; Tom, 2026-10-21: "settings, not questions")
   //   4 "Saving…" until the save resolves (a queued job: until the root helper answers, AW.job); the draft
   //     cleared only on success; on failure it stays, with the reason under the footer
   //   5 the page's polling (update) never overwrites a changed value; a saved value changed underneath one
   //     ("Changed elsewhere") is said, and the draft kept
   //   6 every section with unsaved changes is listed (AW.unsaved), for the sidebar's mark and leaving the page
   // opts: {id, label, saved: {key: value} | null, save(changes, draft) → Promise (false: not saved, said already;
-  //        a string: said when saved; throws: the reason), ask(changes, draft) → a question or null,
+  //        a string: said when saved; throws: the reason), warn(changes, draft) → a warning (a statement) or null,
   //        idle: the footer's words while nothing has changed, onChange(section): draw the controls again,
   //        busy() → true while a save of it is in flight elsewhere (a copy drawn again while its job runs),
   //        why(changes, draft) → why these changes cannot be saved as they are (Save off, the reason under it),
@@ -396,8 +397,9 @@ const AW = (() => {
     const saveB = btn('Save', { class: 'action-btn primary aw-save', disabled: true });
     const discardB = btn('Discard', { class: 'action-btn aw-discard', disabled: true });
     const note = h('span', { class: 'note', role: 'status' });
+    const warnEl = h('span', { class: 'setting-desc aw-warn', hidden: true });
     const why = h('p', { class: 'setting-desc aw-reason', role: 'status', hidden: true });
-    s.foot = h('div', { class: 'aw-foot', 'data-section': opts.id || '' }, note, discardB, saveB);
+    s.foot = h('div', { class: 'aw-foot', 'data-section': opts.id || '' }, warnEl, note, discardB, saveB);
     s.reason = why;
     s.loaded = () => saved !== null;
     s.saving = () => saving || !!(opts.busy && opts.busy());
@@ -422,6 +424,9 @@ const AW = (() => {
           : said || opts.idle || IDLE;
       why.textContent = reason || cannot;
       why.hidden = !(reason || cannot);
+      const warning = saved && dirty && opts.warn ? opts.warn(s.changes(), s.values()) || '' : '';
+      warnEl.textContent = warning;
+      warnEl.hidden = !warning;
       tellUnsaved();
     };
     const redraw = () => { paint(); if (opts.onChange) opts.onChange(s); };
@@ -459,9 +464,6 @@ const AW = (() => {
       if (!saved || s.saving() || !s.dirty()) return false;
       const changes = s.changes();
       if (opts.why && opts.why(changes, s.values())) return false;
-      const q = opts.ask ? opts.ask(changes, s.values()) : null;
-      if (q && !(await confirmHere(q, { anchor: s.foot, label: 'Save' }))) return false;
-      if (!s.dirty() || s.saving()) return false; // changed or saved while the question stood
       saving = true;
       reason = '';
       said = '';

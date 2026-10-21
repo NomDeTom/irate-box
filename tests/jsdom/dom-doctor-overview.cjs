@@ -20,7 +20,7 @@ fixture.report.settings = { snapshots: true, panic: false, watchdog: false, watc
     { value: 'on', label: 'On', choice: 'crashwatch-snapshots:on' }, { value: 'off', label: 'Off', choice: 'crashwatch-snapshots:off' }] },
   { key: 'panic', label: 'A kernel panic, oops or lockup', desc: 'Frozen.', current: 'off', options: [
     { value: 'off', label: 'Stay stopped', choice: 'crashwatch-panic:off' },
-    { value: 'on', label: 'Restart after 10 s', choice: 'crashwatch-panic:on', confirm: 'Restart the box?' }] }] };
+    { value: 'on', label: 'Restart after 10 s', choice: 'crashwatch-panic:on', confirm: 'The box restarts 10 seconds after a kernel panic.' }] }] };
 const now = Date.now() / 1000;
 fixture.watchers = { last_boot: { at: now - 7200, kind: 'boot', text: 'Started: the uplink watchdog rebooted it: Reboot (4 min down).' },
   last_repair: { at: now - 7300, kind: 'repair', text: 'Reboot (4 min down): the radio is not back 3 min after its reset.' },
@@ -70,9 +70,11 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   const on2 = d.querySelector('#hs-panic input[value="on"]');
   on2.checked = true;
   on2.dispatchEvent(new w.Event('change', { bubbles: true }));
+  const panicWarn = (d.querySelector('#health-settings-foot .aw-warn') || {}).textContent || '';
   save.click();
   await later(100);
-  check('  Save: asked first when the choice asks, then sent', asked.includes('Restart the box?') && posted.some((b) => b.choice === 'crashwatch-panic:on'), posted);
+  check('  its cost said beside Save while it is not saved; Save sends it, no question', /restarts 10 seconds after a kernel panic/.test(panicWarn)
+    && posted.some((b) => b.choice === 'crashwatch-panic:on') && !asked.length, [panicWarn, posted]);
   fixture.queue = { running: { action: 'kit-fetch', detail: '', for: 60 }, waiting: [{ id: 'p1', action: 'health-fix', waited: 5 }], done: [] };
   await w.eval('loadHealth()');
   await later(100);

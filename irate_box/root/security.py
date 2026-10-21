@@ -447,7 +447,7 @@ def listener_findings(found, rec):
                         M("port.unit-off", "Stop and disable {unit}", unit=unit),
                         M(
                             "port.unit-off.confirm",
-                            "Stop {unit} and disable it at boot? Undo puts back its previous state.",
+                            "{unit} stops and does not start at boot. Undo puts back its previous state.",
                             unit=unit,
                         ),
                     )
@@ -465,8 +465,7 @@ def listener_findings(found, rec):
                         M("port.fw-open", "Open to the hotspot"),
                         M(
                             "port.fw-open.confirm",
-                            "Let devices on the hotspot reach {name} ({proto} {port})? "
-                            "The hub does not know what it does or who can use it.",
+                            "Devices on the hotspot can reach {name} ({proto} {port}). The hub does not know what it does or who can use it.",
                             name=name,
                             proto=proto,
                             port=f["port"],
@@ -589,9 +588,9 @@ def cockpit_findings(found, rec):
     confirm = {
         "network": M(
             "cockpit.network.confirm",
-            "Open Cockpit to the network? Every device on the network can then reach its sign-in page, which gives root access.",
+            "Every device on the network can reach Cockpit's sign-in page, which gives root access.",
         ),
-        "off": M("port.cockpit.off.confirm", "Stop Cockpit and disable it? Undo puts back its previous state."),
+        "off": M("port.cockpit.off.confirm", "Cockpit stops and is disabled. Undo puts back its previous state."),
     }
     chips = [
         _chip(
@@ -741,8 +740,7 @@ def ssh_findings(settings, keys, rec):
                         M("ssh-root.off", "Disable root SSH sign-in"),
                         M(
                             "ssh-root.off.confirm",
-                            "Disable SSH sign-in as root? First make sure that you can sign in "
-                            "as another user who can use sudo.",
+                            "Root cannot sign in over SSH. First make sure that you can sign in as another user who can use sudo.",
                         ),
                     )
                 ],
@@ -772,12 +770,12 @@ def ssh_findings(settings, keys, rec):
         pw == "yes",
         M(
             "ssh-password.off.confirm",
-            "Disable SSH password sign-in? Then only keys work, for {accounts}.",
+            "Only keys sign in over SSH, for {accounts}.",
             accounts=keys,
         )
         if keys
         else None,
-        M("ssh-password.on.confirm", "Enable SSH password sign-in? Then any device on the network can try passwords."),
+        M("ssh-password.on.confirm", "Any device on the network can try passwords over SSH."),
     )
     if pw == "yes" and keys:
         out.append(
@@ -854,12 +852,11 @@ def ssh_findings(settings, keys, rec):
         bool(fwd),
         M(
             "ssh-forwarding.off.confirm",
-            "Disable SSH TCP, agent and X11 forwarding? Sign-ins and copies "
-            "with scp still work. Tunnels through the box stop.",
+            "Tunnels through the box stop. Sign-ins and copies with scp still work.",
         ),
         M(
             "ssh-forwarding.on.confirm",
-            "Enable SSH TCP, agent and X11 forwarding? A user who can sign in can then tunnel through the box.",
+            "A user who can sign in can tunnel through the box.",
         ),
     )
     if fwd:
@@ -1406,7 +1403,7 @@ def security_updates_finding(pkgs, age):
                 ),
                 M(
                     "updates.install.confirm",
-                    "Install the waiting security updates now? This can take several minutes on this board.",
+                    "This can take several minutes on this board.",
                 ),
             ),
             look,
@@ -1518,9 +1515,7 @@ def kernel_findings(rec):
                             M("kernel-links.debian", "Install Debian's defaults"),
                             M(
                                 "kernel-links.debian.confirm",
-                                "Install {package} from Debian and apply it now? It also restricts "
-                                "FIFOs and files in shared folders and refuses source routes, "
-                                "as on any Debian box.",
+                                "This installs {package} from Debian and applies it at once. It also restricts FIFOs and files in shared folders and refuses source routes, as on any Debian box.",
                                 package=DEBIAN_SYSCTL,
                             ),
                         ),
@@ -1719,8 +1714,7 @@ def group_findings(rec):
                         False,
                         M(
                             "group.drop.confirm",
-                            "Remove {account} from the {group} group? The change applies from "
-                            "the next sign-in of {account}.",
+                            "{account} leaves the {group} group from its next sign-in.",
                             account=u,
                             group=group,
                         ),
@@ -1837,8 +1831,7 @@ def root_findings(rec):
                 M("root-password.lock", "Lock root's password"),
                 M(
                     "root-lock.confirm",
-                    "Lock root's password? Root can then no longer sign in with a password, at the console or over SSH. "
-                    "These accounts keep sudo: {accounts}. Keys for root and open root sessions do not change.",
+                    "Root can no longer sign in with a password, at the console or over SSH. These accounts keep sudo: {accounts}. Keys for root and open root sessions do not change.",
                     accounts=admins,
                 ),
             )
@@ -2131,8 +2124,7 @@ def sudo_findings(rec, settings=None):
                     M("sudo.drop", "Remove {file}", file=f),
                     M(
                         "sudo.drop.confirm",
-                        "Remove /etc/sudoers.d/{file}? sudo then asks for the account's password, and "
-                        "the account stays in the sudo group. Undo puts the file back.",
+                        "/etc/sudoers.d/{file} goes: sudo asks for the account's password again, and the account stays in the sudo group. Undo puts the file back.",
                         file=f,
                     ),
                 )
@@ -2215,7 +2207,7 @@ def apt_findings(rec):
                 f"apt-undo:{k}",
                 any_repo,
                 False,
-                M("apt.undo.confirm", "Put {key} back in trusted.gpg.d, trusted for every repository again?", key=k),
+                M("apt.undo.confirm", "{key} goes back into trusted.gpg.d, trusted for every repository again.", key=k),
             ),
             _chip(k, f"apt-tied:{k}", M("apt.own", "Only its own source"), True),
         ]
@@ -2242,9 +2234,7 @@ def apt_findings(rec):
                     False,
                     M(
                         "apt.signedby.confirm",
-                        "Move {key} out of trusted.gpg.d into /usr/share/keyrings, and name it in {source} "
-                        "as that source's signed-by key? apt then uses it for that source only. "
-                        "Any repository puts both back.",
+                        "{key} moves to /usr/share/keyrings and signs for {source} only. Any repository puts both back.",
                         key=k,
                         source=f,
                     ),
@@ -2363,7 +2353,7 @@ def log_findings(rec):
         "logs-undo",
         M("logs.ram-image", "In RAM, as the image had it"),
         False,
-        M("logs.ram-image.confirm", "Put Armbian's ramlog back as it was? This applies at the next boot."),
+        M("logs.ram-image.confirm", "Armbian's ramlog comes back as it was, from the next boot."),
     )
     card = M("logs.card", "On the card")
     title = M("logs-card.title", "Logs on the card")
@@ -2424,8 +2414,7 @@ def log_findings(rec):
                     False,
                     M(
                         "logs.card.confirm",
-                        "Disable Armbian's ramlog and keep the journal on the card, with a limit of 32 MB? "
-                        "This applies at the next boot. The card gets a few MB more writing each week.",
+                        "From the next boot, the journal stays on the card, up to 32 MB. The card gets a few MB more writing each week.",
                     ),
                 ),
             ],
@@ -2532,9 +2521,7 @@ def proc_findings(rec):
     own = M("proc.own", "Each account sees only its own")
     hide_confirm = M(
         "proc.own.confirm",
-        "Hide the processes of each account from the other accounts? Root and the doctors keep their "
-        "view of every process. Other accounts need sudo to see processes that are not their own. This "
-        "applies at once and at each boot.",
+        "Each account sees only its own processes, at once and at each boot. Root and the doctors still see every process. Other accounts need sudo to see the rest.",
     )
     back = _chip(
         group,
@@ -2543,7 +2530,7 @@ def proc_findings(rec):
         False,
         M(
             "proc.every.confirm",
-            "Show every process to every account again, as the image has it? This applies at once and at each boot.",
+            "Every account sees every process again, as the image has it, at once and at each boot.",
         ),
     )
     title = M("proc-hidden.title", "Process visibility")
@@ -2718,17 +2705,13 @@ def firewall_findings(rec):
         confirm = {
             "apps": M(
                 "firewall.on-apps.confirm",
-                "Limit what a device on the hotspot ({iface}) can reach to the hub, its apps, DNS and DHCP, "
-                "and {services} where installed? SSH from the hotspot stays closed until you open it here. "
-                "Your own network does not change.",
+                "A device on the hotspot ({iface}) reaches only the hub, its apps, DNS and DHCP, and {services} where installed. SSH from the hotspot stays closed until you open it here. Your own network does not change.",
                 iface=iface,
                 services=extra,
             ),
             "hub": M(
                 "firewall.on-hub.confirm",
-                "Limit what a device on the hotspot ({iface}) can reach to the hub's pages, DNS and DHCP, "
-                "and {services} where installed? SSH from the hotspot stays closed until you open it here. "
-                "Your own network does not change.",
+                "A device on the hotspot ({iface}) reaches only the hub's pages, DNS and DHCP, and {services} where installed. SSH from the hotspot stays closed until you open it here. Your own network does not change.",
                 iface=iface,
                 services=extra,
             ),
@@ -2792,7 +2775,7 @@ def firewall_findings(rec):
                 M("firewall.svc-open", "Open {name} to the hotspot", name=s["name"]),
                 M(
                     "firewall.svc-open.confirm",
-                    "Let devices on the hotspot reach {name} ({ports})? {says}",
+                    "Devices on the hotspot can reach {name} ({ports}). {says}",
                     name=s["name"],
                     ports=ports,
                     says=s["says"],
@@ -2880,8 +2863,7 @@ def firewall_findings(rec):
                     False,
                     M(
                         "firewall.off.confirm",
-                        "Disable the hotspot firewall? Devices on the hotspot can then reach every service "
-                        "on the box again.",
+                        "Devices on the hotspot can reach every service on the box.",
                     ),
                 ),
                 _chip(REACH, "firewall-apps", LEVEL_CHIP["apps"], level == "apps"),
@@ -2894,7 +2876,7 @@ def firewall_findings(rec):
                     ssh,
                     M(
                         "firewall.ssh-on.confirm",
-                        "Let devices on the hotspot reach SSH (port 22)? First disable SSH password sign-in (above).",
+                        "Devices on the hotspot can reach SSH (port 22). Disable SSH password sign-in first (above).",
                     ),
                 ),
                 *switches,
@@ -3108,7 +3090,7 @@ def share_findings():
                     M("guest-net.contain-off", "Turn off: {name}", name=CONTAIN_HEADING[k]),
                     M(
                         "guest-net.contain-off.confirm",
-                        "Turn off {name}? {why} The Security doctor shows a warning while it is off.",
+                        "{name} goes off. {why} The Security doctor shows a warning while it is off.",
                         name=CONTAIN_HEADING[k],
                         why=CONTAIN_OFF_WHY[k],
                     ),

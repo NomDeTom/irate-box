@@ -113,15 +113,13 @@ const type = (input, value) => {
   check('  saved once the root helper has done it', !def.dirty() && def.savedValue('powersave') === '2');
   ev('netWaiting = null');
 
-  // 3. Access: Cancel at the question keeps the draft.
+  // 3. Access: what Disabled stops, said beside Save; nothing sent until Save.
   const acc = ev('accessBlock')('x', { id: 'x', mode: 'public', unit: 'x.service', title: 'X', visible: 'guests' });
   d.body.append(acc);
   [...acc.querySelectorAll('.chip')].find((c) => t(c) === 'Disabled').click();
-  confirms = false;
-  acc.querySelector('.aw-save').click();
   await wait();
-  confirms = true;
-  check("an app's access: Cancel at the question keeps the change", AW.unsaved().some((x) => x.id === 'access-x') && posted.every(([u]) => u !== '/admin/access'));
+  check("an app's access: Disabled says beside Save that its service stops; nothing sent", /Its service stops/.test(t(acc.querySelector('.aw-warn')))
+    && AW.unsaved().some((x) => x.id === 'access-x') && posted.every(([u]) => u !== '/admin/access'), t(acc.querySelector('.aw-foot')));
   acc.querySelector('.aw-discard').click();
 
   // 4. Opening another card asks before a changed one is closed.
@@ -259,24 +257,28 @@ const type = (input, value) => {
   w.answerAsks = false; // answered by hand below
   let askSaves = 0, popped = 0;
   w.confirm = () => { popped += 1; return true; };
-  const asks = w.AW.section({ id: 'ask-test', saved: { v: 1 }, ask: () => 'Change v? It cannot be undone.', save: () => { askSaves += 1; return true; } });
+  const asks = w.AW.section({ id: 'ask-test', saved: { v: 1 }, warn: (c) => (c.v === 3 ? 'Three costs something.' : null), save: () => { askSaves += 1; return true; } });
   askHost.append(asks.foot);
+  const warnOf = () => askHost.querySelector('.aw-warn');
+  check('a section with a warning: none shown while nothing is changed', warnOf().hidden);
   asks.set('v', 2);
-  let answered = asks.save();
+  check('  none for a change that costs nothing', warnOf().hidden);
+  asks.set('v', 3);
+  check('  shown beside Save for one that does', !warnOf().hidden && t(warnOf()) === 'Three costs something.');
+  const saved3 = await asks.save();
+  check('  Save saves at once: no question, nothing left to save, the warning gone', saved3 === true && askSaves === 1 && !asks.dirty()
+    && !askHost.querySelector('.aw-ask') && warnOf().hidden && popped === 0);
+  // The on-page question stays for what cannot be undone (AW.confirmHere).
+  let answered = w.AW.confirmHere('Delete it? It cannot be restored.', { anchor: askHost });
   await wait();
-  const askBox = () => askHost.querySelector('.aw-ask');
-  check('Save with a question: asked on the page beside the footer, Cancel focused, nothing saved yet', askBox() && /Change v\?/.test(t(askBox()))
-    && d.activeElement === button(askBox(), 'Cancel') && askSaves === 0 && popped === 0, askHost.innerHTML);
+  const askBox = () => askHost.parentNode.querySelector('.aw-ask');
+  check('an irreversible action: asked on the page, Cancel focused', askBox() && /cannot be restored/.test(t(askBox())) && d.activeElement === button(askBox(), 'Cancel'));
   button(askBox(), 'Cancel').click();
-  check('  Cancel: not saved, the change kept as a draft, the question gone', (await answered) === false && askSaves === 0 && asks.dirty() && !askBox());
-  answered = asks.save();
+  check('  Cancel: No, the question gone', (await answered) === false && !askBox());
+  answered = w.AW.confirmHere('Delete it?', { anchor: askHost });
   await wait();
   askBox().dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  check('  Escape cancels too', (await answered) === false && askSaves === 0 && !askBox());
-  answered = asks.save();
-  await wait();
-  button(askBox(), 'Save').click();
-  check('  its Save: saved once, nothing left to save', (await answered) === true && askSaves === 1 && !asks.dirty() && popped === 0);
+  check('  Escape cancels too', (await answered) === false && !askBox());
   const first = w.AW.confirmHere('First?', { anchor: askHost });
   const second = w.AW.confirmHere('Second?', { anchor: askHost });
   check('  one question at a time: a new one answers the last one No', (await first) === false && askHost.parentNode.querySelectorAll('.aw-ask').length === 1);

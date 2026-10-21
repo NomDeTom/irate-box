@@ -3854,6 +3854,18 @@ label > .select-chips {
 .aw-foot[hidden] {
   display: none;
 }
+/* What an unsaved change costs or conflicts with (AW.section's warn), on its own line above the buttons. */
+.aw-foot .aw-warn {
+  flex-basis: 100%;
+}
+/* The warning sign larger than the line, to stand out (Tom, 2026-10-21). */
+.aw-foot .aw-warn::before {
+  content: "⚠️";
+  font-size: 1.4em;
+  line-height: 1;
+  vertical-align: -0.15em;
+  margin-right: 0.35em;
+}
 .aw-foot .note {
   font-size: 0.78rem;
   color: var(--muted);

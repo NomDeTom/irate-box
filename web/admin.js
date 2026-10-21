@@ -3467,8 +3467,8 @@ const srcSec = AW.section({
     !v.repo.trim() || !v.branch.trim()
       ? "Give a repository and a branch."
       : null,
-  ask: (c, v) =>
-    `Install updates from the branch ${v.branch.trim()} of ${v.repo.trim()}?\n\nThe box runs the code it downloads as root. The signing level still applies, but "Merged on GitHub" accepts a commit from any fork. Bind trust to a person with "Signed releases only" and their key.`,
+  warn: () =>
+    'The box runs the code from this branch as root. "Merged on GitHub" accepts a commit from any fork. To trust one person, select "Signed releases only" and add their key.',
   save: async (c, v) => {
     const j = AW.job();
     updWaiting = {
@@ -3759,7 +3759,7 @@ function secSection(f) {
     id: `sec-${f.id}`,
     label: f.title,
     saved: { choice: "" },
-    ask: (c) => {
+    warn: (c) => {
       const a = secOffer(f.id, c.choice);
       return a && a.confirm ? a.confirm : null;
     },
@@ -5602,7 +5602,7 @@ const docSec = AW.section({
   id: "doctor-settings",
   label: "The Box doctor's settings",
   saved: null,
-  ask: (c) => {
+  warn: (c) => {
     const asks = Object.entries(c)
       .map(([k, v]) => {
         const g = hsGroups.find((x) => x.key === k);
@@ -5610,7 +5610,7 @@ const docSec = AW.section({
         return o && o.confirm;
       })
       .filter(Boolean);
-    return asks.length ? asks.join("\n\n") : null;
+    return asks.length ? asks.join(" ") : null;
   },
   save: (c) => doctorSave(c),
   onChange: () => drawDoctorGroups(),
@@ -6124,7 +6124,7 @@ const clkSec = AW.section({
     !v.pool && !v.gps && !v.module && !v.local
       ? "Select at least one source: with none, nothing sets the clock."
       : null,
-  ask: (c, v) => clockAsk(v, clkLast.c),
+  warn: (c, v) => clockWarn(v, clkLast.c),
   save: (c, v) => {
     const j = AW.job();
     hlRequest(
@@ -6333,7 +6333,8 @@ function renderClockSources(c, busy, own) {
   );
 }
 // The one question at Save: what the choice installs, removes or opens.
-function clockAsk(cur, c) {
+// What a change of the clock's sources does, beside Save: what is installed or removed, and what opens.
+function clockWarn(cur, c) {
   const words = [];
   if (cur.service === "chrony" && !c.chrony_installed)
     words.push("chrony is installed and systemd-timesyncd removed");
@@ -6357,8 +6358,8 @@ function clockAsk(cur, c) {
     .filter(Boolean)
     .join(", ");
   return (
-    `Use ${cur.service === "chrony" ? "chrony" : "the image's own time service"}, asking ${what}?` +
-    `${words.length ? ` ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`
+    `${cur.service === "chrony" ? "chrony" : "The image's own time service"} asks ${what || "nothing"}.` +
+    `${words.length ? ` On Save, ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`
   );
 }
 
@@ -6463,7 +6464,7 @@ const upSec = AW.section({
   id: "net-recovery",
   label: "Network recovery",
   saved: null,
-  ask: (c, v) => upAsk(v.all),
+  warn: (c, v) => upWarn(v.all),
   save: () => upSave(),
   onChange: () => upShow(upSec.get("all")),
 });
@@ -8480,8 +8481,8 @@ const defSec = AW.section({
   id: "net-defaults",
   label: "NetworkManager defaults",
   saved: null,
-  ask: () =>
-    "Save these box defaults? NetworkManager reads them again at once. Connections use them the next time they connect.",
+  warn: () =>
+    "NetworkManager reads them at once. Connections use them the next time they connect.",
   save: (changes) => {
     const j = AW.job();
     netRequest(
@@ -9076,8 +9077,7 @@ function connSettings(p, inv, data, busy, radio) {
     id: `net-conn-${p.uuid}`,
     label: `Settings for ${p.ssid || p.name}`,
     saved: Object.fromEntries(CONN_FIELDS.map(([n, , , now]) => [n, now(p)])),
-    ask: (c) =>
-      `Change ${Object.keys(c).length} setting${Object.keys(c).length === 1 ? "" : "s"} of ${p.ssid || p.name}? ` +
+    warn: () =>
       "They take effect the next time the box connects. Undo restores the previous settings.",
     save: (changes) => {
       const j = AW.job();
@@ -9469,7 +9469,8 @@ document
   .getElementById("net-join-now")
   .addEventListener("click", () => joinAsk(true));
 // One question at Save for what needs saying, from the settings as they would be saved.
-function upAsk(all) {
+// What a change of the watchdog's levels does, beside Save.
+function upWarn(all) {
   let settings = all;
   try {
     settings = readUpForm();
@@ -9483,20 +9484,20 @@ function upAsk(all) {
     (was.roaming !== "lock" || was.lock_bssid !== settings.lock_bssid)
   )
     asks.push(
-      `Lock your WiFi profile to ${settings.lock_bssid}? The box reconnects to it now. The box is briefly disconnected from the network. It stays with this access point and does not move to another one until you disable the lock. If this access point does not answer, the box removes the lock.`,
+      `The box reconnects to ${settings.lock_bssid} and stays with it, briefly off the network while it does. If that access point does not answer, the box removes the lock.`,
     );
   if (settings.roaming === "no-scan" && was.roaming !== "no-scan")
     asks.push(
-      "Disable the wpa_supplicant background scans while the hotspot shares the radio? This changes the running WiFi settings, not the WiFi profile. Selecting another option restores them.",
+      "No background scans while the hotspot shares the radio. This changes the running WiFi settings, not the WiFi profile.",
     );
   if (
     settings.guests === "ignore" &&
     ["restart", "radio", "reboot"].includes(settings.reach)
   )
     asks.push(
-      `This setting lets the box ${settings.reach === "restart" ? "restart the network service" : settings.reach === "radio" ? "reset the radio" : "reset the radio and reboot the box"} while guests are on the hotspot. Continue?`,
+      `The box can ${settings.reach === "restart" ? "restart the network service" : settings.reach === "radio" ? "reset the radio" : "reset the radio and reboot the box"} while guests are on the hotspot.`,
     );
-  return asks.length ? asks.join("\n\n") : null;
+  return asks.length ? asks.join(" ") : null;
 }
 function upSave() {
   const settings = readUpForm(); // a number that is not one: its reason under Save
@@ -9658,10 +9659,8 @@ const hsSec = AW.section({
   id: "hotspot-security",
   label: "Hotspot security",
   saved: null,
-  ask: (c, v) =>
-    v.mode !== "open"
-      ? `Use "${hsData.label[v.mode]}" for the hotspot? Read the warnings under the choices first.`
-      : null,
+  warn: (c, v) =>
+    v.mode !== "open" ? "Read the warnings under the choices." : null,
   save: async (c, v) => {
     const r = await postJSON("/admin/hotspot", { settings: v });
     loadHotspot();
@@ -9790,9 +9789,9 @@ const guestSec = AW.section({
   id: "guest-internet",
   label: "Guest internet access",
   saved: null,
-  ask: (c) =>
+  warn: (c) =>
     c.level !== "off"
-      ? `Share the internet connection of this box with guests (${GUEST_NET.find((x) => x[0] === c.level)[1]})? The box attributes their online activity to your internet connection.`
+      ? "Guests' online activity shows as coming from your internet connection."
       : null,
   save: async (c) => {
     await postJSON("/admin/hotspot", { action: "share", level: c.level });
@@ -10472,11 +10471,12 @@ function accessSlot(id) {
 }
 
 // What a change of access needs saying, asked once at Save.
-function accessAsk(a, mode) {
+// What a change of an app's access does, beside Save.
+function accessWarn(a, mode) {
   if (mode === "off" && a.unit)
-    return `Disable ${a.title}? Its service stops until you enable it again.`;
+    return "Its service stops until you enable it again.";
   if (mode === "public" && a.mode !== "public" && !a.login)
-    return `Let guests open ${a.title}? Every device on the network of the box can open it without a sign-in.`;
+    return "Every device on the box's network can open it without a sign-in.";
   return null;
 }
 // The change, as a job: done when the root helper's answer comes back with the poll (renderAccess).
@@ -11186,7 +11186,7 @@ function accessBlock(id, a) {
     id: `access-${id}`,
     label: `Access to ${a.title}`,
     saved: { mode: a.mode },
-    ask: (c) => accessAsk(a, c.mode),
+    warn: (c) => accessWarn(a, c.mode),
     save: (c) => accessSet(a, c.mode),
     busy: () => !!(accessWaiting && accessWaiting.app === id),
     onChange: () => fillAccessBlocks(),
@@ -14425,9 +14425,9 @@ const tlsSec = AW.section({
       : v.transport === "http" && v.admin_http === "block"
         ? "Closing the administration pages over HTTP needs HTTPS on."
         : null,
-  ask: (c, v) =>
+  warn: (c, v) =>
     v.transport === "https"
-      ? "Disable HTTP entirely? Captive-portal discovery over HTTP will stop. Continue?"
+      ? "Captive-portal discovery over HTTP stops."
       : null,
   save: (c, v) => tlsSave({ action: "settings", ...v }),
   onChange: () => drawTlsChoices(),
@@ -14436,8 +14436,10 @@ const policySec = AW.section({
   id: "security-policy",
   label: "Security policy",
   saved: null,
-  ask: () =>
-    "Once saved, security policy can only be changed over a root-capable SSH session or the local console. The hub cannot undo this. Continue?",
+  warn: (c) =>
+    c.mode === "console"
+      ? "After Save, only a root-capable SSH session or the console can change security policy. The hub cannot undo it."
+      : null,
   why: () =>
     tlsLocked()
       ? "Security policy is locked. Changes require the console or SSH."
@@ -14693,7 +14695,7 @@ const reachSec = AW.section({
   id: "script-sign-in",
   label: "Script sign-in",
   saved: null,
-  ask: (c) => `${reachChange(c.reach, acctAdmins).says} Save this change?`,
+  // What the change stops is said beside the choices (reach-change).
   why: (c) =>
     reachChange(c.reach, acctAdmins).lockout
       ? "Create an administrator account first."
@@ -15294,13 +15296,13 @@ function paletteEditor(st, onSaved) {
     id: "appearance-palette",
     label: "Colours",
     saved: { palette: saved },
-    ask: (c) => {
+    warn: (c) => {
       const short = [
         ...paletteShort("light", c.palette),
         ...paletteShort("dark", c.palette),
       ];
       return short.length
-        ? `Save the failing colours anyway? Some people will find the text that fails the 4.5:1 ratio hard to read (${short.length} pair${short.length === 1 ? "" : "s"}).`
+        ? `${short.length} colour pair${short.length === 1 ? " fails" : "s fail"} the 4.5:1 ratio. Some people will find that text hard to read.`
         : null;
     },
     save: async (c) => {
@@ -16546,8 +16548,8 @@ function drawSigning(sig, results) {
 sigEl.form.addEventListener("change", sigShowKeys);
 const sigSec = AW.form(sigEl.form, {
   label: "Update signing",
-  ask: (c, v) =>
-    v.level === "off" ? "Install updates without a signature check?" : null,
+  warn: (c, v) =>
+    v.level === "off" ? "Updates install without a signature check." : null,
   save: async (c, v) => {
     if (v.level === "tags" && !v.signers.trim())
       throw new Error(
