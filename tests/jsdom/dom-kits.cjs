@@ -35,6 +35,7 @@ vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) er
 vc.on('error', (...a) => { if (!/Error: HTTP 404$/.test(a.join(' '))) errors.push('console: ' + a.join(' ')); });
 const dom = new JSDOM(html, { url: 'http://box.local/admin/#toolkits', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
+require("./answer-asks.cjs")(w); // its questions on the page answered by its confirm stub
 const posted = [];
 let answered = false;
 w.fetch = async (u, opts = {}) => {
