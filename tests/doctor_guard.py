@@ -133,7 +133,7 @@ adminjs = (Path(__file__).resolve().parents[1] / "web" / "admin.js").read_text()
 joint = adminjs[adminjs.index("function jointDo(") : adminjs.index("function jointRow(")]
 check(
     "the Security doctor: a policy choice is a link (Go to …), only a cure is a button that acts",
-    re.search(r"""secKind\(f\)\s*!==\s*['"]cure['"]""", joint) is not None
+    re.search(r"""secKind\(\w+\)\s*!==\s*['"]cure['"]""", joint) is not None
     and "Go to ${where}" in joint
     and "secChoose(" not in joint,
 )

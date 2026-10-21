@@ -29,11 +29,11 @@ const AW = (() => {
   // its size suits ("67 minutes", "1.5 hours"). msg.py's duration_unit picks the same, for the terminal.
   const UNITS = [[86400, 'day', 172800, 1], [3600, 'hour', 5400, 1], [60, 'minute', 90, 0], [1, 'second', 0, 0]];
   function durationUnit(seconds) {
-    const s = Math.abs(Number(seconds) || 0);
-    const whole = UNITS.find(([size]) => s >= size && s % size === 0 && s / size < 100);
-    if (whole) return [s / whole[0], whole[1]];
-    const [size, unit, , places] = UNITS.find((u) => s >= u[2]);
-    return [Math.floor((s / size) * 10 ** places + 0.5) / 10 ** places, unit];
+    const absolute = Math.abs(Number(seconds) || 0);
+    const whole = UNITS.find(([size]) => absolute >= size && absolute % size === 0 && absolute / size < 100);
+    if (whole) return [absolute / whole[0], whole[1]];
+    const [size, unit, , places] = UNITS.find((row) => absolute >= row[2]);
+    return [Math.floor((absolute / size) * 10 ** places + 0.5) / 10 ** places, unit];
   }
   function sayArg(v) {
     if (isMessage(v)) return say(v);
@@ -116,15 +116,15 @@ const AW = (() => {
   const OFTEN_SAYS = { 0: 'Only when you select Check now', 6: 'Checks every 6 hours', 24: 'Checks once a day', 168: 'Checks once a week' };
   const ACT_SAYS = { 0: 'Flags what is newer', 1: 'Downloads it. You install it', 2: 'Installs it' };
   function patternSays(often, act) {
-    const o = Number(often), a = Number(act);
-    return o ? `${OFTEN_SAYS[o] || `Checks every ${o} hours`}. ${ACT_SAYS[a] || ''}.` : `${OFTEN_SAYS[0]}.`;
+    const o = Number(often), actLevel = Number(act);
+    return o ? `${OFTEN_SAYS[o] || `Checks every ${o} hours`}. ${ACT_SAYS[actLevel] || ''}.` : `${OFTEN_SAYS[0]}.`;
   }
   //   opts: {often: name, act: name, acts: ['0','1'] (a subset where fetching is the update), says: {'2': …},
   //          oftenSays: {'0': …}, value: {often, act}, why: a line saying why a choice is missing}
   function updatePattern(opts) {
     const sel = (name, rows, says, value, label) => h('label', { class: 'update-choice' }, label,
-      h('select', { name, 'data-pattern': name === opts.often ? 'often' : 'act' }, rows.map(([v, t, d]) => {
-        const o = h('option', { value: v, 'data-says': (says && says[v]) || d }, t);
+      h('select', { name, 'data-pattern': name === opts.often ? 'often' : 'act' }, rows.map(([v, t, row]) => {
+        const o = h('option', { value: v, 'data-says': (says && says[v]) || row }, t);
         if (String(value) === v) o.selected = true;
         return o;
       })));
@@ -157,12 +157,12 @@ const AW = (() => {
     row.update = (state) => {
       const whys = [];
       for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
-        const s = { ...b[k], ...(state || {})[k] }, node = row.querySelector(`[data-update="${k}"]`);
+        const shown = { ...b[k], ...(state || {})[k] }, node = row.querySelector(`[data-update="${k}"]`);
         if (!node) continue;
-        if (s.label) node.textContent = s.label;
-        node.disabled = !!s.disabled;
-        node.title = s.disabled && s.why ? s.why : '';
-        if (s.disabled && s.why) whys.push(`${s.label || label}: ${s.why}`);
+        if (shown.label) node.textContent = shown.label;
+        node.disabled = !!shown.disabled;
+        node.title = shown.disabled && shown.why ? shown.why : '';
+        if (shown.disabled && shown.why) whys.push(`${shown.label || label}: ${shown.why}`);
       }
       why.textContent = whys.join(' ');
       why.hidden = !whys.length;
@@ -287,13 +287,13 @@ const AW = (() => {
       fresh: true,
       idle: 'Changes apply after you select Save. Actions run immediately.',
       save: async () => {
-        const r = opts.save ? await opts.save(it) : true;
-        if (r !== false) setTimeout(() => { sec.update({ changed: false }); });
-        return r;
+        const saved = opts.save ? await opts.save(it) : true;
+        if (saved !== false) setTimeout(() => { sec.update({ changed: false }); });
+        return saved;
       },
       onChange: () => { if (!sec.dirty() && !sec.saving()) fill(); },
     });
-    function setDirty(d = true) { sec.set('changed', !!d, true); sec.foot.hidden = false; }
+    function setDirty(dirty = true) { sec.set('changed', !!dirty, true); sec.foot.hidden = false; }
     sec.foot.hidden = true;   // shown once the body has settings (setDirty called)
     const drawer = h('div', { class: 'aw-drawer', role: 'region', 'aria-label': it.title },
       btn('✕', { class: 'action-btn aw-close', 'data-act': 'close', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => closeCard(card) }),
@@ -341,7 +341,7 @@ const AW = (() => {
   //        busy() → true while a save of it is in flight elsewhere (a copy drawn again while its job runs),
   //        why(changes, draft) → why these changes cannot be saved as they are (Save off, the reason under it),
   //        fresh: true starts from the saved values, not a draft left by an earlier copy (a card opened again)}
-  const same = (a, b) => a === b || (a !== null && b !== null && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
+  const same = (left, right) => left === right || (left !== null && right !== null && typeof left === 'object' && typeof right === 'object' && JSON.stringify(left) === JSON.stringify(right));
   const copy = (v) => (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
   const sections = new Map();   // id -> the section last made with it (its draft outlives a redraw)
   const IDLE = 'Changes apply after you select Save.';
@@ -384,7 +384,7 @@ const AW = (() => {
     let draft = saved ? copy(saved) : {};
     const elsewhere = new Set();
     let saving = false, reason = '', said = '';
-    const s = { id: opts.id || null, label: opts.label || '', opts };
+    const handle = { id: opts.id || null, label: opts.label || '', opts };
     // A redraw of the same section: its unsaved changes carried over, as the page's polling would (rule 5).
     if (before && before.dirty() && saved) {
       for (const [k, v] of Object.entries(before.changes())) {
@@ -399,39 +399,39 @@ const AW = (() => {
     const note = h('span', { class: 'note', role: 'status' });
     const warnEl = h('span', { class: 'setting-desc aw-warn', hidden: true });
     const why = h('p', { class: 'setting-desc aw-reason', role: 'status', hidden: true });
-    s.foot = h('div', { class: 'aw-foot', 'data-section': opts.id || '' }, warnEl, note, discardB, saveB);
-    s.reason = why;
-    s.loaded = () => saved !== null;
-    s.saving = () => saving || !!(opts.busy && opts.busy());
-    s.get = (k) => draft[k];
-    s.savedValue = (k) => (saved ? saved[k] : undefined);
-    s.values = () => copy(draft);
-    s.changes = () => (saved ? Object.fromEntries(Object.keys(draft).filter((k) => k in saved && !same(draft[k], saved[k])).map((k) => [k, copy(draft[k])])) : {});
-    s.dirty = () => Object.keys(s.changes()).length > 0;
-    s.elsewhereKeys = () => [...elsewhere];
-    s.disabled = () => !saved || s.saving();
-    s.attached = () => s.foot.isConnected;
-    s.page = () => { const p = s.foot.closest && s.foot.closest('.admin-pane'); return p ? p.id : ''; };
+    handle.foot = h('div', { class: 'aw-foot', 'data-section': opts.id || '' }, warnEl, note, discardB, saveB);
+    handle.reason = why;
+    handle.loaded = () => saved !== null;
+    handle.saving = () => saving || !!(opts.busy && opts.busy());
+    handle.get = (k) => draft[k];
+    handle.savedValue = (k) => (saved ? saved[k] : undefined);
+    handle.values = () => copy(draft);
+    handle.changes = () => (saved ? Object.fromEntries(Object.keys(draft).filter((k) => k in saved && !same(draft[k], saved[k])).map((k) => [k, copy(draft[k])])) : {});
+    handle.dirty = () => Object.keys(handle.changes()).length > 0;
+    handle.elsewhereKeys = () => [...elsewhere];
+    handle.disabled = () => !saved || handle.saving();
+    handle.attached = () => handle.foot.isConnected;
+    handle.page = () => { const page = handle.foot.closest && handle.foot.closest('.admin-pane'); return page ? page.id : ''; };
     const paint = () => {
-      const dirty = s.dirty(), busy = s.saving();
-      const cannot = saved && dirty && !busy && opts.why ? opts.why(s.changes(), s.values()) || '' : '';
+      const dirty = handle.dirty(), busy = handle.saving();
+      const cannot = saved && dirty && !busy && opts.why ? opts.why(handle.changes(), handle.values()) || '' : '';
       saveB.disabled = !dirty || busy || !saved || !!cannot;
       discardB.disabled = !dirty || busy || !saved;
-      s.foot.classList.toggle('aw-dirty', dirty);
+      handle.foot.classList.toggle('aw-dirty', dirty);
       saveB.classList.toggle('idle', !dirty);   // outlined while there is nothing to save
       note.textContent = !saved ? 'Reading the current settings…' : busy ? 'Saving…'
         : dirty ? (elsewhere.size ? 'Unsaved changes. Changed elsewhere since you started: Save replaces it, Discard shows it.' : 'Unsaved changes.')
           : said || opts.idle || IDLE;
       why.textContent = reason || cannot;
       why.hidden = !(reason || cannot);
-      const warning = saved && dirty && opts.warn ? opts.warn(s.changes(), s.values()) || '' : '';
+      const warning = saved && dirty && opts.warn ? opts.warn(handle.changes(), handle.values()) || '' : '';
       warnEl.textContent = warning;
       warnEl.hidden = !warning;
       tellUnsaved();
     };
-    const redraw = () => { paint(); if (opts.onChange) opts.onChange(s); };
+    const redraw = () => { paint(); if (opts.onChange) opts.onChange(handle); };
     // quiet: the control drew itself (a field being typed in): only the footer follows.
-    s.set = (k, v, quiet) => {
+    handle.set = (k, v, quiet) => {
       if (!saved || saving) return;
       draft[k] = copy(v);
       if (same(draft[k], saved[k])) elsewhere.delete(k);
@@ -440,7 +440,7 @@ const AW = (() => {
     };
     // The page's polling: the saved values as they are now. A value not changed here follows them; a changed one
     // stays, said as changed elsewhere when the saved value moved under it.
-    s.update = (now) => {
+    handle.update = (now) => {
       if (now == null) return;
       now = copy(now);
       if (!saved || saving) { if (!saving) { saved = now; draft = copy(now); redraw(); } return; }
@@ -453,43 +453,43 @@ const AW = (() => {
       saved = now;
       redraw();
     };
-    s.discard = () => {
+    handle.discard = () => {
       if (!saved || saving) return;
       draft = copy(saved);
       elsewhere.clear();
       reason = '';
       redraw();
     };
-    s.save = async () => {
-      if (!saved || s.saving() || !s.dirty()) return false;
-      const changes = s.changes();
-      if (opts.why && opts.why(changes, s.values())) return false;
+    handle.save = async () => {
+      if (!saved || handle.saving() || !handle.dirty()) return false;
+      const changes = handle.changes();
+      if (opts.why && opts.why(changes, handle.values())) return false;
       saving = true;
       reason = '';
       said = '';
       paint();
-      let r;
+      let outcome;
       try {
-        r = opts.save ? await opts.save(changes, s.values()) : true;
+        outcome = opts.save ? await opts.save(changes, handle.values()) : true;
       } catch (error) {
-        r = false;
+        outcome = false;
         reason = String((error && error.message) || error || 'Not saved.');
       }
       saving = false;
-      if (r !== false) {
+      if (outcome !== false) {
         Object.assign(saved, copy(changes));
         elsewhere.clear();
-        said = typeof r === 'string' ? r : '';
+        said = typeof outcome === 'string' ? outcome : '';
       }
       redraw();
-      return r !== false;
+      return outcome !== false;
     };
-    s.fail = (text) => { reason = text || ''; paint(); };
-    saveB.addEventListener('click', () => s.save());
-    discardB.addEventListener('click', () => s.discard());
-    if (opts.id) sections.set(opts.id, s);
+    handle.fail = (text) => { reason = text || ''; paint(); };
+    saveB.addEventListener('click', () => handle.save());
+    discardB.addEventListener('click', () => handle.discard());
+    if (opts.id) sections.set(opts.id, handle);
     paint();
-    return s;
+    return handle;
   }
   // The sections with unsaved changes on the page now: [{id, label, page, el}] (el: its footer, to find where it is).
   function unsaved() {
@@ -499,9 +499,9 @@ const AW = (() => {
   //   const j = AW.job(); … j.done(ok, why) — ok false rejects with why (the reason under the footer).
   function job() {
     let ok, no;
-    const p = new Promise((a, b) => { ok = a; no = b; });
-    p.done = (fine, why) => (fine ? ok(why || true) : no(new Error(why || 'The root helper could not do it.')));
-    return p;
+    const promise = new Promise((resolve, reject) => { ok = resolve; no = reject; });
+    promise.done = (fine, why) => (fine ? ok(why || true) : no(new Error(why || 'The root helper could not do it.')));
+    return promise;
   }
 
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts, as a section ----
@@ -510,56 +510,56 @@ const AW = (() => {
   //   opts: {save(changes) → Promise|void, id, label, ask, idle}: the section's (above); no save, no footer.
   function settings(rows, opts = {}) {
     const box = h('div', { class: 'aw-settings', 'data-aw-scope': opts.scope ? '' : null });
-    const saved = Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key, r.value]));
-    const s = section({ ...opts, saved, onChange: () => draw() });
-    const draw = () => box.replaceChildren(...rows.map(row), ...(opts.save ? [s.foot, s.reason] : []));
-    function row(r) {
+    const saved = Object.fromEntries(rows.filter((spec) => spec.key).map((spec) => [spec.key, spec.value]));
+    const handle = section({ ...opts, saved, onChange: () => draw() });
+    const draw = () => box.replaceChildren(...rows.map(row), ...(opts.save ? [handle.foot, handle.reason] : []));
+    function row(spec) {
       let ctl;
-      const v = s.get(r.key), off = s.disabled();
-      if (r.kind === 'toggle') {
+      const v = handle.get(spec.key), off = handle.disabled();
+      if (spec.kind === 'toggle') {
         ctl = h('button', { type: 'button', class: 'chip-btn' + (v ? ' active' : ''), 'aria-pressed': String(!!v), disabled: off,
-          onclick: () => s.set(r.key, !s.get(r.key)) }, v ? 'On' : 'Off');
-      } else if (r.kind === 'choice') {
-        ctl = h('div', { class: 'chip-group', role: 'group', 'aria-label': r.label }, r.options.map((o) => {
+          onclick: () => handle.set(spec.key, !handle.get(spec.key)) }, v ? 'On' : 'Off');
+      } else if (spec.kind === 'choice') {
+        ctl = h('div', { class: 'chip-group', role: 'group', 'aria-label': spec.label }, spec.options.map((o) => {
           const [ov, t] = Array.isArray(o) ? o : [o, o];
           return h('button', { type: 'button', class: 'chip' + (same(v, ov) ? ' selected' : ''), 'aria-pressed': String(same(v, ov)), disabled: off,
-            onclick: () => s.set(r.key, ov) }, t);
+            onclick: () => handle.set(spec.key, ov) }, t);
         }));
-      } else if (r.kind === 'multi') {
+      } else if (spec.kind === 'multi') {
         // Any of a few, as filter chips: the value the chosen ones, in the options' order.
         const on = new Set(v || []);
-        ctl = h('div', { class: 'filter-chips', role: 'group', 'aria-label': r.label }, r.options.map((o) => {
+        ctl = h('div', { class: 'filter-chips', role: 'group', 'aria-label': spec.label }, spec.options.map((o) => {
           const [ov, t] = Array.isArray(o) ? o : [o, o];
           return h('button', { type: 'button', class: 'filter-chip' + (on.has(ov) ? ' active' : ''), 'aria-pressed': String(on.has(ov)), disabled: off,
-            onclick: () => s.set(r.key, r.options.map((x) => (Array.isArray(x) ? x[0] : x)).filter((x) => (x === ov ? !on.has(x) : on.has(x)))) }, t);
+            onclick: () => handle.set(spec.key, spec.options.map((x) => (Array.isArray(x) ? x[0] : x)).filter((x) => (x === ov ? !on.has(x) : on.has(x)))) }, t);
         }));
-      } else if (r.kind === 'button') ctl = btn(r.text || r.label, { onclick: r.onclick });
-      else if (r.kind === 'text') {
-        ctl = h('input', { type: 'text', value: v ?? '', maxlength: r.max || null, 'aria-label': r.label, disabled: off, 'data-aw-key': r.key,
-          oninput: (event) => s.set(r.key, event.target.value, true) });
-      } else if (r.kind === 'colour') {
+      } else if (spec.kind === 'button') ctl = btn(spec.text || spec.label, { onclick: spec.onclick });
+      else if (spec.kind === 'text') {
+        ctl = h('input', { type: 'text', value: v ?? '', maxlength: spec.max || null, 'aria-label': spec.label, disabled: off, 'data-aw-key': spec.key,
+          oninput: (event) => handle.set(spec.key, event.target.value, true) });
+      } else if (spec.kind === 'colour') {
         // A colour, or '' for the theme's own (r.unset names it); r.warn(value) says what's wrong with one, live.
-        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (v && r.warn && r.warn(v)) || '' });
-        const pick = h('input', { type: 'color', value: v || r.shown || '#000000', 'aria-label': r.label, disabled: off, 'data-aw-key': r.key });
-        const own = btn(r.unset || 'Default', { 'aria-pressed': String(!v), class: 'action-btn' + (!v ? ' active' : ''), disabled: off });
+        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (v && spec.warn && spec.warn(v)) || '' });
+        const pick = h('input', { type: 'color', value: v || spec.shown || '#000000', 'aria-label': spec.label, disabled: off, 'data-aw-key': spec.key });
+        const own = btn(spec.unset || 'Default', { 'aria-pressed': String(!v), class: 'action-btn' + (!v ? ' active' : ''), disabled: off });
         pick.addEventListener('input', () => {
-          s.set(r.key, pick.value.toLowerCase(), true);
-          warn.textContent = (r.warn && r.warn(s.get(r.key))) || '';
+          handle.set(spec.key, pick.value.toLowerCase(), true);
+          warn.textContent = (spec.warn && spec.warn(handle.get(spec.key))) || '';
           own.setAttribute('aria-pressed', 'false');
           own.classList.remove('active');
         });
-        own.addEventListener('click', () => s.set(r.key, ''));
+        own.addEventListener('click', () => handle.set(spec.key, ''));
         ctl = h('span', { class: 'aw-colour' }, pick, own, warn);
       }
-      else ctl = h('span', { class: 'output-value', text: r.value ?? '' });
-      return h('div', { class: 'aw-field', 'data-setting': r.key || null, 'data-decision-row': r.decision || null },
-        h('span', { class: 'aw-label', text: r.label }), ctl,
-        r.decision ? h('span', { class: 'kind-tag', title: 'Asked in the setup steps', text: 'Setup decision' }) : null,
-        r.note ? h('small', { class: 'setting-desc', text: r.note }) : null);
+      else ctl = h('span', { class: 'output-value', text: spec.value ?? '' });
+      return h('div', { class: 'aw-field', 'data-setting': spec.key || null, 'data-decision-row': spec.decision || null },
+        h('span', { class: 'aw-label', text: spec.label }), ctl,
+        spec.decision ? h('span', { class: 'kind-tag', title: 'Asked in the setup steps', text: 'Setup decision' }) : null,
+        spec.note ? h('small', { class: 'setting-desc', text: spec.note }) : null);
     }
     draw();
-    box.section = s;
-    box.values = s.values;
+    box.section = handle;
+    box.values = handle.values;
     return box;
   }
 
@@ -568,11 +568,11 @@ const AW = (() => {
   //   opts:  {act(choice, item)}
   const RANK = { problem: 0, bad: 0, warn: 1, info: 2, ok: 3 };
   function findings(items, opts = {}) {
-    const sorted = [...items].sort((a, b) => (RANK[a.status] ?? 2) - (RANK[b.status] ?? 2));
-    return shortList(sorted.map((f) => ({ ...f, badges: [f.status].concat(f.badges || []), detail: () => [
-      f.detail ? h('p', { class: 'setting-desc', text: f.detail }) : null,
-      (f.actions || []).map((a) => btn(a.label, { onclick: async (event) => {
-        if ((!a.confirm || (await confirmHere(a.confirm, { anchor: event.currentTarget, label: a.label }))) && opts.act) opts.act(a.choice, f);
+    const sorted = [...items].sort((left, right) => (RANK[left.status] ?? 2) - (RANK[right.status] ?? 2));
+    return shortList(sorted.map((finding) => ({ ...finding, badges: [finding.status].concat(finding.badges || []), detail: () => [
+      finding.detail ? h('p', { class: 'setting-desc', text: finding.detail }) : null,
+      (finding.actions || []).map((action) => btn(action.label, { onclick: async (event) => {
+        if ((!action.confirm || (await confirmHere(action.confirm, { anchor: event.currentTarget, label: action.label }))) && opts.act) opts.act(action.choice, finding);
       } })),
     ] })), { id: opts.id });
   }
@@ -680,10 +680,10 @@ const AW = (() => {
     if (watched || typeof HTMLSelectElement === 'undefined') return;
     watched = true;
     for (const prop of ['value', 'selectedIndex']) {
-      const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
-      if (!d || !d.set) continue;
-      Object.defineProperty(HTMLSelectElement.prototype, prop, { configurable: true, enumerable: d.enumerable,
-        get() { return d.get.call(this); }, set(v) { d.set.call(this, v); if (this._chipsDraw) this._chipsDraw(); } });
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
+      if (!descriptor || !descriptor.set) continue;
+      Object.defineProperty(HTMLSelectElement.prototype, prop, { configurable: true, enumerable: descriptor.enumerable,
+        get() { return descriptor.get.call(this); }, set(v) { descriptor.set.call(this, v); if (this._chipsDraw) this._chipsDraw(); } });
     }
   }
   function chipSelects(root) {
@@ -696,9 +696,9 @@ const AW = (() => {
   // fields (the firmware's boards) is opts.extra: {key: {set(value)}}, and the page calls section.set for it.
   //   opts: the section's (save, ask, idle, label), and extra
   const FIELD = (field) => field.name && !['button', 'submit', 'reset', 'file'].includes(field.type) && !field.closest('[data-aw-ignore]');
-  function form(f, opts = {}) {
-    if (f.section) return f.section;
-    const named = (n) => [...f.elements].filter((field) => FIELD(field) && (!n || field.name === n));
+  function form(formEl, opts = {}) {
+    if (formEl.section) return formEl.section;
+    const named = (n) => [...formEl.elements].filter((field) => FIELD(field) && (!n || field.name === n));
     const read = (n) => {
       const els = named(n);
       if (!els.length) return undefined;
@@ -708,12 +708,12 @@ const AW = (() => {
     const extra = opts.extra || {};
     let writing = false;
     const offByUs = new Set();
-    const s = section({ ...opts, id: opts.id || f.id, saved: null, onChange: () => paint() });
+    const handle = section({ ...opts, id: opts.id || formEl.id, saved: null, onChange: () => paint() });
     // The draft into the fields; each field written raises change, so what follows a field (chips, a part shown
     // only for one choice) follows it here too. Off until the values are read.
     function paint() {
       writing = true;
-      for (const [k, v] of Object.entries(s.values())) {
+      for (const [k, v] of Object.entries(handle.values())) {
         if (k in extra) { extra[k].set(v); continue; }
         for (const field of named(k)) {
           const was = field.type === 'radio' || field.type === 'checkbox' ? field.checked : field.value;
@@ -724,32 +724,32 @@ const AW = (() => {
         }
       }
       writing = false;
-      if (s.loaded()) { offByUs.forEach((field) => { field.disabled = false; if (field._chipsDraw) field._chipsDraw(); }); offByUs.clear(); }
+      if (handle.loaded()) { offByUs.forEach((field) => { field.disabled = false; if (field._chipsDraw) field._chipsDraw(); }); offByUs.clear(); }
     }
     for (const field of named()) if (!field.disabled) { field.disabled = true; offByUs.add(field); if (field._chipsDraw) field._chipsDraw(); }
     // Values as the fields hold them: a tick true or false, everything else a string.
-    s.fill = (values) => {
+    handle.fill = (values) => {
       const out = {};
       for (const [k, v] of Object.entries(values || {})) {
         const field = named(k)[0];
         out[k] = k in extra ? v : field && field.type === 'checkbox' ? !!v : v == null ? '' : String(v);
       }
-      s.update(out);
+      handle.update(out);
     };
     const touch = (event) => {
-      if (writing || !event.target || !FIELD(event.target) || !s.loaded()) return;
-      s.set(event.target.name, read(event.target.name), true);
+      if (writing || !event.target || !FIELD(event.target) || !handle.loaded()) return;
+      handle.set(event.target.name, read(event.target.name), true);
     };
-    f.addEventListener('input', touch);
-    f.addEventListener('change', touch);
-    f.addEventListener('submit', (event) => { event.preventDefault(); s.save(); });
-    const old = [...f.querySelectorAll('button')];
+    formEl.addEventListener('input', touch);
+    formEl.addEventListener('change', touch);
+    formEl.addEventListener('submit', (event) => { event.preventDefault(); handle.save(); });
+    const old = [...formEl.querySelectorAll('button')];
     const saveOld = old.find((b) => b.type === 'submit' && b.textContent.trim().startsWith('Save'));
-    if (saveOld) saveOld.replaceWith(s.foot); else f.append(s.foot);
-    s.foot.after(s.reason);
+    if (saveOld) saveOld.replaceWith(handle.foot); else formEl.append(handle.foot);
+    handle.foot.after(handle.reason);
     old.filter((b) => b.textContent.trim().startsWith('Discard')).forEach((b) => b.remove());
-    f.section = s;
-    return s;
+    formEl.section = handle;
+    return handle;
   }
   // ---- A selection survives the page's polling ----
   // While someone has text selected in a block, drawing that block again with the same content is skipped, so the
@@ -759,8 +759,8 @@ const AW = (() => {
   function selectionIn(node) {
     const sel = typeof document.getSelection === 'function' ? document.getSelection() : null;
     if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
-    const r = sel.getRangeAt(0);
-    return node.contains(r.startContainer) || node.contains(r.endContainer) || r.intersectsNode(node);
+    const range = sel.getRangeAt(0);
+    return node.contains(range.startContainer) || node.contains(range.endContainer) || range.intersectsNode(node);
   }
   let kept = false;
   function keepSelections() {
@@ -801,7 +801,7 @@ const AW = (() => {
     const c = n.cloneNode(true);
     if (c.matches(LIVE)) return `<live ${c.getAttribute('data-live')}>`;
     c.querySelectorAll(LIVE).forEach((x) => x.replaceChildren());
-    const vals = [...n.querySelectorAll('input, select, textarea')].map((f) => (f.type === 'checkbox' || f.type === 'radio' ? f.checked : f.value));
+    const vals = [...n.querySelectorAll('input, select, textarea')].map((input) => (input.type === 'checkbox' || input.type === 'radio' ? input.checked : input.value));
     return c.outerHTML + (vals.length ? JSON.stringify(vals) : '');
   }
   function drawKept(box, nodes) {

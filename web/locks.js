@@ -45,12 +45,12 @@
   async function onHub() {
     const out = { saves: {}, drop: {} };
     try {
-      const s = await (await fetch('/api/saves')).json();
-      for (const x of s.saves) out.saves[x.id] = x;
+      const data = await (await fetch('/api/saves')).json();
+      for (const x of data.saves) out.saves[x.id] = x;
     } catch (_) { /* hub not answering: shown as unknown */ }
     try {
-      const d = await (await fetch('/api/drop')).json();
-      for (const x of d.files) out.drop[x.id] = x;
+      const data = await (await fetch('/api/drop')).json();
+      for (const x of data.files) out.drop[x.id] = x;
     } catch (_) { /* same */ }
     return out;
   }

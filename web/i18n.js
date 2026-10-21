@@ -30,7 +30,7 @@
 
   function tag(el) { return el.localName; }
   function noTranslate(el) { return el.getAttribute('translate') === 'no'; }
-  function letters(s) { return LETTER.test(s); }
+  function letters(text) { return LETTER.test(text); }
 
   function hasWords(el) {
     for (var c = el.firstChild; c; c = c.nextSibling) {
@@ -129,14 +129,14 @@
     }
     var all = root.querySelectorAll('*');
     for (var j = 0; j < all.length; j++) {
-      var a = all[j].attributes;
-      for (var k = 0; k < a.length; k++) {
-        if (a[k].name.indexOf('data-i18n-') !== 0) continue;
-        var name = a[k].name.slice('data-i18n-'.length);
+      var attrs = all[j].attributes;
+      for (var k = 0; k < attrs.length; k++) {
+        if (attrs[k].name.indexOf('data-i18n-') !== 0) continue;
+        var name = attrs[k].name.slice('data-i18n-'.length);
         var target = ATTRS.indexOf(name) >= 0 ? name : 'data-' + name;
         var cur = all[j].getAttribute(target);
         if (cur === null) continue;
-        var ae = entryFor(catalogue, a[k].value, cur.replace(/\s+/g, ' ').trim());
+        var ae = entryFor(catalogue, attrs[k].value, cur.replace(/\s+/g, ' ').trim());
         if (ae) { all[j].setAttribute(target, ae.text); said++; }
       }
     }

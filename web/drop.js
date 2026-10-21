@@ -15,8 +15,8 @@
   lockBox.checked = localStorage.getItem('drop-lock') === '1';
   // Signed in, and no selection made in this browser yet: the account's own default.
   if (localStorage.getItem('drop-lock') === null) {
-    fetch('/api/account').then((r) => (r.ok ? r.json() : null)).then((d) => {
-      if (d && d.prefs && localStorage.getItem('drop-lock') === null) lockBox.checked = !!d.prefs.lock_default;
+    fetch('/api/account').then((response) => (response.ok ? response.json() : null)).then((data) => {
+      if (data && data.prefs && localStorage.getItem('drop-lock') === null) lockBox.checked = !!data.prefs.lock_default;
     }).catch(() => {});
   }
   lockBox.addEventListener('change', () => localStorage.setItem('drop-lock', lockBox.checked ? '1' : '0'));
@@ -45,31 +45,31 @@
   async function refresh() {
     if (list.querySelector('.aw-ask')) return; // a question is open in the list: the next poll draws it again
     try {
-      const r = await fetch('/api/drop');
-      const data = await r.json();
+      const response = await fetch('/api/drop');
+      const data = await response.json();
       maxFile = data.max_file;
       limits.textContent = `Everyone who can open this page can download these files. Maximum file size: ${size(data.max_file)}. ` +
         (data.ttl ? `Retention period: ${Math.round(data.ttl / 3600)} hours of powered-on time. ` : '') +
         'The box deletes the oldest files when the storage limit is reached.';
-      list.replaceChildren(...(data.files.length ? data.files.map((f) => {
-        const a = document.createElement('a');
-        a.href = `/api/drop/${encodeURIComponent(f.id)}`;
-        a.textContent = f.name;
-        a.setAttribute('download', f.name);
-        const row = li('drop-item', f.pinned ? span('drop-locked', '📌 ') : f.locked ? span('drop-locked', '🔒 ') : '', a,
-          span('setting-desc', ` ${size(f.size)} · ${f.pinned ? 'the source of this box (see About)' : `${f.by ? `${f.by} · ` : ''}${formatAge(f.age)}`}`));
+      list.replaceChildren(...(data.files.length ? data.files.map((file) => {
+        const link = document.createElement('a');
+        link.href = `/api/drop/${encodeURIComponent(file.id)}`;
+        link.textContent = file.name;
+        link.setAttribute('download', file.name);
+        const row = li('drop-item', file.pinned ? span('drop-locked', '📌 ') : file.locked ? span('drop-locked', '🔒 ') : '', link,
+          span('setting-desc', ` ${size(file.size)} · ${file.pinned ? 'the source of this box (see About)' : `${file.by ? `${file.by} · ` : ''}${formatAge(file.age)}`}`));
         // Anyone can report a file to the administrator (not the box's own source).
-        if (!f.pinned && typeof reportButton === 'function') row.append(' ', reportButton('drop', { id: f.id }, data.report_reasons));
-        if (f.locked && window.HubLock && HubLock.has('drop', f.id)) {
+        if (!file.pinned && typeof reportButton === 'function') row.append(' ', reportButton('drop', { id: file.id }, data.report_reasons));
+        if (file.locked && window.HubLock && HubLock.has('drop', file.id)) {
           const rm = document.createElement('button');
           rm.type = 'button';
           rm.className = 'small';
           rm.textContent = 'Delete file';
           rm.title = 'This browser holds the key. It can delete the file before the file expires.';
-          rm.addEventListener('click', () => removeMine(f, rm));
+          rm.addEventListener('click', () => removeMine(file, rm));
           row.append(' ', rm);
         }
-        if (notDeleted[f.id]) row.append(span('setting-desc bad', ` ${notDeleted[f.id]}`));
+        if (notDeleted[file.id]) row.append(span('setting-desc bad', ` ${notDeleted[file.id]}`));
         return row;
       }) : [li('setting-desc', 'No files')]));
     } catch (_) {
@@ -77,22 +77,22 @@
     }
   }
 
-  async function removeMine(f, button) {
-    if (!(await askHere(`Delete ${f.name} from the box? This cannot be undone.`, { anchor: button, label: 'Delete' }))) return;
-    const c = HubLock.change('drop', f.id, f.lock_n);
+  async function removeMine(file, button) {
+    if (!(await askHere(`Delete ${file.name} from the box? This cannot be undone.`, { anchor: button, label: 'Delete' }))) return;
+    const c = HubLock.change('drop', file.id, file.lock_n);
     if (!c) return;
     button.disabled = true;
     try {
-      const r = await fetch(`/api/drop/${encodeURIComponent(f.id)}`, { method: 'DELETE', headers: c.headers });
-      if (r.ok) {
-        HubLock.forget('drop', f.id);
-        delete notDeleted[f.id];
+      const response = await fetch(`/api/drop/${encodeURIComponent(file.id)}`, { method: 'DELETE', headers: c.headers });
+      if (response.ok) {
+        HubLock.forget('drop', file.id);
+        delete notDeleted[file.id];
       } else {
-        const data = await r.json().catch(() => ({}));
-        notDeleted[f.id] = `File not deleted: ${data.error || `error ${r.status}`}`;
+        const data = await response.json().catch(() => ({}));
+        notDeleted[file.id] = `File not deleted: ${data.error || `error ${response.status}`}`;
       }
     } catch (_) {
-      notDeleted[f.id] = 'File not deleted: the connection dropped.';
+      notDeleted[file.id] = 'File not deleted: the connection dropped.';
     }
     refresh();
   }
@@ -146,7 +146,7 @@
 
   // One at a time: a phone on a busy hotspot does better with one upload than with five.
   async function uploadAll(files) {
-    for (const f of files) await upload(f);
+    for (const file of files) await upload(file);
   }
 
   // The photo and voice buttons are the same upload; on a phone, capture opens the camera

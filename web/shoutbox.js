@@ -26,7 +26,7 @@ const NOUNS = [
 ];
 
 function randomName() {
-  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
   return `${pick(ADJECTIVES)} ${pick(NOUNS)}`;
 }
 
@@ -38,20 +38,20 @@ let marks = false;
 const postNote = document.createElement('p');
 postNote.className = 'setting-desc shout-post-note';
 form.after(postNote);
-function applyPosting(p) {
-  if (!p) return;
-  marks = p.marks;
-  const closed = p.who === 'off' || (p.who === 'users' && !p.me);
+function applyPosting(posting) {
+  if (!posting) return;
+  marks = posting.marks;
+  const closed = posting.who === 'off' || (posting.who === 'users' && !posting.me);
   form.hidden = closed;
   postNote.replaceChildren();
-  if (p.who === 'off') postNote.textContent = 'Posting is disabled.';
+  if (posting.who === 'off') postNote.textContent = 'Posting is disabled.';
   else if (closed) {
-    const a = document.createElement('a'); a.href = '/account.html?next=/'; a.textContent = 'Sign in';
-    postNote.append(a, ' to post. Only users can post here.');
+    const link = document.createElement('a'); link.href = '/account.html?next=/'; link.textContent = 'Sign in';
+    postNote.append(link, ' to post. Only users can post here.');
   }
-  nameInput.readOnly = !!p.me;
-  nameRoll.hidden = !!p.me;
-  if (p.me) nameInput.value = p.me;
+  nameInput.readOnly = !!posting.me;
+  nameRoll.hidden = !!posting.me;
+  if (posting.me) nameInput.value = posting.me;
 }
 
 function setDecayNote(ttl) {
@@ -108,8 +108,8 @@ function renderMessages(data) {
 
 async function poll() {
   try {
-    const r = await fetch('/messages');
-    if (r.ok) renderMessages(await r.json());
+    const response = await fetch('/messages');
+    if (response.ok) renderMessages(await response.json());
   } catch (_) {}
 }
 
@@ -119,12 +119,12 @@ form.addEventListener('submit', async (event) => {
   const text = msgInput.value.trim();
   if (!name || !text) return;
   try {
-    const r = await fetch('/messages', {
+    const response = await fetch('/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(withHue({ name, text })),
     });
-    if (!r.ok) { postNote.textContent = (await r.json().catch(() => ({}))).error || `Message not sent (HTTP ${r.status}).`; return; }
+    if (!response.ok) { postNote.textContent = (await response.json().catch(() => ({}))).error || `Message not sent (HTTP ${response.status}).`; return; }
     msgInput.value = '';
     await poll();
   } catch (_) {}

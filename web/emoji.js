@@ -25,9 +25,9 @@ const DATA_URL = ((document.currentScript && document.currentScript.src) || '/em
 const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter
   ? new Intl.Segmenter('en', { granularity: 'grapheme' })
   : null;
-function graphemes(s) {
-  if (segmenter) return Array.from(segmenter.segment(s), (x) => x.segment);
-  return Array.from(s); // fallback: code points; ZWJ sequences may split on very old browsers
+function graphemes(text) {
+  if (segmenter) return Array.from(segmenter.segment(text), (x) => x.segment);
+  return Array.from(text); // fallback: code points; ZWJ sequences may split on very old browsers
 }
 
 let panel = null;
@@ -51,8 +51,8 @@ const within = (cap) => (entry) => (entry[3] || 0) <= cap && [entry[0], entry[1]
 function loadData() {
   if (window.EMOJI_DATA) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const s = make('script', { src: DATA_URL, onload: resolve, onerror: () => reject(new Error('emoji-data.js')) });
-    document.head.appendChild(s);
+    const script = make('script', { src: DATA_URL, onload: resolve, onerror: () => reject(new Error('emoji-data.js')) });
+    document.head.appendChild(script);
   });
 }
 
@@ -147,21 +147,21 @@ function insert(field, ch) {
 }
 
 function position() {
-  const r = toggle.getBoundingClientRect();
+  const rect = toggle.getBoundingClientRect();
   const w = panel.offsetWidth;
   const h = panel.offsetHeight;
   // Right-aligned to the toggle when it is at a field's right edge (shoutbox);
   // left-aligned when that would run off the left (the board's toggle beside Send).
-  let left = r.right - w;
-  if (left < 8) left = r.left;
+  let left = rect.right - w;
+  if (left < 8) left = rect.left;
   left = Math.max(8, Math.min(left, document.documentElement.clientWidth - w - 8));
   panel.style.left = `${left + window.scrollX}px`;
   // The send rows sit at the foot of the page, so opening downward usually runs off
   // the bottom of the screen. Open upward when there is not room below and there is
   // more above; either way, keep the whole panel inside the viewport.
-  const below = window.innerHeight - r.bottom - 6;
-  const above = r.top - 6;
-  let top = below < h && above > below ? r.top - 6 - h : r.bottom + 6;
+  const below = window.innerHeight - rect.bottom - 6;
+  const above = rect.top - 6;
+  let top = below < h && above > below ? rect.top - 6 - h : rect.bottom + 6;
   top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
   panel.style.top = `${top + window.scrollY}px`;
 }

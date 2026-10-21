@@ -21,7 +21,7 @@ function target(st) {
 function actions(st) {
   const box = $('nb-actions');
   box.replaceChildren();
-  const link = (href, text) => { const a = document.createElement('a'); a.className = 'action-btn'; a.href = href; a.textContent = text; return a; };
+  const link = (href, text) => { const anchor = document.createElement('a'); anchor.className = 'action-btn'; anchor.href = href; anchor.textContent = text; return anchor; };
   if (st.state === 'signed-out') box.append(link('/account.html?next=/notebook.html', 'Sign in'));
   if (st.state === 'full' || st.state === 'memory') {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'action-btn'; b.textContent = 'Try again';
@@ -33,8 +33,8 @@ function actions(st) {
 async function open() {
   let st;
   try {
-    const r = await fetch('/api/notebook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify({ action: 'open' }) });
-    st = await r.json();
+    const response = await fetch('/api/notebook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify({ action: 'open' }) });
+    st = await response.json();
   } catch (_) { $('nb-state').textContent = 'Could not reach the hub server.'; return; }
   if (st.state === 'ready') { $('nb-state').textContent = 'Opening notebook'; location.replace(target(st)); return; }
   $('nb-state').textContent = WORDS[st.state] || st.state;

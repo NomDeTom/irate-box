@@ -4,8 +4,8 @@
 (() => {
   const clone = document.getElementById('about-clone');
   if (clone) clone.textContent = `git clone ${location.origin}/git/irate-box-source.git`;
-  fetch('/status').then((r) => r.json()).then((s) => {
+  fetch('/status').then((response) => response.json()).then((status) => {
     const v = document.getElementById('about-version');
-    if (v && s.version) v.textContent = s.version;
+    if (v && status.version) v.textContent = status.version;
   }).catch(() => {});
 })();

@@ -22,10 +22,10 @@ function row(name, detail, state) {
   const n = document.createElement('span');
   n.className = 'name';
   n.textContent = name;
-  const d = document.createElement('span');
-  d.className = 'desc';
-  d.textContent = detail;
-  li.append(n, d);
+  const desc = document.createElement('span');
+  desc.className = 'desc';
+  desc.textContent = detail;
+  li.append(n, desc);
   if (state) {
     const b = document.createElement('span');
     b.className = `state state-${state}`;
@@ -38,18 +38,18 @@ function row(name, detail, state) {
 async function refresh() {
   let data;
   try {
-    const r = await fetch('/status');
-    if (!r.ok) throw new Error(r.status);
-    data = await r.json();
+    const response = await fetch('/status');
+    if (!response.ok) throw new Error(response.status);
+    data = await response.json();
   } catch (_) {
     note.textContent = 'The hub server did not answer.';
     note.hidden = false;
     return;
   }
   const services = [...data.services].sort(
-    (a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name));
+    (left, right) => ORDER[left.state] - ORDER[right.state] || left.name.localeCompare(right.name));
   list.replaceChildren(...services.map(
-    (s) => row(s.name, s.path || s.note || 'Built-in service', s.state)));
+    (service) => row(service.name, service.path || service.note || 'Built-in service', service.state)));
   note.textContent = data.proxied ? ''
     : 'No web server is in front of the hub server. Apps that need the web server cannot be reached.';
   note.hidden = data.proxied;

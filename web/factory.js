@@ -22,11 +22,11 @@
     const h = Math.round(m / 60);
     return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
   };
-  async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
+  async function getJSON(url) { const response = await fetch(url); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
   async function postJSON(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body) });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    const response = await fetch(url, { method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     return data;
   }
   const actionButton = (label, onclick, extra = {}) => el('button', { type: 'button', textContent: label, onclick, ...extra, className: `action-btn${extra.className ? ' ' + extra.className : ''}` });
@@ -47,42 +47,42 @@
   const facChosen = new Set();
   let facPoll = null;
   let facFlasher = null; // the boards the Firmware pane keeps for the flasher: ticked to start with
-  const facDur = (s) => (s == null ? '?' : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
+  const facDur = (seconds) => (seconds == null ? '?' : seconds < 90 ? `${Math.round(seconds)} s` : seconds < 5400 ? `${Math.round(seconds / 60)} min` : `${(seconds / 3600).toFixed(1)} h`);
   const facClock = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   // A family's readiness: a message from the hub (factory.readiness), said in the reader's language.
-  const facReady = (f) => {
-    const r = facData && facData.readiness[f];
-    return (r && typeof r === 'object' ? AW.say(r) : r) || 'Not tested on this box. Its first build downloads its toolchain';
+  const facReady = (family) => {
+    const readiness = facData && facData.readiness[family];
+    return (readiness && typeof readiness === 'object' ? AW.say(readiness) : readiness) || 'Not tested on this box. Its first build downloads its toolchain';
   };
-  const sentence = (s) => { const x = String(s).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
-  const facEst = (f) => { const estimate = facData && facData.estimates[f]; return estimate ? `about ${facDur(estimate.seconds)} a target here` : 'no build estimate'; };
+  const sentence = (text) => { const x = String(text).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
+  const facEst = (family) => { const estimate = facData && facData.estimates[family]; return estimate ? `about ${facDur(estimate.seconds)} a target here` : 'no build estimate'; };
 
   async function loadFactory() {
     try { renderFactory(await getJSON('/admin/factory')); } catch (_) { fac.waiting.textContent = 'Could not load the Firmware Factory.'; }
   }
 
-  function renderFactory(d) {
-    facData = d;
-    fac.paused.hidden = !d.paused;
-    fac.pause.textContent = d.paused ? 'Resume queue' : 'Pause queue';
-    const names = d.sources.map((s) => s.name).join('\n');
+  function renderFactory(data) {
+    facData = data;
+    fac.paused.hidden = !data.paused;
+    fac.pause.textContent = data.paused ? 'Resume queue' : 'Pause queue';
+    const names = data.sources.map((source) => source.name).join('\n');
     if (fac.source.dataset.names !== names) {
       const was = fac.source.value;
       fac.source.dataset.names = names;
-      fac.source.replaceChildren(...d.sources.map((s) => el('option', { value: s.name, textContent: `${s.name} (${s.mirror ? 'mirror' : 'local repository'})` })));
-      if (d.sources.some((s) => s.name === was)) fac.source.value = was;
-      if (d.sources.length) loadFactoryRefs();
+      fac.source.replaceChildren(...data.sources.map((source) => el('option', { value: source.name, textContent: `${source.name} (${source.mirror ? 'mirror' : 'local repository'})` })));
+      if (data.sources.some((source) => source.name === was)) fac.source.value = was;
+      if (data.sources.length) loadFactoryRefs();
       else fac.targets.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No source configured. Mirror meshtastic/firmware in Git → Mirrors, or push a fork to a repository on this box.' }));
     }
     const describe = (j) => `${j.name && j.name !== j.env ? `${j.name} (${j.env})` : j.env}, ${j.family}: ${j.source} ${j.ref}`;
     const rows = [];
-    if (d.running) {
-      const estimate = d.estimates[d.running.family];
+    if (data.running) {
+      const estimate = data.estimates[data.running.family];
       rows.push(el('div', { className: 'admin-item' }, el('span', { className: 'state state-running', textContent: 'Building' }),
-        el('span', { textContent: ` ${describe(d.running)}` }),
-        el('span', { className: 'setting-desc', textContent: ` Started ${ago(Date.now() / 1000 - d.running.started)}.${estimate ? ` Finishes about ${facClock(d.running.started + estimate.seconds)}.` : ''}` })));
+        el('span', { textContent: ` ${describe(data.running)}` }),
+        el('span', { className: 'setting-desc', textContent: ` Started ${ago(Date.now() / 1000 - data.running.started)}.${estimate ? ` Finishes about ${facClock(data.running.started + estimate.seconds)}.` : ''}` })));
     }
-    d.waiting.forEach((j, i) => {
+    data.waiting.forEach((j, i) => {
       rows.push(el('div', { className: 'admin-item' }, el('span', { textContent: `${i + 1}. ${describe(j)}` }),
         el('span', { className: 'setting-desc', textContent: j.start ? ` Starts about ${facClock(j.start)}.${j.finish ? ` Finishes about ${facClock(j.finish)}.` : ''}`
           : ' No build estimate. The box has not built this family, or an earlier family in the queue.' }),
@@ -92,44 +92,44 @@
     });
     fac.waiting.replaceChildren(...(rows.length ? rows : [el('p', { className: 'setting-desc', textContent: 'No build running. No build queued.' })]));
     const mbs = (b) => (b == null ? '?' : `${Math.round(b / 2 ** 20)} MB`);
-    const published = new Set((d.flasher || []).flatMap((rel) => rel.targets.map((t) => t.run)));
-    fac.runs.replaceChildren(...(d.runs.filter((r) => r.state !== 'running').map((r) => {
-      const u = r.resources || {};
-      const used = r.resources ? [`${facDur(r.duration)}`, `CPU ${facDur(u.cpu)}`, `peak memory ${mbs(u.peak_memory)}`, `disk ${mbs(u.work_bytes)}`,
-        u.hottest != null ? `peak temperature ${Math.round(u.hottest)} °C` : null,
-        r.offline ? 'network disabled during build' : u.received ? `network bytes received during build: ${mbs(u.received)}` : u.received === 0 ? 'no network bytes received during build' : null,
-        r.tools_only && u.tools_bytes ? `PlatformIO tools: ${mbs(u.tools_bytes)}` : null,
-        u.from_cache ? `build cache hits: ${u.from_cache} of ${u.from_cache + (u.compiled || 0)} objects` : null].filter(Boolean).join(', ') : facDur(r.duration);
-      const file = (n) => `/admin/ci/file?run=${encodeURIComponent(r.run)}&name=${encodeURIComponent(n)}`;
+    const published = new Set((data.flasher || []).flatMap((rel) => rel.targets.map((t) => t.run)));
+    fac.runs.replaceChildren(...(data.runs.filter((run) => run.state !== 'running').map((run) => {
+      const resources = run.resources || {};
+      const used = run.resources ? [`${facDur(run.duration)}`, `CPU ${facDur(resources.cpu)}`, `peak memory ${mbs(resources.peak_memory)}`, `disk ${mbs(resources.work_bytes)}`,
+        resources.hottest != null ? `peak temperature ${Math.round(resources.hottest)} °C` : null,
+        run.offline ? 'network disabled during build' : resources.received ? `network bytes received during build: ${mbs(resources.received)}` : resources.received === 0 ? 'no network bytes received during build' : null,
+        run.tools_only && resources.tools_bytes ? `PlatformIO tools: ${mbs(resources.tools_bytes)}` : null,
+        resources.from_cache ? `build cache hits: ${resources.from_cache} of ${resources.from_cache + (resources.compiled || 0)} objects` : null].filter(Boolean).join(', ') : facDur(run.duration);
+      const file = (n) => `/admin/ci/file?run=${encodeURIComponent(run.run)}&name=${encodeURIComponent(n)}`;
       return el('div', { className: 'admin-item' },
-        el('span', { className: `state state-${r.state === 'passed' ? 'running' : 'stopped'}`, textContent: r.state === 'passed' ? (r.tools_only ? 'Dependencies downloaded' : r.offline ? 'Built offline' : 'Built') : r.state }),
-        el('span', { textContent: ` ${describe(r)} (${String(r.commit || '').slice(0, 7)})` }),
-        el('span', { className: 'setting-desc', textContent: ` ${r.finished ? `${ago(Date.now() / 1000 - r.finished)}. ` : ''}${used}.${r.state === 'interrupted' ? ' The box or the builder stopped during this build.' : ''}${r.clock_synced === false ? ' Its times may be early: the clock was not yet set from the network when it started.' : ''}` }),
-        el('span', { className: 'factory-files' }, ...(r.artifacts || []).map((n) => el('a', { href: file(n), textContent: n, download: n })),
+        el('span', { className: `state state-${run.state === 'passed' ? 'running' : 'stopped'}`, textContent: run.state === 'passed' ? (run.tools_only ? 'Dependencies downloaded' : run.offline ? 'Built offline' : 'Built') : run.state }),
+        el('span', { textContent: ` ${describe(run)} (${String(run.commit || '').slice(0, 7)})` }),
+        el('span', { className: 'setting-desc', textContent: ` ${run.finished ? `${ago(Date.now() / 1000 - run.finished)}. ` : ''}${used}.${run.state === 'interrupted' ? ' The box or the builder stopped during this build.' : ''}${run.clock_synced === false ? ' Its times may be early: the clock was not yet set from the network when it started.' : ''}` }),
+        el('span', { className: 'factory-files' }, ...(run.artifacts || []).map((n) => el('a', { href: file(n), textContent: n, download: n })),
           el('a', { href: file('log.txt'), textContent: 'Download build log', target: '_blank', rel: 'noopener' })),
-        r.state === 'passed' && (r.artifacts || []).some((n) => n.endsWith('.mt.json'))
-          ? el('span', { className: 'library-buttons' }, actionButton(published.has(r.run) ? 'Republish firmware' : 'Publish firmware',
-            () => facAct({ action: 'publish', run: r.run.split('/')[1] }),
+        run.state === 'passed' && (run.artifacts || []).some((n) => n.endsWith('.mt.json'))
+          ? el('span', { className: 'library-buttons' }, actionButton(published.has(run.run) ? 'Republish firmware' : 'Publish firmware',
+            () => facAct({ action: 'publish', run: run.run.split('/')[1] }),
             { title: 'Offer this build in the web flasher as a release built on this box' })) : null,
-        r.state === 'interrupted'
-          ? el('span', { className: 'library-buttons' }, actionButton('Build again', () => facAct({ action: 'again', run: r.run.split('/')[1] }),
+        run.state === 'interrupted'
+          ? el('span', { className: 'library-buttons' }, actionButton('Build again', () => facAct({ action: 'again', run: run.run.split('/')[1] }),
             { title: 'Queue this build again: the same target, commit and options' })) : null);
     })));
     if (!fac.runs.children.length) fac.runs.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No completed builds' }));
-    const pub = (d.flasher || []).flatMap((rel) => rel.targets.map((t) => el('div', { className: 'admin-item' },
+    const pub = (data.flasher || []).flatMap((rel) => rel.targets.map((t) => el('div', { className: 'admin-item' },
       el('span', { textContent: `${t.board}, ${t.platform}: ${rel.version.replace(/-built$/, '')}` }),
       el('span', { className: 'setting-desc', textContent: ` from ${t.ref || '?'}${t.epoch ? `, built ${new Date(t.epoch * 1000).toLocaleDateString()}` : ''}.` }),
       el('span', { className: 'library-buttons' }, actionButton('Unpublish firmware', () => facAct({ action: 'unpublish', version: rel.version, env: t.board }), { title: 'Withdraw this firmware from the web flasher. This does not delete the build.' })))));
     fac.flasher.replaceChildren(...(pub.length ? pub : [el('p', { className: 'setting-desc', textContent: 'No published firmware' })]));
     clearTimeout(facPoll);
-    if (paneShown('factory')) facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
+    if (paneShown('factory')) facPoll = setTimeout(loadFactory, data.running || data.waiting.length ? 15000 : 60000);
   }
 
   async function loadFactoryRefs() {
     try {
-      const d = await getJSON(`/admin/factory/targets?source=${encodeURIComponent(fac.source.value)}`);
-      const group = (label, list) => (list.length ? el('optgroup', { label }, ...list.map((r) => el('option', { value: r.ref, textContent: r.ref }))) : null);
-      fac.ref.replaceChildren(...[group('Releases and tags', d.refs.tags), group('Branches', d.refs.branches)].filter(Boolean));
+      const reply = await getJSON(`/admin/factory/targets?source=${encodeURIComponent(fac.source.value)}`);
+      const group = (label, list) => (list.length ? el('optgroup', { label }, ...list.map((target) => el('option', { value: target.ref, textContent: target.ref }))) : null);
+      fac.ref.replaceChildren(...[group('Releases and tags', reply.refs.tags), group('Branches', reply.refs.branches)].filter(Boolean));
       loadFactoryTargets();
     } catch (err) { say(err.message, false, fac.note); }
   }
@@ -152,12 +152,12 @@
   // one: the flasher's, a common board, a best-supported one), not the project's CI target; the
   // administrator can select another, kept while the page is open.
   const facTest = {};
-  function facTestSelect(f) {
-    const all = facTargets.targets.filter((t) => t.family === f);
-    if (!all.some((t) => t.env === facTest[f])) facTest[f] = (facTargets.suggested || {})[f] || all[0].env;
-    const sel = el('select', { onchange: (event) => { facTest[f] = event.target.value; } },
+  function facTestSelect(family) {
+    const all = facTargets.targets.filter((t) => t.family === family);
+    if (!all.some((t) => t.env === facTest[family])) facTest[family] = (facTargets.suggested || {})[family] || all[0].env;
+    const sel = el('select', { onchange: (event) => { facTest[family] = event.target.value; } },
       ...all.map((t) => el('option', { value: t.env, textContent: t.name !== t.env ? `${t.name} (${t.env})` : t.env })));
-    sel.value = facTest[f];
+    sel.value = facTest[family];
     return sel;
   }
 
@@ -168,25 +168,25 @@
     facTargets.targets.forEach((t) => {
       if (!q || t.env.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)) (fams[t.family] = fams[t.family] || []).push(t);
     });
-    fac.targets.replaceChildren(...Object.keys(fams).sort().map((f) => {
-      const list = fams[f];
+    fac.targets.replaceChildren(...Object.keys(fams).sort().map((family) => {
+      const list = fams[family];
       const picked = list.filter((t) => facChosen.has(t.env)).length;
       const fold = el('details', { className: 'factory-family', open: !!q || picked > 0 },
-        el('summary', {}, el('strong', { textContent: f }),
-          el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}.${picked ? ` ${picked} selected.` : ''} ${sentence(facReady(f))} ${sentence(facEst(f))}` })),
-        el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(f)),
+        el('summary', {}, el('strong', { textContent: family }),
+          el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}.${picked ? ` ${picked} selected.` : ''} ${sentence(facReady(family))} ${sentence(facEst(family))}` })),
+        el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(family)),
         actionButton('Download build dependencies', async () => {
           try {
-            const r = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-            say(`Downloading build dependencies for ${r.env}, a ${f} target: queued. The box compiles nothing. After the download, a build of ${r.env} needs no internet access. Other ${f} targets can need more downloads.`, true, fac.note);
-            renderFactory(r.snapshot);
+            const reply = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: family, env: facTest[family] });
+            say(`Downloading build dependencies for ${reply.env}, a ${family} target: queued. The box compiles nothing. After the download, a build of ${reply.env} needs no internet access. Other ${family} targets can need more downloads.`, true, fac.note);
+            renderFactory(reply.snapshot);
           } catch (err) { say(err.message, false, fac.note); }
         }, { title: 'Download the toolchain, framework and libraries for the test target, without a build. A later build of that target needs no internet access. Other targets in the family can need more downloads.' }),
         actionButton('Test target offline', async () => {
           try {
-            const r = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-            say(`Building ${r.env} with the network disabled: queued. A pass shows that ${r.env} builds offline with the cached dependencies. It does not show that every ${f} target builds offline.`, true, fac.note);
-            renderFactory(r.snapshot);
+            const reply = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: family, env: facTest[family] });
+            say(`Building ${reply.env} with the network disabled: queued. A pass shows that ${reply.env} builds offline with the cached dependencies. It does not show that every ${family} target builds offline.`, true, fac.note);
+            renderFactory(reply.snapshot);
           } catch (err) { say(err.message, false, fac.note); }
         }, { title: 'Build the test target with the network disabled. A pass applies to that target, that revision and the cached dependencies only.' })),
         el('div', { className: 'factory-boards' }, ...list.map((t) => el('label', { title: [t.file, t.level ? `board_level ${t.level}` : '', t.support ? `support level ${t.support}` : ''].filter(Boolean).join(', ') },
@@ -201,7 +201,7 @@
   function factoryChosen() {
     const n = facChosen.size;
     const fams = new Set(facTargets.targets.filter((t) => facChosen.has(t.env)).map((t) => t.family));
-    const secs = [...facChosen].reduce((a, env) => { const t = facTargets.targets.find((x) => x.env === env); const estimate = facData && facData.estimates[t.family]; return estimate && a !== null ? a + estimate.seconds : null; }, 0);
+    const secs = [...facChosen].reduce((total, env) => { const t = facTargets.targets.find((x) => x.env === env); const estimate = facData && facData.estimates[t.family]; return estimate && total !== null ? total + estimate.seconds : null; }, 0);
     const max = facData ? facData.max_per_request : 50;
     fac.chosen.textContent = n ? `${n} selected, in ${fams.size} famil${fams.size === 1 ? 'y' : 'ies'}.${secs !== null ? ` About ${facDur(secs)} in all.` : ''}${n > max ? ` At most ${max} at a time.` : ''}` : 'No targets selected.';
     fac.queue.disabled = !n || n > max;
@@ -219,10 +219,10 @@
   fac.form.addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
-      const r = await postJSON('/admin/factory', { action: 'queue', source: fac.source.value, ref: fac.ref.value, targets: [...facChosen] });
-      say(`Added ${r.queued} target${r.queued === 1 ? '' : 's'} to the queue at ${r.commit.slice(0, 7)}.`, true, fac.note);
+      const reply = await postJSON('/admin/factory', { action: 'queue', source: fac.source.value, ref: fac.ref.value, targets: [...facChosen] });
+      say(`Added ${reply.queued} target${reply.queued === 1 ? '' : 's'} to the queue at ${reply.commit.slice(0, 7)}.`, true, fac.note);
       facChosen.clear();
-      renderFactory(r.snapshot);
+      renderFactory(reply.snapshot);
       renderFactoryTargets();
     } catch (err) { say(err.message, false, fac.note); }
   });

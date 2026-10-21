@@ -22,11 +22,11 @@ window.addEventListener('pageshow', (event) => { if (event.persisted) location.r
   function showTab() {
     const tab = currentTab();
     for (const [name, pane] of Object.entries(panes)) pane.hidden = name !== tab;
-    tabs.forEach((a) => {
-      const on = a.dataset.tab === tab;
-      a.classList.toggle('active', on);
-      if (on) a.setAttribute('aria-current', 'page');
-      else a.removeAttribute('aria-current');
+    tabs.forEach((tabLink) => {
+      const on = tabLink.dataset.tab === tab;
+      tabLink.classList.toggle('active', on);
+      if (on) tabLink.setAttribute('aria-current', 'page');
+      else tabLink.removeAttribute('aria-current');
     });
   }
 

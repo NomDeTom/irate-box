@@ -9,35 +9,35 @@ const KINDS = { text: 'messages', position: 'positions', nodeinfo: 'node names',
   traceroute: 'traceroutes', neighborinfo: 'neighbours', map_report: 'map reports', encrypted: 'encrypted (no key here)' };
 
 function ago(t) {
-  const s = Math.max(0, Math.round(Date.now() / 1000 - t));
-  return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`;
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - t));
+  return seconds < 90 ? `${seconds} s ago` : seconds < 5400 ? `${Math.round(seconds / 60)} min ago` : seconds < 172800 ? `${Math.round(seconds / 3600)} h ago` : `${Math.round(seconds / 86400)} days ago`;
 }
 
 function nodeName(n) {
   return n.long_name ? `${n.long_name}${n.short_name ? ` (${n.short_name})` : ''}` : n.id;
 }
 
-function render(d) {
-  $('mesh-state').textContent = d.state === 'listening'
-    ? `Connected to the box's MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
+function render(data) {
+  $('mesh-state').textContent = data.state === 'listening'
+    ? `Connected to the box's MQTT broker: ${data.nodes.length} node${data.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
     : 'Reconnecting to the box\'s MQTT broker. This happens automatically.';
-  const counts = Object.entries(d.counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${KINDS[k] || k}`);
-  $('mesh-counts').textContent = counts.length ? `Packets received since ${new Date(d.since * 1000).toLocaleString()}: ${counts.join(', ')}.` : 'No packets received';
-  drawMap(d.nodes);
-  const names = Object.fromEntries(d.nodes.map((n) => [n.id, nodeName(n)]));
-  $('mesh-nodes').tBodies[0].replaceChildren(...d.nodes.map((n) => {
+  const counts = Object.entries(data.counts).sort((left, right) => right[1] - left[1]).map(([k, n]) => `${n} ${KINDS[k] || k}`);
+  $('mesh-counts').textContent = counts.length ? `Packets received since ${new Date(data.since * 1000).toLocaleString()}: ${counts.join(', ')}.` : 'No packets received';
+  drawMap(data.nodes);
+  const names = Object.fromEntries(data.nodes.map((n) => [n.id, nodeName(n)]));
+  $('mesh-nodes').tBodies[0].replaceChildren(...data.nodes.map((n) => {
     const tr = make('tr');
     const t = n.telemetry || {};
-    const p = n.position;
+    const position = n.position;
     tr.append(make('td', nodeName(n)), make('td', ago(n.last)),
       make('td', t.battery != null ? `${t.battery > 100 ? 'externally powered' : `${t.battery} %`}${t.voltage ? `, ${t.voltage} V` : ''}` : '—'),
-      make('td', p ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}${p.alt != null ? `, ${p.alt} m` : ''}` : '—'),
+      make('td', position ? `${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}${position.alt != null ? `, ${position.alt} m` : ''}` : '—'),
       make('td', [n.hops != null ? `${n.hops} hop${n.hops === 1 ? '' : 's'}` : '', n.snr != null ? `SNR ${n.snr}` : '', n.rssi != null ? `${n.rssi} dBm` : ''].filter(Boolean).join(', ') || '—'),
       make('td', String(n.packets || 0)));
     return tr;
   }));
-  $('mesh-packets').replaceChildren(...d.packets.map((p) => make('li',
-    `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} packet from ${names[p.from] || p.from}${p.to && p.to !== 'all' ? ` to ${names[p.to] || p.to}` : ''}${p.channel ? ` on channel ${p.channel}` : ''}`)));
+  $('mesh-packets').replaceChildren(...data.packets.map((packet) => make('li',
+    `${new Date(packet.at * 1000).toLocaleTimeString()}: ${packet.port} packet from ${names[packet.from] || packet.from}${packet.to && packet.to !== 'all' ? ` to ${names[packet.to] || packet.to}` : ''}${packet.channel ? ` on channel ${packet.channel}` : ''}`)));
 }
 
 // The nodes with a position, on Web Mercator fitted to them (a margin round the edges), with their
@@ -71,7 +71,7 @@ function drawMap(nodes) {
   const lat = (Math.atan(Math.sinh(cy)) * 180) / Math.PI;
   const metresPerUnit = 6371000 * Math.cos((lat * Math.PI) / 180);  // per radian of longitude
   const want = ((W / 5) / k) * metresPerUnit;
-  const round = [1, 2, 5].flatMap((m) => [1, 10, 100, 1000, 10000, 100000].map((p) => m * p)).filter((v) => v <= want).pop() || 1;
+  const round = [1, 2, 5].flatMap((m) => [1, 10, 100, 1000, 10000, 100000].map((power) => m * power)).filter((v) => v <= want).pop() || 1;
   const len = (round / metresPerUnit) * k;
   map.append(svg('rect', { x: 0, y: 0, width: W, height: H, class: 'mesh-map-bg' }),
     svg('line', { x1: M, y1: H - 14, x2: M + len, y2: H - 14, class: 'mesh-map-scale' }),
@@ -87,12 +87,12 @@ function drawMap(nodes) {
 
 async function refresh() {
   try {
-    const r = await fetch('/mesh.json', { cache: 'no-store' });
-    if (r.status === 404) {
+    const response = await fetch('/mesh.json', { cache: 'no-store' });
+    if (response.status === 404) {
       $('mesh-state').textContent = 'Mesh view disabled or restricted. An administrator can change this in /admin → Access, under the MQTT broker.';
       return;
     }
-    render(await r.json());
+    render(await response.json());
   } catch (_) {
     $('mesh-state').textContent = 'The box did not answer.';
   }

@@ -17,35 +17,35 @@ const replyForm = document.getElementById('reply-form');
 // Who can post, as the administrator set it: the forms say so, and a signed-in
 // user posts under their account's name, marked ✓ where the admin shows marks.
 let marks = false;
-const notes = [threadForm, replyForm].map((f) => {
+const notes = [threadForm, replyForm].map((form) => {
   const n = document.createElement('p');
   n.className = 'setting-desc board-post-note';
-  f.after(n);
+  form.after(n);
   return n;
 });
-function applyPosting(p) {
-  if (!p) return;
-  marks = p.marks;
-  const closed = p.who === 'off' || (p.who === 'users' && !p.me);
-  [threadForm, replyForm].forEach((f, i) => {
-    f.hidden = closed;
+function applyPosting(posting) {
+  if (!posting) return;
+  marks = posting.marks;
+  const closed = posting.who === 'off' || (posting.who === 'users' && !posting.me);
+  [threadForm, replyForm].forEach((form, i) => {
+    form.hidden = closed;
     notes[i].replaceChildren();
-    if (p.who === 'off') notes[i].textContent = 'Posting is disabled.';
+    if (posting.who === 'off') notes[i].textContent = 'Posting is disabled.';
     else if (closed) {
-      const a = document.createElement('a'); a.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; a.textContent = 'Sign in';
-      notes[i].append(a, ' to post. Only users can post here.');
+      const link = document.createElement('a'); link.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; link.textContent = 'Sign in';
+      notes[i].append(link, ' to post. Only users can post here.');
     }
   });
   for (const id of ['t-name', 'r-name']) {
     const el = document.getElementById(id);
-    el.readOnly = !!p.me;
-    if (p.me) el.value = p.me;
+    el.readOnly = !!posting.me;
+    if (posting.me) el.value = posting.me;
   }
 }
 const mark = (x) => (x.account && marks ? '<span class="verified" title="Posted by a signed-in account">✓</span>' : '');
-async function posted(r, i) {
-  if (r.ok) { notes[i].textContent = ''; return true; }
-  notes[i].textContent = (await r.json().catch(() => ({}))).error || `${i === 0 ? 'Thread not posted' : 'Reply not posted'} (HTTP ${r.status}).`;
+async function posted(response, i) {
+  if (response.ok) { notes[i].textContent = ''; return true; }
+  notes[i].textContent = (await response.json().catch(() => ({}))).error || `${i === 0 ? 'Thread not posted' : 'Reply not posted'} (HTTP ${response.status}).`;
   return false;
 }
 
@@ -85,11 +85,11 @@ function renderThread(data) {
   applyPosting(data.posting);
   const t = data.thread;
   titleEl.textContent = t.title;
-  postsEl.innerHTML = t.posts.map((p, i) => `
-    <div class="post${i === 0 ? ' op' : ''}" style="--author-hue:${hueOf(p, 'author')}">
-      <span class="author">${esc(p.author)}</span>${mark(p)}
-      <span class="time">${formatAge(data.now - p.created)} ago</span>
-      <div class="text">${mdInline(p.text)}</div>
+  postsEl.innerHTML = t.posts.map((post, i) => `
+    <div class="post${i === 0 ? ' op' : ''}" style="--author-hue:${hueOf(post, 'author')}">
+      <span class="author">${esc(post.author)}</span>${mark(post)}
+      <span class="time">${formatAge(data.now - post.created)} ago</span>
+      <div class="text">${mdInline(post.text)}</div>
     </div>`).join('');
   // A ⚑ to report each post, not on one already hidden for a report.
   if (typeof reportButton === 'function') postsEl.querySelectorAll('.post').forEach((el, i) => {
@@ -104,12 +104,12 @@ async function refresh() {
 
   try {
     if (id === null) {
-      const r = await fetch('/board/threads');
-      if (r.ok) renderThreads(await r.json());
+      const response = await fetch('/board/threads');
+      if (response.ok) renderThreads(await response.json());
     } else {
-      const r = await fetch(`/board/thread/${id}`);
-      if (r.ok) {
-        renderThread(await r.json());
+      const response = await fetch(`/board/thread/${id}`);
+      if (response.ok) {
+        renderThread(await response.json());
       } else {
         // Decayed out from under us while we were reading it.
         location.hash = '#board';
@@ -127,13 +127,13 @@ threadForm.addEventListener('submit', async (event) => {
   });
   if (!body.name || !body.title || !body.text) return;
   try {
-    const r = await fetch('/board/threads', {
+    const response = await fetch('/board/threads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (await posted(r, 0)) {
-      const { thread } = await r.json();
+    if (await posted(response, 0)) {
+      const { thread } = await response.json();
       document.getElementById('t-title').value = '';
       document.getElementById('t-text').value = '';
       document.getElementById('new-thread').open = false;
@@ -149,12 +149,12 @@ replyForm.addEventListener('submit', async (event) => {
   const text = document.getElementById('r-text').value.trim();
   if (id === null || !name || !text) return;
   try {
-    const r = await fetch(`/board/thread/${id}`, {
+    const response = await fetch(`/board/thread/${id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(withHue({ name, text })),
     });
-    if (!(await posted(r, 1))) return;
+    if (!(await posted(response, 1))) return;
     document.getElementById('r-text').value = '';
     await refresh();
   } catch (_) {}
@@ -162,7 +162,7 @@ replyForm.addEventListener('submit', async (event) => {
 
 // Persist the name across both forms and refreshes, same key as the shoutbox.
 for (const [el, swatch] of [['t-name', 't-hue'], ['r-name', 'r-hue']].map(
-       ([a, b]) => [document.getElementById(a), document.getElementById(b)])) {
+       ([nameId, hueId]) => [document.getElementById(nameId), document.getElementById(hueId)])) {
   el.value = localStorage.getItem('shout-name') || '';
   el.addEventListener('input', () => localStorage.setItem('shout-name', el.value));
   attachHuePicker(swatch, el);

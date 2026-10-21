@@ -18,18 +18,18 @@ const reportButton = (() => {
     const menu = document.createElement('span');
     menu.className = 'report-reasons';
     menu.hidden = true;
-    (reasons && reasons.length ? reasons : ['other']).forEach((r) => {
+    (reasons && reasons.length ? reasons : ['other']).forEach((reason) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'chip';
-      b.textContent = r;
+      b.textContent = reason;
       b.addEventListener('click', async () => {
         menu.replaceChildren(document.createTextNode('Sending report…'));
         try {
-          const res = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app, ref, reason: r }) });
-          const d = await res.json().catch(() => ({}));
+          const res = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app, ref, reason: reason }) });
+          const data = await res.json().catch(() => ({}));
           // The answer as a message (msg), said in the reader's language where the page has AW; else its English.
-          const said = d.msg && window.AW ? window.AW.say(d.msg) : d.message || d.error;
+          const said = data.msg && window.AW ? window.AW.say(data.msg) : data.message || data.error;
           menu.replaceChildren(document.createTextNode(said || (res.ok ? 'Report sent.' : 'Report could not be sent.')));
         } catch (_) { menu.replaceChildren(document.createTextNode('Report could not be sent.')); }
       });

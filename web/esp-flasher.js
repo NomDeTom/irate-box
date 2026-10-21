@@ -34,9 +34,9 @@
   async function load() {
     let data;
     try {
-      const r = await fetch('/flasher/api/esp');
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      data = await r.json();
+      const response = await fetch('/flasher/api/esp');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      data = await response.json();
     } catch (error) {
       can.textContent = `The hub server did not answer (${error.message}).`;
       return;

@@ -31,7 +31,7 @@
     if (!src) { if (v.pause) try { v.pause(); } catch {} return; }
     var url = new URL(src, here).href;
     if (v.src !== url) v.src = url;
-    try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch {}
+    try { var playing = v.play(); if (playing && playing.catch) playing.catch(function () {}); } catch {}
   }
   if (window.MutationObserver) new MutationObserver(show).observe(owner, { attributes: true, attributeFilter: ['data-art'] });
   show();

@@ -79,7 +79,7 @@ if (picker && themes) {
     const pal = themes.palette ? themes.palette() : 'box';
     picker.querySelectorAll('[data-palette-choice]').forEach((b) => b.setAttribute('aria-checked', String(!other && b.dataset.paletteChoice === pal)));
     if (more) {
-      const shown = other || palettes.find((p) => p.id === pal && p.id !== 'box');
+      const shown = other || palettes.find((palette) => palette.id === pal && palette.id !== 'box');
       more.textContent = shown ? shown.emoji : '🎨';
       more.title = shown ? `Colours: ${shown.label} (change)` : 'Colours: box palette (change)';
       more.setAttribute('aria-pressed', String(!!shown));
@@ -87,8 +87,8 @@ if (picker && themes) {
   };
   picker.addEventListener('click', (event) => {
     if (more && event.target.closest('.theme-more')) { openMenu(menu.hidden); return; }
-    const p = event.target.closest('[data-palette-choice]');
-    if (p) { themes.choosePalette(p.dataset.paletteChoice); openMenu(false); showChoice(); return; }
+    const choice = event.target.closest('[data-palette-choice]');
+    if (choice) { themes.choosePalette(choice.dataset.paletteChoice); openMenu(false); showChoice(); return; }
     const b = event.target.closest('[data-theme-choice]');
     if (!b) return;
     themes.choose(b.dataset.themeChoice);
@@ -151,9 +151,9 @@ if (grid || document.querySelector('[data-service]')) {
   async function refreshStatus() {
     let data;
     try {
-      const r = await fetch('/status');
-      if (!r.ok) return;
-      data = await r.json();
+      const response = await fetch('/status');
+      if (!response.ok) return;
+      data = await response.json();
     } catch (_) { return; }
     // Presence. The count is whoever has a page open; `joined` (dnsmasq leases) only
     // exists on the box, so it is shown as a second line when the hub can see it.
@@ -188,7 +188,7 @@ if (grid || document.querySelector('[data-service]')) {
       let names = document.getElementById('people-names');
       if (!names) { names = document.createElement('span'); names.id = 'people-names'; names.className = 'people-names'; more.after(names); }
       const shown = Array.isArray(data.names) ? data.names : null;
-      names.replaceChildren(...(shown || []).map((n) => { const s = document.createElement('span'); s.className = 'info-pill'; s.textContent = n; return s; }));
+      names.replaceChildren(...(shown || []).map((n) => { const span = document.createElement('span'); span.className = 'info-pill'; span.textContent = n; return span; }));
       if (shown && data.signed_in > shown.length) names.append(` +${data.signed_in - shown.length} not shown (their choice)`);
     }
 
@@ -197,7 +197,7 @@ if (grid || document.querySelector('[data-service]')) {
       meter('disk', data.system.disk_free, data.system.disk_total);
     }
 
-    const byPath = new Map(data.services.map((s) => [s.path, s]));
+    const byPath = new Map(data.services.map((service) => [service.path, service]));
     document.querySelectorAll('[data-service]').forEach((el) => {
       const svc = byPath.get(el.dataset.service);
       const down = !!svc && !svc.up;
@@ -230,32 +230,32 @@ if (factoryCard) {
   const fBar = document.getElementById('factory-bar');
   const fDone = document.getElementById('factory-progress');
   const fFiles = document.getElementById('factory-downloads');
-  const kind = (f) => (f.endsWith('.uf2') ? 'UF2' : f.endsWith('.factory.bin') ? 'factory .bin' : f.endsWith('.zip') ? '.zip'
-    : f.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
+  const kind = (name) => (name.endsWith('.uf2') ? 'UF2' : name.endsWith('.factory.bin') ? 'factory .bin' : name.endsWith('.zip') ? '.zip'
+    : name.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
   const refreshFactory = async () => {
-    let d;
+    let data;
     try {
-      const r = await fetch('/factory.json');
-      if (!r.ok) return;
-      d = await r.json();
+      const response = await fetch('/factory.json');
+      if (!response.ok) return;
+      data = await response.json();
     } catch (_) { return; }
-    const run = d.running;
-    const waiting = d.waiting ? `. Queued: ${d.waiting}` : '';
+    const run = data.running;
+    const waiting = data.waiting ? `. Queued: ${data.waiting}` : '';
     fNow.textContent = run ? `Build in progress: ${run.name} (${run.family})${run.done != null ? `, about ${Math.round(run.done * 100)} %` : ''}${waiting}`
-      : d.paused ? `Queue paused${waiting}` : d.waiting ? `Queued: ${d.waiting}` : 'No build running';
+      : data.paused ? `Queue paused${waiting}` : data.waiting ? `Queued: ${data.waiting}` : 'No build running';
     fBar.hidden = !(run && run.done != null);
     if (run && run.done != null) fDone.style.width = `${Math.round(run.done * 100)}%`;
-    fFiles.replaceChildren(...d.built.map((b) => {
+    fFiles.replaceChildren(...data.built.map((b) => {
       const row = document.createElement('span');
       row.className = 'factory-build';
       row.append(document.createTextNode(`${b.name} `));
-      b.files.forEach((f) => {
-        const a = document.createElement('a');
-        a.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(f)}`;
-        a.download = f;
-        a.title = `${f} (${b.ref})`;
-        a.textContent = kind(f);
-        row.append(a, document.createTextNode(' '));
+      b.files.forEach((file) => {
+        const link = document.createElement('a');
+        link.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(file)}`;
+        link.download = file;
+        link.title = `${file} (${b.ref})`;
+        link.textContent = kind(file);
+        row.append(link, document.createTextNode(' '));
       });
       return row;
     }));
@@ -312,20 +312,20 @@ if (systemCard) {
   };
   const drawTrends = (panel, h) => {
     const now = h.now, start = now - 86400, gap = (h.every || 300) * 2;
-    const samples = (h.samples || []).filter((s) => s.at >= start && s.at <= now && s.total > 0);
+    const samples = (h.samples || []).filter((sample) => sample.at >= start && sample.at <= now && sample.total > 0);
     const W = 600, H = 170, L = 40, R = W - 8, T = 8, B = H - 24;
     const x = (at) => L + (at - start) / (now - start) * (R - L), y = (v) => B - v / 100 * (B - T);
     const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'trend-plot', role: 'img', 'aria-label': 'Memory and disk used, the last 24 hours' });
     for (const v of [0, 50, 100]) svg.append(svgEl('line', { x1: L, x2: R, y1: y(v), y2: y(v), class: 'trend-grid' }), svgEl('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'trend-axis' }, `${v}%`));
     svg.append(svgEl('text', { x: L, y: H - 6, class: 'trend-axis' }, '24 h ago'), svgEl('text', { x: R, y: H - 6, 'text-anchor': 'end', class: 'trend-axis' }, 'Now'));
-    const hasDisk = (s) => s.disk_total > 0 && s.disk_free >= 0;
+    const hasDisk = (sample) => sample.disk_total > 0 && sample.disk_free >= 0;
     const series = [
-      ['trend-mem', samples, (s) => (s.total - s.available) / s.total * 100, () => true],
-      ['trend-disk', samples.filter(hasDisk), (s) => (s.disk_total - s.disk_free) / s.disk_total * 100, (s, p) => s.disk_total === p.disk_total],
+      ['trend-mem', samples, (sample) => (sample.total - sample.available) / sample.total * 100, () => true],
+      ['trend-disk', samples.filter(hasDisk), (sample) => (sample.disk_total - sample.disk_free) / sample.disk_total * 100, (sample, previous) => sample.disk_total === previous.disk_total],
     ];
     for (const [cls, list, val, same] of series) {
-      const d = list.map((s, i) => `${i && s.at - list[i - 1].at <= gap && same(s, list[i - 1]) ? 'L' : 'M'}${x(s.at).toFixed(1)},${y(Math.max(0, Math.min(100, val(s)))).toFixed(1)}`).join(' ');
-      if (d) svg.append(svgEl('path', { d, class: cls }));
+      const path = list.map((sample, i) => `${i && sample.at - list[i - 1].at <= gap && same(sample, list[i - 1]) ? 'L' : 'M'}${x(sample.at).toFixed(1)},${y(Math.max(0, Math.min(100, val(sample)))).toFixed(1)}`).join(' ');
+      if (path) svg.append(svgEl('path', { d: path, class: cls }));
     }
     const last = samples[samples.length - 1], lastDisk = samples.filter(hasDisk).pop();
     const say = document.createElement('p');
@@ -339,7 +339,7 @@ if (systemCard) {
     more.textContent = 'Seven days and the largest processes: Overview in administration →';
     panel.replaceChildren(svg, say, more);
   };
-  fetch('/api/trends').then((r) => (r.ok ? r.json() : null)).then((first) => {
+  fetch('/api/trends').then((response) => (response.ok ? response.json() : null)).then((first) => {
     if (!first) return;
     const panel = document.createElement('section');
     panel.id = 'box-trends';
@@ -359,7 +359,7 @@ if (systemCard) {
       panel.hidden = !open;
       if (!open) return;
       let h = first;
-      try { const r = await fetch('/api/trends'); if (r.ok) h = await r.json(); } catch (_) { /* the first answer stands */ }
+      try { const response = await fetch('/api/trends'); if (response.ok) h = await response.json(); } catch (_) { /* the first answer stands */ }
       drawTrends(panel, h);
     });
     systemCard.append(toggle);

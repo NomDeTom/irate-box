@@ -14,8 +14,8 @@ const next = (() => {
   // Resolved as the browser would (it drops tabs and newlines, so "/\t/elsewhere" is "//elsewhere"),
   // and kept only if it is still this origin.
   try {
-    const u = new URL(n, location.origin);
-    return u.origin === location.origin ? u.pathname + u.search + u.hash : '';
+    const url = new URL(n, location.origin);
+    return url.origin === location.origin ? url.pathname + url.search + url.hash : '';
   } catch { return ''; }
 })();
 
@@ -25,49 +25,49 @@ function note(text, ok) {
 }
 
 async function post(body) {
-  const r = await fetch('/api/account', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify(body) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-  return d;
+  const response = await fetch('/api/account', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Account': '1' }, body: JSON.stringify(body) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
 }
 
-function render(d) {
-  view = d;
-  const plain = !d.https;
-  const prevented = plain && d.http === 'prevented';
-  $('acct-http').hidden = !plain || d.http === 'permitted';
+function render(data) {
+  view = data;
+  const plain = !data.https;
+  const prevented = plain && data.http === 'prevented';
+  $('acct-http').hidden = !plain || data.http === 'permitted';
   $('acct-http-text').textContent = prevented
     ? 'This page is on plain HTTP, and this box takes passwords only over HTTPS: anyone on the WiFi could read one sent here.'
     : 'This page is on plain HTTP: a password sent from it can be read by anyone on the WiFi. Use one you use nowhere else, or the HTTPS page.';
   $('acct-https-link').href = `https://${location.host}${location.pathname}`;
   document.querySelectorAll('#acct-guest input, #acct-guest button, #acct-me input, #acct-me button[type=submit]').forEach((n) => { n.disabled = prevented; });
-  $('acct-me').hidden = !d.me;
-  $('acct-guest').hidden = !!d.me;
-  if (d.me) {
-    $('acct-subtitle').textContent = `Signed in as ${d.me.name}.`;
-    $('acct-me-text').replaceChildren(d.me.role === 'admin' ? `${d.me.name}: an administrator of this box. ` : `${d.me.name}: a user of this box.`);
-    if (d.me.role === 'admin') {
-      const a = document.createElement('a'); a.href = '/admin/'; a.textContent = 'Open /admin';
-      $('acct-me-text').append(a);
+  $('acct-me').hidden = !data.me;
+  $('acct-guest').hidden = !!data.me;
+  if (data.me) {
+    $('acct-subtitle').textContent = `Signed in as ${data.me.name}.`;
+    $('acct-me-text').replaceChildren(data.me.role === 'admin' ? `${data.me.name}: an administrator of this box. ` : `${data.me.name}: a user of this box.`);
+    if (data.me.role === 'admin') {
+      const link = document.createElement('a'); link.href = '/admin/'; link.textContent = 'Open /admin';
+      $('acct-me-text').append(link);
     }
-    showPrefs(d.prefs || {}, d.names_to);
+    showPrefs(data.prefs || {}, data.names_to);
     loadNotebook();
     return;
   }
-  const signup = d.signup === 'open' || d.signup === 'apply';
+  const signup = data.signup === 'open' || data.signup === 'apply';
   // One login for everyone: the box's admins sign in here too, sign-up or not.
   const forAdmin = !!next && /^\/(admin|term|sync)(\/|$)/.test(next);
   $('acct-subtitle').textContent = forAdmin ? 'That page is for the box\'s administrator. Sign in with an administrator account.'
-    : d.signup === 'off' ? 'This box does not accept new accounts. Administrators sign in here.'
+    : data.signup === 'off' ? 'This box does not accept new accounts. Administrators sign in here.'
       : next ? 'That page is for the box\'s users. Sign in or create an account.' : 'Sign in or create an account.';
   $('acct-signup-form').hidden = !signup;
   // From a locked tile that offers sign-up: straight to the form.
   if (signup && location.hash === '#signup') { $('acct-signup-form').scrollIntoView?.({ block: 'center' }); ($('acct-signup-form').elements.name || {}).focus?.(); }
-  $('acct-signup-title').textContent = d.signup === 'apply' ? 'Request an account' : 'Create account';
-  $('acct-signup-button').textContent = d.signup === 'apply' ? 'Request account' : 'Create account';
+  $('acct-signup-title').textContent = data.signup === 'apply' ? 'Request an account' : 'Create account';
+  $('acct-signup-button').textContent = data.signup === 'apply' ? 'Request account' : 'Create account';
   $('acct-login-form').hidden = false;
   $('acct-code-form').hidden = false;   // an admin's one-time code (a new account, a reset) works with sign-up off too
-  $('acct-signup-desc').textContent = d.signup === 'apply' ? 'An administrator must approve each request. Until then, the account cannot sign in.' : 'The account works immediately. It does not need an e-mail address or a real name.';
+  $('acct-signup-desc').textContent = data.signup === 'apply' ? 'An administrator must approve each request. Until then, the account cannot sign in.' : 'The account works immediately. It does not need an e-mail address or a real name.';
 
 }
 
@@ -78,34 +78,34 @@ async function load() {
 function form(id, build, done) {
   $(id).addEventListener('submit', async (event) => {
     event.preventDefault();
-    const f = event.target;
+    const formEl = event.target;
     try {
-      const d = await post(build(f));
-      f.reset();
-      done(d);
+      const reply = await post(build(formEl));
+      formEl.reset();
+      done(reply);
     } catch (err) { note(err.message, false); }
   });
 }
 
-form('acct-login-form', (f) => ({ action: 'login', name: f.elements.name.value, password: f.elements.password.value }), () => {
+form('acct-login-form', (formEl) => ({ action: 'login', name: formEl.elements.name.value, password: formEl.elements.password.value }), () => {
   // On to the page that sent them here, or back to the hub, whose header then has their buttons (Admin for an administrator).
   location.assign(next || '/');
 });
-form('acct-signup-form', (f) => ({ action: 'signup', name: f.elements.name.value, password: f.elements.password.value }), (d) => {
-  note(d.state === 'asked' ? 'Requested. You can sign in after an administrator approves it.' : 'Account created. You are signed in.', true);
+form('acct-signup-form', (formEl) => ({ action: 'signup', name: formEl.elements.name.value, password: formEl.elements.password.value }), (data) => {
+  note(data.state === 'asked' ? 'Requested. You can sign in after an administrator approves it.' : 'Account created. You are signed in.', true);
   load();
 });
-form('acct-code-form', (f) => ({ action: 'code', code: f.elements.code.value, password: f.elements.password.value }), (d) => note(`Password set for ${d.name}. Sign in with it.`, true));
-form('acct-password-form', (f) => ({ action: 'password', old: f.elements.old.value, new: f.elements.new.value }), () => note('Password changed. Your other devices are signed out.', true));
+form('acct-code-form', (formEl) => ({ action: 'code', code: formEl.elements.code.value, password: formEl.elements.password.value }), (data) => note(`Password set for ${data.name}. Sign in with it.`, true));
+form('acct-password-form', (formEl) => ({ action: 'password', old: formEl.elements.old.value, new: formEl.elements.new.value }), () => note('Password changed. Your other devices are signed out.', true));
 $('acct-logout').addEventListener('click', async () => {
   try { await post({ action: 'logout' }); note('Signed out.', true); load(); } catch (err) { note(err.message, false); }
 });
 // ---- Your settings: held until Save, theirs alone.
 const HUES = [0, 40, 130, 210, 280];
 let saved = {}, draft = {};
-function showPrefs(p, namesTo) {
-  saved = JSON.parse(JSON.stringify(p));
-  draft = JSON.parse(JSON.stringify(p));
+function showPrefs(prefs, namesTo) {
+  saved = JSON.parse(JSON.stringify(prefs));
+  draft = JSON.parse(JSON.stringify(prefs));
   $('acct-names-to').textContent = namesTo === 'admin' ? 'Only administrators see names. The administrator chose this.' : 'Signed-in users see names. Guests see only the number. The administrator chose this.';
   drawPrefs();
 }
@@ -150,7 +150,7 @@ $('acct-prefs-discard').addEventListener('click', () => { draft = JSON.parse(JSO
 $('acct-prefs-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const changes = Object.fromEntries(Object.keys(draft).filter((k) => JSON.stringify(draft[k]) !== JSON.stringify(saved[k])).map((k) => [k, draft[k]]));
-  try { const d = await post({ action: 'prefs', prefs: changes }); showPrefs(d.prefs, view && view.names_to); note('Saved.', true); }
+  try { const reply = await post({ action: 'prefs', prefs: changes }); showPrefs(reply.prefs, view && view.names_to); note('Saved.', true); }
   catch (err) { note(err.message, false); }
 });
 load();

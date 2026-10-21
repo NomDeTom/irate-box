@@ -49,10 +49,10 @@ const Heatmap = (() => {
     cell.classList.add('hm-on');
     tip.textContent = cell.dataset.words;
     tip.hidden = false;
-    const r = cell.getBoundingClientRect(), vw = document.documentElement.clientWidth || window.innerWidth;
+    const rect = cell.getBoundingClientRect(), vw = document.documentElement.clientWidth || window.innerWidth;
     const tw = tip.offsetWidth, th = tip.offsetHeight;
-    const left = Math.max(4, Math.min(r.left + r.width / 2 - tw / 2, vw - tw - 4));
-    const top = r.top - th - 6 >= 4 ? r.top - th - 6 : r.bottom + 6;
+    const left = Math.max(4, Math.min(rect.left + rect.width / 2 - tw / 2, vw - tw - 4));
+    const top = rect.top - th - 6 >= 4 ? rect.top - th - 6 : rect.bottom + 6;
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
   }
@@ -64,7 +64,7 @@ const Heatmap = (() => {
   // Pointer and keys on a grid: a cell under the pointer or tapped; ← → along a row, ↑ ↓ between rows,
   // Home and End; the newest cell of the first row on focus.
   function follow(g) {
-    const rows = () => [...g.querySelectorAll('.hm-row:not(.hm-head)')].map((r) => [...r.querySelectorAll('.hm-cell')]);
+    const rows = () => [...g.querySelectorAll('.hm-row:not(.hm-head)')].map((row) => [...row.querySelectorAll('.hm-cell')]);
     const at = (cell) => {
       if (!cell) return;
       cell.id = cell.id || `hm-cell-${++ids}`;
@@ -80,7 +80,7 @@ const Heatmap = (() => {
     g.addEventListener('keydown', (event) => {
       const rs = rows();
       if (!rs.length) return;
-      let ri = rs.findIndex((r) => r.includes(on)), ci = ri >= 0 ? rs[ri].indexOf(on) : -1;
+      let ri = rs.findIndex((row) => row.includes(on)), ci = ri >= 0 ? rs[ri].indexOf(on) : -1;
       if (ri < 0) { ri = 0; ci = rs[0].length - 1; }
       const moves = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
       if (moves[event.key]) {
@@ -110,12 +110,12 @@ const Heatmap = (() => {
       cols.forEach((c) => head.append(make('span', 'hm-col', c)));
       g.append(head);
     }
-    for (const r of rows) {
+    for (const line of rows) {
       const row = make('div', 'hm-row');
-      if (!bare) row.append(make('span', 'hm-label', r.label));
-      r.cells.forEach((c, i) => {
+      if (!bare) row.append(make('span', 'hm-label', line.label));
+      line.cells.forEach((c, i) => {
         const cell = make('span', `hm-cell hm-${level(c)}${c && (c.drops || c.restarts) ? ' hm-mark' : ''}`);
-        cell.dataset.words = words(r.where(i), c);
+        cell.dataset.words = words(line.where(i), c);
         cell.setAttribute('role', 'img');
         cell.setAttribute('aria-label', cell.dataset.words);
         row.append(cell);

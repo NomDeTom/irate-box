@@ -60,12 +60,12 @@ function frameSrc(path) {
 function target() {
   // Only a path on this origin: a backslash or a tab after the slash makes the browser
   // read "/\\evil.example" as another site, which a startsWith('//') check lets through.
-  let p;
-  try { p = decodeURIComponent(location.hash.slice(1)); } catch (_) { return '/'; }
-  if (!p.startsWith('/')) return '/';
+  let path;
+  try { path = decodeURIComponent(location.hash.slice(1)); } catch (_) { return '/'; }
+  if (!path.startsWith('/')) return '/';
   try {
-    const u = new URL(p, location.origin);
-    return u.origin === location.origin ? u.pathname + u.search + u.hash : '/';
+    const url = new URL(path, location.origin);
+    return url.origin === location.origin ? url.pathname + url.search + url.hash : '/';
   } catch (_) { return '/'; }
 }
 
@@ -141,7 +141,7 @@ function watch(doc, depth = 0) {
       watched.add(doc);
       doc.addEventListener('scroll', onScroll, { capture: true, passive: true });
     }
-    if (depth < 2) doc.querySelectorAll('iframe').forEach((f) => watch(f.contentDocument, depth + 1));
+    if (depth < 2) doc.querySelectorAll('iframe').forEach((iframe) => watch(iframe.contentDocument, depth + 1));
   } catch (_) {}  // a cross-origin frame: nothing to watch
 }
 
@@ -191,7 +191,7 @@ function drawReport(path) {
   if (reportSlot.hidden) { reportSlot.replaceChildren(); return; }
   const draw = () => { if (reportFor === page) reportSlot.replaceChildren(reportButton('notes', { page }, reportReasons)); };
   if (reportReasons) { draw(); return; }
-  fetch('/api/report').then((r) => r.json()).then((d) => { reportReasons = d.reasons || []; draw(); }).catch(() => {});
+  fetch('/api/report').then((response) => response.json()).then((data) => { reportReasons = data.reasons || []; draw(); }).catch(() => {});
 }
 
 // Loads catch ordinary links; the interval catches single-page apps (SilverBullet,
@@ -214,7 +214,7 @@ frame.src = frameSrc(shown);
 const up = document.getElementById('app-up');
 const from = new URLSearchParams(location.search).get('from');
 if (up && from && /^[a-z0-9-]+$/.test(from)) {
-  fetch('/menus.json').then((r) => (r.ok ? r.json() : {})).then((lists) => {
+  fetch('/menus.json').then((response) => (response.ok ? response.json() : {})).then((lists) => {
     const list = lists[from];
     if (!list) return;
     up.href = list.href;

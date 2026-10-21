@@ -42,14 +42,15 @@
         "ignoreRestSiblings": true
       }
     ],
-    // Name a thing for what it holds: `event`, `error`, `entry`, `field`, never `e`.
-    "id-denylist": ["error", "e", "ev"],
+    // Name a thing for what it holds: `event`, `response`, `finding`, `app`, `data`, never e, ev, r, f, a,
+    // d, s, p or u. Declared names only: an object's keys stay free, as SVG's own `d` and `r` must.
+    "id-match": ["error", "^([^rfadspue]|[^e].+|e[^v].*|ev.+)$", { "properties": false, "onlyDeclarations": true }],
     // [...list.map(f)] copies an array already new: harmless, and the copy keeps the layout readable.
     "unicorn/no-useless-spread": "off"
   },
   "overrides": [
     // SHA-256's working variables a to h are the standard's own names (FIPS 180-4).
-    { "files": ["web/lock.js"], "rules": { "id-denylist": "off" } }
+    { "files": ["web/lock.js"], "rules": { "id-match": "off" } }
   ],
   // Vendored (qrcode.js); tests, tools and extras run under Node and are not linted yet.
   "ignorePatterns": ["web/qrcode.js", "tests/**", "tools/**", "extras/**"]
