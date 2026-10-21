@@ -3268,6 +3268,22 @@ button.danger {
 .kit-consent p {
   margin: 0.2rem 0;
 }
+/* A consent or a change asked for on the card, not in a pop-up (agreeRow, askRow in admin.js): the text,
+   the box to tick, then the buttons, one under the other, in the kits' consent frame. */
+.agree-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.3rem 0;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+.agree-row label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
 .kit-details summary {
   cursor: pointer;
   font-size: 0.85rem;

@@ -283,16 +283,25 @@ setTimeout(() => {
   check('IRC has installation status, requirements and Add on its own page', ircInstall && ircInstall.closest('.admin-page').id === 'page-app-irc'
     && /Not installed\./.test(ircInstall.textContent) && /Needs: ngircd/.test(ircInstall.textContent) && ircInstall.querySelector('button').textContent === 'Install add-on');
   check('installed add-ons have Remove and status without duplicate access controls', /Installed\. Service not running/.test(t('#app-install-notes')[0])
-    && d.querySelector('#app-install-notes button').textContent === 'Uninstall add-on' && !d.querySelector('#app-install-notes .access-block'));
+    && d.querySelector('#app-install-notes button').textContent === 'Uninstall add-on…' && !d.querySelector('#app-install-notes .access-block'));
   check('unknown install state has no unsafe Add or Remove button', /Installation status unavailable/.test(t('#app-install-sync')[0]) && !d.querySelector('#app-install-sync button'));
   check('built-in apps have no installer section', !d.getElementById('app-install-drop'));
   check('every installable add-on has an installation section, including the relay without a tile', adminApps().filter((app) => app.addon)
     .every((app) => d.querySelector(`#page-app-${app.id} #app-install-${app.id}`)) && d.querySelector('#app-install-room button').textContent === 'Install add-on');
-  let addonConsent = '';
-  w.confirm = (message) => { addonConsent = message; return false; };
-  ircInstall.querySelector('button').click();
-  check('IRC Add asks its existing consent and cancellation sends nothing', addonConsent === addons.addons[2].consent
-    && !posted.some((post) => post[0] === '/admin/addons'));
+  // Its consent text on its card, before the button: Install waits for the box to be ticked (no pop-up).
+  let popups = 0;
+  w.confirm = () => { popups += 1; return true; };
+  const ircBtn = () => [...d.querySelectorAll('#app-install-irc button')].find((b) => b.textContent === 'Install add-on');
+  check('IRC: its consent text on its card, Install waiting for the tick', t('#app-install-irc')[0].includes(addons.addons[2].consent)
+    && ircBtn().disabled && !!d.querySelector('#app-install-irc input[type="checkbox"]'));
+  ircBtn().click();
+  check('  pressed before the tick: nothing sent', !posted.some((post) => post[0] === '/admin/addons'));
+  const ircTick = d.querySelector('#app-install-irc input[type="checkbox"]');
+  ircTick.checked = true;
+  ircTick.dispatchEvent(new w.Event('change', { bubbles: true }));
+  check('  ticked: Install enabled, and the tick kept across a redraw', !ircBtn().disabled && (w.renderAddons(addons), !ircBtn().disabled)
+    && d.querySelector('#app-install-irc input[type="checkbox"]').checked);
+  check('  no browser pop-up', popups === 0, popups);
   w.renderAddons({ ...addons, pending: 1, progress: { action: 'addon', steps: 3, step: 2, label: 'Installing packages' } });
   check('installer busy disables both app and central controls and shows progress on the app page', d.querySelector('#app-install-irc button').disabled
     && /step 2 of 3/.test(t('#addons-step')[0])
@@ -568,11 +577,14 @@ setTimeout(() => {
     const ircLine = [...d.querySelectorAll('#inv-list .inv-row')].find((r) => r.querySelector('a[href="#page-app-irc"]'));
     check('installation completion updates the page and All apps\' line with Remove and the result', /Installed\. Service running/.test(t('#app-install-irc')[0])
       && /IRC installed\./.test(t('#app-install-irc')[0]) && ircLine && /Installed/.test(ircLine.textContent)
-      && d.querySelector('#app-install-irc button').textContent === 'Uninstall add-on' && !d.querySelector('#app-install-irc button').disabled);
+      && d.querySelector('#app-install-irc button').textContent === 'Uninstall add-on…' && !d.querySelector('#app-install-irc button').disabled);
     w.renderAddons(installedAddons);
     check('status refresh retains installation controls without duplicate sections', d.querySelectorAll('#app-install-irc').length === 1
-      && d.querySelector('#app-install-irc button').textContent === 'Uninstall add-on');
+      && d.querySelector('#app-install-irc button').textContent === 'Uninstall add-on…');
     d.querySelector('#app-install-irc button').click();
+    check('Uninstall…: what removing does, on the card, before anything is sent', /Its data stays/.test(t('#app-install-irc')[0])
+      && !posted.some((post) => post[0] === '/admin/addons' && post[1].on === false));
+    [...d.querySelectorAll('#app-install-irc button')].find((b) => b.textContent === 'Uninstall add-on').click();
     check('Remove on the IRC page sends the existing removal request', posted.some((post) => post[0] === '/admin/addons'
       && post[1].addon === 'irc' && post[1].on === false));
     check('no page errors', !errors.length, errors);
