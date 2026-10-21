@@ -299,7 +299,7 @@ def hotspot_up(iface, channel=6):
         "802-11-wireless.mode",
         "ap",
         "802-11-wireless.band",
-        "bg",
+        "bg" if channel <= 14 else "a",
         "802-11-wireless.channel",
         str(channel),
         "wifi-sec.key-mgmt",
@@ -416,12 +416,27 @@ def combo(iface, home, seconds):
         if not joined:
             return {"error": "could not join the network first: " + error}
     second = iface[:9] + "ap"
-    code, out = run(IW, "dev", iface, "interface", "add", second, "type", "__ap")
+    # Its own address, locally administered: a second interface with the radio's own (ath9k_htc gives it
+    # that) never becomes available to NetworkManager. A driver that picks one itself may refuse ours.
+    own = read(SYS / "class/net" / iface / "address").split(":")
+    address = ":".join([f"{int(own[0], 16) | 0x02:02x}", *own[1:5], f"{int(own[5], 16) ^ 0x01:02x}"])
+    code, out = run(IW, "dev", iface, "interface", "add", second, "type", "__ap", "addr", address)
+    if code:
+        code, out = run(IW, "dev", iface, "interface", "add", second, "type", "__ap")
+    run("ip", "link", "set", second, "up")
     if code:
         result["error"] = "no second interface: " + out[:160]
     else:
-        time.sleep(2)
-        up, took, _, _, error = hotspot_up(second)
+        # NetworkManager takes a moment to see a new interface, and may leave it unmanaged.
+        for _ in range(20):
+            if second in run("nmcli", "-t", "-f", "DEVICE", "device")[1].split():
+                break
+            time.sleep(0.5)
+        run("nmcli", "device", "set", second, "managed", "yes")
+        time.sleep(1)
+        # On the link's own channel: a radio that can use only one channel at a time (ath9k_htc) refuses another.
+        on_channel = re.search(r"channel (\d+)", run(IW, "dev", iface, "info")[1])
+        up, took, _, _, error = hotspot_up(second, int(on_channel.group(1)) if on_channel else 6)
         result.update(hotspot_up=up, hotspot_seconds=took)
         if up:
             channel = lambda dev: (re.search(r"channel (\d+)", run(IW, "dev", dev, "info")[1]) or [None, None])[1]  # noqa: E731
