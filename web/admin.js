@@ -3689,9 +3689,9 @@ function secKind(f) {
     (f.actions || []).some((a) => CURE_CHOICE.test(a.choice))
   )
     return "cure";
-  // A port is in the listening table; one that offers a choice (Cockpit, a service to stop) is a choice too.
-  if (/^port-/.test(f.id) && (f.status === "ok" || !(f.actions || []).length))
-    return "port";
+  // A port is in the Network listeners table, with its buttons there (Stop and disable, Open to the hotspot):
+  // never a card of its own. Cockpit has a setting (cockpit_findings).
+  if (/^port-/.test(f.id)) return "port";
   return "choice";
 }
 // Passwordless sudo as a toggle: On while a
@@ -4186,6 +4186,24 @@ function secPrune(scan) {
     if (!a || a.on) sec.discard();
   }
 }
+// A program's ports, by protocol, runs of ports as a range: "TCP 443, 8080, 8090–8098".
+function portRanges(ls) {
+  const by = {};
+  for (const l of ls) (by[l.proto] = by[l.proto] || new Set()).add(l.port);
+  return Object.keys(by)
+    .sort()
+    .map((proto) => {
+      const ps = [...by[proto]].sort((a, b) => a - b);
+      const runs = [];
+      for (const p of ps) {
+        const r = runs[runs.length - 1];
+        if (r && p === r[1] + 1) r[1] = p;
+        else runs.push([p, p]);
+      }
+      return `${proto.toUpperCase()} ${runs.map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a}, ${b}` : `${a}–${b}`)).join(", ")}`;
+    })
+    .join("; ");
+}
 function renderSecurity(data) {
   secData = data;
   const scan = data.scan;
@@ -4361,74 +4379,100 @@ function renderSecurity(data) {
       "It runs the CIS benchmark checks from debian-cis and Lynis. This takes about 8 minutes on a small board. It runs weekly while the Security kit is kept current.";
   renderAudit(data.audit, busy, data);
   renderImports(data.imports);
-  // Each port with the scan's word on it and, where there is one, its button: no separate list of ports.
+  // Network listeners: one row per program (its unit, else its process), not per port and protocol: its
+  // ports, where it listens, what it belongs to, and the scan's word on how far it is exposed, with its
+  // buttons. A UDP port in the kernel's range for outgoing sockets (32768 up) is a reply socket of a
+  // program that has others (Avahi's queries, Syncthing's connections): not listed.
   const portLine = new Map(
     lines.filter((f) => /^port-/.test(f.id)).map((f) => [f.id, f]),
   );
+  const lineOf = (l) =>
+    portLine.get(`port-${l.proto}-${l.port}`) ||
+    portLine.get(`port-${l.proto === "tcp" ? "udp" : "tcp"}-${l.port}`);
+  const progs = new Map();
+  for (const l of (scan && scan.listeners) || []) {
+    const key = l.unit || l.process || `${l.proto}/${l.port}`;
+    progs.set(key, [...(progs.get(key) || []), l]);
+  }
   sec.listeners.replaceChildren(
-    ...((scan && scan.listeners) || []).map((l) => {
-      // TCP and UDP of one service share a line (LLMNR); SSH's port is said with SSH's own settings.
-      const f =
-        portLine.get(`port-${l.proto}-${l.port}`) ||
-        portLine.get(`port-${l.proto === "tcp" ? "udp" : "tcp"}-${l.port}`);
-      const ssh = !f && l.proto === "tcp" && l.port === 22;
-      const cockpit = !f && l.port === 9090 && /^cockpit/.test(l.unit || "");
+    ...[...progs.values()].map((all) => {
+      const shown = all.some((l) => !(l.proto === "udp" && l.port >= 32768))
+        ? all.filter(
+            (l) =>
+              !(l.proto === "udp" && l.port >= 32768) ||
+              (lineOf(l) && lineOf(l).status !== "ok"),
+          )
+        : all;
+      const fs = [...new Set(shown.map(lineOf).filter(Boolean))].sort(
+        (a, b) => RANK[a.status] - RANK[b.status],
+      );
+      const worst = fs[0];
+      const l0 = shown[0];
+      const ssh = !worst && shown.some((l) => l.proto === "tcp" && l.port === 22);
+      const cockpit = !worst && shown.some((l) => l.port === 9090 && /^cockpit/.test(l.unit || ""));
+      const said = [...new Set(fs.filter((f) => f.status === worst.status || fs.length === 1)
+        .flatMap((f) => [f.summary, f.why]).filter(Boolean))];
+      const acts = fs.filter((f) => (f.actions || []).length);
+      const owner = l0.owner || {};
       return el(
         "tr",
-        { id: f && secKind(f) === "port" ? `sec-${f.id}` : "" },
-        el("td", { textContent: `${l.proto.toUpperCase()} ${l.port}` }),
+        {},
         el(
           "td",
           {},
+          // The doctor's links go to a port's line: each port's anchor is in its program's row.
+          ...fs.filter((f) => secKind(f) === "port").map((f) => el("span", { id: `sec-${f.id}` })),
           el("span", {
             className: "setting-name",
-            textContent: f ? f.title : l.name,
+            textContent: worst ? worst.title : l0.name,
           }),
-          el("span", {
-            className: "setting-desc",
-            textContent: l.unit || l.process || "",
-          }),
+          el("span", { className: "setting-desc", textContent: l0.unit || l0.process || "" }),
         ),
-        el("td", { textContent: l.addr }),
+        el("td", { textContent: portRanges(shown) }),
+        el("td", { textContent: [...new Set(shown.flatMap((l) => l.addr.split(", ")))].join(", ") }),
+        el("td", {
+          className: owner.kind === "unknown" ? "bad" : "",
+          textContent:
+            owner.kind === "app"
+              ? `${owner.name} (an app or add-on)`
+              : owner.kind === "hub"
+                ? "irate-box"
+                : owner.kind === "package"
+                  ? `Debian package ${owner.name}`
+                  : owner.kind === "unknown"
+                    ? `Not known. No package owns ${owner.name || "this program"}. If nothing needs it, stop it.`
+                    : "",
+        }),
         el(
           "td",
           {},
-          f
+          worst
             ? el("span", {
-                className: `fstate fstate-${f.status}`,
-                textContent: f.status === "ok" ? "Yes" : STATE_WORD[f.status],
+                className: `fstate fstate-${worst.status}`,
+                textContent: worst.status === "ok" ? "Yes" : STATE_WORD[worst.status],
               })
             : null,
-          f
-            ? el("span", {
-                className: "setting-desc",
-                textContent: ` ${[f.summary, f.why].filter(Boolean).join(" ")}`,
-              })
-            : null,
+          said.length ? el("span", { className: "setting-desc", textContent: ` ${said.join(" ")}` }) : null,
           ssh
-            ? el("a", {
-                href: "#sec-ssh-password",
-                textContent: "Who can sign in, and how: SSH settings",
-              })
+            ? el("a", { href: "#sec-ssh-password", textContent: "Who can sign in, and how: SSH settings" })
             : null,
-          cockpit
-            ? el("a", { href: "#sec-cockpit", textContent: "Cockpit setting" })
+          cockpit ? el("a", { href: "#sec-cockpit", textContent: "Cockpit setting" }) : null,
+          worst && worst.fix && worst.status !== "ok"
+            ? el("span", { className: "setting-desc", textContent: ` ${worst.fix}` })
             : null,
-          f && f.fix && f.status !== "ok"
-            ? el("span", {
-                className: "setting-desc",
-                textContent: ` ${f.fix}`,
-              })
-            : null,
-          f && f.actions.length
-            ? el(
-                "span",
-                { className: "library-buttons" },
-                ...scanButtons(f, busy),
-              )
-            : null,
-          ...(f ? secFoot(f) : []),
-          f ? noteUnder(f.id) : null,
+          ...acts.map((f) =>
+            el(
+              "span",
+              { className: "library-buttons" },
+              acts.length > 1 ? el("span", { className: "setting-desc", textContent: `${portRanges(shown.filter((l) => lineOf(l) === f))}: ` }) : null,
+              // A program's own buttons once (Stop and disable): a port's stay with its port.
+              ...scanButtons(
+                { ...f, actions: f.actions.filter((a) => f === acts.find((g) => g.actions.some((b) => b.choice === a.choice))) },
+                busy,
+              ),
+            ),
+          ),
+          ...fs.flatMap((f) => [...secFoot(f), noteUnder(f.id)]),
         ),
       );
     }),
