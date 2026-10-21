@@ -2041,8 +2041,8 @@ def check_port_80():
                 if holder == web
                 else M(
                     "port-80.held.fix",
-                    "To give the hub port 80, run the installer again with --take-port-80. That stops {holder}; "
-                    "the Security page or uninstall.sh restores it.",
+                    "To give the hub port 80, run the installer again with --take-port-80. That stops {holder}. "
+                    "The Security page or uninstall.sh restores it.",
                     holder=holder or "?",
                 )
             ),
