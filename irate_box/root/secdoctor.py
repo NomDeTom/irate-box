@@ -6328,7 +6328,7 @@ def step_tls(ctx):
                     about=about,
                 )
             )
-        elif plain and plain[0] < 500:
+        elif plain and plain[0] < 500 and tls.PLAIN_PORTS["main"] == 80:
             out.append(
                 finding(
                     "tls-plain",
@@ -6341,13 +6341,28 @@ def step_tls(ctx):
                     about=about,
                 )
             )
+        elif plain and plain[0] < 500:
+            # The hub moved off port 80 (install.sh, port 80 taken): the Box doctor's "Port 80" says why and what to do.
+            out.append(
+                finding(
+                    "tls-plain",
+                    plain_t,
+                    "ok",
+                    M(
+                        "tls.plain.moved",
+                        "Plain HTTP answers on port {port}, not 80. The Box doctor's Port 80 says why.",
+                        port=tls.PLAIN_PORTS["main"],
+                    ),
+                    about=about,
+                )
+            )
         else:
             out.append(
                 finding(
                     "tls-plain",
                     plain_t,
                     "problem",
-                    M("tls.plain.down", "Port 80 does not answer."),
+                    M("tls.plain.down", "Port {port} does not answer.", port=tls.PLAIN_PORTS["main"]),
                     M(
                         "tls.plain.down.why",
                         "Phones on the hotspot get no sign-in sheet.",
