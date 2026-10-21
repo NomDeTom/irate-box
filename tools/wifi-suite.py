@@ -407,6 +407,27 @@ def iperf(seconds, reverse=False):
         return None
 
 
+def under_load(client_iface, seconds):
+    """iperf3 each way with ping running the whole time: latency under load. An idle ping hides bufferbloat
+    (on the Pi, 2 ms idle became 67-218 ms average under load); Flent's RRUL finds the same, at twice the
+    memory and four packages, so it stays a lab tool."""
+    pinger = subprocess.Popen(
+        ["ip", "netns", "exec", NETNS, "ping", "-I", client_iface, "-i", "0.2", "-w", str(seconds * 2 + 6), AP_NET[0]],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    to_hotspot, from_hotspot = iperf(seconds), iperf(seconds, reverse=True)
+    out = pinger.communicate(timeout=seconds * 2 + 30)[0]
+    loss = re.search(r"([\d.]+)% packet loss", out)
+    rtt = re.search(r"= ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms", out)
+    loaded = {
+        "loss_pct": float(loss.group(1)) if loss else 100.0,
+        "rtt_ms": dict(zip(("min", "avg", "max", "mdev"), map(float, rtt.groups()), strict=True)) if rtt else None,
+    }
+    return loaded, to_hotspot, from_hotspot
+
+
 def pair(ap_iface, client_iface, seconds):
     result = {"hotspot": ap_iface, "client": client_iface}
     up, took, ssid, psk, error = hotspot_up(ap_iface)
@@ -421,11 +442,14 @@ def pair(ap_iface, client_iface, seconds):
         if joined:
             for on in (True, False):
                 accepted = power_save(ap_iface, on)
+                idle = ping(AP_NET[0], client_iface, 10, netns=NETNS)
+                loaded, to_hotspot, from_hotspot = under_load(client_iface, seconds)
                 result["hotspot_power_save_on" if on else "hotspot_power_save_off"] = {
-                    **ping(AP_NET[0], client_iface, seconds, netns=NETNS),
+                    "idle": idle,
+                    "under_load": loaded,
                     "set": accepted is True,
-                    "to_hotspot_mbps": iperf(seconds),
-                    "from_hotspot_mbps": iperf(seconds, reverse=True),
+                    "to_hotspot_mbps": to_hotspot,
+                    "from_hotspot_mbps": from_hotspot,
                 }
             link = run(IW, "dev", client_iface, "link", netns=NETNS)[1]
             signal = re.search(r"signal: (-?\d+) dBm", link)
@@ -675,6 +699,12 @@ def main():
     # The interface the box's main route leaves by: the one thing never moved, as the run's own link may be on it.
     first_route = re.search(r"default via \S+ dev (\S+)", run("ip", "route", "show", "default")[1])
     main_route = first_route.group(1) if first_route else None
+
+    def on_main_radio(iface):
+        # The main route's interface, or another on the same physical radio (the Lyra's hotspot ap0 shares its
+        # radio with wlan0, its only link): moving or resetting one moves or resets the other.
+        return iface == main_route or (phy_of(iface) is not None and phy_of(iface) == phy_of(main_route or ""))
+
     report = {
         "board": read("/proc/device-tree/model").rstrip("\x00") or "unknown board",
         "kernel": run("uname", "-r")[1],
@@ -688,7 +718,7 @@ def main():
         for iface in radios:
             say(f"identify {iface}")
             report["radios"][iface] = {"identify": identify(iface)}
-            if iface != main_route:
+            if not on_main_radio(iface):
                 report["radios"][iface]["identify"]["namespace"] = namespace_ok(iface)
                 if iface == home_on:
                     # moved out and back, its profile may have come up on another radio
@@ -723,7 +753,7 @@ def main():
                 report["soak"] = soak(hosts[0], joiners[0], home_on, args.soak_minutes)
         if "recovery" in tests:
             for iface in radios:
-                if iface == main_route:
+                if on_main_radio(iface):
                     # A box with one radio (the Lyra) has its only link here: a reset could leave it unreachable.
                     report["radios"][iface]["recovery"] = {"skipped": "the box's main route leaves by this radio"}
                     continue
