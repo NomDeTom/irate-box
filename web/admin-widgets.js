@@ -569,10 +569,10 @@ const AW = (() => {
   const RANK = { problem: 0, bad: 0, warn: 1, info: 2, ok: 3 };
   function findings(items, opts = {}) {
     const sorted = [...items].sort((a, b) => (RANK[a.status] ?? 2) - (RANK[b.status] ?? 2));
-    return shortList(sorted.map((f) => ({ ...f, badges: [f.status].concat(f.badges || []), detail: () => [
-      f.detail ? h('p', { class: 'setting-desc', text: f.detail }) : null,
-      (f.actions || []).map((a) => btn(a.label, { onclick: async (event) => {
-        if ((!a.confirm || (await confirmHere(a.confirm, { anchor: event.currentTarget, label: a.label }))) && opts.act) opts.act(a.choice, f);
+    return shortList(sorted.map((finding) => ({ ...finding, badges: [finding.status].concat(finding.badges || []), detail: () => [
+      finding.detail ? h('p', { class: 'setting-desc', text: finding.detail }) : null,
+      (finding.actions || []).map((a) => btn(a.label, { onclick: async (event) => {
+        if ((!a.confirm || (await confirmHere(a.confirm, { anchor: event.currentTarget, label: a.label }))) && opts.act) opts.act(a.choice, finding);
       } })),
     ] })), { id: opts.id });
   }
@@ -696,9 +696,9 @@ const AW = (() => {
   // fields (the firmware's boards) is opts.extra: {key: {set(value)}}, and the page calls section.set for it.
   //   opts: the section's (save, ask, idle, label), and extra
   const FIELD = (field) => field.name && !['button', 'submit', 'reset', 'file'].includes(field.type) && !field.closest('[data-aw-ignore]');
-  function form(f, opts = {}) {
-    if (f.section) return f.section;
-    const named = (n) => [...f.elements].filter((field) => FIELD(field) && (!n || field.name === n));
+  function form(formEl, opts = {}) {
+    if (formEl.section) return formEl.section;
+    const named = (n) => [...formEl.elements].filter((field) => FIELD(field) && (!n || field.name === n));
     const read = (n) => {
       const els = named(n);
       if (!els.length) return undefined;
@@ -708,7 +708,7 @@ const AW = (() => {
     const extra = opts.extra || {};
     let writing = false;
     const offByUs = new Set();
-    const s = section({ ...opts, id: opts.id || f.id, saved: null, onChange: () => paint() });
+    const s = section({ ...opts, id: opts.id || formEl.id, saved: null, onChange: () => paint() });
     // The draft into the fields; each field written raises change, so what follows a field (chips, a part shown
     // only for one choice) follows it here too. Off until the values are read.
     function paint() {
@@ -740,15 +740,15 @@ const AW = (() => {
       if (writing || !event.target || !FIELD(event.target) || !s.loaded()) return;
       s.set(event.target.name, read(event.target.name), true);
     };
-    f.addEventListener('input', touch);
-    f.addEventListener('change', touch);
-    f.addEventListener('submit', (event) => { event.preventDefault(); s.save(); });
-    const old = [...f.querySelectorAll('button')];
+    formEl.addEventListener('input', touch);
+    formEl.addEventListener('change', touch);
+    formEl.addEventListener('submit', (event) => { event.preventDefault(); s.save(); });
+    const old = [...formEl.querySelectorAll('button')];
     const saveOld = old.find((b) => b.type === 'submit' && b.textContent.trim().startsWith('Save'));
-    if (saveOld) saveOld.replaceWith(s.foot); else f.append(s.foot);
+    if (saveOld) saveOld.replaceWith(s.foot); else formEl.append(s.foot);
     s.foot.after(s.reason);
     old.filter((b) => b.textContent.trim().startsWith('Discard')).forEach((b) => b.remove());
-    f.section = s;
+    formEl.section = s;
     return s;
   }
   // ---- A selection survives the page's polling ----
@@ -801,7 +801,7 @@ const AW = (() => {
     const c = n.cloneNode(true);
     if (c.matches(LIVE)) return `<live ${c.getAttribute('data-live')}>`;
     c.querySelectorAll(LIVE).forEach((x) => x.replaceChildren());
-    const vals = [...n.querySelectorAll('input, select, textarea')].map((f) => (f.type === 'checkbox' || f.type === 'radio' ? f.checked : f.value));
+    const vals = [...n.querySelectorAll('input, select, textarea')].map((input) => (input.type === 'checkbox' || input.type === 'radio' ? input.checked : input.value));
     return c.outerHTML + (vals.length ? JSON.stringify(vals) : '');
   }
   function drawKept(box, nodes) {

@@ -78,25 +78,25 @@ async function load() {
 function form(id, build, done) {
   $(id).addEventListener('submit', async (event) => {
     event.preventDefault();
-    const f = event.target;
+    const formEl = event.target;
     try {
-      const d = await post(build(f));
-      f.reset();
+      const d = await post(build(formEl));
+      formEl.reset();
       done(d);
     } catch (err) { note(err.message, false); }
   });
 }
 
-form('acct-login-form', (f) => ({ action: 'login', name: f.elements.name.value, password: f.elements.password.value }), () => {
+form('acct-login-form', (formEl) => ({ action: 'login', name: formEl.elements.name.value, password: formEl.elements.password.value }), () => {
   // On to the page that sent them here, or back to the hub, whose header then has their buttons (Admin for an administrator).
   location.assign(next || '/');
 });
-form('acct-signup-form', (f) => ({ action: 'signup', name: f.elements.name.value, password: f.elements.password.value }), (d) => {
+form('acct-signup-form', (formEl) => ({ action: 'signup', name: formEl.elements.name.value, password: formEl.elements.password.value }), (d) => {
   note(d.state === 'asked' ? 'Requested. You can sign in after an administrator approves it.' : 'Account created. You are signed in.', true);
   load();
 });
-form('acct-code-form', (f) => ({ action: 'code', code: f.elements.code.value, password: f.elements.password.value }), (d) => note(`Password set for ${d.name}. Sign in with it.`, true));
-form('acct-password-form', (f) => ({ action: 'password', old: f.elements.old.value, new: f.elements.new.value }), () => note('Password changed. Your other devices are signed out.', true));
+form('acct-code-form', (formEl) => ({ action: 'code', code: formEl.elements.code.value, password: formEl.elements.password.value }), (d) => note(`Password set for ${d.name}. Sign in with it.`, true));
+form('acct-password-form', (formEl) => ({ action: 'password', old: formEl.elements.old.value, new: formEl.elements.new.value }), () => note('Password changed. Your other devices are signed out.', true));
 $('acct-logout').addEventListener('click', async () => {
   try { await post({ action: 'logout' }); note('Signed out.', true); load(); } catch (err) { note(err.message, false); }
 });

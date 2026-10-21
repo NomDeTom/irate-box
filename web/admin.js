@@ -918,15 +918,15 @@ document.querySelectorAll("[data-preset]").forEach((b) =>
 );
 lib.add.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const f = lib.add.elements;
+  const fields = lib.add.elements;
   const source = {
-    name: f.name.value.trim(),
-    type: f.type.value,
-    prerelease: f.prerelease.checked,
+    name: fields.name.value.trim(),
+    type: fields.type.value,
+    prerelease: fields.prerelease.checked,
   };
   for (const k of ["repo", "workflow", "branch", "pattern", "url"]) {
-    if (!f[k].closest("label").hidden && f[k].value.trim())
-      source[k] = f[k].value.trim();
+    if (!fields[k].closest("label").hidden && fields[k].value.trim())
+      source[k] = fields[k].value.trim();
   }
   try {
     renderLibrary(await libPost({ action: "add", source }));
@@ -960,8 +960,8 @@ const libPolicy = AW.form(lib.policy, {
   },
 });
 const surfaceForms = [...document.querySelectorAll("form.surface-policy")].map(
-  (f) =>
-    AW.form(f, {
+  (form) =>
+    AW.form(form, {
       label: "Update policy",
       save: async (c) => {
         await libPolicySave(c);
@@ -1276,12 +1276,12 @@ const cat = {
 };
 let catStart = 0;
 async function searchCatalogue(more) {
-  const f = cat.form.elements;
+  const fields = cat.form.elements;
   catStart = more ? catStart + 20 : 0;
   say("Asking Kiwix's catalogue…", true, cat.note);
   try {
     const response = await fetch(
-      `/admin/catalogue?${new URLSearchParams({ q: f.q.value.trim(), language: f.language.value.trim(), start: String(catStart) })}`,
+      `/admin/catalogue?${new URLSearchParams({ q: fields.q.value.trim(), language: fields.language.value.trim(), start: String(catStart) })}`,
     );
     const d = await response.json().catch(() => ({}));
     if (!response.ok) throw hubError(d, response.status);
@@ -3150,8 +3150,8 @@ function renderUpdoctor(d, stale) {
     ? [...d.findings].sort((a, b) => RANK[a.status] - RANK[b.status])
     : [];
   const counts = {
-    problem: all.filter((f) => f.status === "problem").length,
-    warn: all.filter((f) => f.status === "warn").length,
+    problem: all.filter((finding) => finding.status === "problem").length,
+    warn: all.filter((finding) => finding.status === "warn").length,
   };
   upd.doctorWhen.textContent = d
     ? `Last checked ${new Date(d.at * 1000).toLocaleString()}.` +
@@ -3196,16 +3196,16 @@ function renderUpdoctor(d, stale) {
         })),
   );
   // Each row named by its check, not its place in the list, so a link to it survives a new report.
-  const slug = (f) =>
-    `ud-${String(f.id)
+  const slug = (finding) =>
+    `ud-${String(finding.id)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")}`;
   // A finding (finding.py) brings its parts, its commands and its place to go.
   // The doctor's own buttons ask the update helper (requestUpdate), not the box doctor's repairs (hlFix).
-  const item = (f) => {
-    const x = healthDo({ ...f, actions: [] }, false);
-    const own = f.status === "ok" ? [] : (f.actions || []).map((a) =>
+  const item = (finding) => {
+    const x = healthDo({ ...finding, actions: [] }, false);
+    const own = finding.status === "ok" ? [] : (finding.actions || []).map((a) =>
       el("button", {
         type: "button",
         className: "action-btn",
@@ -3216,17 +3216,17 @@ function renderUpdoctor(d, stale) {
       }),
     );
     return findingRow({
-      id: slug(f),
-      state: f.status,
-      title: f.title,
-      ...findingParts(f),
+      id: slug(finding),
+      state: finding.status,
+      title: finding.title,
+      ...findingParts(finding),
       how: x.how,
-      commands: f.status === "ok" ? [] : x.commands || [],
+      commands: finding.status === "ok" ? [] : x.commands || [],
       controls: [...x.controls, ...own],
     });
   };
   const open = all.filter(
-    (f) => f.status !== "ok" && (udShow === "all" || f.status === udShow),
+    (finding) => finding.status !== "ok" && (udShow === "all" || finding.status === udShow),
   );
   upd.findings.replaceChildren(...open.map(item));
   upd.udEmpty.hidden = !d || open.length > 0;
@@ -3234,7 +3234,7 @@ function renderUpdoctor(d, stale) {
     counts.problem + counts.warn
       ? "Nothing of that kind."
       : "Nothing to fix or review. Updates have what they need.";
-  const fine = all.filter((f) => f.status === "ok");
+  const fine = all.filter((finding) => finding.status === "ok");
   upd.udFineFold.hidden = !fine.length;
   upd.udFineCount.textContent = `(${fine.length})`;
   upd.udFine.replaceChildren(...fine.map(item));
@@ -3304,7 +3304,7 @@ function renderUpdate(data) {
   renderUpdoctor(d, data.doctor_stale);
   drawSource(data);
   const doctorProblems = d
-    ? d.findings.filter((f) => f.status === "problem").length
+    ? d.findings.filter((finding) => finding.status === "problem").length
     : 0;
   badge(
     "updoctor",
@@ -3664,62 +3664,62 @@ let secData = null; // the last /admin/security, for redraws (accepting, filteri
 // are system updates. The rest are the owner's real choices.
 const CURE_ID = /^(kernel-|root-password|root-firstrun|ssh-root|llmnr)/;
 const CURE_CHOICE = /^(kernel-|root-lock|firstrun-|ssh-root-|llmnr-)/;
-function secKind(f) {
-  if (f.id === "security-updates" || f.id === "unattended") return "update";
+function secKind(finding) {
+  if (finding.id === "security-updates" || finding.id === "unattended") return "update";
   if (
-    CURE_ID.test(f.id) ||
-    (f.actions || []).some((a) => CURE_CHOICE.test(a.choice))
+    CURE_ID.test(finding.id) ||
+    (finding.actions || []).some((a) => CURE_CHOICE.test(a.choice))
   )
     return "cure";
   // A port is in the Network listeners table, with its buttons there (Stop and disable, Open to the hotspot):
   // never a card of its own. Cockpit has a setting (cockpit_findings).
-  if (f.id.startsWith("port-")) return "port";
+  if (finding.id.startsWith("port-")) return "port";
   return "choice";
 }
 // Passwordless sudo as a toggle: On while a
 // NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
-function sudoToggle(f, busy) {
-  return f.actions.map((a) => {
+function sudoToggle(finding, busy) {
+  return finding.actions.map((a) => {
     const file = a.choice.split(":")[1];
-    const on = a.choice.startsWith("sudo-drop:") !== secChosen(f.id, a); // as it would be after Save
+    const on = a.choice.startsWith("sudo-drop:") !== secChosen(finding.id, a); // as it would be after Save
     const b = el("button", {
       type: "button",
       className:
         "chip-btn" +
         (on ? " active" : "") +
-        (secChosen(f.id, a) ? " pending" : ""),
+        (secChosen(finding.id, a) ? " pending" : ""),
       disabled: busy,
-      textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ""}: ${on ? "On" : "Off"}`,
+      textContent: `Passwordless sudo${finding.actions.length > 1 ? ` (${file})` : ""}: ${on ? "On" : "Off"}`,
       title: a.label,
-      onclick: (event) => secChoose(f, a, event.currentTarget),
+      onclick: (event) => secChoose(finding, a, event.currentTarget),
     });
     b.setAttribute("aria-pressed", String(on));
     return b;
   });
 }
 // A line of the box's scan: its buttons, each acting through the root helper (only what its last scan offered).
-function scanButtons(f, busy) {
-  if (f.id === "sudo-nopasswd") return sudoToggle(f, busy);
-  if ((f.actions || []).some((a) => a.group))
+function scanButtons(finding, busy) {
+  if (finding.id === "sudo-nopasswd") return sudoToggle(finding, busy);
+  if ((finding.actions || []).some((a) => a.group))
     return [
-      ...secChipRows(f, busy),
+      ...secChipRows(finding, busy),
       ...scanButtons(
-        { ...f, actions: f.actions.filter((a) => !a.group) },
+        { ...finding, actions: finding.actions.filter((a) => !a.group) },
         busy,
       ),
     ];
-  return (f.actions || []).map((a) => {
+  return (finding.actions || []).map((a) => {
     const b = el("button", {
       type: "button",
-      className: "action-btn" + (secChosen(f.id, a) ? " pending" : ""),
+      className: "action-btn" + (secChosen(finding.id, a) ? " pending" : ""),
       textContent: a.label,
       disabled: busy,
-      title: secChosen(f.id, a)
+      title: secChosen(finding.id, a)
         ? "Selected. Select Save below to apply this change. Select the button again to cancel the selection."
         : "",
-      onclick: (event) => secChoose(f, a, event.currentTarget),
+      onclick: (event) => secChoose(finding, a, event.currentTarget),
     });
-    b.setAttribute("aria-pressed", String(secChosen(f.id, a)));
+    b.setAttribute("aria-pressed", String(secChosen(finding.id, a)));
     return b;
   });
 }
@@ -3728,49 +3728,49 @@ function scanButtons(f, busy) {
 // (one right answer) and its Undo are actions: they act at once, after their question.
 const secSecs = new Map(); // finding id -> its section
 const secOffer = (fid, choice) => {
-  const f = ((secData && secData.scan && secData.scan.findings) || []).find(
+  const finding = ((secData && secData.scan && secData.scan.findings) || []).find(
     (x) => x.id === fid,
   );
-  return f && (f.actions || []).find((a) => a.choice === choice);
+  return finding && (finding.actions || []).find((a) => a.choice === choice);
 };
-function secSection(f) {
-  if (secSecs.has(f.id)) return secSecs.get(f.id);
+function secSection(finding) {
+  if (secSecs.has(finding.id)) return secSecs.get(finding.id);
   const sec = AW.section({
-    id: `sec-${f.id}`,
-    label: f.title,
+    id: `sec-${finding.id}`,
+    label: finding.title,
     saved: { choice: "" },
     warn: (c) => {
-      const a = secOffer(f.id, c.choice);
+      const a = secOffer(finding.id, c.choice);
       return a && a.confirm ? a.confirm : null;
     },
     save: async (c) => {
       const j = AW.job();
-      secRequest({ action: "fix", choice: c.choice }, f.id, j.done);
+      secRequest({ action: "fix", choice: c.choice }, finding.id, j.done);
       await j;
       // Done: nothing waits any more (the scan says what is in effect now).
       setTimeout(() => sec.update({ choice: "" }));
     },
-    busy: () => !!(secWaiting && secWaiting.fid === f.id),
+    busy: () => !!(secWaiting && secWaiting.fid === finding.id),
     onChange: () => secData && renderSecurity(secData),
   });
-  secSecs.set(f.id, sec);
+  secSecs.set(finding.id, sec);
   return sec;
 }
 const secChosen = (fid, a) => {
   const sec = secSecs.get(fid);
   return !!sec && sec.dirty() && sec.get("choice") === a.choice;
 };
-function secChoose(f, a) {
+function secChoose(finding, a) {
   // A cure acts at once (the one in effect already: nothing to do).
-  if (secKind(f) === "cure") return a.on ? undefined : secFix(f.id, a);
+  if (secKind(finding) === "cure") return a.on ? undefined : secFix(finding.id, a);
   // Chosen again, or the choice it has now: nothing to save for it.
-  secSection(f).set("choice", secChosen(f.id, a) || a.on ? "" : a.choice);
+  secSection(finding).set("choice", secChosen(finding.id, a) || a.on ? "" : a.choice);
 }
 // The footer under a finding whose choice is held for Save.
-const secFoot = (f) =>
-  secKind(f) === "cure" || !(f.actions || []).length
+const secFoot = (finding) =>
+  secKind(finding) === "cure" || !(finding.actions || []).length
     ? []
-    : [secSection(f).foot, secSection(f).reason];
+    : [secSection(finding).foot, secSection(finding).reason];
 
 // --- one finding, the same shape on every page -------------------------------------------------------
 // A status word, not an emoji; the title; what it means; and one thing to do: buttons that do it here, a
@@ -3811,12 +3811,12 @@ function copyBox(cmd) {
   );
 }
 // A finding's parts (irate_box/finding.py: summary, why, notes, evidence, fix, commands).
-const findingParts = (f) => ({
-  detail: f.summary || "",
-  why: f.why || "",
-  notes: f.notes || [],
-  evidence: f.evidence || [],
-  commands: f.commands || [],
+const findingParts = (finding) => ({
+  detail: finding.summary || "",
+  why: finding.why || "",
+  notes: finding.notes || [],
+  evidence: finding.evidence || [],
+  commands: finding.commands || [],
 });
 // What the check saw (names, paths, packages): data, shown as it is.
 const evidenceList = (items) =>
@@ -4024,9 +4024,9 @@ function secRepairFollow(data) {
 // A choice on the Security page, as a setting rather than a finding: its name, what it means, its options as
 // chips with how it is now selected (actions with a group), and any other buttons. The status words and
 // "what to do" are the doctors' (Security doctor), not this page's.
-function secChipRows(f, busy) {
+function secChipRows(finding, busy) {
   const groups = new Map();
-  (f.actions || [])
+  (finding.actions || [])
     .filter((a) => a.group)
     .forEach((a) => groups.set(a.group, [...(groups.get(a.group) || []), a]));
   return [...groups].map(([label, choices]) =>
@@ -4038,7 +4038,7 @@ function secChipRows(f, busy) {
         "div",
         { className: "chip-group", role: "group", "aria-label": label },
         ...choices.map((a) => {
-          const sec = secSecs.get(f.id);
+          const sec = secSecs.get(finding.id);
           // Pending only in the group it was chosen in: the finding's other groups show how they are.
           const pend =
             sec && sec.dirty() && choices.some((c) => c.choice === sec.get("choice"))
@@ -4053,7 +4053,7 @@ function secChipRows(f, busy) {
               (pend && sel ? " pending" : ""),
             textContent: a.label,
             disabled: busy,
-            onclick: (event) => secChoose(f, a, event.currentTarget),
+            onclick: (event) => secChoose(finding, a, event.currentTarget),
           });
           b.setAttribute("aria-pressed", String(sel));
           return b;
@@ -4080,32 +4080,32 @@ const SEC_SUBJECTS = [
     "How the system under the box software is set up: kernel, package sources, logs and services.",
   ],
 ];
-function secSubject(f) {
-  if (/^(port-|listen-|firewall|guest-net|cockpit|llmnr|share)/.test(f.id))
+function secSubject(finding) {
+  if (/^(port-|listen-|firewall|guest-net|cockpit|llmnr|share)/.test(finding.id))
     return "exposure";
-  if (/^(ssh|sudo|root-|group-)/.test(f.id)) return "login";
+  if (/^(ssh|sudo|root-|group-)/.test(finding.id)) return "login";
   return "system";
 }
 // One of the box's settings, not a finding: what it is now, its values with the one in effect marked, and
 // Save and Discard. It stays in its place whatever it is set to. What the doctor makes of it is the
 // Security doctor's, which links here; this says only that there is one.
-function secChoiceCard(f, busy, note) {
-  const rows = secChipRows(f, busy);
-  const rest = { ...f, actions: (f.actions || []).filter((a) => !a.group) };
+function secChoiceCard(finding, busy, note) {
+  const rows = secChipRows(finding, busy);
+  const rest = { ...finding, actions: (finding.actions || []).filter((a) => !a.group) };
   const buttons = rest.actions.length
     ? el("div", { className: "library-buttons" }, ...scanButtons(rest, busy))
     : null;
-  const p = findingParts(f);
+  const p = findingParts(finding);
   return el(
     "div",
-    { className: "setting sec-choice", id: `sec-${f.id}` },
-    el("span", { className: "setting-name", textContent: f.title }),
+    { className: "setting sec-choice", id: `sec-${finding.id}` },
+    el("span", { className: "setting-name", textContent: finding.title }),
     el("span", { className: "setting-desc", textContent: p.detail }),
     ...rows,
     buttons,
     // With nothing to choose here (no key for SSH yet, say), what would make a choice possible.
-    !rows.length && !buttons && f.status !== "ok" && f.fix
-      ? el("span", { className: "setting-desc", textContent: f.fix })
+    !rows.length && !buttons && finding.status !== "ok" && finding.fix
+      ? el("span", { className: "setting-desc", textContent: finding.fix })
       : null,
     p.why
       ? el("span", { className: "setting-desc fwhy", textContent: p.why })
@@ -4115,17 +4115,17 @@ function secChoiceCard(f, busy, note) {
     ),
     evidenceList(p.evidence),
     // What to type where the page cannot put it in effect itself (the firewall's rules not loaded, say).
-    f.status !== "ok" && p.commands.length
+    finding.status !== "ok" && p.commands.length
       ? el("div", { className: "fdo-cmds" }, ...p.commands.map(copyBox))
       : null,
-    f.status !== "ok"
+    finding.status !== "ok"
       ? el("a", {
           className: "setting-desc",
           href: "#secdoctor",
           textContent: "The Security doctor has a finding about this setting.",
         })
       : null,
-    ...secFoot(f),
+    ...secFoot(finding),
     note,
   );
 }
@@ -4164,7 +4164,7 @@ function renderSecurity(data) {
   if (scan && window.TOUR)
     TOUR.has(
       "cockpit",
-      (scan.findings || []).some((f) => f.id === "cockpit"),
+      (scan.findings || []).some((finding) => finding.id === "cockpit"),
     );
   const busy = data.pending > 0 || !!secWaiting;
   secPrune(scan);
@@ -4197,16 +4197,16 @@ function renderSecurity(data) {
     }
   }
   const lines = scan ? scan.findings : [];
-  const shown = new Set(lines.map((f) => f.id));
+  const shown = new Set(lines.map((finding) => finding.id));
   const by = (k) =>
     lines
-      .filter((f) => secKind(f) === k)
+      .filter((finding) => secKind(finding) === k)
       .sort((a, b) => RANK[a.status] - RANK[b.status]);
   // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
   // choice or is set, so a setting can always be found and changed back.
-  const choices = lines.filter((f) => secKind(f) === "choice");
-  const waiting = choices.filter((f) => f.status !== "ok");
-  const card = (f) => secChoiceCard(f, busy, noteUnder(f.id));
+  const choices = lines.filter((finding) => secKind(finding) === "choice");
+  const waiting = choices.filter((finding) => finding.status !== "ok");
+  const card = (finding) => secChoiceCard(finding, busy, noteUnder(finding.id));
   sec.findings.replaceChildren(
     ...(!scan
       ? [
@@ -4216,7 +4216,7 @@ function renderSecurity(data) {
           }),
         ]
       : SEC_SUBJECTS.map(([key, title, words]) => {
-          const mine = choices.filter((f) => secSubject(f) === key);
+          const mine = choices.filter((finding) => secSubject(finding) === key);
           return mine.length
             ? el(
                 "div",
@@ -4230,25 +4230,25 @@ function renderSecurity(data) {
   );
   // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
   sec.hub.replaceChildren(
-    ...data.hub.map((f) =>
+    ...data.hub.map((finding) =>
       el(
         "div",
-        { className: "setting sec-choice", id: `sec-${f.id}` },
-        el("span", { className: "setting-name", textContent: f.title }),
+        { className: "setting sec-choice", id: `sec-${finding.id}` },
+        el("span", { className: "setting-name", textContent: finding.title }),
         // A limit is a state, set where the link goes: what it is now and why it matters, no recommended action.
         ...((p) => [
           el("span", { className: "setting-desc", textContent: p.detail }),
           p.why ? el("span", { className: "setting-desc fwhy", textContent: p.why }) : null,
           ...p.notes.map((n) => el("span", { className: "setting-desc", textContent: n })),
-        ])(findingParts(f)),
-        f.do && f.do.go
+        ])(findingParts(finding)),
+        finding.do && finding.do.go
           ? el(
               "div",
               { className: "library-buttons" },
               el("a", {
                 className: "action-btn go-btn",
-                href: `#${f.do.go}`,
-                textContent: `Go to ${f.do.where} →`,
+                href: `#${finding.do.go}`,
+                textContent: `Go to ${finding.do.where} →`,
               }),
             )
           : null,
@@ -4259,40 +4259,40 @@ function renderSecurity(data) {
   // Automatic security updates: a choice of its own (off, download, install), not the System toolkit's.
   // Its badge (up to date / update available) is as fresh as the package lists it was read from.
   // Lists of unknown age say nothing either way, unless updates are waiting.
-  const updBadge = (f) =>
-    f.id !== "security-updates" ||
-    (f.lists_age_days == null && f.status === "ok")
+  const updBadge = (finding) =>
+    finding.id !== "security-updates" ||
+    (finding.lists_age_days == null && finding.status === "ok")
       ? null
       : AW.updatePill(
-          Date.now() / 1000 - (f.lists_age_days || 0) * 86400,
-          f.status !== "ok",
+          Date.now() / 1000 - (finding.lists_age_days || 0) * 86400,
+          finding.status !== "ok",
         );
   // The choice and the three buttons are the update pattern's, under the two lines.
   // State, not findings: what is waiting and how automatic updates stand. What to do about them is the pattern's
   // card below (its chips and buttons); what the doctor makes of them is the Updates doctor's.
   noteEl("updates-security").replaceChildren(
     ...(by("update").length
-      ? by("update").map((f) => {
-          const p = findingParts(f);
+      ? by("update").map((finding) => {
+          const p = findingParts(finding);
           return el(
             "div",
-            { className: "setting sec-choice", id: `sec-${f.id}` },
+            { className: "setting sec-choice", id: `sec-${finding.id}` },
             el(
               "span",
               { className: "setting-name" },
-              f.title,
-              updBadge(f) ? " " : "",
-              updBadge(f),
+              finding.title,
+              updBadge(finding) ? " " : "",
+              updBadge(finding),
             ),
             el("span", { className: "setting-desc", textContent: p.detail }),
             ...p.notes.map((n) =>
               el("span", { className: "setting-desc", textContent: n }),
             ),
             evidenceList(p.evidence),
-            ...(f.id === "security-updates"
+            ...(finding.id === "security-updates"
               ? []
-              : [...scanButtons(f, busy), ...secFoot(f)]),
-            noteUnder(f.id),
+              : [...scanButtons(finding, busy), ...secFoot(finding)]),
+            noteUnder(finding.id),
           );
         })
       : [
@@ -4349,7 +4349,7 @@ function renderSecurity(data) {
   // buttons. A UDP port in the kernel's range for outgoing sockets (32768 up) is a reply socket of a
   // program that has others (Avahi's queries, Syncthing's connections): not listed.
   const portLine = new Map(
-    lines.filter((f) => f.id.startsWith("port-")).map((f) => [f.id, f]),
+    lines.filter((finding) => finding.id.startsWith("port-")).map((finding) => [finding.id, finding]),
   );
   const lineOf = (l) =>
     portLine.get(`port-${l.proto}-${l.port}`) ||
@@ -4375,9 +4375,9 @@ function renderSecurity(data) {
       const l0 = shown[0];
       const ssh = !worst && shown.some((l) => l.proto === "tcp" && l.port === 22);
       const cockpit = !worst && shown.some((l) => l.port === 9090 && (l.unit || "").startsWith("cockpit"));
-      const said = [...new Set(fs.filter((f) => f.status === worst.status || fs.length === 1)
-        .flatMap((f) => [f.summary, f.why]).filter(Boolean))];
-      const acts = fs.filter((f) => (f.actions || []).length);
+      const said = [...new Set(fs.filter((finding) => finding.status === worst.status || fs.length === 1)
+        .flatMap((finding) => [finding.summary, finding.why]).filter(Boolean))];
+      const acts = fs.filter((finding) => (finding.actions || []).length);
       const owner = l0.owner || {};
       return el(
         "tr",
@@ -4386,7 +4386,7 @@ function renderSecurity(data) {
           "td",
           {},
           // The doctor's links go to a port's line: each port's anchor is in its program's row.
-          ...fs.filter((f) => secKind(f) === "port").map((f) => el("span", { id: `sec-${f.id}` })),
+          ...fs.filter((finding) => secKind(finding) === "port").map((finding) => el("span", { id: `sec-${finding.id}` })),
           el("span", {
             className: "setting-name",
             textContent: worst ? worst.title : l0.name,
@@ -4425,28 +4425,28 @@ function renderSecurity(data) {
           worst && worst.fix && worst.status !== "ok"
             ? el("span", { className: "setting-desc", textContent: ` ${worst.fix}` })
             : null,
-          ...acts.map((f) =>
+          ...acts.map((finding) =>
             el(
               "span",
               { className: "library-buttons" },
-              acts.length > 1 ? el("span", { className: "setting-desc", textContent: `${portRanges(shown.filter((l) => lineOf(l) === f))}: ` }) : null,
+              acts.length > 1 ? el("span", { className: "setting-desc", textContent: `${portRanges(shown.filter((l) => lineOf(l) === finding))}: ` }) : null,
               // A program's own buttons once (Stop and disable): a port's stay with its port.
               ...scanButtons(
-                { ...f, actions: f.actions.filter((a) => f === acts.find((g) => g.actions.some((b) => b.choice === a.choice))) },
+                { ...finding, actions: finding.actions.filter((a) => finding === acts.find((g) => g.actions.some((b) => b.choice === a.choice))) },
                 busy,
               ),
             ),
           ),
-          ...fs.flatMap((f) => [...secFoot(f), noteUnder(f.id)]),
+          ...fs.flatMap((finding) => [...secFoot(finding), noteUnder(finding.id)]),
         ),
       );
     }),
   );
   sec.output.hidden = !data.log.length;
   sec.log.textContent = data.log.join("\n");
-  const problems = waiting.filter((f) => f.status === "problem").length;
+  const problems = waiting.filter((finding) => finding.status === "problem").length;
   const ports = lines.filter(
-    (f) => f.id.startsWith("port-") && f.status !== "ok",
+    (finding) => finding.id.startsWith("port-") && finding.status !== "ok",
   ).length;
   sec.counts.replaceChildren(
     ...[
@@ -4466,7 +4466,7 @@ function renderSecurity(data) {
     ),
   );
   badge("security", problems ? String(problems) : "");
-  const updProblems = by("update").filter((f) => f.status === "problem").length;
+  const updProblems = by("update").filter((finding) => finding.status === "problem").length;
   badge("updates-security", updProblems ? String(updProblems) : ""); // Needs attention words it
   if (scan)
     setupStep(
@@ -4520,20 +4520,20 @@ jointSearch.addEventListener(
 // doctor's repair, the deep audit, a link to where it is chosen, a command; and the words for it.
 function jointDo(i, data, busy) {
   const scanBy = new Map(
-    ((data.scan || {}).findings || []).map((f) => [f.id, f]),
+    ((data.scan || {}).findings || []).map((finding) => [finding.id, finding]),
   );
   const page = (i.page || []).map((id) => scanBy.get(id)).filter(Boolean);
   const seen = new Set(),
     controls = [];
-  for (const f of page) {
+  for (const finding of page) {
     // A repair with one right answer is done here; an ongoing choice is the Security page's (or Updates'),
     // where it can be seen and changed back: the doctor links to it rather than changing it itself.
-    if (secKind(f) !== "cure") {
-      if ((f.actions || []).length || f.status !== "ok") {
+    if (secKind(finding) !== "cure") {
+      if ((finding.actions || []).length || finding.status !== "ok") {
         const [to, where] =
-          secKind(f) === "update"
+          secKind(finding) === "update"
             ? ["updates-security", "Updates"]
-            : [`sec-${f.id}`, "Security"];
+            : [`sec-${finding.id}`, "Security"];
         if (!seen.has(to)) {
           seen.add(to);
           controls.push(
@@ -4547,7 +4547,7 @@ function jointDo(i, data, busy) {
       }
       continue;
     }
-    for (const a of f.actions || []) {
+    for (const a of finding.actions || []) {
       if (seen.has(a.choice)) continue;
       seen.add(a.choice);
       controls.push(
@@ -4556,7 +4556,7 @@ function jointDo(i, data, busy) {
           className: "action-btn",
           textContent: a.label,
           disabled: busy,
-          onclick: () => secFix(f.id, a),
+          onclick: () => secFix(finding.id, a),
         }),
       );
     }
@@ -4616,11 +4616,11 @@ function jointDo(i, data, busy) {
   const cmd = d.cmd || i.cmd;
   if (cmd && !(i.commands || []).includes(cmd)) controls.push(copyBox(cmd));
   // The words: the hub's own work said as such; else the Security page's (it goes with its buttons); else the item's.
-  const pageFix = page.map((f) => f.fix).find(Boolean);
+  const pageFix = page.map((finding) => finding.fix).find(Boolean);
   const how =
     d.hub ||
     d.say ||
-    (page.length && page.some((f) => (f.actions || []).length)
+    (page.length && page.some((finding) => (finding.actions || []).length)
       ? pageFix || ""
       : "") ||
     i.fix ||
@@ -4629,7 +4629,7 @@ function jointDo(i, data, busy) {
   const fixed =
     page.length > 0 &&
     page.length === (i.page || []).length &&
-    page.every((f) => f.status === "ok");
+    page.every((finding) => finding.status === "ok");
   return { controls, how, fixed, page };
 }
 
@@ -4687,13 +4687,13 @@ function renderJoint(j, data) {
     warn: real.filter((i) => i.status === "warn" && !fixedNow(i)).length,
   };
   const needle = jointSearch.value.trim().toLowerCase();
-  const words = (f) => [
-    f.title,
-    f.summary,
-    f.why,
-    ...(f.notes || []),
-    ...(f.evidence || []),
-    f.fix,
+  const words = (finding) => [
+    finding.title,
+    finding.summary,
+    finding.why,
+    ...(finding.notes || []),
+    ...(finding.evidence || []),
+    finding.fix,
   ];
   const match = (i) =>
     !needle ||
@@ -4780,18 +4780,18 @@ function renderJoint(j, data) {
   );
   // What the box's own scan has put right with a cure (one right answer), each with its Undo.
   const cured = ((data.scan || {}).findings || []).filter(
-    (f) =>
-      secKind(f) === "cure" && f.status === "ok" && (f.actions || []).length,
+    (finding) =>
+      secKind(finding) === "cure" && finding.status === "ok" && (finding.actions || []).length,
   );
-  fold("joint-cured", cured, (f) =>
+  fold("joint-cured", cured, (finding) =>
     findingRow({
-      id: `sec-cure-${f.id}`,
+      id: `sec-cure-${finding.id}`,
       state: "ok",
-      title: f.title,
-      ...findingParts(f),
+      title: finding.title,
+      ...findingParts(finding),
       how: "Done from here. Use the button to restore the previous setting.",
-      controls: scanButtons(f, busy),
-      note: noteUnder(f.id),
+      controls: scanButtons(finding, busy),
+      note: noteUnder(finding.id),
     }),
   );
   // One strip at the top: each source, its age, and a warning once it is older than it
@@ -5026,9 +5026,9 @@ function renderAudit(audit, busy, data) {
   // The raw report: every step's checks as the doctor wrote them, the fine ones too, all folded.
   sec.auditSteps.replaceChildren(
     ...audit.steps.map((st) => {
-      const worst = st.findings.some((f) => f.status === "problem")
+      const worst = st.findings.some((finding) => finding.status === "problem")
         ? "problem"
-        : st.findings.some((f) => f.status === "warn")
+        : st.findings.some((finding) => finding.status === "warn")
           ? "warn"
           : "ok";
       const lines = [...st.findings].sort(
@@ -5049,44 +5049,44 @@ function renderAudit(audit, busy, data) {
         el(
           "ul",
           { className: "raw-lines" },
-          ...lines.map((f) =>
+          ...lines.map((finding) =>
             el(
               "li",
               {},
               el("span", {
-                className: `fstate fstate-${f.status}`,
-                textContent: STATE_WORD[f.status],
+                className: `fstate fstate-${finding.status}`,
+                textContent: STATE_WORD[finding.status],
               }),
               " ",
-              el("strong", { textContent: f.title }),
-              (audit.new || []).includes(f.id)
+              el("strong", { textContent: finding.title }),
+              (audit.new || []).includes(finding.id)
                 ? el("span", {
                     className: "badge-push bad",
                     textContent: "new",
                   })
                 : null,
-              f.ref
+              finding.ref
                 ? el("span", {
                     className: "setting-desc",
-                    textContent: ` [${f.ref}]`,
+                    textContent: ` [${finding.ref}]`,
                   })
                 : null,
               el("span", {
-                textContent: ` — ${[f.summary, f.why, ...(f.notes || [])].filter(Boolean).join(" ")}`,
+                textContent: ` — ${[finding.summary, finding.why, ...(finding.notes || [])].filter(Boolean).join(" ")}`,
               }),
-              (f.evidence || []).length
+              (finding.evidence || []).length
                 ? el("span", {
                     className: "setting-desc",
-                    textContent: ` (${f.evidence.join(", ")})`,
+                    textContent: ` (${finding.evidence.join(", ")})`,
                   })
                 : null,
-              f.fix
+              finding.fix
                 ? el("span", {
                     className: "setting-desc",
-                    textContent: ` Recommended action: ${f.fix}`,
+                    textContent: ` Recommended action: ${finding.fix}`,
                   })
                 : null,
-              ...(f.status !== "ok" ? (f.commands || []).map(copyBox) : []),
+              ...(finding.status !== "ok" ? (finding.commands || []).map(copyBox) : []),
             ),
           ),
         ),
@@ -5161,8 +5161,8 @@ deb.buttons = AW.updateButtons({
 });
 deb.box.replaceChildren(deb.buttons);
 function drawDebianPattern(lines, busy) {
-  const u = lines.find((f) => f.id === "unattended"),
-    w = lines.find((f) => f.id === "security-updates");
+  const u = lines.find((finding) => finding.id === "unattended"),
+    w = lines.find((finding) => finding.id === "security-updates");
   const pat = u && u.pattern;
   if (pat) debSec.fill({ often: pat.often, act: pat.act });
   deb.says.textContent = pat
@@ -5418,9 +5418,9 @@ function installText(st) {
 // place to go and the commands it names, and its words. A fine finding says nothing more.
 // A setting's choices (actions with a group): one row of chips each, the current one selected, shown
 // whatever the finding's state, since a setting is worth seeing when all is well too.
-function healthChips(f, busy) {
+function healthChips(finding, busy) {
   const groups = new Map();
-  (f.actions || [])
+  (finding.actions || [])
     .filter((a) => a.group)
     .forEach((a) => groups.set(a.group, [...(groups.get(a.group) || []), a]));
   return [...groups].map(([label, choices]) =>
@@ -5438,7 +5438,7 @@ function healthChips(f, busy) {
             textContent: a.label,
             disabled: busy,
             onclick: () => {
-              if (!a.on) hlFix(f.id, a);
+              if (!a.on) hlFix(finding.id, a);
             },
           });
           b.setAttribute("aria-pressed", String(!!a.on));
@@ -5448,12 +5448,12 @@ function healthChips(f, busy) {
     ),
   );
 }
-function healthDo(f, busy) {
-  const chips = healthChips(f, busy);
-  if (f.status === "ok") return { how: "", controls: chips };
+function healthDo(finding, busy) {
+  const chips = healthChips(finding, busy);
+  if (finding.status === "ok") return { how: "", controls: chips };
   const controls = [
     ...chips,
-    ...(f.actions || [])
+    ...(finding.actions || [])
       .filter((a) => !a.group)
       .map((a) =>
         el("button", {
@@ -5461,16 +5461,16 @@ function healthDo(f, busy) {
           className: "action-btn",
           textContent: a.label,
           disabled: busy,
-          onclick: () => hlFix(f.id, a),
+          onclick: () => hlFix(finding.id, a),
         }),
       ),
   ];
   // Commands of their own, the place to go named: nothing is found in the words.
-  let how = f.fix || "";
-  if (f.go) controls.push(goLink(f.go));
-  if (!how && !controls.length && !(f.commands || []).length)
+  let how = finding.fix || "";
+  if (finding.go) controls.push(goLink(finding.go));
+  if (!how && !controls.length && !(finding.commands || []).length)
     how = "Information only.";
-  return { how, controls, commands: f.commands || [] };
+  return { how, controls, commands: finding.commands || [] };
 }
 let hlShow = "all"; // the counters double as the list's filter: all, problem, warn
 let hlDrawn = ""; // what the findings were last drawn from: the same again leaves them (and a selection in them) alone
@@ -5478,10 +5478,10 @@ let hlDrawn = ""; // what the findings were last drawn from: the same again leav
 // The box at a glance, at the top: the findings' counts, the link and the radio, the last start of the box and why,
 // the watchdog's last repair, and what crash watch keeps and what restarts a frozen box.
 function renderGlance(data, rep) {
-  const find = (id) => rep && rep.findings.find((f) => f.id === id);
+  const find = (id) => rep && rep.findings.find((finding) => finding.id === id);
   const first = (text) => String(text || "").split(/(?<=\.)\s/)[0];
   // A finding in a few words: its own glance (health.py), else the first sentence of what it found.
-  const brief = (f) => f.glance || first(f.summary);
+  const brief = (finding) => finding.glance || first(finding.summary);
   // Why the box last started: the reason only ("Unclean shutdown"), the explanation stays in the findings below.
   const why = (t) => {
     const reason = String(t || "")
@@ -5497,7 +5497,7 @@ function renderGlance(data, rep) {
     ? ["problem", "warn"].map(
         (k) =>
           rep.findings.filter(
-            (f) => f.status === k && !(k === "warn" && acc[f.id]),
+            (finding) => finding.status === k && !(k === "warn" && acc[finding.id]),
           ).length,
       )
     : null;
@@ -5859,13 +5859,13 @@ function renderHealth(data) {
   // A review finding the owner accepted (data.accepted, by id) leaves the counts and the open list; one that has
   // become a problem shows again whatever was accepted.
   const acc = data.accepted || {};
-  const accepted = (f) => f.status === "warn" && !!acc[f.id];
+  const accepted = (finding) => finding.status === "warn" && !!acc[finding.id];
   renderGlance(data, rep);
   renderDoctorSettings(data, rep);
   const all = rep
     ? [...rep.findings].sort((a, b) => RANK[a.status] - RANK[b.status])
     : [];
-  const shown = new Set(all.map((f) => f.id));
+  const shown = new Set(all.map((finding) => finding.id));
   const noteUnder = (fid) =>
     hlNote && hlNote.fid === fid
       ? el("span", {
@@ -5875,26 +5875,26 @@ function renderHealth(data) {
         })
       : null;
   // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
-  const isClock = (f) => f.id.startsWith("clock") || f.id.startsWith("rtc");
+  const isClock = (finding) => finding.id.startsWith("clock") || finding.id.startsWith("rtc");
   // One shape for every finding, as the security doctor's: a status word,
   // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
-  const item = (f) => {
-    const d = healthDo(f, busy || h.stuck);
-    const on = accepted(f);
+  const item = (finding) => {
+    const d = healthDo(finding, busy || h.stuck);
+    const on = accepted(finding);
     return findingRow({
-      id: `hl-${f.id}`,
-      state: on ? "accepted" : f.status,
-      title: f.title,
-      ...findingParts(f),
+      id: `hl-${finding.id}`,
+      state: on ? "accepted" : finding.status,
+      title: finding.title,
+      ...findingParts(finding),
       how: d.how,
-      commands: f.status === "ok" ? [] : d.commands,
+      commands: finding.status === "ok" ? [] : d.commands,
       controls: d.controls,
-      note: noteUnder(f.id),
+      note: noteUnder(finding.id),
       accept:
-        f.status === "warn"
+        finding.status === "warn"
           ? {
-              key: f.id,
-              title: f.title,
+              key: finding.id,
+              title: finding.title,
               on,
               act: hlAccept,
               label: "Accept",
@@ -5904,24 +5904,24 @@ function renderHealth(data) {
     });
   };
   const needle = hl.search.value.trim().toLowerCase();
-  const match = (f) =>
+  const match = (finding) =>
     !needle ||
     [
-      f.title,
-      f.summary,
-      f.why,
-      ...(f.notes || []),
-      ...(f.evidence || []),
-      f.fix,
+      finding.title,
+      finding.summary,
+      finding.why,
+      ...(finding.notes || []),
+      ...(finding.evidence || []),
+      finding.fix,
     ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
       .includes(needle);
-  const services = all.filter((f) => !isClock(f));
+  const services = all.filter((finding) => !isClock(finding));
   const counts = {
-    problem: services.filter((f) => f.status === "problem").length,
-    warn: services.filter((f) => f.status === "warn" && !accepted(f)).length,
+    problem: services.filter((service) => service.status === "problem").length,
+    warn: services.filter((service) => service.status === "warn" && !accepted(service)).length,
   };
   hl.summary.replaceChildren(
     ...(!rep
@@ -5959,11 +5959,11 @@ function renderHealth(data) {
         })),
   );
   const open = services.filter(
-    (f) =>
-      f.status !== "ok" &&
-      !accepted(f) &&
-      match(f) &&
-      (hlShow === "all" || f.status === hlShow),
+    (service) =>
+      service.status !== "ok" &&
+      !accepted(service) &&
+      match(service) &&
+      (hlShow === "all" || service.status === hlShow),
   );
   // Redrawn only when what they show has changed: a poll that brings the same leaves a selection in them alone.
   const drawn = JSON.stringify([
@@ -5986,8 +5986,8 @@ function renderHealth(data) {
       : "Nothing to fix or review.";
   // Accepted first, then what passed: both folded under one heading.
   const fine = [
-    ...services.filter((f) => accepted(f) && match(f)),
-    ...services.filter((f) => f.status === "ok" && match(f)),
+    ...services.filter((service) => accepted(service) && match(service)),
+    ...services.filter((service) => service.status === "ok" && match(service)),
   ];
   hl.fineFold.hidden = !fine.length;
   hl.fineCount.textContent = `(${fine.length})`;
@@ -6030,10 +6030,10 @@ function renderHealth(data) {
   hl.log.textContent = (data.log || []).join("\n");
   hl.output.hidden = !(data.log || []).length;
   const problems = all.filter(
-    (f) => f.status === "problem" && !isClock(f),
+    (finding) => finding.status === "problem" && !isClock(finding),
   ).length;
   const clockProblems = all.filter(
-    (f) => f.status === "problem" && isClock(f),
+    (finding) => finding.status === "problem" && isClock(finding),
   ).length;
   badge("health", h.stuck ? "!" : problems ? String(problems) : "");
   badge("clock", clockProblems ? String(clockProblems) : "");
@@ -7577,12 +7577,12 @@ function uptimeSection(iface, data = netData) {
 // netinv wrote findings has only its English hazards.
 function netHazards(inv) {
   if (!inv.findings) return inv.hazards || [];
-  return AW.localise(inv.findings).map((f) => ({
-    ...f,
+  return AW.localise(inv.findings).map((finding) => ({
+    ...finding,
     detail:
-      [f.summary, f.why, ...(f.notes || [])].filter(Boolean).join(" ") +
-      ((f.evidence || []).length ? ` (${f.evidence.join(", ")})` : ""),
-    fix: [f.fix, ...(f.commands || []).map((c) => `\`${c}\``)]
+      [finding.summary, finding.why, ...(finding.notes || [])].filter(Boolean).join(" ") +
+      ((finding.evidence || []).length ? ` (${finding.evidence.join(", ")})` : ""),
+    fix: [finding.fix, ...(finding.commands || []).map((c) => `\`${c}\``)]
       .filter(Boolean)
       .join(" "),
   }));
@@ -7780,8 +7780,8 @@ const netTabs = {
   wiredCard: document.getElementById("net-wired-card"),
   apHealth: document.getElementById("ap-health"),
 };
-const bandOf = (f) =>
-  f ? (f < 3000 ? "2.4 GHz" : f < 5925 ? "5 GHz" : "6 GHz") : "";
+const bandOf = (frequency) =>
+  frequency ? (frequency < 3000 ? "2.4 GHz" : frequency < 5925 ? "5 GHz" : "6 GHz") : "";
 // live: a value that moves at every poll (a signal), put in place on its own (AW.drawKept).
 const netLine = (label, text, live) =>
   el(
@@ -7828,39 +7828,39 @@ function drawRoaming(inv, u, wifi) {
   const box = document.getElementById("net-roaming"),
     caps = document.getElementById("net-roam-caps");
   const radio = wifi.find((x) => x.roaming),
-    f = radio && radio.roaming;
-  if (!f) {
+    roaming = radio && radio.roaming;
+  if (!roaming) {
     box.replaceChildren();
     caps.replaceChildren();
     return;
   }
   const chosen = (u && u.chosen) || {};
-  const n = f.aps.length,
+  const n = roaming.aps.length,
     hour = u && !u.stale ? u.roams_hour || 0 : null;
   const lines = [
     netLine(
       "Roaming",
       n > 1
         ? `Roaming: ${ROAM_SHORT[chosen.roaming || "roam"]}${chosen.ignore_roams ? " (short moves not counted as drops)" : ""}. ` +
-            `${n} access points for ${f.ssid}, on channel${f.channels.length === 1 ? "" : "s"} ${andList(f.channels)}. ` +
+            `${n} access points for ${roaming.ssid}, on channel${roaming.channels.length === 1 ? "" : "s"} ${andList(roaming.channels)}. ` +
             (hour == null
               ? ""
               : hour
                 ? `The box moved between them ${hour === 1 ? "once" : `${hour} times`} in the last hour.`
                 : "The box has not moved between them in the last hour.") +
-            (f.hotspot_shares && n > 1
+            (roaming.hotspot_shares && n > 1
               ? " The hotspot shares this radio, so it moves too."
               : "")
-        : `One access point for ${f.ssid}: nothing to roam between.`,
+        : `One access point for ${roaming.ssid}: nothing to roam between.`,
     ),
   ];
-  if (f.bgscan != null)
-    lines.push(netLine("Background scan", cap1(bgscanWords(f.bgscan))));
+  if (roaming.bgscan != null)
+    lines.push(netLine("Background scan", cap1(bgscanWords(roaming.bgscan))));
   const lockGone =
     chosen.roaming === "lock" &&
     u &&
     u.state !== "up" &&
-    !f.aps.some((a) => a.bssid === chosen.lock_bssid);
+    !roaming.aps.some((a) => a.bssid === chosen.lock_bssid);
   if (lockGone) {
     lines.push(
       el(
@@ -7891,13 +7891,13 @@ function drawRoaming(inv, u, wifi) {
       el("h4", {}, el("span", { textContent: `${radio.iface}: roaming` })),
       el("p", {
         className: "net-label",
-        textContent: `Access points sharing ${f.ssid}`,
+        textContent: `Access points sharing ${roaming.ssid}`,
       }),
-      f.aps.length
+      roaming.aps.length
         ? el(
             "ul",
             { className: "net-ap-tiles" },
-            ...f.aps.map((a) =>
+            ...roaming.aps.map((a) =>
               el(
                 "li",
                 {
@@ -7935,10 +7935,10 @@ function drawRoaming(inv, u, wifi) {
       ...["roam", "no-scan", "lock"].map((c) =>
         netLine(
           ROAM_WORDS[c][0],
-          f.choices.includes(c) ? "Available" : `Not available: ${f.why[c]}`,
+          roaming.choices.includes(c) ? "Available" : `Not available: ${roaming.why[c]}`,
         ),
       ),
-      f.nm_version ? netLine("NetworkManager", f.nm_version) : null,
+      roaming.nm_version ? netLine("NetworkManager", roaming.nm_version) : null,
     ),
   );
 }
@@ -8490,7 +8490,7 @@ function renderDefaults(inv, busy) {
   const card = document.getElementById("net-defaults-card");
   card.hidden = !d;
   if (!d) return;
-  const own = (f) => (f || "").split("/").pop();
+  const own = (path) => (path || "").split("/").pop();
   const ifaces = Object.keys(d.ifaces || {});
   if (defaultsScope && !ifaces.includes(defaultsScope)) defaultsScope = "";
   const scope = el(
@@ -8619,7 +8619,7 @@ function renderDefaults(inv, busy) {
         `${own(x.file)} sets ${Object.keys(x.keys).join(", ")} for some devices only (${x.match || x.section}).`,
     ),
     ...d.broken.map(
-      (f) => `${f} could not be read. NetworkManager can also fail to read it.`,
+      (path) => `${path} could not be read. NetworkManager can also fail to read it.`,
     ),
   ];
   net.defaults.replaceChildren(
@@ -8819,7 +8819,7 @@ function renderVisible(inv, busy) {
     () => netRequest({ action: "scan", rescan: true }, "scan"),
     { disabled: busy, className: "small" },
   );
-  const f = joinForm.elements;
+  const fields = joinForm.elements;
   box.replaceChildren(
     el(
       "p",
@@ -8893,11 +8893,11 @@ function renderVisible(inv, busy) {
                         ? actionButton(
                             "Use this network",
                             () => {
-                              f.ssid.value = n.ssid;
-                              f.security.value = n.kind;
-                              f.hidden.checked = false;
+                              fields.ssid.value = n.ssid;
+                              fields.security.value = n.kind;
+                              fields.hidden.checked = false;
                               joinOpen();
-                              (n.kind === "open" ? f.ssid : f.psk).focus();
+                              (n.kind === "open" ? fields.ssid : fields.psk).focus();
                             },
                             {
                               className: "small",
@@ -9176,22 +9176,22 @@ function renderHandover(inv, busy) {
       }),
     );
   } else if (ho && !ho.error) {
-    for (const f of ho.files || []) {
-      const names = f.connections.map((c) => c.name).join(", ");
-      if (f.ok) {
+    for (const file of ho.files || []) {
+      const names = file.connections.map((c) => c.name).join(", ");
+      if (file.ok) {
         rows.push(
           el(
             "p",
             {
               className: "setting-desc",
-              dataset: { change: `handover:${f.name}` },
+              dataset: { change: `handover:${file.name}` },
             },
-            `${names || "Your connection"}: at every boot, netplan writes ${f.connections.length === 1 ? "it" : "them"} again from the file ${f.name}. This undoes any change made here. ` +
+            `${names || "Your connection"}: at every boot, netplan writes ${file.connections.length === 1 ? "it" : "them"} again from the file ${file.name}. This undoes any change made here. ` +
               "Select Manage with NetworkManager to keep changes permanently. The connection keeps the same name, password and settings. The box keeps the netplan file aside, so you can undo this. ",
             actionButton(
               "Manage with NetworkManager",
               () => {
-                netRequest({ action: "handover", name: f.name }, "handover");
+                netRequest({ action: "handover", name: file.name }, "handover");
               },
               { disabled: busy },
             ),
@@ -9201,7 +9201,7 @@ function renderHandover(inv, busy) {
         rows.push(
           el("p", {
             className: "setting-desc",
-            textContent: `${f.name}: ${f.why}`,
+            textContent: `${file.name}: ${file.why}`,
           }),
         );
       }
@@ -9420,22 +9420,22 @@ const joinOpen = () => {
 joinForm.elements.security.addEventListener("change", joinOpen);
 joinOpen();
 function joinAsk(now) {
-  const f = joinForm.elements;
+  const fields = joinForm.elements;
   if (!joinForm.reportValidity()) return;
-  const ssid = f.ssid.value;
+  const ssid = fields.ssid.value;
   // What each button does is said under them (#net-join-says): it acts at once.
   netRequest(
     {
       action: "join",
       ssid,
-      security: f.security.value,
-      psk: f.security.value === "open" ? "" : f.psk.value,
-      hidden: f.hidden.checked,
+      security: fields.security.value,
+      psk: fields.security.value === "open" ? "" : fields.psk.value,
+      hidden: fields.hidden.checked,
       now,
     },
     "join",
   );
-  f.psk.value = "";
+  fields.psk.value = "";
 }
 joinForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -10029,11 +10029,11 @@ const EXPORT_PRESETS = {
 let exportPreset = "update",
   kitBusy = false;
 function applyPreset(key) {
-  const f = kitEl.form.elements,
+  const fields = kitEl.form.elements,
     [, set] = EXPORT_PRESETS[key];
   exportPreset = key;
-  if ("hub" in set) f.hub.checked = set.hub;
-  if ("state" in set) f.state.value = set.state;
+  if ("hub" in set) fields.hub.checked = set.hub;
+  if ("state" in set) fields.state.value = set.state;
   if ("repos" in set)
     kitEl.repos.querySelectorAll("input").forEach((i) => {
       i.checked = set.repos;
@@ -10082,14 +10082,14 @@ function drawPicks() {
 }
 function kitBytes() {
   const p = bkPlan,
-    f = kitEl.form.elements;
+    fields = kitEl.form.elements;
   const sum = (box, list, key) =>
     picked(box).reduce(
       (n, v) => n + ((list.find((x) => x[key] === v) || {}).size || 0),
       0,
     );
   return (
-    (f.hub.checked ? p.hub : 0) +
+    (fields.hub.checked ? p.hub : 0) +
     sum(kitEl.books, p.books, "name") +
     sum(kitEl.kits, p.kits, "id") +
     picked(kitEl.repos).reduce(
@@ -10098,29 +10098,29 @@ function kitBytes() {
         ((p.repos.find((repo) => `${repo.area}/${repo.name}` === v) || {}).size || 0),
       0,
     ) +
-    (f.state.value === "none" ? 0 : p.levels[f.state.value])
+    (fields.state.value === "none" ? 0 : p.levels[fields.state.value])
   );
 }
 function drawKitTotal() {
   if (!bkPlan) return;
-  const f = kitEl.form.elements;
+  const fields = kitEl.form.elements;
   // The hub program goes only as a download (one file that setup.sh runs from).
   let moved = false;
-  if (f.hub.checked && f.dest.value === "stick") {
-    f.dest.value = "download";
+  if (fields.hub.checked && fields.dest.value === "stick") {
+    fields.dest.value = "download";
     moved = true;
   }
-  const stick = f.dest.value === "stick";
+  const stick = fields.dest.value === "stick";
   stickEl.box.hidden = !stick;
   const total = kitBytes(),
-    budget = Number(f.budget.value) || 0;
+    budget = Number(fields.budget.value) || 0;
   const over = budget && total > budget * 2 ** 20;
   kitEl.total.textContent =
     (total ? `About ${size(total)}` : "Nothing selected yet") +
     (budget
       ? ` of a ${size(budget * 2 ** 20)} budget${over ? ". This is over the budget. Remove something from the export." : "."}`
       : " (no budget set).") +
-    (f.hub.checked ? " The hub program is in it." : "") +
+    (fields.hub.checked ? " The hub program is in it." : "") +
     (moved ? " With the hub program, the export is a download." : "");
   kitEl.total.classList.toggle("bad", !!over);
   kitEl.make.dataset.over = over ? "1" : "";
@@ -10305,14 +10305,14 @@ kitEl.form.addEventListener("submit", async (event) => {
     );
     return;
   }
-  const f = kitEl.form.elements,
-    budget = Number(f.budget.value) || null;
+  const fields = kitEl.form.elements,
+    budget = Number(fields.budget.value) || null;
   const books = picked(kitEl.books),
     kits = picked(kitEl.kits),
     repos = picked(kitEl.repos),
-    state = f.state.value;
+    state = fields.state.value;
   try {
-    if (f.dest.value === "stick") {
+    if (fields.dest.value === "stick") {
       const d = usbSticks.find((x) => x.name === stickEl.stick.value);
       if (!d) return;
       bkWaiting = {
@@ -10339,7 +10339,7 @@ kitEl.form.addEventListener("submit", async (event) => {
     kitWaiting = (
       await postJSON("/admin/kit", {
         action: "make",
-        hub: f.hub.checked,
+        hub: fields.hub.checked,
         books,
         kits,
         repos,
@@ -12905,29 +12905,29 @@ function renderMirrors(data) {
 
 git.mirrorForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const f = git.mirrorForm.elements;
+  const fields = git.mirrorForm.elements;
   const groups = [];
-  if (f.pattern.value.trim())
+  if (fields.pattern.value.trim())
     groups.push({
       kind: "tags",
-      pattern: f.pattern.value.trim(),
-      keep: Number(f.releases.value) || 0,
+      pattern: fields.pattern.value.trim(),
+      keep: Number(fields.releases.value) || 0,
     });
   else {
-    if (Number(f.releases.value))
-      groups.push({ kind: "release", keep: Number(f.releases.value) });
-    if (Number(f.prereleases.value))
-      groups.push({ kind: "prerelease", keep: Number(f.prereleases.value) });
+    if (Number(fields.releases.value))
+      groups.push({ kind: "release", keep: Number(fields.releases.value) });
+    if (Number(fields.prereleases.value))
+      groups.push({ kind: "prerelease", keep: Number(fields.prereleases.value) });
   }
   const mirror = {
-    upstream: f.upstream.value.trim(),
-    name: f.name.value.trim(),
-    area: f.area.value,
-    branches: f.branches.value.trim().split(/\s+/).filter(Boolean),
+    upstream: fields.upstream.value.trim(),
+    name: fields.name.value.trim(),
+    area: fields.area.value,
+    branches: fields.branches.value.trim().split(/\s+/).filter(Boolean),
     groups,
-    history: f.history.value,
-    budget_mb: Number(f.budget.value) || 2048,
-    submodules: f.submodules.checked,
+    history: fields.history.value,
+    budget_mb: Number(fields.budget.value) || 2048,
+    submodules: fields.submodules.checked,
   };
   try {
     renderGit(await postJSON("/admin/git", { action: "mirror-add", mirror }));
@@ -12951,18 +12951,18 @@ async function loadGit() {
 
 git.form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const f = git.form.elements;
+  const fields = git.form.elements;
   try {
     renderGit(
       await postJSON("/admin/git", {
         action: "create",
-        area: f.area.value,
-        name: f.name.value,
-        description: f.description.value,
+        area: fields.area.value,
+        name: fields.name.value,
+        description: fields.description.value,
       }),
     );
     say(
-      `Created ${f.name.value.replace(/\.git$/, "")}.git. Push to it with: git push http://${hubHost()}${f.area.value === "public" ? "/git/" : "/git-private/"}${f.name.value.replace(/\.git$/, "")}.git main`,
+      `Created ${fields.name.value.replace(/\.git$/, "")}.git. Push to it with: git push http://${hubHost()}${fields.area.value === "public" ? "/git/" : "/git-private/"}${fields.name.value.replace(/\.git$/, "")}.git main`,
       true,
       git.createNote,
     );
@@ -13319,7 +13319,7 @@ let fwChosen = new Set();
 function renderFirmware(data) {
   const cfg = data.settings;
   const st = data.status || {};
-  const f = fw.form.elements;
+  const fields = fw.form.elements;
   fwSec.fill({
     enabled: cfg.enabled,
     configs: cfg.configs !== false,
@@ -13409,7 +13409,7 @@ function renderFirmware(data) {
           ),
         ]),
   );
-  fw.boards.hidden = f.all_boards.checked;
+  fw.boards.hidden = fields.all_boards.checked;
   fw.boards.replaceChildren(
     ...(data.targets && data.targets.length
       ? targets.map((t) =>
@@ -14030,12 +14030,12 @@ function customBody() {
 }
 
 function editKit(k, mine) {
-  const f = kitsEl.add.elements;
-  f.id.value = k.id;
-  f.title.value = k.title;
-  f.summary.value = k.summary || "";
-  f.packages.value = k.packages.join(" ");
-  f.hours.value =
+  const fields = kitsEl.add.elements;
+  fields.id.value = k.id;
+  fields.title.value = k.title;
+  fields.summary.value = k.summary || "";
+  fields.packages.value = k.packages.join(" ");
+  fields.hours.value =
     mine.remove_after == null ? "never" : String(mine.remove_after);
   kitsEl.addTitle.textContent = `Change ${k.title}`;
   kitsEl.addCancel.hidden = false;
@@ -14055,18 +14055,18 @@ function resetKitForm() {
 }
 kitsEl.add.addEventListener("submit", (event) => {
   event.preventDefault();
-  const f = kitsEl.add.elements;
+  const fields = kitsEl.add.elements;
   const kit = {
-    title: f.title.value.trim(),
-    summary: f.summary.value.trim(),
-    packages: f.packages.value
+    title: fields.title.value.trim(),
+    summary: fields.summary.value.trim(),
+    packages: fields.packages.value
       .trim()
       .split(/[\s,]+/)
       .filter(Boolean),
     remove_after_hours:
-      f.hours.value === "never" ? null : Number(f.hours.value),
+      fields.hours.value === "never" ? null : Number(fields.hours.value),
   };
-  if (f.id.value) kit.id = f.id.value;
+  if (fields.id.value) kit.id = fields.id.value;
   kitAct({ action: "define", kit });
   resetKitForm();
 });
@@ -14543,9 +14543,9 @@ tlsEl.make.addEventListener("click", () => tlsAct({ action: "make" }));
 tlsEl.box.addEventListener("click", () => tlsAct({ action: "box" }));
 tlsEl.own.addEventListener("submit", (event) => {
   event.preventDefault();
-  const f = tlsEl.own.elements;
-  tlsAct({ action: "import", chain: f.chain.value, key: f.key.value });
-  f.key.value = ""; // not left in the page
+  const fields = tlsEl.own.elements;
+  tlsAct({ action: "import", chain: fields.chain.value, key: fields.key.value });
+  fields.key.value = ""; // not left in the page
 });
 tlsEl.again.addEventListener("click", async (event) => {
   if (
@@ -14932,13 +14932,13 @@ const acctSettings = AW.form(acctEl.settings, {
 });
 acctEl.make.addEventListener("submit", (event) => {
   event.preventDefault();
-  const f = acctEl.make.elements;
+  const fields = acctEl.make.elements;
   acctAct({
     action: "make",
-    name: f.name.value.trim(),
+    name: fields.name.value.trim(),
     role: (event.submitter && event.submitter.value) || "user",
   });
-  f.name.value = "";
+  fields.name.value = "";
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
 // each app's own page.
@@ -14961,8 +14961,8 @@ const fillPosting = (st) =>
     sec.fill(
       Object.fromEntries(
         [...form.elements]
-          .filter((f) => f.name && f.name in st)
-          .map((f) => [f.name, st[f.name]]),
+          .filter((field) => field.name && field.name in st)
+          .map((field) => [field.name, st[field.name]]),
       ),
     );
   });
@@ -15057,13 +15057,13 @@ async function meshAct(body) {
 }
 meshEl.form.addEventListener("submit", (event) => {
   event.preventDefault();
-  const f = meshEl.form.elements;
+  const fields = meshEl.form.elements;
   meshAct({
     action: "add-channel",
-    name: f.name.value.trim(),
-    key: f.key.value.trim(),
+    name: fields.name.value.trim(),
+    key: fields.key.value.trim(),
   });
-  f.key.value = "";
+  fields.key.value = "";
 });
 meshEl.longfast.addEventListener("click", () =>
   meshAct({ action: "add-channel", name: "LongFast", key: "AQ==" }),
@@ -15177,10 +15177,10 @@ function paletteShown(mode, pal) {
 }
 function paletteShort(mode, pal) {
   const c = paletteShown(mode, pal);
-  return PALETTE_PAIRS.map(([f, b, words]) => ({
+  return PALETTE_PAIRS.map(([pair, b, words]) => ({
     mode,
     words,
-    ratio: contrast(c[f], c[b]),
+    ratio: contrast(c[pair], c[b]),
   })).filter((x) => x.ratio < 4.5);
 }
 function paletteEditor(st, onSaved) {
@@ -15459,18 +15459,18 @@ function pictureRow(which) {
     }
   };
   file.addEventListener("change", async () => {
-    const f = file.files[0];
+    const upload = file.files[0];
     file.value = "";
-    if (!f) return;
-    if (f.size > p.max * 1024) {
-      note.textContent = `Maximum size: ${p.max} KB. This file is ${Math.ceil(f.size / 1024)} KB.`;
+    if (!upload) return;
+    if (upload.size > p.max * 1024) {
+      note.textContent = `Maximum size: ${p.max} KB. This file is ${Math.ceil(upload.size / 1024)} KB.`;
       return;
     }
     const data = await new Promise((ok, fail) => {
       const reader = new FileReader();
       reader.onload = () => ok(String(reader.result).split(",")[1] || "");
       reader.onerror = fail;
-      reader.readAsDataURL(f);
+      reader.readAsDataURL(upload);
     });
     send({ data });
   });
@@ -15693,25 +15693,25 @@ const folderFull = (v) => ({
   order: [...((v || {}).order || [])],
   extra: [...((v || {}).extra || [])],
 });
-const folderOne = (f, state) => folderNorm({ [f]: (state || {})[f] || {} })[f] || {};
-function folderSec(f) {
-  if (folderSecs.has(f)) return folderSecs.get(f);
-  const fol = (folders.folders || []).find((x) => x.id === f);
+const folderOne = (folderId, state) => folderNorm({ [folderId]: (state || {})[folderId] || {} })[folderId] || {};
+function folderSec(folderId) {
+  if (folderSecs.has(folderId)) return folderSecs.get(folderId);
+  const fol = (folders.folders || []).find((x) => x.id === folderId);
   const sec = AW.section({
-    id: `folder-${f}`,
-    label: `Folder: ${fol ? fol.title : f}`,
+    id: `folder-${folderId}`,
+    label: `Folder: ${fol ? fol.title : folderId}`,
     saved: null,
     save: async (c, v) => {
-      const state = { ...folders.state, [f]: folderFull(v.all) };
+      const state = { ...folders.state, [folderId]: folderFull(v.all) };
       folders = await postJSON("/admin/folders", { state });
       setTimeout(folderSaved);
     },
     onChange: () => {
-      folderDraft[f] = folderFull(sec.get("all"));
+      folderDraft[folderId] = folderFull(sec.get("all"));
       fillFolderBlocks();
     },
   });
-  folderSecs.set(f, sec);
+  folderSecs.set(folderId, sec);
   return sec;
 }
 // The saved arrangement into every folder's section (a draft kept over it).
@@ -15831,8 +15831,8 @@ const folderNorm = (s) =>
   Object.fromEntries(
     Object.entries(s || {})
       .sort()
-      .map(([f, v]) => [
-        f,
+      .map(([folderId, v]) => [
+        folderId,
         Object.fromEntries(
           ["hidden", "order", "extra"]
             .filter((k) => (v[k] || []).length)
@@ -15841,36 +15841,36 @@ const folderNorm = (s) =>
       ])
       .filter(([, v]) => Object.keys(v).length),
   );
-const fpart = (f) => {
-  folderDraft[f] = folderDraft[f] || { hidden: [], order: [], extra: [] };
-  return folderDraft[f];
+const fpart = (folderId) => {
+  folderDraft[folderId] = folderDraft[folderId] || { hidden: [], order: [], extra: [] };
+  return folderDraft[folderId];
 };
 // Is an entry in a folder: one of the folder's own and not hidden there, or put in from another.
-function inFolder(f, href) {
+function inFolder(folderId, href) {
   const own = (
-    folders.folders.find((x) => x.id === f) || { entries: [] }
+    folders.folders.find((x) => x.id === folderId) || { entries: [] }
   ).entries.some((entry) => entry.href === href && !entry.extra);
-  const st = folderDraft[f] || {};
+  const st = folderDraft[folderId] || {};
   return own
     ? !(st.hidden || []).includes(href)
     : (st.extra || []).includes(href);
 }
-function setInFolder(f, href, yes) {
+function setInFolder(folderId, href, yes) {
   const own = (
-    folders.folders.find((x) => x.id === f) || { entries: [] }
+    folders.folders.find((x) => x.id === folderId) || { entries: [] }
   ).entries.some((entry) => entry.href === href && !entry.extra);
-  const st = fpart(f);
+  const st = fpart(folderId);
   const without = (list) => list.filter((h) => h !== href);
   if (own) st.hidden = yes ? without(st.hidden) : [...without(st.hidden), href];
   else st.extra = yes ? [...without(st.extra), href] : without(st.extra);
 }
-function drawFolder(block, f) {
-  const fol = folders.folders.find((x) => x.id === f);
+function drawFolder(block, folderId) {
+  const fol = folders.folders.find((x) => x.id === folderId);
   if (!fol) {
     block.replaceChildren();
     return;
   }
-  const st = fpart(f);
+  const st = fpart(folderId);
   const pos = (h) => {
     const i = st.order.indexOf(h);
     return i < 0 ? 1e6 : i;
@@ -15893,18 +15893,18 @@ function drawFolder(block, f) {
     if (j < 0 || j >= order.length) return;
     [order[i], order[j]] = [order[j], order[i]];
     st.order = order;
-    folderOpen[f] = entry.href;
+    folderOpen[folderId] = entry.href;
     folderTouched();
     fillFolderBlocks();
   };
   const items = list.map((entry) => {
-    const shown = inFolder(f, entry.href);
+    const shown = inFolder(folderId, entry.href);
     return {
       id: entry.href,
       title: entry.name,
       summary: entry.desc || entry.href,
       badges: [shown ? "shown" : "hidden", KIND_WORD[entry.kind] || entry.kind].concat(
-        entry.from !== f ? ["from " + entry.from] : [],
+        entry.from !== folderId ? ["from " + entry.from] : [],
       ),
       detail: () =>
         [
@@ -15919,8 +15919,8 @@ function drawFolder(block, f) {
                 class: "chip-btn" + (shown ? " active" : ""),
                 "aria-pressed": String(shown),
                 onclick: () => {
-                  setInFolder(f, entry.href, !shown);
-                  folderOpen[f] = entry.href;
+                  setInFolder(folderId, entry.href, !shown);
+                  folderOpen[folderId] = entry.href;
                   folderTouched();
                   fillFolderBlocks();
                 },
@@ -15940,7 +15940,7 @@ function drawFolder(block, f) {
               "div",
               { class: "filter-chips" },
               folders.folders
-                .filter((x) => x.id !== f)
+                .filter((x) => x.id !== folderId)
                 .map((x) => {
                   const on = inFolder(x.id, entry.href);
                   return AW.h(
@@ -15951,7 +15951,7 @@ function drawFolder(block, f) {
                       "aria-pressed": String(on),
                       onclick: () => {
                         setInFolder(x.id, entry.href, !on);
-                        folderOpen[f] = entry.href;
+                        folderOpen[folderId] = entry.href;
                         folderTouched();
                         fillFolderBlocks();
                       },
@@ -15974,18 +15974,18 @@ function drawFolder(block, f) {
         ].filter(Boolean),
     };
   });
-  const shownCount = list.filter((entry) => inFolder(f, entry.href)).length;
+  const shownCount = list.filter((entry) => inFolder(folderId, entry.href)).length;
   // A change made here to another folder (Also included in) is saved from that folder's page: said here.
   const others = folders.folders.filter(
-    (x) => x.id !== f && folderSec(x.id).dirty(),
+    (x) => x.id !== folderId && folderSec(x.id).dirty(),
   );
-  const sec = folderSec(f);
+  const sec = folderSec(folderId);
   block.replaceChildren(
     AW.h("p", {
       class: "setting-desc",
       text: `${shownCount} of ${list.length} visible on its page. The entries come from the manifests of apps, from the index of an app and from start switches on one page.`,
     }),
-    AW.shortList(items, { id: "folder-list-" + f }),
+    AW.shortList(items, { id: "folder-list-" + folderId }),
     sec.foot,
     sec.reason,
     ...(others.length
@@ -15998,9 +15998,9 @@ function drawFolder(block, f) {
       : []),
   );
   const open =
-    folderOpen[f] &&
+    folderOpen[folderId] &&
     [...block.querySelectorAll(".aw-row")].find(
-      (row) => row.dataset.awId === folderOpen[f],
+      (row) => row.dataset.awId === folderOpen[folderId],
     );
   if (open) AW.foldRow(open.querySelector(".aw-row-head"), true);
 }

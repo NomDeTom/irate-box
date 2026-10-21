@@ -50,12 +50,12 @@
   const facDur = (s) => (s == null ? '?' : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
   const facClock = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   // A family's readiness: a message from the hub (factory.readiness), said in the reader's language.
-  const facReady = (f) => {
-    const readiness = facData && facData.readiness[f];
+  const facReady = (family) => {
+    const readiness = facData && facData.readiness[family];
     return (readiness && typeof readiness === 'object' ? AW.say(readiness) : readiness) || 'Not tested on this box. Its first build downloads its toolchain';
   };
   const sentence = (s) => { const x = String(s).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
-  const facEst = (f) => { const estimate = facData && facData.estimates[f]; return estimate ? `about ${facDur(estimate.seconds)} a target here` : 'no build estimate'; };
+  const facEst = (family) => { const estimate = facData && facData.estimates[family]; return estimate ? `about ${facDur(estimate.seconds)} a target here` : 'no build estimate'; };
 
   async function loadFactory() {
     try { renderFactory(await getJSON('/admin/factory')); } catch (_) { fac.waiting.textContent = 'Could not load the Firmware Factory.'; }
@@ -152,12 +152,12 @@
   // one: the flasher's, a common board, a best-supported one), not the project's CI target; the
   // administrator can select another, kept while the page is open.
   const facTest = {};
-  function facTestSelect(f) {
-    const all = facTargets.targets.filter((t) => t.family === f);
-    if (!all.some((t) => t.env === facTest[f])) facTest[f] = (facTargets.suggested || {})[f] || all[0].env;
-    const sel = el('select', { onchange: (event) => { facTest[f] = event.target.value; } },
+  function facTestSelect(family) {
+    const all = facTargets.targets.filter((t) => t.family === family);
+    if (!all.some((t) => t.env === facTest[family])) facTest[family] = (facTargets.suggested || {})[family] || all[0].env;
+    const sel = el('select', { onchange: (event) => { facTest[family] = event.target.value; } },
       ...all.map((t) => el('option', { value: t.env, textContent: t.name !== t.env ? `${t.name} (${t.env})` : t.env })));
-    sel.value = facTest[f];
+    sel.value = facTest[family];
     return sel;
   }
 
@@ -168,24 +168,24 @@
     facTargets.targets.forEach((t) => {
       if (!q || t.env.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)) (fams[t.family] = fams[t.family] || []).push(t);
     });
-    fac.targets.replaceChildren(...Object.keys(fams).sort().map((f) => {
-      const list = fams[f];
+    fac.targets.replaceChildren(...Object.keys(fams).sort().map((family) => {
+      const list = fams[family];
       const picked = list.filter((t) => facChosen.has(t.env)).length;
       const fold = el('details', { className: 'factory-family', open: !!q || picked > 0 },
-        el('summary', {}, el('strong', { textContent: f }),
-          el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}.${picked ? ` ${picked} selected.` : ''} ${sentence(facReady(f))} ${sentence(facEst(f))}` })),
-        el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(f)),
+        el('summary', {}, el('strong', { textContent: family }),
+          el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}.${picked ? ` ${picked} selected.` : ''} ${sentence(facReady(family))} ${sentence(facEst(family))}` })),
+        el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(family)),
         actionButton('Download build dependencies', async () => {
           try {
-            const reply = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-            say(`Downloading build dependencies for ${reply.env}, a ${f} target: queued. The box compiles nothing. After the download, a build of ${reply.env} needs no internet access. Other ${f} targets can need more downloads.`, true, fac.note);
+            const reply = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: family, env: facTest[family] });
+            say(`Downloading build dependencies for ${reply.env}, a ${family} target: queued. The box compiles nothing. After the download, a build of ${reply.env} needs no internet access. Other ${family} targets can need more downloads.`, true, fac.note);
             renderFactory(reply.snapshot);
           } catch (err) { say(err.message, false, fac.note); }
         }, { title: 'Download the toolchain, framework and libraries for the test target, without a build. A later build of that target needs no internet access. Other targets in the family can need more downloads.' }),
         actionButton('Test target offline', async () => {
           try {
-            const reply = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: f, env: facTest[f] });
-            say(`Building ${reply.env} with the network disabled: queued. A pass shows that ${reply.env} builds offline with the cached dependencies. It does not show that every ${f} target builds offline.`, true, fac.note);
+            const reply = await postJSON('/admin/factory', { action: 'offline', source: fac.source.value, ref: fac.ref.value, family: family, env: facTest[family] });
+            say(`Building ${reply.env} with the network disabled: queued. A pass shows that ${reply.env} builds offline with the cached dependencies. It does not show that every ${family} target builds offline.`, true, fac.note);
             renderFactory(reply.snapshot);
           } catch (err) { say(err.message, false, fac.note); }
         }, { title: 'Build the test target with the network disabled. A pass applies to that target, that revision and the cached dependencies only.' })),

@@ -141,7 +141,7 @@ function watch(doc, depth = 0) {
       watched.add(doc);
       doc.addEventListener('scroll', onScroll, { capture: true, passive: true });
     }
-    if (depth < 2) doc.querySelectorAll('iframe').forEach((f) => watch(f.contentDocument, depth + 1));
+    if (depth < 2) doc.querySelectorAll('iframe').forEach((iframe) => watch(iframe.contentDocument, depth + 1));
   } catch (_) {}  // a cross-origin frame: nothing to watch
 }
 

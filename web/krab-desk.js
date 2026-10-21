@@ -64,9 +64,9 @@ const KD = (() => {
   }
   // One group's mask: the blobs themselves (core, 0/255) and a soft halo grown out of them
   function masks(labels, groupOf, group, w, h, radius) {
-    const core = new Uint8Array(w * h), f = new Float32Array(w * h);
-    for (let i = 0; i < w * h; i++) if (labels[i] && groupOf[labels[i]] === group) { core[i] = 255; f[i] = 1; }
-    const halo = blur(f, w, h, radius);
+    const core = new Uint8Array(w * h), filled = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) if (labels[i] && groupOf[labels[i]] === group) { core[i] = 255; filled[i] = 1; }
+    const halo = blur(filled, w, h, radius);
     const out = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) out[i] = Math.min(255, Math.round(halo[i] * 255 * 2.2));
     return { core, halo: out };

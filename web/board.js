@@ -17,18 +17,18 @@ const replyForm = document.getElementById('reply-form');
 // Who can post, as the administrator set it: the forms say so, and a signed-in
 // user posts under their account's name, marked ✓ where the admin shows marks.
 let marks = false;
-const notes = [threadForm, replyForm].map((f) => {
+const notes = [threadForm, replyForm].map((form) => {
   const n = document.createElement('p');
   n.className = 'setting-desc board-post-note';
-  f.after(n);
+  form.after(n);
   return n;
 });
 function applyPosting(p) {
   if (!p) return;
   marks = p.marks;
   const closed = p.who === 'off' || (p.who === 'users' && !p.me);
-  [threadForm, replyForm].forEach((f, i) => {
-    f.hidden = closed;
+  [threadForm, replyForm].forEach((form, i) => {
+    form.hidden = closed;
     notes[i].replaceChildren();
     if (p.who === 'off') notes[i].textContent = 'Posting is disabled.';
     else if (closed) {

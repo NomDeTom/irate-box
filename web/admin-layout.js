@@ -217,7 +217,7 @@ const AL = (() => {
     markUnsaved();
     list.append(el('p', { class: 'side-foot' }, autoBtn));
     built = true;
-    onBuild.forEach((f) => { try { f(); } catch (error) { console.error(error); } });
+    onBuild.forEach((callback) => { try { callback(); } catch (error) { console.error(error); } });
   }
 
   // The page for an address: the page itself, or the one holding the section it names.
@@ -254,7 +254,7 @@ const AL = (() => {
   function badge(id, text) {
     if (text) badges[id] = text; else delete badges[id];
     paint(id);
-    onBadge.forEach((f) => { try { f(); } catch (error) { console.error(error); } });
+    onBadge.forEach((callback) => { try { callback(); } catch (error) { console.error(error); } });
   }
   function paint(id) {
     const s = document.getElementById(id);
@@ -321,7 +321,7 @@ const AL = (() => {
       show();
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
-  return { LAYOUT, show, groups: () => groups, badges: () => ({ ...badges }), onBadge: (f) => onBadge.push(f),
-    titleOf: (id) => { const s = document.getElementById(id), p = s && pages.find((x) => x.el === s.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (f) => onBuild.push(f), pages: () => pages.slice(), isBuilt: () => built, apps: () => appList };
+  return { LAYOUT, show, groups: () => groups, badges: () => ({ ...badges }), onBadge: (callback) => onBadge.push(callback),
+    titleOf: (id) => { const s = document.getElementById(id), p = s && pages.find((x) => x.el === s.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (callback) => onBuild.push(callback), pages: () => pages.slice(), isBuilt: () => built, apps: () => appList };
 })();
 if (typeof window !== 'undefined') window.AL = AL;

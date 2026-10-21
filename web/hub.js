@@ -230,8 +230,8 @@ if (factoryCard) {
   const fBar = document.getElementById('factory-bar');
   const fDone = document.getElementById('factory-progress');
   const fFiles = document.getElementById('factory-downloads');
-  const kind = (f) => (f.endsWith('.uf2') ? 'UF2' : f.endsWith('.factory.bin') ? 'factory .bin' : f.endsWith('.zip') ? '.zip'
-    : f.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
+  const kind = (name) => (name.endsWith('.uf2') ? 'UF2' : name.endsWith('.factory.bin') ? 'factory .bin' : name.endsWith('.zip') ? '.zip'
+    : name.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
   const refreshFactory = async () => {
     let d;
     try {
@@ -249,12 +249,12 @@ if (factoryCard) {
       const row = document.createElement('span');
       row.className = 'factory-build';
       row.append(document.createTextNode(`${b.name} `));
-      b.files.forEach((f) => {
+      b.files.forEach((file) => {
         const a = document.createElement('a');
-        a.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(f)}`;
-        a.download = f;
-        a.title = `${f} (${b.ref})`;
-        a.textContent = kind(f);
+        a.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(file)}`;
+        a.download = file;
+        a.title = `${file} (${b.ref})`;
+        a.textContent = kind(file);
         row.append(a, document.createTextNode(' '));
       });
       return row;
