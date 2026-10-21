@@ -902,6 +902,9 @@ def scan(focus=None):
             r["iface"]: nmconf.effective_for(r["iface"], r.get("driver")) for r in radios if r.get("type") == "managed"
         }
         nm["defaults"]["ifaces_mine"] = nmconf.current_ifaces()
+    for r in radios:
+        if r.get("type") == "managed" and r.get("owner") == "networkmanager":
+            r["powersave_from"] = powersave_from(r, nm)
     if nm and nm.get("running"):
         nm["visible"] = visible_networks(known={p.get("ssid") for p in nm.get("wifi_profiles", []) if p.get("ssid")})
     # The hotspot on the same radio as a roaming link moves with it.
@@ -991,7 +994,6 @@ def _english(f):
 # What a finding names, beside the thing's own name (msg.named).
 NETWORK = M("netinv.role.network", "WiFi network")
 RADIO = M("netinv.role.radio", "WiFi radio")
-POWERSAVE_WHY = M("netinv.powersave.why", "Power saving makes the link slower to answer, and some drivers disconnect.")
 OTHER_AP_IMAGE = M(
     "netinv.other-ap.image",
     "It is not from irate-box. It is probably the setup hotspot of the image, often with the password of the image.",
@@ -1050,10 +1052,33 @@ def _uplink_radio(inv):
     )
 
 
+def powersave_from(r, nm):
+    """Where a NetworkManager WiFi client's power saving is set, for its card: the network's own setting
+    (2 off, 3 on), else the box's default for this interface or for every connection (both under
+    Default connection settings), else the driver's choice. Power saving that is on is state, not a warning (Tom, 2026-10-21: on by
+    default until the administrator sets it, or the radio's tests do, item 157)."""
+    p = r.get("profile") or {}
+    if p.get("powersave") in (2, 3):
+        return {
+            "where": "network",
+            "value": str(p["powersave"]),
+            "network": p.get("ssid") or p.get("name"),
+            "uuid": p.get("uuid"),
+        }
+    dflt = (nm or {}).get("defaults") or {}
+    for d in (
+        ((dflt.get("ifaces") or {}).get(r.get("iface")) or {}).get("powersave"),
+        (dflt.get("settings") or {}).get("powersave"),
+    ):
+        if (d or {}).get("value") in ("2", "3"):
+            return {"where": "default", "value": d["value"]}
+    return {"where": "driver", "value": None}
+
+
 def link_findings(inv):
     """What lowers the chance of the box staying on its network, beyond the radio itself: the link's
-    connection set not to join by itself or locked, power save or a random address from wherever it is
-    set, two copies of one connection, configuration that cannot be read, a driver known to wedge."""
+    connection set not to join by itself or locked, a random address from wherever it is set, two
+    copies of one connection, configuration that cannot be read, a driver known to wedge."""
     out = []
     nm = inv["stacks"].get("networkmanager") or {}
     r = _uplink_radio(inv)
@@ -1116,27 +1141,6 @@ def link_findings(inv):
                         "netinv.locked.fix",
                         "On the Network page, remove the locks in the settings of this network, "
                         "or set up roaming under Network recovery.",
-                    ),
-                    iface=iface,
-                )
-            )
-        ps_box = ((dflt.get("ifaces") or {}).get(iface, {}).get("powersave") or {}).get("value") or (
-            (dflt.get("settings") or {}).get("powersave") or {}
-        ).get("value")
-        if p.get("powersave") == 3 or (p.get("powersave") in (0, None) and ps_box == "3"):
-            out.append(
-                _h(
-                    f"powersave-set:{p['uuid']}",
-                    title,
-                    "warn",
-                    M("netinv.powersave-set.own", "Power saving is enabled for this network.")
-                    if p.get("powersave") == 3
-                    else M("netinv.powersave-set.default", "Power saving is enabled as a box default."),
-                    POWERSAVE_WHY,
-                    M(
-                        "netinv.powersave-set.fix",
-                        "On the Network page, set Power saving to disabled, in the settings of this network "
-                        "or in Default connection settings.",
                     ),
                     iface=iface,
                 )
@@ -1459,22 +1463,6 @@ def findings(inv):
                         "Run this command to keep the radio awake. A udev rule keeps the setting after a reboot.",
                     ),
                     commands=[f"echo on > /sys/bus/usb/devices/{usb.get('port')}/power/control"],
-                    iface=r["iface"],
-                )
-            )
-        if r.get("power_save") == "on":
-            out.append(
-                _h(
-                    f"powersave:{r['iface']}",
-                    named(r["iface"], RADIO),
-                    "warn",
-                    M("netinv.powersave.on", "Power saving is enabled on this radio."),
-                    POWERSAVE_WHY,
-                    M(
-                        "netinv.powersave.fix",
-                        "Disable power saving. With NetworkManager, set wifi.powersave to 2. Otherwise, run this command.",
-                    ),
-                    commands=[f"iw dev {r['iface']} set power_save off"],
                     iface=r["iface"],
                 )
             )

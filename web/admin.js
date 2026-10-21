@@ -7618,6 +7618,35 @@ function netHead(title, kinds = [], state = null) {
       : null,
   );
 }
+// A WiFi client's power saving as a setting: on or off as the radio reports it (iw), where that is set
+// (netinv.powersave_from), and a link to change it there. On is state, not a warning (item 157 will
+// let the radio's tests set it).
+const POWER_SAVE_WORD = { on: "On", off: "Off", 3: "On", 2: "Off" };
+function powerSaveLine(d) {
+  const pf = d.powersave_from || {};
+  const state =
+    POWER_SAVE_WORD[d.power_save] || POWER_SAVE_WORD[pf.value] || "Not known";
+  const [where, to] =
+    pf.where === "network"
+      ? [`set in the settings of ${pf.network}`, `net-conn-${pf.uuid}`]
+      : pf.where === "default"
+        ? ["set in Default connection settings", "net-defaults-card"]
+        : pf.where === "driver"
+          ? ["left to the driver", "net-defaults-card"]
+          : ["", ""];
+  return el(
+    "p",
+    { className: "net-line" },
+    el("span", { className: "net-label", textContent: "Power saving" }),
+    el(
+      "span",
+      {},
+      where ? `${state}, ${where}. ` : `${state}.`,
+      to ? el("a", { href: `#${to}`, textContent: "Change →" }) : null,
+    ),
+  );
+}
+
 function deviceCard(inv, d, wifi, hazards) {
   const line = (label, text) =>
     el(
@@ -7676,6 +7705,8 @@ function deviceCard(inv, d, wifi, hazards) {
     section(line("Current connection", now)),
     section(line("Connection manager", managed)),
   ];
+  if (wifi && (d.power_save || d.powersave_from))
+    kids.push(section(powerSaveLine(d)));
   if (wifi) {
     const a = (inv.ap || []).find((x) => x.phy === d.phy);
     if (a) {
