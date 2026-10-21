@@ -9,8 +9,11 @@ stopped around it, each of these until the radio is back. A USB radio:
 
   1. the USB device reset at its port (USBDEVFS_RESET: what `usbreset` does; the driver probes
      again and loads the firmware afresh)
-  2. the USB device unbound and bound again (its parent hub's when the device itself has gone)
-  3. the USB device's `authorized` set to 0, then 1
+  2. on a board whose chip has a power line software can switch (CHIP_POWER: the Luckfox Lyra
+     Zero W's), the chip's power off for 5 s and on again: the one way here that reaches a chip
+     a stall has left stuck, since the ways around it leave it powered
+  3. the USB device unbound and bound again (its parent hub's when the device itself has gone)
+  4. the USB device's `authorized` set to 0, then 1
 
 A radio on the board's SDIO bus (a Raspberry Pi's):
 
@@ -31,7 +34,7 @@ A device on the SoC itself (the platform bus: a board's own Ethernet, WiFi built
 
 Any, last:
 
-  4. the driver reloaded: the modules that hold it unloaded first (brcmfmac_cyw holds brcmfmac),
+  5. the driver reloaded: the modules that hold it unloaded first (brcmfmac_cyw holds brcmfmac),
      then it (rmmod by the name it is loaded under), then modprobe by its module file's name, which
      DKMS may have changed (aic8800_fdrv from aic8800_fdrv_usb.ko), and the holders again; each
      with a time limit
@@ -69,6 +72,12 @@ BACK_WAIT = 20  # seconds for the interface to come back after each way
 USBDEVFS_RESET = 0x5514  # _IO('U', 20)
 DRIVER_GRACE = 90  # seconds a driver's own reset is left to work
 DRIVER_LINE = "aic8800: firmware not answering: resetting the device"
+# Boards with a power line for their WiFi chip that software can switch: (board model, the chip's USB id) → the rfkill
+# switch on that line. The Luckfox Lyra Zero W's AIC8800DC is enabled by GPIO1_C5, which its device tree hands to
+# Bluetooth's rfkill: off takes the whole chip off the bus, and on it comes back with its firmware loaded afresh
+# (2026-10-21), where a USB reset leaves it powered and, after a real stall, still stuck.
+CHIP_POWER = {("Luckfox Lyra Zero W", "a69c:88dc"): "bt_default"}
+POWER_OFF = 5  # seconds the chip is left without power
 
 
 def _run(*cmd, timeout=60):
@@ -189,6 +198,24 @@ def driver_reset(run=_run):
     return (f"journal:{at}", max(up - at, 0.0))
 
 
+def _power_switch(port):
+    """The rfkill switch on the power line of the WiFi chip at USB port, on a board known to have one."""
+    try:
+        model = (SYS / "firmware/devicetree/base/model").read_text().rstrip("\x00\n")
+        dev = SYS / "bus/usb/devices" / port
+        usb_id = f"{(dev / 'idVendor').read_text().strip()}:{(dev / 'idProduct').read_text().strip()}"
+    except (OSError, TypeError):
+        return None
+    name = CHIP_POWER.get((model, usb_id))
+    for switch in sorted((SYS / "class/rfkill").glob("rfkill*")) if name else []:
+        try:
+            if (switch / "name").read_text().strip() == name:
+                return switch
+        except OSError:
+            continue
+    return None
+
+
 def _usb_target(port):
     """The USB device to reset: the radio's own, or the hub it hangs off when it has gone."""
     if not port or not PORT_RE.fullmatch(port):
@@ -269,6 +296,7 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
     One line saying what was done and whether the interface came back."""
     tried = []
     sdio = None if _usb_target(port) else _sdio_target(iface)  # looked up while the interface is still there
+    power = _power_switch(port) if _usb_target(port) == port else None  # and while the chip is still on the bus
     onbus = None if _usb_target(port) or sdio else _bus_target(iface)
     nm = run("systemctl", "is-active", "--quiet", "NetworkManager", timeout=10)[0] == 0
     if nm:
@@ -288,6 +316,17 @@ def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.slee
                 back = _back(iface, wait, sleep, target)
             except OSError as exc:
                 tried.append(f"{name}: port reset failed ({exc})")
+            if not back and power:
+                try:
+                    (power / "soft").write_text("1")
+                    try:
+                        sleep(POWER_OFF)
+                    finally:  # never left off: systemd-rfkill saves a block and puts it back at every boot
+                        (power / "soft").write_text("0")
+                    tried.append(f"{name}: the chip's power switched off and on again ({power.name})")
+                    back = _back(iface, wait, sleep, target)
+                except OSError as exc:
+                    tried.append(f"{name}: switching the chip's power failed ({exc})")
             if not back:
                 try:
                     drv = SYS / "bus/usb/drivers/usb"

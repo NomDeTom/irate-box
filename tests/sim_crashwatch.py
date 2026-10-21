@@ -638,6 +638,63 @@ check(
     "reset at its port. ap0 is back. The hotspot started again." in said,
     said,
 )
+
+
+# A board whose chip has a power line software can switch (the Lyra's GPIO1_C5, as Bluetooth's rfkill): after the port
+# reset, the chip's power off and on again; the chip comes back only once its power does.
+def fake_lyra(model="Luckfox Lyra Zero W"):
+    fake_sys()
+    shutil.rmtree(SYS / "class/rfkill", ignore_errors=True)
+    shutil.rmtree(SYS / "class/net/wlan0")
+    put(SYS / "firmware/devicetree/base/model", model + "\x00")
+    put(SYS / "bus/usb/devices/1-1.1/idVendor", "a69c\n")
+    put(SYS / "bus/usb/devices/1-1.1/idProduct", "88dc\n")
+    put(SYS / "class/rfkill/rfkill0/name", "bt_default\n")
+    put(SYS / "class/rfkill/rfkill0/soft", "0\n")
+    put(SYS / "class/rfkill/rfkill6/name", "hci0\n")
+
+
+def power_sleep(seconds):
+    if seconds == radio.POWER_OFF:
+        powered.append((SYS / "class/rfkill/rfkill0/soft").read_text())
+        (SYS / "class/net/wlan0").mkdir(parents=True, exist_ok=True)
+
+
+ran.clear()
+resets.clear()
+powered = []
+fake_lyra()
+said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=power_sleep, wait=1)
+check(
+    "  a Lyra: the port reset, then the chip's power off and on again; back, so nothing heavier",
+    resets == ["1-1.1"]
+    and powered == ["1"]
+    and (SYS / "class/rfkill/rfkill0/soft").read_text() == "0"
+    and "the chip's power switched off and on again (rfkill0). wlan0 is back." in said
+    and "unbound" not in said,
+    said,
+)
+ran.clear()
+resets.clear()
+powered = []
+fake_lyra(model="Raspberry Pi 3 Model B Plus Rev 1.3")
+said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=power_sleep, wait=1)
+check("  another board with the same chip: no power switching", powered == [] and "power" not in said, said)
+
+
+def broken_sleep(seconds):
+    if seconds == radio.POWER_OFF:
+        raise OSError("interrupted")
+
+
+fake_lyra()
+said = radio.reset("wlan0", "1-1.1", "aic8800_fdrv", "AIC8800DC", run=frun, sleep=broken_sleep, wait=1)
+check(
+    "  interrupted while the chip is off: its power is put back on all the same",
+    (SYS / "class/rfkill/rfkill0/soft").read_text() == "0" and "switching the chip's power failed" in said,
+    said,
+)
+shutil.rmtree(SYS / "firmware", ignore_errors=True)
 radio._port_reset = real_port_reset
 # The driver loaded again by its module file's name: DKMS installs aic8800_fdrv as aic8800_fdrv_usb.ko.
 rel = os.uname().release
