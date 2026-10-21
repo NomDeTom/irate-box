@@ -683,6 +683,10 @@ def main():
                 report["soak"] = soak(hosts[0], joiners[0], home_on, args.soak_minutes)
         if "recovery" in tests:
             for iface in radios:
+                if iface == main_route:
+                    # A box with one radio (the Lyra) has its only link here: a reset could leave it unreachable.
+                    report["radios"][iface]["recovery"] = {"skipped": "the box's main route leaves by this radio"}
+                    continue
                 say(f"recovery {iface}")
                 report["radios"][iface]["recovery"] = recovery(iface)
                 time.sleep(5)
