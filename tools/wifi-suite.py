@@ -141,6 +141,24 @@ def identify(iface):
     return found
 
 
+def namespace_ok(iface):
+    """Whether the driver lets this radio move into another network namespace (cfg80211's
+    WIPHY_FLAG_NETNS_OK), asked by moving it into a namespace and straight back. mac80211 drivers allow it;
+    a full-MAC driver must set the flag itself, and aic8800_fdrv doesn't (a one-line fix in its wiphy flags).
+    The suite's pairs need it on the joining side. Never asked of the radio carrying the box's own link."""
+    phy = phy_of(iface)
+    probe = PREFIX + "probe"
+    run("nmcli", "device", "set", iface, "managed", "no")
+    run("ip", "netns", "add", probe)
+    code, out = run(IW, "phy", phy, "set", "netns", "name", probe)
+    if code == 0:
+        run(IW, "phy", phy, "set", "netns", "1", netns=probe)
+    run("ip", "netns", "del", probe)
+    time.sleep(1)
+    run("nmcli", "device", "set", iface, "managed", "yes")
+    return {"ok": code == 0, **({} if code == 0 else {"said": out.splitlines()[-1][:120] if out else ""})}
+
+
 def stuck_dongles():
     """Known WiFi dongles still in USB storage mode: they have no network interface to test."""
     out = []
@@ -630,6 +648,8 @@ def main():
         for iface in radios:
             say(f"identify {iface}")
             report["radios"][iface] = {"identify": identify(iface)}
+            if iface != home_on:
+                report["radios"][iface]["identify"]["namespace"] = namespace_ok(iface)
         can_host = [iface for iface in radios if "AP" in report["radios"][iface]["identify"].get("modes", [])]
         for iface in radios:
             radio = report["radios"][iface]
