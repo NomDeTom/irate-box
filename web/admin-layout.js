@@ -95,7 +95,7 @@ const AL = (() => {
   // only the current group open. Both are this viewer's own, kept in the browser (a convenience,
   // not a setting: without storage every group simply starts open).
   const FOLD_KEY = 'irate-admin-folded', AUTO_KEY = 'irate-admin-autocollapse';
-  const stored = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } };
+  const stored = (k, fallback) => { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch (_) { return fallback; } };
   const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* private window: not kept */ } };
   const folded = new Set(stored(FOLD_KEY, []));
   let auto = stored(AUTO_KEY, false) === true;
@@ -160,7 +160,7 @@ const AL = (() => {
     placed.clear();
     for (const g of LAYOUT) {
       const entries = [];
-      const fixed = g.pages.map((d) => page(g, d)).filter(Boolean);
+      const fixed = g.pages.map((groupPage) => page(g, groupPage)).filter(Boolean);
       entries.push(...fixed);
       if (g.apps && apps) {
         for (const app of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page || x.addon))) {
@@ -239,7 +239,7 @@ const AL = (() => {
     side.classList.remove('open');
     menu.setAttribute('aria-expanded', 'false');
     // A target inside a folded part opens it (a link to an app's installation or access).
-    for (let d = target && target.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+    for (let details = target && target.closest('details'); details; details = details.parentElement && details.parentElement.closest('details')) details.open = true;
     if (target && target !== cur.el && target !== cur.el.querySelector('.admin-pane') && target.scrollIntoView) target.scrollIntoView({ block: 'start' });
     else window.scrollTo(0, 0);
   }

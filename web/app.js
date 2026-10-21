@@ -191,7 +191,7 @@ function drawReport(path) {
   if (reportSlot.hidden) { reportSlot.replaceChildren(); return; }
   const draw = () => { if (reportFor === page) reportSlot.replaceChildren(reportButton('notes', { page }, reportReasons)); };
   if (reportReasons) { draw(); return; }
-  fetch('/api/report').then((response) => response.json()).then((d) => { reportReasons = d.reasons || []; draw(); }).catch(() => {});
+  fetch('/api/report').then((response) => response.json()).then((data) => { reportReasons = data.reasons || []; draw(); }).catch(() => {});
 }
 
 // Loads catch ordinary links; the interval catches single-page apps (SilverBullet,

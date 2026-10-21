@@ -1066,10 +1066,10 @@ async function loadBooks() {
   }
 }
 
-function renderBooks(d) {
-  bookData = d;
-  bookPage = d.page;
-  const sm = d.summary;
+function renderBooks(data) {
+  bookData = data;
+  bookPage = data.page;
+  const sm = data.summary;
   setupStep(
     "books",
     sm.kept
@@ -1101,7 +1101,7 @@ function renderBooks(d) {
     bk.language.value = langs.includes(was) ? was : "";
   }
   const rows = [];
-  for (const b of d.books) {
+  for (const b of data.books) {
     const box = el("input", {
       type: "checkbox",
       checked: bookSel.has(b.name),
@@ -1185,10 +1185,10 @@ function renderBooks(d) {
         ]),
   );
   bk.pageAll.checked =
-    d.books.length > 0 && d.books.every((b) => bookSel.has(b.name));
-  bk.page.textContent = `Page ${d.page} of ${d.pages} (${d.matching} matching)`;
-  bk.prev.disabled = d.page <= 1;
-  bk.next.disabled = d.page >= d.pages;
+    data.books.length > 0 && data.books.every((b) => bookSel.has(b.name));
+  bk.page.textContent = `Page ${data.page} of ${data.pages} (${data.matching} matching)`;
+  bk.prev.disabled = data.page <= 1;
+  bk.next.disabled = data.page >= data.pages;
   renderBookBulk();
 }
 
@@ -1283,14 +1283,14 @@ async function searchCatalogue(more) {
     const response = await fetch(
       `/admin/catalogue?${new URLSearchParams({ q: fields.q.value.trim(), language: fields.language.value.trim(), start: String(catStart) })}`,
     );
-    const d = await response.json().catch(() => ({}));
-    if (!response.ok) throw hubError(d, response.status);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw hubError(data, response.status);
     say(
-      `${d.total} book${d.total === 1 ? "" : "s"} in the catalogue match.`,
+      `${data.total} book${data.total === 1 ? "" : "s"} in the catalogue match.`,
       true,
       cat.note,
     );
-    const rows = d.entries.map((book) => {
+    const rows = data.entries.map((book) => {
       const name = book.name.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
       return el(
         "div",
@@ -1329,7 +1329,7 @@ async function searchCatalogue(more) {
     });
     if (more) cat.results.append(...rows);
     else cat.results.replaceChildren(...rows);
-    cat.pager.hidden = catStart + 20 >= d.total;
+    cat.pager.hidden = catStart + 20 >= data.total;
   } catch (err) {
     say(err.message, false, cat.note);
   }
@@ -1466,9 +1466,9 @@ function pkgSay(id, text, ok) {
 async function loadPackages() {
   const box = document.getElementById("pkg-list");
   if (!box) return;
-  let d;
+  let data;
   try {
-    d = await getJSON("/admin/packages");
+    data = await getJSON("/admin/packages");
   } catch (_) {
     box.replaceChildren(
       el("p", {
@@ -1479,7 +1479,7 @@ async function loadPackages() {
     return;
   }
   if (pkgWaiting) {
-    const done = (d.results || []).find((result) => result.id === pkgWaiting.id);
+    const done = (data.results || []).find((result) => result.id === pkgWaiting.id);
     if (done) {
       pkgSay(
         pkgWaiting.pkg,
@@ -1490,7 +1490,7 @@ async function loadPackages() {
     } else if (Date.now() - pkgWaiting.at < 600000)
       setTimeout(loadPackages, 3000);
   }
-  const pkgs = Object.entries(d.packages || {});
+  const pkgs = Object.entries(data.packages || {});
   // A redraw keeps an open policy fold open, and one with changes not saved keeps them (its fold carried over).
   const before = new Map(
     [...box.querySelectorAll("[data-pkg]")].map((c) => [
@@ -2561,14 +2561,14 @@ function renderModeration(data) {
 
   document.getElementById("mod-drops").replaceChildren(
     ...((data.drops || []).length
-      ? data.drops.map((d) =>
+      ? data.drops.map((drop) =>
           el(
             "div",
             { className: "admin-item" },
             el(
               "span",
               {},
-              d.locked
+              drop.locked
                 ? el("span", {
                     title:
                       "Locked by a guest's device. Only that device, or an administrator here, can remove it.",
@@ -2576,14 +2576,14 @@ function renderModeration(data) {
                   })
                 : null,
               el("a", {
-                href: `/api/drop/${encodeURIComponent(d.id)}`,
-                textContent: d.name,
+                href: `/api/drop/${encodeURIComponent(drop.id)}`,
+                textContent: drop.name,
               }),
-              ` · ${size(d.size)}${d.by ? ` · ${d.by}` : ""} · ${ago(d.age)}${d.locked ? " · locked" : ""}`,
+              ` · ${size(drop.size)}${drop.by ? ` · ${drop.by}` : ""} · ${ago(drop.age)}${drop.locked ? " · locked" : ""}`,
             ),
             actionButton(
               "Delete file",
-              del({ action: "delete_drop", id: d.id }, `"${d.name}"`),
+              del({ action: "delete_drop", id: drop.id }, `"${drop.name}"`),
               { className: "small" },
             ),
           ),
@@ -3145,23 +3145,23 @@ function renderUpdateProgress(p) {
 // The update doctor, in the other doctors' shape: the counters (which double as the filter), one row per
 // finding with what to do (a command to copy, the place it is changed), and what was fine folded away.
 let udShow = "all";
-function renderUpdoctor(d, stale) {
-  const all = d
-    ? [...d.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
+function renderUpdoctor(report, stale) {
+  const all = report
+    ? [...report.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
     : [];
   const counts = {
     problem: all.filter((finding) => finding.status === "problem").length,
     warn: all.filter((finding) => finding.status === "warn").length,
   };
-  upd.doctorWhen.textContent = d
-    ? `Last checked ${new Date(d.at * 1000).toLocaleString()}.` +
+  upd.doctorWhen.textContent = report
+    ? `Last checked ${new Date(report.at * 1000).toLocaleString()}.` +
       (stale
         ? " Out of date: a check for updates or a change of source came after it. Run the doctor again."
         : "")
     : "Not run yet. It runs when you select the button. It also runs when a check for updates fails.";
   upd.doctorWhen.classList.toggle("warn", !!stale);
   upd.udSummary.replaceChildren(
-    ...(!d
+    ...(!report
       ? []
       : [
           [
@@ -3185,7 +3185,7 @@ function renderUpdoctor(d, stale) {
               className: `sec-count sec-count-${st}${udShow === key ? " active" : ""}`,
               onclick: () => {
                 udShow = key;
-                renderUpdoctor(d);
+                renderUpdoctor(report);
               },
             },
             el("strong", { textContent: String(n) }),
@@ -3229,7 +3229,7 @@ function renderUpdoctor(d, stale) {
     (finding) => finding.status !== "ok" && (udShow === "all" || finding.status === udShow),
   );
   upd.findings.replaceChildren(...open.map(item));
-  upd.udEmpty.hidden = !d || open.length > 0;
+  upd.udEmpty.hidden = !report || open.length > 0;
   upd.udEmpty.textContent =
     counts.problem + counts.warn
       ? "Nothing of that kind."
@@ -3300,11 +3300,11 @@ function renderUpdate(data) {
       ),
     ),
   );
-  const d = AW.localise(data.doctor);
-  renderUpdoctor(d, data.doctor_stale);
+  const doctor = AW.localise(data.doctor);
+  renderUpdoctor(doctor, data.doctor_stale);
   drawSource(data);
-  const doctorProblems = d
-    ? d.findings.filter((finding) => finding.status === "problem").length
+  const doctorProblems = doctor
+    ? doctor.findings.filter((finding) => finding.status === "problem").length
     : 0;
   badge(
     "updoctor",
@@ -4561,8 +4561,8 @@ function jointDo(i, data, busy) {
       );
     }
   }
-  const d = i.do || {};
-  if (d.repair === "rerun-install") {
+  const todo = i.do || {};
+  if (todo.repair === "rerun-install") {
     controls.push(
       el("button", {
         type: "button",
@@ -4579,23 +4579,23 @@ function jointDo(i, data, busy) {
     );
   }
   // A Box doctor action that puts it right (secdoctor_xref: its choice and words), as a button here.
-  if (d.health) {
+  if (todo.health) {
     controls.push(
       el("button", {
         type: "button",
         className: "action-btn",
-        textContent: d.health.label,
+        textContent: todo.health.label,
         disabled: busy,
         onclick: () =>
           healthRepair(
-            d.health.choice,
-            d.health.label,
-            `${d.health.label}? ${d.say || ""}`.trim(),
+            todo.health.choice,
+            todo.health.label,
+            `${todo.health.label}? ${todo.say || ""}`.trim(),
           ),
       }),
     );
   }
-  if (d.act === "deep")
+  if (todo.act === "deep")
     controls.push(
       el("button", {
         type: "button",
@@ -4605,21 +4605,21 @@ function jointDo(i, data, busy) {
         onclick: () => sec.auditDeep.click(),
       }),
     );
-  if (d.go)
+  if (todo.go)
     controls.push(
       el("a", {
         className: "action-btn go-btn",
-        href: `#${d.go}`,
-        textContent: `Go to ${d.where} →`,
+        href: `#${todo.go}`,
+        textContent: `Go to ${todo.where} →`,
       }),
     );
-  const cmd = d.cmd || i.cmd;
+  const cmd = todo.cmd || i.cmd;
   if (cmd && !(i.commands || []).includes(cmd)) controls.push(copyBox(cmd));
   // The words: the hub's own work said as such; else the Security page's (it goes with its buttons); else the item's.
   const pageFix = page.map((finding) => finding.fix).find(Boolean);
   const how =
-    d.hub ||
-    d.say ||
+    todo.hub ||
+    todo.say ||
     (page.length && page.some((finding) => (finding.actions || []).length)
       ? pageFix || ""
       : "") ||
@@ -5309,11 +5309,11 @@ function landOn() {
     return;
   const open = (t) => {
     for (
-      let d = t.closest("details");
-      d;
-      d = d.parentElement && d.parentElement.closest("details")
+      let details = t.closest("details");
+      details;
+      details = details.parentElement && details.parentElement.closest("details")
     )
-      d.open = true;
+      details.open = true;
     if (t.tagName === "DETAILS") t.open = true;
   };
   open(section);
@@ -5879,16 +5879,16 @@ function renderHealth(data) {
   // One shape for every finding, as the security doctor's: a status word,
   // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
   const item = (finding) => {
-    const d = healthDo(finding, busy || h.stuck);
+    const remedy = healthDo(finding, busy || h.stuck);
     const on = accepted(finding);
     return findingRow({
       id: `hl-${finding.id}`,
       state: on ? "accepted" : finding.status,
       title: finding.title,
       ...findingParts(finding),
-      how: d.how,
-      commands: finding.status === "ok" ? [] : d.commands,
-      controls: d.controls,
+      how: remedy.how,
+      commands: finding.status === "ok" ? [] : remedy.commands,
+      controls: remedy.controls,
       note: noteUnder(finding.id),
       accept:
         finding.status === "warn"
@@ -6155,7 +6155,7 @@ function renderClockSources(c, busy, own) {
         ))
   )
     return clkSec.update(saved);
-  const d = clkSec.values();
+  const values = clkSec.values();
   const set = (k, v) => {
     if (k === "service" && v === "image") {
       clkSec.set("gps", false, true);
@@ -6170,7 +6170,7 @@ function renderClockSources(c, busy, own) {
       { className: "setting inline" },
       el("input", {
         type: "checkbox",
-        checked: !!d[key],
+        checked: !!values[key],
         disabled: busy || disabled || clkSec.disabled(),
         onchange: (event) => set(key, event.target.checked),
       }),
@@ -6185,7 +6185,7 @@ function renderClockSources(c, busy, own) {
     );
   const addr = el("input", {
     type: "text",
-    value: d.local,
+    value: values.local,
     placeholder: "e.g. 192.168.1.1",
     size: 30,
     disabled: busy,
@@ -6234,14 +6234,14 @@ function renderClockSources(c, busy, own) {
         ["chrony", "chrony (suggested)"],
         ["image", `The image's own (${imageName})`],
       ],
-      d.service,
+      values.service,
       (v) => set("service", v),
       () => busy,
     ),
     el("p", {
       className: "setting-desc",
       textContent:
-        d.service === "chrony"
+        values.service === "chrony"
           ? "chrony asks each source you select and shows how each one stands. It can use GPS. Selecting it installs chrony and removes systemd-timesyncd. Restore puts them back."
           : "The service the image came with, asking the servers you select. It cannot use GPS, and it says only which server it uses now.",
     }),
@@ -6267,28 +6267,28 @@ function renderClockSources(c, busy, own) {
     tick(
       "gps",
       "GPS",
-      d.service === "chrony"
+      values.service === "chrony"
         ? `${c.gps_device ? "A receiver is connected." : "No receiver is connected now: connect one on USB or the UART."} Selecting GPS installs the GPS time toolkit (gpsd).`
         : "Only with chrony.",
-      d.service !== "chrony",
+      values.service !== "chrony",
     ),
     tick(
       "module",
       "The clock module",
-      d.service !== "chrony"
+      values.service !== "chrony"
         ? "With the image's own service the module sets the time at boot only."
         : c.module_ready
           ? "Its time, read every 4 s. chrony uses it while GPS and the network are silent."
           : "No clock module is set up: scan for one above. It still sets the time at boot.",
-      d.service !== "chrony" || !c.module_ready,
+      values.service !== "chrony" || !c.module_ready,
     ),
     tick(
       "serve",
       "Serve the time to the hotspot",
-      d.service === "chrony"
+      values.service === "chrony"
         ? "Guests' devices can ask the box for the time (NTP). The hotspot firewall opens UDP port 123 to guests while this is on."
         : "Only with chrony.",
-      d.service !== "chrony",
+      values.service !== "chrony",
     ),
     states.length
       ? el(
@@ -7610,10 +7610,10 @@ function netHead(title, kinds = [], state = null) {
 // (netinv.powersave_from), and a link to change it there. On is state, not a warning (item 157 will
 // let the radio's tests set it).
 const POWER_SAVE_WORD = { on: "On", off: "Off", 3: "On", 2: "Off" };
-function powerSaveLine(d) {
-  const pf = d.powersave_from || {};
+function powerSaveLine(device) {
+  const pf = device.powersave_from || {};
   const state =
-    POWER_SAVE_WORD[d.power_save] || POWER_SAVE_WORD[pf.value] || "Not known";
+    POWER_SAVE_WORD[device.power_save] || POWER_SAVE_WORD[pf.value] || "Not known";
   const [where, to] =
     pf.where === "network"
       ? [`set in the settings of ${pf.network}`, `net-conn-${pf.uuid}`]
@@ -7635,18 +7635,18 @@ function powerSaveLine(d) {
   );
 }
 
-function deviceCard(inv, d, wifi, hazards) {
+function deviceCard(inv, device, wifi, hazards) {
   const line = netLine;
   // Each labelled part a section of its own, a hairline between them, so the parts don't run together.
   const section = (...parts) =>
     el("div", { className: "net-section" }, ...parts);
   const kind = wifi ? "WiFi" : "Wired";
-  const usb = d.usb || {};
+  const usb = device.usb || {};
   const what = [
     wifi
-      ? `${BUS_WORDS[d.bus] || d.bus || ""} WiFi adapter`.trim()
-      : `${BUS_WORDS[d.bus] || ""} Ethernet port`.trim(),
-    d.driver ? `driver ${d.driver}` : null,
+      ? `${BUS_WORDS[device.bus] || device.bus || ""} WiFi adapter`.trim()
+      : `${BUS_WORDS[device.bus] || ""} Ethernet port`.trim(),
+    device.driver ? `driver ${device.driver}` : null,
     usb.product || null,
     usb.id ? `USB id ${usb.id}` : null,
   ]
@@ -7654,7 +7654,7 @@ function deviceCard(inv, d, wifi, hazards) {
     .join(", ");
   let now;
   if (wifi) {
-    const l = d.link || {};
+    const l = device.link || {};
     if (l.ssid) {
       const band = l.freq
         ? l.freq < 3000
@@ -7665,32 +7665,32 @@ function deviceCard(inv, d, wifi, hazards) {
         : "";
       // Under "Current connection": the network's name first, not "Connected to" again.
       now = `${l.ssid}, channel ${l.channel}${band ? ` (${band})` : ""}, signal ${l.signal} dBm (${signalWords(l.signal)}).`;
-    } else if (d.type === "AP") now = "Running a hotspot.";
+    } else if (device.type === "AP") now = "Running a hotspot.";
     else now = "Not connected to a network.";
   } else {
-    now = d.carrier ? "Cable in." : "No cable.";
+    now = device.carrier ? "Cable in." : "No cable.";
   }
-  if (inv.uplink && inv.uplink.iface === d.iface)
+  if (inv.uplink && inv.uplink.iface === device.iface)
     now += " This is the box's link to your network.";
   const owner = wifi
-    ? d.owner
-    : inv.uplink && inv.uplink.iface === d.iface
+    ? device.owner
+    : inv.uplink && inv.uplink.iface === device.iface
       ? inv.uplink.backend
       : null;
   const managed = owner
     ? (MANAGED_BY[owner] || owner) +
-      (d.manager ? ` With ${d.manager} for the address.` : "")
+      (device.manager ? ` With ${device.manager} for the address.` : "")
     : "—";
   const kids = [
-    netHead(d.iface, [kind]),
+    netHead(device.iface, [kind]),
     section(line("Device type", what || "—")),
     section(line("Current connection", now, "now")),
     section(line("Connection manager", managed)),
   ];
-  if (wifi && (d.power_save || d.powersave_from))
-    kids.push(section(powerSaveLine(d)));
+  if (wifi && (device.power_save || device.powersave_from))
+    kids.push(section(powerSaveLine(device)));
   if (wifi) {
-    const hotspot = (inv.ap || []).find((x) => x.phy === d.phy);
+    const hotspot = (inv.ap || []).find((x) => x.phy === device.phy);
     if (hotspot) {
       const conds = hotspot.conditions || [{ kind: "how", text: hotspot.detail }];
       const any = conds.some((c) => c.kind !== "how");
@@ -7699,7 +7699,7 @@ function deviceCard(inv, d, wifi, hazards) {
         : any
           ? `Yes, with conditions (through ${hotspot.backend}).`
           : `Yes (through ${hotspot.backend}).`;
-      const tests = (inv.radio_tests || {})[d.iface] || {};
+      const tests = (inv.radio_tests || {})[device.iface] || {};
       kids.push(
         section(
           line("Hotspot support", verdict),
@@ -7722,7 +7722,7 @@ function deviceCard(inv, d, wifi, hazards) {
                   c.test &&
                   (tests.can || []).includes(c.test)
                   ? radioTestButton(
-                      d.iface,
+                      device.iface,
                       c.test,
                       TEST_LABEL[c.test] || "Run test",
                     )
@@ -7733,10 +7733,10 @@ function deviceCard(inv, d, wifi, hazards) {
         ),
       );
     }
-    kids.push(...radioTests(inv, d.iface, section, line));
+    kids.push(...radioTests(inv, device.iface, section, line));
   }
   // What the box knows about this device, in words: what to review first, then what is known.
-  const mine = hazards.filter((h) => h.iface === d.iface);
+  const mine = hazards.filter((h) => h.iface === device.iface);
   const look = mine.filter(
       (h) => h.status === "problem" || h.status === "warn",
     ),
@@ -7795,11 +7795,11 @@ function liveAs(node, name) {
   if (name) node.setAttribute("data-live", name);
   return node;
 }
-function linkNow(inv, d) {
-  if (d.link && d.link.ssid)
-    return `On ${d.link.ssid}, channel ${d.link.channel}${d.link.freq ? ` (${bandOf(d.link.freq)})` : ""}, signal ${d.link.signal} dBm (${signalWords(d.link.signal)}).`;
-  if (d.type === "AP") return "Running the hotspot.";
-  if ("carrier" in d) return d.carrier ? "Cable in." : "No cable.";
+function linkNow(inv, device) {
+  if (device.link && device.link.ssid)
+    return `On ${device.link.ssid}, channel ${device.link.channel}${device.link.freq ? ` (${bandOf(device.link.freq)})` : ""}, signal ${device.link.signal} dBm (${signalWords(device.link.signal)}).`;
+  if (device.type === "AP") return "Running the hotspot.";
+  if ("carrier" in device) return device.carrier ? "Cable in." : "No cable.";
   return "Not connected to a network.";
 }
 // Roaming: on the WiFi card, the access points sharing the network and how often the box
@@ -7955,16 +7955,16 @@ function drawNetTabs(data, inv, u) {
     ? [...inv.radios.filter((radio) => radio.type !== "AP"), ...inv.wired]
     : [];
   AW.drawKept(netTabs.statusCards, [
-    ...links.map((d) =>
+    ...links.map((link) =>
       el(
         "div",
         { className: "net-card setting" },
-        netHead(d.iface, [
-          "carrier" in d ? "Wired" : "WiFi",
-          up && up.iface === d.iface ? "The box's link" : null,
+        netHead(link.iface, [
+          "carrier" in link ? "Wired" : "WiFi",
+          up && up.iface === link.iface ? "The box's link" : null,
         ]),
-        netLine("Current connection", linkNow(inv, d), "now"),
-        uptimeSection(d.iface),
+        netLine("Current connection", linkNow(inv, link), "now"),
+        uptimeSection(link.iface),
       ),
     ),
   ]);
@@ -8482,16 +8482,16 @@ document.getElementById("net-retry-go").addEventListener("click", () => {
   if (card.scrollIntoView) card.scrollIntoView({ block: "center" });
 });
 function renderDefaults(inv, busy) {
-  const d =
+  const manager =
     inv &&
     inv.stacks &&
     inv.stacks.networkmanager &&
     inv.stacks.networkmanager.defaults;
   const card = document.getElementById("net-defaults-card");
-  card.hidden = !d;
-  if (!d) return;
+  card.hidden = !manager;
+  if (!manager) return;
   const own = (path) => (path || "").split("/").pop();
-  const ifaces = Object.keys(d.ifaces || {});
+  const ifaces = Object.keys(manager.ifaces || {});
   if (defaultsScope && !ifaces.includes(defaultsScope)) defaultsScope = "";
   const scope = el(
     "select",
@@ -8515,10 +8515,10 @@ function renderDefaults(inv, busy) {
     renderDefaults(netData && netData.inventory, false);
   });
   const savedNow = {};
-  const names = defaultsScope ? PER_IFACE : Object.keys(d.settings);
-  const mineIf = (d.ifaces_mine || {})[defaultsScope] || {};
+  const names = defaultsScope ? PER_IFACE : Object.keys(manager.settings);
+  const mineIf = (manager.ifaces_mine || {})[defaultsScope] || {};
   const rows = names.map((name) => {
-    const s = d.settings[name];
+    const s = manager.settings[name];
     const sel = el("select", {
       "aria-label": s.label,
       disabled: busy || defSec.disabled(),
@@ -8552,7 +8552,7 @@ function renderDefaults(inv, busy) {
     sel.addEventListener("change", () => defSec.set(name, sel.value, true));
     let now;
     if (defaultsScope) {
-      const effective = d.ifaces[defaultsScope][name];
+      const effective = manager.ifaces[defaultsScope][name];
       now =
         effective.value === null
           ? `now NetworkManager's own: ${s.nm_default}`
@@ -8610,15 +8610,15 @@ function renderDefaults(inv, busy) {
     ),
   );
   const notes = [
-    ...d.legacy.map(
+    ...manager.legacy.map(
       (l) =>
         `${own(l.file)} also sets ${l.key}=${l.value} (an older name NetworkManager still reads: ${l.means}).`,
     ),
-    ...d.scoped.map(
+    ...manager.scoped.map(
       (x) =>
         `${own(x.file)} sets ${Object.keys(x.keys).join(", ")} for some devices only (${x.match || x.section}).`,
     ),
-    ...d.broken.map(
+    ...manager.broken.map(
       (path) => `${path} could not be read. NetworkManager can also fail to read it.`,
     ),
   ];
@@ -9206,8 +9206,8 @@ function renderHandover(inv, busy) {
         );
       }
     }
-    for (const d of ho.done || []) {
-      const conns = (d.connections || [])
+    for (const handover of ho.done || []) {
+      const conns = (handover.connections || [])
         .map((c) =>
           (c.keyfile || "")
             .split("/")
@@ -9221,15 +9221,15 @@ function renderHandover(inv, busy) {
           "p",
           {
             className: "setting-desc",
-            dataset: { change: `handover:${d.name}` },
+            dataset: { change: `handover:${handover.name}` },
           },
-          `${conns ? `Your connection ${conns} is` : "Your connections are"} managed by NetworkManager since ${new Date(d.at * 1000).toLocaleDateString()}. ` +
-            `Before, netplan wrote ${conns ? "it" : "them"} again from the file ${d.name} at every boot, which undid any change made here. The box keeps that file aside. `,
+          `${conns ? `Your connection ${conns} is` : "Your connections are"} managed by NetworkManager since ${new Date(handover.at * 1000).toLocaleDateString()}. ` +
+            `Before, netplan wrote ${conns ? "it" : "them"} again from the file ${handover.name} at every boot, which undid any change made here. The box keeps that file aside. `,
           actionButton(
             "Restore netplan management",
             () => {
               netRequest(
-                  { action: "handover", name: d.name, undo: true },
+                  { action: "handover", name: handover.name, undo: true },
                   "handover",
                 );
             },
@@ -9553,13 +9553,13 @@ function renderAp(run) {
 }
 async function loadAp() {
   try {
-    const d = await getJSON("/admin/hotspot");
-    renderAp(d.running || {});
+    const reply = await getJSON("/admin/hotspot");
+    renderAp(reply.running || {});
     if (apWait) {
-      const done = ((d.running || {}).at || 0) * 1000 > apWait.since;
+      const done = ((reply.running || {}).at || 0) * 1000 > apWait.since;
       if (done || Date.now() > apWait.until) {
         apWait = null;
-        renderAp(d.running || {});
+        renderAp(reply.running || {});
       } else setTimeout(loadAp, 2000);
     }
   } catch (_) {
@@ -9939,10 +9939,10 @@ function drawBackupGo() {
   }
   bku.stick.replaceChildren(
     ...(usbSticks.length
-      ? usbSticks.map((d) =>
+      ? usbSticks.map((usbStick) =>
           el("option", {
-            value: d.name,
-            textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})`,
+            value: usbStick.name,
+            textContent: `${usbStick.label || usbStick.name} (${usbStick.fstype}, ${size(Number(usbStick.size))})`,
           }),
         )
       : [el("option", { value: "", textContent: "No drive found yet" })]),
@@ -10148,16 +10148,16 @@ async function bkSticks(scan) {
         note: bku.note,
       };
     }
-    const d = await getJSON("/admin/usb");
-    usbSticks = (d.scan && d.scan.devices) || [];
+    const reply = await getJSON("/admin/usb");
+    usbSticks = (reply.scan && reply.scan.devices) || [];
     if (bkWaiting) {
-      const done = (d.results || []).find((result) => result.id === bkWaiting.id);
+      const done = (reply.results || []).find((result) => result.id === bkWaiting.id);
       if (done) {
         say(resultSaid(done), done.ok, bkWaiting.note);
         bkWaiting = null;
       }
     }
-    const p = d.progress;
+    const p = reply.progress;
     bku.progress.hidden = !p;
     if (p) {
       bku.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
@@ -10165,7 +10165,7 @@ async function bkSticks(scan) {
     }
     drawBackupGo();
     clearTimeout(bkPoll);
-    if (bkWaiting || p || d.pending > 0)
+    if (bkWaiting || p || reply.pending > 0)
       bkPoll = setTimeout(() => bkSticks(false), 1500);
   } catch (err) {
     say(err.message, false, bku.note);
@@ -10178,17 +10178,17 @@ document
   .getElementById("offline-scan")
   .addEventListener("click", () => bkSticks(true));
 bku.imageGo.addEventListener("click", async (event) => {
-  const d = usbSticks.find((x) => x.name === bku.stick.value);
+  const usbStick = usbSticks.find((x) => x.name === bku.stick.value);
   if (
-    !d ||
+    !usbStick ||
     !await AW.confirmHere(
-      `Write an image of the whole card to ${d.label || d.name}? The image is about ${size((bkPlan.image || {}).used)} or more. ` +
+      `Write an image of the whole card to ${usbStick.label || usbStick.name}? The image is about ${size((bkPlan.image || {}).used)} or more. ` +
         "On this board it can take an hour or more. The box stays in use meanwhile.", { anchor: event.currentTarget })
   )
     return;
   try {
     bkWaiting = {
-      id: (await postJSON("/admin/usb", { action: "image", device: d.name }))
+      id: (await postJSON("/admin/usb", { action: "image", device: usbStick.name }))
         .id,
       note: bku.note,
     };
@@ -10202,27 +10202,27 @@ bku.imageGo.addEventListener("click", async (event) => {
 // The kit: the root helper makes it (hub_control.py offline_kit); the hub streams the download.
 let kitWaiting = null;
 let kitPoll = null;
-function renderKit(d) {
+function renderKit(data) {
   if (kitWaiting) {
-    const done = (d.results || []).find((result) => result.id === kitWaiting);
+    const done = (data.results || []).find((result) => result.id === kitWaiting);
     if (done) {
       say(resultSaid(done), done.ok, kitEl.note);
       kitWaiting = null;
     }
   }
-  const busy = !!kitWaiting || d.pending > 0 || !!d.progress;
+  const busy = !!kitWaiting || data.pending > 0 || !!data.progress;
   kitBusy = busy;
   drawKitTotal();
-  kitEl.progress.hidden = !d.progress;
-  if (d.progress) {
-    const p = d.progress;
+  kitEl.progress.hidden = !data.progress;
+  if (data.progress) {
+    const p = data.progress;
     kitEl.bar.value = Math.min(
       Math.max(p.step - 1, 0) / Math.max(p.steps, 1),
       1,
     );
     kitEl.step.textContent = `Step ${Math.max(p.step, 1)} of ${p.steps}${p.label ? ` — ${said(p.label)}` : ""}.`;
   }
-  const k = d.kit;
+  const k = data.kit;
   const held = k
     ? [
         k.books.length &&
@@ -10254,7 +10254,7 @@ function renderKit(d) {
           ),
         ]),
   );
-  const auto = d.auto || {};
+  const auto = data.auto || {};
   kitEl.refresh.disabled = busy || !auto.can_refresh;
   if (document.activeElement !== kitEl.when)
     kitEl.when.value = auto.when || "manual";
@@ -10313,13 +10313,13 @@ kitEl.form.addEventListener("submit", async (event) => {
     state = fields.state.value;
   try {
     if (fields.dest.value === "stick") {
-      const d = usbSticks.find((x) => x.name === stickEl.stick.value);
-      if (!d) return;
+      const usbStick = usbSticks.find((x) => x.name === stickEl.stick.value);
+      if (!usbStick) return;
       bkWaiting = {
         id: (
           await postJSON("/admin/usb", {
             action: "export-many",
-            device: d.name,
+            device: usbStick.name,
             books,
             kits,
             repos,
@@ -10816,12 +10816,12 @@ async function loadTileOrder() {
   tilesSec.update({ all: freshTilesDraft() });
   renderInventory();
 }
-async function saveTiles(d) {
+async function saveTiles(tiles) {
   const appOf = (id) => lastAccess && lastAccess.apps.find((x) => x.id === id);
   tilesData = await postJSON("/admin/tiles", {
-    state: { order: d.order, size: d.size || {}, icon: d.icon || {} },
+    state: { order: tiles.order, size: tiles.size || {}, icon: tiles.icon || {} },
   });
-  for (const [id, v] of Object.entries(d.seen)) {
+  for (const [id, v] of Object.entries(tiles.seen)) {
     const app = appOf(id),
       auto = app ? seenOf(app.mode, "auto") : "guests";
     await postJSON("/admin/visibility", {
@@ -10829,7 +10829,7 @@ async function saveTiles(d) {
       visible: v === auto ? "auto" : v,
     });
   }
-  for (const [id, v] of Object.entries(d.lock))
+  for (const [id, v] of Object.entries(tiles.lock))
     await postJSON("/admin/visibility", { app: id, locked: v });
   // Saved: the arrangement read back (visibility and the locked action as they are now, no changes left).
   setTimeout(() => {
@@ -10889,9 +10889,9 @@ function drawTileOrder(openId) {
     tilesTouched();
     drawTileOrder(id);
   };
-  const move = (id, d) => {
+  const move = (id, step) => {
     const i = order.indexOf(id),
-      k = i + d;
+      k = i + step;
     if (k < 0 || k >= order.length) return;
     [order[i], order[k]] = [order[k], order[i]];
     tilesDraft.order = order;
@@ -11171,8 +11171,8 @@ const ICON_OK = (s) =>
   (s.length > 0 &&
     [...s].length <= 16 &&
     [...s].every((c) => c.codePointAt(0) > 0x7f));
-function iconField(d, tile, iconNow, redraw) {
-  const val = d.icon !== undefined ? d.icon : iconNow;
+function iconField(draft, tile, iconNow, redraw) {
+  const val = draft.icon !== undefined ? draft.icon : iconNow;
   const input = el("input", {
     type: "text",
     value: val,
@@ -11195,13 +11195,13 @@ function iconField(d, tile, iconNow, redraw) {
         : `Icon of the app: ${tile.icon}`,
   });
   input.addEventListener("change", () => {
-    d.icon = input.value.trim();
+    draft.icon = input.value.trim();
     redraw();
   });
   // A pick from the emoji picker arrives as an input event of the page's own.
   input.addEventListener("input", (event) => {
     if (!event.isTrusted) {
-      d.icon = input.value.trim();
+      draft.icon = input.value.trim();
       redraw();
     }
   });
@@ -11974,7 +11974,7 @@ function renderUsb(data) {
   usb.scan.disabled = busy;
   const devs = (data.scan && data.scan.devices) || [];
   usb.devices.replaceChildren(
-    ...devs.map((d) => {
+    ...devs.map((device) => {
       const pick = el(
         "select",
         { disabled: busy || !data.books.length },
@@ -11990,16 +11990,16 @@ function renderUsb(data) {
           {},
           el("span", {
             className: "setting-name",
-            textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})`,
+            textContent: `${device.label || device.name} (${device.fstype}, ${size(Number(device.size))})`,
           }),
-          d.error
+          device.error
             ? el("span", {
                 className: "setting-desc bad",
-                textContent: errorSaid(d),
+                textContent: errorSaid(device),
               })
             : null,
-          ...(d.zims.length
-            ? d.zims.map((z) =>
+          ...(device.zims.length
+            ? device.zims.map((z) =>
                 el(
                   "span",
                   { className: "usb-book" },
@@ -12015,18 +12015,18 @@ function renderUsb(data) {
                         disabled: busy,
                         onclick: () =>
                           usbRequest(
-                            { action: "import", device: d.name, file: z.file },
-                            `${d.name}:${z.file}`,
+                            { action: "import", device: device.name, file: z.file },
+                            `${device.name}:${z.file}`,
                           ),
                       })
                     : null,
-                  noteAt(`${d.name}:${z.file}`),
+                  noteAt(`${device.name}:${z.file}`),
                 ),
               )
             : [
                 el("span", {
                   className: "setting-desc",
-                  textContent: d.error ? "" : "No books on this drive.",
+                  textContent: device.error ? "" : "No books on this drive.",
                 }),
               ]),
           data.books.length
@@ -12041,13 +12041,13 @@ function renderUsb(data) {
                   disabled: busy,
                   onclick: () =>
                     usbRequest(
-                      { action: "export", device: d.name, book: pick.value },
-                      `export:${d.name}`,
+                      { action: "export", device: device.name, book: pick.value },
+                      `export:${device.name}`,
                     ),
                 }),
               )
             : null,
-          noteAt(`export:${d.name}`),
+          noteAt(`export:${device.name}`),
         ),
       );
     }),
@@ -14001,12 +14001,12 @@ function kitBody(k, st, cfg, setDirty) {
 }
 async function kitSave(it) {
   const k = it.kit,
-    d = kitDrafts.get(k.id),
+    draft = kitDrafts.get(k.id),
     mine = kitsData.settings.kits[k.id];
   const ch = {};
-  if (d.keep_current !== mine.keep_current) ch.keep_current = d.keep_current;
-  if (d.remove_after !== mine.remove_after) ch.remove_after = d.remove_after;
-  const extra = d.extra
+  if (draft.keep_current !== mine.keep_current) ch.keep_current = draft.keep_current;
+  if (draft.remove_after !== mine.remove_after) ch.remove_after = draft.remove_after;
+  const extra = draft.extra
     .trim()
     .split(/[\s,]+/)
     .filter(Boolean);
@@ -14128,7 +14128,7 @@ async function loadKitsUsb() {
           }),
         ]
       : []),
-    ...devs.map((d) => {
+    ...devs.map((device) => {
       const pick = el(
         "select",
         { disabled: busy || !cached.length },
@@ -14147,16 +14147,16 @@ async function loadKitsUsb() {
           {},
           el("span", {
             className: "setting-name",
-            textContent: `${d.label || d.name} (${d.fstype}, ${size(Number(d.size))})`,
+            textContent: `${device.label || device.name} (${device.fstype}, ${size(Number(device.size))})`,
           }),
-          d.error
+          device.error
             ? el("span", {
                 className: "setting-desc bad",
-                textContent: errorSaid(d),
+                textContent: errorSaid(device),
               })
             : null,
-          ...((d.kits || []).length
-            ? d.kits.map((k) =>
+          ...((device.kits || []).length
+            ? device.kits.map((k) =>
                 el(
                   "span",
                   { className: "usb-book" },
@@ -14178,7 +14178,7 @@ async function loadKitsUsb() {
                           kitsUsbAsk(
                             {
                               action: "kit-import",
-                              device: d.name,
+                              device: device.name,
                               kit: k.kit,
                             },
                           ),
@@ -14204,7 +14204,7 @@ async function loadKitsUsb() {
                   disabled: busy,
                   onclick: () =>
                     kitsUsbAsk(
-                      { action: "kit-export", device: d.name, kit: pick.value },
+                      { action: "kit-export", device: device.name, kit: pick.value },
                     ),
                 }),
               )
@@ -14469,10 +14469,10 @@ async function loadTls() {
     tlsEl.state.textContent = "Could not read the HTTPS state.";
   }
 }
-function renderTls(d) {
-  tlsData = d;
+function renderTls(data) {
+  tlsData = data;
   if (tlsWaiting) {
-    const done = (d.results || []).find((result) => result.id === tlsWaiting);
+    const done = (data.results || []).find((result) => result.id === tlsWaiting);
     if (done) {
       say(
         resultSaid(done),
@@ -14491,22 +14491,22 @@ function renderTls(d) {
       tlsWaiting = null;
     }
   }
-  const busy = !!tlsWaiting || d.pending > 0;
-  const c = d.cert || {};
+  const busy = !!tlsWaiting || data.pending > 0;
+  const c = data.cert || {};
   const day = (t) => new Date(t * 1000).toLocaleDateString();
-  tlsEl.state.textContent = !d.set_up
+  tlsEl.state.textContent = !data.set_up
     ? "No certificate yet. The box serves pages over plain HTTP only."
-    : `${d.on ? `HTTPS enabled: https://<this box>/ (port ${d.ports.main}) and the HTTPS address of each app.` : "HTTPS disabled. The box keeps the certificate. Pages are plain HTTP only."}` +
+    : `${data.on ? `HTTPS enabled: https://<this box>/ (port ${data.ports.main}) and the HTTPS address of each app.` : "HTTPS disabled. The box keeps the certificate. Pages are plain HTTP only."}` +
       ` The certificate covers ${[...(c.names || []), ...(c.addresses || [])].join(", ")}. Certificate expires ${c.expires ? day(c.expires) : "?"}` +
-      `${c.own ? " (your own certificate: renew it before then)" : " (the box renews it before then)"}.${d.ca ? ` Certificate-authority fingerprint: ${d.ca.fingerprint}.` : ""}` +
-      (d.outside && d.outside.length
-        ? ` The box is now at ${d.outside.join(", ")}. These addresses are outside the names that its CA can certify. Make a new certificate authority for that network.`
+      `${c.own ? " (your own certificate: renew it before then)" : " (the box renews it before then)"}.${data.ca ? ` Certificate-authority fingerprint: ${data.ca.fingerprint}.` : ""}` +
+      (data.outside && data.outside.length
+        ? ` The box is now at ${data.outside.join(", ")}. These addresses are outside the names that its CA can certify. Make a new certificate authority for that network.`
         : "");
-  tlsEl.state.classList.toggle("bad", !!(d.outside && d.outside.length));
-  tlsEl.make.hidden = !!d.set_up;
-  tlsEl.again.hidden = !d.set_up;
-  tlsEl.box.hidden = !(c.own && d.ca);
-  tlsEl.make.hidden = !!(d.set_up && d.ca);
+  tlsEl.state.classList.toggle("bad", !!(data.outside && data.outside.length));
+  tlsEl.make.hidden = !!data.set_up;
+  tlsEl.again.hidden = !data.set_up;
+  tlsEl.box.hidden = !(c.own && data.ca);
+  tlsEl.make.hidden = !!(data.set_up && data.ca);
   tlsEl.plain.hidden = location.protocol === "https:";
   // /admin over HTTPS only: offered while HTTPS is on, and turned on only from a page that came
   // over HTTPS (this device trusts the box, so it can't lock its owner out).
@@ -14516,7 +14516,7 @@ function renderTls(d) {
     tlsEl.box,
     ...tlsEl.own.querySelectorAll("input, textarea, button"),
   ].forEach((button) => {
-    button.disabled = busy || (d.policy || {}).mode === "console";
+    button.disabled = busy || (data.policy || {}).mode === "console";
   });
   drawTlsChoices();
   if (busy) setTimeout(loadTls, 1500);
@@ -14655,16 +14655,16 @@ function reachChange(v, admins) {
     says: "Saving this lets the box password work from every device on the box's network. The password goes with every request. Over plain HTTP, anyone on the WiFi can read it, so use it over HTTPS.",
   };
 }
-function renderAccounts(d) {
-  const al = d.admin_login || {
+function renderAccounts(data) {
+  const al = data.admin_login || {
     on: true,
     reach: "network",
     password_set: true,
     https_admins: [],
     results: [],
   };
-  acctLast = d;
-  if (d.admin_login) drawPasswordStep(d.admin_login);
+  acctLast = data;
+  if (data.admin_login) drawPasswordStep(data.admin_login);
   if (acctWaiting) {
     const done = (al.results || []).find((result) => result.id === acctWaiting.id);
     if (done) {
@@ -14711,13 +14711,13 @@ function renderAccounts(d) {
     (al.reach !== "off" && !admins
       ? " To disable it or limit it to the box itself, first create an administrator account and sign in with it over HTTPS."
       : "");
-  acctSettings.fill({ signup: d.settings.signup, http: d.settings.http });
-  const c = d.counts;
+  acctSettings.fill({ signup: data.settings.signup, http: data.settings.http });
+  const c = data.counts;
   acctEl.counts.textContent = `${c.user} user${c.user === 1 ? "" : "s"} (${c.admins} administrator${c.admins === 1 ? "" : "s"}), ${c.asked} waiting for approval, ${c.disabled} disabled.`;
   const when = (t) => (t ? ago(Date.now() / 1000 - t) : "never");
   acctEl.list.replaceChildren(
-    ...(d.accounts.length
-      ? d.accounts.map((account) => {
+    ...(data.accounts.length
+      ? data.accounts.map((account) => {
           const act = (action, label) =>
             actionButton(label, () => acctAct({ action, name: account.name }));
           const state =
@@ -14908,10 +14908,10 @@ async function acctAct(body) {
   )
     return false;
   try {
-    const d = await postJSON("/admin/accounts", body);
-    if (d.code) showCode(body.name, d.code);
+    const reply = await postJSON("/admin/accounts", body);
+    if (reply.code) showCode(body.name, reply.code);
     say("Done.", true, acctEl.note);
-    renderAccounts(d);
+    renderAccounts(reply);
     return true;
   } catch (err) {
     say(err.message, false, acctEl.note);
@@ -14921,12 +14921,12 @@ async function acctAct(body) {
 const acctSettings = AW.form(acctEl.settings, {
   label: "Account settings",
   save: async (c, v) => {
-    const d = await postJSON("/admin/accounts", {
+    const reply = await postJSON("/admin/accounts", {
       action: "settings",
       signup: v.signup,
       http: v.http,
     });
-    setTimeout(() => renderAccounts(d));
+    setTimeout(() => renderAccounts(reply));
     return "Saved.";
   },
 });
@@ -15000,14 +15000,14 @@ async function loadMesh() {
     meshEl.state.textContent = "Could not read the mesh.";
   }
 }
-function renderMesh(d) {
+function renderMesh(data) {
   meshEl.state.textContent =
-    d.state === "listening"
-      ? `Connected to MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? "" : "s"} heard in the last 7 days.`
-      : `Reconnecting to broker${d.error ? ` (${errorSaid(d)})` : ""}. Check that the MQTT broker is installed (Add-ons, MQTT broker) and running. The box tries again automatically.`;
+    data.state === "listening"
+      ? `Connected to MQTT broker: ${data.nodes.length} node${data.nodes.length === 1 ? "" : "s"} heard in the last 7 days.`
+      : `Reconnecting to broker${data.error ? ` (${errorSaid(data)})` : ""}. Check that the MQTT broker is installed (Add-ons, MQTT broker) and running. The box tries again automatically.`;
   meshEl.channels.replaceChildren(
-    ...(d.channels.length
-      ? d.channels.map((c) =>
+    ...(data.channels.length
+      ? data.channels.map((c) =>
           el(
             "div",
             { className: "admin-item" },
@@ -15886,10 +15886,10 @@ function drawFolder(block, folderId) {
     .map((h, i) => ({ h, i }))
     .sort((left, right) => pos(left.h) - pos(right.h) || left.i - right.i)
     .map((x) => pool.get(x.h));
-  const move = (entry, d) => {
+  const move = (entry, step) => {
     const order = list.map((x) => x.href),
       i = order.indexOf(entry.href),
-      j = i + d;
+      j = i + step;
     if (j < 0 || j >= order.length) return;
     [order[i], order[j]] = [order[j], order[i]];
     st.order = order;
@@ -16138,10 +16138,10 @@ function drawStatusTiles(openId) {
     stSec.set("all", JSON.parse(JSON.stringify(stDraft)), true);
     drawStatusTiles(id);
   };
-  const move = (id, d) => {
+  const move = (id, step) => {
     const order = list.map((x) => x.id),
       i = order.indexOf(id),
-      k = i + d;
+      k = i + step;
     if (k < 0 || k >= order.length) return;
     [order[i], order[k]] = [order[k], order[i]];
     stDraft.order = order;

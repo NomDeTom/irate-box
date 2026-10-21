@@ -233,19 +233,19 @@ if (factoryCard) {
   const kind = (name) => (name.endsWith('.uf2') ? 'UF2' : name.endsWith('.factory.bin') ? 'factory .bin' : name.endsWith('.zip') ? '.zip'
     : name.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
   const refreshFactory = async () => {
-    let d;
+    let data;
     try {
       const response = await fetch('/factory.json');
       if (!response.ok) return;
-      d = await response.json();
+      data = await response.json();
     } catch (_) { return; }
-    const run = d.running;
-    const waiting = d.waiting ? `. Queued: ${d.waiting}` : '';
+    const run = data.running;
+    const waiting = data.waiting ? `. Queued: ${data.waiting}` : '';
     fNow.textContent = run ? `Build in progress: ${run.name} (${run.family})${run.done != null ? `, about ${Math.round(run.done * 100)} %` : ''}${waiting}`
-      : d.paused ? `Queue paused${waiting}` : d.waiting ? `Queued: ${d.waiting}` : 'No build running';
+      : data.paused ? `Queue paused${waiting}` : data.waiting ? `Queued: ${data.waiting}` : 'No build running';
     fBar.hidden = !(run && run.done != null);
     if (run && run.done != null) fDone.style.width = `${Math.round(run.done * 100)}%`;
-    fFiles.replaceChildren(...d.built.map((b) => {
+    fFiles.replaceChildren(...data.built.map((b) => {
       const row = document.createElement('span');
       row.className = 'factory-build';
       row.append(document.createTextNode(`${b.name} `));
@@ -324,8 +324,8 @@ if (systemCard) {
       ['trend-disk', samples.filter(hasDisk), (s) => (s.disk_total - s.disk_free) / s.disk_total * 100, (s, p) => s.disk_total === p.disk_total],
     ];
     for (const [cls, list, val, same] of series) {
-      const d = list.map((s, i) => `${i && s.at - list[i - 1].at <= gap && same(s, list[i - 1]) ? 'L' : 'M'}${x(s.at).toFixed(1)},${y(Math.max(0, Math.min(100, val(s)))).toFixed(1)}`).join(' ');
-      if (d) svg.append(svgEl('path', { d, class: cls }));
+      const path = list.map((s, i) => `${i && s.at - list[i - 1].at <= gap && same(s, list[i - 1]) ? 'L' : 'M'}${x(s.at).toFixed(1)},${y(Math.max(0, Math.min(100, val(s)))).toFixed(1)}`).join(' ');
+      if (path) svg.append(svgEl('path', { d: path, class: cls }));
     }
     const last = samples[samples.length - 1], lastDisk = samples.filter(hasDisk).pop();
     const say = document.createElement('p');

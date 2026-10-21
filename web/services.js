@@ -22,10 +22,10 @@ function row(name, detail, state) {
   const n = document.createElement('span');
   n.className = 'name';
   n.textContent = name;
-  const d = document.createElement('span');
-  d.className = 'desc';
-  d.textContent = detail;
-  li.append(n, d);
+  const desc = document.createElement('span');
+  desc.className = 'desc';
+  desc.textContent = detail;
+  li.append(n, desc);
   if (state) {
     const b = document.createElement('span');
     b.className = `state state-${state}`;

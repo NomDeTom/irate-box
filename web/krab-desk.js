@@ -133,9 +133,9 @@ const KD = (() => {
     const pixels = (img) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
       const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, W, H); return x.getImageData(0, 0, W, H).data; };
     const layer = (lit, alpha) => { const c = document.createElement('canvas'); c.width = W; c.height = H;
-      const x = c.getContext('2d'), id = x.createImageData(W, H), d = id.data;  // not new ImageData: jsdom has none
-      d.set(lit);
-      for (let i = 0; i < W * H; i++) d[i * 4 + 3] = Math.min(d[i * 4 + 3], alpha[i]);
+      const x = c.getContext('2d'), id = x.createImageData(W, H), pixelData = id.data;  // not new ImageData: jsdom has none
+      pixelData.set(lit);
+      for (let i = 0; i < W * H; i++) pixelData[i * 4 + 3] = Math.min(pixelData[i * 4 + 3], alpha[i]);
       x.putImageData(id, 0, 0); return c; };
     const [lit, mask] = imgs.map(pixels);
     const kind = KD.classify(mask, W * H), { labels, list } = KD.blobs(kind, W, H);
@@ -147,11 +147,11 @@ const KD = (() => {
     const out = [];
     for (let g = 0; g < np + ng; g++) {
       const { core, halo } = KD.masks(labels, groupOf, g, W, H, sc.halo);
-      const d = document.createElement('i'), h = layer(lit, halo);
-      d.append(h, layer(lit, core)); out.push(d);
+      const light = document.createElement('i'), h = layer(lit, halo);
+      light.append(h, layer(lit, core)); out.push(light);
       if (still) continue;
       const random = KD.rng(sc.seed * 1000 + g);
-      if (g < np) { KD.blink(random, d); KD.flutter(random, h); } else { KD.glow(random, d); h.style.opacity = .7; }
+      if (g < np) { KD.blink(random, light); KD.flutter(random, h); } else { KD.glow(random, light); h.style.opacity = .7; }
     }
     return out;
   }

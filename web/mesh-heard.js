@@ -14,13 +14,13 @@
   };
   let poll = null;
 
-  function render(d) {
-    view.state.textContent = d.state === 'listening' ? `Connected to the broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
-      : `Reconnecting to the broker${d.error ? ` (${d.error_message && window.AW ? window.AW.say(d.error_message) : d.error})` : ''}. This happens automatically.`;
-    const names = Object.fromEntries(d.nodes.map((n) => [n.id, n.long_name || n.id]));
-    const counts = Object.entries(d.counts || {}).map(([k, n]) => `${n} ${k}`);
+  function render(data) {
+    view.state.textContent = data.state === 'listening' ? `Connected to the broker: ${data.nodes.length} node${data.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
+      : `Reconnecting to the broker${data.error ? ` (${data.error_message && window.AW ? window.AW.say(data.error_message) : data.error})` : ''}. This happens automatically.`;
+    const names = Object.fromEntries(data.nodes.map((n) => [n.id, n.long_name || n.id]));
+    const counts = Object.entries(data.counts || {}).map(([k, n]) => `${n} ${k}`);
     view.counts.textContent = counts.length ? `Decoded packets since the hub server started: ${counts.join(', ')}.` : 'No packets received';
-    view.packets.replaceChildren(...d.packets.map((p) => el('li', {},
+    view.packets.replaceChildren(...data.packets.map((p) => el('li', {},
       el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} packet from ${names[p.from] || p.from}${p.channel ? ` on channel ${p.channel}` : ''}` }),
       p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
   }

@@ -331,10 +331,10 @@ const TOUR = (() => {
     } catch (_) {
       /* this page's own memory only */
     }
-    const d = STEPS[i];
-    const section = document.getElementById(d.section)
-      ? d.section
-      : d.fallback || d.section;
+    const step = STEPS[i];
+    const section = document.getElementById(step.section)
+      ? step.section
+      : step.fallback || step.section;
     if (location.hash === "#" + section) show();
     else location.hash = "#" + section;
   }
@@ -370,12 +370,12 @@ const TOUR = (() => {
   }
   function show() {
     if (at == null) return;
-    const d = STEPS[at];
+    const step = STEPS[at];
     unmark();
     let target =
-      typeof d.target === "function"
-        ? d.target()
-        : document.querySelector(d.target);
+      typeof step.target === "function"
+        ? step.target()
+        : document.querySelector(step.target);
     if (
       target &&
       target.closest(".settings, .aw-settings, form, .admin-checks > li")
@@ -412,17 +412,17 @@ const TOUR = (() => {
     text.className = "tour-text";
     text.append(
       Object.assign(document.createElement("strong"), {
-        textContent: `Setup tour · ${at + 1} of ${STEPS.length}: ${d.label}`,
+        textContent: `Setup tour · ${at + 1} of ${STEPS.length}: ${step.label}`,
       }),
       " ",
       Object.assign(document.createElement("span"), {
-        className: PILL(d)[0],
-        textContent: PILL(d)[1],
+        className: PILL(step)[0],
+        textContent: PILL(step)[1],
       }),
       Object.assign(document.createElement("p"), {
         className: "setting-desc",
         textContent:
-          d.said +
+          step.said +
           (here
             ? ""
             : " (This setting is unavailable on this box. Keep the default and continue.)"),
@@ -444,10 +444,10 @@ const TOUR = (() => {
     buttons.append(
       back,
       btn(
-        KIND[d.id] === "decision" ? "Keep and continue →" : "Done, continue →",
+        KIND[step.id] === "decision" ? "Keep and continue →" : "Done, continue →",
         "action-btn primary",
         () => {
-          decide(d.id);
+          decide(step.id);
           if (at + 1 < STEPS.length) go(at + 1);
           else finish();
         },

@@ -12,26 +12,26 @@
     'sheet-web': 'The administrator lets guests reach the web through this box.',
     'sheet-all': 'The administrator lets guests reach the internet through this box.',
   };
-  function show(d) {
-    if (!d.here || d.out || !words[d.level]) { box.hidden = true; return; }
+  function show(data) {
+    if (!data.here || data.out || !words[data.level]) { box.hidden = true; return; }
     const p = document.createElement('p');
-    p.textContent = `${words[d.level]} Access lasts ${d.hours} hours on this device. Your traffic uses the box's connection, which belongs to the administrator. `
+    p.textContent = `${words[data.level]} Access lasts ${data.hours} hours on this device. Your traffic uses the box's connection, which belongs to the administrator. `
       + 'The box does not log the sites you visit. Other systems on the route, such as the internet provider, can still log them.';
-    const act = document.createElement(d.level === 'users-web' && !d.signed_in ? 'a' : 'button');
+    const act = document.createElement(data.level === 'users-web' && !data.signed_in ? 'a' : 'button');
     act.className = 'action-btn primary';
     if (act.tagName === 'A') {
       act.href = '/account.html?next=%2F';
       act.textContent = 'Sign in for web access';
     } else {
       act.type = 'button';
-      act.textContent = d.level === 'sheet-all' ? 'Enable internet access' : 'Enable web access';
+      act.textContent = data.level === 'sheet-all' ? 'Enable internet access' : 'Enable web access';
       act.addEventListener('click', async () => {
         act.disabled = true;
         try {
           const response = await fetch('/api/guest-net', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agree: true }) });
           const j = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(j.error || `HTTP ${response.status}`);
-          p.textContent = `Done. This device can reach ${d.level === 'sheet-all' ? 'the internet' : 'the web'} in a few seconds.`;
+          p.textContent = `Done. This device can reach ${data.level === 'sheet-all' ? 'the internet' : 'the web'} in a few seconds.`;
           act.remove();
         } catch (err) { p.textContent = `Request failed: ${err.message}. Select the button to try again.`; act.disabled = false; }
       });
@@ -39,5 +39,5 @@
     box.replaceChildren(p, act);
     box.hidden = false;
   }
-  fetch('/api/guest-net').then((response) => (response.ok ? response.json() : null)).then((d) => d && show(d)).catch(() => {});
+  fetch('/api/guest-net').then((response) => (response.ok ? response.json() : null)).then((data) => data && show(data)).catch(() => {});
 })();

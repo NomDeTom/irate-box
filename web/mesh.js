@@ -17,15 +17,15 @@ function nodeName(n) {
   return n.long_name ? `${n.long_name}${n.short_name ? ` (${n.short_name})` : ''}` : n.id;
 }
 
-function render(d) {
-  $('mesh-state').textContent = d.state === 'listening'
-    ? `Connected to the box's MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
+function render(data) {
+  $('mesh-state').textContent = data.state === 'listening'
+    ? `Connected to the box's MQTT broker: ${data.nodes.length} node${data.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
     : 'Reconnecting to the box\'s MQTT broker. This happens automatically.';
-  const counts = Object.entries(d.counts).sort((left, right) => right[1] - left[1]).map(([k, n]) => `${n} ${KINDS[k] || k}`);
-  $('mesh-counts').textContent = counts.length ? `Packets received since ${new Date(d.since * 1000).toLocaleString()}: ${counts.join(', ')}.` : 'No packets received';
-  drawMap(d.nodes);
-  const names = Object.fromEntries(d.nodes.map((n) => [n.id, nodeName(n)]));
-  $('mesh-nodes').tBodies[0].replaceChildren(...d.nodes.map((n) => {
+  const counts = Object.entries(data.counts).sort((left, right) => right[1] - left[1]).map(([k, n]) => `${n} ${KINDS[k] || k}`);
+  $('mesh-counts').textContent = counts.length ? `Packets received since ${new Date(data.since * 1000).toLocaleString()}: ${counts.join(', ')}.` : 'No packets received';
+  drawMap(data.nodes);
+  const names = Object.fromEntries(data.nodes.map((n) => [n.id, nodeName(n)]));
+  $('mesh-nodes').tBodies[0].replaceChildren(...data.nodes.map((n) => {
     const tr = make('tr');
     const t = n.telemetry || {};
     const p = n.position;
@@ -36,7 +36,7 @@ function render(d) {
       make('td', String(n.packets || 0)));
     return tr;
   }));
-  $('mesh-packets').replaceChildren(...d.packets.map((p) => make('li',
+  $('mesh-packets').replaceChildren(...data.packets.map((p) => make('li',
     `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} packet from ${names[p.from] || p.from}${p.to && p.to !== 'all' ? ` to ${names[p.to] || p.to}` : ''}${p.channel ? ` on channel ${p.channel}` : ''}`)));
 }
 

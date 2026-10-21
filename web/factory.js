@@ -61,28 +61,28 @@
     try { renderFactory(await getJSON('/admin/factory')); } catch (_) { fac.waiting.textContent = 'Could not load the Firmware Factory.'; }
   }
 
-  function renderFactory(d) {
-    facData = d;
-    fac.paused.hidden = !d.paused;
-    fac.pause.textContent = d.paused ? 'Resume queue' : 'Pause queue';
-    const names = d.sources.map((s) => s.name).join('\n');
+  function renderFactory(data) {
+    facData = data;
+    fac.paused.hidden = !data.paused;
+    fac.pause.textContent = data.paused ? 'Resume queue' : 'Pause queue';
+    const names = data.sources.map((s) => s.name).join('\n');
     if (fac.source.dataset.names !== names) {
       const was = fac.source.value;
       fac.source.dataset.names = names;
-      fac.source.replaceChildren(...d.sources.map((s) => el('option', { value: s.name, textContent: `${s.name} (${s.mirror ? 'mirror' : 'local repository'})` })));
-      if (d.sources.some((s) => s.name === was)) fac.source.value = was;
-      if (d.sources.length) loadFactoryRefs();
+      fac.source.replaceChildren(...data.sources.map((s) => el('option', { value: s.name, textContent: `${s.name} (${s.mirror ? 'mirror' : 'local repository'})` })));
+      if (data.sources.some((s) => s.name === was)) fac.source.value = was;
+      if (data.sources.length) loadFactoryRefs();
       else fac.targets.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No source configured. Mirror meshtastic/firmware in Git → Mirrors, or push a fork to a repository on this box.' }));
     }
     const describe = (j) => `${j.name && j.name !== j.env ? `${j.name} (${j.env})` : j.env}, ${j.family}: ${j.source} ${j.ref}`;
     const rows = [];
-    if (d.running) {
-      const estimate = d.estimates[d.running.family];
+    if (data.running) {
+      const estimate = data.estimates[data.running.family];
       rows.push(el('div', { className: 'admin-item' }, el('span', { className: 'state state-running', textContent: 'Building' }),
-        el('span', { textContent: ` ${describe(d.running)}` }),
-        el('span', { className: 'setting-desc', textContent: ` Started ${ago(Date.now() / 1000 - d.running.started)}.${estimate ? ` Finishes about ${facClock(d.running.started + estimate.seconds)}.` : ''}` })));
+        el('span', { textContent: ` ${describe(data.running)}` }),
+        el('span', { className: 'setting-desc', textContent: ` Started ${ago(Date.now() / 1000 - data.running.started)}.${estimate ? ` Finishes about ${facClock(data.running.started + estimate.seconds)}.` : ''}` })));
     }
-    d.waiting.forEach((j, i) => {
+    data.waiting.forEach((j, i) => {
       rows.push(el('div', { className: 'admin-item' }, el('span', { textContent: `${i + 1}. ${describe(j)}` }),
         el('span', { className: 'setting-desc', textContent: j.start ? ` Starts about ${facClock(j.start)}.${j.finish ? ` Finishes about ${facClock(j.finish)}.` : ''}`
           : ' No build estimate. The box has not built this family, or an earlier family in the queue.' }),
@@ -92,8 +92,8 @@
     });
     fac.waiting.replaceChildren(...(rows.length ? rows : [el('p', { className: 'setting-desc', textContent: 'No build running. No build queued.' })]));
     const mbs = (b) => (b == null ? '?' : `${Math.round(b / 2 ** 20)} MB`);
-    const published = new Set((d.flasher || []).flatMap((rel) => rel.targets.map((t) => t.run)));
-    fac.runs.replaceChildren(...(d.runs.filter((run) => run.state !== 'running').map((run) => {
+    const published = new Set((data.flasher || []).flatMap((rel) => rel.targets.map((t) => t.run)));
+    fac.runs.replaceChildren(...(data.runs.filter((run) => run.state !== 'running').map((run) => {
       const u = run.resources || {};
       const used = run.resources ? [`${facDur(run.duration)}`, `CPU ${facDur(u.cpu)}`, `peak memory ${mbs(u.peak_memory)}`, `disk ${mbs(u.work_bytes)}`,
         u.hottest != null ? `peak temperature ${Math.round(u.hottest)} °C` : null,
@@ -116,20 +116,20 @@
             { title: 'Queue this build again: the same target, commit and options' })) : null);
     })));
     if (!fac.runs.children.length) fac.runs.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No completed builds' }));
-    const pub = (d.flasher || []).flatMap((rel) => rel.targets.map((t) => el('div', { className: 'admin-item' },
+    const pub = (data.flasher || []).flatMap((rel) => rel.targets.map((t) => el('div', { className: 'admin-item' },
       el('span', { textContent: `${t.board}, ${t.platform}: ${rel.version.replace(/-built$/, '')}` }),
       el('span', { className: 'setting-desc', textContent: ` from ${t.ref || '?'}${t.epoch ? `, built ${new Date(t.epoch * 1000).toLocaleDateString()}` : ''}.` }),
       el('span', { className: 'library-buttons' }, actionButton('Unpublish firmware', () => facAct({ action: 'unpublish', version: rel.version, env: t.board }), { title: 'Withdraw this firmware from the web flasher. This does not delete the build.' })))));
     fac.flasher.replaceChildren(...(pub.length ? pub : [el('p', { className: 'setting-desc', textContent: 'No published firmware' })]));
     clearTimeout(facPoll);
-    if (paneShown('factory')) facPoll = setTimeout(loadFactory, d.running || d.waiting.length ? 15000 : 60000);
+    if (paneShown('factory')) facPoll = setTimeout(loadFactory, data.running || data.waiting.length ? 15000 : 60000);
   }
 
   async function loadFactoryRefs() {
     try {
-      const d = await getJSON(`/admin/factory/targets?source=${encodeURIComponent(fac.source.value)}`);
+      const reply = await getJSON(`/admin/factory/targets?source=${encodeURIComponent(fac.source.value)}`);
       const group = (label, list) => (list.length ? el('optgroup', { label }, ...list.map((target) => el('option', { value: target.ref, textContent: target.ref }))) : null);
-      fac.ref.replaceChildren(...[group('Releases and tags', d.refs.tags), group('Branches', d.refs.branches)].filter(Boolean));
+      fac.ref.replaceChildren(...[group('Releases and tags', reply.refs.tags), group('Branches', reply.refs.branches)].filter(Boolean));
       loadFactoryTargets();
     } catch (err) { say(err.message, false, fac.note); }
   }

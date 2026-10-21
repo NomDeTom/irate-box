@@ -123,8 +123,8 @@ const AW = (() => {
   //          oftenSays: {'0': …}, value: {often, act}, why: a line saying why a choice is missing}
   function updatePattern(opts) {
     const sel = (name, rows, says, value, label) => h('label', { class: 'update-choice' }, label,
-      h('select', { name, 'data-pattern': name === opts.often ? 'often' : 'act' }, rows.map(([v, t, d]) => {
-        const o = h('option', { value: v, 'data-says': (says && says[v]) || d }, t);
+      h('select', { name, 'data-pattern': name === opts.often ? 'often' : 'act' }, rows.map(([v, t, row]) => {
+        const o = h('option', { value: v, 'data-says': (says && says[v]) || row }, t);
         if (String(value) === v) o.selected = true;
         return o;
       })));
@@ -293,7 +293,7 @@ const AW = (() => {
       },
       onChange: () => { if (!sec.dirty() && !sec.saving()) fill(); },
     });
-    function setDirty(d = true) { sec.set('changed', !!d, true); sec.foot.hidden = false; }
+    function setDirty(dirty = true) { sec.set('changed', !!dirty, true); sec.foot.hidden = false; }
     sec.foot.hidden = true;   // shown once the body has settings (setDirty called)
     const drawer = h('div', { class: 'aw-drawer', role: 'region', 'aria-label': it.title },
       btn('✕', { class: 'action-btn aw-close', 'data-act': 'close', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => closeCard(card) }),
@@ -680,10 +680,10 @@ const AW = (() => {
     if (watched || typeof HTMLSelectElement === 'undefined') return;
     watched = true;
     for (const prop of ['value', 'selectedIndex']) {
-      const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
-      if (!d || !d.set) continue;
-      Object.defineProperty(HTMLSelectElement.prototype, prop, { configurable: true, enumerable: d.enumerable,
-        get() { return d.get.call(this); }, set(v) { d.set.call(this, v); if (this._chipsDraw) this._chipsDraw(); } });
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
+      if (!descriptor || !descriptor.set) continue;
+      Object.defineProperty(HTMLSelectElement.prototype, prop, { configurable: true, enumerable: descriptor.enumerable,
+        get() { return descriptor.get.call(this); }, set(v) { descriptor.set.call(this, v); if (this._chipsDraw) this._chipsDraw(); } });
     }
   }
   function chipSelects(root) {

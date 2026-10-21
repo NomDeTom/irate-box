@@ -136,10 +136,10 @@ const LadderChart = (() => {
     if (dUnder) svg.append(make('path', { d: dUnder, class: 'ladder-sym' }));
     if (dOver) svg.append(make('path', { d: dOver, class: 'ladder-sym over' }));
     if (th) {
-      let d = `M${L},${ys(th)}`;
-      for (const slot of sym) if (slot.th && slot.th !== th) { th = slot.th; d += `H${Math.max(x(slot.at), L)}V${ys(th)}`; }
-      d += `H${W - R}`;
-      svg.append(make('path', { d, class: 'ladder-th' }));
+      let path = `M${L},${ys(th)}`;
+      for (const slot of sym) if (slot.th && slot.th !== th) { th = slot.th; path += `H${Math.max(x(slot.at), L)}V${ys(th)}`; }
+      path += `H${W - R}`;
+      svg.append(make('path', { d: path, class: 'ladder-th' }));
       svg.append(make('text', { x: W - R, y: ys(th) - 4, class: 'ladder-axis', 'text-anchor': 'end' }, `sensitivity ${th}`));
     }
     // A roam between access points: a short tick on the baseline, muted, one each.
@@ -186,12 +186,12 @@ const LadderChart = (() => {
       svg.append(make('text', { x: x(t), y: H - 8, class: 'ladder-axis', 'text-anchor': k === 0 ? 'start' : k === 4 ? 'end' : 'middle' },
         k === 4 && to >= now ? 'now' : tick(t, span)));
     }
-    let d = '';
+    let path = '';
     for (const pts of segs) {
-      d += `M${x(pts[0][0])},${y(pts[0][1])}`;
-      for (let i = 1; i < pts.length; i++) d += `H${x(pts[i][0])}V${y(pts[i][1])}`;
+      path += `M${x(pts[0][0])},${y(pts[0][1])}`;
+      for (let i = 1; i < pts.length; i++) path += `H${x(pts[i][0])}V${y(pts[i][1])}`;
     }
-    if (d) svg.append(make('path', { d, class: 'ladder-line' }));
+    if (path) svg.append(make('path', { d: path, class: 'ladder-line' }));
     for (const m of marks) {
       const cx = x(m.at), cy = y(level(m.s)), hollow = m.k === 'held' || m.k === 'stalled';
       const cls = `ladder-mark${hollow ? ' hollow' : ''}`;

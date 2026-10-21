@@ -86,24 +86,24 @@ function said(check, open, text, href) {
 }
 
 async function start() {
-  let d;
+  let data;
   try {
     const response = await fetch('/certificate.json', { cache: 'no-store' });
-    d = await response.json();
+    data = await response.json();
   } catch (_) {
     $('cert-state').textContent = 'The box did not answer.';
     return;
   }
-  if (!d.set_up) {
+  if (!data.set_up) {
     $('cert-state').textContent = 'This box has no certificate yet. It serves its pages over HTTP. An administrator can create one at /admin → Security → HTTPS.';
     return;
   }
-  const port = d.port || 443;
-  $('cert-state').textContent = d.on
-    ? `This box also serves its pages over HTTPS (${httpsUrl(port)}). The certificate is valid until ${new Date(d.expires * 1000).toLocaleDateString()}.`
+  const port = data.port || 443;
+  $('cert-state').textContent = data.on
+    ? `This box also serves its pages over HTTPS (${httpsUrl(port)}). The certificate is valid until ${new Date(data.expires * 1000).toLocaleDateString()}.`
     : 'This box has a certificate. An administrator has disabled HTTPS.';
-  $('cert-names').textContent = d.names.join(', ');
-  $('cert-fingerprint').textContent = d.fingerprint;
+  $('cert-names').textContent = data.names.join(', ');
+  $('cert-fingerprint').textContent = data.fingerprint;
   $('cert-https').href = httpsUrl(port);
   $('cert-about').hidden = false;
   const steps = $('cert-steps');
@@ -128,7 +128,7 @@ async function start() {
   // The addresses the certificate covers, this page's own first. Opened at any other, the browser warns
   // whatever is installed: say so, and offer the addresses it does cover.
   const here = bare(location.hostname);
-  const covered = [...(d.names || []), ...(d.addresses || [])].filter((h) => h && !h.startsWith('.'));
+  const covered = [...(data.names || []), ...(data.addresses || [])].filter((h) => h && !h.startsWith('.'));
   const coversHere = covered.some((h) => bare(h) === here);
   if (!coversHere && covered.length) $('cert-https').href = httpsUrl(port, covered[0]);
   const list = $('cert-links');
@@ -137,11 +137,11 @@ async function start() {
     li.append(link(httpsUrl(port, h) + location.pathname.slice(1)));
     list.append(li);
   });
-  $('cert-elsewhere').hidden = !d.on || !covered.length || (coversHere && covered.length < 2);
+  $('cert-elsewhere').hidden = !data.on || !covered.length || (coversHere && covered.length < 2);
   const check = $('cert-check');
   const open = $('cert-open');
   const again = $('cert-again');
-  if (!d.on) return;
+  if (!data.on) return;
   if (!coversHere) {
     said(check, open, `The certificate does not cover ${location.hostname}, the address this page was opened at. `
       + 'Over HTTPS at that address, every browser warns, even with the certificate installed. Use one of the addresses below.');

@@ -15,8 +15,8 @@
   lockBox.checked = localStorage.getItem('drop-lock') === '1';
   // Signed in, and no selection made in this browser yet: the account's own default.
   if (localStorage.getItem('drop-lock') === null) {
-    fetch('/api/account').then((response) => (response.ok ? response.json() : null)).then((d) => {
-      if (d && d.prefs && localStorage.getItem('drop-lock') === null) lockBox.checked = !!d.prefs.lock_default;
+    fetch('/api/account').then((response) => (response.ok ? response.json() : null)).then((data) => {
+      if (data && data.prefs && localStorage.getItem('drop-lock') === null) lockBox.checked = !!data.prefs.lock_default;
     }).catch(() => {});
   }
   lockBox.addEventListener('change', () => localStorage.setItem('drop-lock', lockBox.checked ? '1' : '0'));
