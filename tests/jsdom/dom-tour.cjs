@@ -38,31 +38,31 @@ let settings = {
   visitor_counts: true,
 };
 const posted = [];
+// The Security page's settings as security.py makes them (SSH password sign-in, Cockpit on the network,
+// the hotspot firewall): the steps that point at them find their parts there.
+const REPO = require("path").resolve(__dirname, "../..");
+const py = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(REPO)})
+from irate_box.root import security as s
+from irate_box.finding import finding
+from irate_box.msg import M
+cp = [{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "pid": 1, "name": s.named("Cockpit")}]
+fs = s.ssh_findings({"permitrootlogin": "no", "passwordauthentication": "yes"}, ["pi"], {})
+fs += s.cockpit_findings(cp, {})
+fs += [finding("firewall", M("firewall.title", "Hotspot firewall"), "warn", M("firewall.off", "The hotspot firewall is off."))]
+print(json.dumps(fs))
+`;
 const security = {
   hub: [],
   pending: 0,
   scan: {
-    at: 1,
-    findings: [
-      {
-        id: "ssh-password",
-        check: "SSH password login",
-        title: "SSH password login",
-        status: "warn",
-        detail: "Passwords are accepted.",
-        actions: [
-          { choice: "ssh-password-off", label: "Turn password login off" },
-        ],
-      },
-      {
-        id: "listen-9090",
-        check: "Cockpit",
-        title: "Cockpit",
-        status: "problem",
-        detail: "A root-capable login.",
-        actions: [{ choice: "cockpit-off", label: "Switch off" }],
-      },
-    ],
+    at: Math.floor(Date.now() / 1000),
+    findings: JSON.parse(
+      require("child_process").execFileSync("python3", ["-c", py], {
+        encoding: "utf8",
+      }),
+    ),
   },
   results: [],
 };
@@ -77,6 +77,8 @@ w.fetch = async (u, o = {}) => {
   if (u === "/admin/settings") return json(settings);
   if (u === "/admin/apps") return json({ apps: adminApps() });
   if (u === "/admin/security") return json(security);
+  if (u === "/admin/tailscale")
+    return json({ state: "stopped", want: { mode: "off" }, max_hours: 24 });
   if (u === "/admin/access")
     return json({
       apps: [
@@ -132,8 +134,8 @@ const shownPage = () =>
   const ids = (py.match(/SETUP_DECISIONS = \(([\s\S]*?)\)/) || [])[1] || "";
   check(
     "the hub knows the same steps",
-    T.STEPS.every((x) => ids.includes(`"${x.id}"`)) &&
-      (ids.match(/"/g) || []).length / 2 === T.STEPS.length,
+    T.ALL.every((x) => ids.includes(`"${x.id}"`)) &&
+      (ids.match(/"/g) || []).length / 2 === T.ALL.length,
     ids,
   );
   for (const dec of T.STEPS) {
@@ -230,8 +232,37 @@ const shownPage = () =>
   T.go(T.STEPS.findIndex((x) => x.id === "cockpit"));
   await wait(400);
   check(
-    "a finding drawn later is found: Cockpit highlighted",
-    /Cockpit/.test((d.querySelector(".tour-target") || {}).textContent || ""),
+    "Cockpit's step: its setting on the Security page highlighted",
+    !!d.querySelector(".tour-target") &&
+      (d.querySelector(".tour-target").id === "sec-cockpit" ||
+        !!d.querySelector(".tour-target #sec-cockpit")),
+    (d.querySelector(".tour-target") || {}).outerHTML,
+  );
+  T.go(T.STEPS.findIndex((x) => x.id === "ssh"));
+  await wait(400);
+  check(
+    "  SSH's: its password sign-in setting",
+    !!d.querySelector(".tour-target") &&
+      (d.querySelector(".tour-target").id === "sec-ssh-password" ||
+        !!d.querySelector(".tour-target #sec-ssh-password")),
+    (d.querySelector(".tour-target") || {}).outerHTML,
+  );
+  T.go(T.STEPS.findIndex((x) => x.id === "connection"));
+  await wait(400);
+  check(
+    "How guests reach the box: the hotspot firewall, and the words name guest internet access too",
+    !!d.querySelector(".tour-target") &&
+      (d.querySelector(".tour-target").id === "sec-firewall" ||
+        !!d.querySelector(".tour-target #sec-firewall")) &&
+      /Guest internet access/.test(d.querySelector(".tour-bar").textContent),
+    (d.querySelector(".tour-target") || {}).outerHTML,
+  );
+  T.go(T.STEPS.findIndex((x) => x.id === "addons"));
+  await wait(400);
+  check(
+    "Add-ons: the list of every app and add-on, not the few with no page of their own",
+    !!d.querySelector("#inv-list.tour-target, .tour-target #inv-list"),
+    (d.querySelector(".tour-target") || {}).id,
   );
   // The last step is the backup; past it, the tour ends back at the setup steps.
   T.go(T.STEPS.length - 1);
@@ -310,6 +341,52 @@ const shownPage = () =>
   ][0].click();
   await wait();
   check("  Resume reminders counts it again", T.left() === before);
+  // The box's own sign-in for scripts: what it has, not "set at first use".
+  w.drawPasswordStep({ password_set: false, on: false });
+  await wait();
+  const pw = d.querySelector('#setup-steps [data-step="password"]');
+  check(
+    "the password step: no password yet, said so and left to do",
+    /No password yet/.test(pw.textContent) && !/done/.test(pw.textContent),
+    pw.textContent,
+  );
+  w.drawPasswordStep({ password_set: true, on: true });
+  await wait();
+  check(
+    "  set: done",
+    /done/.test(d.querySelector('#setup-steps [data-step="password"]').textContent),
+  );
+  // A box without Tailscale or Cockpit (the Pi): neither step is listed or toured.
+  T.go(T.STEPS.findIndex((x) => x.id === "terminal"));
+  await wait(400);
+  T.has("tailscale", false);
+  T.has("cockpit", false);
+  await wait();
+  const listed = [...d.querySelectorAll("#setup-steps > li[data-step]")].map(
+    (r) => r.dataset.step,
+  );
+  check(
+    "no Tailscale and no Cockpit: 16 steps, neither of them",
+    T.STEPS.length === 16 &&
+      listed.length === 16 &&
+      !listed.includes("tailscale") &&
+      !listed.includes("cockpit") &&
+      / of 16 still to do or decide/.test(
+        d.getElementById("setup-left").textContent,
+      ),
+    listed.join(","),
+  );
+  check(
+    "  the tour stays on the step it was on",
+    / of 16: Terminal/.test(d.querySelector(".tour-bar").textContent),
+    d.querySelector(".tour-bar").textContent.slice(0, 80),
+  );
+  T.has("cockpit", true);
+  await wait();
+  check(
+    "  Cockpit found later: its step back",
+    T.STEPS.length === 17 && T.STEPS.some((x) => x.id === "cockpit"),
+  );
   check("no page errors", !errors.length, errors.join("; "));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
