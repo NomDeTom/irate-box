@@ -115,12 +115,14 @@ setTimeout(() => {
   check('join: an open network asks no password', d.getElementById('net-join-psk').hidden && !jf.elements.psk.required);
   jf.elements.security.value = 'wpa-psk'; jf.elements.security.dispatchEvent(new w.Event('change'));
   jf.elements.psk.value = 'a-long-secret';
-  let asked = '';
-  w.confirm = (q) => { asked = q; return true; };
+  // An action acts at once; what it costs is said under the buttons, not asked.
+  let popped = 0;
+  w.confirm = () => { popped += 1; return true; };
   d.getElementById('net-join-now').click();
   w.confirm = () => true;
   const sentJoin = posted.find((p) => p.action === 'join');
-  check('  Add and connect: warned the page may lose the box, sent, the password cleared from the form', /can lose the connection to the box/.test(asked)
+  const joinSays = d.getElementById('net-join-says').textContent.replace(/\s+/g, ' ');
+  check('  Add and connect: the page may lose the box, said under it; sent at once, the password cleared from the form', /this page can lose the box/.test(joinSays) && !popped
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   const hsec = secs.find((n) => n.querySelector('.net-conditions'));
   check('the hotspot\'s conditions stay in its own section', hsec && /^Hotspot support/.test(hsec.textContent) && hsec.querySelectorAll('.net-line').length === 1);
