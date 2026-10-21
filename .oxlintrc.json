@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 NomDeTom
+// oxlint, run by Trunk on the hub's own pages (web/*.js). Plain scripts, no build step: they share
+// top-level names across <script> tags, which oxlint can't see, so those are named here. Keep the
+// two lists in step when a script starts or stops sharing a name.
+{
+  "env": { "browser": true, "es2022": true },
+  // Defined in one page script and read by another loaded after it; hljs is cgit's, checked for first.
+  "globals": {
+    "AL": "readonly",
+    "AW": "readonly",
+    "Heatmap": "readonly",
+    "HubLock": "readonly",
+    "LadderChart": "readonly",
+    "SETUP_STATE": "readonly",
+    "TOUR": "readonly",
+    "askHere": "readonly",
+    "attachHuePicker": "readonly",
+    "drawAttention": "readonly",
+    "esc": "readonly",
+    "formatAge": "readonly",
+    "getJSON": "readonly",
+    "hljs": "readonly",
+    "hueOf": "readonly",
+    "mdInline": "readonly",
+    "postJSON": "readonly",
+    "qrcode": "readonly",
+    "reportButton": "readonly",
+    "withHue": "readonly"
+  },
+  "rules": {
+    // #369's three dead buttons: a name used that nothing defines.
+    "no-undef": "error",
+    "no-const-assign": "error",
+    // The shared names above are used by other scripts, not unused; an unused catch binding is
+    // harmless (write `catch {}` when touching one).
+    "no-unused-vars": [
+      "error",
+      {
+        "varsIgnorePattern": "^(AL|AW|Heatmap|HubLock|LadderChart|SETUP_STATE|TOUR|askHere|attachHuePicker|drawAttention|esc|formatAge|getJSON|hueOf|mdInline|postJSON|reportButton|withHue)$",
+        "caughtErrors": "none",
+        "ignoreRestSiblings": true
+      }
+    ],
+    // Name a thing for what it holds: `event`, `error`, `entry`, `field`, never `e`.
+    "id-denylist": ["error", "e", "ev"],
+    // [...list.map(f)] copies an array already new: harmless, and the copy keeps the layout readable.
+    "unicorn/no-useless-spread": "off"
+  },
+  "overrides": [
+    // SHA-256's working variables a to h are the standard's own names (FIPS 180-4).
+    { "files": ["web/lock.js"], "rules": { "id-denylist": "off" } }
+  ],
+  // Vendored (qrcode.js); tests, tools and extras run under Node and are not linted yet.
+  "ignorePatterns": ["web/qrcode.js", "tests/**", "tools/**", "extras/**"]
+}

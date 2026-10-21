@@ -69,6 +69,7 @@ function mdInline(raw) {
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<>()]+)/g,
                 '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
 
+  // oxlint-disable-next-line no-control-regex -- NUL brackets the code spans set aside above
   return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${spans[i]}</code>`);
 }
 

@@ -193,14 +193,14 @@ const AL = (() => {
               a.addon ? el('div', { class: 'app-install', id: 'app-install-' + a.id }, el('h3', { text: 'Installation' }), el('div', { class: 'addon-block', 'data-addon': a.id },
                 el('p', { class: 'setting-desc', text: 'Loading installation status.' }))) : null), true));
           }
-          const e = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: ids, empty: false });
-          if (e && g.under) e.parent = fixed.find((p) => p.el.querySelector('#' + g.under)) || null;
-          if (e) entries.push(e);
+          const entry = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: ids, empty: false });
+          if (entry && g.under) entry.parent = fixed.find((p) => p.el.querySelector('#' + g.under)) || null;
+          if (entry) entries.push(entry);
         }
       }
       if (g.apps === 'apps') slots.apps = entries;
       if (!entries.length) continue;
-      const links = entries.filter((e) => !e.parent).map((e) => e.link);
+      const links = entries.filter((entry) => !entry.parent).map((entry) => entry.link);
       if (g.flat) list.append(el('div', { class: 'admin-side-links', role: 'group', 'aria-label': g.name }, links));
       else list.append(...group(g.name, links));
     }
@@ -210,14 +210,14 @@ const AL = (() => {
     if (left.length) {
       const g = { name: 'More', art: '' };
       const extra = left.map((id) => page(g, { title: (sections.get(id).querySelector('h2') || {}).textContent || id, sections: [id] })).filter(Boolean);
-      if (apps) list.append(...group(g.name, extra.map((e) => e.link)));
+      if (apps) list.append(...group(g.name, extra.map((entry) => entry.link)));
     }
     Object.keys(badges).forEach(paint);
     hiddenLinks.forEach((id) => hide(id, true));
     markUnsaved();
     list.append(el('p', { class: 'side-foot' }, autoBtn));
     built = true;
-    onBuild.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
+    onBuild.forEach((f) => { try { f(); } catch (error) { console.error(error); } });
   }
 
   // The page for an address: the page itself, or the one holding the section it names.
@@ -254,7 +254,7 @@ const AL = (() => {
   function badge(id, text) {
     if (text) badges[id] = text; else delete badges[id];
     paint(id);
-    onBadge.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
+    onBadge.forEach((f) => { try { f(); } catch (error) { console.error(error); } });
   }
   function paint(id) {
     const s = document.getElementById(id);

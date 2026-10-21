@@ -4,7 +4,7 @@
 // (meshbridge.py, /mesh.json) and the recent traffic, refreshed every 15 seconds. Messages are
 // guests' words: /mesh.json never has them (only /admin does).
 const $ = (id) => document.getElementById(id);
-const make = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+const make = (tag, text, cls) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (cls) node.className = cls; return node; };
 const KINDS = { text: 'messages', position: 'positions', nodeinfo: 'node names', telemetry: 'telemetry', routing: 'routing',
   traceroute: 'traceroutes', neighborinfo: 'neighbours', map_report: 'map reports', encrypted: 'encrypted (no key here)' };
 
@@ -44,10 +44,10 @@ function render(d) {
 // short names and a scale bar. No tiles underneath: those are for later (offline OSM tiles).
 const SVG = 'http://www.w3.org/2000/svg';
 function svg(tag, attrs, text) {
-  const e = document.createElementNS(SVG, tag);
-  Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
-  if (text != null) e.textContent = text;
-  return e;
+  const node = document.createElementNS(SVG, tag);
+  Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+  if (text != null) node.textContent = text;
+  return node;
 }
 function mercY(lat) { return Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)); }
 function drawMap(nodes) {

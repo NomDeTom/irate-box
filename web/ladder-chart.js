@@ -23,10 +23,10 @@ const LadderChart = (() => {
   const SYM_H = 84, LAD_T = T + SYM_H + 28;
 
   const make = (tag, attrs = {}, text) => {
-    const e = tag === 'svg' || /^(g|path|line|rect|circle|text|polygon|pattern|defs)$/.test(tag) ? document.createElementNS(SVG, tag) : document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, v);
-    if (text != null) e.textContent = text;
-    return e;
+    const node = tag === 'svg' || /^(g|path|line|rect|circle|text|polygon|pattern|defs)$/.test(tag) ? document.createElementNS(SVG, tag) : document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) if (v != null) node.setAttribute(k, v);
+    if (text != null) node.textContent = text;
+    return node;
   };
   let hatches = 0;   // each chart's hatch pattern its own id (two charts can share a page)
   const level = (step) => Math.max(LEVELS.indexOf(step === 'pin' ? 'reconnect' : step), 0);
@@ -83,7 +83,7 @@ const LadderChart = (() => {
     if (seg().length) seg().push([to, lv]);
     const kept = segs.filter((s) => s.length);
     return { segs: kept, pts: kept.flat(), marks,
-      bands: bands.filter(([a, b]) => b >= from).map(([a, b]) => [Math.max(a, from), b]),
+      bands: bands.filter(([, b]) => b >= from).map(([a, b]) => [Math.max(a, from), b]),
       holes: hs.filter(([a, b]) => b > from && a < to).map(([a, b]) => [Math.max(a, from), Math.min(b, to)]) };
   }
 
@@ -241,7 +241,7 @@ const LadderChart = (() => {
     svg.addEventListener('pointerdown', (event) => {
       if (event.button !== 0 && event.pointerType === 'mouse') return;
       drag = { x0: event.clientX, t0: tAt(event.clientX, svg.getBoundingClientRect()), moved: false };
-      if (svg.setPointerCapture && event.pointerId != null) try { svg.setPointerCapture(event.pointerId); } catch (e) { /* not captured: fine */ }
+      if (svg.setPointerCapture && event.pointerId != null) try { svg.setPointerCapture(event.pointerId); } catch { /* not captured: fine */ }
     });
     svg.addEventListener('pointermove', (event) => {
       const rect = svg.getBoundingClientRect(), t = tAt(event.clientX, rect);
@@ -307,7 +307,7 @@ const LadderChart = (() => {
     const bar = make('div', { class: 'ladder-zoom' });
     let span = Number(box.dataset.span) || 7 * 86400;
     let stack = [];
-    try { stack = JSON.parse(box.dataset.zoom || '[]').filter((z) => Array.isArray(z) && z[1] > z[0]); } catch (e) { stack = []; }
+    try { stack = JSON.parse(box.dataset.zoom || '[]').filter((z) => Array.isArray(z) && z[1] > z[0]); } catch { stack = []; }
     const redraw = () => {
       box.dataset.zoom = JSON.stringify(stack);
       const z = stack[stack.length - 1];

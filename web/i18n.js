@@ -74,7 +74,7 @@
       if (m.index > at) top.kids.push(text.slice(at, m.index));
       at = re.lastIndex;
       if (m[1] !== undefined) top.kids.push({ n: +m[1], kids: null });
-      else if (m[2] !== undefined) { var e = { n: +m[2], kids: [] }; top.kids.push(e); stack.push(e); }
+      else if (m[2] !== undefined) { var node = { n: +m[2], kids: [] }; top.kids.push(node); stack.push(node); }
       else if (stack.length > 1 && top.n === +m[3]) stack.pop();
       else return null;
     }
@@ -106,10 +106,10 @@
   }
 
   function entryFor(catalogue, id, en) {
-    var e = catalogue[id];
-    if (!e || typeof e.text !== 'string') return null;
-    if (e.en !== undefined && e.en !== en) return null;   // stale: made from other English
-    return e;
+    var entry = catalogue[id];
+    if (!entry || typeof entry.text !== 'string') return null;
+    if (entry.en !== undefined && entry.en !== en) return null;   // stale: made from other English
+    return entry;
   }
 
   // Say every message under root in the catalogue's language. Returns how many it said.
@@ -118,9 +118,9 @@
     var doc = root.ownerDocument || root, said = 0;
     var els = root.querySelectorAll('[data-i18n]');
     for (var i = 0; i < els.length; i++) {
-      var el = els[i], msg = read(el), e = entryFor(catalogue, el.getAttribute('data-i18n'), msg.en);
-      if (!e) continue;
-      var want = parse(msg.en), got = parse(e.text);
+      var el = els[i], msg = read(el), entry = entryFor(catalogue, el.getAttribute('data-i18n'), msg.en);
+      if (!entry) continue;
+      var want = parse(msg.en), got = parse(entry.text);
       if (!want || !got || shape(want).join() !== shape(got).join()) continue;
       var built = build(got, msg.nodes, doc);
       while (el.firstChild) el.removeChild(el.firstChild);

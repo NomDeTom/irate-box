@@ -55,7 +55,7 @@ const PLATFORMS = [
 ];
 
 const $ = (id) => document.getElementById(id);
-const make = (tag, text) => { const e = document.createElement(tag); if (text != null) e.textContent = text; return e; };
+const make = (tag, text) => { const node = document.createElement(tag); if (text != null) node.textContent = text; return node; };
 
 // The host as a URL writes it: an IPv6 address in brackets.
 const urlHost = (h) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h);

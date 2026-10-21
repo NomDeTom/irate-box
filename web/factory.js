@@ -55,7 +55,7 @@
     return (r && typeof r === 'object' ? AW.say(r) : r) || 'Not tested on this box. Its first build downloads its toolchain';
   };
   const sentence = (s) => { const x = String(s).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
-  const facEst = (f) => { const e = facData && facData.estimates[f]; return e ? `about ${facDur(e.seconds)} a target here` : 'no build estimate'; };
+  const facEst = (f) => { const estimate = facData && facData.estimates[f]; return estimate ? `about ${facDur(estimate.seconds)} a target here` : 'no build estimate'; };
 
   async function loadFactory() {
     try { renderFactory(await getJSON('/admin/factory')); } catch (_) { fac.waiting.textContent = 'Could not load the Firmware Factory.'; }
@@ -77,10 +77,10 @@
     const describe = (j) => `${j.name && j.name !== j.env ? `${j.name} (${j.env})` : j.env}, ${j.family}: ${j.source} ${j.ref}`;
     const rows = [];
     if (d.running) {
-      const e = d.estimates[d.running.family];
+      const estimate = d.estimates[d.running.family];
       rows.push(el('div', { className: 'admin-item' }, el('span', { className: 'state state-running', textContent: 'Building' }),
         el('span', { textContent: ` ${describe(d.running)}` }),
-        el('span', { className: 'setting-desc', textContent: ` Started ${ago(Date.now() / 1000 - d.running.started)}.${e ? ` Finishes about ${facClock(d.running.started + e.seconds)}.` : ''}` })));
+        el('span', { className: 'setting-desc', textContent: ` Started ${ago(Date.now() / 1000 - d.running.started)}.${estimate ? ` Finishes about ${facClock(d.running.started + estimate.seconds)}.` : ''}` })));
     }
     d.waiting.forEach((j, i) => {
       rows.push(el('div', { className: 'admin-item' }, el('span', { textContent: `${i + 1}. ${describe(j)}` }),
@@ -201,7 +201,7 @@
   function factoryChosen() {
     const n = facChosen.size;
     const fams = new Set(facTargets.targets.filter((t) => facChosen.has(t.env)).map((t) => t.family));
-    const secs = [...facChosen].reduce((a, env) => { const t = facTargets.targets.find((x) => x.env === env); const e = facData && facData.estimates[t.family]; return e && a !== null ? a + e.seconds : null; }, 0);
+    const secs = [...facChosen].reduce((a, env) => { const t = facTargets.targets.find((x) => x.env === env); const estimate = facData && facData.estimates[t.family]; return estimate && a !== null ? a + estimate.seconds : null; }, 0);
     const max = facData ? facData.max_per_request : 50;
     fac.chosen.textContent = n ? `${n} selected, in ${fams.size} famil${fams.size === 1 ? 'y' : 'ies'}.${secs !== null ? ` About ${facDur(secs)} in all.` : ''}${n > max ? ` At most ${max} at a time.` : ''}` : 'No targets selected.';
     fac.queue.disabled = !n || n > max;
