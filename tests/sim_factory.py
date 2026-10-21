@@ -920,5 +920,86 @@ check(
     f.get("builds-disk", {}).get("status") in ("ok", "warn") and f["builds-disk"]["summary"]["args"]["mb"] >= 0,
 )
 check("  in the scan", "check_builds" in (REPO / "irate_box/root/health.py").read_text().split("def scan")[1][:400])
+
+# A run cut off by a restart (item 155): its status still says running. Shown as interrupted at
+# once; written down as such when the builder next starts; then it can be deleted, and built again.
+for p in ci.QUEUE.glob("*.json"):
+    p.unlink()
+ci.BOOT_ID = T / "boot_id"
+ci.BOOT_ID.write_text("this-boot\n")
+fac_runs = ci.RUNS / ci.FACTORY
+src_path = factory.source("meshtastic-firmware")["path"]
+commit = factory.resolve(factory.source("meshtastic-firmware"), "v2.8.1.abcdef0")
+for n, boot in (("950", "an-earlier-boot"), ("951", "this-boot"), ("952", None)):
+    d = fac_runs / n
+    (d / "artifacts").mkdir(parents=True)
+    (d / "log.txt").write_text("== building\nCompiling x.o\n")
+    st = {
+        "kind": "firmware",
+        "state": "running",
+        "source": "meshtastic-firmware",
+        "ref": "v2.8.1.abcdef0",
+        "commit": commit,
+    }
+    st |= {"env": "rak4631", "family": "nrf52840", "name": "RAK WisBlock 4631", "offline": n == "950"}
+    # 952: from before runs carried their boot, started before this boot began
+    st |= {"boot": boot, "started": time.time() - 600} if boot else {"started": 1000.0}
+    (d / "status.json").write_text(json.dumps(st))
+os.utime(fac_runs / "950" / "log.txt", (time.time() - 300, time.time() - 300))
+shown = {r["run"].split("/")[1]: r for r in factory.snapshot()["runs"]}
+check(
+    "cut off by a restart: shown as interrupted, ending when its log stopped; this boot's still running",
+    shown["950"]["state"] == "interrupted"
+    and 290 <= shown["950"]["duration"] <= 310
+    and shown["952"]["state"] == "interrupted"
+    and shown["951"]["state"] == "running"
+    and factory.snapshot()["running"]["run"].endswith("/951"),
+    {k: (v["state"], v.get("duration")) for k, v in shown.items() if k in ("950", "951", "952")},
+)
+check(
+    "  the Git page's list says so too",
+    {r["run"]: r["state"] for r in ci.snapshot(50)["runs"]}.get("firmware-factory/950") == "interrupted",
+)
+(fac_runs / "951" / "status.json").write_text(
+    json.dumps(dict(json.loads((fac_runs / "951" / "status.json").read_text()), boot="x"))
+)
+marked = ci.mark_interrupted()
+on_disk = {n: json.loads((fac_runs / n / "status.json").read_text())["state"] for n in ("950", "951", "952")}
+check(
+    "  the builder's start writes it down, for every run still marked running, and says so in the log",
+    sorted(marked) == ["firmware-factory/950", "firmware-factory/951", "firmware-factory/952"]
+    and set(on_disk.values()) == {"interrupted"}
+    and (fac_runs / "950" / "log.txt")
+    .read_text()
+    .endswith("== interrupted: the box or the builder stopped during this run\n"),
+    (marked, on_disk),
+)
+factory.again("950")
+again = [json.loads(p.read_text()) for p in ci.QUEUE.glob("*.json")]
+check(
+    "Build again: the same source, commit, target and options, queued",
+    len(again) == 1
+    and {k: again[0].get(k) for k in ("kind", "repo", "env", "family", "commit", "offline")}
+    == {
+        "kind": "firmware",
+        "repo": src_path,
+        "env": "rak4631",
+        "family": "nrf52840",
+        "commit": commit,
+        "offline": True,
+    },
+    again,
+)
+passed = next(r["run"].split("/")[1] for r in factory.runs(200) if r["state"] == "passed")
+try:
+    factory.again(passed)
+    check("  a passed build: refused", False)
+except ValueError:
+    check("  a passed build: refused", True)
+ci.change_run({"run": "firmware-factory/952", "change": "delete"})
+check("  an interrupted run can be deleted", not (fac_runs / "952").exists())
+ci.prune_factory(fac_runs)
+left = sorted(r["run"].split("/")[1] for r in factory.runs(200) if r.get("env") == "rak4631" and not r.get("keep"))
+check("  and pruned as any other: the target's newest two", left == ["950", "951"], left)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

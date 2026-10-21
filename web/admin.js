@@ -12911,6 +12911,7 @@ const STATE_ICON = {
   passed: "✅",
   failed: "❌",
   "timed out": "⏱",
+  interrupted: "⏹",
   running: "⏳",
 };
 const minutes = (s) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
