@@ -1,0 +1,332 @@
+{
+ "about": "WiFi chips irate-box knows: how to recognise each (USB IDs, the ID it shows in USB storage mode, its driver, or drivers for a family), what it can do, where its driver comes from when the kernel has none, and test results, ours and others'. Read by hub/knownradios.py. A row with no usb_ids is matched by its driver alone. Results from other projects are credited to them.",
+ "radios": [
+  {
+   "chip": "AIC8800D80",
+   "usb_ids": [
+    "368b:8d81",
+    "a69c:8d81"
+   ],
+   "storage_ids": [
+    "a69c:5721"
+   ],
+   "driver": "aic8800_fdrv",
+   "in_kernel": false,
+   "firmware": "aic8800-firmware (Radxa)",
+   "hotspot": true,
+   "bands": [
+    "2.4",
+    "5"
+   ],
+   "namespace": false,
+   "new_id": "368b 8d81 ff a69c 8d81",
+   "source": {
+    "name": "Radxa's aic8800-usb-dkms and aic8800-firmware",
+    "url": "https://github.com/radxa-pkg/aic8800",
+    "version": "5.0+git20260123.5f7be68d-7",
+    "licence": "GPL-2.0"
+   },
+   "notes": [
+    "Starts as a USB drive (a69c:5721): an eject switches it to WiFi.",
+    "Its driver's ID table lacks 368b:8d81: it works told to treat it as a69c:8d81 (new_id).",
+    "A reset of the whole USB device sends it back to storage mode; a reset of its WiFi interface comes back in about 4 s.",
+    "Its driver cannot move the radio into another network namespace.",
+    "Keeps its own regulatory country (self-managed): the box's WiFi country setting does not apply to it."
+   ],
+   "tested": [
+    {
+     "by": "irate-box",
+     "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8",
+     "date": "2026-10-21",
+     "result": "Works. Client: 2.3 ms to the router with power saving off, 8.2 ms on. Hotspot: 1–8 ms idle, 109–118 ms under load; 20-minute soak with no loss. Hotspot beside a client link: on the link's channel, the link unaffected. Once, the box hung when it started as a hotspot under load (not reproduced)."
+    }
+   ]
+  },
+  {
+   "chip": "AIC8800DC",
+   "usb_ids": [
+    "a69c:88dc"
+   ],
+   "storage_ids": [],
+   "driver": "aic8800_fdrv",
+   "in_kernel": false,
+   "firmware": "aic8800-firmware (Radxa)",
+   "hotspot": true,
+   "bands": [
+    "2.4"
+   ],
+   "source": {
+    "name": "Radxa's aic8800-usb-dkms and aic8800-firmware",
+    "url": "https://github.com/radxa-pkg/aic8800",
+    "version": "5.0+git20260123.5f7be68d-7",
+    "licence": "GPL-2.0"
+   },
+   "notes": [
+    "Built into the Luckfox Lyra Zero W.",
+    "Its firmware can go silent for more than 4 s: the driver then marks its command queue dead until reloaded, and a USB reset does not always bring the chip back (a power cycle does)."
+   ],
+   "tested": [
+    {
+     "by": "irate-box",
+     "on": "Luckfox Lyra Zero W, kernel 6.1.115-vendor-rockchip",
+     "date": "2026-10-21",
+     "result": "Identified only (its WiFi is the board's only link). Long-running use since 2026-10-09: firmware stalls under roaming and access points that vanish."
+    }
+   ]
+  },
+  {
+   "chip": "AR9271",
+   "usb_ids": [
+    "0cf3:9271",
+    "040d:3801"
+   ],
+   "storage_ids": [],
+   "driver": "ath9k_htc",
+   "in_kernel": true,
+   "firmware": "firmware-atheros (open firmware: open-ath9k-htc-firmware)",
+   "hotspot": true,
+   "bands": [
+    "2.4"
+   ],
+   "namespace": true,
+   "notes": [
+    "Cannot turn power saving on.",
+    "Uses one channel at a time: a hotspot beside a client link must be put on the link's channel.",
+    "A second interface needs its own MAC address."
+   ],
+   "tested": [
+    {
+     "by": "irate-box",
+     "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8 (sold as \"VIA USB2.0 WLAN\", 040d:3801)",
+     "date": "2026-10-21",
+     "result": "The steadiest 2.4 GHz hotspot: a flat 20-minute soak at 36–38 Mbit/s, no loss. Under load 72–94 ms average. Back from a driver reset in 4.1 s."
+    },
+    {
+     "by": "Femtofox (wiki, Supported Hardware)",
+     "on": "Luckfox Pico, kernel 5.10",
+     "date": "2025",
+     "result": "Working (TP-Link TL-WN722N v1, Penguin TPE-N150USB)."
+    }
+   ]
+  },
+  {
+   "chip": "RTL8188EUS",
+   "usb_ids": [
+    "0bda:8179"
+   ],
+   "storage_ids": [],
+   "driver": "rtl8xxxu",
+   "in_kernel": true,
+   "firmware": "firmware-realtek",
+   "hotspot": false,
+   "bands": [
+    "2.4"
+   ],
+   "namespace": true,
+   "source": {
+    "name": "an out-of-tree rtl8188eus driver, for hotspot mode (candidate: aircrack-ng's)",
+    "url": "",
+    "version": "",
+    "licence": ""
+   },
+   "notes": [
+    "The kernel's rtl8xxxu has no hotspot mode for it (6.18); older kernels' staging r8188eu had one.",
+    "Cannot turn power saving on, and reports no signal strength.",
+    "Sometimes fails to join a hotspot within 40 s."
+   ],
+   "tested": [
+    {
+     "by": "irate-box",
+     "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8",
+     "date": "2026-10-21",
+     "result": "Client only. Joins the router in 6.6 s, 6.4 ms average. Back from a driver reset in 2–4 s. Twice didn't associate with another radio's hotspot."
+    },
+    {
+     "by": "Femtofox (wiki, Supported Hardware)",
+     "on": "Luckfox Pico, kernel 5.10 (r8188eu)",
+     "date": "2025",
+     "result": "Recommended: 0.25 W idle, 0.4 W transmitting (TP-Link TL-WN725N v2, TL-WN722N v4, Edimax EW-7811Un v2)."
+    }
+   ]
+  },
+  {
+   "chip": "Broadcom onboard (CYW43455, Raspberry Pi 3B+)",
+   "usb_ids": [],
+   "storage_ids": [],
+   "driver": "brcmfmac",
+   "in_kernel": true,
+   "firmware": "firmware-brcm80211",
+   "hotspot": true,
+   "bands": [
+    "2.4",
+    "5"
+   ],
+   "namespace": true,
+   "notes": [
+    "Power saving hurts it as a hotspot: 65–73 ms (up to 490 ms idle) with it on, about 5 ms off.",
+    "Moves its hotspot onto the client link's channel by itself; the link's latency rises to about 30 ms while both run."
+   ],
+   "tested": [
+    {
+     "by": "irate-box",
+     "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8",
+     "date": "2026-10-21",
+     "result": "Hotspot under load 31–81 ms average; a 20-minute soak with no loss (two throughput dips)."
+    }
+   ]
+  },
+  {
+   "chip": "MediaTek MT7610U / MT7612U",
+   "usb_ids": [],
+   "storage_ids": [],
+   "driver": "mt76x2u",
+   "in_kernel": true,
+   "firmware": "firmware-misc-nonfree",
+   "hotspot": true,
+   "bands": [
+    "2.4",
+    "5"
+   ],
+   "notes": [
+    "Among the best-supported dual-band dongles (mt76x0u for the MT7610U)."
+   ],
+   "tested": [
+    {
+     "by": "Femtofox (wiki, Supported Hardware)",
+     "on": "Luckfox Pico, kernel 5.10",
+     "date": "2025",
+     "result": "MT76x2U unreliable (their issue #420)."
+    }
+   ],
+   "drivers": [
+    "mt76x0u",
+    "mt76x2u"
+   ]
+  },
+  {
+   "chip": "MediaTek MT7921AU",
+   "usb_ids": [],
+   "storage_ids": [],
+   "driver": "mt7921u",
+   "in_kernel": true,
+   "firmware": "firmware-misc-nonfree",
+   "hotspot": true,
+   "bands": [
+    "2.4",
+    "5"
+   ],
+   "notes": [
+    "WiFi 6."
+   ],
+   "tested": []
+  },
+  {
+   "chip": "Ralink RT3070 / RT5370",
+   "usb_ids": [],
+   "storage_ids": [],
+   "driver": "rt2800usb",
+   "in_kernel": true,
+   "firmware": "firmware-misc-nonfree",
+   "hotspot": true,
+   "bands": [
+    "2.4"
+   ],
+   "notes": [
+    "Very common, cheap."
+   ],
+   "tested": [
+    {
+     "by": "Femtofox (wiki, Supported Hardware)",
+     "on": "Luckfox Pico, kernel 5.10",
+     "date": "2025",
+     "result": "RT3070 buggy (Alfa AWUS036NEH)."
+    }
+   ]
+  },
+  {
+   "chip": "MediaTek MT7601U",
+   "usb_ids": [],
+   "storage_ids": [],
+   "driver": "mt7601u",
+   "in_kernel": true,
+   "firmware": "firmware-misc-nonfree",
+   "hotspot": false,
+   "bands": [
+    "2.4"
+   ],
+   "notes": [
+    "Very common, cheap; client only."
+   ],
+   "tested": [
+    {
+     "by": "Femtofox (wiki, Supported Hardware)",
+     "on": "Luckfox Pico, kernel 5.10",
+     "date": "2025",
+     "result": "Recommended: 0.74 W idle (Genbasic RF 2A4M1)."
+    }
+   ]
+  },
+  {
+   "chip": "Realtek RTL8811CU / RTL8821CU / RTL8822BU",
+   "usb_ids": [],
+   "storage_ids": [],
+   "driver": "rtw88_8821cu",
+   "in_kernel": true,
+   "firmware": "firmware-realtek",
+   "hotspot": true,
+   "bands": [
+    "2.4",
+    "5"
+   ],
+   "notes": [
+    "In the kernel's rtw88 from about 6.2; older kernels need an out-of-tree driver."
+   ],
+   "tested": [
+    {
+     "by": "Femtofox (wiki, Supported Hardware)",
+     "on": "Luckfox Pico, kernel 5.10",
+     "date": "2025",
+     "result": "RTL8812BU not working (TP-Link Archer T3U)."
+    }
+   ],
+   "drivers": [
+    "rtw88_8821cu",
+    "rtw88_8822bu"
+   ]
+  },
+  {
+   "chip": "Realtek RTL8812AU / RTL8821AU",
+   "usb_ids": [],
+   "storage_ids": [],
+   "driver": "rtw88_8821au",
+   "in_kernel": true,
+   "firmware": "firmware-realtek",
+   "hotspot": true,
+   "bands": [
+    "2.4",
+    "5"
+   ],
+   "source": {
+    "name": "an out-of-tree driver for kernels without rtw88's support (candidates: morrownr's or aircrack-ng's)",
+    "url": "",
+    "version": "",
+    "licence": ""
+   },
+   "notes": [
+    "Very common dual-band dongles, only recently in the kernel."
+   ],
+   "tested": [
+    {
+     "by": "Femtofox (wiki, Supported Hardware)",
+     "on": "Luckfox Pico, kernel 5.10",
+     "date": "2025",
+     "result": "RTL8821AU not working (TP-Link Archer T2U Plus)."
+    }
+   ],
+   "drivers": [
+    "rtw88_8812au",
+    "rtw88_8821au"
+   ]
+  }
+ ]
+}

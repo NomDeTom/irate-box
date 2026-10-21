@@ -7687,6 +7687,32 @@ function deviceCard(inv, device, wifi, hazards) {
     section(line("Current connection", now, "now")),
     section(line("Connection manager", managed)),
   ];
+  // What irate-box knows of the chip (hub/known_radios.json): its name, where its driver comes from, notes from
+  // testing, and who tested it, ours and others' credited.
+  const chip = wifi && device.known;
+  if (chip)
+    kids.splice(
+      2,
+      0,
+      section(
+        line(
+          "Chip",
+          [
+            `${chip.chip}.`,
+            chip.in_kernel
+              ? "Its driver is in the kernel."
+              : `Its driver is outside the kernel${chip.source && chip.source.name ? `: ${chip.source.name}` : ""}.`,
+            chip.hotspot === false ? "It has no hotspot mode." : null,
+            ...(chip.notes || []),
+            chip.tested_by && chip.tested_by.length
+              ? `Tested by ${chip.tested_by.join(" and ")}.`
+              : "Not tested yet.",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        ),
+      ),
+    );
   if (wifi && (device.power_save || device.powersave_from))
     kids.push(section(powerSaveLine(device)));
   if (wifi) {

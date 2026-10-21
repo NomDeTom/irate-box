@@ -43,6 +43,9 @@ w.fetch = async (u, opts = {}) => {
     // Roaming as the hardware scan reports it: three access points, two channels, the hotspot on the radio.
     const wl = data.inventory.radios.find((r) => r.iface === 'wlan0');
     wl.powersave_from = { where: 'default', value: '2' };
+    // What irate-box knows of its chip (hub/known_radios.json).
+    wl.known = { chip: 'Broadcom onboard (CYW43455, Raspberry Pi 3B+)', in_kernel: true, hotspot: true,
+      notes: ['Power saving hurts it as a hotspot.'], tested_by: ['irate-box'] };
     wl.roaming = { ssid: wl.link.ssid, aps: [{ bssid: 'aa:00:00:00:00:01', channel: 6, freq: 2437, signal: 100 }, { bssid: 'aa:00:00:00:00:02', channel: 6, freq: 2437, signal: 87 },
       { bssid: 'aa:00:00:00:00:03', channel: 11, freq: 2462, signal: 80 }], channels: [6, 11], bgscan: 'simple:30:-65:300', nm_version: '1.52.1',
       choices: ['roam', 'no-scan', 'lock'], why: {}, hotspot_shares: true };
@@ -90,7 +93,7 @@ setTimeout(() => {
   // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
   // A device's uptime is on the Status tab, with the link it belongs to.
-  check('the card in sections: what, current connection, managed by, power saving, the hotspot, radio tests, to review, known about it', secs.length === 8
+  check('the card in sections: what, the chip, current connection, managed by, power saving, the hotspot, radio tests, to review, known about it', secs.length === 9
     && secs.every((n) => n.querySelector('.net-line, .net-facts')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
@@ -241,6 +244,10 @@ setTimeout(() => {
       && d.querySelectorAll('#net-defaults-foot .aw-save').length === 1 && !d.querySelector('#up-retries-group .aw-save'), words.filter((x) => /^Save/.test(x)).join('|'));
     check('  each network\'s own settings: Discard beside its Save', [...d.querySelectorAll('.net-conn-settings')].every((c) => !c.querySelector('.aw-save') || c.querySelector('.aw-discard')));
     check('  saved: the country posted to the box', posted.some((p) => p.action === 'country' && p.country === 'GB'), JSON.stringify(posted.filter((p) => p.action === 'country')));
+    const chipLine = [...d.querySelectorAll('#net-devices .net-line')].find((p) => /^Chip/.test(p.textContent));
+    check('a known chip on its card: its name, its driver in the kernel, the notes, who tested it',
+      chipLine && /Broadcom onboard/.test(chipLine.textContent) && /driver is in the kernel/.test(chipLine.textContent)
+      && /Power saving hurts it/.test(chipLine.textContent) && /Tested by irate-box/.test(chipLine.textContent), chipLine && chipLine.textContent);
     check('no page errors', errors.length === 0, errors.join(' | '));
     console.log(fails ? `${fails} failure(s)` : 'ok');
     process.exit(fails ? 1 : 0);

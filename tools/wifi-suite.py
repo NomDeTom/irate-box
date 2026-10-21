@@ -38,8 +38,18 @@ IW = "/usr/sbin/iw"
 NETNS = "wsuite"
 PREFIX = "wsuite-"
 AP_NET = ("10.231.0.1", "10.231.0.2")
-# Known WiFi dongles that first show as a USB drive (holding a Windows driver) until switched.
-STORAGE_MODE = {"a69c:5721": "AIC8800 (its WiFi id is a69c:8d80)"}
+# Known WiFi dongles that first show as a USB drive (holding a Windows driver) until switched: from the hub's
+# table of known chips beside this tool when it's in the repository, else the one we've met.
+try:
+    STORAGE_MODE = {
+        usb_id: row["chip"]
+        for row in json.loads((Path(__file__).resolve().parents[1] / "irate_box/hub/known_radios.json").read_text())[
+            "radios"
+        ]
+        for usb_id in row.get("storage_ids", [])
+    }
+except (OSError, ValueError, KeyError):
+    STORAGE_MODE = {"a69c:5721": "AIC8800D80"}
 KERNEL_TROUBLE = re.compile(r"usb \S+: (USB disconnect|reset)|firmware|timeout|fail|error", re.IGNORECASE)
 
 
