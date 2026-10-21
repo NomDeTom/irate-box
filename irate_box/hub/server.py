@@ -1315,6 +1315,7 @@ SETUP_DECISIONS = (
     "terminal",
     "password",
     "connection",
+    "country",
     "security",
     "addons",
     "books",
@@ -6194,6 +6195,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(
                     202,
                     {"id": control_request({"action": "uplink-hold", "minutes": payload["minutes"]})},
+                )
+            elif (
+                act == "country"
+                and isinstance(payload.get("country"), str)
+                and re.fullmatch(r"[A-Z]{2}", payload["country"])
+            ):
+                # The WiFi country (the root helper checks it against the ISO list).
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "wifi-country", "country": payload["country"]})},
                 )
             elif act == "profile" and type(payload.get("on")) is bool:
                 self.send_json(

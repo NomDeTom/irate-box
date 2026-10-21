@@ -92,6 +92,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       NetworkManager's box defaults (hub/nmconf.py): the owner's choices written to irate-box's own
       drop-in in /etc/NetworkManager/conf.d, NetworkManager told to read it again. "default" takes
       irate-box's line out; with none left, the file goes.
+  {"id": ..., "action": "wifi-country", "country": "GB"}
+      The WiFi country (hub/wificountry.py): applied at once (iw reg set) and kept for boot in cfg80211's
+      option file, which a netplan handover also writes. Only a code from tzdata's ISO 3166 table.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
       and put back at once if NetworkManager's view of them changes; undo puts the file back.
@@ -6375,6 +6378,41 @@ def nm_defaults(req):
     )
 
 
+def wifi_country(req):
+    from irate_box.hub import wificountry
+
+    names = wificountry.countries()
+    code = req.get("country")
+    if not isinstance(code, str) or code not in names:
+        raise Refused(
+            M("control.country.unknown", "{country} is not a country code the box knows.", country=str(code)[:8])
+        )
+    wificountry.REGDOM_CONF.parent.mkdir(parents=True, exist_ok=True)
+    safeio.write(wificountry.REGDOM_CONF, wificountry.conf_text(code), 0o644)
+    try:
+        r = run("iw", "reg", "set", code, timeout=30)
+        code_now, out = r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        code_now, out = 1, str(exc)
+    try:
+        netinv.write(netinv.scan(), CONTROL / "netinv.json")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    said = M("control.country.saved", "The WiFi country is {name} ({country}).", name=names[code], country=code)
+    if code_now:
+        return M(
+            "control.country.boot-only",
+            "{said} It is saved for the next start, but the radios did not take it now. iw said: {output}",
+            said=said,
+            output=out[-160:],
+        )
+    return M(
+        "control.country.now",
+        "{said} The radios use it now. The hotspot takes it the next time it starts.",
+        said=said,
+    )
+
+
 def nm_connection(req):
     from irate_box.root import nmconnection, nmhandover
 
@@ -6693,6 +6731,7 @@ ACTIONS = {
     "uplink-hold": uplink_hold,
     "uplink-profile": uplink_profile,
     "nm-defaults": nm_defaults,
+    "wifi-country": wifi_country,
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,
     "other-ap": other_ap,

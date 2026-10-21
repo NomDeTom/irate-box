@@ -43,6 +43,11 @@ import sys
 import time
 from pathlib import Path
 
+try:  # the WiFi country's list and saved value; a copy on its own reports neither
+    from irate_box.hub import wificountry
+except ImportError:
+    wificountry = None
+
 try:
     from irate_box.finding import english, finding
     from irate_box.msg import M, named
@@ -809,6 +814,36 @@ def reg_country():
     return m.group(1) if m else None
 
 
+def parse_reg(text):
+    """`iw reg get` → {phy: {country, self_managed}} for the radios with a regulatory state of their own. The
+    global country is reg_country's. 98 is an intersection (the setting and a hint such as the access point's
+    announced country, allowing only what both do), 99 a driver's own, 00 the world's."""
+    out, phy = {}, None
+    for line in text.splitlines():
+        head = re.match(r"^(phy#\d+)(\s+\(self-managed\))?", line)
+        if head:
+            phy = "phy" + head.group(1)[4:]
+            out[phy] = {"country": None, "self_managed": bool(head.group(2))}
+        elif line.startswith("global"):
+            phy = None
+        else:
+            found = re.match(r"^country (\S+):", line)
+            if found and phy:
+                out[phy]["country"] = found.group(1)
+    return out
+
+
+def announced_country(iface, bssid):
+    """The country the joined access point announces in its beacons (802.11d), from the scan results the kernel
+    already holds (no new scan), or None. A client takes it on: the kernel intersects it with the box's setting."""
+    blocks = run("iw", "dev", iface, "scan", "dump")[1].split("\nBSS ")
+    for block in blocks:
+        if block.removeprefix("BSS ").lower().startswith(bssid.lower()):
+            found = re.search(r"Country: (\S\S)", block)
+            return found.group(1) if found else None
+    return None
+
+
 def default_route():
     code, out = run("ip", "-4", "route", "show", "default")
     best = None
@@ -891,6 +926,7 @@ def scan(focus=None):
                 r["profile"] = next((p for p in nm["wifi_profiles"] if p["name"] == conn), None) if conn else None
             if r["link"]:
                 r["roaming"] = roaming_facts(r, nm)
+                r["link"]["country"] = announced_country(iface, r["link"]["bssid"])
         elif info.get("type") == "AP":
             r["stations"] = ap_stations(iface)
         radios.append(r)
@@ -924,6 +960,10 @@ def scan(focus=None):
         "wired": wired(),
         "default_route": route,
         "country": reg_country() if iw_ok else None,
+        "country_by_phy": parse_reg(run("iw", "reg", "get")[1]) if iw_ok else {},
+        # The WiFi country is a setting on the Network page now: the one saved for boot, and the list to choose from.
+        "country_saved": wificountry.saved() if wificountry else None,
+        "countries": sorted(wificountry.countries().items(), key=lambda pair: pair[1]) if wificountry else [],
     }
     if inv["root"]:
         try:
@@ -1516,24 +1556,6 @@ def findings(inv):
                     )
                 )
     out += link_findings(inv)
-    if inv.get("country") in ("00", None) and radios:
-        out.append(
-            _h(
-                "regdom",
-                M("netinv.regdom.title", "WiFi country"),
-                "warn",
-                M("netinv.regdom", "No WiFi country is set."),
-                M(
-                    "netinv.regdom.why",
-                    "The radio uses the world regulatory channels. This limits the channels and the power of a hotspot.",
-                ),
-                M(
-                    "netinv.regdom.fix",
-                    "Set the WiFi country in the operating system: in netplan (regulatory-domain), with raspi-config, "
-                    "or with iw reg set and the country code.",
-                ),
-            )
-        )
     hap = inv["stacks"].get("hostapd") or {}
     if hap.get("running"):
         out.append(

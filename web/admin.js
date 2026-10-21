@@ -8305,6 +8305,7 @@ function renderNetwork(data) {
   const un = netNotes.up;
   say(un ? un.text : "", un ? un.ok : true, net.note);
 
+  renderCountry(inv, busy);
   renderDefaults(inv, busy);
   renderHandover(inv, busy);
   renderVisible(inv, busy);
@@ -8481,6 +8482,81 @@ document.getElementById("net-retry-go").addEventListener("click", () => {
   const card = document.getElementById("net-defaults-card");
   if (card.scrollIntoView) card.scrollIntoView({ block: "center" });
 });
+// The WiFi country (hub/wificountry.py): the kernel's now, and the one saved for boot, chosen from tzdata's list.
+// A setting: it asks nothing. A warning beside it says where the box and the choice disagree (Tom, 2026-10-21).
+// Drawn again only when what it shows changes, so a choice not yet saved isn't lost to the page's polling.
+let countryShown = null;
+function renderCountry(inv, busy) {
+  const box = document.getElementById("net-country");
+  if (!box || !inv || !(inv.countries || []).length) return;
+  const now = inv.country && inv.country !== "00" ? inv.country : null;
+  const saved = inv.country_saved || null;
+  const shown = JSON.stringify([now, saved, busy]);
+  if (shown === countryShown) return;
+  countryShown = shown;
+  const names = Object.fromEntries(inv.countries);
+  const nameOf = (code) => (names[code] ? `${names[code]} (${code})` : code);
+  // Why the radios may not use the country set: an access point announcing another (a client takes it on, and the
+  // kernel allows only what both do: its global country reads 98), or a radio that keeps its own (self-managed).
+  const announcing = (inv.radios || []).filter((radio) => radio.link && radio.link.country);
+  const ownCountry = (inv.radios || []).filter(
+    (radio) => ((inv.country_by_phy || {})[radio.phy] || {}).self_managed,
+  );
+  setupStep(
+    "country",
+    saved || (now && now !== "98") ? `${nameOf(saved || now)}.` : "No WiFi country is set.",
+    saved || now ? "ok" : "warn",
+  );
+  box.replaceChildren(
+    AW.settings(
+      [
+        {
+          key: "country",
+          label: "Country",
+          kind: "select",
+          value: saved || (now && now !== "98" ? now : ""),
+          options: [
+            ["", "Not set"],
+            ...inv.countries.map(([code, name]) => [code, `${name} (${code})`]),
+          ],
+          warn: (value) => {
+            if (!value)
+              return now
+                ? null
+                : "No WiFi country is set. The radios keep to the channels and power allowed everywhere, so the hotspot has fewer channels.";
+            const said = [];
+            const other = announcing.find((radio) => radio.link.country !== value);
+            if (other)
+              said.push(
+                `The WiFi network that ${other.iface} joins says it is in ${nameOf(other.link.country)}, so the radios use only the channels both countries allow.`,
+              );
+            if (ownCountry.length)
+              said.push(
+                `${ownCountry.map((radio) => radio.iface).join(" and ")} ${ownCountry.length === 1 ? "keeps a country of its own" : "keep a country of their own"} and ${ownCountry.length === 1 ? "ignores" : "ignore"} this setting.`,
+              );
+            if (!said.length && now && now !== value && now !== "98")
+              said.push(
+                `The radios use ${nameOf(now)} now, not ${nameOf(value)}. The next start applies the saved one.`,
+              );
+            return said.join(" ") || null;
+          },
+        },
+      ],
+      {
+        id: "net-country",
+        label: "WiFi country",
+        why: (changes, values) =>
+          !values.country ? "Select a country." : null,
+        save: (changes, values) => {
+          const j = AW.job();
+          netRequest({ action: "country", country: values.country }, "country", j.done);
+          return j;
+        },
+      },
+    ),
+  );
+}
+
 function renderDefaults(inv, busy) {
   const manager =
     inv &&

@@ -35,6 +35,11 @@ w.fetch = async (u, opts = {}) => {
     const data = await (await fetch(new URL(u, BASE), { ...opts, headers: { ...(opts.headers || {}), ...front } })).json();
     // A real inventory, its network's names taken out.
     data.inventory = JSON.parse(fs.readFileSync(`${__dirname}/netinv-fixture.json`, 'utf8'));
+    // The WiFi country: the kernel's, none saved for boot, and two to choose from.
+    Object.assign(data.inventory, { country: 'US', country_saved: null, countries: [['GB', 'Britain (UK)'], ['US', 'United States']] });
+    // The access point wlan0 joins announces the United States (the Pi's router did, 2026-10-21).
+    const linked = data.inventory.radios.find((r) => r.iface === 'wlan0' && r.link);
+    if (linked) linked.link.country = 'US';
     // Roaming as the hardware scan reports it: three access points, two channels, the hotspot on the radio.
     const wl = data.inventory.radios.find((r) => r.iface === 'wlan0');
     wl.powersave_from = { where: 'default', value: '2' };
@@ -202,6 +207,18 @@ setTimeout(() => {
     chk.value = 'abc'; chk.dispatchEvent(new w.Event('input'));
     save.click();
   }, 1500);
+  // The WiFi country: a dropdown, the kernel's country chosen; another one chosen is warned of beside it and saved.
+  setTimeout(() => {
+    const pick = d.querySelector('#net-country select');
+    const warnNow = () => (d.querySelector('#net-country .aw-warn') || {}).textContent || '';
+    check('WiFi country: a dropdown with "Not set" and the countries, the kernel\'s chosen, no warning',
+      pick && pick.options.length === 3 && pick.value === 'US' && warnNow() === '', pick && `${pick.options.length} ${pick.value} "${warnNow()}"`);
+    if (pick) { pick.value = 'GB'; pick.dispatchEvent(new w.Event('change')); }
+    check('  another chosen: said beside it that the network the box joins announces another country',
+      /wlan0 joins says it is in United States \(US\), so the radios use only the channels both countries allow/.test(warnNow()), warnNow());
+    const save = d.querySelector('#net-country .aw-save');
+    if (save) save.click();
+  }, 2200);
   setTimeout(() => {
     const sent = posted.find((p) => p.action === 'settings');
     check('Save posts both dials, the rest, and custom values', sent && sent.settings.pace === 'urgent' && sent.settings.reach === 'radio'
@@ -223,6 +240,7 @@ setTimeout(() => {
     check('Network: no Save named otherwise, none "(unsaved)", no second pair for the box defaults', !words.some((x) => /^Save .|\(unsaved\)/.test(x))
       && d.querySelectorAll('#net-defaults-foot .aw-save').length === 1 && !d.querySelector('#up-retries-group .aw-save'), words.filter((x) => /^Save/.test(x)).join('|'));
     check('  each network\'s own settings: Discard beside its Save', [...d.querySelectorAll('.net-conn-settings')].every((c) => !c.querySelector('.aw-save') || c.querySelector('.aw-discard')));
+    check('  saved: the country posted to the box', posted.some((p) => p.action === 'country' && p.country === 'GB'), JSON.stringify(posted.filter((p) => p.action === 'country')));
     check('no page errors', errors.length === 0, errors.join(' | '));
     console.log(fails ? `${fails} failure(s)` : 'ok');
     process.exit(fails ? 1 : 0);
