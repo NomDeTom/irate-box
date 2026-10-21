@@ -3039,8 +3039,7 @@ def setting_groups(s, wd):
                     "choice": "crashwatch-panic:on",
                     "confirm": M(
                         "hs.panic.confirm",
-                        "Restart the box 10 seconds after a kernel panic, oops or lockup, rather than leaving it frozen? "
-                        "A restart loses unsaved data and stops running jobs.",
+                        "The box restarts 10 seconds after a kernel panic, oops or lockup, rather than staying frozen. A restart loses unsaved data and stops running jobs.",
                     ),
                 },
             ],
@@ -3066,11 +3065,7 @@ def setting_groups(s, wd):
                         "choice": "crashwatch-watchdog:on",
                         "confirm": M(
                             "hs.watchdog.confirm-overlay",
-                            "Let a watchdog restart the box when it stops answering for a minute? "
-                            "A box doing heavy work that starves systemd for that long would "
-                            "restart too. The board's watchdog is switched off in its device tree. "
-                            "This switches it on with a boot overlay. It starts working after "
-                            "the next restart.",
+                            "A watchdog restarts the box when it stops answering for a minute. A box doing heavy work that starves systemd for that long restarts too. The board's watchdog is off in its device tree: this switches it on with a boot overlay, from the next restart.",
                         )
                         if wd == "switched-off"
                         else M(

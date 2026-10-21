@@ -45,17 +45,13 @@ const place = (s, page = 'p1') => { d.getElementById(page).append(s.foot, s.reas
   btns(s).discard.click();
   check('   Discard: the saved values back, nothing sent', s.get('a') === 1 && !s.dirty() && !sent.length);
 
-  // 3. One question, at Save.
-  const q = place(AW.section({ id: 'ask', saved: { a: 1, b: 1 }, ask: (c) => `Change ${Object.keys(c).join(' and ')}?`, save: async () => {} }));
+  // 3. No question: what the changes cost, said beside Save while they are not saved.
+  const q = place(AW.section({ id: 'ask', saved: { a: 1, b: 1 }, warn: (c) => `${Object.keys(c).join(' and ')} change at once.`, save: async () => {} }));
   q.set('a', 2);
   q.set('b', 2);
-  check('3. no question per pick', !asked.length);
-  answer = false;
+  check('3. no question per pick, the warning beside Save', !asked.length && q.foot.querySelector('.aw-warn').textContent === 'a and b change at once.');
   await q.save();
-  check('   one question at Save, listing the changes; Cancel keeps them', asked.length === 1 && asked[0] === 'Change a and b?' && q.dirty());
-  answer = true;
-  await q.save();
-  check('   answered yes: saved', !q.dirty() && asked.length === 2);
+  check('   Save: saved, no question, the warning gone', !q.dirty() && !asked.length && q.foot.querySelector('.aw-warn').hidden);
 
   // 4. Saving: words while it waits; cleared on success only; the reason on failure.
   let job;

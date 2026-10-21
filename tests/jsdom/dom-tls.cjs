@@ -260,12 +260,10 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     "root lock is staged, not immediate",
     securePosted.length === 1 && !sd.querySelector("#policy-foot .aw-save").disabled,
   );
-  page.confirm = false;
-  sd.querySelector("#policy-foot .aw-save").click();
-  await wait();
   check(
-    "root lock cannot save without confirmation",
-    securePosted.length === 1,
+    "root lock: its warning beside Save, that the hub cannot undo it",
+    /The hub cannot undo it/.test(t(sd.querySelector("#policy-foot .aw-warn"))) &&
+      securePosted.length === 1,
   );
   sd.querySelector("#policy-foot .aw-discard").click();
   check(
@@ -277,7 +275,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   sd.querySelector("#policy-foot .aw-save").click();
   await wait();
   check(
-    "confirmed lock is saved, then the hub cannot reverse it",
+    "the lock is saved, then the hub cannot reverse it",
     securePosted.length === 2 &&
       securePosted[1].confirmed === true &&
       [...sd.querySelectorAll("#policy-choices button")].every(
