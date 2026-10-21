@@ -282,7 +282,7 @@ def run_view(run, offset=0, limit=64 * 1024):
         return None
     base = RUNS / run
     try:
-        status = json.loads((base / "status.json").read_text())
+        status = as_shown(json.loads((base / "status.json").read_text()), base)
     except (OSError, ValueError):
         return None
     log = base / "log.txt"
@@ -398,6 +398,104 @@ def _write_status(run, **fields):
     os.replace(tmp, path)
 
 
+BOOT_ID = Path(os.environ.get("HUB_BOOT_ID", "/proc/sys/kernel/random/boot_id"))
+
+
+def boot_id():
+    try:
+        return BOOT_ID.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def clock_synced():
+    """Whether the clock was set from the network (True, False), or None if unknown. A box with no
+    RTC (the Lyra) starts at about the time it last stopped, so a time recorded before then is early."""
+    try:
+        out = subprocess.run(  # noqa: TID251
+            ["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return {"yes": True, "no": False}.get(out)
+
+
+def _started_fields():
+    """What a run records as it starts, besides its time: the boot it ran in, and whether the clock
+    was set then."""
+    return {"boot": boot_id(), "clock_synced": clock_synced()}
+
+
+def _log_time(run):
+    try:
+        return (run / "log.txt").stat().st_mtime
+    except OSError:
+        return None
+
+
+def _boot_time():
+    try:
+        for ln in Path("/proc/stat").read_text().splitlines():
+            if ln.startswith("btime "):
+                return int(ln.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def stale(status):
+    """A run that says running but can't be: it started in an earlier boot. One recorded before
+    runs carried their boot: started before this boot began."""
+    if status.get("state") != "running":
+        return False
+    if status.get("boot"):
+        return status["boot"] != boot_id()
+    bt = _boot_time()
+    return bt is not None and status.get("started", 0) < bt
+
+
+def as_shown(status, run):
+    """A run's status for the pages: one stale() shows as interrupted, ending when its log last
+    changed. The builder writes that down at its next start (mark_interrupted)."""
+    if not stale(status):
+        return status
+    end = _log_time(run)
+    return dict(status, state="interrupted", finished=end, duration=_since(status, end))
+
+
+def _since(status, end):
+    return round(end - status["started"]) if end and status.get("started") and end >= status["started"] else None
+
+
+def mark_interrupted():
+    """At the builder's start: a run still marked running was cut off (the box stopped, or the
+    builder did), as only one builder runs at a time. It becomes interrupted, ending when its log
+    last changed, so it can be deleted and pruned. Returns the runs marked."""
+    marked = []
+    for st in RUNS.glob("*/*/status.json") if RUNS.is_dir() else []:
+        run = st.parent
+        status = _status(run)
+        if status.get("state") != "running":
+            continue
+        end = _log_time(run)
+        try:
+            with open(run / "log.txt", "a") as log:
+                log.write("== interrupted: the box or the builder stopped during this run\n")
+        except OSError:
+            pass
+        _write_status(
+            run,
+            state="interrupted",
+            finished=end,
+            duration=_since(status, end),
+            artifacts=sorted(p.name for p in (run / "artifacts").iterdir() if p.is_file())
+            if (run / "artifacts").is_dir()
+            else [],
+        )
+        marked.append(f"{run.parent.name}/{run.name}")
+    return marked
+
+
 def build(job):
     repo = Path(job["repo"])
     name = repo.name[:-4]
@@ -418,6 +516,7 @@ def build(job):
         queued=job["queued"],
         started=started,
         state="running",
+        **_started_fields(),
         **({"by": job["by"]} if job.get("by") in ("build-now",) else {}),
     )
     src = WORK / name
@@ -538,6 +637,7 @@ def run_queue():
     from irate_box.hub import factory  # it imports this module
 
     WORK.mkdir(exist_ok=True)
+    mark_interrupted()
     prepare_git()
     while True:
         jobs = []
@@ -748,7 +848,16 @@ def build_firmware(job):
     keep["tools_only"] = job.get("tools_only") is True
     offline = keep["offline"] = job.get("offline") is True and not keep["tools_only"]
     netns = OFFLINE if offline else []
-    _write_status(run, kind="firmware", repo=FACTORY, branch=job.get("ref"), started=started, state="running", **keep)
+    _write_status(
+        run,
+        kind="firmware",
+        repo=FACTORY,
+        branch=job.get("ref"),
+        started=started,
+        state="running",
+        **keep,
+        **_started_fields(),
+    )
     src = WORK / FACTORY
     shutil.rmtree(src, ignore_errors=True)
     state, usage, work_bytes = "failed", None, None
@@ -911,7 +1020,7 @@ def snapshot(limit=20):
     if RUNS.is_dir():
         for status in RUNS.glob("*/*/status.json"):
             try:
-                data = json.loads(status.read_text())
+                data = as_shown(json.loads(status.read_text()), status.parent)
             except (OSError, ValueError):
                 continue
             data["run"] = f"{status.parent.parent.name}/{status.parent.name}"

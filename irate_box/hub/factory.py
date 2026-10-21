@@ -467,6 +467,29 @@ def move_up(job_id):
     os.replace(tmp, p)
 
 
+def again(run_number):
+    """A run that did not pass (interrupted, say, by the box stopping), queued again as it was: the
+    same source, commit, target, and offline or tools only."""
+    run, st = _run(run_number)
+    st = ci.as_shown(st, run)
+    if st.get("state") in ("running", "passed"):
+        raise Refused(M("factory.run.not-again", "Only a build that did not pass can run again."))
+    src = source(str(st.get("source", "")))
+    if not (
+        ci.ENV_RE.match(str(st.get("env", "")))
+        and ci.FAMILY_RE.match(str(st.get("family", "")))
+        and re.fullmatch(r"[0-9a-f]{40}", str(st.get("commit", "")))
+    ):
+        raise Refused(M("factory.run.not-found", "Run not found."))
+    ci.QUEUE.mkdir(parents=True, exist_ok=True)
+    _put(
+        {k: st.get(k) for k in ("source", "ref", "commit", "env", "family", "name")}
+        | {"kind": "firmware", "repo": src["path"], "batch": secrets.token_hex(4), "queued": time.time()}
+        | {k: True for k in ("offline", "tools_only") if st.get(k) is True}
+    )
+    return {"queued": 1, "env": st["env"], "commit": st["commit"]}
+
+
 def pause(on):
     """Paused: the waiting firmware jobs move to HELD (the build under way finishes). Resumed:
     they go back, and the queue's path unit wakes the builder."""
@@ -500,7 +523,7 @@ def runs(limit=30):
     base = ci.RUNS / RUNS_NAME
     for st in base.glob("*/status.json") if base.is_dir() else []:
         try:
-            s = json.loads(st.read_text())
+            s = ci.as_shown(json.loads(st.read_text()), st.parent)
         except (OSError, ValueError):
             continue
         s["run"] = f"{RUNS_NAME}/{st.parent.name}"
