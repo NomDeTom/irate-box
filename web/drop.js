@@ -52,11 +52,11 @@
         (data.ttl ? `Retention period: ${Math.round(data.ttl / 3600)} hours of powered-on time. ` : '') +
         'The box deletes the oldest files when the storage limit is reached.';
       list.replaceChildren(...(data.files.length ? data.files.map((file) => {
-        const a = document.createElement('a');
-        a.href = `/api/drop/${encodeURIComponent(file.id)}`;
-        a.textContent = file.name;
-        a.setAttribute('download', file.name);
-        const row = li('drop-item', file.pinned ? span('drop-locked', '📌 ') : file.locked ? span('drop-locked', '🔒 ') : '', a,
+        const link = document.createElement('a');
+        link.href = `/api/drop/${encodeURIComponent(file.id)}`;
+        link.textContent = file.name;
+        link.setAttribute('download', file.name);
+        const row = li('drop-item', file.pinned ? span('drop-locked', '📌 ') : file.locked ? span('drop-locked', '🔒 ') : '', link,
           span('setting-desc', ` ${size(file.size)} · ${file.pinned ? 'the source of this box (see About)' : `${file.by ? `${file.by} · ` : ''}${formatAge(file.age)}`}`));
         // Anyone can report a file to the administrator (not the box's own source).
         if (!file.pinned && typeof reportButton === 'function') row.append(' ', reportButton('drop', { id: file.id }, data.report_reasons));

@@ -66,7 +66,7 @@ const GETS_AT_ONCE = 3;
   };
   const next = () => {
     while (out < GETS_AT_ONCE && queue.length) {
-      queue.sort((a, b) => rank(a.url) - rank(b.url) || a.n - b.n); // ranked as they leave: the pane shown then
+      queue.sort((left, right) => rank(left.url) - rank(right.url) || left.n - right.n); // ranked as they leave: the pane shown then
       const job = queue.shift();
       out += 1;
       send(job.url, job.opts)
@@ -494,13 +494,13 @@ function renderApps(snap, busy) {
     snap.sources.filter((s) => s.kind === "app").map((s) => [s.name, s]),
   );
   const post = (key, body) => () => libAct(key, body);
-  const row = (name, a, withAccess) => {
-    const inst = a.installed;
+  const row = (name, app, withAccess) => {
+    const inst = app.installed;
     const src = sources[name];
     const st = snap.status[name] || {};
     const res = st.install_result;
     // A pinned app (librarian.py, "Latest and pinned") installs the build its source follows.
-    const follow = a.pin
+    const follow = app.pin
       ? (src && src.follow) || st.follow || "pinned"
       : "latest";
     const target = follow === "pinned" ? st.pinned : st.latest;
@@ -521,8 +521,8 @@ function renderApps(snap, busy) {
           ? `Source: git, ${src.repo} @ ${src.branch}, adapted for the hub.`
           : `Source: ${src.type}, ${src.repo} · ${src.workflow}${src.branch ? ` @ ${src.branch}` : ""}.`
         : "No update source is set for this app.",
-      a.pin
-        ? `Pinned version (last known good): ${a.pin.slice(0, 7)}. Newest: ${st.latest ? st.latest.label : "not checked yet"}. ` +
+      app.pin
+        ? `Pinned version (last known good): ${app.pin.slice(0, 7)}. Newest: ${st.latest ? st.latest.label : "not checked yet"}. ` +
           (follow === "pinned"
             ? "Updates use the pinned version."
             : "Updates use the newest version. If it fails, the app keeps the installed version or the pinned version.")
@@ -549,7 +549,7 @@ function renderApps(snap, busy) {
         el(
           "span",
           { className: "setting-name" },
-          a.title,
+          app.title,
           src ? " " : null,
           src ? AW.updatePill(st.last_check, newer, !!st.error) : null,
         ),
@@ -605,11 +605,11 @@ function renderApps(snap, busy) {
                     className: "action-btn",
                     textContent: "Roll back",
                     disabled: busy,
-                    title: `Restores the previous ${a.title} build.`,
+                    title: `Restores the previous ${app.title} build.`,
                     onclick: post(`app:${name}`, { action: "rollback", name }),
                   })
                 : null,
-              a.pin
+              app.pin
                 ? el("button", {
                     type: "button",
                     className: "action-btn",
@@ -620,7 +620,7 @@ function renderApps(snap, busy) {
                     disabled: busy,
                     title:
                       follow === "pinned"
-                        ? `Future ${a.title} updates will use the latest build instead of the reviewed pinned commit. Nobody may have reviewed the latest build.`
+                        ? `Future ${app.title} updates will use the latest build instead of the reviewed pinned commit. Nobody may have reviewed the latest build.`
                         : "",
                     onclick: post(`app:${name}`, {
                       action: "add",
@@ -640,7 +640,7 @@ function renderApps(snap, busy) {
                 className: "action-btn",
                 textContent: "Track app updates",
                 disabled: busy,
-                title: `Track the published builds of ${a.title}. Then Check now, Download and Install work for it.`,
+                title: `Track the published builds of ${app.title}. Then Check now, Download and Install work for it.`,
                 onclick: post(`app:${name}`, {
                   action: "add-apps",
                   names: [name],
@@ -660,14 +660,14 @@ function renderApps(snap, busy) {
   document.getElementById("apps-list").replaceChildren(
     ...Object.entries(apps)
       .filter(([name]) => !paged.has(name))
-      .map(([name, a]) => row(name, a, true)),
+      .map(([name, app]) => row(name, app, true)),
   );
   // Each app's own page has its row too, its access being at the top of that page already.
   document.querySelectorAll(".updates-block[data-app]").forEach((b) => {
-    const a = apps[b.dataset.app];
+    const app = apps[b.dataset.app];
     b.replaceChildren(
-      a
-        ? row(b.dataset.app, a, false)
+      app
+        ? row(b.dataset.app, app, false)
         : el("p", {
             className: "setting-desc",
             textContent: "The librarian has no data about this app yet.",
@@ -3147,7 +3147,7 @@ function renderUpdateProgress(p) {
 let udShow = "all";
 function renderUpdoctor(d, stale) {
   const all = d
-    ? [...d.findings].sort((a, b) => RANK[a.status] - RANK[b.status])
+    ? [...d.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
     : [];
   const counts = {
     problem: all.filter((finding) => finding.status === "problem").length,
@@ -3205,13 +3205,13 @@ function renderUpdoctor(d, stale) {
   // The doctor's own buttons ask the update helper (requestUpdate), not the box doctor's repairs (hlFix).
   const item = (finding) => {
     const x = healthDo({ ...finding, actions: [] }, false);
-    const own = finding.status === "ok" ? [] : (finding.actions || []).map((a) =>
+    const own = finding.status === "ok" ? [] : (finding.actions || []).map((action) =>
       el("button", {
         type: "button",
         className: "action-btn",
-        textContent: a.label,
+        textContent: action.label,
         onclick: () => {
-          requestUpdate(a.choice, null, {}, true);
+          requestUpdate(action.choice, null, {}, true);
         },
       }),
     );
@@ -3577,24 +3577,24 @@ const AUTO_STEP = {
   fetch: "downloaded and verified an update",
   install: "installed an update",
 };
-function renderAuto(a) {
-  if (!a) return;
+function renderAuto(settings) {
+  if (!settings) return;
   // The section keeps an edit not saved yet through polling; the fold's title says what is saved.
   autoSec.fill({
-    hub_check_every_hours: a.hub_check_every_hours,
-    hub_auto: a.hub_auto,
-    hub_window_start: a.hub_window_start,
-    hub_window_end: a.hub_window_end,
+    hub_check_every_hours: settings.hub_check_every_hours,
+    hub_auto: settings.hub_auto,
+    hub_window_start: settings.hub_window_start,
+    hub_window_end: settings.hub_window_end,
   });
   const hh = (h) => `${String(h).padStart(2, "0")}:00`;
   auto.says.textContent =
-    AW.patternSays(a.hub_check_every_hours, a.hub_auto).replace(/\.$/, "") +
-    (Number(a.hub_check_every_hours) && Number(a.hub_auto) === 2
-      ? `, between ${hh(a.hub_window_start)} and ${hh(a.hub_window_end)}.`
+    AW.patternSays(settings.hub_check_every_hours, settings.hub_auto).replace(/\.$/, "") +
+    (Number(settings.hub_check_every_hours) && Number(settings.hub_auto) === 2
+      ? `, between ${hh(settings.hub_window_start)} and ${hh(settings.hub_window_end)}.`
       : ".") +
     (autoSec.dirty() ? " (Changed below, not saved.)" : "");
   auto.window.hidden = auto.form.elements.hub_auto.value !== "2";
-  const st = a.state || {};
+  const st = settings.state || {};
   const parts = [];
   if (st.waiting)
     parts.push(
@@ -3607,7 +3607,7 @@ function renderAuto(a) {
   if (st.note && !st.waiting) parts.push(st.note + ".");
   auto.state.textContent =
     parts.join(" ") ||
-    (Number(a.hub_check_every_hours)
+    (Number(settings.hub_check_every_hours)
       ? "No automatic step yet. The librarian runs the first step at the next hourly cycle."
       : "Automatic checks are disabled.");
 }
@@ -3668,7 +3668,7 @@ function secKind(finding) {
   if (finding.id === "security-updates" || finding.id === "unattended") return "update";
   if (
     CURE_ID.test(finding.id) ||
-    (finding.actions || []).some((a) => CURE_CHOICE.test(a.choice))
+    (finding.actions || []).some((action) => CURE_CHOICE.test(action.choice))
   )
     return "cure";
   // A port is in the Network listeners table, with its buttons there (Stop and disable, Open to the hotspot):
@@ -3679,19 +3679,19 @@ function secKind(finding) {
 // Passwordless sudo as a toggle: On while a
 // NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
 function sudoToggle(finding, busy) {
-  return finding.actions.map((a) => {
-    const file = a.choice.split(":")[1];
-    const on = a.choice.startsWith("sudo-drop:") !== secChosen(finding.id, a); // as it would be after Save
+  return finding.actions.map((action) => {
+    const file = action.choice.split(":")[1];
+    const on = action.choice.startsWith("sudo-drop:") !== secChosen(finding.id, action); // as it would be after Save
     const b = el("button", {
       type: "button",
       className:
         "chip-btn" +
         (on ? " active" : "") +
-        (secChosen(finding.id, a) ? " pending" : ""),
+        (secChosen(finding.id, action) ? " pending" : ""),
       disabled: busy,
       textContent: `Passwordless sudo${finding.actions.length > 1 ? ` (${file})` : ""}: ${on ? "On" : "Off"}`,
-      title: a.label,
-      onclick: (event) => secChoose(finding, a, event.currentTarget),
+      title: action.label,
+      onclick: (event) => secChoose(finding, action, event.currentTarget),
     });
     b.setAttribute("aria-pressed", String(on));
     return b;
@@ -3700,26 +3700,26 @@ function sudoToggle(finding, busy) {
 // A line of the box's scan: its buttons, each acting through the root helper (only what its last scan offered).
 function scanButtons(finding, busy) {
   if (finding.id === "sudo-nopasswd") return sudoToggle(finding, busy);
-  if ((finding.actions || []).some((a) => a.group))
+  if ((finding.actions || []).some((action) => action.group))
     return [
       ...secChipRows(finding, busy),
       ...scanButtons(
-        { ...finding, actions: finding.actions.filter((a) => !a.group) },
+        { ...finding, actions: finding.actions.filter((action) => !action.group) },
         busy,
       ),
     ];
-  return (finding.actions || []).map((a) => {
+  return (finding.actions || []).map((action) => {
     const b = el("button", {
       type: "button",
-      className: "action-btn" + (secChosen(finding.id, a) ? " pending" : ""),
-      textContent: a.label,
+      className: "action-btn" + (secChosen(finding.id, action) ? " pending" : ""),
+      textContent: action.label,
       disabled: busy,
-      title: secChosen(finding.id, a)
+      title: secChosen(finding.id, action)
         ? "Selected. Select Save below to apply this change. Select the button again to cancel the selection."
         : "",
-      onclick: (event) => secChoose(finding, a, event.currentTarget),
+      onclick: (event) => secChoose(finding, action, event.currentTarget),
     });
-    b.setAttribute("aria-pressed", String(secChosen(finding.id, a)));
+    b.setAttribute("aria-pressed", String(secChosen(finding.id, action)));
     return b;
   });
 }
@@ -3731,7 +3731,7 @@ const secOffer = (fid, choice) => {
   const finding = ((secData && secData.scan && secData.scan.findings) || []).find(
     (x) => x.id === fid,
   );
-  return finding && (finding.actions || []).find((a) => a.choice === choice);
+  return finding && (finding.actions || []).find((action) => action.choice === choice);
 };
 function secSection(finding) {
   if (secSecs.has(finding.id)) return secSecs.get(finding.id);
@@ -3740,8 +3740,8 @@ function secSection(finding) {
     label: finding.title,
     saved: { choice: "" },
     warn: (c) => {
-      const a = secOffer(finding.id, c.choice);
-      return a && a.confirm ? a.confirm : null;
+      const offer = secOffer(finding.id, c.choice);
+      return offer && offer.confirm ? offer.confirm : null;
     },
     save: async (c) => {
       const j = AW.job();
@@ -3756,15 +3756,15 @@ function secSection(finding) {
   secSecs.set(finding.id, sec);
   return sec;
 }
-const secChosen = (fid, a) => {
+const secChosen = (fid, action) => {
   const sec = secSecs.get(fid);
-  return !!sec && sec.dirty() && sec.get("choice") === a.choice;
+  return !!sec && sec.dirty() && sec.get("choice") === action.choice;
 };
-function secChoose(finding, a) {
+function secChoose(finding, action) {
   // A cure acts at once (the one in effect already: nothing to do).
-  if (secKind(finding) === "cure") return a.on ? undefined : secFix(finding.id, a);
+  if (secKind(finding) === "cure") return action.on ? undefined : secFix(finding.id, action);
   // Chosen again, or the choice it has now: nothing to save for it.
-  secSection(finding).set("choice", secChosen(finding.id, a) || a.on ? "" : a.choice);
+  secSection(finding).set("choice", secChosen(finding.id, action) || action.on ? "" : action.choice);
 }
 // The footer under a finding whose choice is held for Save.
 const secFoot = (finding) =>
@@ -4027,8 +4027,8 @@ function secRepairFollow(data) {
 function secChipRows(finding, busy) {
   const groups = new Map();
   (finding.actions || [])
-    .filter((a) => a.group)
-    .forEach((a) => groups.set(a.group, [...(groups.get(a.group) || []), a]));
+    .filter((action) => action.group)
+    .forEach((action) => groups.set(action.group, [...(groups.get(action.group) || []), action]));
   return [...groups].map(([label, choices]) =>
     el(
       "div",
@@ -4037,23 +4037,23 @@ function secChipRows(finding, busy) {
       el(
         "div",
         { className: "chip-group", role: "group", "aria-label": label },
-        ...choices.map((a) => {
+        ...choices.map((choice) => {
           const sec = secSecs.get(finding.id);
           // Pending only in the group it was chosen in: the finding's other groups show how they are.
           const pend =
             sec && sec.dirty() && choices.some((c) => c.choice === sec.get("choice"))
               ? { a: { choice: sec.get("choice") } }
               : null;
-          const sel = pend ? pend.a.choice === a.choice : !!a.on;
+          const sel = pend ? pend.a.choice === choice.choice : !!choice.on;
           const b = el("button", {
             type: "button",
             className:
               "chip" +
               (sel ? " selected" : "") +
               (pend && sel ? " pending" : ""),
-            textContent: a.label,
+            textContent: choice.label,
             disabled: busy,
-            onclick: (event) => secChoose(finding, a, event.currentTarget),
+            onclick: (event) => secChoose(finding, choice, event.currentTarget),
           });
           b.setAttribute("aria-pressed", String(sel));
           return b;
@@ -4091,7 +4091,7 @@ function secSubject(finding) {
 // Security doctor's, which links here; this says only that there is one.
 function secChoiceCard(finding, busy, note) {
   const rows = secChipRows(finding, busy);
-  const rest = { ...finding, actions: (finding.actions || []).filter((a) => !a.group) };
+  const rest = { ...finding, actions: (finding.actions || []).filter((action) => !action.group) };
   const buttons = rest.actions.length
     ? el("div", { className: "library-buttons" }, ...scanButtons(rest, busy))
     : null;
@@ -4135,8 +4135,8 @@ function secPrune(scan) {
   if (!scan) return;
   for (const [fid, sec] of secSecs) {
     if (!sec.dirty() || sec.saving()) continue;
-    const a = secOffer(fid, sec.get("choice"));
-    if (!a || a.on) sec.discard();
+    const offer = secOffer(fid, sec.get("choice"));
+    if (!offer || offer.on) sec.discard();
   }
 }
 // A program's ports, by protocol, runs of ports as a range: "TCP 443, 8080, 8090–8098".
@@ -4146,14 +4146,14 @@ function portRanges(ls) {
   return Object.keys(by)
     .sort()
     .map((proto) => {
-      const ps = [...by[proto]].sort((a, b) => a - b);
+      const ps = [...by[proto]].sort((left, right) => left - right);
       const runs = [];
       for (const p of ps) {
         const run = runs[runs.length - 1];
         if (run && p === run[1] + 1) run[1] = p;
         else runs.push([p, p]);
       }
-      return `${proto.toUpperCase()} ${runs.map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a}, ${b}` : `${a}–${b}`)).join(", ")}`;
+      return `${proto.toUpperCase()} ${runs.map(([run, b]) => (run === b ? `${run}` : b === run + 1 ? `${run}, ${b}` : `${run}–${b}`)).join(", ")}`;
     })
     .join("; ");
 }
@@ -4201,7 +4201,7 @@ function renderSecurity(data) {
   const by = (k) =>
     lines
       .filter((finding) => secKind(finding) === k)
-      .sort((a, b) => RANK[a.status] - RANK[b.status]);
+      .sort((left, right) => RANK[left.status] - RANK[right.status]);
   // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
   // choice or is set, so a setting can always be found and changed back.
   const choices = lines.filter((finding) => secKind(finding) === "choice");
@@ -4369,7 +4369,7 @@ function renderSecurity(data) {
           )
         : all;
       const fs = [...new Set(shown.map(lineOf).filter(Boolean))].sort(
-        (a, b) => RANK[a.status] - RANK[b.status],
+        (left, right) => RANK[left.status] - RANK[right.status],
       );
       const worst = fs[0];
       const l0 = shown[0];
@@ -4432,7 +4432,7 @@ function renderSecurity(data) {
               acts.length > 1 ? el("span", { className: "setting-desc", textContent: `${portRanges(shown.filter((l) => lineOf(l) === finding))}: ` }) : null,
               // A program's own buttons once (Stop and disable): a port's stay with its port.
               ...scanButtons(
-                { ...finding, actions: finding.actions.filter((a) => finding === acts.find((g) => g.actions.some((b) => b.choice === a.choice))) },
+                { ...finding, actions: finding.actions.filter((action) => finding === acts.find((g) => g.actions.some((b) => b.choice === action.choice))) },
                 busy,
               ),
             ),
@@ -4547,16 +4547,16 @@ function jointDo(i, data, busy) {
       }
       continue;
     }
-    for (const a of finding.actions || []) {
-      if (seen.has(a.choice)) continue;
-      seen.add(a.choice);
+    for (const action of finding.actions || []) {
+      if (seen.has(action.choice)) continue;
+      seen.add(action.choice);
       controls.push(
         el("button", {
           type: "button",
           className: "action-btn",
-          textContent: a.label,
+          textContent: action.label,
           disabled: busy,
-          onclick: () => secFix(finding.id, a),
+          onclick: () => secFix(finding.id, action),
         }),
       );
     }
@@ -5032,7 +5032,7 @@ function renderAudit(audit, busy, data) {
           ? "warn"
           : "ok";
       const lines = [...st.findings].sort(
-        (a, b) => RANK[a.status] - RANK[b.status],
+        (left, right) => RANK[left.status] - RANK[right.status],
       );
       return el(
         "details",
@@ -5421,8 +5421,8 @@ function installText(st) {
 function healthChips(finding, busy) {
   const groups = new Map();
   (finding.actions || [])
-    .filter((a) => a.group)
-    .forEach((a) => groups.set(a.group, [...(groups.get(a.group) || []), a]));
+    .filter((action) => action.group)
+    .forEach((action) => groups.set(action.group, [...(groups.get(action.group) || []), action]));
   return [...groups].map(([label, choices]) =>
     el(
       "div",
@@ -5431,17 +5431,17 @@ function healthChips(finding, busy) {
       el(
         "div",
         { className: "chip-group", role: "group", "aria-label": label },
-        ...choices.map((a) => {
+        ...choices.map((choice) => {
           const b = el("button", {
             type: "button",
-            className: "chip" + (a.on ? " selected" : ""),
-            textContent: a.label,
+            className: "chip" + (choice.on ? " selected" : ""),
+            textContent: choice.label,
             disabled: busy,
             onclick: () => {
-              if (!a.on) hlFix(finding.id, a);
+              if (!choice.on) hlFix(finding.id, choice);
             },
           });
-          b.setAttribute("aria-pressed", String(!!a.on));
+          b.setAttribute("aria-pressed", String(!!choice.on));
           return b;
         }),
       ),
@@ -5454,14 +5454,14 @@ function healthDo(finding, busy) {
   const controls = [
     ...chips,
     ...(finding.actions || [])
-      .filter((a) => !a.group)
-      .map((a) =>
+      .filter((action) => !action.group)
+      .map((action) =>
         el("button", {
           type: "button",
           className: "action-btn",
-          textContent: a.label,
+          textContent: action.label,
           disabled: busy,
-          onclick: () => hlFix(finding.id, a),
+          onclick: () => hlFix(finding.id, action),
         }),
       ),
   ];
@@ -5863,7 +5863,7 @@ function renderHealth(data) {
   renderGlance(data, rep);
   renderDoctorSettings(data, rep);
   const all = rep
-    ? [...rep.findings].sort((a, b) => RANK[a.status] - RANK[b.status])
+    ? [...rep.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
     : [];
   const shown = new Set(all.map((finding) => finding.id));
   const noteUnder = (fid) =>
@@ -6841,22 +6841,22 @@ function drawLockAps() {
   if (!upPick.lock_bssid && aps.length) upPick.lock_bssid = aps[0].bssid; // the strongest, preselected
   box.replaceChildren(
     ...(aps.length
-      ? aps.map((a) => {
+      ? aps.map((accessPoint) => {
           const input = el("input", {
             type: "radio",
             name: "up-lock",
-            value: a.bssid,
+            value: accessPoint.bssid,
           });
-          input.checked = a.bssid === upPick.lock_bssid;
+          input.checked = accessPoint.bssid === upPick.lock_bssid;
           input.addEventListener("change", () =>
-            upChoose({ lock_bssid: a.bssid }, netData.levels),
+            upChoose({ lock_bssid: accessPoint.bssid }, netData.levels),
           );
           return el(
             "label",
             { className: "inline" },
             input,
-            ` ${a.bssid}: channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ""}, signal ${a.signal}%` +
-              `${radio.link && radio.link.bssid === a.bssid ? " (in use now)" : ""}`,
+            ` ${accessPoint.bssid}: channel ${accessPoint.channel}${accessPoint.freq ? ` (${bandOf(accessPoint.freq)})` : ""}, signal ${accessPoint.signal}%` +
+              `${radio.link && radio.link.bssid === accessPoint.bssid ? " (in use now)" : ""}`,
           );
         })
       : [
@@ -7690,15 +7690,15 @@ function deviceCard(inv, d, wifi, hazards) {
   if (wifi && (d.power_save || d.powersave_from))
     kids.push(section(powerSaveLine(d)));
   if (wifi) {
-    const a = (inv.ap || []).find((x) => x.phy === d.phy);
-    if (a) {
-      const conds = a.conditions || [{ kind: "how", text: a.detail }];
+    const hotspot = (inv.ap || []).find((x) => x.phy === d.phy);
+    if (hotspot) {
+      const conds = hotspot.conditions || [{ kind: "how", text: hotspot.detail }];
       const any = conds.some((c) => c.kind !== "how");
-      const verdict = !a.possible
+      const verdict = !hotspot.possible
         ? "No."
         : any
-          ? `Yes, with conditions (through ${a.backend}).`
-          : `Yes (through ${a.backend}).`;
+          ? `Yes, with conditions (through ${hotspot.backend}).`
+          : `Yes (through ${hotspot.backend}).`;
       const tests = (inv.radio_tests || {})[d.iface] || {};
       kids.push(
         section(
@@ -7860,7 +7860,7 @@ function drawRoaming(inv, u, wifi) {
     chosen.roaming === "lock" &&
     u &&
     u.state !== "up" &&
-    !roaming.aps.some((a) => a.bssid === chosen.lock_bssid);
+    !roaming.aps.some((accessPoint) => accessPoint.bssid === chosen.lock_bssid);
   if (lockGone) {
     lines.push(
       el(
@@ -7897,28 +7897,28 @@ function drawRoaming(inv, u, wifi) {
         ? el(
             "ul",
             { className: "net-ap-tiles" },
-            ...roaming.aps.map((a) =>
+            ...roaming.aps.map((accessPoint) =>
               el(
                 "li",
                 {
                   className:
                     "net-ap-tile" +
-                    (radio.link && radio.link.bssid === a.bssid ? " in-use" : ""),
+                    (radio.link && radio.link.bssid === accessPoint.bssid ? " in-use" : ""),
                 },
-                el("span", { className: "net-ap-bssid", textContent: a.bssid }),
+                el("span", { className: "net-ap-bssid", textContent: accessPoint.bssid }),
                 el("span", {
                   className: "setting-desc",
-                  textContent: `Channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ""}`,
+                  textContent: `Channel ${accessPoint.channel}${accessPoint.freq ? ` (${bandOf(accessPoint.freq)})` : ""}`,
                 }),
                 el("meter", {
                   min: 0,
                   max: 100,
-                  value: a.signal,
-                  title: `Signal ${a.signal}%`,
+                  value: accessPoint.signal,
+                  title: `Signal ${accessPoint.signal}%`,
                 }),
                 el("span", {
                   className: "setting-desc",
-                  textContent: `${a.signal}%${radio.link && radio.link.bssid === a.bssid ? ", in use" : ""}`,
+                  textContent: `${accessPoint.signal}%${radio.link && radio.link.bssid === accessPoint.bssid ? ", in use" : ""}`,
                 }),
               ),
             ),
@@ -8127,13 +8127,13 @@ function drawApHealth(data = netData) {
   const wifi = inv ? inv.radios.filter((radio) => radio.type !== "AP") : [];
   const aps = inv ? inv.radios.filter((radio) => radio.type === "AP") : [];
   const on = apRun ? !!apRun.up : null;
-  const lines = aps.flatMap((a) => {
-    const shared = wifi.find((radio) => radio.phy === a.phy);
-    const n = (a.stations || []).length;
+  const lines = aps.flatMap((accessPoint) => {
+    const shared = wifi.find((radio) => radio.phy === accessPoint.phy);
+    const n = (accessPoint.stations || []).length;
     return [
       netLine(
-        a.iface,
-        `Running${a.channel ? `, channel ${a.channel}${a.freq ? ` (${bandOf(a.freq)})` : ""}` : ""}. ${n} guest device${n === 1 ? "" : "s"} joined.`,
+        accessPoint.iface,
+        `Running${accessPoint.channel ? `, channel ${accessPoint.channel}${accessPoint.freq ? ` (${bandOf(accessPoint.freq)})` : ""}` : ""}. ${n} guest device${n === 1 ? "" : "s"} joined.`,
       ),
       shared
         ? netLine(
@@ -10383,16 +10383,16 @@ const SEEN_LABEL = {
   users: "signed-in users",
   hidden: "nobody",
 };
-function accessDesc(a) {
-  if (a.mode === "public")
-    return a.login
+function accessDesc(app) {
+  if (app.mode === "public")
+    return app.login
       ? "Guests: the hub shows the tile. The app still asks for the administrator sign-in."
       : "Guests: the hub shows the tile. Every device on the box's network can open the app.";
-  if (a.mode === "users")
+  if (app.mode === "users")
     return "Users: the hub shows the tile to signed-in users. A guest must sign in to an account first (Accounts).";
-  if (a.mode === "private")
+  if (app.mode === "private")
     return "Administrators: the hub does not show the tile. The app address asks for the administrator sign-in.";
-  return `Disabled: the hub does not show the tile. The app address answers "Not found"${a.unit ? ". The service is stopped" : ""}.`;
+  return `Disabled: the hub does not show the tile. The app address answers "Not found"${app.unit ? ". The service is stopped" : ""}.`;
 }
 
 // A list may render before the choices arrive: its slot is made empty and filled in later.
@@ -10404,18 +10404,18 @@ function accessSlot(id) {
 
 // What a change of access needs saying, asked once at Save.
 // What a change of an app's access does, beside Save.
-function accessWarn(a, mode) {
-  if (mode === "off" && a.unit)
+function accessWarn(app, mode) {
+  if (mode === "off" && app.unit)
     return "Its service stops until you enable it again.";
-  if (mode === "public" && a.mode !== "public" && !a.login)
+  if (mode === "public" && app.mode !== "public" && !app.login)
     return "Every device on the box's network can open it without a sign-in.";
   return null;
 }
 // The change, as a job: done when the root helper's answer comes back with the poll (renderAccess).
-async function accessSet(a, mode) {
+async function accessSet(app, mode) {
   const j = AW.job();
-  const reply = await postJSON("/admin/access", { app: a.id, mode });
-  accessWaiting = { id: reply.id, app: a.id, job: j };
+  const reply = await postJSON("/admin/access", { app: app.id, mode });
+  accessWaiting = { id: reply.id, app: app.id, job: j };
   accessNote = null;
   loadAccess();
   return j;
@@ -10438,9 +10438,9 @@ function renderAccess(data) {
   }
   const builtin = [];
   lastAccess = data;
-  for (const a of data.apps) {
-    accessSlot(a.id).replaceChildren(...accessControls(a));
-    if (a.kind === "builtin") builtin.push(a);
+  for (const app of data.apps) {
+    accessSlot(app.id).replaceChildren(...accessControls(app));
+    if (app.kind === "builtin") builtin.push(app);
   }
   fillAccessBlocks();
   const paged = new Set(
@@ -10448,19 +10448,19 @@ function renderAccess(data) {
       (b) => b.dataset.app,
     ),
   );
-  const unpaged = builtin.filter((a) => !paged.has(a.id));
+  const unpaged = builtin.filter((app) => !paged.has(app.id));
   document
     .getElementById("builtin-list")
     .replaceChildren(
-      ...unpaged.map((a) =>
+      ...unpaged.map((app) =>
         el(
           "div",
           { className: "setting library-source" },
           el(
             "span",
             {},
-            el("span", { className: "setting-name", textContent: a.title }),
-            accessSlot(a.id),
+            el("span", { className: "setting-name", textContent: app.title }),
+            accessSlot(app.id),
           ),
         ),
       ),
@@ -10524,14 +10524,14 @@ function fillAccessBlocks() {
   if (!lastAccess) return;
   fillSeenBlocks();
   // The rows in the lists (Apps, the built-in parts, add-ons) carry the same block: redrawn too.
-  for (const a of lastAccess.apps)
-    if (accessNodes.has(a.id))
-      accessSlot(a.id).replaceChildren(...accessControls(a));
+  for (const app of lastAccess.apps)
+    if (accessNodes.has(app.id))
+      accessSlot(app.id).replaceChildren(...accessControls(app));
   document.querySelectorAll(".access-block[data-app]").forEach((block) => {
-    const a = lastAccess.apps.find((x) => x.id === block.dataset.app);
+    const app = lastAccess.apps.find((x) => x.id === block.dataset.app);
     block.replaceChildren(
-      ...(a
-        ? accessControls(a)
+      ...(app
+        ? accessControls(app)
         : [
             el("p", {
               className: "setting-desc",
@@ -10550,7 +10550,7 @@ function fillTileBlocks() {
   document.querySelectorAll(".tile-block[data-app]").forEach((block) => {
     const id = block.dataset.app;
     const t = tilesData && tilesData.tiles.find((x) => x.id === id);
-    const a = lastAccess && lastAccess.apps.find((x) => x.id === id);
+    const app = lastAccess && lastAccess.apps.find((x) => x.id === id);
     if (!tilesData) {
       block.replaceChildren(
         el("p", {
@@ -10565,7 +10565,7 @@ function fillTileBlocks() {
         el("p", {
           className: "setting-desc",
           textContent:
-            a && a.mode === "off"
+            app && app.mode === "off"
               ? "No tile while it is disabled."
               : "No tile on the home page.",
         }),
@@ -10573,9 +10573,9 @@ function fillTileBlocks() {
       return;
     }
     const order = tilesData.tiles.map((x) => x.id);
-    const mode = a ? a.mode : "public";
-    const seen = a
-      ? seenOf(a.mode, a.visible)
+    const mode = app ? app.mode : "public";
+    const seen = app
+      ? seenOf(app.mode, app.visible)
       : seenOf("public", ((lastAccess && lastAccess.seen) || {})[id]);
     const lock = ((lastAccess && lastAccess.locked_as) || {})[id] || "signin";
     const go = el("a", {
@@ -10592,7 +10592,7 @@ function fillTileBlocks() {
         textContent:
           `${seenWords(seen, mode)} Place ${order.indexOf(id) + 1} of ${order.length}. ` +
           `${t.size || "single"} size. Icon: ${t.own_icon ? `its own (${t.own_icon})` : "the icon of the app"}.` +
-          (a && mode !== "public" && seen !== "hidden"
+          (app && mode !== "public" && seen !== "hidden"
             ? ` Locked-tile action: ${LOCK_WORDS[lock]}.`
             : ""),
       }),
@@ -10619,14 +10619,14 @@ function fillHeadBlocks() {
     const id = block.dataset.app;
     const row = rows.find((x) => x.id === id);
     const m = manifests.find((x) => x.id === id) || {};
-    const a = lastAccess && lastAccess.apps.find((x) => x.id === id);
+    const app = lastAccess && lastAccess.apps.find((x) => x.id === id);
     const svc = lastBox && (lastBox.services || []).find((x) => x.app === id);
     const buttons = [];
     if (
       m.href &&
       row &&
       ["installed", "builtin"].includes(row.state) &&
-      !(a && a.mode === "off")
+      !(app && app.mode === "off")
     ) {
       buttons.push(
         el("a", {
@@ -10822,8 +10822,8 @@ async function saveTiles(d) {
     state: { order: d.order, size: d.size || {}, icon: d.icon || {} },
   });
   for (const [id, v] of Object.entries(d.seen)) {
-    const a = appOf(id),
-      auto = a ? seenOf(a.mode, "auto") : "guests";
+    const app = appOf(id),
+      auto = app ? seenOf(app.mode, "auto") : "guests";
     await postJSON("/admin/visibility", {
       app: id,
       visible: v === auto ? "auto" : v,
@@ -10855,17 +10855,17 @@ const OPENS = {
   off: "disabled",
 };
 function tileWords(id) {
-  const a = lastAccess && lastAccess.apps.find((x) => x.id === id);
-  if (a) {
+  const app = lastAccess && lastAccess.apps.find((x) => x.id === id);
+  if (app) {
     const seen =
-      a.mode === "off"
+      app.mode === "off"
         ? "nobody"
-        : a.visible === "auto" || !a.visible
+        : app.visible === "auto" || !app.visible
           ? "as its access"
-          : SEEN_LABEL[a.visible];
+          : SEEN_LABEL[app.visible];
     return {
-      summary: `Access: ${OPENS[a.mode] || a.mode} · Visibility: ${seen}`,
-      badges: [a.mode === "off" ? "off" : a.mode],
+      summary: `Access: ${OPENS[app.mode] || app.mode} · Visibility: ${seen}`,
+      badges: [app.mode === "off" ? "off" : app.mode],
     };
   }
   const s = lastAccess && (lastAccess.seen || {})[id];
@@ -10902,16 +10902,16 @@ function drawTileOrder(openId) {
     (AL.apps() || []).filter((x) => x.folder).map((x) => x.id),
   );
   const seenNow = (id) => {
-    const a = appOf(id);
-    return a
-      ? seenOf(a.mode, a.visible)
+    const app = appOf(id);
+    return app
+      ? seenOf(app.mode, app.visible)
       : seenOf("public", ((lastAccess && lastAccess.seen) || {})[id]);
   };
   const lockNow = (id) =>
     ((lastAccess && lastAccess.locked_as) || {})[id] || "signin";
   const items = order.map((id) => {
     const t = byId.get(id),
-      a = appOf(id),
+      app = appOf(id),
       w = tileWords(id);
     const sz = (tilesDraft.size || {})[id];
     const seen = tilesDraft.seen[id] || seenNow(id),
@@ -10973,24 +10973,24 @@ function drawTileOrder(openId) {
             SEEN_CHIPS,
             seen,
             setSeen,
-            () => !!(a && a.mode === "off"),
+            () => !!(app && app.mode === "off"),
           ),
           el("p", {
             className: "setting-desc",
             textContent:
-              seenWords(seen, a ? a.mode : "public") +
+              seenWords(seen, app ? app.mode : "public") +
               " If hidden, the address still works for everyone who can open the app.",
           }),
-          a && a.mode !== "public"
+          app && app.mode !== "public"
             ? chipRow(
                 "Locked-tile action",
                 LOCK_CHIPS,
                 lock,
                 setLock,
-                (v) => !!lockAll || (v === "signup" && a.mode !== "users"),
+                (v) => !!lockAll || (v === "signup" && app.mode !== "users"),
               )
             : null,
-          a && a.mode !== "public"
+          app && app.mode !== "public"
             ? el("p", {
                 className: "setting-desc",
                 textContent: lockAll
@@ -11104,15 +11104,15 @@ function chipRow(label, opts, cur, set, disabledOf = () => false) {
 }
 // The block: who can open an app. Its tile (who sees it, what a locked one does, its place,
 // size and icon) is arranged on Home tiles; the app's page shows that as a summary.
-function accessBlock(id, a) {
+function accessBlock(id, app) {
   // A section per app (drawn in its row and on its page alike, the draft shared by id); root's, answered by poll:
   // the draft stays until it is done (renderAccess), so Cancel or a failure keeps it.
   const sec = AW.section({
     id: `access-${id}`,
-    label: `Access to ${a.title}`,
-    saved: { mode: a.mode },
-    warn: (c) => accessWarn(a, c.mode),
-    save: (c) => accessSet(a, c.mode),
+    label: `Access to ${app.title}`,
+    saved: { mode: app.mode },
+    warn: (c) => accessWarn(app, c.mode),
+    save: (c) => accessSet(app, c.mode),
     busy: () => !!(accessWaiting && accessWaiting.app === id),
     onChange: () => fillAccessBlocks(),
   });
@@ -11129,7 +11129,7 @@ function accessBlock(id, a) {
   const seen =
     mode === "off"
       ? "Disabled: no tile."
-      : `Visibility: ${seenWords(seenOf(mode, a.visible), mode)}`;
+      : `Visibility: ${seenWords(seenOf(mode, app.visible), mode)}`;
   return el(
     "div",
     { className: "access-set" },
@@ -11138,13 +11138,13 @@ function accessBlock(id, a) {
       OPEN_CHIPS,
       mode,
       (v) => sec.set("mode", v),
-      (v) => waiting || (v === "users" && !a.users),
+      (v) => waiting || (v === "users" && !app.users),
     ),
     el("p", {
       className: "setting-desc",
       textContent: waiting
         ? "Changing…"
-        : `${accessDesc({ ...a, mode })} ${seen}`,
+        : `${accessDesc({ ...app, mode })} ${seen}`,
     }),
     sec.foot,
     sec.reason,
@@ -11161,8 +11161,8 @@ function seenWords(seen, mode) {
   if (mode === "off") return "Disabled: no tile.";
   return `${SEEN_WORDS[seen]}${seen !== "hidden" && ((mode === "users" && seen === "guests") || (mode === "private" && seen !== "admin")) ? ". A lock shows for visitors who cannot open the app" : ""}.`;
 }
-function accessControls(a) {
-  return [accessBlock(a.id, a)];
+function accessControls(app) {
+  return [accessBlock(app.id, app)];
 }
 // The tile's own icon: emoji, or up to four letters and digits drawn as text;
 // blank goes back to the app's own. Checked here as the hub checks it (server.valid_icon).
@@ -11300,28 +11300,28 @@ const ADDON_INSTALL_SAYS =
   "The installer runs for a few minutes. The hub server can restart during the installation.";
 const ADDON_REMOVE_SAYS =
   "Its service stops. Its data stays, so installing it again finds the data.";
-function addonButtons(a, busy) {
+function addonButtons(addon, busy) {
   const redraw = () => lastAddons && renderAddons(lastAddons);
-  if (a.added) {
-    if (adoAsking !== a.id)
+  if (addon.added) {
+    if (adoAsking !== addon.id)
       return el(
         "span",
         { className: "library-buttons" },
         actionButton(
           "Uninstall add-on…",
           () => {
-            adoAsking = a.id;
+            adoAsking = addon.id;
             redraw();
           },
           { disabled: busy },
         ),
       );
     return askRow(
-      `Uninstall ${a.title}? ${ADDON_REMOVE_SAYS}`,
+      `Uninstall ${addon.title}? ${ADDON_REMOVE_SAYS}`,
       "Uninstall add-on",
       () => {
         adoAsking = null;
-        addonSet(a, false);
+        addonSet(addon, false);
       },
       () => {
         adoAsking = null;
@@ -11330,9 +11330,9 @@ function addonButtons(a, busy) {
       busy,
     );
   }
-  const install = () => addonSet(a, true);
-  if (a.consent)
-    return agreeRow(`addon:${a.id}`, `${a.consent} ${ADDON_INSTALL_SAYS}`, "Install add-on", busy, install);
+  const install = () => addonSet(addon, true);
+  if (addon.consent)
+    return agreeRow(`addon:${addon.id}`, `${addon.consent} ${ADDON_INSTALL_SAYS}`, "Install add-on", busy, install);
   return el(
     "span",
     { className: "agree-row" },
@@ -11345,17 +11345,17 @@ function addonButtons(a, busy) {
   );
 }
 
-function addonCard(a, busy, withAccess, progressText) {
+function addonCard(addon, busy, withAccess, progressText) {
   const state =
-    a.added === null
+    addon.added === null
       ? "Installation status unavailable. This box records no install options."
-      : a.added
-        ? a.active
+      : addon.added
+        ? addon.active
           ? "Installed. Service running."
           : "Installed. Service not running (see Overview)."
         : "Not installed.";
   const note =
-    adoNote && adoNote.addon === a.id
+    adoNote && adoNote.addon === addon.id
       ? el("span", {
           className: `setting-desc action-note${adoNote.ok ? "" : " bad"}`,
           role: "status",
@@ -11368,20 +11368,20 @@ function addonCard(a, busy, withAccess, progressText) {
     el(
       "span",
       {},
-      el("span", { className: "setting-name", textContent: a.title }),
-      withAccess ? accessSlot(a.id) : null,
-      el("span", { className: "setting-desc", textContent: a.summary }),
+      el("span", { className: "setting-name", textContent: addon.title }),
+      withAccess ? accessSlot(addon.id) : null,
+      el("span", { className: "setting-desc", textContent: addon.summary }),
       el("span", {
-        className: `setting-desc${a.added && !a.active ? " bad" : ""}`,
+        className: `setting-desc${addon.added && !addon.active ? " bad" : ""}`,
         textContent: state,
       }),
-      !a.added && a.needs
+      !addon.added && addon.needs
         ? el("span", {
             className: "setting-desc",
-            textContent: `Needs: ${a.needs}`,
+            textContent: `Needs: ${addon.needs}`,
           })
         : null,
-      a.added === null ? null : addonButtons(a, busy),
+      addon.added === null ? null : addonButtons(addon, busy),
       note,
       !withAccess && progressText
         ? el("span", {
@@ -11427,11 +11427,11 @@ function renderAddons(data) {
   );
   ado.list.replaceChildren(
     ...data.addons
-      .filter((a) => !paged.has(a.id))
-      .map((a) => addonCard(a, busy, true, progressText)),
+      .filter((addon) => !paged.has(addon.id))
+      .map((addon) => addonCard(addon, busy, true, progressText)),
   );
   document.querySelectorAll(".addon-block").forEach((block) => {
-    const addon = data.addons.find((a) => a.id === block.dataset.addon);
+    const addon = data.addons.find((entry) => entry.id === block.dataset.addon);
     block.replaceChildren(
       addon
         ? addonCard(addon, busy, false, progressText)
@@ -11453,7 +11453,7 @@ function renderAddons(data) {
   ado.log.scrollTop = ado.log.scrollHeight;
   if (p && p.action === "addon") ado.output.open = true;
   badge("addons", p && p.action === "addon" ? "working" : "");
-  const added = data.addons.filter((a) => a.added).map((a) => a.title);
+  const added = data.addons.filter((addon) => addon.added).map((addon) => addon.title);
   setupStep(
     "addons",
     added.length
@@ -11475,20 +11475,20 @@ async function loadAddons() {
 }
 
 // Asked on the card first (addonButtons): its consent ticked, or Uninstall… then Uninstall.
-async function addonSet(a, on) {
+async function addonSet(addon, on) {
   try {
     adoWaiting = {
-      id: (await postJSON("/admin/addons", { addon: a.id, on })).id,
-      addon: a.id,
+      id: (await postJSON("/admin/addons", { addon: addon.id, on })).id,
+      addon: addon.id,
     };
     adoNote = {
-      addon: a.id,
-      text: on ? `Installing ${a.title}…` : `Uninstalling ${a.title}…`,
+      addon: addon.id,
+      text: on ? `Installing ${addon.title}…` : `Uninstalling ${addon.title}…`,
       ok: true,
     };
     loadAddons();
   } catch (err) {
-    adoNote = { addon: a.id, text: err.message, ok: false };
+    adoNote = { addon: addon.id, text: err.message, ok: false };
     loadAddons();
   }
 }
@@ -11540,12 +11540,12 @@ function renderLocal(data) {
     data.running || !!(data.job && data.job.action && !data.job.result);
   loc.added.replaceChildren(
     ...(data.added.length
-      ? data.added.map((a) => {
-          const inst = a.installed;
-          const st = a.status || {};
+      ? data.added.map((addon) => {
+          const inst = addon.installed;
+          const st = addon.status || {};
           const state =
             inst && inst.commit
-              ? `Installed: ${inst.commit.slice(0, 7)} (${inst.ref === "pinned" ? "the pinned commit" : inst.ref}), from ${a.repo}.`
+              ? `Installed: ${inst.commit.slice(0, 7)} (${inst.ref === "pinned" ? "the pinned commit" : inst.ref}), from ${addon.repo}.`
               : st.error
                 ? `Not installed: ${errorSaid(st)}`
                 : fetching
@@ -11557,9 +11557,9 @@ function renderLocal(data) {
             el(
               "span",
               {},
-              el("span", { className: "setting-name", textContent: a.title }),
-              accessSlot(a.id),
-              el("span", { className: "setting-desc", textContent: a.summary }),
+              el("span", { className: "setting-name", textContent: addon.title }),
+              accessSlot(addon.id),
+              el("span", { className: "setting-desc", textContent: addon.summary }),
               el("span", {
                 className: `setting-desc${st.error && !(inst && inst.commit) ? " bad" : ""}`,
                 textContent: state,
@@ -11567,40 +11567,40 @@ function renderLocal(data) {
               el("span", {
                 className: "setting-desc",
                 textContent:
-                  capsText(a.capabilities) +
-                  (a.from_catalogue ? "" : " Added by pasting its manifest."),
+                  capsText(addon.capabilities) +
+                  (addon.from_catalogue ? "" : " Added by pasting its manifest."),
               }),
-              catalogueNote(a),
+              catalogueNote(addon),
               el(
                 "span",
                 { className: "library-buttons" },
                 inst && inst.commit
                   ? el("a", {
                       className: "action-btn",
-                      href: a.href,
+                      href: addon.href,
                       target: "_blank",
                       rel: "noopener",
                       textContent: "Open",
                     })
                   : null,
-                a.catalogue && a.catalogue.status === "held" && locAsking !== `approve:${a.id}`
-                  ? approveButton(a, data)
+                addon.catalogue && addon.catalogue.status === "held" && locAsking !== `approve:${addon.id}`
+                  ? approveButton(addon, data)
                   : null,
-                locAsking === `remove:${a.id}`
+                locAsking === `remove:${addon.id}`
                   ? null
                   : actionButton("Remove web add-on…", () => {
-                      locAsking = `remove:${a.id}`;
+                      locAsking = `remove:${addon.id}`;
                       renderLocal(data);
                     }),
               ),
-              locAsking === `approve:${a.id}` ? approveRow(a, data) : null,
-              locAsking === `remove:${a.id}`
+              locAsking === `approve:${addon.id}` ? approveRow(addon, data) : null,
+              locAsking === `remove:${addon.id}`
                 ? askRow(
-                    `Remove ${a.title}? The box deletes its files. Adding it again downloads it again.`,
+                    `Remove ${addon.title}? The box deletes its files. Adding it again downloads it again.`,
                     "Remove web add-on",
                     () => {
                       locAsking = null;
-                      localRemove(a);
+                      localRemove(addon);
                     },
                     () => {
                       locAsking = null;
@@ -11608,7 +11608,7 @@ function renderLocal(data) {
                     },
                   )
                 : null,
-              note(a.id),
+              note(addon.id),
             ),
           );
         })
@@ -11692,42 +11692,42 @@ function renderLocal(data) {
 // A held catalogue update: what changed in what the administrator agreed to (server.py _agreed_changes). Only its
 // consent text: the catalogue reworded it, nothing more is allowed than before. Anything else: the permissions changed.
 const CONSENT_TEXT = "its consent text";
-const heldTextOnly = (a) => {
-  const h = (a.catalogue || {}).held || [];
+const heldTextOnly = (addon) => {
+  const h = (addon.catalogue || {}).held || [];
   return h.length > 0 && h.every((x) => x === CONSENT_TEXT);
 };
-const approveLabel = (a) =>
-  heldTextOnly(a) ? "Review and approve" : "Approve changed permissions";
+const approveLabel = (addon) =>
+  heldTextOnly(addon) ? "Review and approve" : "Approve changed permissions";
 let locAsking = null; // "approve:id" or "remove:id": the web add-on whose step is open on its card
-const approveButton = (a, data, cls = "action-btn") =>
+const approveButton = (addon, data, cls = "action-btn") =>
   el("button", {
     type: "button",
     className: cls,
-    textContent: approveLabel(a),
+    textContent: approveLabel(addon),
     onclick: (event) => {
-      locAsking = `approve:${a.id}`;
+      locAsking = `approve:${addon.id}`;
       renderLocal(data);
       // From the app's own page: to its card, where the new text is.
       if (!event.target.closest("#local-added")) location.hash = "#local-added";
     },
   });
 // A held catalogue update, approved on its card: what changed, the new text and permissions, a box to tick.
-function approveRow(a, data) {
-  const c = (data.catalogue || []).find((x) => x.id === a.id) || {};
-  const changed = heldTextOnly(a)
+function approveRow(addon, data) {
+  const c = (data.catalogue || []).find((x) => x.id === addon.id) || {};
+  const changed = heldTextOnly(addon)
     ? "The catalogue reworded the text you agreed to. Permissions, connections and source are the same."
-    : `What changed: ${((a.catalogue || {}).held || []).join(", ")}.`;
+    : `What changed: ${((addon.catalogue || {}).held || []).join(", ")}.`;
   return el(
     "span",
     {},
     agreeRow(
-      `approve:${a.id}:${c.consent || ""}`,
+      `approve:${addon.id}:${c.consent || ""}`,
       `${changed} The new text: ${c.consent || ""} ${capsText(c.capabilities)}`,
       "Approve",
       false,
       () => {
         locAsking = null;
-        localAccept(a);
+        localAccept(addon);
       },
     ),
     actionButton("Cancel", () => {
@@ -11738,8 +11738,8 @@ function approveRow(a, data) {
 }
 
 // Where an added add-on stands against the catalogue (server.py catalogue_sync).
-function catalogueNote(a) {
-  const c = a.catalogue;
+function catalogueNote(addon) {
+  const c = addon.catalogue;
   if (!c) return null;
   const day = new Date(c.at * 1000).toLocaleDateString();
   if (c.status === "updated") {
@@ -11752,10 +11752,10 @@ function catalogueNote(a) {
     return el("span", {
       className: "setting-desc bad",
       textContent:
-        (heldTextOnly(a)
+        (heldTextOnly(addon)
           ? "The catalogue reworded the text you agreed to. Permissions, connections and source are the same. "
           : `The catalogue has a newer version that changes permissions, trust or source: ${(c.held || []).join(", ")}. `) +
-        `The version that you approved keeps running until you select ${approveLabel(a)}.`,
+        `The version that you approved keeps running until you select ${approveLabel(addon)}.`,
     });
   }
   if (c.status === "gone")
@@ -11768,11 +11768,11 @@ function catalogueNote(a) {
 }
 
 // Agreed on its card first (approveRow).
-function localAccept(a) {
+function localAccept(addon) {
   localPost(
-    { action: "accept", id: a.id, agree: true },
-    a.id,
-    `${a.title}: the changed permissions are approved. Downloading the new version…`,
+    { action: "accept", id: addon.id, agree: true },
+    addon.id,
+    `${addon.title}: the changed permissions are approved. Downloading the new version…`,
   );
 }
 
@@ -11805,8 +11805,8 @@ function localAdd(c) {
 }
 
 // Asked on its card first (Remove web add-on…).
-function localRemove(a) {
-  localPost({ action: "remove", id: a.id }, a.id, `${a.title} removed.`);
+function localRemove(addon) {
+  localPost({ action: "remove", id: addon.id }, addon.id, `${addon.title} removed.`);
 }
 
 // A pasted manifest: read, then its consent text and permissions shown under the box, with Add and Cancel.
@@ -13157,11 +13157,11 @@ async function followRun() {
           "p",
           { className: "library-buttons" },
           el("span", { className: "setting-desc", textContent: "Artifacts: " }),
-          ...v.artifacts.map((a) =>
+          ...v.artifacts.map((artifact) =>
             el("a", {
-              href: ciFile(v.run, a.name),
+              href: ciFile(v.run, artifact.name),
               className: "button-link small",
-              textContent: `${a.name} (${size(a.size)})`,
+              textContent: `${artifact.name} (${size(artifact.size)})`,
             }),
           ),
         )
@@ -14717,56 +14717,56 @@ function renderAccounts(d) {
   const when = (t) => (t ? ago(Date.now() / 1000 - t) : "never");
   acctEl.list.replaceChildren(
     ...(d.accounts.length
-      ? d.accounts.map((a) => {
+      ? d.accounts.map((account) => {
           const act = (action, label) =>
-            actionButton(label, () => acctAct({ action, name: a.name }));
+            actionButton(label, () => acctAct({ action, name: account.name }));
           const state =
-            a.state === "asked"
+            account.state === "asked"
               ? "Awaiting approval"
-              : a.state === "disabled"
+              : account.state === "disabled"
                 ? "Disabled"
-                : a.role === "admin"
+                : account.role === "admin"
                   ? "Administrator"
                   : "User";
           return el(
             "div",
             { className: "admin-item" },
             el("span", {
-              className: `state state-${a.state === "user" ? "running" : "stopped"}`,
+              className: `state state-${account.state === "user" ? "running" : "stopped"}`,
               textContent: state,
             }),
             el("span", {
               className: "setting-name",
-              textContent: ` ${a.name}`,
+              textContent: ` ${account.name}`,
             }),
             el("span", {
               className: "setting-desc",
-              textContent: ` ${a.by}, ${when(a.created)}. Last activity ${when(a.seen)}.${a.password_set ? "" : " Password not set."} ${a.shown_online ? "Name shown online" : "Name not shown"} (their own choice).`,
+              textContent: ` ${account.by}, ${when(account.created)}. Last activity ${when(account.seen)}.${account.password_set ? "" : " Password not set."} ${account.shown_online ? "Name shown online" : "Name not shown"} (their own choice).`,
             }),
             el(
               "span",
               { className: "library-buttons" },
-              a.state === "asked" ? act("accept", "Approve account") : null,
-              a.state === "user"
+              account.state === "asked" ? act("accept", "Approve account") : null,
+              account.state === "user"
                 ? act("disable", "Disable account")
-                : a.state === "disabled"
+                : account.state === "disabled"
                   ? act("enable", "Enable account")
                   : null,
-              a.state === "user"
+              account.state === "user"
                 ? act(
-                    a.role === "admin" ? "user" : "admin",
-                    a.role === "admin"
+                    account.role === "admin" ? "user" : "admin",
+                    account.role === "admin"
                       ? "Set user role"
                       : "Set administrator role",
                   )
                 : null,
-              a.state !== "asked" ? act("reset", "Reset password") : null,
-              acctCodes[a.name.toLowerCase()]
-                ? codeBox(a.name, acctCodes[a.name.toLowerCase()])
+              account.state !== "asked" ? act("reset", "Reset password") : null,
+              acctCodes[account.name.toLowerCase()]
+                ? codeBox(account.name, acctCodes[account.name.toLowerCase()])
                 : null,
               act(
                 "delete",
-                a.state === "asked" ? "Refuse request" : "Delete account",
+                account.state === "asked" ? "Refuse request" : "Delete account",
               ),
             ),
           );
@@ -15087,8 +15087,8 @@ function luminance(hex) {
   };
   return 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
 }
-function contrast(a, b) {
-  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+function contrast(first, second) {
+  const [x, y] = [luminance(first), luminance(second)].sort((p, q) => q - p);
   return (x + 0.05) / (y + 0.05);
 }
 // ---- The light and dark palettes (Appearance → Colours): each mode its own, the standard theme's colours under
@@ -15755,11 +15755,11 @@ function appFor(href) {
   const norm = (h) => String(h || "").replace(/\/$/, "");
   return (
     (AL.apps() || []).find(
-      (a) =>
-        !a.folder &&
-        a.href &&
-        norm(a.href) === norm(href) &&
-        document.getElementById("page-app-" + a.id),
+      (app) =>
+        !app.folder &&
+        app.href &&
+        norm(app.href) === norm(href) &&
+        document.getElementById("page-app-" + app.id),
     ) || null
   );
 }
@@ -15772,16 +15772,16 @@ function drawFolderIndex() {
     ? folders.folders.filter((x) => folderSec(x.id).dirty())
     : [];
   const rows = apps
-    .filter((a) => a.folder)
-    .map((a) => {
-      const fol = folders && folders.folders.find((x) => x.id === a.id);
+    .filter((app) => app.folder)
+    .map((app) => {
+      const fol = folders && folders.folders.find((x) => x.id === app.id);
       let count = "";
       if (fol) {
         const hrefs = new Set([
           ...fol.entries.map((entry) => entry.href),
-          ...((folderDraft[a.id] || {}).extra || []),
+          ...((folderDraft[app.id] || {}).extra || []),
         ]);
-        const n = [...hrefs].filter((h) => inFolder(a.id, h)).length;
+        const n = [...hrefs].filter((h) => inFolder(app.id, h)).length;
         count = `${n} ${n === 1 ? "entry" : "entries"} visible`;
       }
       return el(
@@ -15789,8 +15789,8 @@ function drawFolderIndex() {
         { className: "inv-row" },
         el(
           "a",
-          { className: "inv-name", href: `#page-app-${a.id}` },
-          a.icon ? `${a.icon} ${a.name}` : a.name,
+          { className: "inv-name", href: `#page-app-${app.id}` },
+          app.icon ? `${app.icon} ${app.name}` : app.name,
         ),
         el(
           "span",
@@ -15884,7 +15884,7 @@ function drawFolder(block, folderId) {
   ].filter((h) => pool.has(h));
   const list = hrefs
     .map((h, i) => ({ h, i }))
-    .sort((a, b) => pos(a.h) - pos(b.h) || a.i - b.i)
+    .sort((left, right) => pos(left.h) - pos(right.h) || left.i - right.i)
     .map((x) => pool.get(x.h));
   const move = (entry, d) => {
     const order = list.map((x) => x.href),
@@ -16085,7 +16085,7 @@ function stNorm(state) {
   return {
     order: stTiles.tiles
       .map((x, i) => ({ id: x.id, i }))
-      .sort((a, b) => pos(a.id) - pos(b.id) || a.i - b.i)
+      .sort((left, right) => pos(left.id) - pos(right.id) || left.i - right.i)
       .map((x) => x.id),
     hidden: [...(state.hidden || [])].sort(),
     size: Object.fromEntries(Object.entries(state.size || {}).sort()),
@@ -16126,7 +16126,7 @@ function drawStatusTiles(openId) {
   };
   const list = stTiles.tiles
     .map((x, i) => ({ x, i }))
-    .sort((a, b) => pos(a.x.id) - pos(b.x.id) || a.i - b.i)
+    .sort((left, right) => pos(left.x.id) - pos(right.x.id) || left.i - right.i)
     .map((p) => p.x);
   const toggle = (k, id, on) => {
     stDraft[k] = on
@@ -16488,10 +16488,10 @@ const INV_OPENS = {
 };
 function inventoryRows() {
   const manifests = AL.apps() || [];
-  const access = new Map(((lastAccess || {}).apps || []).map((a) => [a.id, a]));
+  const access = new Map(((lastAccess || {}).apps || []).map((app) => [app.id, app]));
   const libApps = lastLibrary ? lastLibrary.apps || {} : null;
   const addons = new Map(
-    ((lastAddons || {}).addons || []).map((a) => [a.id, a]),
+    ((lastAddons || {}).addons || []).map((addon) => [addon.id, addon]),
   );
   const local = lastLocal;
   const tileIds = tilesData ? new Set(tilesData.tiles.map((t) => t.id)) : null;
@@ -16503,22 +16503,22 @@ function inventoryRows() {
     return rows.get(id);
   };
   for (const m of manifests.filter((x) => !x.folder)) {
-    const a = access.get(m.id);
+    const appAccess = access.get(m.id);
     add(
       m.id,
       m.name,
-      (a && a.kind) ||
+      (appAccess && appAccess.kind) ||
         (m.addon ? "addon" : m.local ? "local" : m.updates ? "app" : "builtin"),
     );
   }
-  for (const a of access.values()) add(a.id, a.title, a.kind);
-  for (const a of addons.values()) add(a.id, a.title, "addon");
+  for (const appAccess of access.values()) add(appAccess.id, appAccess.title, appAccess.kind);
+  for (const addon of addons.values()) add(addon.id, addon.title, "addon");
   if (libApps)
-    for (const [id, a] of Object.entries(libApps)) add(id, a.title, "app");
+    for (const [id, libApp] of Object.entries(libApps)) add(id, libApp.title, "app");
   const offered = local ? (local.catalogue || []).filter((c) => !c.added) : [];
   for (const c of offered) add(c.id, c.title, "local").offered = true;
   for (const row of rows.values()) {
-    const a = access.get(row.id);
+    const appAccess = access.get(row.id);
     let state = "unknown";
     if (row.kind === "builtin") state = "builtin";
     else if (row.offered) state = "available";
@@ -16527,7 +16527,7 @@ function inventoryRows() {
       if (x)
         state =
           x.added === null ? "unknown" : x.added ? "installed" : "available";
-      if (x && x.added && x.active === false && !(a && a.mode === "off"))
+      if (x && x.added && x.active === false && !(appAccess && appAccess.mode === "off"))
         row.attention.push("Service not running");
     } else if (row.kind === "app" && libApps) {
       const lib = libApps[row.id];
@@ -16562,13 +16562,13 @@ function inventoryRows() {
           unknown: "Installation status unavailable",
         }[state],
       );
-    if (a) row.facts.push(INV_OPENS[a.mode] || a.mode);
-    if (a && a.mode !== "off" && tileIds) {
+    if (appAccess) row.facts.push(INV_OPENS[appAccess.mode] || appAccess.mode);
+    if (appAccess && appAccess.mode !== "off" && tileIds) {
       row.facts.push(
         !tileIds.has(row.id)
           ? "No home tile"
-          : a.visible && a.visible !== "auto"
-            ? `Visibility: ${SEEN_LABEL[a.visible] || a.visible}`
+          : appAccess.visible && appAccess.visible !== "auto"
+            ? `Visibility: ${SEEN_LABEL[appAccess.visible] || appAccess.visible}`
             : "Visibility: as its access",
       );
     }

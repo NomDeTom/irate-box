@@ -47,8 +47,8 @@ function render(d) {
     $('acct-subtitle').textContent = `Signed in as ${d.me.name}.`;
     $('acct-me-text').replaceChildren(d.me.role === 'admin' ? `${d.me.name}: an administrator of this box. ` : `${d.me.name}: a user of this box.`);
     if (d.me.role === 'admin') {
-      const a = document.createElement('a'); a.href = '/admin/'; a.textContent = 'Open /admin';
-      $('acct-me-text').append(a);
+      const link = document.createElement('a'); link.href = '/admin/'; link.textContent = 'Open /admin';
+      $('acct-me-text').append(link);
     }
     showPrefs(d.prefs || {}, d.names_to);
     loadNotebook();

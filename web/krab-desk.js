@@ -72,19 +72,19 @@ const KD = (() => {
     return { core, halo: out };
   }
   function blur(src, w, h, radius) { // three box passes each way ~ a gaussian
-    let a = new Float32Array(src), b = new Float32Array(w * h);
+    let source = new Float32Array(src), target = new Float32Array(w * h);
     const R = Math.max(1, Math.round(radius / 1.7));
     for (let pass = 0; pass < 3; pass++) {
       for (let y = 0; y < h; y++) { let s = 0; const o = y * w;
-        for (let x = -R; x <= R; x++) s += a[o + Math.min(w - 1, Math.max(0, x))];
-        for (let x = 0; x < w; x++) { b[o + x] = s / (2 * R + 1);
-          s += a[o + Math.min(w - 1, x + R + 1)] - a[o + Math.max(0, x - R)]; } }
+        for (let x = -R; x <= R; x++) s += source[o + Math.min(w - 1, Math.max(0, x))];
+        for (let x = 0; x < w; x++) { target[o + x] = s / (2 * R + 1);
+          s += source[o + Math.min(w - 1, x + R + 1)] - source[o + Math.max(0, x - R)]; } }
       for (let x = 0; x < w; x++) { let s = 0;
-        for (let y = -R; y <= R; y++) s += b[Math.min(h - 1, Math.max(0, y)) * w + x];
-        for (let y = 0; y < h; y++) { a[y * w + x] = s / (2 * R + 1);
-          s += b[Math.min(h - 1, y + R + 1) * w + x] - b[Math.max(0, y - R) * w + x]; } }
+        for (let y = -R; y <= R; y++) s += target[Math.min(h - 1, Math.max(0, y)) * w + x];
+        for (let y = 0; y < h; y++) { source[y * w + x] = s / (2 * R + 1);
+          s += target[Math.min(h - 1, y + R + 1) * w + x] - target[Math.max(0, y - R) * w + x]; } }
     }
-    return a;
+    return source;
   }
   // Blink patterns, as Web Animations on an element (the only DOM this file touches)
   // A yellow light's pattern: 3-9 steps, on and off in random lengths, in one of three moods
@@ -95,7 +95,7 @@ const KD = (() => {
     for (let i = 0; i < n; i++) { on = !on;
       const base = mood < .33 ? (on ? 3 : .5) : mood < .66 ? (on ? .5 : 3) : 1.2;
       w.push(base * (.3 + random() * 1.4)); }
-    const sum = w.reduce((a, b) => a + b, 0); on = random() < .5;
+    const sum = w.reduce((total, width) => total + width, 0); on = random() < .5;
     for (let i = 0; i < n; i++) { on = !on; ks.push({ offset: t, opacity: on ? 1 : 0, easing: 'step-end' }); t += w[i] / sum; }
     ks.push({ offset: 1, opacity: ks[0].opacity });
     el.animate(ks, { duration: dur, iterations: Infinity, delay: -random() * dur });

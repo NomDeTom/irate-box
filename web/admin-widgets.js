@@ -116,8 +116,8 @@ const AW = (() => {
   const OFTEN_SAYS = { 0: 'Only when you select Check now', 6: 'Checks every 6 hours', 24: 'Checks once a day', 168: 'Checks once a week' };
   const ACT_SAYS = { 0: 'Flags what is newer', 1: 'Downloads it. You install it', 2: 'Installs it' };
   function patternSays(often, act) {
-    const o = Number(often), a = Number(act);
-    return o ? `${OFTEN_SAYS[o] || `Checks every ${o} hours`}. ${ACT_SAYS[a] || ''}.` : `${OFTEN_SAYS[0]}.`;
+    const o = Number(often), actLevel = Number(act);
+    return o ? `${OFTEN_SAYS[o] || `Checks every ${o} hours`}. ${ACT_SAYS[actLevel] || ''}.` : `${OFTEN_SAYS[0]}.`;
   }
   //   opts: {often: name, act: name, acts: ['0','1'] (a subset where fetching is the update), says: {'2': …},
   //          oftenSays: {'0': …}, value: {often, act}, why: a line saying why a choice is missing}
@@ -341,7 +341,7 @@ const AW = (() => {
   //        busy() → true while a save of it is in flight elsewhere (a copy drawn again while its job runs),
   //        why(changes, draft) → why these changes cannot be saved as they are (Save off, the reason under it),
   //        fresh: true starts from the saved values, not a draft left by an earlier copy (a card opened again)}
-  const same = (a, b) => a === b || (a !== null && b !== null && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
+  const same = (left, right) => left === right || (left !== null && right !== null && typeof left === 'object' && typeof right === 'object' && JSON.stringify(left) === JSON.stringify(right));
   const copy = (v) => (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
   const sections = new Map();   // id -> the section last made with it (its draft outlives a redraw)
   const IDLE = 'Changes apply after you select Save.';
@@ -499,7 +499,7 @@ const AW = (() => {
   //   const j = AW.job(); … j.done(ok, why) — ok false rejects with why (the reason under the footer).
   function job() {
     let ok, no;
-    const p = new Promise((a, b) => { ok = a; no = b; });
+    const p = new Promise((resolve, reject) => { ok = resolve; no = reject; });
     p.done = (fine, why) => (fine ? ok(why || true) : no(new Error(why || 'The root helper could not do it.')));
     return p;
   }
@@ -568,11 +568,11 @@ const AW = (() => {
   //   opts:  {act(choice, item)}
   const RANK = { problem: 0, bad: 0, warn: 1, info: 2, ok: 3 };
   function findings(items, opts = {}) {
-    const sorted = [...items].sort((a, b) => (RANK[a.status] ?? 2) - (RANK[b.status] ?? 2));
+    const sorted = [...items].sort((left, right) => (RANK[left.status] ?? 2) - (RANK[right.status] ?? 2));
     return shortList(sorted.map((finding) => ({ ...finding, badges: [finding.status].concat(finding.badges || []), detail: () => [
       finding.detail ? h('p', { class: 'setting-desc', text: finding.detail }) : null,
-      (finding.actions || []).map((a) => btn(a.label, { onclick: async (event) => {
-        if ((!a.confirm || (await confirmHere(a.confirm, { anchor: event.currentTarget, label: a.label }))) && opts.act) opts.act(a.choice, finding);
+      (finding.actions || []).map((action) => btn(action.label, { onclick: async (event) => {
+        if ((!action.confirm || (await confirmHere(action.confirm, { anchor: event.currentTarget, label: action.label }))) && opts.act) opts.act(action.choice, finding);
       } })),
     ] })), { id: opts.id });
   }

@@ -254,12 +254,12 @@ const TOUR = (() => {
           : muted.has(s.id)
             ? "step-muted"
             : `step-${(state(s.id) || {}).status || "todo"}`;
-        const a = Object.assign(document.createElement("a"), {
+        const link = Object.assign(document.createElement("a"), {
           href: "#" + s.section,
           textContent: "Open settings",
         });
-        a.dataset.tour = s.id;
-        a.addEventListener("click", (event) => {
+        link.dataset.tour = s.id;
+        link.addEventListener("click", (event) => {
           event.preventDefault();
           go(i);
         });
@@ -267,7 +267,7 @@ const TOUR = (() => {
           className: "step-text",
           textContent: ((state(s.id) || {}).text || s.said) + " ",
         });
-        text.append(a);
+        text.append(link);
         if (!isDone(s)) {
           const m = Object.assign(document.createElement("button"), {
             type: "button",

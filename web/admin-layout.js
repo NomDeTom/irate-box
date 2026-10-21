@@ -125,7 +125,7 @@ const AL = (() => {
   function rollUp(name) {
     const g = groups.get(name);
     if (!g) return;
-    const words = [...g.box.querySelectorAll('a[data-badge]:not([hidden])')].map((a) => a.dataset.badge);
+    const words = [...g.box.querySelectorAll('a[data-badge]:not([hidden])')].map((link) => link.dataset.badge);
     // Counts add up (3 to fix and 1 to fix: 4); other words (!, new, ready) follow, each once.
     const n = words.filter((x) => /^\d+$/.test(x)).reduce((s, x) => s + Number(x), 0);
     const sum = [n || null, ...new Set(words.filter((x) => !/^\d+$/.test(x)))].filter(Boolean).join(' ');
@@ -163,7 +163,7 @@ const AL = (() => {
       const fixed = g.pages.map((d) => page(g, d)).filter(Boolean);
       entries.push(...fixed);
       if (g.apps && apps) {
-        for (const a of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page || x.addon))) {
+        for (const app of apps.filter((x) => (g.apps === 'folders') === x.folder && (x.switch || x.seen || x.sections.length || x.folder || x.page || x.addon))) {
           // An app's page, in one order: what it is and what can be done now; its own settings
           // and content; then who can open it, its tile (a summary: Home tiles arranges tiles) and its
           // maintenance (updates, installation, Remove), each open to start and folded by its heading. Only the parts that apply.
@@ -177,23 +177,23 @@ const AL = (() => {
             return id;
           };
           const ids = [];
-          if (!a.folder) ids.push(made('app-head-' + a.id, 'app-head', 'Status', () => el('div', { class: 'head-block', 'data-app': a.id })));
-          if (a.folder) ids.push(made('folder-' + a.id, 'folder-section', 'Folder contents', () => el('div', { class: 'folder-block', 'data-folder': a.id })));
+          if (!app.folder) ids.push(made('app-head-' + app.id, 'app-head', 'Status', () => el('div', { class: 'head-block', 'data-app': app.id })));
+          if (app.folder) ids.push(made('folder-' + app.id, 'folder-section', 'Folder contents', () => el('div', { class: 'folder-block', 'data-folder': app.id })));
           // An app drawn on the hub page: its width, before what it owns.
-          if (a.width) ids.push(made('app-width-' + a.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': a.width })));
-          ids.push(...a.sections);
+          if (app.width) ids.push(made('app-width-' + app.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': app.width })));
+          ids.push(...app.sections);
           // What was reported there, for an app drawn on the hub page.
-          if (a.page) ids.push(made('app-flagged-' + a.id, 'app-flagged', 'Reported content', () => el('div', { class: 'flagged-block', 'data-app': a.id })));
-          if (a.switch) ids.push(made('app-access-' + a.id, 'app-access', 'Access', () => el('div', { class: 'access-block', 'data-app': a.id }), true));
-          if (a.switch || a.seen) ids.push(made('app-tile-' + a.id, 'app-tile', 'Hub tile', () => el('div', { class: 'tile-block', 'data-app': a.id }), true));
+          if (app.page) ids.push(made('app-flagged-' + app.id, 'app-flagged', 'Reported content', () => el('div', { class: 'flagged-block', 'data-app': app.id })));
+          if (app.switch) ids.push(made('app-access-' + app.id, 'app-access', 'Access', () => el('div', { class: 'access-block', 'data-app': app.id }), true));
+          if (app.switch || app.seen) ids.push(made('app-tile-' + app.id, 'app-tile', 'Hub tile', () => el('div', { class: 'tile-block', 'data-app': app.id }), true));
           // Maintenance: its own updates and its installation, each where admin.js draws it.
-          if (a.updates || a.addon) {
-            ids.push(made('app-maint-' + a.id, 'app-maint', 'Maintenance', () => el('div', {},
-              a.updates ? el('div', { class: 'app-updates', id: 'app-updates-' + a.id }, el('h3', { text: 'App updates' }), el('div', { class: 'updates-block', 'data-app': a.id })) : null,
-              a.addon ? el('div', { class: 'app-install', id: 'app-install-' + a.id }, el('h3', { text: 'Installation' }), el('div', { class: 'addon-block', 'data-addon': a.id },
+          if (app.updates || app.addon) {
+            ids.push(made('app-maint-' + app.id, 'app-maint', 'Maintenance', () => el('div', {},
+              app.updates ? el('div', { class: 'app-updates', id: 'app-updates-' + app.id }, el('h3', { text: 'App updates' }), el('div', { class: 'updates-block', 'data-app': app.id })) : null,
+              app.addon ? el('div', { class: 'app-install', id: 'app-install-' + app.id }, el('h3', { text: 'Installation' }), el('div', { class: 'addon-block', 'data-addon': app.id },
                 el('p', { class: 'setting-desc', text: 'Loading installation status.' }))) : null), true));
           }
-          const entry = page({ ...g, art: a.art || g.art }, { id: 'app-' + a.id, app: a.id, title: a.name, icon: firstGlyph(a.icon), sections: ids, empty: false });
+          const entry = page({ ...g, art: app.art || g.art }, { id: 'app-' + app.id, app: app.id, title: app.name, icon: firstGlyph(app.icon), sections: ids, empty: false });
           if (entry && g.under) entry.parent = fixed.find((p) => p.el.querySelector('#' + g.under)) || null;
           if (entry) entries.push(entry);
         }

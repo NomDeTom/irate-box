@@ -47,7 +47,7 @@ async function refresh() {
     return;
   }
   const services = [...data.services].sort(
-    (a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name));
+    (left, right) => ORDER[left.state] - ORDER[right.state] || left.name.localeCompare(right.name));
   list.replaceChildren(...services.map(
     (s) => row(s.name, s.path || s.note || 'Built-in service', s.state)));
   note.textContent = data.proxied ? ''

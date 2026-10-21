@@ -21,7 +21,7 @@ function render(d) {
   $('mesh-state').textContent = d.state === 'listening'
     ? `Connected to the box's MQTT broker: ${d.nodes.length} node${d.nodes.length === 1 ? '' : 's'} received in the last 7 days.`
     : 'Reconnecting to the box\'s MQTT broker. This happens automatically.';
-  const counts = Object.entries(d.counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${KINDS[k] || k}`);
+  const counts = Object.entries(d.counts).sort((left, right) => right[1] - left[1]).map(([k, n]) => `${n} ${KINDS[k] || k}`);
   $('mesh-counts').textContent = counts.length ? `Packets received since ${new Date(d.since * 1000).toLocaleString()}: ${counts.join(', ')}.` : 'No packets received';
   drawMap(d.nodes);
   const names = Object.fromEntries(d.nodes.map((n) => [n.id, nodeName(n)]));

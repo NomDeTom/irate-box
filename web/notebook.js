@@ -21,7 +21,7 @@ function target(st) {
 function actions(st) {
   const box = $('nb-actions');
   box.replaceChildren();
-  const link = (href, text) => { const a = document.createElement('a'); a.className = 'action-btn'; a.href = href; a.textContent = text; return a; };
+  const link = (href, text) => { const anchor = document.createElement('a'); anchor.className = 'action-btn'; anchor.href = href; anchor.textContent = text; return anchor; };
   if (st.state === 'signed-out') box.append(link('/account.html?next=/notebook.html', 'Sign in'));
   if (st.state === 'full' || st.state === 'memory') {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'action-btn'; b.textContent = 'Try again';

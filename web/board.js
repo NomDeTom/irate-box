@@ -32,8 +32,8 @@ function applyPosting(p) {
     notes[i].replaceChildren();
     if (p.who === 'off') notes[i].textContent = 'Posting is disabled.';
     else if (closed) {
-      const a = document.createElement('a'); a.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; a.textContent = 'Sign in';
-      notes[i].append(a, ' to post. Only users can post here.');
+      const link = document.createElement('a'); link.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; link.textContent = 'Sign in';
+      notes[i].append(link, ' to post. Only users can post here.');
     }
   });
   for (const id of ['t-name', 'r-name']) {
@@ -162,7 +162,7 @@ replyForm.addEventListener('submit', async (event) => {
 
 // Persist the name across both forms and refreshes, same key as the shoutbox.
 for (const [el, swatch] of [['t-name', 't-hue'], ['r-name', 'r-hue']].map(
-       ([a, b]) => [document.getElementById(a), document.getElementById(b)])) {
+       ([nameId, hueId]) => [document.getElementById(nameId), document.getElementById(hueId)])) {
   el.value = localStorage.getItem('shout-name') || '';
   el.addEventListener('input', () => localStorage.setItem('shout-name', el.value));
   attachHuePicker(swatch, el);

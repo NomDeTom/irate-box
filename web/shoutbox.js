@@ -26,7 +26,7 @@ const NOUNS = [
 ];
 
 function randomName() {
-  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
   return `${pick(ADJECTIVES)} ${pick(NOUNS)}`;
 }
 
@@ -46,8 +46,8 @@ function applyPosting(p) {
   postNote.replaceChildren();
   if (p.who === 'off') postNote.textContent = 'Posting is disabled.';
   else if (closed) {
-    const a = document.createElement('a'); a.href = '/account.html?next=/'; a.textContent = 'Sign in';
-    postNote.append(a, ' to post. Only users can post here.');
+    const link = document.createElement('a'); link.href = '/account.html?next=/'; link.textContent = 'Sign in';
+    postNote.append(link, ' to post. Only users can post here.');
   }
   nameInput.readOnly = !!p.me;
   nameRoll.hidden = !!p.me;

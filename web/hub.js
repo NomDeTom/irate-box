@@ -250,12 +250,12 @@ if (factoryCard) {
       row.className = 'factory-build';
       row.append(document.createTextNode(`${b.name} `));
       b.files.forEach((file) => {
-        const a = document.createElement('a');
-        a.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(file)}`;
-        a.download = file;
-        a.title = `${file} (${b.ref})`;
-        a.textContent = kind(file);
-        row.append(a, document.createTextNode(' '));
+        const link = document.createElement('a');
+        link.href = `/factory/file?run=${encodeURIComponent(b.run)}&name=${encodeURIComponent(file)}`;
+        link.download = file;
+        link.title = `${file} (${b.ref})`;
+        link.textContent = kind(file);
+        row.append(link, document.createTextNode(' '));
       });
       return row;
     }));

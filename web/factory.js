@@ -201,7 +201,7 @@
   function factoryChosen() {
     const n = facChosen.size;
     const fams = new Set(facTargets.targets.filter((t) => facChosen.has(t.env)).map((t) => t.family));
-    const secs = [...facChosen].reduce((a, env) => { const t = facTargets.targets.find((x) => x.env === env); const estimate = facData && facData.estimates[t.family]; return estimate && a !== null ? a + estimate.seconds : null; }, 0);
+    const secs = [...facChosen].reduce((total, env) => { const t = facTargets.targets.find((x) => x.env === env); const estimate = facData && facData.estimates[t.family]; return estimate && total !== null ? total + estimate.seconds : null; }, 0);
     const max = facData ? facData.max_per_request : 50;
     fac.chosen.textContent = n ? `${n} selected, in ${fams.size} famil${fams.size === 1 ? 'y' : 'ies'}.${secs !== null ? ` About ${facDur(secs)} in all.` : ''}${n > max ? ` At most ${max} at a time.` : ''}` : 'No targets selected.';
     fac.queue.disabled = !n || n > max;

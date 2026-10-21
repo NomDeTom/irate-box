@@ -75,7 +75,7 @@ async function trusted(port, host) {
   }
 }
 
-const link = (href, text = href) => { const a = make('a', text); a.href = href; return a; };
+const link = (href, text = href) => { const anchor = make('a', text); anchor.href = href; return anchor; };
 
 // The answer of the self-check, with the full HTTPS address to open when it is trusted.
 function said(check, open, text, href) {

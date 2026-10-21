@@ -41,7 +41,7 @@ const LadderChart = (() => {
   function holes(rows, gaps) {
     const all = (gaps || []).filter((g) => Array.isArray(g) && g[1] > g[0]).map((g) => [g[0], g[1]]);
     for (const record of rows) if (record.k === 'start' && typeof record.last === 'number' && record.last < record.at) all.push([record.last, record.at]);
-    all.sort((a, b) => a[0] - b[0]);
+    all.sort((left, right) => left[0] - right[0]);
     const out = [];
     for (const g of all) { const p = out[out.length - 1]; if (p && g[0] <= p[1]) p[1] = Math.max(p[1], g[1]); else out.push(g); }
     return out;
@@ -59,8 +59,8 @@ const LadderChart = (() => {
       s.push([t, v]);
     };
     at(from, 0);
-    const evs = rows.filter(isEvent).concat(hs.map(([a, b]) => ({ at: a, k: 'hole', end: b })))
-      .sort((a, b) => a.at - b.at || (a.k === 'hole' ? 1 : b.k === 'hole' ? -1 : 0));   // a recorded event before a gap starting with it
+    const evs = rows.filter(isEvent).concat(hs.map(([start, end]) => ({ at: start, k: 'hole', end: end })))
+      .sort((left, right) => left.at - right.at || (left.k === 'hole' ? 1 : right.k === 'hole' ? -1 : 0));   // a recorded event before a gap starting with it
     for (const record of evs) {
       if (record.at > to) break;
       if (record.k === 'hole') {
@@ -83,8 +83,8 @@ const LadderChart = (() => {
     if (seg().length) seg().push([to, lv]);
     const kept = segs.filter((s) => s.length);
     return { segs: kept, pts: kept.flat(), marks,
-      bands: bands.filter(([, b]) => b >= from).map(([a, b]) => [Math.max(a, from), b]),
-      holes: hs.filter(([a, b]) => b > from && a < to).map(([a, b]) => [Math.max(a, from), Math.min(b, to)]) };
+      bands: bands.filter(([, b]) => b >= from).map(([start, end]) => [Math.max(start, from), end]),
+      holes: hs.filter(([start, end]) => end > from && start < to).map(([start, end]) => [Math.max(start, from), Math.min(end, to)]) };
   }
 
   const dur = (s) => (s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min`
@@ -97,7 +97,7 @@ const LadderChart = (() => {
     for (const record of seen) if (record.k === 'repair' && record.s) steps[record.s] = (steps[record.s] || 0) + 1;
     const held = seen.filter((record) => record.k === 'held').length, stalls = seen.filter((record) => record.k === 'stalled').length;
     const said = Object.entries(steps).map(([s, n]) => `${n} ${NAMES[s]}${n === 1 ? '' : 's'}`).join(', ');
-    const blank = hs.reduce((n, [a, b]) => n + Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
+    const blank = hs.reduce((n, [start, end]) => n + Math.max(0, Math.min(end, to) - Math.max(start, from)), 0);
     return `${outages} outage${outages === 1 ? '' : 's'}` + (said ? `; steps taken: ${said}` : '; no steps taken')
       + (held ? `; ${held} held` : '') + (stalls ? `; stalled ${stalls} time${stalls === 1 ? '' : 's'}` : '')
       + (blank >= 60 ? `; no record for ${dur(blank)} (the watchdog wrote no samples)` : '') + '.';
@@ -158,7 +158,7 @@ const LadderChart = (() => {
     const said = summary(rows, from, to, hs);
     const svg = make('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ladder-svg', role: 'img', tabindex: '0',
       'aria-label': `The watchdog's escalation ${period ? `over the last ${period[0]}` : `from ${when(from, span)} to ${when(to, span)}`}: ${said}` });
-    for (const [a, b] of bands) svg.append(make('rect', { x: x(a), y: T, width: Math.max(x(b) - x(a), 1.5), height: H - B - T, class: 'ladder-band' }));
+    for (const [start, end] of bands) svg.append(make('rect', { x: x(start), y: T, width: Math.max(x(end) - x(start), 1.5), height: H - B - T, class: 'ladder-band' }));
     const hatch = `ladder-hatch-${++hatches}`;
     if (blank.length) {
       const pat = make('pattern', { id: hatch, width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
@@ -167,9 +167,9 @@ const LadderChart = (() => {
       defs.append(pat);
       svg.append(defs);
     }
-    for (const [a, b] of blank) {
-      svg.append(make('rect', { x: x(a), y: T, width: Math.max(x(b) - x(a), 1.5), height: H - B - T, class: 'ladder-hole', fill: `url(#${hatch})` }));
-      if (x(b) - x(a) > 54) svg.append(make('text', { x: (x(a) + x(b)) / 2, y: H - B - 6, class: 'ladder-axis', 'text-anchor': 'middle' }, 'no record'));
+    for (const [start, end] of blank) {
+      svg.append(make('rect', { x: x(start), y: T, width: Math.max(x(end) - x(start), 1.5), height: H - B - T, class: 'ladder-hole', fill: `url(#${hatch})` }));
+      if (x(end) - x(start) > 54) svg.append(make('text', { x: (x(start) + x(end)) / 2, y: H - B - 6, class: 'ladder-axis', 'text-anchor': 'middle' }, 'no record'));
     }
     const sy = symptoms(svg, rows, from, to, x);
     const symSaid = rows.some((record) => record.k === 'm') ? ` At most ${sy.most} missed check${sy.most === 1 ? '' : 's'} within the pace's window;`
@@ -227,10 +227,10 @@ const LadderChart = (() => {
     const zoomOn = (i) => {
       if (i < 0 || !zoom) return;
       const near = span / 50;
-      let a = i, b = i;
-      while (a > 0 && seen[a].at - seen[a - 1].at <= near) a--;
-      while (b < seen.length - 1 && seen[b + 1].at - seen[b].at <= near) b++;
-      let lo = seen[a].at, hi = seen[b].at;
+      let first = i, last = i;
+      while (first > 0 && seen[first].at - seen[first - 1].at <= near) first--;
+      while (last < seen.length - 1 && seen[last + 1].at - seen[last].at <= near) last++;
+      let lo = seen[first].at, hi = seen[last].at;
       const pad = Math.max((hi - lo) * 0.25, 120);
       lo -= pad; hi += pad;
       if (hi - lo < 300) { const mid = (lo + hi) / 2; lo = mid - 150; hi = mid + 150; }
@@ -247,9 +247,9 @@ const LadderChart = (() => {
       const rect = svg.getBoundingClientRect(), t = tAt(event.clientX, rect);
       if (drag && Math.abs(event.clientX - drag.x0) > 6) {
         drag.moved = true;
-        const a = Math.max(Math.min(drag.t0, t), from), b = Math.min(Math.max(drag.t0, t), to);
-        sel.setAttribute('x', x(a)); sel.setAttribute('width', Math.max(x(b) - x(a), 1)); sel.setAttribute('visibility', 'visible');
-        tip.replaceChildren(make('strong', {}, 'Zoom to '), make('span', {}, `${when(a, b - a)} – ${when(b, b - a)}`));
+        const start = Math.max(Math.min(drag.t0, t), from), end = Math.min(Math.max(drag.t0, t), to);
+        sel.setAttribute('x', x(start)); sel.setAttribute('width', Math.max(x(end) - x(start), 1)); sel.setAttribute('visibility', 'visible');
+        tip.replaceChildren(make('strong', {}, 'Zoom to '), make('span', {}, `${when(start, end - start)} – ${when(end, end - start)}`));
         return;
       }
       const best = nearest(t);
@@ -262,8 +262,8 @@ const LadderChart = (() => {
       if (!d0) return;
       const t = tAt(event.clientX, svg.getBoundingClientRect());
       if (d0.moved) {
-        const a = Math.max(Math.min(d0.t0, t), from), b = Math.min(Math.max(d0.t0, t), to);
-        if (b - a >= 60 && zoom) zoom(a, b);
+        const start = Math.max(Math.min(d0.t0, t), from), end = Math.min(Math.max(d0.t0, t), to);
+        if (end - start >= 60 && zoom) zoom(start, end);
       } else zoomOn(nearest(t));
     });
     svg.addEventListener('pointercancel', () => { drag = null; sel.setAttribute('visibility', 'hidden'); });
@@ -300,7 +300,7 @@ const LadderChart = (() => {
   // [from, to]) across redraws, until Zoom out or a period is chosen.
   function render(box, rows, opts = {}) {
     const now = opts.now ?? Date.now() / 1000;
-    rows = (rows || []).filter((record) => record && typeof record.at === 'number').sort((a, b) => a.at - b.at);
+    rows = (rows || []).filter((record) => record && typeof record.at === 'number').sort((left, right) => left.at - right.at);
     const hs = holes(rows, opts.gaps);
     const chart = make('div', { class: 'ladder-chart' });
     const chips = make('div', { class: 'chip-group ladder-periods', role: 'radiogroup', 'aria-label': 'Over the last' });
@@ -319,9 +319,9 @@ const LadderChart = (() => {
         out.addEventListener('click', () => { stack.pop(); redraw(); });
         bar.append(out, make('span', { class: 'setting-desc' }, ` Showing ${when(from, to - from)} – ${when(to, to - from)} (${dur(to - from)}).`));
       }
-      draw(chart, rows, hs, from, to, now, (a, b) => {
-        a = Math.max(a, now - 72 * 86400); b = Math.min(b, now);
-        if (b - a >= 60) { stack.push([a, b]); redraw(); }
+      draw(chart, rows, hs, from, to, now, (start, end) => {
+        start = Math.max(start, now - 72 * 86400); end = Math.min(end, now);
+        if (end - start >= 60) { stack.push([start, end]); redraw(); }
       });
     };
     const pick = (s) => { span = s; box.dataset.span = String(s); stack = []; redraw(); };
