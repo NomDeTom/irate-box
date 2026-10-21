@@ -29,6 +29,7 @@ run sim_links.py
 run sim_crashwatch.py
 run sim_led.py
 run sim_port_80.py
+run sim_wificountry.py
 run sim_tailscale.py
 run sim_watchlog.py
 run sim_pagehistory.py

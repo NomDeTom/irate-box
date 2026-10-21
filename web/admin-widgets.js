@@ -505,8 +505,8 @@ const AW = (() => {
   }
 
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts, as a section ----
-  //   rows: [{key, label, kind: 'toggle'|'choice'|'multi'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
-  //           max (text), unset, shown, warn (colour)}]
+  //   rows: [{key, label, kind: 'toggle'|'choice'|'select'|'multi'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
+  //           max (text), unset, shown, warn (colour, select)}]
   //   opts: {save(changes) → Promise|void, id, label, ask, idle}: the section's (above); no save, no footer.
   function settings(rows, opts = {}) {
     const box = h('div', { class: 'aw-settings', 'data-aw-scope': opts.scope ? '' : null });
@@ -525,6 +525,17 @@ const AW = (() => {
           return h('button', { type: 'button', class: 'chip' + (same(v, ov) ? ' selected' : ''), 'aria-pressed': String(same(v, ov)), disabled: off,
             onclick: () => handle.set(spec.key, ov) }, t);
         }));
+      } else if (spec.kind === 'select') {
+        // A long list as one dropdown (the WiFi country's 249). spec.warn(value): a warning beside it, live, for
+        // a value that conflicts with how the box is (a setting asks no question; it says).
+        const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (spec.warn && spec.warn(v)) || '' });
+        const pick = h('select', { 'aria-label': spec.label, disabled: off, 'data-aw-key': spec.key,
+          onchange: (event) => handle.set(spec.key, event.target.value) },
+        spec.options.map((o) => {
+          const [ov, t] = Array.isArray(o) ? o : [o, o];
+          return h('option', { value: ov, selected: same(v, ov) }, t);
+        }));
+        ctl = h('span', { class: 'aw-select' }, pick, warn);
       } else if (spec.kind === 'multi') {
         // Any of a few, as filter chips: the value the chosen ones, in the options' order.
         const on = new Set(v || []);

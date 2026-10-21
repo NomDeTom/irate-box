@@ -38,6 +38,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from irate_box.hub import wificountry
 from irate_box.msg import M, Refused
 from irate_box.root import safeio
 
@@ -51,7 +52,7 @@ NETPLAN_DIRS = [
 KEYFILES = Path(os.environ.get("HUB_NM_CONNECTIONS", "/etc/NetworkManager/system-connections"))
 RUN_PROFILES = Path(os.environ.get("HUB_NM_RUN_CONNECTIONS", "/run/NetworkManager/system-connections"))
 NM_BIN = os.environ.get("HUB_NM_BIN", "/usr/sbin/NetworkManager")
-REGDOM_CONF = Path(os.environ.get("HUB_MODPROBE_DIR", "/etc/modprobe.d")) / "irate-box-regdom.conf"
+REGDOM_CONF = wificountry.REGDOM_CONF
 UDEV_RULES = Path(os.environ.get("HUB_UDEV_RULES_DIR", "/etc/udev/rules.d")) / "90-irate-box-netplan-handover.rules"
 NETPLAN_UDEV = "run/udev/rules.d/90-netplan.rules"
 ALLOW_RE = re.compile(
@@ -437,7 +438,12 @@ def _put_back(entry, written):
     for n in entry.get("moved_etc", []):
         if (back / n).exists() and not (KEYFILES / n).exists():
             shutil.move(str(back / n), KEYFILES / n)
-    if entry.get("regdom_written"):
+    # Only while it still holds the handover's own country: one chosen on the Network page since stays.
+    if (
+        entry.get("regdom_written")
+        and REGDOM_CONF.exists()
+        and "kept when it was handed over" in REGDOM_CONF.read_text()
+    ):
         REGDOM_CONF.unlink(missing_ok=True)
     if entry.get("udev_written") and UDEV_RULES.exists():
         kept, skip = [], False

@@ -122,6 +122,13 @@ const TOUR = (() => {
       said: "Phones and laptops find the hub through the network that the box is on, or through the box's own hotspot. Two settings decide what a guest on the hotspot reaches: the hotspot firewall, here, and Guest internet access, a later step. Set both.",
     },
     {
+      id: "country",
+      label: "WiFi country",
+      section: "network/access",
+      target: "#net-country",
+      said: "The country decides which channels and how much power the box's radios can use, and so which phones can see its hotspot. Select the country the box is in. When the operating system has set one already, this step is done.",
+    },
+    {
       id: "security",
       label: "What the box exposes",
       section: "security",

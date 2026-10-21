@@ -113,7 +113,7 @@ const shownPage = () =>
   check(
     "one list: every step and decision, the backup last",
     rows.length === T.STEPS.length &&
-      T.STEPS.length === 18 &&
+      T.STEPS.length === 19 &&
       rows[rows.length - 1].dataset.step === "backup",
     rows.length,
   );
@@ -159,7 +159,7 @@ const shownPage = () =>
   check(
     "starting: the first step not done opens, the bar counting all of them",
     !!d.querySelector(".tour-bar") &&
-      / of 18: /.test(d.querySelector(".tour-bar").textContent),
+      / of 19: /.test(d.querySelector(".tour-bar").textContent),
     d.querySelector(".tour-bar") &&
       d.querySelector(".tour-bar").textContent.slice(0, 80),
   );
@@ -299,8 +299,8 @@ const shownPage = () =>
     !d.querySelector(".tour-bar") && !d.querySelector(".tour-target"),
   );
   check(
-    "the setup page says how many are left, of all 18",
-    / of 18 still to do or decide/.test(
+    "the setup page says how many are left, of all 19",
+    / of 19 still to do or decide/.test(
       d.getElementById("setup-left").textContent,
     ),
     d.getElementById("setup-left").textContent,
@@ -366,26 +366,26 @@ const shownPage = () =>
     (r) => r.dataset.step,
   );
   check(
-    "no Tailscale and no Cockpit: 16 steps, neither of them",
-    T.STEPS.length === 16 &&
-      listed.length === 16 &&
+    "no Tailscale and no Cockpit: 17 steps, neither of them",
+    T.STEPS.length === 17 &&
+      listed.length === 17 &&
       !listed.includes("tailscale") &&
       !listed.includes("cockpit") &&
-      / of 16 still to do or decide/.test(
+      / of 17 still to do or decide/.test(
         d.getElementById("setup-left").textContent,
       ),
     listed.join(","),
   );
   check(
     "  the tour stays on the step it was on",
-    / of 16: Terminal/.test(d.querySelector(".tour-bar").textContent),
+    / of 17: Terminal/.test(d.querySelector(".tour-bar").textContent),
     d.querySelector(".tour-bar").textContent.slice(0, 80),
   );
   T.has("cockpit", true);
   await wait();
   check(
     "  Cockpit found later: its step back",
-    T.STEPS.length === 17 && T.STEPS.some((x) => x.id === "cockpit"),
+    T.STEPS.length === 18 && T.STEPS.some((x) => x.id === "cockpit"),
   );
   check("no page errors", !errors.length, errors.join("; "));
   console.log(`failures: ${fails}`);
