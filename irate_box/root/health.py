@@ -31,6 +31,31 @@ asked. Three ways in:
 
 The shell is the way in when /admin itself is stuck (the root helper is what runs this for
 the page). "rerun-install" is the root helper's own (it needs the update machinery). Stdlib only.
+
+Writing a check (irate_box/finding.py says what each part of a finding is for):
+
+  - Two questions, both asked. What should be so: what the box chose (install-options, a setting, a
+    record). What is so: asked of the system itself (ss, systemctl, a request, a file). The finding
+    compares them. Never take the second from the first: check_port_80 once said "fine" whenever
+    the recorded port was 80, without asking whether anything listened there.
+  - A deliberate choice is not a fault. If the owner turned a thing off, that is ok, said plainly.
+  - Status: ok when what is matches what should be; warn when the box works with less because of
+    the owner's choice or another program; problem when something the box needs is broken.
+  - One check_* function per thing checked, returning a list of findings, added to scan() below.
+    Its finding id is stable kebab-case ("port-80"); its message ids are "<id>.<case>", with
+    ".why" and ".fix" after the case they belong to.
+  - Words, in plain English, short sentences, as statements, never questions:
+      title    the thing checked, a noun phrase ("Port 80", "Web server configuration")
+      summary  what was found, with the names and numbers seen
+      why      what a person cannot do because of it (none when ok)
+      fix      the instruction that fixes it: the installer's option, or the page and setting (go=)
+    commands are exactly what to type; evidence is what the check saw (a path, an ss line).
+  - A button (actions) only for a repair that is safe to do from the page. It acts at once; only
+    the irreversible asks first. Nothing changes unless asked.
+  - Testable offline: read the system only through run(), install_options() and the HUB_* paths,
+    so a test can stand in for them. Each case gets a check in a tests/sim_*.py, by message id
+    (finding.message_ids), not by wording; the test is listed in tests/run.sh.
+  - The check's docstring says what it asks and, when a real box showed the need, which and when.
 """
 
 import json
@@ -1902,6 +1927,130 @@ def check_web():
     return [finding("web-config", title, "ok", M("web-config.ok", "{web} accepts its configuration.", web=web))]
 
 
+def port_80_holder():
+    """The program listening on port 80 ("" when none does), or None when ss cannot say."""
+    r = run("ss", "-Hltnp", "sport = :80")
+    if r.returncode:
+        return None
+    found = re.search(r'users:\(\("([^"]+)"', r.stdout)
+    return found.group(1) if found else ("?" if r.stdout.strip() else "")
+
+
+def check_port_80():
+    """Two questions: should the hub serve plain HTTP on port 80, and does it? It should unless the administrator
+    turned plain HTTP off (Security, HTTPS) or the installer moved the hub to another port because port 80 was
+    taken (updates keep the move, so it stays even once port 80 is free again: the Lyra, 2026-10-21, where
+    http://box/ opened nothing)."""
+    from irate_box.root import tls
+
+    title = M("port-80.title", "Port 80")
+    opts = install_options()
+    port = option(opts, "--port", "80")
+    web = option(opts, "--web", "nginx") or "nginx"
+    holder = port_80_holder()
+    if tls.settings()["transport"] == "https":
+        return [
+            finding(
+                "port-80", title, "ok", M("port-80.https-only", "Plain HTTP is off, so the hub does not use port 80.")
+            )
+        ]
+    if port == "80":
+        if holder in (web, None):
+            return [finding("port-80", title, "ok", M("port-80.ok", "The hub serves port 80."))]
+        return [
+            finding(
+                "port-80",
+                title,
+                "problem",
+                (
+                    M("port-80.silent", "Nothing serves port 80, where the hub should be.")
+                    if holder == ""
+                    else M("port-80.taken", "{holder} has port 80, where the hub should be.", holder=holder)
+                ),
+                M(
+                    "port-80.silent.why",
+                    "The box's address with http:// opens nothing of the hub's, and phones on the hotspot get no "
+                    "sign-in sheet.",
+                ),
+                (
+                    M("port-80.silent.fix", "Check {web}, then start it again.", web=web)
+                    if holder == ""
+                    else M(
+                        "port-80.taken.fix",
+                        "Stop {holder}, then run the installer again. Or run it with --take-port-80, which stops {holder} for you.",
+                        holder=holder,
+                    )
+                ),
+                commands=[f"systemctl status {web}", "sudo ss -ltnp 'sport = :80'"],
+                evidence=[f"ss: {holder or 'nothing'} listens on port 80"],
+            )
+        ]
+    why = M(
+        "port-80.why",
+        "The box's address with http:// and no port does not open the hub: visitors must add :{port}. "
+        "Phones on the hotspot get no sign-in sheet, which needs port 80.",
+        port=port,
+    )
+    if holder == "":
+        return [
+            finding(
+                "port-80",
+                title,
+                "problem",
+                M(
+                    "port-80.free",
+                    "The hub is on port {port}, and nothing serves port 80.",
+                    port=port,
+                ),
+                why,
+                M(
+                    "port-80.free.fix",
+                    "The installer moved the hub when port 80 was taken, and port 80 is free now. "
+                    "Run the installer again with --port 80. Updates then keep port 80.",
+                ),
+                commands=[f"sudo {CODE}/install.sh --port 80"],
+                evidence=[f"--port {port} in {ETC / 'install-options'}", "ss: nothing listens on port 80"],
+            )
+        ]
+    return [
+        finding(
+            "port-80",
+            title,
+            "warn",
+            (
+                M(
+                    "port-80.held.same",
+                    "Another site in {web} serves port 80, so the hub is on port {port}.",
+                    web=web,
+                    port=port,
+                )
+                if holder == web
+                else M(
+                    "port-80.held",
+                    "{holder} serves port 80, so the hub is on port {port}.",
+                    holder=holder or "?",
+                    port=port,
+                )
+            ),
+            why,
+            (
+                M(
+                    "port-80.held.same.fix",
+                    "To give the hub port 80, move that site to another port, then run the installer again with --port 80.",
+                )
+                if holder == web
+                else M(
+                    "port-80.held.fix",
+                    "To give the hub port 80, run the installer again with --take-port-80. That stops {holder}. "
+                    "The Security page or uninstall.sh restores it.",
+                    holder=holder or "?",
+                )
+            ),
+            evidence=[f"--port {port} in {ETC / 'install-options'}", f"ss: {holder or 'unknown'} listens on port 80"],
+        )
+    ]
+
+
 def check_hub():
     title = M("hub.title", "Hub server")
     try:
@@ -3335,6 +3484,7 @@ def scan():
         check_units,
         check_kiwix,
         check_web,
+        check_port_80,
         check_uplink,
         check_inventory,
         check_hotspot,
