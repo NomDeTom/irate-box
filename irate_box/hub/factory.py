@@ -470,8 +470,8 @@ def move_up(job_id):
 def again(run_number):
     """A run that did not pass (interrupted, say, by the box stopping), queued again as it was: the
     same source, commit, target, and offline or tools only."""
-    _, st = _run(run_number)
-    st = ci.as_shown(st, ci.RUNS / RUNS_NAME / str(run_number))
+    run, st = _run(run_number)
+    st = ci.as_shown(st, run)
     if st.get("state") in ("running", "passed"):
         raise Refused(M("factory.run.not-again", "Only a build that did not pass can run again."))
     src = source(str(st.get("source", "")))
