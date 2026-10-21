@@ -7,6 +7,7 @@ defaults. python3 tests/sim_tour.py"""
 import http.client
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -70,7 +71,10 @@ try:
         "decisions recorded",
         post({"setup_decided": ["visitors", "https"]})["setup_decided"] == ["visitors", "https"],
     )
-    for bad in (["visitors", "nonsense"], "visitors", ["https"] * 19):
+    # Longer than the list of steps, read from the hub itself so a new step doesn't make it fit.
+    listed = re.search(r"SETUP_DECISIONS = \((.*?)\)", (REPO / "irate_box/hub/server.py").read_text(), re.S).group(1)
+    steps = len(re.findall(r'"[a-z-]+"', listed))
+    for bad in (["visitors", "nonsense"], "visitors", ["https"] * (steps + 1)):
         check(
             f"refused: {str(bad)[:40]}",
             post({"setup_decided": bad})["setup_decided"] == ["visitors", "https"],
