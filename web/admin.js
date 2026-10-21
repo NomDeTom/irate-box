@@ -4105,34 +4105,6 @@ function secSubject(f) {
   if (/^(ssh|sudo|root-|group-)/.test(f.id)) return "login";
   return "system";
 }
-// A finding's parts as a setting card's lines: what was found, why it matters, the notes and the evidence, then what to do.
-function findingLines(f) {
-  const p = findingParts(f);
-  return [
-    el("span", { className: "setting-desc", textContent: p.detail }),
-    p.why
-      ? el("span", { className: "setting-desc fwhy", textContent: p.why })
-      : null,
-    ...p.notes.map((n) =>
-      el("span", { className: "setting-desc", textContent: n }),
-    ),
-    evidenceList(p.evidence),
-    f.status !== "ok" && f.fix
-      ? el(
-          "span",
-          { className: "setting-desc fhow" },
-          el("span", {
-            className: "fdo-label",
-            textContent: "Recommended action: ",
-          }),
-          f.fix,
-        )
-      : null,
-    f.status !== "ok" && p.commands.length
-      ? el("div", { className: "fdo-cmds" }, ...p.commands.map(copyBox))
-      : null,
-  ];
-}
 // One of the box's settings, not a finding: what it is now, its values with the one in effect marked, and
 // Save and Discard. It stays in its place whatever it is set to. What the doctor makes of it is the
 // Security doctor's, which links here; this says only that there is one.
@@ -4290,7 +4262,12 @@ function renderSecurity(data) {
         "div",
         { className: "setting sec-choice", id: `sec-${f.id}` },
         el("span", { className: "setting-name", textContent: f.title }),
-        ...findingLines({ ...f, fix: (f.do && f.do.hub) || f.fix }),
+        // A limit is a state, set where the link goes: what it is now and why it matters, no recommended action.
+        ...((p) => [
+          el("span", { className: "setting-desc", textContent: p.detail }),
+          p.why ? el("span", { className: "setting-desc fwhy", textContent: p.why }) : null,
+          ...p.notes.map((n) => el("span", { className: "setting-desc", textContent: n })),
+        ])(findingParts(f)),
         f.do && f.do.go
           ? el(
               "div",
