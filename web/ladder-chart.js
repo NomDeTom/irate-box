@@ -43,7 +43,7 @@ const LadderChart = (() => {
     for (const record of rows) if (record.k === 'start' && typeof record.last === 'number' && record.last < record.at) all.push([record.last, record.at]);
     all.sort((left, right) => left[0] - right[0]);
     const out = [];
-    for (const g of all) { const p = out[out.length - 1]; if (p && g[0] <= p[1]) p[1] = Math.max(p[1], g[1]); else out.push(g); }
+    for (const g of all) { const last = out[out.length - 1]; if (last && g[0] <= last[1]) last[1] = Math.max(last[1], g[1]); else out.push(g); }
     return out;
   }
 
@@ -154,7 +154,7 @@ const LadderChart = (() => {
     const tAt = (clientX, rect) => from + ((((clientX - rect.left) / rect.width) * W - L) / (W - L - R)) * span;
     const y = (v) => H - B - (v / (LEVELS.length - 1)) * (H - B - LAD_T);
     const { segs, bands, marks, holes: blank } = model(rows, from, to, hs);
-    const period = PERIODS.find((p) => p[1] === span && to >= now);
+    const period = PERIODS.find((chosen) => chosen[1] === span && to >= now);
     const said = summary(rows, from, to, hs);
     const svg = make('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ladder-svg', role: 'img', tabindex: '0',
       'aria-label': `The watchdog's escalation ${period ? `over the last ${period[0]}` : `from ${when(from, span)} to ${when(to, span)}`}: ${said}` });

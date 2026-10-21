@@ -60,7 +60,7 @@ const GETS_AT_ONCE = 3;
     const panes = PANE_OF[String(url).split("?")[0]];
     return !panes
       ? 1
-      : panes.some((p) => document.getElementById(p) && paneShown(p))
+      : panes.some((pane) => document.getElementById(pane) && paneShown(pane))
         ? 0
         : 2;
   };
@@ -776,13 +776,13 @@ function renderLibrary(snap) {
   renderApps(snap, busy);
   const job = snap.job || {};
   const parts = [];
-  const p = snap.progress;
-  if (busy && p) {
-    const rate = p.seconds > 0 ? p.done / p.seconds : 0;
+  const progress = snap.progress;
+  if (busy && progress) {
+    const rate = progress.seconds > 0 ? progress.done / progress.seconds : 0;
     const left =
-      rate && p.total > p.done ? Math.round((p.total - p.done) / rate) : null;
+      rate && progress.total > progress.done ? Math.round((progress.total - progress.done) / rate) : null;
     parts.push(
-      `Downloading ${p.name}: ${mb(p.done) || "0 MB"}${p.total ? ` of ${mb(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : ""}` +
+      `Downloading ${progress.name}: ${mb(progress.done) || "0 MB"}${progress.total ? ` of ${mb(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : ""}` +
         (rate ? `, ${Math.round(rate / 1024)} KB/s` : "") +
         (left !== null
           ? `, about ${left < 90 ? `${left} s` : `${Math.round(left / 60)} min`} left`
@@ -793,9 +793,9 @@ function renderLibrary(snap) {
   // The bar: a download's bytes when its size is known, otherwise the indeterminate stripe.
   lib.bars.forEach((bar) => {
     bar.hidden = !busy;
-    if (busy && p && p.total) {
-      bar.max = p.total;
-      bar.value = Math.min(p.done, p.total);
+    if (busy && progress && progress.total) {
+      bar.max = progress.total;
+      bar.value = Math.min(progress.done, progress.total);
     } else bar.removeAttribute("value");
   });
   badge("apps", busy ? "working" : "");
@@ -1509,7 +1509,7 @@ async function loadPackages() {
   };
   box.replaceChildren(
     ...(pkgs.length
-      ? pkgs.map(([id, p]) => carry(pkgCard(id, p)))
+      ? pkgs.map(([id, pkg]) => carry(pkgCard(id, pkg)))
       : [
           el("p", {
             className: "setting-desc",
@@ -1546,28 +1546,28 @@ async function pkgAct(body) {
     return false;
   }
 }
-function pkgCard(id, p) {
-  const pkgSettings = p.settings,
-    label = (ch) => (p.labels || {})[ch] || ch;
-  const builds = p.builds || [];
+function pkgCard(id, pkg) {
+  const pkgSettings = pkg.settings,
+    label = (ch) => (pkg.labels || {})[ch] || ch;
+  const builds = pkg.builds || [];
   const onChannel = builds.filter((b) => b.channel === pkgSettings.channel);
   const kept = onChannel.length ? onChannel[onChannel.length - 1] : null;
   // A flagged build (mode Flag) is known but not downloaded; it is the newest when there is one.
   const flag =
-    p.flagged && p.flagged.version !== (kept || {}).version
-      ? { ...p.flagged, channel: pkgSettings.channel, flagged: true }
+    pkg.flagged && pkg.flagged.version !== (kept || {}).version
+      ? { ...pkg.flagged, channel: pkgSettings.channel, flagged: true }
       : null;
   const newest = flag || kept;
   const ageOf = (b) => ago(Date.now() / 1000 - b.first_seen);
   const looking = pkgSettings.mode === "flag" || pkgSettings.mode === "watch";
   const lines = [
-    p.installed ? `Installed: ${p.installed}.` : "Not installed.",
-    p.image
-      ? p.image.channels.length === 1
-        ? `${p.image.name} lists ${label(p.image.channels[0])}.`
-        : p.image.channels.length
-          ? `${p.image.name} lists ${p.image.channels.map(label).join(" and ")}. apt selects the newest package from either channel. Saving a channel here changes that configuration.`
-          : `${p.image.name} lists no channel. Saving a channel here sets it there too.`
+    pkg.installed ? `Installed: ${pkg.installed}.` : "Not installed.",
+    pkg.image
+      ? pkg.image.channels.length === 1
+        ? `${pkg.image.name} lists ${label(pkg.image.channels[0])}.`
+        : pkg.image.channels.length
+          ? `${pkg.image.name} lists ${pkg.image.channels.map(label).join(" and ")}. apt selects the newest package from either channel. Saving a channel here changes that configuration.`
+          : `${pkg.image.name} lists no channel. Saving a channel here sets it there too.`
       : null,
     newest
       ? `Newest detected on ${label(newest.channel)}: ${newest.version}, first detected ${ageOf(newest)}` +
@@ -1575,12 +1575,12 @@ function pkgCard(id, p) {
           ? ". It is not downloaded yet. Download keeps it here. Install downloads it first."
           : ".")
       : "Not checked yet.",
-    p.due
-      ? `Due: ${p.due}` +
+    pkg.due
+      ? `Due: ${pkg.due}` +
         (looking
           ? ". Nothing installs by itself. Select Install to install it."
           : ". It installs at the next check.")
-      : newest && p.installed && newest.version !== p.installed
+      : newest && pkg.installed && newest.version !== pkg.installed
         ? `The installed version is newer than the newest version on ${label(pkgSettings.channel)}.` +
           (looking
             ? ""
@@ -1588,9 +1588,9 @@ function pkgCard(id, p) {
           " Install installs the channel's newest version anyway."
         : null,
     pkgSettings.mode === "aged"
-      ? `While it waits, apt upgrade does not change it (${p.held ? "held" : "not held yet"}).`
+      ? `While it waits, apt upgrade does not change it (${pkg.held ? "held" : "not held yet"}).`
       : null,
-    p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
+    pkg.checked ? `Checked ${ago(Date.now() / 1000 - pkg.checked)}.` : null,
   ];
   const keptList = builds.length
     ? el(
@@ -1607,7 +1607,7 @@ function pkgCard(id, p) {
             .reverse()
             .map((b) =>
               el("li", {
-                textContent: `${b.version} (${label(b.channel)}), first detected ${ageOf(b)}${b.version === p.installed ? ": installed" : ""}`,
+                textContent: `${b.version} (${label(b.channel)}), first detected ${ageOf(b)}${b.version === pkg.installed ? ": installed" : ""}`,
               }),
             ),
         ),
@@ -1625,7 +1625,7 @@ function pkgCard(id, p) {
         label: "Release channel",
         kind: "choice",
         value: pkgSettings.channel,
-        options: p.channels.map((c) => [c, label(c)]),
+        options: pkg.channels.map((c) => [c, label(c)]),
       },
       {
         key: "every",
@@ -1648,7 +1648,7 @@ function pkgCard(id, p) {
         kind: "choice",
         value: wait,
         options: [[0, "at once"]].concat(
-          (p.days || [1, 3, 7, 14, 30]).map((n) => [
+          (pkg.days || [1, 3, 7, 14, 30]).map((n) => [
             n,
             `after ${n} day${n === 1 ? "" : "s"}`,
           ]),
@@ -1716,9 +1716,9 @@ function pkgCard(id, p) {
       el(
         "span",
         { className: "setting-name" },
-        p.title,
-        p.installed ? " " : null,
-        p.installed ? AW.updatePill(p.checked, !!(p.newer || p.due)) : null,
+        pkg.title,
+        pkg.installed ? " " : null,
+        pkg.installed ? AW.updatePill(pkg.checked, !!(pkg.newer || pkg.due)) : null,
       ),
       ...lines
         .filter(Boolean)
@@ -1734,7 +1734,7 @@ function pkgCard(id, p) {
               pkgAct({ action: "fetch", package: id }),
             )
           : null,
-        newest && newest.version !== p.installed
+        newest && newest.version !== pkg.installed
           ? actionButton(
               `Install ${newest.version}`,
               () =>
@@ -1746,11 +1746,11 @@ function pkgCard(id, p) {
               { className: "primary" },
             )
           : null,
-        p.previous
+        pkg.previous
           ? actionButton(
-              `Roll back to ${p.previous}`,
+              `Roll back to ${pkg.previous}`,
               () => pkgAct({ action: "rollback", package: id }),
-              { title: `This downgrades ${p.title} to version ${p.previous}.` },
+              { title: `This downgrades ${pkg.title} to version ${pkg.previous}.` },
             )
           : null,
       ),
@@ -2605,22 +2605,22 @@ function renderModeration(data) {
                 {},
                 el("strong", { textContent: t.title }),
                 ` · ${t.posts.length} post${t.posts.length === 1 ? "" : "s"} · active ${ago(now - t.active)} `,
-                t.posts.some((p) => reportedN.has(`board:${t.id}:${p.created}`))
+                t.posts.some((post) => reportedN.has(`board:${t.id}:${post.created}`))
                   ? AW.pill("has reported posts", "bad")
                   : null,
               ),
-              ...t.posts.map((p, i) =>
+              ...t.posts.map((post, i) =>
                 el(
                   "div",
                   { className: "admin-subitem" },
                   el(
                     "span",
                     {},
-                    el("strong", { textContent: p.author }),
-                    ` · ${ago(now - p.created)}${i === 0 ? " · opening post" : ""} `,
-                    flag(`board:${t.id}:${p.created}`),
+                    el("strong", { textContent: post.author }),
+                    ` · ${ago(now - post.created)}${i === 0 ? " · opening post" : ""} `,
+                    flag(`board:${t.id}:${post.created}`),
                   ),
-                  el("span", { className: "admin-text", textContent: p.text }),
+                  el("span", { className: "admin-text", textContent: post.text }),
                   actionButton(
                     i === 0 ? "Delete thread" : "Delete post",
                     del(
@@ -3125,20 +3125,20 @@ function updSay(action, text, ok, extra, fromFinding = false) {
   node.hidden = !text;
 }
 
-function renderUpdateProgress(p) {
-  upd.progress.hidden = !p;
-  if (!p) return;
-  const steps = Math.max(p.steps, p.step, 1);
-  const part = p.total ? Math.min(p.done / p.total, 1) : 0;
-  upd.bar.value = Math.min((Math.max(p.step - 1, 0) + part) / steps, 1);
-  const bytes = p.total
-    ? `: ${size(p.done)} of ${size(p.total)} (${Math.round(100 * part)}%)`
-    : p.done
-      ? `: ${size(p.done)}`
+function renderUpdateProgress(progress) {
+  upd.progress.hidden = !progress;
+  if (!progress) return;
+  const steps = Math.max(progress.steps, progress.step, 1);
+  const part = progress.total ? Math.min(progress.done / progress.total, 1) : 0;
+  upd.bar.value = Math.min((Math.max(progress.step - 1, 0) + part) / steps, 1);
+  const bytes = progress.total
+    ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round(100 * part)}%)`
+    : progress.done
+      ? `: ${size(progress.done)}`
       : "";
   upd.step.textContent =
-    `${UPD_DOING[p.action] || "Working"}, step ${Math.max(p.step, 1)} of ${p.estimate ? "about " : ""}${steps}` +
-    (p.label ? ` — ${said(p.label)}${bytes}` : "") +
+    `${UPD_DOING[progress.action] || "Working"}, step ${Math.max(progress.step, 1)} of ${progress.estimate ? "about " : ""}${steps}` +
+    (progress.label ? ` — ${said(progress.label)}${bytes}` : "") +
     ".";
 }
 
@@ -3256,8 +3256,8 @@ function renderUpdate(data) {
       ? `The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). Scheduled updates and downloads wait for another network. A download that you start here begins at once and can use a lot of data.`
       : "";
   const state = AW.localise(data.state); // the checks' and the doctor's messages said once, in the reader's language
-  const p = data.progress;
-  const busy = data.pending > 0 || !!updWaiting || !!p;
+  const progress = data.progress;
+  const busy = data.pending > 0 || !!updWaiting || !!progress;
   const found = !!state && !state.up_to_date; // a check found a newer version
   const fetched = found && !!(state.checks && state.checks.length);
   const ready = found && state.verified === state.available;
@@ -3317,13 +3317,13 @@ function renderUpdate(data) {
   );
   renderAuto(data.auto);
   upd.output.hidden = !data.log.length || (!busy && state && state.up_to_date);
-  if (p && p.action === "install") upd.output.open = true;
+  if (progress && progress.action === "install") upd.output.open = true;
   upd.log.textContent = data.log.join("\n");
   upd.log.scrollTop = upd.log.scrollHeight;
-  renderUpdateProgress(p);
+  renderUpdateProgress(progress);
   badge(
     "updates",
-    p ? "working" : ready ? "ready" : found && !fetched ? "new" : "",
+    progress ? "working" : ready ? "ready" : found && !fetched ? "new" : "",
   );
 
   if (updWaiting) {
@@ -3365,7 +3365,7 @@ function renderUpdate(data) {
   upd.fetch.disabled = busy || fetched;
   upd.install.disabled = busy || (fetched && !ready);
   clearTimeout(updPoll);
-  if (busy) updPoll = setTimeout(loadUpdate, p ? 1000 : 2000);
+  if (busy) updPoll = setTimeout(loadUpdate, progress ? 1000 : 2000);
 }
 
 async function loadUpdate() {
@@ -4095,28 +4095,28 @@ function secChoiceCard(finding, busy, note) {
   const buttons = rest.actions.length
     ? el("div", { className: "library-buttons" }, ...scanButtons(rest, busy))
     : null;
-  const p = findingParts(finding);
+  const parts = findingParts(finding);
   return el(
     "div",
     { className: "setting sec-choice", id: `sec-${finding.id}` },
     el("span", { className: "setting-name", textContent: finding.title }),
-    el("span", { className: "setting-desc", textContent: p.detail }),
+    el("span", { className: "setting-desc", textContent: parts.detail }),
     ...rows,
     buttons,
     // With nothing to choose here (no key for SSH yet, say), what would make a choice possible.
     !rows.length && !buttons && finding.status !== "ok" && finding.fix
       ? el("span", { className: "setting-desc", textContent: finding.fix })
       : null,
-    p.why
-      ? el("span", { className: "setting-desc fwhy", textContent: p.why })
+    parts.why
+      ? el("span", { className: "setting-desc fwhy", textContent: parts.why })
       : null,
-    ...p.notes.map((n) =>
+    ...parts.notes.map((n) =>
       el("span", { className: "setting-desc", textContent: n }),
     ),
-    evidenceList(p.evidence),
+    evidenceList(parts.evidence),
     // What to type where the page cannot put it in effect itself (the firewall's rules not loaded, say).
-    finding.status !== "ok" && p.commands.length
-      ? el("div", { className: "fdo-cmds" }, ...p.commands.map(copyBox))
+    finding.status !== "ok" && parts.commands.length
+      ? el("div", { className: "fdo-cmds" }, ...parts.commands.map(copyBox))
       : null,
     finding.status !== "ok"
       ? el("a", {
@@ -4148,10 +4148,10 @@ function portRanges(ls) {
     .map((proto) => {
       const ps = [...by[proto]].sort((left, right) => left - right);
       const runs = [];
-      for (const p of ps) {
+      for (const port of ps) {
         const run = runs[runs.length - 1];
-        if (run && p === run[1] + 1) run[1] = p;
-        else runs.push([p, p]);
+        if (run && port === run[1] + 1) run[1] = port;
+        else runs.push([port, port]);
       }
       return `${proto.toUpperCase()} ${runs.map(([run, b]) => (run === b ? `${run}` : b === run + 1 ? `${run}, ${b}` : `${run}–${b}`)).join(", ")}`;
     })
@@ -4236,10 +4236,10 @@ function renderSecurity(data) {
         { className: "setting sec-choice", id: `sec-${finding.id}` },
         el("span", { className: "setting-name", textContent: finding.title }),
         // A limit is a state, set where the link goes: what it is now and why it matters, no recommended action.
-        ...((p) => [
-          el("span", { className: "setting-desc", textContent: p.detail }),
-          p.why ? el("span", { className: "setting-desc fwhy", textContent: p.why }) : null,
-          ...p.notes.map((n) => el("span", { className: "setting-desc", textContent: n })),
+        ...((parts) => [
+          el("span", { className: "setting-desc", textContent: parts.detail }),
+          parts.why ? el("span", { className: "setting-desc fwhy", textContent: parts.why }) : null,
+          ...parts.notes.map((n) => el("span", { className: "setting-desc", textContent: n })),
         ])(findingParts(finding)),
         finding.do && finding.do.go
           ? el(
@@ -4273,7 +4273,7 @@ function renderSecurity(data) {
   noteEl("updates-security").replaceChildren(
     ...(by("update").length
       ? by("update").map((finding) => {
-          const p = findingParts(finding);
+          const parts = findingParts(finding);
           return el(
             "div",
             { className: "setting sec-choice", id: `sec-${finding.id}` },
@@ -4284,11 +4284,11 @@ function renderSecurity(data) {
               updBadge(finding) ? " " : "",
               updBadge(finding),
             ),
-            el("span", { className: "setting-desc", textContent: p.detail }),
-            ...p.notes.map((n) =>
+            el("span", { className: "setting-desc", textContent: parts.detail }),
+            ...parts.notes.map((n) =>
               el("span", { className: "setting-desc", textContent: n }),
             ),
-            evidenceList(p.evidence),
+            evidenceList(parts.evidence),
             ...(finding.id === "security-updates"
               ? []
               : [...scanButtons(finding, busy), ...secFoot(finding)]),
@@ -4845,12 +4845,12 @@ function parseNmapXml(text) {
     const addr = (
       host.getElementsByTagName("address")[0] || { getAttribute: () => "" }
     ).getAttribute("addr");
-    for (const p of host.getElementsByTagName("port")) {
-      const st = p.getElementsByTagName("state")[0];
-      const sv = p.getElementsByTagName("service")[0];
+    for (const portEl of host.getElementsByTagName("port")) {
+      const st = portEl.getElementsByTagName("state")[0];
+      const sv = portEl.getElementsByTagName("service")[0];
       results.push({
-        port: Number(p.getAttribute("portid")),
-        proto: p.getAttribute("protocol"),
+        port: Number(portEl.getAttribute("portid")),
+        proto: portEl.getAttribute("protocol"),
         host: addr,
         state: st ? st.getAttribute("state") : "",
         service: sv
@@ -4875,9 +4875,9 @@ function parseNmapXml(text) {
   };
 }
 function splitPort(text) {
-  const [p, proto] = String(text || "").split("/");
+  const [port, proto] = String(text || "").split("/");
   return {
-    port: /^\d+$/.test(p) ? Number(p) : "general",
+    port: /^\d+$/.test(port) ? Number(port) : "general",
     proto: (proto || "tcp").toLowerCase() === "udp" ? "udp" : "tcp",
   };
 }
@@ -5842,9 +5842,9 @@ function renderHealth(data) {
       `The root helper is busy with an earlier job (for ${minutes(h.busy)}). ` +
       `${h.waiting} request${h.waiting === 1 ? " waits" : "s wait"} behind it. The helper runs them in turn.`;
   }
-  const p =
+  const progress =
     data.progress && data.progress.action === "repair" ? data.progress : null;
-  const busy = data.pending > 0 || !!hlWaiting || !!p;
+  const busy = data.pending > 0 || !!hlWaiting || !!progress;
   if (hlWaiting) {
     const done = (data.results || []).find((result) => result.id === hlWaiting.id);
     if (done) {
@@ -6016,11 +6016,11 @@ function renderHealth(data) {
       : "Not checked yet.";
   hl.clockWhen.textContent = hl.when.textContent;
   hl.scan.disabled = hl.clockScan.disabled = busy || h.stuck;
-  hl.progress.hidden = !p;
-  if (p) {
-    const steps = Math.max(p.steps, p.step, 1);
-    hl.bar.value = Math.min(Math.max(p.step - 1, 0) / steps, 1);
-    hl.step.textContent = `Running the installer again, step ${Math.max(p.step, 1)} of ${p.estimate ? "about " : ""}${steps}${p.label ? ` — ${said(p.label)}` : ""}.`;
+  hl.progress.hidden = !progress;
+  if (progress) {
+    const steps = Math.max(progress.steps, progress.step, 1);
+    hl.bar.value = Math.min(Math.max(progress.step - 1, 0) / steps, 1);
+    hl.step.textContent = `Running the installer again, step ${Math.max(progress.step, 1)} of ${progress.estimate ? "about " : ""}${steps}${progress.label ? ` — ${said(progress.label)}` : ""}.`;
   }
   hl.install.textContent = installText(data.install);
   // A cut-off or troubled install is no history to fold away: shown open.
@@ -6634,11 +6634,11 @@ upScopeBox.addEventListener("change", async (event) => {
 
 // The numbers a choice runs on, as uplink.effective() makes them: the pace's steps up to the reach.
 function upPreset(pick, levels) {
-  const p = levels.presets,
-    pace = p.pace[pick.pace];
+  const presets = levels.presets,
+    pace = presets.pace[pick.pace];
   const allowed = levels.steps.slice(0, levels.reach.indexOf(pick.reach));
   const eff = {
-    ...p.common,
+    ...presets.common,
     check: pace.check,
     window: pace.window,
     repeat: pace.repeat,
@@ -6701,19 +6701,19 @@ const STEP_DOES = {
 };
 
 // What a set of numbers does once the link counts as down ("What this will do").
-function stepsInWords(p) {
-  const st = p.steps || {};
+function stepsInWords(pace) {
+  const st = pace.steps || {};
   if (!Object.keys(st).length) return "only records it";
   const parts = [];
   if ("reconnect" in st) {
     let reconnect = st.reconnect
       ? `reconnects after ${dur(st.reconnect)}`
       : "reconnects at once";
-    if (p.repeat)
+    if (pace.repeat)
       reconnect +=
-        `, then again every ${dur(p.repeat)}` +
-        (p.backoff > 1 && p.max_repeat
-          ? ` (the interval grows ×${p.backoff}, up to ${dur(p.max_repeat)})`
+        `, then again every ${dur(pace.repeat)}` +
+        (pace.backoff > 1 && pace.max_repeat
+          ? ` (the interval grows ×${pace.backoff}, up to ${dur(pace.max_repeat)})`
           : "");
     parts.push(reconnect);
   }
@@ -6722,14 +6722,14 @@ function stepsInWords(p) {
   if ("radio" in st) parts.push(`resets the radio after ${dur(st.radio)}`);
   parts.push(
     "reboot" in st
-      ? `reboots after ${dur(st.reboot)}${p.reboots_per_day ? ` (at most ${p.reboots_per_day} a day)` : ""}`
+      ? `reboots after ${dur(st.reboot)}${pace.reboots_per_day ? ` (at most ${pace.reboots_per_day} a day)` : ""}`
       : "never reboots",
   );
   const heavy = "radio" in st || "reboot" in st || "restart" in st;
   return (
     parts.join(", ") +
     (heavy
-      ? p.guests === "ignore"
+      ? pace.guests === "ignore"
         ? ", whether or not guests are connected"
         : " (while guests are on the hotspot, it takes no step that disconnects them)"
       : "")
@@ -6738,11 +6738,11 @@ function stepsInWords(p) {
 
 // A pace's own line: when each step comes, as far as any reach goes.
 function paceLine(name, levels) {
-  const p = levels.presets.pace[name];
+  const pace = levels.presets.pace[name];
   return (
-    `First it reconnects ${p.steps.reconnect ? `after ${dur(p.steps.reconnect)}` : "at once"}, then again every ${dur(p.repeat)}. ` +
-    `Then it ${["restart", "radio", "reboot"].map((step) => `${STEP_DOES[step].replace("the network service", "the service")} after ${dur(p.steps[step])}`).join(", ")}. ` +
-    `Each step runs only if the maximum action includes it. It checks every ${dur(p.check)} and counts failed checks over ${dur(p.window)}.`
+    `First it reconnects ${pace.steps.reconnect ? `after ${dur(pace.steps.reconnect)}` : "at once"}, then again every ${dur(pace.repeat)}. ` +
+    `Then it ${["restart", "radio", "reboot"].map((step) => `${STEP_DOES[step].replace("the network service", "the service")} after ${dur(pace.steps[step])}`).join(", ")}. ` +
+    `Each step runs only if the maximum action includes it. It checks every ${dur(pace.check)} and counts failed checks over ${dur(pace.window)}.`
   );
 }
 
@@ -8020,7 +8020,7 @@ function drawNetTabs(data, inv, u) {
         ]),
   ]);
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
-  const known = ((nm && nm.wifi_profiles) || []).filter((p) => p.mode !== "ap");
+  const known = ((nm && nm.wifi_profiles) || []).filter((profile) => profile.mode !== "ap");
   const current = new Set(
     wifi.map((radio) => radio.profile && radio.profile.uuid).filter(Boolean),
   );
@@ -8034,12 +8034,12 @@ function drawNetTabs(data, inv, u) {
             el(
               "ul",
               { className: "net-known" },
-              ...known.map((p) =>
+              ...known.map((profile) =>
                 el(
                   "li",
                   {},
-                  el("strong", { textContent: p.ssid || p.name }),
-                  current.has(p.uuid)
+                  el("strong", { textContent: profile.ssid || profile.name }),
+                  current.has(profile.uuid)
                     ? el("span", {
                         className: "ok-pill",
                         textContent: "in use",
@@ -8048,41 +8048,41 @@ function drawNetTabs(data, inv, u) {
                   el("span", {
                     className: "setting-desc",
                     textContent:
-                      ` ${p.name}${p.autoconnect ? `, connects automatically${p.priority ? ` (priority ${p.priority})` : ""}` : ", manual connection only"}` +
-                      `${p.bssid_lock ? `, locked to ${p.bssid_lock}` : ""}${p.iface ? `, on ${p.iface} only` : ""}.`,
+                      ` ${profile.name}${profile.autoconnect ? `, connects automatically${profile.priority ? ` (priority ${profile.priority})` : ""}` : ", manual connection only"}` +
+                      `${profile.bssid_lock ? `, locked to ${profile.bssid_lock}` : ""}${profile.iface ? `, on ${profile.iface} only` : ""}.`,
                   }),
-                  mine.has(p.uuid)
+                  mine.has(profile.uuid)
                     ? el("span", {
                         className: "info-pill",
                         textContent: "added here",
                       })
                     : null,
                   connSettings(
-                    p,
+                    profile,
                     inv,
                     data,
                     busy,
-                    current.has(p.uuid)
-                      ? wifi.find((radio) => radio.profile && radio.profile.uuid === p.uuid)
+                    current.has(profile.uuid)
+                      ? wifi.find((radio) => radio.profile && radio.profile.uuid === profile.uuid)
                       : null,
                   ),
-                  mine.has(p.uuid)
+                  mine.has(profile.uuid)
                     ? actionButton(
                         "Remove saved network",
                         async (event) => {
                           if (
                             await AW.confirmHere(
-                              `Remove the saved network ${p.ssid || p.name}? The box deletes its profile and does not join it automatically again.`, { anchor: event.currentTarget })
+                              `Remove the saved network ${profile.ssid || profile.name}? The box deletes its profile and does not join it automatically again.`, { anchor: event.currentTarget })
                           )
                             netRequest(
-                              { action: "forget", uuid: p.uuid },
+                              { action: "forget", uuid: profile.uuid },
                               "join",
                             );
                         },
                         {
                           className: "small",
-                          disabled: busy || current.has(p.uuid),
-                          title: current.has(p.uuid)
+                          disabled: busy || current.has(profile.uuid),
+                          title: current.has(profile.uuid)
                             ? "In use: the box is on it now"
                             : "",
                         },
@@ -8700,26 +8700,26 @@ function renderOtherAp(inv, data, busy) {
   const nm = inv && inv.stacks && inv.stacks.networkmanager;
   const chosen = data.other_ap || {};
   const others = ((nm && nm.wifi_profiles) || []).filter(
-    (p) => p.mode === "ap" && p.name !== "irate-box-ap",
+    (profile) => profile.mode === "ap" && profile.name !== "irate-box-ap",
   );
   const rows = [];
-  for (const p of others) {
-    const c = chosen[p.uuid];
-    const what = `an earlier hotspot profile, ${p.name} (network name ${p.ssid})${/^armbian/i.test(p.ssid || "") ? ", Armbian's setup hotspot" : ", probably the system's own setup hotspot"}`;
+  for (const other of others) {
+    const c = chosen[other.uuid];
+    const what = `an earlier hotspot profile, ${other.name} (network name ${other.ssid})${/^armbian/i.test(other.ssid || "") ? ", Armbian's setup hotspot" : ", probably the system's own setup hotspot"}`;
     if (c && c.choice === "left") {
       rows.push(
         el(
           "p",
           {
             className: "setting-desc",
-            dataset: { change: `otherap:${p.uuid}` },
+            dataset: { change: `otherap:${other.uuid}` },
           },
           `Ignored: ${what}. The profile is not disabled. `,
           actionButton(
             "Stop ignoring profile",
             () =>
               netRequest(
-                { action: "otherap", uuid: p.uuid, do: "undo" },
+                { action: "otherap", uuid: other.uuid, do: "undo" },
                 "otherap",
               ),
             { className: "small", disabled: busy },
@@ -8731,11 +8731,11 @@ function renderOtherAp(inv, data, busy) {
     rows.push(
       el(
         "p",
-        { className: "setting-desc", dataset: { change: `otherap:${p.uuid}` } },
+        { className: "setting-desc", dataset: { change: `otherap:${other.uuid}` } },
         `This box has ${what}. ` +
-          (p.active
+          (other.active
             ? "It is running now. It holds the WiFi, so the network link of the box and the irate-box hotspot cannot use it. "
-            : p.autoconnect
+            : other.autoconnect
               ? "It is set to connect automatically. At boot it can take over the WiFi and disconnect the box from its network. "
               : "It is disabled and does not connect automatically, so irate-box has the WiFi and runs its own hotspot. ") +
           "Delete the profile (the box keeps a copy that you can restore) or ignore it. Ignoring does not disable the profile. ",
@@ -8743,7 +8743,7 @@ function renderOtherAp(inv, data, busy) {
           "Delete profile",
           () => {
             netRequest(
-                { action: "otherap", uuid: p.uuid, do: "remove" },
+                { action: "otherap", uuid: other.uuid, do: "remove" },
                 "otherap",
               );
           },
@@ -8754,7 +8754,7 @@ function renderOtherAp(inv, data, busy) {
           "Ignore profile",
           () =>
             netRequest(
-              { action: "otherap", uuid: p.uuid, do: "leave" },
+              { action: "otherap", uuid: other.uuid, do: "leave" },
               "otherap",
             ),
           { className: "small", disabled: busy },
@@ -8930,14 +8930,14 @@ const CONN_FIELDS = [
       ["yes", "yes"],
       ["no", "no, manual connection only"],
     ],
-    (p) => (p.autoconnect ? "yes" : "no"),
+    (profile) => (profile.autoconnect ? "yes" : "no"),
     "Disabled: the box never joins this network automatically.",
   ],
   [
     "priority",
     "Connection priority",
     "num:-999:999",
-    (p) => String(p.priority ?? 0),
+    (profile) => String(profile.priority ?? 0),
     "A higher number wins when several known networks are in range. 0 is the NetworkManager default.",
   ],
   [
@@ -8949,7 +8949,7 @@ const CONN_FIELDS = [
       ["1", "once"],
       ["4", "4 times, then 5 minutes blocked"],
     ],
-    (p) => String(p.autoconnect_retries ?? -1),
+    (profile) => String(profile.autoconnect_retries ?? -1),
     "",
   ],
   [
@@ -8960,7 +8960,7 @@ const CONN_FIELDS = [
       ["0", "without limit"],
       ["3", "3 times, then waits for manual reconnection"],
     ],
-    (p) => String(p.auth_retries ?? -1),
+    (profile) => String(profile.auth_retries ?? -1),
     "Without limit also means that a wrong password is retried without limit.",
   ],
   [
@@ -8971,7 +8971,7 @@ const CONN_FIELDS = [
       ["yes", "yes"],
       ["no", "no"],
     ],
-    (p) => p.metered || "unknown",
+    (profile) => profile.metered || "unknown",
     "For the hotspot of a phone, select yes. Updates and library downloads then wait for another network.",
   ],
   [
@@ -8985,14 +8985,14 @@ const CONN_FIELDS = [
       ["stable", "stable, generated for this connection"],
       ["stable-ssid", "stable, generated for each network"],
     ],
-    (p) => p.cloned || "",
+    (profile) => profile.cloned || "",
     "Random: the router sees a new device each time. A reserved address or MAC filter stops working.",
   ],
   [
     "bssid",
     "Access-point lock",
     "bssid",
-    (p) => p.bssid_lock || "",
+    (profile) => profile.bssid_lock || "",
     "Locked: the box cannot roam. If that access point goes away, the box stays off the network.",
   ],
   [
@@ -9003,14 +9003,14 @@ const CONN_FIELDS = [
       ["bg", "2.4 GHz only"],
       ["a", "5 GHz only"],
     ],
-    (p) => p.band_lock || "",
+    (profile) => profile.band_lock || "",
     "2.4 GHz reaches further and is busier. 5 GHz is faster with less reach. A hotspot on the same radio follows it.",
   ],
   [
     "channel",
     "Channel",
     "num:0:196",
-    (p) => String(p.channel ?? 0),
+    (profile) => String(profile.channel ?? 0),
     "0 is any. A band must be selected.",
   ],
   [
@@ -9022,7 +9022,7 @@ const CONN_FIELDS = [
       ["3", "enabled"],
       ["1", "leave to the driver"],
     ],
-    (p) => String(p.powersave ?? 0),
+    (profile) => String(profile.powersave ?? 0),
     "Enabled: the box answers more slowly, and some drivers disconnect.",
   ],
   [
@@ -9032,33 +9032,33 @@ const CONN_FIELDS = [
       ["no", "no"],
       ["yes", "yes"],
     ],
-    (p) => (p.hidden ? "yes" : "no"),
+    (profile) => (profile.hidden ? "yes" : "no"),
     "Yes when the network does not announce its name.",
   ],
   [
     "dhcp_timeout",
     "Address timeout (s)",
     "num:0:3600",
-    (p) => String(p.dhcp_timeout ?? 0),
+    (profile) => String(profile.dhcp_timeout ?? 0),
     '0 is the NetworkManager default of 45 s. A longer time can hide a dead link as "connecting".',
   ],
 ];
 const connOpen = new Set();
 // One network's own settings: a section each (its id the connection's), drawn again with the list and its draft kept.
-function connSettings(p, inv, data, busy, radio) {
+function connSettings(profile, inv, data, busy, radio) {
   const ho = inv && inv.handover;
-  const lasts = !p.netplan || (ho && ho.integrated);
-  const changed = (data.conn_changes || {})[p.uuid];
+  const lasts = !profile.netplan || (ho && ho.integrated);
+  const changed = (data.conn_changes || {})[profile.uuid];
   const sec = AW.section({
-    id: `net-conn-${p.uuid}`,
-    label: `Settings for ${p.ssid || p.name}`,
-    saved: Object.fromEntries(CONN_FIELDS.map(([n, , , now]) => [n, now(p)])),
+    id: `net-conn-${profile.uuid}`,
+    label: `Settings for ${profile.ssid || profile.name}`,
+    saved: Object.fromEntries(CONN_FIELDS.map(([n, , , now]) => [n, now(profile)])),
     warn: () =>
       "They take effect the next time the box connects. Undo restores the previous settings.",
     save: (changes) => {
       const j = AW.job();
       netRequest(
-        { action: "connection", uuid: p.uuid, changes },
+        { action: "connection", uuid: profile.uuid, changes },
         "connection",
         j.done,
       );
@@ -9068,7 +9068,7 @@ function connSettings(p, inv, data, busy, radio) {
   });
   const fields = CONN_FIELDS.map(([name, label, kind, now, help]) => {
     let input;
-    const cur = now(p);
+    const cur = now(profile);
     if (Array.isArray(kind)) {
       const opts = kind.some(([v]) => v === cur) ? kind : [...kind, [cur, cur]];
       input = el(
@@ -9119,7 +9119,7 @@ function connSettings(p, inv, data, busy, radio) {
   const cn = netNotes.connection;
   const box = el(
     "details",
-    { className: "net-conn-settings", open: connOpen.has(p.uuid) },
+    { className: "net-conn-settings", open: connOpen.has(profile.uuid) },
     el("summary", { textContent: "Settings for this network" }),
     lasts
       ? null
@@ -9137,7 +9137,7 @@ function connSettings(p, inv, data, busy, radio) {
             "Undo",
             () => {
               netRequest(
-                  { action: "connection", uuid: p.uuid, undo: true },
+                  { action: "connection", uuid: profile.uuid, undo: true },
                   "connection",
                 );
             },
@@ -9156,8 +9156,8 @@ function connSettings(p, inv, data, busy, radio) {
       : null,
   );
   box.addEventListener("toggle", () => {
-    if (box.open) connOpen.add(p.uuid);
-    else connOpen.delete(p.uuid);
+    if (box.open) connOpen.add(profile.uuid);
+    else connOpen.delete(profile.uuid);
   });
   return box;
 }
@@ -9519,15 +9519,15 @@ function apFill(sel, values, keep) {
 function renderAp(run) {
   apRun = run;
   if (netData) drawApHealth();
-  const p = run.up ? run.plan : run.preview;
+  const plan = run.up ? run.plan : run.preview;
   const where = (q) =>
     q && q.channel
       ? ` on ${q.iface === "ap0" || q.kind === "own-channel" || q.kind === "follow" ? "a second interface beside " + q.iface : q.iface}, channel ${q.channel}`
       : "";
   apEl.state.textContent = run.up
-    ? `On${where(p)}. ${p.text}${run.confirmed === false ? " Your WiFi link is disabled. Join the hotspot network and open the hub. Then select Keep hotspot settings. If you do not, the WiFi link returns automatically." : ""}`
-    : p
-      ? `Off. Switched on, it would run${where(p)}. ${p.text}${p.to_try ? " Whether it can keep a channel of its own here is still to be tried." : ""}${p.why ? ` (${p.why})` : ""}`
+    ? `On${where(plan)}. ${plan.text}${run.confirmed === false ? " Your WiFi link is disabled. Join the hotspot network and open the hub. Then select Keep hotspot settings. If you do not, the WiFi link returns automatically." : ""}`
+    : plan
+      ? `Off. Switched on, it would run${where(plan)}. ${plan.text}${plan.to_try ? " Whether it can keep a channel of its own here is still to be tried." : ""}${plan.why ? ` (${plan.why})` : ""}`
       : "Off. The radios have not been checked yet. Select Refresh, above.";
   if (run.note) say(run.note, true, apEl.note);
   const radio = apEl.radio.value;
@@ -9538,14 +9538,14 @@ function renderAp(run) {
   );
   const chans = (
     (run.radios || []).find(
-      (runRadio) => runRadio.iface === (apEl.radio.value || (p && p.iface)),
+      (runRadio) => runRadio.iface === (apEl.radio.value || (plan && plan.iface)),
     ) ||
     (run.radios || [])[0] || { channels: [] }
   ).channels;
   apFill(apEl.channel, chans, (run.owner || {}).channel);
   apEl.sw.textContent = run.up ? "Disable hotspot" : "Enable hotspot";
-  apEl.takeLabel.hidden = run.up || !(p && p.needs_choice);
-  apEl.tryB.hidden = run.up || !(p && p.to_try);
+  apEl.takeLabel.hidden = run.up || !(plan && plan.needs_choice);
+  apEl.tryB.hidden = run.up || !(plan && plan.to_try);
   apEl.confirmB.hidden = !(run.up && run.confirmed === false);
   [apEl.sw, apEl.tryB, apEl.confirmB].forEach((b) => {
     b.disabled = !!apWait;
@@ -9896,9 +9896,9 @@ const BK_WORDS = {
   ],
 };
 function drawBackup() {
-  const p = bkPlan;
-  if (!p) return;
-  const img = p.image || {};
+  const plan = bkPlan;
+  if (!plan) return;
+  const img = plan.image || {};
   AW.choices(
     bku.level,
     "backup-level",
@@ -9909,7 +9909,7 @@ function drawBackup() {
       does:
         v === "image"
           ? `About ${size(img.used)} (what the card holds)${img.card ? `, at most ${size(img.card)} (the card)` : ""}, compressed.`
-          : `About ${size(p.levels[v] + (bku.keys.checked ? p.syncthing : 0))}.`,
+          : `About ${size(plan.levels[v] + (bku.keys.checked ? plan.syncthing : 0))}.`,
     })),
     {
       value: bkLevel,
@@ -9919,7 +9919,7 @@ function drawBackup() {
       },
     },
   );
-  const lo = p.left_out || {};
+  const lo = plan.left_out || {};
   bku.leftOut.textContent =
     `Omitted from every download: books (${size(lo.books)}), the firmware mirror (${size(lo.firmware)}), ` +
     "the git mirrors, builds and their caches, crash evidence and the archive of the library. The box can download them again.";
@@ -10054,34 +10054,34 @@ stickEl.presets.addEventListener("click", (event) => {
 });
 drawPresets(); // the default preset shown chosen before any is pressed
 function drawPicks() {
-  const p = bkPlan;
+  const plan = bkPlan;
   const book = (b) => `${b.name} (${size(b.size)})`,
     kit = (k) => `${k.title} (${size(k.size)})`;
   pickList(
     kitEl.books,
-    p.books.map((b) => ({ ...b, value: b.name })),
+    plan.books.map((b) => ({ ...b, value: b.name })),
     "book",
     book,
   );
   pickList(
     kitEl.kits,
-    p.kits.map((k) => ({ ...k, value: k.id })),
+    plan.kits.map((k) => ({ ...k, value: k.id })),
     "kit",
     kit,
   );
   pickList(
     kitEl.repos,
-    p.repos.map((repo) => ({ ...repo, value: `${repo.area}/${repo.name}` })),
+    plan.repos.map((repo) => ({ ...repo, value: `${repo.area}/${repo.name}` })),
     "repo",
     (repo) =>
       `${repo.name}${repo.area === "private" ? " (administrators only)" : ""}${repo.mirror ? ", a mirror" : ""} (${size(repo.size)})`,
   );
-  stickEl.hubSize.textContent = `about ${size(p.hub)} (its code, apps and release files)`;
+  stickEl.hubSize.textContent = `about ${size(plan.hub)} (its code, apps and release files)`;
   drawPresets();
   drawKitTotal();
 }
 function kitBytes() {
-  const p = bkPlan,
+  const plan = bkPlan,
     fields = kitEl.form.elements;
   const sum = (box, list, key) =>
     picked(box).reduce(
@@ -10089,16 +10089,16 @@ function kitBytes() {
       0,
     );
   return (
-    (fields.hub.checked ? p.hub : 0) +
-    sum(kitEl.books, p.books, "name") +
-    sum(kitEl.kits, p.kits, "id") +
+    (fields.hub.checked ? plan.hub : 0) +
+    sum(kitEl.books, plan.books, "name") +
+    sum(kitEl.kits, plan.kits, "id") +
     picked(kitEl.repos).reduce(
       (n, v) =>
         n +
-        ((p.repos.find((repo) => `${repo.area}/${repo.name}` === v) || {}).size || 0),
+        ((plan.repos.find((repo) => `${repo.area}/${repo.name}` === v) || {}).size || 0),
       0,
     ) +
-    (fields.state.value === "none" ? 0 : p.levels[fields.state.value])
+    (fields.state.value === "none" ? 0 : plan.levels[fields.state.value])
   );
 }
 function drawKitTotal() {
@@ -10157,15 +10157,15 @@ async function bkSticks(scan) {
         bkWaiting = null;
       }
     }
-    const p = reply.progress;
-    bku.progress.hidden = !p;
-    if (p) {
-      bku.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
-      bku.step.textContent = `${said(p.label)}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : "…"}`;
+    const progress = reply.progress;
+    bku.progress.hidden = !progress;
+    if (progress) {
+      bku.bar.value = progress.total ? Math.min(progress.done / progress.total, 1) : 0;
+      bku.step.textContent = `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : "…"}`;
     }
     drawBackupGo();
     clearTimeout(bkPoll);
-    if (bkWaiting || p || reply.pending > 0)
+    if (bkWaiting || progress || reply.pending > 0)
       bkPoll = setTimeout(() => bkSticks(false), 1500);
   } catch (err) {
     say(err.message, false, bku.note);
@@ -10215,12 +10215,12 @@ function renderKit(data) {
   drawKitTotal();
   kitEl.progress.hidden = !data.progress;
   if (data.progress) {
-    const p = data.progress;
+    const progress = data.progress;
     kitEl.bar.value = Math.min(
-      Math.max(p.step - 1, 0) / Math.max(p.steps, 1),
+      Math.max(progress.step - 1, 0) / Math.max(progress.steps, 1),
       1,
     );
-    kitEl.step.textContent = `Step ${Math.max(p.step, 1)} of ${p.steps}${p.label ? ` — ${said(p.label)}` : ""}.`;
+    kitEl.step.textContent = `Step ${Math.max(progress.step, 1)} of ${progress.steps}${progress.label ? ` — ${said(progress.label)}` : ""}.`;
   }
   const k = data.kit;
   const held = k
@@ -11399,8 +11399,8 @@ function addonCard(addon, busy, withAccess, progressText) {
 
 function renderAddons(data) {
   lastAddons = data;
-  const p = data.progress;
-  const busy = data.pending > 0 || !!adoWaiting || !!p;
+  const progress = data.progress;
+  const busy = data.pending > 0 || !!adoWaiting || !!progress;
   if (adoWaiting) {
     const done = (data.results || []).find((result) => result.id === adoWaiting.id);
     if (done) {
@@ -11413,10 +11413,10 @@ function renderAddons(data) {
       return renderAddons(data);
     }
   }
-  const steps = p ? Math.max(p.steps, p.step, 1) : 0;
-  const progressText = p
-    ? `${UPD_DOING[p.action] || "Working"}, step ${Math.max(p.step, 1)} of ${p.estimate ? "about " : ""}${steps}` +
-      (p.label ? ` — ${said(p.label)}` : "") +
+  const steps = progress ? Math.max(progress.steps, progress.step, 1) : 0;
+  const progressText = progress
+    ? `${UPD_DOING[progress.action] || "Working"}, step ${Math.max(progress.step, 1)} of ${progress.estimate ? "about " : ""}${steps}` +
+      (progress.label ? ` — ${said(progress.label)}` : "") +
       "."
     : "";
   // Each add-on's card is on its own page; All apps keeps one only where no page holds it.
@@ -11442,17 +11442,17 @@ function renderAddons(data) {
     );
   });
   // The run in flight: the same bar as Updates, for an add-on's run or an update's.
-  ado.progress.hidden = !p;
-  if (p) {
-    ado.bar.value = Math.min(Math.max(p.step - 1, 0) / steps, 1);
+  ado.progress.hidden = !progress;
+  if (progress) {
+    ado.bar.value = Math.min(Math.max(progress.step - 1, 0) / steps, 1);
     ado.step.textContent = progressText;
   }
   renderInventory();
   ado.output.hidden = !(data.log.length && (busy || adoNote));
   ado.log.textContent = data.log.join("\n");
   ado.log.scrollTop = ado.log.scrollHeight;
-  if (p && p.action === "addon") ado.output.open = true;
-  badge("addons", p && p.action === "addon" ? "working" : "");
+  if (progress && progress.action === "addon") ado.output.open = true;
+  badge("addons", progress && progress.action === "addon" ? "working" : "");
   const added = data.addons.filter((addon) => addon.added).map((addon) => addon.title);
   setupStep(
     "addons",
@@ -11947,8 +11947,8 @@ let usbNote = null; // { at, text, ok }
 let usbPoll = null;
 
 function renderUsb(data) {
-  const p = data.progress;
-  const busy = data.pending > 0 || !!usbWaiting || !!p;
+  const progress = data.progress;
+  const busy = data.pending > 0 || !!usbWaiting || !!progress;
   if (usbWaiting) {
     const done = (data.results || []).find((result) => result.id === usbWaiting.id);
     if (done) {
@@ -12060,10 +12060,10 @@ function renderUsb(data) {
           "No USB drive found. Connect a USB drive. Select Scan USB drives.",
       }),
     );
-  usb.progress.hidden = !p;
-  if (p) {
-    usb.bar.value = p.total ? Math.min(p.done / p.total, 1) : 0;
-    usb.step.textContent = `${said(p.label)}${p.total ? `: ${size(p.done)} of ${size(p.total)} (${Math.round((100 * p.done) / p.total)}%)` : "…"}`;
+  usb.progress.hidden = !progress;
+  if (progress) {
+    usb.bar.value = progress.total ? Math.min(progress.done / progress.total, 1) : 0;
+    usb.step.textContent = `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : "…"}`;
   }
   clearTimeout(usbPoll);
   if (busy) usbPoll = setTimeout(loadUsb, 1000);
@@ -12480,16 +12480,16 @@ function managePanel(repo, data, cls) {
     "fieldset",
     { className: "git-q" },
     el("legend", { textContent: "Who can push?" }),
-    ...presets.map((p) =>
+    ...presets.map((preset) =>
       radio(
         "push",
-        p.name,
-        WHO[p.write],
-        p.name === repo.preset,
+        preset.name,
+        WHO[preset.write],
+        preset.name === repo.preset,
         act(
-          { action: "preset", area: repo.area, name: repo.name, preset: p.name },
+          { action: "preset", area: repo.area, name: repo.name, preset: preset.name },
           null,
-          `${repo.name}.git: ${p.text}.`,
+          `${repo.name}.git: ${preset.text}.`,
         ),
       ),
     ),
@@ -12498,7 +12498,7 @@ function managePanel(repo, data, cls) {
       textContent:
         "The hub server decides each push. Nobody can rewrite or delete history in a repository that guests can read.",
     }),
-    presets.some((p) => p.write === "everyone")
+    presets.some((preset) => preset.write === "everyone")
       ? el("p", {
           className: "setting-desc",
           textContent:
@@ -12749,8 +12749,8 @@ function renderMirrors(data) {
             .filter(Boolean)
             .join(" · ");
           const subs = Object.entries(st.submodules || {}).map(
-            ([p, submodule]) =>
-              `${p} (${submodule.kept.length} commit${submodule.kept.length === 1 ? "" : "s"}, ${size(submodule.size)})`,
+            ([path, submodule]) =>
+              `${path} (${submodule.kept.length} commit${submodule.kept.length === 1 ? "" : "s"}, ${size(submodule.size)})`,
           );
           const state = st.error
             ? `error: ${errorSaid(st)}`
@@ -13654,11 +13654,11 @@ function renderKits(data) {
     previous: cfg.previous_days == null ? "" : cfg.previous_days,
   });
   kitsEl.problems.replaceChildren(
-    ...(st.problems || []).map((p) =>
+    ...(st.problems || []).map((problem) =>
       checkItem(
         "problem",
         "Cache integrity check failed",
-        p,
+        problem,
         "Refresh the toolkit cache while online. The box does not install from a cache that fails its integrity check.",
       ),
     ),
@@ -14111,8 +14111,8 @@ async function loadKitsUsb() {
       loadKits();
     }
   }
-  const p = data.progress;
-  const busy = !!kitsUsbWaiting || !!p || data.pending > 0;
+  const progress = data.progress;
+  const busy = !!kitsUsbWaiting || !!progress || data.pending > 0;
   document.getElementById("kits-usb-scan").disabled = busy;
   const st = (kitsData || {}).status || {};
   const cached = Object.entries(st.kits || {}).filter(([, v]) => v.cached);
@@ -14213,11 +14213,11 @@ async function loadKitsUsb() {
       );
     }),
     // Nothing in progress: nothing (a null here showed as the word "null" under a listed stick).
-    ...(p
+    ...(progress
       ? [
           el("p", {
             className: "setting-desc",
-            textContent: `${said(p.label)}${p.total ? `: ${size(p.done)} of ${size(p.total)}` : "…"}`,
+            textContent: `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)}` : "…"}`,
           }),
         ]
       : []),
@@ -15088,7 +15088,7 @@ function luminance(hex) {
   return 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
 }
 function contrast(first, second) {
-  const [x, y] = [luminance(first), luminance(second)].sort((p, q) => q - p);
+  const [x, y] = [luminance(first), luminance(second)].sort((larger, smaller) => smaller - larger);
   return (x + 0.05) / (y + 0.05);
 }
 // ---- The light and dark palettes (Appearance → Colours): each mode its own, the standard theme's colours under
@@ -15409,11 +15409,11 @@ const PICTURE_ROWS = {
   },
 };
 function pictureRow(which) {
-  const p = PICTURE_ROWS[which];
+  const row = PICTURE_ROWS[which];
   const img = el("img", {
     className: "picture-preview",
-    alt: `${p.label} now`,
-    height: p.size,
+    alt: `${row.label} now`,
+    height: row.size,
   });
   const note = el("small", { className: "setting-desc", role: "status" });
   const remove = el("button", {
@@ -15421,8 +15421,8 @@ function pictureRow(which) {
     className: "action-btn",
     textContent: "Remove",
   });
-  const file = el("input", { type: "file", accept: p.accept });
-  file.setAttribute("aria-label", `Upload a ${p.label.toLowerCase()}`);
+  const file = el("input", { type: "file", accept: row.accept });
+  file.setAttribute("aria-label", `Upload a ${row.label.toLowerCase()}`);
   const show = () => {
     img.hidden = true;
     img.onload = () => {
@@ -15432,9 +15432,9 @@ function pictureRow(which) {
     };
     img.onerror = () => {
       remove.disabled = true;
-      note.textContent = p.none;
+      note.textContent = row.none;
     };
-    img.src = `${p.url}?${Date.now()}`;
+    img.src = `${row.url}?${Date.now()}`;
   };
   // This tab's icon follows at once: the new favicon, or once removed, the page's own emoji (themes.js keeps it in data-own).
   const refreshTab = (removed) => {
@@ -15462,8 +15462,8 @@ function pictureRow(which) {
     const upload = file.files[0];
     file.value = "";
     if (!upload) return;
-    if (upload.size > p.max * 1024) {
-      note.textContent = `Maximum size: ${p.max} KB. This file is ${Math.ceil(upload.size / 1024)} KB.`;
+    if (upload.size > row.max * 1024) {
+      note.textContent = `Maximum size: ${row.max} KB. This file is ${Math.ceil(upload.size / 1024)} KB.`;
       return;
     }
     const data = await new Promise((ok, fail) => {
@@ -15479,10 +15479,10 @@ function pictureRow(which) {
   return el(
     "div",
     { className: "aw-field picture-row" },
-    el("span", { className: "aw-label", textContent: p.label }),
+    el("span", { className: "aw-label", textContent: row.label }),
     el("span", { className: "aw-colour" }, img, file, remove),
     note,
-    el("small", { className: "setting-desc", textContent: p.note }),
+    el("small", { className: "setting-desc", textContent: row.note }),
   );
 }
 const faviconRow = () => pictureRow("favicon");
@@ -16127,7 +16127,7 @@ function drawStatusTiles(openId) {
   const list = stTiles.tiles
     .map((x, i) => ({ x, i }))
     .sort((left, right) => pos(left.x.id) - pos(right.x.id) || left.i - right.i)
-    .map((p) => p.x);
+    .map((pair) => pair.x);
   const toggle = (k, id, on) => {
     stDraft[k] = on
       ? [...new Set([...stDraft[k], id])]
@@ -16495,7 +16495,7 @@ function inventoryRows() {
   );
   const local = lastLocal;
   const tileIds = tilesData ? new Set(tilesData.tiles.map((t) => t.id)) : null;
-  const pages = new Set(AL.pages().map((p) => p.id));
+  const pages = new Set(AL.pages().map((page) => page.id));
   const rows = new Map();
   const add = (id, name, kind) => {
     if (!rows.has(id))

@@ -103,9 +103,9 @@ $('acct-logout').addEventListener('click', async () => {
 // ---- Your settings: held until Save, theirs alone.
 const HUES = [0, 40, 130, 210, 280];
 let saved = {}, draft = {};
-function showPrefs(p, namesTo) {
-  saved = JSON.parse(JSON.stringify(p));
-  draft = JSON.parse(JSON.stringify(p));
+function showPrefs(prefs, namesTo) {
+  saved = JSON.parse(JSON.stringify(prefs));
+  draft = JSON.parse(JSON.stringify(prefs));
   $('acct-names-to').textContent = namesTo === 'admin' ? 'Only administrators see names. The administrator chose this.' : 'Signed-in users see names. Guests see only the number. The administrator chose this.';
   drawPrefs();
 }

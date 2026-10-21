@@ -38,20 +38,20 @@ let marks = false;
 const postNote = document.createElement('p');
 postNote.className = 'setting-desc shout-post-note';
 form.after(postNote);
-function applyPosting(p) {
-  if (!p) return;
-  marks = p.marks;
-  const closed = p.who === 'off' || (p.who === 'users' && !p.me);
+function applyPosting(posting) {
+  if (!posting) return;
+  marks = posting.marks;
+  const closed = posting.who === 'off' || (posting.who === 'users' && !posting.me);
   form.hidden = closed;
   postNote.replaceChildren();
-  if (p.who === 'off') postNote.textContent = 'Posting is disabled.';
+  if (posting.who === 'off') postNote.textContent = 'Posting is disabled.';
   else if (closed) {
     const link = document.createElement('a'); link.href = '/account.html?next=/'; link.textContent = 'Sign in';
     postNote.append(link, ' to post. Only users can post here.');
   }
-  nameInput.readOnly = !!p.me;
-  nameRoll.hidden = !!p.me;
-  if (p.me) nameInput.value = p.me;
+  nameInput.readOnly = !!posting.me;
+  nameRoll.hidden = !!posting.me;
+  if (posting.me) nameInput.value = posting.me;
 }
 
 function setDecayNote(ttl) {

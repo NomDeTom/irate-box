@@ -79,7 +79,7 @@ if (picker && themes) {
     const pal = themes.palette ? themes.palette() : 'box';
     picker.querySelectorAll('[data-palette-choice]').forEach((b) => b.setAttribute('aria-checked', String(!other && b.dataset.paletteChoice === pal)));
     if (more) {
-      const shown = other || palettes.find((p) => p.id === pal && p.id !== 'box');
+      const shown = other || palettes.find((palette) => palette.id === pal && palette.id !== 'box');
       more.textContent = shown ? shown.emoji : '🎨';
       more.title = shown ? `Colours: ${shown.label} (change)` : 'Colours: box palette (change)';
       more.setAttribute('aria-pressed', String(!!shown));
@@ -87,8 +87,8 @@ if (picker && themes) {
   };
   picker.addEventListener('click', (event) => {
     if (more && event.target.closest('.theme-more')) { openMenu(menu.hidden); return; }
-    const p = event.target.closest('[data-palette-choice]');
-    if (p) { themes.choosePalette(p.dataset.paletteChoice); openMenu(false); showChoice(); return; }
+    const choice = event.target.closest('[data-palette-choice]');
+    if (choice) { themes.choosePalette(choice.dataset.paletteChoice); openMenu(false); showChoice(); return; }
     const b = event.target.closest('[data-theme-choice]');
     if (!b) return;
     themes.choose(b.dataset.themeChoice);

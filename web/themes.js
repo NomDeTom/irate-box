@@ -41,8 +41,8 @@
   }
   // The visitor's palette: box (none saved), standard or contrast.
   function palette() {
-    var p = paletteById(read('hub-palette'));
-    return p ? p.id : 'box';
+    var saved = paletteById(read('hub-palette'));
+    return saved ? saved.id : 'box';
   }
   function showPalette(id) {
     var root = document.documentElement;
@@ -117,8 +117,8 @@
   // A palette chosen: saved and drawn; a theme of its own colours (E-ink, Cybercore) left for the main theme, whose
   // light, dark or auto is kept.
   function choosePalette(id) {
-    var p = paletteById(id);
-    write('hub-palette', p && p.id !== 'box' ? p.id : null);
+    var found = paletteById(id);
+    write('hub-palette', found && found.id !== 'box' ? found.id : null);
     var cur = current();
     if (byId(cur) && !byId(cur).main) choose(byId(cur).base === 'dark' ? 'dark' : 'light');
     showPalette(palette());

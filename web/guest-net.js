@@ -14,8 +14,8 @@
   };
   function show(data) {
     if (!data.here || data.out || !words[data.level]) { box.hidden = true; return; }
-    const p = document.createElement('p');
-    p.textContent = `${words[data.level]} Access lasts ${data.hours} hours on this device. Your traffic uses the box's connection, which belongs to the administrator. `
+    const para = document.createElement('p');
+    para.textContent = `${words[data.level]} Access lasts ${data.hours} hours on this device. Your traffic uses the box's connection, which belongs to the administrator. `
       + 'The box does not log the sites you visit. Other systems on the route, such as the internet provider, can still log them.';
     const act = document.createElement(data.level === 'users-web' && !data.signed_in ? 'a' : 'button');
     act.className = 'action-btn primary';
@@ -31,12 +31,12 @@
           const response = await fetch('/api/guest-net', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agree: true }) });
           const j = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(j.error || `HTTP ${response.status}`);
-          p.textContent = `Done. This device can reach ${data.level === 'sheet-all' ? 'the internet' : 'the web'} in a few seconds.`;
+          para.textContent = `Done. This device can reach ${data.level === 'sheet-all' ? 'the internet' : 'the web'} in a few seconds.`;
           act.remove();
-        } catch (err) { p.textContent = `Request failed: ${err.message}. Select the button to try again.`; act.disabled = false; }
+        } catch (err) { para.textContent = `Request failed: ${err.message}. Select the button to try again.`; act.disabled = false; }
       });
     }
-    box.replaceChildren(p, act);
+    box.replaceChildren(para, act);
     box.hidden = false;
   }
   fetch('/api/guest-net').then((response) => (response.ok ? response.json() : null)).then((data) => data && show(data)).catch(() => {});

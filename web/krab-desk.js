@@ -32,8 +32,8 @@ const KD = (() => {
       const id = list.length + 1, k = kind[seed];
       let size = 0; labels[seed] = id; stack.push(seed);
       while (stack.length) {
-        const p = stack.pop(); size++;
-        const x = p % w, y = (p / w) | 0;
+        const pixel = stack.pop(); size++;
+        const x = pixel % w, y = (pixel / w) | 0;
         for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
           const nx = x + dx, ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;

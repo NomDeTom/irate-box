@@ -411,7 +411,7 @@ const AW = (() => {
     handle.elsewhereKeys = () => [...elsewhere];
     handle.disabled = () => !saved || handle.saving();
     handle.attached = () => handle.foot.isConnected;
-    handle.page = () => { const p = handle.foot.closest && handle.foot.closest('.admin-pane'); return p ? p.id : ''; };
+    handle.page = () => { const page = handle.foot.closest && handle.foot.closest('.admin-pane'); return page ? page.id : ''; };
     const paint = () => {
       const dirty = handle.dirty(), busy = handle.saving();
       const cannot = saved && dirty && !busy && opts.why ? opts.why(handle.changes(), handle.values()) || '' : '';
@@ -499,9 +499,9 @@ const AW = (() => {
   //   const j = AW.job(); … j.done(ok, why) — ok false rejects with why (the reason under the footer).
   function job() {
     let ok, no;
-    const p = new Promise((resolve, reject) => { ok = resolve; no = reject; });
-    p.done = (fine, why) => (fine ? ok(why || true) : no(new Error(why || 'The root helper could not do it.')));
-    return p;
+    const promise = new Promise((resolve, reject) => { ok = resolve; no = reject; });
+    promise.done = (fine, why) => (fine ? ok(why || true) : no(new Error(why || 'The root helper could not do it.')));
+    return promise;
   }
 
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts, as a section ----

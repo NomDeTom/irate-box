@@ -107,19 +107,19 @@ async function start() {
   $('cert-https').href = httpsUrl(port);
   $('cert-about').hidden = false;
   const steps = $('cert-steps');
-  const shown = PLATFORMS.filter((p) => p.checked);
+  const shown = PLATFORMS.filter((platform) => platform.checked);
   if (shown.length) {
-    shown.forEach((p) => {
+    shown.forEach((platform) => {
       const fold = make('details');
-      fold.append(make('summary', p.title));
+      fold.append(make('summary', platform.title));
       const ol = make('ol');
-      p.steps.forEach((step) => ol.append(make('li', step)));
+      platform.steps.forEach((step) => ol.append(make('li', step)));
       fold.append(ol);
       steps.append(fold);
     });
   }
   // The rest: the general step until their guides have been tried on a real device.
-  const rest = PLATFORMS.filter((p) => !p.checked).map((p) => p.title);
+  const rest = PLATFORMS.filter((platform) => !platform.checked).map((platform) => platform.title);
   if (rest.length) {
     steps.append(make('p', `${shown.length ? `On other devices (${rest.join(', ')}): d` : 'D'}ownload the certificate. Then install it as a trusted certificate authority in the device settings. `
       + 'Compare its SHA-256 fingerprint with the fingerprint on this page before you trust it. '

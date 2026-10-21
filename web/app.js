@@ -60,11 +60,11 @@ function frameSrc(path) {
 function target() {
   // Only a path on this origin: a backslash or a tab after the slash makes the browser
   // read "/\\evil.example" as another site, which a startsWith('//') check lets through.
-  let p;
-  try { p = decodeURIComponent(location.hash.slice(1)); } catch (_) { return '/'; }
-  if (!p.startsWith('/')) return '/';
+  let path;
+  try { path = decodeURIComponent(location.hash.slice(1)); } catch (_) { return '/'; }
+  if (!path.startsWith('/')) return '/';
   try {
-    const u = new URL(p, location.origin);
+    const u = new URL(path, location.origin);
     return u.origin === location.origin ? u.pathname + u.search + u.hash : '/';
   } catch (_) { return '/'; }
 }

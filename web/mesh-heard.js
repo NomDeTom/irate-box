@@ -20,9 +20,9 @@
     const names = Object.fromEntries(data.nodes.map((n) => [n.id, n.long_name || n.id]));
     const counts = Object.entries(data.counts || {}).map(([k, n]) => `${n} ${k}`);
     view.counts.textContent = counts.length ? `Decoded packets since the hub server started: ${counts.join(', ')}.` : 'No packets received';
-    view.packets.replaceChildren(...data.packets.map((p) => el('li', {},
-      el('span', { textContent: `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} packet from ${names[p.from] || p.from}${p.channel ? ` on channel ${p.channel}` : ''}` }),
-      p.text != null ? el('span', { className: 'mesh-text', textContent: ` “${p.text}”` }) : null)));
+    view.packets.replaceChildren(...data.packets.map((packet) => el('li', {},
+      el('span', { textContent: `${new Date(packet.at * 1000).toLocaleTimeString()}: ${packet.port} packet from ${names[packet.from] || packet.from}${packet.channel ? ` on channel ${packet.channel}` : ''}` }),
+      packet.text != null ? el('span', { className: 'mesh-text', textContent: ` “${packet.text}”` }) : null)));
   }
 
   async function load() {

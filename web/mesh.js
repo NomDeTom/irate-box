@@ -28,16 +28,16 @@ function render(data) {
   $('mesh-nodes').tBodies[0].replaceChildren(...data.nodes.map((n) => {
     const tr = make('tr');
     const t = n.telemetry || {};
-    const p = n.position;
+    const position = n.position;
     tr.append(make('td', nodeName(n)), make('td', ago(n.last)),
       make('td', t.battery != null ? `${t.battery > 100 ? 'externally powered' : `${t.battery} %`}${t.voltage ? `, ${t.voltage} V` : ''}` : '—'),
-      make('td', p ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}${p.alt != null ? `, ${p.alt} m` : ''}` : '—'),
+      make('td', position ? `${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}${position.alt != null ? `, ${position.alt} m` : ''}` : '—'),
       make('td', [n.hops != null ? `${n.hops} hop${n.hops === 1 ? '' : 's'}` : '', n.snr != null ? `SNR ${n.snr}` : '', n.rssi != null ? `${n.rssi} dBm` : ''].filter(Boolean).join(', ') || '—'),
       make('td', String(n.packets || 0)));
     return tr;
   }));
-  $('mesh-packets').replaceChildren(...data.packets.map((p) => make('li',
-    `${new Date(p.at * 1000).toLocaleTimeString()}: ${p.port} packet from ${names[p.from] || p.from}${p.to && p.to !== 'all' ? ` to ${names[p.to] || p.to}` : ''}${p.channel ? ` on channel ${p.channel}` : ''}`)));
+  $('mesh-packets').replaceChildren(...data.packets.map((packet) => make('li',
+    `${new Date(packet.at * 1000).toLocaleTimeString()}: ${packet.port} packet from ${names[packet.from] || packet.from}${packet.to && packet.to !== 'all' ? ` to ${names[packet.to] || packet.to}` : ''}${packet.channel ? ` on channel ${packet.channel}` : ''}`)));
 }
 
 // The nodes with a position, on Web Mercator fitted to them (a margin round the edges), with their
@@ -71,7 +71,7 @@ function drawMap(nodes) {
   const lat = (Math.atan(Math.sinh(cy)) * 180) / Math.PI;
   const metresPerUnit = 6371000 * Math.cos((lat * Math.PI) / 180);  // per radian of longitude
   const want = ((W / 5) / k) * metresPerUnit;
-  const round = [1, 2, 5].flatMap((m) => [1, 10, 100, 1000, 10000, 100000].map((p) => m * p)).filter((v) => v <= want).pop() || 1;
+  const round = [1, 2, 5].flatMap((m) => [1, 10, 100, 1000, 10000, 100000].map((power) => m * power)).filter((v) => v <= want).pop() || 1;
   const len = (round / metresPerUnit) * k;
   map.append(svg('rect', { x: 0, y: 0, width: W, height: H, class: 'mesh-map-bg' }),
     svg('line', { x1: M, y1: H - 14, x2: M + len, y2: H - 14, class: 'mesh-map-scale' }),

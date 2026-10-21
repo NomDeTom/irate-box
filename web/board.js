@@ -23,14 +23,14 @@ const notes = [threadForm, replyForm].map((form) => {
   form.after(n);
   return n;
 });
-function applyPosting(p) {
-  if (!p) return;
-  marks = p.marks;
-  const closed = p.who === 'off' || (p.who === 'users' && !p.me);
+function applyPosting(posting) {
+  if (!posting) return;
+  marks = posting.marks;
+  const closed = posting.who === 'off' || (posting.who === 'users' && !posting.me);
   [threadForm, replyForm].forEach((form, i) => {
     form.hidden = closed;
     notes[i].replaceChildren();
-    if (p.who === 'off') notes[i].textContent = 'Posting is disabled.';
+    if (posting.who === 'off') notes[i].textContent = 'Posting is disabled.';
     else if (closed) {
       const link = document.createElement('a'); link.href = `/account.html?next=${encodeURIComponent(location.pathname)}`; link.textContent = 'Sign in';
       notes[i].append(link, ' to post. Only users can post here.');
@@ -38,8 +38,8 @@ function applyPosting(p) {
   });
   for (const id of ['t-name', 'r-name']) {
     const el = document.getElementById(id);
-    el.readOnly = !!p.me;
-    if (p.me) el.value = p.me;
+    el.readOnly = !!posting.me;
+    if (posting.me) el.value = posting.me;
   }
 }
 const mark = (x) => (x.account && marks ? '<span class="verified" title="Posted by a signed-in account">✓</span>' : '');
@@ -85,11 +85,11 @@ function renderThread(data) {
   applyPosting(data.posting);
   const t = data.thread;
   titleEl.textContent = t.title;
-  postsEl.innerHTML = t.posts.map((p, i) => `
-    <div class="post${i === 0 ? ' op' : ''}" style="--author-hue:${hueOf(p, 'author')}">
-      <span class="author">${esc(p.author)}</span>${mark(p)}
-      <span class="time">${formatAge(data.now - p.created)} ago</span>
-      <div class="text">${mdInline(p.text)}</div>
+  postsEl.innerHTML = t.posts.map((post, i) => `
+    <div class="post${i === 0 ? ' op' : ''}" style="--author-hue:${hueOf(post, 'author')}">
+      <span class="author">${esc(post.author)}</span>${mark(post)}
+      <span class="time">${formatAge(data.now - post.created)} ago</span>
+      <div class="text">${mdInline(post.text)}</div>
     </div>`).join('');
   // A ⚑ to report each post, not on one already hidden for a report.
   if (typeof reportButton === 'function') postsEl.querySelectorAll('.post').forEach((el, i) => {

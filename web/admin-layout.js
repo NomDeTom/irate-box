@@ -71,17 +71,17 @@ const AL = (() => {
     const ids = def.sections.filter((id) => sections.has(id) && !placed.has(id));
     if (!ids.length && !def.empty) return null;
     const id = 'page-' + (def.id || ids[0] || def.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
-    const p = el('section', { class: 'admin-page', id, 'data-art': def.art || SECTION_ART[ids[0]] || group.art || '',
+    const adminPage = el('section', { class: 'admin-page', id, 'data-art': def.art || SECTION_ART[ids[0]] || group.art || '',
       'aria-label': def.title }, el('h2', { class: 'admin-page-title', text: def.title }));
-    if (ids.length === 1 && !def.app) p.classList.add('solo');  // an app's page keeps the app's name over its sections
-    ids.forEach((sid) => { placed.add(sid); p.append(sections.get(sid)); });
+    if (ids.length === 1 && !def.app) adminPage.classList.add('solo');  // an app's page keeps the app's name over its sections
+    ids.forEach((sid) => { placed.add(sid); adminPage.append(sections.get(sid)); });
     // A section headed with the page's own title (Git on Git's page) doesn't say it twice: its
     // heading stays, for its aria-labelledby, but isn't shown.
-    p.querySelectorAll(':scope > .admin-pane > h2').forEach((h) => h.classList.toggle('same-as-page', !p.classList.contains('solo') && h.textContent.trim() === def.title));
-    p.hidden = true;
-    main.append(p);
+    adminPage.querySelectorAll(':scope > .admin-pane > h2').forEach((h) => h.classList.toggle('same-as-page', !adminPage.classList.contains('solo') && h.textContent.trim() === def.title));
+    adminPage.hidden = true;
+    main.append(adminPage);
     const link = el('a', { href: '#' + (def.app ? id : ids[0] || id), 'data-page': id }, def.icon ? el('span', { class: 'side-icon', 'aria-hidden': 'true', text: def.icon }) : null, def.title);
-    const entry = { id, el: p, link, title: def.title, group: group.name };
+    const entry = { id, el: adminPage, link, title: def.title, group: group.name };
     pages.push(entry);
     return entry;
   }
@@ -144,7 +144,7 @@ const AL = (() => {
     auto = !auto;
     store(AUTO_KEY, auto);
     autoLabel();
-    const cur = pages.find((p) => p.link.getAttribute('aria-current') === 'page');
+    const cur = pages.find((adminPage) => adminPage.link.getAttribute('aria-current') === 'page');
     fold(cur ? cur.group : null);
   });
   autoLabel();
@@ -155,7 +155,7 @@ const AL = (() => {
   function build(apps) {
     list.replaceChildren();
     groups.clear();
-    pages.forEach((p) => p.el.remove());
+    pages.forEach((adminPage) => adminPage.el.remove());
     pages.length = 0;
     placed.clear();
     for (const g of LAYOUT) {
@@ -194,7 +194,7 @@ const AL = (() => {
                 el('p', { class: 'setting-desc', text: 'Loading installation status.' }))) : null), true));
           }
           const entry = page({ ...g, art: app.art || g.art }, { id: 'app-' + app.id, app: app.id, title: app.name, icon: firstGlyph(app.icon), sections: ids, empty: false });
-          if (entry && g.under) entry.parent = fixed.find((p) => p.el.querySelector('#' + g.under)) || null;
+          if (entry && g.under) entry.parent = fixed.find((adminPage) => adminPage.el.querySelector('#' + g.under)) || null;
           if (entry) entries.push(entry);
         }
       }
@@ -223,15 +223,15 @@ const AL = (() => {
   // The page for an address: the page itself, or the one holding the section it names.
   function pageFor(hash) {
     const target = hash && document.getElementById(hash.slice(1));
-    const p = target && (target.classList.contains('admin-page') ? target : target.closest('.admin-page'));
-    return { page: pages.find((x) => x.el === p) || pages[0], target };
+    const adminPage = target && (target.classList.contains('admin-page') ? target : target.closest('.admin-page'));
+    return { page: pages.find((x) => x.el === adminPage) || pages[0], target };
   }
   function show() {
     if (!pages.length) return;
     const { page: cur, target } = pageFor(location.hash);
-    pages.forEach((p) => { p.el.hidden = p !== cur; });
+    pages.forEach((adminPage) => { adminPage.el.hidden = adminPage !== cur; });
     // A page without a sidebar link of its own (a folder's) lights the link it opens from.
-    pages.forEach((p) => { if (p === cur || p === cur.parent) p.link.setAttribute('aria-current', 'page'); else p.link.removeAttribute('aria-current'); });
+    pages.forEach((adminPage) => { if (adminPage === cur || adminPage === cur.parent) adminPage.link.setAttribute('aria-current', 'page'); else adminPage.link.removeAttribute('aria-current'); });
     main.dataset.art = cur.el.dataset.art || '';
     fold(cur.group);
     document.getElementById('admin-current').textContent = cur.title;
@@ -246,8 +246,8 @@ const AL = (() => {
   // Is a section on the page showing? (admin.js's loaders that wait until their section is seen.)
   function shown(id) {
     const section = document.getElementById(id);
-    const p = section && section.closest('.admin-page');
-    return !!p && !p.hidden;
+    const adminPage = section && section.closest('.admin-page');
+    return !!adminPage && !adminPage.hidden;
   }
   // A word beside a section's sidebar entry ("new", "ready", a count): on its page's entry, the
   // first section's word that has one.
@@ -258,31 +258,31 @@ const AL = (() => {
   }
   function paint(id) {
     const section = document.getElementById(id);
-    const p = section && pages.find((x) => x.el === (section.classList.contains('admin-page') ? section : section.closest('.admin-page')));
-    if (!p) return;
-    const ids = [...p.el.querySelectorAll(':scope > .admin-pane')].map((x) => x.id);
+    const adminPage = section && pages.find((x) => x.el === (section.classList.contains('admin-page') ? section : section.closest('.admin-page')));
+    if (!adminPage) return;
+    const ids = [...adminPage.el.querySelectorAll(':scope > .admin-pane')].map((x) => x.id);
     const word = ids.map((x) => badges[x]).find(Boolean);
-    if (word) p.link.dataset.badge = word; else delete p.link.dataset.badge;
-    rollUp(p.group);
+    if (word) adminPage.link.dataset.badge = word; else delete adminPage.link.dataset.badge;
+    rollUp(adminPage.group);
   }
 
   // Hide or show the sidebar entry of the page holding a section (kept across rebuilds).
   function hide(id, yes) {
     if (yes) hiddenLinks.add(id); else hiddenLinks.delete(id);
     const section = document.getElementById(id);
-    const p = section && pages.find((x) => x.el === section.closest('.admin-page'));
-    if (p) { p.link.hidden = !!yes; rollUp(p.group); }
+    const adminPage = section && pages.find((x) => x.el === section.closest('.admin-page'));
+    if (adminPage) { adminPage.link.hidden = !!yes; rollUp(adminPage.group); }
   }
 
   // ---- Unsaved changes (AW.unsaved: the sections changed and not saved) ----
   // A mark on the sidebar entry of each page holding one, and on a group's head, so folding doesn't hide it.
-  const unsavedOn = (p) => (typeof AW === 'undefined' ? [] : AW.unsaved().filter((x) => x.el && p.el.contains(x.el)));
+  const unsavedOn = (adminPage) => (typeof AW === 'undefined' ? [] : AW.unsaved().filter((x) => x.el && adminPage.el.contains(x.el)));
   function markUnsaved() {
-    for (const p of pages) {
-      const these = unsavedOn(p);
-      p.link.classList.toggle('unsaved', !!these.length);
-      if (these.length) p.link.title = `Unsaved changes: ${these.map((x) => x.label || 'a setting').join(', ')}`;
-      else p.link.removeAttribute('title');
+    for (const adminPage of pages) {
+      const these = unsavedOn(adminPage);
+      adminPage.link.classList.toggle('unsaved', !!these.length);
+      if (these.length) adminPage.link.title = `Unsaved changes: ${these.map((x) => x.label || 'a setting').join(', ')}`;
+      else adminPage.link.removeAttribute('title');
     }
     for (const g of groups.values()) g.head.classList.toggle('unsaved', !!g.box.querySelector('a.unsaved:not([hidden])'));
   }
@@ -322,6 +322,6 @@ const AL = (() => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
   return { LAYOUT, show, groups: () => groups, badges: () => ({ ...badges }), onBadge: (callback) => onBadge.push(callback),
-    titleOf: (id) => { const section = document.getElementById(id), p = section && pages.find((x) => x.el === section.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (callback) => onBuild.push(callback), pages: () => pages.slice(), isBuilt: () => built, apps: () => appList };
+    titleOf: (id) => { const section = document.getElementById(id), adminPage = section && pages.find((x) => x.el === section.closest('.admin-page')); return adminPage ? adminPage.title : id; }, shown, badge, hide, ready, onBuild: (callback) => onBuild.push(callback), pages: () => pages.slice(), isBuilt: () => built, apps: () => appList };
 })();
 if (typeof window !== 'undefined') window.AL = AL;
