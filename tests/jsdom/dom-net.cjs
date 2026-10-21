@@ -42,6 +42,10 @@ w.fetch = async (u, opts = {}) => {
       choices: ['roam', 'no-scan', 'lock'], why: {}, hotspot_shares: true };
     // The watchdog's report, with a few events, for the event log.
     const now = Math.floor(Date.now() / 1000);
+    // The radio's tests (radiotests.py): one run, one not.
+    data.inventory.radio_tests = { wlan0: { key: 'k', can: ['radio-reset', 'follows-roam'],
+      questions: { 'radio-reset': 'Does it come back after a reset?', 'follows-roam': 'Does the hotspot follow a roam?' },
+      found: { 'radio-reset': { at: now - 86400, detail: 'it came back in 40 s' } } } };
     data.uplink = data.uplink || { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager',
       repairs: ['reconnect'], chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} },
       events: [{ at: now - 600, text: 'wlan0 down: the gateway missed 3 checks' }, { at: now - 540, text: 'Reconnected wlan0 (nmcli device connect)' },
@@ -65,17 +69,19 @@ setTimeout(() => {
   check('a card per device', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('wlan0'), cards.length);
   const card = cards[0] ? cards[0].textContent : '';
   check('what it is, in words', /USB WiFi adapter, driver aic8800/.test(card), card.slice(0, 200));
-  check('what it is doing, with the signal in words', /Connected to ExampleWiFi\d*, channel \d+ \(2\.4 GHz\), signal -\d+ dBm \((excellent|good|fair|weak|poor)\)/.test(card), card);
+  check('what it is doing, with the signal in words', /Current connection:? ?ExampleWiFi\d*, channel \d+ \(2\.4 GHz\), signal -\d+ dBm \((excellent|good|fair|weak|poor)\)/.test(card), card);
+  check('Radio tests: each with its result, or Not run', /Radio tests/.test(card) && /Does it come back after a reset\? Tested [^:]+: it came back in 40 s\./.test(card)
+    && /Does the hotspot follow a roam\? Not run\./.test(card) && !/Tested on this radio/.test(card), card);
   check('managed by, explained', /NetworkManager, the system's own network settings/.test(card));
   check('the hotspot: yes, with conditions', /Yes, with conditions \(through networkmanager\)/.test(card));
   const conds = cards[0] ? [...cards[0].querySelectorAll('.net-conditions li')].map((li) => li.className) : [];
   check('its conditions one per line, untested marked', conds.join(' ') === 'cond-how cond-limit cond-untested', conds.join(' '));
-  const own = cards[0] ? [...cards[0].querySelectorAll('.net-facts li')].length : 0;
+  const own = cards[0] ? [...cards[0].querySelectorAll('.net-facts:not(.radio-tests) li')].length : 0;
   check('its own findings on its card (3): to review, then what is known', own === 3, own);
   // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
   // A device's uptime is on the Status tab, with the link it belongs to.
-  check('the card in sections: what, now, managed by, the hotspot, to review, known about it', secs.length === 6
+  check('the card in sections: what, current connection, managed by, the hotspot, radio tests, to review, known about it', secs.length === 7
     && secs.every((n) => n.querySelector('.net-line, .net-facts')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];

@@ -7452,10 +7452,10 @@ function radioTests(inv, iface, section, line) {
   if (!t || !(t.can || []).length) return [];
   return [
     section(
-      line("Tested on this radio", ""),
+      line("Radio tests", ""),
       el(
         "ul",
-        { className: "net-facts" },
+        { className: "net-facts radio-tests" },
         ...t.can.map((exp) => {
           const got = (t.found || {})[exp];
           return el(
@@ -7465,7 +7465,7 @@ function radioTests(inv, iface, section, line) {
             " ",
             got
               ? `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}. `
-              : "Not tested yet. ",
+              : "Not run. ",
             radioTestButton(
               iface,
               exp,
@@ -7652,7 +7652,8 @@ function deviceCard(inv, d, wifi, hazards) {
             ? "5 GHz"
             : "6 GHz"
         : "";
-      now = `Connected to ${l.ssid}, channel ${l.channel}${band ? ` (${band})` : ""}, signal ${l.signal} dBm (${signalWords(l.signal)}).`;
+      // Under "Current connection": the network's name first, not "Connected to" again.
+      now = `${l.ssid}, channel ${l.channel}${band ? ` (${band})` : ""}, signal ${l.signal} dBm (${signalWords(l.signal)}).`;
     } else if (d.type === "AP") now = "Running a hotspot.";
     else now = "Not connected to a network.";
   } else {
@@ -7672,7 +7673,7 @@ function deviceCard(inv, d, wifi, hazards) {
   const kids = [
     netHead(d.iface, [kind]),
     section(line("Device type", what || "—")),
-    section(line("Now", now)),
+    section(line("Current connection", now)),
     section(line("Connection manager", managed)),
   ];
   if (wifi) {
@@ -7948,7 +7949,7 @@ function drawNetTabs(data, inv, u) {
           "carrier" in d ? "Wired" : "WiFi",
           up && up.iface === d.iface ? "The box's link" : null,
         ]),
-        netLine("Now", linkNow(inv, d)),
+        netLine("Current connection", linkNow(inv, d)),
         uptimeSection(d.iface),
       ),
     ),
