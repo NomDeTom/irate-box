@@ -521,7 +521,18 @@ def recovery(iface):
 # --- putting back, and the run --------------------------------------------------------------------------
 
 
-def cleanup(home_profile):
+def home_device(profile):
+    """The radio a profile is up on now, so it goes back there: a profile with no interface name of its own
+    (netplan's) comes up on whichever radio NetworkManager picks, which the soak once left on another."""
+    devices = run("nmcli", "-g", "GENERAL.DEVICES", "connection", "show", profile)[1].split(",")
+    return devices[0].strip() or None
+
+
+def home_up(profile, device):
+    run("nmcli", "--wait", "45", "connection", "up", profile, *(["ifname", device] if device else []), timeout=60)
+
+
+def cleanup(home_profile, device=None):
     """Whatever a killed run left: the namespace (its radios back), temporary profiles, unmanaged radios."""
     if NETNS in run("ip", "netns", "list")[1]:
         leave_namespace("")
@@ -536,7 +547,7 @@ def cleanup(home_profile):
         if path.name.startswith("wlan"):
             run(IW, "dev", path.name, "del")
     if home_profile:
-        run("nmcli", "--wait", "45", "connection", "up", home_profile, timeout=60)
+        home_up(home_profile, device)
 
 
 def markdown(report):
@@ -582,7 +593,7 @@ def main():
     if os.geteuid():
         sys.exit("run as root")
     if args.cleanup:
-        cleanup(args.home)
+        cleanup(args.home, args.radios)
         return
     tests = set(args.tests.split(","))
     radios = (
@@ -591,6 +602,7 @@ def main():
         else sorted(path.parent.name for path in (SYS / "class/net").glob("*/phy80211"))
     )
     home = home_network(args.home) if args.home else (None, None)
+    home_on = home_device(args.home) if args.home else None
     report = {
         "board": read("/proc/device-tree/model").rstrip("\x00") or "unknown board",
         "kernel": run("uname", "-r")[1],
@@ -623,23 +635,22 @@ def main():
                         say(f"pair {ap_iface} -> {client_iface}")
                         report["pairs"].append(pair(ap_iface, client_iface, args.seconds))
                         if args.home:
-                            run("nmcli", "--wait", "45", "connection", "up", args.home, timeout=60)
-        if "soak" in tests and can_host:
-            ap_iface = can_host[0]
-            others = [
-                iface for iface in radios if iface != ap_iface and not (args.home and connected_to(iface, home[0]))
-            ]
-            if others:
-                home_iface = next((iface for iface in radios if home[0] and connected_to(iface, home[0])), None)
-                say(f"soak {ap_iface} -> {others[0]} for {args.soak_minutes} min")
-                report["soak"] = soak(ap_iface, others[0], home_iface, args.soak_minutes)
+                            home_up(args.home, home_on)
+        # The soak's pair leaves the box's own link alone, so the link is measured beside it.
+        spare = [iface for iface in radios if iface != home_on]
+        hosts = [iface for iface in can_host if iface in spare]
+        if "soak" in tests and hosts:
+            joiners = [iface for iface in spare if iface != hosts[0]]
+            if joiners:
+                say(f"soak {hosts[0]} -> {joiners[0]} for {args.soak_minutes} min")
+                report["soak"] = soak(hosts[0], joiners[0], home_on, args.soak_minutes)
         if "recovery" in tests:
             for iface in radios:
                 say(f"recovery {iface}")
                 report["radios"][iface]["recovery"] = recovery(iface)
                 time.sleep(5)
     finally:
-        cleanup(args.home)
+        cleanup(args.home, home_on)
         report["finished"] = time.strftime("%Y-%m-%d %H:%M:%S")
         if args.json:
             Path(args.json).write_text(json.dumps(report, indent=1))
