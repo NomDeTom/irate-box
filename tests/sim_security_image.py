@@ -89,6 +89,7 @@ os.environ.update(
     HUB_RAMLOG_DEFAULT=str(T / "ramlog"),
     HUB_JOURNALD_DROPIN=str(T / "journald.conf.d" / "irate-box.conf"),
     HUB_LOG_DIR=str(T / "log"),
+    HUB_SSHD_DROPIN=str(T / "sshd_config.d" / "01-irate-box.conf"),
 )
 os.environ.update(
     HUB_ETC_DIR=str(T / "etc"),
@@ -140,7 +141,9 @@ check(
     f["group-docker"]["status"] == "warn"
     and f["group-docker"]["evidence"] == ["lyra"]
     and said(f["group-docker"]) == {"group.members", "group-docker.why", "group.fix"}
-    and [a["choice"] for a in f["group-docker"]["actions"]] == ["group-drop:lyra@docker"],
+    # a setting per account: in the group (as now), or not
+    and [(a["choice"], a["on"]) for a in f["group-docker"]["actions"]]
+    == [("group-undo:lyra@docker", True), ("group-drop:lyra@docker", False)],
     f["group-docker"],
 )
 check("disk: lyra listed", f["group-disk"]["status"] == "warn")
@@ -283,8 +286,10 @@ check(
 )
 f = findings()
 check(
-    "docker: svc only (no login), so ok, with Put back",
-    f["group-docker"]["status"] == "ok" and f["group-docker"]["actions"][0]["choice"] == "group-undo:lyra@docker",
+    "docker: svc only (no login), so ok; lyra still listed, not in it, with In the group to put back",
+    f["group-docker"]["status"] == "ok"
+    and [(a["choice"], a["on"]) for a in f["group-docker"]["actions"]]
+    == [("group-undo:lyra@docker", False), ("group-drop:lyra@docker", True)],
     f["group-docker"],
 )
 for bad in (
@@ -568,7 +573,8 @@ check(
     "ssh forwarding on (the image's default): a warning naming which, with the offer",
     on["ssh-forwarding"]["status"] == "warn"
     and on["ssh-forwarding"]["evidence"] == ["allowtcpforwarding yes", "x11forwarding yes"]
-    and on["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-off",
+    and [(a["choice"], a["on"]) for a in on["ssh-forwarding"]["actions"]]
+    == [("ssh-forwarding-on", True), ("ssh-forwarding-off", False)],
     on["ssh-forwarding"],
 )
 off = sf(
@@ -585,10 +591,49 @@ check(
     "  off by this page: ok, with Undo",
     off["ssh-forwarding"]["status"] == "ok" and off["ssh-forwarding"]["actions"][0]["choice"] == "ssh-forwarding-undo",
 )
+off_image = sf(
+    {
+        "permitrootlogin": "no",
+        "passwordauthentication": "no",
+        "allowtcpforwarding": "no",
+        "allowagentforwarding": "no",
+        "x11forwarding": "no",
+    }
+)
 check(
-    "  undo_all knows it, fix() takes it",
-    "ssh-forwarding-undo" in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1]
-    and '"ssh-forwarding-off", "ssh-forwarding-undo"' in (REPO / "irate_box/root/security.py").read_text(),
+    "  off by the image: both values still offered, On setting it here (not a lone Undo, nor nothing)",
+    [(a["choice"], a["on"]) for a in off_image["ssh-forwarding"]["actions"]]
+    == [("ssh-forwarding-on", False), ("ssh-forwarding-off", True)]
+    and [a["choice"] for a in off_image["ssh-password"]["actions"]] == ["ssh-password-on", "ssh-password-off"],
+    off_image["ssh-forwarding"],
+)
+drop = Path(os.environ["HUB_SSHD_DROPIN"])
+rec = {}
+was_keys, security.keys_on_box = security.keys_on_box, lambda: ["lyra"]  # a key, so keys only is allowed
+security._ssh(rec, "forwarding", "on")
+security._ssh(rec, "password", True)
+security.keys_on_box = was_keys
+check(
+    "  set on here: the drop-in says yes for forwarding and no for passwords, both recorded",
+    drop.read_text().splitlines()[1:]
+    == [
+        "PasswordAuthentication no",
+        "KbdInteractiveAuthentication no",
+        "AllowTcpForwarding yes",
+        "AllowAgentForwarding yes",
+        "X11Forwarding yes",
+    ]
+    and set(rec["ssh_on"]) == {"forwarding"}
+    and set(rec["ssh"]) == {"password"},
+    (drop.read_text(), rec),
+)
+security._ssh(rec, "forwarding", False)
+security._ssh(rec, "password", False)
+check("  and undone: no drop-in, nothing recorded", not drop.exists() and rec == {}, rec)
+check(
+    "  undo_all knows both, fix() takes on, off and undo",
+    '"ssh_on"' in (REPO / "irate_box/root/security.py").read_text().split("def undo_all")[1]
+    and 'for m in ("off", "on", "undo")' in (REPO / "irate_box/root/security.py").read_text(),
 )
 
 # The gates: a NOPASSWD rule for an account sshd lets in by

@@ -181,13 +181,13 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
   // Each line of the scan where it belongs, in the same shape.
   const ids = (sel) => [...d.querySelectorAll(`${sel} .ftitle`)].map(t).join('|');
-  const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .fhead > .ftitle`)].map((n) => n.textContent.trim()).join('|');
+  const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .setting-name`)].map((n) => n.textContent.trim()).join('|');
   check('Security: the choices by subject, in the scan\'s order', titlesIn('#security-exposure') === 'Cockpit' && titlesIn('#security-login') === 'SSH password login|Passwordless sudo',
     `${titlesIn('#security-exposure')} / ${titlesIn('#security-login')}`);
-  check('  each says what it offers or that it is set (one fix here: To fix), beside its title', /^To fix$/.test(t(d.getElementById('sec-ssh-password').querySelector('.fhead > .fstate'))));
+  check('  settings, not findings: no status word on any (To fix, To select, Set), the doctor named instead',
+    !d.querySelector('#security-findings .fstate') && !!d.getElementById('sec-ssh-password').querySelector('a[href="#secdoctor"]'));
   const sudoCard = d.getElementById('sec-sudo-nopasswd');
-  check('  one fix and no choice: said as To fix, not To select', !!sudoCard && /^To fix$/.test(t(sudoCard.querySelector('.fstate')))
-    && !/To select/.test(t(sudoCard)), sudoCard && t(sudoCard));
+  check('  passwordless sudo: its switch, said as it is', !!sudoCard && /Passwordless sudo: On/.test(t(sudoCard)), sudoCard && t(sudoCard));
   {
     // The Security doctor: a choice is linked to where it is made; a repair with one right answer stays a button.
     const ssh = w.jointDo({ page: ['ssh-password'], do: null }, sec, false).controls;

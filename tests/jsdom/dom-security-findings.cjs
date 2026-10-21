@@ -55,9 +55,10 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   check('a choice card: what was found, then why it matters, each a line of its own',
     pw && JSON.stringify(lines(pw).slice(0, 2)) === JSON.stringify(['SSH accepts passwords.', 'Any device on the network can try to guess a password.']), pw && lines(pw));
   check('  the note, its list of accounts said whole', /These accounts have a key for SSH on the box: lyra and pi\./.test(t(pw)), t(pw));
-  check('  the fix said even with a button to carry it out, as the recommended action',
-    /Recommended action: Sign in with your key once to make sure that it works\. Then disable password sign-in\./.test(t(pw)), t(pw));
-  check('  the button labelled from its message', [...pw.querySelectorAll('button')].some((b) => t(b) === 'Disable password sign-in'));
+  check('  a setting, not a card to act on: both values as options, the one in effect marked; no recommended action',
+    [...pw.querySelectorAll('.chip')].map((b) => `${t(b)}${b.classList.contains('selected') ? '*' : ''}`).join('|') === 'A password or a key*|A key only'
+    && !/Recommended action/.test(t(pw)), t(pw));
+  check('  the Security doctor named for what it makes of it', !!pw.querySelector('a[href="#secdoctor"]'));
 
   const ck = card('port-tcp-9090');
   check('Cockpit: its evidence (port, address, unit) as data, one item each',
