@@ -215,7 +215,7 @@ const type = (input, value) => {
   await wait();
   confirms = true;
   w.renderGit = realGit;
-  check("Git: Cancel at a move's question redraws it as it is", redrawn === 1 && posted.every(([u]) => u !== '/admin/git'));
+  check("Git: a move acts at once, no question (it can be moved back)", posted.some(([u, b]) => u === '/admin/git' && b.action === 'move'), posted);
 
   // 9. A switch that acts at once says when.
   answer['/admin/settings'] = (b) => [200, b];

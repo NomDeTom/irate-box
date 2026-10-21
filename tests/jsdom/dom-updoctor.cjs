@@ -85,16 +85,10 @@ check('the cache finding has a Clear the update cache button, and the last check
   doctorButton('Clear the update cache').length === 1 && doctorButton('Install anyway').length === 1, t('#doctor-findings .finding'));
 const asks = [];
 const sentBefore = posted.length;
-w.confirm = (text) => { asks.push(text); return false; };
-doctorButton('Clear the update cache')[0].click();
-doctorButton('Install anyway')[0].click();
-check('  declined, they send nothing', posted.length === sentBefore && asks.length === 2, [posted.length - sentBefore, asks]);
-check('  Install anyway asks once, listing exactly the checks it skips', asks.filter((a) => /Python files compile and Shell syntax/.test(a)).length === 1
-  && /Delete the cached copy/.test(asks[0]), asks);
 w.confirm = (text) => { asks.push(text); return true; };
 doctorButton('Clear the update cache')[0].click();
 doctorButton('Install anyway')[0].click();
-check('  accepted, each asks once more (Install anyway is not asked a second time by the page)', asks.length === 4, asks);
+check('  pressed: each acts at once, no question (an action that can be undone)', posted.length - sentBefore === 2 && asks.length === 0, [posted.length - sentBefore, asks]);
 w.eval(`renderUpdoctor({ at: 1790950000, findings: [
   { id: 'last-check', title: 'Last update check', status: 'problem', summary: 'The downloaded version failed 1 check: Signed.' }] })`);
 check('Install anyway is absent when the finding does not offer it (signing or installer syntax failed)', !doctorButton('Install anyway').length

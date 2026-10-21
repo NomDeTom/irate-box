@@ -357,8 +357,7 @@ async function libPost(body) {
 // at the top. "Already running" (409) stays until the librarian is free, then goes.
 let libNote = null; // { key, text, busy }
 
-async function libAct(key, body, confirmText) {
-  if (confirmText && !confirm(confirmText)) return;
+async function libAct(key, body) {
   libNote = null;
   try {
     renderLibrary(await libPost(body));
@@ -397,12 +396,7 @@ function sourceRow(src, st, busy) {
       disabled: busy || !!opts.off,
       title: opts.title || "",
       onclick: () => {
-        if (
-          ["fetch", "update"].includes(body.action) &&
-          !meteredOk(`The download for ${label}`)
-        )
-          return;
-        libAct(key, body, confirmText);
+        libAct(key, body);
       },
     });
   // Check finds a newer version; Download downloads and checks it beside the book in use;
@@ -1262,12 +1256,6 @@ document.querySelectorAll("[data-bulk]").forEach((b) =>
     // Every selected name, on any page: the librarian skips one with no source (put here by hand).
     const names = [...bookSel];
     if (b.dataset.bulk === "untrack") {
-      if (
-        !confirm(
-          `Stop tracking ${names.length} book${names.length === 1 ? "" : "s"}? The books stay in the library.`,
-        )
-      )
-        return;
       for (const name of names) {
         try {
           await libPost({ action: "remove", name });
@@ -1545,8 +1533,7 @@ async function loadPackages() {
   );
 }
 // True once the root helper has the request; false when cancelled or refused (said under the package).
-async function pkgAct(body, confirmText) {
-  if (confirmText && !confirm(confirmText)) return false;
+async function pkgAct(body) {
   try {
     pkgWaiting = {
       id: (await postJSON("/admin/packages", body)).id,
@@ -2520,16 +2507,6 @@ async function loadBox() {
 }
 
 async function control(s, op) {
-  if (
-    s.unit === "irate-box.service" &&
-    !confirm("Restart the hub server? This page reconnects automatically.")
-  )
-    return;
-  if (
-    op === "stop" &&
-    !confirm(`Stop ${s.name}? Its app is unavailable until you start it again.`)
-  )
-    return;
   try {
     waitingFor = {
       id: (await postJSON("/admin/control", { unit: s.unit, op })).id,
@@ -2546,7 +2523,7 @@ async function control(s, op) {
 function renderModeration(data) {
   const now = data.now;
   const del = (body, what) => async () => {
-    if (!confirm(`Delete ${what}?`)) return;
+    if (!await AW.confirmHere(`Delete ${what}?`, { anchor: e.currentTarget })) return;
     try {
       renderModeration(await postJSON("/admin/moderation", body));
     } catch (err) {
@@ -2901,9 +2878,8 @@ function renderStore(data) {
         `Clear ${NS_LABEL[ns]}`,
         async () => {
           if (
-            !confirm(
-              `Delete all ${NS_LABEL[ns]}? This cannot be undone. Links to them stop working.`,
-            )
+            !await AW.confirmHere(
+              `Delete all ${NS_LABEL[ns]}? This cannot be undone. Links to them stop working.`, { anchor: e.currentTarget })
           )
             return;
           try {
@@ -2965,8 +2941,8 @@ function renderStore(data) {
               ),
               actionButton(
                 "Delete",
-                () => {
-                  if (confirm(`Delete "${s.name}"?`))
+                async (e) => {
+                  if (await AW.confirmHere(`Delete "${s.name}"?`, { anchor: e.currentTarget }))
                     act({ action: "delete", id: s.id })();
                 },
                 { className: "small" },
@@ -3214,7 +3190,6 @@ function renderUpdoctor(d, stale) {
         className: "action-btn",
         textContent: a.label,
         onclick: () => {
-          if (a.confirm && !confirm(a.confirm)) return;
           requestUpdate(a.choice, null, {}, true);
         },
       }),
@@ -3243,15 +3218,9 @@ function renderUpdoctor(d, stale) {
   upd.udFineCount.textContent = `(${fine.length})`;
   upd.udFine.replaceChildren(...fine.map(item));
 }
-// On a metered network (a phone's hotspot, say): scheduled updates and downloads wait, and one
-// started by hand asks first (meteredOk).
+// On a metered network (a phone's hotspot, say): scheduled updates and downloads wait; one started
+// by hand begins at once, as the note above the buttons says.
 let meteredNow = null;
-function meteredOk(what) {
-  if (!meteredNow || !meteredNow.metered) return true;
-  return confirm(
-    `The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). ${what} can use a lot of data. Continue?`,
-  );
-}
 function renderUpdate(data) {
   drawSigning(data.signing, data.results);
   const m = data.metered || {};
@@ -3261,9 +3230,9 @@ function renderUpdate(data) {
   mEl.hidden = !(meteredNow && meteredNow.metered) && !w;
   mEl.textContent = w
     ? `Scheduled updates and downloads have waited since ${new Date(w.since * 1000).toLocaleString()}. The box is on a metered network ` +
-      `(${w.connection || w.iface}, ${w.how}). They continue on another network. An update that you start here asks for approval first. To change this, mark the network as not metered in its settings (Network → WiFi).`
+      `(${w.connection || w.iface}, ${w.how}). They continue on another network. A download that you start here begins at once and can use a lot of data. To change this, mark the network as not metered in its settings (Network → WiFi).`
     : meteredNow && meteredNow.metered
-      ? `The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). Scheduled updates and downloads wait for another network.`
+      ? `The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). Scheduled updates and downloads wait for another network. A download that you start here begins at once and can use a lot of data.`
       : "";
   const s = AW.localise(data.state); // the checks' and the doctor's messages said once, in the reader's language
   const p = data.progress;
@@ -3398,11 +3367,6 @@ async function loadUpdate() {
 // fromFinding: a doctor finding's own button, which asked its question already (Install anyway names the checks it skips) and is answered beside it.
 // Install anyway is only a finding's button: the doctor offers it by the same rule the helper installs by.
 async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = false) {
-  if (
-    (action === "install" || endpoint === "install") &&
-    !confirm("Install the update now? The hub restarts during the install.")
-  )
-    return;
   try {
     updWaiting = {
       id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate, ...extra })).id,
@@ -3440,19 +3404,14 @@ async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = 
 
 upd.check.addEventListener("click", () => requestUpdate("check"));
 upd.fetch.addEventListener("click", () => {
-  if (meteredOk("Downloading the update")) requestUpdate("reach", "download");
+  requestUpdate("reach", "download");
 });
 upd.doctor.addEventListener("click", () => requestUpdate("doctor"));
 upd.clear.addEventListener("click", () => {
-  if (
-    confirm(
-      "Delete the cached copy and downloads? The next check starts again from the beginning.",
-    )
-  )
-    requestUpdate("clear-cache");
+  requestUpdate("clear-cache");
 });
 upd.install.addEventListener("click", () => {
-  if (meteredOk("Preparing and installing the update")) requestUpdate("reach", "install");
+  requestUpdate("reach", "install");
 });
 // Where updates come from (a fork, say): a section, filled with the recorded source. The repository is asked for its
 // branches (the default first, offered as choices) and how the branch this box follows stands against the installed
@@ -4010,8 +3969,7 @@ async function secAccept(key, title, yes) {
   }
 }
 let secRepair = null; // { id, label }: a repair asked from the Security doctor, answered there
-async function healthRepair(choice, label, confirmText) {
-  if (confirmText && !confirm(confirmText)) return;
+async function healthRepair(choice, label) {
   try {
     secRepair = {
       id: (await postJSON("/admin/health", { action: "fix", choice })).id,
@@ -5231,7 +5189,6 @@ const debSec = AW.form(deb.form, {
 });
 
 function secFix(fid, action) {
-  if (action.confirm && !confirm(action.confirm)) return;
   secRequest({ action: "fix", choice: action.choice }, fid);
 }
 
@@ -6222,11 +6179,7 @@ function renderClockSources(c, busy, own) {
           actionButton(
             "Restore the image's settings",
             () => {
-              if (
-                confirm(
-                  "Put the clock's sources back as the image had them? Anything this page installed is removed, and what it removed is installed again.",
-                )
-              ) {
+              {
                 clkSec.discard();
                 hlRequest(
                   { action: "fix", choice: "clock-undo" },
@@ -6375,16 +6328,18 @@ async function hlRequest(body, fid, onDone) {
   loadHealth();
 }
 
-function hlFix(fid, action) {
+// A repair acts at once; only setting the clock from this device asks, as only the administrator can
+// tell whether this device's clock is right (admin pages plan, phase 5).
+async function hlFix(fid, action) {
   let choice = action.choice;
-  let ask = action.confirm;
+  let ask = null;
   if (choice === "clock-set") {
     // This device's clock, read at the moment of the click: the box has none it can trust.
     const now = new Date();
     choice = `clock-set:${Math.round(now.getTime() / 1000)}`;
     ask = `Set the box clock to ${now.toLocaleString()} (the time of this device)? Do this only if the clock of this device is correct.`;
   }
-  if (ask && !confirm(ask)) return;
+  if (ask && !(await AW.confirmHere(ask, { label: "Set the clock" }))) return;
   hlRequest({ action: "fix", choice }, fid);
 }
 
@@ -9979,18 +9934,8 @@ function drawBackupGo() {
   }
   drawKitTotal();
 }
-bku.keys.addEventListener("change", (e) => {
-  if (
-    bku.keys.checked &&
-    !confirm(
-      "Include the Syncthing private keys? Anyone who has the file can impersonate this box to its Syncthing peers.",
-    )
-  ) {
-    bku.keys.checked = false;
-    return;
-  }
-  drawBackup();
-});
+// The tick is the choice: its label says what the file then holds, no question.
+bku.keys.addEventListener("change", () => drawBackup());
 // The kit's and the offline stick's offers: a checkbox per book, toolkit and repository, with its size.
 const pickList = (box, items, name, label) => {
   const keep = new Set(
@@ -10215,10 +10160,9 @@ bku.imageGo.addEventListener("click", async () => {
   const d = usbSticks.find((x) => x.name === bku.stick.value);
   if (
     !d ||
-    !confirm(
+    !await AW.confirmHere(
       `Write an image of the whole card to ${d.label || d.name}? The image is about ${size((bkPlan.image || {}).used)} or more. ` +
-        "On this board it can take an hour or more. The box stays in use meanwhile.",
-    )
+        "On this board it can take an hour or more. The box stays in use meanwhile.", { anchor: e.currentTarget })
   )
     return;
   try {
@@ -10303,12 +10247,6 @@ function renderKit(d) {
 }
 // Refresh export: the last export's choices again; Make the export again: when the librarian does it by itself.
 kitEl.refresh.addEventListener("click", async () => {
-  if (
-    !confirm(
-      "Make the export again, with the same choices as the last one? It replaces the current export.",
-    )
-  )
-    return;
   try {
     kitWaiting = (await postJSON("/admin/kit", { action: "refresh" })).id;
     loadKit();
@@ -10355,7 +10293,7 @@ kitEl.form.addEventListener("submit", async (e) => {
   try {
     if (f.dest.value === "stick") {
       const d = usbSticks.find((x) => x.name === stickEl.stick.value);
-      if (!d || !confirm(`Copy the export onto ${d.label || d.name}?`)) return;
+      if (!d) return;
       bkWaiting = {
         id: (
           await postJSON("/admin/usb", {
@@ -12155,8 +12093,7 @@ async function loadUsb() {
   }
 }
 
-async function usbRequest(body, at, confirmText) {
-  if (confirmText && !confirm(confirmText)) return;
+async function usbRequest(body, at) {
   try {
     usbWaiting = { id: (await postJSON("/admin/usb", body)).id, at };
     usbNote = null;
@@ -12479,9 +12416,13 @@ function repoCard(r, data) {
 
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(r, data, cls) {
-  const act = (body, confirmText, done) => async () => {
+  // Only Delete asks, on the page: a move can be moved back (admin pages plan, phase 5).
+  const act = (body, confirmText, done) => async (e) => {
     // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
-    if (confirmText && !confirm(confirmText)) {
+    if (
+      body.action === "delete" &&
+      !(await AW.confirmHere(confirmText, { anchor: e && e.currentTarget, label: "Delete" }))
+    ) {
       renderGit(gitData);
       return false;
     }
@@ -12786,8 +12727,8 @@ git.search.addEventListener("input", () => {
 
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {
-  const act = (body, confirmText) => async () => {
-    if (confirmText && !confirm(confirmText)) return;
+  // A mirror removed can be mirrored again from upstream: it acts at once.
+  const act = (body) => async () => {
     try {
       renderGit(await postJSON("/admin/git", body));
       say(
@@ -13256,8 +13197,8 @@ async function followRun() {
         ? null
         : actionButton(
             "Delete run",
-            () => {
-              if (confirm("Delete this run, its log and its artifacts?"))
+            async (e) => {
+              if (await AW.confirmHere("Delete this run, its log and its artifacts?", { anchor: e.currentTarget }))
                 ciChange(v.run, "delete");
             },
             { className: "small danger" },
@@ -13678,12 +13619,6 @@ const pickedHours = (sel) => (sel.value === "never" ? null : Number(sel.value));
 
 // True once the hub or the root helper has it; false when cancelled or refused (said in the note).
 async function kitAct(body, quiet) {
-  if (
-    body.action === "fetch" &&
-    !quiet &&
-    !meteredOk("Downloading the toolkit")
-  )
-    return false;
   try {
     const data = await postJSON("/admin/kits", body);
     if (data.id) kitsWaiting.add(data.id);
@@ -13955,12 +13890,7 @@ function kitBody(k, st, cfg, setDirty) {
         ? actionButton(
             `Roll back to ${dayOf(s.previous.fetched)}`,
             () => {
-              if (
-                confirm(
-                  `Roll back ${k.title} to the set downloaded ${dayOf(s.previous.fetched)}?${inst ? " The rollback can downgrade installed packages to those versions." : ""}`,
-                )
-              )
-                kitAct({ action: "rollback", kit: k.id });
+              kitAct({ action: "rollback", kit: k.id });
             },
             { className: "small" },
           )
@@ -13968,11 +13898,10 @@ function kitBody(k, st, cfg, setDirty) {
       s.previous
         ? actionButton(
             `Remove older set${s.previous.extra_bytes ? ` (frees ${size(s.previous.extra_bytes)})` : ""}`,
-            () => {
+            async (e) => {
               if (
-                confirm(
-                  `Remove the older set of ${k.title}, downloaded ${dayOf(s.previous.fetched)}? This frees ${size(s.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`,
-                )
+                await AW.confirmHere(
+                  `Remove the older set of ${k.title}, downloaded ${dayOf(s.previous.fetched)}? This frees ${size(s.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: e.currentTarget })
               )
                 kitAct({ action: "drop-previous", kit: k.id });
             },
@@ -13985,8 +13914,8 @@ function kitBody(k, st, cfg, setDirty) {
       k.owner
         ? actionButton(
             "Delete toolkit",
-            () => {
-              if (confirm(`Delete ${k.title} and its cache?`))
+            async (e) => {
+              if (await AW.confirmHere(`Delete ${k.title} and its cache?`, { anchor: e.currentTarget }))
                 kitAct({ action: "undefine", kit: k.id });
             },
             {
@@ -14268,7 +14197,6 @@ async function loadKitsUsb() {
                               device: d.name,
                               kit: k.kit,
                             },
-                            `Import ${k.title} from the drive? The box first checks each package file against the signed Debian package indexes.`,
                           ),
                       })
                     : null,
@@ -14293,7 +14221,6 @@ async function loadKitsUsb() {
                   onclick: () =>
                     kitsUsbAsk(
                       { action: "kit-export", device: d.name, kit: pick.value },
-                      `Copy ${pick.value} onto ${d.label || d.name}?`,
                     ),
                 }),
               )
@@ -14313,8 +14240,9 @@ async function loadKitsUsb() {
   );
   if (busy) setTimeout(loadKitsUsb, 1500);
 }
+// confirmText: only where the box cannot go on without a decision (an import with the clock unknown).
 async function kitsUsbAsk(body, confirmText) {
-  if (confirmText && !confirm(confirmText)) return;
+  if (confirmText && !(await AW.confirmHere(confirmText))) return;
   kitsUsbAsked = body;
   try {
     kitsUsbWaiting = (await postJSON("/admin/usb", body)).id;
@@ -14367,11 +14295,10 @@ document
     );
   });
 // Clear old rollback cache: every toolkit's older set at once (each kit's own Remove older set, for all).
-document.getElementById("kits-drop-all").addEventListener("click", () => {
+document.getElementById("kits-drop-all").addEventListener("click", async (e) => {
   if (
-    confirm(
-      "Remove the older set of every toolkit? This frees their cache space. Roll back is not possible until a refresh brings new versions.",
-    )
+    await AW.confirmHere(
+      "Remove the older set of every toolkit? This frees their cache space. Roll back is not possible until a refresh brings new versions.", { anchor: e.currentTarget })
   ) {
     kitAct({ action: "drop-all-previous" });
   }
@@ -14636,11 +14563,10 @@ tlsEl.own.addEventListener("submit", (e) => {
   tlsAct({ action: "import", chain: f.chain.value, key: f.key.value });
   f.key.value = ""; // not left in the page
 });
-tlsEl.again.addEventListener("click", () => {
+tlsEl.again.addEventListener("click", async (e) => {
   if (
-    confirm(
-      "Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it shows a warning about the box.",
-    )
+    await AW.confirmHere(
+      "Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it shows a warning about the box.", { anchor: e.currentTarget })
   ) {
     tlsAct({ action: "make", again: true });
   }
@@ -14993,16 +14919,8 @@ function codeBox(name, code) {
 async function acctAct(body) {
   if (
     body.action === "delete" &&
-    !confirm(
-      `Delete the account ${body.name}? This person can no longer sign in. You cannot undo this.`,
-    )
-  )
-    return false;
-  if (
-    body.action === "admin" &&
-    !confirm(
-      `Give ${body.name} the administrator role? An administrator can change every setting of the box.`,
-    )
+    !await AW.confirmHere(
+      `Delete the account ${body.name}? This person can no longer sign in. You cannot undo this.`)
   )
     return false;
   try {

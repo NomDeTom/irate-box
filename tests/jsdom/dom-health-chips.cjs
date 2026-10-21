@@ -62,7 +62,7 @@ setTimeout(() => {
   const on = d.getElementById('hl-crash-hang') && [...d.getElementById('hl-crash-hang').querySelectorAll('.chip')].find((b) => b.textContent.startsWith('On ('));
   if (on) on.click();
   setTimeout(() => {
-    check('  another chip asks first, then sends its choice', asked.length === 1 && fixes().length === 1
+    check('  another chip sends its choice at once, no question (a repair acts)', asked.length === 0 && fixes().length === 1
       && JSON.stringify(fixes()[0]).includes('crashwatch-watchdog:on'), { asked, posted });
     check('no script errors', errors.length === 0, errors);
     console.log(`failures: ${fails}`);
