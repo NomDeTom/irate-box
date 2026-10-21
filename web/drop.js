@@ -21,6 +21,7 @@
   }
   lockBox.addEventListener('change', () => localStorage.setItem('drop-lock', lockBox.checked ? '1' : '0'));
   let maxFile = 25 * 2 ** 20;
+  const notDeleted = {}; // file id → why the last Delete failed, said under its row until it succeeds
 
   by.value = localStorage.getItem('shout-name') || '';
   by.addEventListener('input', () => localStorage.setItem('shout-name', by.value));
@@ -42,6 +43,7 @@
   }
 
   async function refresh() {
+    if (list.querySelector('.aw-ask')) return; // a question is open in the list: the next poll draws it again
     try {
       const r = await fetch('/api/drop');
       const data = await r.json();
@@ -67,6 +69,7 @@
           rm.addEventListener('click', () => removeMine(f, rm));
           row.append(' ', rm);
         }
+        if (notDeleted[f.id]) row.append(span('setting-desc bad', ` ${notDeleted[f.id]}`));
         return row;
       }) : [li('setting-desc', 'No files')]));
     } catch (_) {
@@ -75,7 +78,7 @@
   }
 
   async function removeMine(f, button) {
-    if (!confirm(`Delete ${f.name} from the box?`)) return;
+    if (!(await askHere(`Delete ${f.name} from the box? This cannot be undone.`, { anchor: button, label: 'Delete' }))) return;
     const c = HubLock.change('drop', f.id, f.lock_n);
     if (!c) return;
     button.disabled = true;
@@ -83,12 +86,13 @@
       const r = await fetch(`/api/drop/${encodeURIComponent(f.id)}`, { method: 'DELETE', headers: c.headers });
       if (r.ok) {
         HubLock.forget('drop', f.id);
+        delete notDeleted[f.id];
       } else {
         const data = await r.json().catch(() => ({}));
-        alert(`File not deleted: ${data.error || `error ${r.status}`}`);
+        notDeleted[f.id] = `File not deleted: ${data.error || `error ${r.status}`}`;
       }
     } catch (_) {
-      alert('File not deleted: the connection dropped.');
+      notDeleted[f.id] = 'File not deleted: the connection dropped.';
     }
     refresh();
   }
