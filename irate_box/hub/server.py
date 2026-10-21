@@ -5780,7 +5780,9 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
                     return
-                if action == "publish":
+                if action == "again":
+                    factory.again(str(payload.get("run", "")))
+                elif action == "publish":
                     factory.publish(str(payload.get("run", "")))
                 elif action == "unpublish":
                     factory.unpublish(str(payload.get("version", "")), str(payload.get("env", "")))

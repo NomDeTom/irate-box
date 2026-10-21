@@ -347,34 +347,7 @@ def listener_findings(found, rec):
                 )
             )
         elif f["port"] == 9090 and f["unit"] and f["unit"].startswith("cockpit"):
-            out.append(
-                finding(
-                    fid,
-                    named("Cockpit"),
-                    "problem",
-                    M("port.cockpit", "Cockpit, the image's Linux web console, listens on the network."),
-                    M(
-                        "port.cockpit.why",
-                        "Its sign-in page gives root access, and every device on the network can reach it.",
-                    ),
-                    M(
-                        "port.cockpit.fix",
-                        "Nothing on the box needs Cockpit. Bind it to loopback, so that only the box reaches it, or disable it.",
-                    ),
-                    evidence=where,
-                    actions=[
-                        action("cockpit-loopback", M("port.cockpit.loopback", "Bind to loopback")),
-                        action(
-                            "cockpit-off",
-                            M("port.cockpit.off", "Stop and disable"),
-                            M(
-                                "port.cockpit.off.confirm",
-                                "Stop Cockpit and disable it? Undo puts back its previous state.",
-                            ),
-                        ),
-                    ],
-                )
-            )
+            continue  # said with Cockpit's own setting (cockpit_findings)
         elif f["port"] == 22 and f["proto"] == "tcp":
             continue  # reported with SSH's own settings below
         elif f["port"] == 5355:
@@ -510,18 +483,6 @@ def listener_findings(found, rec):
             )
         )
         out.append(finding(f"unit-{unit}", named(unit), "ok", said, actions=[action(f"unit-undo:{unit}", UNDO)]))
-    if "cockpit" in rec:
-        out.append(
-            finding(
-                "cockpit-change",
-                named("Cockpit"),
-                "ok",
-                M("cockpit.loopback-here", "Bound to loopback from this page.")
-                if rec["cockpit"]["mode"] == "loopback"
-                else M("cockpit.off-here", "Stopped and disabled from this page."),
-                actions=[action("cockpit-undo", UNDO)],
-            )
-        )
     if rec.get("llmnr"):
         group = M("port.llmnr.group", "LLMNR")
         out.append(
@@ -534,6 +495,97 @@ def listener_findings(found, rec):
             )
         )
     return out
+
+
+# --- Cockpit -----------------------------------------------------------------------------
+
+COCKPIT_MODES = ("network", "loopback", "off")
+
+
+def _cockpit_installed():
+    out = run("systemctl", "show", "-p", "LoadState", "--value", "cockpit.socket")
+    return out.returncode == 0 and out.stdout.strip() == "loaded"
+
+
+def _cockpit_ports(found):
+    return [f for f in found if f["port"] == 9090 and (f.get("unit") or "").startswith("cockpit")]
+
+
+def _cockpit_now(ports):
+    """network, loopback or off. Only listeners off loopback are found (parse_ss): one is Cockpit on the
+    network. Otherwise a socket still active listens on loopback only."""
+    if ports:
+        return "network"
+    return "loopback" if run("systemctl", "is-active", "cockpit.socket").stdout.strip() == "active" else "off"
+
+
+def cockpit_findings(found, rec):
+    """Cockpit, where the image has it: one setting, always there, with its three values (on the
+    network, on loopback only, off), the one in effect marked. The value it had before this page
+    changed it is the one Undo puts back, so choosing that one undoes."""
+    ports = _cockpit_ports(found)
+    if not ports and "cockpit" not in rec and not _cockpit_installed():
+        return []
+    now = _cockpit_now(ports)
+    ours = rec.get("cockpit")
+    before = (ours or {}).get("before", "network")  # records from before this setting: it was on the network
+    group = M("cockpit.group", "Cockpit listens")
+    labels = {
+        "network": M("cockpit.network", "On the network"),
+        "loopback": M("cockpit.loopback", "On loopback only"),
+        "off": OFF,
+    }
+    confirm = {
+        "network": M(
+            "cockpit.network.confirm",
+            "Open Cockpit to the network? Every device on the network can then reach its sign-in page, which gives root access.",
+        ),
+        "off": M("port.cockpit.off.confirm", "Stop Cockpit and disable it? Undo puts back its previous state."),
+    }
+    chips = [
+        _chip(
+            group,
+            "cockpit-undo" if ours and m == before and m != now else f"cockpit-{m}",
+            labels[m],
+            m == now,
+            None if ours and m == before else confirm.get(m),
+        )
+        for m in COCKPIT_MODES
+    ]
+    said = {
+        "network": M("port.cockpit", "Cockpit, the image's Linux web console, listens on the network."),
+        "loopback": M("cockpit.loopback-state", "Cockpit listens on loopback only. Only the box itself reaches it."),
+        "off": M("cockpit.off-state", "Cockpit is stopped and disabled."),
+    }[now]
+    if now == "network":
+        return [
+            finding(
+                "cockpit",
+                named("Cockpit"),
+                "problem",
+                said,
+                M(
+                    "port.cockpit.why",
+                    "Its sign-in page gives root access, and every device on the network can reach it.",
+                ),
+                M(
+                    "port.cockpit.fix",
+                    "Nothing on the box needs Cockpit. Bind it to loopback, so that only the box reaches it, or disable it.",
+                ),
+                evidence=_where(ports[0]) if ports else [],
+                actions=chips,
+            )
+        ]
+    return [
+        finding(
+            "cockpit",
+            named("Cockpit"),
+            "ok",
+            said,
+            notes=[M("cockpit.set-here", "Set on this page on {date}.", date=ours.get("at", ""))] if ours else [],
+            actions=chips,
+        )
+    ]
 
 
 # --- SSH ------------------------------------------------------------------------------
@@ -596,6 +648,17 @@ def keys_on_box():
     return have
 
 
+def _ssh_chips(rec, what, group, on_label, off_label, is_on, confirm_off, confirm_on=None):
+    """Both values of an SSH setting as chips, always: the one in effect marked; the other undoes what
+    this page set, or sets it here."""
+    ours = what in rec.get("ssh", {}) or what in rec.get("ssh_on", {})
+    other = f"ssh-{what}-undo" if ours else f"ssh-{what}-{'off' if is_on else 'on'}"
+    return [
+        _chip(group, other if not is_on else f"ssh-{what}-on", on_label, is_on, None if ours else confirm_on),
+        _chip(group, other if is_on else f"ssh-{what}-off", off_label, not is_on, None if ours else confirm_off),
+    ]
+
+
 def ssh_findings(settings, keys, rec):
     if settings is None:
         return [finding("ssh", M("ssh.title", "SSH"), "ok", M("ssh.none", "This box has no SSH server."))]
@@ -649,6 +712,22 @@ def ssh_findings(settings, keys, rec):
         )
     title = M("ssh-password.title", "SSH password sign-in")
     pw = settings.get("passwordauthentication", "yes")
+    pw_chips = _ssh_chips(
+        rec,
+        "password",
+        M("ssh-password.group", "SSH sign-in with"),
+        M("ssh-password.chip-on", "A password or a key"),
+        M("ssh-password.chip-off", "A key only"),
+        pw == "yes",
+        M(
+            "ssh-password.off.confirm",
+            "Disable SSH password sign-in? Then only keys work, for {accounts}.",
+            accounts=keys,
+        )
+        if keys
+        else None,
+        M("ssh-password.on.confirm", "Enable SSH password sign-in? Then any device on the network can try passwords."),
+    )
     if pw == "yes" and keys:
         out.append(
             finding(
@@ -672,17 +751,7 @@ def ssh_findings(settings, keys, rec):
                         accounts=keys,
                     )
                 ],
-                actions=[
-                    action(
-                        "ssh-password-off",
-                        M("ssh-password.off", "Disable password sign-in"),
-                        M(
-                            "ssh-password.off.confirm",
-                            "Disable SSH password sign-in? Then only keys work, for {accounts}.",
-                            accounts=keys,
-                        ),
-                    )
-                ],
+                actions=pw_chips,
             )
         )
     elif pw == "yes":
@@ -705,6 +774,7 @@ def ssh_findings(settings, keys, rec):
                         "If you disable passwords now, nobody can sign in over SSH.",
                     )
                 ],
+                actions=pw_chips,
             )
         )
     else:
@@ -714,7 +784,7 @@ def ssh_findings(settings, keys, rec):
                 title,
                 "ok",
                 M("ssh-password.keys-only", "SSH accepts keys only, not passwords."),
-                actions=[action("ssh-password-undo", UNDO)] if "password" in ours else [],
+                actions=pw_chips,
             )
         )
     # Forwarding: Debian's and Armbian's defaults leave TCP, agent
@@ -724,6 +794,23 @@ def ssh_findings(settings, keys, rec):
     fwd = [
         k for k in ("allowtcpforwarding", "allowagentforwarding", "x11forwarding") if settings.get(k, "yes") == "yes"
     ]
+    fwd_chips = _ssh_chips(
+        rec,
+        "forwarding",
+        M("ssh-forwarding.group", "Forwarding through SSH"),
+        ON,
+        OFF,
+        bool(fwd),
+        M(
+            "ssh-forwarding.off.confirm",
+            "Disable SSH TCP, agent and X11 forwarding? Sign-ins and copies "
+            "with scp still work. Tunnels through the box stop.",
+        ),
+        M(
+            "ssh-forwarding.on.confirm",
+            "Enable SSH TCP, agent and X11 forwarding? A user who can sign in can then tunnel through the box.",
+        ),
+    )
     if fwd:
         out.append(
             finding(
@@ -745,17 +832,7 @@ def ssh_findings(settings, keys, rec):
                     )
                 ],
                 evidence=[f"{k} yes" for k in fwd],
-                actions=[
-                    action(
-                        "ssh-forwarding-off",
-                        M("ssh-forwarding.off", "Disable forwarding"),
-                        M(
-                            "ssh-forwarding.off.confirm",
-                            "Disable SSH TCP, agent and X11 forwarding? Sign-ins and copies "
-                            "with scp still work. Tunnels through the box stop.",
-                        ),
-                    )
-                ],
+                actions=fwd_chips,
             )
         )
     else:
@@ -765,7 +842,7 @@ def ssh_findings(settings, keys, rec):
                 title,
                 "ok",
                 M("ssh-forwarding.off-state", "SSH does not forward TCP, agent or X11 connections."),
-                actions=[action("ssh-forwarding-undo", UNDO)] if "forwarding" in ours else [],
+                actions=fwd_chips,
             )
         )
     return out
@@ -1571,11 +1648,33 @@ def group_findings(rec):
             continue
         risky = sorted(members[group] & logins)
         title = M("group.title", "The {group} group", group=group)
-        undo = [
-            action(f"group-undo:{k}", M("group.undo", "Put {account} back", account=k.split("@")[0]))
-            for k in ours
-            if k.endswith("@" + group)
-        ]
+        # Each account in it, or taken out here, with both values: in the group, or not.
+        removed = sorted(k.split("@")[0] for k in ours if k.endswith("@" + group))
+        undo = []
+        for u in sorted(set(members[group] & logins) | set(removed)):
+            label = M("group.account", "{account}", account=u)
+            if u in removed and u not in members[group]:
+                undo += [
+                    _chip(label, f"group-undo:{u}@{group}", M("group.member", "In the group"), False),
+                    _chip(label, f"group-drop:{u}@{group}", M("group.not-member", "Not in the group"), True),
+                ]
+            else:
+                undo += [
+                    _chip(label, f"group-undo:{u}@{group}", M("group.member", "In the group"), True),
+                    _chip(
+                        label,
+                        f"group-drop:{u}@{group}",
+                        M("group.not-member", "Not in the group"),
+                        False,
+                        M(
+                            "group.drop.confirm",
+                            "Remove {account} from the {group} group? The change applies from "
+                            "the next sign-in of {account}.",
+                            account=u,
+                            group=group,
+                        ),
+                    ),
+                ]
         if not risky:
             out.append(
                 finding(
@@ -1606,21 +1705,7 @@ def group_findings(rec):
                     "Remove each account that does not need it. The change applies from the account's next sign-in.",
                 ),
                 evidence=risky,
-                actions=[
-                    action(
-                        f"group-drop:{u}@{group}",
-                        M("group.drop", "Remove {account}", account=u),
-                        M(
-                            "group.drop.confirm",
-                            "Remove {account} from the {group} group? The change applies from "
-                            "the next sign-in of {account}.",
-                            account=u,
-                            group=group,
-                        ),
-                    )
-                    for u in risky
-                ]
-                + undo,
+                actions=undo,
             )
         )
     return out
@@ -3014,6 +3099,7 @@ def scan():
     found = listeners()
     findings = listener_findings(found, rec)
     settings = sshd_settings()
+    findings += cockpit_findings(found, rec)
     findings += ssh_findings(settings, keys_on_box(), rec)
     findings += sudo_findings(rec, settings or {})
     findings += kernel_findings(rec)
@@ -3045,19 +3131,22 @@ def _systemctl(*args):
         )
 
 
-def _write_sshd_dropin(ssh):
-    """The one drop-in for both SSH settings; it sorts first, and sshd keeps the first value it reads."""
-    if not ssh:
+def _write_sshd_dropin(ssh, on=()):
+    """The one drop-in for the SSH settings: `ssh` the ones set off here, `on` the ones set on here
+    (where the image had them off). It sorts first, and sshd keeps the first value it reads."""
+    if not ssh and not on:
         SSHD_DROPIN.unlink(missing_ok=True)
     else:
         SSHD_DROPIN.parent.mkdir(parents=True, exist_ok=True)
         lines = ["# Written by irate-box's Security page (/admin). Undo there, or delete this file."]
         if "root" in ssh:
             lines.append("PermitRootLogin no")
-        if "password" in ssh:
-            lines += ["PasswordAuthentication no", "KbdInteractiveAuthentication no"]
-        if "forwarding" in ssh:
-            lines += ["AllowTcpForwarding no", "AllowAgentForwarding no", "X11Forwarding no"]
+        for what, keys in (
+            ("password", ("PasswordAuthentication", "KbdInteractiveAuthentication")),
+            ("forwarding", ("AllowTcpForwarding", "AllowAgentForwarding", "X11Forwarding")),
+        ):
+            if what in ssh or what in on:
+                lines += [f"{k} {'no' if what in ssh else 'yes'}" for k in keys]
         SSHD_DROPIN.write_text("\n".join(lines) + "\n")
     sshd = shutil.which("sshd") or "/usr/sbin/sshd"
     check = run(sshd, "-t")
@@ -3092,23 +3181,32 @@ SSH_SAID = {
     ("forwarding", False): M(
         "security-fix.ssh.forwarding-restored", "SSH forwarding is restored to its previous state."
     ),
+    ("password", "on"): M("security-fix.ssh.password-on", "SSH password sign-in enabled."),
+    ("forwarding", "on"): M("security-fix.ssh.forwarding-on", "SSH forwarding enabled: TCP, agent and X11."),
 }
 
 
 def _ssh(rec, what, on):
-    ssh = set(rec.get("ssh", {}))
-    if on and what == "password" and not keys_on_box():
+    """on: True sets it off here, False undoes what this page set (off or on), "on" sets it on here."""
+    ssh, ssh_on = set(rec.get("ssh", {})), set(rec.get("ssh_on", {}))
+    if on is True and what == "password" and not keys_on_box():
         raise Refused(
             M(
                 "security-fix.ssh.no-keys",
                 "No account has an SSH key on the box. Without passwords, no account could sign in over SSH.",
             )
         )
-    (ssh.add if on else ssh.discard)(what)
-    _write_sshd_dropin(ssh)
-    rec["ssh"] = {k: rec.get("ssh", {}).get(k, time.strftime("%Y-%m-%d")) for k in ssh}
-    if not rec["ssh"]:
-        rec.pop("ssh")
+    ssh.discard(what)
+    ssh_on.discard(what)
+    if on is True:
+        ssh.add(what)
+    elif on == "on":
+        ssh_on.add(what)
+    _write_sshd_dropin(ssh, ssh_on)
+    for key, keep in (("ssh", ssh), ("ssh_on", ssh_on)):
+        rec[key] = {k: rec.get(key, {}).get(k, time.strftime("%Y-%m-%d")) for k in keep}
+        if not rec[key]:
+            rec.pop(key)
     return SSH_SAID[(what, on)]
 
 
@@ -3120,27 +3218,38 @@ def _cockpit(rec, mode):
         _systemctl("daemon-reload")
         if old.get("was_enabled", True):
             _systemctl("enable", "cockpit.socket")
-        # A restart, not a start: a socket still bound to loopback must rebind as it was.
-        _systemctl("restart", "cockpit.socket")
+            # A restart, not a start: a socket still bound to loopback must rebind as it was.
+            _systemctl("restart", "cockpit.socket")
+        else:
+            _systemctl("disable", "--now", "cockpit.socket")  # it was off: off again, not running
         return M("security-fix.cockpit.restored", "Cockpit is restored to its previous state.")
-    was_enabled = run("systemctl", "is-enabled", "cockpit.socket").stdout.strip() == "enabled"
-    if mode == "loopback":
+    old = rec.get("cockpit") or {}
+    was_enabled = old.get("was_enabled", run("systemctl", "is-enabled", "cockpit.socket").stdout.strip() == "enabled")
+    # What Undo puts back: how it was before this page first changed it. A record from before there was a
+    # setting was made from Cockpit on the network.
+    before = old.get("before") or ("network" if old else _cockpit_now(_cockpit_ports(listeners())))
+    if mode == "network":
+        dropin.unlink(missing_ok=True)
+        _systemctl("daemon-reload")
+        _systemctl("enable", "cockpit.socket")
+        _systemctl("restart", "cockpit.socket")
+    elif mode == "loopback":
         dropin.parent.mkdir(parents=True, exist_ok=True)
         dropin.write_text(
             "# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
             "[Socket]\nListenStream=\nListenStream=127.0.0.1:9090\n"
         )
         _systemctl("daemon-reload")
+        _systemctl("enable", "cockpit.socket")  # from off, too
         _systemctl("restart", "cockpit.socket")
     else:
         _systemctl("disable", "--now", "cockpit.socket")
         run("systemctl", "stop", "cockpit.service")
-    rec["cockpit"] = {"mode": mode, "was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d")}
-    return (
-        M("security-fix.cockpit.loopback", "Cockpit now listens on loopback only.")
-        if mode == "loopback"
-        else M("security-fix.cockpit.off", "Cockpit is stopped and disabled.")
-    )
+    rec["cockpit"] = {"mode": mode, "before": before, "was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d")}
+    return {
+        "network": M("security-fix.cockpit.network", "Cockpit now listens on the network."),
+        "loopback": M("security-fix.cockpit.loopback", "Cockpit now listens on loopback only."),
+    }.get(mode) or M("security-fix.cockpit.off", "Cockpit is stopped and disabled.")
 
 
 def _llmnr(rec, on):
@@ -3330,11 +3439,10 @@ def fix(choice, updates_log):
     rec = load_record()
     if choice in ("ssh-root-off", "ssh-root-undo"):
         msg = _ssh(rec, "root", choice.endswith("off"))
-    elif choice in ("ssh-password-off", "ssh-password-undo"):
-        msg = _ssh(rec, "password", choice.endswith("off"))
-    elif choice in ("ssh-forwarding-off", "ssh-forwarding-undo"):
-        msg = _ssh(rec, "forwarding", choice.endswith("off"))
-    elif choice in ("cockpit-loopback", "cockpit-off", "cockpit-undo"):
+    elif choice in [f"ssh-{w}-{m}" for w in ("password", "forwarding") for m in ("off", "on", "undo")]:
+        _, what, mode = choice.split("-")
+        msg = _ssh(rec, what, {"off": True, "on": "on", "undo": False}[mode])
+    elif choice in ("cockpit-network", "cockpit-loopback", "cockpit-off", "cockpit-undo"):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
         msg = _llmnr(rec, choice == "llmnr-off")
@@ -3390,8 +3498,8 @@ def undo_all():
     # password back. They stay as they are (the page's own Undo still puts them back before then).
     for choice in (
         (["ssh-root-undo"] if "root" in rec.get("ssh", {}) else [])
-        + (["ssh-password-undo"] if "password" in rec.get("ssh", {}) else [])
-        + (["ssh-forwarding-undo"] if "forwarding" in rec.get("ssh", {}) else [])
+        + (["ssh-password-undo"] if "password" in {**rec.get("ssh", {}), **rec.get("ssh_on", {})} else [])
+        + (["ssh-forwarding-undo"] if "forwarding" in {**rec.get("ssh", {}), **rec.get("ssh_on", {})} else [])
         + (["cockpit-undo"] if "cockpit" in rec else [])
         + (["llmnr-undo"] if rec.get("llmnr") else [])
         + [f"unit-undo:{u}" for u in rec.get("units", {})]

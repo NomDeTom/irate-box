@@ -21,6 +21,7 @@ from irate_box.finding import finding
 from irate_box.msg import M
 fs = s.ssh_findings({"permitrootlogin": "no", "passwordauthentication": "yes"}, ["lyra", "pi"], {})
 fs += s.listener_findings([{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "pid": 1, "name": s.named("Cockpit")}], {})
+fs += s.cockpit_findings([{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "pid": 1, "name": s.named("Cockpit")}], {})
 fs += [s.security_updates_finding(["openssl", "libc6"], 3.2)]
 fs += [finding("firewall", M("firewall.title", "Hotspot firewall"), "problem",
                M("firewall.not-loaded", "The hotspot firewall is enabled, but its rules are not loaded."),
@@ -55,16 +56,19 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   check('a choice card: what was found, then why it matters, each a line of its own',
     pw && JSON.stringify(lines(pw).slice(0, 2)) === JSON.stringify(['SSH accepts passwords.', 'Any device on the network can try to guess a password.']), pw && lines(pw));
   check('  the note, its list of accounts said whole', /These accounts have a key for SSH on the box: lyra and pi\./.test(t(pw)), t(pw));
-  check('  the fix said even with a button to carry it out, as the recommended action',
-    /Recommended action: Sign in with your key once to make sure that it works\. Then disable password sign-in\./.test(t(pw)), t(pw));
-  check('  the button labelled from its message', [...pw.querySelectorAll('button')].some((b) => t(b) === 'Disable password sign-in'));
+  check('  a setting, not a card to act on: both values as options, the one in effect marked; no recommended action',
+    [...pw.querySelectorAll('.chip')].map((b) => `${t(b)}${b.classList.contains('selected') ? '*' : ''}`).join('|') === 'A password or a key*|A key only'
+    && !/Recommended action/.test(t(pw)), t(pw));
+  check('  the Security doctor named for what it makes of it', !!pw.querySelector('a[href="#secdoctor"]'));
 
-  const ck = card('port-tcp-9090');
+  const ck = card('cockpit');
   check('Cockpit: its evidence (port, address, unit) as data, one item each',
     ck && JSON.stringify([...ck.querySelectorAll('.fevidence li')].map(t)) === JSON.stringify(['TCP 9090', '0.0.0.0', 'cockpit.socket']), ck && t(ck));
   const row = d.querySelector('#security-listeners tbody tr');
-  check('the listening table: the finding\'s own words, no port and address said again (the columns say them)',
-    row && /Cockpit, the image's Linux web console, listens on the network\. Its sign-in page gives root access/.test(t(row)) && !/TCP 9090 on/.test(t(row)), row && t(row));
+  check('Cockpit: one setting with its three values, the one in effect marked',
+    ck && [...ck.querySelectorAll('.chip')].map((b) => `${t(b)}${b.classList.contains('selected') ? '*' : ''}`).join('|') === 'On the network*|On loopback only|Off', ck && t(ck));
+  check('the listening table: Cockpit\'s port links to its setting, no port and address said again (the columns say them)',
+    row && !!row.querySelector('a[href="#sec-cockpit"]') && !/TCP 9090 on/.test(t(row)), row && t(row));
 
   const fw = card('firewall');
   check('a command: in a box to copy, exactly as typed, no full stop added',
