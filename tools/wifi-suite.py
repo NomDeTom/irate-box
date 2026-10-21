@@ -339,7 +339,11 @@ def join_in_namespace(iface, ssid, psk, wait=40):
     phy = phy_of(iface)
     run("nmcli", "device", "set", iface, "managed", "no")
     run("ip", "netns", "add", NETNS)
-    run(IW, "phy", phy, "set", "netns", "name", NETNS)
+    code, out = run(IW, "phy", phy, "set", "netns", "name", NETNS)
+    if code:
+        # Some drivers (aic8800_fdrv) don't let their radio leave the main namespace: it can't be the
+        # joining side of a pair on one box.
+        return False, 0, "the driver can't move the radio into a namespace: " + out.splitlines()[-1][:120]
     run("ip", "link", "set", iface, "up", netns=NETNS)
     conf = Path(f"/run/{PREFIX}wpa.conf")
     conf.write_text(
@@ -351,9 +355,9 @@ def join_in_namespace(iface, ssid, psk, wait=40):
     while time.time() - started < wait:
         if "Connected to" in run(IW, "dev", iface, "link", netns=NETNS)[1]:
             run("ip", "addr", "add", AP_NET[1] + "/24", "dev", iface, netns=NETNS)
-            return True, round(time.time() - started, 1)
+            return True, round(time.time() - started, 1), ""
         time.sleep(1)
-    return False, wait
+    return False, wait, "not associated in time"
 
 
 def leave_namespace(iface):
@@ -394,8 +398,8 @@ def pair(ap_iface, client_iface, seconds):
         hotspot_down(ap_iface)
         return result
     try:
-        joined, took = join_in_namespace(client_iface, ssid, psk)
-        result.update(joined=joined, join_seconds=took)
+        joined, took, why = join_in_namespace(client_iface, ssid, psk)
+        result.update(joined=joined, join_seconds=took, **({"error": why} if why else {}))
         if joined:
             for on in (True, False):
                 accepted = power_save(ap_iface, on)
@@ -474,9 +478,9 @@ def soak(ap_iface, client_iface, home_iface, minutes):
         return {**result, "error": error}
     rounds = []
     try:
-        joined, _ = join_in_namespace(client_iface, ssid, psk)
+        joined, _, why = join_in_namespace(client_iface, ssid, psk)
         if not joined:
-            return {**result, "error": "the client did not join"}
+            return {**result, "error": "the client did not join: " + why}
         home_gateway = gateway(home_iface) if home_iface else None
         ending = time.time() + minutes * 60
         while time.time() < ending:
