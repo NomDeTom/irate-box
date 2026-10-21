@@ -104,13 +104,16 @@
       return el('div', { className: 'admin-item' },
         el('span', { className: `state state-${r.state === 'passed' ? 'running' : 'stopped'}`, textContent: r.state === 'passed' ? (r.tools_only ? 'Dependencies downloaded' : r.offline ? 'Built offline' : 'Built') : r.state }),
         el('span', { textContent: ` ${describe(r)} (${String(r.commit || '').slice(0, 7)})` }),
-        el('span', { className: 'setting-desc', textContent: ` ${r.finished ? `${ago(Date.now() / 1000 - r.finished)}. ` : ''}${used}.` }),
+        el('span', { className: 'setting-desc', textContent: ` ${r.finished ? `${ago(Date.now() / 1000 - r.finished)}. ` : ''}${used}.${r.state === 'interrupted' ? ' The box or the builder stopped during this build.' : ''}${r.clock_synced === false ? ' Its times may be early: the clock was not yet set from the network when it started.' : ''}` }),
         el('span', { className: 'factory-files' }, ...(r.artifacts || []).map((n) => el('a', { href: file(n), textContent: n, download: n })),
           el('a', { href: file('log.txt'), textContent: 'Download build log', target: '_blank', rel: 'noopener' })),
         r.state === 'passed' && (r.artifacts || []).some((n) => n.endsWith('.mt.json'))
           ? el('span', { className: 'library-buttons' }, actionButton(published.has(r.run) ? 'Republish firmware' : 'Publish firmware',
             () => facAct({ action: 'publish', run: r.run.split('/')[1] }),
-            { title: 'Offer this build in the web flasher as a release built on this box' })) : null);
+            { title: 'Offer this build in the web flasher as a release built on this box' })) : null,
+        r.state === 'interrupted'
+          ? el('span', { className: 'library-buttons' }, actionButton('Build again', () => facAct({ action: 'again', run: r.run.split('/')[1] }),
+            { title: 'Queue this build again: the same target, commit and options' })) : null);
     })));
     if (!fac.runs.children.length) fac.runs.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No completed builds' }));
     const pub = (d.flasher || []).flatMap((rel) => rel.targets.map((t) => el('div', { className: 'admin-item' },
