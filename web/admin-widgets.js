@@ -157,7 +157,7 @@ const AW = (() => {
     row.update = (state) => {
       const whys = [];
       for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
-        const s = { ...(b[k] || {}), ...((state || {})[k] || {}) }, node = row.querySelector(`[data-update="${k}"]`);
+        const s = { ...b[k], ...(state || {})[k] }, node = row.querySelector(`[data-update="${k}"]`);
         if (!node) continue;
         if (s.label) node.textContent = s.label;
         node.disabled = !!s.disabled;
@@ -471,9 +471,9 @@ const AW = (() => {
       let r;
       try {
         r = opts.save ? await opts.save(changes, s.values()) : true;
-      } catch (e) {
+      } catch (error) {
         r = false;
-        reason = String((e && e.message) || e || 'Not saved.');
+        reason = String((error && error.message) || error || 'Not saved.');
       }
       saving = false;
       if (r !== false) {
@@ -572,7 +572,7 @@ const AW = (() => {
     return shortList(sorted.map((f) => ({ ...f, badges: [f.status].concat(f.badges || []), detail: () => [
       f.detail ? h('p', { class: 'setting-desc', text: f.detail }) : null,
       (f.actions || []).map((a) => btn(a.label, { onclick: async (event) => {
-        if (!a.confirm || (await confirmHere(a.confirm, { anchor: event.currentTarget, label: a.label }))) opts.act && opts.act(a.choice, f);
+        if ((!a.confirm || (await confirmHere(a.confirm, { anchor: event.currentTarget, label: a.label }))) && opts.act) opts.act(a.choice, f);
       } })),
     ] })), { id: opts.id });
   }
@@ -695,10 +695,10 @@ const AW = (() => {
   // form's Save and Discard become the section's footer, where its Save button was. A value kept outside the
   // fields (the firmware's boards) is opts.extra: {key: {set(value)}}, and the page calls section.set for it.
   //   opts: the section's (save, ask, idle, label), and extra
-  const FIELD = (e) => e.name && !['button', 'submit', 'reset', 'file'].includes(e.type) && !e.closest('[data-aw-ignore]');
+  const FIELD = (field) => field.name && !['button', 'submit', 'reset', 'file'].includes(field.type) && !field.closest('[data-aw-ignore]');
   function form(f, opts = {}) {
     if (f.section) return f.section;
-    const named = (n) => [...f.elements].filter((e) => FIELD(e) && (!n || e.name === n));
+    const named = (n) => [...f.elements].filter((field) => FIELD(field) && (!n || field.name === n));
     const read = (n) => {
       const els = named(n);
       if (!els.length) return undefined;
@@ -715,24 +715,24 @@ const AW = (() => {
       writing = true;
       for (const [k, v] of Object.entries(s.values())) {
         if (k in extra) { extra[k].set(v); continue; }
-        for (const e of named(k)) {
-          const was = e.type === 'radio' || e.type === 'checkbox' ? e.checked : e.value;
-          if (e.type === 'radio') e.checked = e.value === String(v);
-          else if (e.type === 'checkbox') e.checked = !!v;
-          else e.value = v == null ? '' : String(v);
-          if (was !== (e.type === 'radio' || e.type === 'checkbox' ? e.checked : e.value)) e.dispatchEvent(new Event('change', { bubbles: true }));
+        for (const field of named(k)) {
+          const was = field.type === 'radio' || field.type === 'checkbox' ? field.checked : field.value;
+          if (field.type === 'radio') field.checked = field.value === String(v);
+          else if (field.type === 'checkbox') field.checked = !!v;
+          else field.value = v == null ? '' : String(v);
+          if (was !== (field.type === 'radio' || field.type === 'checkbox' ? field.checked : field.value)) field.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }
       writing = false;
-      if (s.loaded()) { offByUs.forEach((e) => { e.disabled = false; if (e._chipsDraw) e._chipsDraw(); }); offByUs.clear(); }
+      if (s.loaded()) { offByUs.forEach((field) => { field.disabled = false; if (field._chipsDraw) field._chipsDraw(); }); offByUs.clear(); }
     }
-    for (const e of named()) if (!e.disabled) { e.disabled = true; offByUs.add(e); if (e._chipsDraw) e._chipsDraw(); }
+    for (const field of named()) if (!field.disabled) { field.disabled = true; offByUs.add(field); if (field._chipsDraw) field._chipsDraw(); }
     // Values as the fields hold them: a tick true or false, everything else a string.
     s.fill = (values) => {
       const out = {};
       for (const [k, v] of Object.entries(values || {})) {
-        const e = named(k)[0];
-        out[k] = k in extra ? v : e && e.type === 'checkbox' ? !!v : v == null ? '' : String(v);
+        const field = named(k)[0];
+        out[k] = k in extra ? v : field && field.type === 'checkbox' ? !!v : v == null ? '' : String(v);
       }
       s.update(out);
     };
@@ -744,10 +744,10 @@ const AW = (() => {
     f.addEventListener('change', touch);
     f.addEventListener('submit', (event) => { event.preventDefault(); s.save(); });
     const old = [...f.querySelectorAll('button')];
-    const saveOld = old.find((b) => b.type === 'submit' && /^Save/.test(b.textContent.trim()));
+    const saveOld = old.find((b) => b.type === 'submit' && b.textContent.trim().startsWith('Save'));
     if (saveOld) saveOld.replaceWith(s.foot); else f.append(s.foot);
     s.foot.after(s.reason);
-    old.filter((b) => /^Discard/.test(b.textContent.trim())).forEach((b) => b.remove());
+    old.filter((b) => b.textContent.trim().startsWith('Discard')).forEach((b) => b.remove());
     f.section = s;
     return s;
   }

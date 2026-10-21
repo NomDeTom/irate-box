@@ -29,10 +29,10 @@ const Heatmap = (() => {
     return `${where}: up ${percent(c.up)}${extra.length ? `, ${extra.join(', ')}` : ''}`;
   }
   function make(tag, cls, text) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
   }
   // The tooltip: one for the page, fixed (a grid scrolls sideways and would clip its own), above the
   // cell or below it near the top, kept inside the window; hidden on leaving, on blur and on scroll.

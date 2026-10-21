@@ -55,10 +55,10 @@
     return null;
   }
   function read(key) {
-    try { return localStorage.getItem(key); } catch (e) { return null; }
+    try { return localStorage.getItem(key); } catch { return null; }
   }
   function write(key, value) {
-    try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch (e) {}
+    try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch {}
   }
 
   // What is chosen: a theme's id, or "auto".

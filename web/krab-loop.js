@@ -28,10 +28,10 @@
     var src = LOOPS[owner.dataset.art || ''];
     art.classList.toggle('looping', !!src);
     v.hidden = !src;
-    if (!src) { if (v.pause) try { v.pause(); } catch (e) {} return; }
+    if (!src) { if (v.pause) try { v.pause(); } catch {} return; }
     var url = new URL(src, here).href;
     if (v.src !== url) v.src = url;
-    try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch {}
   }
   if (window.MutationObserver) new MutationObserver(show).observe(owner, { attributes: true, attributeFilter: ['data-art'] });
   show();

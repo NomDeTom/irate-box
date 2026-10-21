@@ -16,7 +16,7 @@ const next = (() => {
   try {
     const u = new URL(n, location.origin);
     return u.origin === location.origin ? u.pathname + u.search + u.hash : '';
-  } catch (e) { return ''; }
+  } catch { return ''; }
 })();
 
 function note(text, ok) {

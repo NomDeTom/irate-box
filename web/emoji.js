@@ -44,9 +44,9 @@ const make = (tag, props = {}, ...kids) => {
   n.append(...kids);
   return n;
 };
-const withTone = (e) => (tone && e[2] ? e[2][tone - 1] : e[0]);
+const withTone = (entry) => (tone && entry[2] ? entry[2][tone - 1] : entry[0]);
 // An entry within the set: [emoji, name, tones, its release, its tones' release] (emoji-data.js).
-const within = (cap) => (e) => (e[3] || 0) <= cap && [e[0], e[1], e[2] && (e[4] || 0) <= cap ? e[2] : 0];
+const within = (cap) => (entry) => (entry[3] || 0) <= cap && [entry[0], entry[1], entry[2] && (entry[4] || 0) <= cap ? entry[2] : 0];
 
 function loadData() {
   if (window.EMOJI_DATA) return Promise.resolve();
@@ -87,14 +87,14 @@ function drawGrid() {
   const q = parts.search.value.trim().toLowerCase();
   let list;
   if (q) {
-    const found = groups.flatMap((g) => g[2]).filter((e) => e[1] && e[1].includes(q));
+    const found = groups.flatMap((g) => g[2]).filter((entry) => entry[1] && entry[1].includes(q));
     list = found.slice(0, SHOWN_AT_MOST);
     parts.head.textContent = found.length ? `${found.length} found${found.length > list.length ? `, the first ${list.length} shown` : ''}` : 'None found';
   } else {
     list = groups[shown][2];
     parts.head.textContent = groups[shown][0];
   }
-  parts.grid.replaceChildren(...list.map((e) => make('button', { type: 'button', textContent: withTone(e), title: e[1] || '' })));
+  parts.grid.replaceChildren(...list.map((entry) => make('button', { type: 'button', textContent: withTone(entry), title: entry[1] || '' })));
 }
 
 function buildPanel() {
@@ -129,7 +129,7 @@ function fill() {
     const pirate = [PIRATE[0], PIRATE[1], graphemes(PIRATE[2]).map((ch) => [ch, ''])];
     const cap = emojiSet();
     const keep = within(cap);
-    groups = [...window.EMOJI_DATA.groups.map(([label, icon, list]) => [label, icon, list.map((e) => keep(e)).filter(Boolean)]), pirate];
+    groups = [...window.EMOJI_DATA.groups.map(([label, icon, list]) => [label, icon, list.map((entry) => keep(entry)).filter(Boolean)]), pirate];
     drawTabs();
     drawGrid();
     if (!panel.hidden) position();

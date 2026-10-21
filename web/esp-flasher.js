@@ -7,7 +7,7 @@
 (() => {
   const can = document.getElementById('flash-can');
   const list = document.getElementById('flash-list');
-  const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter(Boolean)); return e; };
+  const el = (tag, props = {}, ...kids) => { const node = Object.assign(document.createElement(tag), props); node.append(...kids.filter(Boolean)); return node; };
 
   // What stands in the way, in words, or '' when nothing does.
   function blocker() {
@@ -37,15 +37,15 @@
       const r = await fetch('/flasher/api/esp');
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       data = await r.json();
-    } catch (e) {
-      can.textContent = `The hub server did not answer (${e.message}).`;
+    } catch (error) {
+      can.textContent = `The hub server did not answer (${error.message}).`;
       return;
     }
     document.getElementById('flash-download').hidden = !data.download;
     const stop = blocker();
     const ready = !stop && data.engine && data.targets.length > 0;
     if (ready) {
-      try { await import('/flasher/esp-web-tools/install-button.js'); } catch (e) { can.textContent = `Flasher component unavailable (${e.message}).`; return; }
+      try { await import('/flasher/esp-web-tools/install-button.js'); } catch (error) { can.textContent = `Flasher component unavailable (${error.message}).`; return; }
     }
     if (!data.targets.length) {
       can.textContent = 'No firmware available. ESP32 builds appear here after an administrator publishes a build (Administration → Firmware Factory → Publish firmware). They also appear after the librarian keeps Meshtastic releases (Administration → Web flasher → Firmware).';

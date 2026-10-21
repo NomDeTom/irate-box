@@ -448,7 +448,8 @@ const TOUR = (() => {
         "action-btn primary",
         () => {
           decide(d.id);
-          at + 1 < STEPS.length ? go(at + 1) : finish();
+          if (at + 1 < STEPS.length) go(at + 1);
+          else finish();
         },
       ),
       btn("Skip →", "action-btn", () =>

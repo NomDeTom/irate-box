@@ -31,6 +31,11 @@ lint:
     - git-diff-check
     - hadolint@2.15.1
     - markdownlint@0.49.1
+    # The hub's page scripts (web/*.js), as .oxlintrc.json says. Lint only: oxfmt would reformat
+    # them all, as prettier would. Not ESLint: it dragged out every mermaid update until it ran
+    # out of memory.
+    - oxlint@1.87.0:
+        commands: [lint]
     - pinact@4.0.0
     - ruff@0.17.1:
         commands: [lint, format]
@@ -42,6 +47,9 @@ lint:
     # Tests use fixed fake passwords, MD5 for fixtures, /tmp paths and subprocess on purpose.
     - linters: [bandit]
       paths: [tests/**]
+    # oxlint is for web/*.js; the rest of the JavaScript runs under Node and has no config yet.
+    - linters: [oxlint]
+      paths: [tests/**, tools/**, extras/**, web/qrcode.js]
 actions:
   disabled:
     - trunk-announce

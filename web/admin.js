@@ -14,7 +14,6 @@ const ADMIN_HEADERS = {
 // Built by admin-layout.js (AL) from its table and the apps' manifests : pages
 // holding the sections below, the address naming a section. Everything keeps loading in the
 // background, so the sidebar's badges stay current whichever page is open.
-const showPane = AL.show;
 // A word beside a section's sidebar entry: "new", "working", ... or nothing.
 const badge = AL.badge;
 // Is this section on the page that's showing? (The loaders that wait to be seen.)
@@ -361,15 +360,15 @@ async function libAct(key, body) {
   libNote = null;
   try {
     renderLibrary(await libPost(body));
-  } catch (e) {
+  } catch (error) {
     libNote =
-      e.status === 409
+      error.status === 409
         ? {
             key,
             busy: true,
             text: "The librarian is already running. The buttons return when it is free. Try again then.",
           }
-        : { key, busy: false, text: e.message };
+        : { key, busy: false, text: error.message };
     loadLibrary();
   }
 }
@@ -849,7 +848,6 @@ function renderLibrary(snap) {
   }
 
   libPolicy.fill(snap.policy);
-  lastPolicy = snap.policy;
   fillSurfaces(snap.policy);
   // GitHub's hourly allowance, as the last check saw it (librarian.py: rate): low, the scheduled
   // checks wait for the next hour rather than fail.
@@ -884,7 +882,7 @@ function renderLibrary(snap) {
   clearTimeout(libPoll);
   // Also while an app the librarian fetched is still with the root helper.
   const installing = Object.values(snap.status).some(
-    (e) => e.pending && !e.install_result,
+    (state) => state.pending && !state.install_result,
   );
   if (busy || installing) libPoll = setTimeout(loadLibrary, 3000);
 }
@@ -983,7 +981,6 @@ function fillSurfaces(policy) {
     );
   }
 }
-let lastPolicy = null;
 document
   .querySelectorAll("[data-mirrors-all]")
   .forEach((b) =>
@@ -1293,15 +1290,15 @@ async function searchCatalogue(more) {
       true,
       cat.note,
     );
-    const rows = d.entries.map((e) => {
-      const name = e.name.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
+    const rows = d.entries.map((book) => {
+      const name = book.name.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
       return el(
         "div",
         { className: "admin-item" },
-        el("span", { className: "setting-name", textContent: e.title }),
+        el("span", { className: "setting-name", textContent: book.title }),
         el("span", {
           className: "setting-desc",
-          textContent: ` ${e.language}, ${size(e.size)}, ${e.updated}${e.flavour ? `, ${e.flavour}` : ""}, ${e.articles} articles. ${e.summary}`,
+          textContent: ` ${book.language}, ${size(book.size)}, ${book.updated}${book.flavour ? `, ${book.flavour}` : ""}, ${book.articles} articles. ${book.summary}`,
         }),
         el(
           "span",
@@ -1311,14 +1308,14 @@ async function searchCatalogue(more) {
               await libPost({
                 action: "add",
                 source: {
-                  name: e.flavour ? `${name}_${e.flavour}`.slice(0, 64) : name,
+                  name: book.flavour ? `${name}_${book.flavour}`.slice(0, 64) : name,
                   type: "kiwix",
-                  kiwix_name: e.name,
-                  flavour: e.flavour,
+                  kiwix_name: book.name,
+                  flavour: book.flavour,
                 },
               });
               say(
-                `Added ${e.title} (${size(e.size)}). Select Install in the table above to download and install it.`,
+                `Added ${book.title} (${size(book.size)}). Select Install in the table above to download and install it.`,
                 true,
                 cat.note,
               );
@@ -1840,9 +1837,10 @@ function tile(label, value) {
 // and each service's week in words.
 function serviceStrips(s, u, pages) {
   // A page the web server serves itself has no unit: its use instead (pagehistory.py), the hours it was loaded.
-  if (!s.unit && pages && s.path && (pages.pages || {})[s.path])
-    ((u = { ...pages, units: { [s.path]: pages.pages[s.path] } }),
-      (s = { ...s, unit: s.path }));
+  if (!s.unit && pages && s.path && (pages.pages || {})[s.path]) {
+    u = { ...pages, units: { [s.path]: pages.pages[s.path] } };
+    s = { ...s, unit: s.path };
+  }
   const rec = u && s.unit && (u.units || {})[s.unit];
   if (!rec) return el("span", { className: "setting-desc", textContent: "—" });
   const dayLabel = (back) => u.month_days[71 - back].label;
@@ -3675,7 +3673,7 @@ function secKind(f) {
     return "cure";
   // A port is in the Network listeners table, with its buttons there (Stop and disable, Open to the hotspot):
   // never a card of its own. Cockpit has a setting (cockpit_findings).
-  if (/^port-/.test(f.id)) return "port";
+  if (f.id.startsWith("port-")) return "port";
   return "choice";
 }
 // Passwordless sudo as a toggle: On while a
@@ -3683,7 +3681,7 @@ function secKind(f) {
 function sudoToggle(f, busy) {
   return f.actions.map((a) => {
     const file = a.choice.split(":")[1];
-    const on = /^sudo-drop:/.test(a.choice) !== secChosen(f.id, a); // as it would be after Save
+    const on = a.choice.startsWith("sudo-drop:") !== secChosen(f.id, a); // as it would be after Save
     const b = el("button", {
       type: "button",
       className:
@@ -3826,7 +3824,7 @@ const evidenceList = (items) =>
     ? el(
         "ul",
         { className: "fevidence" },
-        ...items.map((e) => el("li", {}, el("code", { textContent: e }))),
+        ...items.map((item) => el("li", {}, el("code", { textContent: item }))),
       )
     : null;
 // r: {id, state, title, detail, why, notes[], evidence[], how, commands[], controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
@@ -4351,7 +4349,7 @@ function renderSecurity(data) {
   // buttons. A UDP port in the kernel's range for outgoing sockets (32768 up) is a reply socket of a
   // program that has others (Avahi's queries, Syncthing's connections): not listed.
   const portLine = new Map(
-    lines.filter((f) => /^port-/.test(f.id)).map((f) => [f.id, f]),
+    lines.filter((f) => f.id.startsWith("port-")).map((f) => [f.id, f]),
   );
   const lineOf = (l) =>
     portLine.get(`port-${l.proto}-${l.port}`) ||
@@ -4376,7 +4374,7 @@ function renderSecurity(data) {
       const worst = fs[0];
       const l0 = shown[0];
       const ssh = !worst && shown.some((l) => l.proto === "tcp" && l.port === 22);
-      const cockpit = !worst && shown.some((l) => l.port === 9090 && /^cockpit/.test(l.unit || ""));
+      const cockpit = !worst && shown.some((l) => l.port === 9090 && (l.unit || "").startsWith("cockpit"));
       const said = [...new Set(fs.filter((f) => f.status === worst.status || fs.length === 1)
         .flatMap((f) => [f.summary, f.why]).filter(Boolean))];
       const acts = fs.filter((f) => (f.actions || []).length);
@@ -4448,7 +4446,7 @@ function renderSecurity(data) {
   sec.log.textContent = data.log.join("\n");
   const problems = waiting.filter((f) => f.status === "problem").length;
   const ports = lines.filter(
-    (f) => /^port-/.test(f.id) && f.status !== "ok",
+    (f) => f.id.startsWith("port-") && f.status !== "ok",
   ).length;
   sec.counts.replaceChildren(
     ...[
@@ -6067,8 +6065,8 @@ async function hlAccept(key, title, yes) {
       ok: true,
     };
     if (hlLast) renderHealth({ ...hlLast, accepted: r.accepted || {} });
-  } catch (e) {
-    hlNote = { fid: key, text: e.message, ok: false };
+  } catch (error) {
+    hlNote = { fid: key, text: error.message, ok: false };
     if (hlLast) renderHealth(hlLast);
   }
 }
@@ -6606,7 +6604,7 @@ function drawUpScope(inv) {
             : `${upScope} follows the settings for every connection. A choice here becomes its own setting. `,
           own
             ? actionButton("Use default connection settings", () => {
-                const per = { ...(upSaved.per_iface || {}) };
+                const per = { ...upSaved.per_iface };
                 delete per[upScope];
                 upSec.discard();
                 netRequest(
@@ -6660,7 +6658,7 @@ function upPreset(pick, levels) {
 const upGet = (obj, key) =>
   key.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
-function buildUpFields(levels) {
+function buildUpFields() {
   if (net.fields.childElementCount) return;
   for (const [key, label] of UP_FIELDS) {
     let input;
@@ -7043,7 +7041,7 @@ function upChoose(change, levels) {
 function fillUpForm(chosen, levels) {
   buildUpChoices(levels);
   const view = upScope
-    ? { ...chosen, ...((chosen.per_iface || {})[upScope] || {}) }
+    ? { ...chosen, ...(chosen.per_iface || {})[upScope] }
     : chosen;
   for (const k of Object.keys(upPick))
     upPick[k] = view[k] || levels.default[k] || null;
@@ -7052,7 +7050,7 @@ function fillUpForm(chosen, levels) {
   net.ignoreRoams.checked = upPick.ignore_roams;
   for (const k of ["watch_new", "box_steps", "cable_out", "cable_reach"])
     upPick[k] = chosen[k] || levels.default[k];
-  upWatch = { ...(chosen.watch || {}) };
+  upWatch = { ...chosen.watch };
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll("[data-key]")) {
     const v = upGet(over, input.dataset.key);
@@ -7138,7 +7136,7 @@ function readUpForm() {
     ...base,
     steps_off: all.steps_off,
     per_iface: {
-      ...(base.per_iface || {}),
+      ...base.per_iface,
       [upScope]: Object.fromEntries(UP_PER_IFACE.map((k) => [k, all[k]])),
     },
   };
@@ -8189,7 +8187,7 @@ function renderNetwork(data) {
     }
   }
   const inv = data.inventory;
-  const u = data.uplink;
+  let u = data.uplink;
   const levels = data.levels;
   // What the box has
   net.when.textContent = inv
@@ -8250,7 +8248,7 @@ function renderNetwork(data) {
   say(jn ? jn.text : "", jn ? jn.ok : true, noteEl("net-join-note"));
 
   // Network recovery
-  buildUpFields(levels);
+  buildUpFields();
   // The saved settings again only when they changed (or the scope did): a draft is kept over them, said as
   // changed elsewhere if they moved under it.
   const chosen = (u && u.chosen) || levels.default;
@@ -8394,14 +8392,14 @@ function renderNetwork(data) {
     ...evs
       .slice(-25)
       .reverse()
-      .map((e) =>
+      .map((entry) =>
         el(
           "li",
           {},
           el("time", {
             className: "ev-time",
-            dateTime: new Date(e.at * 1000).toISOString(),
-            textContent: new Date(e.at * 1000).toLocaleString([], {
+            dateTime: new Date(entry.at * 1000).toISOString(),
+            textContent: new Date(entry.at * 1000).toLocaleString([], {
               month: "short",
               day: "numeric",
               hour: "2-digit",
@@ -8411,11 +8409,11 @@ function renderNetwork(data) {
           el("span", {
             className: "ev-text",
             textContent:
-              e.iface &&
+              entry.iface &&
               Object.values((u && u.links) || {}).filter((l) => l.watched)
                 .length > 1
-                ? `${e.iface}: ${e.text}`
-                : e.text,
+                ? `${entry.iface}: ${entry.text}`
+                : entry.text,
           }),
         ),
       ),
@@ -8554,15 +8552,15 @@ function renderDefaults(inv, busy) {
     sel.addEventListener("change", () => defSec.set(name, sel.value, true));
     let now;
     if (defaultsScope) {
-      const e = d.ifaces[defaultsScope][name];
+      const effective = d.ifaces[defaultsScope][name];
       now =
-        e.value === null
+        effective.value === null
           ? `now NetworkManager's own: ${s.nm_default}`
-          : `now ${s.values[e.value] || e.value}, from ${
-              e.section && e.section.includes("-irate-box-")
+          : `now ${s.values[effective.value] || effective.value}, from ${
+              effective.section && effective.section.includes("-irate-box-")
                 ? `irate-box's setting for ${defaultsScope}`
-                : `${own(e.file)} [${e.section}]`
-            }${e.unsure ? " (if it matches this device)" : ""}`;
+                : `${own(effective.file)} [${effective.section}]`
+            }${effective.unsure ? " (if it matches this device)" : ""}`;
     } else {
       now =
         s.value === null
@@ -9381,8 +9379,8 @@ function hazardControls(h) {
               title: h.title,
             });
             loadNetwork();
-          } catch (e) {
-            say(e.message, false, net.scanNote);
+          } catch (error) {
+            say(error.message, false, net.scanNote);
           }
         },
       }),
@@ -10385,33 +10383,6 @@ const SEEN_LABEL = {
   users: "signed-in users",
   hidden: "nobody",
 };
-function seenDesc(a) {
-  a = { ...a, visible: a.visible || "auto" };
-  if (a.mode === "off") return "Disabled: no tile.";
-  if (a.visible === "auto") return "";
-  const opens =
-    a.mode === "public"
-      ? "guests"
-      : a.mode === "users"
-        ? "signed-in users"
-        : "administrators";
-  if (a.visible === "hidden")
-    return "No tile. The address still works for everyone who can open the app.";
-  return a.visible === "guests" && a.mode !== "public"
-    ? `Guests see its tile with a lock. It opens for ${opens}. Other visitors are asked to sign in.`
-    : `Its tile shows to ${SEEN_LABEL[a.visible]}. It opens for ${opens}.`;
-}
-function visibilitySet(a, v) {
-  if (v === a.visible) return;
-  postJSON("/admin/visibility", { app: a.id, visible: v }).then(
-    () => loadAccess(),
-    (err) => {
-      accessNote = { app: a.id, text: err.message, ok: false };
-      loadAccess();
-    },
-  );
-}
-
 function accessDesc(a) {
   if (a.mode === "public")
     return a.login
@@ -10770,7 +10741,7 @@ async function loadSignInOffer() {
   let st;
   try {
     st = await getJSON("/admin/settings");
-  } catch (e) {
+  } catch {
     return;
   }
   lockAll = st.locked_all || "";
@@ -10839,7 +10810,7 @@ const tilesTouched = () =>
 async function loadTileOrder() {
   try {
     tilesData = await getJSON("/admin/tiles");
-  } catch (e) {
+  } catch {
     return;
   }
   tilesSec.update({ all: freshTilesDraft() });
@@ -10871,8 +10842,8 @@ async function saveTiles(d) {
 function freshTilesDraft() {
   return {
     order: tilesData.tiles.map((x) => x.id),
-    size: { ...(tilesData.state.size || {}) },
-    icon: { ...(tilesData.state.icon || {}) },
+    size: { ...tilesData.state.size },
+    icon: { ...tilesData.state.icon },
     seen: {},
     lock: {},
   };
@@ -11106,13 +11077,6 @@ const seenOf = (mode, visible) =>
     : { public: "guests", users: "users", private: "admin", off: "hidden" }[
         mode
       ] || "guests";
-function tileOrderNow() {
-  return tilesDraft
-    ? tilesDraft.order.slice()
-    : tilesData
-      ? tilesData.tiles.map((x) => x.id)
-      : [];
-}
 function chipRow(label, opts, cur, set, disabledOf = () => false) {
   const g = el(
     "div",
@@ -11897,7 +11861,6 @@ loadLocal();
 // The rest of the first-use setup (the password is step 1, on admin-setup.html). Each step's
 // line is filled in by the part of this page that already loads its data; the pane shows
 // until the owner finishes it, and Overview's link brings it back.
-const setupList = document.getElementById("setup-steps");
 
 // Each setup step's state, as the part of the page that knows it says; the tour draws the list.
 const SETUP_STATE = {};
@@ -12604,7 +12567,7 @@ function managePanel(r, data, cls) {
           : "Only for repositories that only administrators can push to.",
     }),
     buildNow,
-    r.can_build ? buildSetup(r) : null,
+    r.can_build ? buildSetup() : null,
   );
   // Its description: a section of one value (a redraw of the list keeps what is being typed).
   const desc = el("textarea", {
@@ -13266,7 +13229,7 @@ const ciKeep = AW.form(document.getElementById("ci-keep-form"), {
 });
 
 // "Set up builds", in a repository's Manage: what a script gets, and templates to start from.
-function buildSetup(r) {
+function buildSetup() {
   if (!ciData || !ciData.templates) return null;
   return el(
     "details",
@@ -13286,7 +13249,7 @@ function buildSetup(r) {
         el("dd", { textContent: v }),
       ]),
     ),
-    ...Object.entries(ciData.templates).map(([k, t]) => {
+    ...Object.values(ciData.templates).map((t) => {
       const pre = el("pre", { className: "admin-log", textContent: t.script });
       return el(
         "div",
@@ -13617,11 +13580,6 @@ const REMOVE_AFTER = [
   [720, "a month"],
   [null, "never"],
 ];
-const hoursWords = (h) =>
-  (REMOVE_AFTER.find(([v]) => v === h) || [
-    h,
-    h == null ? "never" : `${h} hours`,
-  ])[1];
 const dayOf = (unix) =>
   unix ? new Date(unix * 1000).toISOString().slice(0, 10) : "";
 const kitsWaiting = new Set();
@@ -13714,7 +13672,7 @@ function renderKits(data) {
     kitsEl.grid.replaceChildren(
       AW.cards(
         [
-          ...kits.map((k) => kitItem(k, st, cfg)),
+          ...kits.map((k) => kitItem(k, st)),
           {
             id: "kit-custom",
             title: "+ Custom toolkit",
@@ -13744,7 +13702,7 @@ function renderKits(data) {
 }
 
 // A kit's card: its name, what it is for and its state in words.
-function kitItem(k, st, cfg) {
+function kitItem(k, st) {
   const s = (st.kits || {})[k.id] || {},
     c = s.cached,
     inst = (st.installed || {})[k.id];
@@ -15232,7 +15190,7 @@ function paletteEditor(st, onSaved) {
   if (st.accent)
     for (const m of ["light", "dark"])
       if (!(saved[m] || {}).accent)
-        saved[m] = { ...(saved[m] || {}), accent: st.accent };
+        saved[m] = { ...saved[m], accent: st.accent };
   let mode = "light"; // the mode shown: a view, not a setting
   const box = el("div", { className: "aw-settings palette-editor" });
   // A section of one value, the whole palette; colours that fail the contrast check are asked about once, at Save.
@@ -15320,7 +15278,7 @@ function paletteEditor(st, onSaved) {
       pick.addEventListener("change", () =>
         put({
           ...draft,
-          [mode]: { ...(draft[mode] || {}), [role]: pick.value.toLowerCase() },
+          [mode]: { ...draft[mode], [role]: pick.value.toLowerCase() },
         }),
       );
       const back = el("button", {
@@ -15329,7 +15287,7 @@ function paletteEditor(st, onSaved) {
         textContent: "Reset to default theme",
         disabled: !own,
         onclick: () => {
-          const m = { ...(draft[mode] || {}) };
+          const m = { ...draft[mode] };
           delete m[role];
           const next = { ...draft };
           if (Object.keys(m).length) next[mode] = m;
@@ -15496,8 +15454,8 @@ function pictureRow(which) {
       await postJSON("/admin/picture", { which, ...body });
       show();
       refreshTab(!!body.remove);
-    } catch (e) {
-      note.textContent = e.message;
+    } catch (error) {
+      note.textContent = error.message;
     }
   };
   file.addEventListener("change", async () => {
@@ -15539,7 +15497,7 @@ async function loadAppearance() {
   let st;
   try {
     st = await getJSON("/admin/settings");
-  } catch (e) {
+  } catch {
     return;
   }
   appearanceSettings = st;
@@ -15744,7 +15702,7 @@ function folderSec(f) {
     label: `Folder: ${fol ? fol.title : f}`,
     saved: null,
     save: async (c, v) => {
-      const state = { ...(folders.state || {}), [f]: folderFull(v.all) };
+      const state = { ...folders.state, [f]: folderFull(v.all) };
       folders = await postJSON("/admin/folders", { state });
       setTimeout(folderSaved);
     },
@@ -15775,7 +15733,7 @@ const KIND_WORD = {
 async function loadFolders() {
   try {
     folders = await getJSON("/admin/folders");
-  } catch (e) {
+  } catch {
     return;
   }
   if (!folderDraft)
@@ -15820,7 +15778,7 @@ function drawFolderIndex() {
       let count = "";
       if (fol) {
         const hrefs = new Set([
-          ...fol.entries.map((e) => e.href),
+          ...fol.entries.map((entry) => entry.href),
           ...((folderDraft[a.id] || {}).extra || []),
         ]);
         const n = [...hrefs].filter((h) => inFolder(a.id, h)).length;
@@ -15891,7 +15849,7 @@ const fpart = (f) => {
 function inFolder(f, href) {
   const own = (
     folders.folders.find((x) => x.id === f) || { entries: [] }
-  ).entries.some((e) => e.href === href && !e.extra);
+  ).entries.some((entry) => entry.href === href && !entry.extra);
   const st = folderDraft[f] || {};
   return own
     ? !(st.hidden || []).includes(href)
@@ -15900,7 +15858,7 @@ function inFolder(f, href) {
 function setInFolder(f, href, yes) {
   const own = (
     folders.folders.find((x) => x.id === f) || { entries: [] }
-  ).entries.some((e) => e.href === href && !e.extra);
+  ).entries.some((entry) => entry.href === href && !entry.extra);
   const st = fpart(f);
   const without = (list) => list.filter((h) => h !== href);
   if (own) st.hidden = yes ? without(st.hidden) : [...without(st.hidden), href];
@@ -15919,34 +15877,34 @@ function drawFolder(block, f) {
   };
   // The folder's entries, plus any put in since the last save, in the draft's order.
   const pool = new Map(
-    folders.folders.flatMap((x) => x.entries).map((e) => [e.href, e]),
+    folders.folders.flatMap((x) => x.entries).map((entry) => [entry.href, entry]),
   );
   const hrefs = [
-    ...new Set([...fol.entries.map((e) => e.href), ...st.extra]),
+    ...new Set([...fol.entries.map((entry) => entry.href), ...st.extra]),
   ].filter((h) => pool.has(h));
   const list = hrefs
     .map((h, i) => ({ h, i }))
     .sort((a, b) => pos(a.h) - pos(b.h) || a.i - b.i)
     .map((x) => pool.get(x.h));
-  const move = (e, d) => {
+  const move = (entry, d) => {
     const order = list.map((x) => x.href),
-      i = order.indexOf(e.href),
+      i = order.indexOf(entry.href),
       j = i + d;
     if (j < 0 || j >= order.length) return;
     [order[i], order[j]] = [order[j], order[i]];
     st.order = order;
-    folderOpen[f] = e.href;
+    folderOpen[f] = entry.href;
     folderTouched();
     fillFolderBlocks();
   };
-  const items = list.map((e) => {
-    const shown = inFolder(f, e.href);
+  const items = list.map((entry) => {
+    const shown = inFolder(f, entry.href);
     return {
-      id: e.href,
-      title: e.name,
-      summary: e.desc || e.href,
-      badges: [shown ? "shown" : "hidden", KIND_WORD[e.kind] || e.kind].concat(
-        e.from !== f ? ["from " + e.from] : [],
+      id: entry.href,
+      title: entry.name,
+      summary: entry.desc || entry.href,
+      badges: [shown ? "shown" : "hidden", KIND_WORD[entry.kind] || entry.kind].concat(
+        entry.from !== f ? ["from " + entry.from] : [],
       ),
       detail: () =>
         [
@@ -15961,8 +15919,8 @@ function drawFolder(block, f) {
                 class: "chip-btn" + (shown ? " active" : ""),
                 "aria-pressed": String(shown),
                 onclick: () => {
-                  setInFolder(f, e.href, !shown);
-                  folderOpen[f] = e.href;
+                  setInFolder(f, entry.href, !shown);
+                  folderOpen[f] = entry.href;
                   folderTouched();
                   fillFolderBlocks();
                 },
@@ -15971,8 +15929,8 @@ function drawFolder(block, f) {
                 ? "Visible in this folder: On"
                 : "Visible in this folder: Off",
             ),
-            AW.btn("↑ Earlier", { onclick: () => move(e, -1) }),
-            AW.btn("↓ Later", { onclick: () => move(e, 1) }),
+            AW.btn("↑ Earlier", { onclick: () => move(entry, -1) }),
+            AW.btn("↓ Later", { onclick: () => move(entry, 1) }),
           ),
           AW.h(
             "div",
@@ -15984,7 +15942,7 @@ function drawFolder(block, f) {
               folders.folders
                 .filter((x) => x.id !== f)
                 .map((x) => {
-                  const on = inFolder(x.id, e.href);
+                  const on = inFolder(x.id, entry.href);
                   return AW.h(
                     "button",
                     {
@@ -15992,8 +15950,8 @@ function drawFolder(block, f) {
                       class: "filter-chip" + (on ? " active" : ""),
                       "aria-pressed": String(on),
                       onclick: () => {
-                        setInFolder(x.id, e.href, !on);
-                        folderOpen[f] = e.href;
+                        setInFolder(x.id, entry.href, !on);
+                        folderOpen[f] = entry.href;
                         folderTouched();
                         fillFolderBlocks();
                       },
@@ -16003,20 +15961,20 @@ function drawFolder(block, f) {
                 }),
             ),
           ),
-          AW.dl({ Opens: e.href }),
+          AW.dl({ Opens: entry.href }),
           // An entry that is a managed app: its access and settings are on the app's own page;
           // hiding it here only takes it out of this folder.
-          appFor(e.href)
+          appFor(entry.href)
             ? AW.h(
                 "a",
-                { href: "#page-app-" + appFor(e.href).id, class: "action-btn" },
-                `Open app settings: ${appFor(e.href).name} →`,
+                { href: "#page-app-" + appFor(entry.href).id, class: "action-btn" },
+                `Open app settings: ${appFor(entry.href).name} →`,
               )
             : null,
         ].filter(Boolean),
     };
   });
-  const shownCount = list.filter((e) => inFolder(f, e.href)).length;
+  const shownCount = list.filter((entry) => inFolder(f, entry.href)).length;
   // A change made here to another folder (Also included in) is saved from that folder's page: said here.
   const others = folders.folders.filter(
     (x) => x.id !== f && folderSec(x.id).dirty(),
@@ -16113,7 +16071,7 @@ function sizeChips(cur, set) {
   );
 }
 function setSize(draft, id, v) {
-  draft.size = { ...(draft.size || {}) };
+  draft.size = { ...draft.size };
   if (v === "single") delete draft.size[id];
   else draft.size[id] = v;
 }
@@ -16150,7 +16108,7 @@ const stSec = AW.section({
 async function loadStatusTiles() {
   try {
     stTiles = await getJSON("/admin/status-tiles");
-  } catch (e) {
+  } catch {
     return;
   }
   stSec.update({ all: stNorm(stTiles.state) });
@@ -16162,7 +16120,6 @@ function drawStatusTiles(openId) {
     const was = box.querySelector('.aw-row-head[aria-expanded="true"]');
     openId = was ? was.closest(".aw-row").dataset.awId : null;
   }
-  const byId = new Map(stTiles.tiles.map((x) => [x.id, x]));
   const pos = (i) => {
     const n = stDraft.order.indexOf(i);
     return n < 0 ? 1e6 : n;
@@ -16260,7 +16217,7 @@ async function loadNamesTo() {
   let st;
   try {
     st = await getJSON("/admin/settings");
-  } catch (e) {
+  } catch {
     return;
   }
   box.replaceChildren(
@@ -16293,7 +16250,7 @@ async function loadSavesCrossDevice() {
   let st;
   try {
     st = await getJSON("/admin/settings");
-  } catch (e) {
+  } catch {
     return;
   }
   box.replaceChildren(
