@@ -12407,7 +12407,7 @@ function repoCard(r, data) {
 
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(r, data, cls) {
-  // Only Delete asks, on the page: a move can be moved back (admin pages plan, phase 5).
+  // Only Delete asks, on the page (confirmText): a move can be moved back (admin pages plan, phase 5).
   const act = (body, confirmText, done) => async (e) => {
     // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
     if (
@@ -12443,7 +12443,7 @@ function managePanel(r, data, cls) {
       }),
       ` ${label}`,
     );
-  // Who can see it: the area. Moving changes the clone URL, so it asks.
+  // Who can see it: the area. Moving changes the clone URL, said under the choices.
   const see = el(
     "fieldset",
     { className: "git-q" },
@@ -12455,7 +12455,7 @@ function managePanel(r, data, cls) {
       r.area === "public",
       act(
         { action: "move", area: r.area, name: r.name, to: "public" },
-        `Move ${r.name}.git to /git/? Anyone on the network can browse and clone it. Its clone URL changes.`,
+        null,
         `${r.name}.git is now visible to guests.`,
       ),
     ),
@@ -12466,7 +12466,7 @@ function managePanel(r, data, cls) {
       r.area === "private",
       act(
         { action: "move", area: r.area, name: r.name, to: "private" },
-        `Move ${r.name}.git to /git-private/? Only administrators can see or clone it. Its clone URL changes.`,
+        null,
         `${r.name}.git is now visible to administrators only.`,
       ),
     ),
@@ -12495,9 +12495,7 @@ function managePanel(r, data, cls) {
         p.name === r.preset,
         act(
           { action: "preset", area: r.area, name: r.name, preset: p.name },
-          p.write === "everyone"
-            ? `Let anyone on the network push to ${r.name}.git without signing in? They cannot rewrite or delete its history. Repositories that guests can read have a storage limit. The box serves anything they push.`
-            : null,
+          null,
           `${r.name}.git: ${p.text}.`,
         ),
       ),
@@ -12507,6 +12505,13 @@ function managePanel(r, data, cls) {
       textContent:
         "The hub server decides each push. Nobody can rewrite or delete history in a repository that guests can read.",
     }),
+    presets.some((p) => p.write === "everyone")
+      ? el("p", {
+          className: "setting-desc",
+          textContent:
+            "With Anyone, people on the network push without signing in. Repositories that guests can read have a storage limit. The box serves anything they push.",
+        })
+      : null,
   );
   const buildNow =
     r.can_build && r.build && r.has_script
@@ -12657,7 +12662,7 @@ function managePanel(r, data, cls) {
                   to: { area: toArea, name: toName },
                   refs: refs.value.trim().split(/\s+/),
                 },
-                `Publish ${refs.value.trim()} from ${r.name}.git to ${target.value}.git? This replaces branches or tags of the same name there.`,
+                null,
                 "Published.",
               )();
             },
