@@ -14074,6 +14074,29 @@ function kitBody(k, st, cfg, setDirty) {
       { className: "kit-notes" },
       ...(k.notes || []).map((n) => el("li", { textContent: n })),
     ),
+    // Where its drivers come from (Driver resources): each link with its version and licence, and why it's here.
+    (k.links || []).length
+      ? el(
+          "ul",
+          { className: "kit-links" },
+          ...k.links.map((link) =>
+            el(
+              "li",
+              {},
+              el("a", {
+                href: link.url,
+                target: "_blank",
+                rel: "noopener noreferrer",
+                textContent: link.title,
+              }),
+              [link.version, link.licence].filter(Boolean).length
+                ? ` (${[link.version, link.licence].filter(Boolean).join(", ")})`
+                : "",
+              link.note ? `. ${link.note}` : "",
+            ),
+          ),
+        )
+      : null,
     c
       ? el("p", {
           className: "setting-desc",

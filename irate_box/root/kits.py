@@ -106,11 +106,37 @@ def _packages(kit, fetching=False):
     its program at exactly the same version, so asking for mosquitto's on a box without it would
     bring mosquitto too."""
     pkgs, left = kitdefs.packages_for(kit, arch(), fetching)
+    if kit.get("kernel_headers"):
+        headers = _kernel_headers()
+        if headers:
+            pkgs = pkgs + [headers]
+        else:
+            left = left + [f"linux-headers-{os.uname().release}"]
     if kit.get("debug_archive"):
         here = _installed_packages()
         absent = [p for p in pkgs if p.endswith("-dbgsym") and p[: -len("-dbgsym")] not in here]
         pkgs, left = [p for p in pkgs if p not in absent], sorted(left + absent)
     return pkgs, left
+
+
+def _kernel_headers():
+    """The package with the running kernel's headers (DKMS builds a driver against them): the one that already owns
+    /lib/modules/<release>/build (a vendor's, as the Lyra's linux-headers-vendor-rockchip), else
+    linux-headers-<release> (Debian's and Raspberry Pi OS's name) when the package lists know it; None otherwise."""
+    release = os.uname().release
+    found = run(["dpkg", "-S", f"/lib/modules/{release}/build"], check=False, timeout=60)
+    owner = found.stdout.strip() if found.returncode == 0 else ""
+    if owner and ":" in owner:
+        name = owner.split(":", 1)[0].strip()
+        if PKG_RE.match(name):
+            return name
+    name = f"linux-headers-{release}"
+    if (
+        PKG_RE.match(name)
+        and run(["apt-cache", "show", "--no-all-versions", name], check=False, timeout=120).stdout.strip()
+    ):
+        return name
+    return None
 
 
 # Debian's debug archives: the -dbgsym packages, signed with the same keys as the
@@ -727,7 +753,9 @@ def remove(kit_id, log=print):
         can = _purgeable(go, shared)
         held = sorted(set(go) - set(can))
         if held:
-            log(f"{kit_id}: keeping {', '.join(held)}. Another toolkit requires these packages")
+            log(
+                f"{kit_id}: keeping {', '.join(held)}. Other installed packages need them (another toolkit's, or a driver DKMS built)"
+            )
         shared |= set(held)
         go = can
     if go:

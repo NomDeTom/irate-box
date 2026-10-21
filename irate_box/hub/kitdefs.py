@@ -67,8 +67,29 @@ def why_left_out(kit, left):
     by = {}
     for p in left:
         cond = kit.get("only_where", {}).get(p)
-        by.setdefault(WHY[cond] if cond else "64-bit only", []).append(p)
+        why = (
+            WHY[cond]
+            if cond
+            else "no headers for this kernel in the package lists"
+            if p.startswith("linux-headers-")
+            else "64-bit only"
+        )
+        by.setdefault(why, []).append(p)
     return "; ".join(f"{', '.join(ps)} ({why})" for why, ps in by.items())
+
+
+# A link a kit points to (Driver resources' driver sources): https only, short words, nothing else.
+LINK_KEYS = {"title", "url", "version", "licence", "note"}
+
+
+def _link_ok(link):
+    return (
+        isinstance(link, dict)
+        and set(link) <= LINK_KEYS
+        and all(isinstance(v, str) and len(v) <= 300 for v in link.values())
+        and link.get("title")
+        and re.fullmatch(r"https://[^\s\"<>]+", link.get("url", "")) is not None
+    )
 
 
 def _ok(k, stem):
@@ -87,6 +108,9 @@ def _ok(k, stem):
         and all(isinstance(p, str) and PKG_RE.match(p) and p not in k["packages"] for p in k.get("alternatives", []))
         and isinstance(k.get("only_where", {}), dict)
         and all(p in k["packages"] and c in CONDITIONS for p, c in k.get("only_where", {}).items())
+        and k.get("kernel_headers", False) in (True, False)
+        and isinstance(k.get("links", []), list)
+        and all(_link_ok(link) for link in k.get("links", []))
     )
 
 
