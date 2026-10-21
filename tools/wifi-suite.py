@@ -114,7 +114,17 @@ def parse_phy(text):
 
 
 def identify(iface):
-    driver = Path(os.path.realpath(SYS / "class/net" / iface / "device/driver")).name
+    # Some drivers (aic8800_fdrv) hang the interface on the USB device, whose driver is the USB core ("usb",
+    # and ethtool says the same): the radio's driver is the one on the device's USB interface.
+    device = SYS / "class/net" / iface / "device"
+    driver = Path(os.path.realpath(device / "driver")).name
+    if driver == "usb":
+        # not the Bluetooth or storage side of a combined dongle
+        names = [
+            Path(os.path.realpath(link)).name for link in sorted(Path(os.path.realpath(device)).glob("*:*/driver"))
+        ]
+        wifi = [name for name in names if name not in ("btusb", "usb-storage", "uas") and not name.startswith("aic_bt")]
+        driver = wifi[0] if wifi else driver
     found = {"iface": iface, "driver": driver, "phy": phy_of(iface)}
     found["driver_version"] = read(SYS / "module" / driver / "version") or run("uname", "-r")[1]
     usb = usb_device(iface)
