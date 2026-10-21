@@ -55,6 +55,7 @@ function page(file, url, fetcher, scripts) {
   });
   dom.window.fetch = fetcher;
   dom.window.confirm = () => page.confirm;
+  require("./answer-asks.cjs")(dom.window); // its questions on the page answered by its confirm stub
   scripts.forEach((s) =>
     dom.window.eval(fs.readFileSync(`${WEB}/${s}`, "utf8")),
   );

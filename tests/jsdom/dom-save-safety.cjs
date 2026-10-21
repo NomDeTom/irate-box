@@ -26,6 +26,7 @@ w.fetch = async (u, opts = {}) => {
 };
 let confirms = true;
 w.confirm = () => confirms;
+require("./answer-asks.cjs")(w); // its questions on the page answered by its confirm stub
 // As a script, not eval: the page's own let and const stay reachable to the checks below (ev).
 const ctx = dom.getInternalVMContext();
 const ev = (code) => new vm.Script(code).runInContext(ctx);
@@ -251,6 +252,36 @@ const type = (input, value) => {
   ff.querySelector('.aw-discard').click();
   check('  Discard: the boards as saved again', ev('[...fwChosen].join()') === 'rak4631'
     && ![...d.querySelectorAll('#fw-boards input')].find((i) => i.parentElement.textContent.includes('heltec-v3')).checked);
+
+  // A section's question before Save, on the page (AW.confirmHere), not the browser's pop-up (admin pages plan, phase 5).
+  const askHost = d.createElement('div');
+  d.body.append(askHost);
+  w.answerAsks = false; // answered by hand below
+  let askSaves = 0, popped = 0;
+  w.confirm = () => { popped += 1; return true; };
+  const asks = w.AW.section({ id: 'ask-test', saved: { v: 1 }, ask: () => 'Change v? It cannot be undone.', save: () => { askSaves += 1; return true; } });
+  askHost.append(asks.foot);
+  asks.set('v', 2);
+  let answered = asks.save();
+  await wait();
+  const askBox = () => askHost.querySelector('.aw-ask');
+  check('Save with a question: asked on the page beside the footer, Cancel focused, nothing saved yet', askBox() && /Change v\?/.test(t(askBox()))
+    && d.activeElement === button(askBox(), 'Cancel') && askSaves === 0 && popped === 0, askHost.innerHTML);
+  button(askBox(), 'Cancel').click();
+  check('  Cancel: not saved, the change kept as a draft, the question gone', (await answered) === false && askSaves === 0 && asks.dirty() && !askBox());
+  answered = asks.save();
+  await wait();
+  askBox().dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check('  Escape cancels too', (await answered) === false && askSaves === 0 && !askBox());
+  answered = asks.save();
+  await wait();
+  button(askBox(), 'Save').click();
+  check('  its Save: saved once, nothing left to save', (await answered) === true && askSaves === 1 && !asks.dirty() && popped === 0);
+  const first = w.AW.confirmHere('First?', { anchor: askHost });
+  const second = w.AW.confirmHere('Second?', { anchor: askHost });
+  check('  one question at a time: a new one answers the last one No', (await first) === false && askHost.parentNode.querySelectorAll('.aw-ask').length === 1);
+  button(d.querySelector('.aw-ask'), 'Confirm').click();
+  check('  and Confirm answers yes', (await second) === true && !d.querySelector('.aw-ask'));
 
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

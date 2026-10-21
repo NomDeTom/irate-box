@@ -21,6 +21,7 @@ function page(file, url, fetcher, scripts) {
   const dom = new JSDOM(strip(fs.readFileSync(`${WEB}/${file}`, 'utf8')), { url, runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
   dom.window.fetch = fetcher;
   dom.window.confirm = () => true;
+  require("./answer-asks.cjs")(dom.window); // its questions on the page answered by its confirm stub
   scripts.forEach((s) => dom.window.eval(fs.readFileSync(`${WEB}/${s}`, 'utf8')));
   return { w: dom.window, d: dom.window.document, errors, navs };
 }

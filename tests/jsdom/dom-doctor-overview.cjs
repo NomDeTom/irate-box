@@ -32,6 +32,7 @@ const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|scrollIntoView/.test(e.message)) errors.push('jsdom: ' + e.message); });
 const dom = new JSDOM(html, { url: 'http://box/admin/#health', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
+require("./answer-asks.cjs")(w); // its questions on the page answered by its confirm stub
 const posted = [], asked = [];
 let n = 0;
 w.fetch = async (u, opts = {}) => {
