@@ -203,15 +203,34 @@ check(
     and "the access point aa:bb:cc:dd:ee:ff and the 2.4 GHz band" in netinv._english(h)["detail"],
     h,
 )
-check("power save on for the connection: found", ids(link_inv({**base, "powersave": 3})) == ["powersave-set"])
+# Power saving that is on is state, not a warning (Tom, 2026-10-21): the radio's card says where it is set.
 check(
-    "power save on as the box default, the connection leaving it: found",
-    ids(link_inv(base, {"settings": {"powersave": {"value": "3"}}})) == ["powersave-set"],
+    "power saving on, the connection's or the box default's: no finding",
+    ids(link_inv({**base, "powersave": 3})) == []
+    and ids(link_inv(base, {"settings": {"powersave": {"value": "3"}}})) == [],
+)
+nm_ps = lambda d=None: {"defaults": d or {}}  # noqa: E731
+check(
+    "where power saving is set: the network's own setting first",
+    netinv.powersave_from(
+        {"iface": "wlan0", "profile": {**base, "powersave": 2}}, nm_ps({"settings": {"powersave": {"value": "3"}}})
+    )
+    == {"where": "network", "value": "2", "network": "Home", "uuid": "u1"},
 )
 check(
-    "  but off for that interface, which comes first: not found",
-    ids(link_inv(base, {"settings": {"powersave": {"value": "3"}}, "ifaces": {"wlan0": {"powersave": {"value": "2"}}}}))
-    == [],
+    "  else the interface's default, then the box-wide one",
+    netinv.powersave_from(
+        {"iface": "wlan0", "profile": base},
+        nm_ps({"settings": {"powersave": {"value": "3"}}, "ifaces": {"wlan0": {"powersave": {"value": "2"}}}}),
+    )
+    == {"where": "default", "value": "2"}
+    and netinv.powersave_from({"iface": "wlan0", "profile": base}, nm_ps({"settings": {"powersave": {"value": "3"}}}))
+    == {"where": "default", "value": "3"},
+)
+check(
+    "  else the driver's choice",
+    netinv.powersave_from({"iface": "wlan0", "profile": base}, nm_ps()) == {"where": "driver", "value": None}
+    and netinv.powersave_from({"iface": "wlan0"}, None) == {"where": "driver", "value": None},
 )
 check(
     "a random MAC address, the connection's own or the box default's: found",

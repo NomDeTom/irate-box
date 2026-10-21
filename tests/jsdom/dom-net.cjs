@@ -37,6 +37,7 @@ w.fetch = async (u, opts = {}) => {
     data.inventory = JSON.parse(fs.readFileSync(`${__dirname}/netinv-fixture.json`, 'utf8'));
     // Roaming as the hardware scan reports it: three access points, two channels, the hotspot on the radio.
     const wl = data.inventory.radios.find((r) => r.iface === 'wlan0');
+    wl.powersave_from = { where: 'default', value: '2' };
     wl.roaming = { ssid: wl.link.ssid, aps: [{ bssid: 'aa:00:00:00:00:01', channel: 6, freq: 2437, signal: 100 }, { bssid: 'aa:00:00:00:00:02', channel: 6, freq: 2437, signal: 87 },
       { bssid: 'aa:00:00:00:00:03', channel: 11, freq: 2462, signal: 80 }], channels: [6, 11], bgscan: 'simple:30:-65:300', nm_version: '1.52.1',
       choices: ['roam', 'no-scan', 'lock'], why: {}, hotspot_shares: true };
@@ -72,6 +73,9 @@ setTimeout(() => {
   check('what it is doing, with the signal in words', /Current connection:? ?ExampleWiFi\d*, channel \d+ \(2\.4 GHz\), signal -\d+ dBm \((excellent|good|fair|weak|poor)\)/.test(card), card);
   check('Radio tests: each with its result, or Not run', /Radio tests/.test(card) && /Does it come back after a reset\? Tested [^:]+: it came back in 40 s\./.test(card)
     && /Does the hotspot follow a roam\? Not run\./.test(card) && !/Tested on this radio/.test(card), card);
+  const ps = cards[0] && [...cards[0].querySelectorAll('.net-line')].find((n) => /^Power saving/.test(n.textContent));
+  check('power saving as a setting: its value, where it is set, a link there; not a warning', ps && /Power saving\s*Off, set in Default connection settings\./.test(ps.textContent)
+    && ps.querySelector('a').getAttribute('href') === '#net-defaults-card' && !/Power saving is enabled/.test(card), ps && ps.textContent);
   check('managed by, explained', /NetworkManager, the system's own network settings/.test(card));
   check('the hotspot: yes, with conditions', /Yes, with conditions \(through networkmanager\)/.test(card));
   const conds = cards[0] ? [...cards[0].querySelectorAll('.net-conditions li')].map((li) => li.className) : [];
@@ -81,7 +85,7 @@ setTimeout(() => {
   // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
   // A device's uptime is on the Status tab, with the link it belongs to.
-  check('the card in sections: what, current connection, managed by, the hotspot, radio tests, to review, known about it', secs.length === 7
+  check('the card in sections: what, current connection, managed by, power saving, the hotspot, radio tests, to review, known about it', secs.length === 8
     && secs.every((n) => n.querySelector('.net-line, .net-facts')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
@@ -118,7 +122,8 @@ setTimeout(() => {
   const sentJoin = posted.find((p) => p.action === 'join');
   check('  Add and connect: warned the page may lose the box, sent, the password cleared from the form', /can lose the connection to the box/.test(asked)
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
-  check('the hotspot\'s conditions stay in its own section', secs[3] && secs[3].querySelector('.net-conditions') && /hotspot/.test(secs[3].textContent));
+  const hsec = secs.find((n) => n.querySelector('.net-conditions'));
+  check('the hotspot\'s conditions stay in its own section', hsec && /^Hotspot support/.test(hsec.textContent) && hsec.querySelectorAll('.net-line').length === 1);
   // One space wherever the stylesheet has any: the rules are checked by their content, not their layout.
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/\s+/g, ' ');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
