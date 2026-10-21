@@ -141,6 +141,15 @@ const wait = (ms = 150) => new Promise((r) => setTimeout(r, ms));
   await wait();
   check('  Publish and Unpublish firmware ask the hub', posted.some((b) => b.action === 'publish' && b.run === '8')
     && posted.some((b) => b.action === 'unpublish' && b.version === '2.8.1.8e6a88d-built' && b.env === 'rak4631'), JSON.stringify(posted.slice(-2)));
+  // A build cut off by a restart (ci.as_shown): said, with Build again; its early times said too.
+  w.renderFactory(snap({ running: null, waiting: [], runs: [{ run: 'firmware-factory/23', state: 'interrupted', env: 'rak4631', name: 'RAK WisBlock 4631', family: 'nrf52840',
+    source: 'meshtastic-firmware', ref: 'v2.8.1.8e6a88d', commit: '8e6a88d', finished: now - 3600, duration: 1345, clock_synced: false, artifacts: [] }, snap().runs[2]] }));
+  const cut = [...d.querySelectorAll('#factory-runs .admin-item')];
+  check('interrupted: said, with when its log stopped and why its times may be early', /^interrupted RAK WisBlock 4631 \(rak4631\).* 60 min ago\. 22 min\. The box or the builder stopped during this build\. Its times may be early/.test(t(cut[0])), t(cut[0]));
+  check('  Build again on it alone, not on the failed one', [...cut[0].querySelectorAll('button')].some((b) => t(b) === 'Build again') && ![...cut[1].querySelectorAll('button')].some((b) => t(b) === 'Build again'));
+  [...cut[0].querySelectorAll('button')].find((b) => t(b) === 'Build again').click();
+  await wait();
+  check('  Build again asks the hub for that run', posted.some((b) => b.action === 'again' && b.run === '23'), JSON.stringify(posted.slice(-1)));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 })();
