@@ -154,10 +154,10 @@ const TOUR = (() => {
   // The services the box has, as admin.js learns them: a step marked only shows once its service is known
   // to be there (Tailscale: /admin/tailscale; Cockpit: the Security page's setting).
   const present = {};
-  let STEPS = ALL.filter((s) => !s.only);
+  let STEPS = ALL.filter((step) => !step.only);
   const KIND = Object.fromEntries([
-    ...OWN.map((s) => [s.id, "step"]),
-    ...DECISIONS.map((s) => [s.id, "decision"]),
+    ...OWN.map((step) => [step.id, "step"]),
+    ...DECISIONS.map((decision) => [decision.id, "decision"]),
     [BACKUP.id, "step"],
   ]);
   const GUIDE = "/art/krab-controller-clipboard.webp";
@@ -171,22 +171,22 @@ const TOUR = (() => {
     (window.SETUP_STATE ||
       (typeof SETUP_STATE !== "undefined" ? SETUP_STATE : {}))[id];
   // Done: a decision kept or changed; a step its part of the page calls fine, or kept in the tour.
-  const isDone = (s) =>
-    decided.has(s.id) ||
-    (KIND[s.id] === "step" &&
-      s.id !== "backup" &&
-      (state(s.id) || {}).status === "ok");
-  const left = () => STEPS.filter((s) => !isDone(s) && !muted.has(s.id));
-  const PILL = (s) => {
-    if (KIND[s.id] === "decision")
-      return decided.has(s.id)
+  const isDone = (step) =>
+    decided.has(step.id) ||
+    (KIND[step.id] === "step" &&
+      step.id !== "backup" &&
+      (state(step.id) || {}).status === "ok");
+  const left = () => STEPS.filter((step) => !isDone(step) && !muted.has(step.id));
+  const PILL = (step) => {
+    if (KIND[step.id] === "decision")
+      return decided.has(step.id)
         ? ["ok-pill", "decided"]
-        : muted.has(s.id)
+        : muted.has(step.id)
           ? ["info-pill", "no reminders"]
           : ["info-pill", "default"];
-    const st = (state(s.id) || {}).status;
-    if (isDone(s)) return ["ok-pill", "done"];
-    if (muted.has(s.id)) return ["info-pill", "no reminders"];
+    const st = (state(step.id) || {}).status;
+    if (isDone(step)) return ["ok-pill", "done"];
+    if (muted.has(step.id)) return ["info-pill", "no reminders"];
     return st === "problem"
       ? ["bad-pill", "to fix"]
       : st === "warn"
@@ -217,8 +217,8 @@ const TOUR = (() => {
     if (present[service] === !!yes) return;
     present[service] = !!yes;
     const now = at != null ? STEPS[at].id : waiting;
-    STEPS = ALL.filter((s) => !s.only || present[s.only]);
-    const i = now ? STEPS.findIndex((s) => s.id === now) : -1;
+    STEPS = ALL.filter((step) => !step.only || present[step.only]);
+    const i = now ? STEPS.findIndex((step) => step.id === now) : -1;
     if (at != null) {
       if (i >= 0) {
         at = i;
@@ -245,46 +245,46 @@ const TOUR = (() => {
     if (!list) return;
     const n = left().length;
     list.replaceChildren(
-      ...STEPS.map((s, i) => {
-        const [cls, word] = PILL(s);
+      ...STEPS.map((step, i) => {
+        const [cls, word] = PILL(step);
         const li = document.createElement("li");
-        li.dataset.step = s.id;
-        li.className = isDone(s)
+        li.dataset.step = step.id;
+        li.className = isDone(step)
           ? "step-ok"
-          : muted.has(s.id)
+          : muted.has(step.id)
             ? "step-muted"
-            : `step-${(state(s.id) || {}).status || "todo"}`;
+            : `step-${(state(step.id) || {}).status || "todo"}`;
         const link = Object.assign(document.createElement("a"), {
-          href: "#" + s.section,
+          href: "#" + step.section,
           textContent: "Open settings",
         });
-        link.dataset.tour = s.id;
+        link.dataset.tour = step.id;
         link.addEventListener("click", (event) => {
           event.preventDefault();
           go(i);
         });
         const text = Object.assign(document.createElement("span"), {
           className: "step-text",
-          textContent: ((state(s.id) || {}).text || s.said) + " ",
+          textContent: ((state(step.id) || {}).text || step.said) + " ",
         });
         text.append(link);
-        if (!isDone(s)) {
+        if (!isDone(step)) {
           const m = Object.assign(document.createElement("button"), {
             type: "button",
             className: "link-button mute-step",
-            textContent: muted.has(s.id)
+            textContent: muted.has(step.id)
               ? "Resume reminders"
               : "Stop reminders",
-            title: muted.has(s.id)
+            title: muted.has(step.id)
               ? "Count this step again"
               : "Keep the step in the list. Do not count it as left to do.",
           });
-          m.addEventListener("click", () => mute(s.id, !muted.has(s.id)));
+          m.addEventListener("click", () => mute(step.id, !muted.has(step.id)));
           text.append(" ", m);
         }
         li.append(
           Object.assign(document.createElement("strong"), {
-            textContent: s.label,
+            textContent: step.label,
           }),
           " ",
           Object.assign(document.createElement("span"), {
@@ -479,11 +479,11 @@ const TOUR = (() => {
       // An id, or the index an older page kept; a step whose service is not known yet waits for has().
       const i = /^\d+$/.test(saved)
         ? Number(saved)
-        : STEPS.findIndex((s) => s.id === saved);
+        : STEPS.findIndex((step) => step.id === saved);
       if (i >= 0 && i < STEPS.length) {
         at = i;
         show();
-      } else if (ALL.some((s) => s.id === saved)) waiting = saved;
+      } else if (ALL.some((step) => step.id === saved)) waiting = saved;
     }
   }
   window.addEventListener("hashchange", () => {

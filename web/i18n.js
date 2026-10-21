@@ -30,7 +30,7 @@
 
   function tag(el) { return el.localName; }
   function noTranslate(el) { return el.getAttribute('translate') === 'no'; }
-  function letters(s) { return LETTER.test(s); }
+  function letters(text) { return LETTER.test(text); }
 
   function hasWords(el) {
     for (var c = el.firstChild; c; c = c.nextSibling) {

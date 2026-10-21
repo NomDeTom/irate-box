@@ -54,9 +54,9 @@ const LadderChart = (() => {
     const seg = () => segs[segs.length - 1];
     const at = (t, v) => {
       if (t < holeEnd) { if (holeEnd >= to) return; t = holeEnd; }
-      const s = seg();
-      if (t < from) { s.splice(0, s.length, [from, v]); return; }
-      s.push([t, v]);
+      const segment = seg();
+      if (t < from) { segment.splice(0, segment.length, [from, v]); return; }
+      segment.push([t, v]);
     };
     at(from, 0);
     const evs = rows.filter(isEvent).concat(hs.map(([start, end]) => ({ at: start, k: 'hole', end: end })))
@@ -81,14 +81,14 @@ const LadderChart = (() => {
     }
     if (open != null) bands.push([open, to]);
     if (seg().length) seg().push([to, lv]);
-    const kept = segs.filter((s) => s.length);
+    const kept = segs.filter((segment) => segment.length);
     return { segs: kept, pts: kept.flat(), marks,
       bands: bands.filter(([, b]) => b >= from).map(([start, end]) => [Math.max(start, from), end]),
       holes: hs.filter(([start, end]) => end > from && start < to).map(([start, end]) => [Math.max(start, from), Math.min(end, to)]) };
   }
 
-  const dur = (s) => (s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min`
-    : s < 2 * 86400 ? `${Math.floor(s / 3600)} h${Math.round((s % 3600) / 60) ? ` ${Math.round((s % 3600) / 60)} min` : ''}` : `${Math.round(s / 86400)} days`);
+  const dur = (seconds) => (seconds < 90 ? `${Math.round(seconds)} s` : seconds < 5400 ? `${Math.round(seconds / 60)} min`
+    : seconds < 2 * 86400 ? `${Math.floor(seconds / 3600)} h${Math.round((seconds % 3600) / 60) ? ` ${Math.round((seconds % 3600) / 60)} min` : ''}` : `${Math.round(seconds / 86400)} days`);
 
   function summary(rows, from, to = Infinity, hs = []) {
     const seen = rows.filter((record) => record.at >= from && record.at <= to && isEvent(record));
@@ -96,7 +96,7 @@ const LadderChart = (() => {
     const steps = {};
     for (const record of seen) if (record.k === 'repair' && record.s) steps[record.s] = (steps[record.s] || 0) + 1;
     const held = seen.filter((record) => record.k === 'held').length, stalls = seen.filter((record) => record.k === 'stalled').length;
-    const said = Object.entries(steps).map(([s, n]) => `${n} ${NAMES[s]}${n === 1 ? '' : 's'}`).join(', ');
+    const said = Object.entries(steps).map(([step, n]) => `${n} ${NAMES[step]}${n === 1 ? '' : 's'}`).join(', ');
     const blank = hs.reduce((n, [start, end]) => n + Math.max(0, Math.min(end, to) - Math.max(start, from)), 0);
     return `${outages} outage${outages === 1 ? '' : 's'}` + (said ? `; steps taken: ${said}` : '; no steps taken')
       + (held ? `; ${held} held` : '') + (stalls ? `; stalled ${stalls} time${stalls === 1 ? '' : 's'}` : '')
@@ -324,10 +324,10 @@ const LadderChart = (() => {
         if (end - start >= 60) { stack.push([start, end]); redraw(); }
       });
     };
-    const pick = (s) => { span = s; box.dataset.span = String(s); stack = []; redraw(); };
-    for (const [label, s] of PERIODS) {
-      const b = make('button', { type: 'button', class: 'chip', role: 'radio', 'data-span': s }, label);
-      b.addEventListener('click', () => pick(s));
+    const pick = (seconds) => { span = seconds; box.dataset.span = String(seconds); stack = []; redraw(); };
+    for (const [label, seconds] of PERIODS) {
+      const b = make('button', { type: 'button', class: 'chip', role: 'radio', 'data-span': seconds }, label);
+      b.addEventListener('click', () => pick(seconds));
       chips.append(b);
     }
     box.replaceChildren(chips, bar, chart);

@@ -47,14 +47,14 @@
   const facChosen = new Set();
   let facPoll = null;
   let facFlasher = null; // the boards the Firmware pane keeps for the flasher: ticked to start with
-  const facDur = (s) => (s == null ? '?' : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
+  const facDur = (seconds) => (seconds == null ? '?' : seconds < 90 ? `${Math.round(seconds)} s` : seconds < 5400 ? `${Math.round(seconds / 60)} min` : `${(seconds / 3600).toFixed(1)} h`);
   const facClock = (t) => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   // A family's readiness: a message from the hub (factory.readiness), said in the reader's language.
   const facReady = (family) => {
     const readiness = facData && facData.readiness[family];
     return (readiness && typeof readiness === 'object' ? AW.say(readiness) : readiness) || 'Not tested on this box. Its first build downloads its toolchain';
   };
-  const sentence = (s) => { const x = String(s).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
+  const sentence = (text) => { const x = String(text).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
   const facEst = (family) => { const estimate = facData && facData.estimates[family]; return estimate ? `about ${facDur(estimate.seconds)} a target here` : 'no build estimate'; };
 
   async function loadFactory() {
@@ -65,12 +65,12 @@
     facData = data;
     fac.paused.hidden = !data.paused;
     fac.pause.textContent = data.paused ? 'Resume queue' : 'Pause queue';
-    const names = data.sources.map((s) => s.name).join('\n');
+    const names = data.sources.map((source) => source.name).join('\n');
     if (fac.source.dataset.names !== names) {
       const was = fac.source.value;
       fac.source.dataset.names = names;
-      fac.source.replaceChildren(...data.sources.map((s) => el('option', { value: s.name, textContent: `${s.name} (${s.mirror ? 'mirror' : 'local repository'})` })));
-      if (data.sources.some((s) => s.name === was)) fac.source.value = was;
+      fac.source.replaceChildren(...data.sources.map((source) => el('option', { value: source.name, textContent: `${source.name} (${source.mirror ? 'mirror' : 'local repository'})` })));
+      if (data.sources.some((source) => source.name === was)) fac.source.value = was;
       if (data.sources.length) loadFactoryRefs();
       else fac.targets.replaceChildren(el('p', { className: 'setting-desc', textContent: 'No source configured. Mirror meshtastic/firmware in Git → Mirrors, or push a fork to a repository on this box.' }));
     }

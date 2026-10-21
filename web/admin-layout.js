@@ -51,7 +51,7 @@ const AL = (() => {
   const list = document.getElementById('admin-side-list');
   const side = document.querySelector('.admin-side');
   const menu = document.querySelector('.admin-menu');
-  const sections = new Map([...document.querySelectorAll('.admin-main > .admin-pane')].map((s) => [s.id, s]));
+  const sections = new Map([...document.querySelectorAll('.admin-main > .admin-pane')].map((section) => [section.id, section]));
   const placed = new Set();
   const pages = [];
   const badges = {};
@@ -85,10 +85,10 @@ const AL = (() => {
     pages.push(entry);
     return entry;
   }
-  function firstGlyph(s) {
-    if (!s) return null;
-    if (window.Intl && Intl.Segmenter) { const g = new Intl.Segmenter().segment(s)[Symbol.iterator]().next().value; return g ? g.segment : null; }
-    return [...s][0];
+  function firstGlyph(text) {
+    if (!text) return null;
+    if (window.Intl && Intl.Segmenter) { const g = new Intl.Segmenter().segment(text)[Symbol.iterator]().next().value; return g ? g.segment : null; }
+    return [...text][0];
   }
   // The sidebar's groups fold, open by default. Each head is a button over its links; the current page's
   // group is always open; a folded group shows its links' badges on its head. Auto-collapse keeps
@@ -127,7 +127,7 @@ const AL = (() => {
     if (!g) return;
     const words = [...g.box.querySelectorAll('a[data-badge]:not([hidden])')].map((link) => link.dataset.badge);
     // Counts add up (3 to fix and 1 to fix: 4); other words (!, new, ready) follow, each once.
-    const n = words.filter((x) => /^\d+$/.test(x)).reduce((s, x) => s + Number(x), 0);
+    const n = words.filter((x) => /^\d+$/.test(x)).reduce((total, x) => total + Number(x), 0);
     const sum = [n || null, ...new Set(words.filter((x) => !/^\d+$/.test(x)))].filter(Boolean).join(' ');
     if (g.box.hidden && words.length) { g.head.dataset.badge = sum; g.head.title = words.join(', '); }
     else { delete g.head.dataset.badge; g.head.removeAttribute('title'); }
@@ -245,8 +245,8 @@ const AL = (() => {
   }
   // Is a section on the page showing? (admin.js's loaders that wait until their section is seen.)
   function shown(id) {
-    const s = document.getElementById(id);
-    const p = s && s.closest('.admin-page');
+    const section = document.getElementById(id);
+    const p = section && section.closest('.admin-page');
     return !!p && !p.hidden;
   }
   // A word beside a section's sidebar entry ("new", "ready", a count): on its page's entry, the
@@ -257,8 +257,8 @@ const AL = (() => {
     onBadge.forEach((callback) => { try { callback(); } catch (error) { console.error(error); } });
   }
   function paint(id) {
-    const s = document.getElementById(id);
-    const p = s && pages.find((x) => x.el === (s.classList.contains('admin-page') ? s : s.closest('.admin-page')));
+    const section = document.getElementById(id);
+    const p = section && pages.find((x) => x.el === (section.classList.contains('admin-page') ? section : section.closest('.admin-page')));
     if (!p) return;
     const ids = [...p.el.querySelectorAll(':scope > .admin-pane')].map((x) => x.id);
     const word = ids.map((x) => badges[x]).find(Boolean);
@@ -269,8 +269,8 @@ const AL = (() => {
   // Hide or show the sidebar entry of the page holding a section (kept across rebuilds).
   function hide(id, yes) {
     if (yes) hiddenLinks.add(id); else hiddenLinks.delete(id);
-    const s = document.getElementById(id);
-    const p = s && pages.find((x) => x.el === s.closest('.admin-page'));
+    const section = document.getElementById(id);
+    const p = section && pages.find((x) => x.el === section.closest('.admin-page'));
     if (p) { p.link.hidden = !!yes; rollUp(p.group); }
   }
 
@@ -322,6 +322,6 @@ const AL = (() => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
   return { LAYOUT, show, groups: () => groups, badges: () => ({ ...badges }), onBadge: (callback) => onBadge.push(callback),
-    titleOf: (id) => { const s = document.getElementById(id), p = s && pages.find((x) => x.el === s.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (callback) => onBuild.push(callback), pages: () => pages.slice(), isBuilt: () => built, apps: () => appList };
+    titleOf: (id) => { const section = document.getElementById(id), p = section && pages.find((x) => x.el === section.closest('.admin-page')); return p ? p.title : id; }, shown, badge, hide, ready, onBuild: (callback) => onBuild.push(callback), pages: () => pages.slice(), isBuilt: () => built, apps: () => appList };
 })();
 if (typeof window !== 'undefined') window.AL = AL;

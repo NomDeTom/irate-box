@@ -27,10 +27,10 @@ const KD = (() => {
   // 8-connected blobs of one colour: labels (0 = none, else blob index + 1) and each blob's kind
   function blobs(kind, w, h) {
     const labels = new Int32Array(w * h), list = [], stack = [];
-    for (let s = 0; s < w * h; s++) {
-      if (!kind[s] || labels[s]) continue;
-      const id = list.length + 1, k = kind[s];
-      let size = 0; labels[s] = id; stack.push(s);
+    for (let seed = 0; seed < w * h; seed++) {
+      if (!kind[seed] || labels[seed]) continue;
+      const id = list.length + 1, k = kind[seed];
+      let size = 0; labels[seed] = id; stack.push(seed);
       while (stack.length) {
         const p = stack.pop(); size++;
         const x = p % w, y = (p / w) | 0;
@@ -75,14 +75,14 @@ const KD = (() => {
     let source = new Float32Array(src), target = new Float32Array(w * h);
     const R = Math.max(1, Math.round(radius / 1.7));
     for (let pass = 0; pass < 3; pass++) {
-      for (let y = 0; y < h; y++) { let s = 0; const o = y * w;
-        for (let x = -R; x <= R; x++) s += source[o + Math.min(w - 1, Math.max(0, x))];
-        for (let x = 0; x < w; x++) { target[o + x] = s / (2 * R + 1);
-          s += source[o + Math.min(w - 1, x + R + 1)] - source[o + Math.max(0, x - R)]; } }
-      for (let x = 0; x < w; x++) { let s = 0;
-        for (let y = -R; y <= R; y++) s += target[Math.min(h - 1, Math.max(0, y)) * w + x];
-        for (let y = 0; y < h; y++) { source[y * w + x] = s / (2 * R + 1);
-          s += target[Math.min(h - 1, y + R + 1) * w + x] - target[Math.max(0, y - R) * w + x]; } }
+      for (let y = 0; y < h; y++) { let sum = 0; const o = y * w;
+        for (let x = -R; x <= R; x++) sum += source[o + Math.min(w - 1, Math.max(0, x))];
+        for (let x = 0; x < w; x++) { target[o + x] = sum / (2 * R + 1);
+          sum += source[o + Math.min(w - 1, x + R + 1)] - source[o + Math.max(0, x - R)]; } }
+      for (let x = 0; x < w; x++) { let sum = 0;
+        for (let y = -R; y <= R; y++) sum += target[Math.min(h - 1, Math.max(0, y)) * w + x];
+        for (let y = 0; y < h; y++) { source[y * w + x] = sum / (2 * R + 1);
+          sum += target[Math.min(h - 1, y + R + 1) * w + x] - target[Math.max(0, y - R) * w + x]; } }
     }
     return source;
   }

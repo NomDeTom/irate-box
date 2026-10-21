@@ -25,9 +25,9 @@ const DATA_URL = ((document.currentScript && document.currentScript.src) || '/em
 const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter
   ? new Intl.Segmenter('en', { granularity: 'grapheme' })
   : null;
-function graphemes(s) {
-  if (segmenter) return Array.from(segmenter.segment(s), (x) => x.segment);
-  return Array.from(s); // fallback: code points; ZWJ sequences may split on very old browsers
+function graphemes(text) {
+  if (segmenter) return Array.from(segmenter.segment(text), (x) => x.segment);
+  return Array.from(text); // fallback: code points; ZWJ sequences may split on very old browsers
 }
 
 let panel = null;
@@ -51,8 +51,8 @@ const within = (cap) => (entry) => (entry[3] || 0) <= cap && [entry[0], entry[1]
 function loadData() {
   if (window.EMOJI_DATA) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const s = make('script', { src: DATA_URL, onload: resolve, onerror: () => reject(new Error('emoji-data.js')) });
-    document.head.appendChild(s);
+    const script = make('script', { src: DATA_URL, onload: resolve, onerror: () => reject(new Error('emoji-data.js')) });
+    document.head.appendChild(script);
   });
 }
 

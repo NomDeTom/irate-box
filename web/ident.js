@@ -10,10 +10,10 @@
 // hue is coloured from its name, so renaming re-colours you while old posts keep
 // whatever they were made with.
 function hueFor(name) {
-  const s = String(name ?? '');
+  const text = String(name ?? '');
   let h = 2166136261;                       // FNV-1a
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
   return (h >>> 0) % 360;
@@ -51,26 +51,26 @@ function withHue(body) {
 // string. So the only tags that can reach the DOM are the ones written here -- anything
 // the guest typed is already &lt; by the time a regex sees it.
 function mdInline(raw) {
-  let s = esc(raw);
+  let html = esc(raw);
 
   // Code spans come out first and go back last, so their contents are never treated
   // as markup: `a ** b` stays literal.
   const spans = [];
-  s = s.replace(/`([^`]+)`/g, (_, code) => `\u0000${spans.push(code) - 1}\u0000`);
+  html = html.replace(/`([^`]+)`/g, (_, code) => `\u0000${spans.push(code) - 1}\u0000`);
 
-  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
   // CommonMark's left/right-flanking rule, in miniature: the opener must be followed
   // by a non-space and the closer preceded by one, so `2 * 3 * 4` stays arithmetic.
-  s = s.replace(/(^|[^\w*_])([*_])(?=\S)([^*_]*[^\s*_])\2(?![\w*_])/g, '$1<em>$3</em>');
+  html = html.replace(/(^|[^\w*_])([*_])(?=\S)([^*_]*[^\s*_])\2(?![\w*_])/g, '$1<em>$3</em>');
 
   // Autolink http(s) only -- never a bare scheme, so javascript: can't sneak in. The
   // URL is already escaped, so it cannot break out of the quoted href.
-  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<>()]+)/g,
+  html = html.replace(/(^|[\s(])(https?:\/\/[^\s<>()]+)/g,
                 '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
 
   // oxlint-disable-next-line no-control-regex -- NUL brackets the code spans set aside above
-  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${spans[i]}</code>`);
+  return html.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${spans[i]}</code>`);
 }
 
 // --- Hue picker -------------------------------------------------------------

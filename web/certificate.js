@@ -113,7 +113,7 @@ async function start() {
       const fold = make('details');
       fold.append(make('summary', p.title));
       const ol = make('ol');
-      p.steps.forEach((s) => ol.append(make('li', s)));
+      p.steps.forEach((step) => ol.append(make('li', step)));
       fold.append(ol);
       steps.append(fold);
     });

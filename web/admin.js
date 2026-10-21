@@ -309,12 +309,12 @@ const el = (tag, props = {}, ...kids) => {
   return node;
 };
 const mb = (bytes) => (bytes ? `${Math.round(bytes / 2 ** 20)} MB` : "");
-const where = (s) =>
-  s.type === "kiwix"
-    ? `Kiwix's catalogue, ${s.kiwix_name}${s.flavour ? ` (${s.flavour})` : ""}`
-    : s.type === "url"
-      ? s.url
-      : `${s.repo}${s.workflow ? ` · ${s.workflow}` : ""}${s.branch ? ` @ ${s.branch}` : ""} · ${s.pattern}`;
+const where = (source) =>
+  source.type === "kiwix"
+    ? `Kiwix's catalogue, ${source.kiwix_name}${source.flavour ? ` (${source.flavour})` : ""}`
+    : source.type === "url"
+      ? source.url
+      : `${source.repo}${source.workflow ? ` · ${source.workflow}` : ""}${source.branch ? ` @ ${source.branch}` : ""} · ${source.pattern}`;
 
 // A refusal from the hub as an Error: error is its English; message, when the hub sends one, the same refusal
 // as a message (irate_box/hub/refused.py), said in the reader's language.
@@ -491,7 +491,7 @@ AL.onBuild(() => {
 function renderApps(snap, busy) {
   const apps = snap.apps || {};
   const sources = Object.fromEntries(
-    snap.sources.filter((s) => s.kind === "app").map((s) => [s.name, s]),
+    snap.sources.filter((source) => source.kind === "app").map((source) => [source.name, source]),
   );
   const post = (key, body) => () => libAct(key, body);
   const row = (name, app, withAccess) => {
@@ -803,7 +803,7 @@ function renderLibrary(snap) {
   if (!busy) {
     // When the librarian last looked (its sources' newest check), and when it looks next by the schedule.
     const looked = Object.values(snap.status || {})
-      .map((s) => Date.parse(s && s.last_check))
+      .map((status) => Date.parse(status && status.last_check))
       .filter((n) => !Number.isNaN(n));
     const every = Number((snap.policy || {}).check_every_hours) || 0;
     if (looked.length) {
@@ -1213,8 +1213,8 @@ const rebook = () => {
   bookTimer = setTimeout(loadBooks, 250);
 };
 bk.q.addEventListener("input", rebook);
-[bk.language, bk.state, bk.kept, bk.sort].forEach((s) =>
-  s.addEventListener("change", rebook),
+[bk.language, bk.state, bk.kept, bk.sort].forEach((filterEl) =>
+  filterEl.addEventListener("change", rebook),
 );
 bk.prev.addEventListener("click", () => {
   bookPage -= 1;
@@ -1384,8 +1384,8 @@ function drawSuggested(sources) {
   if (!box) return;
   const kept = new Set(
     (sources || [])
-      .filter((s) => s.type === "kiwix")
-      .map((s) => `${s.kiwix_name}|${s.flavour || ""}`),
+      .filter((source) => source.type === "kiwix")
+      .map((source) => `${source.kiwix_name}|${source.flavour || ""}`),
   );
   box.replaceChildren(
     ...SUGGESTED_BOOKS.map((b) => {
@@ -1547,19 +1547,19 @@ async function pkgAct(body) {
   }
 }
 function pkgCard(id, p) {
-  const s = p.settings,
+  const pkgSettings = p.settings,
     label = (ch) => (p.labels || {})[ch] || ch;
   const builds = p.builds || [];
-  const onChannel = builds.filter((b) => b.channel === s.channel);
+  const onChannel = builds.filter((b) => b.channel === pkgSettings.channel);
   const kept = onChannel.length ? onChannel[onChannel.length - 1] : null;
   // A flagged build (mode Flag) is known but not downloaded; it is the newest when there is one.
   const flag =
     p.flagged && p.flagged.version !== (kept || {}).version
-      ? { ...p.flagged, channel: s.channel, flagged: true }
+      ? { ...p.flagged, channel: pkgSettings.channel, flagged: true }
       : null;
   const newest = flag || kept;
   const ageOf = (b) => ago(Date.now() / 1000 - b.first_seen);
-  const looking = s.mode === "flag" || s.mode === "watch";
+  const looking = pkgSettings.mode === "flag" || pkgSettings.mode === "watch";
   const lines = [
     p.installed ? `Installed: ${p.installed}.` : "Not installed.",
     p.image
@@ -1581,13 +1581,13 @@ function pkgCard(id, p) {
           ? ". Nothing installs by itself. Select Install to install it."
           : ". It installs at the next check.")
       : newest && p.installed && newest.version !== p.installed
-        ? `The installed version is newer than the newest version on ${label(s.channel)}.` +
+        ? `The installed version is newer than the newest version on ${label(pkgSettings.channel)}.` +
           (looking
             ? ""
             : " Nothing installs by itself until that channel passes it.") +
           " Install installs the channel's newest version anyway."
         : null,
-    s.mode === "aged"
+    pkgSettings.mode === "aged"
       ? `While it waits, apt upgrade does not change it (${p.held ? "held" : "not held yet"}).`
       : null,
     p.checked ? `Checked ${ago(Date.now() / 1000 - p.checked)}.` : null,
@@ -1615,8 +1615,8 @@ function pkgCard(id, p) {
     : null;
   // The update pattern's three steps: Flag (mode flag), Download (mode watch: each build kept when first seen),
   // Install at once (auto) or after a wait (aged).
-  const act = { flag: 0, watch: 1 }[s.mode] ?? 2,
-    wait = s.mode === "aged" ? s.days : 0;
+  const act = { flag: 0, watch: 1 }[pkgSettings.mode] ?? 2,
+    wait = pkgSettings.mode === "aged" ? pkgSettings.days : 0;
   const pat = (list) => list.map(([v, t]) => [Number(v), t]);
   const settings = AW.settings(
     [
@@ -1624,14 +1624,14 @@ function pkgCard(id, p) {
         key: "channel",
         label: "Release channel",
         kind: "choice",
-        value: s.channel,
+        value: pkgSettings.channel,
         options: p.channels.map((c) => [c, label(c)]),
       },
       {
         key: "every",
         label: "How often to look",
         kind: "choice",
-        value: s.every ?? 24,
+        value: pkgSettings.every ?? 24,
         options: AW.UPDATE_OFTEN.map(([v, t]) => [Number(v), t]),
       },
       {
@@ -1660,8 +1660,8 @@ function pkgCard(id, p) {
       id: `pkg-${id}`,
       save: (v) => {
         const all = {
-          channel: s.channel,
-          every: s.every ?? 24,
+          channel: pkgSettings.channel,
+          every: pkgSettings.every ?? 24,
           act,
           wait,
           ...v,
@@ -1674,7 +1674,7 @@ function pkgCard(id, p) {
                 : all.wait
                   ? "aged"
                   : "auto",
-          days = all.wait || s.days;
+          days = all.wait || pkgSettings.days;
         return pkgAct(
           {
             action: "settings",
@@ -1695,7 +1695,7 @@ function pkgCard(id, p) {
   if (pkgAnswer[id]) say(pkgAnswer[id].text, pkgAnswer[id].ok, answer);
   else answer.hidden = true;
   // What it does by itself, as saved: the fold's title; the editor inside it.
-  const says = `${label(s.channel)}: ${AW.patternSays(s.every ?? 24, act).replace(/installs it\.$/, wait ? `installs it after ${wait} day${wait === 1 ? "" : "s"}.` : "installs it.")}`;
+  const says = `${label(pkgSettings.channel)}: ${AW.patternSays(pkgSettings.every ?? 24, act).replace(/installs it\.$/, wait ? `installs it after ${wait} day${wait === 1 ? "" : "s"}.` : "installs it.")}`;
   const policy = el(
     "details",
     { className: "field-help update-auto pkg-policy" },
@@ -1835,13 +1835,13 @@ function tile(label, value) {
 // hour and one of 72 days by day (githubstatus.com's format), from the hub's five-minute samples
 // (svchistory.py); a dot where it started (a reboot starts them all). Under the table: the legend
 // and each service's week in words.
-function serviceStrips(s, u, pages) {
+function serviceStrips(service, u, pages) {
   // A page the web server serves itself has no unit: its use instead (pagehistory.py), the hours it was loaded.
-  if (!s.unit && pages && s.path && (pages.pages || {})[s.path]) {
-    u = { ...pages, units: { [s.path]: pages.pages[s.path] } };
-    s = { ...s, unit: s.path };
+  if (!service.unit && pages && service.path && (pages.pages || {})[service.path]) {
+    u = { ...pages, units: { [service.path]: pages.pages[service.path] } };
+    service = { ...service, unit: service.path };
   }
-  const rec = u && s.unit && (u.units || {})[s.unit];
+  const rec = u && service.unit && (u.units || {})[service.unit];
   if (!rec) return el("span", { className: "setting-desc", textContent: "—" });
   const dayLabel = (back) => u.month_days[71 - back].label;
   return el(
@@ -1849,25 +1849,25 @@ function serviceStrips(s, u, pages) {
     { className: "svc-strips" },
     Heatmap.grid({
       bare: true,
-      caption: `${s.name}, the last 72 hours by hour`,
+      caption: `${service.name}, the last 72 hours by hour`,
       cols: u.hour_cols,
       rows: [
         {
-          label: s.name,
+          label: service.name,
           cells: rec.hours,
-          where: (i) => `${s.name}, ${u.hour_full[i]}`,
+          where: (i) => `${service.name}, ${u.hour_full[i]}`,
         },
       ],
     }),
     Heatmap.grid({
       bare: true,
-      caption: `${s.name}, the last 72 days by day`,
+      caption: `${service.name}, the last 72 days by day`,
       cols: rec.month,
       rows: [
         {
-          label: s.name,
+          label: service.name,
           cells: rec.month,
-          where: (i) => `${s.name}, ${dayLabel(71 - i)}`,
+          where: (i) => `${service.name}, ${dayLabel(71 - i)}`,
         },
       ],
     }),
@@ -1876,9 +1876,9 @@ function serviceStrips(s, u, pages) {
 function renderServiceUptime(services, u, pages) {
   const body = document.getElementById("svc-uptime-body");
   const units = (u && u.units) || {};
-  const mine = services.filter((s) => s.unit && units[s.unit]);
+  const mine = services.filter((service) => service.unit && units[service.unit]);
   const used = services.filter(
-    (s) => !s.unit && s.path && pages && (pages.pages || {})[s.path],
+    (service) => !service.unit && service.path && pages && (pages.pages || {})[service.path],
   );
   if (!mine.length) {
     body.replaceChildren(
@@ -1893,20 +1893,20 @@ function renderServiceUptime(services, u, pages) {
   }
   // One line: what was not up all the time over the last 72 hours, and what is switched off now (said as off, not as
   // a past uptime); the restarts are the strips' dots. The colours' key and the web pages' strips folded below it.
-  const off = (s) => s.state === "stopped" && s.enabled === false;
+  const off = (service) => service.state === "stopped" && service.enabled === false;
   const worse = mine.filter(
-    (s) =>
-      !off(s) &&
-      units[s.unit].summary.up != null &&
-      units[s.unit].summary.up < 0.995,
+    (service) =>
+      !off(service) &&
+      units[service.unit].summary.up != null &&
+      units[service.unit].summary.up < 0.995,
   );
-  const offNow = services.filter((s) => s.unit && off(s));
-  const quiet = mine.filter((s) => units[s.unit].summary.up == null && !off(s));
+  const offNow = services.filter((service) => service.unit && off(service));
+  const quiet = mine.filter((service) => units[service.unit].summary.up == null && !off(service));
   const parts = [
     ...worse.map(
-      (s) => `${s.name} up ${Heatmap.percent(units[s.unit].summary.up)}`,
+      (service) => `${service.name} up ${Heatmap.percent(units[service.unit].summary.up)}`,
     ),
-    ...quiet.map((s) => `${s.name} not recorded lately`),
+    ...quiet.map((service) => `${service.name} not recorded lately`),
   ];
   const line = el(
     "p",
@@ -1915,9 +1915,9 @@ function renderServiceUptime(services, u, pages) {
       ? `Over the last 72 hours, all up but: ${parts.join(", ")}.`
       : "All up over the last 72 hours.",
   );
-  for (const s of offNow) {
-    line.append(` ${s.name} is switched off.`);
-    if (s.unit === "tailscaled.service")
+  for (const service of offNow) {
+    line.append(` ${service.name} is switched off.`);
+    if (service.unit === "tailscaled.service")
       line.append(
         " ",
         goLink({
@@ -1927,9 +1927,9 @@ function renderServiceUptime(services, u, pages) {
         }),
       );
   }
-  const usedSaid = (s) => {
-    const sm = pages.pages[s.path].summary;
-    return `${s.name}: ${sm.uses ? `loaded ${sm.uses} time${sm.uses === 1 ? "" : "s"}${sm.errors ? `, ${sm.errors} failed` : ""}` : "not used"} in the last 72 hours`;
+  const usedSaid = (service) => {
+    const sm = pages.pages[service.path].summary;
+    return `${service.name}: ${sm.uses ? `loaded ${sm.uses} time${sm.uses === 1 ? "" : "s"}${sm.errors ? `, ${sm.errors} failed` : ""}` : "not used"} in the last 72 hours`;
   };
   body.replaceChildren(
     line,
@@ -2404,16 +2404,16 @@ function renderBox(data) {
   renderOverviewMesh(data.meshtasticd, data.service_uptime);
   document.getElementById("hub-version").textContent = data.version;
 
-  const rows = data.services.map((s) => {
-    const ops = s.ops.filter((op) =>
+  const rows = data.services.map((service) => {
+    const ops = service.ops.filter((op) =>
       op === "start"
-        ? !s.active
+        ? !service.active
         : op === "stop"
-          ? s.active
+          ? service.active
           : op === "enable"
-            ? !s.enabled
+            ? !service.enabled
             : op === "disable"
-              ? s.enabled
+              ? service.enabled
               : true,
     );
     return el(
@@ -2422,40 +2422,40 @@ function renderBox(data) {
       el(
         "td",
         { className: "svc-name" },
-        el("span", { className: "setting-name", textContent: s.name }),
+        el("span", { className: "setting-name", textContent: service.name }),
         el("span", {
           className: "setting-desc",
-          textContent: s.unit || s.note || s.path || "",
+          textContent: service.unit || service.note || service.path || "",
         }),
-        s.why
-          ? el("span", { className: "setting-desc bad", textContent: s.why })
+        service.why
+          ? el("span", { className: "setting-desc bad", textContent: service.why })
           : null,
       ),
       el(
         "td",
         {},
         el("span", {
-          className: `state state-${s.state}`,
-          textContent: STATE_LABEL[s.state] || s.state,
+          className: `state state-${service.state}`,
+          textContent: STATE_LABEL[service.state] || service.state,
         }),
       ),
       el("td", {
         textContent:
-          s.unit && s.state !== "missing" ? (s.enabled ? "yes" : "no") : "—",
+          service.unit && service.state !== "missing" ? (service.enabled ? "yes" : "no") : "—",
       }),
-      el("td", {}, serviceStrips(s, data.service_uptime, data.page_use)),
+      el("td", {}, serviceStrips(service, data.service_uptime, data.page_use)),
       el(
         "td",
         {},
         el(
           "span",
           { className: "library-buttons" },
-          ...(s.state === "missing"
+          ...(service.state === "missing"
             ? []
             : ops.map((op) =>
                 actionButton(
                   OP_LABEL[op],
-                  () => control(s, op),
+                  () => control(service, op),
                   OP_TITLE[op] ? { title: OP_TITLE[op] } : {},
                 ),
               )),
@@ -2497,13 +2497,13 @@ async function loadBox() {
   }
 }
 
-async function control(s, op) {
+async function control(service, op) {
   try {
     waitingFor = {
-      id: (await postJSON("/admin/control", { unit: s.unit, op })).id,
+      id: (await postJSON("/admin/control", { unit: service.unit, op })).id,
       at: controlNote,
     };
-    say(`${OP_LABEL[op]}: ${s.name}…`, true, controlNote);
+    say(`${OP_LABEL[op]}: ${service.name}…`, true, controlNote);
     loadBox();
   } catch (err) {
     say(err.message, false, controlNote);
@@ -2900,9 +2900,9 @@ function renderStore(data) {
     }
   };
   // Rename: the name becomes a text field in place, with Rename and Cancel (Enter renames, Escape cancels).
-  const rename = (s, title, opener) => {
+  const rename = (saved, title, opener) => {
     const field = el("input", {
-      value: s.name,
+      value: saved.name,
       maxLength: 64,
       "aria-label": "New name",
     });
@@ -2912,8 +2912,8 @@ function renderStore(data) {
     };
     const save = () => {
       const name = field.value.trim();
-      if (!name || name === s.name) return done();
-      act({ action: "rename", id: s.id, name })();
+      if (!name || name === saved.name) return done();
+      act({ action: "rename", id: saved.id, name })();
     };
     const form = el(
       "span",
@@ -2933,14 +2933,14 @@ function renderStore(data) {
   };
   document.getElementById("store-saves").replaceChildren(
     ...(data.saves.length
-      ? data.saves.map((s) => {
+      ? data.saves.map((save) => {
           const title = el("strong", {
-            textContent: `${s.locked ? "🔒 " : ""}${s.name}`,
+            textContent: `${save.locked ? "🔒 " : ""}${save.name}`,
           });
           return el(
             "div",
             { className: "admin-item admin-save" },
-            s.thumb ? thumbFor(s.id) : el("span", { className: "admin-thumb" }),
+            save.thumb ? thumbFor(save.id) : el("span", { className: "admin-thumb" }),
             el(
               "span",
               {},
@@ -2948,8 +2948,8 @@ function renderStore(data) {
               el("span", {
                 className: "setting-desc",
                 textContent:
-                  `${s.kind} · ${size(s.size)} · ${ago(data.now - s.created)}` +
-                  (s.locked
+                  `${save.kind} · ${size(save.size)} · ${ago(data.now - save.created)}` +
+                  (save.locked
                     ? " · locked by a guest's device. Only that device can change it. You can still rename or delete it here."
                     : ""),
               }),
@@ -2957,14 +2957,14 @@ function renderStore(data) {
             el(
               "span",
               { className: "library-buttons" },
-              actionButton("Rename", (event) => rename(s, title, event.currentTarget), {
+              actionButton("Rename", (event) => rename(save, title, event.currentTarget), {
                 className: "small",
               }),
               actionButton(
                 "Delete",
                 async (event) => {
-                  if (await AW.confirmHere(`Delete "${s.name}"?`, { anchor: event.currentTarget }))
-                    act({ action: "delete", id: s.id })();
+                  if (await AW.confirmHere(`Delete "${save.name}"?`, { anchor: event.currentTarget }))
+                    act({ action: "delete", id: save.id })();
                 },
                 { className: "small" },
               ),
@@ -2993,12 +2993,12 @@ async function loadStore() {
 const storeForm = document.getElementById("store-settings");
 async function loadStoreSettings() {
   try {
-    const s = await getJSON("/admin/settings");
+    const reply = await getJSON("/admin/settings");
     storeSec.fill({
-      store_max_total_mb: s.store_max_total_mb,
-      store_save_ttl_hours: s.store_save_ttl_hours,
-      drop_max_total_mb: s.drop_max_total_mb,
-      drop_ttl_hours: s.drop_ttl_hours,
+      store_max_total_mb: reply.store_max_total_mb,
+      store_save_ttl_hours: reply.store_save_ttl_hours,
+      drop_max_total_mb: reply.drop_max_total_mb,
+      drop_ttl_hours: reply.drop_ttl_hours,
     });
   } catch (_) {
     /* the landing-page block already reports a failed read */
@@ -3255,27 +3255,27 @@ function renderUpdate(data) {
     : meteredNow && meteredNow.metered
       ? `The box is on a metered network (${meteredNow.connection || meteredNow.iface}, ${meteredNow.how}). Scheduled updates and downloads wait for another network. A download that you start here begins at once and can use a lot of data.`
       : "";
-  const s = AW.localise(data.state); // the checks' and the doctor's messages said once, in the reader's language
+  const state = AW.localise(data.state); // the checks' and the doctor's messages said once, in the reader's language
   const p = data.progress;
   const busy = data.pending > 0 || !!updWaiting || !!p;
-  const found = !!s && !s.up_to_date; // a check found a newer version
-  const fetched = found && !!(s.checks && s.checks.length);
-  const ready = found && s.verified === s.available;
-  if (!s) {
+  const found = !!state && !state.up_to_date; // a check found a newer version
+  const fetched = found && !!(state.checks && state.checks.length);
+  const ready = found && state.verified === state.available;
+  if (!state) {
     upd.summary.replaceChildren(
       AW.updatePill(null, false),
       " Not checked yet.",
     );
   } else {
-    const when = new Date(s.fetched * 1000).toLocaleString();
+    const when = new Date(state.fetched * 1000).toLocaleString();
     upd.summary.replaceChildren(
-      AW.updatePill(s.fetched, found),
+      AW.updatePill(state.fetched, found),
       " ",
-      s.up_to_date
-        ? `Up to date with ${s.branch} (${s.available}, ${s.available_date}). Checked ${when}.`
-        : `Available: ${s.available} (${s.available_date}) on ${s.branch}` +
-            (s.changes_known
-              ? `, ${s.changes.length} new commit${s.changes.length === 1 ? "" : "s"}`
+      state.up_to_date
+        ? `Up to date with ${state.branch} (${state.available}, ${state.available_date}). Checked ${when}.`
+        : `Available: ${state.available} (${state.available_date}) on ${state.branch}` +
+            (state.changes_known
+              ? `, ${state.changes.length} new commit${state.changes.length === 1 ? "" : "s"}`
               : "") +
             `. Checked ${when}. ` +
             (ready
@@ -3285,7 +3285,7 @@ function renderUpdate(data) {
                 : "Download it to verify it and download what it needs."),
     );
   }
-  const checks = (fetched && s.checks) || [];
+  const checks = (fetched && state.checks) || [];
   const failedChecks = ready ? [] : checks.filter((c) => !c.ok && !c.warn);
   upd.checks.hidden = !checks.length;
   upd.checks.replaceChildren(
@@ -3311,12 +3311,12 @@ function renderUpdate(data) {
     doctorProblems ? String(doctorProblems) : failedChecks.length ? "!" : "",
   );
   upd.changes.replaceChildren(
-    ...((found && s.changes) || [])
+    ...((found && state.changes) || [])
       .slice(0, 20)
       .map((c) => el("li", { textContent: c })),
   );
   renderAuto(data.auto);
-  upd.output.hidden = !data.log.length || (!busy && s && s.up_to_date);
+  upd.output.hidden = !data.log.length || (!busy && state && state.up_to_date);
   if (p && p.action === "install") upd.output.open = true;
   upd.log.textContent = data.log.join("\n");
   upd.log.scrollTop = upd.log.scrollHeight;
@@ -3356,7 +3356,7 @@ function renderUpdate(data) {
       return;
     }
   }
-  updCandidate = found ? s.available_sha || null : null;
+  updCandidate = found ? state.available_sha || null : null;
   upd.check.textContent = "Check for updates";
   upd.fetch.textContent = found ? "Download" : "Check for updates and download";
   upd.install.textContent = fetched ? "Install" : found ? "Download and install" : "Check for updates, download and install";
@@ -5502,12 +5502,12 @@ function renderGlance(data, rep) {
       )
     : null;
   const ago = (at) => {
-    const s = Date.now() / 1000 - at;
-    return s < 3600
-      ? `${Math.max(1, Math.round(s / 60))} min ago`
-      : s < 172800
-        ? `${Math.round(s / 3600)} h ago`
-        : `${Math.round(s / 86400)} days ago`;
+    const seconds = Date.now() / 1000 - at;
+    return seconds < 3600
+      ? `${Math.max(1, Math.round(seconds / 60))} min ago`
+      : seconds < 172800
+        ? `${Math.round(seconds / 3600)} h ago`
+        : `${Math.round(seconds / 86400)} days ago`;
   };
   const rows = [
     [
@@ -6646,7 +6646,7 @@ function upPreset(pick, levels) {
     sensitivity: pick.sensitivity,
   };
   eff.steps = Object.fromEntries(
-    Object.entries(pace.steps).filter(([s]) => allowed.includes(s)),
+    Object.entries(pace.steps).filter(([step]) => allowed.includes(step)),
   );
   if (levels.retry && pick.retry in levels.retry)
     eff.max_repeat = levels.retry[pick.retry];
@@ -6741,7 +6741,7 @@ function paceLine(name, levels) {
   const p = levels.presets.pace[name];
   return (
     `First it reconnects ${p.steps.reconnect ? `after ${dur(p.steps.reconnect)}` : "at once"}, then again every ${dur(p.repeat)}. ` +
-    `Then it ${["restart", "radio", "reboot"].map((s) => `${STEP_DOES[s].replace("the network service", "the service")} after ${dur(p.steps[s])}`).join(", ")}. ` +
+    `Then it ${["restart", "radio", "reboot"].map((step) => `${STEP_DOES[step].replace("the network service", "the service")} after ${dur(p.steps[step])}`).join(", ")}. ` +
     `Each step runs only if the maximum action includes it. It checks every ${dur(p.check)} and counts failed checks over ${dur(p.window)}.`
   );
 }
@@ -7341,7 +7341,7 @@ function upLinkText(u) {
         ? `Down for ${minutes(Math.round(u.at - o.since))} on ${u.iface}.`
         : `Down on ${u.iface}.`,
     );
-    const tried = o ? o.done.filter((s) => !(o.skipped || []).includes(s)) : [];
+    const tried = o ? o.done.filter((step) => !(o.skipped || []).includes(step)) : [];
     if (tried.length) parts.push(`Tried: ${tried.join(", ")}.`);
     if (o && (o.skipped || []).length)
       parts.push(`Not possible here: ${o.skipped.join(", ")}.`);
@@ -8518,19 +8518,19 @@ function renderDefaults(inv, busy) {
   const names = defaultsScope ? PER_IFACE : Object.keys(manager.settings);
   const mineIf = (manager.ifaces_mine || {})[defaultsScope] || {};
   const rows = names.map((name) => {
-    const s = manager.settings[name];
+    const setting = manager.settings[name];
     const sel = el("select", {
-      "aria-label": s.label,
+      "aria-label": setting.label,
       disabled: busy || defSec.disabled(),
     });
     const boxNow =
-      s.value === null
-        ? `NetworkManager's own: ${s.nm_default}`
-        : s.values[s.value] || s.value;
+      setting.value === null
+        ? `NetworkManager's own: ${setting.nm_default}`
+        : setting.values[setting.value] || setting.value;
     // "default" means irate-box sets nothing here: said as what applies then, not as NetworkManager's
     // own when another file (the image's) sets it.
     const other =
-      s.value !== null && s.mine === null ? "Use current value" : null;
+      setting.value !== null && setting.mine === null ? "Use current value" : null;
     const opts = [
       [
         "default",
@@ -8538,10 +8538,10 @@ function renderDefaults(inv, busy) {
           ? "Use box default"
           : other || "Use NetworkManager default",
       ],
-      ...Object.entries(s.values).map(([v, l]) => [v, cap1(l)]),
+      ...Object.entries(setting.values).map(([v, l]) => [v, cap1(l)]),
     ];
-    const cur = defaultsScope ? (mineIf[name] ?? null) : s.mine;
-    if (s.kind === "count" && cur !== null && !(cur in s.values))
+    const cur = defaultsScope ? (mineIf[name] ?? null) : setting.mine;
+    if (setting.kind === "count" && cur !== null && !(cur in setting.values))
       opts.push([cur, `${cur} tries`]);
     for (const [v, label] of opts)
       sel.append(el("option", { value: v, textContent: label }));
@@ -8555,29 +8555,29 @@ function renderDefaults(inv, busy) {
       const effective = manager.ifaces[defaultsScope][name];
       now =
         effective.value === null
-          ? `now NetworkManager's own: ${s.nm_default}`
-          : `now ${s.values[effective.value] || effective.value}, from ${
+          ? `now NetworkManager's own: ${setting.nm_default}`
+          : `now ${setting.values[effective.value] || effective.value}, from ${
               effective.section && effective.section.includes("-irate-box-")
                 ? `irate-box's setting for ${defaultsScope}`
                 : `${own(effective.file)} [${effective.section}]`
             }${effective.unsure ? " (if it matches this device)" : ""}`;
     } else {
       now =
-        s.value === null
-          ? `now NetworkManager's own: ${s.nm_default}`
-          : `now ${s.values[s.value] || s.value}, set by ${s.mine !== null ? "irate-box's file" : own(s.file)}`;
+        setting.value === null
+          ? `now NetworkManager's own: ${setting.nm_default}`
+          : `now ${setting.values[setting.value] || setting.value}, set by ${setting.mine !== null ? "irate-box's file" : own(setting.file)}`;
     }
     // What each word choice means, said once under them: the box default, NetworkManager's own.
     const means = [
       defaultsScope ? `the box default is ${boxNow}` : null,
-      s.value !== null || defaultsScope
-        ? `NetworkManager's own is ${s.nm_default}`
+      setting.value !== null || defaultsScope
+        ? `NetworkManager's own is ${setting.nm_default}`
         : null,
     ].filter(Boolean);
     const row = el(
       "label",
       { className: "net-default" },
-      el("span", { className: "setting-name", textContent: s.label }),
+      el("span", { className: "setting-name", textContent: setting.label }),
       sel,
       el("span", {
         className: "setting-desc",
@@ -9716,12 +9716,12 @@ function renderHotspot(data) {
   hsData = data;
   hs.wpa2Desc.textContent =
     "Let older WPA2 devices join too (WPA3 transition mode).";
-  const s = data.settings;
+  const settings = data.settings;
   const saved = {
-    mode: s.mode,
-    second: s.second,
-    password: s.password || "",
-    allow_wpa2: !!s.allow_wpa2,
+    mode: settings.mode,
+    second: settings.second,
+    password: settings.password || "",
+    allow_wpa2: !!settings.allow_wpa2,
   };
   // Drawn again only when the saved settings change: a field being typed in is not taken away.
   const key = JSON.stringify(saved);
@@ -9948,10 +9948,10 @@ function drawBackupGo() {
       : [el("option", { value: "", textContent: "No drive found yet" })]),
   );
   bku.imageGo.disabled = !usbSticks.length || !!bkWaiting;
-  for (const s of [document.getElementById("offline-stick")]) {
-    const keep = s.value;
-    s.replaceChildren(...bku.stick.cloneNode(true).children);
-    if ([...s.options].some((o) => o.value === keep)) s.value = keep;
+  for (const select of [document.getElementById("offline-stick")]) {
+    const keep = select.value;
+    select.replaceChildren(...bku.stick.cloneNode(true).children);
+    if ([...select.options].some((o) => o.value === keep)) select.value = keep;
   }
   drawKitTotal();
 }
@@ -10868,10 +10868,10 @@ function tileWords(id) {
       badges: [app.mode === "off" ? "off" : app.mode],
     };
   }
-  const s = lastAccess && (lastAccess.seen || {})[id];
+  const seen = lastAccess && (lastAccess.seen || {})[id];
   return {
-    summary: `Access: guests · Visibility: ${SEEN_ONLY[s || "auto"]}`,
-    badges: [s === "hidden" ? "hidden" : "shown"],
+    summary: `Access: guests · Visibility: ${SEEN_ONLY[seen || "auto"]}`,
+    badges: [seen === "hidden" ? "hidden" : "shown"],
   };
 }
 function drawTileOrder(openId) {
@@ -11166,11 +11166,11 @@ function accessControls(app) {
 }
 // The tile's own icon: emoji, or up to four letters and digits drawn as text;
 // blank goes back to the app's own. Checked here as the hub checks it (server.valid_icon).
-const ICON_OK = (s) =>
-  /^[A-Za-z0-9]{1,4}$/.test(s) ||
-  (s.length > 0 &&
-    [...s].length <= 16 &&
-    [...s].every((c) => c.codePointAt(0) > 0x7f));
+const ICON_OK = (icon) =>
+  /^[A-Za-z0-9]{1,4}$/.test(icon) ||
+  (icon.length > 0 &&
+    [...icon].length <= 16 &&
+    [...icon].every((c) => c.codePointAt(0) > 0x7f));
 function iconField(draft, tile, iconNow, redraw) {
   const val = draft.icon !== undefined ? draft.icon : iconNow;
   const input = el("input", {
@@ -12749,8 +12749,8 @@ function renderMirrors(data) {
             .filter(Boolean)
             .join(" · ");
           const subs = Object.entries(st.submodules || {}).map(
-            ([p, s]) =>
-              `${p} (${s.kept.length} commit${s.kept.length === 1 ? "" : "s"}, ${size(s.size)})`,
+            ([p, submodule]) =>
+              `${p} (${submodule.kept.length} commit${submodule.kept.length === 1 ? "" : "s"}, ${size(submodule.size)})`,
           );
           const state = st.error
             ? `error: ${errorSaid(st)}`
@@ -12984,7 +12984,7 @@ const STATE_ICON = {
   interrupted: "⏹",
   running: "⏳",
 };
-const minutes = (s) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
+const minutes = (seconds) => (seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`);
 
 let ciData = null;
 let ciViewing = null; // { run, next, log } while a run's view is open
@@ -13703,8 +13703,8 @@ function renderKits(data) {
 
 // A kit's card: its name, what it is for and its state in words.
 function kitItem(k, st) {
-  const s = (st.kits || {})[k.id] || {},
-    c = s.cached,
+  const kitState = (st.kits || {})[k.id] || {},
+    c = kitState.cached,
     inst = (st.installed || {})[k.id];
   const left =
     inst && inst.remove_at
@@ -13712,8 +13712,8 @@ function kitItem(k, st) {
       : null;
   const badges = [
     c ? `cached ${dayOf(c.fetched)}, ${size(c.bytes)}` : "not cached",
-    s.previous
-      ? `older set kept for rollback${s.previous.extra_bytes ? ` (${size(s.previous.extra_bytes)})` : ""}`
+    kitState.previous
+      ? `older set kept for rollback${kitState.previous.extra_bytes ? ` (${size(kitState.previous.extra_bytes)})` : ""}`
       : null,
     k.owner ? "yours" : null,
     ((kitsData || {}).flag_details || {})[k.id]
@@ -13738,8 +13738,8 @@ function kitItem(k, st) {
 // tools); jobs at once (install, remove, keep longer, refresh, roll back, edit, delete), said so.
 const kitDrafts = new Map();
 function kitBody(k, st, cfg, setDirty) {
-  const s = (st.kits || {})[k.id] || {},
-    c = s.cached,
+  const kitState = (st.kits || {})[k.id] || {},
+    c = kitState.cached,
     inst = (st.installed || {})[k.id],
     mine = cfg.kits[k.id];
   const draft = {
@@ -13843,18 +13843,18 @@ function kitBody(k, st, cfg, setDirty) {
   }
   // The set before this one, kept for Roll back: what it holds beyond the current set. The Security doctor judges the
   // cache by its newest versions only, so these older copies are not flagged.
-  if (s.previous) {
-    const older = s.previous.older || [];
+  if (kitState.previous) {
+    const older = kitState.previous.older || [];
     jobs.append(
       el("p", {
         className: "setting-desc",
         textContent:
-          `Kept for rollback: the set downloaded ${dayOf(s.previous.fetched)}` +
+          `Kept for rollback: the set downloaded ${dayOf(kitState.previous.fetched)}` +
           (older.length
             ? `, with older versions of ${older.length} package${older.length === 1 ? "" : "s"} (${older.slice(0, 6).join(", ")}${older.length > 6 ? ", …" : ""})`
             : ", the same versions as now") +
-          (s.previous.extra_bytes
-            ? `, ${size(s.previous.extra_bytes)} more in the cache`
+          (kitState.previous.extra_bytes
+            ? `, ${size(kitState.previous.extra_bytes)} more in the cache`
             : "") +
           ". The Security doctor checks only the newest version of each package." +
           (cfg.previous_days && c && c.fetched
@@ -13870,22 +13870,22 @@ function kitBody(k, st, cfg, setDirty) {
         () => kitAct({ action: "fetch", kit: k.id }),
         { className: "small" },
       ),
-      s.previous
+      kitState.previous
         ? actionButton(
-            `Roll back to ${dayOf(s.previous.fetched)}`,
+            `Roll back to ${dayOf(kitState.previous.fetched)}`,
             () => {
               kitAct({ action: "rollback", kit: k.id });
             },
             { className: "small" },
           )
         : null,
-      s.previous
+      kitState.previous
         ? actionButton(
-            `Remove older set${s.previous.extra_bytes ? ` (frees ${size(s.previous.extra_bytes)})` : ""}`,
+            `Remove older set${kitState.previous.extra_bytes ? ` (frees ${size(kitState.previous.extra_bytes)})` : ""}`,
             async (event) => {
               if (
                 await AW.confirmHere(
-                  `Remove the older set of ${k.title}, downloaded ${dayOf(s.previous.fetched)}? This frees ${size(s.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: event.currentTarget })
+                  `Remove the older set of ${k.title}, downloaded ${dayOf(kitState.previous.fetched)}? This frees ${size(kitState.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: event.currentTarget })
               )
                 kitAct({ action: "drop-previous", kit: k.id });
             },
@@ -15827,9 +15827,9 @@ AL.onBuild(drawFolderIndex);
 drawFolderIndex(); // the menu may have been built before this script ran
 AL.onBuild(fillFolderBlocks);
 // The arrangement without its empty parts, sorted by folder: what changed, and nothing else.
-const folderNorm = (s) =>
+const folderNorm = (byFolder) =>
   Object.fromEntries(
-    Object.entries(s || {})
+    Object.entries(byFolder || {})
       .sort()
       .map(([folderId, v]) => [
         folderId,

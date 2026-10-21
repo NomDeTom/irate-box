@@ -49,7 +49,7 @@ async function refresh() {
   const services = [...data.services].sort(
     (left, right) => ORDER[left.state] - ORDER[right.state] || left.name.localeCompare(right.name));
   list.replaceChildren(...services.map(
-    (s) => row(s.name, s.path || s.note || 'Built-in service', s.state)));
+    (service) => row(service.name, service.path || service.note || 'Built-in service', service.state)));
   note.textContent = data.proxied ? ''
     : 'No web server is in front of the hub server. Apps that need the web server cannot be reached.';
   note.hidden = data.proxied;

@@ -9,8 +9,8 @@ const KINDS = { text: 'messages', position: 'positions', nodeinfo: 'node names',
   traceroute: 'traceroutes', neighborinfo: 'neighbours', map_report: 'map reports', encrypted: 'encrypted (no key here)' };
 
 function ago(t) {
-  const s = Math.max(0, Math.round(Date.now() / 1000 - t));
-  return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`;
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - t));
+  return seconds < 90 ? `${seconds} s ago` : seconds < 5400 ? `${Math.round(seconds / 60)} min ago` : seconds < 172800 ? `${Math.round(seconds / 3600)} h ago` : `${Math.round(seconds / 86400)} days ago`;
 }
 
 function nodeName(n) {
