@@ -40,6 +40,16 @@ for f in (REPO / "toolkits").glob("*.json"):
 )
 (T / "defs" / "bad.json").write_text(json.dumps({"id": "bad", "title": "Bad", "packages": ["--option", "x"]}))
 (T / "defs" / "notjson.json").write_text("{")
+(T / "defs" / "httplink.json").write_text(
+    json.dumps(
+        {
+            "id": "httplink",
+            "title": "Plain link",
+            "packages": ["gdb"],
+            "links": [{"title": "Driver", "url": "http://example.org/driver"}],
+        }
+    )
+)
 os.environ.update(
     HUB_STATE_DIR=str(T / "state"),
     HUB_KITS_ROOT=str(T / "cache"),
@@ -231,6 +241,42 @@ check(
     sorted(defs),
 )
 check("a kit naming an option, or a broken file, is left out", "bad" not in defs and "notjson" not in defs)
+check(
+    "Driver resources: dkms and usb-modeswitch, the kernel's headers, firmware as alternatives, its links https",
+    {"dkms", "usb-modeswitch"} <= set(defs["drivers"]["packages"])
+    and defs["drivers"].get("kernel_headers") is True
+    and "firmware-atheros" in defs["drivers"].get("alternatives", [])
+    and len(defs["drivers"]["links"]) >= 2
+    and all(link["url"].startswith("https://") for link in defs["drivers"]["links"]),
+    defs.get("drivers"),
+)
+check("  a kit with a plain http link is left out", "httplink" not in defs)
+
+
+class Ran:
+    def __init__(self, out):
+        # As the real commands do: nothing found is an empty output and a non-zero exit.
+        self.stdout, self.returncode = out, 0 if out else 1
+
+
+# A fixed kernel release, the Pi's: the machine running the tests may have one no package could be named after.
+release, real_run, real_uname = "6.18.50+rpt-rpi-v8", kits.run, kits.os.uname
+kits.os.uname = lambda: type("Uname", (), {"release": release})()
+answers = {}
+kits.run = lambda cmd, **kw: Ran(answers.get(cmd[0], ""))
+answers.update(dpkg=f"linux-headers-vendor-rockchip: /lib/modules/{release}/build\n")
+check(
+    "kernel headers: the package that owns the running kernel's build folder (a vendor's)",
+    kits._kernel_headers() == "linux-headers-vendor-rockchip",
+)
+answers.update(dpkg="", **{"apt-cache": "Package: x\n"})
+check(
+    "  else linux-headers-<release>, when the package lists know it",
+    kits._kernel_headers() == f"linux-headers-{release}",
+)
+answers.update(**{"apt-cache": ""})
+check("  else none", kits._kernel_headers() is None)
+kits.run, kits.os.uname = real_run, real_uname
 check(
     "every shipped kit has a consent text and a summary",
     all(defs[k].get("consent") and defs[k].get("summary") for k in ("debug", "build", "capture", "security")),

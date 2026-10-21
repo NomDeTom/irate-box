@@ -14,7 +14,8 @@ const now = Math.floor(Date.now() / 1000);
 const def = (id, title, packages, extra = {}) => Object.assign({ id, title, summary: `${title} tools.`, consent: `${title}: read this first.`,
   packages, notes: [`${title} note`], remove_after_hours: 24 }, extra);
 const kitsData = {
-  kits: { debug: def('debug', 'Debugging', ['gdb', 'strace']), build: def('build', 'Building', ['cmake'], { remove_after_hours: null }),
+  kits: { debug: def('debug', 'Debugging', ['gdb', 'strace'], { links: [{ title: 'A driver source', url: 'https://example.org/driver',
+      version: '1.2-3', licence: 'GPL-2.0', note: 'Tested on a Pi' }] }), build: def('build', 'Building', ['cmake'], { remove_after_hours: null }),
     capture: def('capture', 'Capture', ['tcpdump', 'ngrep'], { extra: ['ngrep'] }),
     security: def('security', 'Security', ['lynis'], { git: [{ name: 'debian-cis', upstream: 'https://github.com/ovh/debian-cis' }] }),
     radio: def('radio', 'Radio tools', ['rtl-sdr', 'sox'], { owner: true, summary: 'SDR bits.' }) },
@@ -83,6 +84,10 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging')))
     && /55 packages: gdb 16\.3-1\. Already on the box: strace\./.test(t(card('Debugging')))
     && /From git: debian-cis \(github\.com\/ovh\/debian-cis, a mirror\)/.test(t(card('Security'))));
+  const link = card('Debugging').querySelector('.kit-links a');
+  check('a kit\'s links: the source, its version and licence, why it is there, opened apart',
+    link && link.href === 'https://example.org/driver' && link.target === '_blank' && /noopener/.test(link.rel)
+    && /A driver source \(1\.2-3, GPL-2\.0\)\. Tested on a Pi/.test(t(link.parentNode)), link && t(link.parentNode));
   check('what a 32-bit board leaves out is said', /Omitted on this armhf board because they need a 64-bit board: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging'))));
   check('keep current shown as set', /Automatic cache refresh: Off/.test(t(card('Capture'))) && /Automatic cache refresh: On/.test(t(card('Debugging'))));
   d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
