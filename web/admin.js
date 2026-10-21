@@ -4215,20 +4215,6 @@ function renderSecurity(data) {
     lines
       .filter((f) => secKind(f) === k)
       .sort((a, b) => RANK[a.status] - RANK[b.status]);
-  const row = (f, extra = {}) =>
-    findingRow({
-      id: `sec-${f.id}`,
-      state: f.status,
-      title: f.title,
-      ...findingParts(f),
-      how:
-        f.status === "ok"
-          ? ""
-          : f.fix || (f.actions.length ? "" : "Information only."),
-      controls: [...scanButtons(f, busy), ...secFoot(f)],
-      note: noteUnder(f.id),
-      ...extra,
-    });
   // The real choices, by subject and in the scan's own order: each stays in its place whether it waits for a
   // choice or is set, so a setting can always be found and changed back.
   const choices = lines.filter((f) => secKind(f) === "choice");
@@ -4295,18 +4281,33 @@ function renderSecurity(data) {
           f.status !== "ok",
         );
   // The choice and the three buttons are the update pattern's, under the two lines.
+  // State, not findings: what is waiting and how automatic updates stand. What to do about them is the pattern's
+  // card below (its chips and buttons); what the doctor makes of them is the Updates doctor's.
   noteEl("updates-security").replaceChildren(
     ...(by("update").length
-      ? by("update").map((f) =>
-          row(f, {
-            how: f.status === "ok" ? "" : f.fix,
-            controls:
-              f.id === "security-updates"
-                ? []
-                : [...scanButtons(f, busy), ...secFoot(f)],
-            badge: updBadge(f),
-          }),
-        )
+      ? by("update").map((f) => {
+          const p = findingParts(f);
+          return el(
+            "div",
+            { className: "setting sec-choice", id: `sec-${f.id}` },
+            el(
+              "span",
+              { className: "setting-name" },
+              f.title,
+              updBadge(f) ? " " : "",
+              updBadge(f),
+            ),
+            el("span", { className: "setting-desc", textContent: p.detail }),
+            ...p.notes.map((n) =>
+              el("span", { className: "setting-desc", textContent: n }),
+            ),
+            evidenceList(p.evidence),
+            ...(f.id === "security-updates"
+              ? []
+              : [...scanButtons(f, busy), ...secFoot(f)]),
+            noteUnder(f.id),
+          );
+        })
       : [
           el("p", {
             className: "setting-desc",
