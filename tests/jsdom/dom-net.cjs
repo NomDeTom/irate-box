@@ -65,7 +65,7 @@ setTimeout(() => {
   check('a card per device', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('wlan0'), cards.length);
   const card = cards[0] ? cards[0].textContent : '';
   check('what it is, in words', /USB WiFi adapter, driver aic8800/.test(card), card.slice(0, 200));
-  check('what it is doing, with the signal in words', /Connected to ExampleWiFi\d*, channel \d+ \(2\.4 GHz\), signal -\d+ dBm \((excellent|good|fair|weak|poor)\)/.test(card), card);
+  check('what it is doing, with the signal in words', /Current connection:? ?ExampleWiFi\d*, channel \d+ \(2\.4 GHz\), signal -\d+ dBm \((excellent|good|fair|weak|poor)\)/.test(card), card);
   check('managed by, explained', /NetworkManager, the system's own network settings/.test(card));
   check('the hotspot: yes, with conditions', /Yes, with conditions \(through networkmanager\)/.test(card));
   const conds = cards[0] ? [...cards[0].querySelectorAll('.net-conditions li')].map((li) => li.className) : [];
