@@ -168,7 +168,9 @@ def _lynis_section(check):
 
 
 # A doctor finding about a port the Security page lists: the same thing.
-SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883"}  # and each declared service's add-on finding: _declared_about
+# and each declared service's add-on finding: _declared_about. Cockpit's setting on the Security page is about
+# its port, as its port's finding was before it became a setting.
+SERVICE_OF = {("doctor", "addon-mqtt"): "tcp/1883", ("security-page", "cockpit"): "tcp/9090"}
 
 # Findings that are a problem together, each alone only a warning:
 # every named (source, id) must be present and not ok for the joint report to add the item.

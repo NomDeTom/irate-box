@@ -968,5 +968,87 @@ check(
     {k: v["status"] for k, v in got.items()},
 )
 (T / "etc" / "hub.env").unlink()
+
+# Cockpit: one setting, always there where the image has it, with its three values; the value it had
+# before this page changed it is the one that undoes. systemd stood in for by a small state.
+ck = {"enabled": True, "active": True}
+security.UNIT_DIR = T / "units"
+ck_drop = security.UNIT_DIR / "cockpit.socket.d" / "irate-box.conf"
+was_run, was_sc, was_listeners = security.run, security._systemctl, security.listeners
+
+
+class _Out:
+    def __init__(self, out):
+        self.returncode, self.stdout, self.stderr = 0, out, ""
+
+
+def _ck_run(*cmd, **kw):
+    if cmd[:2] == ("systemctl", "show"):
+        return _Out("loaded\n")
+    if cmd[:2] == ("systemctl", "is-active"):
+        return _Out("active\n" if ck["active"] else "inactive\n")
+    if cmd[:2] == ("systemctl", "is-enabled"):
+        return _Out("enabled\n" if ck["enabled"] else "disabled\n")
+    return was_run(*cmd, **kw) if cmd[0] != "systemctl" else _Out("")
+
+
+def _ck_sc(*args):
+    if args == ("disable", "--now", "cockpit.socket"):
+        ck.update(enabled=False, active=False)
+    elif args == ("enable", "cockpit.socket"):
+        ck["enabled"] = True
+    elif args == ("restart", "cockpit.socket"):
+        ck["active"] = True
+
+
+def _ck_found():
+    on_net = ck["active"] and not ck_drop.exists()
+    return [{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "pid": 1}] if on_net else []
+
+
+security.run, security._systemctl, security.listeners = _ck_run, _ck_sc, _ck_found
+
+
+def ck_chips(rec):
+    (f,) = security.cockpit_findings(_ck_found(), rec)
+    return f["status"], [(a["choice"], a["on"]) for a in f["actions"]]
+
+
+rec = {}
+check(
+    "Cockpit on the network (the image's way): a problem, its three values offered",
+    ck_chips(rec) == ("problem", [("cockpit-network", True), ("cockpit-loopback", False), ("cockpit-off", False)]),
+    ck_chips(rec),
+)
+security._cockpit(rec, "loopback")
+check(
+    "  set to loopback here: still there, loopback marked, On the network now the undo",
+    ck_drop.exists()
+    and ck_chips(rec) == ("ok", [("cockpit-undo", False), ("cockpit-loopback", True), ("cockpit-off", False)]),
+    ck_chips(rec),
+)
+security._cockpit(rec, "off")
+check(
+    "  then off: still there, off marked, how it was first kept for undo",
+    rec["cockpit"]["before"] == "network"
+    and ck_chips(rec) == ("ok", [("cockpit-undo", False), ("cockpit-loopback", False), ("cockpit-off", True)]),
+    (rec, ck_chips(rec)),
+)
+security._cockpit(rec, "undo")
+check(
+    "  undone: on the network again, no drop-in, nothing recorded",
+    not ck_drop.exists() and "cockpit" not in rec and ck_chips(rec)[1][0] == ("cockpit-network", True),
+    (rec, ck),
+)
+ck.update(enabled=False, active=False)
+check(
+    "Cockpit off by the image: still a setting, off marked, the others to set here",
+    ck_chips(rec) == ("ok", [("cockpit-network", False), ("cockpit-loopback", False), ("cockpit-off", True)]),
+    ck_chips(rec),
+)
+security._cockpit(rec, "network")
+security._cockpit(rec, "undo")
+check("  opened here, then undone: off again, not running", ck == {"enabled": False, "active": False}, ck)
+security.run, security._systemctl, security.listeners = was_run, was_sc, was_listeners
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

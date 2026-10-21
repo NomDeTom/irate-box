@@ -347,34 +347,7 @@ def listener_findings(found, rec):
                 )
             )
         elif f["port"] == 9090 and f["unit"] and f["unit"].startswith("cockpit"):
-            out.append(
-                finding(
-                    fid,
-                    named("Cockpit"),
-                    "problem",
-                    M("port.cockpit", "Cockpit, the image's Linux web console, listens on the network."),
-                    M(
-                        "port.cockpit.why",
-                        "Its sign-in page gives root access, and every device on the network can reach it.",
-                    ),
-                    M(
-                        "port.cockpit.fix",
-                        "Nothing on the box needs Cockpit. Bind it to loopback, so that only the box reaches it, or disable it.",
-                    ),
-                    evidence=where,
-                    actions=[
-                        action("cockpit-loopback", M("port.cockpit.loopback", "Bind to loopback")),
-                        action(
-                            "cockpit-off",
-                            M("port.cockpit.off", "Stop and disable"),
-                            M(
-                                "port.cockpit.off.confirm",
-                                "Stop Cockpit and disable it? Undo puts back its previous state.",
-                            ),
-                        ),
-                    ],
-                )
-            )
+            continue  # said with Cockpit's own setting (cockpit_findings)
         elif f["port"] == 22 and f["proto"] == "tcp":
             continue  # reported with SSH's own settings below
         elif f["port"] == 5355:
@@ -510,18 +483,6 @@ def listener_findings(found, rec):
             )
         )
         out.append(finding(f"unit-{unit}", named(unit), "ok", said, actions=[action(f"unit-undo:{unit}", UNDO)]))
-    if "cockpit" in rec:
-        out.append(
-            finding(
-                "cockpit-change",
-                named("Cockpit"),
-                "ok",
-                M("cockpit.loopback-here", "Bound to loopback from this page.")
-                if rec["cockpit"]["mode"] == "loopback"
-                else M("cockpit.off-here", "Stopped and disabled from this page."),
-                actions=[action("cockpit-undo", UNDO)],
-            )
-        )
     if rec.get("llmnr"):
         group = M("port.llmnr.group", "LLMNR")
         out.append(
@@ -534,6 +495,97 @@ def listener_findings(found, rec):
             )
         )
     return out
+
+
+# --- Cockpit -----------------------------------------------------------------------------
+
+COCKPIT_MODES = ("network", "loopback", "off")
+
+
+def _cockpit_installed():
+    out = run("systemctl", "show", "-p", "LoadState", "--value", "cockpit.socket")
+    return out.returncode == 0 and out.stdout.strip() == "loaded"
+
+
+def _cockpit_ports(found):
+    return [f for f in found if f["port"] == 9090 and (f.get("unit") or "").startswith("cockpit")]
+
+
+def _cockpit_now(ports):
+    """network, loopback or off. Only listeners off loopback are found (parse_ss): one is Cockpit on the
+    network. Otherwise a socket still active listens on loopback only."""
+    if ports:
+        return "network"
+    return "loopback" if run("systemctl", "is-active", "cockpit.socket").stdout.strip() == "active" else "off"
+
+
+def cockpit_findings(found, rec):
+    """Cockpit, where the image has it: one setting, always there, with its three values (on the
+    network, on loopback only, off), the one in effect marked. The value it had before this page
+    changed it is the one Undo puts back, so choosing that one undoes."""
+    ports = _cockpit_ports(found)
+    if not ports and "cockpit" not in rec and not _cockpit_installed():
+        return []
+    now = _cockpit_now(ports)
+    ours = rec.get("cockpit")
+    before = (ours or {}).get("before", "network")  # records from before this setting: it was on the network
+    group = M("cockpit.group", "Cockpit listens")
+    labels = {
+        "network": M("cockpit.network", "On the network"),
+        "loopback": M("cockpit.loopback", "On loopback only"),
+        "off": OFF,
+    }
+    confirm = {
+        "network": M(
+            "cockpit.network.confirm",
+            "Open Cockpit to the network? Every device on the network can then reach its sign-in page, which gives root access.",
+        ),
+        "off": M("port.cockpit.off.confirm", "Stop Cockpit and disable it? Undo puts back its previous state."),
+    }
+    chips = [
+        _chip(
+            group,
+            "cockpit-undo" if ours and m == before and m != now else f"cockpit-{m}",
+            labels[m],
+            m == now,
+            None if ours and m == before else confirm.get(m),
+        )
+        for m in COCKPIT_MODES
+    ]
+    said = {
+        "network": M("port.cockpit", "Cockpit, the image's Linux web console, listens on the network."),
+        "loopback": M("cockpit.loopback-state", "Cockpit listens on loopback only. Only the box itself reaches it."),
+        "off": M("cockpit.off-state", "Cockpit is stopped and disabled."),
+    }[now]
+    if now == "network":
+        return [
+            finding(
+                "cockpit",
+                named("Cockpit"),
+                "problem",
+                said,
+                M(
+                    "port.cockpit.why",
+                    "Its sign-in page gives root access, and every device on the network can reach it.",
+                ),
+                M(
+                    "port.cockpit.fix",
+                    "Nothing on the box needs Cockpit. Bind it to loopback, so that only the box reaches it, or disable it.",
+                ),
+                evidence=_where(ports[0]) if ports else [],
+                actions=chips,
+            )
+        ]
+    return [
+        finding(
+            "cockpit",
+            named("Cockpit"),
+            "ok",
+            said,
+            notes=[M("cockpit.set-here", "Set on this page on {date}.", date=ours.get("at", ""))] if ours else [],
+            actions=chips,
+        )
+    ]
 
 
 # --- SSH ------------------------------------------------------------------------------
@@ -3047,6 +3099,7 @@ def scan():
     found = listeners()
     findings = listener_findings(found, rec)
     settings = sshd_settings()
+    findings += cockpit_findings(found, rec)
     findings += ssh_findings(settings, keys_on_box(), rec)
     findings += sudo_findings(rec, settings or {})
     findings += kernel_findings(rec)
@@ -3165,27 +3218,38 @@ def _cockpit(rec, mode):
         _systemctl("daemon-reload")
         if old.get("was_enabled", True):
             _systemctl("enable", "cockpit.socket")
-        # A restart, not a start: a socket still bound to loopback must rebind as it was.
-        _systemctl("restart", "cockpit.socket")
+            # A restart, not a start: a socket still bound to loopback must rebind as it was.
+            _systemctl("restart", "cockpit.socket")
+        else:
+            _systemctl("disable", "--now", "cockpit.socket")  # it was off: off again, not running
         return M("security-fix.cockpit.restored", "Cockpit is restored to its previous state.")
-    was_enabled = run("systemctl", "is-enabled", "cockpit.socket").stdout.strip() == "enabled"
-    if mode == "loopback":
+    old = rec.get("cockpit") or {}
+    was_enabled = old.get("was_enabled", run("systemctl", "is-enabled", "cockpit.socket").stdout.strip() == "enabled")
+    # What Undo puts back: how it was before this page first changed it. A record from before there was a
+    # setting was made from Cockpit on the network.
+    before = old.get("before") or ("network" if old else _cockpit_now(_cockpit_ports(listeners())))
+    if mode == "network":
+        dropin.unlink(missing_ok=True)
+        _systemctl("daemon-reload")
+        _systemctl("enable", "cockpit.socket")
+        _systemctl("restart", "cockpit.socket")
+    elif mode == "loopback":
         dropin.parent.mkdir(parents=True, exist_ok=True)
         dropin.write_text(
             "# Written by irate-box's Security page (/admin). Undo there, or delete this file.\n"
             "[Socket]\nListenStream=\nListenStream=127.0.0.1:9090\n"
         )
         _systemctl("daemon-reload")
+        _systemctl("enable", "cockpit.socket")  # from off, too
         _systemctl("restart", "cockpit.socket")
     else:
         _systemctl("disable", "--now", "cockpit.socket")
         run("systemctl", "stop", "cockpit.service")
-    rec["cockpit"] = {"mode": mode, "was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d")}
-    return (
-        M("security-fix.cockpit.loopback", "Cockpit now listens on loopback only.")
-        if mode == "loopback"
-        else M("security-fix.cockpit.off", "Cockpit is stopped and disabled.")
-    )
+    rec["cockpit"] = {"mode": mode, "before": before, "was_enabled": was_enabled, "at": time.strftime("%Y-%m-%d")}
+    return {
+        "network": M("security-fix.cockpit.network", "Cockpit now listens on the network."),
+        "loopback": M("security-fix.cockpit.loopback", "Cockpit now listens on loopback only."),
+    }.get(mode) or M("security-fix.cockpit.off", "Cockpit is stopped and disabled.")
 
 
 def _llmnr(rec, on):
@@ -3378,7 +3442,7 @@ def fix(choice, updates_log):
     elif choice in [f"ssh-{w}-{m}" for w in ("password", "forwarding") for m in ("off", "on", "undo")]:
         _, what, mode = choice.split("-")
         msg = _ssh(rec, what, {"off": True, "on": "on", "undo": False}[mode])
-    elif choice in ("cockpit-loopback", "cockpit-off", "cockpit-undo"):
+    elif choice in ("cockpit-network", "cockpit-loopback", "cockpit-off", "cockpit-undo"):
         msg = _cockpit(rec, choice.split("-", 1)[1])
     elif choice in ("llmnr-off", "llmnr-undo"):
         msg = _llmnr(rec, choice == "llmnr-off")

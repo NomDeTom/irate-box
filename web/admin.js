@@ -4372,6 +4372,7 @@ function renderSecurity(data) {
         portLine.get(`port-${l.proto}-${l.port}`) ||
         portLine.get(`port-${l.proto === "tcp" ? "udp" : "tcp"}-${l.port}`);
       const ssh = !f && l.proto === "tcp" && l.port === 22;
+      const cockpit = !f && l.port === 9090 && /^cockpit/.test(l.unit || "");
       return el(
         "tr",
         { id: f && secKind(f) === "port" ? `sec-${f.id}` : "" },
@@ -4409,6 +4410,9 @@ function renderSecurity(data) {
                 href: "#sec-ssh-password",
                 textContent: "Who can sign in, and how: SSH settings",
               })
+            : null,
+          cockpit
+            ? el("a", { href: "#sec-cockpit", textContent: "Cockpit setting" })
             : null,
           f && f.fix && f.status !== "ok"
             ? el("span", {
