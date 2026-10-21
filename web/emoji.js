@@ -61,8 +61,8 @@ function drawTones() {
     const b = make('button', { type: 'button', textContent: hand, title: TONE_WORDS[i], className: i === tone ? 'on' : '' });
     b.setAttribute('aria-pressed', String(i === tone));
     // Redrawn on a click, so the click goes no further: the page's "outside the panel" would close it.
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
+    b.addEventListener('click', (event) => {
+      event.stopPropagation();
       tone = i;
       try { localStorage.setItem(TONE_KEY, String(i)); } catch (_) { /* no storage */ }
       drawTones();
@@ -77,7 +77,7 @@ function drawTabs() {
     const b = make('button', { type: 'button', textContent: icon, title: label, className: i === shown ? 'on' : '' });
     b.setAttribute('aria-pressed', String(i === shown));
     b.setAttribute('aria-label', label);
-    b.addEventListener('click', (e) => { e.stopPropagation(); shown = i; parts.search.value = ''; drawTabs(); drawGrid(); parts.grid.scrollTop = 0; });
+    b.addEventListener('click', (event) => { event.stopPropagation(); shown = i; parts.search.value = ''; drawTabs(); drawGrid(); parts.grid.scrollTop = 0; });
     return b;
   }));
 }
@@ -110,14 +110,14 @@ function buildPanel() {
   panel = make('div', { className: 'emoji-panel', hidden: true },
     make('div', { className: 'emoji-top' }, parts.search, parts.tones), parts.tabs, parts.head, parts.grid);
   drawTones();
-  parts.grid.addEventListener('click', (e) => {
-    const b = e.target.closest('button');
+  parts.grid.addEventListener('click', (event) => {
+    const b = event.target.closest('button');
     if (b && target) insert(target, b.textContent);
   });
-  document.addEventListener('click', (e) => {
-    if (!panel.hidden && !panel.contains(e.target) && e.target !== toggle) close();
+  document.addEventListener('click', (event) => {
+    if (!panel.hidden && !panel.contains(event.target) && event.target !== toggle) close();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
   window.addEventListener('resize', () => { if (!panel.hidden) position(); });
   document.body.appendChild(panel);
 }
@@ -187,8 +187,8 @@ function attach(field) {
   btn.title = 'Insert emoji';
   btn.setAttribute('aria-label', 'Insert emoji');
   btn.textContent = '😊';
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
     if (!panel.hidden && target === field) close(); else open(field, btn);
   });
   // data-emoji="#send": the toggle stands on its own just before that element (the

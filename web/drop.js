@@ -118,9 +118,9 @@
       xhr.setRequestHeader('X-Drop-By', encodeURIComponent(by.value.trim()));
       const lock = lockBox.checked && window.HubLock ? HubLock.create() : null;
       if (lock) xhr.setRequestHeader('X-Lock-New', lock.header);
-      xhr.upload.onprogress = (e) => {
-        bar.value = e.loaded;
-        status.textContent = `${size(e.loaded)} of ${size(file.size)}`;
+      xhr.upload.onprogress = (event) => {
+        bar.value = event.loaded;
+        status.textContent = `${size(event.loaded)} of ${size(file.size)}`;
       };
       xhr.onload = () => {
         let msg = '';
@@ -154,9 +154,9 @@
   for (const input of [picker, document.getElementById('drop-photo'), document.getElementById('drop-voice')]) {
     input.addEventListener('change', () => { uploadAll([...input.files]); input.value = ''; });
   }
-  ['dragenter', 'dragover'].forEach((t) => zone.addEventListener(t, (e) => { e.preventDefault(); zone.classList.add('over'); }));
+  ['dragenter', 'dragover'].forEach((t) => zone.addEventListener(t, (event) => { event.preventDefault(); zone.classList.add('over'); }));
   ['dragleave', 'drop'].forEach((t) => zone.addEventListener(t, () => zone.classList.remove('over')));
-  zone.addEventListener('drop', (e) => { e.preventDefault(); uploadAll([...e.dataTransfer.files]); });
+  zone.addEventListener('drop', (event) => { event.preventDefault(); uploadAll([...event.dataTransfer.files]); });
 
   refresh();
   setInterval(refresh, 15000);

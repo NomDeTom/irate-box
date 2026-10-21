@@ -39,13 +39,13 @@
       list.querySelectorAll('.theme-choice').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.theme === cur)));
       if (pals) pals.querySelectorAll('.theme-choice').forEach((b) => b.setAttribute('aria-checked', String(!own && b.dataset.palette === themes.palette())));
     };
-    list.addEventListener('click', (e) => {
-      const b = e.target.closest('.theme-choice');
+    list.addEventListener('click', (event) => {
+      const b = event.target.closest('.theme-choice');
       if (b) themes.choose(b.dataset.theme);
     });
     if (pals) {
-      pals.addEventListener('click', (e) => {
-        const b = e.target.closest('.theme-choice');
+      pals.addEventListener('click', (event) => {
+        const b = event.target.closest('.theme-choice');
         if (b) themes.choosePalette(b.dataset.palette);
       });
     }

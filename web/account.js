@@ -76,9 +76,9 @@ async function load() {
 }
 
 function form(id, build, done) {
-  $(id).addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const f = e.target;
+  $(id).addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const f = event.target;
     try {
       const d = await post(build(f));
       f.reset();
@@ -145,10 +145,10 @@ function drawPrefs() {
   $('acct-prefs-save').disabled = $('acct-prefs-discard').disabled = !dirty;
 }
 document.querySelectorAll('#acct-prefs-form [data-pref]').forEach((b) => b.addEventListener('click', () => { draft[b.dataset.pref] = !draft[b.dataset.pref]; drawPrefs(); }));
-$('acct-prefs-form').elements.email.addEventListener('input', (e) => { draft.email = e.target.value.trim(); drawPrefs(); });
+$('acct-prefs-form').elements.email.addEventListener('input', (event) => { draft.email = event.target.value.trim(); drawPrefs(); });
 $('acct-prefs-discard').addEventListener('click', () => { draft = JSON.parse(JSON.stringify(saved)); drawPrefs(); });
-$('acct-prefs-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
+$('acct-prefs-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
   const changes = Object.fromEntries(Object.keys(draft).filter((k) => JSON.stringify(draft[k]) !== JSON.stringify(saved[k])).map((k) => [k, draft[k]]));
   try { const d = await post({ action: 'prefs', prefs: changes }); showPrefs(d.prefs, view && view.names_to); note('Saved.', true); }
   catch (err) { note(err.message, false); }

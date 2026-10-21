@@ -918,8 +918,8 @@ document.querySelectorAll("[data-preset]").forEach((b) =>
     showTypeFields();
   }),
 );
-lib.add.addEventListener("submit", async (e) => {
-  e.preventDefault();
+lib.add.addEventListener("submit", async (event) => {
+  event.preventDefault();
   const f = lib.add.elements;
   const source = {
     name: f.name.value.trim(),
@@ -1109,8 +1109,8 @@ function renderBooks(d) {
       type: "checkbox",
       checked: bookSel.has(b.name),
       ariaLabel: `Select ${b.title}`,
-      onchange: (e) => {
-        if (e.target.checked) bookSel.add(b.name);
+      onchange: (event) => {
+        if (event.target.checked) bookSel.add(b.name);
         else bookSel.delete(b.name);
         renderBookBulk();
       },
@@ -1439,8 +1439,8 @@ function drawSuggested(sources) {
     }),
   );
 }
-cat.form.addEventListener("submit", (e) => {
-  e.preventDefault();
+cat.form.addEventListener("submit", (event) => {
+  event.preventDefault();
   searchCatalogue(false);
 });
 cat.more.addEventListener("click", () => searchCatalogue(true));
@@ -2515,8 +2515,8 @@ async function control(s, op) {
 // --- moderation ------------------------------------------------------------------
 function renderModeration(data) {
   const now = data.now;
-  const del = (body, what) => async (e) => {
-    if (!await AW.confirmHere(`Delete ${what}?`, { anchor: e.currentTarget })) return;
+  const del = (body, what) => async (event) => {
+    if (!await AW.confirmHere(`Delete ${what}?`, { anchor: event.currentTarget })) return;
     try {
       renderModeration(await postJSON("/admin/moderation", body));
     } catch (err) {
@@ -2872,10 +2872,10 @@ function renderStore(data) {
     ...["scenes", "rooms", "files"].map((ns) =>
       actionButton(
         `Clear ${NS_LABEL[ns]}`,
-        async (e) => {
+        async (event) => {
           if (
             !await AW.confirmHere(
-              `Delete all ${NS_LABEL[ns]}? This cannot be undone. Links to them stop working.`, { anchor: e.currentTarget })
+              `Delete all ${NS_LABEL[ns]}? This cannot be undone. Links to them stop working.`, { anchor: event.currentTarget })
           )
             return;
           try {
@@ -2924,9 +2924,9 @@ function renderStore(data) {
       actionButton("Rename", save, { className: "small primary" }),
       actionButton("Cancel", done, { className: "small" }),
     );
-    field.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") save();
-      else if (e.key === "Escape") done();
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") save();
+      else if (event.key === "Escape") done();
     });
     title.replaceWith(form);
     opener.hidden = true;
@@ -2959,13 +2959,13 @@ function renderStore(data) {
             el(
               "span",
               { className: "library-buttons" },
-              actionButton("Rename", (e) => rename(s, title, e.currentTarget), {
+              actionButton("Rename", (event) => rename(s, title, event.currentTarget), {
                 className: "small",
               }),
               actionButton(
                 "Delete",
-                async (e) => {
-                  if (await AW.confirmHere(`Delete "${s.name}"?`, { anchor: e.currentTarget }))
+                async (event) => {
+                  if (await AW.confirmHere(`Delete "${s.name}"?`, { anchor: event.currentTarget }))
                     act({ action: "delete", id: s.id })();
                 },
                 { className: "small" },
@@ -3021,8 +3021,8 @@ const storeSec = AW.form(storeForm, {
 // --- password -----------------------------------------------------------------------
 const pwForm = document.getElementById("password-form");
 const pwNote = noteEl("password-note");
-pwForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+pwForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
   const pw = pwForm.elements.password.value;
   if (pw !== pwForm.elements.confirm.value) {
     say("The two passwords differ.", false, pwNote);
@@ -3693,7 +3693,7 @@ function sudoToggle(f, busy) {
       disabled: busy,
       textContent: `Passwordless sudo${f.actions.length > 1 ? ` (${file})` : ""}: ${on ? "On" : "Off"}`,
       title: a.label,
-      onclick: (ev) => secChoose(f, a, ev.currentTarget),
+      onclick: (event) => secChoose(f, a, event.currentTarget),
     });
     b.setAttribute("aria-pressed", String(on));
     return b;
@@ -3719,7 +3719,7 @@ function scanButtons(f, busy) {
       title: secChosen(f.id, a)
         ? "Selected. Select Save below to apply this change. Select the button again to cancel the selection."
         : "",
-      onclick: (ev) => secChoose(f, a, ev.currentTarget),
+      onclick: (event) => secChoose(f, a, event.currentTarget),
     });
     b.setAttribute("aria-pressed", String(secChosen(f.id, a)));
     return b;
@@ -4055,7 +4055,7 @@ function secChipRows(f, busy) {
               (pend && sel ? " pending" : ""),
             textContent: a.label,
             disabled: busy,
-            onclick: (ev) => secChoose(f, a, ev.currentTarget),
+            onclick: (event) => secChoose(f, a, event.currentTarget),
           });
           b.setAttribute("aria-pressed", String(sel));
           return b;
@@ -5225,9 +5225,9 @@ sec.auditDeep.addEventListener("click", () =>
   secRequest({ action: "deep" }, "audit"),
 );
 const importNote = document.getElementById("import-note");
-document.getElementById("import-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const file = e.target.elements.file.files[0];
+document.getElementById("import-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = event.target.elements.file.files[0];
   if (!file) return;
   try {
     if (file.size > 64 * 2 ** 20)
@@ -6174,7 +6174,7 @@ function renderClockSources(c, busy, own) {
         type: "checkbox",
         checked: !!d[key],
         disabled: busy || disabled || clkSec.disabled(),
-        onchange: (e) => set(key, e.target.checked),
+        onchange: (event) => set(key, event.target.checked),
       }),
       el(
         "span",
@@ -6624,8 +6624,8 @@ function drawUpScope(inv) {
         ]),
   );
 }
-upScopeBox.addEventListener("change", async (e) => {
-  if (upSec.dirty() && !await AW.confirmHere("Discard the unsaved selections?", { anchor: e.currentTarget })) {
+upScopeBox.addEventListener("change", async (event) => {
+  if (upSec.dirty() && !await AW.confirmHere("Discard the unsaved selections?", { anchor: event.currentTarget })) {
     upScopeBox.value = upScope;
     return;
   }
@@ -8071,10 +8071,10 @@ function drawNetTabs(data, inv, u) {
                   mine.has(p.uuid)
                     ? actionButton(
                         "Remove saved network",
-                        async (e) => {
+                        async (event) => {
                           if (
                             await AW.confirmHere(
-                              `Remove the saved network ${p.ssid || p.name}? The box deletes its profile and does not join it automatically again.`, { anchor: e.currentTarget })
+                              `Remove the saved network ${p.ssid || p.name}? The box deletes its profile and does not join it automatically again.`, { anchor: event.currentTarget })
                           )
                             netRequest(
                               { action: "forget", uuid: p.uuid },
@@ -8504,10 +8504,10 @@ function renderDefaults(inv, busy) {
     ),
   );
   scope.value = defaultsScope;
-  scope.addEventListener("change", async (e) => {
+  scope.addEventListener("change", async (event) => {
     if (
       defSec.dirty() &&
-      !await AW.confirmHere("Discard the unsaved changes to the box defaults?", { anchor: e.currentTarget })
+      !await AW.confirmHere("Discard the unsaved changes to the box defaults?", { anchor: event.currentTarget })
     ) {
       scope.value = defaultsScope;
       return;
@@ -8779,10 +8779,10 @@ function renderOtherAp(inv, data, busy) {
         " ",
         actionButton(
           "Delete retained copy permanently",
-          async (e) => {
+          async (event) => {
             if (
               await AW.confirmHere(
-                `Delete the retained copy of ${c.name} permanently? You cannot restore it afterwards.`, { anchor: e.currentTarget })
+                `Delete the retained copy of ${c.name} permanently? You cannot restore it afterwards.`, { anchor: event.currentTarget })
             )
               netRequest({ action: "otherap", uuid, do: "forget" }, "otherap");
           },
@@ -9439,8 +9439,8 @@ function joinAsk(now) {
   );
   f.psk.value = "";
 }
-joinForm.addEventListener("submit", (e) => {
-  e.preventDefault();
+joinForm.addEventListener("submit", (event) => {
+  event.preventDefault();
   joinAsk(false);
 });
 document
@@ -9579,8 +9579,8 @@ async function apAct(body) {
     say(err.message, false, apEl.note);
   }
 }
-apEl.form.addEventListener("submit", (e) => {
-  e.preventDefault();
+apEl.form.addEventListener("submit", (event) => {
+  event.preventDefault();
   if (apRun && apRun.up) {
     apAct({ action: "off" });
     return;
@@ -10050,8 +10050,8 @@ function drawPresets() {
   });
   stickEl.presetSays.textContent = EXPORT_PRESETS[exportPreset][0];
 }
-stickEl.presets.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-export]");
+stickEl.presets.addEventListener("click", (event) => {
+  const b = event.target.closest("[data-export]");
   if (b) applyPreset(b.dataset.export);
 });
 drawPresets(); // the default preset shown chosen before any is pressed
@@ -10179,13 +10179,13 @@ document
 document
   .getElementById("offline-scan")
   .addEventListener("click", () => bkSticks(true));
-bku.imageGo.addEventListener("click", async (e) => {
+bku.imageGo.addEventListener("click", async (event) => {
   const d = usbSticks.find((x) => x.name === bku.stick.value);
   if (
     !d ||
     !await AW.confirmHere(
       `Write an image of the whole card to ${d.label || d.name}? The image is about ${size((bkPlan.image || {}).used)} or more. ` +
-        "On this board it can take an hour or more. The box stays in use meanwhile.", { anchor: e.currentTarget })
+        "On this board it can take an hour or more. The box stays in use meanwhile.", { anchor: event.currentTarget })
   )
     return;
   try {
@@ -10297,8 +10297,8 @@ async function loadKit() {
     console.error("kit:", err);
   }
 }
-kitEl.form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+kitEl.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
   if (kitEl.make.dataset.over) {
     say(
       "The export is over the budget. Remove something from it, or raise the budget.",
@@ -11235,8 +11235,8 @@ function iconField(d, tile, iconNow, redraw) {
     redraw();
   });
   // A pick from the emoji picker arrives as an input event of the page's own.
-  input.addEventListener("input", (e) => {
-    if (!e.isTrusted) {
+  input.addEventListener("input", (event) => {
+    if (!event.isTrusted) {
       d.icon = input.value.trim();
       redraw();
     }
@@ -11307,10 +11307,10 @@ function agreeRow(key, text, label, disabled, go) {
       el("input", {
         type: "checkbox",
         checked: agreedTo.has(key),
-        onchange: (e) => {
-          if (e.target.checked) agreedTo.add(key);
+        onchange: (event) => {
+          if (event.target.checked) agreedTo.add(key);
           else agreedTo.delete(key);
-          button.disabled = disabled || !e.target.checked;
+          button.disabled = disabled || !event.target.checked;
         },
       }),
       " I have read this and I agree.",
@@ -11740,11 +11740,11 @@ const approveButton = (a, data, cls = "action-btn") =>
     type: "button",
     className: cls,
     textContent: approveLabel(a),
-    onclick: (e) => {
+    onclick: (event) => {
       locAsking = `approve:${a.id}`;
       renderLocal(data);
       // From the app's own page: to its card, where the new text is.
-      if (!e.target.closest("#local-added")) location.hash = "#local-added";
+      if (!event.target.closest("#local-added")) location.hash = "#local-added";
     },
   });
 // A held catalogue update, approved on its card: what changed, the new text and permissions, a box to tick.
@@ -11962,8 +11962,8 @@ drawConnectionStep();
 document
   .getElementById("setup-finish")
   .addEventListener("click", () => setSetupDone(true));
-document.getElementById("setup-again").addEventListener("click", (e) => {
-  e.preventDefault();
+document.getElementById("setup-again").addEventListener("click", (event) => {
+  event.preventDefault();
   setSetupDone(false);
 });
 
@@ -12438,11 +12438,11 @@ function repoCard(r, data) {
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(r, data, cls) {
   // Only Delete asks, on the page (confirmText): a move can be moved back (admin pages plan, phase 5).
-  const act = (body, confirmText, done) => async (e) => {
+  const act = (body, confirmText, done) => async (event) => {
     // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
     if (
       body.action === "delete" &&
-      !(await AW.confirmHere(confirmText, { anchor: e && e.currentTarget, label: "Delete" }))
+      !(await AW.confirmHere(confirmText, { anchor: event && event.currentTarget, label: "Delete" }))
     ) {
       renderGit(gitData);
       return false;
@@ -12578,16 +12578,16 @@ function managePanel(r, data, cls) {
             type: "checkbox",
             className: "git-build",
             checked: r.build,
-            onchange: (e) =>
+            onchange: (event) =>
               act(
                 {
                   action: "build",
                   area: r.area,
                   name: r.name,
-                  on: e.target.checked,
+                  on: event.target.checked,
                 },
                 null,
-                `${r.name}.git: builds ${e.target.checked ? "enabled" : "disabled"}.`,
+                `${r.name}.git: builds ${event.target.checked ? "enabled" : "disabled"}.`,
               )(),
           }),
           " Build each push that has a .irate-ci.sh",
@@ -12940,8 +12940,8 @@ function renderMirrors(data) {
   );
 }
 
-git.mirrorForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+git.mirrorForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
   const f = git.mirrorForm.elements;
   const groups = [];
   if (f.pattern.value.trim())
@@ -12986,8 +12986,8 @@ async function loadGit() {
   }
 }
 
-git.form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+git.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
   const f = git.form.elements;
   try {
     renderGit(
@@ -13223,8 +13223,8 @@ async function followRun() {
         ? null
         : actionButton(
             "Delete run",
-            async (e) => {
-              if (await AW.confirmHere("Delete this run, its log and its artifacts?", { anchor: e.currentTarget }))
+            async (event) => {
+              if (await AW.confirmHere("Delete this run, its log and its artifacts?", { anchor: event.currentTarget }))
                 ciChange(v.run, "delete");
             },
             { className: "small danger" },
@@ -13457,8 +13457,8 @@ function renderFirmware(data) {
               type: "checkbox",
               dataset: { board: t.board },
               checked: fwChosen.has(t.board),
-              onchange: (e) => {
-                if (e.target.checked) fwChosen.add(t.board);
+              onchange: (event) => {
+                if (event.target.checked) fwChosen.add(t.board);
                 else fwChosen.delete(t.board);
                 fwSec.set("boards", [...fwChosen].sort());
               },
@@ -13854,7 +13854,7 @@ function kitBody(k, st, cfg, setDirty) {
           ),
           actionButton(
             "Cancel",
-            (e) => e.target.closest(".kit-consent").replaceWith(installRow()),
+            (event) => event.target.closest(".kit-consent").replaceWith(installRow()),
             { className: "small" },
           ),
         ),
@@ -13864,7 +13864,7 @@ function kitBody(k, st, cfg, setDirty) {
       jobRow(
         actionButton(
           "Install toolkit…",
-          (e) => e.target.closest("p").replaceWith(consent()),
+          (event) => event.target.closest("p").replaceWith(consent()),
           {
             className: "small",
             disabled: !c,
@@ -13924,10 +13924,10 @@ function kitBody(k, st, cfg, setDirty) {
       s.previous
         ? actionButton(
             `Remove older set${s.previous.extra_bytes ? ` (frees ${size(s.previous.extra_bytes)})` : ""}`,
-            async (e) => {
+            async (event) => {
               if (
                 await AW.confirmHere(
-                  `Remove the older set of ${k.title}, downloaded ${dayOf(s.previous.fetched)}? This frees ${size(s.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: e.currentTarget })
+                  `Remove the older set of ${k.title}, downloaded ${dayOf(s.previous.fetched)}? This frees ${size(s.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: event.currentTarget })
               )
                 kitAct({ action: "drop-previous", kit: k.id });
             },
@@ -13940,8 +13940,8 @@ function kitBody(k, st, cfg, setDirty) {
       k.owner
         ? actionButton(
             "Delete toolkit",
-            async (e) => {
-              if (await AW.confirmHere(`Delete ${k.title} and its cache?`, { anchor: e.currentTarget }))
+            async (event) => {
+              if (await AW.confirmHere(`Delete ${k.title} and its cache?`, { anchor: event.currentTarget }))
                 kitAct({ action: "undefine", kit: k.id });
             },
             {
@@ -14095,8 +14095,8 @@ function resetKitForm() {
   kitsEl.addCancel.hidden = true;
   kitsEl.add.querySelector("button[type=submit]").textContent = "Add toolkit";
 }
-kitsEl.add.addEventListener("submit", (e) => {
-  e.preventDefault();
+kitsEl.add.addEventListener("submit", (event) => {
+  event.preventDefault();
   const f = kitsEl.add.elements;
   const kit = {
     title: f.title.value.trim(),
@@ -14321,10 +14321,10 @@ document
     );
   });
 // Clear old rollback cache: every toolkit's older set at once (each kit's own Remove older set, for all).
-document.getElementById("kits-drop-all").addEventListener("click", async (e) => {
+document.getElementById("kits-drop-all").addEventListener("click", async (event) => {
   if (
     await AW.confirmHere(
-      "Remove the older set of every toolkit? This frees their cache space. Roll back is not possible until a refresh brings new versions.", { anchor: e.currentTarget })
+      "Remove the older set of every toolkit? This frees their cache space. Roll back is not possible until a refresh brings new versions.", { anchor: event.currentTarget })
   ) {
     kitAct({ action: "drop-all-previous" });
   }
@@ -14583,16 +14583,16 @@ async function tlsAct(body) {
 }
 tlsEl.make.addEventListener("click", () => tlsAct({ action: "make" }));
 tlsEl.box.addEventListener("click", () => tlsAct({ action: "box" }));
-tlsEl.own.addEventListener("submit", (e) => {
-  e.preventDefault();
+tlsEl.own.addEventListener("submit", (event) => {
+  event.preventDefault();
   const f = tlsEl.own.elements;
   tlsAct({ action: "import", chain: f.chain.value, key: f.key.value });
   f.key.value = ""; // not left in the page
 });
-tlsEl.again.addEventListener("click", async (e) => {
+tlsEl.again.addEventListener("click", async (event) => {
   if (
     await AW.confirmHere(
-      "Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it shows a warning about the box.", { anchor: e.currentTarget })
+      "Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it shows a warning about the box.", { anchor: event.currentTarget })
   ) {
     tlsAct({ action: "make", again: true });
   }
@@ -14972,13 +14972,13 @@ const acctSettings = AW.form(acctEl.settings, {
     return "Saved.";
   },
 });
-acctEl.make.addEventListener("submit", (e) => {
-  e.preventDefault();
+acctEl.make.addEventListener("submit", (event) => {
+  event.preventDefault();
   const f = acctEl.make.elements;
   acctAct({
     action: "make",
     name: f.name.value.trim(),
-    role: (e.submitter && e.submitter.value) || "user",
+    role: (event.submitter && event.submitter.value) || "user",
   });
   f.name.value = "";
 });
@@ -15097,8 +15097,8 @@ async function meshAct(body) {
     say(err.message, false, meshEl.note);
   }
 }
-meshEl.form.addEventListener("submit", (e) => {
-  e.preventDefault();
+meshEl.form.addEventListener("submit", (event) => {
+  event.preventDefault();
   const f = meshEl.form.elements;
   meshAct({
     action: "add-channel",
@@ -16421,10 +16421,10 @@ function initTabs(box) {
   };
   tabs.forEach((x, i) => {
     x.addEventListener("click", () => pick(x));
-    x.addEventListener("keydown", (e) => {
-      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    x.addEventListener("keydown", (event) => {
+      const k = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
       if (k) {
-        e.preventDefault();
+        event.preventDefault();
         pick(tabs[(i + k + tabs.length) % tabs.length], true);
       }
     });

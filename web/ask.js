@@ -23,7 +23,7 @@ window.askHere = (() => {
       const words = Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: text });
       const no = button('Cancel', 'action-btn small', () => answer(false));
       box.append(words, button(opts.label || 'Confirm', 'action-btn small primary', () => answer(true)), no);
-      box.addEventListener('keydown', (e) => { if (e.key === 'Escape') answer(false); });
+      box.addEventListener('keydown', (event) => { if (event.key === 'Escape') answer(false); });
       if (at && at.isConnected) at.after(box);
       else document.querySelector('main, section, body').prepend(box);
       no.focus();

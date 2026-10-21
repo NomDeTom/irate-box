@@ -130,12 +130,12 @@ function buildHuePanel() {
   auto.addEventListener('click', () => { setHue(null); closeHuePanel(); });
   huePanel.appendChild(auto);
 
-  document.addEventListener('click', (e) => {
-    if (huePanel.hidden || huePanel.contains(e.target)) return;
-    if (swatches.some(({ swatch }) => swatch.contains(e.target))) return;
+  document.addEventListener('click', (event) => {
+    if (huePanel.hidden || huePanel.contains(event.target)) return;
+    if (swatches.some(({ swatch }) => swatch.contains(event.target))) return;
     closeHuePanel();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHuePanel(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeHuePanel(); });
   window.addEventListener('resize', () => { if (!huePanel.hidden) positionHuePanel(); });
   document.body.appendChild(huePanel);
 }
@@ -161,8 +161,8 @@ function attachHuePicker(swatch, nameInput) {
   if (!swatch || !nameInput) return;
   const dot = swatch.querySelector('.dot');
   swatches.push({ swatch, dot, nameInput });
-  swatch.addEventListener('click', (e) => {
-    e.stopPropagation();
+  swatch.addEventListener('click', (event) => {
+    event.stopPropagation();
     if (!huePanel.hidden && activeSwatch === swatch) { closeHuePanel(); return; }
     activeSwatch = swatch;
     huePanel.hidden = false;

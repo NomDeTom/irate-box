@@ -238,14 +238,14 @@ const LadderChart = (() => {
       zoom(lo, hi);
     };
     let drag = null;   // {x0: clientX, t0, moved}
-    svg.addEventListener('pointerdown', (ev) => {
-      if (ev.button !== 0 && ev.pointerType === 'mouse') return;
-      drag = { x0: ev.clientX, t0: tAt(ev.clientX, svg.getBoundingClientRect()), moved: false };
-      if (svg.setPointerCapture && ev.pointerId != null) try { svg.setPointerCapture(ev.pointerId); } catch (e) { /* not captured: fine */ }
+    svg.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 && event.pointerType === 'mouse') return;
+      drag = { x0: event.clientX, t0: tAt(event.clientX, svg.getBoundingClientRect()), moved: false };
+      if (svg.setPointerCapture && event.pointerId != null) try { svg.setPointerCapture(event.pointerId); } catch (e) { /* not captured: fine */ }
     });
-    svg.addEventListener('pointermove', (ev) => {
-      const rect = svg.getBoundingClientRect(), t = tAt(ev.clientX, rect);
-      if (drag && Math.abs(ev.clientX - drag.x0) > 6) {
+    svg.addEventListener('pointermove', (event) => {
+      const rect = svg.getBoundingClientRect(), t = tAt(event.clientX, rect);
+      if (drag && Math.abs(event.clientX - drag.x0) > 6) {
         drag.moved = true;
         const a = Math.max(Math.min(drag.t0, t), from), b = Math.min(Math.max(drag.t0, t), to);
         sel.setAttribute('x', x(a)); sel.setAttribute('width', Math.max(x(b) - x(a), 1)); sel.setAttribute('visibility', 'visible');
@@ -255,12 +255,12 @@ const LadderChart = (() => {
       const best = nearest(t);
       if (best >= 0) show(best);
     });
-    svg.addEventListener('pointerup', (ev) => {
+    svg.addEventListener('pointerup', (event) => {
       const d0 = drag;
       drag = null;
       sel.setAttribute('visibility', 'hidden');
       if (!d0) return;
-      const t = tAt(ev.clientX, svg.getBoundingClientRect());
+      const t = tAt(event.clientX, svg.getBoundingClientRect());
       if (d0.moved) {
         const a = Math.max(Math.min(d0.t0, t), from), b = Math.min(Math.max(d0.t0, t), to);
         if (b - a >= 60 && zoom) zoom(a, b);
@@ -268,9 +268,9 @@ const LadderChart = (() => {
     });
     svg.addEventListener('pointercancel', () => { drag = null; sel.setAttribute('visibility', 'hidden'); });
     svg.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); });
-    svg.addEventListener('keydown', (ev) => {
-      if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') { ev.preventDefault(); show(cur < 0 ? seen.length - 1 : cur + (ev.key === 'ArrowRight' ? 1 : -1)); }
-      else if (ev.key === 'Enter' && cur >= 0) { ev.preventDefault(); zoomOn(cur); }
+    svg.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); show(cur < 0 ? seen.length - 1 : cur + (event.key === 'ArrowRight' ? 1 : -1)); }
+      else if (event.key === 'Enter' && cur >= 0) { event.preventDefault(); zoomOn(cur); }
     });
     svg.addEventListener('blur', () => { cross.setAttribute('visibility', 'hidden'); });
     const table = make('details', { class: 'ladder-table' }, null);

@@ -118,8 +118,8 @@ async function refresh() {
   } catch (_) {}
 }
 
-threadForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
+threadForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
   const body = withHue({
     name: document.getElementById('t-name').value.trim(),
     title: document.getElementById('t-title').value.trim(),
@@ -142,8 +142,8 @@ threadForm.addEventListener('submit', async (e) => {
   } catch (_) {}
 });
 
-replyForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
+replyForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
   const id = currentId();
   const name = document.getElementById('r-name').value.trim();
   const text = document.getElementById('r-text').value.trim();

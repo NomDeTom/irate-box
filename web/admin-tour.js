@@ -259,8 +259,8 @@ const TOUR = (() => {
           textContent: "Open settings",
         });
         a.dataset.tour = s.id;
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
+        a.addEventListener("click", (event) => {
+          event.preventDefault();
           go(i);
         });
         const text = Object.assign(document.createElement("span"), {
@@ -494,8 +494,8 @@ const TOUR = (() => {
   });
   load();
   // Downloading a backup is the backup step done.
-  document.addEventListener("click", (e) => {
-    if (e.target.closest && e.target.closest("#backup a[download]"))
+  document.addEventListener("click", (event) => {
+    if (event.target.closest && event.target.closest("#backup a[download]"))
       decide("backup");
   });
   return {

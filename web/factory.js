@@ -155,7 +155,7 @@
   function facTestSelect(f) {
     const all = facTargets.targets.filter((t) => t.family === f);
     if (!all.some((t) => t.env === facTest[f])) facTest[f] = (facTargets.suggested || {})[f] || all[0].env;
-    const sel = el('select', { onchange: (e) => { facTest[f] = e.target.value; } },
+    const sel = el('select', { onchange: (event) => { facTest[f] = event.target.value; } },
       ...all.map((t) => el('option', { value: t.env, textContent: t.name !== t.env ? `${t.name} (${t.env})` : t.env })));
     sel.value = facTest[f];
     return sel;
@@ -191,7 +191,7 @@
         }, { title: 'Build the test target with the network disabled. A pass applies to that target, that revision and the cached dependencies only.' })),
         el('div', { className: 'factory-boards' }, ...list.map((t) => el('label', { title: [t.file, t.level ? `board_level ${t.level}` : '', t.support ? `support level ${t.support}` : ''].filter(Boolean).join(', ') },
           el('input', { type: 'checkbox', value: t.env, checked: facChosen.has(t.env),
-            onchange: (e) => { if (e.target.checked) facChosen.add(t.env); else facChosen.delete(t.env); factoryChosen(); } }),
+            onchange: (event) => { if (event.target.checked) facChosen.add(t.env); else facChosen.delete(t.env); factoryChosen(); } }),
           el('span', { textContent: t.name !== t.env ? ` ${t.name} (${t.env})` : ` ${t.env}` })))));
       return fold;
     }));
@@ -216,8 +216,8 @@
   fac.ref.addEventListener('change', loadFactoryTargets);
   fac.search.addEventListener('input', renderFactoryTargets);
   fac.pause.addEventListener('click', () => facAct({ action: facData && facData.paused ? 'resume' : 'pause' }));
-  fac.form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  fac.form.addEventListener('submit', async (event) => {
+    event.preventDefault();
     try {
       const r = await postJSON('/admin/factory', { action: 'queue', source: fac.source.value, ref: fac.ref.value, targets: [...facChosen] });
       say(`Added ${r.queued} target${r.queued === 1 ? '' : 's'} to the queue at ${r.commit.slice(0, 7)}.`, true, fac.note);
