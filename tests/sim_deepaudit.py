@@ -441,5 +441,62 @@ check("0 days: never on its own", not [q for q in queued if q["action"] == "secu
 from irate_box.root import hub_control
 
 check("the root helper runs it", "security-deep-audit" in hub_control.ACTIONS)
+
+# Item 136: what debian-cis and Lynis say, in words to read (as met on the Lyra, 2026-10-21).
+CIS3 = r"""KO 5.2.6_disable_x11_forwarding  KO{^X11Forwarding[[:space:]]*no is not present in /etc/ssh/sshd_config}
+KO 5.2.21_disable_ssh_allow_tcp_forwarding  KO{^AllowTCPForwarding[[:space:]]*no is not present in /etc/ssh/sshd_config}
+KO 1.6.4_restrict_core_dumps  KO{^\*[[:space:]]*hard[[:space:]]*core[[:space:]]*0$ is not present in /etc/security/limits.conf  /etc/security/limits.d/10-coredump-debian.conf}
+KO 1.9_install_updates  KO{There is 1 updates available :\nInst tailscale [1.98.9] (1.104.1 Tailscale:pkgs.tailscale.com [armhf])}
+KO 1.6.2_enable_randomized_vm_placement  KO{kernel.randomize_va_space was not set to 2}
+KO 99.1_disable_usb_devices  KO{ACTION=="add", SUBSYSTEMS=="usb", ATTR{authorized_default}="0" is not present in /etc/udev/rules.d/10-usb.rules}
+"""
+c3, _ = da.parse_cis(CIS3)
+msgs3 = {c: m for _, c, m in c3}
+check(
+    "debian-cis's patterns as the text they look for; its literal \\n a line break; apt's line as a version change",
+    msgs3["5.2.6_disable_x11_forwarding"] == ["X11Forwarding no is not present in /etc/ssh/sshd_config"]
+    and msgs3["1.6.4_restrict_core_dumps"]
+    == ["* hard core 0 is not present in /etc/security/limits.conf /etc/security/limits.d/10-coredump-debian.conf"]
+    and msgs3["1.9_install_updates"] == ["Updates waiting: 1", "tailscale 1.98.9 → 1.104.1"]
+    and msgs3["99.1_disable_usb_devices"][0].startswith(
+        'ACTION=="add", SUBSYSTEMS=="usb", ATTR{authorized_default}="0"'
+    ),
+    msgs3,
+)
+f3 = {f["id"]: f for f in da.cis_findings(c3, {}, 1)}
+x11, tcp = f3["cis-5.2.6_disable_x11_forwarding"], f3["cis-5.2.21_disable_ssh_allow_tcp_forwarding"]
+check(
+    "  the two forwarding checks, one key, each its own topic",
+    x11["about"] == tcp["about"] == {"kind": "setting", "key": "ssh-forwarding"}
+    and x11["title"]["args"]["topic"]["id"] == "xref.ssh-forwarding.x11"
+    and tcp["title"]["args"]["topic"]["id"] == "xref.ssh-forwarding.tcp",
+    (x11["title"], tcp["title"]),
+)
+check(
+    "  a shared check says what it looks for: the line in its file, or the key's value",
+    msg_args(x11, "cis.check.wants-line") == {"line": "X11Forwarding no", "files": ["/etc/ssh/sshd_config"]}
+    and msg_args(f3["cis-1.6.2_enable_randomized_vm_placement"], "cis.check.wants-value")
+    == {"setting": "kernel.randomize_va_space", "value": "2"},
+    (x11["summary"], f3["cis-1.6.2_enable_randomized_vm_placement"]["summary"]),
+)
+LYNIS3 = """details[]=SSH-7408|sshd|desc:sshd option Port;field:Port;value:22;|
+suggestion[]=FILE-7524|Consider restricting file permissions|See screen output or log file|text:Use chmod to change file permissions|
+suggestion[]=NETW-3200|Determine if protocol 'dccp' is really needed on this system|-|-|
+"""
+l3 = {f["id"]: f for f in da.lynis_findings(da.parse_lynis(LYNIS3))}
+check(
+    "Lynis: no '?' for a value it names none of; its test as the title, its words as what it suggests",
+    msg_args(l3["lynis-SSH-7408-Port"], "lynis.setting.other") == {"setting": "Port", "value": "22"}
+    and msg_args(l3["lynis-SSH-7408-Port"], "lynis.setting.title") == {"test": "SSH-7408", "setting": "Port"}
+    and msg_args(l3["lynis-NETW-3200"], "lynis.test") == {"test": "NETW-3200"}
+    and msg_args(l3["lynis-NETW-3200"], "lynis.suggestion.text")["text"].startswith("Determine if protocol 'dccp'")
+    and l3["lynis-NETW-3200"]["commands"] == ["lynis show details NETW-3200"],
+    (l3.get("lynis-SSH-7408-Port"), l3.get("lynis-NETW-3200")),
+)
+check(
+    "  'See screen output or log file' is no evidence",
+    l3["lynis-FILE-7524"]["evidence"] == [] and msg_args(l3["lynis-FILE-7524"], "lynis.solution"),
+    l3["lynis-FILE-7524"],
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

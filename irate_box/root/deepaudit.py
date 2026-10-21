@@ -122,7 +122,60 @@ def _cis_mirror():
 
 
 CIS_LINE = re.compile(r"^(OK|KO|WARN) (\S+)\s+(.*)$")
-CIS_MSG = re.compile(r"(OK|KO|WARN)\{([^}]*)\}")
+# A message may hold braces of its own, one deep (a udev rule's ATTR{authorized_default}).
+CIS_MSG = re.compile(r"(OK|KO|WARN)\{((?:[^{}]|\{[^{}]*\})*)\}")
+CIS_SPACE = re.compile(r"\[\[:space:\]\][*+]?|\\s[*+]?")
+CIS_APT = re.compile(r"^Inst (\S+) \[([^\]]+)\] \((\S+)")
+CIS_UPDATES = re.compile(r"^There (?:is|are) (\d+) updates? available\s*:?$")
+
+
+def plain_cis(text):
+    r"""debian-cis's message as lines to read: its patterns as the text they look for (^Storage=persistent
+    → Storage=persistent, [[:space:]]* → a space), a "\n" it writes literally as a line break, and apt's
+    "There is 1 updates available :" and "Inst tailscale [1.98.9] (1.104.1 …)" as "Updates waiting: 1"
+    and "tailscale 1.98.9 → 1.104.1"."""
+    out = []
+    for ln in re.split(r"\\n|\n", text):
+        m = CIS_APT.match(ln.strip())
+        if m:
+            out.append(f"{m.group(1)} {m.group(2)} → {m.group(3)}")
+            continue
+        m = CIS_UPDATES.match(ln.strip())
+        if m:
+            out.append(f"Updates waiting: {m.group(1)}")
+            continue
+        ln = CIS_SPACE.sub(" ", ln)
+        ln = re.sub(r"(^|\s)\^", r"\1", ln)  # a pattern's start
+        ln = re.sub(r"\$(?= is | was |$)", "", ln)  # its end
+        ln = re.sub(r"\\([\\().*?+\[\]$^|{}])", r"\1", ln)
+        ln = re.sub(r"\s+:$", ":", re.sub(r" {2,}", " ", ln).strip())
+        if ln:
+            out.append(ln)
+    return out
+
+
+# A check's message that names what it looks for: the line it wants in a file, or the value of a key.
+CIS_WANTS_LINE = re.compile(r"^(.+?) is not present in (/\S+(?: +/\S+)*)$")
+CIS_WANTS_VALUE = re.compile(r"^(\S+) was not set to (\S+)$")
+
+
+def _cis_summary(msgs):
+    """A shared check's summary: what it looks for, from its first message, else that it is not met."""
+    first = msgs[0] if msgs else ""
+    m = CIS_WANTS_LINE.match(first)
+    if m:
+        return M(
+            "cis.check.wants-line",
+            "debian-cis looks for “{line}” in {files}.",
+            line=m.group(1),
+            files=m.group(2).split(),
+        )
+    m = CIS_WANTS_VALUE.match(first)
+    if m:
+        return M(
+            "cis.check.wants-value", "debian-cis wants {setting} set to {value}.", setting=m.group(1), value=m.group(2)
+        )
+    return M("cis.check.not-met", "debian-cis reports this check as not met.")
 
 
 def parse_cis(text):
@@ -132,7 +185,7 @@ def parse_cis(text):
     for line in text.splitlines():
         m = CIS_LINE.match(line.strip())
         if m:
-            said = CIS_MSG.findall(m.group(3))
+            said = [(s, ln) for s, t in CIS_MSG.findall(m.group(3)) for ln in plain_cis(t)]
             msgs = [t for s, t in said if s != "OK"] if m.group(1) != "OK" else []
             checks.append((m.group(1), m.group(2), msgs or [t for _, t in said]))
     summary = dict(
@@ -234,10 +287,10 @@ def cis_findings(checks, summary, took=None, info=None):
                     "cis.shared.title",
                     "CIS {check}: {topic}",
                     check=check.split("_", 1)[0],
-                    topic=secdoctor_xref.title(shared["key"]),
+                    topic=secdoctor_xref.check_topic(check) or secdoctor_xref.title(shared["key"]),
                 ),
                 "warn",
-                M("cis.check.not-met", "debian-cis reports this check as not met."),
+                _cis_summary([m for m in msgs if m]),
                 evidence=[m for m in msgs if m][:4],
                 source="debian-cis",
                 about=shared,
@@ -441,9 +494,10 @@ def run_cis(work, pin=None):
 
 
 def _dash(x):
-    """Lynis's report says "-" for nothing, and "text:" before a solution in words."""
+    """Lynis's report says "-" for nothing, and "text:" before a solution in words. Its "See screen
+    output or log file" points at a run no one here watched: nothing either."""
     x = (x or "").strip()
-    return "" if x == "-" else x.removeprefix("text:")
+    return "" if x == "-" or x.lower().startswith("see screen output") else x.removeprefix("text:")
 
 
 def parse_lynis(text):
@@ -497,7 +551,7 @@ def lynis_findings(rep, took=None):
         return (
             M("lynis.solution", "Lynis suggests: {solution}", solution=text)
             if text
-            else M("lynis.details", "Read the notes of Lynis for the test, from a shell.")
+            else M("lynis.details", "Lynis's own notes on the test say more. Run the command below in a shell.")
         )
 
     for w in rep["warnings"]:
@@ -505,9 +559,9 @@ def lynis_findings(rep, took=None):
         out.append(
             finding(
                 fid(f"lynis-{w['test']}"),
-                M("lynis.test.title", "Lynis {test}: {text}", test=w["test"], text=w["text"]),
+                M("lynis.test", "Lynis {test}", test=w["test"]),
                 "ok" if why else "warn",
-                M("lynis.warning", "Lynis reports this as a warning."),
+                M("lynis.warning.text", "Lynis warns: {text}", text=w["text"]),
                 fix=None if why else solution(w["test"], w["solution"]),
                 notes=[why] if why else [],
                 commands=[] if why or w["solution"] else [f"lynis show details {w['test']}"],
@@ -523,25 +577,36 @@ def lynis_findings(rep, took=None):
         check = f"{d['test']}:{d['field']}"
         a = secdoctor_xref.about("lynis", check)
         if a:
-            said = (
-                M(
+            pref = "" if d.get("prefval") in (None, "-", "?") else d["prefval"]
+            if d.get("value") and pref:
+                said = M(
                     "lynis.setting",
                     "{setting} is {value}. Lynis prefers {preferred}.",
                     setting=d["field"],
                     value=d["value"],
-                    preferred=d.get("prefval") or "?",
+                    preferred=pref,
                 )
-                if d.get("value")
-                else M(
+            elif d.get("value"):  # Lynis names no value it prefers (sshd's Port, say)
+                said = M(
+                    "lynis.setting.other",
+                    "{setting} is {value}. Lynis suggests another value.",
+                    setting=d["field"],
+                    value=d["value"],
+                )
+            elif pref:
+                said = M(
                     "lynis.setting.unset",
                     "{setting} is not set. Lynis prefers {preferred}.",
                     setting=d["field"],
-                    preferred=d.get("prefval") or "?",
+                    preferred=pref,
                 )
-            )
+            else:
+                said = M(
+                    "lynis.setting.unset-other", "{setting} is not set. Lynis suggests setting it.", setting=d["field"]
+                )
             f = finding(
                 fid(f"lynis-{check.replace(':', '-')}"),
-                M("lynis.test.title", "Lynis {test}: {text}", test=d["test"], text=d.get("desc") or d["field"]),
+                M("lynis.setting.title", "Lynis {test}: {setting}", test=d["test"], setting=d["field"]),
                 "warn",
                 said,
                 source="lynis",
@@ -561,9 +626,9 @@ def lynis_findings(rep, took=None):
             continue
         f = finding(
             fid(f"lynis-{s['test']}"),
-            M("lynis.test.title", "Lynis {test}: {text}", test=s["test"], text=s["text"]),
+            M("lynis.test", "Lynis {test}", test=s["test"]),
             "warn",
-            M("lynis.suggestion", "Lynis makes this suggestion."),
+            M("lynis.suggestion.text", "Lynis suggests: {text}", text=s["text"]),
             fix=solution(s["test"], s["solution"]),
             commands=[] if s["solution"] else [f"lynis show details {s['test']}"],
             evidence=[s["details"]] if s["details"] else [],

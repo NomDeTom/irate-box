@@ -50,12 +50,20 @@ def run(units):
 
 
 def exempt(f):
-    """The exempt lines said on a finding (notes units.exempt.one): (unit, line, the reason's message ID)."""
+    """The exempt lines said on a finding (notes units.exempt.one): (unit, line, the reason's message ID).
+    The lines one reason lets off are one note, their list its line."""
+    lines = lambda v: v if isinstance(v, list) else [v]  # noqa: E731
     return {
-        (n["args"]["unit"], n["args"]["line"], n["args"]["reason"]["id"])
+        (n["args"]["unit"], ln, n["args"]["reason"]["id"])
         for n in f["notes"]
         if n["id"] == "units.exempt.one"
+        for ln in lines(n["args"]["line"])
     }
+
+
+def exempt_notes(f, unit):
+    """How many units.exempt.one notes a finding has for one unit."""
+    return sum(1 for n in f["notes"] if n["id"] == "units.exempt.one" and n["args"]["unit"] == unit)
 
 
 out = run({"irate-box-firewall.service": FULL})
@@ -78,6 +86,12 @@ check(
     "  listed with its reason (notes on units-root)",
     "units-exempt" not in out and ("ttyd", "NoNewPrivileges", "units.exempt.ttyd") in exempt(out["units-root"]),
     exempt(out["units-root"]),
+)
+check(
+    "  its five lines said once, with the one reason they share",
+    exempt_notes(out["units-root"], "ttyd") == 1
+    and len({ln for u, ln, _ in exempt(out["units-root"]) if u == "ttyd"}) == 5,
+    out["units-root"]["notes"],
 )
 # Root keeps CAP_SYS_PTRACE under ProtectProc=invisible (seen on the Lyra: every process, and another account's
 # command line), so the audit and crash watch are held to it like any root unit.
