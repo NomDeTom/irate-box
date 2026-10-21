@@ -1668,7 +1668,9 @@ def ap_verdicts(inv):
     nm_on = bool((inv["stacks"].get("networkmanager") or {}).get("running"))
     hostapd = (inv["stacks"].get("hostapd") or {}).get("installed")
     seen = set()
-    for r in inv["radios"]:
+    # A radio's client interface before its hotspot's (ap0 sorts before wlan0): the hotspot is added beside
+    # the client one, so naming ap0 here made a restart add ap0 to the ap0 it had just removed.
+    for r in sorted(inv["radios"], key=lambda radio: radio.get("type") == "AP"):
         if r.get("phy") in seen or r.get("type") not in ("managed", "AP"):
             continue
         seen.add(r.get("phy"))

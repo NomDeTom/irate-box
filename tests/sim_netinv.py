@@ -43,6 +43,19 @@ def kinds(v):
 
 v = netinv.ap_verdicts(inv({}, uplink_iface="eth0"))[0]
 check("its own radio: how, nothing else", v["possible"] and v["mode"] == "radio-alone" and kinds(v) == ["how"], v)
+both = inv({"ap_beside_client": True, "channels_at_once": 3})
+both["radios"].insert(0, {**both["radios"][0], "iface": "ap0", "type": "AP"})
+v = netinv.ap_verdicts(both)
+check(
+    "a hotspot already up beside the client: the verdict names the client interface, once",
+    len(v) == 1 and v[0]["iface"] == "wlan0",
+    v,
+)
+own = inv({"iface": "wlan1", "type": "AP"}, uplink_iface="eth0")
+check(
+    "a radio whose only interface is its hotspot: that one",
+    netinv.ap_verdicts(own)[0]["iface"] == "wlan1",
+)
 v = netinv.ap_verdicts(inv({"ap_beside_client": True, "channels_at_once": 3}))[0]
 check(
     "beside the client, 3 channels: how, limit, untested",
