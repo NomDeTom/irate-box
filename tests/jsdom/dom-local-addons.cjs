@@ -44,6 +44,13 @@ w.eval(js);
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// A consent on the page (agreeRow): its box ticked, then its button pressed.
+const tickAndPress = (win, row, label) => {
+  const box = row.querySelector('.agree-row input[type="checkbox"]');
+  box.checked = true;
+  box.dispatchEvent(new win.Event('change', { bubbles: true }));
+  [...row.querySelectorAll('button')].find((b) => b.textContent === label).click();
+};
 (async () => {
   await sleep(300);
   const d = w.document;
@@ -57,20 +64,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('one gone from the catalogue: said', /No longer in the catalogue/.test(rows.find((r) => /Old thing/.test(r.textContent)).textContent));
   acceptBtn.click();
   await sleep(100);
-  check('Accept asks the new consent text, with the changes', asked.some((t) => t.includes('ELIZA now talks to example.org.') && /^What changed: now connects to wss:\/\/example\.org/.test(t)), asked.join(' | '));
+  const elizaRow = () => [...d.querySelectorAll('#local-added .library-source')].find((r) => /ELIZA/.test(r.textContent));
+  check('Accept shows the new consent text and the changes on its card, nothing sent yet', /What changed: now connects to wss:\/\/example\.org/.test(elizaRow().textContent)
+    && elizaRow().textContent.includes('ELIZA now talks to example.org.') && !posted.some(([, b]) => b.action === 'accept'), elizaRow().textContent);
+  tickAndPress(w, elizaRow(), 'Approve');
+  await sleep(100);
   const acc = posted.find(([u, b]) => u === '/admin/local-addons' && b.action === 'accept');
   check('Accept posts it, agreed', acc && acc[1].id === 'eliza' && acc[1].agree === true, JSON.stringify(acc));
   asked.length = 0;
   check('added: ELIZA, installed at the pinned commit', /ELIZA/.test(added.textContent) && /Installed: 4ac38e6 \(the pinned commit\)/.test(added.textContent), added.textContent);
   check('added: its access block in its row, four chips for who opens it (users only where it can)', added.querySelectorAll('.access-set .access-field')[0].querySelectorAll('.chip').length === 4);
-  check('added: Open and Remove', [...added.querySelectorAll('a, button')].some((b) => b.textContent === 'Open') && [...added.querySelectorAll('button')].some((b) => b.textContent === 'Remove web add-on'));
+  check('added: Open and Remove', [...added.querySelectorAll('a, button')].some((b) => b.textContent === 'Open') && [...added.querySelectorAll('button')].some((b) => b.textContent === 'Remove web add-on…'));
   const cat = d.getElementById('local-catalogue');
   check('catalogue: only what is not added', /MQTT explorer/.test(cat.textContent) && !/ELIZA/.test(cat.textContent), cat.textContent);
   check('catalogue: what it connects to', /ws:\/\/\{box\}\/mqtt/.test(cat.textContent));
   check('a left-out manifest is said', /Omitted: bad.json/.test(d.getElementById('local-errors').textContent));
-  [...cat.querySelectorAll('button')].find((b) => b.textContent === 'Add web add-on').click();
+  const mqttRow = [...cat.querySelectorAll('.library-source')].find((r) => /MQTT explorer/.test(r.textContent));
+  check('Add: the consent text on the card, Add waiting for the tick', mqttRow.textContent.includes('This downloads MQTTX.') && /starts disabled/.test(mqttRow.textContent)
+    && [...mqttRow.querySelectorAll('button')].find((b) => b.textContent === 'Add web add-on').disabled, mqttRow.textContent);
+  tickAndPress(w, mqttRow, 'Add web add-on');
   await sleep(100);
-  check('Add asks the consent text first', asked.length === 1 && asked[0].startsWith('This downloads MQTTX.') && /starts disabled/.test(asked[0]), asked[0]);
   const add = posted.find(([u, b]) => u === '/admin/local-addons' && b.action === 'add');
   check('Add posts the id, agreed, with the admin header', add && add[1].id === 'mqttx' && add[1].agree === true && add[2]['X-Irate-Admin'] === '1', JSON.stringify(add));
   check('the paste warning is there', /Add a pasted manifest only if you have read it/.test(d.querySelector('#local-paste .danger-box').textContent));
@@ -79,8 +92,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('paste refused until the box is ticked', !posted.some(([, b]) => b.action === 'paste') && /select the checkbox/.test(d.getElementById('local-paste-note').textContent));
   d.getElementById('local-paste-ok').checked = true;
   d.getElementById('local-paste-go').click(); await sleep(100);
+  const pn = d.getElementById('local-paste-note');
+  check('ticked: its consent text shown under the box, nothing sent yet', /Take it\?/.test(pn.textContent) && !posted.some(([, b]) => b.action === 'paste'), pn.textContent);
+  [...pn.querySelectorAll('button')].find((b) => b.textContent === 'Add web add-on').click(); await sleep(100);
   const paste = posted.find(([, b]) => b.action === 'paste');
   check('ticked: posts it with the acknowledgement', paste && paste[1].understood === "I understand this runs someone else's code on this box's address" && paste[1].manifest.id === 'x');
+  // Remove…: what removing does, then Remove.
+  const removeFrom = [...d.querySelectorAll('#local-added .library-source')].find((r) => /Old thing/.test(r.textContent));
+  [...removeFrom.querySelectorAll('button')].find((b) => b.textContent === 'Remove web add-on…').click(); await sleep(50);
+  const oldRow = [...d.querySelectorAll('#local-added .library-source')].find((r) => /Old thing/.test(r.textContent));
+  check('Remove…: what it does, on its card, nothing sent yet', /deletes its files/.test(oldRow.textContent) && !posted.some(([, b]) => b.action === 'remove'), oldRow.textContent);
+  [...oldRow.querySelectorAll('button')].find((b) => b.textContent === 'Remove web add-on').click(); await sleep(100);
+  check('  then Remove sends it', posted.some(([, b]) => b.action === 'remove'));
+  check('no browser pop-up for any of it', asked.length === 0, asked.join(' | '));
   check('no page errors', errors.length === 0, errors.join(' | '));
 
   // Only the consent text changed (the catalogue reworded it): said as that, and the button is Review and approve. The
@@ -117,9 +141,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     && line.getAttribute('href') === '#page-app-eliza' && !!d2.getElementById('page-app-eliza'), line && line.outerHTML.slice(0, 300));
   const pageBtn = [...d2.querySelectorAll('#page-app-eliza .head-block button')].find((b) => b.textContent === 'Review and approve');
   check('  its page: Consent required, and beside it Review and approve', !!pageBtn && /Consent required/.test(d2.querySelector('#page-app-eliza .head-block').textContent));
-  if (pageBtn) { pageBtn.click(); await sleep(100); }
-  check('  which shows the new text and what changed before accepting', asked2.length === 1 && /^The catalogue reworded the text you agreed to\./.test(asked2[0])
-    && asked2[0].includes('This downloads ELIZA. Reworded. Add ELIZA?'), asked2.join(' | '));
+  if (pageBtn) { pageBtn.click(); await sleep(150); }
+  const row3 = [...d2.querySelectorAll('#local-added .library-source')].find((r) => /ELIZA/.test(r.textContent));
+  check('  which goes to its card, showing the new text and what changed before accepting', w2.location.hash === '#local-added'
+    && /The catalogue reworded the text you agreed to\./.test(row3.textContent) && row3.textContent.includes('This downloads ELIZA. Reworded. Add ELIZA?')
+    && !posted2.some(([, b]) => b.action === 'accept') && asked2.length === 0, row3.textContent);
+  tickAndPress(w2, row3, 'Approve');
+  await sleep(100);
   const acc2 = posted2.find(([u, b]) => u === '/admin/local-addons' && b.action === 'accept');
   check('  and accepts it, agreed', acc2 && acc2[1].id === 'eliza' && acc2[1].agree === true, JSON.stringify(posted2));
   check('no page errors (reworded)', errors2.length === 0, errors2.join(' | '));

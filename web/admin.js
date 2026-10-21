@@ -10764,19 +10764,15 @@ function fillHeadBlocks() {
     }
     const addon =
       lastAddons && (lastAddons.addons || []).find((x) => x.id === id);
-    if (r && r.kind === "addon" && addon && addon.added === false) {
-      const busy =
-        lastAddons.pending > 0 || !!adoWaiting || !!lastAddons.progress;
+    // Its install card on this page says what adding it means first (its consent text, addonButtons).
+    if (r && r.kind === "addon" && addon && addon.added === false)
       buttons.push(
-        el("button", {
-          type: "button",
+        el("a", {
           className: "action-btn primary",
-          textContent: "Add",
-          disabled: busy,
-          onclick: () => addonSet(addon, true),
+          href: `#app-install-${id}`,
+          textContent: "Add…",
         }),
       );
-    }
     const held =
       r &&
       r.kind === "local" &&
@@ -11382,6 +11378,104 @@ AL.onBuild(() => {
   if (lastAddons) renderAddons(lastAddons);
 });
 
+// What installing or removing an add-on means, on its card before the button, not in a pop-up: its
+// consent text with a box to tick (the button waits for it), or what the installer does; Uninstall…
+// shows what removing does, with Uninstall and Cancel. Kept across the page's redraws.
+const agreedTo = new Set(); // "kind:id" of the consent texts ticked, kept across redraws
+let adoAsking = null; // the add-on whose Uninstall… is open
+// A text to agree to on the page: the text, a box to tick, and the button, which waits for the tick.
+function agreeRow(key, text, label, disabled, go) {
+  const button = el("button", {
+    type: "button",
+    className: "action-btn",
+    textContent: label,
+    disabled: disabled || !agreedTo.has(key),
+    onclick: go,
+  });
+  return el(
+    "span",
+    { className: "agree-row" },
+    el("span", { className: "setting-desc agree-text", textContent: text }),
+    el(
+      "label",
+      { className: "setting-desc" },
+      el("input", {
+        type: "checkbox",
+        checked: agreedTo.has(key),
+        onchange: (e) => {
+          if (e.target.checked) agreedTo.add(key);
+          else agreedTo.delete(key);
+          button.disabled = disabled || !e.target.checked;
+        },
+      }),
+      " I have read this and I agree.",
+    ),
+    el("span", { className: "library-buttons" }, button),
+  );
+}
+// A change asked for on the page: what it does, then the button and Cancel.
+function askRow(text, label, go, cancel, disabled) {
+  return el(
+    "span",
+    { className: "agree-row" },
+    el("span", { className: "setting-desc", textContent: text }),
+    el(
+      "span",
+      { className: "library-buttons" },
+      actionButton(label, go, { disabled: !!disabled }),
+      actionButton("Cancel", cancel),
+    ),
+  );
+}
+const ADDON_INSTALL_SAYS =
+  "The installer runs for a few minutes. The hub server can restart during the installation.";
+const ADDON_REMOVE_SAYS =
+  "Its service stops. Its data stays, so installing it again finds the data.";
+function addonButtons(a, busy) {
+  const redraw = () => lastAddons && renderAddons(lastAddons);
+  if (a.added) {
+    if (adoAsking !== a.id)
+      return el(
+        "span",
+        { className: "library-buttons" },
+        actionButton(
+          "Uninstall add-on…",
+          () => {
+            adoAsking = a.id;
+            redraw();
+          },
+          { disabled: busy },
+        ),
+      );
+    return askRow(
+      `Uninstall ${a.title}? ${ADDON_REMOVE_SAYS}`,
+      "Uninstall add-on",
+      () => {
+        adoAsking = null;
+        addonSet(a, false);
+      },
+      () => {
+        adoAsking = null;
+        redraw();
+      },
+      busy,
+    );
+  }
+  const install = () => addonSet(a, true);
+  if (a.consent)
+    return agreeRow(`addon:${a.id}`, `${a.consent} ${ADDON_INSTALL_SAYS}`, "Install add-on", busy, install);
+  return el(
+    "span",
+    { className: "agree-row" },
+    el("span", { className: "setting-desc", textContent: ADDON_INSTALL_SAYS }),
+    el(
+      "span",
+      { className: "library-buttons" },
+      actionButton("Install add-on", install, { disabled: busy }),
+    ),
+  );
+}
+
 function addonCard(a, busy, withAccess, progressText) {
   const state =
     a.added === null
@@ -11418,19 +11512,7 @@ function addonCard(a, busy, withAccess, progressText) {
             textContent: `Needs: ${a.needs}`,
           })
         : null,
-      a.added === null
-        ? null
-        : el(
-            "span",
-            { className: "library-buttons" },
-            el("button", {
-              type: "button",
-              className: "action-btn",
-              textContent: a.added ? "Uninstall add-on" : "Install add-on",
-              disabled: busy,
-              onclick: () => addonSet(a, !a.added),
-            }),
-          ),
+      a.added === null ? null : addonButtons(a, busy),
       note,
       !withAccess && progressText
         ? el("span", {
@@ -11523,12 +11605,8 @@ async function loadAddons() {
   }
 }
 
+// Asked on the card first (addonButtons): its consent ticked, or Uninstall… then Uninstall.
 async function addonSet(a, on) {
-  const ask = on
-    ? a.consent ||
-      `Install ${a.title}? The installer runs for a few minutes. The hub server can restart during the installation.`
-    : `Uninstall ${a.title}? Its service stops. Its data stays, so installing it again finds the data.`;
-  if (!confirm(ask)) return;
   try {
     adoWaiting = {
       id: (await postJSON("/admin/addons", { addon: a.id, on })).id,
@@ -11636,16 +11714,31 @@ function renderLocal(data) {
                       textContent: "Open",
                     })
                   : null,
-                a.catalogue && a.catalogue.status === "held"
+                a.catalogue && a.catalogue.status === "held" && locAsking !== `approve:${a.id}`
                   ? approveButton(a, data)
                   : null,
-                el("button", {
-                  type: "button",
-                  className: "action-btn",
-                  textContent: "Remove web add-on",
-                  onclick: () => localRemove(a),
-                }),
+                locAsking === `remove:${a.id}`
+                  ? null
+                  : actionButton("Remove web add-on…", () => {
+                      locAsking = `remove:${a.id}`;
+                      renderLocal(data);
+                    }),
               ),
+              locAsking === `approve:${a.id}` ? approveRow(a, data) : null,
+              locAsking === `remove:${a.id}`
+                ? askRow(
+                    `Remove ${a.title}? The box deletes its files. Adding it again downloads it again.`,
+                    "Remove web add-on",
+                    () => {
+                      locAsking = null;
+                      localRemove(a);
+                    },
+                    () => {
+                      locAsking = null;
+                      renderLocal(data);
+                    },
+                  )
+                : null,
               note(a.id),
             ),
           );
@@ -11658,7 +11751,18 @@ function renderLocal(data) {
         ]),
   );
   const offered = data.catalogue.filter((c) => !c.added);
-  loc.cat.replaceChildren(
+  // Drawn again only when it would show something else: its cards hold a box to tick, so the
+  // guard for a selection (AW keepSelections) cannot tell an unchanged block by its HTML.
+  const catKey = JSON.stringify([
+    data.catalogue_error || "",
+    offered,
+    fetching,
+    offered.filter((c) => agreedTo.has(`local:${c.id}`)).map((c) => c.id),
+    locNote,
+  ]);
+  if (loc.cat.dataset.key !== catKey) {
+    loc.cat.dataset.key = catKey;
+    loc.cat.replaceChildren(
     ...(data.catalogue_error
       ? [
           el("p", {
@@ -11681,16 +11785,12 @@ function renderLocal(data) {
                 className: "setting-desc",
                 textContent: `${capsText(c.capabilities)} From ${c.repo} at ${String(c.pin).slice(0, 7)}.`,
               }),
-              el(
-                "span",
-                { className: "library-buttons" },
-                el("button", {
-                  type: "button",
-                  className: "action-btn",
-                  textContent: "Add web add-on",
-                  disabled: fetching,
-                  onclick: () => localAdd(c),
-                }),
+              agreeRow(
+                `local:${c.id}`,
+                `${c.consent || ""} It starts disabled. Enable it here after the installation.`.trim(),
+                "Add web add-on",
+                fetching,
+                () => localAdd(c),
               ),
               note(c.id),
             ),
@@ -11703,6 +11803,7 @@ function renderLocal(data) {
           }),
         ]),
   );
+  }
   loc.errors.replaceChildren(
     ...Object.values(data.errors || {}).map((why) =>
       el("p", {
@@ -11728,13 +11829,44 @@ const heldTextOnly = (a) => {
 };
 const approveLabel = (a) =>
   heldTextOnly(a) ? "Review and approve" : "Approve changed permissions";
+let locAsking = null; // "approve:id" or "remove:id": the web add-on whose step is open on its card
 const approveButton = (a, data, cls = "action-btn") =>
   el("button", {
     type: "button",
     className: cls,
     textContent: approveLabel(a),
-    onclick: () => localAccept(a, data),
+    onclick: (e) => {
+      locAsking = `approve:${a.id}`;
+      renderLocal(data);
+      // From the app's own page: to its card, where the new text is.
+      if (!e.target.closest("#local-added")) location.hash = "#local-added";
+    },
   });
+// A held catalogue update, approved on its card: what changed, the new text and permissions, a box to tick.
+function approveRow(a, data) {
+  const c = (data.catalogue || []).find((x) => x.id === a.id) || {};
+  const changed = heldTextOnly(a)
+    ? "The catalogue reworded the text you agreed to. Permissions, connections and source are the same."
+    : `What changed: ${((a.catalogue || {}).held || []).join(", ")}.`;
+  return el(
+    "span",
+    {},
+    agreeRow(
+      `approve:${a.id}:${c.consent || ""}`,
+      `${changed} The new text: ${c.consent || ""} ${capsText(c.capabilities)}`,
+      "Approve",
+      false,
+      () => {
+        locAsking = null;
+        localAccept(a);
+      },
+    ),
+    actionButton("Cancel", () => {
+      locAsking = null;
+      renderLocal(data);
+    }),
+  );
+}
 
 // Where an added add-on stands against the catalogue (server.py catalogue_sync).
 function catalogueNote(a) {
@@ -11766,17 +11898,8 @@ function catalogueNote(a) {
   return null;
 }
 
-function localAccept(a, data) {
-  const c = (data.catalogue || []).find((x) => x.id === a.id) || {};
-  const changed = heldTextOnly(a)
-    ? "The catalogue reworded the text you agreed to. Permissions, connections and source are the same."
-    : `What changed: ${((a.catalogue || {}).held || []).join(", ")}.`;
-  if (
-    !confirm(
-      `${changed}\n\nThe new text:\n${c.consent || ""}\n\n${capsText(c.capabilities)}\n\nApprove it?`,
-    )
-  )
-    return;
+// Agreed on its card first (approveRow).
+function localAccept(a) {
   localPost(
     { action: "accept", id: a.id, agree: true },
     a.id,
@@ -11803,13 +11926,8 @@ async function localPost(body, id, doing) {
   loadAccess();
 }
 
+// Agreed on its card first (agreeRow); its permissions are on the card.
 function localAdd(c) {
-  if (
-    !confirm(
-      `${c.consent}\n\n${capsText(c.capabilities)}\n\nIt starts disabled. Enable it here after the installation.`,
-    )
-  )
-    return;
   localPost(
     { action: "add", id: c.id, agree: true },
     c.id,
@@ -11817,17 +11935,13 @@ function localAdd(c) {
   );
 }
 
+// Asked on its card first (Remove web add-on…).
 function localRemove(a) {
-  if (
-    !confirm(
-      `Remove ${a.title}? The box deletes its files. Adding it again downloads it again.`,
-    )
-  )
-    return;
   localPost({ action: "remove", id: a.id }, a.id, `${a.title} removed.`);
 }
 
-loc.pasteGo.addEventListener("click", async () => {
+// A pasted manifest: read, then its consent text and permissions shown under the box, with Add and Cancel.
+loc.pasteGo.addEventListener("click", () => {
   const bad = (text) => {
     loc.pasteNote.textContent = text;
     loc.pasteNote.className = "setting-desc bad";
@@ -11844,12 +11958,17 @@ loc.pasteGo.addEventListener("click", async () => {
     return;
   }
   const addon = (manifest && manifest.addon) || {};
-  if (
-    !confirm(
-      `Add "${addon.title}" from a pasted manifest?\n\n${addon.consent || ""}\n\n${capsText(manifest.capabilities)}`,
-    )
-  )
-    return;
+  loc.pasteNote.className = "setting-desc";
+  loc.pasteNote.replaceChildren(
+    askRow(
+      `Add "${addon.title}" from this manifest? ${addon.consent || ""} ${capsText(manifest.capabilities)}`,
+      "Add web add-on",
+      () => pasteAdd(manifest, bad),
+      () => loc.pasteNote.replaceChildren(),
+    ),
+  );
+});
+async function pasteAdd(manifest, bad) {
   try {
     await postJSON("/admin/local-addons", {
       action: "paste",
@@ -11865,7 +11984,7 @@ loc.pasteGo.addEventListener("click", async () => {
   }
   loadLocal();
   loadAccess();
-});
+}
 
 loadLocal();
 
