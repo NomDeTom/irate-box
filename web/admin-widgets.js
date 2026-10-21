@@ -757,6 +757,42 @@ const AW = (() => {
         } });
     }
   }
+  // A block the page draws at every poll, kept where it would look the same: each child is replaced only when
+  // what it shows changes, so a selection, a focus or an open fold in the others stays. Its live parts
+  // ([data-live]: a signal, an uptime) are left out of that and put in place on their own. A field's value
+  // counts; a block holding a settings section (its Save and Discard) is always drawn, as the section keeps
+  // its draft with the copy drawn last.
+  const LIVE = '[data-live]';
+  function shownAs(n) {
+    if (n == null || n === false) return '';
+    if (typeof n === 'string') return escapeHTML(n);
+    if (n.nodeType === 3) return escapeHTML(n.data);
+    const c = n.cloneNode(true);
+    if (c.matches(LIVE)) return `<live ${c.getAttribute('data-live')}>`;
+    c.querySelectorAll(LIVE).forEach((x) => x.replaceChildren());
+    const vals = [...n.querySelectorAll('input, select, textarea')].map((f) => (f.type === 'checkbox' || f.type === 'radio' ? f.checked : f.value));
+    return c.outerHTML + (vals.length ? JSON.stringify(vals) : '');
+  }
+  function drawKept(box, nodes) {
+    nodes = nodes.filter((n) => n != null && n !== false).map((n) => (typeof n === 'string' ? document.createTextNode(n) : n));
+    const sigs = nodes.map(shownAs);
+    const was = box._shownAs;
+    const sections = nodes.some((n) => n.nodeType === 1 && (n.matches('.aw-foot') || n.querySelector('.aw-foot')));
+    if (sections || !was || was.length !== sigs.length || box.childNodes.length !== was.length) {
+      box.replaceChildren(...nodes);
+    } else {
+      const cur = [...box.childNodes];
+      nodes.forEach((n, i) => {
+        if (was[i] !== sigs[i]) cur[i].replaceWith(n);
+        else if (n.nodeType === 1) {
+          const old = cur[i].matches(LIVE) ? [cur[i]] : [...cur[i].querySelectorAll(LIVE)];
+          const now = n.matches(LIVE) ? [n] : [...n.querySelectorAll(LIVE)];
+          now.forEach((x, j) => { if (old[j] && old[j].outerHTML !== x.outerHTML) old[j].replaceWith(x); });
+        }
+      });
+    }
+    box._shownAs = sections ? null : sigs;
+  }
   if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
     keepSelections();
     const start = () => {
@@ -770,7 +806,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, drawKept, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
