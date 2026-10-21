@@ -388,7 +388,7 @@ function sourceRow(src, st, busy) {
   const latest = st.latest || {};
   const archive = st.archive || [];
   const key = `book:${src.name}`;
-  const button = (label, body, confirmText, opts = {}) =>
+  const button = (label, body, opts = {}) =>
     el("button", {
       type: "button",
       className: "action-btn",
@@ -456,7 +456,7 @@ function sourceRow(src, st, busy) {
         "span",
         { className: "library-buttons" },
         button("Check now", { action: "check", names: [src.name] }),
-        button("Download", { action: "fetch", names: [src.name] }, null, {
+        button("Download", { action: "fetch", names: [src.name] }, {
           off: !newer || fetched,
           title: !newer
             ? "Select Check now first. No newer version is known."
@@ -469,13 +469,15 @@ function sourceRow(src, st, busy) {
           ? button(
               "Roll back",
               { action: "rollback", name: src.name },
-              `Restore version ${archive[0]} as ${src.name}.zim? The librarian retains the current version.`,
+              {
+                title: `Restores version ${archive[0]} as ${src.name}.zim. The librarian keeps the current version.`,
+              },
             )
           : null,
         button(
           "Stop tracking",
           { action: "remove", name: src.name },
-          `Stop tracking ${src.name}? The book stays in the library.`,
+          { title: `The book stays in the library.` },
         ),
       ),
       noteFor(key),
@@ -492,7 +494,7 @@ function renderApps(snap, busy) {
   const sources = Object.fromEntries(
     snap.sources.filter((s) => s.kind === "app").map((s) => [s.name, s]),
   );
-  const post = (key, body, confirmText) => () => libAct(key, body, confirmText);
+  const post = (key, body) => () => libAct(key, body);
   const row = (name, a, withAccess) => {
     const inst = a.installed;
     const src = sources[name];
@@ -604,11 +606,8 @@ function renderApps(snap, busy) {
                     className: "action-btn",
                     textContent: "Roll back",
                     disabled: busy,
-                    onclick: post(
-                      `app:${name}`,
-                      { action: "rollback", name },
-                      `Restore the previous ${a.title} build?`,
-                    ),
+                    title: `Restores the previous ${a.title} build.`,
+                    onclick: post(`app:${name}`, { action: "rollback", name }),
                   })
                 : null,
               a.pin
@@ -620,19 +619,17 @@ function renderApps(snap, busy) {
                         ? "Use latest version"
                         : "Use pinned version",
                     disabled: busy,
-                    onclick: post(
-                      `app:${name}`,
-                      {
-                        action: "add",
-                        source: {
-                          ...src,
-                          follow: follow === "pinned" ? "latest" : "pinned",
-                        },
-                      },
+                    title:
                       follow === "pinned"
-                        ? `Future ${a.title} updates will use the latest build instead of the reviewed pinned commit. It is possible that nobody has reviewed the latest build. Change update source?`
-                        : null,
-                    ),
+                        ? `Future ${a.title} updates will use the latest build instead of the reviewed pinned commit. Nobody may have reviewed the latest build.`
+                        : "",
+                    onclick: post(`app:${name}`, {
+                      action: "add",
+                      source: {
+                        ...src,
+                        follow: follow === "pinned" ? "latest" : "pinned",
+                      },
+                    }),
                   })
                 : null,
             )
@@ -1690,10 +1687,6 @@ function pkgCard(id, p) {
             days,
             every: all.every,
           },
-          mode === "auto" || mode === "aged"
-            ? `Let the box install ${p.title} builds from ${label(all.channel)} by itself${mode === "aged" ? ` once the box first detected them ${days} day${days === 1 ? "" : "s"} ago` : ""}? ` +
-                "Alpha and nightly builds can be less stable. Roll back restores the previous build."
-            : null,
         );
       },
     },
@@ -1748,19 +1741,19 @@ function pkgCard(id, p) {
           ? actionButton(
               `Install ${newest.version}`,
               () =>
-                pkgAct(
-                  { action: "install", package: id, version: newest.version },
-                  `Install ${p.title} ${newest.version} now?`,
-                ),
+                pkgAct({
+                  action: "install",
+                  package: id,
+                  version: newest.version,
+                }),
               { className: "primary" },
             )
           : null,
         p.previous
-          ? actionButton(`Roll back to ${p.previous}`, () =>
-              pkgAct(
-                { action: "rollback", package: id },
-                `Roll back ${p.title} to version ${p.previous}? This downgrades the package.`,
-              ),
+          ? actionButton(
+              `Roll back to ${p.previous}`,
+              () => pkgAct({ action: "rollback", package: id }),
+              { title: `This downgrades ${p.title} to version ${p.previous}.` },
             )
           : null,
       ),
@@ -12031,7 +12024,6 @@ function renderUsb(data) {
                           usbRequest(
                             { action: "import", device: d.name, file: z.file },
                             `${d.name}:${z.file}`,
-                            `Copy ${z.file} into the library (${size(z.size)})?`,
                           ),
                       })
                     : null,
@@ -12058,7 +12050,6 @@ function renderUsb(data) {
                     usbRequest(
                       { action: "export", device: d.name, book: pick.value },
                       `export:${d.name}`,
-                      `Copy ${pick.value}.zim onto ${d.label || d.name}?`,
                     ),
                 }),
               )
@@ -12416,7 +12407,7 @@ function repoCard(r, data) {
 
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(r, data, cls) {
-  // Only Delete asks, on the page: a move can be moved back (admin pages plan, phase 5).
+  // Only Delete asks, on the page (confirmText): a move can be moved back (admin pages plan, phase 5).
   const act = (body, confirmText, done) => async (e) => {
     // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
     if (
@@ -12452,7 +12443,7 @@ function managePanel(r, data, cls) {
       }),
       ` ${label}`,
     );
-  // Who can see it: the area. Moving changes the clone URL, so it asks.
+  // Who can see it: the area. Moving changes the clone URL, said under the choices.
   const see = el(
     "fieldset",
     { className: "git-q" },
@@ -12464,7 +12455,7 @@ function managePanel(r, data, cls) {
       r.area === "public",
       act(
         { action: "move", area: r.area, name: r.name, to: "public" },
-        `Move ${r.name}.git to /git/? Anyone on the network can browse and clone it. Its clone URL changes.`,
+        null,
         `${r.name}.git is now visible to guests.`,
       ),
     ),
@@ -12475,7 +12466,7 @@ function managePanel(r, data, cls) {
       r.area === "private",
       act(
         { action: "move", area: r.area, name: r.name, to: "private" },
-        `Move ${r.name}.git to /git-private/? Only administrators can see or clone it. Its clone URL changes.`,
+        null,
         `${r.name}.git is now visible to administrators only.`,
       ),
     ),
@@ -12504,9 +12495,7 @@ function managePanel(r, data, cls) {
         p.name === r.preset,
         act(
           { action: "preset", area: r.area, name: r.name, preset: p.name },
-          p.write === "everyone"
-            ? `Let anyone on the network push to ${r.name}.git without signing in? They cannot rewrite or delete its history. Repositories that guests can read have a storage limit. The box serves anything they push.`
-            : null,
+          null,
           `${r.name}.git: ${p.text}.`,
         ),
       ),
@@ -12516,6 +12505,13 @@ function managePanel(r, data, cls) {
       textContent:
         "The hub server decides each push. Nobody can rewrite or delete history in a repository that guests can read.",
     }),
+    presets.some((p) => p.write === "everyone")
+      ? el("p", {
+          className: "setting-desc",
+          textContent:
+            "With Anyone, people on the network push without signing in. Repositories that guests can read have a storage limit. The box serves anything they push.",
+        })
+      : null,
   );
   const buildNow =
     r.can_build && r.build && r.has_script
@@ -12666,7 +12662,7 @@ function managePanel(r, data, cls) {
                   to: { area: toArea, name: toName },
                   refs: refs.value.trim().split(/\s+/),
                 },
-                `Publish ${refs.value.trim()} from ${r.name}.git to ${target.value}.git? This replaces branches or tags of the same name there.`,
+                null,
                 "Published.",
               )();
             },
