@@ -23,6 +23,7 @@ fs = s.ssh_findings({"permitrootlogin": "no", "passwordauthentication": "yes"}, 
 fs += s.listener_findings([{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "pid": 1, "name": s.named("Cockpit")}], {})
 fs += s.cockpit_findings([{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "pid": 1, "name": s.named("Cockpit")}], {})
 fs += [s.security_updates_finding(["openssl", "libc6"], 3.2)]
+fs[-1].update({"lists_age_days": 3.2, "waiting": 2, "fetched": 0, "packages": ["openssl", "libc6"]})  # as the scan adds them
 fs += [finding("firewall", M("firewall.title", "Hotspot firewall"), "problem",
                M("firewall.not-loaded", "The hotspot firewall is enabled, but its rules are not loaded."),
                commands=["nft list table inet irate_box"])]
@@ -74,10 +75,12 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   check('a command: in a box to copy, exactly as typed, no full stop added',
     fw && [...fw.querySelectorAll('.fdo-cmd code')].map(t).join('|') === 'nft list table inet irate_box', fw && t(fw));
 
-  const upd = d.getElementById('sec-security-updates');
-  check('Updates: the plural said whole, the packages as evidence, the notes after',
-    upd && /2 security updates are waiting\./.test(t(upd)) && [...upd.querySelectorAll('.fevidence li')].map(t).join(' ') === 'openssl libc6'
-    && /The package lists are 3 days old\. Newer fixes can be available\./.test(t(upd)), upd && t(upd));
+  // The Updates card draws the state, not the finding: the count, the lists' age, the packages in a fold.
+  const upd = d.getElementById('updates-security');
+  check('Updates: the plural said whole, the age of the lists, the packages in a fold',
+    upd && /2 security updates are waiting\./.test(t(upd)) && /The package lists are 3 days old\./.test(t(upd))
+    && t(upd.querySelector('details summary')) === 'The waiting packages (2)'
+    && t(upd.querySelector('details p')) === 'openssl, libc6' && !/null/.test(t(upd)), upd && t(upd));
 
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),

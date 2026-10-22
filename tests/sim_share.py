@@ -251,27 +251,30 @@ for bad in ({"ip": "192.168.1.9"}, {"ip": "192.168.4.1"}, {"ip": "1.2.3.4; reboo
 (T / "loaded").write_text("")
 firewall.loaded = lambda: True
 f = security.share_findings()
+chips = lambda x: [(a["choice"], a["on"]) for a in x["actions"]]  # noqa: E731
 check(
-    "the doctor, contained: one ok finding naming the level and each part, a switch to turn each off",
+    "contained: one ok setting naming the level, each part a row of On (as it is) and Off (asked first)",
     [x["status"] for x in f] == ["ok"]
     and f[0]["summary"]["id"] == f"guest-net.level.{share.load()['level']}"
-    and f[0]["notes"][0]["args"]["n"] == len(share.CONTAIN)
-    and [a["choice"] for a in f[0]["actions"]] == [f"share-contain-{k}-off" for k in share.CONTAIN]
-    and all(a["confirm"] for a in f[0]["actions"]),
+    and chips(f[0])
+    == [c for k in share.CONTAIN for c in ((f"share-contain-{k}-on", True), (f"share-contain-{k}-off", False))]
+    and len({str(a["group"]) for a in f[0]["actions"]}) == len(share.CONTAIN)
+    and all(a.get("confirm") for a in f[0]["actions"] if a["choice"].endswith("-off")),
     f,
 )
 ran.clear()
 print(security.fix("share-contain-lan-off", None))
 f = security.share_findings()
 check(
-    "a part turned off: the rules rewritten without it, a warning of its own with the way back",
+    "a part turned off: the rules rewritten without it, a warning of its own with the way back (the doctor's)",
     "100.64.0.0/10" not in firewall.RULES.read_text()
     and share.load()["contain"]["lan"] is False
     and any(
         x["id"] == "guest-net-lan" and x["status"] == "warn" and x["actions"][0]["choice"] == "share-contain-lan-on"
         for x in f
     )
-    and next(x for x in f if x["id"] == "guest-net")["status"] == "warn",
+    and next(x for x in f if x["id"] == "guest-net")["status"] == "warn"
+    and ("share-contain-lan-off", True) in chips(next(x for x in f if x["id"] == "guest-net")),
     f,
 )
 print(security.fix("share-contain-lan-on", None))
@@ -315,7 +318,10 @@ check(
     order,
 )
 check("  the containment kept for next time", share.load()["contain"] == ALL)
-check("  the doctor says nothing about sharing", security.share_findings() == [])
+check(
+    "  nothing shared: the setting alone, ok, every part on",
+    [(x["id"], x["status"]) for x in security.share_findings()] == [("guest-net", "ok")],
+)
 ran.clear()
 security.fix("share-contain-dns_hold-off", None)
 f = security.share_findings()
@@ -323,14 +329,17 @@ check(
     "a part turned off while nothing is shared: kept, no rules touched, and the doctor says it will be off, with the way back",
     share.load()["contain"]["dns_hold"] is False
     and not any(c[0] == "nft" for c in ran)
-    and len(f) == 1
-    and f[0]["status"] == "ok"
-    and f[0]["notes"][0]["id"] == "guest-net.stay-off"
-    and f[0]["actions"][0]["choice"] == "share-contain-dns_hold-on",
+    and [(x["id"], x["status"]) for x in f] == [("guest-net-dns_hold", "ok"), ("guest-net", "ok")]
+    and f[0]["notes"][0]["id"] == "guest-net.stay-off.one"
+    and f[0]["actions"][0]["choice"] == "share-contain-dns_hold-on"
+    and ("share-contain-dns_hold-off", True) in chips(f[1]),
     f,
 )
 security.fix("share-contain-dns_hold-on", None)
-check("  back on: the doctor says nothing again", security.share_findings() == [] and share.load()["contain"] == ALL)
+check(
+    "  back on: the setting alone again",
+    [x["id"] for x in security.share_findings()] == ["guest-net"] and share.load()["contain"] == ALL,
+)
 
 # --- devices let out stay out when the ruleset is written again (a level changed, the hotspot back up) ---
 listed = {

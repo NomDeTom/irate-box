@@ -4056,16 +4056,11 @@
             role="status"
             hidden
           ></p>
-          <p class="sec-counts" id="security-counts"></p>
           <!-- The box's choices by subject, each in its place whether it waits for a choice or is set. -->
           <div id="security-findings"></div>
-          <h3 data-i18n="admin.security.h-hub-security-limits">
-            Hub security limits
-          </h3>
-          <div class="findings" id="security-hub"></div>
           <div class="security-cards" id="security-cards">
-            <article
-              class="finding security-setting"
+            <div
+              class="setting sec-choice security-setting"
               id="security-policy"
               data-staged
             >
@@ -4118,7 +4113,7 @@
                 role="status"
                 hidden
               ></p>
-            </article>
+            </div>
           </div>
           <p
             class="setting-desc"
@@ -4132,60 +4127,74 @@
             hotspot is on <a href="#network/hotspot">Network → Hotspot</a>.
           </p>
           <h3 data-i18n="admin.security.h-visitor-data">Visitor data</h3>
-          <p
-            class="setting-desc"
-            data-i18n="admin.security.box-counts-different-devices"
-          >
-            The box counts different devices, today and this week, for the
-            People tile. It never records who they were. A helper reads the
-            network addresses of the devices that the box has seen. It hashes
-            each address with a random salt for the day and a random salt for
-            the week. The helper holds the salts only in memory and discards
-            them when the day or week ends. The box writes only the two numbers,
-            and deletes them at reboot. Phones that use a random address can
-            count more than once, so the numbers are approximate. If you turn
-            this off, the helper does not run. Signed-in names show only if each
-            person lets the box show it on their account page.
-          </p>
-          <div class="settings" data-note="visitors-note">
-            <label
-              class="setting"
-              data-i18n="admin.security.label-count-distinct-devices-salted"
-            >
-              <input type="checkbox" id="visitor_counts" />
-              <span>
-                <span class="setting-name">Count distinct devices</span>
-                <span class="setting-desc"
-                  >By salted hashes, as above. Enabled unless you disable
-                  it.</span
+          <div class="setting sec-choice security-setting" id="security-visitors">
+            <div class="settings" data-note="visitors-note">
+              <label
+                class="sec-check"
+                data-i18n="admin.security.label-count-distinct-devices-salted"
+              >
+                <input type="checkbox" id="visitor_counts" />
+                <span>
+                  <span class="setting-name">Count distinct devices</span>
+                  <span class="setting-desc"
+                    >For the People tile, today and this week. The box never
+                    records who they were. Enabled unless you disable it.</span
+                  >
+                </span>
+              </label>
+              <details class="field-help">
+                <summary data-i18n="admin.security.visitors-how">
+                  How the box counts devices
+                </summary>
+                <p
+                  class="setting-desc"
+                  data-i18n="admin.security.box-counts-different-devices"
                 >
-              </span>
-            </label>
+                  A helper reads the network addresses of the devices that the
+                  box has seen. It hashes each address with a random salt for
+                  the day and a random salt for the week. The helper holds the
+                  salts only in memory and discards them when the day or week
+                  ends. The box writes only the two numbers, and deletes them at
+                  reboot. Phones that use a random address can count more than
+                  once, so the numbers are approximate. If you turn this off,
+                  the helper does not run. Signed-in names show only if each
+                  person lets the box show it on their account page.
+                </p>
+              </details>
+            </div>
+            <p
+              class="setting-desc action-note"
+              id="visitors-note"
+              role="status"
+              hidden
+            ></p>
           </div>
-          <p
-            class="setting-desc action-note"
-            id="visitors-note"
-            role="status"
-            hidden
-          ></p>
-          <article
-            class="finding security-setting"
+          <div
+            class="setting sec-choice security-setting"
             id="security-https"
             data-staged
           >
             <h3 translate="no">HTTP / HTTPS</h3>
-            <p
-              class="setting-desc"
-              data-i18n="admin.security.box-serve-every-page"
-            >
+            <p class="setting-desc" data-i18n="admin.security.https-short">
               The box can serve every page over HTTPS too, with a certificate of
-              its own. Phones and computers that install the box's certificate
-              (from <a href="/certificate">/certificate</a>) then use HTTPS when
-              they connect. Other people on the WiFi cannot read the
-              administrator password. The box's certificate authority is limited
-              to this box's names. A device that enforces the limit rejects
-              other sites. Select below whether plain HTTP remains available.
+              its own. Select below whether plain HTTP remains available.
             </p>
+            <details class="field-help">
+              <summary data-i18n="admin.security.https-how">
+                How the box's certificate works
+              </summary>
+              <p
+                class="setting-desc"
+                data-i18n="admin.security.box-serve-every-page"
+              >
+                Phones and computers that install the box's certificate (from
+                <a href="/certificate">/certificate</a>) then use HTTPS when
+                they connect. Other people on the WiFi cannot read the
+                administrator password. The box's certificate authority is
+                limited to this box's names. A device that enforces the limit
+                rejects other sites.
+              </p>
+            </details>
             <p
               class="setting-desc"
               id="tls-state"
@@ -4239,6 +4248,11 @@
               aria-label="Administrator access over HTTP"
               data-i18n-aria-label="admin.security.admin-http-label"
             ></div>
+            <p
+              class="setting-desc aw-warn aw-warn-beside"
+              id="tls-admin-http-warn"
+              role="status"
+            ></p>
             <p class="setting-desc" id="tls-session-note"></p>
             <p class="setting-desc" id="tls-draft-note"></p>
             <div id="tls-foot"></div>
@@ -4308,7 +4322,7 @@
                 </button>
               </form>
             </details>
-          </article>
+          </div>
 
           <h3 id="security-ports" data-i18n="admin.security.ports">
             Network listeners
@@ -4322,6 +4336,8 @@
             omits programs that listen on loopback only, and the random ports a
             program uses for its own outgoing connections.
           </p>
+          <p class="setting-desc" id="security-counts"></p>
+          <div id="security-listeners-filter"></div>
           <table class="admin-table" id="security-listeners">
             <thead>
               <tr>
@@ -4358,11 +4374,12 @@
               id="update-hub-card"
             >
               <div class="update-card-body">
-                <span
-                  class="setting-name"
-                  data-i18n="admin.updates.hub-irate-box"
-                  >This hub (irate-box)</span
-                >
+                <span class="setting-name"
+                  ><span data-i18n="admin.updates.hub-irate-box"
+                    >This hub (irate-box)</span
+                  >
+                  <span id="update-pill"></span
+                ></span>
                 <span class="setting-desc" data-i18n="admin.updates.installed"
                   >Installed: <span id="hub-version">…</span></span
                 >
@@ -4584,11 +4601,12 @@
             </div>
             <div class="setting library-source update-card" id="updates-debian">
               <div class="update-card-body">
-                <span
-                  class="setting-name"
-                  data-i18n="admin.updates.debian-security-updates"
-                  >Debian's security updates</span
-                >
+                <span class="setting-name"
+                  ><span data-i18n="admin.updates.debian-security-updates"
+                    >Debian's security updates</span
+                  >
+                  <span id="debian-pill"></span
+                ></span>
                 <span
                   class="setting-desc"
                   data-i18n="admin.updates.operating-system-fixes-debian"
@@ -4596,7 +4614,7 @@
                   installed yet, and whether the box installs them by
                   itself.</span
                 >
-                <div class="findings" id="updates-security"></div>
+                <div class="update-lines" id="updates-security"></div>
                 <div id="debian-buttons"></div>
                 <details class="field-help update-auto" id="debian-auto-fold">
                   <summary data-i18n="admin.updates.summary-automatic-updates">

@@ -6372,6 +6372,47 @@ def step_tls(ctx):
                     about=about,
                 )
             )
+        # The administrator password over plain HTTP while HTTPS is on (the Security page's warning beside its
+        # setting says the same; with no certificate, "tls" above says it).
+        admin_t = M("tls.admin-http.title", "Administrator password over plain HTTP")
+        if st.get("transport") in ("https", "discovery") or st.get("admin_only"):
+            out.append(
+                finding(
+                    "tls-admin-http",
+                    admin_t,
+                    "ok",
+                    M(
+                        "tls.admin-http.closed",
+                        "The administration pages answer over HTTPS only. The password never crosses the "
+                        "network unencrypted.",
+                    ),
+                    about=about,
+                )
+            )
+        else:
+            out.append(
+                finding(
+                    "tls-admin-http",
+                    admin_t,
+                    "warn",
+                    M(
+                        "tls.admin-http.open",
+                        "HTTPS is on, but the administration pages also answer over plain HTTP.",
+                    ),
+                    M(
+                        "tls.admin-http.why",
+                        "A browser that opens them as http:// sends the password unencrypted. Anyone who "
+                        "listens on an open hotspot can read it.",
+                    ),
+                    M(
+                        "tls.admin-http.fix",
+                        "On Security, HTTPS, close administrator access over HTTP, after this device trusts the "
+                        "box's certificate.",
+                    ),
+                    evidence=[f"admin_http={st.get('admin_http')}", f"transport={st.get('transport')}"],
+                    about=about,
+                )
+            )
     return out
 
 

@@ -3055,6 +3055,7 @@ loadStoreSettings();
 // failed read while one is running means "keep waiting", not "broken".
 const upd = {
   summary: document.getElementById("update-summary"),
+  pill: document.getElementById("update-pill"),
   check: document.getElementById("update-check"),
   fetch: document.getElementById("update-fetch"),
   install: document.getElementById("update-install"),
@@ -3262,15 +3263,12 @@ function renderUpdate(data) {
   const fetched = found && !!(state.checks && state.checks.length);
   const ready = found && state.verified === state.available;
   if (!state) {
-    upd.summary.replaceChildren(
-      AW.updatePill(null, false),
-      " Not checked yet.",
-    );
+    upd.pill.replaceChildren(AW.updatePill(null, false));
+    upd.summary.textContent = "The hub has not looked for a newer version yet.";
   } else {
     const when = new Date(state.fetched * 1000).toLocaleString();
+    upd.pill.replaceChildren(AW.updatePill(state.fetched, found));
     upd.summary.replaceChildren(
-      AW.updatePill(state.fetched, found),
-      " ",
       state.up_to_date
         ? `Up to date with ${state.branch} (${state.available}, ${state.available_date}). Checked ${when}.`
         : `Available: ${state.available} (${state.available_date}) on ${state.branch}` +
@@ -3638,7 +3636,6 @@ const sec = {
   note: document.getElementById("security-note"),
   counts: document.getElementById("security-counts"),
   findings: document.getElementById("security-findings"),
-  hub: document.getElementById("security-hub"),
   listeners: document.querySelector("#security-listeners tbody"),
   output: document.getElementById("security-output"),
   log: document.getElementById("security-log"),
@@ -3674,6 +3671,9 @@ function secKind(finding) {
   // A port is in the Network listeners table, with its buttons there (Stop and disable, Open to the hotspot):
   // never a card of its own. Cockpit has a setting (cockpit_findings).
   if (finding.id.startsWith("port-")) return "port";
+  // Guest internet access's warnings (a protection off, its rules not loaded) are the Security doctor's; its
+  // setting (guest-net) is here.
+  if (finding.id.startsWith("guest-net-")) return "doctor";
   return "choice";
 }
 // Passwordless sudo as a toggle: On while a
@@ -4129,6 +4129,31 @@ function secChoiceCard(finding, busy, note) {
     note,
   );
 }
+// The Network listeners table's filter (AW.filterBar): a chip for each exposure in it, and words to look for; the
+// chips and words kept when the table is drawn again (every poll).
+const listenerFilter = { active: new Set(), needle: "" };
+function drawListenerFilter(rows) {
+  const box = document.getElementById("security-listeners-filter");
+  const bar = AW.filterBar(
+    sec.listeners,
+    "tr",
+    rows.map((row) => ({ badges: [row.dataset.tags] })),
+  );
+  const search = bar.querySelector('input[type="search"]');
+  search.value = listenerFilter.needle;
+  search.addEventListener("input", () => {
+    listenerFilter.needle = search.value;
+  });
+  bar.querySelectorAll(".filter-chip").forEach((chip) => {
+    if (listenerFilter.active.has(chip.textContent)) chip.click();
+    chip.addEventListener("click", () => {
+      if (chip.classList.contains("active")) listenerFilter.active.add(chip.textContent);
+      else listenerFilter.active.delete(chip.textContent);
+    });
+  });
+  bar.apply();
+  box.replaceChildren(...(rows.length ? [bar] : []));
+}
 // A choice waiting for Save that the newest scan no longer offers (in effect now, or its finding gone): dropped,
 // never sent.
 function secPrune(scan) {
@@ -4228,80 +4253,7 @@ function renderSecurity(data) {
             : null;
         }).filter(Boolean)),
   );
-  // The hub's own: what it can protect and can't, said truly (HTTPS on or off), with where it is changed.
-  sec.hub.replaceChildren(
-    ...data.hub.map((finding) =>
-      el(
-        "div",
-        { className: "setting sec-choice", id: `sec-${finding.id}` },
-        el("span", { className: "setting-name", textContent: finding.title }),
-        // A limit is a state, set where the link goes: what it is now and why it matters, no recommended action.
-        ...((parts) => [
-          el("span", { className: "setting-desc", textContent: parts.detail }),
-          parts.why ? el("span", { className: "setting-desc fwhy", textContent: parts.why }) : null,
-          ...parts.notes.map((n) => el("span", { className: "setting-desc", textContent: n })),
-        ])(findingParts(finding)),
-        finding.do && finding.do.go
-          ? el(
-              "div",
-              { className: "library-buttons" },
-              el("a", {
-                className: "action-btn go-btn",
-                href: `#${finding.do.go}`,
-                textContent: `Go to ${finding.do.where} →`,
-              }),
-            )
-          : null,
-      ),
-    ),
-  );
-  // Debian's security updates, on Updates.
-  // Automatic security updates: a choice of its own (off, download, install), not the System toolkit's.
-  // Its badge (up to date / update available) is as fresh as the package lists it was read from.
-  // Lists of unknown age say nothing either way, unless updates are waiting.
-  const updBadge = (finding) =>
-    finding.id !== "security-updates" ||
-    (finding.lists_age_days == null && finding.status === "ok")
-      ? null
-      : AW.updatePill(
-          Date.now() / 1000 - (finding.lists_age_days || 0) * 86400,
-          finding.status !== "ok",
-        );
-  // The choice and the three buttons are the update pattern's, under the two lines.
-  // State, not findings: what is waiting and how automatic updates stand. What to do about them is the pattern's
-  // card below (its chips and buttons); what the doctor makes of them is the Updates doctor's.
-  noteEl("updates-security").replaceChildren(
-    ...(by("update").length
-      ? by("update").map((finding) => {
-          const parts = findingParts(finding);
-          return el(
-            "div",
-            { className: "setting sec-choice", id: `sec-${finding.id}` },
-            el(
-              "span",
-              { className: "setting-name" },
-              finding.title,
-              updBadge(finding) ? " " : "",
-              updBadge(finding),
-            ),
-            el("span", { className: "setting-desc", textContent: parts.detail }),
-            ...parts.notes.map((n) =>
-              el("span", { className: "setting-desc", textContent: n }),
-            ),
-            evidenceList(parts.evidence),
-            ...(finding.id === "security-updates"
-              ? []
-              : [...scanButtons(finding, busy), ...secFoot(finding)]),
-            noteUnder(finding.id),
-          );
-        })
-      : [
-          el("p", {
-            className: "setting-desc",
-            textContent: scan ? "Nothing to say yet." : "Not scanned yet.",
-          }),
-        ]),
-  );
+  drawDebianState(lines, scan);
   drawDebianPattern(lines, busy);
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose =
@@ -4379,9 +4331,18 @@ function renderSecurity(data) {
         .flatMap((finding) => [finding.summary, finding.why]).filter(Boolean))];
       const acts = fs.filter((finding) => (finding.actions || []).length);
       const owner = l0.owner || {};
+      // For the filter: the row's words, and its exposure as the chip that shows it.
+      const tag = worst && worst.status !== "ok" ? STATE_WORD[worst.status] : "Expected";
       return el(
         "tr",
-        {},
+        {
+          dataset: {
+            text: [worst ? worst.title : l0.name, l0.unit || l0.process || "", portRanges(shown), owner.name || ""]
+              .join(" ")
+              .toLowerCase(),
+            tags: tag,
+          },
+        },
         el(
           "td",
           {},
@@ -4448,23 +4409,11 @@ function renderSecurity(data) {
   const ports = lines.filter(
     (finding) => finding.id.startsWith("port-") && finding.status !== "ok",
   ).length;
-  sec.counts.replaceChildren(
-    ...[
-      [
-        ports,
-        `port${ports === 1 ? "" : "s"} to review`,
-        ports ? "warn" : "ok",
-        "security-ports",
-      ],
-    ].map(([n, word, st, to]) =>
-      el(
-        "a",
-        { className: `sec-count sec-count-${st}`, href: `#${to}` },
-        el("strong", { textContent: String(n) }),
-        ` ${word}`,
-      ),
-    ),
-  );
+  const rows = [...sec.listeners.children];
+  sec.counts.textContent = scan
+    ? `${rows.length} program${rows.length === 1 ? "" : "s"} listening. ${ports} port${ports === 1 ? "" : "s"} to review.`
+    : "";
+  drawListenerFilter(rows);
   badge("security", problems ? String(problems) : "");
   const updProblems = by("update").filter((finding) => finding.status === "problem").length;
   badge("updates-security", updProblems ? String(updProblems) : ""); // Needs attention words it
@@ -5133,6 +5082,7 @@ const deb = {
   note: noteEl("debian-pattern-note"),
   box: document.getElementById("debian-buttons"),
   says: document.getElementById("debian-auto-says"),
+  pill: document.getElementById("debian-pill"),
 };
 // The hub card's buttons, by how far Debian's update has got: nothing known (each button checks first), updates
 // waiting (download, or download and install), downloaded (install). The labels follow in drawDebianPattern.
@@ -5160,6 +5110,59 @@ deb.buttons = AW.updateButtons({
   },
 });
 deb.box.replaceChildren(deb.buttons);
+// The card's state, as on the other update cards: the badge beside the title, then what is waiting, how fresh
+// apt's lists are and when the automatic step last ran. What the doctors make of it is theirs (Updates doctor,
+// Security doctor), not this card's.
+function drawDebianState(lines, scan) {
+  const w = lines.find((finding) => finding.id === "security-updates"),
+    unattended = lines.find((finding) => finding.id === "unattended");
+  const waiting = w ? w.waiting || 0 : 0,
+    downloaded = w ? w.fetched || 0 : 0,
+    age = w ? w.lists_age_days : null;
+  deb.pill.replaceChildren(
+    AW.updatePill(w && age != null ? Date.now() / 1000 - age * 86400 : null, waiting > 0),
+  );
+  const line = (text) => el("span", { className: "setting-desc", textContent: text });
+  const packages = (w && w.packages) || [];
+  document.getElementById("updates-security").replaceChildren(
+    ...[
+      ...(!w
+        ? [line(scan ? "The box could not read apt's state." : "Not checked yet. The box checks when the Security page scans.")]
+        : [
+            line(
+              waiting
+                ? `${waiting} security update${waiting === 1 ? " is" : "s are"} waiting${downloaded ? `, ${downloaded} downloaded` : ""}.`
+                : "No security updates are waiting.",
+            ),
+            line(
+              age == null
+                ? "The age of the package lists is not known."
+                : age < 1
+                  ? "The package lists are from today."
+                  : `The package lists are ${Math.round(age)} day${Math.round(age) === 1 ? "" : "s"} old.`,
+            ),
+            unattended
+              ? line(
+                  unattended.last_at
+                    ? `Automatic updates last ran ${new Date(unattended.last_at * 1000).toLocaleString()}.`
+                    : "Automatic updates have not run yet.",
+                )
+              : null,
+            packages.length
+              ? el(
+                  "details",
+                  { className: "field-help" },
+                  el("summary", { textContent: `The waiting packages (${packages.length})` }),
+                  el("p", { className: "setting-desc", translate: false, textContent: packages.join(", ") }),
+                )
+              : null,
+          ]),
+      // The root helper's answer to the card's buttons and its setting.
+      noteUnder("security-updates"),
+      noteUnder("unattended"),
+    ].filter(Boolean),
+  );
+}
 function drawDebianPattern(lines, busy) {
   const unattended = lines.find((finding) => finding.id === "unattended"),
     w = lines.find((finding) => finding.id === "security-updates");
@@ -5177,12 +5180,12 @@ function drawDebianPattern(lines, busy) {
     check: {
       label: "Check for updates",
       disabled: busy || waiting > 0,
-      why: busy ? "busy" : waiting > 0 ? "updates are already waiting." : "",
+      why: busy ? "the root helper is busy with other work." : waiting > 0 ? "updates are already waiting." : "",
     },
     fetch: {
       label: waiting ? "Download" : "Check for updates and download",
       disabled: busy || down,
-      why: busy ? "busy" : down ? "already downloaded." : "",
+      why: busy ? "the root helper is busy with other work." : down ? "already downloaded." : "",
     },
     install: {
       label: down
@@ -5191,7 +5194,7 @@ function drawDebianPattern(lines, busy) {
           ? "Download and install"
           : "Check for updates, download and install",
       disabled: busy,
-      why: busy ? "busy" : "",
+      why: busy ? "the root helper is busy with other work." : "",
     },
   });
 }
@@ -14587,6 +14590,15 @@ function drawTlsChoices() {
     () => busy || locked,
     (value) => policySec.set("mode", value),
   );
+  // Beside the setting, while the administration pages answer over plain HTTP (as set, saved or not).
+  const plainAdmin =
+    draft.admin_http !== "block" &&
+    !["discovery", "https"].includes(draft.transport);
+  document.getElementById("tls-admin-http-warn").textContent = !plainAdmin
+    ? ""
+    : draft.transport === "http"
+      ? "The administrator password travels over plain HTTP. Anyone who listens on an open hotspot can read it."
+      : "The administration pages also answer over plain HTTP. A browser that opens them as http:// sends the administrator password unencrypted.";
   const changed = tlsSec.dirty();
   document.getElementById("policy-state").textContent = locked
     ? "Applied: console/SSH only. The hub cannot change security policy."

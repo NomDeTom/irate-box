@@ -162,9 +162,14 @@ const AW = (() => {
         if (shown.label) node.textContent = shown.label;
         node.disabled = !!shown.disabled;
         node.title = shown.disabled && shown.why ? shown.why : '';
-        if (shown.disabled && shown.why) whys.push(`${shown.label || label}: ${shown.why}`);
+        if (shown.disabled && shown.why) whys.push({ label: shown.label || label, why: shown.why });
       }
-      why.textContent = whys.join(' ');
+      // One reason for every greyed button (the root helper busy, say) is said once, as a sentence; reasons of
+      // their own, each after its button's name.
+      const reasons = [...new Set(whys.map((w) => w.why))];
+      why.textContent = whys.length > 1 && reasons.length === 1
+        ? reasons[0].charAt(0).toUpperCase() + reasons[0].slice(1)
+        : whys.map((w) => `${w.label}: ${w.why}`).join(' ');
       why.hidden = !whys.length;
     };
     for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
