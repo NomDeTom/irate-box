@@ -3,6 +3,10 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Root helper for the admin page: the few things the unprivileged hub cannot do itself.
 
+Of the three doctors (docs/dev/doctors.md), the Updates doctor lives in this file: its checks are
+updates_doctor_findings(), under "the Updates doctor" below, and its action is update_doctor. The Box
+doctor is health.py and the Security doctor is secdoctor.py; this file only runs them and writes their reports.
+
 The hub (server.py, user hub) writes one JSON request per file into
 $HUB_STATE_DIR/control/requests/. irate-box-control.path notices the folder is not empty
 and runs this as root, once per batch. Each request is checked against an allow-list,
@@ -30,8 +34,8 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   While any of these three runs, control/update-progress.json says which step it is on, of
   how many, and how far a download has got (Progress), for the bars on /admin.
   {"id": ..., "action": "update-doctor"}
-      For when a check fails: look at everything an update needs (doctor) and write a plain
-      report, each finding with what to do, to control/doctor.json.
+      The Updates doctor (updates_doctor_findings, in this file), for when a check fails: look at
+      everything an update needs and write a plain report, each finding with what to do, to control/doctor.json.
   {"id": ..., "action": "update-clear-cache"}
       Remove the cached clone and downloads, so the next check starts afresh.
   {"id": ..., "action": "update-poll-target"[, "repo": "<https url>"]}
@@ -63,18 +67,18 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "security-scan"}
       What the box exposes and how it is set up (security.py): to control/security.json.
   {"id": ..., "action": "security-audit"}
-      The security doctor (secdoctor.py): a read-only audit of how the system is set up, to
+      The Security doctor (secdoctor.py): a read-only audit of how the system is set up, to
       control/security-audit.json. Changes nothing but that file.
   {"id": ..., "action": "security-fix", "choice": "<one of the page's offers>"}
       Carry out one fix the Security page offered (security.fix: a drop-in or a unit switched
       off, each recorded with how to undo it), then scan again.
   {"id": ..., "action": "health-scan"}
-      The box doctor (health.py): the last install, the root helper, every unit, Kiwix, the
+      The Box doctor (health.py): the last install, the root helper, every unit, Kiwix, the
       watchdog, the web server's config; to control/health.json.
   {"id": ..., "action": "health-fix", "choice": "<one of its offers>"}
-      One repair the doctor offered (restart a unit, rebuild or tidy the Kiwix library, …), or
+      One repair the Box doctor offered (restart a unit, rebuild or tidy the Kiwix library, …), or
       "rerun-install": install.sh again from a copy of the installed code, recorded options.
-      Then the doctor looks again.
+      Then the Box doctor looks again.
   {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
       What the box has for networking (netinv.py): radios, who runs them, what each can do,
       what is in the way; to control/netinv.json. With "iface", that device alone.
@@ -3673,7 +3677,7 @@ def _tls_get(url, timeout=15):
     return _web_open(req, timeout=timeout)
 
 
-def doctor():
+def updates_doctor_findings():
     """The Updates doctor: what an update needs from outside the box, as findings (docs/dev/doctors.md)."""
     import socket
     import ssl
@@ -4774,13 +4778,13 @@ def _doctor_again():
     """The update doctor run again, so its report is not older than what just changed (a failed verification, a new
     source). Its own failure leaves the old report, said as stale on the page."""
     try:
-        safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": doctor()}, indent=2))
+        safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": updates_doctor_findings()}, indent=2))
     except Exception:  # noqa: BLE001 - the action that asked is done; the report is a courtesy
         return  # the old report stays, and the page says it is out of date
 
 
 def update_doctor(req):
-    findings = doctor()
+    findings = updates_doctor_findings()
     safeio.write(DOCTOR_STATE, json.dumps({"at": time.time(), "findings": findings}, indent=2))
     problems = [f for f in findings if f["status"] == "problem"]
     if not problems:
@@ -5019,6 +5023,7 @@ def security_scan(req):
 
 
 def security_audit(req):
+    """The Security doctor (secdoctor.py; one of three: docs/dev/doctors.md), run and its report written."""
     report = secdoctor.audit()
     secdoctor.write_report(report, AUDIT_STATE)
     c = report["counts"]
@@ -5701,7 +5706,7 @@ def app_rollback(req):
     )
 
 
-# --- the box doctor ----------------------------------------------------------------------
+# --- the Box doctor (health.py; one of three: docs/dev/doctors.md) -----------------------
 
 HEALTH_STATE = CONTROL / "health.json"
 

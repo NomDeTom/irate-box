@@ -46,7 +46,7 @@ with mock.patch("socket.getaddrinfo", lambda h, p, proto=0: [(2, 1, 6, "", ("192
      mock.patch.object(H.kits, "verify", lambda: []), mock.patch.object(H.kits, "definitions", lambda: {}), \\
      mock.patch.object(H.kits, "installed_state", lambda: {"debug": {"at": time.time() - 9.5 * 86400, "remove_at": None}}), \\
      mock.patch.object(H.kits, "pool_bytes", lambda: 0):
-    findings = H.doctor()
+    findings = H.updates_doctor_findings()
 print(json.dumps({"findings": findings, "checks": checks}))
 `;
 const env = { ...process.env, HUB_STATE_DIR: `${tmp}/state`, HUB_ETC_DIR: `${tmp}/etc`, HUB_RUN_DIR: `${tmp}/run`, HUB_CODE_DIR: `${tmp}/code`,

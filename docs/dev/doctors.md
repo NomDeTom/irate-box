@@ -8,7 +8,7 @@ A doctor checks one part of the box, lists what is wrong and offers repairs. The
 | --- | --- | --- | --- | --- |
 | Box doctor | Is the box healthy, and if not, why? | [health.py](../../irate_box/root/health.py) | `irate-box health` | `control/health.json` |
 | Security doctor | Is the box set up safely? | [secdoctor.py](../../irate_box/root/secdoctor.py) | `irate-box secdoctor` | `control/security-audit.json` |
-| Updates doctor | Can the box update, and why did an update fail? | `doctor()` in [hub_control.py](../../irate_box/root/hub_control.py) | /admin → Updates doctor | `control/doctor.json` |
+| Updates doctor | Can the box update, and why did an update fail? | `updates_doctor_findings()` in [hub_control.py](../../irate_box/root/hub_control.py) | /admin → Updates doctor | `control/doctor.json` |
 
 ## Box doctor: overall box health
 
