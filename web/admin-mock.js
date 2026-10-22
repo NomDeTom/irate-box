@@ -67,7 +67,7 @@
       row('filter-chips', 'Filter chips: any of a few', 'Several at once, as a setting, or to filter a list.',
         "AW.settings([{key, label, kind: 'multi', options, value: [...]}])",
         AW.settings([{ key: 'boards', label: 'Boards', kind: 'multi', options: ['rak4631', 'heltec-v3', 't-beam', 'station-g2'], value: ['rak4631'] }])),
-      row('toggle', 'Toggle', 'On or off; the button says which. The admin puts its name beside it, not in it.',
+      row('toggle', 'Toggle', 'On or off. The button says which. The admin puts its name beside it, not in it.',
         "AW.settings([{key, label, kind: 'toggle', value}])",
         AW.settings([{ key: 'keep', label: 'Keep current', kind: 'toggle', value: true }])),
       row('tabs', 'Joined tabs', 'Views of the same thing: the data stays, the range changes.',
@@ -118,7 +118,7 @@
     const tiles = h('div');
     AW.choices(tiles, 'mock-mode', [
       { value: 'open', title: 'Open', desc: 'Anyone in range can join.' },
-      { value: 'password', title: 'Password', desc: 'People join with a password you give them.', does: 'The box makes one; you can change it.' },
+      { value: 'password', title: 'Password', desc: 'People join with a password you give them.', does: 'The box makes one. You can change it.' },
       { value: 'enterprise', title: 'Accounts', desc: 'Each person signs in with their own account.', why: 'this radio has no driver support for it' },
     ], { value: 'password' });
 
@@ -172,9 +172,9 @@
       { id: 'mock-short-ok', title: 'Passed', summary: 'Nothing to do', status: 'ok' },
     ], { id: 'mock-short-findings', act: () => {} });
     return group('Cards and findings', 'One of each kind the doctors and the Security page draw, for reference.',
-      row('finding-cards', 'Finding cards, one per state', 'The subject first, then its state at the right, a word or two; the coloured edge supports the word, never replaces it.',
+      row('finding-cards', 'Finding cards, one per state', 'The subject first, then its state at the right, a word or two. The coloured edge supports the word and never replaces it.',
         "findingRow({id, state, title, detail, why, evidence, how, commands, controls, accept}) (admin.js)", h('div', { class: 'mock-findings' }, rows)),
-      row('finding-list', 'Findings as a short list', 'A doctor\'s list, worst first, the cure beside the finding; an action that changes the box asks on the page.',
+      row('finding-list', 'Findings as a short list', 'A doctor\'s list, worst first, the cure beside the finding. An action that changes the box asks on the page.',
         'AW.findings([{id, title, summary, status, detail, actions: [{choice, label, confirm}]}], {act})', doctors));
   }
 
