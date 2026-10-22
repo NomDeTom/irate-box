@@ -801,7 +801,13 @@ def tiles_snapshot():
 
 
 def icon_html(icon):
-    """A tile's icon: emoji as they are, letters and digits as a word of their own (F-icons)."""
+    """A tile's icon: emoji as they are, letters and digits as a word of their own (F-icons), svg:<name> as the
+    hub's own picture (manifests.svg_icon)."""
+    name = manifests.svg_icon(icon)
+    if name:
+        return (
+            f'        <span class="icon"><span class="svg-icon" data-icon="{name}" aria-hidden="true"></span></span>\n'
+        )
     cls = "icon icon-text" if ICON_TEXT.match(icon) else "icon"
     return f'        <span class="{cls}">{html.escape(icon)}</span>\n'
 
@@ -951,7 +957,7 @@ FIRST_EMOJI = re.compile("[\U0001f1e6-\U0001f1ff]{2}|.[\ufe0f\U0001f3fb-\U0001f3
 
 
 def emoji_icon(icon, fallback="🏴\u200d☠️"):
-    m = FIRST_EMOJI.match(icon or "")
+    m = None if (icon or "").startswith("svg:") else FIRST_EMOJI.match(icon or "")
     e = html.escape(m.group(0) if m else fallback)
     return (
         '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22>'

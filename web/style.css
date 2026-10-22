@@ -376,6 +376,21 @@ h2 {
   font-size: 1.6rem;
   white-space: nowrap;
 }
+/* An icon that is a picture of the hub's own (manifest "svg:<name>", web/icons/<name>.svg): drawn as a mask in
+   the text's colour, so it follows the theme as an emoji's place would. One line per picture. */
+.svg-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  background-color: currentColor;
+  -webkit-mask: center / contain no-repeat;
+  mask: center / contain no-repeat;
+}
+.svg-icon[data-icon="terminal2"] {
+  -webkit-mask-image: url(/icons/terminal2.svg);
+  mask-image: url(/icons/terminal2.svg);
+}
 .service-card .name {
   font-weight: 600;
 }

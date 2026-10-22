@@ -11054,7 +11054,7 @@ function drawTileOrder(openId) {
     };
     return {
       id,
-      title: `${tilesDraft.icon[id] || t.icon} ${t.name}`.trim(),
+      title: `${tilesDraft.icon[id] || iconWords(t.icon)} ${t.name}`.trim(),
       summary:
         w.summary +
         (sz
@@ -11282,12 +11282,14 @@ const ICON_OK = (icon) =>
   (icon.length > 0 &&
     [...icon].length <= 16 &&
     [...icon].every((c) => c.codePointAt(0) > 0x7f));
+// An app's own icon in words: an emoji as it is; a picture of the hub's (svg:<name>) by its name.
+const iconWords = (icon) => ((icon || "").startsWith("svg:") ? "" : icon || "");
 function iconField(draft, tile, iconNow, redraw) {
   const val = draft.icon !== undefined ? draft.icon : iconNow;
   const input = el("input", {
     type: "text",
     value: val,
-    placeholder: tile.icon,
+    placeholder: iconWords(tile.icon),
     maxLength: 16,
     size: 8,
     spellcheck: false,
@@ -11303,7 +11305,9 @@ function iconField(draft, tile, iconNow, redraw) {
       ? "Emoji, or up to four letters and digits (no spaces)."
       : val
         ? "Its own icon. A blank field restores the icon of the app."
-        : `Icon of the app: ${tile.icon}`,
+        : (tile.icon || "").startsWith("svg:")
+          ? `Icon of the app: the picture ${tile.icon.slice(4)}`
+          : `Icon of the app: ${tile.icon}`,
   });
   input.addEventListener("change", () => {
     draft.icon = input.value.trim();
@@ -15924,7 +15928,7 @@ function drawFolderIndex() {
         el(
           "a",
           { className: "inv-name", href: `#page-app-${app.id}` },
-          app.icon ? `${app.icon} ${app.name}` : app.name,
+          iconWords(app.icon) ? `${iconWords(app.icon)} ${app.name}` : app.name,
         ),
         el(
           "span",

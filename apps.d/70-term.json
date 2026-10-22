@@ -2,7 +2,7 @@
   "id": "term",
   "order": 70,
   "tile": {
-    "icon": "⌨️🖥️",
+    "icon": "svg:terminal2",
     "name": "Terminal",
     "desc": "Browser terminal for administrators",
     "href": "/app.html#/term/",

@@ -2,7 +2,7 @@
   "id": "flashing",
   "order": 54,
   "tile": {
-    "icon": "⚡🔌",
+    "icon": "⚡",
     "name": "Flashing tools",
     "desc": "Flash firmware over USB from a browser",
     "href": "/flashing.html"

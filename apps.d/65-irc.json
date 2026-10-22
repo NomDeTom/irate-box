@@ -2,7 +2,7 @@
   "id": "irc",
   "order": 65,
   "tile": {
-    "icon": "💬🗨️",
+    "icon": "💬",
     "name": "IRC chat",
     "desc": "Real-time chat in any IRC app",
     "href": "/irc.html"
