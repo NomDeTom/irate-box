@@ -53,7 +53,10 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   check('each row: a cell with its control and the line naming its code',
     rows.every((row) => row.querySelector('.mock-cell[data-drawn-by="hub"]').children.length && text(row.querySelector('.mock-code code'))), rows.length);
   check('the doctors\' cards: one per state', d.querySelectorAll('#mock-finding-cards .finding').length === 8);
-  check('the uptime grid drawn', !!d.querySelector('#mock-uptime .mock-cell').querySelector('[role="grid"], table, .hm-grid, div'));
+  const heads = [...d.querySelectorAll('#mock-uptime .hm-col')].map((head) => head.textContent).filter(Boolean);
+  const firstCell = d.querySelector('#mock-uptime .hm-cell[aria-label]');
+  check('the uptime grid: an hour every 12 columns, each cell its span', heads.length === 6 && heads.every((head) => /^\d\d:00$/.test(head))
+    && /^\w{3} \d\d \d\d:00–\d\d:00: /.test(firstCell.getAttribute('aria-label')), `${heads.join(' ')} | ${firstCell && firstCell.getAttribute('aria-label')}`);
 
   // The settings block: Off warns in the footer while unsaved; Save saves here only.
   const off = [...d.querySelectorAll('#mock-section .chip')].find((chip) => text(chip) === 'Off');

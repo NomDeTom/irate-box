@@ -48,9 +48,18 @@
       } }, label)));
 
     // The uptime grid: 72 hours by the hour, a few hours down and a gap with no data.
+    // The column heads and each cell's words as linkhistory.py makes them: the hour every 12 columns, and each
+    // hour's span ("Tue 07 14:00–15:00"), in this browser's time.
+    const hourStart = (index) => { const at = new Date(); at.setMinutes(0, 0, 0); at.setHours(at.getHours() - (71 - index)); return at; };
+    const clock = (at) => `${String(at.getHours()).padStart(2, '0')}:00`;
+    const hourHeads = Array.from({ length: 72 }, (_, index) => (index % 12 === 0 ? clock(hourStart(index)) : ''));
+    const hourSpans = Array.from({ length: 72 }, (_, index) => {
+      const at = hourStart(index), end = new Date(at.getTime() + 3600e3);
+      return `${at.toLocaleDateString('en-GB', { weekday: 'short' })} ${String(at.getDate()).padStart(2, '0')} ${clock(at)}–${clock(end)}`;
+    });
     const hours = Array.from({ length: 72 }, (_, index) => (index > 60 && index < 64 ? null : { up: index === 20 ? 0 : index % 17 === 0 ? 0.93 : 1, n: 60, drops: index % 17 === 0 ? 1 : 0 }));
     const uptime = typeof Heatmap === 'undefined' ? h('p', { class: 'setting-desc', text: 'The heatmap script is not loaded.' })
-      : h('div', {}, Heatmap.grid({ caption: 'A stand-in service, the last 72 hours by hour', cols: hours, rows: [{ label: 'Stand-in', cells: hours, where: (index) => `${72 - index} hours ago` }] }), Heatmap.legend());
+      : h('div', {}, Heatmap.grid({ caption: 'A stand-in service, the last 72 hours by hour', cols: hourHeads, rows: [{ label: 'Stand-in', cells: hours, where: (index) => hourSpans[index] }] }), Heatmap.legend());
 
     const entries = Array.from({ length: 30 }, (_, index) => ({ id: `entry-${index}`, title: `Entry ${index + 1}`, summary: 'A one-line summary',
       badges: [index % 7 ? 'ok' : 'queued'], detail: { Size: `${index + 1} MB`, Added: `2026-10-${String((index % 28) + 1).padStart(2, '0')}` } }));
