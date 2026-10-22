@@ -88,9 +88,9 @@
       row('help', 'Help that expands', 'The longer explanation, next to the control it explains.',
         '<details class="field-help"><summary>…</summary>…</details>',
         h('details', { class: 'field-help' }, h('summary', { text: 'What does this do?' }), h('p', { class: 'setting-desc', text: 'The longer explanation. It stays closed until asked for.' }))),
-      row('fold', 'A fold', 'A part to open when wanted (history, advanced options). The admin folds parts this way. The mock\'s button that changes its own words is not used.',
-        '<details><summary>…</summary>…</details>',
-        h('details', {}, h('summary', { text: 'Memory and disk history' }), h('p', { class: 'setting-desc', text: 'What the fold holds.' }))),
+      row('fold', 'A fold', 'A part of a page to open when wanted: its history, its access, its maintenance. Every part of a page folds this way, its name in bold. The mock\'s button that changes its own words is not used. A program\'s output and help fold smaller, in their own rows.',
+        '<details class="sec-fold"><summary>…</summary>…</details>',
+        h('details', { class: 'sec-fold' }, h('summary', { text: 'Memory and disk history' }), h('p', { class: 'setting-desc', text: 'What the fold holds: a chart, a table, the settings of a part.' }))),
       row('uptime', 'Uptime', 'Hours or days as cells, coloured by how much of each was up, said in a tooltip and to a screen reader.',
         'Heatmap.grid({caption, cols, rows: [{label, cells, where}]}); Heatmap.legend()', uptime),
       row('short-list', 'Short entries, with a filter', 'A long but limited list: one line each, the details open from the line. More than AW.FILTER_AT entries get a filter.',
@@ -215,9 +215,6 @@
       h('p', { class: 'setting-desc', text: 'Space used: 1.2 GB of 4 GB' }),
       h('div', { class: 'admin-meter' }, h('div', { style: 'width: 30%' })));
 
-    const fold = h('details', { class: 'sec-fold' }, h('summary', { text: 'Memory and disk history' }),
-      h('p', { class: 'setting-desc', text: 'What the fold holds: a chart, a table, the settings of a part.' }));
-
     // Tabs with their panels, wired by admin.js's own initTabs (arrow keys, the choice kept in this browser).
     const tabs = h('div', { class: 'view-switch', role: 'tablist', 'aria-label': 'Where new books come from', 'data-tabs': 'mock' },
       ['Kiwix library', 'Upload', 'Address'].map((label, index) => h('button', { type: 'button', class: 'view-switch-btn', role: 'tab',
@@ -296,8 +293,6 @@
         "AW.settings([{key, label, kind: 'colour', value, shown, unset, warn}])", colour),
       row('progress', 'Progress, output and space used', 'A job\'s progress, what its program printed, and how full something is.',
         '<div class="admin-progress"><progress class="admin-bar">; <details class="admin-output"><pre class="admin-log">; <div class="admin-meter"><div style="width: …">', progress),
-      row('section-fold', 'A section\'s fold', 'The fold most pages use for a part of themselves.',
-        '<details class="sec-fold"><summary>…</summary>…</details>', fold),
       row('tabs-aria', 'Tabs with their panels', 'Parts of one page that each fill it: one showing, arrow keys move along, the choice kept.',
         'role="tablist" data-tabs, buttons role="tab" aria-controls, panels role="tabpanel"; initTabs(box) (admin.js)', tabbed),
       row('table', 'A table', 'Rows of facts with a heading per column. It scrolls sideways on a phone.',
