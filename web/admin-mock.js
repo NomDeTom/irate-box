@@ -205,7 +205,7 @@
       h('label', { class: 'setting' }, h('input', { type: 'checkbox', name: 'mock-tick' }),
         h('span', { class: 'setting-desc', text: 'I understand that this runs someone else\'s code on this box\'s address' })));
     if (window.EMOJI) window.EMOJI.attach(story);
-    const colour = AW.settings([{ key: 'accent', label: 'Accent colour', kind: 'colour', value: '', shown: '#7c6af7', unset: 'Theme colour',
+    const colour = AW.settings([{ key: 'accent', label: 'Accent colour', kind: 'colour', value: '', shown: '#9d8ff9', unset: 'Theme colour',
       warn: (value) => (value && value.toLowerCase() === '#ffff00' ? 'Yellow on white is hard to read.' : '') }]);
 
     const progress = h('div', {},
@@ -254,7 +254,7 @@
       h('span', { class: 'icon', text: icon }), h('span', { class: 'name', text: name }), h('span', { class: 'desc', text: desc }), extra || null);
     const tiles = h('div', { class: 'service-grid' },
       tile('', '🎨', 'Themes', 'Light, dark, E-ink and more'),
-      tile(' down', '📝', 'Shared notes', 'Not running: dimmed'),
+      tile(' down', '📝', 'Shared notes', 'Not running: faded, or a pill in High contrast', h('span', { class: 'tile-pill down-pill', text: 'not available' })),
       tile(' locked', '⌨️', 'Terminal', 'For administrators', h('span', { class: 'lock', text: '🔒 sign in to open' })),
       tile('', '📚', 'Kiwix', 'Seen only by administrators', h('span', { class: 'tile-pill admin-pill', title: 'Only administrators see this tile', text: 'admin only' })),
       h('div', { class: 'service-card people-card' }, h('span', { class: 'icon', text: '👥' }), h('span', { class: 'name', text: '3' }), h('span', { class: 'desc', text: 'Users online' })),
@@ -301,7 +301,7 @@
         '<span class="empty"> (the shoutbox, the board); <p class="setting-desc">None yet.</p> (admin lists)', empty),
       row('app-page', 'An app\'s page: its facts and its Access', 'What an app is and how it stands, then who can open it.',
         '<p class="inv-facts"><span class="inv-fact">…; chipRow(label, OPEN_CHIPS, value, set) and AW.section, as accessBlock(id, app) (admin.js)', facts, accessBox),
-      row('home-tiles', 'The home page\'s tiles', 'An app\'s tile, one not running, one locked, one only administrators see, and two live tiles.',
+      row('home-tiles', 'The home page\'s tiles', 'An app\'s tile, one not running (faded, or in High contrast a pill), one locked, one only administrators see, and two live tiles.',
         'server.py: the tile HTML (class="service-card", .down, .locked, .tile-pill) and WIDGET_HTML (people, system)', tiles),
       row('setup-steps', 'The setup steps', 'Each step\'s name, how it stands, what it is now, and its settings.',
         'admin-tour.js: drawList() (li.step-ok, .step-todo, .step-warn, .step-muted; .link-button.mute-step)', steps),
@@ -313,6 +313,26 @@
         'hub.js (.theme-picker); ident.js attachHuePicker(swatch, nameInput) (home page)', pickers));
   }
 
+  // While this page is open, a frame across the top of the window holds the page's theme picker (as the app bar does
+  // on an app's page), so the theme and colours can be changed beside any control; it goes back to the header after.
+  const frame = h('div', { class: 'app-bar mock-frame', role: 'region', 'aria-label': 'Theme for this page' },
+    h('span', { class: 'app-title', text: 'Mock controls' }), h('span', { class: 'mock-frame-note', text: 'Theme and colours, for every control below' }));
+  const picker = document.querySelector('header .theme-picker');
+  const home = picker && { parent: picker.parentNode, next: picker.nextSibling };
+  function placePicker() {
+    if (!picker) return;
+    const open = AL.shown(ID);
+    if (open && picker.parentNode !== frame) {
+      document.body.prepend(frame);
+      frame.append(picker);
+      document.body.classList.add('mock-framed');
+    } else if (!open && picker.parentNode === frame) {
+      home.parent.insertBefore(picker, home.next && home.next.parentNode === home.parent ? home.next : null);
+      frame.remove();
+      document.body.classList.remove('mock-framed');
+    }
+  }
+
   let drawn = false;
   function draw() {
     if (drawn || !AL.shown(ID)) return;
@@ -321,7 +341,8 @@
     drawn = true;
     box.replaceChildren(fromTheMock(), sinceTheMock(), cardsAndFindings(), fromThePages());
   }
-  window.addEventListener('hashchange', () => setTimeout(draw));
-  AL.onBuild(draw);
+  window.addEventListener('hashchange', () => setTimeout(() => { draw(); placePicker(); }));
+  AL.onBuild(() => { draw(); placePicker(); });
   draw();
+  placePicker();
 })();

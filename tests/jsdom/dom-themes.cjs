@@ -29,7 +29,7 @@ async function open(path, storage = {}) {
   more.click();
   check('🎨 opens the menu', !menu.hidden && more.getAttribute('aria-expanded') === 'true');
   const items = [...menu.querySelectorAll('button')].map((b) => b.querySelector('.theme-menu-name').textContent);
-  check('menu lists the palettes, then E-ink and Cybercore', items.join('|') === '🏠 Box palette|🎨 Standard palette|🔆 Increased contrast|📖 E-ink|🏴‍☠️ Cybercore', items.join('|'));
+  check('menu lists the palettes, then E-ink and Cybercore', items.join('|') === '🏠 Box palette|🎨 Standard palette|🌫️ Low contrast|🔆 High contrast|📖 E-ink|🏴‍☠️ Cybercore', items.join('|'));
   let announced = null; d.addEventListener('hub-theme', (e) => { announced = e.detail; });
   menu.querySelector('[data-theme-choice="eink"]').click(); await sleep(100);
   check('E-ink: data-theme', d.documentElement.dataset.theme === 'eink');

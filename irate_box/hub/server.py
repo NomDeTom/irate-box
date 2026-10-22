@@ -1262,7 +1262,7 @@ def valid_palette(value):
 def palette_css(palette):
     """The owner's palettes as rules for the main themes only: dark where the page is dark (chosen, or Auto on a device
     not asking for light), light where it is light; the other themes keep their colours, and so does a visitor who
-    chose a palette of their own (themes.js: data-palette, standard or more contrast) over the box's.
+    chose a palette of their own (themes.js: data-palette: standard, low or high contrast) over the box's.
     """
 
     def block(colours):

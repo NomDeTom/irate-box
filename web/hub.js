@@ -203,6 +203,14 @@ if (grid || document.querySelector('[data-service]')) {
       const down = !!svc && !svc.up;
       el.classList.toggle('down', down);
       el.title = !down ? '' : svc.state === 'missing' ? 'Not installed' : svc.why || 'Service stopped';
+      // Said as a pill as well as faded: High contrast shows the pill and fades nothing (style.css: .down-pill).
+      let pill = el.querySelector(':scope > .down-pill');
+      if (down && !pill) {
+        pill = document.createElement('span');
+        pill.className = 'tile-pill down-pill';
+        pill.textContent = 'not available';
+        el.append(pill);
+      } else if (!down && pill) pill.remove();
     });
     if (!grid) return;
     if (!data.proxied) {
@@ -211,7 +219,9 @@ if (grid || document.querySelector('[data-service]')) {
     } else if (grid.querySelector('.service-card.down:not([hidden])')) {
       // Read back from the grid, not from the service list: only a tile that is
       // actually greyed should make the note claim there is one.
-      note.textContent = 'Greyed-out apps are not running.';
+      note.textContent = document.documentElement.getAttribute('data-palette') === 'contrast'
+        ? 'Apps marked "not available" are not running.'
+        : 'Greyed-out apps are not running.';
       note.hidden = false;
     } else {
       note.hidden = true;

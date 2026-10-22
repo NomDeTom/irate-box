@@ -33,7 +33,7 @@ const looks = Object.fromEntries(Object.entries(states).map(([k, [a, b]]) => [k,
 const root = document.documentElement, accent = () => getComputedStyle(root).getPropertyValue('--accent').trim(),
   muted = () => getComputedStyle(root).getPropertyValue('--muted').trim();
 const colours = {};
-for (const [theme, pal] of [['dark', null], ['dark', 'standard'], ['dark', 'contrast'], ['light', null], ['light', 'standard'], ['light', 'contrast']]) {
+for (const [theme, pal] of [['dark', null], ['dark', 'standard'], ['dark', 'low'], ['dark', 'contrast'], ['light', null], ['light', 'standard'], ['light', 'low'], ['light', 'contrast']]) {
   root.setAttribute('data-theme', theme);
   if (pal) root.setAttribute('data-palette', pal); else root.removeAttribute('data-palette');
   colours[`${theme}/${pal || 'box'}`] = `${accent()} ${muted()}`;
@@ -48,7 +48,8 @@ check() { if python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 
 check "not chosen and chosen look different, in the row and in the menu" 'd["chosen"]'
 check "each of the four answers the pointer" 'all(d["hover"].values())'
 check "the box's colours with no palette of the visitor's, in dark and light" 'd["colours"]["dark/box"].startswith("#2dd4bf") and d["colours"]["light/box"].startswith("#0f766e")'
-check "Standard: the hub's own colours over the box's" 'd["colours"]["dark/standard"].startswith("#7c6af7") and d["colours"]["light/standard"].startswith("#5b4bd6")'
-check "Increased contrast: its own, over the box's" 'd["colours"]["dark/contrast"] == "#9d8ff9 #8a8fa8" and d["colours"]["light/contrast"] == "#5b4bd6 #5f6380"'
+check "Standard: the hub's own colours over the box's" 'd["colours"]["dark/standard"] == "#9d8ff9 #8a8fa8" and d["colours"]["light/standard"] == "#5b4bd6 #5f6380"'
+check "Low contrast: the quieter colours, over the box's" 'd["colours"]["dark/low"] == "#7c6af7 #6b6f8a" and d["colours"]["light/low"] == "#5b4bd6 #6b6f8a"'
+check "High contrast: its own, over the box's" 'd["colours"]["dark/contrast"] == "#bdb3ff #b8bcd0" and d["colours"]["light/contrast"] == "#3a2aa8 #43475c"'
 echo "failures: $fails"
 exit $((fails > 0))

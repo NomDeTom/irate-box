@@ -173,7 +173,7 @@ try:
         css,
     )
     check(
-        "  a visitor's own palette choice (standard, more contrast) left alone: every rule only without data-palette",
+        "  a visitor's own palette choice (standard, low or high contrast) left alone: every rule only without data-palette",
         all(":not([data-palette])" in line for line in css.splitlines() if "--accent" in line),
         css,
     )

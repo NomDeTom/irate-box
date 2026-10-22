@@ -18,6 +18,8 @@
   --shadow: transparent;
   --ok: #000;
   --warn: #000;
+  --bad: #000;
+  --info: #000;
   --radius: 4px;
   /* Author names: no hue to tell them apart, so all near-black (the names still differ). */
   --author-s: 0%;
