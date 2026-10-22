@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The update doctor (hub_control.doctor) in finding.py's shape, with the network, git, apt and the disk stood in:
+"""The update doctor (hub_control.updates_doctor_findings) in finding.py's shape, with the network, git, apt and the disk stood in:
 each case said by its message ID, its commands, what it saw and the place to go as data, a place only for what is
 not fine; then the checks of a downloaded version and the update actions' answers as messages, the result file
 keeping the English for every reader that expects text. python3 tests/sim_update_doctor.py"""
@@ -137,7 +137,7 @@ def doctor(**case):
     for p in patches:
         p.start()
     try:
-        return {f["id"]: f for f in H.doctor()}
+        return {f["id"]: f for f in H.updates_doctor_findings()}
     finally:
         for p in patches:
             p.stop()

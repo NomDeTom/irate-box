@@ -418,7 +418,7 @@ check(
     why is None and "freshness" not in kits.manifest("small"),
     why,
 )
-# The security doctor: Debian's keyring, and kits imported unchecked, by how they stand now.
+# The Security doctor: Debian's keyring, and kits imported unchecked, by how they stand now.
 from irate_box.root import secdoctor
 
 
