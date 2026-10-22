@@ -1780,8 +1780,7 @@ def check_wifi_stalls():
     limits = M(
         "wifi-stall.limits",
         "What makes it rarer: fewer roams while guests use the hotspot (the Network page's roaming setting), and the "
-        "hotspot on the WiFi link's channel. Power saving on the WiFi link can avoid it in theory, but its effect on power "
-        "use and speed has not been measured yet.",
+        "hotspot on the WiFi link's channel. Power saving on the WiFi link does not prevent it: it was tested.",
     )
     why = M(
         "wifi-stall.why",

@@ -187,7 +187,7 @@ check(
     f,
 )
 check(
-    "  the general fixes, power saving's cost not yet measured", "has not been measured yet" in str(f["fix"]), f["fix"]
+    "  the general fixes, and that power saving does not prevent it", "does not prevent it" in str(f["fix"]), f["fix"]
 )
 journal["out"] = ""
 f = doctor()["wifi-stall"]
