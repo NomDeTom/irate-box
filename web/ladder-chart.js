@@ -311,7 +311,13 @@ const LadderChart = (() => {
     const redraw = () => {
       box.dataset.zoom = JSON.stringify(stack);
       const z = stack[stack.length - 1];
+      // Every chip says whether it is chosen (a radio needs aria-checked), drawn chart or not.
       for (const c of chips.children) { const on = !z && Number(c.dataset.span) === span; c.classList.toggle('selected', on); c.setAttribute('aria-checked', on); }
+      if (!rows.length) {
+        bar.replaceChildren();
+        chart.replaceChildren(make('p', { class: 'setting-desc' }, 'Nothing recorded yet: the watchdog records each outage and each step it takes from now on.'));
+        return;
+      }
       const [from, to] = z || [now - span, now];
       bar.replaceChildren();
       if (z) {
@@ -331,10 +337,6 @@ const LadderChart = (() => {
       chips.append(b);
     }
     box.replaceChildren(chips, bar, chart);
-    if (!rows.length) {
-      chart.replaceChildren(make('p', { class: 'setting-desc' }, 'Nothing recorded yet: the watchdog records each outage and each step it takes from now on.'));
-      return;
-    }
     redraw();
   }
   return { render, model, summary, holes, LEVELS };
