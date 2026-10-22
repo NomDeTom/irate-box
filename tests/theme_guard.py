@@ -29,14 +29,17 @@ pal_list = registry[registry.index("var PALETTES = [") : registry.index("];", re
 palettes = re.findall(r"\{ id: '([a-z0-9-]+)'", pal_list)
 palette_css_text = (WEB / "palette.css").read_text(encoding="utf-8")
 check(
-    "themes.js lists the box's preset first, then Standard and Increased contrast",
-    palettes == ["box", "standard", "contrast"],
+    "themes.js lists the box's preset first, then Standard, Low contrast and High contrast (id contrast)",
+    palettes == ["box", "standard", "low", "contrast"],
     palettes,
 )
 check(
-    "  Increased contrast has its rules in palette.css, in dark and light",
-    '[data-palette="contrast"][data-theme="dark"]' in palette_css_text
-    and '[data-palette="contrast"][data-theme="light"]' in palette_css_text,
+    "  Low and High contrast have their rules in palette.css, in dark and light",
+    all(
+        f'[data-palette="{p}"][data-theme="{t}"]' in palette_css_text
+        for p in ("low", "contrast")
+        for t in ("dark", "light")
+    ),
 )
 server_src = (REPO / "irate_box" / "hub" / "server.py").read_text(encoding="utf-8")
 check(

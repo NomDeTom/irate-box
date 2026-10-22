@@ -15,8 +15,8 @@
 //
 // The main theme's colours: the box's (chosen on Appearance, from /layout.css) unless the visitor
 // picks a palette of their own, saved as "hub-palette" and drawn as data-palette on the page:
-// "standard" (the hub's colours as they ship) or "contrast" (palette.css). The box's rules apply
-// only without data-palette.
+// "standard" (the hub's colours as they ship), "low" (Low contrast) or "contrast" (High contrast: palette.css). The box's
+// rules apply only without data-palette.
 (function () {
   'use strict';
   var THEMES = [
@@ -33,13 +33,15 @@
   var PALETTES = [
     { id: 'box', label: 'Box palette', emoji: '🏠', desc: 'The colours the administrator set for this box' },
     { id: 'standard', label: 'Standard palette', emoji: '🎨', desc: 'The standard hub colours' },
-    { id: 'contrast', label: 'Increased contrast', emoji: '🔆', desc: 'Secondary text and links have stronger contrast' },
+    { id: 'low', label: 'Low contrast', emoji: '🌫️', desc: 'Quieter secondary text and links' },
+    // id "contrast" kept: a visitor who chose Increased contrast before keeps a palette of more contrast.
+    { id: 'contrast', label: 'High contrast', emoji: '🔆', desc: 'The strongest text and edges; apps not running say so instead of fading' },
   ];
   function paletteById(id) {
     for (var i = 0; i < PALETTES.length; i++) if (PALETTES[i].id === id) return PALETTES[i];
     return null;
   }
-  // The visitor's palette: box (none saved), standard or contrast.
+  // The visitor's palette: box (none saved), standard, low or contrast (High contrast).
   function palette() {
     var saved = paletteById(read('hub-palette'));
     return saved ? saved.id : 'box';

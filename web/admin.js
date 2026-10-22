@@ -15246,7 +15246,7 @@ const PALETTE_STANDARD = {
     surface: "#ffffff",
     border: "#d9dbe6",
     text: "#1b1d27",
-    muted: "#6b6f8a",
+    muted: "#5f6380",
     accent: "#5b4bd6",
   },
   dark: {
@@ -15254,19 +15254,20 @@ const PALETTE_STANDARD = {
     surface: "#1a1d27",
     border: "#2a2d3a",
     text: "#e2e4ef",
-    muted: "#6b6f8a",
-    accent: "#7c6af7",
+    muted: "#8a8fa8",
+    accent: "#9d8ff9",
   },
 };
 // Paired presets: a light accent a shade deeper than its dark one, so each reads on its own ground.
 const PALETTE_PRESETS = [
   ["standard", "Standard palette", {}],
+  // The standard's colours until 2026-10-22: quieter secondary text, a deeper dark accent (under 4.5:1 for secondary text).
   [
-    "contrast",
-    "Standard, more contrast",
+    "low",
+    "Standard, low contrast",
     {
-      light: { muted: "#5f6380" },
-      dark: { muted: "#8a8fa8", accent: "#9d8ff9" },
+      light: { muted: "#6b6f8a" },
+      dark: { muted: "#6b6f8a", accent: "#7c6af7" },
     },
   ],
   [
@@ -15305,9 +15306,10 @@ const PALETTE_PAIRS = [
 ];
 const accentInk = (hex) =>
   contrast("#ffffff", hex) >= contrast("#0f1117", hex) ? "#ffffff" : "#0f1117";
-// What a mode shows: the standard theme's, then the mode's own. The words on the accent are the theme's own (white)
-// until the accent is changed; then white or near-black, whichever stands out more, as /layout.css writes them.
-const PALETTE_INK = { light: "#ffffff", dark: "#ffffff" };
+// What a mode shows: the standard theme's, then the mode's own. The words on the accent are the theme's own (white in
+// light, near-black in dark: palette.css's --accent-ink) until the accent is changed; then white or near-black,
+// whichever stands out more, as /layout.css writes them.
+const PALETTE_INK = { light: "#ffffff", dark: "#0f1117" };
 function paletteShown(mode, pal) {
   const own = (pal || {})[mode] || {};
   const c = { ...PALETTE_STANDARD[mode], ...own };

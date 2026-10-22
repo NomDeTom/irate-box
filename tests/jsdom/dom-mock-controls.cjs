@@ -102,6 +102,16 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   check('  Save: saved here only', /Saved here only/.test(text(d.querySelector('#mock-app-page .aw-foot'))));
   check('the home tiles: one not running, one locked, one admin only', !!d.querySelector('#mock-home-tiles .service-card.down')
     && !!d.querySelector('#mock-home-tiles .service-card.locked .lock') && !!d.querySelector('#mock-home-tiles .admin-pill'));
+  // The frame across the top: the page's theme picker in it while the page is open, back in the header after.
+  check('the frame: the theme picker in it while the page is open', !!d.querySelector('.mock-frame .theme-picker') && !d.querySelector('header .theme-picker')
+    && d.body.classList.contains('mock-framed'));
+  w.confirm = () => true;   // the card's drawer above still has unsaved changes: leaving asks first, and is told yes
+  w.location.hash = '#overview';
+  w.AL.show();
+  w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  await wait(50);
+  check('  another page: the picker back in the header, no frame', !!d.querySelector('header .theme-picker') && !d.querySelector('.mock-frame')
+    && !d.body.classList.contains('mock-framed'));
   check('nothing sent to the box', !sent.length, sent.join(' '));
   check('no script errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);

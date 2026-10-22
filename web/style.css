@@ -793,7 +793,7 @@ h2 {
   color: var(--muted);
 }
 .settings-note.bad {
-  color: #e5484d;
+  color: var(--bad);
 }
 
 .decay-note {
@@ -1351,7 +1351,7 @@ body.admin button.link-button {
   display: none;
 } /* display: block outranks the hidden attribute (the doctors' "Nothing matches" showed beside their items) */
 .setting-desc.bad {
-  color: #e5484d;
+  color: var(--bad);
 }
 .setting-desc.warn {
   color: var(--warn);
@@ -1360,9 +1360,9 @@ body.admin button.link-button {
 .danger-box {
   margin: 0.75rem 0;
   padding: 0.75rem 1rem;
-  border: 2px solid #e5484d;
+  border: 2px solid var(--bad);
   border-radius: var(--radius);
-  background: color-mix(in srgb, #e5484d 8%, var(--surface));
+  background: color-mix(in srgb, var(--bad) 8%, var(--surface));
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1730,7 +1730,7 @@ body[data-art] > header {
   background: var(--warn);
 }
 .hm-down {
-  background: #e5484d;
+  background: var(--bad);
 }
 .hm-off {
   background: color-mix(in srgb, var(--muted) 45%, transparent);
@@ -2450,7 +2450,7 @@ progress.admin-bar:indeterminate::-moz-progress-bar {
   color: var(--warn);
 }
 .setup-steps li.step-problem::marker {
-  color: #e5484d;
+  color: var(--bad);
 }
 .action-note.busy {
   color: var(--warn);
@@ -2594,7 +2594,7 @@ body.drop > section + section {
   display: block;
 }
 .drop-upload .setting-desc.bad {
-  color: #e5484d;
+  color: var(--bad);
 }
 .drop-item a {
   color: var(--accent);
@@ -2990,7 +2990,7 @@ body.drop > section + section {
 
 /* Health: the banner shown on every pane when the root helper stops answering */
 .helper-banner {
-  border: 2px solid #e5484d;
+  border: 2px solid var(--bad);
   border-radius: 8px;
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
@@ -3161,8 +3161,8 @@ body.drop > section + section {
   border-color: var(--accent);
 }
 .badge.bad {
-  color: #e5484d;
-  border-color: #e5484d;
+  color: var(--bad);
+  border-color: var(--bad);
 }
 .git-about {
   font-size: 0.88rem;
@@ -3247,11 +3247,11 @@ body.drop > section + section {
   width: 8rem;
 }
 .git-danger h4 {
-  color: #e5484d;
+  color: var(--bad);
 }
 button.danger {
-  border-color: #e5484d;
-  color: #e5484d;
+  border-color: var(--bad);
+  color: var(--bad);
 }
 .git-glossary {
   margin: 0.5rem 0;
@@ -3441,7 +3441,7 @@ button.danger {
   text-align: left;
 }
 .books-table td.bad {
-  color: #e5484d;
+  color: var(--bad);
 }
 .book-card td {
   background: var(--surface);
@@ -3517,7 +3517,6 @@ button.danger {
    shoutbox's and the board's), which paint a submit button in the accent colour. ---- */
 :root {
   --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  --bad: #e5484d;
 }
 .action-btn.action-btn {
   display: inline-block;
@@ -3657,7 +3656,7 @@ label > .select-chips {
   color: var(--bad);
 }
 .info-pill {
-  color: var(--muted);
+  color: var(--info);
 }
 .update-pill {
   vertical-align: 0.1em;
@@ -4314,6 +4313,28 @@ html:has(> body.admin) {
 .service-card.admin-only {
   border-style: dashed;
   border-color: var(--accent);
+}
+/* An app not running, said in words (hub.js adds the pill): shown under High contrast, which fades nothing. In the
+   other palettes the tile is faded instead and the pill stays hidden. */
+.tile-pill.down-pill {
+  display: none;
+  margin-top: 0.2rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--text);
+}
+html[data-palette="contrast"] .down-pill {
+  display: inline-block;
+}
+html[data-palette="contrast"] .service-card.down,
+html[data-palette="contrast"] .item-list a.down,
+html[data-palette="contrast"] .help-item.down {
+  opacity: 1;
+  border-style: dashed;
 }
 .tile-pill.admin-pill {
   display: inline-block;
@@ -5518,4 +5539,27 @@ body.certificate #cert-links {
 .mock-findings {
   display: grid;
   gap: 0.6rem;
+}
+
+/* Mock controls' frame (admin-mock.js): an app bar fixed across the top while the page is open, holding the theme
+   picker, so the theme can be changed beside any control; the page and its sidebar start below it. */
+.app-bar.mock-frame {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+}
+.mock-frame .app-title {
+  font-weight: 600;
+}
+.mock-frame .mock-frame-note {
+  flex: 1;
+  color: var(--muted);
+}
+body.mock-framed {
+  padding-top: 2.5rem;
+}
+body.mock-framed .admin-side {
+  top: 3rem;
 }

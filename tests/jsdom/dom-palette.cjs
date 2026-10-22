@@ -49,11 +49,15 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('  matching no preset: said as Custom palette, marked', chip('Custom palette') && chip('Custom palette').getAttribute('aria-pressed') === 'true'
     && ed().querySelectorAll('.chip-group')[0].querySelectorAll('.selected').length === 1);
   check('  and its shortfall named: a yellow link on a white tile', /Light: Link on a tile, 1\.\d:1 \(minimum 4\.5:1\)/.test(t(ed().querySelector('.palette-report'))), t(ed().querySelector('.palette-report')));
-  // Standard: the theme as it comes, its dark pairs that fall short said honestly.
+  // Standard: the theme as it comes, every pair 4.5:1 or more since 2026-10-22.
   chip('Standard palette').click();
+  check('Standard: every pair passes in both modes', /4\.5:1 or more in both modes/.test(t(ed().querySelector('.palette-report'))), t(ed().querySelector('.palette-report')));
+  // Standard, low contrast: the standard's colours of before, its dark pairs that fall short said honestly. Its button
+  // text passes: a box's own accent gets white or near-black, whichever stands out more (accentInk).
+  chip('Standard, low contrast').click();
   const rep = t(ed().querySelector('.palette-report'));
-  check('Standard: the dark theme\'s quieter text and link on a tile named, with their ratios', /Dark: Secondary text on a tile, 3\.4:1/.test(rep)
-    && /Dark: Link on a tile, 4\.2:1/.test(rep) && /Dark: Button text on the accent colour, 4\.0:1/.test(rep) && !/Light:/.test(rep), rep);
+  check('Standard, low contrast: the dark theme\'s quieter text and link on a tile named, with their ratios', /Dark: Secondary text on a tile, 3\.4:1/.test(rep)
+    && /Dark: Link on a tile, 4\.2:1/.test(rep) && !/Button text/.test(rep) && !/Light:/.test(rep), rep);
   // Its shortfall is a warning beside Save, not a question: it is a setting.
   const palWarn = ed().querySelector('.aw-warn');
   check('  so Save has a warning beside it, saying the text fails 4.5:1; no question', palWarn && !palWarn.hidden && /fail the 4\.5:1 ratio/.test(t(palWarn))

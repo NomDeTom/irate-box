@@ -3,8 +3,8 @@
 /* The hub's main palette (web/palette.css), dark and light; hub-theme on the address picks one. */
 :root {
   color-scheme: dark;
-  --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a; --accent: #7c6af7; --accent-ink: #fff;
-  --text: #e2e4ef; --muted: #6b6f8a; --ok: #4ade80; --warn: #fbbf24; --radius: 10px;
+  --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a; --accent: #9d8ff9; --accent-ink: #0f1117;
+  --text: #e2e4ef; --muted: #8a8fa8; --ok: #4ade80; --warn: #fbbf24; --radius: 10px;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {

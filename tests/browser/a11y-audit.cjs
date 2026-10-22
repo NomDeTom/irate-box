@@ -6,7 +6,7 @@
 // since one pair of colours is usually behind many elements. Exit 1 when anything is broken.
 //
 // Environment (a11y-audit.sh sets them): BASE, FRONT_SECRET, AXE (axe.min.js), PLAYWRIGHT (its module), CHROME (an
-// executable, optional), A11Y_THEMES ("light dark eink cybercore"), A11Y_PALETTES ("standard contrast"), A11Y_PAGES (a
+// executable, optional), A11Y_THEMES ("light dark eink cybercore"), A11Y_PALETTES ("standard low contrast"), A11Y_PAGES (a
 // part of a page's path or admin title, optional), A11Y_JSON (a file for every failing element, optional).
 const fs = require('fs');
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
@@ -18,7 +18,7 @@ const PUBLIC = ['/', '/help.html', '/about.html', '/account.html', '/certificate
 // their base.
 const THEMES = { light: { theme: 'light' }, dark: { theme: 'dark' }, eink: { theme: 'light', 'hub-theme': 'eink' }, cybercore: { theme: 'dark', 'hub-theme': 'cybercore' } };
 const themes = (process.env.A11Y_THEMES || 'light dark eink cybercore').split(/\s+/).filter((name) => THEMES[name]);
-const palettes = (process.env.A11Y_PALETTES || 'standard contrast').split(/\s+/).filter(Boolean);
+const palettes = (process.env.A11Y_PALETTES || 'standard low contrast').split(/\s+/).filter(Boolean);
 const only = process.env.A11Y_PAGES || '';
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 

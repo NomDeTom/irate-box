@@ -9,7 +9,7 @@
   --bg:#05070b; --surface:#0b1119; --border:#131b26;
   --accent:#00f0ff; --accent-ink:#05070b;
   --text:#d8f4ff; --muted:#7d94a8; --shadow:rgba(0,0,0,.5);
-  --ok:#39ff88; --warn:#f4c542; --radius:2px;
+  --ok:#39ff88; --warn:#f4c542; --bad:#ff3b5c; --info:#5ccfff; --radius:2px;
   --author-s:100%; --author-l:60%;
   --magenta:#ff2e88; --danger:#ff3b5c; --text-low:#45566a;
   --font-head:system-ui,'Segoe UI',sans-serif;

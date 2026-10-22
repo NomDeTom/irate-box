@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # The accessibility audit: axe-core's WCAG 2.0 and 2.1 rules (A and AA) on every hub page and every /admin page, in
-# each theme (Light, Dark, E-ink, Cybercore) and palette (standard, Increased contrast), in headless Chromium through
+# each theme (Light, Dark, E-ink, Cybercore) and palette (standard, Low and High contrast), in headless Chromium through
 # Playwright on this machine (no Docker). A hub of this checkout runs on a spare port with throwaway state, as
 # tests/jsdom/run.sh starts one, and answers as admin to the front's secret. Part of the manual local suite: not CI.
 #

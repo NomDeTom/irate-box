@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* SPDX-FileCopyrightText: 2026 NomDeTom */
 /* The main theme's colours, dark and light (and light when the OS asks, unless the user chose
-   dark). Its own file so pages that are not the hub's (cgit's) can take the colours without
+   dark): 4.5:1 or more for every text on its ground (WCAG 2.1 AA). Low and High contrast are below. Its own file so pages that are not the hub's (cgit's) can take the colours without
    style.css's layout; style.css imports it. The other themes are in themes/. */
 
 :root {
@@ -9,20 +9,23 @@
   --bg: #0f1117;
   --surface: #1a1d27;
   --border: #2a2d3a;
-  --accent: #7c6af7;
+  --accent: #9d8ff9;
   /* Text drawn on top of --accent. Every palette sets its own; white only
      works while the accent is dark enough to carry it. */
-  --accent-ink: #fff;
+  --accent-ink: #0f1117;
   /* Author colours carry only a hue (see shoutbox.js); each palette supplies the
      saturation and lightness that stay legible on its own surface. */
   --author-s: 70%;
   --author-l: 72%;
   --text: #e2e4ef;
-  --muted: #6b6f8a;
+  --muted: #8a8fa8;
   --shadow: rgba(0, 0, 0, 0.4);
   /* Service states (services.html) and the memory/disk bars. */
   --ok: #4ade80;
   --warn: #fbbf24;
+  /* A problem and a piece of information (the pills, red notes, danger boxes), 4.5:1 or more on page and tile. */
+  --bad: #f87171;
+  --info: #60a5fa;
   --radius: 10px;
 }
 
@@ -39,10 +42,12 @@
     --author-s: 55%;
     --author-l: 38%;
     --text: #1b1d27;
-    --muted: #6b6f8a;
+    --muted: #5f6380;
     --shadow: rgba(20, 20, 40, 0.15);
     --ok: #15803d;
     --warn: #b45309;
+    --bad: #b91c1c;
+    --info: #1d4ed8;
   }
 }
 :root[data-theme="light"] {
@@ -55,20 +60,39 @@
   --author-s: 55%;
   --author-l: 38%;
   --text: #1b1d27;
-  --muted: #6b6f8a;
+  --muted: #5f6380;
   --shadow: rgba(20, 20, 40, 0.15);
   --ok: #15803d;
   --warn: #b45309;
+  --bad: #b91c1c;
+  --info: #1d4ed8;
 }
 
-/* Increased contrast, a visitor's own choice (themes.js: data-palette="contrast", from the theme menu): the main theme
-   with quieter text and, in the dark, the links strong enough for 4.5:1 on every ground (the Appearance preset
-   "Standard, more contrast"). Over the box's own colours (/layout.css), which only apply without data-palette. */
-html:root[data-palette="contrast"][data-theme="dark"] { --muted: #8a8fa8; --accent: #9d8ff9; --accent-ink: #0f1117; }
-html:root[data-palette="contrast"][data-theme="light"] { --muted: #5f6380; }
+/* A visitor's own choice from the theme menu (themes.js: data-palette), over the box's own colours (/layout.css),
+   which only apply without data-palette. Low contrast: the standard's colours until 2026-10-22, quieter grey text and,
+   in the dark, a deeper accent (under 4.5:1 for secondary text). High contrast: 7:1 or more for every text and status colour (WCAG AAA),
+   stronger edges, and nothing faded: an app that is not running says so in a pill instead (style.css: .down-pill). */
+html:root[data-palette="low"][data-theme="dark"] { --muted: #6b6f8a; --accent: #7c6af7; --accent-ink: #fff; }
+html:root[data-palette="low"][data-theme="light"] { --muted: #6b6f8a; }
+html:root[data-palette="contrast"][data-theme="dark"] {
+  --bg: #0b0d12; --surface: #161922; --border: #4a4f63; --text: #f4f5fa; --muted: #b8bcd0; --accent: #bdb3ff; --accent-ink: #0b0d12;
+  --ok: #86efac; --warn: #fcd34d; --bad: #fca5a5; --info: #93c5fd;
+}
+html:root[data-palette="contrast"][data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --border: #8b8fa3; --text: #0b0c12; --muted: #43475c; --accent: #3a2aa8; --accent-ink: #fff;
+  --ok: #14532d; --warn: #7c2d12; --bad: #991b1b; --info: #1e3a8a;
+}
 @media not all and (prefers-color-scheme: light) {
-  html:root[data-palette="contrast"]:not([data-theme]) { --muted: #8a8fa8; --accent: #9d8ff9; --accent-ink: #0f1117; }
+  html:root[data-palette="low"]:not([data-theme]) { --muted: #6b6f8a; --accent: #7c6af7; --accent-ink: #fff; }
+  html:root[data-palette="contrast"]:not([data-theme]) {
+    --bg: #0b0d12; --surface: #161922; --border: #4a4f63; --text: #f4f5fa; --muted: #b8bcd0; --accent: #bdb3ff; --accent-ink: #0b0d12;
+  --ok: #86efac; --warn: #fcd34d; --bad: #fca5a5; --info: #93c5fd;
+  }
 }
 @media (prefers-color-scheme: light) {
-  html:root[data-palette="contrast"]:not([data-theme]) { --muted: #5f6380; }
+  html:root[data-palette="low"]:not([data-theme]) { --muted: #6b6f8a; }
+  html:root[data-palette="contrast"]:not([data-theme]) {
+    --bg: #ffffff; --surface: #ffffff; --border: #8b8fa3; --text: #0b0c12; --muted: #43475c; --accent: #3a2aa8; --accent-ink: #fff;
+  --ok: #14532d; --warn: #7c2d12; --bad: #991b1b; --info: #1e3a8a;
+  }
 }
