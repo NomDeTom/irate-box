@@ -462,7 +462,7 @@ setTimeout(() => {
       && head('Doctors').dataset.badge === [sum, ...new Set(words.filter((x) => !/^\d+$/.test(x)))].join(' '), `${head('Doctors').dataset.badge} from ${words}`);
     w.location.hash = '#health'; w.AL.show();
     check('fold: opening a page in a folded group opens it', !box('Doctors').hidden && !head('Doctors').dataset.badge);
-    const autoBtn = d.querySelector('.admin-side-list .side-auto');
+    const autoBtn = d.querySelector('.admin-side > .side-foot .side-auto');
     autoBtn.click();
     check('fold: Auto-collapse On keeps only the current page\'s group open', /On$/.test(autoBtn.textContent) && autoBtn.getAttribute('aria-pressed') === 'true'
       && heads.filter((h) => h.getAttribute('aria-expanded') === 'true').map((h) => h.dataset.group).join() === 'Doctors');
