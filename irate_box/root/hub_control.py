@@ -3612,7 +3612,7 @@ def addon(req):
     return M("control.addon.removed", "The add-on {title} is removed.", title=title)
 
 
-# --- the update doctor ---------------------------------------------------------------
+# --- the Updates doctor (one of three: docs/dev/doctors.md) --------------------------
 # For when "Check for updates" fails: look at everything an update depends on and say, in
 # plain words, what is wrong and what to do. Read-only apart from `apt-get update`, which
 # only refreshes package lists. Each finding in finding.py's shape: whole sentences (msg.M) with
@@ -3674,6 +3674,7 @@ def _tls_get(url, timeout=15):
 
 
 def doctor():
+    """The Updates doctor: what an update needs from outside the box, as findings (docs/dev/doctors.md)."""
     import socket
     import ssl
     from email.utils import parsedate_to_datetime
