@@ -80,6 +80,17 @@ else
 	echo "   skipped: no Docker or no ${CHROME_IMAGE:-irate-chrome} image"
 fi
 
+# Accessibility (tests/browser/a11y-audit.sh): axe-core's WCAG A and AA rules on every page, theme and palette, in
+# this machine's Chromium through Playwright (no Docker). Reported, not counted, until item 171's fixes are in.
+# NO_BROWSER=1 skips it; without Playwright it says so.
+step "Accessibility (tests/browser/a11y-audit.sh, reported, not counted)"
+if [ "${NO_BROWSER:-0}" != 1 ]; then
+	out=$(bash tests/browser/a11y-audit.sh 2>&1)
+	printf '%s\n' "$out" | grep -E '^FAIL|^skipped|page views|^failures' | sed 's/^/   /' | head -40
+else
+	echo "   skipped: NO_BROWSER=1"
+fi
+
 if [ "$QUICK" = 1 ]; then
 	echo; echo "local-ci (--quick, no .deb): $rc failed"; exit $rc
 fi
