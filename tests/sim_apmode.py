@@ -374,6 +374,10 @@ check(
     and ["systemctl", "enable", ap.BOOT_UNIT] in calls
     and "hub_control ap-boot" in (ap.UNITS / ap.BOOT_UNIT).read_text(),
 )
+from irate_box.root import radio as radio_mod
+
+waits = []
+radio_mod.settle_before_hotspot = lambda *a, **k: waits.append(1) or 0  # nothing joining (never the real nmcli here)
 calls.clear()
 out = ap.boot(fake_run, inv, settings)
 check(
@@ -382,6 +386,12 @@ check(
     and ["iw", "dev", "wlan0", "interface", "add", "ap0", "type", "__ap"] in calls,
     out,
 )
+check("  after waiting for any WiFi link still joining", waits == [1] and "finish joining" not in out, out)
+radio_mod.settle_before_hotspot = lambda *a, **k: 4
+ap.start(fake_run, inv, settings)
+out = ap.boot(fake_run, inv, settings)
+check("  and says so when it waited", out.endswith("(after 4 s for the WiFi link to finish joining)."), out)
+radio_mod.settle_before_hotspot = lambda *a, **k: 0
 ap.start(fake_run, inv3, settings, {"take_radio": True})
 calls.clear()
 out = ap.boot(fake_run, inv3, settings)

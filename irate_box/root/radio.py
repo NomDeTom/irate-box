@@ -71,6 +71,7 @@ MOD_RE = re.compile(r"[A-Za-z0-9_-]+")
 BACK_WAIT = 20  # seconds for the interface to come back after each way
 USBDEVFS_RESET = 0x5514  # _IO('U', 20)
 DRIVER_GRACE = 90  # seconds a driver's own reset is left to work
+SETTLE_WAIT = 30  # seconds a hotspot start waits for a WiFi link that is still joining
 DRIVER_LINE = "aic8800: firmware not answering: resetting the device"
 # Boards with a power line for their WiFi chip that software can switch: (board model, the chip's USB id) → the rfkill
 # switch on that line. The Luckfox Lyra Zero W's AIC8800DC is enabled by GPIO1_C5, which its device tree hands to
@@ -282,13 +283,35 @@ def hotspot_up():
         return False
 
 
-def restore_hotspot(run=_run):
+def wifi_joining(run=_run):
+    """The WiFi client interfaces NetworkManager is still connecting: joining, the handshake, the address."""
+    code, out = run("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", timeout=10)
+    if code != 0:
+        return []
+    rows = (line.split(":", 2) for line in out.splitlines())
+    return [r[0] for r in rows if len(r) == 3 and r[1] == "wifi" and r[2].startswith("connecting")]
+
+
+def settle_before_hotspot(run=_run, sleep=time.sleep, wait=SETTLE_WAIT):
+    """Seconds waited, up to `wait`, for a WiFi link that is still joining. A hotspot started on the
+    same radio during a join can stop an AIC8800's firmware (2026-10-22: its channel scheduler then
+    never switches again, and the driver has to reset the chip); a few seconds' wait costs nothing."""
+    waited = 0
+    while waited < wait and wifi_joining(run):
+        sleep(1)
+        waited += 1
+    return waited
+
+
+def restore_hotspot(run=_run, sleep=time.sleep):
     """After a radio reset or a restart of the network service, which take the hotspot down with
-    them: start it again the way a boot does, if it was up."""
+    them: start it again the way a boot does, if it was up, once no WiFi link is still joining."""
     if not hotspot_up():
         return ""
+    waited = settle_before_hotspot(run, sleep)
     code, out = run("systemctl", "start", AP_UNIT, timeout=120)
-    return "The hotspot started again." if code == 0 else f"The hotspot did not start again: {out[-160:]}"
+    after = f" (after {waited} s for the WiFi link to finish joining)" if waited else ""
+    return f"The hotspot started again{after}." if code == 0 else f"The hotspot did not start again: {out[-160:]}"
 
 
 def reset(iface, port=None, driver=None, product=None, run=_run, sleep=time.sleep, wait=BACK_WAIT):

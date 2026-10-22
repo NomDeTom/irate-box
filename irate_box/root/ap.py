@@ -328,10 +328,15 @@ def boot(run, inv, settings, ssid=DEFAULT_SSID):
         return (
             stop(run) + ". The hotspot took the box's WiFi link and nobody confirmed it, so the box restored the link."
         )
+    from irate_box.root import radio
+
+    # Not during a WiFi link's join: a hotspot started then can stop an AIC8800's firmware (radio.py).
+    waited = radio.settle_before_hotspot()
+    after = f" (after {waited} s for the WiFi link to finish joining)" if waited else ""
     plan = start(run, inv, settings, rec.get("owner") or {}, ssid)
     if plan.get("needs_choice") or plan["kind"] == "none":
         return "The hotspot did not start again. " + plan["text"]
-    return f"The hotspot started again on {ap_iface(plan)}, channel {plan['channel']}."
+    return f"The hotspot started again on {ap_iface(plan)}, channel {plan['channel']}{after}."
 
 
 def dispatcher_hook():

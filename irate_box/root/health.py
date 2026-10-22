@@ -1755,6 +1755,121 @@ def check_inventory():
     return out
 
 
+MODPROBE_D = Path(os.environ.get("HUB_MODPROBE_DIR", "/etc/modprobe.d"))
+AIC_MODULE = "aic8800_fdrv"
+# Driver options meant only for tests: each slows or disturbs the driver, or floods the kernel log.
+AIC_TEST_OPTIONS = re.compile(
+    r"\b(fake_cmd_timeout|timeout_reads|log_hw_regs|disconnect_wait_ms|idle_watch_ms|idle_nudge)="
+)
+
+
+def check_wifi_stalls():
+    """An AIC8800 radio (its driver loaded): the firmware's known stall, and whether this box is set to ride it out.
+    Its firmware can stop answering while its hotspot is busy during the WiFi link's join; a driver with the fix
+    resets the chip and the link is back in about 15 s. The uplink watchdog then starts the hotspot again: at
+    once when the driver reports its reset (recovered_at), else from the kernel journal's line, else at its next
+    check. Whether it can see the reset; test options left on the driver; and what limits the stall."""
+    from irate_box.root import radio
+
+    mod = radio.SYS / "module" / AIC_MODULE
+    if not mod.exists():
+        return []
+    out = []
+    params = mod / "parameters"
+    title = M("wifi-stall.title", "AIC8800 WiFi: the firmware's known stall")
+    limits = M(
+        "wifi-stall.limits",
+        "What makes it rarer: fewer roams while guests use the hotspot (the Network page's roaming setting), and the "
+        "hotspot on the WiFi link's channel. Power saving on the WiFi link can avoid it in theory, but its effect on power "
+        "use and speed has not been measured yet.",
+    )
+    why = M(
+        "wifi-stall.why",
+        "The radio's firmware can stop answering when its hotspot is busy while the WiFi link joins a network (a "
+        "roam or a reconnect). On a test box it happened about once in 40 to 100 joins under load.",
+    )
+    try:
+        recoveries = int((params / "recoveries").read_text().strip())
+        at = int((params / "recovered_at").read_text().strip())
+    except (OSError, ValueError):
+        recoveries = at = None
+    if recoveries is not None:
+        evidence = [f"recoveries {recoveries}, recovered_at {at}"]
+        out.append(
+            finding(
+                "wifi-stall",
+                title,
+                "ok",
+                M(
+                    "wifi-stall.reported",
+                    "The driver resets the chip when its firmware stops answering, and tells the watchdog, which then "
+                    "starts the hotspot again. It has reset the chip {n} times since it loaded.",
+                    n=recoveries,
+                ),
+                why,
+                limits,
+                evidence=evidence,
+            )
+        )
+    else:
+        kernel = run("journalctl", "-k", "-b", "-q", "--no-pager", "-n", "1", timeout=20)
+        seen = kernel.returncode == 0 and bool(kernel.stdout.strip())
+        out.append(
+            finding(
+                "wifi-stall",
+                title,
+                "ok" if seen else "warn",
+                M(
+                    "wifi-stall.journal",
+                    "The driver does not report its own resets. The watchdog learns of them from the kernel's log, and "
+                    "otherwise starts the hotspot again at its next check.",
+                )
+                if seen
+                else M(
+                    "wifi-stall.unseen",
+                    "The driver does not report its own resets, and the kernel's log is not in the journal. So the "
+                    "watchdog cannot tell its reset from a fault, and starts the hotspot again only at its next check.",
+                ),
+                why,
+                M(
+                    "wifi-stall.fix",
+                    "A driver that reports its resets (recovered_at among its parameters) lets the watchdog act at once. "
+                    "{limits}",
+                    limits=limits,
+                ),
+                commands=["ls /sys/module/aic8800_fdrv/parameters/", "journalctl -k -b -n 5"],
+            )
+        )
+    left = []
+    for conf in sorted(MODPROBE_D.glob("*.conf")):
+        try:
+            text = conf.read_text()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if not line.lstrip().startswith("#") and "aic8800" in line and AIC_TEST_OPTIONS.search(line):
+                left.append(f"{conf}: {line.strip()}")
+    if left:
+        out.append(
+            finding(
+                "wifi-stall:test-options",
+                M("wifi-stall.test-options.title", "AIC8800 WiFi: test options left on the driver"),
+                "warn",
+                M("wifi-stall.test-options", "The WiFi driver loads with options meant only for tests."),
+                M(
+                    "wifi-stall.test-options.why",
+                    "They slow the driver at a fault, or fill the kernel's log so that it keeps less.",
+                ),
+                M(
+                    "wifi-stall.test-options.fix",
+                    "Remove the file, or those options from it, and load the driver again or restart the box.",
+                ),
+                evidence=left,
+            )
+        )
+    return out
+
+
 def check_hotspot():
     """While the hotspot is meant to be on (root/ap.py's record): its interface there, in AP mode, on its
     planned channel (or the link's, when it follows); the access point's own service; dnsmasq."""
@@ -3488,6 +3603,7 @@ def scan():
         check_uplink,
         check_inventory,
         check_hotspot,
+        check_wifi_stalls,
         check_space,
         check_builds,
         check_crashwatch,
