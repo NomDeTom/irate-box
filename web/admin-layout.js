@@ -148,6 +148,7 @@ const AL = (() => {
     fold(cur ? cur.group : null);
   });
   autoLabel();
+  const foot = el('p', { class: 'side-foot' }, autoBtn);
 
   // The box-wide groups now; the apps' pages when /admin/apps answers (or without it, at worst).
   const slots = {};
@@ -215,7 +216,8 @@ const AL = (() => {
     Object.keys(badges).forEach(paint);
     hiddenLinks.forEach((id) => hide(id, true));
     markUnsaved();
-    list.append(el('p', { class: 'side-foot' }, autoBtn));
+    // The foot sits under the list, not in it: the list scrolls, the foot stays in sight.
+    if (!foot.isConnected) side.append(foot);
     built = true;
     onBuild.forEach((callback) => { try { callback(); } catch (error) { console.error(error); } });
   }
@@ -309,6 +311,19 @@ const AL = (() => {
   });
 
   menu.addEventListener('click', () => { const open = side.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });
+  // The sticky sidebar's height, from where it is now to the window's foot: before the page has scrolled the
+  // header away it starts lower, and a height from the window's top would put its foot out of sight.
+  let fitPending = false;
+  function fitSide() {
+    fitPending = false;
+    if (getComputedStyle(side).position !== 'sticky') { side.style.removeProperty('--side-room'); return; }
+    const top = Math.max(side.getBoundingClientRect().top, 16);
+    side.style.setProperty('--side-room', `${Math.max(window.innerHeight - top - 16, 160)}px`);
+  }
+  const fitSoon = () => { if (!fitPending) { fitPending = true; (window.requestAnimationFrame || setTimeout)(fitSide); } };
+  window.addEventListener('scroll', fitSoon, { passive: true });
+  window.addEventListener('resize', fitSoon);
+  fitSoon();
   build(null);
   show();
   // The apps' pages: a fetch away. When they're in, the page is rebuilt and the loaders told (a

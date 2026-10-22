@@ -1382,12 +1382,13 @@ body.admin button.link-button {
 .admin-side {
   position: sticky;
   top: 1rem;
-  /* Taller than the window (many pages, groups open): it scrolls on its own, not with the pane. */
+  display: flex;
+  flex-direction: column;
+  /* Taller than the window (many pages, groups open): the list scrolls on its own, not with the pane, and
+     the foot (Auto-collapse) stays below it in sight. --side-room is the room from where the sidebar is now
+     to the window's foot (admin-layout.js), less than the window while the header is still in view. */
   max-height: calc(100vh - 2rem);
-  max-height: calc(100dvh - 2rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  max-height: var(--side-room, calc(100dvh - 2rem));
 }
 .admin-menu {
   display: none;
@@ -1396,6 +1397,10 @@ body.admin button.link-button {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .admin-side-group {
   display: flex;
@@ -1453,11 +1458,12 @@ body.admin button.link-button {
 .admin-side-links[hidden] {
   display: none;
 }
-.admin-side-list .side-foot {
+.admin-side .side-foot {
+  flex: none;
   margin: 1rem 0 0;
   padding: 0 0.75rem;
 }
-.admin-side-list .side-auto {
+.admin-side .side-auto {
   font-size: 0.75rem;
   padding: 0.25rem 0.55rem;
 }
@@ -1868,6 +1874,9 @@ body.about h3 {
   }
   .admin-side.open .admin-side-list {
     display: flex;
+  }
+  .admin-side:not(.open) .side-foot {
+    display: none;
   }
 }
 /* The first-use page's status line (admin-setup.html). */
@@ -3961,6 +3970,9 @@ html:has(> body.admin) {
   }
   .admin-side.open .admin-side-list {
     display: flex;
+  }
+  .admin-side:not(.open) .side-foot {
+    display: none;
   }
 }
 /* A wide page gives the sidebar a little more room. */
