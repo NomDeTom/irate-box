@@ -1780,8 +1780,8 @@ def check_wifi_stalls():
     limits = M(
         "wifi-stall.limits",
         "What makes it rarer: fewer roams while guests use the hotspot (the Network page's roaming setting), and the "
-        "hotspot on the WiFi link's channel. Power saving on the WiFi link may avoid it, but its effect on power use "
-        "and speed hasn't been measured yet.",
+        "hotspot on the WiFi link's channel. Power saving on the WiFi link can avoid it in theory, but its effect on power "
+        "use and speed has not been measured yet.",
     )
     why = M(
         "wifi-stall.why",
@@ -1821,14 +1821,14 @@ def check_wifi_stalls():
                 "ok" if seen else "warn",
                 M(
                     "wifi-stall.journal",
-                    "The driver doesn't report its own resets. The watchdog learns of them from the kernel's log, and "
+                    "The driver does not report its own resets. The watchdog learns of them from the kernel's log, and "
                     "otherwise starts the hotspot again at its next check.",
                 )
                 if seen
                 else M(
                     "wifi-stall.unseen",
-                    "The driver doesn't report its own resets, and the kernel's log isn't in the journal, so the "
-                    "watchdog can't tell its reset from a fault. It starts the hotspot again only at its next check.",
+                    "The driver does not report its own resets, and the kernel's log is not in the journal. So the "
+                    "watchdog cannot tell its reset from a fault, and starts the hotspot again only at its next check.",
                 ),
                 why,
                 M(

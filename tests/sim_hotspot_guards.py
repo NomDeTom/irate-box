@@ -187,11 +187,11 @@ check(
     f,
 )
 check(
-    "  the general fixes, power saving's cost not yet measured", "hasn't been measured yet" in str(f["fix"]), f["fix"]
+    "  the general fixes, power saving's cost not yet measured", "has not been measured yet" in str(f["fix"]), f["fix"]
 )
 journal["out"] = ""
 f = doctor()["wifi-stall"]
-check("  no kernel lines in the journal: a warning", f["status"] == "warn" and "can't tell" in str(f["summary"]), f)
+check("  no kernel lines in the journal: a warning", f["status"] == "warn" and "cannot tell" in str(f["summary"]), f)
 (params / "recoveries").write_text("3\n")
 (params / "recovered_at").write_text("1388\n")
 f = doctor()["wifi-stall"]
