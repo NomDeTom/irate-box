@@ -1763,6 +1763,45 @@ AIC_TEST_OPTIONS = re.compile(
 )
 
 
+def _aic_clients(radio):
+    """The AIC8800's WiFi client interfaces: {iface: power saving on (True/False), or None if unknown}, from iw."""
+    from irate_box.hub import netinv
+
+    out = {}
+    r = run("iw", "dev", timeout=10)
+    if r.returncode != 0:
+        return out
+    for iface, d in netinv.parse_iw_dev(r.stdout).items():
+        if d.get("type") != "managed":
+            continue
+        if "aic8800" not in os.path.realpath(radio.SYS / "class/net" / iface / "device/driver"):
+            continue
+        ps = run("iw", "dev", iface, "get", "power_save", timeout=10)
+        said = ps.stdout.strip().lower() if ps.returncode == 0 else ""
+        out[iface] = said.endswith(": on") if said.endswith((": on", ": off")) else None
+    return out
+
+
+def _aic_powersave_notes(clients):
+    """Power saving's state on each AIC8800 client, its latency as measured, and its power left unconfirmed."""
+    notes = [
+        M("wifi-stall.powersave.on", "Power saving is on for {iface}.", iface=iface)
+        if on
+        else M("wifi-stall.powersave.off", "Power saving is off for {iface}.", iface=iface)
+        for iface, on in clients.items()
+        if on is not None
+    ]
+    if notes:
+        notes.append(
+            M(
+                "wifi-stall.powersave.cost",
+                "With power saving on, an AIC8800 client answers about 6 ms slower on average, with spikes to about "
+                "50 ms. As a hotspot it costs nothing measurable. How much power it saves has not been confirmed.",
+            )
+        )
+    return notes
+
+
 def check_wifi_stalls():
     """An AIC8800 radio (its driver loaded): the firmware's known stall, and whether this box is set to ride it out.
     Its firmware can stop answering while its hotspot is busy during the WiFi link's join; a driver with the fix
@@ -1780,13 +1819,14 @@ def check_wifi_stalls():
     limits = M(
         "wifi-stall.limits",
         "What makes it rarer: fewer roams while guests use the hotspot (the Network page's roaming setting), and the "
-        "hotspot on the WiFi link's channel. Power saving on the WiFi link does not prevent it: it was tested.",
+        "hotspot on the WiFi link's channel.",
     )
     why = M(
         "wifi-stall.why",
         "The radio's firmware can stop answering when its hotspot is busy while the WiFi link joins a network (a "
         "roam or a reconnect). On a test box it happened about once in 40 to 100 joins under load.",
     )
+    notes = _aic_powersave_notes(_aic_clients(radio))
     try:
         recoveries = int((params / "recoveries").read_text().strip())
         at = int((params / "recovered_at").read_text().strip())
@@ -1807,6 +1847,7 @@ def check_wifi_stalls():
                 ),
                 why,
                 limits,
+                notes=notes,
                 evidence=evidence,
             )
         )
@@ -1836,6 +1877,7 @@ def check_wifi_stalls():
                     "{limits}",
                     limits=limits,
                 ),
+                notes=notes,
                 commands=["ls /sys/module/aic8800_fdrv/parameters/", "journalctl -k -b -n 5"],
             )
         )

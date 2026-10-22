@@ -170,7 +170,24 @@ radio.SYS = T / "sys"
 health.MODPROBE_D = T / "modprobe.d"
 health.MODPROBE_D.mkdir(parents=True)
 journal = {"out": "Oct 22 kernel: something"}
-health.run = lambda *cmd, **k: SimpleNamespace(returncode=0, stdout=journal["out"], stderr="")
+powersave = {"wlan0": "off"}
+
+
+def fake_run(*cmd, **k):
+    if cmd[:2] == ("iw", "dev") and cmd[-2:] == ("get", "power_save"):
+        return SimpleNamespace(returncode=0, stdout=f"Power save: {powersave[cmd[2]]}\n", stderr="")
+    if cmd[:2] == ("iw", "dev"):
+        return SimpleNamespace(returncode=0, stdout="(parsed by the stub above)", stderr="")
+    return SimpleNamespace(returncode=0, stdout=journal["out"], stderr="")
+
+
+health.run = fake_run
+ap_now["ifaces"] = {"wlan0": {"type": "managed"}, "ap0": {"type": "AP"}, "wlan1": {"type": "managed"}}
+(T / "drivers/aic8800_fdrv").mkdir(parents=True)
+(T / "drivers/rtl8xxxu").mkdir(parents=True)
+for iface, drv in (("wlan0", "aic8800_fdrv"), ("wlan1", "rtl8xxxu")):
+    (radio.SYS / "class/net" / iface / "device").mkdir(parents=True)
+    (radio.SYS / "class/net" / iface / "device/driver").symlink_to(T / "drivers" / drv)
 
 
 def doctor():
@@ -186,9 +203,18 @@ check(
     f["status"] == "ok" and "kernel's log" in str(f["summary"]),
     f,
 )
+check("  the general fixes, without power saving", "Power saving" not in str(f["fix"]), f["fix"])
+notes = [str(n) for n in f["notes"]]
 check(
-    "  the general fixes, and that power saving does not prevent it", "does not prevent it" in str(f["fix"]), f["fix"]
+    "  power saving's state for the AIC client only, its latency, its power unconfirmed",
+    notes[0] == "Power saving is off for wlan0."
+    and len(notes) == 2
+    and "6 ms slower" in notes[1]
+    and "has not been confirmed" in notes[1],
+    notes,
 )
+powersave["wlan0"] = "on"
+check("  and when it is on, says so", str(doctor()["wifi-stall"]["notes"][0]) == "Power saving is on for wlan0.")
 journal["out"] = ""
 f = doctor()["wifi-stall"]
 check("  no kernel lines in the journal: a warning", f["status"] == "warn" and "cannot tell" in str(f["summary"]), f)
