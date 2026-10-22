@@ -4,7 +4,7 @@
 // with its own id, so admin.js binds to them unchanged; this file gathers them into pages:
 //   Overview · Apps (a page per app, from /admin/apps: what each app's manifest says it owns)
 //   · Hub layout (what visitors see: tiles, folders, status widgets, appearance) · Moderation · System
-//   · Doctors, the doctors last.
+//   · Doctors · Mock controls (every control the pages use, last).
 // The address names a section (#books, #backup): the page holding it opens, scrolled to it, so
 // every old link and bookmark still lands. A section no page claims goes to "More" at the end
 // rather than vanish (the jsdom tests check none does).
@@ -43,6 +43,9 @@ const AL = (() => {
       { title: 'Box doctor', sections: ['health'] },
       { title: 'Security doctor', sections: ['secdoctor'] },
       { title: 'Updates doctor', sections: ['updoctor'] }] },
+    // Last: every control the pages use, with stand-in data (admin-mock.js), to copy from and to pick from.
+    { name: 'Mock controls', art: 'controller', pages: [
+      { title: 'Mock controls', sections: ['mock-controls'] }] },
   ];
   // A section with art of its own, wherever it lands (the Firmware Factory's production line).
   const SECTION_ART = { factory: 'factory', toolkits: 'workbench', welcome: 'welcome-controller' };

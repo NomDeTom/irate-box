@@ -5266,6 +5266,18 @@
             <p class="setting-desc action-note" id="update-source-note" role="status" hidden></p>
           </details>
         </section>
+
+        <section class="admin-pane" id="mock-controls" aria-labelledby="mock-controls-title">
+          <h2 id="mock-controls-title" data-i18n="admin.mock-controls.title">Mock controls</h2>
+          <p class="setting-desc" data-i18n="admin.mock-controls.intro">
+            Every control the administration pages use, drawn by the same code,
+            with stand-in data. Nothing here changes the box or sends anything.
+            Copy a control from here when a page needs one; the line under each
+            names the code that draws it.
+          </p>
+          <!-- Filled by admin-mock.js when the page is first opened. -->
+          <div id="mock-controls-body"></div>
+        </section>
       </main>
     </div>
 
@@ -5279,6 +5291,7 @@
     <script src="/admin-widgets.js"></script>
     <script src="/admin-layout.js"></script>
     <script src="/admin.js"></script>
+    <script src="/admin-mock.js"></script>
     <script src="/admin-tour.js"></script>
   </body>
 </html>
