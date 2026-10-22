@@ -198,11 +198,10 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     check('  a cure keeps its button', kernel.some((c) => c.tagName === 'BUTTON'), kernel.map((c) => c.outerHTML).join(' '));
   }
   check('  the cure is not there (it is the doctor\'s)', !/Kernel link/.test(t(d.getElementById('security-findings'))));
-  check('  the hub\'s own lines: a state, with where to change them, no recommended action', /Plain HTTP only/.test(t(d.getElementById('security-hub')))
-    && !/Recommended action/.test(t(d.getElementById('security-hub')))
-    && d.querySelector('#security-hub a.go-btn').getAttribute('href') === '#security-https' && !!d.getElementById('security-https'));
-  check('Debian\'s security updates on Updates: a state line, no status word', t(d.querySelector('#updates-security .setting-name')).startsWith('Security updates')
-    && !d.querySelector('#updates-security .fstate'), t(d.getElementById('updates-security')));
+  check('the hub\'s own security limits are gone from Security', !d.getElementById('security-hub'));
+  check('Debian\'s security updates on Updates: a state line, no status word and no stray text',
+    /No security updates are waiting\./.test(t(d.getElementById('updates-security')))
+    && !d.querySelector('#updates-security .fstate') && !/null/.test(t(d.getElementById('updates-security'))), t(d.getElementById('updates-security')));
   check('Security links to where the rest went', ['#secdoctor', '#updates-debian', '#network/hotspot'].every((h) => d.querySelector(`#security-elsewhere a[href="${h}"]`)));
   check('the hotspot\'s WiFi security with the hotspot, on Network', !!d.querySelector('#network #hs-modes') && !d.querySelector('#security #hs-modes'));
   w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });  // the answer to what was asked: no longer busy

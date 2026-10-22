@@ -5117,7 +5117,7 @@ function drawDebianState(lines, scan) {
   const w = lines.find((finding) => finding.id === "security-updates"),
     unattended = lines.find((finding) => finding.id === "unattended");
   const waiting = w ? w.waiting || 0 : 0,
-    fetched = w ? w.fetched || 0 : 0,
+    downloaded = w ? w.fetched || 0 : 0,
     age = w ? w.lists_age_days : null;
   deb.pill.replaceChildren(
     AW.updatePill(w && age != null ? Date.now() / 1000 - age * 86400 : null, waiting > 0),
@@ -5125,40 +5125,42 @@ function drawDebianState(lines, scan) {
   const line = (text) => el("span", { className: "setting-desc", textContent: text });
   const packages = (w && w.packages) || [];
   document.getElementById("updates-security").replaceChildren(
-    ...(!w
-      ? [line(scan ? "The box could not read apt's state." : "Not checked yet. The box checks when the Security page scans.")]
-      : [
-          line(
-            waiting
-              ? `${waiting} security update${waiting === 1 ? " is" : "s are"} waiting${fetched ? `, ${fetched} downloaded` : ""}.`
-              : "No security updates are waiting.",
-          ),
-          line(
-            age == null
-              ? "The age of the package lists is not known."
-              : age < 1
-                ? "The package lists are from today."
-                : `The package lists are ${Math.round(age)} day${Math.round(age) === 1 ? "" : "s"} old.`,
-          ),
-          unattended
-            ? line(
-                unattended.last_at
-                  ? `Automatic updates last ran ${new Date(unattended.last_at * 1000).toLocaleString()}.`
-                  : "Automatic updates have not run yet.",
-              )
-            : null,
-          packages.length
-            ? el(
-                "details",
-                { className: "field-help" },
-                el("summary", { textContent: `The waiting packages (${packages.length})` }),
-                el("p", { className: "setting-desc", translate: false, textContent: packages.join(", ") }),
-              )
-            : null,
-        ]),
-    // The root helper's answer to the card's buttons and its setting.
-    noteUnder("security-updates"),
-    noteUnder("unattended"),
+    ...[
+      ...(!w
+        ? [line(scan ? "The box could not read apt's state." : "Not checked yet. The box checks when the Security page scans.")]
+        : [
+            line(
+              waiting
+                ? `${waiting} security update${waiting === 1 ? " is" : "s are"} waiting${downloaded ? `, ${downloaded} downloaded` : ""}.`
+                : "No security updates are waiting.",
+            ),
+            line(
+              age == null
+                ? "The age of the package lists is not known."
+                : age < 1
+                  ? "The package lists are from today."
+                  : `The package lists are ${Math.round(age)} day${Math.round(age) === 1 ? "" : "s"} old.`,
+            ),
+            unattended
+              ? line(
+                  unattended.last_at
+                    ? `Automatic updates last ran ${new Date(unattended.last_at * 1000).toLocaleString()}.`
+                    : "Automatic updates have not run yet.",
+                )
+              : null,
+            packages.length
+              ? el(
+                  "details",
+                  { className: "field-help" },
+                  el("summary", { textContent: `The waiting packages (${packages.length})` }),
+                  el("p", { className: "setting-desc", translate: false, textContent: packages.join(", ") }),
+                )
+              : null,
+          ]),
+      // The root helper's answer to the card's buttons and its setting.
+      noteUnder("security-updates"),
+      noteUnder("unattended"),
+    ].filter(Boolean),
   );
 }
 function drawDebianPattern(lines, busy) {
