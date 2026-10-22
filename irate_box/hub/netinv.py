@@ -1315,15 +1315,28 @@ def findings(inv):
     ws = enabled("wifisync.service")
     if ws:
         mesh = mesh_wifi_enabled()
-        on = ws == "enabled"
+        running = active("wifisync.service")
+        # Off only when disabled or masked and not running: is-enabled also says static, indirect, alias, generated,
+        # linked or enabled-runtime for a unit something else can still start, and disable may leave a link it
+        # doesn't own (an image's own .wants/ folder), so the unit stays "enabled" after it.
+        on = running or ws not in ("disabled", "masked")
         title = M("netinv.wifisync.title", "mPWRD-OS wifisync")
+        state = {"unit_state": ws, "running": running}
         if not on:
             out.append(
                 _h(
                     "wifisync",
                     title,
                     "ok",
-                    M("netinv.wifisync.disabled", "wifisync is installed and disabled. It cannot switch the WiFi off."),
+                    M(
+                        "netinv.wifisync.masked",
+                        "wifisync is installed and masked. Nothing can start it, so it cannot switch the WiFi off.",
+                    )
+                    if ws == "masked"
+                    else M(
+                        "netinv.wifisync.disabled", "wifisync is installed and disabled. It cannot switch the WiFi off."
+                    ),
+                    **state,
                 )
             )
         else:
@@ -1351,6 +1364,7 @@ def findings(inv):
                         "netinv.wifisync.fix",
                         "Keep the WiFi setting of Meshtastic on while the box uses its WiFi, for its network link or its hotspot.",
                     ),
+                    **state,
                 )
             )
     nm = inv["stacks"].get("networkmanager") or {}

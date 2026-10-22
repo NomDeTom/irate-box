@@ -8757,11 +8757,20 @@ function renderWifisync(inv, data, busy) {
     return;
   }
   const on = h.status !== "ok";
+  // How systemd has it (enabled, disabled, masked, or another of is-enabled's words) and whether it runs: an
+  // older inventory without them says enabled or disabled from the finding alone.
+  const unitWord = (word) => (["enabled", "disabled", "masked"].includes(word) ? word : `set to "${word}" by systemd`);
+  const said =
+    h.unit_state === undefined
+      ? on
+        ? "enabled"
+        : "disabled"
+      : `${unitWord(h.unit_state)}, and ${h.running ? "running" : "stopped"}`;
   const rows = [
     el(
       "p",
       { className: "setting-desc", dataset: { change: "wifisync" } },
-      `The mPWRD-OS wifisync service is ${on ? "enabled" : "disabled"}. ${
+      `The mPWRD-OS wifisync service is ${said}. ${
         on
           ? "It switches the WiFi radio off whenever the WiFi setting of meshtasticd is off. " +
             "This disconnects the box from its network and stops the hotspot."
@@ -8776,7 +8785,7 @@ function renderWifisync(inv, data, busy) {
       rec.was ? " " : null,
       rec.was
         ? actionButton(
-            `Undo: ${rec.was === "enabled" ? "enabled" : "disabled"}, as the image had it`,
+            `Undo: ${unitWord(rec.was)}, as the image had it`,
             () => netRequest({ action: "wifisync", do: "undo" }, "wifisync"),
             { className: "small", disabled: busy },
           )

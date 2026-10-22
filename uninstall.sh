@@ -158,9 +158,14 @@ fi
 # mPWRD-OS's wifisync, if switched here: back as the image had it.
 if [ -f "$STATE/control/wifisync.json" ]; then
 	was=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("was", ""))' "$STATE/control/wifisync.json" 2>/dev/null || true)
+	# Masked here when disable couldn't take (a link it doesn't own): unmasked first, or enable fails.
+	if [ -n "$was" ] && [ "$was" != masked ] && [ "$(systemctl is-enabled wifisync.service 2>/dev/null)" = masked ]; then
+		systemctl unmask wifisync.service >/dev/null 2>&1 || true
+	fi
 	case "$was" in
 	enabled) systemctl enable --now wifisync.service >/dev/null 2>&1 || true ;;
 	disabled) systemctl disable --now wifisync.service >/dev/null 2>&1 || true ;;
+	masked) systemctl mask --now wifisync.service >/dev/null 2>&1 || true ;;
 	esac
 fi
 # Connections handed over from netplan to NetworkManager stay NetworkManager's (the box stays on its
