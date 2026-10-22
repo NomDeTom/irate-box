@@ -6470,25 +6470,41 @@ def wifisync(req):
         want = do == "on"
         if "was" not in rec:
             rec["was"] = now  # the image's own state, before the first change made here
-    r = subprocess.run(  # noqa: TID251
-        ["systemctl", "enable" if want else "disable", "--now", WIFISYNC],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if r.returncode:
-        raise Refused(
-            M(
-                "control.wifisync.failed",
-                "The command {command} failed: {output}",
-                command=f"systemctl {'enable' if want else 'disable'} --now {WIFISYNC}",
-                output=(r.stderr or r.stdout).strip()[:200],
-            )
+
+    def systemctl(*args):
+        r = subprocess.run(  # noqa: TID251
+            ["systemctl", *args, WIFISYNC],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
+        if r.returncode:
+            raise Refused(
+                M(
+                    "control.wifisync.failed",
+                    "The command {command} failed: {output}",
+                    command=" ".join(["systemctl", *args, WIFISYNC]),
+                    output=(r.stderr or r.stdout).strip()[:200],
+                )
+            )
+
+    masked = False
+    if now == "masked" and (want or do == "undo"):
+        systemctl("unmask")  # a masked unit can't be enabled, and undo starts from the unit as it was
+    if do == "undo" and rec["was"] == "masked":
+        systemctl("mask", "--now")
+    else:
+        systemctl("enable" if want else "disable", "--now")
+        # disable leaves a link it doesn't own (an image's own .wants/ folder): the unit stays enabled, and
+        # the Network page could only offer Disable again. Masked instead, nothing can start it; Enable or
+        # Undo unmasks it.
+        if do == "off" and (netinv.enabled(WIFISYNC) not in ("disabled", "masked") or netinv.active(WIFISYNC)):
+            systemctl("mask", "--now")
+            masked = True
     if do == "undo":
         rec = {}
     else:
-        rec.update(now="enabled" if want else "disabled", at=int(time.time()))
+        rec.update(now="masked" if masked else "enabled" if want else "disabled", at=int(time.time()))
     safeio.write(rec_path, json.dumps(rec))
     try:
         netinv.write(netinv.scan(), CONTROL / "netinv.json")
@@ -6498,6 +6514,14 @@ def wifisync(req):
         return M(
             "control.wifisync.undone",
             "{unit} is back in its state before the box changed it.",
+            unit="wifisync",
+        )
+    if masked:
+        return M(
+            "control.wifisync.masked",
+            "The command {command} left {unit} enabled: a link it does not own starts it. {unit} is masked "
+            "instead, so nothing can start it. Enable wifisync or Undo unmasks it.",
+            command=f"systemctl disable --now {WIFISYNC}",
             unit="wifisync",
         )
     if want:

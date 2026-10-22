@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """mPWRD-OS's wifisync switched from the Network page (hub_control's "wifisync"), with systemctl stood in for: off and
 on, the image's own state kept from before the first change, undo back to it, and nothing done where it isn't installed.
+Then the cases a box can show: disable that leaves the unit enabled (a link it doesn't own) masks it instead, and
+Enable or Undo unmasks it; an image that masked it; and the Network page's finding read from enabled and running.
 python3 tests/sim_wifisync.py"""
 
 import json
@@ -27,15 +29,30 @@ def check(name, cond, info=""):
     fails += not cond
 
 
-state = {"unit": "enabled"}
+state = {"unit": "enabled", "running": True, "stuck": False}
 calls = []
 
 
 def fake_run(cmd, **kw):
+    """systemctl as far as wifisync needs it. stuck: the image's own link, which disable leaves (is-enabled stays
+    enabled, and it starts again at boot)."""
     calls.append(cmd)
-    if cmd[:1] == ["systemctl"] and cmd[1] in ("enable", "disable"):
-        state["unit"] = "enabled" if cmd[1] == "enable" else "disabled"
+    verb = cmd[1] if cmd[:1] == ["systemctl"] else None
+    if verb == "enable":
+        if state["unit"] == "masked":
+            return mock.Mock(returncode=1, stdout="", stderr="Failed to enable unit: Unit file is masked.")
+        state.update(unit="enabled", running=True)
+    elif verb == "disable":
+        state.update(unit="enabled" if state["stuck"] else "disabled", running=False)
+    elif verb == "mask":
+        state.update(unit="masked", running=False)
+    elif verb == "unmask":
+        state["unit"] = "enabled" if state["stuck"] else "disabled"
     return mock.Mock(returncode=0, stdout="", stderr="")
+
+
+def verbs(since):
+    return [c[1] for c in calls[since:] if c[:1] == ["systemctl"]]
 
 
 def rec():
@@ -44,6 +61,7 @@ def rec():
 
 with (
     mock.patch.object(hc.netinv, "enabled", lambda unit: state["unit"]),
+    mock.patch.object(hc.netinv, "active", lambda unit: state["running"]),
     mock.patch.object(hc.subprocess, "run", fake_run),
     mock.patch.object(hc.netinv, "scan", lambda: {}),
     mock.patch.object(hc.netinv, "write", lambda *a: None),
@@ -79,6 +97,42 @@ with (
             check(f"refused: {bad}", False)
         except ValueError:
             check(f"refused: {bad}", True)
+    # disable leaves the image's own link: masked instead, and the way back unmasks it.
+    state.update(unit="enabled", running=True, stuck=True)
+    (hc.CONTROL / "wifisync.json").unlink(missing_ok=True)
+    n = len(calls)
+    msg = hc.wifisync({"do": "off"})
+    check(
+        "off, a link disable leaves: masked instead, and said so",
+        verbs(n) == ["disable", "mask"]
+        and state["unit"] == "masked"
+        and rec().get("now") == "masked"
+        and msg["id"] == "control.wifisync.masked",
+        (verbs(n), rec(), msg),
+    )
+    n = len(calls)
+    hc.wifisync({"do": "on"})
+    check("  Enable: unmasked, then enabled", verbs(n) == ["unmask", "enable"] and state["unit"] == "enabled", verbs(n))
+    hc.wifisync({"do": "off"})
+    n = len(calls)
+    hc.wifisync({"do": "undo"})
+    check(
+        "  Undo from masked: unmasked, enabled as the image had it, the record cleared",
+        verbs(n) == ["unmask", "enable"] and state["unit"] == "enabled" and rec() == {},
+        (verbs(n), state, rec()),
+    )
+    # The image masked it: Enable unmasks first, and Undo masks it again.
+    state.update(unit="masked", running=False, stuck=False)
+    n = len(calls)
+    hc.wifisync({"do": "on"})
+    check(
+        "masked by the image: Enable unmasks, then enables",
+        verbs(n) == ["unmask", "enable"] and state["unit"] == "enabled" and rec().get("was") == "masked",
+        (verbs(n), rec()),
+    )
+    n = len(calls)
+    hc.wifisync({"do": "undo"})
+    check("  Undo: masked again, as the image had it", verbs(n) == ["mask"] and state["unit"] == "masked", verbs(n))
     state["unit"] = None
     n = len(calls)
     try:
@@ -90,6 +144,31 @@ with (
             len(calls) == n and exc.message["id"] == "control.wifisync.missing",
             str(exc),
         )
+# The Network page's finding: off (ok, so the page offers Enable) only when neither enabled nor running.
+from irate_box.hub import netinv
+
+for unit_state, running, want in (
+    ("enabled", True, "warn"),
+    ("enabled", False, "warn"),
+    ("disabled", True, "warn"),
+    ("static", False, "warn"),
+    ("disabled", False, "ok"),
+    ("masked", False, "ok"),
+):
+    with (
+        mock.patch.object(netinv, "enabled", lambda unit, u=unit_state: u if unit == "wifisync.service" else None),
+        mock.patch.object(netinv, "active", lambda unit, r=running: r),
+        mock.patch.object(netinv, "mesh_wifi_enabled", lambda: True),
+    ):
+        found = [f for f in netinv.findings({"radios": [], "stacks": {}}) if f["id"] == "wifisync"]
+    check(
+        f"the finding: {unit_state}, {'running' if running else 'stopped'} -> {want}",
+        len(found) == 1
+        and found[0]["status"] == want
+        and found[0]["unit_state"] == unit_state
+        and found[0]["running"] is running,
+        found,
+    )
 check(
     "the root helper knows it",
     "wifisync" in hc.ACTIONS
