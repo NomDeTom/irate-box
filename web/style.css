@@ -4356,6 +4356,16 @@ html:has(> body.admin) {
   padding-top: 0.2rem;
 }
 /* The sign-in sheet's offer of the internet (guest-net.js). */
+/* The home page on plain HTTP: the certificate offered (home.js). */
+.https-offer {
+  margin: 0 auto 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.https-offer a {
+  color: var(--accent);
+}
 .guest-net {
   margin: 0 auto 1rem;
   padding: 0.7rem 1rem;
