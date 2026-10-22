@@ -46,7 +46,7 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   const want = ['Action buttons', 'Chips: one of a few', 'Filter chips: any of a few', 'Toggle', 'Joined tabs', 'Pills', 'Help that expands', 'A fold',
     'Uptime', 'Short entries, with a filter', 'Cards with a drawer', 'Records', 'A block of settings', 'Choice tiles', 'A drop-down of a few, as chips',
     'Updates: how often, how far, and the three buttons', 'A block kept while it is drawn again', 'Finding cards, one per state', 'Findings as a short list',
-    'Form fields', 'Colour', 'Progress, output and space used', 'A section\'s fold', 'Tabs with their panels', 'A table', 'An empty list',
+    'Form fields', 'Colour', 'Progress, output and space used', 'Tabs with their panels', 'A table', 'An empty list',
     'An app\'s page: its facts and its Access', 'The home page\'s tiles', 'The setup steps', 'A link to where the reason is', 'A package\'s card',
     'The theme picker and the name colour'];
   check('every control, in order', JSON.stringify(names) === JSON.stringify(want), names.join(' | '));
