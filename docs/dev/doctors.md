@@ -5,7 +5,7 @@
 A doctor checks one part of the box, lists what is wrong and offers repairs. The box has three. When someone says "the doctor", ask which one. Name it in full in code, comments and pages: Box doctor, Security doctor or Updates doctor.
 
 | Doctor | Answers | Code | Run it | Writes |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Box doctor | Is the box healthy, and if not, why? | [health.py](../../irate_box/root/health.py) | `irate-box health` | `control/health.json` |
 | Security doctor | Is the box set up safely? | [secdoctor.py](../../irate_box/root/secdoctor.py) | `irate-box secdoctor` | `control/security-audit.json` |
 | Updates doctor | Can the box update, and why did an update fail? | `doctor()` in [hub_control.py](../../irate_box/root/hub_control.py) | /admin → Updates doctor | `control/doctor.json` |
@@ -47,7 +47,7 @@ It is read-only apart from `apt-get update`. Each finding says what is wrong and
 ## Where a new check goes
 
 | The check is about | Put it in |
-|---|---|
+| --- | --- |
 | A unit, the install, Kiwix, the uplink, a radio, a driver, the clock, disk space | Box doctor |
 | A setting that exposes the box, a file's permissions, a listener, a hardening gap | Security doctor |
 | Fetching, verifying or installing an update, a source, the librarian | Updates doctor |
