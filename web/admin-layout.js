@@ -83,13 +83,19 @@ const AL = (() => {
     adminPage.querySelectorAll(':scope > .admin-pane > h2').forEach((h) => h.classList.toggle('same-as-page', !adminPage.classList.contains('solo') && h.textContent.trim() === def.title));
     adminPage.hidden = true;
     main.append(adminPage);
-    const link = el('a', { href: '#' + (def.app ? id : ids[0] || id), 'data-page': id }, def.icon ? el('span', { class: 'side-icon', 'aria-hidden': 'true', text: def.icon }) : null, def.title);
+    const link = el('a', { href: '#' + (def.app ? id : ids[0] || id), 'data-page': id }, def.icon ? el('span', { class: 'side-icon', 'aria-hidden': 'true' }, svgIcon(def.icon) || def.icon) : null, def.title);
     const entry = { id, el: adminPage, link, title: def.title, group: group.name };
     pages.push(entry);
     return entry;
   }
+  // An app's picture (svg:<name>, manifests.py) as the tiles draw it; null for an emoji.
+  function svgIcon(icon) {
+    const name = /^svg:([a-z0-9-]{1,40})$/.exec(icon || '');
+    return name ? el('span', { class: 'svg-icon', 'data-icon': name[1] }) : null;
+  }
   function firstGlyph(text) {
     if (!text) return null;
+    if (text.startsWith('svg:')) return text;
     if (window.Intl && Intl.Segmenter) { const g = new Intl.Segmenter().segment(text)[Symbol.iterator]().next().value; return g ? g.segment : null; }
     return [...text][0];
   }

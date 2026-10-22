@@ -2,7 +2,7 @@
   "id": "eliza",
   "order": 65,
   "tile": {
-    "icon": "🗨️🛋️",
+    "icon": "🛋️",
     "name": "ELIZA",
     "desc": "Rule-based chatbot"
   },

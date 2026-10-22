@@ -92,3 +92,10 @@ path = [
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
+
+# Pictures from Metro UI's icon set (olton/metroui 5.1.20, icons/core/selection.json), one per file.
+[[annotations]]
+path = "web/icons/*.svg"
+precedence = "override"
+SPDX-FileCopyrightText = "2012-2025 Serhii Pimenov"
+SPDX-License-Identifier = "MIT"

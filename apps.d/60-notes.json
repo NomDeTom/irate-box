@@ -2,7 +2,7 @@
   "id": "notes",
   "order": 60,
   "tile": {
-    "icon": "📝📔",
+    "icon": "📝",
     "name": "Shared notes",
     "desc": "Markdown notes everyone here can read and change",
     "href": "/app.html#/notes/",

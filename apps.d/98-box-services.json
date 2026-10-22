@@ -3,7 +3,7 @@
   "order": 98,
   "tile": {
     "row": "box",
-    "icon": "🚥🎛️",
+    "icon": "📋",
     "name": "Services",
     "desc": "Service status",
     "href": "/services.html"

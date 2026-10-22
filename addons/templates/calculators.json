@@ -2,7 +2,7 @@
   "id": "nomdetom-calculators",
   "order": 75,
   "tile": {
-    "icon": "🧮📐",
+    "icon": "🆕",
     "name": "Unmodified calculator site",
     "desc": "nomdetom.github.io as published, as a web add-on",
     "path": "index.html"

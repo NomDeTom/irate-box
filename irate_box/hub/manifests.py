@@ -102,6 +102,18 @@ SECTION_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")  # no leading "-"
 DIR_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+# A tile's icon is an emoji, or svg:<name> for a picture of the hub's own (web/icons/<name>.svg, drawn in the
+# text's colour by style.css's .svg-icon[data-icon=…]).
+ICONS = CHECKOUT / "web" / "icons"
+SVG_ICON_RE = re.compile(r"^svg:([a-z0-9-]{1,40})$")
+
+
+def svg_icon(icon):
+    """The picture's name when an icon is svg:<name> and web/icons has it; else None."""
+    m = SVG_ICON_RE.match(icon or "")
+    return m.group(1) if m and (ICONS / f"{m.group(1)}.svg").is_file() else None
+
+
 GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")
 
 
@@ -152,6 +164,10 @@ def _check(m, where):
         else:
             for k in ("icon", "name", "desc", "href"):
                 need(isinstance(tile.get(k), str), f"tile.{k}: a string")
+            need(
+                not tile["icon"].startswith("svg:") or svg_icon(tile["icon"]),
+                "tile.icon: svg:<name> of a file in web/icons/",
+            )
             need(tile["href"].startswith("/"), "tile.href: a path on this hub")
     menu = m.get("menu")
     if menu is not None:

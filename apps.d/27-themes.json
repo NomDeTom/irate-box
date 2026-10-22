@@ -2,7 +2,7 @@
   "id": "themes",
   "order": 27,
   "tile": {
-    "icon": "🎨🖌️",
+    "icon": "🎨",
     "name": "Themes",
     "desc": "Light, dark, E-ink and more. The selection applies to this browser only",
     "href": "/themes.html"
