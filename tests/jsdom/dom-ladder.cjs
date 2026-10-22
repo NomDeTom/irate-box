@@ -35,6 +35,17 @@ LC.render(box, rows, { now });
 const chips = [...box.querySelectorAll('.ladder-periods .chip')];
 check('six periods, 7 days chosen to start', chips.map((c) => c.textContent).join('|') === '1 h|6 h|24 h|7 days|30 days|72 days'
   && chips[3].classList.contains('selected') && chips[3].getAttribute('aria-checked') === 'true');
+// A box with nothing recorded yet (every new one): the chips still say which is chosen, on screen and to a screen reader.
+const blank = d.createElement('div');
+d.body.append(blank);
+LC.render(blank, [], { now });
+const blankChips = [...blank.querySelectorAll('.ladder-periods .chip')];
+check('nothing recorded: 7 days still chosen, every chip with aria-checked, the line saying so', blankChips[3].classList.contains('selected')
+  && blankChips.every((c) => c.getAttribute('aria-checked') === String(c === blankChips[3])) && /Nothing recorded yet/.test(blank.textContent),
+  blankChips.map((c) => c.getAttribute('aria-checked')).join());
+blankChips[1].click();
+check('  a chip chosen there: it is the one checked', blankChips[1].getAttribute('aria-checked') === 'true' && blankChips[3].getAttribute('aria-checked') === 'false'
+  && /Nothing recorded yet/.test(blank.textContent));
 const svg = box.querySelector('svg');
 check('an image with its summary for a screen reader', svg.getAttribute('role') === 'img' && /2 outages; steps taken: 2 reconnects, 2 radio resets; 1 held/.test(svg.getAttribute('aria-label')),
   svg.getAttribute('aria-label'));
