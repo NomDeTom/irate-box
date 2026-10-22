@@ -1263,6 +1263,15 @@ body.app-frame iframe {
 .update-card-body > .library-buttons {
   margin-top: 0.3rem;
 }
+/* Debian's lines (what is waiting, the lists' age, the last run): the same gap as the card's own lines. */
+.update-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.update-lines:empty {
+  display: none;
+}
 /* A package card's settings drawn as the other cards' pattern: each label above its chips, no box of its own. */
 .update-card .aw-settings {
   background: none;
@@ -3889,6 +3898,20 @@ label > .select-chips {
   vertical-align: -0.15em;
   margin-right: 0.35em;
 }
+/* The same warning beside a setting it is about, live (Security's Administrator access over HTTP). */
+.aw-warn-beside {
+  margin: 0.4rem 0 0;
+}
+.aw-warn-beside:empty {
+  display: none;
+}
+.aw-warn-beside::before {
+  content: "⚠️";
+  font-size: 1.4em;
+  line-height: 1;
+  vertical-align: -0.15em;
+  margin-right: 0.35em;
+}
 .aw-foot .note {
   font-size: 0.78rem;
   color: var(--muted);
@@ -4432,24 +4455,38 @@ html[data-palette="contrast"] .help-item.down {
   gap: 0.5rem;
   margin: 0.6rem 0 1rem;
 }
+/* The Security page's own settings (the security policy, HTTP / HTTPS, visitor counts): setting cards, the same
+   shape and width as its choices (.sec-choice), one under the other. */
 .security-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr));
-  gap: 1rem;
-  align-items: start;
-  margin: 1rem 0;
+  margin: 0.6rem 0;
 }
 .security-setting {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 .security-setting h3 {
-  margin-top: 0;
-  font-size: 1.1rem;
+  margin: 0;
+  font-size: 1rem;
 }
 .security-setting h4 {
-  margin: 0.8rem 0 0.4rem;
-  font-size: 0.95rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.9rem;
+}
+/* Chips a line apart from the words above them: a selected chip is filled, and touched the line before. */
+.security-setting .chip-group {
+  margin: 0.25rem 0 0.35rem;
+}
+.security-setting .settings {
+  gap: 0.5rem;
+}
+.sec-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  cursor: pointer;
+}
+.sec-check input {
+  margin-top: 0.2rem;
 }
 .security-setting textarea {
   box-sizing: border-box;

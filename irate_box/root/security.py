@@ -1329,8 +1329,10 @@ def update_findings():
     findings = [security_updates_finding(pkgs, age)]
     findings[-1]["lists_age_days"] = age  # the page's badge: how recently "none waiting" was looked for
     findings[-1]["waiting"], findings[-1]["fetched"] = len(pkgs), fetched  # the pattern's Fetch and Install
+    findings[-1]["packages"] = pkgs  # the card's list of what is waiting (its state; the finding is the doctor's)
     chosen = chosen_pattern(load_record())
     findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age, chosen, last_at))
+    findings[-1]["last_at"] = last_at  # the card's "last ran", as a time
     findings[-1]["pattern"] = {
         "often": (chosen or DEFAULT_PATTERN)[0],
         "act": (chosen or DEFAULT_PATTERN)[1],
@@ -3004,47 +3006,17 @@ CONTAIN_OFF_WHY = {
 
 
 def share_findings():
-    """Guests' internet (share.py), while the owner shares it: what is shared, and each part of the
-    containment the owner has turned off, a finding of its own with the way back."""
+    """Guests' internet (share.py): one setting, the level as it is and each part of the containment as a
+    row of On and Off (the page's chips, held until Save). Each part turned off, and rules not loaded, are
+    findings of their own, for the Security doctor (the page leaves them to it)."""
     from irate_box.root import firewall, share
 
     st = share.load()
     t = M("guest-net.title", "Guest internet access")
     off = [k for k in share.CONTAIN if not st["contain"][k]]
-    turn_on = [
-        action(f"share-contain-{k}-on", M("guest-net.contain-on", "Turn on: {name}", name=CONTAIN_HEADING[k]))
-        for k in off
-    ]
-    if not share.on(st):
-        # Nothing shared, nothing at risk; but a part left off would be off again the moment sharing is.
-        return (
-            [
-                finding(
-                    "guest-net",
-                    t,
-                    "ok",
-                    SHARE_LEVEL["off"],
-                    notes=[
-                        M(
-                            "guest-net.stay-off",
-                            {
-                                "one": "You disabled this protection, and it stays disabled when you share the internet "
-                                "again: {names}.",
-                                "other": "You disabled these protections, and they stay disabled when you share the "
-                                "internet again: {names}.",
-                            },
-                            n=len(off),
-                            names=[CONTAIN_HEADING[k] for k in off],
-                        )
-                    ],
-                    actions=turn_on,
-                )
-            ]
-            if off
-            else []
-        )
+    shared = share.on(st)
     out = []
-    if not firewall.loaded():
+    if shared and not firewall.loaded():
         out.append(
             finding(
                 "guest-net-rules",
@@ -3056,47 +3028,52 @@ def share_findings():
                 commands=["nft list table inet irate_box"],
             )
         )
-    for k, on in zip(off, turn_on, strict=False):
+    for k in off:
         out.append(
             finding(
                 f"guest-net-{k}",
                 M("guest-net.part-off.title", "Guest internet access: {name} is off", name=CONTAIN_HEADING[k]),
-                "warn",
+                "warn" if shared else "ok",
                 M("guest-net.part-off", "You disabled this protection."),
-                CONTAIN_OFF_WHY[k],
-                actions=[on],
+                CONTAIN_OFF_WHY[k] if shared else None,
+                notes=(
+                    []
+                    if shared
+                    else [M("guest-net.stay-off.one", "It stays disabled when you share the internet again.")]
+                ),
+                actions=[
+                    action(
+                        f"share-contain-{k}-on", M("guest-net.contain-on", "Turn on: {name}", name=CONTAIN_HEADING[k])
+                    )
+                ],
             )
         )
-    on_parts = [k for k in share.CONTAIN if st["contain"][k]]
+    chips = []
+    for k in share.CONTAIN:
+        on = st["contain"][k]
+        chips += [
+            _chip(CONTAIN_HEADING[k], f"share-contain-{k}-on", ON, on),
+            _chip(
+                CONTAIN_HEADING[k],
+                f"share-contain-{k}-off",
+                OFF,
+                not on,
+                M(
+                    "guest-net.contain-off.confirm",
+                    "{name} goes off. {why} The Security doctor shows a warning while it is off.",
+                    name=CONTAIN_HEADING[k],
+                    why=CONTAIN_OFF_WHY[k],
+                ),
+            ),
+        ]
     out.append(
         finding(
             "guest-net",
             t,
-            "ok" if not off else "warn",
+            "warn" if shared and off else "ok",
             SHARE_LEVEL[st["level"]],
-            notes=[
-                M(
-                    "guest-net.protections-on",
-                    {"one": "This protection is on: {names}.", "other": "These protections are on: {names}."},
-                    n=len(on_parts),
-                    names=[CONTAIN_HEADING[k] for k in on_parts],
-                )
-                if on_parts
-                else M("guest-net.protections-none", "No protection is on.")
-            ],
-            actions=[
-                action(
-                    f"share-contain-{k}-off",
-                    M("guest-net.contain-off", "Turn off: {name}", name=CONTAIN_HEADING[k]),
-                    M(
-                        "guest-net.contain-off.confirm",
-                        "{name} goes off. {why} The Security doctor shows a warning while it is off.",
-                        name=CONTAIN_HEADING[k],
-                        why=CONTAIN_OFF_WHY[k],
-                    ),
-                )
-                for k in on_parts
-            ],
+            notes=[M("guest-net.level-where", "The level is set on Network, Hotspot.")],
+            actions=chips,
         )
     )
     return out

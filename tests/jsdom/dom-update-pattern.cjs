@@ -60,6 +60,10 @@ check('greyed with why: the button, and a line saying so', bf.disabled && bf.tit
   && b.querySelector('.update-why').textContent === 'Download: downloaded already.' && !b.querySelector('.update-why').hidden);
 bc.click(); bi.click();
 check('  the others act', pressed === 'ci');
+b.update({ check: { disabled: true, why: 'the root helper is busy with other work.' }, fetch: { disabled: true, why: 'the root helper is busy with other work.' },
+  install: { disabled: true, why: 'the root helper is busy with other work.' } });
+check('  one reason for every greyed button: said once, as a sentence',
+  b.querySelector('.update-why').textContent === 'The root helper is busy with other work.', b.querySelector('.update-why').textContent);
 b.update({});
 check('  and the line goes when nothing is greyed', b.querySelector('.update-why').hidden);
 const nb = AW.updateButtons({ check: { onclick() {} }, fetch: { onclick() {} } });
