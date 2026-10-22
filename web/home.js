@@ -7,6 +7,17 @@
 // Back to this page from the browser's back-forward cache (after signing in or out): drawn afresh, so its header
 // buttons are those of whoever is signed in now.
 window.addEventListener('pageshow', (event) => { if (event.persisted) location.reload(); });
+// On plain HTTP, when the box also serves HTTPS: a line offering its certificate (/certificate says how to install it).
+(async () => {
+  const offer = document.getElementById('https-offer');
+  if (!offer || location.protocol !== 'http:') return;
+  try {
+    const data = await (await fetch('/certificate.json', { cache: 'no-store' })).json();
+    offer.hidden = !data.on;
+  } catch {
+    // No answer: nothing offered.
+  }
+})();
 (() => {
   const tabs = document.querySelectorAll('.home-tabs [data-tab]');
   const panes = { shout: document.getElementById('tab-shout'), board: document.getElementById('tab-board') };
