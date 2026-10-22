@@ -5440,3 +5440,43 @@ body.certificate #cert-links {
 .trend-legend {
   margin: 0.4rem 0 0.2rem;
 }
+
+/* /admin → Mock controls (admin-mock.js): one row per control, its control in a cell of its own so a second
+   way of drawing it can sit beside it. */
+.mock-group {
+  margin: 1.5rem 0 0;
+}
+.admin-pane .mock-group-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+.mock-row {
+  margin: 0.75rem 0 0;
+  padding: 0.8rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.admin-pane .mock-row > h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+.mock-cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+  margin: 0.6rem 0;
+}
+.mock-cell {
+  min-width: 0;
+}
+.mock-code {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.mock-findings {
+  display: grid;
+  gap: 0.6rem;
+}

@@ -109,13 +109,14 @@ const chips = (root, label) => {
   check('Audience words are Guests, Users and Administrators: no Public or Private chip', ![...d.querySelectorAll('.chip, .chip-btn')].some((c) => /^(Public|Private)$/.test(t(c))));
 
   // The same words in the scripts' own prose (strings with a space), not in comments or code names.
-  const files = ['admin.js', 'admin-widgets.js', 'admin-layout.js', 'admin-tour.js'];
+  const files = ['admin.js', 'admin-widgets.js', 'admin-layout.js', 'admin-tour.js', 'admin-mock.js'];
   const bad = [];
   for (const f of files) {
     const src = fs.readFileSync(`${WEB}/${f}`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     for (const m of src.matchAll(/'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\\n]|\\.)*)`|"((?:[^"\\\n]|\\.)*)"/g)) {
       const s = (m[1] ?? m[2] ?? m[3]).replace(/\$\{[^}]*\}/g, '');   // the words, not a template's code
-      if (!/\S +\S/.test(s) || /^[/#.\[]/.test(s)) continue;     // prose only: a code name or a path has no space
+      // prose only: a code name or a path has no space; a call, a tag or an attribute (Mock controls' code lines) is code
+      if (!/\S +\S/.test(s) || /^[/#.\[<]|^[\w$.]+\(|^\w+="/.test(s)) continue;
       if (/\b(Log in|Log out|log in|log out|Choose|choose|choosing|chosen)\b|(?<![-\w])[Ll]ogin\b|\b[Ff]etch(es|ed|ing)?\b|n't\b/.test(s)) bad.push(`${f}: ${s.slice(0, 90)}`);
     }
   }

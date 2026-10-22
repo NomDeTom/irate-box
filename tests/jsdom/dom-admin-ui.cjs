@@ -131,12 +131,12 @@ setTimeout(() => {
   }
   const side = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
   // The app-first menu: Overview, Apps (a page per app, from the manifests), Moderation, System
-  // (accounts under System, not Box), the Doctors last; nothing left over.
+  // (accounts under System, not Box), the Doctors, then Mock controls last (Tom, 2026-10-22); nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors last', groups.join('|') === 'Apps|Hub layout|Moderation|System|Doctors', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors, then Mock controls last', groups.join('|') === 'Apps|Hub layout|Moderation|System|Doctors|Mock controls', groups.join('|'));
   check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));
   const hi = side.indexOf('Doctors');
-  check('sidebar: the three doctors under Doctors', side.slice(hi + 1).join('|') === 'Box doctor|Security doctor|Updates doctor', side.join('|'));
+  check('sidebar: the three doctors under Doctors', side.slice(hi + 1, hi + 4).join('|') === 'Box doctor|Security doctor|Updates doctor' && side[hi + 4] === 'Mock controls', side.join('|'));
   check('sidebar: Clock under System; Appearance under Hub layout, before Moderation', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Clock') < hi
     && side.indexOf('Appearance') > side.indexOf('Hub layout') && side.indexOf('Appearance') < side.indexOf('Moderation'));
   check('Hub layout: Home tiles, Folders, Status widgets, Appearance, and no folder of its own in the sidebar',
