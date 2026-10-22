@@ -280,6 +280,8 @@ CAUSE_WORDS = {
 # How often a reconnect is tried again, at most (the gap grows by `backoff` up to this): fruitless tries
 # cost power on a box that runs on a battery.
 RETRY = {"eager": 600, "steady": 3600, "sparing": 21600}
+HOTSPOT_RETRY = 300  # seconds between starts of a hotspot found down with the link up (one that won't start isn't retried every check)
+_hotspot_tried = [0.0]  # when the last such start was tried (one for the box: several links share it)
 # How long to keep reconnecting while the network is at fault; then stop, and say so.
 GIVE_UP = {"never": None, "hour": 3600, "day": 86400, "week": 7 * 86400}
 # A pace's old name: settings saved with it still load.
@@ -2471,17 +2473,21 @@ class Link:
         if self.up and self.answers:
             self.actor.remember()
             self.ssids_known = None
-            if self.hotspot_due:
-                # The driver's own reset took the hotspot down with the link; the link is back.
-                self.hotspot_due = False
-                from irate_box.root import radio
+            # The hotspot down while the link is up: started again. After a driver's own reset seen during an
+            # outage (hotspot_due) at once; otherwise at any check, at most every HOTSPOT_RETRY, since a reset
+            # the driver mends between two checks (an AIC8800's ~13 s) never shows as an outage here at all.
+            due, self.hotspot_due = self.hotspot_due, False
+            from irate_box.root import radio
 
-                if (
-                    not self.dry
-                    and radio.hotspot_up()
-                    and not any(d.get("type") == "AP" for d in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).values())
-                ):
-                    w.log(now, "result", radio.restore_hotspot() or "the hotspot is up")
+            if (
+                not self.dry
+                and (due or now - _hotspot_tried[0] >= HOTSPOT_RETRY)
+                and radio.hotspot_up()
+                and not any(d.get("type") == "AP" for d in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).values())
+            ):
+                _hotspot_tried[0] = now
+                said = radio.restore_hotspot() or "the hotspot is up"
+                w.log(now, "result", said if due else f"The hotspot was down with the link up: {said}")
         for step in actions:
             if step == "pin":
                 result = self.actor.pin()
