@@ -3,7 +3,7 @@
 // /admin → Mock controls: every control the admin pages use, drawn by the same calls the pages make, with stand-in
 // data and nothing sent. Two uses: the example to copy when a page needs a control, and the place to pick one from.
 // The list follows the menu mock's Controls view (the 2026-10-07 menu overhaul), then the controls the admin has
-// had since, then the cards and findings the doctors draw. The mock itself is out of date: none of its code is here.
+// had since, then the cards and findings the doctors draw, then what the pages draw beyond the shared widgets. The mock itself is out of date: none of its code is here.
 // Each row keeps its control in one cell (.mock-cell), so a second way of drawing it can sit beside it.
 (() => {
   'use strict';
@@ -48,9 +48,18 @@
       } }, label)));
 
     // The uptime grid: 72 hours by the hour, a few hours down and a gap with no data.
+    // The column heads and each cell's words as linkhistory.py makes them: the hour every 12 columns, and each
+    // hour's span ("Tue 07 14:00–15:00"), in this browser's time.
+    const hourStart = (index) => { const at = new Date(); at.setMinutes(0, 0, 0); at.setHours(at.getHours() - (71 - index)); return at; };
+    const clock = (at) => `${String(at.getHours()).padStart(2, '0')}:00`;
+    const hourHeads = Array.from({ length: 72 }, (_, index) => (index % 12 === 0 ? clock(hourStart(index)) : ''));
+    const hourSpans = Array.from({ length: 72 }, (_, index) => {
+      const at = hourStart(index), end = new Date(at.getTime() + 3600e3);
+      return `${at.toLocaleDateString('en-GB', { weekday: 'short' })} ${String(at.getDate()).padStart(2, '0')} ${clock(at)}–${clock(end)}`;
+    });
     const hours = Array.from({ length: 72 }, (_, index) => (index > 60 && index < 64 ? null : { up: index === 20 ? 0 : index % 17 === 0 ? 0.93 : 1, n: 60, drops: index % 17 === 0 ? 1 : 0 }));
     const uptime = typeof Heatmap === 'undefined' ? h('p', { class: 'setting-desc', text: 'The heatmap script is not loaded.' })
-      : h('div', {}, Heatmap.grid({ caption: 'A stand-in service, the last 72 hours by hour', cols: hours, rows: [{ label: 'Stand-in', cells: hours, where: (index) => `${72 - index} hours ago` }] }), Heatmap.legend());
+      : h('div', {}, Heatmap.grid({ caption: 'A stand-in service, the last 72 hours by hour', cols: hourHeads, rows: [{ label: 'Stand-in', cells: hours, where: (index) => hourSpans[index] }] }), Heatmap.legend());
 
     const entries = Array.from({ length: 30 }, (_, index) => ({ id: `entry-${index}`, title: `Entry ${index + 1}`, summary: 'A one-line summary',
       badges: [index % 7 ? 'ok' : 'queued'], detail: { Size: `${index + 1} MB`, Added: `2026-10-${String((index % 28) + 1).padStart(2, '0')}` } }));
@@ -79,7 +88,7 @@
       row('help', 'Help that expands', 'The longer explanation, next to the control it explains.',
         '<details class="field-help"><summary>…</summary>…</details>',
         h('details', { class: 'field-help' }, h('summary', { text: 'What does this do?' }), h('p', { class: 'setting-desc', text: 'The longer explanation. It stays closed until asked for.' }))),
-      row('fold', 'A fold', 'A part to open when wanted (history, advanced options). The admin folds with <details>; the mock\'s button that changes its own words is not used.',
+      row('fold', 'A fold', 'A part to open when wanted (history, advanced options). The admin folds with <details>. The mock\'s button that changes its own words is not used.',
         '<details><summary>…</summary>…</details>',
         h('details', {}, h('summary', { text: 'Memory and disk history' }), h('p', { class: 'setting-desc', text: 'What the fold holds.' }))),
       row('uptime', 'Uptime', 'Hours or days as cells, coloured by how much of each was up, said in a tooltip and to a screen reader.',
@@ -178,13 +187,142 @@
         'AW.findings([{id, title, summary, status, detail, actions: [{choice, label, confirm}]}], {act})', doctors));
   }
 
+  // ---- What the pages draw beyond the shared widgets: their own markup and admin.js's helpers ----
+  // Found by comparing every page's elements with this one's (2026-10-22). A part whose real code sends something
+  // (an app's Access) is drawn with the same helpers and a save that sends nothing.
+  function fromThePages() {
+    const field = (label, input) => h('label', {}, label, ' ', input);
+    const story = h('textarea', { name: 'mock-story', rows: '3', maxlength: '1000', placeholder: 'Message', 'data-emoji': '' });
+    const fields = h('form', { class: 'library-form', onsubmit: (event) => event.preventDefault() },
+      field('Name', h('input', { type: 'text', name: 'mock-name', maxlength: '32' })),
+      field('Retries', h('input', { type: 'number', name: 'mock-retries', min: '0', max: '10', value: '3' })),
+      field('Password', h('input', { type: 'password', name: 'mock-password', minlength: '8', autocomplete: 'new-password' })),
+      field('Address', h('input', { type: 'url', name: 'mock-url', placeholder: 'https://' })),
+      field('Message (with the emoji button)', story),
+      field('A file', h('input', { type: 'file', name: 'mock-file' })),
+      h('label', { class: 'setting' }, h('input', { type: 'checkbox', name: 'mock-tick' }),
+        h('span', { class: 'setting-desc', text: 'I understand that this runs someone else\'s code on this box\'s address' })));
+    if (window.EMOJI) window.EMOJI.attach(story);
+    const colour = AW.settings([{ key: 'accent', label: 'Accent colour', kind: 'colour', value: '', shown: '#7c6af7', unset: 'Theme colour',
+      warn: (value) => (value && value.toLowerCase() === '#ffff00' ? 'Yellow on white is hard to read.' : '') }]);
+
+    const progress = h('div', {},
+      h('div', { class: 'admin-progress' }, h('progress', { class: 'admin-bar', max: '1', value: '0.6' }), h('p', { class: 'setting-desc', text: 'Step 3 of 5: unpacking.' })),
+      h('details', { class: 'admin-output' }, h('summary', { text: 'Installer output' }),
+        h('pre', { class: 'admin-log', text: 'Downloading… 4.1 MB\nChecking the signature… good\nUnpacking… done' })),
+      h('p', { class: 'setting-desc', text: 'Space used: 1.2 GB of 4 GB' }),
+      h('div', { class: 'admin-meter' }, h('div', { style: 'width: 30%' })));
+
+    const fold = h('details', { class: 'sec-fold' }, h('summary', { text: 'Memory and disk history' }),
+      h('p', { class: 'setting-desc', text: 'What the fold holds: a chart, a table, the settings of a part.' }));
+
+    // Tabs with their panels, wired by admin.js's own initTabs (arrow keys, the choice kept in this browser).
+    const tabs = h('div', { class: 'view-switch', role: 'tablist', 'aria-label': 'Where new books come from', 'data-tabs': 'mock' },
+      ['Kiwix library', 'Upload', 'Address'].map((label, index) => h('button', { type: 'button', class: 'view-switch-btn', role: 'tab',
+        id: `mock-tab-${index}`, 'aria-controls': `mock-panel-${index}` }, label)));
+    const panels = ['Books from the Kiwix library.', 'A book from this device.', 'A book from an address.'].map((text, index) =>
+      h('div', { role: 'tabpanel', id: `mock-panel-${index}`, 'aria-labelledby': `mock-tab-${index}` }, h('p', { class: 'setting-desc', text })));
+    const tabbed = h('div', {}, tabs, ...panels);
+    if (typeof initTabs === 'function') setTimeout(() => initTabs(tabs));
+
+    const table = h('div', { class: 'scroll-x' }, h('table', { class: 'admin-table' },
+      h('caption', { text: 'The largest processes, read at 14:05' }),
+      h('thead', {}, h('tr', {}, ['Process', 'PID', 'Resident memory'].map((label) => h('th', { text: label })))),
+      h('tbody', {}, [['kiwix-serve', '812', '41 MB'], ['python3', '640', '33 MB'], ['nginx', '512', '6 MB']].map((cells) =>
+        h('tr', {}, cells.map((cell) => h('td', { text: cell })))))));
+
+    const empty = h('div', {}, h('p', {}, h('span', { class: 'empty', text: 'No threads' })),
+      h('p', { class: 'setting-desc', text: 'None yet.' }));
+
+    // An app's page: its facts, then its Access (chipRow and the section, as accessBlock draws them).
+    const facts = h('p', { class: 'inv-facts' }, ['App', 'Installed', '4 MB', 'Service: running'].map((text) => h('span', { class: 'inv-fact', text })),
+      h('span', { class: 'inv-fact bad', text: 'Its update failed' }));
+    const access = AW.section({ id: 'mock-access', label: 'Access to the stand-in app', saved: { mode: 'public' }, save: () => pretendSave(),
+      warn: (changes) => (changes.mode === 'off' ? 'Disabled: its tile goes, and nobody can open it.' : null), onChange: () => drawAccess() });
+    const accessBox = h('div', { class: 'access-set' });
+    function drawAccess() {
+      accessBox.replaceChildren(
+        typeof chipRow === 'function' && typeof OPEN_CHIPS !== 'undefined'
+          ? chipRow('Access', OPEN_CHIPS, access.get('mode'), (value) => access.set('mode', value))
+          : h('p', { class: 'setting-desc', text: 'chipRow is drawn by admin.js, which is not loaded.' }),
+        h('p', { class: 'setting-desc', text: access.get('mode') === 'off' ? 'Disabled: no tile.' : 'Anyone on the network can open it. Visibility: every visitor sees the tile.' }),
+        access.foot, access.reason);
+    }
+    drawAccess();
+
+    // The home page's tiles as the hub writes them (server.py's tile HTML), and two of its live tiles.
+    const tile = (cls, icon, name, desc, extra) => h('a', { class: `service-card${cls}`, href: '#mock-controls' },
+      h('span', { class: 'icon', text: icon }), h('span', { class: 'name', text: name }), h('span', { class: 'desc', text: desc }), extra || null);
+    const tiles = h('div', { class: 'service-grid' },
+      tile('', '🎨', 'Themes', 'Light, dark, E-ink and more'),
+      tile(' down', '📝', 'Shared notes', 'Not running: dimmed'),
+      tile(' locked', '⌨️', 'Terminal', 'For administrators', h('span', { class: 'lock', text: '🔒 sign in to open' })),
+      tile('', '📚', 'Kiwix', 'Seen only by administrators', h('span', { class: 'tile-pill admin-pill', title: 'Only administrators see this tile', text: 'admin only' })),
+      h('div', { class: 'service-card people-card' }, h('span', { class: 'icon', text: '👥' }), h('span', { class: 'name', text: '3' }), h('span', { class: 'desc', text: 'Users online' })),
+      h('div', { class: 'service-card system-card' },
+        h('span', { class: 'meter' }, h('span', { class: 'meter-label' }, 'Memory ', h('b', { text: '1.8 GB free' })), h('span', { class: 'bar' }, h('span', { style: 'width: 64%' }))),
+        h('span', { class: 'meter' }, h('span', { class: 'meter-label' }, 'Disk ', h('b', { text: '2.0 GB free' })), h('span', { class: 'bar' }, h('span', { style: 'width: 31%' })))));
+
+    // The setup steps' list, as admin-tour.js's drawList writes each step.
+    const step = (cls, label, pill, word, text, mute) => h('li', { class: cls }, h('strong', { text: label }), ' ', h('span', { class: pill, text: word }),
+      h('span', { class: 'step-text' }, `${text} `, h('a', { href: '#mock-controls', text: 'Open settings' }),
+        mute ? [' ', h('button', { type: 'button', class: 'link-button mute-step', text: mute })] : null));
+    const steps = h('ol', { class: 'setup-steps' },
+      step('step-ok', 'Administrator password', 'ok-pill', 'done', 'Set.'),
+      step('step-todo', 'WiFi country', 'info-pill', 'to do', 'Not set: the box uses the world setting.', 'Stop reminders'),
+      step('step-warn', 'Security updates', 'warn-pill', 'needs review', 'Automatic updates are off.', 'Stop reminders'),
+      step('step-muted', 'Backups', 'info-pill', 'no reminders', 'No backup made yet.', 'Resume reminders'));
+
+    const go = h('p', {}, h('a', { class: 'action-btn go-btn', href: '#mock-controls', text: 'Show reason: Updates doctor →' }));
+
+    // A package's card on the Updates page, as pkgCard draws it (its buttons send nothing here).
+    const button = (label, primary) => (typeof actionButton === 'function'
+      ? actionButton(label, () => {}, primary ? { className: 'primary' } : {})
+      : btn(label, primary ? { class: 'action-btn primary' } : {}));
+    const updateCard = h('div', { class: 'setting library-source update-card' }, h('span', { class: 'update-card-body' },
+      h('span', { class: 'setting-name' }, 'kiwix-tools ', AW.updatePill(0, true)),
+      h('span', { class: 'setting-desc', text: 'Installed 3.7.0. Newer: 3.8.1, from the Debian archive.' }),
+      h('span', { class: 'library-buttons' }, button('Check now'), button('Download'), button('Install', true))));
+
+    const pickers = h('p', { class: 'setting-desc' },
+      'The theme picker is the one at the top right of this page: hub.js draws it into the page\'s one .theme-picker. The name colour swatch and the emoji button for names are the home page\'s (ident.js and emoji.js). The emoji button is on the message field above.');
+
+    return group('More from the pages', 'Controls the pages draw with their own markup or admin.js\'s helpers, beyond the shared widgets above.',
+      row('fields', 'Form fields', 'Each with its label around it, as the forms on Accounts, Kiwix and Drop. The emoji button joins any field marked data-emoji.',
+        '<form class="library-form"><label>Name <input …></label>…; <label class="setting"><input type="checkbox"> …; data-emoji, EMOJI.attach(field)', fields),
+      row('colour', 'Colour', 'A colour, or the theme\'s own. A warning shows beside a colour that will be hard to read.',
+        "AW.settings([{key, label, kind: 'colour', value, shown, unset, warn}])", colour),
+      row('progress', 'Progress, output and space used', 'A job\'s progress, what its program printed, and how full something is.',
+        '<div class="admin-progress"><progress class="admin-bar">; <details class="admin-output"><pre class="admin-log">; <div class="admin-meter"><div style="width: …">', progress),
+      row('section-fold', 'A section\'s fold', 'The fold most pages use for a part of themselves.',
+        '<details class="sec-fold"><summary>…</summary>…</details>', fold),
+      row('tabs-aria', 'Tabs with their panels', 'Parts of one page that each fill it: one showing, arrow keys move along, the choice kept.',
+        'role="tablist" data-tabs, buttons role="tab" aria-controls, panels role="tabpanel"; initTabs(box) (admin.js)', tabbed),
+      row('table', 'A table', 'Rows of facts with a heading per column. It scrolls sideways on a phone.',
+        '<div class="scroll-x"><table class="admin-table"><caption>…', table),
+      row('empty', 'An empty list', 'What a list says when it has nothing in it.',
+        '<span class="empty"> (the shoutbox, the board); <p class="setting-desc">None yet.</p> (admin lists)', empty),
+      row('app-page', 'An app\'s page: its facts and its Access', 'What an app is and how it stands, then who can open it.',
+        '<p class="inv-facts"><span class="inv-fact">…; chipRow(label, OPEN_CHIPS, value, set) and AW.section, as accessBlock(id, app) (admin.js)', facts, accessBox),
+      row('home-tiles', 'The home page\'s tiles', 'An app\'s tile, one not running, one locked, one only administrators see, and two live tiles.',
+        'server.py: the tile HTML (class="service-card", .down, .locked, .tile-pill) and WIDGET_HTML (people, system)', tiles),
+      row('setup-steps', 'The setup steps', 'Each step\'s name, how it stands, what it is now, and its settings.',
+        'admin-tour.js: drawList() (li.step-ok, .step-todo, .step-warn, .step-muted; .link-button.mute-step)', steps),
+      row('go-link', 'A link to where the reason is', 'A failure says itself, with the way to its diagnosis beside it.',
+        '<a class="action-btn go-btn" href="#updoctor">Show reason: Updates doctor →</a> (admin.js)', go),
+      row('update-card', 'A package\'s card', 'One thing kept up to date: what is installed, what is newer, and the three buttons.',
+        'pkgCard(id, pkg) (admin.js): .setting.library-source.update-card, AW.updatePill, actionButton', updateCard),
+      row('pickers', 'The theme picker and the name colour', 'Drawn once per page by their own scripts.',
+        'hub.js (.theme-picker); ident.js attachHuePicker(swatch, nameInput) (home page)', pickers));
+  }
+
   let drawn = false;
   function draw() {
     if (drawn || !AL.shown(ID)) return;
     const box = document.getElementById('mock-controls-body');
     if (!box) return;
     drawn = true;
-    box.replaceChildren(fromTheMock(), sinceTheMock(), cardsAndFindings());
+    box.replaceChildren(fromTheMock(), sinceTheMock(), cardsAndFindings(), fromThePages());
   }
   window.addEventListener('hashchange', () => setTimeout(draw));
   AL.onBuild(draw);
