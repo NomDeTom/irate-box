@@ -19,7 +19,7 @@
       h('h3', { id: `mock-${id}-name`, text: name }),
       h('p', { class: 'setting-desc', text: use }),
       h('div', { class: 'mock-cells' }, h('div', { class: 'mock-cell', 'data-drawn-by': 'hub' }, ...control)),
-      h('p', { class: 'mock-code' }, h('code', { text: code })));
+      h('p', { class: 'mock-code' }, h('span', { class: 'mock-code-label', text: 'Drawn by: ' }), h('code', { text: code })));
   }
   const group = (title, intro, ...rows) => h('div', { class: 'mock-group' }, h('h3', { class: 'mock-group-title', text: title }),
     h('p', { class: 'setting-desc', text: intro }), ...rows);
@@ -88,7 +88,7 @@
       row('help', 'Help that expands', 'The longer explanation, next to the control it explains.',
         '<details class="field-help"><summary>…</summary>…</details>',
         h('details', { class: 'field-help' }, h('summary', { text: 'What does this do?' }), h('p', { class: 'setting-desc', text: 'The longer explanation. It stays closed until asked for.' }))),
-      row('fold', 'A fold', 'A part to open when wanted (history, advanced options). The admin folds with <details>. The mock\'s button that changes its own words is not used.',
+      row('fold', 'A fold', 'A part to open when wanted (history, advanced options). The admin folds parts this way. The mock\'s button that changes its own words is not used.',
         '<details><summary>…</summary>…</details>',
         h('details', {}, h('summary', { text: 'Memory and disk history' }), h('p', { class: 'setting-desc', text: 'What the fold holds.' }))),
       row('uptime', 'Uptime', 'Hours or days as cells, coloured by how much of each was up, said in a tooltip and to a screen reader.',
@@ -131,9 +131,11 @@
       { value: 'enterprise', title: 'Accounts', desc: 'Each person signs in with their own account.', why: 'this radio has no driver support for it' },
     ], { value: 'password' });
 
-    const fewSelect = h('label', {}, 'Check interval ', h('select', { name: 'mock-few' }, ['Manual', '6 hours', '24 hours', 'Weekly'].map((label) => h('option', { value: label }, label))));
+    // In a form of the pages' kind (form.library-form), as the Updates and Firmware pages hold them: it sets the labels' size.
+    const asOnPages = (...kids) => h('form', { class: 'library-form', onsubmit: (event) => event.preventDefault() }, ...kids);
+    const fewSelect = asOnPages(h('label', {}, 'Check interval ', h('select', { name: 'mock-few' }, ['Manual', '6 hours', '24 hours', 'Weekly'].map((label) => h('option', { value: label }, label)))));
 
-    const pattern = h('div', {}, AW.updatePattern({ often: 'mock-often', act: 'mock-act', value: { often: '24', act: '1' } }),
+    const pattern = asOnPages(AW.updatePattern({ often: 'mock-often', act: 'mock-act', value: { often: '24', act: '1' } }),
       AW.updateButtons({ badge: AW.updatePill(0, true), check: { onclick: () => {} }, fetch: { onclick: () => {} }, install: { disabled: true, why: 'Download it first.' } }));
 
     // A block the page draws again every few seconds: select some of its words and they stay selected.
@@ -152,7 +154,7 @@
         "AW.settings(rows, {id, label, save, warn}); kinds: text, choice, select (with warn), toggle, readout; decision: true", settings),
       row('choice-tiles', 'Choice tiles', 'One of a few, each needing a sentence. One that is not available here says why.',
         'AW.choices(box, name, [{value, title, desc, does, why}], {value, onChange})', tiles),
-      row('select-chips', 'A drop-down of a few, as chips', 'Every <select> of up to AW.CHIPS_AT choices is drawn as chips; the select stays underneath for the form.',
+      row('select-chips', 'A drop-down of a few, as chips', 'A drop-down of up to six choices is drawn as chips. The drop-down stays underneath for the form.',
         'AW.chipSelect(select) (done for every select on the page)', fewSelect),
       row('update', 'Updates: how often, how far, and the three buttons', 'The same two choices and the same three buttons wherever something is updated.',
         'AW.updatePattern({often, act, value}); AW.updateButtons({badge, check, fetch, install})', pattern),

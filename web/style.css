@@ -5501,6 +5501,20 @@ body.certificate #cert-links {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+/* The code that draws a control, said as code: in its own type, on a box of the page's background. */
+.mock-code-label {
+  font-weight: 600;
+}
+.mock-code code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
 .mock-findings {
   display: grid;
   gap: 0.6rem;
