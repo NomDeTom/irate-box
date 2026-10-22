@@ -26,8 +26,11 @@ esac; done
 
 # python3 for tests/run.sh (this box has no system python3; fall back to the uv one).
 if ! command -v python3 >/dev/null 2>&1; then
-	uvpy=$(ls /home/*/.local/share/uv/python/*/bin/python3 2>/dev/null | head -1)
-	[ -n "$uvpy" ] && export PATH="$(dirname "$uvpy"):$PATH"
+	uvpy=$(find /home/*/.local/share/uv/python/*/bin -maxdepth 1 -name python3 2>/dev/null | head -1)
+	if [ -n "$uvpy" ]; then
+		uvbin=$(dirname "$uvpy")
+		export PATH="$uvbin:$PATH"
+	fi
 fi
 command -v python3 >/dev/null 2>&1 || { echo "no python3 on PATH and none under uv" >&2; exit 2; }
 
@@ -78,6 +81,17 @@ if [ "${NO_BROWSER:-0}" != 1 ] && [ "${NO_DOCKER:-0}" != 1 ] && command -v docke
 	echo "   done"
 else
 	echo "   skipped: no Docker or no ${CHROME_IMAGE:-irate-chrome} image"
+fi
+
+# Accessibility (tests/browser/a11y-audit.sh): axe-core's WCAG A and AA rules on every page, theme and palette, in
+# this machine's Chromium through Playwright (no Docker). Reported, not counted, until item 171's fixes are in.
+# NO_BROWSER=1 skips it; without Playwright it says so.
+step "Accessibility (tests/browser/a11y-audit.sh, reported, not counted)"
+if [ "${NO_BROWSER:-0}" != 1 ]; then
+	out=$(bash tests/browser/a11y-audit.sh 2>&1)
+	printf '%s\n' "$out" | grep -E '^FAIL|^skipped|page views|^failures' | sed 's/^/   /' | head -40
+else
+	echo "   skipped: NO_BROWSER=1"
 fi
 
 if [ "$QUICK" = 1 ]; then
