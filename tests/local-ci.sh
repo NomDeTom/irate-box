@@ -26,8 +26,11 @@ esac; done
 
 # python3 for tests/run.sh (this box has no system python3; fall back to the uv one).
 if ! command -v python3 >/dev/null 2>&1; then
-	uvpy=$(ls /home/*/.local/share/uv/python/*/bin/python3 2>/dev/null | head -1)
-	[ -n "$uvpy" ] && export PATH="$(dirname "$uvpy"):$PATH"
+	uvpy=$(find /home/*/.local/share/uv/python/*/bin -maxdepth 1 -name python3 2>/dev/null | head -1)
+	if [ -n "$uvpy" ]; then
+		uvbin=$(dirname "$uvpy")
+		export PATH="$uvbin:$PATH"
+	fi
 fi
 command -v python3 >/dev/null 2>&1 || { echo "no python3 on PATH and none under uv" >&2; exit 2; }
 
