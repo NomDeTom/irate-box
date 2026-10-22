@@ -8,6 +8,11 @@
   // Defined in one page script and read by another loaded after it; hljs is cgit's, checked for first.
   "globals": {
     "AL": "readonly",
+    "EMOJI": "readonly",
+    "OPEN_CHIPS": "readonly",
+    "actionButton": "readonly",
+    "chipRow": "readonly",
+    "initTabs": "readonly",
     "AW": "readonly",
     "Heatmap": "readonly",
     "HubLock": "readonly",
@@ -38,7 +43,7 @@
     "no-unused-vars": [
       "error",
       {
-        "varsIgnorePattern": "^(AL|AW|Heatmap|HubLock|LadderChart|SETUP_STATE|TOUR|askHere|attachHuePicker|drawAttention|esc|findingRow|formatAge|getJSON|hueOf|mdInline|postJSON|reportButton|withHue)$",
+        "varsIgnorePattern": "^(AL|AW|EMOJI|OPEN_CHIPS|actionButton|chipRow|initTabs|Heatmap|HubLock|LadderChart|SETUP_STATE|TOUR|askHere|attachHuePicker|drawAttention|esc|findingRow|formatAge|getJSON|hueOf|mdInline|postJSON|reportButton|withHue)$",
         "caughtErrors": "none",
         "ignoreRestSiblings": true
       }
