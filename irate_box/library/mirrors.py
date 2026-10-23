@@ -599,19 +599,22 @@ def _sync_submodules(m, path, kept_refs, log):
 
 
 def write_urls():
-    """mirror-urls.json: each mirrored upstream URL (with and without .git) -> its local repository."""
+    """mirror-urls.json: each mirrored upstream URL (with and without .git) -> its local repository. Each URL
+    is mapped once: the mirrors' own upstreams first, then their submodules', so a submodule's URL never
+    shadows another mirror, nor one mirror's an earlier one's."""
     st, urls = status(), {}
-    for m in load():
-        pairs = [(m["upstream"], repo_path(m))]
-        pairs += [
-            (s["url"], gitrepos.ROOT / m["area"] / f"{s['repo']}.git")
-            for s in st.get(m["name"], {}).get("submodules", {}).values()
-        ]
-        for url, local in pairs:
-            if (local / "HEAD").exists():
-                base = url[:-4] if url.endswith(".git") else url
-                for u in (base, base + ".git"):
-                    urls[u] = f"file://{local}"
+    mirrors = load()
+    pairs = [(m["upstream"], repo_path(m)) for m in mirrors]
+    pairs += [
+        (s["url"], gitrepos.ROOT / m["area"] / f"{s['repo']}.git")
+        for m in mirrors
+        for s in st.get(m["name"], {}).get("submodules", {}).values()
+    ]
+    for url, local in pairs:
+        if (local / "HEAD").exists():
+            base = url[:-4] if url.endswith(".git") else url
+            for u in (base, base + ".git"):
+                urls.setdefault(u, f"file://{local}")
     _write(URLS, urls)
     return urls
 

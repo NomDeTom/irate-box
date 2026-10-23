@@ -155,7 +155,8 @@ def refresh_feed(log=print):
     for name in (s, "GENERIC"):
         with librarian._open(FEED_URL + name, timeout=120) as resp:
             raw = resp.read(64 << 20)
-        if not zlib.decompress(raw)[:10] == b"VERSION 1\n":
+        # Only its first line, unpacked: a small download can unpack to more memory than the box has.
+        if not zlib.decompressobj().decompress(raw, 16)[:10] == b"VERSION 1\n":
             raise LibrarianError(
                 M(
                     "toolkits.debsecan.unreadable",

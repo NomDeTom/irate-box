@@ -87,6 +87,7 @@ run sim_configs.py
 run sim_books.py
 run sim_ghpace.py
 run sim_cut_short.py
+run sim_download_bounds.py
 run sim_pin.py
 run sim_local_addons.py
 run api_admin_gate.py
