@@ -143,15 +143,50 @@ check(
 caddy = expand((REPO / "config" / "Caddyfile").read_text())
 # A baseline CSP on the hub's origin, server-wide and wherever a location sets its own headers.
 csp_line = "add_header Content-Security-Policy $irate_box_csp always;"
+page_line = "add_header Content-Security-Policy $irate_box_page_csp always;"
+
+
+def block_of(text, start):
+    """One location of a server block: from its first line to its closing brace at the same depth."""
+    i = text.index(start)
+    return text[i : text.index("\n\t}", i)]
+
+
 check(
     "a baseline CSP on the hub's origin: server-wide, and beside every Cache-Control the hub block sets",
     "set $irate_box_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\";" in hub
-    and hub.count(csp_line) == hub.count("add_header Cache-Control") + 1,
-    (hub.count(csp_line), hub.count("add_header Cache-Control")),
+    # the hub's own pages (/, /index.html, its static files, drop and themes) have the stricter one
+    and hub.count(csp_line) + hub.count(page_line) == hub.count("add_header Cache-Control") + 1 + 2,
+    (hub.count(csp_line), hub.count(page_line), hub.count("add_header Cache-Control")),
+)
+check(
+    "  the hub's own pages run only the scripts it serves (script-src 'self'), the apps beside them the baseline",
+    "set $irate_box_page_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'\";"
+    in hub
+    and hub.count(page_line) == 5
+    and "irate_box_page_csp" in block_of(hub, "\tlocation = / {")
+    and csp_line in block_of(hub, "\tlocation ^~ /tools/ {")
+    and "irate_box_page_csp" not in block_of(hub, "\tlocation ^~ /tools/ {"),
+)
+check(
+    "  every header set of the hub's block says nosniff and no-referrer",
+    hub.count("add_header Referrer-Policy no-referrer always;") == hub.count(csp_line) + hub.count(page_line),
+    (hub.count("add_header Referrer-Policy no-referrer always;"), hub.count(csp_line) + hub.count(page_line)),
 )
 check(
     "  and on Caddy",
-    "header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\"" in caddy,
+    "header @irate_box_not_page Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\""
+    in caddy
+    and "header @irate_box_page Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'; "
+    "script-src 'self'\"" in caddy,
+)
+check(
+    "no inline script in the hub's pages (script-src 'self' would refuse it)",
+    not [
+        f.name
+        for f in (REPO / "web").glob("*.html")
+        if re.search(r"<script(?![^>]*\bsrc=)[^>]*>", f.read_text()) or re.search(r"\son[a-z]+=\"", f.read_text())
+    ],
 )
 admin = by_port.get(("8095",), "")
 # The administration pages (audit M3, the wider class): an origin of their own. The hub's port only redirects.

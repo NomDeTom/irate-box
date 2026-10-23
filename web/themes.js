@@ -85,8 +85,10 @@
     }
     if (link) {
       if (link.getAttribute('href') !== theme.css) link.setAttribute('href', theme.css);
-    } else if (document.readyState === 'loading' && !document.body) {
-      // While the <head> is still being read: written into it, so the page waits for it.
+    } else if (document.readyState === 'loading' && !document.body && /^\/themes\/[a-z0-9-]+\.css$/.test(theme.css)) {
+      // While the <head> is still being read: written into it, so the page waits for it (a link added by
+      // script would not hold back the first paint). Only a path of the themes' own shape is written: the
+      // markup is built from a string, so nothing that could close the attribute ever goes into it.
       document.write('<link id="hub-theme-css" rel="stylesheet" href="' + theme.css + '">');
     } else {
       link = document.createElement('link');
