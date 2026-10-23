@@ -3724,7 +3724,8 @@ function scanButtons(finding, busy) {
   });
 }
 // The Security page's, the Security doctor's and Updates' choices are settings: each finding's is a section of one
-// value (the choice picked, '' for none), saved from the footer under it, its question asked once at Save. A cure
+// value (the choices picked, '' for none), saved from the footer under it, its question asked once at Save. A finding
+// with several rows of chips (Guest internet access) holds one choice for each row it changes, space-separated. A cure
 // (one right answer) and its Undo are actions: they act at once, after their question.
 const secSecs = new Map(); // finding id -> its section
 const secOffer = (fid, choice) => {
@@ -3733,19 +3734,26 @@ const secOffer = (fid, choice) => {
   );
   return finding && (finding.actions || []).find((action) => action.choice === choice);
 };
+const secPicked = (value) => (value || "").split(" ").filter(Boolean);
 function secSection(finding) {
   if (secSecs.has(finding.id)) return secSecs.get(finding.id);
   const sec = AW.section({
     id: `sec-${finding.id}`,
     label: finding.title,
     saved: { choice: "" },
-    warn: (c) => {
-      const offer = secOffer(finding.id, c.choice);
-      return offer && offer.confirm ? offer.confirm : null;
-    },
+    warn: (c) =>
+      secPicked(c.choice)
+        .map((choice) => secOffer(finding.id, choice))
+        .filter((offer) => offer && offer.confirm)
+        .map((offer) => offer.confirm)
+        .join(" ") || null,
     save: async (c) => {
       const j = AW.job();
-      secRequest({ action: "fix", choice: c.choice }, finding.id, j.done);
+      secRequest(
+        secPicked(c.choice).map((choice) => ({ action: "fix", choice })),
+        finding.id,
+        j.done,
+      );
       await j;
       // Done: nothing waits any more (the scan says what is in effect now).
       setTimeout(() => sec.update({ choice: "" }));
@@ -3758,13 +3766,24 @@ function secSection(finding) {
 }
 const secChosen = (fid, action) => {
   const sec = secSecs.get(fid);
-  return !!sec && sec.dirty() && sec.get("choice") === action.choice;
+  return !!sec && sec.dirty() && secPicked(sec.get("choice")).includes(action.choice);
 };
 function secChoose(finding, action) {
   // A cure acts at once (the one in effect already: nothing to do).
   if (secKind(finding) === "cure") return action.on ? undefined : secFix(finding.id, action);
-  // Chosen again, or the choice it has now: nothing to save for it.
-  secSection(finding).set("choice", secChosen(finding.id, action) || action.on ? "" : action.choice);
+  // A row's chip replaces that row's choice, and leaves the other rows' alone. Chosen again, or the value the
+  // row has now: nothing to save for that row.
+  const sec = secSection(finding);
+  const row = (finding.actions || [])
+    .filter((other) => action.group && other.group === action.group)
+    .map((other) => other.choice);
+  const kept = secPicked(sec.dirty() ? sec.get("choice") : "").filter(
+    (choice) => choice !== action.choice && !row.includes(choice),
+  );
+  sec.set(
+    "choice",
+    [...kept, ...(secChosen(finding.id, action) || action.on ? [] : [action.choice])].join(" "),
+  );
 }
 // The footer under a finding whose choice is held for Save.
 const secFoot = (finding) =>
@@ -4040,10 +4059,10 @@ function secChipRows(finding, busy) {
         ...choices.map((choice) => {
           const sec = secSecs.get(finding.id);
           // Pending only in the group it was chosen in: the finding's other groups show how they are.
-          const pend =
-            sec && sec.dirty() && choices.some((c) => c.choice === sec.get("choice"))
-              ? { a: { choice: sec.get("choice") } }
-              : null;
+          const picked = sec && sec.dirty() ? secPicked(sec.get("choice")) : [];
+          const pend = choices.some((c) => picked.includes(c.choice))
+            ? { a: { choice: picked.find((p) => choices.some((c) => c.choice === p)) } }
+            : null;
           const sel = pend ? pend.a.choice === choice.choice : !!choice.on;
           const b = el("button", {
             type: "button",
@@ -4099,6 +4118,8 @@ function secChoiceCard(finding, busy, note) {
   return el(
     "div",
     { className: "setting sec-choice", id: `sec-${finding.id}` },
+    // A setting: what it is and how it stands. What the doctor makes of it (why it matters) is the Security
+    // doctor's, beside its finding.
     el("span", { className: "setting-name", textContent: finding.title }),
     el("span", { className: "setting-desc", textContent: parts.detail }),
     ...rows,
@@ -4107,9 +4128,6 @@ function secChoiceCard(finding, busy, note) {
     !rows.length && !buttons && finding.status !== "ok" && finding.fix
       ? el("span", { className: "setting-desc", textContent: finding.fix })
       : null,
-    parts.why
-      ? el("span", { className: "setting-desc fwhy", textContent: parts.why })
-      : null,
     ...parts.notes.map((n) =>
       el("span", { className: "setting-desc", textContent: n }),
     ),
@@ -4117,13 +4135,6 @@ function secChoiceCard(finding, busy, note) {
     // What to type where the page cannot put it in effect itself (the firewall's rules not loaded, say).
     finding.status !== "ok" && parts.commands.length
       ? el("div", { className: "fdo-cmds" }, ...parts.commands.map(copyBox))
-      : null,
-    finding.status !== "ok"
-      ? el("a", {
-          className: "setting-desc",
-          href: "#secdoctor",
-          textContent: "The Security doctor has a finding about this setting.",
-        })
       : null,
     ...secFoot(finding),
     note,
@@ -4160,8 +4171,12 @@ function secPrune(scan) {
   if (!scan) return;
   for (const [fid, sec] of secSecs) {
     if (!sec.dirty() || sec.saving()) continue;
-    const offer = secOffer(fid, sec.get("choice"));
-    if (!offer || offer.on) sec.discard();
+    const picked = secPicked(sec.get("choice"));
+    if (!picked.length || picked.some((choice) => {
+      const offer = secOffer(fid, choice);
+      return !offer || offer.on;
+    }))
+      sec.discard();
   }
 }
 // A program's ports, by protocol, runs of ports as a range: "TCP 443, 8080, 8090–8098".
@@ -4329,7 +4344,17 @@ function renderSecurity(data) {
       const cockpit = !worst && shown.some((l) => l.port === 9090 && (l.unit || "").startsWith("cockpit"));
       const said = [...new Set(fs.filter((finding) => finding.status === worst.status || fs.length === 1)
         .flatMap((finding) => [finding.summary, finding.why]).filter(Boolean))];
-      const acts = fs.filter((finding) => (finding.actions || []).length);
+      // A program's own buttons once (Stop and disable), under the first of its ports that offers them: a port
+      // whose buttons are all drawn already has nothing of its own, so no name, no Save and Discard.
+      const acts = fs
+        .map((finding) => ({
+          ...finding,
+          actions: (finding.actions || []).filter(
+            (action) =>
+              finding === fs.find((g) => (g.actions || []).some((b) => b.choice === action.choice)),
+          ),
+        }))
+        .filter((finding) => finding.actions.length);
       const owner = l0.owner || {};
       // For the filter: the row's words, and its exposure as the chip that shows it.
       const tag = worst && worst.status !== "ok" ? STATE_WORD[worst.status] : "Expected";
@@ -4372,12 +4397,8 @@ function renderSecurity(data) {
         el(
           "td",
           {},
-          worst
-            ? el("span", {
-                className: `fstate fstate-${worst.status}`,
-                textContent: worst.status === "ok" ? "Yes" : STATE_WORD[worst.status],
-              })
-            : null,
+          // Every row's state as a pill, the filter's chip of the same words.
+          AW.pill(tag, worst && worst.status === "problem" ? "bad" : worst && worst.status !== "ok" ? "warn" : "ok"),
           said.length ? el("span", { className: "setting-desc", textContent: ` ${said.join(" ")}` }) : null,
           ssh
             ? el("a", { href: "#sec-ssh-password", textContent: "Who can sign in, and how: SSH settings" })
@@ -4390,15 +4411,12 @@ function renderSecurity(data) {
             el(
               "span",
               { className: "library-buttons" },
-              acts.length > 1 ? el("span", { className: "setting-desc", textContent: `${portRanges(shown.filter((l) => lineOf(l) === finding))}: ` }) : null,
-              // A program's own buttons once (Stop and disable): a port's stay with its port.
-              ...scanButtons(
-                { ...finding, actions: finding.actions.filter((action) => finding === acts.find((g) => g.actions.some((b) => b.choice === action.choice))) },
-                busy,
-              ),
+              acts.length > 1 ? el("span", { className: "setting-desc", textContent: `${portRanges(shown.filter((l) => lineOf(l) && lineOf(l).id === finding.id))}: ` }) : null,
+              ...scanButtons(finding, busy),
             ),
           ),
-          ...fs.flatMap((finding) => [...secFoot(finding), noteUnder(finding.id)]),
+          ...acts.flatMap((finding) => secFoot(finding)),
+          ...fs.map((finding) => noteUnder(finding.id)),
         ),
       );
     }),
@@ -5059,10 +5077,15 @@ async function loadSecurity() {
 }
 
 // onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
+// One request, or several in turn (a card's rows changed at one Save): the helper runs them in order, so the last
+// one's answer means all have one.
 async function secRequest(body, fid, onDone) {
   try {
+    const ids = [];
+    for (const one of [].concat(body)) ids.push((await postJSON("/admin/security", one)).id);
     secWaiting = {
-      id: (await postJSON("/admin/security", body)).id,
+      id: ids[ids.length - 1],
+      ids: ids.length > 1 ? ids : undefined,
       fid,
       onDone,
     };
@@ -5134,13 +5157,8 @@ function drawDebianState(lines, scan) {
                 ? `${waiting} security update${waiting === 1 ? " is" : "s are"} waiting${downloaded ? `, ${downloaded} downloaded` : ""}.`
                 : "No security updates are waiting.",
             ),
-            line(
-              age == null
-                ? "The age of the package lists is not known."
-                : age < 1
-                  ? "The package lists are from today."
-                  : `The package lists are ${Math.round(age)} day${Math.round(age) === 1 ? "" : "s"} old.`,
-            ),
+            // As the package cards say it: when apt's lists were last fetched.
+            line(age == null ? "When apt last checked is not known." : `Checked ${ago(age * 86400)}.`),
             unattended
               ? line(
                   unattended.last_at
@@ -5148,19 +5166,25 @@ function drawDebianState(lines, scan) {
                     : "Automatic updates have not run yet.",
                 )
               : null,
-            packages.length
-              ? el(
-                  "details",
-                  { className: "field-help" },
-                  el("summary", { textContent: `The waiting packages (${packages.length})` }),
-                  el("p", { className: "setting-desc", translate: false, textContent: packages.join(", ") }),
-                )
-              : null,
           ]),
       // The root helper's answer to the card's buttons and its setting.
       noteUnder("security-updates"),
       noteUnder("unattended"),
     ].filter(Boolean),
+  );  // Last, as a package card's builds kept: the packages waiting.
+  document.getElementById("debian-packages").replaceChildren(
+    ...(packages.length
+      ? [
+          el(
+            "details",
+            { className: "field-help" },
+            el("summary", {
+              textContent: `${packages.length} package${packages.length === 1 ? "" : "s"} waiting`,
+            }),
+            el("ul", { translate: false }, ...packages.map((name) => el("li", { textContent: name }))),
+          ),
+        ]
+      : []),
   );
 }
 function drawDebianPattern(lines, busy) {

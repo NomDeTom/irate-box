@@ -4064,9 +4064,11 @@
               id="security-policy"
               data-staged
             >
-              <h3 data-i18n="admin.security.root-policy-title">
-                Root helper security policy
-              </h3>
+              <span
+                class="setting-name"
+                data-i18n="admin.security.root-policy-title"
+                >Root helper security policy</span
+              >
               <p
                 class="setting-desc"
                 data-i18n="admin.security.root-policy-purpose"
@@ -4074,13 +4076,20 @@
                 Select where security policy changes are accepted. Ordinary
                 helper operations continue.
               </p>
-              <div
-                class="chip-group"
-                id="policy-choices"
-                role="radiogroup"
-                aria-label="Security policy authority"
-                data-i18n-aria-label="admin.security.root-policy-authority"
-              ></div>
+              <div class="aw-field">
+                <span
+                  class="aw-label"
+                  data-i18n="admin.security.root-policy-authority-name"
+                  >Policy changes from</span
+                >
+                <div
+                  class="chip-group"
+                  id="policy-choices"
+                  role="radiogroup"
+                  aria-label="Security policy authority"
+                  data-i18n-aria-label="admin.security.root-policy-authority"
+                ></div>
+              </div>
               <p
                 class="setting-desc"
                 id="policy-state"
@@ -4126,41 +4135,41 @@
             <a href="#updates-debian">Updates</a>. The WiFi password of the
             hotspot is on <a href="#network/hotspot">Network → Hotspot</a>.
           </p>
-          <h3 data-i18n="admin.security.h-visitor-data">Visitor data</h3>
           <div class="setting sec-choice security-setting" id="security-visitors">
+            <span class="setting-name" data-i18n="admin.security.h-visitor-data"
+              >Visitor data</span
+            >
+            <p class="setting-desc" data-i18n="admin.security.visitors-short">
+              For the People tile, the box counts different devices today and
+              this week. It never records who they were.
+            </p>
+            <details class="field-help">
+              <summary data-i18n="admin.security.visitors-how">
+                How the box counts devices
+              </summary>
+              <p
+                class="setting-desc"
+                data-i18n="admin.security.box-counts-different-devices"
+              >
+                A helper reads the network addresses of the devices that the box
+                has seen. It hashes each address with a random salt for the day
+                and a random salt for the week. The helper holds the salts only
+                in memory and discards them when the day or week ends. The box
+                writes only the two numbers, and deletes them at reboot. Phones
+                that use a random address can count more than once, so the
+                numbers are approximate. If you turn this off, the helper does
+                not run. Signed-in names show only if each person lets the box
+                show it on their account page.
+              </p>
+            </details>
             <div class="settings" data-note="visitors-note">
               <label
-                class="sec-check"
+                class="aw-field sec-check"
                 data-i18n="admin.security.label-count-distinct-devices-salted"
               >
+                <span class="setting-name aw-label">Count distinct devices</span>
                 <input type="checkbox" id="visitor_counts" />
-                <span>
-                  <span class="setting-name">Count distinct devices</span>
-                  <span class="setting-desc"
-                    >For the People tile, today and this week. The box never
-                    records who they were. Enabled unless you disable it.</span
-                  >
-                </span>
               </label>
-              <details class="field-help">
-                <summary data-i18n="admin.security.visitors-how">
-                  How the box counts devices
-                </summary>
-                <p
-                  class="setting-desc"
-                  data-i18n="admin.security.box-counts-different-devices"
-                >
-                  A helper reads the network addresses of the devices that the
-                  box has seen. It hashes each address with a random salt for
-                  the day and a random salt for the week. The helper holds the
-                  salts only in memory and discards them when the day or week
-                  ends. The box writes only the two numbers, and deletes them at
-                  reboot. Phones that use a random address can count more than
-                  once, so the numbers are approximate. If you turn this off,
-                  the helper does not run. Signed-in names show only if each
-                  person lets the box show it on their account page.
-                </p>
-              </details>
             </div>
             <p
               class="setting-desc action-note"
@@ -4174,7 +4183,7 @@
             id="security-https"
             data-staged
           >
-            <h3 translate="no">HTTP / HTTPS</h3>
+            <span class="setting-name" translate="no">HTTP / HTTPS</span>
             <p class="setting-desc" data-i18n="admin.security.https-short">
               The box can serve every page over HTTPS too, with a certificate of
               its own. Select below whether plain HTTP remains available.
@@ -4230,24 +4239,32 @@
                 Use the box's own certificate
               </button>
             </p>
-            <h4 data-i18n="admin.security.transport-title">Transport</h4>
-            <div
-              class="chip-group"
-              id="tls-transport"
-              role="radiogroup"
-              aria-label="HTTP and HTTPS transport"
-              data-i18n-aria-label="admin.security.transport-label"
-            ></div>
-            <h4 data-i18n="admin.security.admin-http-title">
-              Administrator access over HTTP
-            </h4>
-            <div
-              class="chip-group"
-              id="tls-admin-http"
-              role="radiogroup"
-              aria-label="Administrator access over HTTP"
-              data-i18n-aria-label="admin.security.admin-http-label"
-            ></div>
+            <div class="aw-field">
+              <span class="aw-label" data-i18n="admin.security.transport-title"
+                >Transport</span
+              >
+              <div
+                class="chip-group"
+                id="tls-transport"
+                role="radiogroup"
+                aria-label="HTTP and HTTPS transport"
+                data-i18n-aria-label="admin.security.transport-label"
+              ></div>
+            </div>
+            <div class="aw-field">
+              <span
+                class="aw-label"
+                data-i18n="admin.security.admin-http-title"
+                >Administrator access over HTTP</span
+              >
+              <div
+                class="chip-group"
+                id="tls-admin-http"
+                role="radiogroup"
+                aria-label="Administrator access over HTTP"
+                data-i18n-aria-label="admin.security.admin-http-label"
+              ></div>
+            </div>
             <p
               class="setting-desc aw-warn aw-warn-beside"
               id="tls-admin-http-warn"
@@ -4255,14 +4272,7 @@
             ></p>
             <p class="setting-desc" id="tls-session-note"></p>
             <p class="setting-desc" id="tls-draft-note"></p>
-            <div id="tls-foot"></div>
-            <p
-              class="setting-desc action-note"
-              id="tls-note"
-              role="status"
-              hidden
-            ></p>
-            <details class="tls-own">
+            <details class="field-help tls-own">
               <summary data-i18n="admin.security.summary-use-own-certificate">
                 Use your own certificate
               </summary>
@@ -4322,6 +4332,13 @@
                 </button>
               </form>
             </details>
+            <div id="tls-foot"></div>
+            <p
+              class="setting-desc action-note"
+              id="tls-note"
+              role="status"
+              hidden
+            ></p>
           </div>
 
           <h3 id="security-ports" data-i18n="admin.security.ports">
@@ -4607,13 +4624,6 @@
                   >
                   <span id="debian-pill"></span
                 ></span>
-                <span
-                  class="setting-desc"
-                  data-i18n="admin.updates.operating-system-fixes-debian"
-                  >The operating system: fixes from Debian that the box has not
-                  installed yet, and whether the box installs them by
-                  itself.</span
-                >
                 <div class="update-lines" id="updates-security"></div>
                 <div id="debian-buttons"></div>
                 <details class="field-help update-auto" id="debian-auto-fold">
@@ -4649,6 +4659,7 @@
                     hidden
                   ></p>
                 </details>
+                <div id="debian-packages"></div>
               </div>
             </div>
           </div>

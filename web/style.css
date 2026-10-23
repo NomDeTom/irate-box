@@ -2363,6 +2363,10 @@ details.admin-item summary {
   font-family: ui-monospace, monospace;
   color: var(--muted);
 }
+/* No changes listed yet: no gap in the hub's card. */
+.admin-changes:empty {
+  display: none;
+}
 /* Progress bars on /admin: a step count or a download's bytes; with no value, the
    indeterminate stripe ("working, amount unknown"). */
 .admin-progress {
@@ -4464,38 +4468,32 @@ html[data-palette="contrast"] .help-item.down {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.security-setting h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-.security-setting h4 {
-  margin: 0.6rem 0 0;
-  font-size: 0.9rem;
-}
-/* Chips a line apart from the words above them: a selected chip is filled, and touched the line before. */
-.security-setting .chip-group {
-  margin: 0.25rem 0 0.35rem;
-}
 .security-setting .settings {
   gap: 0.5rem;
 }
+/* A card's rows (a label, then its chips or its switch) the card's whole width, their lines with them. */
+.sec-choice > .aw-field,
+.sec-choice > .settings {
+  align-self: stretch;
+}
+/* A switch in a card's row (Visitor data): its name as the other rows' labels, the box where their chips start. */
 .sec-check {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.7rem;
   cursor: pointer;
 }
+.sec-check .setting-name.aw-label {
+  font-weight: normal;
+}
 .sec-check input {
-  margin-top: 0.2rem;
+  margin: 0;
 }
 .security-setting textarea {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
 }
+/* A long chip (HTTPS with HTTP discovery/redirect only) wraps on a phone; the chips the shared size. */
 .security-setting .chip {
   white-space: normal;
-  min-height: 2.5rem;
 }
 .finding {
   --f: var(--muted);
