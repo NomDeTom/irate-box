@@ -32,7 +32,11 @@ found += [L("udp", 21027, "syncthing@hub.service", "syncthing", hub), L("tcp", 2
 found += [L("tcp", 111, "rpcbind.service", "rpcbind", {"kind": "package", "name": "rpcbind"}),
           L("udp", 111, "rpcbind.service", "rpcbind", {"kind": "package", "name": "rpcbind"})]
 found += [L("tcp", 5000, None, "mystery", {"kind": "unknown", "name": "/opt/old/mystery"})]
-print(json.dumps({"at": 1790000000, "listeners": found, "findings": s.listener_findings(found, {})}))
+# Avahi on three UDP ports, each one open or closed to the hotspot on its own (its findings as with the hotspot
+# firewall on).
+avahi = [L("udp", p, "avahi-daemon.service", "avahi-daemon", {"kind": "package", "name": "avahi-daemon"}) for p in (5353, 44242, 59491)]
+print(json.dumps({"at": 1790000000, "listeners": found + avahi,
+                  "findings": s.listener_findings(found, {}) + s.listener_findings(avahi, {"firewall": {"services": []}})}))
 `;
 const scan = JSON.parse(execFileSync('python3', ['-c', py], { encoding: 'utf8', env: { ...process.env, HUB_STATE_DIR: state } }));
 scan.at = Math.floor(Date.now() / 1000); // fresh: the page does not ask for a scan of its own
@@ -59,7 +63,7 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   const cell = (unit, i) => t(row(unit) && row(unit).cells[i]);
   check('Network listeners: the ledger\'s heading, and the Belongs to column', t(d.getElementById('security-ports')) === 'Network listeners'
     && [...d.querySelectorAll('#security-listeners th')].map(t).join('|') === 'Service|Ports|Address|Belongs to|Expected exposure');
-  check('one row per program, not per port and protocol', rows.length === 4, rows.map((r) => t(r.cells[0])).join(' / '));
+  check('one row per program, not per port and protocol', rows.length === 5, rows.map((r) => t(r.cells[0])).join(' / '));
   check('  runs of ports as a range', cell('nginx.service', 1) === 'TCP 443, 8080, 8090–8098', cell('nginx.service', 1));
   check('  a program\'s random outgoing UDP ports not listed', cell('syncthing@hub.service', 1) === 'TCP 22000; UDP 21027, 22000', cell('syncthing@hub.service', 1));
   check('  TCP and UDP of one program: one row', cell('rpcbind.service', 1) === 'TCP 111; UDP 111', cell('rpcbind.service', 1));
@@ -77,6 +81,13 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
     .every((tr) => tr.querySelector('[class$="-pill"]') && t(tr.querySelector('[class$="-pill"]')) === tr.dataset.tags));
   check('the doctor\'s links to a port land in its program\'s row', !!rp.querySelector('#sec-port-tcp-111') && !!rp.querySelector('#sec-port-udp-111'));
   check('  and no card of its own among the settings (rpcbind was a "To fix" card)', !d.querySelector('#security-findings [id^="sec-port-"]'));
+  const av = row('avahi-daemon.service');
+  check('Avahi: Stop and disable once, then each port a row of Open and Closed, Closed marked',
+    av && [...av.querySelectorAll('button')].filter((b) => /^Stop and disable/.test(t(b))).length === 1
+    && [...av.querySelectorAll('.aw-label')].map(t).join('|') === 'UDP 5353 on the hotspot|UDP 44242 on the hotspot|UDP 59491 on the hotspot'
+    && [...av.querySelectorAll('.chip.selected')].every((b) => t(b) === 'Closed'), av && t(av));
+  check('  one Save and Discard for the row, whatever ports it has', av.querySelectorAll('.aw-foot').length === 1, `${av.querySelectorAll('.aw-foot').length} feet`);
+  check('  no "select Accept risk on the Security doctor" in the table (the doctor\'s)', !/Accept risk/.test(t(d.getElementById('security-listeners'))));
   check('no page errors', !errors.length, errors.join(' | '));
   fs.rmSync(state, { recursive: true, force: true });
   console.log(fails ? `${fails} failure(s)` : 'ok');

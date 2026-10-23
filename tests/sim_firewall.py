@@ -253,19 +253,21 @@ own = [
 ]
 lf = security.listener_findings(own, security.load_record())[0]
 check(
-    "an owner's service: a warning saying the firewall keeps hotspot guests off, with stop and open-to-guests",
+    "an owner's service: a warning saying the firewall keeps hotspot guests off, with stop, and Open and Closed (Closed marked)",
     lf["status"] == "warn"
     and lf["summary"]["id"] == "port.other.closed"
-    and [a["choice"] for a in lf["actions"]] == ["unit-off:homeassistant.service", "firewall-port-on:tcp/8123"],
+    and [a["choice"] for a in lf["actions"] if not a.get("on")]
+    == ["unit-off:homeassistant.service", "firewall-port-on:tcp/8123"]
+    and [a["label"]["en"] for a in lf["actions"] if a.get("group")] == ["Open", "Closed"],
     lf,
 )
 print(security.fix("firewall-port-on:tcp/8123", None))
 lf = security.listener_findings(own, security.load_record())[0]
 check(
-    "  opened to guests: in the ruleset, said by your choice, the switch closes it",
+    "  opened to guests: in the ruleset, said by your choice, its Closed chip closes it",
     "8123" in (ETC / "firewall.nft").read_text()
     and lf["summary"]["id"] == "port.other.opened"
-    and lf["actions"][-1]["choice"] == "firewall-port-off:tcp/8123"
+    and [a["choice"] for a in lf["actions"] if a.get("group") and not a["on"]] == ["firewall-port-off:tcp/8123"]
     and note(finding(), "firewall.ports-open")["ports"] == ["TCP 8123"],
     lf,
 )
