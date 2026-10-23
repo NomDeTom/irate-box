@@ -110,6 +110,18 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   check('Change description changes the mirror, trimmed', saved && saved[1].mirror.description === 'Mesh firmware' && saved[1].mirror.name === 'meshtastic-firmware');
   check('the mirror form asks for a description', !!d.querySelector('#git-mirror-add [name=description]'));
 
+  const subChip = (scope, word) => [...scope.querySelectorAll('.chip-group[aria-label="Mirror its submodules too"] .chip')].find((b) => t(b) === word);
+  check('the mirror card: submodules as On and Off chips, On chosen', subChip(d.getElementById('git-mirrors'), 'On').classList.contains('selected')
+    && !subChip(d.getElementById('git-mirrors'), 'Off').classList.contains('selected')
+    && ![...d.querySelectorAll('#git-mirrors button')].some((b) => /submodules$/.test(t(b))));
+  posted.length = 0;
+  subChip(d.getElementById('git-mirrors'), 'Off').click();
+  await wait();
+  const turned = posted.find(([, b]) => b.action === 'mirror-change');
+  check('the Off chip changes the mirror to no submodules', turned && turned[1].mirror.submodules === false && turned[1].mirror.name === 'meshtastic-firmware');
+  const formBox = d.querySelector('#git-mirror-add input[name=submodules]');
+  subChip(d.getElementById('git-mirror-add'), 'On').click();
+  check('the form: its chips set the hidden checkbox', formBox.checked === true && subChip(d.getElementById('git-mirror-add'), 'On').classList.contains('selected'));
   chip('Mirrors').click();
   check('the Mirrors chip shows only mirrors', cards().map((c) => t(c.querySelector('h4'))).join() === 'meshtastic-firmware.git');
   chip('Builds').click();

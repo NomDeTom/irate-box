@@ -159,9 +159,14 @@ const settingNote = (box) => noteEl(box.closest(".settings").dataset.note);
   '#fw-form input[name="configs"]',
   "#up-ignore-roams",
   "#hs-wpa2",
+  '#git-mirror-add input[name="submodules"]',
 ].forEach((sel) => {
   const box = document.querySelector(sel);
-  if (box) AW.onOff(box, sel === "#hs-wpa2" ? "Older WPA2 devices" : undefined);
+  const names = {
+    "#hs-wpa2": "Older WPA2 devices",
+    '#git-mirror-add input[name="submodules"]': "Mirror its submodules too",
+  };
+  if (box) AW.onOff(box, names[sel]);
 });
 
 async function load() {
@@ -13157,16 +13162,15 @@ function renderMirrors(data) {
                 },
                 { className: "small" },
               ),
-              actionButton(
-                m.submodules ? "Without submodules" : "With submodules",
+              el("span", { className: "setting-desc", textContent: "Submodules" }),
+              AW.onOffChips("Mirror its submodules too", !!m.submodules, false, (on) =>
                 act({
                   action: "mirror-change",
                   mirror: Object.assign({}, m, {
                     status: undefined,
-                    submodules: !m.submodules,
+                    submodules: on,
                   }),
-                }),
-                { className: "small" },
+                })(),
               ),
               relGroups.length
                 ? actionButton(
