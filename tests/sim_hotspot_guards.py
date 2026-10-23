@@ -252,7 +252,7 @@ check(
 (params / "aicwf_dbg_level").write_text("515\n")
 
 # The hotspot on another channel than the link on the same radio: the condition of every stall measured.
-from irate_box.root import ap  # noqa: E402
+from irate_box.root import ap
 
 real_load, real_chans = ap._load, ap.channels_now
 record = {"up": True, "plan": {"kind": "own-channel", "iface": "wlan0", "uplink": "wlan0", "channel": 6}}
