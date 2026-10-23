@@ -7274,7 +7274,9 @@ function renderUpSteps(inv, chosen) {
         "fieldset",
         { className: "up-steps-row" },
         el("legend", { textContent: `${iface} (${kind})` }),
-        ...Object.entries(UP_STEP_NAMES).map(([step, label]) => {
+        ...Object.entries(UP_STEP_NAMES).map(([step, name]) => {
+          // The radio's reset is the adapter's on a wired link (the same step).
+          const label = step === "radio" && kind === "wired" ? "Reset the network adapter" : name;
           const input = el("input", {
             type: "checkbox",
             checked: !(off[iface] || []).includes(step),
@@ -8742,6 +8744,26 @@ function renderDefaults(inv, busy) {
   });
   const savedNow = {};
   const names = defaultsScope ? PER_IFACE : Object.keys(manager.settings);
+  // In the settings' words: which one, set to what, and the file's own line after it. Each goes under the setting
+  // it is about; one on no setting shown here goes at the end.
+  const notesFor = new Map();
+  const loose = [];
+  const note = (setting, text) => {
+    if (names.includes(setting)) notesFor.set(setting, [...(notesFor.get(setting) || []), text]);
+    else loose.push(text);
+  };
+  for (const l of manager.legacy)
+    note(
+      l.setting,
+      `${own(l.file)} also sets this: ${l.means}. It uses an older name that NetworkManager still reads (${l.key}=${l.value}).`,
+    );
+  for (const x of manager.scoped)
+    note(
+      (x.settings || [])[0],
+      `${own(x.file)} sets ${listSaid(x.labels || Object.keys(x.keys))} only for ${matchSaid(x.match) || `the devices in its section [${x.section}]`}.`,
+    );
+  for (const path of manager.broken)
+    loose.push(`${path} could not be read. NetworkManager can also fail to read it.`);
   const mineIf = (manager.ifaces_mine || {})[defaultsScope] || {};
   const rows = names.map((name) => {
     const setting = manager.settings[name];
@@ -8756,7 +8778,9 @@ function renderDefaults(inv, busy) {
     // "default" means irate-box sets nothing here: said as what applies then, not as NetworkManager's
     // own when another file (the image's) sets it.
     const other =
-      setting.value !== null && setting.mine === null ? "Use current value" : null;
+      setting.value !== null && setting.mine === null
+        ? "Leave as set by another file"
+        : null;
     const opts = [
       [
         "default",
@@ -8810,6 +8834,10 @@ function renderDefaults(inv, busy) {
         textContent:
           cap1(now) + "." + means.map((m) => ` ${cap1(m)}.`).join(""),
       }),
+      // Other files' lines on this setting, under it rather than under the card's last setting.
+      ...(notesFor.get(name) || []).map((t) =>
+        el("span", { className: "setting-desc net-default-note", textContent: t }),
+      ),
     );
     row.dataset.name = name;
     return row;
@@ -8835,28 +8863,14 @@ function renderDefaults(inv, busy) {
       }),
     ),
   );
-  const notes = [
-    // In the settings' words: which one, set to what, and the file's own line after it.
-    ...manager.legacy.map(
-      (l) =>
-        `${own(l.file)} also sets ${l.label}: ${l.means}. It uses an older name that NetworkManager still reads (${l.key}=${l.value}).`,
-    ),
-    ...manager.scoped.map(
-      (x) =>
-        `${own(x.file)} sets ${listSaid(x.labels || Object.keys(x.keys))} for ${matchSaid(x.match) || `the devices in its section [${x.section}]`} only.`,
-    ),
-    ...manager.broken.map(
-      (path) => `${path} could not be read. NetworkManager can also fail to read it.`,
-    ),
-  ];
   net.defaults.replaceChildren(
     ...rows.filter((row) => !retries.includes(row)),
-    ...(notes.length
+    ...(loose.length
       ? [
           el(
             "ul",
             { className: "setting-desc" },
-            ...notes.map((t) => el("li", { textContent: t })),
+            ...loose.map((t) => el("li", { textContent: t })),
           ),
         ]
       : []),

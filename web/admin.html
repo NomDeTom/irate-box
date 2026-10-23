@@ -3661,14 +3661,20 @@
                         data-i18n-aria-label="admin.network.aria-access-point-lock"
                       ></div>
                       <label
-                        class="inline"
+                        class="setting"
                         data-i18n="admin.network.label-not-count-short-roams"
-                        ><input type="checkbox" id="up-ignore-roams" /> Do not
-                        count short roams as missed checks. The chart shows a
-                        drop that returns within 20 s on the same network. The
-                        drop is not counted. Failed gateway checks still
-                        count.</label
                       >
+                        <input type="checkbox" id="up-ignore-roams" />
+                        <span>
+                          <span class="setting-name">Short roams</span>
+                          <span class="setting-desc"
+                            >On: a drop that returns within 20 s on the same
+                            network is not counted as a missed check. The chart
+                            still shows it. Failed gateway checks still
+                            count.</span
+                          >
+                        </span>
+                      </label>
                     </div>
                     <!-- Which links have a watchdog of their own (uplink.py watch, watch_new), and the steps that reach every
                        link (box_steps) or meet a cable unplugged (cable_out). -->
