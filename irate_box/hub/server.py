@@ -1207,6 +1207,10 @@ DEFAULT_SETTINGS = {
     # logged in: off by default (the
     # admin's choice), a guest's saves stay exactly as they are either way.
     "saves_cross_device": False,
+    # A sign-in made on a hotspot device is that device's: its session cookie, sent from the hotspot by any
+    # other hardware address (a cookie read off the open network), is not taken. On by default; off, a
+    # session is its cookie alone, wherever it is sent from.
+    "pin_sessions": True,
     # Who sees the names of those signed in and around: users, or the admin only. Guests
     # only ever get the count; and each person decides whether their own name shows at all.
     "names_to": "users",
@@ -1484,6 +1488,32 @@ def joined_count():
             return sum(1 for line in fh if line.strip())
     except OSError:
         return None
+
+
+ARP_TABLE = Path(os.environ.get("HUB_ARP_TABLE", "/proc/net/arp"))
+MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
+
+
+def device_of(addr):
+    """The hardware address of a hotspot device, from the hotspot's DHCP leases (expiry, MAC, IP, …), else
+    the kernel's neighbour table; None for an address off the hotspot, or one neither knows."""
+    net = ap_net()
+    try:
+        if not net or ipaddress.ip_address(addr) not in net:
+            return None
+    except ValueError:
+        return None
+    for path, ip_col, mac_col in ((LEASES, 2, 1), (ARP_TABLE, 0, 3)):
+        try:
+            lines = path.read_text().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            f = line.split()
+            if len(f) > max(ip_col, mac_col) and f[ip_col] == addr and MAC_RE.match(f[mac_col].lower()):
+                if f[mac_col] != "00:00:00:00:00:00":
+                    return f[mac_col].lower()
+    return None
 
 
 def port_listening(port):
@@ -3905,11 +3935,22 @@ class Handler(BaseHTTPRequestHandler):
         return ""
 
     def _session_token(self):
-        for part in self.headers.get("Cookie", "").split(";"):
-            k, _, v = part.strip().partition("=")
-            if k == SESSION_COOKIE:
-                return v
-        return ""
+        """The session cookie, or "" when its session is pinned to a hotspot device (pin_sessions) and this
+        request comes from the hotspot with another hardware address. Read once a request."""
+        if getattr(self, "_token_for", None) is not self.headers:
+            token = ""
+            for part in self.headers.get("Cookie", "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == SESSION_COOKIE:
+                    token = v
+                    break
+            if token and settings_snapshot()["pin_sessions"]:
+                pinned = accounts.session_device(token)
+                here = device_of(self._client_addr()) if pinned else None
+                if pinned and here and here != pinned:
+                    token = ""
+            self._token, self._token_for = token, self.headers
+        return self._token
 
     def _session_cookie(self, token, max_age):
         return (
@@ -3998,6 +4039,7 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("password"),
                     addr,
                     https=self._https(),
+                    device=device_of(addr),
                 )
                 self.send_json(
                     200,
@@ -5264,7 +5306,9 @@ class Handler(BaseHTTPRequestHandler):
                 # The owner's first use: their admin account, signed in at once. The box's own login goes
                 # off (no password made for scripts: script-login at the console makes one).
                 try:
-                    token, _me = accounts.claim_admin(name, pw, self._client_addr())
+                    token, _me = accounts.claim_admin(
+                        name, pw, self._client_addr(), device=device_of(self._client_addr())
+                    )
                 except accounts.Wait as exc:
                     self.send_json(429, refusal(exc))
                     return

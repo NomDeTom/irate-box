@@ -2110,6 +2110,27 @@ def check_hotspot():
     return out
 
 
+def check_hotspot_per_account():
+    """While the hotspot is on: whether it could give each account a WiFi password of its own (ap.per_account).
+    Information for the owner's choice, never a problem."""
+    from irate_box.hub import hotspot
+    from irate_box.root import ap
+
+    rec = ap._load(ap.RECORD, {})
+    if not rec.get("up"):
+        return []
+    got = ap.per_account(rec.get("plan") or {}, hotspot.load(), hotspot.capabilities())
+    return [
+        finding(
+            "hotspot-per-account",
+            M("hotspot-per-account.title", "WiFi passwords for each account"),
+            "ok",
+            got["said"],
+            notes=got["notes"],
+        )
+    ]
+
+
 def check_web():
     web = option(install_options(), "--web", "nginx") or "nginx"
     title = M("web-config.title", "Web server configuration")
@@ -3874,6 +3895,7 @@ def scan():
         check_uplink,
         check_inventory,
         check_hotspot,
+        check_hotspot_per_account,
         check_wifi_stalls,
         check_space,
         check_builds,

@@ -398,9 +398,10 @@ def signup(name, password, addr=""):
     return state
 
 
-def login(name, password, addr="", https=False):
+def login(name, password, addr="", https=False, device=None):
     """A session for a user whose password is right: (cookie value, account). Over HTTPS it is
-    recorded (https_login): an admin account that has can stand in for the box's own login."""
+    recorded (https_login): an admin account that has can stand in for the box's own login. device: the
+    hardware address of the hotspot device signing in, kept with the session (session_device)."""
     now = time.time()
     with _lock:
         _limited(name, addr, now)
@@ -428,7 +429,11 @@ def login(name, password, addr="", https=False):
             raise AccountError(M("accounts.signin.disabled", "Account disabled. An administrator can enable it again."))
         token = secrets.token_urlsafe(32)
         data = _load()
-        data["sessions"][_digest(token)] = {"name": acc["name"].lower(), "expires": round(now + SESSION_DAYS * 86400)}
+        data["sessions"][_digest(token)] = {
+            "name": acc["name"].lower(),
+            "expires": round(now + SESSION_DAYS * 86400),
+            **({"device": device} if device else {}),
+        }
         data["accounts"][acc["name"].lower()]["seen"] = round(now)
         if https:
             data["accounts"][acc["name"].lower()]["https_login"] = round(now)
@@ -506,6 +511,15 @@ def session(token):
                 data["accounts"][s["name"]]["seen"] = round(now)
                 _save(data)
     return _public(acc)
+
+
+def session_device(token):
+    """The hardware address of the hotspot device a session was made on, or None (made elsewhere, or before
+    sessions kept one)."""
+    if not isinstance(token, str) or not 20 <= len(token) <= 100:
+        return None
+    s = _load()["sessions"].get(_digest(token))
+    return s.get("device") if isinstance(s, dict) and isinstance(s.get("device"), str) else None
 
 
 def has_session(name):
@@ -641,11 +655,11 @@ def set_admin(name, password, by="the box's first use"):
         _save(data)
 
 
-def claim_admin(name, password, addr=""):
+def claim_admin(name, password, addr="", device=None):
     """The box's first use (or after reset-password at the console): its owner's admin account, then
     signed in: (cookie value, account)."""
     set_admin(name, password)
-    return login(name, password, addr)
+    return login(name, password, addr, device=device)
 
 
 def reset(name):

@@ -56,6 +56,7 @@ run sim_roaming.py
 run sim_backup.py
 run sim_declared_services.py
 run sim_one_login.py
+run sim_device_pin.py
 run sim_account_nav.py
 run sim_health_accept.py
 run sim_clock_sources.py
