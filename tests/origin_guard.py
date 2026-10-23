@@ -161,8 +161,7 @@ check(
 )
 check(
     "  the hub's own pages run only the scripts it serves (script-src 'self'), the apps beside them the baseline",
-    "set $irate_box_page_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'\";"
-    in hub
+    "set $irate_box_page_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'\";" in hub
     and hub.count(page_line) == 5
     and "irate_box_page_csp" in block_of(hub, "\tlocation = / {")
     and csp_line in block_of(hub, "\tlocation ^~ /tools/ {")
@@ -178,14 +177,16 @@ check(
     "header @irate_box_not_page Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\""
     in caddy
     and "header @irate_box_page Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'; "
-    "script-src 'self'\"" in caddy,
+    "script-src 'self'\""
+    in caddy,
 )
 check(
     "no inline script in the hub's pages (script-src 'self' would refuse it)",
     not [
         f.name
         for f in (REPO / "web").glob("*.html")
-        if re.search(r"<script(?![^>]*\bsrc=)[^>]*>", f.read_text()) or re.search(r"\son[a-z]+=\"", f.read_text())
+        if re.search(r"<script(?![^>]*\bsrc=)[^>]*>", f.read_text(), re.I)
+        or re.search(r"\son[a-z]+\s*=", f.read_text(), re.I)
     ],
 )
 admin = by_port.get(("8095",), "")

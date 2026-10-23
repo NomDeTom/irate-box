@@ -20,16 +20,16 @@
   // sign-in, so a 401 here also means "done".
   async function wait(id, tries) {
     try {
-      const r = await fetch(`/admin/setup?id=${encodeURIComponent(id)}`);
-      if (r.status === 401) { done(); return; }
-      const s = await r.json();
-      if (s.result) {
-        if (s.result.ok) { done(); return; }
-        say(s.result.message, false);
+      const answer = await fetch(`/admin/setup?id=${encodeURIComponent(id)}`);
+      if (answer.status === 401) { done(); return; }
+      const state = await answer.json();
+      if (state.result) {
+        if (state.result.ok) { done(); return; }
+        say(state.result.message, false);
         form.querySelector('button').disabled = false;
         return;
       }
-      if (!s.unclaimed) { done(); return; }
+      if (!state.unclaimed) { done(); return; }
     } catch (_) { /* the web server restarting */ }
     if (tries > 0) setTimeout(() => wait(id, tries - 1), 1500);
     else { say('No answer from the box. Reload this page to see whether the password was set.', false); }
@@ -44,11 +44,11 @@
     if (pw !== form.elements.confirm.value) { say('The passwords do not match.', false); return; }
     form.querySelector('button').disabled = true;
     try {
-      const r = await fetch('/admin/setup', {
+      const answer = await fetch('/admin/setup', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' }, body: JSON.stringify({ name, password: pw, over_http: plain && httpOk.checked }),
       });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      const data = await answer.json().catch(() => ({}));
+      if (!answer.ok) throw new Error(data.error || `HTTP ${answer.status}`);
       say('Creating the account.', true);
       wait(data.id, 20);
     } catch (err) {
