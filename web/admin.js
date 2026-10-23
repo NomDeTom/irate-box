@@ -3708,7 +3708,7 @@ function scanButtons(finding, busy) {
 // Settings drawn together in one card (Sign-in and root's) share its section: one Save for every row in it.
 const secSecs = new Map(); // finding id, or card-<card>, -> its section
 const SEC_CARDS = [
-  ["ssh", "SSH", (fid) => /^ssh/.test(fid)],
+  ["ssh", "SSH", (fid) => fid.startsWith("ssh")],
   ["root", "Root and sudo", (fid) => /^(sudo-|root-|group-)/.test(fid)],
 ];
 const secCardOf = (fid) => SEC_CARDS.find(([, , mine]) => mine(fid));
