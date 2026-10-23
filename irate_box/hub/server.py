@@ -419,6 +419,8 @@ def hidden_apps(signed_in=False):
     for twin, parent in ADMIN_TWINS.items():
         if access.mode_of(state, parent) == "off" or signed_in != "admin":
             out.add(twin)
+    if not gitrepos.served():
+        out |= {"git", "git-private"}
     return out
 
 
