@@ -563,7 +563,7 @@ const AW = (() => {
 
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts, as a section ----
   //   rows: [{key, label, kind: 'toggle'|'choice'|'select'|'multi'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
-  //           max (text), unset, shown, warn (colour, select)}]
+  //           max (text), unset, shown, warn (colour, select)}]; note: words, or (value) → words for the value chosen
   //   opts: {save(changes) → Promise|void, id, label, ask, idle}: the section's (above); no save, no footer.
   function settings(rows, opts = {}) {
     const box = h('div', { class: 'aw-settings', 'data-aw-scope': opts.scope ? '' : null });
@@ -622,7 +622,8 @@ const AW = (() => {
       return h('div', { class: 'aw-field', 'data-setting': spec.key || null, 'data-decision-row': spec.decision || null },
         h('span', { class: 'aw-label', text: spec.label }), ctl,
         spec.decision ? h('span', { class: 'kind-tag', title: 'Asked in the setup steps', text: 'Setup decision' }) : null,
-        spec.note ? h('small', { class: 'setting-desc', text: spec.note }) : null);
+        // A note can follow the value chosen (what that level does), before Save as after.
+        spec.note ? h('small', { class: 'setting-desc', text: typeof spec.note === 'function' ? spec.note(v) : spec.note }) : null);
     }
     draw();
     box.section = handle;

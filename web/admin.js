@@ -5473,7 +5473,6 @@ const hl = {
   clockWhen: document.getElementById("clock-when"),
   clockScan: document.getElementById("clock-scan"),
   clockNote: document.getElementById("clock-note"),
-  clockFindings: document.getElementById("clock-findings"),
   banner: document.getElementById("helper-banner"),
   bannerDetail: document.getElementById("helper-banner-detail"),
   bannerCmds: document.getElementById("helper-banner-cmds"),
@@ -5966,8 +5965,6 @@ function renderHealth(data) {
           textContent: hlNote.text,
         })
       : null;
-  // The clock and its module have their own pane (System, Clock); the rest is the services doctor.
-  const isClock = (finding) => finding.id.startsWith("clock") || finding.id.startsWith("rtc");
   // One shape for every finding, as the security doctor's: a status word,
   // what it is, and one thing to do (its repair buttons, the place it is changed, a command to copy).
   const item = (finding) => {
@@ -6010,7 +6007,7 @@ function renderHealth(data) {
       .join(" ")
       .toLowerCase()
       .includes(needle);
-  const services = all.filter((finding) => !isClock(finding));
+  const services = all;
   const counts = {
     problem: services.filter((service) => service.status === "problem").length,
     warn: services.filter((service) => service.status === "warn" && !accepted(service)).length,
@@ -6083,10 +6080,7 @@ function renderHealth(data) {
   ];
   hl.fineFold.hidden = !fine.length;
   hl.fineCount.textContent = `(${fine.length})`;
-  if (redraw) {
-    hl.fine.replaceChildren(...fine.map(item));
-    hl.clockFindings.replaceChildren(...all.filter(isClock).map(item));
-  }
+  if (redraw) hl.fine.replaceChildren(...fine.map(item));
   const loose =
     hlNote &&
     (hlNote.fid === "scan" ||
@@ -6121,14 +6115,8 @@ function renderHealth(data) {
     document.getElementById("health-install-fold").open = true;
   hl.log.textContent = (data.log || []).join("\n");
   hl.output.hidden = !(data.log || []).length;
-  const problems = all.filter(
-    (finding) => finding.status === "problem" && !isClock(finding),
-  ).length;
-  const clockProblems = all.filter(
-    (finding) => finding.status === "problem" && isClock(finding),
-  ).length;
+  const problems = all.filter((finding) => finding.status === "problem").length;
   badge("health", h.stuck ? "!" : problems ? String(problems) : "");
-  badge("clock", clockProblems ? String(clockProblems) : "");
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
   const here = paneShown("health") || paneShown("clock");
@@ -6319,7 +6307,7 @@ function renderClockSources(c, busy, own) {
     chipRow(
       "Time service",
       [
-        ["chrony", "chrony (suggested)"],
+        ["chrony", "chrony (recommended)"],
         ["image", `The image's own (${imageName})`],
       ],
       values.service,
@@ -8690,19 +8678,23 @@ function listSaid(items) {
   return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 // NetworkManager's match-device list in words: "driver:eagle_sdio,driver:wl" is "devices with the driver eagle_sdio
-// or wl". A kind it has no words for is said as written.
+// or wl"; "type:wifi" is "WiFi devices". A kind it has no words for is said as written.
 function matchSaid(match) {
   const kinds = { driver: "the driver", "interface-name": "the interface name", mac: "the MAC address" };
+  const types = { wifi: "WiFi", ethernet: "wired" };
   const by = new Map();
   for (const part of (match || "").split(",").map((p) => p.trim()).filter(Boolean)) {
     const [kind, value] = part.includes(":") ? part.split(/:(.*)/s) : ["", part];
-    const key = kinds[kind] ? kind : "";
+    const key = kinds[kind] || kind === "type" ? kind : "";
     by.set(key, [...(by.get(key) || []), key ? value : part]);
   }
+  const typed = by.get("type") || [];
+  by.delete("type");
   const said = [...by].map(([kind, values]) =>
     kind ? `${kinds[kind]} ${values.join(" or ")}` : values.join(", "),
   );
-  return said.length ? `devices with ${said.join(" or ")}` : "";
+  const devices = typed.length ? `${listSaid(typed.map((t) => types[t] || t)).replace(/ and /g, " or ")} devices` : "devices";
+  return typed.length || said.length ? `${devices}${said.length ? ` with ${said.join(" or ")}` : ""}` : "";
 }
 function renderDefaults(inv, busy) {
   const manager =
@@ -15928,8 +15920,9 @@ async function loadCardWrites() {
           kind: "choice",
           value: stop,
           options: CARD_STOPS.map(([v, label]) => [v, label]),
-          note:
-            (CARD_STOPS.find((c) => c[0] === stop) || CARD_STOPS[1])[2] +
+          // What the level chosen does, as it is chosen.
+          note: (chosen) =>
+            (CARD_STOPS.find((c) => c[0] === chosen) || CARD_STOPS[1])[2] +
             " While the box still hangs, use Frequent writes or Reduced clock writes. The lower levels lose the data that crash watch collects.",
         },
       ],

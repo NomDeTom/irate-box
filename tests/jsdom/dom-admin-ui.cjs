@@ -261,9 +261,10 @@ setTimeout(() => {
   }
   check('Folders: a line per folder, leading to its page', !!d.querySelector('#folder-index-list a[href="#page-app-tools-rf"]'));
   check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
-  check('clock findings in the Clock pane, in the doctors\' one shape', t('#clock-findings .finding').length === 2 && t('#clock-findings .finding .ftitle')[0].includes('Clock'), t('#clock-findings .finding'));
-  check('no clock findings in the services doctor', !t('#health-findings .finding .ftitle, #health-fine .finding .ftitle').some((x) => /Clock/.test(x)), t('#health-findings .finding .ftitle'));
-  check('the clock\'s badge counts its problem', d.querySelector('a[href="#clock"]').dataset.badge === '1');
+  check('the Clock pane: its settings, no finding cards', !d.querySelector('#clock .finding'), t('#clock .finding'));
+  check('the clock\'s findings on the Box doctor, as every other', t('#health-findings .finding .ftitle, #health-fine .finding .ftitle').some((x) => /Clock/.test(x)), t('#health-findings .finding .ftitle'));
+  check('  the Box doctor\'s badge counts the clock\'s problem; the Clock page has none', !d.querySelector('a[href="#clock"]').dataset.badge
+    && Number(d.querySelector('a[href="#health"]').dataset.badge) >= 1, [d.querySelector('a[href="#clock"]').dataset.badge, d.querySelector('a[href="#health"]').dataset.badge].join('/'));
   check('the box doctor is titled so', t('#health-title')[0] === 'Box doctor');
   check('Recovery and monitoring under System holds the recovery settings; the Box doctor links there', !!d.querySelector('#page-recovery #health-settings')
     && !d.querySelector('#health #health-settings') && !!d.querySelector('#health-recovery-summary a[href="#recovery"]')

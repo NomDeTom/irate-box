@@ -246,7 +246,9 @@ setTimeout(() => {
     check('  saved: the country posted to the box', posted.some((p) => p.action === 'country' && p.country === 'GB'), JSON.stringify(posted.filter((p) => p.action === 'country')));
     // Default connection settings' notes on other files, in words: a match-device list, the settings named by label.
     check('a file\'s section for some devices: its match said in words', w.eval('matchSaid')('driver:eagle_sdio,driver:wl') === 'devices with the driver eagle_sdio or wl'
-      && w.eval('matchSaid')('interface-name:wlan0') === 'devices with the interface name wlan0', w.eval('matchSaid')('driver:eagle_sdio,driver:wl'));
+      && w.eval('matchSaid')('interface-name:wlan0') === 'devices with the interface name wlan0'
+      && w.eval('matchSaid')('type:wifi') === 'WiFi devices' && w.eval('matchSaid')('type:wifi,type:ethernet') === 'WiFi or wired devices',
+    [w.eval('matchSaid')('driver:eagle_sdio,driver:wl'), w.eval('matchSaid')('type:wifi,type:ethernet')].join(' / '));
     check('  the settings it sets, by label, said whole', w.eval('listSaid')(['MAC address on WiFi', 'MAC address while scanning']) === 'MAC address on WiFi and MAC address while scanning');
     // The recovery limits' titles in words, the cable's reset as the adapter's.
     const reachTitles = [...d.querySelectorAll('#up-cablereach .choice-tile .setting-name')].map((n) => n.textContent.trim()).join('|');

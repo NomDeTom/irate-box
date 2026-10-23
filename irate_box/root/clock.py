@@ -7,7 +7,7 @@ Two ways, the owner's choice:
   image    the time service the image came with (systemd-timesyncd on Armbian and Debian), its servers chosen:
            an NTP server on the local network, the internet's pool, or both. A drop-in of ours,
            /etc/systemd/timesyncd.conf.d/52irate-box.conf.
-  chrony   chrony in its place (suggested): the same two, and GPS through gpsd (the GPS time toolkit), each
+  chrony   chrony in its place (recommended): the same two, and GPS through gpsd (the GPS time toolkit), each
            on or off, each with its own state from `chronyc sources`. Our own files in chrony's sources.d and
            conf.d; the pool line of chrony.conf turned off only when the pool is not chosen. Installing chrony
            removes timesyncd (Debian's packages conflict); both come from Debian or, offline, the toolkits' cache.
