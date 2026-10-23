@@ -48,6 +48,13 @@ SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 SESSION_DAYS = 30
 CODE_HOURS = 24
 FAILS, FAIL_WINDOW = 10, 15 * 60
+# Wrong passwords earn a short wait, never a long lockout: on an open hotspot a device's address can be copied and
+# a new one had at will, so a lockout could be turned on the person it protects. After FREE_TRIES failures in
+# FAIL_WINDOW the wait doubles with each failure: up to DEVICE_WAIT_MAX seconds for a device (and for a name from
+# that device), up to NAME_WAIT_MAX for a name tried from devices it has never signed in from (new ones cost nothing
+# to have). A device the account has signed in from before (KNOWN_DAYS) is not held back by that name wait.
+FREE_TRIES, DEVICE_WAIT_MAX, NAME_WAIT_MAX = 5, 60, 300
+KNOWN_DAYS, KNOWN_MAX = 90, 10
 SIGNUPS_PER_HOUR = 5  # per address: a box at an event shouldn't fill with one stranger's accounts
 MAX_ASKED = 100  # applications waiting at once
 MAX_ACCOUNTS = 1000
@@ -71,7 +78,7 @@ def _limit_reached():
 
 
 _lock = threading.Lock()
-_fails = {}  # ("name" | "addr", key) -> [times]
+_fails = {}  # ("name" | "addr" | "pair", key) -> [times]; addr is the device (server.py who), else the address
 _signups = {}  # addr -> [times]
 
 
@@ -176,21 +183,59 @@ def _recent(times, window, now):
     return [t for t in times if now - t < window]
 
 
+def _known(name, addr, now):
+    """Whether this device (addr: its hardware address on the hotspot, else its address) has signed in to this
+    account in the last KNOWN_DAYS."""
+    acc = _load()["accounts"].get((name or "").lower())
+    seen = (acc or {}).get("devices") or {}
+    return bool(addr) and isinstance(seen, dict) and now - seen.get(addr, 0) < KNOWN_DAYS * 86400
+
+
+def _wait_left(key, cap, now):
+    times = _recent(_fails.get(key, []), FAIL_WINDOW, now)
+    if len(times) < FREE_TRIES:
+        return 0
+    return max(0, min(cap, 2 ** (len(times) - FREE_TRIES)) - (now - times[-1]))
+
+
 def _limited(name, addr, now):
-    for key in (("name", (name or "").lower()), ("addr", addr or "")):
-        if len(_recent(_fails.get(key, []), FAIL_WINDOW, now)) >= FAILS:
-            raise Wait(
-                M(
-                    "accounts.wait",
-                    {"one": "Wait {n} minute before you try again.", "other": "Wait {n} minutes before you try again."},
-                    n=FAIL_WINDOW // 60,
-                )
+    """Wait (refused for some seconds) while this device, this name from this device, or (from a device the
+    account does not know) this name has failed too often lately. Never longer than NAME_WAIT_MAX."""
+    n = (name or "").lower()
+    left = _wait_left(("addr", addr), DEVICE_WAIT_MAX, now) if addr else 0  # no address: a call from the box itself
+    if n:
+        left = max(left, _wait_left(("pair", f"{n}\0{addr or ''}"), DEVICE_WAIT_MAX, now))
+        if not _known(n, addr, now):
+            left = max(left, _wait_left(("name", n), NAME_WAIT_MAX, now))
+    if left > 0:
+        secs = int(left) + 1
+        raise Wait(
+            M(
+                "accounts.wait-seconds",
+                {"one": "Wait {n} second before you try again.", "other": "Wait {n} seconds before you try again."},
+                n=secs,
             )
+        )
 
 
 def _failed(name, addr, now):
-    for key in (("name", (name or "").lower()), ("addr", addr or "")):
+    n = (name or "").lower()
+    keys = [("addr", addr)] if addr else []
+    if n:
+        keys.append(("pair", f"{n}\0{addr or ''}"))
+        if not _known(n, addr, now):
+            keys.append(("name", n))  # the name's own count: failures from devices it does not know
+    for key in keys:
         _fails[key] = _recent(_fails.get(key, []), FAIL_WINDOW, now) + [now]
+
+
+def _remember_device(acc, addr, now):
+    """The device just signed in to acc is known to it (the newest KNOWN_MAX within KNOWN_DAYS kept)."""
+    if not addr:
+        return
+    seen = {k: v for k, v in (acc.get("devices") or {}).items() if now - v < KNOWN_DAYS * 86400}
+    seen[addr] = round(now)
+    acc["devices"] = dict(sorted(seen.items(), key=lambda kv: kv[1])[-KNOWN_MAX:])
 
 
 # --- what the pages and the admin see ----------------------------------------------------------
@@ -435,6 +480,7 @@ def login(name, password, addr="", https=False, device=None):
             **({"device": device} if device else {}),
         }
         data["accounts"][acc["name"].lower()]["seen"] = round(now)
+        _remember_device(data["accounts"][acc["name"].lower()], addr, now)
         if https:
             data["accounts"][acc["name"].lower()]["https_login"] = round(now)
         _save(data)
