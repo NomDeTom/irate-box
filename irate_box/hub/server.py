@@ -1226,6 +1226,18 @@ DEFAULT_SETTINGS = {
     # other hardware address (a cookie read off the open network), is not taken. On by default; off, a
     # session is its cookie alone, wherever it is sent from.
     "pin_sessions": True,
+    # Sign-in and identity (Security): how wrong passwords are slowed (accounts.PRESETS), whether the box adapts a
+    # step either way, whether the commonest passwords count as several failures, and how a returning device is
+    # known (its device cookie, its address, either or both).
+    "signin_level": "standard",
+    "signin_adaptive": False,
+    "signin_common": True,
+    "signin_known_by": "cookie",
+    # A post is hidden (report_hide on) only once this many different people reported it: one person's reports
+    # count once, but a person with many devices or accounts can still be several.
+    "report_hide_min": 3,
+    # Each person's share a day of the store's and the drop's storage (store.py Budget): off, half, quarter, eighth.
+    "storage_share": "quarter",
     # Who sees the names of those signed in and around: users, or the admin only. Guests
     # only ever get the count; and each person decides whether their own name shows at all.
     "names_to": "users",
@@ -1405,6 +1417,14 @@ def valid_setting(key, value):
         return valid_palette(value)
     if key == "names_to":
         return value in ("users", "admin")
+    if key == "signin_level":
+        return value in accounts.LEVELS
+    if key == "signin_known_by":
+        return value in accounts.KNOWN_BY
+    if key == "report_hide_min":
+        return type(value) is int and 1 <= value <= 10
+    if key == "storage_share":
+        return value in store.SHARES
     if key == "report_threshold":
         return type(value) is int and 1 <= value <= 20
     if key == "notebooks":
@@ -1529,6 +1549,16 @@ def device_of(addr):
                 if f[mac_col] != "00:00:00:00:00:00":
                     return f[mac_col].lower()
     return None
+
+
+_signin_numbers = {}
+
+
+def signin_numbers(level):
+    """accounts.preset_numbers, once a run: a day of an attacker played out costs a few milliseconds."""
+    if level not in _signin_numbers:
+        _signin_numbers[level] = accounts.preset_numbers(level)
+    return _signin_numbers[level]
 
 
 IDENTITY_KEY_FILE = STATE_DIR / "identity.key"
@@ -2013,6 +2043,8 @@ UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/i
 FRONT_SECRET = os.environ.get("HUB_FRONT_SECRET", "")
 FRONT_HEADER = "X-Irate-Front"
 SESSION_COOKIE = "irate_session"
+# A browser that has signed in to an account before (accounts.device_mark): OWASP's device cookie.
+DEVICE_COOKIE = "irate_device"
 
 
 def unclaimed():
@@ -3351,6 +3383,14 @@ def moderation_action(payload):
 # app itself. A post carries its account and, if narrower than everyone, the choice; what anyone
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
+store.IDENTITY = lambda handler: identity_hash(handler._identity())
+store.SHARE = lambda: settings_snapshot()["storage_share"]
+accounts.SIGNIN = lambda: {
+    "level": settings_snapshot()["signin_level"],
+    "adaptive": settings_snapshot()["signin_adaptive"],
+    "common": settings_snapshot()["signin_common"],
+    "known_by": settings_snapshot()["signin_known_by"],
+}
 store.ADMIN = lambda handler: (
     bool(FRONT_SECRET) and hmac.compare_digest(handler.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode())
 )
@@ -3475,11 +3515,13 @@ def report(app, ref, reason, identity):
 
 
 def hidden_by_reports():
-    """The posts hidden from everyone else until the owner looks (if they chose that)."""
+    """The posts hidden from everyone else until the owner looks (if they chose that): reported by as many people as
+    the queue needs, and at least report_hide_min."""
     st = settings_snapshot()
     if not st["report_hide"]:
         return set()
-    return {k for k, r in reports().items() if r.get("count", 0) >= st["report_threshold"] and not r.get("kept")}
+    need = max(st["report_threshold"], st["report_hide_min"])
+    return {k for k, r in reports().items() if r.get("count", 0) >= need and not r.get("kept")}
 
 
 def moderation_queue():
@@ -4068,6 +4110,14 @@ class Handler(BaseHTTPRequestHandler):
         dev = device_of(addr)
         return f"device:{dev}" if dev else f"addr:{addr}"
 
+    def _device_cookie(self, name):
+        mark = accounts.device_mark(name) or ""
+        return (
+            "Set-Cookie",
+            f"{DEVICE_COOKIE}={mark}; Path=/; Max-Age={accounts.KNOWN_DAYS * 86400}; HttpOnly; SameSite=Strict"
+            + ("; Secure" if self._https() else ""),
+        )
+
     def _session_cookie(self, token, max_age):
         return (
             "Set-Cookie",
@@ -4157,11 +4207,12 @@ class Handler(BaseHTTPRequestHandler):
                     who,
                     https=self._https(),
                     device=device_of(addr),
+                    mark=self._cookie(DEVICE_COOKIE),
                 )
                 self.send_json(
                     200,
                     {"me": me},
-                    [self._session_cookie(token, accounts.SESSION_DAYS * 86400)],
+                    [self._session_cookie(token, accounts.SESSION_DAYS * 86400), self._device_cookie(me["name"])],
                 )
             elif action == "password":
                 accounts.change_password(
@@ -4561,6 +4612,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/status-tiles":
             self.send_json(200, status_tiles_snapshot())
+            return
+
+        if path == "/admin/signin":
+            # What each sign-in level buys (worked out by playing it), and what the adaptive choice does now.
+            self.send_json(
+                200,
+                {"levels": {lv: signin_numbers(lv) for lv in accounts.LADDER}, "adaptive": accounts.adaptive_now()},
+            )
             return
 
         if path == "/admin/tiles":

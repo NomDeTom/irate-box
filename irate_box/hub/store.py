@@ -70,6 +70,12 @@ DROP_MIN_FREE = 64 * 1024 * 1024
 DROP_CHUNK = 64 * 1024
 MAX_FILENAME = 160
 
+# Each person's share a day of the store's and of the drop's storage (the hub's storage_share): so one person cannot
+# write enough to evict everyone's work. A person is the hub's identity for the request (IDENTITY: their account,
+# else their hotspot device, else their address, as a keyed hash). The administrator has no share.
+SHARES = {"off": 0, "half": 2, "quarter": 4, "eighth": 8}
+DAY = 86400  # hubclock ticks: powered-on seconds
+
 # Ids appear in filesystem paths, so they are validated rather than escaped.
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")  # \Z: "$" would let a trailing newline through
 
@@ -86,6 +92,57 @@ NAME_REQUIRED = M("store.name.required", "Enter a name.")
 NO_LENGTH = M("drop.length.none", "Send the file with a Content-Length header.")
 NO_SPACE = M("drop.storage.full", "Insufficient free storage. Delete files from the box, then upload again.")
 INTERRUPTED = M("drop.upload.interrupted", "Upload interrupted. Upload the file again.")
+
+
+def share_used(mb):
+    return M(
+        "store.share.used",
+        "You have stored your share of this box's storage for today ({mb} MB). Try again tomorrow, or ask the "
+        "administrator.",
+        mb=mb,
+    )
+
+
+class Budget:
+    """What each person wrote in the last day, in bytes, by hubclock ticks: {identity: [[ticks, bytes], ...]},
+    kept in one small file so a restart does not hand everyone a new share."""
+
+    def __init__(self, path, clock):
+        self.path, self.clock, self._lock = Path(path), clock, threading.Lock()
+
+    def _read(self, now):
+        try:
+            data = json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            data = {}
+        data = data if isinstance(data, dict) else {}
+        return {
+            k: kept
+            for k, v in data.items()
+            if isinstance(v, list)
+            and (kept := [e for e in v if isinstance(e, list) and len(e) == 2 and now - e[0] < DAY])
+        }
+
+    def left(self, who, total):
+        """Bytes this person may still write today, of a share of `total`; None when there is no share."""
+        parts = SHARES.get(SHARE() if SHARE else "off", 0)
+        if not parts or not who:
+            return None
+        with self._lock:
+            used = sum(e[1] for e in self._read(self.clock.ticks()).get(who, []))
+        return max(0, total // parts - used)
+
+    def spend(self, who, n):
+        if not who or not n:
+            return
+        with self._lock:
+            now = self.clock.ticks()
+            data = self._read(now)
+            data.setdefault(who, []).append([now, n])
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.parent / (self.path.name + ".tmp")
+            tmp.write_text(json.dumps(data))
+            os.replace(tmp, self.path)
 
 
 def body_too_large():
@@ -210,6 +267,7 @@ class Store:
         self.root = Path(root)
         self.clock = clock or hubclock.get_clock()
         self._lock = threading.Lock()
+        self.budget = Budget(self.root / "budget.json", self.clock)
 
     def _dir(self, namespace):
         path = confine.under(self.root, namespace)
@@ -467,6 +525,7 @@ class Drop:
         self.dir = Path(root)
         self.clock = clock or hubclock.get_clock()
         self._lock = threading.Lock()
+        self.budget = Budget(self.dir.parent / "drop-budget.json", self.clock)
 
     def _metas(self):
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -677,6 +736,9 @@ def _handle_drop(handler, method, path, drop):
             return True
         name = unquote(handler.headers.get("X-Drop-Name", "") or "file")
         by = unquote(handler.headers.get("X-Drop-By", "") or "")
+        if not _within_share(handler, drop.budget, length, DROP_MAX_TOTAL):
+            handler.close_connection = True  # the body is not read
+            return True
         try:
             meta = drop.receive(
                 handler.rfile,
@@ -694,6 +756,7 @@ def _handle_drop(handler, method, path, drop):
             handler.close_connection = True
             _send_json(handler, 400, say(INTERRUPTED))
             return True
+        _spend(handler, drop.budget, length)
         _send_json(handler, 201, {**{k: meta[k] for k in ("id", "name", "size")}, "locked": bool(meta.get("lock"))})
         return True
     if path.startswith("/api/drop/") and method == "DELETE":
@@ -786,6 +849,23 @@ def _lock_headers(handler):
     return h.get("X-Lock"), parse_lock(h.get("X-Lock-New")), parse_lock(h.get("X-Lock-Next"))
 
 
+def _within_share(handler, budget, n, total):
+    """Whether this person may write n more bytes today (their share of `total`); if not, the answer is sent."""
+    if ADMIN and ADMIN(handler):
+        return True
+    left = budget.left(IDENTITY(handler) if IDENTITY else None, total)
+    if left is None or n <= left:
+        return True
+    parts = SHARES.get(SHARE() if SHARE else "off", 1) or 1
+    _send_json(handler, 429, say(share_used(f"{total / parts / 2**20:.1f}".removesuffix(".0"))))
+    return False
+
+
+def _spend(handler, budget, n):
+    if not (ADMIN and ADMIN(handler)):
+        budget.spend(IDENTITY(handler) if IDENTITY else None, n)
+
+
 def _send_locked(handler, exc):
     lock = exc.lock or {}
     _send_json(handler, 403, {**answer(exc), "locked": True, **({"lock_n": lock["n"]} if "n" in lock else {})})
@@ -824,6 +904,9 @@ def _blob_get(handler, store, namespace, key):
 # A save or a dropped file made by someone signed in carries their account and, if narrower than
 # everyone, their choice; the listings and the reads leave out what the asker may not see.
 VIEWER = None
+# IDENTITY(handler): the person asking, as the hub's keyed hash; SHARE(): the hub's storage_share. See Budget.
+IDENTITY = None
+SHARE = None
 # ADMIN(handler): the request came through the front's administrator route (the Store pane), which sees every save.
 ADMIN = None
 # Reports (the hub's): the reasons a guest may give, and the keys hidden from everyone until the owner looks.
@@ -908,10 +991,15 @@ def _handle_blob(handler, method, rest, store):
         if data is None:
             _send_json(handler, 413, say(body_too_large()))
             return True
+        if not _within_share(handler, store.budget, len(data), MAX_TOTAL):
+            return True
         try:
-            _send_json(handler, 201, {"id": store.create_scene(data)})
+            key = store.create_scene(data)
         except TooLarge as exc:
             _send_json(handler, 413, answer(exc))
+            return True
+        _spend(handler, store.budget, len(data))
+        _send_json(handler, 201, {"id": key})
         return True
 
     if method == "PUT" and key and namespace in ("rooms", "files"):
@@ -919,11 +1007,14 @@ def _handle_blob(handler, method, rest, store):
         if data is None:
             _send_json(handler, 413, say(body_too_large()))
             return True
+        if not _within_share(handler, store.budget, len(data), MAX_TOTAL):
+            return True
         try:
             store.put(namespace, key, data)
         except TooLarge as exc:
             _send_json(handler, 413, answer(exc))
             return True
+        _spend(handler, store.budget, len(data))
         _send_json(handler, 200, {"id": key})
         return True
 
@@ -1092,6 +1183,9 @@ def _create_save(handler, store):
             thumb = None
 
     body = json.dumps(state).encode()
+    cost = len(body) + len(thumb or b"")
+    if not _within_share(handler, store.budget, cost, MAX_TOTAL):
+        return
     proof, new, nxt = _lock_headers(handler)
     try:
         meta = store.save(
@@ -1111,6 +1205,7 @@ def _create_save(handler, store):
     except TooLarge as exc:
         _send_json(handler, 413, answer(exc))
         return
+    _spend(handler, store.budget, cost)
     _send_json(handler, 201, public_meta(meta))
 
 

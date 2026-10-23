@@ -49,12 +49,34 @@ SESSION_DAYS = 30
 CODE_HOURS = 24
 FAILS, FAIL_WINDOW = 10, 15 * 60
 # Wrong passwords earn a short wait, never a long lockout: on an open hotspot a device's address can be copied and
-# a new one had at will, so a lockout could be turned on the person it protects. After FREE_TRIES failures in
-# FAIL_WINDOW the wait doubles with each failure: up to DEVICE_WAIT_MAX seconds for a device (and for a name from
-# that device), up to NAME_WAIT_MAX for a name tried from devices it has never signed in from (new ones cost nothing
-# to have). A device the account has signed in from before (KNOWN_DAYS) is not held back by that name wait.
-FREE_TRIES, DEVICE_WAIT_MAX, NAME_WAIT_MAX = 5, 60, 300
+# a new one had at will, so a lockout could be turned on the person it protects. Past a preset's free tries the
+# wait doubles with each failure, to its caps: one for a device (and for a name from that device, counted over
+# FAIL_WINDOW), and a longer one for a name tried from devices it does not know (counted over NAME_WINDOW: new
+# devices cost nothing to have, so they share one count). A device the account knows (KNOWN_BY: by its device
+# cookie, its address, either or both) is not held back by that name's wait.
+NAME_WINDOW = 24 * 3600
+PRESETS = {
+    # lenient and siege are adaptive's steps beyond the three the owner chooses from.
+    "lenient": {"free": 15, "device_max": 15, "name_free": 15, "name_max": 300},
+    "relaxed": {"free": 10, "device_max": 30, "name_free": 10, "name_max": 600},
+    "standard": {"free": 5, "device_max": 60, "name_free": 5, "name_max": 1800},
+    "strict": {"free": 3, "device_max": 300, "name_free": 3, "name_max": 3600},
+    "siege": {"free": 2, "device_max": 600, "name_free": 2, "name_max": 7200},
+}
+LEVELS = ("relaxed", "standard", "strict")  # the owner's choices
+LADDER = ("lenient", "relaxed", "standard", "strict", "siege")
+KNOWN_BY = ("cookie", "device", "either", "both")
 KNOWN_DAYS, KNOWN_MAX = 90, 10
+# Adaptive, one step either side of the owner's level, for ADAPT_HOURS. Tighter for what is clearly under attack:
+# an account tried NAME_ATTACK times by unknown devices in an hour (spraying), or a device that failed DEVICE_ATTACK
+# different names in an hour (stuffing). Looser for the whole box when people keep needing their free tries: at
+# least RELAX_AFTER sign-ins in a day that came right only after nearly all of them, and nothing under attack.
+NAME_ATTACK, DEVICE_ATTACK, RELAX_AFTER, ADAPT_HOURS = 20, 5, 3, 24
+COMMON_WEIGHT = 3  # a wrong password that is one of the commonest counts as this many failures
+COMMON_FILE = Path(__file__).with_name("common-passwords.txt")
+# The hub's choices (server.py sets it from its settings): level, adaptive, common, known_by.
+SIGNIN = None
+SIGNIN_DEFAULTS = {"level": "standard", "adaptive": False, "common": True, "known_by": "cookie"}
 SIGNUPS_PER_HOUR = 5  # per address: a box at an event shouldn't fill with one stranger's accounts
 MAX_ASKED = 100  # applications waiting at once
 MAX_ACCOUNTS = 1000
@@ -183,30 +205,130 @@ def _recent(times, window, now):
     return [t for t in times if now - t < window]
 
 
-def _known(name, addr, now):
-    """Whether this device (addr: its hardware address on the hotspot, else its address) has signed in to this
-    account in the last KNOWN_DAYS."""
+def _signin():
+    got = SIGNIN() if SIGNIN else {}
+    return {k: got.get(k, v) for k, v in SIGNIN_DEFAULTS.items()}
+
+
+_tight = {}  # ("name" | "addr", key) -> until: a step tighter, by the adaptive choice
+_tried = {}  # device -> {name: last failure}: how many names one device has failed lately
+_honest = []  # when sign-ins came right only after nearly all their free tries
+_relaxed = [0.0]  # until when the whole box is a step looser
+
+
+def _level(key, now):
+    """The preset's name for this key now: the owner's, or a step either side of it (adaptive)."""
+    st = _signin()
+    i = LADDER.index(st["level"] if st["level"] in LEVELS else "standard")
+    if st["adaptive"]:
+        if key is not None and _tight.get(key, 0) > now:
+            i += 1
+        elif _relaxed[0] > now:
+            i -= 1
+    return LADDER[i]
+
+
+def _preset(key, now):
+    return PRESETS[_level(key, now)]
+
+
+def _came_right(name, addr, now):
+    """A sign-in that worked: if it needed nearly all its free tries, a sign the box is too strict for its people."""
+    st = _signin()
+    n = (name or "").lower()
+    p = _preset(("addr", addr), now)
+    if len(_recent(_fails.get(("pair", f"{n}\0{addr or ''}"), []), FAIL_WINDOW, now)) < max(1, p["free"] - 1):
+        return
+    _honest[:] = [t for t in _honest if now - t < 86400] + [now]
+    if st["adaptive"] and len(_honest) >= RELAX_AFTER and not any(u > now for u in _tight.values()):
+        _relaxed[0] = now + ADAPT_HOURS * 3600
+
+
+_common = []
+
+
+def common(password):
+    """Whether a password is one of the commonest (common-passwords.txt: SecLists' 10,000, MIT)."""
+    if not _common:
+        try:
+            _common.append(frozenset(COMMON_FILE.read_text().split()))
+        except OSError:
+            _common.append(frozenset())
+    return isinstance(password, str) and password.lower() in _common[0]
+
+
+def _device_key():
+    f = STATE / "device-cookie.key"
+    try:
+        key = f.read_bytes()
+    except OSError:
+        key = b""
+    if len(key) != 32:
+        key = secrets.token_bytes(32)
+        STATE.mkdir(parents=True, exist_ok=True)
+        fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(key)
+    return key
+
+
+def _mark_sig(acc):
+    # Signed over the name and the password hash's salt: a changed or reset password ends every device cookie.
+    salt = (acc.get("hash") or "").split("$")
+    return hmac.new(
+        _device_key(), f"{acc['name'].lower()}\0{salt[4] if len(salt) > 4 else ''}".encode(), "sha256"
+    ).hexdigest()[:32]
+
+
+def device_mark(name):
+    """The device cookie's value for a browser just signed in to this account (OWASP's device cookies)."""
+    acc = _load()["accounts"].get((name or "").lower())
+    return f"{acc['name'].lower()}.{_mark_sig(acc)}" if acc and acc.get("hash") else None
+
+
+def _mark_ok(name, mark):
+    n = (name or "").lower()
+    if not isinstance(mark, str) or not mark.startswith(n + "."):
+        return False
+    acc = _load()["accounts"].get(n)
+    return bool(acc and acc.get("hash")) and hmac.compare_digest(mark[len(n) + 1 :], _mark_sig(acc))
+
+
+def _known(name, addr, mark, now):
+    """Whether the account knows this browser or device, as KNOWN_BY says: by its device cookie (mark), by its
+    address (addr: the hardware address on the hotspot, else the address, signed in from in KNOWN_DAYS), either,
+    or both."""
     acc = _load()["accounts"].get((name or "").lower())
     seen = (acc or {}).get("devices") or {}
-    return bool(addr) and isinstance(seen, dict) and now - seen.get(addr, 0) < KNOWN_DAYS * 86400
+    by_device = bool(addr) and isinstance(seen, dict) and now - seen.get(addr, 0) < KNOWN_DAYS * 86400
+    by_cookie = _mark_ok(name, mark)
+    how = _signin()["known_by"]
+    return {"cookie": by_cookie, "device": by_device, "either": by_cookie or by_device}.get(
+        how, by_cookie and by_device
+    )
 
 
-def _wait_left(key, cap, now):
-    times = _recent(_fails.get(key, []), FAIL_WINDOW, now)
-    if len(times) < FREE_TRIES:
+def _wait_left(key, free, cap, window, now):
+    times = _recent(_fails.get(key, []), window, now)
+    if len(times) < free:
         return 0
-    return max(0, min(cap, 2 ** (len(times) - FREE_TRIES)) - (now - times[-1]))
+    return max(0, min(cap, 2 ** (len(times) - free)) - (now - times[-1]))
 
 
-def _limited(name, addr, now):
-    """Wait (refused for some seconds) while this device, this name from this device, or (from a device the
-    account does not know) this name has failed too often lately. Never longer than NAME_WAIT_MAX."""
+def _limited(name, addr, now, known=False):
+    """Wait (refused for some seconds) while this device, this name from this device, or (from a device the account
+    does not know) this name has failed too often lately, as the preset says."""
     n = (name or "").lower()
-    left = _wait_left(("addr", addr), DEVICE_WAIT_MAX, now) if addr else 0  # no address: a call from the box itself
+    left = 0
+    if addr:  # no address: a call from the box itself
+        p = _preset(("addr", addr), now)
+        left = _wait_left(("addr", addr), p["free"], p["device_max"], FAIL_WINDOW, now)
     if n:
-        left = max(left, _wait_left(("pair", f"{n}\0{addr or ''}"), DEVICE_WAIT_MAX, now))
-        if not _known(n, addr, now):
-            left = max(left, _wait_left(("name", n), NAME_WAIT_MAX, now))
+        p = _preset(("addr", addr), now)
+        left = max(left, _wait_left(("pair", f"{n}\0{addr or ''}"), p["free"], p["device_max"], FAIL_WINDOW, now))
+        if not known:
+            p = _preset(("name", n), now)
+            left = max(left, _wait_left(("name", n), p["name_free"], p["name_max"], NAME_WINDOW, now))
     if left > 0:
         secs = int(left) + 1
         raise Wait(
@@ -218,15 +340,63 @@ def _limited(name, addr, now):
         )
 
 
-def _failed(name, addr, now):
+def _failed(name, addr, now, known=False, password=None):
+    st = _signin()
+    weight = COMMON_WEIGHT if st["common"] and common(password) else 1
     n = (name or "").lower()
-    keys = [("addr", addr)] if addr else []
+    keys = [("addr", addr, FAIL_WINDOW)] if addr else []
     if n:
-        keys.append(("pair", f"{n}\0{addr or ''}"))
-        if not _known(n, addr, now):
-            keys.append(("name", n))  # the name's own count: failures from devices it does not know
-    for key in keys:
-        _fails[key] = _recent(_fails.get(key, []), FAIL_WINDOW, now) + [now]
+        keys.append(("pair", f"{n}\0{addr or ''}", FAIL_WINDOW))
+        if not known:
+            keys.append(("name", n, NAME_WINDOW))  # the name's own count: failures from devices it does not know
+    for kind, key, window in keys:
+        _fails[(kind, key)] = _recent(_fails.get((kind, key), []), window, now) + [now] * weight
+    if not st["adaptive"]:
+        return
+    if n and not known and len(_recent(_fails.get(("name", n), []), 3600, now)) >= NAME_ATTACK:
+        _tight[("name", n)] = now + ADAPT_HOURS * 3600
+        _relaxed[0] = 0.0  # under attack: no looser for anyone
+    if addr and n:
+        names = {k: t for k, t in _tried.get(addr, {}).items() if now - t < 3600}
+        names[n] = now
+        _tried[addr] = names
+        if len(names) >= DEVICE_ATTACK:
+            _tight[("addr", addr)] = now + ADAPT_HOURS * 3600
+            _relaxed[0] = 0.0
+
+
+def adaptive_now(now=None):
+    """What the adaptive choice is doing now: the accounts held a step tighter, by name; how many devices; and
+    whether the whole box is a step looser (until when)."""
+    now = now or time.time()
+    live = [k for k, until in _tight.items() if until > now]
+    return {
+        "tight_names": sorted(k[1] for k in live if k[0] == "name"),
+        "tight_devices": sum(1 for k in live if k[0] == "addr"),
+        "relaxed_until": _relaxed[0] if _relaxed[0] > now else None,
+    }
+
+
+def preset_numbers(level, guess_seconds=1.0):
+    """What a preset buys, worked out by playing it: the most guesses a day at one account by someone with any number
+    of new devices (a guess every guess_seconds, the next the moment its wait ends), and the longest a known
+    device waits after its own wrong passwords."""
+    p = PRESETS[level]
+    times, t, n = [], 0.0, 0
+    while t < 86400:
+        recent = [x for x in times if t - x < NAME_WINDOW]
+        left = (
+            max(0, min(p["name_max"], 2 ** (len(recent) - p["name_free"])) - (t - recent[-1]))
+            if len(recent) >= p["name_free"]
+            else 0
+        )
+        if left > 0:
+            t += left
+            continue
+        times.append(t)
+        n += 1
+        t += guess_seconds
+    return {"guesses_a_day": n, "known_wait": p["device_max"], "free": p["free"]}
 
 
 def _remember_device(acc, addr, now):
@@ -443,13 +613,15 @@ def signup(name, password, addr=""):
     return state
 
 
-def login(name, password, addr="", https=False, device=None):
+def login(name, password, addr="", https=False, device=None, mark=None):
     """A session for a user whose password is right: (cookie value, account). Over HTTPS it is
     recorded (https_login): an admin account that has can stand in for the box's own login. device: the
-    hardware address of the hotspot device signing in, kept with the session (session_device)."""
+    hardware address of the hotspot device signing in, kept with the session (session_device). mark: the browser's
+    device cookie, if it sent one (whether the account knows it: _known)."""
     now = time.time()
+    known = _known(name, addr, mark, now)
     with _lock:
-        _limited(name, addr, now)
+        _limited(name, addr, now, known)
     acc = _load()["accounts"].get((name or "").lower()) if isinstance(name, str) else None
     ok = check_password(
         password if isinstance(password, str) else "", acc["hash"] if acc and acc.get("hash") else _DUMMY
@@ -458,11 +630,11 @@ def login(name, password, addr="", https=False, device=None):
     # Judged after the password check, so the answer takes as long either way.
     if settings()["signup"] == "off" and not (acc and acc.get("role") == "admin"):
         with _lock:
-            _failed(name, addr, now)
+            _failed(name, addr, now, known, password)
         raise AccountError(NO_USERS)
     with _lock:
         if not ok or not acc:
-            _failed(name, addr, now)
+            _failed(name, addr, now, known, password)
             raise AccountError(
                 M("accounts.signin.failed", "Sign-in failed. The username and password do not match an account.")
             )
@@ -481,6 +653,7 @@ def login(name, password, addr="", https=False, device=None):
         }
         data["accounts"][acc["name"].lower()]["seen"] = round(now)
         _remember_device(data["accounts"][acc["name"].lower()], addr, now)
+        _came_right(name, addr, now)
         if https:
             data["accounts"][acc["name"].lower()]["https_login"] = round(now)
         _save(data)
@@ -522,12 +695,12 @@ def check_basic(header, addr=""):
         # or lockout tells an account that exists from one that does not. A rejection is never remembered.
         with _lock:
             try:
-                _limited(name, addr, now)
+                _limited(name, addr, now, _known(name, addr, None, now))
             except Wait:
                 return None
         if not check_password(password, acc["hash"] if eligible else _DUMMY) or not eligible:
             with _lock:
-                _failed(name, addr, now)
+                _failed(name, addr, now, _known(name, addr, None, now), password)
             return None
         _basic_ok[key] = now
     return {"name": acc["name"], "role": acc.get("role", "user")}
@@ -596,11 +769,11 @@ def change_password(token, old, new, addr="", https=True):
     _valid_password(new)
     now = time.time()
     with _lock:
-        _limited(acc["name"], addr, now)
+        _limited(acc["name"], addr, now, True)  # signed in: their own account, only the device's waits
         data = _load()
         stored = data["accounts"][acc["name"].lower()]
         if not check_password(old if isinstance(old, str) else "", stored.get("hash") or _DUMMY):
-            _failed(acc["name"], addr, now)
+            _failed(acc["name"], addr, now, True)
             raise AccountError(M("accounts.password.wrong", "The current password is not correct."))
         stored["hash"] = hash_password(new)
         _forget_basic(acc["name"])

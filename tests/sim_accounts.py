@@ -72,6 +72,7 @@ check(
     refused(A.login, "alice", "nope-nope", "10.0.0.3", says="accounts.signin.failed")
     and refused(A.login, "nobody", "password1", "10.0.0.3", says="accounts.signin.failed"),
 )
+A.SIGNIN = lambda: {"known_by": "device"}  # known by address here (tests/sim_signin.py tries every way)
 for _ in range(9):
     refused(A.login, "alice", "wrong-wrong", "10.0.0.9")
 try:
@@ -81,7 +82,7 @@ except A.Wait as exc:
     waited = exc.message
 check(
     "  10 failures in a quarter hour: a device alice never signed in from waits, even with the right password",
-    waited and waited["id"] == "accounts.wait-seconds" and 0 < waited["args"]["n"] <= A.NAME_WAIT_MAX + 1,
+    waited and waited["id"] == "accounts.wait-seconds" and 0 < waited["args"]["n"] <= A.PRESETS["standard"]["name_max"] + 1,
     waited,
 )
 check(
@@ -98,7 +99,7 @@ except A.Wait as exc:
     waited = exc.message
 check(
     "  new devices for every try: the name still slows them all, never longer than NAME_WAIT_MAX",
-    waited and waited["args"]["n"] <= A.NAME_WAIT_MAX + 1,
+    waited and waited["args"]["n"] <= A.PRESETS["standard"]["name_max"] + 1,
     waited,
 )
 A._fails.clear()
@@ -111,10 +112,11 @@ except A.Wait as exc:
     waited = exc.message
 check(
     "  her device's address copied and failed 40 times: she waits at most DEVICE_WAIT_MAX, no long lockout",
-    waited and waited["args"]["n"] <= A.DEVICE_WAIT_MAX + 1,
+    waited and waited["args"]["n"] <= A.PRESETS["standard"]["device_max"] + 1,
     waited,
 )
 check("  the devices an account knows are not on the admin's list", all("devices" not in a for a in A.listing()))
+A.SIGNIN = None
 A._fails.clear()
 check("  a session that isn't one: none", A.session("x" * 43) is None and A.session(None) is None)
 A.set_settings(signup="apply")

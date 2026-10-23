@@ -16688,32 +16688,132 @@ async function loadSavesCrossDevice() {
 }
 loadSavesCrossDevice();
 
-// A sign-in on a hotspot device stays that device's: on by default.
-async function loadPinSessions() {
-  const box = document.getElementById("pin-sessions-box");
+// Sign-in and identity (Security): one section, held until Save. Each choice's note says what it buys: the numbers
+// for the levels are the hub's own, worked out by playing a day of an attacker (/admin/signin).
+const SIGNIN_LEVELS = [
+  ["relaxed", "Relaxed"],
+  ["standard", "Standard"],
+  ["strict", "Strict"],
+];
+const KNOWN_BY = {
+  cookie:
+    "Device cookie: a browser that signed in before carries a signed cookie. It cannot be copied by watching the WiFi on an encrypted hotspot. Clearing the browser's cookies makes it a new device.",
+  device:
+    "Device address: a device that signed in before from the same address. Nothing is stored in the browser, but anyone near the hotspot can see an address and copy it.",
+  either:
+    "Either: the cookie or the address. The most forgiving: a person who clears their cookies is still known. Also the easiest to copy.",
+  both: "Both: the cookie and the address. The hardest to copy. A phone that changes its private WiFi address, or a cleared browser, becomes a new device.",
+};
+const SHARE_NOTE = {
+  off: "No share: one person can fill the store and the file drop, and the oldest items of everyone else go to make room.",
+  half: "Half: one person can write at most half of the store and half of the file drop in a day.",
+  quarter: "A quarter: one person can write at most a quarter of each in a day. Four people together can still fill them.",
+  eighth: "An eighth: the strictest. A person who draws a lot, or shares large files, reaches it sooner.",
+};
+async function loadSigninIdentity() {
+  const box = document.getElementById("signin-identity-box");
   if (!box) return;
-  let st;
+  let st, nums;
   try {
-    st = await getJSON("/admin/settings");
+    [st, nums] = await Promise.all([getJSON("/admin/settings"), getJSON("/admin/signin")]);
   } catch {
     return;
   }
+  const lv = nums.levels || {};
+  const levelNote = (v) => {
+    const n = lv[v];
+    if (!n) return "";
+    return `${v === "relaxed" ? "For a small group that knows each other." : v === "strict" ? "For a box at a large event, or one that has been attacked." : "The default."} ${n.free} wrong passwords before the first wait. Someone with any number of devices gets at most ${n.guesses_a_day} guesses a day at one account. On a device the account knows, you wait at most ${n.known_wait} seconds after your own wrong passwords.`;
+  };
+  const ad = nums.adaptive || {};
+  const now = [
+    ad.tight_names && ad.tight_names.length ? `Held a step tighter now: ${ad.tight_names.join(", ")}.` : "",
+    ad.tight_devices ? `Devices held a step tighter now: ${ad.tight_devices}.` : "",
+    ad.relaxed_until ? "The box is a step looser now: people needed several tries to sign in." : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   box.replaceChildren(
     AW.settings(
       [
+        {
+          key: "signin_level",
+          label: "Wrong passwords",
+          kind: "choice",
+          value: st.signin_level,
+          options: SIGNIN_LEVELS,
+          note: levelNote,
+        },
+        {
+          key: "signin_adaptive",
+          label: "Adapt to what the box sees",
+          kind: "toggle",
+          value: st.signin_adaptive,
+          note: (v) =>
+            (v
+              ? "Enabled: when people keep needing several tries, the whole box is a step looser for a day. When an account or a device is clearly under attack, only that one is a step tighter for a day."
+              : "Disabled: the level above applies at all times.") + (now ? ` ${now}` : ""),
+        },
+        {
+          key: "signin_common",
+          label: "Count common passwords as several failures",
+          kind: "toggle",
+          value: st.signin_common,
+          note: "Enabled: a wrong password that is one of the 10,000 commonest counts as three failures. People guessing try those first. A person who mistypes their own password rarely types one of them.",
+        },
+        {
+          key: "signin_known_by",
+          label: "Know a returning device by",
+          kind: "choice",
+          value: st.signin_known_by,
+          options: [
+            ["cookie", "Device cookie"],
+            ["device", "Device address"],
+            ["either", "Either"],
+            ["both", "Both"],
+          ],
+          note: (v) =>
+            `${KNOWN_BY[v] || ""} A known device is not slowed by other people's wrong passwords for its account.`,
+        },
         {
           key: "pin_sessions",
           label: "Tie each sign-in on the hotspot to its device",
           kind: "toggle",
           value: st.pin_sessions,
-          note: "Enabled: a sign-in made on a hotspot device works on the hotspot only from that device. Someone who copies its cookie from the open network cannot use it. A phone that changes its private Wi-Fi address must sign in again. Disabled: a sign-in is its cookie alone, from any device.",
+          note: "Enabled: a sign-in made on a hotspot device works on the hotspot only from that device. Someone who copies its cookie from the open network cannot use it. A phone that changes its private WiFi address must sign in again. Disabled: a sign-in is its cookie alone, from any device.",
+        },
+        {
+          key: "report_hide_min",
+          label: "People needed to hide a post",
+          kind: "choice",
+          value: st.report_hide_min,
+          options: [
+            [1, "1"],
+            [2, "2"],
+            [3, "3"],
+            [5, "5"],
+          ],
+          note: "When reported posts are hidden (Moderation), a post is hidden only after this many different people report it. Each person counts once: their account, or else their device. A person with several devices can still count more than once.",
+        },
+        {
+          key: "storage_share",
+          label: "Each person's storage a day",
+          kind: "choice",
+          value: st.storage_share,
+          options: [
+            ["off", "No share"],
+            ["half", "Half"],
+            ["quarter", "A quarter"],
+            ["eighth", "An eighth"],
+          ],
+          note: (v) => SHARE_NOTE[v] || "",
         },
       ],
-      { id: "pin-sessions", save: (changed) => postJSON("/admin/settings", changed) },
+      { id: "signin-identity", save: (changed) => postJSON("/admin/settings", changed).then((r) => (setTimeout(loadSigninIdentity), r)) },
     ),
   );
 }
-loadPinSessions();
+loadSigninIdentity();
 
 // --- Needs attention --------------------------------------------------------------------------
 // One list at the top of Overview of what is waiting on an administrator, each a link to where it is dealt

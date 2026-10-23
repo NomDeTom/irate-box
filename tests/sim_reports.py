@@ -103,7 +103,13 @@ try:
     )
     _, msgs = go("GET", "/messages")
     check(
-        "hidden from everyone else while waiting (the owner chose so)",
+        "  in the queue, but not hidden: hiding needs three different people by default (report_hide_min)",
+        any(m["name"] == "Moth" for m in msgs["messages"]),
+    )
+    go("POST", "/admin/settings", {"report_hide_min": 2}, admin=True)
+    _, msgs = go("GET", "/messages")
+    check(
+        "hidden from everyone else while waiting (the owner chose so, and two people are enough for them)",
         not any(m["name"] == "Moth" for m in msgs["messages"]),
     )
     go("POST", "/admin/moderation", {"action": "keep", "key": q["key"]}, admin=True)

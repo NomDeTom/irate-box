@@ -14,3 +14,9 @@ Copyright: 1991-2025 Unicode, Inc.
 License: Unicode-3.0
  Made from Unicode's emoji-test.txt by tools/make-emoji-data.cjs. See
  /usr/share/irate-box/src/LICENSES/Unicode-3.0.txt.
+
+Files: irate_box/hub/common-passwords.txt
+Copyright: 2018 Daniel Miessler
+License: MIT
+ SecLists' Passwords/Common-Credentials/10k-most-common.txt, unchanged. See
+ /usr/share/irate-box/src/LICENSES/MIT.txt.
