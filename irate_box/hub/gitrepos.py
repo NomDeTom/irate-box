@@ -345,10 +345,16 @@ def action(payload):
             _git("config", "core.hooksPath", str(HOOKS if to == "private" else HOOKS_PUBLIC), cwd=dest)
             set_write_level(dest, "admin" if level == "everyone" else level)
         elif what == "publish":
-            src, dst = _target(payload.get("from") or {}), _target(payload.get("to") or {})
+            # "create_to" {area, name, description} in place of "to": the destination is made first, once the
+            # branches and tags are known to be there, so a refusal leaves no empty repository behind.
+            creating = isinstance(payload.get("create_to"), dict)
+            src, dst = (
+                _target(payload.get("from") or {}),
+                _target(payload["create_to"] if creating else payload.get("to") or {}),
+            )
             if src == dst:
                 raise Refused(M("git.publish.same", "Select a different destination repository."))
-            for r in (src, dst):
+            for r in (src,) if creating else (src, dst):
                 if not (r / "HEAD").exists():
                     raise Refused(_not_found(r))
             refs = payload.get("refs") or ["main"]
@@ -377,6 +383,10 @@ def action(payload):
                             ref=r,
                         )
                     )
+            if creating:
+                code, body = action(dict(payload["create_to"], action="create"))
+                if code != 200:
+                    return code, body
             # The hub's own copy between its own repositories: not a push, so the destination's
             # preset (read-only, say) does not apply; the owner chose this on /admin.
             out = _git("fetch", "--quiet", "--no-write-fetch-head", str(src), *specs, cwd=dst)
