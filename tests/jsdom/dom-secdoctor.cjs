@@ -33,7 +33,8 @@ const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn'
       { choice: 'llmnr-off', label: 'Off', group: 'LLMNR', on: false }]),
     F('kernel-links', 'Kernel link protections', 'problem', [{ choice: 'kernel-links-debian', label: "Install Debian's defaults" }]),
     F('ssh-password', 'SSH password login', 'warn', [{ choice: 'ssh-password-off', label: 'Turn password login off' }]),
-    F('sudo-nopasswd', 'Passwordless sudo', 'problem', [{ choice: 'sudo-drop:90-lyra', label: 'Remove 90-lyra', confirm: 'Remove it?' }]),
+    F('sudo-nopasswd', 'Passwordless sudo', 'problem', [{ choice: 'sudo-undo:90-lyra', label: 'On', group: 'Passwordless sudo (90-lyra)', on: true },
+      { choice: 'sudo-drop:90-lyra', label: 'Off', group: 'Passwordless sudo (90-lyra)', on: false, confirm: 'Remove it?' }]),
     F('listen-tcp-9090', 'Cockpit', 'problem', [{ choice: 'cockpit-off', label: 'Switch off' }]),
     F('security-updates', 'Security updates', 'problem', [{ choice: 'security-updates', label: 'Install 3 security updates' }])] }, log: [], pending: 0, results: [], deep: { at: now - 3600, took: 438 },
   imports: { nmap: { name: 'scan.xml', ran: now - 86400, imported: now - 3600, results: 3 } },
@@ -194,13 +195,14 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   // Each line of the scan where it belongs, in the same shape.
   const ids = (sel) => [...d.querySelectorAll(`${sel} .ftitle`)].map(t).join('|');
   const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .setting-name`)].map((n) => n.textContent.trim()).join('|');
-  check('Security: the choices by subject, in the scan\'s order', titlesIn('#security-exposure') === 'Cockpit' && titlesIn('#security-login') === 'SSH password login|Passwordless sudo',
+  check('Security: the choices by subject, in the scan\'s order', titlesIn('#security-exposure') === 'Cockpit' && titlesIn('#security-login') === 'SSH|Root and sudo',
     `${titlesIn('#security-exposure')} / ${titlesIn('#security-login')}`);
   check('  settings, not findings: no status word on any (To fix, To select, Set), no why, no link to the doctor (its own)',
     !d.querySelector('#security-findings .fstate') && !d.querySelector('#security-findings .fwhy')
     && !d.getElementById('sec-ssh-password').querySelector('a[href="#secdoctor"]'));
   const sudoCard = d.getElementById('sec-sudo-nopasswd');
-  check('  passwordless sudo: its switch, said as it is', !!sudoCard && /Passwordless sudo: On/.test(t(sudoCard)), sudoCard && t(sudoCard));
+  check('  passwordless sudo: a row of On and Off in the Root and sudo card, On marked', !!sudoCard && !!sudoCard.closest('#security-card-root')
+    && /Passwordless sudo \(90-lyra\)\s*On\s*Off/.test(t(sudoCard)) && t(sudoCard.querySelector('.chip.selected')) === 'On', sudoCard && t(sudoCard));
   {
     // The Security doctor: a choice is linked to where it is made; a repair with one right answer stays a button.
     const ssh = w.jointDo({ page: ['ssh-password'], do: null }, sec, false).controls;
@@ -217,26 +219,24 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('Security links to where the rest went', ['#secdoctor', '#updates-debian', '#network/hotspot'].every((h) => d.querySelector(`#security-elsewhere a[href="${h}"]`)));
   check('the hotspot\'s WiFi security with the hotspot, on Network', !!d.querySelector('#network #hs-modes') && !d.querySelector('#security #hs-modes'));
   w.renderSecurity({ ...sec, results: [{ id: 'x', ok: true, message: 'done' }] });  // the answer to what was asked: no longer busy
-  const sudo = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));
-  check('passwordless sudo a toggle, On while the rule is there', sudo && t(sudo) === 'Passwordless sudo: On' && sudo.getAttribute('aria-pressed') === 'true', sudo && t(sudo));
+  const sudoChip = (word) => [...d.querySelectorAll('#sec-sudo-nopasswd .chip')].find((b) => t(b) === word);
+  check('passwordless sudo: On marked while the rule is there', sudoChip('On') && sudoChip('On').classList.contains('selected'));
   let asked = 0;
   w.confirm = () => { asked++; return true; };
   const sent = () => posted.some(([u, b]) => u === '/admin/security' && b.action === 'fix' && b.choice === 'sudo-drop:90-lyra');
-  sudo.click();
+  sudoChip('Off').click();
   await wait();
   const foot = (fid) => d.querySelector(`.aw-foot[data-section="sec-${fid}"]`);
-  const sudo2 = [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)));
-  check('  set, not sent: shown Off, marked, nothing posted, no pop-up', !sent() && t(sudo2) === 'Passwordless sudo: Off'
-    && sudo2.classList.contains('pending') && asked === 0, t(sudo2));
-  check('  its own footer under it: Unsaved changes, Discard and Save; no bar', /Unsaved changes/.test(t(foot('sudo-nopasswd')))
-    && [...foot('sudo-nopasswd').querySelectorAll('button')].map(t).join('|') === 'Discard|Save' && !d.querySelector('.sec-pending'), t(foot('sudo-nopasswd')));
-  foot('sudo-nopasswd').querySelector('.aw-discard').click();
+  check('  set, not sent: Off marked, nothing posted, no pop-up', !sent() && sudoChip('Off').classList.contains('selected')
+    && sudoChip('Off').classList.contains('pending') && asked === 0, t(d.getElementById('sec-sudo-nopasswd')));
+  check('  the card\'s footer: Unsaved changes, Discard and Save; no bar', /Unsaved changes/.test(t(foot('card-root')))
+    && [...foot('card-root').querySelectorAll('button')].map(t).join('|') === 'Discard|Save' && !d.querySelector('.sec-pending'), t(foot('card-root')));
+  foot('card-root').querySelector('.aw-discard').click();
   await wait();
-  check('  Discard: back to On, nothing posted', !sent() && !/Unsaved changes/.test(t(foot('sudo-nopasswd')))
-    && t([...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b)))) === 'Passwordless sudo: On');
-  [...d.querySelectorAll('#security-findings .chip-btn')].find((b) => /Passwordless sudo/.test(t(b))).click();
+  check('  Discard: back to On, nothing posted', !sent() && !/Unsaved changes/.test(t(foot('card-root'))) && sudoChip('On').classList.contains('selected'));
+  sudoChip('Off').click();
   await wait();
-  foot('sudo-nopasswd').querySelector('.aw-save').click();
+  foot('card-root').querySelector('.aw-save').click();
   await wait();
   check('  Off asks root to take the rule out, on Save: sent at once, no question', sent() && asked === 0);
   {
@@ -245,7 +245,10 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     const pwBtn = [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Turn password login off');
     const offBtn = [...d.querySelectorAll('#security-findings button')].find((b) => t(b) === 'Switch off');
     const fidOf = (b) => b.closest('[id^="sec-"]').id.replace(/^sec-/, '');
-    const pwFid = fidOf(pwBtn), offFid = fidOf(offBtn);
+    const offFid = fidOf(offBtn);
+    // Each button's own Save: its card's (SSH password sign-in is a row of the SSH card).
+    const footOf = (b) => b.closest('.sec-choice').querySelector(':scope > .aw-foot');
+    const pwFoot = footOf(pwBtn);
     const offChoice = sec.scan.findings.find((f) => f.id === offFid).actions.find((a) => a.label === 'Switch off').choice;
     const realPost = w.postJSON;
     w.postJSON = async (u, b) => { if (u === '/admin/security' && b.choice === offChoice) throw new Error('the helper is busy.'); return realPost(u, b); };
@@ -255,8 +258,8 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
     foot(offFid).querySelector('.aw-save').click();
     await wait();
     check('a Save the hub refuses: that change stays chosen, the reason under its Save; the other still waits for its own Save',
-      /Unsaved changes/.test(t(foot(offFid))) && /the helper is busy/.test(t(foot(offFid).nextElementSibling)) && /Unsaved changes/.test(t(foot(pwFid))),
-      `${t(foot(offFid))} / ${t(foot(pwFid))}`);
+      /Unsaved changes/.test(t(foot(offFid))) && /the helper is busy/.test(t(foot(offFid).nextElementSibling)) && /Unsaved changes/.test(t(pwFoot)),
+      `${t(foot(offFid))} / ${t(pwFoot)}`);
     w.postJSON = realPost;
   }
   check('no stray null or undefined on the page', !stray.length, stray.join(','));
