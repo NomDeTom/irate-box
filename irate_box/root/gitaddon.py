@@ -7,10 +7,13 @@ librarian's mirrors, which are kept by the git program and not by cgit.
     sudo ./irate-box gitaddon status
     sudo ./irate-box gitaddon remove [--yes] [--purge]
         stops the servers and removes their units and cgit's configuration; leaves a marker
-        (gitrepos.REMOVED) that the hub, the pages and the doctors read. --purge also removes
-        the packages cgit, fcgiwrap and libjs-highlight.js. Git access is set to off, so the
-        web server answers 404 for /git/ and /git-private/ from then on.
-    Adding Git back: install.sh again, without --no-git (it takes the marker away).
+        (gitrepos.REMOVED) that the hub, the pages, the doctors and install.sh read (an update
+        keeps Git out). --purge also removes the packages cgit, fcgiwrap and libjs-highlight.js.
+        Git access is set to off, so the web server answers 404 for /git/ and /git-private/.
+    sudo ./irate-box gitaddon add-back
+        install.sh's half of --with-git: the marker taken away and Git's access on again (the
+        installer writes the servers' units and configuration).
+    Adding Git back: install.sh --with-git.
 
 Nothing is deleted from the repositories' folder but the marker.
 """
@@ -20,7 +23,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from irate_box.hub import gitrepos
+# Run by hand (irate-box gitaddon …) there is no service's environment: the box's own folders, as install.sh sets them.
+os.environ.setdefault("HUB_GIT_ROOT", str(Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "git"))
+
+from irate_box.hub import gitrepos  # noqa: E402 - after the folder is known
 from irate_box.root import safeio
 
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
@@ -35,6 +41,7 @@ STOPS = (
     "The Git tiles go from the home page.",
 )
 KEPT = "The repositories and the mirrors stay on disk, and are still backed up."
+ADD_BACK = "To add Git back, run install.sh again with --with-git."
 
 
 def run(*cmd, timeout=300):
@@ -88,6 +95,27 @@ def remove(purge=False, say=print):
     return done
 
 
+def add_back(say=print):
+    """The marker taken away, then Git's access on again if the removal turned it off. Returns the lines of what
+    was done."""
+    done = []
+    if gitrepos.REMOVED.exists():
+        gitrepos.REMOVED.unlink()
+        done.append(f"removed {gitrepos.REMOVED}")
+    from irate_box.hub import access
+    from irate_box.root import hub_control
+
+    if access.mode_of(access.read(hub_control.ACCESS_FILE), "git") == "off":
+        try:
+            hub_control.access_set({"app": "git", "mode": access.ROUTED["git"][0]})
+            done.append(f"set Git access to {access.ROUTED['git'][0]}")
+        except Exception as exc:  # noqa: BLE001 - Git is back; say why its access is still off
+            done.append(f"could not set Git access ({exc}); set it on /admin, Access")
+    for line in done:
+        say(line)
+    return done
+
+
 def main(argv):
     args = [a for a in argv if not a.startswith("--")]
     flags = {a for a in argv if a.startswith("--")}
@@ -95,12 +123,15 @@ def main(argv):
         for key, value in status().items():
             print(f"{key}: {value}")
         return 0
-    if args != ["remove"] or flags - {"--yes", "--purge"}:
-        print("Usage: irate-box gitaddon status | remove [--yes] [--purge]", file=sys.stderr)
+    if args not in (["remove"], ["add-back"]) or flags - {"--yes", "--purge"} or (args == ["add-back"] and flags):
+        print("Usage: irate-box gitaddon status | remove [--yes] [--purge] | add-back", file=sys.stderr)
         return 2
     if os.geteuid() != 0:
         print("Run as root.", file=sys.stderr)
         return 1
+    if args == ["add-back"]:
+        add_back()
+        return 0
     if not gitrepos.served():
         print("Git is already removed from this box.")
         return 0
@@ -108,7 +139,7 @@ def main(argv):
     for line in STOPS:
         print(f"  - {line}")
     print(KEPT)
-    print("To add Git back, run install.sh again without --no-git.")
+    print(ADD_BACK)
     if "--yes" not in flags and input("Remove Git? [y/N] ").strip().lower() not in ("y", "yes"):
         print("Nothing changed.")
         return 0

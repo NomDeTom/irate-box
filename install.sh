@@ -103,6 +103,11 @@ The installer keeps user data and the administrator password.
                         beside HTTP, administration pages included, so the first
                         administrator can be set up over HTTPS (/certificate lets a device
                         trust it). Recorded, so updates keep it. Security, HTTPS changes it later.
+  --no-git              leave out the Git add-on: no cgit or fcgiwrap, no Git servers, no Git
+                        tiles. The repositories' folder and the librarian's mirrors stay (git
+                        itself is in every install). Recorded, so updates keep it; so does
+                        "irate-box gitaddon remove" on a running box.
+  --with-git            add the Git add-on back after --no-git or "irate-box gitaddon remove".
   --remove NAME         remove an add-on: notes, sync, mqtt, irc, term, collab or kiwix
                         (repeatable). This stops its service and removes its unit and
                         configuration. Its data (the notes folder, Syncthing's state)
@@ -161,7 +166,7 @@ EOF
 SRC="" REPO="https://github.com/NomDeTom/irate-box" REPO_GIVEN=0 BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
-HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0
+HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 NO_GIT=0 WITH_GIT=0
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
 for _a in "$@"; do
@@ -234,6 +239,14 @@ while [ $# -gt 0 ]; do
 		;;
 	--no-https)
 		NO_HTTPS=1
+		shift
+		;;
+	--no-git)
+		NO_GIT=1
+		shift
+		;;
+	--with-git)
+		WITH_GIT=1
 		shift
 		;;
 	--with-collab)
@@ -963,6 +976,12 @@ hub_site_in() {
 }
 # HTTPS beside HTTP from the first install unless --no-https was given, now or at an earlier install (recorded).
 [ "$NO_HTTPS" = 0 ] && grep -qx -- --no-https "$ETC/install-options" 2>/dev/null && NO_HTTPS=1
+# The Git add-on stays out once left out, by --no-git now or before (recorded) or by "irate-box gitaddon remove"
+# (its marker), so an update does not bring it back; --with-git brings it back.
+[ "$WITH_GIT" = 1 ] && [ "$NO_GIT" = 1 ] && die "--no-git and --with-git ask for opposite things; give one"
+if [ "$WITH_GIT" = 0 ] && { grep -qx -- --no-git "$ETC/install-options" 2>/dev/null || [ -e "$STATE/git/.git-add-on-removed" ]; }; then
+	NO_GIT=1
+fi
 [ -z "$WEB" ] && [ -f "$ETC/install-options" ] &&
 	WEB="$(grep -A1 -x -- --web "$ETC/install-options" | tail -1 || true)"
 case "$WEB" in nginx | caddy) ;; *) WEB="" ;; esac
@@ -1046,6 +1065,8 @@ CADDY_FROM_RELEASE=0
 # in the visitor's browser (web/cgit-hub.js), ~2 MB; Pygments on the box took 2-5 s a page.
 # iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
 pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base nftables procps gpgv)
+# Without the Git add-on: git itself stays (the librarian's mirrors and the self-update use it), cgit's parts go.
+[ "$NO_GIT" = 1 ] && pkgs=(python3 curl ca-certificates git unzip iw dnsmasq-base nftables procps gpgv)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
@@ -1319,6 +1340,7 @@ fi
 	[ "$HUB_URL" != / ] && printf '%s\n' --hub-url "$HUB_URL"
 	[ "$HUB_PORT" != 80 ] && printf '%s\n' --port "$HUB_PORT"
 	[ "$NO_HTTPS" = 1 ] && echo --no-https
+	[ "$NO_GIT" = 1 ] && echo --no-git
 	true
 } >"$ETC/install-options"
 chmod 644 "$ETC/install-options"
@@ -1877,8 +1899,11 @@ EOF
 # of the hub's own, as the hub user, who owns the repositories; the hub creates and deletes
 # them from /admin with no root. The socket is the web server's group only. Who may push is
 # the web server's call (irate-box.nginx, the Caddyfile), so repos take every push it passes.
-say "Setting up the git servers"
 state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/git" "$STATE/git/public" "$STATE/git/private"
+if [ "$NO_GIT" = 1 ]; then
+	say "Leaving out the Git add-on (--no-git): the repositories' folder stays"
+else
+say "Setting up the git servers"
 web_group=caddy
 [ "$WEB" = nginx ] && web_group="$ngx_group"
 for area in public private; do
@@ -1951,6 +1976,7 @@ $HUB_SANDBOX
 # The post-receive hook of a private repository queues builds there (ci.py).
 ReadWritePaths=$STATE/git $STATE/ci/queue
 EOF
+fi
 
 # --- builds on push ------------------------------------------------------------------
 # A push to a private repository whose commit has a .irate-ci.sh queues a build (ci.py; the
@@ -2922,10 +2948,22 @@ WantedBy=multi-user.target
 EOF
 fi
 
+# --- the Git add-on, left out or added back -----------------------------------------
+# gitaddon.py does both on a running box too: the servers stopped, their units and cgitrc removed, the marker the
+# hub and the pages read, and Git's access off (the web server then answers 404 for its routes); or the marker
+# taken away and Git's access on again.
+git_env=(HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" HUB_USER="$HUB_USER" HUB_WEB_SERVER="$WEB" HUB_GIT_ROOT="$STATE/git")
+if [ "$NO_GIT" = 1 ]; then
+	env "${git_env[@]}" "$CODE/irate-box" gitaddon remove --yes >/dev/null || problem "could not leave out the Git add-on (irate-box gitaddon remove)"
+elif [ -e "$STATE/git/.git-add-on-removed" ]; then
+	env "${git_env[@]}" "$CODE/irate-box" gitaddon add-back >/dev/null || problem "could not add the Git add-on back (irate-box gitaddon add-back)"
+fi
+
 # --- start -----------------------------------------------------------------------
 say "Starting services"
 systemctl daemon-reload
-units=(irate-box "$WEB" irate-box-git.socket)
+units=(irate-box "$WEB")
+[ "$NO_GIT" = 1 ] || units+=(irate-box-git.socket)
 [ "$WITH_NOTES" = 1 ] && units+=(silverbullet irate-box-notebooks.path)
 [ "$WITH_SYNC" = 1 ] && units+=("syncthing@$HUB_USER")
 if [ "$KIWIX" = 1 ] && [ "$KIWIX_READY" = 1 ]; then

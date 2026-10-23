@@ -12409,7 +12409,7 @@ function accessSentence(repo) {
 }
 
 // Said wherever Git's removal changes what a page does (gitrepos.served), in these words each time.
-const GIT_ADD_BACK = "To add Git back, run install.sh again without --no-git.";
+const GIT_ADD_BACK = "To add Git back, run install.sh again with --with-git.";
 const gitRemoved = () => gitData && gitData.served === false;
 
 function renderGit(data) {

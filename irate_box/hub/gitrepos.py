@@ -48,7 +48,7 @@ ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).resolve().parents[2] /
 AREAS = {"public": "/git/", "private": "/git-private/"}
 # The Git add-on is the serving of the repositories (cgit, git http-backend); the repositories themselves
 # are the box's storage and stay without it. Taking the add-on away (irate-box gitaddon remove, install.sh
-# --no-git) leaves this file; installing it again takes the file away.
+# --no-git) leaves this file, which keeps it away through updates; install.sh --with-git takes the file away.
 REMOVED = ROOT / ".git-add-on-removed"
 
 
