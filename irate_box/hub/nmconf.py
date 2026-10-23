@@ -185,7 +185,8 @@ def effective():
         for sec in cp.sections():
             base = sec.split("-", 1)[0]
             if sec != base and base in ("connection", "device"):
-                keys = [k for k in cp.options(sec) if k != "match-device"]
+                # Only a section that sets one of the box defaults is said (a netplan section's managed= is not).
+                keys = [k for k in cp.options(sec) if k in KEY_LABEL]
                 if keys:
                     scoped.append(
                         {

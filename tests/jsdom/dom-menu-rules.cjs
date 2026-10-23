@@ -117,6 +117,12 @@ check('settings: Save sends only what changed', JSON.stringify(sent) === JSON.st
 click([...st.querySelectorAll('[data-setting="when"] .chip')][0]);
 click([...st.querySelectorAll('.aw-foot .action-btn')].find((b) => b.textContent === 'Discard'));
 check('settings: Discard puts back what was saved', st.querySelector('[data-setting="when"] .chip.selected').textContent === 'by hand');
+// A note that says what the value chosen does follows the chips, before Save (SD card writes).
+const levels = AW.settings([{ key: 'level', label: 'Level', kind: 'choice', value: 'a', options: [['a', 'A'], ['b', 'B']],
+  note: (v) => (v === 'a' ? 'A writes at once.' : 'B writes every hour.') }], { save: () => {} });
+paneB.append(levels);
+click([...levels.querySelectorAll('.chip')].find((b) => b.textContent === 'B'));
+check('settings: a note follows the value chosen, before Save', /B writes every hour/.test(levels.textContent) && !/A writes at once/.test(levels.textContent), levels.textContent);
 check('settings: a setup decision is marked where it lives, as a label (not a state)', !!st.querySelector('[data-decision-row="https"] .kind-tag'));
 
 // ---- findings: worst first, the cure beside it ----

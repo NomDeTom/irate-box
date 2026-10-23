@@ -45,6 +45,8 @@ put(
     "[device-31-mac-addr-change]\nmatch-device=driver:eagle_sdio,driver:wl\nwifi.scan-rand-mac-address=no\n",
 )
 put(T / "run/conf.d/10-globally-managed-devices.conf", "")
+# netplan's: a section for WiFi devices that sets only managed=, none of the box defaults.
+put(T / "run/conf.d/netplan.conf", "[device-netplan.wifi]\nmatch-device=type:wifi\nmanaged=1\n")
 put(T / "etc/conf.d/00-armbian-readme.conf", "# nothing\n")
 put(
     T / "etc/conf.d/zz-10-override-wifi-random-mac-disable.conf",
@@ -60,6 +62,7 @@ check(
         "NetworkManager.conf",
         "00-armbian-readme.conf",
         "10-globally-managed-devices.conf",
+        "netplan.conf",
         "no-mac-addr-change.conf",
         "zz-10-override-wifi-random-mac-disable.conf",
         "zz-20-override-wifi-powersave-disable.conf",
@@ -89,10 +92,11 @@ check(
     e["legacy"],
 )
 check(
-    "a section for some devices only, shown as such",
+    "a section for some devices only, shown as such; one that sets none of the box defaults (netplan's managed=) not",
     e["scoped"]
     and e["scoped"][0]["match"].startswith("driver:eagle_sdio")
-    and e["scoped"][0]["labels"] == ["MAC address while scanning"],
+    and e["scoped"][0]["labels"] == ["MAC address while scanning"]
+    and not any(x["file"].endswith("netplan.conf") for x in e["scoped"]),
     e["scoped"],
 )
 
