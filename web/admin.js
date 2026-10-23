@@ -6702,6 +6702,17 @@ const STEP_DOES = {
   radio: "resets the radio",
   reboot: "reboots",
 };
+// The recovery limits' titles (uplink.REACH), never the step's own name ("Radio"). On a cable, the radio step resets
+// the network adapter.
+const REACH_TITLE = {
+  watch: "Watch only",
+  reconnect: "Reconnect",
+  restart: "Restart the network service",
+  radio: "Reset the radio",
+  reboot: "Reboot",
+};
+const reachTitle = (n, wired) =>
+  wired && n === "radio" ? "Reset the network adapter" : REACH_TITLE[n] || cap1(n);
 
 // What a set of numbers does once the link counts as down ("What this will do").
 function stepsInWords(pace) {
@@ -6912,7 +6923,7 @@ function buildUpChoices(levels) {
     "reach",
     levels.reach.map((n) => ({
       value: n,
-      title: cap1(n),
+      title: reachTitle(n, false),
       desc: levels.describe[n] || "",
       does:
         n === "watch"
@@ -6988,7 +6999,7 @@ function buildUpChoices(levels) {
     "cable_reach",
     levels.reach.map((n) => ({
       value: n,
-      title: cap1(n),
+      title: reachTitle(n, true),
       desc:
         n === "watch"
           ? "Checks and logs."
@@ -8586,6 +8597,25 @@ function renderCountry(inv, busy) {
   );
 }
 
+// A list said whole: "a", "a and b", "a, b and c".
+function listSaid(items) {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+// NetworkManager's match-device list in words: "driver:eagle_sdio,driver:wl" is "devices with the driver eagle_sdio
+// or wl". A kind it has no words for is said as written.
+function matchSaid(match) {
+  const kinds = { driver: "the driver", "interface-name": "the interface name", mac: "the MAC address" };
+  const by = new Map();
+  for (const part of (match || "").split(",").map((p) => p.trim()).filter(Boolean)) {
+    const [kind, value] = part.includes(":") ? part.split(/:(.*)/s) : ["", part];
+    const key = kinds[kind] ? kind : "";
+    by.set(key, [...(by.get(key) || []), key ? value : part]);
+  }
+  const said = [...by].map(([kind, values]) =>
+    kind ? `${kinds[kind]} ${values.join(" or ")}` : values.join(", "),
+  );
+  return said.length ? `devices with ${said.join(" or ")}` : "";
+}
 function renderDefaults(inv, busy) {
   const manager =
     inv &&
@@ -8715,13 +8745,14 @@ function renderDefaults(inv, busy) {
     ),
   );
   const notes = [
+    // In the settings' words: which one, set to what, and the file's own line after it.
     ...manager.legacy.map(
       (l) =>
-        `${own(l.file)} also sets ${l.key}=${l.value} (an older name NetworkManager still reads: ${l.means}).`,
+        `${own(l.file)} also sets ${l.label}: ${l.means}. It uses an older name that NetworkManager still reads (${l.key}=${l.value}).`,
     ),
     ...manager.scoped.map(
       (x) =>
-        `${own(x.file)} sets ${Object.keys(x.keys).join(", ")} for some devices only (${x.match || x.section}).`,
+        `${own(x.file)} sets ${listSaid(x.labels || Object.keys(x.keys))} for ${matchSaid(x.match) || `the devices in its section [${x.section}]`} only.`,
     ),
     ...manager.broken.map(
       (path) => `${path} could not be read. NetworkManager can also fail to read it.`,

@@ -84,13 +84,15 @@ check(
     and st["auth_retries"]["mine"] is None,
 )
 check(
-    "the older MAC key shown with what it means",
-    e["legacy"] and e["legacy"][0]["means"].startswith("the board's own"),
+    "the older MAC key shown with what it means, and the setting it stands for",
+    e["legacy"] and e["legacy"][0]["means"] == "the board's own" and e["legacy"][0]["label"] == "MAC address on WiFi",
     e["legacy"],
 )
 check(
     "a section for some devices only, shown as such",
-    e["scoped"] and e["scoped"][0]["match"].startswith("driver:eagle_sdio"),
+    e["scoped"]
+    and e["scoped"][0]["match"].startswith("driver:eagle_sdio")
+    and e["scoped"][0]["labels"] == ["MAC address while scanning"],
     e["scoped"],
 )
 

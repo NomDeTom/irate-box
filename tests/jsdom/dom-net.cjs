@@ -244,6 +244,13 @@ setTimeout(() => {
       && d.querySelectorAll('#net-defaults-foot .aw-save').length === 1 && !d.querySelector('#up-retries-group .aw-save'), words.filter((x) => /^Save/.test(x)).join('|'));
     check('  each network\'s own settings: Discard beside its Save', [...d.querySelectorAll('.net-conn-settings')].every((c) => !c.querySelector('.aw-save') || c.querySelector('.aw-discard')));
     check('  saved: the country posted to the box', posted.some((p) => p.action === 'country' && p.country === 'GB'), JSON.stringify(posted.filter((p) => p.action === 'country')));
+    // Default connection settings' notes on other files, in words: a match-device list, the settings named by label.
+    check('a file\'s section for some devices: its match said in words', w.eval('matchSaid')('driver:eagle_sdio,driver:wl') === 'devices with the driver eagle_sdio or wl'
+      && w.eval('matchSaid')('interface-name:wlan0') === 'devices with the interface name wlan0', w.eval('matchSaid')('driver:eagle_sdio,driver:wl'));
+    check('  the settings it sets, by label, said whole', w.eval('listSaid')(['MAC address on WiFi', 'MAC address while scanning']) === 'MAC address on WiFi and MAC address while scanning');
+    // The recovery limits' titles in words, the cable's reset as the adapter's.
+    const reachTitles = [...d.querySelectorAll('#up-cablereach .choice-tile .setting-name')].map((n) => n.textContent.trim()).join('|');
+    check('Wired-link recovery limit: no step named "Radio"; the reset is the network adapter\'s', /Reset the network adapter/.test(reachTitles) && !/(^|\|)Radio\b/.test(reachTitles), reachTitles);
     const chipLine = [...d.querySelectorAll('#net-devices .net-line')].find((p) => /^Chip/.test(p.textContent));
     check('a known chip on its card: its name, its driver in the kernel, the notes, who tested it',
       chipLine && /Broadcom onboard/.test(chipLine.textContent) && /driver is in the kernel/.test(chipLine.textContent)
