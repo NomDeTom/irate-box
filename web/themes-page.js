@@ -26,7 +26,9 @@
         desc.textContent = t.desc;
         b.append(desc);
       }
+      // The list is a radio group: its items hold the radios, and are not list items of their own.
       const li = document.createElement('li');
+      li.setAttribute('role', 'none');
       li.append(b);
       return li;
     };

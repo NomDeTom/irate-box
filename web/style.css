@@ -3561,6 +3561,10 @@ button.danger {
 .setup-steps li.step-muted {
   opacity: 0.6;
 }
+/* High contrast: a snoozed step at full strength, its "no reminders" pill saying it (as the tiles' down pill). */
+html[data-palette="contrast"] .setup-steps li.step-muted {
+  opacity: 1;
+}
 .action-btn.primary.primary.idle {
   background: transparent;
   color: var(--accent);
@@ -4650,6 +4654,10 @@ html[data-palette="contrast"] .help-item.down {
   align-items: center;
   gap: 0.4rem;
   margin-top: 0.4rem;
+}
+/* Accept risk (or Reopen): at the right of the card's actions, alone or after them. */
+.fdo-controls > .faccept {
+  margin-left: auto;
 }
 .fdo-cmd {
   display: inline-flex;
