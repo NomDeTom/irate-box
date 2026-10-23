@@ -562,44 +562,46 @@
             <a href="#health">Box doctor</a> shows the results.
           </p>
           <!-- How hard the box writes to its card: the hub's setting card_writes (server.CARD_WRITES, crashwatch.card_writes). -->
-          <div class="net-card setting" id="card-writes">
-            <h3 data-i18n="admin.recovery.h-sd-card-writes">SD card writes</h3>
-            <p
-              class="setting-desc"
-              data-i18n="admin.recovery.sd-card-wears-every"
-            >
-              An SD card wears with every write. The box writes a file only when
-              it changes. It keeps live reports in memory. It adds to histories
-              and does not rewrite them. The box can write less often. A crash
-              or power failure can then lose changes made since the last write.
-              Select how many changes the box can lose. At every level, the box
-              writes user data and settings as they change.
-            </p>
-            <div id="card-writes-box"></div>
-            <p class="setting-desc" id="card-writes-rate"></p>
-          </div>
-          <!-- Crash watch's and the restarts' settings: set, then saved (each change goes to the root helper in turn). -->
-          <div class="net-card setting" id="health-settings">
-            <h3 data-i18n="admin.recovery.h-automatic-recovery">
-              Automatic recovery
-            </h3>
-            <p
-              class="setting-desc"
-              data-i18n="admin.recovery.set-crash-snapshot-retention"
-            >
-              Set crash snapshot retention and frozen-system restart. The uplink
-              watchdog repairs the box's network connection and reboots the box
-              for it:
-              <a href="#net-watchdog-card">Network → Network recovery</a>.
-            </p>
-            <div id="health-settings-groups"></div>
-            <div id="health-settings-foot"></div>
-            <p
-              class="setting-desc action-note"
-              id="health-settings-note"
-              role="status"
-              hidden
-            ></p>
+          <div class="net-cards">
+            <div class="net-card setting" id="card-writes">
+              <h3 data-i18n="admin.recovery.h-sd-card-writes">SD card writes</h3>
+              <p
+                class="setting-desc"
+                data-i18n="admin.recovery.sd-card-wears-every"
+              >
+                An SD card wears with every write. The box writes a file only when
+                it changes. It keeps live reports in memory. It adds to histories
+                and does not rewrite them. The box can write less often. A crash
+                or power failure can then lose changes made since the last write.
+                Select how many changes the box can lose. At every level, the box
+                writes user data and settings as they change.
+              </p>
+              <div id="card-writes-box"></div>
+              <p class="setting-desc" id="card-writes-rate"></p>
+            </div>
+            <!-- Crash watch's and the restarts' settings: set, then saved (each change goes to the root helper in turn). -->
+            <div class="net-card setting" id="health-settings">
+              <h3 data-i18n="admin.recovery.h-automatic-recovery">
+                Automatic recovery
+              </h3>
+              <p
+                class="setting-desc"
+                data-i18n="admin.recovery.set-crash-snapshot-retention"
+              >
+                Set crash snapshot retention and frozen-system restart. The uplink
+                watchdog repairs the box's network connection and reboots the box
+                for it:
+                <a href="#net-watchdog-card">Network → Network recovery</a>.
+              </p>
+              <div id="health-settings-groups"></div>
+              <div id="health-settings-foot"></div>
+              <p
+                class="setting-desc action-note"
+                id="health-settings-note"
+                role="status"
+                hidden
+              ></p>
+            </div>
           </div>
         </section>
 
