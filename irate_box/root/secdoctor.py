@@ -4888,6 +4888,10 @@ def step_origins(ctx):
 # data the librarian keeps (library/debsecan/). Nothing is installed for it, nothing fetched.
 
 DEBSECAN_FEED = STATE / "library" / "debsecan" / "release" / "1"
+# The librarian (the hub user) downloads the data into $STATE, which the hub owns; root reads its own copy, made
+# here through an fd that follows no link, of a regular file no larger than this, that unpacks to no more than this.
+DEBSECAN_FEED_MAX = 64 << 20
+DEBSECAN_UNPACKED_MAX = 256 << 20
 KITS_ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
 SUMMARY_RE = re.compile(r"^(\S+) (\S+)(?: \((.*)\))?$")
 
@@ -4996,7 +5000,41 @@ def newest_only(status_text):
     return "".join(st + "\n\n" for _, (_, st) in sorted(newest.items())), total - len(newest)
 
 
-def _debsecan(cmd, env, suite, status=None, timeout=900):
+def _feed_copy(work, suite):
+    """Root's own copy of the tracker's data in work/feed/ (the suite's file, and GENERIC if there is one), or None
+    when the suite's file is missing, a link or not a regular file, too large, or not the tracker's format."""
+    import zlib
+
+    dest = work / "feed"
+    dest.mkdir(mode=0o700)
+    for name in (suite, "GENERIC"):
+        try:
+            fd = os.open(DEBSECAN_FEED / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        except FileNotFoundError:
+            if name == suite:
+                return None
+            continue
+        except OSError:
+            return None
+        with os.fdopen(fd, "rb") as fh:
+            st = os.fstat(fh.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_size > DEBSECAN_FEED_MAX:
+                return None
+            raw = fh.read(DEBSECAN_FEED_MAX + 1)
+        unpack, first, size, rest = zlib.decompressobj(), b"", 0, raw
+        try:
+            while rest and size <= DEBSECAN_UNPACKED_MAX:
+                part = unpack.decompress(rest, 1 << 20)
+                first, size, rest = first or part[:10], size + len(part), unpack.unconsumed_tail
+        except zlib.error:
+            return None
+        if first != b"VERSION 1\n" or size > DEBSECAN_UNPACKED_MAX:
+            return None
+        (dest / name).write_bytes(raw)
+    return dest
+
+
+def _debsecan(cmd, env, suite, status=None, timeout=900, feed=DEBSECAN_FEED):
     """{package: [(cve, {"fixed", "remote", "urgency"})]} from debsecan --format summary. Fifteen
     minutes: with a firmware build and the deep audit running (load 25 on four cores) five are not
     enough, and a busy box is not a failed check."""
@@ -5005,7 +5043,7 @@ def _debsecan(cmd, env, suite, status=None, timeout=900):
         "--suite",
         suite,
         "--source",
-        f"file://{DEBSECAN_FEED}/",
+        f"file://{feed}/",
         "--format",
         "summary",
     ]
@@ -5272,7 +5310,31 @@ def step_debsecan(ctx):
                     source="debsecan",
                 )
             ]
-        installed = _debsecan(cmd, env, suite)
+        copy = _feed_copy(work, suite)
+        if copy is None:
+            return [
+                finding(
+                    "debsecan-data",
+                    M("debsecan.data.title", "Tracker download time"),
+                    "warn",
+                    M(
+                        "debsecan.data.unreadable",
+                        "The data of Debian's security tracker on the box is not in a form that the doctor reads.",
+                    ),
+                    M(
+                        "debsecan.data.why",
+                        "Without it, the doctor cannot tell which installed packages have known vulnerabilities.",
+                    ),
+                    M(
+                        "debsecan.data.fix",
+                        "On Toolkits, keep the Security toolkit current. The librarian then downloads the data "
+                        "each day that the box has an internet connection.",
+                    ),
+                    evidence=[str(feed)],
+                    source="debsecan",
+                )
+            ]
+        installed = _debsecan(cmd, env, suite, feed=copy)
         kit_of = {}
         for m in sorted((KITS_ROOT / "manifests").glob("*.json")) if (KITS_ROOT / "manifests").is_dir() else []:
             if m.name.endswith(".previous.json"):
@@ -5284,7 +5346,7 @@ def step_debsecan(ctx):
         if status.is_file():
             newest = work / "kits-status-newest"
             newest.write_text(newest_only(_read(status) or "")[0])
-            cached = _debsecan(cmd, env, suite, newest)
+            cached = _debsecan(cmd, env, suite, newest, feed=copy)
         else:
             cached = {}
         return debsecan_findings(installed, cached, kit_of, feed.stat().st_mtime, _sources())

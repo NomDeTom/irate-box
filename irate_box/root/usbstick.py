@@ -22,6 +22,7 @@ import os
 import pwd
 import re
 import shutil
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -267,10 +268,25 @@ def _find(scan_state, name):
 
 def _copy(src, dest, report=None, out=None):
     """src to dest, or to `out` (a file already open for it)."""
-    size = os.path.getsize(src)
     done = 0
-    # O_NOFOLLOW: neither the hub's zim/ nor a stick may hand root a link to read through.
-    with os.fdopen(os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC), "rb") as fi, out or open(dest, "wb") as fo:
+    # O_NOFOLLOW: neither the hub's zim/ nor a stick may hand root a link to read through. Nor a hard link: one
+    # name of a file that has another could be root's own file under a name the hub chose (the kernel's
+    # fs.protected_hardlinks, which the box sets, already refuses to make one; this holds where it is off).
+    fd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        os.close(fd)
+        if out:
+            out.close()
+        raise Refused(
+            M(
+                "usb.copy.not-plain",
+                "The box did not copy {file}. It is not a plain file: it has another name, or it is not a file.",
+                file=Path(src).name,
+            )
+        )
+    size = st.st_size
+    with os.fdopen(fd, "rb") as fi, out or open(dest, "wb") as fo:
         while chunk := fi.read(CHUNK):
             fo.write(chunk)
             done += len(chunk)

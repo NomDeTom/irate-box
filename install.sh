@@ -1357,6 +1357,8 @@ if [ -n "$APPS_SRC" ]; then
 		cp -a "$APPS_SRC/$app" "$APPS/$app"
 		rm -rf "$APPS/$app/.git"
 		chown -R root:root "$APPS/$app"
+		# No setuid, setgid or sticky bit from the tree it came from: these files are root's and anyone can run them.
+		chmod -R a-st "$APPS/$app"
 	done
 fi
 # The light web flasher's engine (ESP Web Tools): its bundle under $APPS/esp-web-tools, kept while
@@ -2492,6 +2494,7 @@ if [ "$WITH_COLLAB" = 1 ]; then
 		cp -a "$APPS_SRC/room" "$ROOM"
 		rm -rf "$ROOM/.git"
 		chown -R root:root "$ROOM"
+		chmod -R a-st "$ROOM"
 	fi
 	cat >/etc/systemd/system/excalidraw-room.service <<EOF
 [Unit]
