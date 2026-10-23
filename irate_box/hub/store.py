@@ -49,6 +49,9 @@ DEV_CORS = os.environ.get("HUB_STORE_CORS", "")  # one origin, for development o
 # Total on-disk budget for everything here. The card also holds ZIMs and firmware, so
 # this is a real ceiling rather than a formality; oldest content is evicted to stay under.
 MAX_TOTAL = int(os.environ.get("HUB_STORE_MAX_TOTAL", 64 * 1024 * 1024))
+# And a ceiling on the number of files (audit L2): every write lists them all under the lock, so
+# thousands of 1-byte items would make each write slow for everyone while costing no bytes.
+MAX_FILES = int(os.environ.get("HUB_STORE_MAX_FILES", 4096))
 # 0 disables. Saves are meant to persist; the file drop will set its own.
 SAVE_TTL = float(os.environ.get("HUB_STORE_SAVE_TTL", 0))
 
@@ -61,13 +64,14 @@ GLOBAL_PREFIX = os.environ.get("HUB_STORE_PREFIX", "/api/v2")
 DROP_MAX_FILE = int(os.environ.get("HUB_DROP_MAX_FILE", 25 * 1024 * 1024))
 DROP_MAX_TOTAL = int(os.environ.get("HUB_DROP_MAX_TOTAL", 256 * 1024 * 1024))
 DROP_TTL = float(os.environ.get("HUB_DROP_TTL", 24 * 3600))  # powered-on seconds; 0 = never
+DROP_MAX_FILES = int(os.environ.get("HUB_DROP_MAX_FILES", 1024))  # as MAX_FILES, for the drop's files
 # Room an upload leaves on the card, so a full drop never fills the books' filesystem.
 DROP_MIN_FREE = 64 * 1024 * 1024
 DROP_CHUNK = 64 * 1024
 MAX_FILENAME = 160
 
 # Ids appear in filesystem paths, so they are validated rather than escaped.
-ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")  # \Z: "$" would let a trailing newline through
 
 MAX_NAME = 64
 MAX_KIND = 32
@@ -219,11 +223,15 @@ class Store:
         """Write-and-rename, as everywhere else in the hub: a power cut mid-write must
         leave the old file intact rather than a truncated new one."""
         tmp = path.parent / (path.name + ".tmp")
-        with open(tmp, "wb") as fh:
-            fh.write(data)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        try:
+            with open(tmp, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)  # a card that filled mid-write: no .tmp left outside the quota
+            raise
 
     # -- blob API (Excalidraw) ------------------------------------------------
 
@@ -302,8 +310,14 @@ class Store:
             if meta is None:
                 continue
             if SAVE_TTL and now - meta.get("created", now) > SAVE_TTL:
-                self._drop_save(meta["id"])
-                continue
+                with self._lock:
+                    # Read again under the lock: a save written over since is not expired.
+                    meta = self._read_meta(meta_path)
+                    if meta is not None and now - meta.get("created", now) > SAVE_TTL:
+                        self._drop_save(meta["id"])
+                        continue
+                if meta is None:
+                    continue
             out.append(meta)
         out.sort(key=lambda m: m.get("created", 0), reverse=True)
         return out
@@ -423,21 +437,23 @@ class Store:
                 total += stat.st_size
                 entries.append((stat.st_mtime, stat.st_size, path))
 
-        if total <= MAX_TOTAL:
+        if total <= MAX_TOTAL and len(entries) <= MAX_FILES:
             return
 
         # mtime is fine for ordering here even though it is wall-clock derived: within
         # one boot it is monotonic, and across boots the only cost of getting the order
         # wrong is evicting the wrong old thing first.
         entries.sort()
+        files = len(entries)
         for _, size, path in entries:
-            if total <= MAX_TOTAL:
+            if total <= MAX_TOTAL and files <= MAX_FILES:
                 break
             if path in keep:
                 continue
             try:
                 path.unlink()
                 total -= size
+                files -= 1
             except OSError:
                 pass
 
@@ -486,12 +502,14 @@ class Drop:
                 metas.append(meta)
         metas.sort(key=lambda m: m.get("created", 0))
         total = sum(m.get("size", 0) for m in metas)
+        files = len(metas)
         for meta in metas:
-            if total <= DROP_MAX_TOTAL:
+            if total <= DROP_MAX_TOTAL and files <= DROP_MAX_FILES:
                 break
             if meta["id"] != keep and not meta.get("pinned"):
                 self._remove(meta["id"])
                 total -= meta.get("size", 0)
+                files -= 1
         return [m for m in metas if confine.under(self.dir, m["id"] + ".meta").exists()]
 
     def pin(self, src, key, name, by=""):
@@ -806,6 +824,8 @@ def _blob_get(handler, store, namespace, key):
 # A save or a dropped file made by someone signed in carries their account and, if narrower than
 # everyone, their choice; the listings and the reads leave out what the asker may not see.
 VIEWER = None
+# ADMIN(handler): the request came through the front's administrator route (the Store pane), which sees every save.
+ADMIN = None
 # Reports (the hub's): the reasons a guest may give, and the keys hidden from everyone until the owner looks.
 REPORT_REASONS = None
 HIDDEN = None
@@ -960,7 +980,10 @@ def _handle_saves(handler, method, path, store):
     wants_thumb = len(rest) > 1 and rest[1] == "thumb"
 
     if method == "GET" and wants_thumb:
-        thumb = store.get_thumb(key)
+        # Seen by whoever may see the save itself (audit L1): ids travel in the clear on a plain-HTTP hotspot.
+        meta = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
+        seen = meta is not None and ((ADMIN and ADMIN(handler)) or can_see(meta, VIEWER(handler) if VIEWER else None))
+        thumb = store.get_thumb(key) if seen else None
         if thumb is None:
             _send_json(handler, 404, say(NOT_FOUND))
         else:

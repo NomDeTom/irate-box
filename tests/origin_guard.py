@@ -163,7 +163,8 @@ check(
 )
 check(
     "  and only the administration port sends the hub the front's secret",
-    "include @FRONT@;" not in hub and admin.count("include @FRONT@;") == 1 and text.count("include @FRONT@;") == 1,
+    # /admin/ and the Store pane's thumbnails
+    "include @FRONT@;" not in hub and admin.count("include @FRONT@;") == 2 and text.count("include @FRONT@;") == 2,
     text.count("include @FRONT@;"),
 )
 check(
@@ -466,7 +467,7 @@ check(
     "redir /admin {scheme}://{host}:{irate_box_admin_port}/admin/ 302" in chub
     and "redir /admin/* {scheme}://{host}:{irate_box_admin_port}{uri} 302" in chub
     and "HUB_FRONT_SECRET" not in chub
-    and cadmin.count("header_up X-Irate-Front {env.HUB_FRONT_SECRET}") == 2
+    and cadmin.count("header_up X-Irate-Front {env.HUB_FRONT_SECRET}") == 3  # first use, /admin/*, the thumbnails
     and "request_header -X-Irate-Front" in cadmin
     and "request_header -X-Irate-Front" in chub,
 )

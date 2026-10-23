@@ -507,7 +507,10 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 			}
 			request_header -X-Irate-Session
 		}
-		reverse_proxy 127.0.0.1:8000
+		# The front's secret, as on /admin: the hub shows the administrator every save's thumbnail.
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Front {env.HUB_FRONT_SECRET}
+		}
 	}
 	# Pages of the hub, wherever they are linked from (Git, Sync, the account and help pages): its origin.
 	@page {

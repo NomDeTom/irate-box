@@ -3282,6 +3282,9 @@ def moderation_action(payload):
 # app itself. A post carries its account and, if narrower than everyone, the choice; what anyone
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
+store.ADMIN = lambda handler: (
+    bool(FRONT_SECRET) and hmac.compare_digest(handler.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode())
+)
 store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
 store.REPORT_REASONS = lambda: settings_snapshot()["report_reasons"]
 store.HIDDEN = lambda: hidden_by_reports()
