@@ -72,22 +72,53 @@ check(
     refused(A.login, "alice", "nope-nope", "10.0.0.3", says="accounts.signin.failed")
     and refused(A.login, "nobody", "password1", "10.0.0.3", says="accounts.signin.failed"),
 )
+A.SIGNIN = lambda: {"known_by": "device"}  # known by address here (tests/sim_signin.py tries every way)
 for _ in range(9):
     refused(A.login, "alice", "wrong-wrong", "10.0.0.9")
-check(
-    "  10 failures in a quarter hour: a wait, even with the right password",
-    refused(A.login, "alice", "password1", "10.0.0.8", kind=A.Wait, says="accounts.wait"),
-)
 try:
     A.login("alice", "password1", "10.0.0.8")
     waited = None
 except A.Wait as exc:
     waited = exc.message
 check(
-    "  the wait says how long: 15 minutes",
-    waited and waited.get("args") == {"n": 15} and "15 minutes" in str(A.Wait(waited)),
+    "  10 failures in a quarter hour: a device alice never signed in from waits, even with the right password",
+    waited
+    and waited["id"] == "accounts.wait-seconds"
+    and 0 < waited["args"]["n"] <= A.PRESETS["standard"]["name_max"] + 1,
     waited,
 )
+check(
+    "  her own device (signed in from before) is not held back: a stranger's failures cannot lock her out",
+    A.login("alice", "password1", "10.0.0.2")[1]["name"] == "Alice",
+)
+A._fails.clear()
+for n in range(60):
+    refused(A.login, "alice", "wrong-wrong", f"10.0.1.{n}")  # a new device for every try: costs nothing
+try:
+    A.login("alice", "password1", "10.0.0.77")
+    waited = None
+except A.Wait as exc:
+    waited = exc.message
+check(
+    "  new devices for every try: the name still slows them all, never longer than NAME_WAIT_MAX",
+    waited and waited["args"]["n"] <= A.PRESETS["standard"]["name_max"] + 1,
+    waited,
+)
+A._fails.clear()
+for _ in range(40):
+    refused(A.login, "alice", "wrong-wrong", "10.0.0.2")  # someone copying her device's address
+try:
+    A.login("alice", "password1", "10.0.0.2")
+    waited = None
+except A.Wait as exc:
+    waited = exc.message
+check(
+    "  her device's address copied and failed 40 times: she waits at most DEVICE_WAIT_MAX, no long lockout",
+    waited and waited["args"]["n"] <= A.PRESETS["standard"]["device_max"] + 1,
+    waited,
+)
+check("  the devices an account knows are not on the admin's list", all("devices" not in a for a in A.listing()))
+A.SIGNIN = None
 A._fails.clear()
 check("  a session that isn't one: none", A.session("x" * 43) is None and A.session(None) is None)
 A.set_settings(signup="apply")

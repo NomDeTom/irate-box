@@ -32,7 +32,7 @@ const AL = (() => {
     { name: 'System', art: 'controller', pages: [
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
-      { title: 'Security', sections: ['security'] },
+      { title: 'Security', sections: ['security', 'signin-identity'] },
       { title: 'The librarian', sections: ['sources'] },
       { title: 'Toolkits', sections: ['toolkits'], art: 'workbench' },
       { title: 'Clock', sections: ['clock'] },

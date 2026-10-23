@@ -2755,12 +2755,6 @@
           </h3>
           <div id="saves-cross-device-box"></div>
           </div>
-          <div class="net-card setting">
-          <h3 data-i18n="admin.accounts.h-signin-device">
-            Sign-ins tied to their device
-          </h3>
-          <div id="pin-sessions-box"></div>
-          </div>
         </section>
 
         <section class="admin-pane" id="mesh" aria-labelledby="mesh-title">
@@ -4411,6 +4405,23 @@
             </summary>
             <pre class="admin-log" id="security-log"></pre>
           </details>
+        </section>
+
+        <section
+          class="admin-pane"
+          id="signin-identity"
+          aria-labelledby="signin-identity-title"
+        >
+          <h2 id="signin-identity-title" data-i18n="admin.signin.title">
+            Sign-in and identity
+          </h2>
+          <p class="setting-desc" data-i18n="admin.signin.intro">
+            How the box slows wrong passwords, how it knows a returning device,
+            and how much one person can do on their own. On an open hotspot a
+            device can copy another device's address, or get a new one, so these
+            limits slow people down. They never lock anyone out for long.
+          </p>
+          <div id="signin-identity-box"></div>
         </section>
 
         <section

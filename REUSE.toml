@@ -46,6 +46,12 @@ SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
 
 [[annotations]]
+path = "irate_box/hub/common-passwords.txt"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2018 Daniel Miessler (SecLists, Passwords/Common-Credentials/10k-most-common.txt)"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
 path = "config/signing/github-web-flow.asc"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "GitHub, Inc."

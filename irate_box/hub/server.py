@@ -1226,6 +1226,18 @@ DEFAULT_SETTINGS = {
     # other hardware address (a cookie read off the open network), is not taken. On by default; off, a
     # session is its cookie alone, wherever it is sent from.
     "pin_sessions": True,
+    # Sign-in and identity (Security): how wrong passwords are slowed (accounts.PRESETS), whether the box adapts a
+    # step either way, whether the commonest passwords count as several failures, and how a returning device is
+    # known (its device cookie, its address, either or both).
+    "signin_level": "standard",
+    "signin_adaptive": False,
+    "signin_common": True,
+    "signin_known_by": "cookie",
+    # A post is hidden (report_hide on) only once this many different people reported it: one person's reports
+    # count once, but a person with many devices or accounts can still be several.
+    "report_hide_min": 3,
+    # Each person's share a day of the store's and the drop's storage (store.py Budget): off, half, quarter, eighth.
+    "storage_share": "quarter",
     # Who sees the names of those signed in and around: users, or the admin only. Guests
     # only ever get the count; and each person decides whether their own name shows at all.
     "names_to": "users",
@@ -1405,6 +1417,14 @@ def valid_setting(key, value):
         return valid_palette(value)
     if key == "names_to":
         return value in ("users", "admin")
+    if key == "signin_level":
+        return value in accounts.LEVELS
+    if key == "signin_known_by":
+        return value in accounts.KNOWN_BY
+    if key == "report_hide_min":
+        return type(value) is int and 1 <= value <= 10
+    if key == "storage_share":
+        return value in store.SHARES
     if key == "report_threshold":
         return type(value) is int and 1 <= value <= 20
     if key == "notebooks":
@@ -1529,6 +1549,38 @@ def device_of(addr):
                 if f[mac_col] != "00:00:00:00:00:00":
                     return f[mac_col].lower()
     return None
+
+
+_signin_numbers = {}
+
+
+def signin_numbers(level):
+    """accounts.preset_numbers, once a run: a day of an attacker played out costs a few milliseconds."""
+    if level not in _signin_numbers:
+        _signin_numbers[level] = accounts.preset_numbers(level)
+    return _signin_numbers[level]
+
+
+IDENTITY_KEY_FILE = STATE_DIR / "identity.key"
+_identity_key = []
+
+
+def identity_hash(identity):
+    """A visitor's identity (account:<name>, device:<mac> or addr:<ip>) as the hub keeps it where it is stored:
+    keyed with a secret of the hub's own (identity.key, the hub's only), so the files say nothing of who it was."""
+    if not _identity_key:
+        try:
+            key = IDENTITY_KEY_FILE.read_bytes()
+        except OSError:
+            key = b""
+        if len(key) != 32:
+            key = secrets.token_bytes(32)
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            fd = os.open(IDENTITY_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                out.write(key)
+        _identity_key.append(key)
+    return hmac.new(_identity_key[0], identity.encode(), hashlib.sha256).hexdigest()[:32]
 
 
 def port_listening(port):
@@ -1991,6 +2043,8 @@ UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/i
 FRONT_SECRET = os.environ.get("HUB_FRONT_SECRET", "")
 FRONT_HEADER = "X-Irate-Front"
 SESSION_COOKIE = "irate_session"
+# A browser that has signed in to an account before (accounts.device_mark): OWASP's device cookie.
+DEVICE_COOKIE = "irate_device"
 
 
 def unclaimed():
@@ -3329,6 +3383,14 @@ def moderation_action(payload):
 # app itself. A post carries its account and, if narrower than everyone, the choice; what anyone
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
+store.IDENTITY = lambda handler: identity_hash(handler._identity())
+store.SHARE = lambda: settings_snapshot()["storage_share"]
+accounts.SIGNIN = lambda: {
+    "level": settings_snapshot()["signin_level"],
+    "adaptive": settings_snapshot()["signin_adaptive"],
+    "common": settings_snapshot()["signin_common"],
+    "known_by": settings_snapshot()["signin_known_by"],
+}
 store.ADMIN = lambda handler: (
     bool(FRONT_SECRET) and hmac.compare_digest(handler.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode())
 )
@@ -3352,13 +3414,30 @@ def seen_by_of(account, app):
 # the owner decides how many reports put it in the queue on /admin → Moderation, and whether it is
 # hidden from everyone else until they have looked. A post is known by where it is and when it was
 # written: shoutbox:<created>:<name>, board:<thread>:<created>. One report per visitor per post: the
-# visitor is known by a hash of their address with a salt made when the hub starts, in memory only.
+# visitor is their account when signed in, else their hotspot device, else their address (Handler._identity),
+# kept as keyed hashes (identity_hash) in reports-seen.json, so a restart does not let them report again.
 REPORTS_FILE = STATE_DIR / "reports.json"
+REPORTS_SEEN = STATE_DIR / "reports-seen.json"
+REPORTS_SEEN_MAX = 10000  # the newest kept: a post reported this long ago is long gone
 _reports_lock = threading.Lock()
-_report_salt = secrets.token_bytes(32)
-_reported = set()  # hashes of (visitor, post): who has reported what, this run only
+_reported = {}  # hashes of (visitor, post), oldest first: who has reported what (read from REPORTS_SEEN once)
 _report_times = {}  # visitor hash -> recent report times (at most REPORTS_PER_HOUR an hour)
 REPORTS_PER_HOUR = 20
+
+
+def _reports_seen():
+    """_reported, read from its file the first time. Lock held."""
+    if not _reported:
+        try:
+            got = json.loads(REPORTS_SEEN.read_text())
+        except (OSError, ValueError):
+            got = []
+        if isinstance(got, list):
+            _reported.update((h, True) for h in got if isinstance(h, str))
+        _reported.setdefault("", True)  # read: an empty file is not read again
+    return _reported
+
+
 # A notes page by its path in SilverBullet's space (no leading slash, no "..", no control characters).
 REPORT_KEY_RE = re.compile(
     r"^(shoutbox:\d{1,20}:.{1,40}|board:\d{1,12}:\d{1,20}|drop:[A-Za-z0-9_-]{1,64}"
@@ -3403,22 +3482,28 @@ def report_key(app, ref):
     return key if REPORT_KEY_RE.match(key) else None
 
 
-def report(app, ref, reason, addr):
-    """One visitor's report. (status, message), the message a msg.M."""
+def report(app, ref, reason, identity):
+    """One visitor's report (identity: Handler._identity). (status, message), the message a msg.M."""
     st = settings_snapshot()
     key = report_key(app, ref)
     if key is None or reason not in st["report_reasons"]:
         return 400, M("report.invalid", "Invalid report. Select one of the reasons offered.")
-    who = hmac.new(_report_salt, addr.encode(), hashlib.sha256).digest()[:16]
-    mine = hmac.new(_report_salt, who + key.encode(), hashlib.sha256).digest()[:16]
+    who, mine = identity_hash(identity), identity_hash(f"{identity}\0{key}")
     now = time.monotonic()
     with _reports_lock:
         recent = [t for t in _report_times.get(who, []) if now - t < 3600]
         if len(recent) >= REPORTS_PER_HOUR:
             return 429, M("report.too-many", "Too many reports. Try again later.")
-        if mine in _reported:
+        seen = _reports_seen()
+        if mine in seen:
             return 200, M("report.again", "You reported this already. Thank you.")
-        _reported.add(mine)
+        seen[mine] = True
+        while len(seen) > REPORTS_SEEN_MAX + 1:
+            seen.pop(next(h for h in seen if h))
+        tmp = REPORTS_SEEN.parent / (REPORTS_SEEN.name + ".tmp")
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps([h for h in seen if h]))
+        os.replace(tmp, REPORTS_SEEN)
         _report_times[who] = recent + [now]
         data = reports()
         r = data.setdefault(key, {"app": app, "count": 0, "reasons": {}, "first": CLOCK.ticks()})
@@ -3430,11 +3515,13 @@ def report(app, ref, reason, addr):
 
 
 def hidden_by_reports():
-    """The posts hidden from everyone else until the owner looks (if they chose that)."""
+    """The posts hidden from everyone else until the owner looks (if they chose that): reported by as many people as
+    the queue needs, and at least report_hide_min."""
     st = settings_snapshot()
     if not st["report_hide"]:
         return set()
-    return {k for k, r in reports().items() if r.get("count", 0) >= st["report_threshold"] and not r.get("kept")}
+    need = max(st["report_threshold"], st["report_hide_min"])
+    return {k for k, r in reports().items() if r.get("count", 0) >= need and not r.get("kept")}
 
 
 def moderation_queue():
@@ -4007,6 +4094,30 @@ class Handler(BaseHTTPRequestHandler):
             self._token, self._token_for = cookie if taken else None, self.headers
         return self._token or ""
 
+    def _who(self):
+        """The device a request comes from, for the sign-in limits: its hardware address on the hotspot, else
+        its address (a phone that changes its address on the hotspot gets a new lease, and is a new device)."""
+        addr = self._client_addr()
+        return device_of(addr) or addr
+
+    def _identity(self):
+        """Who this visitor is, for what is counted or budgeted per person (reports, the store's and the drop's
+        shares): their account when signed in, else their hotspot device, else their address."""
+        me = accounts.session(self._session_token()) if self._session_token() else None
+        if me:
+            return f"account:{me['name'].lower()}"
+        addr = self._client_addr()
+        dev = device_of(addr)
+        return f"device:{dev}" if dev else f"addr:{addr}"
+
+    def _device_cookie(self, name):
+        mark = accounts.device_mark(name) or ""
+        return (
+            "Set-Cookie",
+            f"{DEVICE_COOKIE}={mark}; Path=/; Max-Age={accounts.KNOWN_DAYS * 86400}; HttpOnly; SameSite=Strict"
+            + ("; Secure" if self._https() else ""),
+        )
+
     def _session_cookie(self, token, max_age):
         return (
             "Set-Cookie",
@@ -4056,6 +4167,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         action, addr = payload.get("action"), self._client_addr()
+        who = device_of(addr) or addr  # the sign-in limits count devices
         if action == "logout":
             me = accounts.session(self._session_token())
             accounts.logout(self._session_token())
@@ -4083,7 +4195,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             if action == "signup":
-                state = accounts.signup(payload.get("name"), payload.get("password"), addr)
+                state = accounts.signup(payload.get("name"), payload.get("password"), who)
                 if state == "asked":
                     self.send_json(200, {"state": "asked"})
                     return
@@ -4092,21 +4204,22 @@ class Handler(BaseHTTPRequestHandler):
                 token, me = accounts.login(
                     payload.get("name"),
                     payload.get("password"),
-                    addr,
+                    who,
                     https=self._https(),
                     device=device_of(addr),
+                    mark=self._cookie(DEVICE_COOKIE),
                 )
                 self.send_json(
                     200,
                     {"me": me},
-                    [self._session_cookie(token, accounts.SESSION_DAYS * 86400)],
+                    [self._session_cookie(token, accounts.SESSION_DAYS * 86400), self._device_cookie(me["name"])],
                 )
             elif action == "password":
                 accounts.change_password(
                     self._session_token(),
                     payload.get("old"),
                     payload.get("new"),
-                    addr,
+                    who,
                     https=self._https(),
                 )
                 self.send_json(200, {"changed": True})
@@ -4115,7 +4228,7 @@ class Handler(BaseHTTPRequestHandler):
                 name = accounts.use_code(
                     payload.get("code"),
                     payload.get("password"),
-                    addr,
+                    who,
                     https=self._https(),
                 )
                 self._admin_gate_follow(before)
@@ -4499,6 +4612,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/status-tiles":
             self.send_json(200, status_tiles_snapshot())
+            return
+
+        if path == "/admin/signin":
+            # What each sign-in level buys (worked out by playing it), and what the adaptive choice does now.
+            self.send_json(
+                200,
+                {"levels": {lv: signin_numbers(lv) for lv in accounts.LADDER}, "adaptive": accounts.adaptive_now()},
+            )
             return
 
         if path == "/admin/tiles":
@@ -4907,10 +5028,8 @@ class Handler(BaseHTTPRequestHandler):
             # login will do (nginx then asks for it). Anything on loopback may ask what a guest may
             # do; an account's answer needs its password.
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
-            account = accounts.check_basic(
-                self.headers.get("Authorization", ""),
-                self.headers.get("X-Forwarded-For", ""),
-            )
+            fwd = self.headers.get("X-Forwarded-For", "")
+            account = accounts.check_basic(self.headers.get("Authorization", ""), device_of(fwd) or fwd)
             ok = gitrepos.decide(
                 self.headers.get("X-Original-URI", ""),
                 self.headers.get("X-Original-Method", "GET"),
@@ -5334,9 +5453,7 @@ class Handler(BaseHTTPRequestHandler):
                 # The owner's first use: their admin account, signed in at once. The box's own login goes
                 # off (no password made for scripts: script-login at the console makes one).
                 try:
-                    token, _me = accounts.claim_admin(
-                        name, pw, self._client_addr(), device=device_of(self._client_addr())
-                    )
+                    token, _me = accounts.claim_admin(name, pw, self._who(), device=device_of(self._client_addr()))
                 except accounts.Wait as exc:
                     self.send_json(429, refusal(exc))
                     return
@@ -6496,13 +6613,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/report":
-            fwd = self.headers.get("X-Forwarded-For", "")
-            addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
             code, message = report(
                 str(payload.get("app", "")),
                 payload.get("ref"),
                 payload.get("reason"),
-                addr,
+                self._identity(),
             )
             # report.js reads message (the thanks) or error as text: the English, with the message itself as msg.
             self.send_json(
