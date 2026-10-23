@@ -510,6 +510,57 @@ const AW = (() => {
     return promise;
   }
 
+  // ---- A yes/no setting: two chips, On and Off, the value in effect selected (as a choice of two) ----
+  //   onOffChips(label, on, disabled, set(on)) → the chips' group
+  function onOffChips(label, on, disabled, set) {
+    return h('div', { class: 'chip-group', role: 'group', 'aria-label': label }, [[true, 'On'], [false, 'Off']].map(([value, word]) =>
+      h('button', { type: 'button', class: 'chip' + (on === value ? ' selected' : ''), 'aria-pressed': String(on === value), disabled,
+        onclick: () => set(value) }, word)));
+  }
+  // A page's checkbox setting drawn as On and Off chips, after the checkbox's words. The checkbox stays (hidden) and
+  // holds the value, so the page's own code reads, sets and saves it as before: a chip sets it and sends its change
+  // event; the page setting it (checked, disabled) redraws the chips.
+  //   AW.onOff(input, label?) → the chips' group; label defaults to the setting's name beside the checkbox
+  function onOff(input, label) {
+    if (input._onOff) return input._onOff;
+    const holder = input.closest('label') || input.parentElement;
+    const named = holder && holder.querySelector('.setting-name');
+    const name = label || (named ? named.textContent.trim() : holder ? holder.textContent.trim() : '');
+    let chips;
+    const draw = () => {
+      const next = onOffChips(name, input.checked, input.disabled, (on) => {
+        if (input.checked === on) return;
+        input.checked = on;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      if (chips) chips.replaceWith(next);
+      chips = next;
+      input._onOff = chips;
+    };
+    // The page sets checked and disabled as properties, which no event reports: this input's own pair of them
+    // passes the value on and redraws.
+    for (const prop of ['checked', 'disabled']) {
+      const real = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, prop);
+      Object.defineProperty(input, prop, {
+        configurable: true,
+        get() { return real.get.call(this); },
+        // Redrawn only when it changes: a poll that sets the same value leaves the chips (and a selection) alone.
+        set(value) {
+          const was = real.get.call(this);
+          real.set.call(this, value);
+          if (chips && real.get.call(this) !== was) draw();
+        },
+      });
+    }
+    input.addEventListener('change', () => draw());
+    input.classList.add('aw-onoff-box');
+    draw();
+    // After the setting's words, in its label (hidden with it): a click on a chip is the chip's, not the label's.
+    if (holder && holder.tagName === 'LABEL') holder.append(chips);
+    else input.after(chips);
+    return chips;
+  }
+
   // ---- Settings rows: self-labelling toggles, chips for one of a few, action buttons, readouts, as a section ----
   //   rows: [{key, label, kind: 'toggle'|'choice'|'select'|'multi'|'button'|'readout'|'text'|'colour', value, options, note, onclick, decision,
   //           max (text), unset, shown, warn (colour, select)}]
@@ -523,8 +574,7 @@ const AW = (() => {
       let ctl;
       const v = handle.get(spec.key), off = handle.disabled();
       if (spec.kind === 'toggle') {
-        ctl = h('button', { type: 'button', class: 'chip-btn' + (v ? ' active' : ''), 'aria-pressed': String(!!v), disabled: off,
-          onclick: () => handle.set(spec.key, !handle.get(spec.key)) }, v ? 'On' : 'Off');
+        ctl = onOffChips(spec.label, !!v, off, (on) => handle.set(spec.key, on));
       } else if (spec.kind === 'choice') {
         ctl = h('div', { class: 'chip-group', role: 'group', 'aria-label': spec.label }, spec.options.map((o) => {
           const [ov, t] = Array.isArray(o) ? o : [o, o];
@@ -854,7 +904,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, drawKept, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, drawKept, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

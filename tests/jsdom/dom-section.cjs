@@ -113,7 +113,7 @@ const place = (s, page = 'p1') => { d.getElementById(page).append(s.foot, s.reas
   const block = AW.settings([{ key: 'on', label: 'On', kind: 'toggle', value: false }, { key: 'name', label: 'Name', kind: 'text', value: 'a' }],
     { id: 'rows', save: async (c) => { sent.push(c); } });
   d.getElementById('p1').append(block);
-  block.querySelector('.chip-btn').click();
+  [...block.querySelectorAll('.chip')].find((b) => b.textContent.trim() === 'On').click();
   const input = block.querySelector('input');
   input.focus();
   input.value = 'ab';

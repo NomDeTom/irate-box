@@ -32,7 +32,16 @@ const report = (clock) => ({ report: { at: Date.now() / 1000, findings: [], sett
   const d = w.document, box = () => d.getElementById('clock-sources');
   const btn = (word) => [...box().querySelectorAll('button')].find((b) => t(b) === word);
   const chip = (word) => [...box().querySelectorAll('.chip')].find((b) => t(b).startsWith(word));
-  const tickOf = (word) => [...box().querySelectorAll('label')].find((l) => t(l).startsWith(word)).querySelector('input');
+  // A source's On and Off chips, read and pressed as its switch: checked while On is selected.
+  const tickOf = (word) => {
+    const row = [...box().querySelectorAll('.aw-onoff-row')].find((r) => t(r).startsWith(word));
+    const chipOf = (w) => [...row.querySelectorAll('.chip')].find((b) => t(b) === w);
+    return {
+      get checked() { return chipOf('On').classList.contains('selected'); },
+      get disabled() { return chipOf('On').disabled; },
+      click() { (this.checked ? chipOf('Off') : chipOf('On')).click(); },
+    };
+  };
   // As the image has it: timesyncd running, nothing chosen here.
   w.renderHealth(report({ service: null, pool: null, gps: null, local: '', changed: false, daemon: 'systemd-timesyncd', chrony_installed: false,
     gps_device: false, sources: [] }));

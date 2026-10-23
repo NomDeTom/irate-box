@@ -43,7 +43,7 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   await wait(300);
   const rows = [...d.querySelectorAll('#mock-controls .mock-row')];
   const names = rows.map((row) => text(row.querySelector('h3')));
-  const want = ['Action buttons', 'Chips: one of a few', 'Filter chips: any of a few', 'Toggle', 'Joined tabs', 'Pills', 'Help that expands', 'A fold',
+  const want = ['Action buttons', 'Chips: one of a few', 'Filter chips: any of a few', 'On and Off chips: a yes/no setting', 'On and Off chips over a checkbox', 'Joined tabs', 'Pills', 'Help that expands', 'A fold',
     'Uptime', 'Short entries, with a filter', 'Cards with a drawer', 'Records', 'A block of settings', 'Choice tiles', 'A drop-down of a few, as chips',
     'Updates: how often, how far, and the three buttons', 'A block kept while it is drawn again', 'Finding cards, one per state', 'Findings as a short list',
     'Form fields', 'Colour', 'Progress, output and space used', 'Tabs with their panels', 'A table', 'An empty list',
@@ -69,7 +69,7 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
 
   // A card opens; a setting in its drawer brings its footer.
   d.querySelector('#mock-cards .aw-card-head').click();
-  d.querySelector('#mock-cards .aw-drawer .chip-btn').click();
+  [...d.querySelectorAll('#mock-cards .aw-drawer .chip')].find((chip) => text(chip) === 'On').click();
   check('a card\'s drawer: its setting brings Save and Discard', !d.querySelector('#mock-cards .aw-foot').hidden && /Unsaved/.test(text(d.querySelector('#mock-cards .aw-foot'))));
 
   // Remove now asks on the page; Cancel keeps it.

@@ -67,7 +67,7 @@ const type = (input, value) => {
   // The widgets: a save that resolves false keeps its changes.
   const block = AW.settings([{ key: 'k', label: 'K', kind: 'toggle', value: false }], { save: async () => false });
   d.body.append(block);
-  block.querySelector('.chip-btn').click();
+  [...block.querySelectorAll('.chip')].find((b) => b.textContent.trim() === 'On').click();
   button(block, 'Save').click();
   await wait();
   check('a settings block whose save says false keeps its change, Save on', !button(block, 'Save').disabled && block.values().k === true);

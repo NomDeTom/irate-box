@@ -145,6 +145,24 @@ const settingGroups = [...document.querySelectorAll(".settings")]
     return { boxes, sec };
   });
 const settingNote = (box) => noteEl(box.closest(".settings").dataset.note);
+// The yes/no settings written in the page as checkboxes, drawn as On and Off chips (AW.onOff): each checkbox holds
+// its value, so the code that reads and saves it is unchanged. A checkbox that picks from a list, an option of a
+// one-off form, or a consent stays a checkbox.
+[
+  "#shout_reset_on_boot",
+  '#shout-posting input[name="shout_marks"]',
+  "#board_reset_on_boot",
+  'input[name="board_marks"]',
+  "#factory_tile",
+  "#visitor_counts",
+  '#fw-form input[name="enabled"]',
+  '#fw-form input[name="configs"]',
+  "#up-ignore-roams",
+  "#hs-wpa2",
+].forEach((sel) => {
+  const box = document.querySelector(sel);
+  if (box) AW.onOff(box, sel === "#hs-wpa2" ? "Older WPA2 devices" : undefined);
+});
 
 async function load() {
   try {
@@ -307,6 +325,13 @@ const el = (tag, props = {}, ...kids) => {
   if (dataset) Object.assign(node.dataset, dataset);
   node.append(...kids.filter((k) => k !== null && k !== undefined));
   return node;
+};
+// A label holding a yes/no checkbox, drawn as On and Off chips at its end (AW.onOff): el()'s arguments.
+const onOffLine = (tag, props, ...kids) => {
+  const line = el(tag, props, ...kids);
+  const box = line.querySelector('input[type="checkbox"]');
+  if (box) AW.onOff(box);
+  return line;
 };
 const mb = (bytes) => (bytes ? `${Math.round(bytes / 2 ** 20)} MB` : "");
 const where = (source) =>
@@ -6231,16 +6256,11 @@ function renderClockSources(c, busy, own) {
     }
     clkSec.set(k, v);
   };
+  // A source on or off: its name and what it is, then On and Off.
   const tick = (key, label, desc, disabled) =>
     el(
-      "label",
-      { className: "setting inline" },
-      el("input", {
-        type: "checkbox",
-        checked: !!values[key],
-        disabled: busy || disabled || clkSec.disabled(),
-        onchange: (event) => set(key, event.target.checked),
-      }),
+      "div",
+      { className: "setting inline aw-onoff-row" },
       el(
         "span",
         {},
@@ -6249,6 +6269,7 @@ function renderClockSources(c, busy, own) {
           ? el("span", { className: "setting-desc", textContent: ` ${desc}` })
           : null,
       ),
+      AW.onOffChips(label, !!values[key], busy || disabled || clkSec.disabled(), (on) => set(key, on)),
     );
   const addr = el("input", {
     type: "text",
@@ -7266,12 +7287,15 @@ function renderUpSteps(inv, chosen) {
           input.addEventListener("change", () => {
             upTouched();
           });
-          return el(
+          const line = el(
             "label",
-            { className: "inline", id: `up-step-${iface}-${step}` },
+            { className: "inline aw-onoff-line", id: `up-step-${iface}-${step}` },
             input,
             ` ${label}`,
           );
+          // On and Off, as the page's other yes/no settings; the checkbox holds the value the save reads.
+          AW.onOff(input, `${label} on ${iface}`);
+          return line;
         }),
       );
       row.dataset.iface = iface;
@@ -12747,9 +12771,9 @@ function managePanel(repo, data, cls) {
     { className: "git-q" },
     el("legend", { textContent: "Build on push?" }),
     repo.can_build
-      ? el(
+      ? onOffLine(
           "label",
-          { className: "inline" },
+          { className: "inline aw-onoff-line" },
           el("input", {
             type: "checkbox",
             className: "git-build",
@@ -14127,19 +14151,18 @@ function kitBody(k, st, cfg, setDirty) {
   // Save is on only while the drawer differs from what is saved: changing a setting back turns it off again.
   const saved = JSON.stringify(draft);
   const changed = () => setDirty(JSON.stringify(draft) !== saved);
-  const keepBtn = el("button", {
-    type: "button",
-    className: "chip-btn" + (draft.keep_current ? " active" : ""),
-    textContent: `Automatic cache refresh: ${draft.keep_current ? "On" : "Off"}`,
-  });
-  keepBtn.setAttribute("aria-pressed", String(draft.keep_current));
-  keepBtn.addEventListener("click", () => {
-    draft.keep_current = !draft.keep_current;
-    keepBtn.classList.toggle("active", draft.keep_current);
-    keepBtn.setAttribute("aria-pressed", String(draft.keep_current));
-    keepBtn.textContent = `Automatic cache refresh: ${draft.keep_current ? "On" : "Off"}`;
-    changed();
-  });
+  // Automatic cache refresh: On and Off.
+  let keepChips;
+  const drawKeep = () => {
+    const next = AW.onOffChips("Automatic cache refresh", !!draft.keep_current, false, (on) => {
+      draft.keep_current = on;
+      drawKeep();
+      changed();
+    });
+    if (keepChips) keepChips.replaceWith(next);
+    keepChips = next;
+  };
+  drawKeep();
   const def = hoursPicker(mine.remove_after);
   def.addEventListener("change", () => {
     draft.remove_after = pickedHours(def);
@@ -14172,7 +14195,7 @@ function kitBody(k, st, cfg, setDirty) {
     jobs,
     field(
       "Automatic cache refresh",
-      keepBtn,
+      keepChips,
       el("span", {
         className: "setting-desc",
         textContent: "The library refreshes the cache on its schedule.",
@@ -16159,23 +16182,13 @@ function drawFolder(block, folderId) {
             "div",
             { class: "aw-field" },
             AW.h("span", { class: "aw-label", text: "Visible in this folder" }),
-            AW.h(
-              "button",
-              {
-                type: "button",
-                class: "chip-btn" + (shown ? " active" : ""),
-                "aria-pressed": String(shown),
-                onclick: () => {
-                  setInFolder(folderId, entry.href, !shown);
-                  folderOpen[folderId] = entry.href;
-                  folderTouched();
-                  fillFolderBlocks();
-                },
-              },
-              shown
-                ? "Visible in this folder: On"
-                : "Visible in this folder: Off",
-            ),
+            AW.onOffChips("Visible in this folder", shown, false, (on) => {
+              if (on === shown) return;
+              setInFolder(folderId, entry.href, on);
+              folderOpen[folderId] = entry.href;
+              folderTouched();
+              fillFolderBlocks();
+            }),
             AW.btn("↑ Earlier", { onclick: () => move(entry, -1) }),
             AW.btn("↓ Later", { onclick: () => move(entry, 1) }),
           ),
@@ -16411,19 +16424,11 @@ function drawStatusTiles(openId) {
           "div",
           { class: "aw-field" },
           AW.h("span", { class: "aw-label", text: "On the hub page" }),
-          AW.h(
-            "button",
-            {
-              type: "button",
-              class: "chip-btn" + (shown ? " active" : ""),
-              "aria-pressed": String(shown),
-              onclick: () => {
-                toggle("hidden", t.id, shown);
-                redraw(t.id);
-              },
-            },
-            shown ? "Shown: On" : "Shown: Off",
-          ),
+          AW.onOffChips("On the hub page", shown, false, (on) => {
+            if (on === shown) return;
+            toggle("hidden", t.id, shown);
+            redraw(t.id);
+          }),
           AW.btn("↑ Earlier", { onclick: () => move(t.id, -1) }),
           AW.btn("↓ Later", { onclick: () => move(t.id, 1) }),
         ),

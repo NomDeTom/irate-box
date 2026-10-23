@@ -3354,6 +3354,14 @@ button.danger {
   align-items: flex-end;
   gap: 0.5rem 0.75rem;
 }
+/* Its button on the fields' line (a library form's buttons otherwise stand at the top), and a gap from the words
+   above it (Security doctor → Import a scan). */
+.inline-form > button {
+  align-self: flex-end;
+}
+.setting-desc + .inline-form {
+  margin-top: 0.6rem;
+}
 .kit-flag {
   color: var(--warn);
   font-weight: 600;
@@ -5615,4 +5623,14 @@ body.mock-framed {
 }
 body.mock-framed .admin-side {
   top: 3rem;
+}
+
+/* A checkbox setting drawn as On and Off chips (AW.onOff): the box holds the value, out of sight; the chips after
+   the setting's words. */
+input.aw-onoff-box.aw-onoff-box {
+  display: none;
+}
+label > .aw-onoff-box ~ .chip-group,
+.aw-onoff-row > .chip-group {
+  flex: none;
 }

@@ -135,7 +135,7 @@ function page(file, url, fetcher, scripts) {
   await wait(50);
   const cdBox = d.getElementById('saves-cross-device-box');
   check('  saves across devices: off by default', t(cdBox).includes('Off'));
-  cdBox.querySelector('.chip-btn').click();
+  [...cdBox.querySelectorAll('.chip')].find((b) => t(b) === 'On').click();
   cdBox.querySelector('.action-btn.primary').click(); await wait();
   check('  turning it on sends the setting', sposted.some((b) => b.saves_cross_device === true), sposted);
   // Script sign-in: a chip only selects; the page says what saving would stop; Save sends it, never with no way back in.
