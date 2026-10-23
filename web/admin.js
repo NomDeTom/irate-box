@@ -13026,6 +13026,11 @@ function renderMirrors(data) {
               ),
               el("span", {
                 className: "setting-desc",
+                textContent: m.description || st.described || "",
+                hidden: !(m.description || st.described),
+              }),
+              el("span", {
+                className: "setting-desc",
                 textContent: `from ${m.upstream}`,
               }),
               el("span", {
@@ -13083,6 +13088,32 @@ function renderMirrors(data) {
                   title:
                     "Updating a mirror downloads new data from the upstream repository",
                 },
+              ),
+              el("input", {
+                type: "text",
+                maxLength: 200,
+                value: m.description || "",
+                placeholder: st.described || "From the README's first heading",
+                ariaLabel: `Description of ${m.name}.git`,
+                id: `mirror-description-${m.name}`,
+              }),
+              actionButton(
+                "Change description",
+                async () => {
+                  const text = document.getElementById(`mirror-description-${m.name}`).value.trim();
+                  try {
+                    renderGit(
+                      await postJSON("/admin/git", {
+                        action: "mirror-change",
+                        mirror: Object.assign({}, m, { status: undefined, description: text }),
+                      }),
+                    );
+                    say("Saved. It shows on cgit after the next update.", true, git.mirrorNote);
+                  } catch (err) {
+                    say(err.message, false, git.mirrorNote);
+                  }
+                },
+                { className: "small" },
               ),
               actionButton(
                 m.submodules ? "Without submodules" : "With submodules",
@@ -13155,6 +13186,7 @@ git.mirrorForm.addEventListener("submit", async (event) => {
   const mirror = {
     upstream: fields.upstream.value.trim(),
     name: fields.name.value.trim(),
+    description: fields.description.value.trim(),
     area: fields.area.value,
     branches: fields.branches.value.trim().split(/\s+/).filter(Boolean),
     groups,
