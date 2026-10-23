@@ -450,7 +450,8 @@ def hidden_tiles(signed_in=False):
     for i in seen_only():
         if _unseen(vis.get(i, "auto"), signed_in):
             out.add(i)
-    return out
+    st = status_tiles_state()
+    return out | {i for i, v in st["seen_by"].items() if _unseen(v, signed_in)}
 
 
 def admin_only_tiles():
@@ -702,6 +703,8 @@ STATUS_TILES_FILE = STATE_DIR / "status_tiles.json"
 # A tile's size: one cell, wide (two across) or large (two across and two down). An older "double"
 # list reads as wide.
 SIZES = ("wide", "large")
+# Who sees a tile, and its part of /status: everyone (the default, not stored), signed-in users, or administrators.
+TILE_SEEN_BY = ("users", "admin")
 
 
 def _sizes(data):
@@ -720,7 +723,18 @@ def status_tiles_state():
     data = data if isinstance(data, dict) else {}
     out = {k: [x for x in data.get(k, []) if isinstance(x, str)][:50] for k in ("order", "hidden")}
     out["size"] = _sizes(data)
+    seen = data.get("seen_by", {})
+    out["seen_by"] = (
+        {k: v for k, v in seen.items() if isinstance(k, str) and v in TILE_SEEN_BY} if isinstance(seen, dict) else {}
+    )
     return out
+
+
+def box_unseen(signed_in):
+    """The box row's tiles this visitor does not see: hidden from everyone, or for signed-in users or
+    administrators only (status_tiles.json). Their parts of /status are left out for them too."""
+    st = status_tiles_state()
+    return set(st["hidden"]) | {i for i, v in st["seen_by"].items() if _unseen(v, signed_in)}
 
 
 def box_tiles():
@@ -749,6 +763,7 @@ def status_tiles_snapshot():
                 "name": n,
                 "hidden": i in st["hidden"],
                 "size": st["size"].get(i, "single"),
+                "seen_by": st["seen_by"].get(i, "guests"),
             }
             for i, n in tiles
         ],
@@ -1561,22 +1576,23 @@ def kiwix_why():
     return "Kiwix is not running. Health says why, and can start it again."
 
 
-def service_status(proxied):
+def service_status(proxied, services=None):
     """Per-service state: "running", "stopped" (installed, not answering) or "missing".
     `up` stays for the tiles: running, and reachable because the web server is in front. Probes
     are cached so a page full of pollers costs one sweep per STATUS_CACHE_S."""
+    services = SERVICES if services is None else services
     now = time.monotonic()
     if now - _status_cache["at"] > STATUS_CACHE_S:
-        _status_cache["ports"] = {svc["port"]: port_listening(svc["port"]) for svc in SERVICES if "port" in svc}
+        _status_cache["ports"] = {svc["port"]: port_listening(svc["port"]) for svc in services if "port" in svc}
         _status_cache["sockets"] = {
-            svc["socket"]: socket_listening(svc["socket"]) for svc in SERVICES if "socket" in svc
+            svc["socket"]: socket_listening(svc["socket"]) for svc in services if "socket" in svc
         }
-        _status_cache["units"] = unit_states([s["unit"] for s in SERVICES if "unit" in s])
+        _status_cache["units"] = unit_states([s["unit"] for s in services if "unit" in s])
         _status_cache["why"] = {}
         _status_cache["at"] = now
     units = _status_cache["units"]
     out = []
-    for svc in SERVICES:
+    for svc in services:
         installed, active, _ = units.get(svc["unit"], (True, False, False)) if "unit" in svc else (True, False, False)
         if "local_dir" in svc:
             installed = Path(svc["local_dir"]).is_dir()
@@ -3889,6 +3905,49 @@ class Handler(BaseHTTPRequestHandler):
     def _signed_in(self):
         return accounts.session(self._session_token()) is not None if self._session_token() else False
 
+    def _status(self):
+        """/status, an allow-list: what every page needs (whether the web server is in front, the version for
+        the source offer), and each status tile's part only for a visitor who sees that tile, as the
+        administrator set it (Status tiles: hidden, or for signed-in users or administrators only). The
+        services: those of the apps this visitor sees, and the box's own only with the Services tile."""
+        # The web server's proxy adds X-Forwarded-For; a direct hit has none.
+        proxied = "X-Forwarded-For" in self.headers
+        viewer = self._viewer()
+        unseen = set() if viewer == "admin" else box_unseen(viewer)
+        apps_unseen = set() if viewer == "admin" else hidden_tiles(viewer)
+        now, services = CLOCK.ticks(), SERVICES
+        payload = {
+            "proxied": proxied,
+            # The About page shows it beside the source offer (the tarball is named after it).
+            "version": hub_version(),
+            # One list, read once: service_status answers it entry for entry; an app's entry has its manifest's id.
+            "services": [
+                s
+                for svc, s in zip(services, service_status(proxied, services), strict=True)
+                if (svc["app"] not in apps_unseen if "app" in svc else "box-services" not in unseen)
+            ],
+        }
+        if "box-system" not in unseen:
+            payload["system"] = system_status()
+            payload["uptime"] = now
+        if "box-people" not in unseen:
+            payload["online"] = online_count(now)
+            joined = joined_count()
+            if joined is not None:
+                payload["joined"] = joined
+            # Different devices today and this week: the numbers only, while counting is on.
+            counted = visitor_counts()
+            if counted is not None:
+                payload["visitors"] = counted
+            # Signed in and around: the count for whoever sees the tile; the names only to whom the owner
+            # allows, and only of those who said yes on their own account page.
+            around = online_names(now)
+            payload["signed_in"] = len(around)
+            me = accounts.session(self._session_token())
+            if me and (settings_snapshot()["names_to"] == "users" or me.get("role") == "admin"):
+                payload["names"] = [n for n in around if accounts.prefs(n)["show_online"]]
+        return payload
+
     def _viewer(self):
         """The visitor's level for what the hub shows them: False, True, or "admin" (an admin account,
         or the admin lately at /admin: the box's own login)."""
@@ -4995,34 +5054,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/status":
-            # The web server's proxy adds X-Forwarded-For; a direct hit has none.
-            proxied = "X-Forwarded-For" in self.headers
-            now = CLOCK.ticks()
-            payload = {
-                "proxied": proxied,
-                "services": service_status(proxied),
-                "system": system_status(),
-                "uptime": now,
-                "online": online_count(now),
-                "settings": settings_snapshot(),
-                # The About page shows it beside the source offer (the tarball is named after it).
-                "version": hub_version(),
-            }
-            joined = joined_count()
-            if joined is not None:
-                payload["joined"] = joined
-            # Different devices today and this week: the numbers only, while counting is on.
-            counted = visitor_counts()
-            if counted is not None:
-                payload["visitors"] = counted
-            # Signed in and around: the count for everyone; the names only to whom the owner
-            # allows, and only of those who said yes on their own account page.
-            around = online_names(now)
-            payload["signed_in"] = len(around)
-            me = accounts.session(self._session_token())
-            if me and (settings_snapshot()["names_to"] == "users" or me.get("role") == "admin"):
-                payload["names"] = [n for n in around if accounts.prefs(n)["show_online"]]
-            self.send_json(200, payload)
+            self.send_json(200, self._status())
             return
 
         tid = thread_id(path)
@@ -5889,6 +5921,9 @@ class Handler(BaseHTTPRequestHandler):
                 or not isinstance(size, dict)
                 or not set(size) <= ids
                 or not set(size.values()) <= set(SIZES)
+                or not isinstance(data.get("seen_by", {}), dict)
+                or not set(data.get("seen_by", {})) <= ids
+                or not set(data.get("seen_by", {}).values()) <= {"guests", *TILE_SEEN_BY}
             ):
                 self.send_json(400, refused.say(BAD_REQUEST))
                 return
@@ -5896,6 +5931,7 @@ class Handler(BaseHTTPRequestHandler):
             STATE_DIR.mkdir(parents=True, exist_ok=True)
             out = {k: list(dict.fromkeys(data.get(k, []))) for k in ("order", "hidden")}
             out["size"] = _sizes(data)  # an older page's "double" list, read as wide
+            out["seen_by"] = {k: v for k, v in data.get("seen_by", {}).items() if v in TILE_SEEN_BY}
             tmp.write_text(json.dumps(out))
             os.replace(tmp, STATUS_TILES_FILE)
             self.send_json(200, status_tiles_snapshot())
