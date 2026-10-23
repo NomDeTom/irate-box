@@ -92,14 +92,16 @@ LABEL_SAID = {
 PER_IFACE = ("auth_retries", "cloned_mac", "powersave", "scan_mac")
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 
-# Older names NetworkManager still reads, shown where they set the same thing.
+# Older names NetworkManager still reads, shown where they set the same thing: the box default each stands for, and
+# what each value means in that default's words.
 LEGACY = {
     ("connection", "wifi.mac-address-randomization"): {
-        "1": "the board's own (never random)",
-        "2": "random",
-        "0": "default",
+        "setting": "cloned_mac",
+        "values": {"1": "the board's own", "2": "random each time", "0": "NetworkManager's own choice"},
     }
 }
+# A box default's label by its key, for a section that sets it for some devices only.
+KEY_LABEL = {s["key"]: s["label"] for s in SETTINGS.values()}
 
 
 def _parser():
@@ -168,10 +170,18 @@ def effective():
                 out[n]["value"], out[n]["file"] = v, str(f)
                 if f == DROPIN:
                     out[n]["mine"] = v
-        for (sec, key), meaning in LEGACY.items():
+        for (sec, key), old in LEGACY.items():
             if cp.has_option(sec, key):
                 v = cp.get(sec, key).strip()
-                legacy.append({"key": key, "value": v, "means": meaning.get(v, v), "file": str(f)})
+                legacy.append(
+                    {
+                        "key": key,
+                        "value": v,
+                        "means": old["values"].get(v, v),
+                        "label": SETTINGS[old["setting"]]["label"],
+                        "file": str(f),
+                    }
+                )
         for sec in cp.sections():
             base = sec.split("-", 1)[0]
             if sec != base and base in ("connection", "device"):
@@ -182,6 +192,7 @@ def effective():
                             "section": sec,
                             "match": cp.get(sec, "match-device", fallback=""),
                             "keys": {k: cp.get(sec, k).strip() for k in keys},
+                            "labels": [KEY_LABEL.get(k, k) for k in keys],
                             "file": str(f),
                         }
                     )
