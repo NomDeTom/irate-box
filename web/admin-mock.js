@@ -23,6 +23,14 @@
   }
   const group = (title, intro, ...rows) => h('div', { class: 'mock-group' }, h('h3', { class: 'mock-group-title', text: title }),
     h('p', { class: 'setting-desc', text: intro }), ...rows);
+  // A checkbox setting, as a page writes one, drawn as On and Off chips.
+  const mockOnOff = () => {
+    const box = h('input', { type: 'checkbox', checked: true });
+    const label = h('label', { class: 'setting' }, box, h('span', {}, h('span', { class: 'setting-name', text: 'Show the stand-in tile on the hub' }),
+      h('span', { class: 'setting-desc', text: 'The page\'s code reads the checkbox as before.' })));
+    AW.onOff(box);
+    return label;
+  };
   // A line under a control that says what it did, as a page's note would.
   const said = () => h('p', { class: 'setting-desc action-note', role: 'status' });
 
@@ -76,9 +84,11 @@
       row('filter-chips', 'Filter chips: any of a few', 'Several at once, as a setting, or to filter a list.',
         "AW.settings([{key, label, kind: 'multi', options, value: [...]}])",
         AW.settings([{ key: 'boards', label: 'Boards', kind: 'multi', options: ['rak4631', 'heltec-v3', 't-beam', 'station-g2'], value: ['rak4631'] }])),
-      row('toggle', 'Toggle', 'On or off. The button says which. The admin puts its name beside it, not in it.',
+      row('toggle', 'On and Off chips: a yes/no setting', 'A setting that is on or off: two chips, the one in effect selected, its name beside them. Every yes/no setting is drawn so; a checkbox is for picking items from a list, an option of a one-off form, or a consent.',
         "AW.settings([{key, label, kind: 'toggle', value}])",
         AW.settings([{ key: 'keep', label: 'Keep current', kind: 'toggle', value: true }])),
+      row('onoff-box', 'On and Off chips over a checkbox', 'A yes/no setting the page writes as a checkbox (a .settings group, a form): the same chips, the checkbox out of sight holding the value, so the code that reads and saves it is unchanged.',
+        'AW.onOff(input[type="checkbox"])', mockOnOff()),
       row('tabs', 'Joined tabs', 'Views of the same thing: the data stays, the range changes.',
         'class="view-switch" with buttons class="view-switch-btn" (Overview → Memory and disk history)', tabs),
       row('pills', 'Pills', 'A state, one meaning each. The word sets the colour unless told.',
@@ -98,14 +108,14 @@
       row('cards', 'Cards with a drawer', 'Things to manage one at a time: the drawer opens inside the card. A drawer with settings has Save and Discard.',
         'AW.cards([{id, title, summary, badges}], {body(item, setDirty), save(item)})',
         AW.cards(cardItems, { id: 'mock-cards', save: () => pretendSave(), body: (item, setDirty) => {
-          const toggle = h('button', { type: 'button', class: 'chip-btn', 'aria-pressed': 'false', onclick: (event) => {
-            const on = event.currentTarget.getAttribute('aria-pressed') !== 'true';
-            event.currentTarget.setAttribute('aria-pressed', String(on));
-            event.currentTarget.classList.toggle('active', on);
-            event.currentTarget.textContent = on ? 'On' : 'Off';
-            setDirty(on);
-          } }, 'Off');
-          return [AW.dl({ Name: item.title, State: item.summary }), h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Start at boot' }), toggle)];
+          let chips;
+          const draw = (on) => {
+            const next = AW.onOffChips('Start at boot', on, false, (value) => { draw(value); setDirty(value); });
+            if (chips) chips.replaceWith(next);
+            chips = next;
+          };
+          draw(false);
+          return [AW.dl({ Name: item.title, State: item.summary }), h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Start at boot' }), chips)];
         } })),
       row('records', 'Records', 'An unlimited list, newest first: a limited height, a scroll bar and a filter.',
         "AW.records([{id, title}], {noun})", AW.records(records, { id: 'mock-records', noun: 'events' })));

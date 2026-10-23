@@ -58,6 +58,8 @@ w.eval(js);
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
+// A yes/no setting's chip (AW.onOffChips): its group by name, then On or Off.
+const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group[aria-label="${name}"] .chip`)].find((b) => b.textContent.trim() === word);
 (async () => {
   await wait();
   const d = w.document;
@@ -89,7 +91,8 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
     link && link.href === 'https://example.org/driver' && link.target === '_blank' && /noopener/.test(link.rel)
     && /A driver source \(1\.2-3, GPL-2\.0\)\. Tested on a Pi/.test(t(link.parentNode)), link && t(link.parentNode));
   check('what a 32-bit board leaves out is said', /Omitted on this armhf board because they need a 64-bit board: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging'))));
-  check('keep current shown as set', /Automatic cache refresh: Off/.test(t(card('Capture'))) && /Automatic cache refresh: On/.test(t(card('Debugging'))));
+  check('keep current shown as set, On or Off selected', onOffChip(card('Capture'), 'Automatic cache refresh', 'Off').classList.contains('selected')
+    && onOffChip(card('Debugging'), 'Automatic cache refresh', 'On').classList.contains('selected'));
   d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
   check('Esc closes it', !d.querySelector('#kits-grid .aw-card.open'));
 
@@ -123,7 +126,7 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   await wait();
   check('Roll back asks, then asks the hub', posted[3] && posted[3].action === 'rollback' && posted[3].kit === 'security');
   // Settings wait for Save.
-  button(card('Capture'), 'Automatic cache refresh: Off').click();
+  onOffChip(card('Capture'), 'Automatic cache refresh', 'On').click();
   await wait();
   check('keep current: a setting, held until Save', posted.length === 4 && save('Capture') && !save('Capture').disabled);
   save('Capture').click();
@@ -188,11 +191,10 @@ const wait = (ms = 50) => new Promise((r) => setTimeout(r, ms));
     // Save only while something differs from what is saved (Tom, 2026-10-15: active with nothing changed).
     const c = card('Capture');
     const save = () => [...c.querySelectorAll('.aw-foot button')].find((b) => t(b) === 'Save');
-    const keep = [...c.querySelectorAll('button')].find((b) => /^Automatic cache refresh:/.test(t(b)));
     check('a toolkit opened: Save off, nothing changed', save() && save().disabled, save() && save().outerHTML);
-    keep.click(); await wait();
+    onOffChip(c, 'Automatic cache refresh', 'On').click(); await wait();
     check('  a setting changed: Save on', !save().disabled);
-    keep.click(); await wait();
+    onOffChip(c, 'Automatic cache refresh', 'Off').click(); await wait();
     check('  changed back: Save off again', save().disabled);
   }
   {

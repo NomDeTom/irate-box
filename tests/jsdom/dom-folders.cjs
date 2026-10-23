@@ -37,6 +37,8 @@ const click = (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true
 const block = () => d.querySelector('.folder-block[data-folder="tools-rf"]');
 const row = (name) => [...block().querySelectorAll('.aw-row')].find((r) => t(r.querySelector('.t')) === name);
 const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
+// A yes/no setting's chip (AW.onOffChips): its group by name, then On or Off.
+const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group[aria-label="${name}"] .chip`)].find((b) => b.textContent.trim() === word);
 (async () => {
   await wait();
   const groups = [...d.querySelectorAll('.admin-side-group')].map(t);
@@ -47,7 +49,7 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
   const save = () => block().querySelector('.aw-save');
   check('Save waits for a change', save().disabled);
   click(row('Airtime').querySelector('.aw-row-head'));
-  click(button(row('Airtime'), 'Visible in this folder: On'));
+  click(onOffChip(row('Airtime'), 'Visible in this folder', 'Off'));
   check('hiding an entry: marked hidden, Save offered', /hidden/i.test(t(row('Airtime').querySelector('.p'))) && !save().disabled);
   check('  its line stays open after the change', row('Airtime').querySelector('.aw-row-head').getAttribute('aria-expanded') === 'true');
   click(button(row('Airtime'), 'Electronics'));
@@ -70,7 +72,7 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
   check('Electronics saved from its page: put in, and RF as saved', (st2['tools-electronics'].extra || []).includes('/app.html#/tools/air.html')
     && JSON.stringify(st2['tools-rf'].hidden) === '["/app.html#/tools/air.html"]', JSON.stringify(st2));
   click(row('Frame').querySelector('.aw-row-head'));
-  click(button(row('Frame'), 'Visible in this folder: On'));
+  click(onOffChip(row('Frame'), 'Visible in this folder', 'Off'));
   click(block().querySelector('.aw-discard'));
   check('Discard puts back what was saved', !/hidden/i.test(t(row('Frame').querySelector('.p'))) && save().disabled);
   check('no page errors', !errors.length, errors.join('; '));

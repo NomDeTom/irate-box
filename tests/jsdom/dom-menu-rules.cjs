@@ -108,9 +108,10 @@ const st = AW.settings([
 paneB.append(st);
 const sSave = [...st.querySelectorAll('.aw-foot .action-btn')].find((b) => b.textContent === 'Save');
 check('settings: Save waits for a change', sSave.disabled);
-click(st.querySelector('[data-setting="keep"] .chip-btn'));
+click([...st.querySelectorAll('[data-setting="keep"] .chip')].find((b) => b.textContent === 'On'));
 click([...st.querySelectorAll('[data-setting="when"] .chip')][2]);
-check('settings: the toggle says its state', st.querySelector('[data-setting="keep"] .chip-btn').textContent === 'On');
+check('settings: a yes/no setting is On and Off chips, the one chosen selected', st.querySelector('[data-setting="keep"] .chip.selected').textContent === 'On'
+  && st.querySelectorAll('[data-setting="keep"] .chip').length === 2);
 click(sSave);
 check('settings: Save sends only what changed', JSON.stringify(sent) === JSON.stringify({ keep: true, when: 'by hand' }), JSON.stringify(sent));
 click([...st.querySelectorAll('[data-setting="when"] .chip')][0]);
