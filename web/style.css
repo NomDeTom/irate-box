@@ -5634,3 +5634,50 @@ label > .aw-onoff-box ~ .chip-group,
 .aw-onoff-row > .chip-group {
   flex: none;
 }
+
+/* A few choices as chips (AW.choices compact): the radio in each, out of sight but focusable; the chosen one
+   filled; one line under them saying what it does. */
+.choice-tiles.choice-chips {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  max-width: none;
+  gap: 0.4rem;
+}
+.choice-chip {
+  position: relative;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.choice-chip input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.choice-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.choice-chip.chosen {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.choice-chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.choice-chip.unavailable {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.choice-says {
+  margin: 0.35rem 0 0;
+}

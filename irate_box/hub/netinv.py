@@ -1488,10 +1488,15 @@ def findings(inv):
                             gives_up,
                             M(
                                 "netinv.retries.fix",
-                                "On the Network page, in Default connection settings, set the retries to without limit for every network.",
+                                "Set Keep trying to connect and Keep trying after a failed password check to forever.",
                             ),
                             notes=[where],
                             iface=p.get("iface"),
+                            # The link to the two settings: Network → NetworkManager join retries.
+                            go={
+                                "section": "up-retries-group",
+                                "where": M("netinv.go.retries", "NetworkManager join retries"),
+                            },
                         )
                     )
     for r in radios:

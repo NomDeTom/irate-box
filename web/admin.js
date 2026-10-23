@@ -6858,11 +6858,11 @@ function sensLine(n, eff) {
 
 const GUEST_WORDS = {
   protect: [
-    "Defer disruptive recovery while guests are connected",
-    "While guests are on the hotspot, the box does not reset the radio or reboot. It does not restart the network service when the hotspot shares the radio. The box reports this and takes the step after the guests leave.",
+    "Defer",
+    "While guests are on the hotspot, the box does not reset the radio or reboot, nor restart the network service when the hotspot shares the radio. It takes the step after the guests leave.",
   ],
   ignore: [
-    "Allow disruptive recovery",
+    "Allow",
     "The box takes every step up to the maximum action, whether or not guests are connected. Guests lose the hotspot for a while.",
   ],
 };
@@ -6892,17 +6892,13 @@ const RETRY_WORDS = {
     "The interval grows to at most 6 hours. This makes the fewest attempts. Use it for a box on a battery.",
   ],
 };
+const GIVEUP_STOPS = (period) =>
+  `After ${period} the box stops retrying and reports it. If the network comes back by itself, the box still reconnects.`;
 const GIVEUP_WORDS = {
-  never: [
-    "Retry without limit",
-    "The box retries for as long as needed. It reconnects whenever the network returns.",
-  ],
-  hour: [
-    "An hour",
-    "Then the box stops and reports this. If the network returns by itself, the box still reconnects.",
-  ],
-  day: ["A day", "Then the box stops and reports this."],
-  week: ["A week", "Then the box stops and reports this."],
+  never: ["No limit", "The box retries for as long as needed, and reconnects whenever the network returns."],
+  hour: ["An hour", GIVEUP_STOPS("an hour")],
+  day: ["A day", GIVEUP_STOPS("a day")],
+  week: ["A week", GIVEUP_STOPS("a week")],
 };
 
 // Roaming: from the least change to the owner's system to the most,
@@ -6983,8 +6979,10 @@ function willText(eff) {
 }
 
 // Every choice the same way: radio cards, each one's description and what it does.
-function rungs(box, group, items) {
+// compact: a row of chips and one line for the chosen one, where the options' words would repeat each other.
+function rungs(box, group, items, compact = false) {
   AW.choices(box, `up-${group}`, items, {
+    compact,
     onChange: (name) => upChoose({ [group]: name }, netData.levels),
   });
 }
@@ -6994,25 +6992,15 @@ function buildUpChoices(levels) {
   rungs(
     net.pace,
     "pace",
-    levels.pace.map((n) => ({
-      value: n,
-      title: cap1(n),
-      desc: levels.describe[n] || "",
-      does: paceLine(n, levels),
-    })),
+    // What the chosen pace does, from its own numbers (its description says the same).
+    levels.pace.map((n) => ({ value: n, title: cap1(n), says: paceLine(n, levels) })),
+    true,
   );
   rungs(
     net.reach,
     "reach",
-    levels.reach.map((n) => ({
-      value: n,
-      title: reachTitle(n, false),
-      desc: levels.describe[n] || "",
-      does:
-        n === "watch"
-          ? "Checks, and never acts."
-          : `Up to: ${n === "reconnect" ? "reconnecting" : STEP_DOES[n]}.`,
-    })),
+    levels.reach.map((n) => ({ value: n, title: reachTitle(n, false), says: levels.describe[n] || "" })),
+    true,
   );
   rungs(
     net.guests,
@@ -7020,8 +7008,9 @@ function buildUpChoices(levels) {
     levels.guests.map((n) => ({
       value: n,
       title: GUEST_WORDS[n][0],
-      desc: GUEST_WORDS[n][1],
+      says: GUEST_WORDS[n][1],
     })),
+    true,
   );
   rungs(
     net.wedge,
@@ -7038,8 +7027,9 @@ function buildUpChoices(levels) {
     Object.keys(levels.retry || RETRY_WORDS).map((n) => ({
       value: n,
       title: RETRY_WORDS[n][0],
-      desc: RETRY_WORDS[n][1],
+      says: RETRY_WORDS[n][1],
     })),
+    true,
   );
   rungs(
     net.giveUp,
@@ -7047,8 +7037,9 @@ function buildUpChoices(levels) {
     Object.keys(levels.give_up || GIVEUP_WORDS).map((n) => ({
       value: n,
       title: GIVEUP_WORDS[n][0],
-      desc: GIVEUP_WORDS[n][1],
+      says: GIVEUP_WORDS[n][1],
     })),
+    true,
   );
   rungs(
     net.watchNew,
@@ -7080,15 +7071,15 @@ function buildUpChoices(levels) {
   rungs(
     net.cableReach,
     "cable_reach",
+    // As the maximum action's: the step in words, then what it does (a cable's radio step resets the adapter).
     levels.reach.map((n) => ({
       value: n,
       title: reachTitle(n, true),
-      desc:
-        n === "watch"
-          ? "Checks and logs."
-          : `Up to: ${n === "reconnect" ? "reconnecting" : n === "radio" ? "resetting the network adapter" : STEP_DOES[n]}.`,
+      says: n === "radio" ? "Reconnects; restarts the network service; then resets the network adapter." : levels.describe[n] || "",
     })),
+    true,
   );
+
   drawRoamTiles(levels);
   net.ignoreRoams.addEventListener("change", () =>
     upChoose({ ignore_roams: net.ignoreRoams.checked }, netData.levels),
@@ -8438,9 +8429,12 @@ function renderNetwork(data) {
   renderOtherAp(inv, data, busy);
   renderWifisync(inv, data, busy);
   const change = uplink && uplink.profile_change;
+  // The connection's name: a string from netinv.uplink_verdict, or the profile itself ({name, …}) from an inventory
+  // that carries it whole; never drawn as an object.
+  const profOf = (p) => (typeof p === "string" ? p : p && typeof p.name === "string" ? p.name : null);
   const prof =
     inv && inv.uplink && inv.uplink.backend === "networkmanager"
-      ? inv.uplink.profile
+      ? profOf(inv.uplink.profile)
       : null;
   const trap =
     inv &&
