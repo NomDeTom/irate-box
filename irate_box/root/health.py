@@ -30,7 +30,8 @@ asked. Three ways in:
     /admin → Health → Box doctor (the clock: Box → Clock), the same, through hub_control.py
 
 The shell is the way in when /admin itself is stuck (the root helper is what runs this for
-the page). "rerun-install" is the root helper's own (it needs the update machinery). Stdlib only.
+the page). "rerun-install" and "rerun-install-port-80" are the root helper's own (they need the update
+machinery). Stdlib only.
 
 Writing a check (irate_box/finding.py says what each part of a finding is for):
 
@@ -159,6 +160,22 @@ RERUN = action(
         "The installer can repair, upgrade and restart services.",
     ),
 )
+
+
+# The installer again with the hub on port 80 in place of the port it was moved to (the root helper's, as RERUN).
+def rerun_port_80(port):
+    return action(
+        "rerun-install-port-80",
+        M("install.rerun.port-80", "Move the hub to port 80"),
+        M(
+            "install.rerun.port-80.confirm",
+            "Run install.sh again with --port 80 in place of --port {port}? The hub then opens at the box's address "
+            "with no port, and addresses with :{port} stop working. The installer can restart services.",
+            port=port,
+        ),
+    )
+
+
 RESTART = M("unit.restart", "Start it again")
 RUN_NOW = M("unit.run-now", "Run it now")
 
@@ -2217,10 +2234,11 @@ def check_port_80():
                 M(
                     "port-80.free.fix",
                     "The installer moved the hub when port 80 was taken, and port 80 is free now. "
-                    "Run the installer again with --port 80. Updates then keep port 80.",
+                    "Move the hub to port 80: the installer runs again with --port 80. Updates then keep port 80.",
                 ),
                 commands=[f"sudo {CODE}/install.sh --port 80"],
                 evidence=[f"--port {port} in {ETC / 'install-options'}", "ss: nothing listens on port 80"],
+                actions=[rerun_port_80(port)],
             )
         ]
     return [
@@ -4155,7 +4173,7 @@ def report(data, problems_only=False):
                 lines.append(
                     f"         or: sudo {CODE}/irate-box health fix clock-set:$(date -d 'YYYY-MM-DD HH:MM' +%s)   (from a terminal: give the right time)"
                 )
-            elif a["choice"] != "rerun-install":
+            elif not a["choice"].startswith("rerun-install"):
                 lines.append(f"         or: sudo {CODE}/irate-box health fix {a['choice']}   ({render(a['label'])})")
     return "\n".join(lines)
 
@@ -4176,6 +4194,8 @@ def main(argv):
             sys.exit(
                 "Run the installer from the checkout instead: sudo ./install.sh (it reuses this box's recorded options)."
             )
+        if argv[1] == "rerun-install-port-80":
+            sys.exit("Run the installer from the checkout instead: sudo ./install.sh --port 80 (updates then keep it).")
         try:
             print(render(fix(argv[1])))
         except ValueError as exc:

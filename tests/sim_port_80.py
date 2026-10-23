@@ -89,6 +89,24 @@ check(
     and f["commands"] == [f"sudo {health.CODE}/install.sh --port 80"],
     f,
 )
+moved = [a for a in f.get("actions", []) if a["choice"] == "rerun-install-port-80"]
+check(
+    "  with a button that moves the hub, asking first, naming the port it leaves",
+    len(moved) == 1 and moved[0]["confirm"]["args"]["port"] == "8080",
+    f.get("actions"),
+)
+from irate_box.hub.server import HEALTH_CHOICE_RE  # noqa: E402
+
+check("  the hub passes that choice to the root helper", bool(HEALTH_CHOICE_RE.match("rerun-install-port-80")))
+from irate_box.root.hub_control import _with_port  # noqa: E402
+
+check(
+    "  the installer's options with --port 80 in place of the old port, the rest kept",
+    _with_port(["--with-collab", "--port", "8080", "--web", "nginx"], "80")
+    == ["--with-collab", "--web", "nginx", "--port", "80"]
+    and _with_port(["--port=8080"], "80") == ["--port", "80"]
+    and _with_port(["--web", "nginx"], "80") == ["--web", "nginx", "--port", "80"],
+)
 
 listening["out"] = APACHE
 f = port_80()
