@@ -4157,6 +4157,8 @@ function secChoiceCard(finding, busy, note) {
       el("span", { className: "setting-desc", textContent: n }),
     ),
     evidenceList(parts.evidence),
+    // Where a part of it is set elsewhere (guest access's level, on Network → Hotspot): a link there.
+    finding.go ? el("div", { className: "library-buttons" }, goLink(finding.go)) : null,
     // What to type where the page cannot put it in effect itself (the firewall's rules not loaded, say).
     finding.status !== "ok" && parts.commands.length
       ? el("div", { className: "fdo-cmds" }, ...parts.commands.map(copyBox))

@@ -258,7 +258,8 @@ def start(**extra):
     proc = subprocess.Popen(
         [str(REPO / "irate-box"), "server"], env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
-    for _ in range(50):
+    # Up to 30 s: a hub starting on a busy machine (CI, the page tests alongside) took longer than 5.
+    for _ in range(300):
         if listening_on(p):
             break
         time.sleep(0.1)
