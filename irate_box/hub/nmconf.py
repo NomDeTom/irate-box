@@ -77,7 +77,7 @@ SETTINGS = {
         "kind": "choice",
         "label": "WiFi power save",
         "nm_default": "the driver's choice",
-        "values": {"2": "off", "3": "on", "1": "leave to the driver (ignore)"},
+        "values": {"2": "off", "3": "on", "1": "the driver's choice"},
     },
 }
 # Each setting's label as a message, for a refusal that names it (the same words as "label").
@@ -102,6 +102,7 @@ LEGACY = {
 }
 # A box default's label by its key, for a section that sets it for some devices only.
 KEY_LABEL = {s["key"]: s["label"] for s in SETTINGS.values()}
+KEY_NAME = {s["key"]: n for n, s in SETTINGS.items()}
 
 
 def _parser():
@@ -179,6 +180,7 @@ def effective():
                         "value": v,
                         "means": old["values"].get(v, v),
                         "label": SETTINGS[old["setting"]]["label"],
+                        "setting": old["setting"],
                         "file": str(f),
                     }
                 )
@@ -194,6 +196,7 @@ def effective():
                             "match": cp.get(sec, "match-device", fallback=""),
                             "keys": {k: cp.get(sec, k).strip() for k in keys},
                             "labels": [KEY_LABEL.get(k, k) for k in keys],
+                            "settings": [KEY_NAME[k] for k in keys],
                             "file": str(f),
                         }
                     )
