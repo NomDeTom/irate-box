@@ -5182,6 +5182,11 @@ def debsecan_findings(installed, cached, kit_of, feed_date, source_of=None):
     )
     per_kit = {}
     for pkg, vulns in cached.items():
+        # A -dbgsym package shares its program's source and version, so the tracker lists the program's fixes
+        # against it too. It holds only symbols, no code that runs, and the symbols kit fetches the installed
+        # program's exact version, so a refresh cannot bring the fix: the program's own finding has it.
+        if pkg.endswith("-dbgsym"):
+            continue
         if any(n["fixed"] for _, n in vulns):
             for kid in kit_of.get(pkg, []):
                 per_kit.setdefault(kid, set()).add(pkg)

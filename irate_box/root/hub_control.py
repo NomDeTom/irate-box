@@ -77,7 +77,8 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       watchdog, the web server's config; to control/health.json.
   {"id": ..., "action": "health-fix", "choice": "<one of its offers>"}
       One repair the Box doctor offered (restart a unit, rebuild or tidy the Kiwix library, …), or
-      "rerun-install": install.sh again from a copy of the installed code, recorded options.
+      "rerun-install": install.sh again from a copy of the installed code, recorded options;
+      "rerun-install-port-80" the same with the hub moved to port 80.
       Then the Box doctor looks again.
   {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
       What the box has for networking (netinv.py): radios, who runs them, what each can do,
@@ -5733,9 +5734,25 @@ def health_scan(req):
     )
 
 
-def rerun_install():
-    """install.sh again, as it was last run, from a copy of the installed code (as addon())."""
+def _with_port(opts, port):
+    """The recorded options with the hub's port set to port (--port N or --port=N replaced, or added)."""
+    out, skip = [], False
+    for o in opts:
+        if skip:
+            skip = False
+        elif o == "--port":
+            skip = True
+        elif not o.startswith("--port="):
+            out.append(o)
+    return [*out, "--port", port]
+
+
+def rerun_install(port=None):
+    """install.sh again, as it was last run, from a copy of the installed code (as addon()); with port, the hub
+    moved to that port (the installer records it, so updates keep it)."""
     opts = _install_options()
+    if port:
+        opts = _with_port(opts, port)
     shutil.rmtree(ADDON_SRC, ignore_errors=True)
     ADDON_SRC.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(CODE, ADDON_SRC, symlinks=True)
@@ -5744,6 +5761,8 @@ def rerun_install():
         _run_install(ADDON_SRC, opts, "repair", state.get("install_steps"))
     finally:
         shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    if port:
+        return M("control.health.rerun.port", "The installer ran again and moved the hub to port {port}.", port=port)
     return M("control.health.rerun.done", "The installer ran again and finished.")
 
 
@@ -5752,6 +5771,8 @@ def health_fix(req):
     try:
         if choice == "rerun-install":
             msg = rerun_install()
+        elif choice == "rerun-install-port-80":
+            msg = rerun_install(port="80")
         elif choice == "net-scan":
             msg = net_scan({})
         else:

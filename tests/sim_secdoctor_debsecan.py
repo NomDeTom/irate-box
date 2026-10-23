@@ -130,6 +130,17 @@ check(
     and fs["debsecan-kit-debug"]["about"] == {"kind": "kit", "key": "debug"}
     and fs["debsecan-kit-capture"]["fix"]["id"] == "debsecan.kit.fix",
 )
+symbols = sd.debsecan_findings(
+    {},
+    {"nginx-dbgsym": [("CVE-2026-9", {"fixed": True, "remote": True, "urgency": "high"})]},
+    {"nginx-dbgsym": ["debug-symbols"]},
+    time.time(),
+)
+check(
+    "  a -dbgsym package flags nothing (only symbols; it follows the installed program, whose own finding has the fix)",
+    not any(x["id"].startswith("debsecan-kit") for x in symbols),
+    [x["id"] for x in symbols],
+)
 check(
     "  an unfixed one in the cache flags nothing",
     not any("python3.13" in e for k, x in fs.items() if k.startswith("debsecan-kit") for e in x["evidence"]),
