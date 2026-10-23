@@ -71,6 +71,10 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   const rp = row('rpcbind.service');
   check('  its buttons: Stop and disable once for the program', [...rp.querySelectorAll('button')].filter((b) => /^Stop and disable/.test(t(b))).length === 1,
     [...rp.querySelectorAll('button')].map(t).join(' | '));
+  check('  one Save and Discard for the row, no port named with nothing after it',
+    rp.querySelectorAll('.aw-foot').length === 1 && !/UDP 111:/.test(t(rp)), `${rp.querySelectorAll('.aw-foot').length} feet: ${t(rp)}`);
+  check('  every row its state as a pill, the filter\'s words', [...d.querySelectorAll('#security-listeners tbody tr')]
+    .every((tr) => tr.querySelector('[class$="-pill"]') && t(tr.querySelector('[class$="-pill"]')) === tr.dataset.tags));
   check('the doctor\'s links to a port land in its program\'s row', !!rp.querySelector('#sec-port-tcp-111') && !!rp.querySelector('#sec-port-udp-111'));
   check('  and no card of its own among the settings (rpcbind was a "To fix" card)', !d.querySelector('#security-findings [id^="sec-port-"]'));
   check('no page errors', !errors.length, errors.join(' | '));

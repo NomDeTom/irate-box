@@ -27,6 +27,11 @@ fs[-1].update({"lists_age_days": 3.2, "waiting": 2, "fetched": 0, "packages": ["
 fs += [finding("firewall", M("firewall.title", "Hotspot firewall"), "problem",
                M("firewall.not-loaded", "The hotspot firewall is enabled, but its rules are not loaded."),
                commands=["nft list table inet irate_box"])]
+# Guest internet access shared, two of its four protections off (each a row of On and Off).
+from irate_box.root import share, firewall
+st = dict(share.load()); st["contain"] = {k: i % 2 == 0 for i, k in enumerate(share.CONTAIN)}
+share.load = lambda: st; share.on = lambda _st: True; firewall.loaded = lambda: True
+fs += s.share_findings()
 print(json.dumps({"at": 1790000000, "listeners": [{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "name": s.named("Cockpit")}],
                   "findings": fs}))
 `;
@@ -39,7 +44,15 @@ vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) er
 vc.on('error', (...a) => { if (!/Error: HTTP 404$/.test(a.join(' '))) errors.push('console: ' + a.join(' ')); });
 const dom = new JSDOM(html, { url: 'http://box.local/admin/#security', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
-w.fetch = async (u) => (u === '/admin/security' ? new Response(JSON.stringify(sec), { status: 200 }) : new Response('{}', { status: 404 }));
+const posted = [];
+w.fetch = async (u, opts) => {
+  if (u !== '/admin/security') return new Response('{}', { status: 404 });
+  if (opts && opts.method === 'POST') {
+    posted.push(JSON.parse(opts.body));
+    return new Response(JSON.stringify({ id: `job-${posted.length}` }), { status: 200 });
+  }
+  return new Response(JSON.stringify(sec), { status: 200 });
+};
 w.eval(js);
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
@@ -54,13 +67,13 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
 
   const pw = card('ssh-password');
   const lines = (n) => [...n.querySelectorAll('.setting-desc')].map(t);
-  check('a choice card: what was found, then why it matters, each a line of its own',
-    pw && JSON.stringify(lines(pw).slice(0, 2)) === JSON.stringify(['SSH accepts passwords.', 'Any device on the network can try to guess a password.']), pw && lines(pw));
+  check('a choice card: what was found, then the notes; why it matters is the Security doctor\'s',
+    pw && JSON.stringify(lines(pw).slice(0, 2)) === JSON.stringify(['SSH accepts passwords.', 'These accounts have a key for SSH on the box: lyra and pi.'])
+    && !/guess a password/.test(t(pw)), pw && lines(pw));
   check('  the note, its list of accounts said whole', /These accounts have a key for SSH on the box: lyra and pi\./.test(t(pw)), t(pw));
   check('  a setting, not a card to act on: both values as options, the one in effect marked; no recommended action',
     [...pw.querySelectorAll('.chip')].map((b) => `${t(b)}${b.classList.contains('selected') ? '*' : ''}`).join('|') === 'A password or a key*|A key only'
     && !/Recommended action/.test(t(pw)), t(pw));
-  check('  the Security doctor named for what it makes of it', !!pw.querySelector('a[href="#secdoctor"]'));
 
   const ck = card('cockpit');
   check('Cockpit: its evidence (port, address, unit) as data, one item each',
@@ -78,9 +91,31 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   // The Updates card draws the state, not the finding: the count, the lists' age, the packages in a fold.
   const upd = d.getElementById('updates-security');
   check('Updates: the plural said whole, the age of the lists, the packages in a fold',
-    upd && /2 security updates are waiting\./.test(t(upd)) && /The package lists are 3 days old\./.test(t(upd))
-    && t(upd.querySelector('details summary')) === 'The waiting packages (2)'
-    && t(upd.querySelector('details p')) === 'openssl, libc6' && !/null/.test(t(upd)), upd && t(upd));
+    upd && /2 security updates are waiting\./.test(t(upd)) && /Checked 3 days ago\./.test(t(upd)) && !/null/.test(t(upd)), upd && t(upd));
+  // Last on the card, as a package card's builds kept.
+  const waitingFold = d.querySelector('#debian-packages details');
+  check('  the packages waiting in a fold of their own, last on the card, one item each',
+    waitingFold && t(waitingFold.querySelector('summary')) === '2 packages waiting'
+    && [...waitingFold.querySelectorAll('li')].map(t).join('|') === 'openssl|libc6'
+    && !!(d.getElementById('debian-auto-fold').compareDocumentPosition(waitingFold) & w.Node.DOCUMENT_POSITION_FOLLOWING),
+    waitingFold && t(waitingFold));
+
+  // Guest internet access: two rows turned back on at once, both shown as chosen, both sent at one Save.
+  const guest = card('guest-net');
+  const offRows = guest ? [...guest.querySelectorAll('.aw-field')].filter((f) => /Off\*/.test(
+    [...f.querySelectorAll('.chip')].map((b) => `${t(b)}${b.classList.contains('selected') ? '*' : ''}`).join('|'))) : [];
+  check('Guest internet access: a row of On and Off for each protection, two of them off', offRows.length === 2, guest && t(guest));
+  const onChip = (f) => [...f.querySelectorAll('.chip')].find((b) => t(b) === 'On');
+  offRows.forEach((f) => onChip(f).click());
+  await wait();
+  const rowsNow = [...card('guest-net').querySelectorAll('.aw-field')].filter((f) => f.querySelector('.chip.pending'));
+  check('  both rows turned on stay chosen until Save (the second does not undo the first)',
+    rowsNow.length === 2 && rowsNow.every((f) => t(f.querySelector('.chip.selected')) === 'On'), t(card('guest-net')));
+  card('guest-net').querySelector('.aw-save').click();
+  await wait(300);
+  const sent = posted.filter((b) => b.action === 'fix').map((b) => b.choice);
+  check('  Save sends each row\'s choice, one request each',
+    sent.length === 2 && new Set(sent).size === 2 && sent.every((c) => /^share-contain-[a-z_]+-on$/.test(c)), JSON.stringify(posted));
 
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
