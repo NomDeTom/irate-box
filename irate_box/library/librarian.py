@@ -140,6 +140,9 @@ REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 API = "https://api.github.com"
 USER_AGENT = "irate-box-librarian"
 CHUNK = 1 << 20
+# A download stops when the card has less than this free, whatever its source claimed (a source that names no
+# size, or a server that sends more than it said, would otherwise fill the card).
+DOWNLOAD_MIN_FREE = 64 << 20
 
 
 class LibrarianError(Said):
@@ -982,10 +985,20 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
     if urllib.parse.urlparse(url).hostname == "api.github.com" and not url.endswith("/rate_limit"):
         _pace_hit()
     try:
-        return _Answer(
-            urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout),
-            urllib.parse.urlparse(url).hostname,
-        )
+        resp = urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)
+        if (
+            urllib.parse.urlparse(url).scheme == "https"
+            and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https"
+        ):
+            resp.close()  # nothing asked for over https is taken over plain HTTP, even on a redirect
+            raise LibrarianError(
+                M(
+                    "library.download.http-redirect",
+                    "Download rejected. {host} redirected to plain HTTP. The existing version is unchanged.",
+                    host=urllib.parse.urlparse(url).hostname,
+                )
+            )
+        return _Answer(resp, urllib.parse.urlparse(url).hostname)
     except urllib.error.HTTPError as exc:
         if exc.code == 304 and (extra or {}).get("If-None-Match"):
             raise _NotModified(exc.headers) from exc
@@ -1487,28 +1500,37 @@ def _download(url, dest, auth=None, name=None, expected=0, resume=False):
         have = 0
     try:
         resp = _open(url, auth, timeout=120, extra={"Range": f"bytes={have}-"} if have else None)
-        if (
-            urllib.parse.urlparse(url).scheme == "https"
-            and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https"
-        ):
-            resp.close()  # a book is never taken over plain HTTP, even on a redirect
-            raise LibrarianError(
-                M(
-                    "library.download.http-redirect",
-                    "Download rejected. {host} redirected to plain HTTP. The existing version is unchanged.",
-                    host=urllib.parse.urlparse(url).hostname,
-                )
-            )
         go_on = have and getattr(resp, "status", None) == 206  # a server that ignores Range sends it all (200)
         done = have if go_on else 0
         with resp, open(dest, "ab" if go_on else "wb") as out:
             total = (done + int(resp.headers.get("Content-Length") or 0)) or expected
+            # The larger of the sizes claimed (the source's listing, the server's Content-Length) bounds the download.
+            # A size from neither leaves only the free space below.
+            limit = max(expected, total)
             while True:
                 chunk = resp.read(CHUNK)
                 if not chunk:
                     break
                 out.write(chunk)
                 done += len(chunk)
+                if limit and done > limit:
+                    raise LibrarianError(
+                        M(
+                            "library.download.too-long",
+                            "Download stopped. {host} sent more than the {mb} MB it said. The existing version is "
+                            "unchanged.",
+                            host=urllib.parse.urlparse(url).hostname,
+                            mb=-(-limit >> 20),
+                        )
+                    )
+                if done % (16 * CHUNK) < len(chunk) and shutil.disk_usage(dest.parent).free < DOWNLOAD_MIN_FREE:
+                    raise LibrarianError(
+                        M(
+                            "library.download.card-full",
+                            "Download stopped. The storage is almost full. Delete books or files from the box, then "
+                            "try again. The existing version is unchanged.",
+                        )
+                    )
                 now = time.monotonic()
                 if name and now - last >= 1:
                     last = now

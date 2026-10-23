@@ -64,6 +64,8 @@ const AW = (() => {
     return v;
   }
 
+  // Props that would run or parse text as markup: never set from props (a spread of the hub's data would be script).
+  const MARKUP_PROP = /^(on|innerhtml$|outerhtml$|srcdoc$)/i;
   // An element: h('div', {class, text, onclick, 'aria-x': …}, ...children). Children may nest in arrays.
   function h(tag, props, ...kids) {
     const node = document.createElement(tag);
@@ -72,6 +74,7 @@ const AW = (() => {
       if (k === 'class') node.className = v;
       else if (k === 'text') node.textContent = v;
       else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
+      else if (MARKUP_PROP.test(k)) throw new TypeError(`h(): ${k} is not set from props`);
       else node.setAttribute(k, v === true ? '' : v);
     }
     for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) node.append(kid.nodeType ? kid : document.createTextNode(String(kid)));

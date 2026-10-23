@@ -393,7 +393,10 @@ class Redirected(io.BytesIO):
         return "http://mirror.example/y.zim"
 
 
-L._open = lambda *a, **k: Redirected(b"abc")
+# The network underneath _open, which refuses the redirect (for the listings too, not only downloads).
+L._open = real_open
+real_urlopen = L.urllib.request.urlopen
+L.urllib.request.urlopen = lambda *a, **k: Redirected(b"abc")
 try:
     L._download("https://lb.download.kiwix.org/y.zim", T / "y.part")
     check("a redirect to plain HTTP: not taken", False)
@@ -401,7 +404,7 @@ except L.LibrarianError as exc:
     check(
         "a redirect to plain HTTP: not taken, and said", exc.message["id"] == "library.download.http-redirect", str(exc)
     )
-L._open = real_open
+L.urllib.request.urlopen = real_urlopen
 # A book checked against its metalink's sha256, a nightly.link
 # bundle against GitHub's artifact digest.
 META4 = (

@@ -36,6 +36,7 @@ run sim_tailscale.py
 run sim_watchlog.py
 run sim_pagehistory.py
 run sim_usb_filesystems.py
+run sim_root_copies.py
 run sim_doctor_choices.py
 run sim_idle.py
 run sim_sbdocs.py
@@ -49,6 +50,7 @@ run sim_nmconnection.py
 run sim_netpolicy.py
 run sim_otherap.py
 run sim_store_quota.py
+run sim_store_edges.py
 run sim_radiotests.py
 run sim_roaming.py
 run sim_backup.py
@@ -86,9 +88,11 @@ run sim_configs.py
 run sim_books.py
 run sim_ghpace.py
 run sim_cut_short.py
+run sim_download_bounds.py
 run sim_pin.py
 run sim_local_addons.py
 run api_admin_gate.py
+run api_parsing.py
 run doctor_guard.py
 run msg_guard.py
 run terms_guard.py

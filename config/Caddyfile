@@ -30,8 +30,15 @@
 	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-main.inc
 	# Never a guest's: only the /admin route below sends it (the hub's proof of the login).
 	request_header -X-Irate-Front
-	# A baseline Content-Security-Policy on every answer of this origin.
-	header Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+	# A baseline Content-Security-Policy on every answer of this origin; the hub's own pages (/ and /*.html) run only
+	# the scripts the hub serves. The apps on this origin (tools, serial, the flasher's engines, the terminal) keep
+	# the baseline: theirs are not ours. As irate-box.nginx.
+	@irate_box_page path_regexp ^/([^/]*\.html)?$
+	@irate_box_not_page not path_regexp ^/([^/]*\.html)?$
+	header @irate_box_page Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'"
+	header @irate_box_not_page Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+	header X-Content-Type-Options nosniff
+	header Referrer-Policy no-referrer
 	# Each app origin's port by scheme: http to its own, https to its TLS twin (root/tls.py), so a
 	# redirect from a page on HTTPS goes to that origin's twin. As nginx's map $scheme.
 	map {scheme} {irate_box_addon_port} {
@@ -455,7 +462,8 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 (irate_box_admin) {
 	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-admin.inc
 	request_header -X-Irate-Front
-	header Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+	# Only the hub's own pages are served here, so all of it runs only the scripts the hub serves.
+	header Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'"
 	# The hub's port by scheme: where the sign-in and the hub's pages are.
 	map {scheme} {irate_box_hub_port} {
 		https {$HUB_TLS_PORT:443}
@@ -507,7 +515,10 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 			}
 			request_header -X-Irate-Session
 		}
-		reverse_proxy 127.0.0.1:8000
+		# The front's secret, as on /admin: the hub shows the administrator every save's thumbnail.
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Front {env.HUB_FRONT_SECRET}
+		}
 	}
 	# Pages of the hub, wherever they are linked from (Git, Sync, the account and help pages): its origin.
 	@page {
@@ -698,6 +709,8 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-sync.inc
 		Cache-Control "no-cache"
 		-Server
 	}
+	# The sign-in an add-on in users mode sends to (server.py /_irate/user) is the hub's, as on the other origins.
+	redir /account.html {scheme}://{host}{uri} 302
 	import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/addons-routes.caddy*
 }
 

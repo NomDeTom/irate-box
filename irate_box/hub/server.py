@@ -329,7 +329,8 @@ def admin_seen_value(now=None):
 
 def admin_seen_ok(value, now=None):
     until, _, sig = (value or "").partition(".")
-    if not until.isdigit() or int(until) < (now or time.time()):
+    # ASCII only: compare_digest refuses other text, and int() refuses digits such as "²"
+    if not (until.isascii() and until.isdigit() and sig.isascii()) or int(until) < (now or time.time()):
         return False
     return hmac.compare_digest(sig, hmac.new(admin_seen_key(), until.encode(), "sha256").hexdigest())
 
@@ -3282,6 +3283,9 @@ def moderation_action(payload):
 # app itself. A post carries its account and, if narrower than everyone, the choice; what anyone
 # reads leaves out what they may not see (store.can_see). The admin's moderation sees all.
 store.VIEWER = lambda handler: accounts.session(handler._session_token())
+store.ADMIN = lambda handler: (
+    bool(FRONT_SECRET) and hmac.compare_digest(handler.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode())
+)
 store.SEEN_BY = lambda me, app: accounts.prefs(me["name"])["posts"].get(app, "everyone")
 store.REPORT_REASONS = lambda: settings_snapshot()["report_reasons"]
 store.HIDDEN = lambda: hidden_by_reports()
@@ -5117,9 +5121,11 @@ class Handler(BaseHTTPRequestHandler):
         if length > MAX_JSON:
             self._too_large = True
             return None
+        if length < 0:
+            return None  # read(-1) would wait for the client to close; parse_request closes after the answer
         try:
             return json.loads(self.rfile.read(length))
-        except ValueError:
+        except (ValueError, RecursionError):  # RecursionError: JSON nested deeper than Python recurses
             return None
 
     def do_POST(self):
@@ -6659,7 +6665,7 @@ class Handler(BaseHTTPRequestHandler):
         if hue is not None:
             try:
                 hue = int(hue) % 360
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):  # OverflowError: 1e999, read as infinity
                 hue = None
 
         now = CLOCK.ticks()

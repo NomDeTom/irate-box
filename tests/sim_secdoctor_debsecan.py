@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import time
+import zlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -175,7 +176,28 @@ check(
     len(out) == 1 and out[0]["id"] == "debsecan-data" and out[0]["status"] == "warn",
 )
 (sd.DEBSECAN_FEED).mkdir(parents=True)
+# Not the tracker's format, then a link to some other file: the doctor reads neither.
 (sd.DEBSECAN_FEED / "trixie").write_bytes(b"x")
+before = sd._debsecan_command
+sd._debsecan_command = lambda work: ([sys.executable, str(fake)], {})
+out = sd.step_debsecan({})
+check(
+    "tracker data not in its format: a warning, and debsecan not run on it",
+    out[0]["id"] == "debsecan-data" and out[0]["summary"]["id"] == "debsecan.data.unreadable",
+    out,
+)
+(sd.DEBSECAN_FEED / "trixie").unlink()
+(T / "elsewhere").write_bytes(zlib.compress(b"VERSION 1\n"))
+(sd.DEBSECAN_FEED / "trixie").symlink_to(T / "elsewhere")
+out = sd.step_debsecan({})
+check(
+    "tracker data that is a link: not followed (root reads a copy of a regular file only)",
+    out[0]["id"] == "debsecan-data" and out[0]["summary"]["id"] == "debsecan.data.unreadable",
+    out,
+)
+(sd.DEBSECAN_FEED / "trixie").unlink()
+(sd.DEBSECAN_FEED / "trixie").write_bytes(zlib.compress(b"VERSION 1\n"))
+sd._debsecan_command = before
 real = sd._debsecan_command
 sd._debsecan_command = lambda work: (None, "debsecan is not on the box, and the security kit's cache doesn't hold it")
 out = sd.step_debsecan({})

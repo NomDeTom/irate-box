@@ -155,13 +155,30 @@ server {
 	# no <base> hijack, framed by this origin alone. add_header is per location (a location with one
 	# of its own loses the server's), so the line is repeated wherever Cache-Control is set.
 	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'";
+	# The hub's own pages run only the scripts it serves: no inline script, no handler in markup. The apps on
+	# this origin (tools, serial, the flasher's engines, the terminal) keep the baseline: theirs are not ours.
+	set $irate_box_page_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'";
 	add_header Content-Security-Policy $irate_box_csp always;
-	location = / { proxy_pass http://irate_box_hub; }
-	location = /index.html { proxy_pass http://irate_box_hub; }
+	add_header X-Content-Type-Options nosniff always;
+	add_header Referrer-Policy no-referrer always;
+	location = / {
+		proxy_pass http://irate_box_hub;
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
+	location = /index.html {
+		proxy_pass http://irate_box_hub;
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
 	location / {
 		try_files $uri @irate_box_hub;
 		add_header Cache-Control "no-cache";
-		add_header Content-Security-Policy $irate_box_csp always;
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 	}
 	location @irate_box_hub { proxy_pass http://irate_box_hub; }
 	# The drawing store and the gallery take whole drawings (store.py MAX_BODY, 50 MB).
@@ -174,7 +191,9 @@ server {
 		include @ACCESS@.d/gate-drop.conf*;
 		auth_basic_user_file $irate_box_logins;
 		add_header Cache-Control "no-cache";
-		add_header Content-Security-Policy $irate_box_csp always;
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 	}
 	# The themes page (its tile): public, private or off like the apps. Off hides only the
 	# page; the 🎨 in every page's header stays.
@@ -184,7 +203,9 @@ server {
 		include @ACCESS@.d/gate-themes.conf*;
 		auth_basic_user_file $irate_box_logins;
 		add_header Cache-Control "no-cache";
-		add_header Content-Security-Policy $irate_box_csp always;
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 	}
 	location ^~ /api/drop/ {
 		if ($irate_box_off_drop) { return 404; }
@@ -241,6 +262,8 @@ server {
 		try_files $uri $uri/index.html =404;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 	}
 
 	# --- /serial -> Meshtastic serial terminal / log analyser, static ----------------
@@ -254,16 +277,22 @@ server {
 		alias @APPS@/serial/;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 		# The one-file build, for live USB from a file opened on the guest's own machine (Web
 		# Serial needs a secure context, which this plain HTTP is not): saved, never opened here.
 		location = /serial/serial-terminal.html {
 			add_header Cache-Control "no-cache";
 			add_header Content-Security-Policy $irate_box_csp always;
+			add_header X-Content-Type-Options nosniff always;
+			add_header Referrer-Policy no-referrer always;
 			add_header Content-Disposition 'attachment; filename="serial-terminal.html"';
 		}
 		location ^~ /serial/assets/ {
 			add_header Cache-Control "public, max-age=31536000, immutable";
 			add_header Content-Security-Policy $irate_box_csp always;
+			add_header X-Content-Type-Options nosniff always;
+			add_header Referrer-Policy no-referrer always;
 		}
 	}
 
@@ -353,6 +382,8 @@ server {
 		default_type text/plain;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 	}
 	# The light web flasher's engine (ESP Web Tools), loaded by the page /flasher/ in place.
 	location ^~ /flasher/esp-web-tools/ {
@@ -360,6 +391,8 @@ server {
 		alias @APPS@/esp-web-tools/;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 	}
 	# FreeOCD's WebDebugger (an ARM flasher over WebUSB), in the flashing tools.
 	location ^~ /flasher/freeocd/ {
@@ -368,6 +401,8 @@ server {
 		alias @APPS@/freeocd/;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 	}
 	location ^~ /flasher/firmware/ {
 		if ($irate_box_off_flasher) { return 404; }
@@ -375,6 +410,8 @@ server {
 		add_header Access-Control-Allow-Origin "*" always;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 		if ($request_method = OPTIONS) {
 			add_header Access-Control-Allow-Origin "*";
 			add_header Access-Control-Allow-Methods "GET, OPTIONS";
@@ -390,6 +427,8 @@ server {
 		add_header Access-Control-Allow-Origin "*" always;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 		if ($request_method = OPTIONS) {
 			add_header Access-Control-Allow-Origin "*";
 			add_header Access-Control-Allow-Methods "GET, OPTIONS";
@@ -418,6 +457,7 @@ server {
 		gzip_types application/javascript text/javascript;
 		add_header Cache-Control "public, max-age=86400";
 		add_header Content-Security-Policy $irate_box_csp always;
+		add_header Referrer-Policy no-referrer always;
 		add_header X-Content-Type-Options nosniff;
 	}
 	# The hub says whether this request needs no login (a fetch, or a push to a repository
@@ -557,7 +597,8 @@ server {
 	proxy_set_header Connection $irate_box_connection;
 	proxy_set_header X-Irate-Front "";
 	root @STATIC@;
-	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'";
+	# Only the hub's own pages are served here, so all of it runs only the scripts the hub serves.
+	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'";
 	add_header Content-Security-Policy $irate_box_csp always;
 	location = / { return 302 /admin/; }
 	location = /admin { return 301 /admin/; }
@@ -588,6 +629,13 @@ server {
 		auth_basic "Irate-Box";
 		auth_basic_user_file $irate_box_logins;
 		include @ACCESS@.d/gate-admin.conf*;
+		# The front's secret, as on /admin: the hub shows the administrator every save's thumbnail, guests
+		# only those of saves they can see. Setting a header here drops the server-level ones, so all again.
+		include @FRONT@;
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_pass http://irate_box_hub;
 	}
 	# Pages of the hub, wherever they are linked from (Git, Sync, the account and help pages): its origin.
