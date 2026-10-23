@@ -12848,6 +12848,7 @@ function managePanel(repo, data, cls) {
   const others = data.repos.filter(
     (o) => !(o.area === repo.area && o.name === repo.name) && !o.mirror_of,
   );
+  const NEW_TARGET = "+new";
   const target = el(
     "select",
     { className: "git-publish-to" },
@@ -12857,11 +12858,51 @@ function managePanel(repo, data, cls) {
         textContent: `${o.area}/${o.name}.git`,
       }),
     ),
+    el("option", { value: NEW_TARGET, textContent: "New repository…" }),
   );
   const refs = withAttrs(
     el("input", { value: "main", className: "git-publish-refs" }),
     { "aria-label": "Branches or tags, separated by spaces" },
   );
+  // A new destination: its name, area and description, made and published to in one step.
+  const newName = withAttrs(
+    el("input", {
+      value: `${repo.name}-releases`,
+      className: "git-publish-new-name",
+      maxLength: 64,
+    }),
+    { "aria-label": "Name of the new repository" },
+  );
+  const newArea = withAttrs(
+    el(
+      "select",
+      { className: "git-publish-new-area" },
+      el("option", { value: "public", textContent: "Guests (/git/)" }),
+      el("option", {
+        value: "private",
+        textContent: "Administrators (/git-private/)",
+      }),
+    ),
+    { "aria-label": "Access to the new repository" },
+  );
+  const newDesc = withAttrs(
+    el("input", {
+      value: `Releases of ${repo.name}`,
+      className: "git-publish-new-desc",
+      maxLength: 200,
+    }),
+    { "aria-label": "Description of the new repository" },
+  );
+  const newFields = el(
+    "p",
+    { className: "library-buttons", hidden: true },
+    newName,
+    newArea,
+    newDesc,
+  );
+  target.addEventListener("change", () => {
+    newFields.hidden = target.value !== NEW_TARGET;
+  });
   const publish = el(
     "section",
     {},
@@ -12869,36 +12910,37 @@ function managePanel(repo, data, cls) {
     el("p", {
       className: "setting-desc",
       textContent:
-        "Copy branches or tags into another repository on the box. They replace branches or tags of the same name there. Example: copy a draft from an administrator-only repository to a repository that guests can read.",
+        "Copy branches or tags into another repository on the box, or into a new one. They replace branches or tags of the same name there. Example: copy a draft from an administrator-only repository to a repository that guests can read.",
     }),
-    others.length
-      ? el(
-          "p",
-          { className: "library-buttons" },
-          target,
-          refs,
-          actionButton(
-            "Publish branches or tags",
-            () => {
-              const [toArea, toName] = target.value.split("/");
-              act(
-                {
-                  action: "publish",
-                  from: { area: repo.area, name: repo.name },
-                  to: { area: toArea, name: toName },
-                  refs: refs.value.trim().split(/\s+/),
-                },
-                null,
-                "Published.",
-              )();
-            },
-            { className: "small" },
-          ),
-        )
-      : el("p", {
-          className: "setting-desc",
-          textContent: "There is no other repository to publish to yet.",
-        }),
+    el(
+      "p",
+      { className: "library-buttons" },
+      target,
+      refs,
+      actionButton(
+        "Publish branches or tags",
+        () => {
+          const body = {
+            action: "publish",
+            from: { area: repo.area, name: repo.name },
+            refs: refs.value.trim().split(/\s+/),
+          };
+          if (target.value === NEW_TARGET)
+            body.create_to = {
+              area: newArea.value,
+              name: newName.value.trim(),
+              description: newDesc.value.trim(),
+            };
+          else {
+            const [toArea, toName] = target.value.split("/");
+            body.to = { area: toArea, name: toName };
+          }
+          act(body, null, "Published.")();
+        },
+        { className: "small" },
+      ),
+    ),
+    newFields,
   );
   return el(
     "div",

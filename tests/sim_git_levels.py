@@ -285,6 +285,27 @@ check(
     lb["secret"] and lb["secret"]["state"] == "passed" and lb["secret"]["run"] == "secret/2" and lb["admins"] is None,
     lb,
 )
+# Publish to a new repository: made, then published to, in one request.
+new = {"area": "public", "name": "secret-releases", "description": "Releases of secret"}
+code, body = act(action="publish", **{"from": {"area": "private", "name": "secret"}}, create_to=new, refs=["nosuch"])
+check(
+    "publish to a new one with a missing branch: refused, nothing made",
+    code == 400 and not (T / "public" / "secret-releases.git").exists(),
+    body,
+)
+code, body = act(action="publish", **{"from": {"area": "private", "name": "secret"}}, create_to=new, refs=["main"])
+dest = T / "public" / "secret-releases.git"
+check(
+    "publish to a new repository: made with its description, and the branch is there",
+    code == 200
+    and (dest / "description").read_text() == "Releases of secret\n"
+    and subprocess.run(["git", "-C", str(dest), "rev-parse", "main"], capture_output=True).returncode == 0
+    and cfg("public", "secret-releases", "irate-box.write") == "admin",
+    body,
+)
+code, body = act(action="publish", **{"from": {"area": "private", "name": "secret"}}, create_to=new, refs=["main"])
+check("publish to a new repository that exists: refused", code == 400, body)
+
 nginx = (REPO / "config" / "irate-box.nginx").read_text()
 check(
     "nginx asks the hub, with the admin login as the other way in",

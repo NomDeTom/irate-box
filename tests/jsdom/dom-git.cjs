@@ -158,6 +158,20 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   await wait();
   check('Publish sends the target and the refs', posted.some(([, b]) => b.action === 'publish' && b.to.area === 'private' && b.to.name === 'fw-ci' && b.refs.join() === 'main,dev'));
   check('mirrors are not offered as a target', ![...d.querySelectorAll('.git-drawer select.git-publish-to option')].some((o) => /meshtastic/.test(o.value)));
+  drawer = d.querySelector('.git-drawer');
+  const toNew = drawer.querySelector('select.git-publish-to');
+  const newFields = drawer.querySelector('input.git-publish-new-name').parentNode;
+  check('Publish to… offers New repository…, its fields hidden until chosen', [...toNew.options].some((o) => t(o) === 'New repository…') && newFields.hidden);
+  toNew.value = '+new'; toNew.dispatchEvent(new w.Event('change'));
+  const name = drawer.querySelector('input.git-publish-new-name'), blurb = drawer.querySelector('input.git-publish-new-desc');
+  check('New repository…: name <name>-releases, public, "Releases of <name>"', !newFields.hidden && /^.+-releases$/.test(name.value)
+    && drawer.querySelector('select.git-publish-new-area').value === 'public' && blurb.value === `Releases of ${name.value.replace(/-releases$/, '')}`);
+  posted.length = 0;
+  [...drawer.querySelectorAll('button')].find((b) => t(b) === 'Publish branches or tags').click();
+  await wait();
+  const made = posted.find(([, b]) => b.action === 'publish');
+  check('Publish to a new repository sends create_to and no to', made && made[1].create_to.area === 'public' && made[1].create_to.name === name.value
+    && made[1].create_to.description === blurb.value && !made[1].to, JSON.stringify(made));
   [...d.querySelectorAll('.git-drawer button')].find((b) => /^Delete /.test(t(b))).click();
   await wait();
   check('Delete asks, then asks the hub, and the drawer closes', posted.some(([, b]) => b.action === 'delete' && b.name === 'demo') && !d.querySelector('.git-drawer'));
