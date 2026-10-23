@@ -2,8 +2,12 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Status tiles, against a hub it starts: the box row arranged by the owner
 (hidden, ordered, two cells wide), the arrangement checked, and /status carrying the different
-devices seen today and this week only while counting is on. python3 tests/sim_status_tiles.py"""
+devices seen today and this week only while counting is on; who sees each tile (everyone, signed-in users or
+administrators), and /status an allow-list that follows it, with no settings in it.
+python3 tests/sim_status_tiles.py"""
 
+import hashlib
+import hmac
 import http.client
 import json
 import os
@@ -48,9 +52,10 @@ try:
         except OSError:
             time.sleep(0.1)
 
-    def go(method, path, body=None):
+    def go(method, path, body=None, headers=None):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         h = {
+            **(headers or {}),
             "Host": f"127.0.0.1:{port}",
             "X-Irate-Front": SECRET,
             "X-Irate-Admin": "1",
@@ -160,6 +165,64 @@ try:
     go("POST", "/admin/settings", {"visitor_counts": False})
     _, body = go("GET", "/status")
     check("off: no counts, though a file is there", "visitors" not in json.loads(body))
+
+    # Who sees a tile, and its part of /status.
+    guest = json.loads(go("GET", "/status")[1])
+    check(
+        "/status to a guest, by default: the tiles' parts, and none of the settings",
+        {"system", "uptime", "online", "signed_in", "services", "version", "proxied"} <= set(guest)
+        and "settings" not in guest,
+        sorted(guest),
+    )
+    box_names = {"Hub server", "Remote access (Tailscale)"}
+    check("  the box's own services, with the Services tile", box_names <= {x["name"] for x in guest["services"]})
+    st, body = go(
+        "POST",
+        "/admin/status-tiles",
+        {
+            "state": {
+                "order": [],
+                "hidden": ["box-services"],
+                "size": {},
+                "seen_by": {"box-system": "admin", "box-people": "users", "box-qr": "guests"},
+            }
+        },
+    )
+    check(
+        "who sees each tile: kept, everyone not stored",
+        st == 200 and json.loads(body)["state"]["seen_by"] == {"box-system": "admin", "box-people": "users"},
+        body[:300],
+    )
+    guest = json.loads(go("GET", "/status")[1])
+    check(
+        "a guest: no memory and disk (administrators), no people (signed-in users)",
+        not {"system", "uptime", "online", "signed_in", "visitors", "joined", "names"} & set(guest),
+        sorted(guest),
+    )
+    check(
+        "  no box services (the Services tile hidden), the apps' still there for the tiles",
+        not box_names & {x["name"] for x in guest["services"]} and guest["services"],
+        [x["name"] for x in guest["services"]],
+    )
+    _, home = go("GET", "/")
+    check(
+        "  and the tiles themselves gone from the page",
+        'id="system-card"' not in home and 'id="people-card"' not in home,
+    )
+    # The administrator lately at /admin (the box's own login): everything.
+    go("GET", "/", headers={"Cookie": "irate_admin_seen=9999999999.x"})  # makes the key, if not made yet
+    key = (work / "admin-seen.key").read_bytes()
+    until = str(int(time.time()) + 3600)
+    seen = f"irate_admin_seen={until}.{hmac.new(key, until.encode(), hashlib.sha256).hexdigest()}"
+    admin = json.loads(go("GET", "/status", headers={"Cookie": seen})[1])
+    check(
+        "the administrator: every part, the box services too",
+        {"system", "online", "signed_in"} <= set(admin) and box_names <= {x["name"] for x in admin["services"]},
+        sorted(admin),
+    )
+    for bad in ({"seen_by": {"box-system": "everyone"}}, {"seen_by": {"box-nothing": "admin"}}, {"seen_by": ["x"]}):
+        st, _ = go("POST", "/admin/status-tiles", {"state": bad})
+        check(f"refused: {str(bad)[:40]}", st == 400, st)
 finally:
     hub.terminate()
 print(f"failures: {fails}")
