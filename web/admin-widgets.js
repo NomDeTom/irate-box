@@ -677,6 +677,7 @@ const AW = (() => {
   function choices(box, name, options, opts = {}) {
     box.classList.add('choice-tiles');
     if (!box.hasAttribute('role') && box.tagName !== 'FIELDSET') box.setAttribute('role', 'radiogroup');
+    if (opts.compact) return compactChoices(box, name, options, opts);
     box.replaceChildren(...options.map((o) => {
       const off = !!o.why && o.value !== opts.value;
       const input = h('input', { type: 'radio', name, value: o.value, disabled: off });
@@ -705,6 +706,43 @@ const AW = (() => {
   // whatever sets it. A longer list (languages, channels, hours) stays a drop-down; one whose choices are
   // drawn from data turns into chips or back as their number changes.
   const CHIPS_AT = 6;
+  // The same choice as a row of chips, and one line under it saying what the chosen one does (o.says, else
+  // o.desc): for a few options whose words would repeat each other as tiles. Each chip holds its radio (out of
+  // sight), and keeps the tile's classes, so a page that sets the radios and marks .chosen draws it too.
+  function compactChoices(box, name, options, opts) {
+    box.classList.add('choice-chips');
+    let says = box._says;
+    if (!says) {
+      says = box._says = h('p', { class: 'setting-desc choice-says', role: 'status' });
+      box.after(says);
+    }
+    const sayChosen = () => {
+      const on = box.querySelector('input:checked');
+      const o = on && options.find((x) => x.value === on.value);
+      says.textContent = o ? o.says || o.desc || '' : '';
+    };
+    box.replaceChildren(...options.map((o) => {
+      const off = !!o.why && o.value !== opts.value;
+      const input = h('input', { type: 'radio', name, value: o.value, disabled: off });
+      input.checked = o.value === opts.value;
+      return h('label', { class: 'choice-tile choice-chip' + (o.why ? ' unavailable' : '') + (input.checked ? ' chosen' : ''), title: o.why ? `Not available here: ${o.why}.` : '' },
+        input, h('span', { text: o.title }));
+    }));
+    if (!box._choicesWired) {
+      box._choicesWired = true;
+      box.addEventListener('change', (event) => {
+        if (event.target.type !== 'radio') return;
+        box.querySelectorAll('.choice-tile').forEach((t) => t.classList.toggle('chosen', t.querySelector('input').checked));
+        if (box._onChange) box._onChange(event.target.value);
+      });
+      // The page marking a chip chosen (setting its radio) says that one's line too.
+      new MutationObserver(() => box._sayChosen && box._sayChosen()).observe(box, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    }
+    box._sayChosen = sayChosen;
+    box._onChange = opts.onChange || null;
+    sayChosen();
+    return box;
+  }
   function chipSelect(sel) {
     watchSetters();
     if (sel._chips !== undefined || sel.multiple || sel.closest('[data-no-chips]')) return;

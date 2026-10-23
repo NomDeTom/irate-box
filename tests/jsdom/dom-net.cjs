@@ -162,12 +162,19 @@ setTimeout(() => {
   check('reach: five cards, watch to reboot', vals('up-reach') === 'watch reconnect restart radio reboot', vals('up-reach'));
   check('guests: two cards; a failed radio: three (the ladder, a reset at once, and a reboot if it isn\'t back)', vals('up-guests') === 'protect ignore'
     && vals('up-wedge') === 'ladder radio reboot', [vals('up-guests'), vals('up-wedge')]);
-  check('every pace and reach card shows its description and what it does', [...pace, ...reach].every((r) => r.querySelectorAll('.setting-desc').length === 2
-    && r.querySelector('.choice-does').textContent.length > 10));
+  // Pace, reach, guests and the retries: chips, and one line under them for the chosen one (its words said once).
+  const saysOf = (id) => { const n = d.getElementById(id).nextElementSibling; return n && n.classList.contains('choice-says') ? n.textContent : null; };
+  check('pace, reach, guests and the retries: a row of chips each, one line saying what the chosen one does',
+    ['up-pace', 'up-reach', 'up-guests', 'up-retry', 'up-giveup'].every((id) => d.getElementById(id).classList.contains('choice-chips') && (saysOf(id) || '').length > 10),
+    ['up-pace', 'up-reach', 'up-guests', 'up-retry', 'up-giveup'].map((id) => `${id}: ${saysOf(id)}`).join(' | '));
+  check('  the chips\' words: reach in words, guests Defer or Allow, the period No limit to A week',
+    tiles('up-reach').map((r) => r.textContent.trim()).join('|') === 'Watch only|Reconnect|Restart the network service|Reset the radio|Reboot'
+    && tiles('up-guests').map((r) => r.textContent.trim()).join('|') === 'Defer|Allow'
+    && tiles('up-giveup').map((r) => r.textContent.trim()).join('|') === 'No limit|An hour|A day|A week',
+    [tiles('up-reach'), tiles('up-guests'), tiles('up-giveup')].map((x) => x.map((r) => r.textContent.trim()).join('|')).join(' / '));
   check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
-  check('the gentle pace\'s line says when each step comes', /reboots after 2 h\. Each step runs only if the maximum action includes it/.test(pace[0].querySelector('.choice-does').textContent),
-    pace[0].querySelector('.choice-does').textContent);
-  check('watch\'s line says it never acts', /never acts/.test(reach[0].querySelector('.choice-does').textContent));
+  check('the gentle pace\'s line says when each step comes, once', /reboots after 2 h\. Each step runs only if the maximum action includes it/.test(saysOf('up-pace'))
+    && !/Waits 5 minutes before the first reconnect/.test(saysOf('up-pace')), saysOf('up-pace'));
   const sens = d.getElementById('up-sens');
   check('sensitivity: a number, 1 to 20, 3 to start, said for the pace (30 min for gentle)', sens.type === 'number' && sens.min === '1' && sens.max === '20'
     && sens.value === '3' && /3 failed checks, or link drops, within 30 min/.test(t('#up-sens-says')[0]), t('#up-sens-says')[0]);
@@ -251,7 +258,7 @@ setTimeout(() => {
     [w.eval('matchSaid')('driver:eagle_sdio,driver:wl'), w.eval('matchSaid')('type:wifi,type:ethernet')].join(' / '));
     check('  the settings it sets, by label, said whole', w.eval('listSaid')(['MAC address on WiFi', 'MAC address while scanning']) === 'MAC address on WiFi and MAC address while scanning');
     // The recovery limits' titles in words, the cable's reset as the adapter's.
-    const reachTitles = [...d.querySelectorAll('#up-cablereach .choice-tile .setting-name')].map((n) => n.textContent.trim()).join('|');
+    const reachTitles = [...d.querySelectorAll('#up-cablereach .choice-tile')].map((n) => n.textContent.trim()).join('|');
     check('Wired-link recovery limit: no step named "Radio"; the reset is the network adapter\'s', /Reset the network adapter/.test(reachTitles) && !/(^|\|)Radio\b/.test(reachTitles), reachTitles);
     const chipLine = [...d.querySelectorAll('#net-devices .net-line')].find((p) => /^Chip/.test(p.textContent));
     check('a known chip on its card: its name, its driver in the kernel, the notes, who tested it',
