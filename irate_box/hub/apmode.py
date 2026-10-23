@@ -12,8 +12,9 @@ first rung of a ladder that fits the whole box:
   1 own-radio    a radio that isn't the box's WiFi link (a second radio or a USB dongle, or the
                  only radio when the link is Ethernet or there is none): no sharing at all
   2 own-channel  the WiFi link's radio, beside it, keeping a channel of its own: only where the
-                 driver offers two or more channels and the try on this box hasn't failed; guests
-                 never notice the link roam
+                 driver offers two or more channels, the try on this box hasn't failed, and the
+                 chip isn't known to stall that way (known_radios.json); guests never notice the
+                 link roam
   3 follow       the WiFi link's radio, beside it, on the link's channel, moved when the link
                  roams (guests dropped for a few seconds each time)
   4 choose       a radio that can't run both: the owner chooses, the hotspot or the WiFi link;
@@ -86,7 +87,14 @@ def plan(inv, verdicts, owner=None, tried=None):
         if v["mode"] == "radio-alone":
             kind = "own-radio"
         elif v["mode"] == "beside-client":
-            kind = "own-channel" if r.get("channels_at_once", 1) >= 2 and tried.get(v["phy"]) is not False else "follow"
+            # A channel of its own where the driver offers two, the try hasn't failed, and the chip isn't one
+            # whose firmware stalls that way (known_radios.json "hotspot_channel": "link", the AIC8800DC).
+            own = (
+                r.get("channels_at_once", 1) >= 2
+                and tried.get(v["phy"]) is not False
+                and (r.get("known") or {}).get("hotspot_channel") != "link"
+            )
+            kind = "own-channel" if own else "follow"
         elif v["mode"] == "takes-radio":
             kind = "choose"
         else:

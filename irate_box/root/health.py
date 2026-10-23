@@ -1761,6 +1761,11 @@ AIC_MODULE = "aic8800_fdrv"
 AIC_TEST_OPTIONS = re.compile(
     r"\b(fake_cmd_timeout|timeout_reads|log_hw_regs|disconnect_wait_ms|idle_watch_ms|idle_nudge)="
 )
+# The driver's log levels beyond its own default (error, info, firmware: 0x203): trace, debug, data and steering,
+# which tests turn on at run time and which fill the kernel's log.
+AIC_VERBOSE_BITS = 0x3C
+# The driver's stall watch (aic8800_fdrv's stall_watch), as the page says it.
+AIC_STALL_WATCH = {0: "off", 1: "log only", 2: "reset at once"}
 
 
 def _aic_clients(radio):
@@ -1818,13 +1823,14 @@ def check_wifi_stalls():
     title = M("wifi-stall.title", "AIC8800 WiFi: the firmware's known stall")
     limits = M(
         "wifi-stall.limits",
-        "What makes it rarer: fewer roams while guests use the hotspot (the Network page's roaming setting), and the "
-        "hotspot on the WiFi link's channel.",
+        "What prevents it: the hotspot on the WiFi link's channel, which the box keeps on this radio. Fewer roams "
+        "while guests use the hotspot (the Network page's roaming setting) make it rarer still.",
     )
     why = M(
         "wifi-stall.why",
-        "The radio's firmware can stop answering when its hotspot is busy while the WiFi link joins a network (a "
-        "roam or a reconnect). On a test box it happened about once in 40 to 100 joins under load.",
+        "The radio's firmware can stop answering when its hotspot is busy on another channel while the WiFi link "
+        "joins (a roam or a reconnect). On a test box it happened about 3 times in 100 joins under load. "
+        "Each time, the two were on different channels. It never happened in 161 joins on the same channel.",
     )
     notes = _aic_powersave_notes(_aic_clients(radio))
     try:
@@ -1832,8 +1838,14 @@ def check_wifi_stalls():
         at = int((params / "recovered_at").read_text().strip())
     except (OSError, ValueError):
         recoveries = at = None
+    try:
+        watch = int((params / "stall_watch").read_text().strip())
+    except (OSError, ValueError):
+        watch = None
     if recoveries is not None:
-        evidence = [f"recoveries {recoveries}, recovered_at {at}"]
+        evidence = [f"recoveries {recoveries}, recovered_at {at}"] + (
+            [f"stall_watch {watch} ({AIC_STALL_WATCH.get(watch, 'unknown')})"] if watch is not None else []
+        )
         out.append(
             finding(
                 "wifi-stall",
@@ -1881,6 +1893,7 @@ def check_wifi_stalls():
                 commands=["ls /sys/module/aic8800_fdrv/parameters/", "journalctl -k -b -n 5"],
             )
         )
+    out += _aic_channel(title, why)
     left = []
     for conf in sorted(MODPROBE_D.glob("*.conf")):
         try:
@@ -1890,6 +1903,13 @@ def check_wifi_stalls():
         for line in text.splitlines():
             if not line.lstrip().startswith("#") and "aic8800" in line and AIC_TEST_OPTIONS.search(line):
                 left.append(f"{conf}: {line.strip()}")
+    # A log level raised at run time (as tests do) lasts until the driver loads again: no file says so.
+    try:
+        level = int((params / "aicwf_dbg_level").read_text().strip())
+    except (OSError, ValueError):
+        level = None
+    if level is not None and level & AIC_VERBOSE_BITS:
+        left.append(f"aicwf_dbg_level {level} (now: trace, debug, data or steering on)")
     if left:
         out.append(
             finding(
@@ -1909,6 +1929,41 @@ def check_wifi_stalls():
             )
         )
     return out
+
+
+def _aic_channel(title, why):
+    """The AIC8800's hotspot on another channel than the WiFi link on the same radio: the condition of every stall
+    measured (2026-10-22). A plan from before the box knew it (apmode, known_radios.json), or a hotspot started by
+    hand, can leave it there."""
+    from irate_box.root import ap
+
+    rec = ap._load(ap.RECORD, {})
+    plan = rec.get("plan") or {}
+    if not rec.get("up") or plan.get("kind") not in ("own-channel", "follow"):
+        return []
+    chans = ap.channels_now(run)
+    hotspot, link = chans.get(ap.ap_iface(plan)), chans.get(plan.get("uplink"))
+    if hotspot is None or link is None or hotspot == link:
+        return []
+    return [
+        finding(
+            "wifi-stall:channel",
+            title,
+            "warn",
+            M(
+                "wifi-stall.channel",
+                "The hotspot is on channel {hotspot} and the WiFi link on channel {link}, on the same radio.",
+                hotspot=hotspot,
+                link=link,
+            ),
+            why,
+            M(
+                "wifi-stall.channel.fix",
+                "On Network, Hotspot, switch the hotspot off and on again: it then follows the WiFi link's channel.",
+            ),
+            go=GO_HOTSPOT,
+        )
+    ]
 
 
 def check_hotspot():
