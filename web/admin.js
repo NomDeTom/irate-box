@@ -16451,6 +16451,36 @@ function sizeChips(cur, set) {
     ),
   );
 }
+// Who sees a status tile, and its part of /status: everyone, signed-in users, or administrators only.
+const TILE_SEEN = [
+  ["guests", "everyone"],
+  ["users", "signed-in users"],
+  ["admin", "administrators only"],
+];
+function seenChips(cur, set) {
+  return AW.h(
+    "div",
+    { class: "chip-group", role: "group", "aria-label": "Visible to" },
+    TILE_SEEN.map(([v, label]) =>
+      AW.h(
+        "button",
+        {
+          type: "button",
+          class: "chip" + (cur === v ? " selected" : ""),
+          "aria-pressed": String(cur === v),
+          title: label,
+          onclick: () => set(v),
+        },
+        label,
+      ),
+    ),
+  );
+}
+function setSeen(draft, id, v) {
+  draft.seen_by = { ...draft.seen_by };
+  if (v === "guests") delete draft.seen_by[id];
+  else draft.seen_by[id] = v;
+}
 function setSize(draft, id, v) {
   draft.size = { ...draft.size };
   if (v === "single") delete draft.size[id];
@@ -16470,6 +16500,7 @@ function stNorm(state) {
       .map((x) => x.id),
     hidden: [...(state.hidden || [])].sort(),
     size: Object.fromEntries(Object.entries(state.size || {}).sort()),
+    seen_by: Object.fromEntries(Object.entries(state.seen_by || {}).sort()),
   };
 }
 // Status tiles as one section: its value the arrangement.
@@ -16530,7 +16561,8 @@ function drawStatusTiles(openId) {
   };
   const items = list.map((t) => {
     const shown = !stDraft.hidden.includes(t.id),
-      size = (stDraft.size || {})[t.id] || "single";
+      size = (stDraft.size || {})[t.id] || "single",
+      seen = (stDraft.seen_by || {})[t.id] || "guests";
     return {
       id: t.id,
       title: t.name,
@@ -16539,7 +16571,7 @@ function drawStatusTiles(openId) {
         wide: "Two columns",
         large: "Two-by-two",
       }[size],
-      badges: [shown ? "shown" : "hidden"],
+      badges: [shown ? (seen === "guests" ? "shown" : TILE_SEEN.find(([v]) => v === seen)[1]) : "hidden"],
       detail: () => [
         AW.h(
           "div",
@@ -16552,6 +16584,19 @@ function drawStatusTiles(openId) {
           }),
           AW.btn("↑ Earlier", { onclick: () => move(t.id, -1) }),
           AW.btn("↓ Later", { onclick: () => move(t.id, 1) }),
+        ),
+        AW.h(
+          "div",
+          { class: "aw-field" },
+          AW.h("span", { class: "aw-label", text: "Visible to" }),
+          seenChips(seen, (v) => {
+            setSeen(stDraft, t.id, v);
+            redraw(t.id);
+          }),
+          AW.h("small", {
+            class: "setting-desc",
+            text: "Who sees the tile. The readings it shows go only to the same people, on every page of the box.",
+          }),
         ),
         AW.h(
           "div",
