@@ -30,7 +30,6 @@ import subprocess
 from pathlib import Path
 
 from irate_box.hub import gitrepos
-
 from irate_box.msg import M, Refused
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))

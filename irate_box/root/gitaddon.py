@@ -26,7 +26,7 @@ from pathlib import Path
 # Run by hand (irate-box gitaddon …) there is no service's environment: the box's own folders, as install.sh sets them.
 os.environ.setdefault("HUB_GIT_ROOT", str(Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "git"))
 
-from irate_box.hub import gitrepos  # noqa: E402 - after the folder is known
+from irate_box.hub import gitrepos
 from irate_box.root import safeio
 
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))

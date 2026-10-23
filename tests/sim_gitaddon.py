@@ -96,8 +96,8 @@ check(
 )
 
 # What reads the marker, with Git removed.
-from irate_box.root import firewall, health, hub_control  # noqa: E402
-from irate_box.msg import Refused  # noqa: E402
+from irate_box.msg import Refused
+from irate_box.root import firewall, health, hub_control
 
 tcp, _ = firewall.ports((), "apps")
 check(
