@@ -940,7 +940,7 @@ def _with_state(store, meta):
         return out
     try:
         out["state"] = json.loads(data)
-    except ValueError:
+    except (ValueError, RecursionError):
         out["state"] = data.decode("utf-8", "replace")
     return out
 
@@ -1013,7 +1013,7 @@ def _handle_saves(handler, method, path, store):
         raw = _read_body(handler)
         try:
             body = json.loads(raw) if raw else {}
-        except ValueError:
+        except (ValueError, RecursionError):
             body = {}
         if not isinstance(body, dict):
             body = {}
@@ -1056,7 +1056,7 @@ def _create_save(handler, store):
         return
     try:
         payload = json.loads(raw)
-    except ValueError:
+    except (ValueError, RecursionError):  # RecursionError: JSON nested deeper than Python recurses
         _send_json(handler, 400, say(BAD_JSON))
         return
     if not isinstance(payload, dict):

@@ -329,7 +329,8 @@ def admin_seen_value(now=None):
 
 def admin_seen_ok(value, now=None):
     until, _, sig = (value or "").partition(".")
-    if not until.isdigit() or int(until) < (now or time.time()):
+    # ASCII only: compare_digest refuses other text, and int() refuses digits such as "²"
+    if not (until.isascii() and until.isdigit() and sig.isascii()) or int(until) < (now or time.time()):
         return False
     return hmac.compare_digest(sig, hmac.new(admin_seen_key(), until.encode(), "sha256").hexdigest())
 
@@ -5120,9 +5121,11 @@ class Handler(BaseHTTPRequestHandler):
         if length > MAX_JSON:
             self._too_large = True
             return None
+        if length < 0:
+            return None  # read(-1) would wait for the client to close; parse_request closes after the answer
         try:
             return json.loads(self.rfile.read(length))
-        except ValueError:
+        except (ValueError, RecursionError):  # RecursionError: JSON nested deeper than Python recurses
             return None
 
     def do_POST(self):
@@ -6662,7 +6665,7 @@ class Handler(BaseHTTPRequestHandler):
         if hue is not None:
             try:
                 hue = int(hue) % 360
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):  # OverflowError: 1e999, read as infinity
                 hue = None
 
         now = CLOCK.ticks()

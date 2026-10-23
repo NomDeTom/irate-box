@@ -90,6 +90,7 @@ run sim_cut_short.py
 run sim_pin.py
 run sim_local_addons.py
 run api_admin_gate.py
+run api_parsing.py
 run doctor_guard.py
 run msg_guard.py
 run terms_guard.py
