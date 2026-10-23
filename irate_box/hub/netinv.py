@@ -420,6 +420,8 @@ def known_facts(radio):
         "chip": row["chip"],
         "in_kernel": row.get("in_kernel"),
         "hotspot": row.get("hotspot"),
+        # "link": its hotspot must share the link's channel (a channel of its own stalls its firmware).
+        "hotspot_channel": row.get("hotspot_channel"),
         "notes": row.get("notes", []),
         "source": row.get("source"),
         "tested_by": [result["by"] for result in row.get("tested", [])],

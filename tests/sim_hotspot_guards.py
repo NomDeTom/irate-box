@@ -236,5 +236,45 @@ check(
 )
 check("  a commented-out or ordinary option: no warning", "wifi-stall:test-options" not in doctor())
 
+# The stall watch's mode, said; a log level raised at run time, beyond the driver's default (515).
+(params / "stall_watch").write_text("1\n")
+f = doctor()["wifi-stall"]
+check("  the stall watch's mode in the evidence", "stall_watch 1 (log only)" in f["evidence"], f["evidence"])
+(params / "aicwf_dbg_level").write_text("515\n")
+check("  the driver's default log level (515): no warning", "wifi-stall:test-options" not in doctor())
+(params / "aicwf_dbg_level").write_text("527\n")
+f = doctor().get("wifi-stall:test-options")
+check(
+    "  debug logging turned on at run time (527): a warning naming it",
+    f and any("aicwf_dbg_level 527" in e for e in f["evidence"]),
+    f,
+)
+(params / "aicwf_dbg_level").write_text("515\n")
+
+# The hotspot on another channel than the link on the same radio: the condition of every stall measured.
+from irate_box.root import ap  # noqa: E402
+
+real_load, real_chans = ap._load, ap.channels_now
+record = {"up": True, "plan": {"kind": "own-channel", "iface": "wlan0", "uplink": "wlan0", "channel": 6}}
+ap._load = lambda path, default: record if path == ap.RECORD else real_load(path, default)
+chans = {"ap0": 6, "wlan0": 11}
+ap.channels_now = lambda run: dict(chans)
+f = doctor().get("wifi-stall:channel")
+check(
+    "  the hotspot on channel 6, the link on 11, one radio: a warning, with the way to Network, Hotspot",
+    f
+    and f["status"] == "warn"
+    and "channel 6" in str(f["summary"])
+    and "channel 11" in str(f["summary"])
+    and f.get("go", {}).get("section") == "network/hotspot",
+    f,
+)
+chans["ap0"] = 11
+check("  both on 11: nothing said", "wifi-stall:channel" not in doctor())
+record["plan"]["kind"] = "own-radio"
+chans["ap0"] = 6
+check("  a hotspot on a radio of its own: nothing said", "wifi-stall:channel" not in doctor())
+ap._load, ap.channels_now = real_load, real_chans
+
 print(f"\n{fails} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

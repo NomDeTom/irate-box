@@ -55,6 +55,7 @@
    "bands": [
     "2.4"
    ],
+   "hotspot_channel": "link",
    "source": {
     "name": "Radxa's aic8800-usb-dkms and aic8800-firmware",
     "url": "https://github.com/radxa-pkg/aic8800",
@@ -63,7 +64,8 @@
    },
    "notes": [
     "Built into the Luckfox Lyra Zero W.",
-    "Its firmware can go silent for more than 4 s: the driver then marks its command queue dead until reloaded, and a USB reset does not always bring the chip back (a power cycle does)."
+    "Its firmware can go silent for more than 4 s: the driver then marks its command queue dead until reloaded, and a USB reset does not always bring the chip back (a power cycle does).",
+    "Its hotspot follows the link's channel. With the hotspot on a channel of its own, the firmware can stop while the link joins or roams: 16 stalls in 2026-10-22's tests, all with the two on different channels, none in 161 joins on the same one."
    ],
    "tested": [
     {

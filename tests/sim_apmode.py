@@ -63,10 +63,25 @@ wifi_up = {"iface": "wlan0", "kind": "wifi"}
 inv, v = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up)
 p = apmode.plan(inv, v)
 check(
-    "the AIC8800DC on a home WiFi: rung 2, beside the link on a channel of its own, starting on the link's (11), to be tried",
+    "a radio offering two channels at once (the Lyra's, its chip not looked up) on a home WiFi: rung 2, beside the link on a channel of its own, starting on the link's (11), to be tried",
     (p["rung"], p["kind"], p["channel"], p["to_try"], p["follows_uplink"], p["address"])
     == (2, "own-channel", 11, True, False, "192.168.4.1"),
     p,
+)
+# The same radio known as the AIC8800DC (known_radios.json "hotspot_channel": "link"): its firmware stalls with the
+# hotspot on a channel of its own while the link joins, so it follows the link's, and there is nothing to try.
+known_dc = radio(lyra, "wlan0", "phy0", 11, known={"chip": "AIC8800DC", "hotspot_channel": "link"})
+inv_dc, v_dc = box([known_dc], wifi_up)
+p = apmode.plan(inv_dc, v_dc)
+check(
+    "  known as the AIC8800DC: rung 3, following the link's channel (11), not tried on a channel of its own",
+    (p["rung"], p["kind"], p["channel"], p["to_try"], p["follows_uplink"]) == (3, "follow", 11, False, True),
+    p,
+)
+check(
+    "  the table says so for the AIC8800DC, and netinv passes it on",
+    netinv.known_facts({"usb": {"id": "a69c:88dc"}, "driver": "aic8800_fdrv"})["hotspot_channel"] == "link"
+    and netinv.known_facts({"usb": {"id": "a69c:8d81"}, "driver": "aic8800_fdrv"}).get("hotspot_channel") is None,
 )
 p = apmode.plan(inv, v, tried={"phy0": False})
 check(
