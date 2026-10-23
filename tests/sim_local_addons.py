@@ -183,11 +183,26 @@ check(
     all(
         m["tile"].get("href", "") in shown or m["tile"].get("widget")
         for m in M.load()
-        if m.get("tile") and m["id"] not in S.access.ROUTED
+        if m.get("tile") and m["id"] not in S.access.ROUTED and m["id"] not in S.ADMIN_TWINS
     )
     and all(f'id="{w}-card"' in shown or w == "qr" for w in ("people", "system")),
     [m["id"] for m in M.load() if m.get("tile") and m["tile"].get("href") and m["tile"]["href"] not in shown],
 )
+private = 'href="/app.html#/git-private/"'
+check(
+    "the private Git tile: not for a guest or an account, shown to an admin, locked",
+    "git-private" in S.hidden_apps()
+    and "git-private" in S.hidden_apps(True)
+    and "git-private" not in S.hidden_apps("admin")
+    and private not in S.render_tiles("apps", S.hidden_apps(True))
+    and private in S.render_tiles("apps", S.hidden_apps("admin"))
+    and "git-private" in S.admin_only_tiles()
+    and "git-private" in S.locked_apps()
+    and "git-private" not in S.seen_only(),
+)
+(T / "control" / "access.json").write_text(json.dumps({"git": "off"}))
+check("the private Git tile follows the Git app off", "git-private" in S.hidden_apps("admin"))
+(T / "control" / "access.json").unlink()
 check(
     "its tile is off until switched on",
     "eliza" in S.hidden_apps() and 'href="/eliza.html"' not in S.render_tiles("apps", S.hidden_apps()),
