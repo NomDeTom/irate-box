@@ -3938,19 +3938,15 @@ class Handler(BaseHTTPRequestHandler):
         """The session cookie, or "" when its session is pinned to a hotspot device (pin_sessions) and this
         request comes from the hotspot with another hardware address. Read once a request."""
         if getattr(self, "_token_for", None) is not self.headers:
-            token = ""
-            for part in self.headers.get("Cookie", "").split(";"):
-                k, _, v = part.strip().partition("=")
-                if k == SESSION_COOKIE:
-                    token = v
-                    break
-            if token and settings_snapshot()["pin_sessions"]:
-                pinned = accounts.session_device(token)
+            cookie = self._cookie(SESSION_COOKIE)
+            if cookie and settings_snapshot()["pin_sessions"]:
+                pinned = accounts.session_device(cookie)
                 here = device_of(self._client_addr()) if pinned else None
-                if pinned and here and here != pinned:
-                    token = ""
-            self._token, self._token_for = token, self.headers
-        return self._token
+                taken = not (pinned and here and here != pinned)
+            else:
+                taken = True
+            self._token, self._token_for = cookie if taken else None, self.headers
+        return self._token or ""
 
     def _session_cookie(self, token, max_age):
         return (
