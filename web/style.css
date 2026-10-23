@@ -4480,6 +4480,16 @@ html[data-palette="contrast"] .help-item.down {
 .sec-choice > .settings {
   align-self: stretch;
 }
+/* A setting's place in a card of several (Sign-in and root): its rows and notes, each row a line above it. */
+.sec-choice > .sec-card-part {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sec-card-part > .aw-field:first-child {
+  border-top: 1px solid var(--border);
+}
 /* A switch in a card's row (Visitor data): its name as the other rows' labels, the box where their chips start. */
 .sec-check {
   cursor: pointer;

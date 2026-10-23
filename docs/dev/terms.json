@@ -171,6 +171,11 @@
    "words": "\\b(?:USB )?sticks?\\b",
    "use": "USB drive",
    "why": "writing.md, Words"
+  },
+  {
+   "words": "\\bafar\\b",
+   "use": "away from home, or say how (over Tailscale)",
+   "why": "plain words: an old word for far away (Tom, 2026-10-23)"
   }
  ]
 }

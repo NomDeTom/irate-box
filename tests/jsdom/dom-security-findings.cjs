@@ -32,6 +32,12 @@ from irate_box.root import share, firewall
 st = dict(share.load()); st["contain"] = {k: i % 2 == 0 for i, k in enumerate(share.CONTAIN)}
 share.load = lambda: st; share.on = lambda _st: True; firewall.loaded = lambda: True
 fs += s.share_findings()
+# Root and sudo: a passwordless rule and an account in the docker group, two settings of one card.
+s._nopasswd_rules = lambda: [("90-lyra", "lyra ALL=(ALL) NOPASSWD: ALL", "lyra")]
+fs += s.sudo_findings({}, {"passwordauthentication": "no"})
+s._group_members = lambda: {"docker": {"lyra"}}
+s._login_accounts = lambda: {"lyra"}
+fs += s.group_findings({})
 print(json.dumps({"at": 1790000000, "listeners": [{"proto": "tcp", "port": 9090, "addr": "0.0.0.0", "unit": "cockpit.socket", "name": s.named("Cockpit")}],
                   "findings": fs}))
 `;
@@ -67,8 +73,8 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
 
   const pw = card('ssh-password');
   const lines = (n) => [...n.querySelectorAll('.setting-desc')].map(t);
-  check('a choice card: what was found, then the notes; why it matters is the Security doctor\'s',
-    pw && JSON.stringify(lines(pw).slice(0, 2)) === JSON.stringify(['SSH accepts passwords.', 'These accounts have a key for SSH on the box: lyra and pi.'])
+  check('SSH password sign-in: a row of the SSH card, then its notes; why it matters is the Security doctor\'s',
+    pw && !!pw.closest('#security-card-ssh') && JSON.stringify(lines(pw)) === JSON.stringify(['These accounts have a key for SSH on the box: lyra and pi.'])
     && !/guess a password/.test(t(pw)), pw && lines(pw));
   check('  the note, its list of accounts said whole', /These accounts have a key for SSH on the box: lyra and pi\./.test(t(pw)), t(pw));
   check('  a setting, not a card to act on: both values as options, the one in effect marked; no recommended action',
@@ -116,6 +122,26 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   const sent = posted.filter((b) => b.action === 'fix').map((b) => b.choice);
   check('  Save sends each row\'s choice, one request each',
     sent.length === 2 && new Set(sent).size === 2 && sent.every((c) => /^share-contain-[a-z_]+-on$/.test(c)), JSON.stringify(posted));
+
+  // Root and sudo: one card, a row for each setting; changes to two of them go at one Save.
+  // The helper's answer to guest access's two requests: the page is no longer waiting.
+  sec.results = posted.map((b, i) => ({ id: `job-${i + 1}`, ok: true, message: 'Done.' }));
+  w.eval('loadSecurity')();
+  await wait(200);
+  const rootCard = d.getElementById('security-card-root');
+  const chipIn = (sel, word) => [...rootCard.querySelectorAll(`${sel} .chip`)].find((b) => t(b) === word);
+  check('Root and sudo: passwordless sudo and the docker group as rows of one card, one Save',
+    rootCard && /Passwordless sudo \(90-lyra\)/.test(t(rootCard)) && /The docker group: lyra/.test(t(rootCard))
+    && rootCard.querySelectorAll('.aw-foot').length === 1, rootCard && t(rootCard));
+  posted.length = 0;
+  chipIn('#sec-sudo-nopasswd', 'Off').click();
+  await wait();
+  chipIn('#sec-group-docker', 'Not in the group').click();
+  await wait();
+  d.getElementById('security-card-root').querySelector('.aw-save').click();
+  await wait(300);
+  const sentRoot = posted.filter((b) => b.action === 'fix').map((b) => b.choice).sort().join(' ');
+  check('  both sent at one Save', sentRoot === 'group-drop:lyra@docker sudo-drop:90-lyra', JSON.stringify(posted));
 
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),

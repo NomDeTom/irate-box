@@ -875,7 +875,7 @@ def ssh_findings(settings, keys, rec):
                 notes=[
                     M(
                         "ssh-forwarding.tailscale",
-                        "An SSH tunnel into the box's network, for example from afar through Tailscale, "
+                        "An SSH tunnel into the box's network from another network, for example over Tailscale, "
                         "needs TCP forwarding.",
                     )
                 ],
@@ -1700,7 +1700,7 @@ def group_findings(rec):
         removed = sorted(k.split("@")[0] for k in ours if k.endswith("@" + group))
         undo = []
         for u in sorted(set(members[group] & logins) | set(removed)):
-            label = M("group.account", "{account}", account=u)
+            label = M("group.account", "The {group} group: {account}", account=u, group=group)
             if u in removed and u not in members[group]:
                 undo += [
                     _chip(label, f"group-undo:{u}@{group}", M("group.member", "In the group"), False),
@@ -2070,9 +2070,28 @@ def _nopasswd_rules():
     return out
 
 
+def _sudo_chips(f, on):
+    """A sudoers.d file's passwordless rule as a row of chips: On (the file in place), Off (moved aside here)."""
+    group = M("sudo.group", "Passwordless sudo ({file})", file=f)
+    return [
+        _chip(group, f"sudo-undo:{f}", ON, on),
+        _chip(
+            group,
+            f"sudo-drop:{f}",
+            OFF,
+            not on,
+            M(
+                "sudo.drop.confirm",
+                "/etc/sudoers.d/{file} goes: sudo asks for the account's password again, and the account stays in the sudo group. On puts the file back.",
+                file=f,
+            ),
+        ),
+    ]
+
+
 def sudo_findings(rec, settings=None):
     ours = rec.get("sudo", {})
-    undo = [action(f"sudo-undo:{f}", M("sudo.undo", "Put {file} back", file=f)) for f in ours]
+    undo = [chip for f in ours for chip in _sudo_chips(f, False)]
     rules = _nopasswd_rules()
     if not rules:
         return [
@@ -2120,19 +2139,8 @@ def sudo_findings(rec, settings=None):
             if guessable
             else M("sudo.fix", "Remove the rule when the work that it was added for is done."),
             evidence=[f"{f}: {', '.join(sorted(a))}" for f, a in by_file.items()],
-            actions=[
-                action(
-                    f"sudo-drop:{f}",
-                    M("sudo.drop", "Remove {file}", file=f),
-                    M(
-                        "sudo.drop.confirm",
-                        "/etc/sudoers.d/{file} goes: sudo asks for the account's password again, and the account stays in the sudo group. Undo puts the file back.",
-                        file=f,
-                    ),
-                )
-                for f in drops
-            ]
-            + undo,
+            actions=[chip for f in drops for chip in _sudo_chips(f, True)]
+            + [chip for chip in undo if chip["choice"].split(":", 1)[1] not in drops],
         )
     ]
 

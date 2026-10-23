@@ -658,7 +658,7 @@ check(
     g["sudo-nopasswd"]["status"] == "problem"
     and g["sudo-nopasswd"]["evidence"] == ["claude-temp: lyra"]
     and said(g["sudo-nopasswd"]) == {"sudo.rules", "sudo.rules.why-ssh", "sudo.fix-ssh"}
-    and g["sudo-nopasswd"]["actions"][0]["choice"] == "sudo-drop:claude-temp",
+    and [a["choice"] for a in g["sudo-nopasswd"]["actions"] if not a.get("on")] == ["sudo-drop:claude-temp"],
     g["sudo-nopasswd"],
 )
 (T / "pw-off").touch()

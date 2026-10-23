@@ -3676,30 +3676,8 @@ function secKind(finding) {
   if (finding.id.startsWith("guest-net-")) return "doctor";
   return "choice";
 }
-// Passwordless sudo as a toggle: On while a
-// NOPASSWD rule is there (Off takes it out), Off once taken out from here (On puts it back).
-function sudoToggle(finding, busy) {
-  return finding.actions.map((action) => {
-    const file = action.choice.split(":")[1];
-    const on = action.choice.startsWith("sudo-drop:") !== secChosen(finding.id, action); // as it would be after Save
-    const b = el("button", {
-      type: "button",
-      className:
-        "chip-btn" +
-        (on ? " active" : "") +
-        (secChosen(finding.id, action) ? " pending" : ""),
-      disabled: busy,
-      textContent: `Passwordless sudo${finding.actions.length > 1 ? ` (${file})` : ""}: ${on ? "On" : "Off"}`,
-      title: action.label,
-      onclick: (event) => secChoose(finding, action, event.currentTarget),
-    });
-    b.setAttribute("aria-pressed", String(on));
-    return b;
-  });
-}
 // A line of the box's scan: its buttons, each acting through the root helper (only what its last scan offered).
 function scanButtons(finding, busy) {
-  if (finding.id === "sudo-nopasswd") return sudoToggle(finding, busy);
   if ((finding.actions || []).some((action) => action.group))
     return [
       ...secChipRows(finding, busy),
@@ -3727,23 +3705,33 @@ function scanButtons(finding, busy) {
 // value (the choices picked, '' for none), saved from the footer under it, its question asked once at Save. A finding
 // with several rows of chips (Guest internet access) holds one choice for each row it changes, space-separated. A cure
 // (one right answer) and its Undo are actions: they act at once, after their question.
-const secSecs = new Map(); // finding id -> its section
-const secOffer = (fid, choice) => {
-  const finding = ((secData && secData.scan && secData.scan.findings) || []).find(
-    (x) => x.id === fid,
-  );
-  return finding && (finding.actions || []).find((action) => action.choice === choice);
+// Settings drawn together in one card (Sign-in and root's) share its section: one Save for every row in it.
+const secSecs = new Map(); // finding id, or card-<card>, -> its section
+const SEC_CARDS = [
+  ["ssh", "SSH", (fid) => fid.startsWith("ssh")],
+  ["root", "Root and sudo", (fid) => /^(sudo-|root-|group-)/.test(fid)],
+];
+const secCardOf = (fid) => SEC_CARDS.find(([, , mine]) => mine(fid));
+const secHome = (fid) => (secCardOf(fid) ? `card-${secCardOf(fid)[0]}` : fid);
+// The offer a choice is, in whichever finding has it (a card's choices come from several).
+const secOffer = (choice) => {
+  for (const finding of (secData && secData.scan && secData.scan.findings) || []) {
+    const offer = (finding.actions || []).find((action) => action.choice === choice);
+    if (offer) return offer;
+  }
+  return null;
 };
 const secPicked = (value) => (value || "").split(" ").filter(Boolean);
 function secSection(finding) {
-  if (secSecs.has(finding.id)) return secSecs.get(finding.id);
+  const key = secHome(finding.id);
+  if (secSecs.has(key)) return secSecs.get(key);
   const sec = AW.section({
-    id: `sec-${finding.id}`,
-    label: finding.title,
+    id: `sec-${key}`,
+    label: secCardOf(finding.id) ? secCardOf(finding.id)[1] : finding.title,
     saved: { choice: "" },
     warn: (c) =>
       secPicked(c.choice)
-        .map((choice) => secOffer(finding.id, choice))
+        .map((choice) => secOffer(choice))
         .filter((offer) => offer && offer.confirm)
         .map((offer) => offer.confirm)
         .join(" ") || null,
@@ -3751,21 +3739,21 @@ function secSection(finding) {
       const j = AW.job();
       secRequest(
         secPicked(c.choice).map((choice) => ({ action: "fix", choice })),
-        finding.id,
+        key,
         j.done,
       );
       await j;
       // Done: nothing waits any more (the scan says what is in effect now).
       setTimeout(() => sec.update({ choice: "" }));
     },
-    busy: () => !!(secWaiting && secWaiting.fid === finding.id),
+    busy: () => !!(secWaiting && secWaiting.fid === key),
     onChange: () => secData && renderSecurity(secData),
   });
-  secSecs.set(finding.id, sec);
+  secSecs.set(key, sec);
   return sec;
 }
 const secChosen = (fid, action) => {
-  const sec = secSecs.get(fid);
+  const sec = secSecs.get(secHome(fid));
   return !!sec && sec.dirty() && secPicked(sec.get("choice")).includes(action.choice);
 };
 function secChoose(finding, action) {
@@ -4066,7 +4054,7 @@ function secChipRows(finding, busy) {
         "div",
         { className: "chip-group", role: "group", "aria-label": label },
         ...choices.map((choice) => {
-          const sec = secSecs.get(finding.id);
+          const sec = secSecs.get(secHome(finding.id));
           // Pending only in the group it was chosen in: the finding's other groups show how they are.
           const picked = sec && sec.dirty() ? secPicked(sec.get("choice")) : [];
           const pend = choices.some((c) => picked.includes(c.choice))
@@ -4149,6 +4137,44 @@ function secChoiceCard(finding, busy, note) {
     note,
   );
 }
+// Sign-in and root as two cards (SEC_CARDS: SSH, Root and sudo): each setting its rows of chips, a label and its
+// values; one with nothing to choose here, its state on a row of its own. Each setting's place keeps its id
+// (#sec-ssh-password), for the tour and the doctor's links; one Save for the card.
+function secCards(findings, busy) {
+  return SEC_CARDS.map(([key, title, mine]) => {
+    const own = findings.filter((finding) => mine(finding.id));
+    if (!own.length) return null;
+    const changeable = own.find((finding) => (finding.actions || []).length);
+    return el(
+      "div",
+      { className: "setting sec-choice", id: `security-card-${key}` },
+      el("span", { className: "setting-name", textContent: title }),
+      ...own.map((finding) => {
+        const rows = secChipRows(finding, busy);
+        const rest = { ...finding, actions: (finding.actions || []).filter((action) => !action.group) };
+        const parts = findingParts(finding);
+        return el(
+          "div",
+          { className: "sec-card-part", id: `sec-${finding.id}` },
+          ...(rows.length
+            ? rows
+            : [
+                el(
+                  "div",
+                  { className: "aw-field" },
+                  el("span", { className: "aw-label", textContent: finding.title }),
+                  el("span", { textContent: parts.detail }),
+                ),
+              ]),
+          rest.actions.length ? el("div", { className: "library-buttons" }, ...scanButtons(rest, busy)) : null,
+          ...parts.notes.map((n) => el("span", { className: "setting-desc", textContent: n })),
+        );
+      }),
+      ...(changeable ? secFoot(changeable) : []),
+      noteUnder(`card-${key}`),
+    );
+  }).filter(Boolean);
+}
 // The Network listeners table's filter (AW.filterBar): a chip for each exposure in it, and words to look for; the
 // chips and words kept when the table is drawn again (every poll).
 const listenerFilter = { active: new Set(), needle: "" };
@@ -4178,11 +4204,11 @@ function drawListenerFilter(rows) {
 // never sent.
 function secPrune(scan) {
   if (!scan) return;
-  for (const [fid, sec] of secSecs) {
+  for (const sec of secSecs.values()) {
     if (!sec.dirty() || sec.saving()) continue;
     const picked = secPicked(sec.get("choice"));
     if (!picked.length || picked.some((choice) => {
-      const offer = secOffer(fid, choice);
+      const offer = secOffer(choice);
       return !offer || offer.on;
     }))
       sec.discard();
@@ -4246,7 +4272,8 @@ function renderSecurity(data) {
     }
   }
   const lines = scan ? scan.findings : [];
-  const shown = new Set(lines.map((finding) => finding.id));
+  // A card's answer is said under its card: its key is one of the page's places too.
+  const shown = new Set([...lines.map((finding) => finding.id), ...lines.map((finding) => secHome(finding.id))]);
   const by = (k) =>
     lines
       .filter((finding) => secKind(finding) === k)
@@ -4272,7 +4299,11 @@ function renderSecurity(data) {
                 { className: "sec-subject", id: `security-${key}` },
                 el("h3", { textContent: title }),
                 el("p", { className: "setting-desc", textContent: words }),
-                el("div", { className: "sec-settings" }, ...mine.map(card)),
+                el(
+                  "div",
+                  { className: "sec-settings" },
+                  ...(key === "login" ? secCards(mine, busy) : mine.map(card)),
+                ),
               )
             : null;
         }).filter(Boolean)),
