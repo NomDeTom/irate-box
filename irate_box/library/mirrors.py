@@ -6,6 +6,9 @@ librarian keeps from an upstream, by a policy, as firmware.py keeps the firmware
 A mirror's settings ($HUB_STATE_DIR/library/mirrors.json, set on /admin's Git page):
   name, area       where it appears: git/public/<name>.git or git/private/<name>.git
   upstream         an https URL
+  description      one line, up to gitrepos.MAX_DESC characters, which cgit shows; left empty, the
+                   first heading of the upstream's README (read after each update), else the
+                   upstream's name
   branches         which branches to keep (["main"] by default)
   groups           which tags to keep, newest first, as [{name, kind, pattern, keep}]:
                      kind "tags"        tags matching the glob `pattern`, by version order
@@ -23,7 +26,7 @@ A mirror's settings ($HUB_STATE_DIR/library/mirrors.json, set on /admin's Git pa
 
 Each update fetches exactly what the policy names, deletes refs that fell out of it, and lets
 git drop their objects. It is read-only on the box (public-read-only or private-read-only:
-gitrepos.py), and says it is a mirror in its description. Everything runs as the hub user, in
+gitrepos.py). Everything runs as the hub user, in
 the hub's own folder: no root. Nested submodules (a submodule's own) are not followed.
 
     ./irate-box mirrors [check|update] [NAME ...]
@@ -128,6 +131,9 @@ def validate(m):
                 "Invalid source settings. Enter an https:// URL for the upstream, with no user name or token in it.",
             )
         )
+    description = m.get("description") or ""
+    if not isinstance(description, str) or len(description.strip()) > gitrepos.MAX_DESC or "\n" in description.strip():
+        raise LibrarianError(gitrepos.DESCRIPTION_BAD)
     branches = m.get("branches") or ["main"]
     if not isinstance(branches, list) or not 1 <= len(branches) <= 10 or not all(_ref_ok(b) for b in branches):
         raise LibrarianError(M("mirrors.branches.invalid", "Invalid branches. Enter 1 to 10 branch names."))
@@ -204,6 +210,7 @@ def validate(m):
         "name": name,
         "area": area,
         "upstream": upstream,
+        "description": description.strip(),
         "branches": branches,
         "groups": groups,
         "follow": follow,
@@ -447,8 +454,61 @@ def _ensure_repo(m, path=None, upstream=None, what=None):
     gitrepos.set_write_level(path, "nobody")
     _git("config", "irate-box.mirror", upstream, cwd=path)
     _git("symbolic-ref", "HEAD", f"refs/heads/{m['branches'][0]}", cwd=path)
-    (path / "description").write_text(f"{what or 'Mirror'} of {upstream} (kept by the box; read-only here)\n")
+    if what:
+        (path / "description").write_text(f"{what} of {upstream} (kept by the box; read-only here)\n")
+    elif not (path / "description").is_file():
+        (path / "description").write_text(description_of(m, path) + "\n")
     return path
+
+
+README_NAMES = ("README.md", "README.rst", "README")
+RST_RULE_RE = re.compile(r"^([=\-~^\"'`#*+._:])\1{2,}\s*$")
+
+
+def _plain(text):
+    """A heading without its markup: images and tags gone, a link as its words, emphasis marks and
+    a closing run of # removed."""
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"<[^>]*>", "", text)
+    text = re.sub(r"[`*_]+", "", text.replace("\\", ""))
+    return re.sub(r"\s+", " ", text.strip().rstrip("#")).strip()
+
+
+def readme_title(text):
+    """The first heading of a README: a Markdown # line, or a line with a setext or reStructuredText
+    underline (and overline); None when there is none in its first 200 lines."""
+    lines = text.splitlines()[:200]
+    for i, line in enumerate(lines):
+        rule = lines[i + 1] if i + 1 < len(lines) else ""
+        heading = re.match(r"^ {0,3}#{1,6}\s+(.+)$", line)
+        if heading:
+            found = _plain(heading.group(1))
+        elif RST_RULE_RE.match(line) and i + 2 < len(lines) and lines[i + 2].strip() == line.strip() and rule.strip():
+            found = _plain(rule)  # an overline too: the line between two rules
+        elif line.strip() and not RST_RULE_RE.match(line) and RST_RULE_RE.match(rule) and len(rule.strip()) >= 3:
+            found = _plain(line)
+        else:
+            continue
+        if found:
+            return found[: gitrepos.MAX_DESC]
+    return None
+
+
+def description_of(m, path):
+    """What cgit shows for a mirror: its own description, else the README's first heading at the
+    default branch's head (read in place, no checkout), else the upstream's name."""
+    if m.get("description"):
+        return m["description"]
+    for name in README_NAMES:
+        out = _git("show", f"HEAD:{name}", cwd=path)
+        if out.returncode == 0:
+            title = readme_title(out.stdout)
+            if title:
+                return title
+    return (
+        urllib.parse.urlsplit(m["upstream"]).path.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git") or m["upstream"]
+    )[: gitrepos.MAX_DESC]
 
 
 def _sub_name(m, sub_path):
@@ -608,6 +668,9 @@ def sync(m, check_only=False, log=print):
             if extra:
                 _git("reflog", "expire", "--expire=now", "--all", cwd=path)
                 _git("gc", "--quiet", "--prune=now", cwd=path, timeout=FETCH_TIMEOUT)
+            shown = description_of(m, path)
+            (path / "description").write_text(shown + "\n")
+            entry["described"] = shown
             entry.update(missing=[], extra=[], updated=time.time())
             line = f"{len(missing)} downloaded, {len(extra)} removed" if missing or extra else "up to date"
             try:

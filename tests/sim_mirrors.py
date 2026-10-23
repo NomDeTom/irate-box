@@ -102,7 +102,42 @@ check(
     g("config", "--get", "irate-box.write", cwd=path).stdout.strip() == "nobody"
     and g("config", "--get", "http.receivepack", cwd=path).stdout.strip() == "false",
 )
-check("it says it is a mirror", (path / "description").read_text().startswith(f"Mirror of {URL}"))
+check("no description, no README: the upstream's name", (path / "description").read_text() == "up\n")
+
+
+def described(label, files, given="", want=None):
+    """A one-commit upstream with `files`, mirrored; the description cgit would show."""
+    src = T / f"d-{label}"
+    g("init", "-q", "-b", "main", str(src))
+    for fname, text in files.items():
+        (src / fname).write_text(text)
+    (src / "x").write_text("x")
+    g("add", "-A", cwd=src)
+    g("commit", "-qm", "c", cwd=src)
+    mm = dict(base, name=f"d-{label}", upstream=f"file://{src}", groups=[], description=given)
+    mirrors.sync(mm)
+    return (mirrors.repo_path(mm) / "description").read_text()
+
+
+check("a given description is kept", described("given", {"README.md": "# Other\n"}, "Mine") == "Mine\n")
+check(
+    "from the README's first heading, markup stripped",
+    described("md", {"README.md": "[![ci](a)](b)\n\n# [Irate](u)-Box **source** code #\n\ntext\n"})
+    == "Irate-Box source code\n",
+)
+check("from a setext heading", described("setext", {"README.md": "Debian CIS\n==========\n\ntext\n"}) == "Debian CIS\n")
+check(
+    "from an RST title with an overline",
+    described("rst", {"README.rst": "=====\nTitle\n=====\n\ntext\n"}) == "Title\n",
+)
+check("a README with no heading: the upstream's name", described("none", {"README": "just text\n"}) == "d-none\n")
+long_text = "x" * 300
+check("a long heading is cut", len(described("long", {"README.md": f"# {long_text}\n"})) == gitrepos.MAX_DESC + 1)
+try:
+    mirrors.validate(dict(base, upstream="https://example.org/x/y", description="a\nb"))
+    check("a description of two lines is refused", False)
+except librarian.LibrarianError:
+    check("a description of two lines is refused", True)
 check(
     "the Git page sees it as public-read-only",
     next(r for r in gitrepos.snapshot()["repos"] if r["name"] == "fw")["preset"] == "public-read-only",

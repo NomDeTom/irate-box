@@ -33,7 +33,7 @@ const gitData = { installed: true, max_push: 67108864, free: 5e10, now: T,
   ],
   mirrors: [{ name: 'meshtastic-firmware', area: 'public', upstream: 'https://github.com/meshtastic/firmware', branches: ['master'],
     groups: [], follow: 'latest', pin: '', history: 'shallow', budget_mb: 2048, submodules: true,
-    status: { outcome: 'up to date', size: 15e6, checked: T, updated: T,
+    status: { outcome: 'up to date', described: 'Firmware of the mesh', size: 15e6, checked: T, updated: T,
       submodules: { protobufs: { repo: 'meshtastic-firmware--protobufs', url: 'https://github.com/meshtastic/protobufs', kept: ['b'.repeat(40)], size: 1e6 } } } }],
   running: false };
 const ciData = { installed: true, queued: 0, script: '.irate-ci.sh', time_limit: 43200, keep_runs: 5, runs_bytes: 5e6,
@@ -99,6 +99,16 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   check('a mirror: the Mirror badge, from where, its update; Manage in Library, no Manage of its own', /Mirror/.test(t(mc.querySelector('.badges')))
     && /from github\.com\/meshtastic\/firmware · updated 2026-/.test(t(mc)) && mc.querySelector('a[href="#mirrors"]')
     && ![...mc.querySelectorAll('button')].some((b) => t(b) === 'Manage'), t(mc));
+
+  const mirrorBox = d.getElementById('mirror-description-meshtastic-firmware');
+  check('the mirror card: a description to edit, the README\'s as its placeholder', mirrorBox && mirrorBox.value === ''
+    && mirrorBox.placeholder === 'Firmware of the mesh');
+  mirrorBox.value = ' Mesh firmware ';
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Change description').click();
+  await wait();
+  const saved = posted.filter(([, b]) => b.action === 'mirror-change').pop();
+  check('Change description changes the mirror, trimmed', saved && saved[1].mirror.description === 'Mesh firmware' && saved[1].mirror.name === 'meshtastic-firmware');
+  check('the mirror form asks for a description', !!d.querySelector('#git-mirror-add [name=description]'));
 
   chip('Mirrors').click();
   check('the Mirrors chip shows only mirrors', cards().map((c) => t(c.querySelector('h4'))).join() === 'meshtastic-firmware.git');
