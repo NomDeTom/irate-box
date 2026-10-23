@@ -12408,6 +12408,10 @@ function accessSentence(repo) {
   return `${see} ${push}${build}`;
 }
 
+// Said wherever Git's removal changes what a page does (gitrepos.served), in these words each time.
+const GIT_ADD_BACK = "To add Git back, run install.sh again with --with-git.";
+const gitRemoved = () => gitData && gitData.served === false;
+
 function renderGit(data) {
   gitData = data;
   if (!data.installed) {
@@ -12421,7 +12425,9 @@ function renderGit(data) {
   git.usage.textContent =
     `${data.repos.length} repositor${data.repos.length === 1 ? "y" : "ies"}, ${size(total)}` +
     (data.free != null ? `, ${size(data.free)} free on the card` : "") +
-    `. A single push can be up to ${size(data.max_push)}.`;
+    (gitRemoved()
+      ? `. Git is removed from this box. The repositories are kept, but nobody can browse, clone or push to them. ${GIT_ADD_BACK}`
+      : `. A single push can be up to ${size(data.max_push)}.`);
   // Submodule mirrors have no card of their own: Git → Mirrors lists them under their parent.
   const shown = data.repos.filter((repo) => !repo.submodule_of);
   const chips = (box, list, key) =>
@@ -12471,6 +12477,7 @@ function renderGit(data) {
   cards.push(newCard());
   if (gitView.open === "new") cards.push(newPanel("git-drawer"));
   git.grid.replaceChildren(...cards);
+  if (ciData) renderCi(ciData); // its line on Git's removal follows
 }
 
 function newCard() {
@@ -12555,7 +12562,9 @@ const closeButton = () =>
     { className: "small" },
   );
 const copyUrl = (repo) =>
-  actionButton(
+  gitRemoved()
+    ? null
+    : actionButton(
     "Copy clone URL",
     () => {
       const url = `${hubOrigin()}${repo.url.replace(/\/$/, "")}`;
@@ -12603,7 +12612,13 @@ function repoCard(repo, data) {
   return el(
     "div",
     { className: `git-card${open ? " open" : ""}` },
-    el("h4", {}, el("a", { href: repo.url, textContent: `${repo.name}.git` })),
+    el(
+      "h4",
+      {},
+      gitRemoved()
+        ? el("span", { textContent: `${repo.name}.git` })
+        : el("a", { href: repo.url, textContent: `${repo.name}.git` }),
+    ),
     el(
       "p",
       { className: "badges" },
@@ -13029,6 +13044,14 @@ function renderMirrors(data) {
   };
   const list = data.mirrors || [];
   git.mirrors.replaceChildren(
+    ...(gitRemoved()
+      ? [
+          el("p", {
+            className: "setting-desc",
+            textContent: `Git is removed from this box, so the mirrors are kept on disk and updated, but nobody can browse or clone them. ${GIT_ADD_BACK}`,
+          }),
+        ]
+      : []),
     ...(list.length
       ? list.map((m) => {
           const st = m.status || {};
@@ -13326,7 +13349,8 @@ function renderCi(data) {
     `A push to an administrator-only repository builds here when its commit has a ${data.script} at the top. ` +
     `The box makes a fresh clone and runs bash ${data.script} as a dedicated user at the lowest priority. Repositories that guests can push to never build. ` +
     "Set up builds, or select Build now, under Manage on the card of a repository." +
-    (data.queued ? ` ${data.queued} waiting.` : "");
+    (data.queued ? ` ${data.queued} waiting.` : "") +
+    (gitRemoved() ? ` Git is removed from this box, so nothing can be pushed and no push builds. ${GIT_ADD_BACK}` : "");
   const mem = data.memory || {};
   const memText = /^\d+$/.test(mem.max || "")
     ? `memory limit ${size(Number(mem.max))}`

@@ -114,6 +114,7 @@ run origin_guard.py
 run unit_guard.py
 run uninstall_guard.py
 run sim_mirrors.py
+run sim_gitaddon.py
 run sim_ci_view.py
 run sim_factory.py
 run sim_toolkits.py

@@ -18,6 +18,7 @@ for d in ("library", "control", "apps.d", "addons"):
     (T / d).mkdir()
 os.environ["HUB_STATE_DIR"] = str(T)
 os.environ["HUB_ETC_DIR"] = str(T)
+os.environ["HUB_GIT_ROOT"] = str(T / "git")
 REPO = Path(__file__).resolve().parents[1]
 # A catalogue of its own, which the test changes as a hub update would.
 CAT = T / "catalogue"
@@ -200,6 +201,14 @@ check(
     and "git-private" in S.locked_apps()
     and "git-private" not in S.seen_only(),
 )
+S.gitrepos.REMOVED.parent.mkdir(parents=True, exist_ok=True)
+S.gitrepos.REMOVED.write_text("")
+check(
+    "Git removed: neither Git tile shows, to an admin either",
+    {"git", "git-private"} <= S.hidden_apps("admin")
+    and 'href="/app.html#/git/"' not in S.render_tiles("apps", S.hidden_apps("admin")),
+)
+S.gitrepos.REMOVED.unlink()
 (T / "control" / "access.json").write_text(json.dumps({"git": "off"}))
 check("the private Git tile follows the Git app off", "git-private" in S.hidden_apps("admin"))
 (T / "control" / "access.json").unlink()

@@ -164,7 +164,7 @@ from pathlib import Path
 
 from irate_box.finding import action as finding_action
 from irate_box.finding import finding
-from irate_box.hub import access, manifests, netinv, uplink
+from irate_box.hub import access, gitrepos, manifests, netinv, uplink
 from irate_box.msg import (
     M,
     Refused,
@@ -1536,6 +1536,15 @@ def access_set(req):
                 "control.access.mode-bad",
                 "The access mode must be one of these values: {modes}.",
                 modes=list(access.MODES),
+            )
+        )
+    # A removed Git has no servers behind its routes: on, they would answer 502 (gitaddon.py, install.sh --with-git).
+    if app == "git" and mode != "off" and not gitrepos.served():
+        raise Refused(
+            M(
+                "control.access.git-removed",
+                "Git is removed from this box, so its access stays off. To add Git back, run install.sh again with "
+                "--with-git.",
             )
         )
     if mode == "users" and not access.users_allowed(app):

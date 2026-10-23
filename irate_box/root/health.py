@@ -95,6 +95,8 @@ def uplink_report():
 
 
 UNIT_DIR = Path("/etc/systemd/system")
+# The Git add-on's removal marker (gitrepos.REMOVED, in the folder install.sh gives the repositories).
+GIT_REMOVED = STATE / "git" / ".git-add-on-removed"
 # Units this page may restart or enable: irate-box's own and the add-ons'.
 OUR_UNIT = re.compile(
     r"^(irate-box(-[a-z]+)*\.(service|socket|path|timer)|nginx\.service|caddy\.service|kiwix\.service|"
@@ -325,11 +327,12 @@ def expected_units():
     units = [
         ("irate-box.service", M("unit.role.hub", "hub server")),
         (f"{web}.service", M("unit.role.web", "web server")),
-        ("irate-box-git.socket", M("unit.role.git", "git servers")),
         ("irate-box-control.path", M("unit.role.helper", "root helper")),
         ("irate-box-librarian.timer", M("unit.role.librarian", "the librarian's schedule")),
         ("irate-box-ci.path", M("unit.role.ci", "builds on push")),
     ]
+    if not GIT_REMOVED.exists():
+        units.insert(2, ("irate-box-git.socket", M("unit.role.git", "git servers")))
     if (UNIT_DIR / "irate-box-uplink.service").exists() or "irate-box-uplink" in _installed_text():
         units.append(("irate-box-uplink.service", M("unit.role.uplink", "uplink watchdog")))
     if (UNIT_DIR / "irate-box-crashwatch.service").exists() or "irate-box-crashwatch" in _installed_text():
@@ -2280,6 +2283,47 @@ def check_port_80():
     ]
 
 
+def check_git_addon():
+    """Two questions, once Git is removed (the marker): was it meant to go, and are its servers gone? A removal
+    cut short leaves the units or cgit's files behind. While Git is on, check_units asks after its socket."""
+    if not GIT_REMOVED.exists():
+        return []
+    title = M("git-addon.title", "Git add-on")
+    left = [str(UNIT_DIR / u) for u in ("irate-box-git.socket", "irate-box-git.service") if (UNIT_DIR / u).exists()]
+    left += [
+        str(STATE / "git" / f"cgitrc-{a}") for a in ("public", "private") if (STATE / "git" / f"cgitrc-{a}").exists()
+    ]
+    if not left:
+        return [
+            finding(
+                "git-addon",
+                title,
+                "ok",
+                M("git-addon.removed", "Git is removed from this box. The repositories and the mirrors stay on disk."),
+            )
+        ]
+    return [
+        finding(
+            "git-addon",
+            title,
+            "warn",
+            M("git-addon.half", "Git is removed, but some of its servers' files are still on the box."),
+            M(
+                "git-addon.half.why",
+                "A removal that was cut short leaves them. They do nothing while Git's access is off, but an update "
+                "or a check can trip over them.",
+            ),
+            M(
+                "git-addon.half.fix",
+                "Finish the removal: it leaves the repositories as they are. Or add Git back: run install.sh again "
+                "with --with-git.",
+            ),
+            commands=[f"sudo {CODE}/irate-box gitaddon remove --yes"],
+            evidence=left,
+        )
+    ]
+
+
 def check_hub():
     title = M("hub.title", "Hub server")
     try:
@@ -3826,6 +3870,7 @@ def scan():
         check_kiwix,
         check_web,
         check_port_80,
+        check_git_addon,
         check_uplink,
         check_inventory,
         check_hotspot,

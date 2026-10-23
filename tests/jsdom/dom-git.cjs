@@ -122,6 +122,18 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   const formBox = d.querySelector('#git-mirror-add input[name=submodules]');
   subChip(d.getElementById('git-mirror-add'), 'On').click();
   check('the form: its chips set the hidden checkbox', formBox.checked === true && subChip(d.getElementById('git-mirror-add'), 'On').classList.contains('selected'));
+  gitData.served = false; // the next answer from the hub
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').click();
+  await wait();
+  const removedSays = t(d.getElementById('git-usage'));
+  check('Git removed: the top line says so and how to add it back', /Git is removed from this box/.test(removedSays) && /run install\.sh again with --with-git/.test(removedSays), removedSays);
+  check('Git removed: a card\'s name is no link, there is no clone URL, the mirrors say so',
+    !d.querySelector('.git-card h4 a') && ![...d.querySelectorAll('button')].some((b) => t(b) === 'Copy clone URL')
+    && /nobody can browse or clone them/.test(t(d.getElementById('git-mirrors'))));
+  delete gitData.served;
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').click();
+  await wait();
+  check('Git there: the links are back', !!d.querySelector('.git-card h4 a') && !/Git is removed/.test(t(d.getElementById('git-usage'))));
   chip('Mirrors').click();
   check('the Mirrors chip shows only mirrors', cards().map((c) => t(c.querySelector('h4'))).join() === 'meshtastic-firmware.git');
   chip('Builds').click();

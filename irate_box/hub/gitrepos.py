@@ -46,6 +46,17 @@ from irate_box.msg import M
 
 ROOT = Path(os.environ.get("HUB_GIT_ROOT", Path(__file__).resolve().parents[2] / "git"))
 AREAS = {"public": "/git/", "private": "/git-private/"}
+# The Git add-on is the serving of the repositories (cgit, git http-backend); the repositories themselves
+# are the box's storage and stay without it. Taking the add-on away (irate-box gitaddon remove, install.sh
+# --no-git) leaves this file, which keeps it away through updates; install.sh --with-git takes the file away.
+REMOVED = ROOT / ".git-add-on-removed"
+
+
+def served():
+    """Whether the Git add-on is on the box: the repositories can be browsed, cloned and pushed to."""
+    return not REMOVED.exists()
+
+
 GUEST_PUSH = ROOT / "guest-push"  # the old switch: read only as the default for repos from before
 WRITE_LEVELS = ("everyone", "users", "admin", "nobody")
 PRESETS = {
@@ -253,6 +264,7 @@ def snapshot():
         free = None
     return {
         "installed": all((ROOT / a).is_dir() for a in AREAS),
+        "served": served(),
         "repos": repos,
         "presets": {
             a: [{"name": n, "write": lv, "text": PRESET_TEXT[n]} for n, lv in ps.items()] for a, ps in PRESETS.items()

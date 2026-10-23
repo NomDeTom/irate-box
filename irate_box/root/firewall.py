@@ -29,6 +29,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from irate_box.hub import gitrepos
 from irate_box.msg import M, Refused
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -73,6 +74,8 @@ HUB_TCP = (
     8498,
 )
 HUB_UDP = (53, 67)
+# cgit's origin and its TLS twin: closed with the Git add-on removed (gitrepos.served), nothing serves them then.
+GIT_TCP = (8093, 8493)
 # The firewall at "hub": the front, DNS and DHCP only, and the origins of what was a path on the front's port
 # (the administration pages, Excalidraw, Mermaid, Syncthing's GUI): they are as reachable as they were.
 HUB_ONLY_TCP = (53, 80, 443, 8095, 8096, 8097, 8098, 8495, 8496, 8497, 8498)
@@ -131,6 +134,8 @@ def hotspot_iface():
 def ports(services=(), level="apps"):
     """(tcp, udp): the hub's own doors (at the firewall's level) plus the named services', sorted, each once."""
     tcp, udp = set(HUB_TCP if level == "apps" else HUB_ONLY_TCP), set(HUB_UDP)
+    if not gitrepos.served():
+        tcp -= set(GIT_TCP)
     for s in services:
         t, u = service_ports(s)
         tcp |= set(t)
