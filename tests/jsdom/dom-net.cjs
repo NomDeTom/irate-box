@@ -52,6 +52,12 @@ w.fetch = async (u, opts = {}) => {
     // The watchdog's report, with a few events, for the event log.
     const now = Math.floor(Date.now() / 1000);
     // The radio's tests (radiotests.py): one run, one not.
+    // netplan's connections on a NetworkManager without its integration (nmhandover.py): one file that can be handed
+    // over, one that cannot, and one handed over before.
+    data.inventory.handover = { integrated: false,
+      files: [{ name: '90-NM-wlan0.yaml', ok: true, connections: [{ name: 'netplan-wlan0-ExampleWiFi1' }] },
+        { name: '50-cloud-init.yaml', ok: false, why: 'It also sets up the cable, which NetworkManager does not run here.', connections: [] }],
+      done: [{ name: '91-NM-guest.yaml', at: now - 86400, connections: [{ keyfile: '/etc/NetworkManager/system-connections/GuestWiFi.nmconnection' }] }] };
     data.inventory.radio_tests = { wlan0: { key: 'k', can: ['radio-reset', 'follows-roam'],
       questions: { 'radio-reset': 'Does it come back after a reset?', 'follows-roam': 'Does the hotspot follow a roam?' },
       found: { 'radio-reset': { at: now - 86400, detail: 'it came back in 40 s' } } } };
@@ -260,6 +266,19 @@ setTimeout(() => {
     // The recovery limits' titles in words, the cable's reset as the adapter's.
     const reachTitles = [...d.querySelectorAll('#up-cablereach .choice-tile')].map((n) => n.textContent.trim()).join('|');
     check('Wired-link recovery limit: no step named "Radio"; the reset is the network adapter\'s', /Reset the network adapter/.test(reachTitles) && !/(^|\|)Radio\b/.test(reachTitles), reachTitles);
+    // Handing netplan's connections over to NetworkManager: what each file means, and its button.
+    const ho = d.getElementById('net-handover');
+    const hoText = ho ? ho.textContent.replace(/\s+/g, ' ') : '';
+    check('handover: a file it can take, what netplan does at boot, and its button', /netplan-wlan0-ExampleWiFi1: at every boot, netplan writes it again from the file 90-NM-wlan0\.yaml/.test(hoText)
+      && [...ho.querySelectorAll('button')].some((b) => b.textContent === 'Manage with NetworkManager'), hoText.slice(0, 300));
+    check('  a file it cannot take: the reason, no button', /50-cloud-init\.yaml: It also sets up the cable/.test(hoText)
+      && ![...ho.querySelectorAll('[data-change="handover:50-cloud-init.yaml"] button')].length);
+    check('  one handed over before: since when, and Restore netplan management', /Your connection GuestWiFi is managed by NetworkManager since/.test(hoText)
+      && [...ho.querySelectorAll('button')].some((b) => b.textContent === 'Restore netplan management'), hoText.slice(-300));
+    [...ho.querySelectorAll('button')].find((b) => b.textContent === 'Manage with NetworkManager').click();
+    check('  Manage asks the box to hand that file over', posted.some((b) => b.action === 'handover' && b.name === '90-NM-wlan0.yaml' && !b.undo), JSON.stringify(posted.slice(-2)));
+    [...d.getElementById('net-handover').querySelectorAll('button')].find((b) => b.textContent === 'Restore netplan management').click();
+    check('  Restore asks for its undo', posted.some((b) => b.action === 'handover' && b.name === '91-NM-guest.yaml' && b.undo === true), JSON.stringify(posted.slice(-2)));
     const chipLine = [...d.querySelectorAll('#net-devices .net-line')].find((p) => /^Chip/.test(p.textContent));
     check('a known chip on its card: its name, its driver in the kernel, the notes, who tested it',
       chipLine && /Broadcom onboard/.test(chipLine.textContent) && /driver is in the kernel/.test(chipLine.textContent)
