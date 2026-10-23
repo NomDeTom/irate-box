@@ -3846,15 +3846,24 @@ const evidenceList = (items) =>
         ...items.map((item) => el("li", {}, el("code", { textContent: item }))),
       )
     : null;
+// A fold drawn again at every poll (a finding's checks and source results, an audit step's lines): one that was
+// opened stays open, by its key, until it is closed.
+const openFolds = new Set();
+function keptFold(key, props, ...kids) {
+  const fold = el("details", { ...props, open: openFolds.has(key) }, ...kids);
+  fold.addEventListener("toggle", () => (fold.open ? openFolds.add(key) : openFolds.delete(key)));
+  return fold;
+}
 // r: {id, state, title, detail, why, notes[], evidence[], how, commands[], controls[], meta, said[], checks[], accept: {key, title, on} | null, note}
 function findingRow(finding) {
   const state = finding.state || "warn";
   // Accept (or take back): the Security doctor's by default; another doctor gives its own words and request. It sits
-  // with the card's other actions, before the folds of detail, not after them.
+  // with the card's other actions, before the folds of detail, not after them: the same size as they are, at the
+  // right of their row, so it is in the same place on every card.
   const accept = finding.accept
     ? el("button", {
         type: "button",
-        className: "action-btn small",
+        className: "action-btn faccept",
         textContent: finding.accept.on ? "Reopen" : finding.accept.label || "Accept risk",
         title: finding.accept.on
           ? "Return this finding to the unresolved list."
@@ -3915,8 +3924,8 @@ function findingRow(finding) {
     finding.note || null,
     // The deep audit's checks one by one (deepaudit.cis_findings): what each wants, what it found, its own fix.
     (finding.checks || []).length
-      ? el(
-          "details",
+      ? keptFold(
+          `${finding.id || finding.title}|checks`,
           { className: "fsaid fchecks" },
           el("summary", {
             textContent: `Each check, with its fix (${finding.checks.length})`,
@@ -3953,8 +3962,8 @@ function findingRow(finding) {
         )
       : null,
     (finding.said || []).length
-      ? el(
-          "details",
+      ? keptFold(
+          `${finding.id || finding.title}|said`,
           { className: "fsaid" },
           el("summary", { textContent: `Source results (${finding.said.length})` }),
           el(
@@ -5001,8 +5010,8 @@ function renderAudit(audit, busy, data) {
       const lines = [...st.findings].sort(
         (left, right) => RANK[left.status] - RANK[right.status],
       );
-      return el(
-        "details",
+      return keptFold(
+        `audit|${st.ref || st.title}`,
         { className: "admin-output" },
         el(
           "summary",

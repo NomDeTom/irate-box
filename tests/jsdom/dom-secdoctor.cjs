@@ -106,6 +106,17 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   check('  a cure is a button on its item (the Security page\'s, from its scan now), not a block of its own', [...kl.querySelectorAll('button')].some((b) => t(b) === "Install Debian's defaults")
     && !d.getElementById('secdoctor-cures'));
   check('  what each source said, folded in the item', /Source results \(2\)/.test(t(kl.querySelector('.fsaid summary'))));
+  // Opened, it stays open when the report is drawn again (each poll), and closed, stays closed.
+  kl.querySelector('.fsaid').open = true;
+  kl.querySelector('.fsaid').dispatchEvent(new w.Event('toggle'));
+  w.renderSecurity(sec);
+  await wait();
+  check('  an opened fold stays open when the report is drawn again', rows()[0] !== kl && rows()[0].querySelector('.fsaid').open);
+  rows()[0].querySelector('.fsaid').open = false;
+  rows()[0].querySelector('.fsaid').dispatchEvent(new w.Event('toggle'));
+  w.renderSecurity(sec);
+  await wait();
+  check('  and closed again, stays closed', !rows()[0].querySelector('.fsaid').open);
   const bt = rows().find((r) => /Bluetooth/.test(t(r)));
   const btOff = bt && [...bt.querySelectorAll('button')].find((b) => t(b) === 'Switch Bluetooth off');
   check('  a button that puts it right, not a command to type', !!btOff && !bt.querySelector('.fdo-cmd'), bt && t(bt));

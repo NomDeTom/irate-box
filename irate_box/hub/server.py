@@ -267,7 +267,7 @@ WIDGET_HTML = {
         <span class="desc" id="people-desc">Users online</span>
       </div>""",
     "qr": """      <div class="service-card qr-card" id="qr-card">
-        <span class="qr" id="hub-qr" aria-label="QR code for this hub's address"></span>
+        <span class="qr" id="hub-qr" role="img" aria-label="QR code for this hub's address"></span>
         <span class="name">Join</span>
         <span class="desc" id="hub-qr-url">Scan to open this hub</span>
       </div>""",

@@ -255,7 +255,8 @@ const AW = (() => {
   //   items: [{id, title}]   opts: {id, noun}
   function records(items, opts = {}) {
     const id = listId(opts, 'records');
-    const list = h('div', { class: 'aw-records', id, 'data-list': 'records', 'data-count': items.length },
+    // It scrolls, so it takes the keyboard's focus (the arrow keys scroll it) and is named for that.
+    const list = h('div', { class: 'aw-records', id, 'data-list': 'records', 'data-count': items.length, tabindex: '0', role: 'region', 'aria-label': `${items.length} ${opts.noun || 'records'}` },
       items.map((i) => h('div', { 'data-aw-id': i.id, ...rowData(i), text: i.title })));
     return h('div', { class: 'aw-block' }, h('p', { class: 'aw-records-head', text: `${items.length} ${opts.noun || 'records'}, newest first` }),
       items.length > FILTER_AT ? filterBar(list, 'div[data-aw-id]', items) : null, list);
