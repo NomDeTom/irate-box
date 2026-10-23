@@ -3631,6 +3631,118 @@ def check_watchers(now=None):
     ]
 
 
+# The watchdogs that look after the box itself, and how they say they're alive: each writes a status with its time,
+# crash watch every 5 minutes, the uplink watchdog at each of its checks. (unit, its status, how many seconds of
+# silence mean it is stuck.)
+PROC = Path(os.environ.get("HUB_PROC", "/proc"))
+
+
+def _watchdogs():
+    from irate_box.hub import uplink
+    from irate_box.root import crashwatch
+
+    try:
+        every = int((json.loads(uplink.status_path().read_text()).get("settings") or {}).get("check") or 60)
+    except (OSError, ValueError, AttributeError, TypeError):
+        every = 60
+    return [
+        ("irate-box-crashwatch.service", M("alive.crashwatch", "Crash watch"), crashwatch.STATUS, 3 * 300),
+        (
+            "irate-box-uplink.service",
+            M("alive.uplink", "The uplink watchdog"),
+            uplink.status_path(),
+            max(300, 3 * every),
+        ),
+    ]
+
+
+def _stuck_in_kernel(pid):
+    """The process and its children waiting in the kernel and not to be woken (state D), each as
+    "name (pid) in wchan": the sign of a lock that something holds and never lets go."""
+    out = []
+    try:
+        procs = [d for d in os.listdir(PROC) if d.isdigit()]
+    except OSError:
+        return out
+    for d in procs:
+        try:
+            stat = (PROC / d / "stat").read_text()
+        except OSError:
+            continue
+        name, rest = stat[stat.find("(") + 1 : stat.rfind(")")], stat[stat.rfind(")") + 2 :].split()
+        if len(rest) < 2 or (d != str(pid) and rest[1] != str(pid)) or rest[0] != "D":
+            continue
+        try:
+            wchan = (PROC / d / "wchan").read_text().strip() or "?"
+        except OSError:
+            wchan = "?"
+        out.append(f"{name} ({d}) waiting in the kernel at {wchan}")
+    return out
+
+
+def _running_for(unit):
+    """Seconds since the unit last became active (systemd's monotonic clock against the uptime); 0 if unknown."""
+    try:
+        since = int(run("systemctl", "show", "-p", "ActiveEnterTimestampMonotonic", "--value", unit, timeout=10).stdout)
+        up = float((PROC / "uptime").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return 0
+    return max(0.0, up - since / 1e6) if since else 0
+
+
+def check_watchdogs_alive(now=None):
+    """Item 162: a watchdog can hang behind a lock in the kernel (the Pi, 2026-10-21: a WiFi driver's scan held the
+    radio's lock, crash watch waited on it holding the network's, and all that touched the network queued behind).
+    Its service then still reads active, and the hardware watchdog is still fed: nothing notices. Each watchdog
+    writes its time; one active but silent for three of its rounds is stuck. Files and systemctl only, with time
+    limits: this check must not wait on the same lock."""
+    now = now or time.time()
+    out = []
+    for unit, name, status, quiet in _watchdogs():
+        active = run("systemctl", "is-active", "--quiet", unit, timeout=10).returncode == 0
+        if not active:
+            continue  # stopped or failed: check_units says so
+        try:
+            at = float(json.loads(status.read_text()).get("at") or 0)
+        except (OSError, ValueError, AttributeError, TypeError):
+            at = 0
+        if at and now - at < quiet:
+            continue
+        if not at and _running_for(unit) < quiet:
+            continue  # just started: its first report is still to come
+        pid = run("systemctl", "show", "-p", "MainPID", "--value", unit, timeout=10).stdout.strip()
+        stuck = _stuck_in_kernel(pid) if pid.isdigit() and pid != "0" else []
+        silent = (
+            M("alive.silent", "{name} runs, but has not reported since {at}.", name=name, at=when(at))
+            if at
+            else M("alive.never", "{name} runs, but has not reported since it started.", name=name)
+        )
+        out.append(
+            finding(
+                f"alive:{unit.removesuffix('.service')}",
+                M("alive.title", "{name}: running, but silent", name=name),
+                "problem",
+                silent,
+                M(
+                    "alive.why",
+                    "While it waits, it does not watch. A stuck network lock also stops SSH and new network "
+                    "connections, and the hardware watchdog does not restart the box.",
+                ),
+                M(
+                    "alive.fix",
+                    "Restart the box. If the restart does not finish, switch the box off and on. Then look in the "
+                    "kernel's log of that boot for a blocked task.",
+                ),
+                notes=[M("alive.in-kernel", "It is waiting in the kernel, as below: a lock that is not released.")]
+                if stuck
+                else [],
+                commands=["journalctl -k -b -1 | grep -A 20 'blocked for more than'"],
+                evidence=stuck or [str(status)],
+            )
+        )
+    return out
+
+
 def scan():
     findings = []
     for check in (
@@ -3650,6 +3762,7 @@ def scan():
         check_crashwatch,
         check_led,
         check_watchers,
+        check_watchdogs_alive,
         check_idle,
         check_usb_filesystems,
     ):
