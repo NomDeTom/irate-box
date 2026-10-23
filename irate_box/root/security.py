@@ -2996,8 +2996,8 @@ SHARE_LEVEL = {
 CONTAIN_HEADING = {
     "lan": M("guest-net.lan", "Block private-network destinations"),
     "tunnels": M("guest-net.tunnels", "Block Tailscale and container routes"),
-    "by_mac": M("guest-net.by-mac", "Bind grants to device"),
-    "dns_hold": M("guest-net.dns-hold", "Restrict unauthorised DNS"),
+    "by_mac": M("guest-net.by-mac", "Tie each guest's access to their device"),
+    "dns_hold": M("guest-net.dns-hold", "Block name lookups before the welcome page"),
 }
 CONTAIN_OFF_WHY = {
     "lan": M(
@@ -3088,8 +3088,9 @@ def share_findings():
             t,
             "warn" if shared and off else "ok",
             SHARE_LEVEL[st["level"]],
-            notes=[M("guest-net.level-where", "The level is set on Network, Hotspot.")],
             actions=chips,
+            # The level is set with the hotspot: a link there, not a sentence.
+            go={"section": "network/hotspot", "where": M("guest-net.level-go", "the level on Network → Hotspot")},
         )
     )
     return out

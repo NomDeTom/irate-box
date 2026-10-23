@@ -437,6 +437,7 @@
 
         <section class="admin-pane" id="access" aria-labelledby="access-title">
           <h2 id="access-title" data-i18n="admin.access.title">Access</h2>
+          <div class="net-card setting">
           <h3 data-i18n="admin.access.h-administrator-password">
             Administrator password
           </h3>
@@ -487,7 +488,8 @@
             hidden
           ></p>
 
-          <div id="remote-section" hidden>
+          </div>
+          <div class="net-card setting" id="remote-section" hidden>
             <h3 data-i18n="admin.access.h-remote-access">Remote access</h3>
             <p
               class="setting-desc"
@@ -2555,6 +2557,8 @@
             can do what this page does. If registration is off, the box has
             guests and its administrator only.
           </p>
+          <div class="net-card setting">
+          <h3 data-i18n="admin.accounts.h-registration">Registration</h3>
           <form id="accounts-settings" class="library-form">
             <label data-i18n="admin.accounts.label-account-registration"
               >Account registration
@@ -2638,6 +2642,8 @@
             hidden
           ></p>
           <p class="setting-desc" id="accounts-counts"></p>
+          </div>
+          <div class="net-card setting">
           <h3 data-i18n="admin.accounts.h-notebooks">Notebooks</h3>
           <p
             class="setting-desc"
@@ -2653,6 +2659,8 @@
           </p>
           <div id="notebooks-box"></div>
           <p class="setting-desc" id="notebooks-state"></p>
+          </div>
+          <div class="net-card setting">
           <h3 data-i18n="admin.accounts.h-create-account">Create account</h3>
           <form id="accounts-make" class="library-form">
             <label data-i18n="admin.accounts.label-username-3-32-characters"
@@ -2707,10 +2715,14 @@
             <a href="/account.html">account page</a>.
           </p>
           <p class="acct-code" id="accounts-code" hidden></p>
+          </div>
+          <div class="net-card setting">
           <h3 data-i18n="admin.accounts.h-existing-accounts">
             Existing accounts
           </h3>
           <div id="accounts-list" class="admin-list"></div>
+          </div>
+          <div class="net-card setting">
           <h3 data-i18n="admin.accounts.h-script-authentication">
             Script authentication
           </h3>
@@ -2734,10 +2746,13 @@
           >
             Checking…
           </p>
+          </div>
+          <div class="net-card setting">
           <h3 data-i18n="admin.accounts.h-saves-other-devices">
             Saves on other devices
           </h3>
           <div id="saves-cross-device-box"></div>
+          </div>
         </section>
 
         <section class="admin-pane" id="mesh" aria-labelledby="mesh-title">
@@ -4704,6 +4719,7 @@
             Backup and a new box
           </h2>
           <!-- Offers with sizes: settings only, settings and data, or a full image, each with an estimated size. -->
+          <div class="net-card setting">
           <h3 id="backup-levels" data-i18n="admin.backup.levels">
             Back up this box
           </h3>
@@ -4797,6 +4813,8 @@
             <p class="setting-desc" id="backup-step"></p>
           </div>
 
+          </div>
+          <div class="net-card setting">
           <h3 id="backup-kit" data-i18n="admin.backup.kit">Content export</h3>
           <p
             class="setting-desc"
@@ -5030,6 +5048,7 @@
             add-on. It moves notes and content between the box and your own
             machines when they share a network. Install and enable the add-on
             before you open it.
+          </div>
           </p>
         </section>
 

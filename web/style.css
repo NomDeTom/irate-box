@@ -4990,6 +4990,17 @@ a.action-btn.go-btn {
   gap: 0.35rem;
   min-width: 0;
 }
+/* Cards one under another (Accounts, Backup, Access): a gap between them. */
+.admin-pane > .net-card + .net-card {
+  margin-top: 0.8rem;
+}
+/* A block of settings in a card (Accounts → Notebooks): the card is its frame, so no second one. */
+.net-card .aw-settings {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
 .net-card h4 {
   display: flex;
   align-items: center;

@@ -254,26 +254,35 @@ def listening_on(p):
 def start(**extra):
     p = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
     e = {k: v for k, v in os.environ.items() if k != "HUB_BIND"}
-    e.update(HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=state, HUB_ETC_DIR=state, PORT=str(p), **extra)
-    proc = subprocess.Popen(
-        [str(REPO / "irate-box"), "server"], env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    for _ in range(50):
+    probe_state = tempfile.mkdtemp(prefix="admin-gate-bind-", dir=state)
+    log = Path(probe_state) / "hub.log"
+    e.update(HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=probe_state, HUB_ETC_DIR=probe_state, PORT=str(p), **extra)
+    with log.open("w") as output:
+        proc = subprocess.Popen([str(REPO / "irate-box"), "server"], env=e, stdout=output, stderr=subprocess.STDOUT)
+    # Up to 30 s: a hub starting on a busy machine (CI, the page tests alongside) took longer than 5.
+    for _ in range(300):
         if listening_on(p):
             break
+        if proc.poll() is not None:
+            break
         time.sleep(0.1)
-    return proc, p
+    return proc, p, log
 
 
 for label, extra, want in (
     ("HUB_BIND unset: the hub listens on loopback only", {}, "0100007F"),
     ("  HUB_BIND set: the override is kept", {"HUB_BIND": "0.0.0.0"}, "00000000"),
 ):
-    proc, p = start(**extra)
+    proc, p, log = start(**extra)
     try:
         got = listening_on(p)
     finally:
         proc.terminate()
-    check(label, got == want, got)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    check(label, got == want, got or log.read_text())
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
