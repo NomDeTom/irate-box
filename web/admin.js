@@ -3737,7 +3737,10 @@ const SEC_CARDS = [
   ["root", "Root and sudo", (fid) => /^(sudo-|root-|group-)/.test(fid)],
 ];
 const secCardOf = (fid) => SEC_CARDS.find(([, , mine]) => mine(fid));
-const secHome = (fid) => (secCardOf(fid) ? `card-${secCardOf(fid)[0]}` : fid);
+// A port's choices are its program row's in Network listeners: one Save for the row, whichever port they are for.
+const secRowOf = new Map(); // a port finding's id -> its row's section key
+const secRowName = new Map(); // a row's section key -> the program's name
+const secHome = (fid) => secRowOf.get(fid) || (secCardOf(fid) ? `card-${secCardOf(fid)[0]}` : fid);
 // The offer a choice is, in whichever finding has it (a card's choices come from several).
 const secOffer = (choice) => {
   for (const finding of (secData && secData.scan && secData.scan.findings) || []) {
@@ -3752,7 +3755,7 @@ function secSection(finding) {
   if (secSecs.has(key)) return secSecs.get(key);
   const sec = AW.section({
     id: `sec-${key}`,
-    label: secCardOf(finding.id) ? secCardOf(finding.id)[1] : finding.title,
+    label: secRowName.get(key) || (secCardOf(finding.id) ? secCardOf(finding.id)[1] : finding.title),
     saved: { choice: "" },
     warn: (c) =>
       secPicked(c.choice)
@@ -4421,6 +4424,10 @@ function renderSecurity(data) {
         }))
         .filter((finding) => finding.actions.length);
       const owner = l0.owner || {};
+      // The row's section: every port's choice in it waits for the row's one Save.
+      const rowKey = `row-${l0.unit || l0.process || `${l0.proto}-${l0.port}`}`;
+      fs.forEach((finding) => secRowOf.set(finding.id, rowKey));
+      secRowName.set(rowKey, worst ? worst.title : l0.name);
       // For the filter: the row's words, and its exposure as the chip that shows it.
       const tag = worst && worst.status !== "ok" ? STATE_WORD[worst.status] : "Expected";
       return el(
@@ -4464,24 +4471,27 @@ function renderSecurity(data) {
           {},
           // Every row's state as a pill, the filter's chip of the same words.
           AW.pill(tag, worst && worst.status === "problem" ? "bad" : worst && worst.status !== "ok" ? "warn" : "ok"),
+          " ",
           said.length ? el("span", { className: "setting-desc", textContent: ` ${said.join(" ")}` }) : null,
           ssh
             ? el("a", { href: "#sec-ssh-password", textContent: "Who can sign in, and how: SSH settings" })
             : null,
           cockpit ? el("a", { href: "#sec-cockpit", textContent: "Cockpit setting" }) : null,
-          worst && worst.fix && worst.status !== "ok"
-            ? el("span", { className: "setting-desc", textContent: ` ${worst.fix}` })
-            : null,
-          ...acts.map((finding) =>
-            el(
-              "span",
-              { className: "library-buttons" },
-              acts.length > 1 ? el("span", { className: "setting-desc", textContent: `${portRanges(shown.filter((l) => lineOf(l) && lineOf(l).id === finding.id))}: ` }) : null,
-              ...scanButtons(finding, busy),
-            ),
-          ),
-          ...acts.flatMap((finding) => secFoot(finding)),
-          ...fs.map((finding) => noteUnder(finding.id)),
+          // The program's buttons (Stop and disable), then each port's row of chips (open or closed to the hotspot).
+          ...(acts.some((finding) => finding.actions.some((action) => !action.group))
+            ? [
+                el(
+                  "span",
+                  { className: "library-buttons" },
+                  ...acts.flatMap((finding) =>
+                    scanButtons({ ...finding, actions: finding.actions.filter((action) => !action.group) }, busy),
+                  ),
+                ),
+              ]
+            : []),
+          ...acts.flatMap((finding) => secChipRows(finding, busy)),
+          ...(acts.length ? secFoot(acts[0]) : []),
+          noteUnder(rowKey),
         ),
       );
     }),

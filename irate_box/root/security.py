@@ -456,13 +456,15 @@ def listener_findings(found, rec):
                 else []
             )
             if fw and not loopback:
+                # Open or closed to the hotspot: a row of two chips, the one in effect marked.
                 proto = f["proto"].upper()
-                acts.append(
-                    action(f"firewall-port-off:{f['proto']}/{f['port']}", M("port.fw-close", "Close to the hotspot"))
-                    if opened
-                    else action(
+                group = M("port.fw-group", "{proto} {port} on the hotspot", proto=proto, port=f["port"])
+                acts += [
+                    _chip(
+                        group,
                         f"firewall-port-on:{f['proto']}/{f['port']}",
-                        M("port.fw-open", "Open to the hotspot"),
+                        M("port.fw-chip-open", "Open"),
+                        opened,
                         M(
                             "port.fw-open.confirm",
                             "Devices on the hotspot can reach {name} ({proto} {port}). The hub does not know what it does or who can use it.",
@@ -470,8 +472,14 @@ def listener_findings(found, rec):
                             proto=proto,
                             port=f["port"],
                         ),
-                    )
-                )
+                    ),
+                    _chip(
+                        group,
+                        f"firewall-port-off:{f['proto']}/{f['port']}",
+                        M("port.fw-chip-closed", "Closed"),
+                        not opened,
+                    ),
+                ]
             reach = (
                 M("port.other.opened", "Not part of the hub. You let devices on the hotspot reach it.")
                 if opened
