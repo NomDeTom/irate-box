@@ -16688,6 +16688,33 @@ async function loadSavesCrossDevice() {
 }
 loadSavesCrossDevice();
 
+// A sign-in on a hotspot device stays that device's: on by default.
+async function loadPinSessions() {
+  const box = document.getElementById("pin-sessions-box");
+  if (!box) return;
+  let st;
+  try {
+    st = await getJSON("/admin/settings");
+  } catch {
+    return;
+  }
+  box.replaceChildren(
+    AW.settings(
+      [
+        {
+          key: "pin_sessions",
+          label: "Tie each sign-in on the hotspot to its device",
+          kind: "toggle",
+          value: st.pin_sessions,
+          note: "Enabled: a sign-in made on a hotspot device works on the hotspot only from that device. Someone who copies its cookie from the open network cannot use it. A phone that changes its private Wi-Fi address must sign in again. Disabled: a sign-in is its cookie alone, from any device.",
+        },
+      ],
+      { id: "pin-sessions", save: (changed) => postJSON("/admin/settings", changed) },
+    ),
+  );
+}
+loadPinSessions();
+
 // --- Needs attention --------------------------------------------------------------------------
 // One list at the top of Overview of what is waiting on an administrator, each a link to where it is dealt
 // with: the words the sections already put beside their sidebar entries, and the setup decisions

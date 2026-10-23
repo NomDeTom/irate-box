@@ -13,6 +13,8 @@ Pure functions here (the files and the steps, tested offline); the root helper r
 """
 
 import ipaddress
+import os
+from pathlib import Path
 
 from irate_box.hub import apmode, hotspot
 from irate_box.msg import M, Refused
@@ -28,6 +30,75 @@ DHCP_FIRST, DHCP_LAST = 10, 200
 DEFAULT_SSID = "Irate-Box"
 HOSTAPD_CONF = "/etc/hub/ap-hostapd.conf"
 HOSTAPD_UNIT = "irate-box-ap-hostapd.service"
+HOSTAPD_BIN = Path(os.environ.get("HUB_HOSTAPD_BIN", "/usr/sbin/hostapd"))
+
+
+def per_account(plan, settings, caps, binary=None):
+    """Could this hotspot give each account a WiFi password of its own (hostapd's wpa_psk_file, one keyid per
+    account, reported when a device joins)? {"possible": bool, "said": message, "notes": [messages]}. Read
+    from what runs it and how it is set up; nothing is changed, and no device has joined that way yet."""
+    binary = HOSTAPD_BIN if binary is None else binary
+    try:
+        keyids = b" keyid=" in Path(binary).read_bytes()
+    except OSError:
+        keyids = None
+    notes = []
+    if plan.get("backend") != "hostapd":
+        said = M(
+            "hotspot-per-account.nm",
+            "Not on this hotspot now: NetworkManager runs it. A password for each account needs hostapd to run the "
+            "hotspot.",
+        )
+        if keyids:
+            notes.append(M("hotspot-per-account.hostapd-here", "The hostapd on this box has what it needs."))
+        return {"possible": False, "said": said, "notes": notes}
+    if not keyids:
+        return {
+            "possible": False,
+            "said": M(
+                "hotspot-per-account.old",
+                "Not on this hotspot: the hostapd on this box cannot tell which password a device joined with.",
+            ),
+            "notes": notes,
+        }
+    mode = settings.get("mode")
+    if mode == "sae" and settings.get("allow_wpa2"):
+        notes.append(
+            M("hotspot-per-account.wpa2", "The hotspot accepts WPA2, so every device can join with its own password.")
+        )
+    elif mode == "sae":
+        notes.append(
+            M(
+                "hotspot-per-account.wpa3",
+                "The hotspot is WPA3 only. Each account's password would also be tied to its device's address.",
+            )
+        )
+    elif caps.get("ap_slots", 0) >= 2:
+        notes.append(
+            M(
+                "hotspot-per-account.second",
+                "The radio can run a second network: guests keep this one, and accounts join the second with their "
+                "own passwords.",
+            )
+        )
+    else:
+        return {
+            "possible": False,
+            "said": M(
+                "hotspot-per-account.one-net",
+                "Not on this hotspot: it has no password, and the radio runs one network only.",
+            ),
+            "notes": notes,
+        }
+    notes.append(M("hotspot-per-account.untested", "No device has joined this radio that way yet. Test it first."))
+    return {
+        "possible": True,
+        "said": M(
+            "hotspot-per-account.possible",
+            "Possible on this hotspot: hostapd runs it and can tell the passwords apart.",
+        ),
+        "notes": notes,
+    }
 
 
 def hostapd_conf(plan, settings, ssid=DEFAULT_SSID, country=None):
