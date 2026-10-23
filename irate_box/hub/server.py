@@ -376,6 +376,11 @@ def save_locked_as(data):
     os.replace(tmp, LOCKED_AS_FILE)
 
 
+# Tiles that follow another app's switch but are only ever for the admin: the private repositories
+# open to an admin's sign-in alone (gitrepos.decide), whatever the Git app's access.
+ADMIN_TWINS = {"git-private": "git"}
+
+
 def _switched():
     """The apps with a switch: the built-ins the web server gates, and the local add-ons."""
     return set(access.ROUTED) | {m["id"] for m in MANIFESTS if m.get("local")}
@@ -411,6 +416,9 @@ def hidden_apps(signed_in=False):
             and not (mode == "private" and signed_in == "admin")
         ):
             out.add(i)
+    for twin, parent in ADMIN_TWINS.items():
+        if access.mode_of(state, parent) == "off" or signed_in != "admin":
+            out.add(twin)
     return out
 
 
@@ -424,6 +432,7 @@ def seen_only():
         for m in MANIFESTS
         if m["id"] not in sw
         and m["id"] not in PAGE_APPS
+        and m["id"] not in ADMIN_TWINS
         and (m.get("tile") or {}).get("row", "apps") == "apps"
         and not (m.get("tile") or {}).get("widget")
         and (m.get("tile") or m.get("menu"))
@@ -449,7 +458,8 @@ def admin_only_tiles():
         mode, v = access.mode_of(state, i), vis.get(i, "auto")
         if mode != "off" and (v == "admin" or (v == "auto" and mode == "private")):
             out.add(i)
-    return out | {i for i in seen_only() if vis.get(i) == "admin"}
+    twins = {twin for twin, parent in ADMIN_TWINS.items() if access.mode_of(state, parent) != "off"}
+    return out | twins | {i for i in seen_only() if vis.get(i) == "admin"}
 
 
 def locked_apps(signed_in=False):
@@ -460,7 +470,7 @@ def locked_apps(signed_in=False):
         i
         for i in _switched()
         if access.mode_of(state, i) == "private" or (access.mode_of(state, i) == "users" and not signed_in)
-    }
+    } | set(ADMIN_TWINS)
 
 
 def render_tiles(

@@ -1,0 +1,11 @@
+{
+  "id": "git-private",
+  "order": 47,
+  "tile": {
+    "icon": "🗝️",
+    "name": "Git (private)",
+    "desc": "Private repositories: the administrator's",
+    "href": "/app.html#/git-private/",
+    "new_tab": true
+  }
+}
