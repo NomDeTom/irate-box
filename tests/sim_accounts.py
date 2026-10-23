@@ -82,7 +82,9 @@ except A.Wait as exc:
     waited = exc.message
 check(
     "  10 failures in a quarter hour: a device alice never signed in from waits, even with the right password",
-    waited and waited["id"] == "accounts.wait-seconds" and 0 < waited["args"]["n"] <= A.PRESETS["standard"]["name_max"] + 1,
+    waited
+    and waited["id"] == "accounts.wait-seconds"
+    and 0 < waited["args"]["n"] <= A.PRESETS["standard"]["name_max"] + 1,
     waited,
 )
 check(
