@@ -145,7 +145,7 @@ def devices():
 
 class Mounted:
     """The device's files, at a mount point of ours (removed after), or, to read only, at its existing one.
-    To write (every export), only a mount of the box's own (audit M7): one made elsewhere has neither nosymfollow
+    To write (every export), only a mount of the box's own: one made elsewhere has neither nosymfollow
     nor the others, and a folder on it could be a link that sends root's writes anywhere. The owner unmounts it,
     and the box mounts it itself."""
 

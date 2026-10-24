@@ -4294,7 +4294,7 @@ class Handler(BaseHTTPRequestHandler):
             )
         return not ok
 
-    # What /admin answers on a box in its first use, to anyone (audit M4): the set-up page, its request's progress
+    # What /admin answers on a box in its first use, to anyone: the set-up page, its request's progress
     # (?id=), and making the first administrator account. Nothing else of /admin: until the box has an owner, the
     # first person on its network would otherwise read and change every setting.
     SETUP_PATHS = frozenset(("/admin/setup",))

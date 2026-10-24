@@ -12,7 +12,7 @@ box doctor (health.py, which also sets bad ones aside). Two layers:
                          an interrupted download or copy, or a stick pulled too soon)
   kiwix_problem(path)    kiwix-manage adds it to a scratch library: what Kiwix itself makes
                          of it. Slower; skipped (None) when kiwix-tools is not installed.
-                         user="hub": run as that user when called as root (F12: libzim and
+                         user="hub": run as that user when called as root (libzim and
                          Xapian reading an untrusted book must not be root)
   problem(path[, user])  the first of the two that finds something, or None
 

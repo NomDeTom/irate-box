@@ -99,7 +99,7 @@ check(
     and s["zims"] == [],
     s,
 )
-# Audit M7: the box writes only to a mount of its own. A drive mounted elsewhere has none of its options
+# The box writes only to a mount of its own. A drive mounted elsewhere has none of its options
 # (nosymfollow, nosuid, nodev, noexec), and a folder on it could be a link that sends root's writes anywhere.
 import importlib
 

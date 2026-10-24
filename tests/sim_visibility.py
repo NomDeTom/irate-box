@@ -120,7 +120,7 @@ try:
     go("POST", "/admin/visibility", {"app": "draw", "visible": "auto"})
     _, home = go("GET", "/")
     check("back to auto: as its access again", tile(home, "Excalidraw") is not None)
-    # F3: the tiles with no switch (the folders, About) have a "who sees it" of their own.
+    # The tiles with no switch (the folders, About) have a "who sees it" of their own.
     _, body = go("GET", "/admin/access")
     seen = json.loads(body).get("seen", {})
     check(
@@ -138,7 +138,7 @@ try:
     check("a hidden folder's list still opens at its address", st == 200, st)
     go("POST", "/admin/visibility", {"app": "tools-general", "visible": "auto"})
     go("POST", "/admin/visibility", {"app": "about", "visible": "auto"})
-    # The sign-in offer (F3, setup decision "sign-in-offer"): a users-only app at "as its access".
+    # The sign-in offer (setup decision "sign-in-offer"): a users-only app at "as its access".
     go("POST", "/admin/visibility", {"app": "notes", "visible": "auto"})
     go("POST", "/admin/visibility", {"app": "git", "visible": "auto"})
     _, home = go("GET", "/")

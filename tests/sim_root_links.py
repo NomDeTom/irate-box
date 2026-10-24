@@ -168,7 +168,7 @@ writers = {
         hub_control.AUDIT_STATE,
         lambda: hub_control.secdoctor.write_report({"counts": {}}, hub_control.AUDIT_STATE),
     ),
-    "uplink.json (the watchdog, F13)": (
+    "uplink.json (the watchdog)": (
         uplink.STATUS,
         lambda: uplink.write_status({"ok": True}),
     ),
@@ -234,7 +234,7 @@ check(
     and not list(hub_control.REQUESTS.glob("*.json")),
     (crashed, answers),
 )
-# A folder named like a request (audit M2): removed and answered, and the request behind it served.
+# A folder named like a request: removed and answered, and the request behind it served.
 (hub_control.REQUESTS / "0000000000000004.json").mkdir()
 (hub_control.REQUESTS / "0000000000000004.json" / "inner").write_text("x")
 time.sleep(0.01)
@@ -494,7 +494,7 @@ check(
     r.stdout,
 )
 
-# --- the kit's copies of the hub's folders (audit H1, L20): read as the hub, unpacked by tarfile's data filter ---
+# --- the kit's copies of the hub's folders: read as the hub, unpacked by tarfile's data filter ---
 from irate_box.msg import Refused
 
 repo = STATE / "git" / "public" / "r.git"
@@ -549,7 +549,7 @@ check(
     "copytree(d" not in src_ and 'str(ZIM_DIR), "-rf"' not in src_,
 )
 
-# --- root's own state beside $STATE, not in it (audit H2, M1, L18) -----------------------------
+# --- root's own state beside $STATE, not in it -----------------------------
 from irate_box.root import crashwatch, nmhandover, otherap
 
 check(
@@ -570,7 +570,7 @@ def linked_folder(path, files):
     return d
 
 
-# H2: an old kept profile, its folder swapped for a link.
+# An old kept profile, its folder swapped for a link.
 NM = T / "nm"
 NM.mkdir()
 otherap.KEYFILES = NM
@@ -604,7 +604,7 @@ check(
     "other-ap forget: nothing deleted through the link",
     (d / "x.nmconnection").read_text() == UNCHANGED,
 )
-# M1: crash watch's old folder moved once; a link in its place left alone.
+# Crash watch's old folder moved once; a link in its place left alone.
 old = STATE / "crashwatch"
 old.mkdir()
 old.chmod(0o700)
@@ -625,7 +625,7 @@ check(
     and crashwatch.SNAP.read_text().endswith("look\n"),
     said,
 )
-# L18: an old hand-over's copies, their folder swapped for a link.
+# An old hand-over's copies, their folder swapped for a link.
 NP = T / "netplan"
 NP.mkdir()
 d = linked_folder(STATE / "netplan-handover", {"20260101-x/30-wifis.yaml": "network: {}\n"})

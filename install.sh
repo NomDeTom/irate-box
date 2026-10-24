@@ -1891,7 +1891,7 @@ WorkingDirectory=$STATE
 Restart=on-failure
 $HUB_SANDBOX
 ReadWritePaths=$STATE
-# A ceiling on the hub's memory (audit F2): past MemoryHigh the kernel reclaims from it first and slows it, at
+# A ceiling on the hub's memory: past MemoryHigh the kernel reclaims from it first and slows it, at
 # MemoryMax it ends and systemd starts it again, before the board runs out. The store's largest save (50 MB, read
 # and parsed) still fits. Two malloc arenas: what a burst of requests freed goes back to the system.
 MemoryHigh=40%
@@ -2368,7 +2368,7 @@ KIWIX_READY=0
 # is a second listener on the network: with Syncthing's ports, the exception to the web
 # server being the only one. Browsers never see it; they use WebSockets on loopback,
 # which the web server serves at /mqtt on the one origin. There is nobody to authenticate on an
-# open network, so the limits below are the abuse control (plan, mqtt-and-node-red):
+# open network, so the limits below are the abuse control:
 # anonymous clients reach msh/# and nothing else, messages are small, and nothing is
 # persisted to the SD card. Debian's mosquitto.conf reads conf.d/ after its own
 # "persistence true", so the "false" here is the one that counts.

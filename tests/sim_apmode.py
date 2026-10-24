@@ -510,7 +510,7 @@ check("  its interface gone: a problem", f["hotspot-iface"]["status"] == "proble
 iw["ap0"] = None
 ap.stop(fake_run)
 check("  off: nothing to check", health.check_hotspot() == [])
-# Uninstalling (audit M6): the hotspot off and every file of it gone, whatever its record says, before its firewall.
+# Uninstalling: the hotspot off and every file of it gone, whatever its record says, before its firewall.
 ap.HOSTAPD_CONF = T / "hostapd.conf"
 ap.start(fake_run, inv, settings, keyfile_path=ap.KEYFILE, conf_path=ap.DNSMASQ_CONF)
 ap.HOSTAPD_CONF.write_text("interface=ap0\n")

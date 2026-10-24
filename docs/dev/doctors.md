@@ -26,7 +26,7 @@ It is the only doctor that repairs: it restarts a unit, rebuilds the Kiwix libra
 
 A read-only audit of how the system is set up. It changes nothing except its own report. It has several parts:
 
-- our own checks, each tied to a finding of the security review (`secdoctor.py`)
+- our own checks, each named for what it looks at (`secdoctor.py`)
 - the deep audit: Lynis and the CIS checks of debian-cis, run weekly or on demand (`deepaudit.py`)
 - the cross-reference between those and the hotspot firewall (`secdoctor_xref.py`)
 - the checks that a service's manifest asks for with a `network` block (see [adding a service](services.md))

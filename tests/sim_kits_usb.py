@@ -345,7 +345,7 @@ except ValueError as exc:
     )
 
 
-# M10: a signature shows who made a release, not that it is the latest. Its expiry needs a clock the box believes.
+# A signature shows who made a release, not that it is the latest. Its expiry needs a clock the box believes.
 def on_stick(edit=None, name="deb.debian.org_debian_dists_trixie_InRelease"):
     s = T / f"t-{abs(hash((edit, name))) % 99999}"
     shutil.rmtree(s, ignore_errors=True)

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The store's edges (audit L1-L5): a thumbnail seen only by whoever may see its save, a ceiling on the number
+"""The store's edges: a thumbnail seen only by whoever may see its save, a ceiling on the number
 of files, no .tmp left by a failed write, no id with a trailing newline, and the expiry sweep never removing a
 save written over since. python3 tests/sim_store_edges.py"""
 
@@ -58,7 +58,7 @@ class Handler:
 T = Path(tempfile.mkdtemp(prefix="store-edges-"))
 s = store.Store(T / "store", Clock())
 
-# L1: a thumbnail, only for whoever may see the save.
+# A thumbnail, only for whoever may see the save.
 ann = {"name": "ann"}
 store.VIEWER = lambda h: h.headers.get("me")
 store.ADMIN = lambda h: h.headers.get("admin") == "yes"
@@ -77,11 +77,11 @@ check("a thumbnail of a save seen only by its account: not shown to a guest", th
 check("... shown to its account", thumb(mine["id"], me=ann) == 200)
 check("... shown to the administrator's Store pane", thumb(mine["id"], admin="yes") == 200)
 
-# L4: an id with a trailing newline is refused, as one no address can reach.
+# An id with a trailing newline is refused, as one no address can reach.
 check("an id with a trailing newline: refused", not store.ID_RE.match("abc\n"))
 check("an ordinary id: accepted", store.ID_RE.match("abc-1_2"))
 
-# L3: a write that fails leaves no .tmp behind.
+# A write that fails leaves no .tmp behind.
 target = T / "store" / "scenes" / "x"
 real_fsync = store.os.fsync
 
@@ -99,7 +99,7 @@ except OSError:
 store.os.fsync = real_fsync
 check("a write that fails: the error raised, no .tmp left", raised and not list(target.parent.glob("*.tmp")))
 
-# L2: no more than MAX_FILES files, whatever their size.
+# No more than MAX_FILES files, whatever their size.
 store.MAX_FILES = 10
 for i in range(30):
     s.put("files", f"f{i}", b"1")
@@ -118,7 +118,7 @@ with d._lock:
     left = d._prune(keep="d11")
 check("the file drop: as many files as its ceiling, the newest kept", len(left) == 5 and left[-1]["id"] == "d11", left)
 
-# L5: the expiry sweep reads a save again under the lock before removing it.
+# The expiry sweep reads a save again under the lock before removing it.
 store.MAX_FILES = 4096
 store.SAVE_TTL = 5
 s2 = store.Store(T / "store2", Clock())

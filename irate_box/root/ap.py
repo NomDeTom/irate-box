@@ -506,7 +506,7 @@ DEADMAN_UNITS = ("irate-box-ap-deadman.timer", "irate-box-ap-deadman.service")
 
 
 def remove(run):
-    """Everything of irate-box's hotspot off and gone, whatever its record says: for the uninstaller (audit M6), run
+    """Everything of irate-box's hotspot off and gone, whatever its record says: for the uninstaller, run
     while this code is still installed and before the hotspot's firewall goes. stop() undoes only what the record
     says is up and keeps the files; this also covers a stale or partial install. Only irate-box's own: its units, the
     connection irate-box-ap, ap0 (the interface it adds), its files; never another hotspot or a joined network.

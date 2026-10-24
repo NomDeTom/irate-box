@@ -96,7 +96,7 @@ try:
         'data-size="wide" class="service-card wide people-card" id="people-card"' in home,
         home[home.find("people-card") - 80 : home.find("people-card") + 40],
     )
-    # F5: three sizes, single, wide (2x1) and large (2x2), for the box row and the apps row alike.
+    # Three sizes, single, wide (2x1) and large (2x2), for the box row and the apps row alike.
     st, body = go(
         "POST",
         "/admin/status-tiles",
