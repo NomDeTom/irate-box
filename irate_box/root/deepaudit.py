@@ -797,6 +797,28 @@ def deep(log=print):
             t = time.time()
             try:
                 found = fn(work)
+            except FileNotFoundError as exc:
+                # A program the audit runs is not installed: said by name, a warning the owner can accept.
+                tool = Path(str(exc.filename or "?")).name
+                found = [
+                    finding(
+                        f"{name}-missing",
+                        named(name),
+                        "warn",
+                        M(
+                            "deep.missing",
+                            "The audit could not run: {tool} is not installed.",
+                            tool=tool,
+                        ),
+                        fix=M(
+                            "deep.missing.fix",
+                            "Install {tool}. If this box does without it on purpose, select Accept risk.",
+                            tool=tool,
+                        ),
+                        evidence=[f"{type(exc).__name__}: {exc}"[:300]],
+                        source=name,
+                    )
+                ]
             except (OSError, subprocess.SubprocessError, ValueError) as exc:
                 found = [
                     finding(

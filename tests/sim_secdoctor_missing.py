@@ -3,7 +3,8 @@
 """The security doctor on a box without a program a check runs: never a crash or a bare "check failed". A program
 its own runner does not find is said once, with the checks it held back (tools-<name>); a step that stops because
 another module's program is missing says which (<step>-missing). Both are warnings the owner can accept. A file that
-is not there is still a failed check, not a missing program. python3 tests/sim_secdoctor_missing.py"""
+is not there is still a failed check, not a missing program. The Security page's scan and the deep audit, which
+the doctor reads, the same: no ss is "cannot list", not "nothing listens". python3 tests/sim_secdoctor_missing.py"""
 
 import os
 import subprocess
@@ -75,5 +76,31 @@ sd.MISSING.clear()
 out = sd.step_tools({})
 check("nothing missing: one ok finding", [(x["id"], x["status"]) for x in out] == [("tools", "ok")], out)
 check("the tools step is the doctor's last", sd.STEPS[-1][0] == "tools")
+
+# The Security page's scan and the deep audit, which the doctor reads, on a box without their programs.
+from irate_box.root import deepaudit, security
+
+check("security.run: 127 for a program not installed", security.run(NOPE).returncode == 127)
+security.listeners = lambda: []
+security._have = lambda cmd: cmd != "ss"
+ids = [x["id"] for x in security.scan()["findings"]]
+check("no ss: the scan says it cannot list listeners, not that nothing listens", "listeners-unread" in ids, ids)
+deepaudit.REPORT = T / "state" / "deep.json"
+deepaudit.PROGRESS = T / "state" / "deep-progress.json"
+
+
+def no_lynis(work):
+    subprocess.run([NOPE, "audit", "system"], capture_output=True)
+
+
+deepaudit.run_cis = lambda work: []
+deepaudit.run_lynis = no_lynis
+deepaudit.deep(log=lambda *a: None)
+lyn = deepaudit.load()["sources"]["lynis"]["findings"]
+check(
+    "the deep audit without its program: lynis-missing, naming it",
+    [x["id"] for x in lyn] == ["lynis-missing"] and NOPE in render(lyn[0]["summary"]),
+    lyn,
+)
 
 sys.exit(1 if fails else 0)

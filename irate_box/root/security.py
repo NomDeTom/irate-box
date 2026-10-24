@@ -85,11 +85,25 @@ PROTECTED = re.compile(
 
 
 def run(*cmd, timeout=60):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+    """A command's result; one not installed, or that cannot start, answers 127 as a shell would."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+    except OSError as exc:
+        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
 def _have(cmd):
     return shutil.which(cmd) is not None
+
+
+def _installed_from(argv, env):
+    """apt-get install's exit code; 127 when apt-get is not there."""
+    try:
+        return subprocess.run(  # noqa: TID251
+            argv, capture_output=True, env=env, stdin=subprocess.DEVNULL, timeout=1200
+        ).returncode
+    except OSError:
+        return 127
 
 
 def _chip(group, choice, label, on, confirm=None):
@@ -1251,26 +1265,10 @@ def _autoupdate(rec, how):
     said = []
     if act == 2 and often and not _have("unattended-upgrade"):
         env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-        code = subprocess.run(  # noqa: TID251
-            ["apt-get", "install", "-y", "unattended-upgrades"],
-            capture_output=True,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            timeout=1200,
-        ).returncode
+        code = _installed_from(["apt-get", "install", "-y", "unattended-upgrades"], env)
         if code != 0:
             debs = sorted(KIT_POOL.glob("unattended-upgrades_*.deb")) if KIT_POOL.is_dir() else []
-            if (
-                not debs
-                or subprocess.run(  # noqa: TID251
-                    ["apt-get", "install", "-y", str(debs[-1])],
-                    capture_output=True,
-                    env=env,
-                    stdin=subprocess.DEVNULL,
-                    timeout=1200,
-                ).returncode
-                != 0
-            ):
+            if not debs or _installed_from(["apt-get", "install", "-y", str(debs[-1])], env) != 0:
                 raise Refused(
                     M(
                         "security-fix.unattended.failed",
@@ -1611,14 +1609,17 @@ def _kernel_debian(rec):
     kernel = rec.setdefault("kernel", {})
     old = kernel.get("links", {}).get("old") or {key: _sysctl(key) for key in KERNEL["links"]["keys"]}
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-    out = subprocess.run(  # noqa: TID251
-        ["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
-        capture_output=True,
-        text=True,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        timeout=600,
-    )
+    try:
+        out = subprocess.run(  # noqa: TID251
+            ["apt-get", "install", "-y", "--no-install-recommends", DEBIAN_SYSCTL],
+            capture_output=True,
+            text=True,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            timeout=600,
+        )
+    except OSError as exc:
+        out = subprocess.CompletedProcess([], 127, "", str(exc))
     if out.returncode != 0:
         raise Refused(
             M(
@@ -3124,7 +3125,19 @@ def _share_contain(what):
 def scan():
     rec = load_record()
     found = listeners()
-    findings = listener_findings(found, rec)
+    if _have("ss"):
+        findings = listener_findings(found, rec)
+    else:
+        # No ss: nothing can be said of what listens, which is not the same as nothing listening.
+        findings = [
+            finding(
+                "listeners-unread",
+                M("listeners.unread.title", "What listens on the network"),
+                "warn",
+                M("listeners.unread", "The box could not list what listens on the network: ss is not installed."),
+                fix=M("listeners.unread.fix", "Install the package iproute2."),
+            )
+        ]
     settings = sshd_settings()
     findings += cockpit_findings(found, rec)
     findings += ssh_findings(settings, keys_on_box(), rec)
@@ -3347,9 +3360,13 @@ def _apt_logged(log, argv, timeout):
     log.write("$ " + " ".join(argv) + "\n\n")
     log.flush()
     env = dict(os.environ, **APT_ENV, HOME=os.environ.get("HOME", "/root"))
-    code = subprocess.run(  # noqa: TID251
-        argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout
-    ).returncode
+    try:
+        code = subprocess.run(  # noqa: TID251
+            argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout
+        ).returncode
+    except OSError as exc:
+        log.write(f"{exc}\n")
+        code = 127
     log.write("\n")
     return code
 
