@@ -68,7 +68,11 @@ INCLUDE_LOOP = os.environ.get("HUB_USB_INCLUDE_LOOP") == "1"
 
 
 def run(*cmd, timeout=60):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+    """A command's result; one not installed, or that cannot start, answers 127 as a shell would."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+    except OSError as exc:
+        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
 def readable():

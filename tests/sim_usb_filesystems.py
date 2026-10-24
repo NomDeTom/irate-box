@@ -28,6 +28,7 @@ def check(name, ok, extra=None):
 # A Lyra's kernel: ext2-4 and btrfs known; vfat, exfat, ntfs3 loadable; no isofs, xfs or f2fs; no ntfs-3g.
 (T / "filesystems").write_text("nodev\tsysfs\nnodev\ttmpfs\n\text3\n\text2\n\text4\n\tsquashfs\n\tbtrfs\n")
 loadable = {"vfat", "exfat", "ntfs3"}
+real_run = usbstick.run
 usbstick.run = lambda *cmd, timeout=60: subprocess.CompletedProcess(
     cmd, 0 if cmd[:3] == ("modprobe", "-n", "-q") and cmd[3] in loadable else 1, "", ""
 )
@@ -57,6 +58,18 @@ check(
     "NTFS" in u["summary"]["args"]["names"] and not any("NTFS" in n for x in u["notes"] for n in x["args"]["names"]),
     u,
 )
+# No modprobe on the box: what the kernel knows is readable, the rest not, and the doctor still says so.
+stubbed, path = usbstick.run, os.environ.get("PATH", "")
+usbstick.run, os.environ["PATH"] = real_run, str(T / "no-bin")
+can = usbstick.readable()
+check(
+    "no modprobe: the kernel's own filesystems readable, the rest not, no error",
+    all(can[f] for f in ("ext2", "ext4", "btrfs")) and not any(can[f] for f in ("vfat", "exfat", "xfs")),
+    can,
+)
+f = health.check_usb_filesystems()[0]
+check("  the doctor's finding as usual", f["id"] == "usb-filesystems" and f["status"] == "ok", f)
+usbstick.run, os.environ["PATH"] = stubbed, path
 # A stick in a filesystem this box cannot read: said, and never mounted.
 mounted = []
 usbstick.devices = lambda: [

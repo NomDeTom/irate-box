@@ -4929,12 +4929,15 @@ def _debsecan_command(work):
     for d in debs.values():
         if d.name in damaged:
             return None, f"{d.name} in the security kit's cache fails its check"
-        r = subprocess.run(  # noqa: TID251
-            ["dpkg-deb", "-x", str(d), str(work)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        try:
+            r = subprocess.run(  # noqa: TID251
+                ["dpkg-deb", "-x", str(d), str(work)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except OSError as exc:
+            return None, f"unpacking {d.name}: {exc}"
         if r.returncode != 0:
             return None, f"unpacking {d.name}: {r.stderr.strip()[:200]}"
     return [sys.executable, str(work / "usr" / "bin" / "debsecan")], {
@@ -5088,13 +5091,16 @@ def _debsecan(cmd, env, suite, status=None, timeout=900, feed=DEBSECAN_FEED):
 
 
 def _sources():
-    """{binary package: its source package}, from dpkg."""
-    r = subprocess.run(  # noqa: TID251
-        ["dpkg-query", "-W", "-f", "${Package}\t${source:Package}\n"],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    """{binary package: its source package}, from dpkg; empty with no dpkg."""
+    try:
+        r = subprocess.run(  # noqa: TID251
+            ["dpkg-query", "-W", "-f", "${Package}\t${source:Package}\n"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except OSError:
+        return {}
     return dict(line.split("\t", 1) for line in r.stdout.splitlines() if "\t" in line)
 
 
