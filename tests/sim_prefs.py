@@ -71,7 +71,7 @@ try:
         st, d, ck = go(
             "POST",
             "/api/account",
-            {"action": "signup", "name": name, "password": "correct horse " + name},
+            {"action": "signup", "name": name, "password": "correct horse staple " + str(len(name))},
             account=True,
         )
         jar[name] = ck

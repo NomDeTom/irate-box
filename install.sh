@@ -1891,6 +1891,12 @@ WorkingDirectory=$STATE
 Restart=on-failure
 $HUB_SANDBOX
 ReadWritePaths=$STATE
+# A ceiling on the hub's memory (audit F2): past MemoryHigh the kernel reclaims from it first and slows it, at
+# MemoryMax it ends and systemd starts it again, before the board runs out. The store's largest save (50 MB, read
+# and parsed) still fits. Two malloc arenas: what a burst of requests freed goes back to the system.
+MemoryHigh=40%
+MemoryMax=60%
+Environment=MALLOC_ARENA_MAX=2
 
 [Install]
 WantedBy=multi-user.target

@@ -16776,6 +16776,47 @@ async function loadSigninIdentity() {
             `${KNOWN_BY[v] || ""} A known device is not slowed by other people's wrong passwords for its account.`,
         },
         {
+          key: "signin_min_length",
+          label: "Shortest password",
+          kind: "choice",
+          value: st.signin_min_length,
+          options: [
+            [8, "8 characters"],
+            [12, "12"],
+            [15, "15"],
+          ],
+          note: (v) =>
+            ({
+              8: "8: quick to type on a phone. NIST allows 8 only when a second step also signs a person in, which the box does not have. The wrong-password waits above do most of the protecting.",
+              12: "12: a short phrase. Much harder to guess than 8, still easy to type.",
+              15: "15: what NIST requires when the password is the only thing that signs a person in, as on this box. A phrase of three or four words is enough.",
+            })[v] + " For passwords set from now on. Passwords already set are not checked again.",
+        },
+        {
+          key: "signin_rules",
+          label: "Password rules",
+          kind: "choice",
+          value: st.signin_rules,
+          options: [
+            ["none", "No rules"],
+            ["letters-digits", "Letters and digits"],
+            ["three-kinds", "Three kinds"],
+          ],
+          note: (v) =>
+            ({
+              none: "No rules: any characters, as NIST requires: it forbids rules like these, because they push people to passwords like Password1!, which are easy to guess. Length and refusing common passwords protect more.",
+              "letters-digits": "Letters and digits: at least one of each. Stops passwords of only letters or only digits, such as long PINs. NIST forbids rules like this one.",
+              "three-kinds": "Three kinds: three of lower case letters, upper case letters, digits and other characters. The hardest to type on a phone, and people tend to meet it in predictable ways. NIST forbids rules like this one.",
+            })[v],
+        },
+        {
+          key: "signin_block_common",
+          label: "Refuse common passwords",
+          kind: "toggle",
+          value: st.signin_block_common,
+          note: "Enabled: a new password that is one of the 10,000 most common, or that contains the username, is refused. NIST requires a check like this. These are the passwords people guessing try first.",
+        },
+        {
           key: "pin_sessions",
           label: "Tie each sign-in on the hotspot to its device",
           kind: "toggle",

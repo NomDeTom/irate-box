@@ -193,7 +193,7 @@ try:
 
     go("POST", "/admin/accounts", {"action": "settings", "signup": "open"}, admin=True)
     st, _, _, cookies = go(
-        "POST", "/api/account", {"action": "signup", "name": "dana", "password": "dana's long phrase"}, account=True
+        "POST", "/api/account", {"action": "signup", "name": "dana", "password": "her long pass phrase"}, account=True
     )
     dev = next((c.split(";")[0] for c in cookies if c.startswith("irate_device=dana.")), "")
     check(
@@ -214,7 +214,7 @@ try:
     st, d, _, _ = go(
         "POST",
         "/api/account",
-        {"action": "login", "name": "dana", "password": "dana's long phrase"},
+        {"action": "login", "name": "dana", "password": "her long pass phrase"},
         account=True,
         at="10.3.0.1",
     )
@@ -222,7 +222,7 @@ try:
     st, d, _, _ = go(
         "POST",
         "/api/account",
-        {"action": "login", "name": "dana", "password": "dana's long phrase"},
+        {"action": "login", "name": "dana", "password": "her long pass phrase"},
         cookie=dev,
         account=True,
         at="10.3.0.2",
@@ -239,6 +239,25 @@ try:
         "a level that is not one: not taken (the settings keep only valid values)",
         d.get("signin_level") == "standard",
         d.get("signin_level"),
+    )
+    # The administrator's password choices reach sign-up.
+    go("POST", "/admin/settings", {"signin_min_length": 15}, admin=True)
+    st, d, _, _ = go(
+        "POST", "/api/account", {"action": "signup", "name": "erin", "password": "tide pool 12"}, account=True
+    )
+    check(
+        "shortest password set to 15 by the administrator: a 12-character one refused at sign-up",
+        st == 400 and d["message"]["id"] == "accounts.password.length" and d["message"]["args"]["least"] == 15,
+        (st, d),
+    )
+    go("POST", "/admin/settings", {"signin_min_length": 8}, admin=True)
+    st, d, _, _ = go(
+        "POST", "/api/account", {"action": "signup", "name": "erin", "password": "password1"}, account=True
+    )
+    check(
+        "  one of the commonest: refused (the default)",
+        st == 400 and d["message"]["id"] == "accounts.password.common",
+        (st, d),
     )
     # The store's share: 1 MB (the hub's setting), a quarter each a day by default.
     go("POST", "/admin/settings", {"store_max_total_mb": 1}, admin=True)

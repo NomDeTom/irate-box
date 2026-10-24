@@ -44,6 +44,14 @@ DEFAULTS = {"signup": "off", "http": "warning"}
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
 RESERVED = {"admin", "root", "hub", "guest", "everyone"}
 MIN_PASSWORD, MAX_PASSWORD = 8, 128
+# The hub's choices for a password being set (server.py's settings, through SIGNIN): its least length, its rules
+# ("none", NIST's advice; "letters-digits"; "three-kinds" of lower case, upper case, digits and the rest), and whether
+# one of the commonest is refused.
+MIN_LENGTHS = (8, 12, 15)
+RULES = ("none", "letters-digits", "three-kinds")
+# Password checks at once (scrypt, 16 MiB each): more wait up to HASH_WAIT seconds, then are told the box is busy, so
+# a burst of sign-ins cannot take the hub's memory (audit F2).
+HASHES_AT_ONCE, HASH_WAIT = 2, 3
 SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 SESSION_DAYS = 30
 CODE_HOURS = 24
@@ -76,7 +84,15 @@ COMMON_WEIGHT = 3  # a wrong password that is one of the commonest counts as thi
 COMMON_FILE = Path(__file__).with_name("common-passwords.txt")
 # The hub's choices (server.py sets it from its settings): level, adaptive, common, known_by.
 SIGNIN = None
-SIGNIN_DEFAULTS = {"level": "standard", "adaptive": False, "common": True, "known_by": "cookie"}
+SIGNIN_DEFAULTS = {
+    "level": "standard",
+    "adaptive": False,
+    "common": True,
+    "known_by": "cookie",
+    "min_length": 15,  # NIST SP 800-63B-4 for a password that alone signs a person in
+    "rules": "none",
+    "block_common": True,
+}
 SIGNUPS_PER_HOUR = 5  # per address: a box at an event shouldn't fill with one stranger's accounts
 MAX_ASKED = 100  # applications waiting at once
 MAX_ACCOUNTS = 1000
@@ -151,22 +167,40 @@ def _digest(token):
 # --- passwords ---------------------------------------------------------------------------------
 
 
+_hashing = threading.BoundedSemaphore(HASHES_AT_ONCE)
+
+
+class _Hashing:
+    """One of the HASHES_AT_ONCE password checks, or Wait (the box is busy) after HASH_WAIT seconds."""
+
+    def __enter__(self):
+        if not _hashing.acquire(timeout=HASH_WAIT):
+            raise Wait(M("accounts.busy", "The box is busy checking other passwords. Try again in a moment."))
+
+    def __exit__(self, *exc):
+        _hashing.release()
+
+
 def hash_password(password):
     salt = secrets.token_bytes(16)
-    h = hashlib.scrypt(password.encode(), salt=salt, dklen=32, **SCRYPT)
+    with _Hashing():
+        h = hashlib.scrypt(password.encode(), salt=salt, dklen=32, **SCRYPT)
     return f"scrypt${SCRYPT['n']}${SCRYPT['r']}${SCRYPT['p']}${salt.hex()}${h.hex()}"
 
 
 def check_password(password, stored):
     try:
         kind, n, r, p, salt, h = stored.split("$")
-        if kind != "scrypt":
-            return False
-        got = hashlib.scrypt(
-            password.encode(), salt=bytes.fromhex(salt), n=int(n), r=int(r), p=int(p), dklen=len(h) // 2
-        )
+        params = {"salt": bytes.fromhex(salt), "n": int(n), "r": int(r), "p": int(p), "dklen": len(h) // 2}
     except (ValueError, AttributeError):
         return False
+    if kind != "scrypt":
+        return False
+    with _Hashing():  # outside the try: the box being busy (Wait) is not a wrong password
+        try:
+            got = hashlib.scrypt(password.encode(), **params)
+        except (ValueError, AttributeError):
+            return False
     return hmac.compare_digest(got.hex(), h)
 
 
@@ -174,16 +208,40 @@ def check_password(password, stored):
 _DUMMY = hash_password(secrets.token_hex(8))
 
 
-def _valid_password(pw):
-    if not isinstance(pw, str) or not MIN_PASSWORD <= len(pw) <= MAX_PASSWORD or "\n" in pw:
+def _valid_password(pw, name=None):
+    """A password being set, as the hub's choices say (SIGNIN): long enough, of the kinds asked, not one of the
+    commonest, and not the account's own name."""
+    st = _signin()
+    least = st["min_length"] if st["min_length"] in MIN_LENGTHS else MIN_PASSWORD
+    if not isinstance(pw, str) or not least <= len(pw) <= MAX_PASSWORD or "\n" in pw:
         raise AccountError(
             M(
                 "accounts.password.length",
                 "Enter a password of {least} to {most} characters.",
-                least=MIN_PASSWORD,
+                least=least,
                 most=MAX_PASSWORD,
             )
         )
+    kinds = [any(c.islower() for c in pw), any(c.isupper() for c in pw), any(c.isdigit() for c in pw)]
+    kinds.append(any(not c.isalnum() for c in pw))
+    if st["rules"] == "letters-digits" and not ((kinds[0] or kinds[1]) and kinds[2]):
+        raise AccountError(M("accounts.password.letters-digits", "Use letters and digits in the password."))
+    if st["rules"] == "three-kinds" and sum(kinds) < 3:
+        raise AccountError(
+            M(
+                "accounts.password.three-kinds",
+                "Use three of these in the password: lower case letters, upper case letters, digits, other characters.",
+            )
+        )
+    if st["block_common"] and common(pw):
+        raise AccountError(
+            M(
+                "accounts.password.common",
+                "This password is one of the most common. Enter a password that is less common.",
+            )
+        )
+    if isinstance(name, str) and len(name) >= 3 and name.lower() in pw.lower():
+        raise AccountError(M("accounts.password.name", "The password contains the username. Enter another password."))
 
 
 def _valid_name(name):
@@ -567,7 +625,7 @@ def signup(name, password, addr=""):
     if level not in ("open", "apply"):
         raise AccountError(M("accounts.signup.closed", "Registration closed."))
     key = _valid_name(name)
-    _valid_password(password)
+    _valid_password(password, name)
     now = time.time()
     with _lock:
         recent = _recent(_signups.get(addr, []), 3600, now)
@@ -698,7 +756,11 @@ def check_basic(header, addr=""):
                 _limited(name, addr, now, _known(name, addr, None, now))
             except Wait:
                 return None
-        if not check_password(password, acc["hash"] if eligible else _DUMMY) or not eligible:
+        try:
+            right = check_password(password, acc["hash"] if eligible else _DUMMY)
+        except Wait:
+            return None  # the box is busy checking other passwords: this push is refused, git can try again
+        if not right or not eligible:
             with _lock:
                 _failed(name, addr, now, _known(name, addr, None, now), password)
             return None
@@ -766,7 +828,7 @@ def change_password(token, old, new, addr="", https=True):
         raise AccountError(SIGN_IN_FIRST)
     if acc.get("role") == "admin" and not https:
         raise AccountError(ADMIN_OVER_HTTP)
-    _valid_password(new)
+    _valid_password(new, acc["name"])
     now = time.time()
     with _lock:
         _limited(acc["name"], addr, now, True)  # signed in: their own account, only the device's waits
@@ -806,6 +868,7 @@ def use_code(code, password, addr="", https=True):
         # Sign-up off: an admin's code still sets an admin account's password (one login); a user's waits.
         if data["settings"].get("signup", DEFAULTS["signup"]) == "off" and acc.get("role") != "admin":
             raise AccountError(NO_USERS)
+        _valid_password(password, acc["name"])  # now the name is known: not in the password
         acc["hash"] = hash_password(password)
         _forget_basic(c["name"])
         data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("name") != c["name"]}
@@ -864,7 +927,7 @@ def set_admin(name, password, by="the box's first use"):
     """An admin account with this password: made, or, when the name is an account already, made an
     admin with this password (the console's or the first use's say-so); its sessions end."""
     key = _valid_name(name)
-    _valid_password(password)
+    _valid_password(password, name)
     with _lock:
         data = _load()
         acc = data["accounts"].get(key) or {"name": name, "created": round(time.time()), "seen": None, "by": by}

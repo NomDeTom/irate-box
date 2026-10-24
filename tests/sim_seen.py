@@ -77,7 +77,7 @@ try:
         _, _, jar[name] = go(
             "POST",
             "/api/account",
-            {"action": "signup", "name": name, "password": "correct horse " + name},
+            {"action": "signup", "name": name, "password": "correct horse staple " + str(len(name))},
             account=True,
         )
     st, d, _ = go(

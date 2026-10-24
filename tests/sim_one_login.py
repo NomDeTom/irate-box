@@ -47,42 +47,44 @@ def refused(fn, *a, says=None):
 check(
     "sign-up off by default, and no admin ready on a new box", A.settings()["signup"] == "off" and not A.admin_ready()
 )
-tok, me = A.claim_admin("alice", "password-one", "10.0.0.1")
+tok, me = A.claim_admin("alice", "password-number-one", "10.0.0.1")
 check(
     "first use: the owner's admin account made and signed in",
     me["role"] == "admin" and A.session(tok)["name"] == "alice" and A.admin_ready(),
 )
-check("  admins sign in with sign-up off", A.login("alice", "password-one")[1]["name"] == "alice")
+check("  admins sign in with sign-up off", A.login("alice", "password-number-one")[1]["name"] == "alice")
 A.make("ann", "user")
 data = A._load()
-data["accounts"]["ann"]["hash"] = A.hash_password("password-two")
+data["accounts"]["ann"]["hash"] = A.hash_password("password-number-two")
 A._save(data)
 check(
-    "  a user's account does not, with sign-up off", refused(A.login, "ann", "password-two", says="accounts.signin.off")
+    "  a user's account does not, with sign-up off",
+    refused(A.login, "ann", "password-number-two", says="accounts.signin.off"),
 )
 check(
     "  a wrong admin password is refused, as always",
     refused(A.login, "alice", "wrong-one", says="accounts.signin.failed"),
 )
-tok2, me2 = A.claim_admin("Ann", "password-three")
+tok2, me2 = A.claim_admin("Ann", "password-number-three")
 check(
     "the console's reset and first use again: an existing name made admin with the new password",
-    me2["role"] == "admin" and A.login("ann", "password-three")[1]["role"] == "admin",
+    me2["role"] == "admin" and A.login("ann", "password-number-three")[1]["role"] == "admin",
 )
 check(
     "  the name rules hold ('admin' is kept for the box's own login)",
-    refused(A.claim_admin, "admin", "password-four", says="accounts.name.reserved"),
+    refused(A.claim_admin, "admin", "password-number-four", says="accounts.name.reserved"),
 )
 code = A.make("bob", "admin")
 check(
     "an admin's one-time code over plain HTTP: refused, and the code kept",
-    refused(A.use_code, code, "password-five", "", False, says="accounts.password.https-only"),
+    refused(A.use_code, code, "password-number-five", "", False, says="accounts.password.https-only"),
 )
 check(
     "  over HTTPS: the password set with it",
-    A.use_code(code, "password-five", "", True) == "bob" and A.login("bob", "password-five")[1]["role"] == "admin",
+    A.use_code(code, "password-number-five", "", True) == "bob"
+    and A.login("bob", "password-number-five")[1]["role"] == "admin",
 )
-A.set_admin("dave", "password-seven", by="the console")
+A.set_admin("dave", "password-number-seven", by="the console")
 check(
     "the console's set-admin: an admin account, no session made",
     A._load()["accounts"]["dave"]["role"] == "admin"
@@ -232,13 +234,13 @@ try:
     )
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "mallory", "role": "admin"})
     check("  nor an admin made on Accounts (the first admin is the set-up page's)", code == 403, (code, d))
-    code, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner"})
+    code, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-keeper"})
     check(
         "the first password over plain HTTP, not chosen: refused, said why",
         code == 403 and d.get("https") is False and d["message"]["id"] == "setup.http",
         (code, d),
     )
-    code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner", "over_http": True})
+    code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-keeper", "over_http": True})
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
     reqs = queued()
     check(
@@ -263,7 +265,7 @@ try:
     (st / "unclaimed").unlink()  # what the root helper's claim does
     acct = {"X-Irate-Account": "1", "Cookie": cookie}
     code, d, _ = req(
-        "/api/account", {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"}, headers=acct
+        "/api/account", {"action": "password", "old": "pw-of-the-keeper", "new": "pw-of-the-keeper-2"}, headers=acct
     )
     check(
         "after it, an admin's password over plain HTTP: refused, the English in error and the message beside it",
@@ -274,7 +276,7 @@ try:
     )
     code, d, _ = req(
         "/api/account",
-        {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"},
+        {"action": "password", "old": "pw-of-the-keeper", "new": "pw-of-the-keeper-2"},
         headers=dict(acct, **HTTPS),
     )
     check("  over HTTPS: changed", code == 200 and d.get("changed") is True, (code, d))

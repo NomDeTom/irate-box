@@ -41,15 +41,15 @@ def refused(fn, *a, kind=A.AccountError, says=None):
 
 # Off by default: nothing changes on a box until its owner wants it.
 check("off by default, HTTP with a warning", A.settings() == {"signup": "off", "http": "warning"})
-check("  no sign-ups while off", refused(A.signup, "alice", "password1", says="accounts.signup.closed"))
+check("  no sign-ups while off", refused(A.signup, "alice", "harbour lantern 1", says="accounts.signup.closed"))
 A.set_settings(signup="open")
-check("open: an account usable at once", A.signup("Alice", "password1", "10.0.0.2") == "user")
+check("open: an account usable at once", A.signup("Alice", "harbour lantern 1", "10.0.0.2") == "user")
 check(
     "  names: taken (any case), reserved, malformed",
-    refused(A.signup, "ALICE", "password1", says="accounts.name.taken")
-    and refused(A.signup, "admin", "password1", says="accounts.name.reserved")
-    and refused(A.signup, "a b", "password1", says="accounts.name.invalid")
-    and refused(A.signup, "ab", "password1", says="accounts.name.invalid"),
+    refused(A.signup, "ALICE", "harbour lantern 1", says="accounts.name.taken")
+    and refused(A.signup, "admin", "harbour lantern 1", says="accounts.name.reserved")
+    and refused(A.signup, "a b", "harbour lantern 1", says="accounts.name.invalid")
+    and refused(A.signup, "ab", "harbour lantern 1", says="accounts.name.invalid"),
 )
 check("  a short password refused", refused(A.signup, "bob", "short", says="accounts.password.length"))
 raw = json.loads((T / "state" / "accounts.json").read_text())
@@ -57,12 +57,12 @@ h = raw["accounts"]["alice"]["hash"]
 check(
     "stored: scrypt with its salt, never the password; the file 600",
     h.startswith("scrypt$16384$8$1$")
-    and "password1" not in json.dumps(raw)
+    and "harbour lantern 1" not in json.dumps(raw)
     and (T / "state" / "accounts.json").stat().st_mode & 0o777 == 0o600,
     h,
 )
 t0 = time.time()
-token, me = A.login("alice", "password1", "10.0.0.2")
+token, me = A.login("alice", "harbour lantern 1", "10.0.0.2")
 dt = time.time() - t0
 check("login: by name in any case; a session", me["name"] == "Alice" and A.session(token)["name"] == "Alice", me)
 print(f"note: one scrypt check took {dt * 1000:.0f} ms here")
@@ -70,13 +70,13 @@ check("  the cookie itself never stored", token not in (T / "state" / "accounts.
 check(
     "  a wrong password, an unknown name: the same answer",
     refused(A.login, "alice", "nope-nope", "10.0.0.3", says="accounts.signin.failed")
-    and refused(A.login, "nobody", "password1", "10.0.0.3", says="accounts.signin.failed"),
+    and refused(A.login, "nobody", "harbour lantern 1", "10.0.0.3", says="accounts.signin.failed"),
 )
 A.SIGNIN = lambda: {"known_by": "device"}  # known by address here (tests/sim_signin.py tries every way)
 for _ in range(9):
     refused(A.login, "alice", "wrong-wrong", "10.0.0.9")
 try:
-    A.login("alice", "password1", "10.0.0.8")
+    A.login("alice", "harbour lantern 1", "10.0.0.8")
     waited = None
 except A.Wait as exc:
     waited = exc.message
@@ -89,13 +89,13 @@ check(
 )
 check(
     "  her own device (signed in from before) is not held back: a stranger's failures cannot lock her out",
-    A.login("alice", "password1", "10.0.0.2")[1]["name"] == "Alice",
+    A.login("alice", "harbour lantern 1", "10.0.0.2")[1]["name"] == "Alice",
 )
 A._fails.clear()
 for n in range(60):
     refused(A.login, "alice", "wrong-wrong", f"10.0.1.{n}")  # a new device for every try: costs nothing
 try:
-    A.login("alice", "password1", "10.0.0.77")
+    A.login("alice", "harbour lantern 1", "10.0.0.77")
     waited = None
 except A.Wait as exc:
     waited = exc.message
@@ -108,7 +108,7 @@ A._fails.clear()
 for _ in range(40):
     refused(A.login, "alice", "wrong-wrong", "10.0.0.2")  # someone copying her device's address
 try:
-    A.login("alice", "password1", "10.0.0.2")
+    A.login("alice", "harbour lantern 1", "10.0.0.2")
     waited = None
 except A.Wait as exc:
     waited = exc.message
@@ -124,62 +124,62 @@ check("  a session that isn't one: none", A.session("x" * 43) is None and A.sess
 A.set_settings(signup="apply")
 check(
     "apply: the account waits",
-    A.signup("bob", "password2", "10.0.0.4") == "asked"
-    and refused(A.login, "bob", "password2", "", says="accounts.signin.pending"),
+    A.signup("bob", "harbour lantern 2", "10.0.0.4") == "asked"
+    and refused(A.login, "bob", "harbour lantern 2", "", says="accounts.signin.pending"),
 )
 A.change("bob", "accept")
-tb, _ = A.login("bob", "password2")
+tb, _ = A.login("bob", "harbour lantern 2")
 check("  accepted: it logs in", A.session(tb)["state"] == "user")
 check(
     "  sign-ups from one address limited",
-    all(A.signup(f"x{i}x", "password9", "10.0.0.7") for i in range(5))
-    and refused(A.signup, "x6x", "password9", "10.0.0.7", kind=A.Wait, says="accounts.signup.wait"),
+    all(A.signup(f"x{i}x", "harbour lantern 9", "10.0.0.7") for i in range(5))
+    and refused(A.signup, "x6x", "harbour lantern 9", "10.0.0.7", kind=A.Wait, says="accounts.signup.wait"),
 )
 A.change("bob", "disable")
 check(
     "disable: its sessions end at once, and it can't log in",
-    A.session(tb) is None and refused(A.login, "bob", "password2", "", says="accounts.signin.disabled"),
+    A.session(tb) is None and refused(A.login, "bob", "harbour lantern 2", "", says="accounts.signin.disabled"),
 )
 A.change("bob", "enable")
 A.set_settings(signup="assigned")
 code = A.make("carol", "admin")
 check(
     "assigned: no sign-ups; an admin's account with a one-time code",
-    refused(A.signup, "dave", "password3", says="accounts.signup.assigned")
+    refused(A.signup, "dave", "harbour lantern 3", says="accounts.signup.assigned")
     and len(code) == 19
     and code.count("-") == 3
     and refused(A.login, "carol", "anything1", "", says="accounts.signin.failed"),
 )
 check(
     "  the code sets the password (dashes and case don't matter), once",
-    A.use_code(code.lower().replace("-", " "), "password4") == "carol"
-    and A.login("carol", "password4")[1]["role"] == "admin"
-    and refused(A.use_code, code, "password5", says="accounts.code.invalid"),
+    A.use_code(code.lower().replace("-", " "), "harbour lantern 4") == "carol"
+    and A.login("carol", "harbour lantern 4")[1]["role"] == "admin"
+    and refused(A.use_code, code, "harbour lantern 5", says="accounts.code.invalid"),
 )
-tc, _ = A.login("carol", "password4")
+tc, _ = A.login("carol", "harbour lantern 4")
 code = A.reset("carol")
 check(
     "reset: a new code, and the account's sessions end",
-    A.session(tc) is None and A.use_code(code, "password6") == "carol",
+    A.session(tc) is None and A.use_code(code, "harbour lantern 6") == "carol",
 )
-ta, _ = A.login("alice", "password1")
-ta2, _ = A.login("alice", "password1")
-A.change_password(ta, "password1", "password7")
+ta, _ = A.login("alice", "harbour lantern 1")
+ta2, _ = A.login("alice", "harbour lantern 1")
+A.change_password(ta, "harbour lantern 1", "harbour lantern 7")
 check(
     "change password: the old one wrong refused; done, its other sessions end",
     A.session(ta)
     and A.session(ta2) is None
-    and refused(A.change_password, ta, "password1", "password8", says="accounts.password.wrong"),
+    and refused(A.change_password, ta, "harbour lantern 1", "harbour lantern 8", says="accounts.password.wrong"),
 )
 A.logout(ta)
 check("logout: the session ends", A.session(ta) is None)
-tb, _ = A.login("bob", "password2")
+tb, _ = A.login("bob", "harbour lantern 2")
 A.set_settings(signup="off")
 check(
     "off again: no users' logins, no users' sessions count, no codes that aren't the box's (admins still sign in: one login)",
     A.session(tb) is None
-    and refused(A.login, "bob", "password2", says="accounts.signin.off")
-    and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "password9", says="accounts.code.invalid"),
+    and refused(A.login, "bob", "harbour lantern 2", says="accounts.signin.off")
+    and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "harbour lantern 9", says="accounts.code.invalid"),
 )
 A.set_settings(signup="apply")
 check("  on again: the sessions count again", A.session(tb) is not None)
@@ -202,10 +202,10 @@ basic = lambda n, pw: "Basic " + base64.b64encode(f"{n}:{pw}".encode()).decode()
 A.set_settings(signup="apply")
 check(
     "check_basic: an account's name and password, its role",
-    A.check_basic(basic("carol", "password6"), "10.9.9.9") == {"name": "carol", "role": "admin"},
+    A.check_basic(basic("carol", "harbour lantern 6"), "10.9.9.9") == {"name": "carol", "role": "admin"},
 )
 t0 = time.time()
-A.check_basic(basic("carol", "password6"))
+A.check_basic(basic("carol", "harbour lantern 6"))
 quick = time.time() - t0
 check(
     "  a wrong password, the box's own 'admin', garbage, a cookie-less nothing: none",
@@ -215,20 +215,20 @@ check(
     and A.check_basic("", "") is None,
 )
 check("  a right one remembered for a minute (git asks several times a push)", quick < 0.01, quick)
-A.use_code(A.reset("carol"), "password7")
+A.use_code(A.reset("carol"), "harbour lantern 7")
 check(
     "  not after a reset, that minute included",
-    A.check_basic(basic("carol", "password6"), "10.9.9.9") is None
-    and A.check_basic(basic("carol", "password7"), "10.9.9.9") == {"name": "carol", "role": "admin"},
+    A.check_basic(basic("carol", "harbour lantern 6"), "10.9.9.9") is None
+    and A.check_basic(basic("carol", "harbour lantern 7"), "10.9.9.9") == {"name": "carol", "role": "admin"},
 )
-A.use_code(A.reset("carol"), "password6")  # as the rest of the test knows it
+A.use_code(A.reset("carol"), "harbour lantern 6")  # as the rest of the test knows it
 A._fails.clear()
 
 # Every uncached Basic credential costs one password check, a real hash or the dummy, whatever the name is.
 from unittest import mock
 
-A.signup("pendy", "password9", "10.0.1.1")  # sign-up on request: waiting
-A.signup("disy", "password9", "10.0.1.2")
+A.signup("pendy", "harbour lantern 9", "10.0.1.1")  # sign-up on request: waiting
+A.signup("disy", "harbour lantern 9", "10.0.1.2")
 A.change("disy", "accept")
 A.change("disy", "disable")
 _data = A._load()
@@ -258,17 +258,17 @@ check(
     got is None and calls == [carol_hash],
     calls,
 )
-got, calls = probe("carol", "password6", "10.8.0.2")
+got, calls = probe("carol", "harbour lantern 6", "10.8.0.2")
 check(
     "  a right password: one check against the hash, and it is accepted",
     got == {"name": "carol", "role": "admin"} and calls == [carol_hash],
     (got, calls),
 )
-got, calls = probe("carol", "password6", "10.8.0.2")
+got, calls = probe("carol", "harbour lantern 6", "10.8.0.2")
 check("  the same again within the minute: remembered, no check", got is not None and calls == [], calls)
 for n, who in enumerate(("nobody-here", "pendy", "disy", "nohash")):
     for again in ("", "and again, "):
-        got, calls = probe(who, "password9", f"10.8.1.{n}")
+        got, calls = probe(who, "harbour lantern 9", f"10.8.1.{n}")
         check(
             f"  {who} ({again}unknown, waiting, disabled or without a hash): one check, against the dummy, rejected",
             got is None and calls == [A._DUMMY],
@@ -277,18 +277,18 @@ for n, who in enumerate(("nobody-here", "pendy", "disy", "nohash")):
 check("  no rejection was remembered", all(k[0] == "carol" for k in A._basic_ok), list(A._basic_ok))
 check(
     "  reserved names and bad syntax: no check at all",
-    probe("admin", "password9", "10.8.2.1") == (None, []) and probe("", "x", "10.8.2.2") == (None, []),
+    probe("admin", "harbour lantern 9", "10.8.2.1") == (None, []) and probe("", "x", "10.8.2.2") == (None, []),
 )
 # The limit counts failures against names that do not exist too, and a throttled request is not checked at all.
 A._fails.clear()
 for _ in range(A.FAILS):
-    probe("nobody-here", "password9", "10.8.3.1")
-got, calls = probe("nobody-here", "password9", "10.8.3.9")
+    probe("nobody-here", "harbour lantern 9", "10.8.3.1")
+got, calls = probe("nobody-here", "harbour lantern 9", "10.8.3.9")
 check("  failures against an unknown name are limited by name", got is None and calls == [], calls)
 A._fails.clear()
 for _ in range(A.FAILS):
-    probe("pendy", "password9", "10.8.4.1")
-got, calls = probe("pendy", "password9", "10.8.4.1")
+    probe("pendy", "harbour lantern 9", "10.8.4.1")
+got, calls = probe("pendy", "harbour lantern 9", "10.8.4.1")
 check("  and against a waiting account", got is None and calls == [], calls)
 _data = A._load()
 for who in ("pendy", "disy", "nohash"):
@@ -463,7 +463,7 @@ except ValueError as exc:
         exc.message["id"] == "control.script-sign-in.off-refused",
         exc,
     )
-A.login("carol", "password6", https=True)
+A.login("carol", "harbour lantern 6", https=True)
 out = H.admin_login({"on": False})
 check(
     "  then off: the login file emptied, its hash kept aside, the gates send people to log in, the hub told",
@@ -723,9 +723,9 @@ try:
         "/admin/accounts", {"action": "settings", "signup": "open", "http": "prevented"}, {"X-Irate-Admin": "1"}
     )
     check("  the admin sets the levels", code == 200 and d["settings"] == {"signup": "open", "http": "prevented"}, d)
-    code, d, _ = req("/api/account", {"action": "signup", "name": "erin", "password": "password1"})
+    code, d, _ = req("/api/account", {"action": "signup", "name": "erin", "password": "harbour lantern 1"})
     check("  prevented: no password over plain HTTP", code == 403 and d["message"]["id"] == "accounts.https-only", d)
-    code, d, h = req("/api/account", {"action": "signup", "name": "erin", "password": "password1"}, https=True)
+    code, d, h = req("/api/account", {"action": "signup", "name": "erin", "password": "harbour lantern 1"}, https=True)
     cookie = h.get("Set-Cookie", "")
     check(
         "  over HTTPS: made and logged in; the cookie HttpOnly, SameSite=Strict, Secure",
@@ -739,14 +739,14 @@ try:
     check("  the cookie says who", d["me"]["name"] == "erin" and d["https"] is True, d)
     code, d, _ = req(
         "/api/account",
-        {"action": "login", "name": "erin", "password": "password1"},
+        {"action": "login", "name": "erin", "password": "harbour lantern 1"},
         {"X-Irate-Account": ""},
         https=True,
     )
     check("  without the page's header: refused", code == 403, d)
     code, d, _ = req(
         "/api/account",
-        {"action": "login", "name": "erin", "password": "password1"},
+        {"action": "login", "name": "erin", "password": "harbour lantern 1"},
         {"Origin": "http://elsewhere.example"},
         https=True,
     )
@@ -757,7 +757,7 @@ try:
         "Max-Age=0" in h.get("Set-Cookie", "") and req("/api/account", headers={"Cookie": tok})[1]["me"] is None,
     )
     req("/admin/accounts", {"action": "settings", "http": "warning"}, {"X-Irate-Admin": "1"})
-    code, d, h = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})
+    code, d, h = req("/api/account", {"action": "login", "name": "erin", "password": "harbour lantern 1"})
     check(
         "  warning: allowed over HTTP, the cookie not Secure there",
         code == 200 and "Secure" not in h.get("Set-Cookie", ""),
@@ -776,7 +776,7 @@ try:
     # Users mode: the front's check, and the home page.
     code, d, _ = req("/_irate/user")
     check("  the front's check: a guest, 401", code == 401)
-    code, d, h = req("/api/account", {"action": "login", "name": "erin", "password": "password1"})
+    code, d, h = req("/api/account", {"action": "login", "name": "erin", "password": "harbour lantern 1"})
     tok = h.get("Set-Cookie", "").split(";")[0]
     code, d, _ = req("/_irate/user", headers={"Cookie": tok})
     check("  logged in: 204", code == 204, code)
@@ -856,9 +856,9 @@ try:
     )
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "gina", "role": "admin"}, {"X-Irate-Admin": "1"})
     req(
-        "/api/account", {"action": "code", "code": d["code"], "password": "password9"}, https=True
+        "/api/account", {"action": "code", "code": d["code"], "password": "harbour lantern 9"}, https=True
     )  # an admin's: over HTTPS only
-    _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "password9"}, https=True)
+    _, _, h = req("/api/account", {"action": "login", "name": "gina", "password": "harbour lantern 9"}, https=True)
     code, _, _ = req("/_irate/admin", headers={"Cookie": h.get("Set-Cookie", "").split(";")[0]})
     # The box tile's trends: an admin account's session only, and never the processes.
     gina = h.get("Set-Cookie", "").split(";")[0]
@@ -936,7 +936,7 @@ try:
     )
     # The shoutbox and forum (stage 5): who may post, and the users' marks.
     utok = (
-        req("/api/account", {"action": "login", "name": "erin", "password": "password1"})[2]
+        req("/api/account", {"action": "login", "name": "erin", "password": "harbour lantern 1"})[2]
         .get("Set-Cookie", "")
         .split(";")[0]
     )

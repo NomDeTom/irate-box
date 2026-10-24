@@ -69,6 +69,10 @@ upstream irate_box_hub {
 	keepalive 8;
 }
 
+# Sign-ins, sign-ups and password changes (/api/account), per guest's address (audit F2): each is a 16 MiB
+# password check on the hub, which also does at most two at once (accounts.py HASHES_AT_ONCE).
+limit_req_zone $binary_remote_addr zone=irate_box_account:1m rate=30r/m;
+
 # The local add-ons' maps, per add-on id: off, login realm, Content-Security-Policy (the root
 # helper writes them from /etc/hub/access.json and the add-ons' manifests). Read by the add-on
 # server at the end of this file.
@@ -181,6 +185,11 @@ server {
 		add_header Referrer-Policy no-referrer always;
 	}
 	location @irate_box_hub { proxy_pass http://irate_box_hub; }
+	location = /api/account {
+		limit_req zone=irate_box_account burst=10 nodelay;
+		limit_req_status 429;
+		proxy_pass http://irate_box_hub;
+	}
 	# The drawing store and the gallery take whole drawings (store.py MAX_BODY, 50 MB).
 	location ^~ /api/v2/ { client_max_body_size 50m; proxy_pass http://irate_box_hub; }
 	location ^~ /api/saves { client_max_body_size 50m; proxy_pass http://irate_box_hub; }
