@@ -37,6 +37,11 @@ on it. Every part but "id" and "order" is optional:
                                       whether the hotspot firewall opens it to hotspot guests; how its
                                       listener is rated on the Security page, and what it exposes,
                                       in one plain sentence (services.py; docs/dev/services.md)
+    "checks":  [{"id", "kind": "file" | "config", "status": "warn" | "problem", "title", "says", "why",
+                 "fix", "commands", ...the kind's own}]
+                                      what the Security doctor checks of the add-on itself, while it is
+                                      installed: read only, never a command (CHECKS below; declared.py
+                                      runs them; docs/dev/services.md)
     "install": {"dir", "needs", "title", "restart"},
                                       where its bundle goes, under /usr/share/hub ("apps/draw");
                                       the file (or glob) that proves a bundle is whole; a unit
@@ -129,6 +134,20 @@ CONNECT_RE = re.compile(r"^(wss?|https?)://(\{box\}|[a-z0-9.-]+)(:[0-9]{1,5})?(/
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 WIDGETS = ("people", "qr", "system", "factory")
 PAGE_RE = re.compile(r"^[A-Za-z0-9_-]+\.html$")
+# A manifest's checks (declared.py runs them for the Security doctor, as root, so they only read):
+#   file:   "path", "exists" (bool), "owner", "group", "max_mode" ("0640"): it is (or is not) there, owned so, no
+#           more permission than that
+#   config: "path", "comments" (line prefixes), "ignore_case", and one of "present" or "absent" (a pattern a live
+#           line has, or none has), or "value": {"key": a pattern with one group, and one of "min", "max" (numbers),
+#           "equals" or "not" (words)}
+# Patterns are matched a line at a time, each line cut at 4 KiB; all of a manifest's checks run in one process,
+# stopped after 2 s (secdoctor.run_declared).
+CHECKS_MAX = 20
+CHECK_KINDS = ("file", "config")
+CHECK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+CHECK_PATH_RE = re.compile(r"^/(?!.*/\.\.?(/|$))[A-Za-z0-9._@+/-]{1,255}$")
+CHECK_NAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+PATTERN_MAX = 200
 
 
 class ManifestError(ValueError):
@@ -253,6 +272,9 @@ def _check(m, where):
             need(isinstance(addon.get(k), str), f"addon.{k}: a string")
         need("consent" not in addon or isinstance(addon["consent"], str), "addon.consent: a string")
         need("needs" not in addon or isinstance(addon["needs"], str), "addon.needs: a string")
+    if "checks" in m:
+        need(status is not None and "unit" in status, "checks need status.unit (the add-on they check)")
+        _check_checks(m["checks"], need)
     adm = m.get("admin")
     if adm is not None:
         need(
@@ -282,6 +304,86 @@ def _check(m, where):
                 "source.adapt: a script in the hub's code",
             )
             need("pin" not in src or re.match(r"^[0-9a-f]{40}$", str(src["pin"])), "source.pin: a full commit hash")
+
+
+def _pattern(p):
+    """A pattern a check may hold: a string, short, that compiles."""
+    if not isinstance(p, str) or not 0 < len(p) <= PATTERN_MAX:
+        return None
+    try:
+        return re.compile(p)
+    except re.error:
+        return None
+
+
+def _check_checks(checks, need):
+    need(isinstance(checks, list) and 0 < len(checks) <= CHECKS_MAX, f"checks: 1 to {CHECKS_MAX} entries")
+    seen = set()
+    for c in checks:
+        need(isinstance(c, dict), "checks: each an object")
+        cid = c.get("id")
+        need(isinstance(cid, str) and CHECK_ID_RE.match(cid), "checks.id: lower-case letters, digits and hyphens")
+        need(cid not in seen, f"checks.id: {cid} used twice")
+        seen.add(cid)
+        where = f"checks.{cid}"
+        need(c.get("kind") in CHECK_KINDS, f"{where}.kind: one of {', '.join(CHECK_KINDS)}")
+        need(c.get("status") in ("warn", "problem"), f"{where}.status: warn or problem")
+        need(isinstance(c.get("title"), str) and 0 < len(c["title"]) <= 80, f"{where}.title: up to 80 characters")
+        for k in ("says", "why", "fix"):
+            need(
+                (k != "says" and k not in c) or (isinstance(c.get(k), str) and 0 < len(c[k]) <= 300),
+                f"{where}.{k}: one sentence, up to 300 characters",
+            )
+        need(
+            "commands" not in c
+            or (
+                isinstance(c["commands"], list)
+                and len(c["commands"]) <= 5
+                and all(isinstance(x, str) and 0 < len(x) <= 200 for x in c["commands"])
+            ),
+            f"{where}.commands: up to 5 lines of up to 200 characters, shown and never run",
+        )
+        need(isinstance(c.get("path"), str) and CHECK_PATH_RE.match(c["path"]), f"{where}.path: an absolute path")
+        if c["kind"] == "file":
+            need(type(c.get("exists", True)) is bool, f"{where}.exists: true or false")
+            for k in ("owner", "group"):
+                need(k not in c or (isinstance(c[k], str) and CHECK_NAME_RE.match(c[k])), f"{where}.{k}: a name")
+            need(
+                "max_mode" not in c or (isinstance(c["max_mode"], str) and re.match(r"^0?[0-7]{3}$", c["max_mode"])),
+                f'{where}.max_mode: octal, e.g. "0640"',
+            )
+        else:
+            need(
+                "comments" not in c
+                or (
+                    isinstance(c["comments"], list)
+                    and len(c["comments"]) <= 4
+                    and all(isinstance(x, str) and 0 < len(x) <= 3 for x in c["comments"])
+                ),
+                f"{where}.comments: up to 4 line prefixes",
+            )
+            need(type(c.get("ignore_case", False)) is bool, f"{where}.ignore_case: true or false")
+            need(
+                sum(k in c for k in ("present", "absent", "value")) == 1,
+                f"{where}: one of present, absent or value",
+            )
+            if "value" in c:
+                v = c["value"]
+                key = _pattern(v.get("key")) if isinstance(v, dict) else None
+                need(key is not None and key.groups == 1, f"{where}.value.key: a pattern with one group")
+                tests = [k for k in ("min", "max", "equals", "not") if k in v]
+                need(
+                    tests in (["min"], ["max"], ["min", "max"], ["equals"], ["not"]),
+                    f"{where}.value: min and/or max, or equals, or not",
+                )
+                need(
+                    all(type(v[k]) is int for k in ("min", "max") if k in v)
+                    and all(isinstance(v[k], str) and len(v[k]) <= 200 for k in ("equals", "not") if k in v),
+                    f"{where}.value: min and max numbers, equals and not words",
+                )
+            else:
+                k = "present" if "present" in c else "absent"
+                need(_pattern(c[k]) is not None, f"{where}.{k}: a pattern of up to {PATTERN_MAX} characters")
 
 
 def load(folder=None):

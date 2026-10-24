@@ -2553,6 +2553,7 @@ def load_addons():
                 "path": st.get("path"),
                 "option": ad.get("option"),
                 "consent": ad.get("consent"),
+                "checks": m.get("checks") or [],
             }
         )
     out.append(
@@ -3204,6 +3205,94 @@ def probe_tailscale(ctx, a, show):
     return out
 
 
+DECLARED = Path(__file__).with_name("declared.py")
+DECLARED_SECONDS = 2  # all of one manifest's checks; a pattern that needs longer is broken or hostile
+
+
+def run_declared(a, timeout=DECLARED_SECONDS):
+    """The checks an add-on's manifest declares (manifests.py, "checks"), as issues: one for each that fails or
+    cannot read what it needs, none for a pass. They run in a process of their own (declared.py), stopped after
+    `timeout` seconds, so a pattern that backtracks for ever holds back only this add-on's checks. The manifest's
+    sentences are arguments of fixed messages, never messages of their own."""
+    from irate_box.hub import manifests as man
+
+    def need(cond, what):
+        if not cond:
+            raise man.ManifestError(what)
+
+    checks = a["checks"]
+    try:
+        man._check_checks(checks, need)
+    except man.ManifestError as exc:
+        return [
+            _issue(
+                "checks",
+                "warn",
+                M("addon.declared.invalid", "Its manifest's checks are not valid, so they did not run."),
+                fix=M("addon.declared.invalid.fix", "Correct the checks in its manifest."),
+                evidence=[str(exc)],
+            )
+        ]
+    try:
+        r = _cmd(sys.executable, "-I", str(DECLARED), timeout=timeout, input=json.dumps(checks))
+        got = {x["id"]: x for x in json.loads(r.stdout)} if r and r.returncode == 0 else None
+    except subprocess.TimeoutExpired:
+        return [
+            _issue(
+                "checks",
+                "warn",
+                M("addon.declared.slow", "Its own checks took too long, so their results are missing."),
+                M(
+                    "addon.declared.slow.why",
+                    "A pattern in its manifest's checks takes too long to match. A problem they would find stays "
+                    "unseen.",
+                ),
+                M("addon.declared.slow.fix", "Simplify the patterns in its manifest's checks."),
+                evidence=[f"stopped after {timeout} s"],
+            )
+        ]
+    except (ValueError, KeyError, TypeError):
+        got = None
+    if got is None:
+        return [
+            _issue(
+                "checks",
+                "warn",
+                M("addon.declared.failed", "Its own checks could not run, so their results are missing."),
+                evidence=[(r.stderr.strip().splitlines() or ["?"])[-1][:200]] if r else [],
+            )
+        ]
+    out = []
+    for c in checks:
+        res = got.get(c["id"]) or {"result": "unread", "detail": "no result"}
+        if res["result"] == "fail":
+            out.append(
+                _issue(
+                    c["id"],
+                    c["status"],
+                    M("addon.declared", "{says}", says=c["says"]),
+                    M("addon.declared.why", "{why}", why=c["why"]) if c.get("why") else None,
+                    M("addon.declared.fix", "{fix}", fix=c["fix"]) if c.get("fix") else None,
+                    commands=c.get("commands", ()),
+                    evidence=[c["path"], res["detail"]],
+                )
+            )
+        elif res["result"] != "pass":
+            out.append(
+                _issue(
+                    c["id"],
+                    "warn",
+                    M(
+                        "addon.declared.unread",
+                        "The doctor could not read what its check ({title}) looks at.",
+                        title=c["title"],
+                    ),
+                    evidence=[c["path"], res["detail"]],
+                )
+            )
+    return out
+
+
 ADDON_PROBES = (
     ("mosquitto", probe_mosquitto),
     ("ngircd", probe_ngircd),
@@ -3410,6 +3499,10 @@ def step_addons(ctx):
                         evidence=weak,
                     )
                 )
+        if a.get("checks"):
+            # The checks its manifest declares; a point a probe already makes is not made twice.
+            made = {i["key"] for i in issues}
+            issues += [i for i in run_declared(a) if i["key"] not in made]
         for prefix, probe in ADDON_PROBES:
             if a["unit"].startswith(prefix):
                 try:
