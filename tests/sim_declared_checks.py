@@ -184,4 +184,88 @@ check("IRC: no config: one point, config, as the probe gave", [i["key"] for i in
 sd.DECLARED_ROOT = Path("/")
 check("the doctor no longer carries an IRC probe", not any(p == "ngircd" for p, _ in sd.ADDON_PROBES))
 
+# Unit and web checks: what systemd and the add-on answer, read by the doctor, matched in the checks' process.
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from irate_box.root import health, webprobe
+
+
+class Page(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200 if self.path == "/ok/" else 404)
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, *a):
+        pass
+
+
+srv = ThreadingHTTPServer(("127.0.0.1", 0), Page)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+PORT = srv.server_address[1]
+webprobe.FRONT = ("127.0.0.1", PORT)
+wiki = json.loads((REPO / "apps.d/30-wiki.json").read_text())
+plain = "{ path=/usr/bin/kiwix-serve ; argv[]=/usr/bin/kiwix-serve --port 8081 /var/lib/hub/library.xml ; }"
+blocked = plain.replace("--port", "--blockexternal --port")
+shown = {}
+sd._show = lambda unit, *props: {p: shown[p] for p in props if p in shown}
+shown["ExecStart"] = plain
+got = sd.run_declared({"id": "wiki", "unit": "kiwix.service", "checks": wiki["checks"]})
+check(
+    "Kiwix: without --blockexternal, the probe's point (external), in its words",
+    [(i["key"], render(i["summary"])) for i in got] == [("external", "Kiwix runs without --blockexternal.")],
+    got,
+)
+shown["ExecStart"] = blocked
+check(
+    "Kiwix: with it, nothing", sd.run_declared({"id": "wiki", "unit": "kiwix.service", "checks": wiki["checks"]}) == []
+)
+del shown["ExecStart"]
+got = sd.run_declared({"id": "wiki", "unit": "kiwix.service", "checks": wiki["checks"]})
+check("Kiwix: systemd not answering: one point it could not read", [i["key"] for i in got] == ["config"], got)
+check("the doctor no longer carries a Kiwix probe", not any(p == "kiwix" for p, _ in sd.ADDON_PROBES))
+
+web = [
+    c("direct-ok", "http", via="direct", path="/ok/", expect=[200]),
+    c("direct-missing", "http", via="direct", path="/gone/", expect=[200]),
+    c("frame", "http", via="direct", path="/ok/", header="X-Frame-Options", match="^(DENY|SAMEORIGIN)$"),
+    c("csp", "http", via="front", path="/ok/", header="Content-Security-Policy", match="default-src"),
+    c("user", "unit", property="User", equals="kiwix"),
+]
+shown["User"] = "root"
+got = {i["key"]: i for i in sd.run_declared({"id": "x", "unit": "x.service", "port": PORT, "checks": web})}
+check("web and unit checks: the failing ones", sorted(got) == ["csp", "direct-missing", "user"], sorted(got))
+check("  what was answered as evidence", got["direct-missing"]["evidence"] == ["direct /gone/", "404"], got)
+check("  a header it lacks", got["csp"]["evidence"][1] == "200, no Content-Security-Policy", got)
+check("  a property's value", got["user"]["evidence"] == ["x.service", "User=root"], got)
+
+check("refused: a unit check with no test", refused([c("x", "unit", property="User")]))
+check("refused: an http check with no expectation", refused([c("x", "http", via="front", path="/a/")]))
+check("refused: an http check via elsewhere", refused([c("x", "http", via="other", path="/a/", expect=[200])]))
+check("refused: a repair on a security check", refused([c("x", "unit", property="User", equals="a", repair="restart")]))
+
+# The Box doctor runs its own ("doctor": "box"), with the repair the manifest names.
+box_checks = [
+    c("answers", "http", via="direct", path="/gone/", expect=[200], doctor="box", repair="restart"),
+    c("sec", "http", via="direct", path="/gone/", expect=[200]),
+]
+(T / "apps.d").mkdir()
+(T / "apps.d/40-x.json").write_text(
+    json.dumps(
+        {"id": "x", "order": 40, "status": {"name": "X", "port": PORT, "unit": "x.service"}, "checks": box_checks}
+    )
+)
+manifests.APPS_D = T / "apps.d"
+health.unit_props = lambda unit: {"LoadState": "loaded"}
+f = health.check_addon_declared()
+check(
+    "Box doctor: its own check fails, the security one is not its", [x["id"] for x in f] == ["addon-check:x-answers"], f
+)
+check("  with the repair the manifest names", [a["choice"] for a in f[0]["actions"]] == ["unit-restart:x.service"], f)
+got = sd.run_declared({"id": "x", "unit": "x.service", "port": PORT, "checks": box_checks})
+check("Security doctor: only its own", [i["key"] for i in got] == ["sec"], got)
+
 sys.exit(1 if fails else 0)

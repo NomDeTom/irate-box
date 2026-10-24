@@ -34,5 +34,21 @@
     "option": "--with-kiwix",
     "title": "Kiwix, the offline library",
     "summary": "kiwix-serve for the books in Kiwix → Books, at /wiki/ on its own web origin. If the box has books, Kiwix is already installed. Add it here to have it ready before the first book. About 10 MB of storage. It also uses memory for each book that it serves."
-  }
+  },
+  "checks": [
+    {
+      "id": "external",
+      "kind": "unit",
+      "status": "warn",
+      "title": "Pages from other websites",
+      "says": "Kiwix runs without --blockexternal.",
+      "why": "Book pages can load content from other websites, which can then see what is read.",
+      "fix": "Add --blockexternal to the start command of Kiwix.",
+      "commands": [
+        "--blockexternal"
+      ],
+      "property": "ExecStart",
+      "present": "(^|\\s)--blockexternal(\\s|$|;)"
+    }
+  ]
 }

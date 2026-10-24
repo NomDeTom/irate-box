@@ -6,8 +6,10 @@ check as JSON on stdout, and stops it after a time limit (secdoctor.run_declared
 ever stops only this, not the doctor. Standard library only, and nothing imported from irate-box: -I leaves the
 code's folder off the path.
 
-It only reads: a file's owner and mode, and a config file's live lines. A result is "pass", "fail" (the check's
-expectation does not hold) or "unread" (what it reads is not there or not readable), with a short detail."""
+It only reads: a file's owner and mode, and a config file's live lines. A unit's property and a web answer are
+read by the doctor, which may start programs and send requests, and given here in the check ("got"): this matches
+them. A result is "pass", "fail" (the check's expectation does not hold) or "unread" (what it reads is not there or
+not readable), with a short detail."""
 
 import grp
 import json
@@ -97,7 +99,37 @@ def check_config(c):
     return ("pass" if ok else "fail"), got[:200]
 
 
-KINDS = {"file": check_file, "config": check_config}
+def check_unit(c):
+    got = c.get("got")
+    if got is None:
+        return "unread", "no answer from systemd"
+    if "equals" in c:
+        ok = got == c["equals"]
+    elif "not" in c:
+        ok = got != c["not"]
+    else:
+        hit = re.search(c.get("present", c.get("absent")), got[:MAX_LINE])
+        ok = bool(hit) == ("present" in c)
+    return ("pass" if ok else "fail"), f"{c['property']}={got[:200]}"
+
+
+def check_http(c):
+    got = c.get("got")
+    if not got or not got.get("http"):
+        return "unread", (got or {}).get("error", "no answer")
+    said = f"{got['status']}"
+    if c.get("expect") and got["status"] not in c["expect"]:
+        return "fail", said
+    if "header" in c:
+        value = got["headers"].get(c["header"].lower())
+        if value is None:
+            return "fail", f"{said}, no {c['header']}"
+        if not re.search(c["match"], value[:MAX_LINE]):
+            return "fail", f"{said}, {c['header']}: {value[:160]}"
+    return "pass", said
+
+
+KINDS = {"file": check_file, "config": check_config, "unit": check_unit, "http": check_http}
 
 
 def main():

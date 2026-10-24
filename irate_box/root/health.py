@@ -2357,6 +2357,45 @@ def check_addon_front():
     return out
 
 
+def check_addon_declared():
+    """The checks an installed add-on's manifest declares for the Box doctor ("doctor": "box": does it work), as
+    the Security doctor runs its own (secdoctor.run_declared): each that fails a finding, with the repair the
+    manifest names from this doctor's own (restart its unit, or run the installer again)."""
+    from irate_box.hub import manifests
+    from irate_box.root import secdoctor
+
+    try:
+        found = manifests.load()
+    except (manifests.ManifestError, OSError):
+        return []
+    out = []
+    for m in found:
+        st = m.get("status") or {}
+        if not any(c.get("doctor") == "box" for c in m.get("checks") or ()):
+            continue
+        unit = st["unit"].replace("@hub.", f"@{HUB_USER}.")
+        if unit_props(unit).get("LoadState") != "loaded":
+            continue  # not installed
+        a = {"id": m["id"], "unit": unit, "port": st.get("port"), "checks": m["checks"]}
+        title = named(st.get("name") or m["id"], M("addon-check.role", "add-on"))
+        for i in secdoctor.run_declared(a, doctor="box"):
+            repair = {"restart": action(f"unit-restart:{unit}", RESTART), "rerun-install": RERUN}.get(i.get("repair"))
+            out.append(
+                finding(
+                    f"addon-check:{m['id']}-{i['key']}",
+                    title,
+                    i["status"],
+                    i["summary"],
+                    i["why"],
+                    i["fix"],
+                    commands=i["commands"],
+                    evidence=i["evidence"],
+                    actions=[repair] if repair else [],
+                )
+            )
+    return out
+
+
 def check_git_addon():
     """Two questions, once Git is removed (the marker): was it meant to go, and are its servers gone? A removal
     cut short leaves the units or cgit's files behind. While Git is on, check_units asks after its socket."""
@@ -3946,6 +3985,7 @@ def scan():
         check_port_80,
         check_git_addon,
         check_addon_front,
+        check_addon_declared,
         check_uplink,
         check_inventory,
         check_hotspot,
