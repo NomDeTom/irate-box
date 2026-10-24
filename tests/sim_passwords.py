@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Passwords being set, as the administrator chooses (Security, Sign-in and identity): the shortest allowed, the rules
 (none, letters and digits, three kinds), the commonest refused, and never the username; a password set before a
-stricter choice still signs in. And the hub's memory (audit F2): at most two password checks at once, the rest told
+stricter choice still signs in. And the hub's memory: at most two password checks at once, the rest told
 the box is busy; the hub's unit with a memory ceiling; nginx limiting sign-ins per address.
 python3 tests/sim_passwords.py"""
 

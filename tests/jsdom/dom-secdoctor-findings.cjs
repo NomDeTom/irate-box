@@ -32,7 +32,7 @@ deb = s.debsecan_findings({"openssl": [("CVE-2026-1", {"fixed": True, "remote": 
                            "perl-base": [("CVE-2026-2", {"fixed": False, "remote": False, "urgency": ""})]},
                           {}, {}, 1790000000, {"openssl": "openssl", "perl-base": "perl"})
 page = [finding(i, M("t." + i, "A line"), "warn", M("t.s", "Something."), source="security-page") for i in ("page-sudo-nopasswd", "page-ssh-password")]
-steps = [{"id": sid, "title": t, "ref": "", "findings": f} for (sid, t, *_), f in
+steps = [{"id": sid, "title": t, "findings": f} for (sid, t, *_), f in
          ((st, f) for st in s.STEPS for sid2, f in (("kernel", kernel), ("debsecan", deb), ("security-page", page)) if st[0] == sid2)]
 flat = [f for st in steps for f in st["findings"]]
 print(json.dumps({"at": time.time(), "root": True, "steps": steps, "joint": s.joint(steps, {"doctor": time.time()}),
@@ -81,8 +81,8 @@ setTimeout(() => {
     && c.querySelectorAll('.fsaid li').length === 2, c && t(c));
 
   const raw = t(d.getElementById('secdoctor'));
-  check('the raw report and what the doctor cannot see: said, with their references', /Kernel protections/.test(raw)
-    && /Code review and tests cover them: F7, F10/.test(raw), raw.slice(0, 300));
+  check('the raw report and what the doctor cannot see: said, in words', /Kernel protections/.test(raw)
+    && /Code review and tests cover them: app installs checked and unpacked by path, paths in the firmware cache/.test(raw), raw.slice(0, 300));
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(raw),
     (raw.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);
   check('no errors', !errors.length, errors.join(' | '));

@@ -388,7 +388,7 @@ check(
 )
 from irate_box.root import secdoctor as sd
 
-steps = {sid: fn for sid, _, _, fn in sd.STEPS}
+steps = {sid: fn for sid, _, fn in sd.STEPS}
 cis_step = steps["debian-cis"]({})
 check(
     "the regular audit shows them as steps, dated",

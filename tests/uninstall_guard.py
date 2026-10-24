@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Every systemd unit file install.sh writes, uninstall.sh removes: a unit left behind can come back at every boot and run
-from code that is gone (audit M6 on the Pi, 2026-10-20: the notebooks' path unit was still enabled after an uninstall).
+from code that is gone (a path unit left enabled would start the notebooks again).
 Read as text: the units install.sh writes (cat >… or a copy into the unit folder) against the files uninstall.sh deletes,
 its {a,b} brace lists expanded. A clock module's units are rtc.py's own (rtc remove, which uninstall.sh runs).
 python3 tests/uninstall_guard.py"""

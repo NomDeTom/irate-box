@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Saves on /admin that lose work, or look saved when they failed (the save-patterns plan, phase 0), in jsdom.
+// Saves on /admin that lose work, or look saved when they failed, in jsdom.
 // Static: no hub needed; every request answered here, a refusal where a test wants one.
 // Usage: [JSDOM=…/jsdom] node dom-save-safety.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
@@ -251,7 +251,7 @@ const type = (input, value) => {
   check('  Discard: the boards as saved again', ev('[...fwChosen].join()') === 'rak4631'
     && ![...d.querySelectorAll('#fw-boards input')].find((i) => i.parentElement.textContent.includes('heltec-v3')).checked);
 
-  // A section's question before Save, on the page (AW.confirmHere), not the browser's pop-up (admin pages plan, phase 5).
+  // A section's question before Save, on the page (AW.confirmHere), not the browser's pop-up.
   const askHost = d.createElement('div');
   d.body.append(askHost);
   w.answerAsks = false; // answered by hand below

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""What a source can send the librarian (audit L13-L16): a download stops past the size claimed, and when the
+"""What a source can send the librarian: a download stops past the size claimed, and when the
 card is almost full; nothing asked for over https is taken over plain HTTP, the JSON listings included; the
 debsecan data's first line is read without unpacking the rest; and a submodule's URL never shadows a mirror's
 own in mirror-urls.json. The network is stood in for. python3 tests/sim_download_bounds.py"""

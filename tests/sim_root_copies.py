@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""What root copies and what it switches off (audit L21-L23): a USB copy refuses a file with a second name (a hard
+"""What root copies and what it switches off: a USB copy refuses a file with a second name (a hard
 link) or one that is not a file; install.sh leaves no setuid, setgid or sticky bit on the apps it copies; and
 uninstall.sh switches off only the hub's own web server, never the service that gave up port 80 for it.
 python3 tests/sim_root_copies.py"""
@@ -29,7 +29,7 @@ def check(name, cond, info=""):
 
 T = Path(tempfile.mkdtemp(prefix="root-copies-"))
 
-# L22
+# A USB copy: plain files only.
 (T / "book.zim").write_bytes(b"z" * 100)
 usbstick._copy(T / "book.zim", T / "copy.zim")
 check("a plain file: copied", (T / "copy.zim").read_bytes() == b"z" * 100)
@@ -44,7 +44,7 @@ for what, src in (("a file with a second name (a hard link)", T / "second-name.z
         refused = e.message["id"] == "usb.copy.not-plain"
     check(f"{what}: refused, nothing copied", refused and not (T / "out.zim").exists())
 
-# L21
+# install.sh's copies of the apps: no setuid, setgid or sticky bit.
 inst = (REPO / "install.sh").read_text()
 copies = [m.start() for m in re.finditer(r'cp -a "\$APPS_SRC/[^"]*" "\$(APPS|ROOM)', inst)]
 check(
@@ -53,7 +53,7 @@ check(
     len(copies),
 )
 
-# L23: the uninstaller's port-80 step, run with systemctl stood in for.
+# The uninstaller's port-80 step, run with systemctl stood in for.
 un = (REPO / "uninstall.sh").read_text()
 block = re.search(r'\ttaken="\$\(python3.*?\n\tfi\n', un, re.S)
 check("uninstall.sh reads the unit that gave up port 80 from what was recorded", block is not None)

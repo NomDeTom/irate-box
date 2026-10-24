@@ -39,7 +39,7 @@ const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn'
     F('security-updates', 'Security updates', 'problem', [{ choice: 'security-updates', label: 'Install 3 security updates' }])] }, log: [], pending: 0, results: [], deep: { at: now - 3600, took: 438 },
   imports: { nmap: { name: 'scan.xml', ran: now - 86400, imported: now - 3600, results: 3 } },
   audit: { at: now, root: true, counts: { problem: 3, warn: 9, ok: 30 }, not_covered: [],
-    steps: [{ id: 'kernel', title: 'Kernel protections', ref: '', findings: [{ id: 'kernel-links', title: 'Link protections off', status: 'problem', summary: 'x', fix: 'y', ref: '' }] }],
+    steps: [{ id: 'kernel', title: 'Kernel protections', findings: [{ id: 'kernel-links', title: 'Link protections off', status: 'problem', summary: 'x', fix: 'y', ref: '' }] }],
     joint: { after: { problem: 2, warn: 5 }, agreed_ok: 3, sources: { doctor: { problem: 1, warn: 1, ok: 27 }, 'security-page': { problem: 1, warn: 2, ok: 10 }, nmap: { problem: 0, warn: 1, ok: 2 } },
       coverage: { doctor: "The box's own design.", 'security-page': 'What listens.', nmap: 'Only which ports answer, from where it ran.' },
       freshness: { doctor: now, 'security-page': now - 600, nmap: now - 86400 },

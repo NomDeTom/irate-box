@@ -332,7 +332,7 @@ const AW = (() => {
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && openStack.length) closeCard(openStack[openStack.length - 1]); });
 
   // ---- A section: a group of settings saved together (a card, a block, one network, one app's access) ----
-  // Every section keeps the same rules (the save-patterns plan):
+  // Every section keeps the same rules:
   //   1 its draft is compared with the saved values: Save and Discard are off while nothing differs, "Unsaved
   //     changes" shows only while something does; until the box's values are read (saved null) it says so,
   //     its controls are off and nothing counts as changed
@@ -361,7 +361,7 @@ const AW = (() => {
     unsavedWas = now;
     document.dispatchEvent(new CustomEvent('aw-unsaved'));
   }
-  // A question drawn on the page, not the browser's pop-up (the admin pages plan, phase 5): the words, then
+  // A question drawn on the page, not the browser's pop-up: the words, then
   // Confirm and Cancel, beside what was pressed (anchor, else the focused control). Resolves true or false.
   // One at a time: a new one answers the last one No. Cancel has the focus; Escape cancels.
   let asked = null;

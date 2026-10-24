@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Unsaved changes on /admin, in jsdom (the save-patterns plan, phase 5): a mark on the sidebar entry of each page
+// Unsaved changes on /admin, in jsdom: a mark on the sidebar entry of each page
 // with one, and on its group's head; leaving such a page asks first, and No stays on it; going anyway keeps the
 // draft; closing the tab asks the browser's question; Discard clears it all. Static: no hub needed.
 // Usage: [JSDOM=…/jsdom] node dom-unsaved.cjs

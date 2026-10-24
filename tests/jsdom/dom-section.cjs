@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// AW.section, the one Save and Discard of /admin, in jsdom: every rule of the save-patterns plan. Static.
+// AW.section, the one Save and Discard of /admin, in jsdom: every rule a section keeps (web/admin-widgets.js). Static.
 // Usage: [JSDOM=…/jsdom] node dom-section.cjs
 const { JSDOM } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');

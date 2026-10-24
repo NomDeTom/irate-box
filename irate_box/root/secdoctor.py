@@ -9,10 +9,9 @@ from the owner's earlier setup, and reports it. It changes NOTHING: it reads fil
 `systemctl show`/`list-units`, and walks /proc; it never starts, stops, writes or chowns
 anything on the system. Its one write is its own report (control/security-audit.json).
 
-Each step covers findings of the hub's security review (the "ref" on every line, F1 to F31, or
-S1 to S14 for the known ones) that the state of the box can show. Findings the box cannot show (a race inside one
-function, a missing checksum) are listed as "not covered" in the report rather than skipped
-silently. Run it before the fixes and again after: the lines that were problems must clear.
+Each step checks what the state of the box can show; every finding has an id of its own, named for
+what it looks at. What the box cannot show (a race inside one function, a missing checksum) is listed
+as "not covered" in the report rather than skipped silently.
 
 Status: ok | warn | problem (critical and high findings are "problem", the rest "warn").
 A check that cannot read what it needs (not root, no systemd) says so as a warn, never ok.
@@ -22,7 +21,7 @@ A check that cannot read what it needs (not root, no systemd) says so as a warn,
     sudo /opt/irate-box/irate-box secdoctor json       the report, as the page reads it
     /admin → Health → Security doctor                   the same, through hub_control.py
 
-The F2 fix (request bodies drained or the connection closed) declares itself with
+The hub's guard against request smuggling (request bodies drained or the connection closed) declares itself with
 `DRAINS_REQUEST_BODIES = True` at the top level of server.py, which the front step looks for.
 
 Secrets are never printed: a password on a command line is reported by process and flag,
@@ -140,14 +139,14 @@ def _some(names, limit=MAX_LISTED):
     return names[:limit] + (["…"] if len(names) > limit else [])
 
 
-# Every finding is in the shape of finding.py, with what the joint report needs besides: ref (the
-# security review's finding), source (which source said it: "doctor" when left out), about ({kind:
+# Every finding is in the shape of finding.py, with what the joint report needs besides: source
+# (which source said it: "doctor" when left out), about ({kind:
 # package | service | setting | file | kit, key}, so the joint report can merge what several sources
 # say about one thing), and accepted (the reason, when the box's design accepts it).
 AS_ROOT = "sudo /opt/irate-box/irate-box secdoctor"
 
 
-def _cannot(fid, title, reason, ref="", root=False):
+def _cannot(fid, title, reason, root=False):
     """A check that could not read what it needs: a warning, never ok. reason: a message. root: the
     reason is permission, so running the doctor as root is the fix."""
     return finding(
@@ -161,7 +160,6 @@ def _cannot(fid, title, reason, ref="", root=False):
         ),
         fix=M("check.cannot.root", "Run the doctor as root.") if root else None,
         commands=[AS_ROOT] if root else [],
-        ref=ref,
     )
 
 
@@ -385,7 +383,7 @@ def _front_refuses_notes_capabilities(ctx):
 
 
 def step_notes(ctx):
-    """F1: SilverBullet's shell backend and its login. F31: its HTTP proxy, which reaches the
+    """SilverBullet's shell backend and its login, and its HTTP proxy, which reaches the
     hub's loopback API (no login there: the front asks for it) unless SilverBullet has no IP
     networking or the front refuses /notes/.proxy."""
     unit = "silverbullet.service"
@@ -411,7 +409,6 @@ def step_notes(ctx):
                 "notes-shell",
                 shell_t,
                 M("check.cannot.systemctl", "systemctl does not answer."),
-                "F1",
             )
         ]
     if sh.get("LoadState") != "loaded":
@@ -424,7 +421,6 @@ def step_notes(ctx):
                     "notes.not-installed",
                     "The notes add-on (SilverBullet) is not installed.",
                 ),
-                ref="F1",
             )
         ]
     merged = _sb_env(sh)
@@ -475,7 +471,6 @@ def step_notes(ctx):
                 )
                 + idle,
                 evidence=([] if read_only else [f"SB_SHELL_BACKEND={merged['SB_SHELL_BACKEND']}"]),
-                ref="F1",
             )
         )
     elif front_blocks:
@@ -500,7 +495,6 @@ def step_notes(ctx):
                 ),
                 notes=idle,
                 evidence=["SB_SHELL_BACKEND"],
-                ref="F1",
             )
         )
     elif not login:
@@ -522,7 +516,6 @@ def step_notes(ctx):
                 ),
                 commands=stop,
                 notes=idle,
-                ref="F1",
             )
         )
     else:
@@ -541,10 +534,9 @@ def step_notes(ctx):
                     "Run the installer again. It turns the shell off on the unit's command line.",
                 ),
                 notes=idle,
-                ref="F1",
             )
         )
-    # F31: the proxy. Two layers, either of which stops it: no IP networking for the unit, and
+    # The proxy. Two layers, either of which stops it: no IP networking for the unit, and
     # the front refusing /notes/.proxy. Read-only mode turns the proxy off as well.
     proxy_t = M("notes.proxy.title", "Notes proxy endpoint")
     families = sh.get("RestrictAddressFamilies", "")
@@ -561,7 +553,6 @@ def step_notes(ctx):
                     "notes.proxy.read-only",
                     "The proxy is off, because the notes are in read-only mode.",
                 ),
-                ref="F31",
             )
         )
     elif no_ip and front_blocks:
@@ -574,7 +565,6 @@ def step_notes(ctx):
                     "notes.proxy.both",
                     "SilverBullet has no IP networking, and the web server refuses /notes/.proxy.",
                 ),
-                ref="F31",
             )
         )
     elif no_ip:
@@ -593,7 +583,6 @@ def step_notes(ctx):
                     "its proxy reaches the hub's loopback API.",
                 ),
                 M("notes.proxy.fix", "Run the installer again. It sets both guards."),
-                ref="F31",
             )
         )
     elif front_blocks:
@@ -612,7 +601,6 @@ def step_notes(ctx):
                     "the hub's loopback API.",
                 ),
                 M("notes.proxy.fix", "Run the installer again. It sets both guards."),
-                ref="F31",
             )
         )
     elif not login:
@@ -637,7 +625,6 @@ def step_notes(ctx):
                     "a socket with no IP networking, and the web server then refuses /notes/.proxy.",
                 ),
                 commands=stop,
-                ref="F31",
             )
         )
     else:
@@ -655,7 +642,6 @@ def step_notes(ctx):
                     "Through the proxy, they get past the administrator sign-in.",
                 ),
                 M("notes.proxy.fix", "Run the installer again. It sets both guards."),
-                ref="F31",
             )
         )
     if not login and not read_only:
@@ -677,7 +663,6 @@ def step_notes(ctx):
                     "notes.login.fix",
                     "On Apps, select who can open Notes. If the notes are for everyone, leave them open.",
                 ),
-                ref="F1/S4",
             )
         )
     confined = (
@@ -706,7 +691,6 @@ def step_notes(ctx):
                     "Run the installer again. It limits the unit to the notes folder (ProtectSystem=strict).",
                 ),
                 evidence=[unit, f"User={who}"],
-                ref="F1",
             )
         )
     return out
@@ -762,7 +746,7 @@ def _raw_response(sock):
 
 
 def probe_drains():
-    """F2, for real: on one kept-alive connection to the hub, a refused request whose body is
+    """Request smuggling, for real: on one kept-alive connection to the hub, a refused request whose body is
     itself a request for /admin, then an ordinary one. A hub that reads the body away answers
     the ordinary one (200 for /status); one that leaves it answers the smuggled one first (403
     for /admin without the front's word). None when the hub does not answer."""
@@ -787,7 +771,7 @@ def probe_drains():
 
 
 def probe_json_cap():
-    """F15, for real: a JSON body over 256 KB to a guest route must be refused (413) and the
+    """The body-size cap, for real: a JSON body over 256 KB to a guest route must be refused (413) and the
     connection stay usable. None when the hub does not answer."""
     import http.client
 
@@ -813,7 +797,7 @@ def probe_json_cap():
 
 
 def step_admin_gate(ctx):
-    """F27/F31/F8 and S3, by behaviour: what the hub itself does with an /admin request that did
+    """The /admin gate, by behaviour: what the hub itself does with an /admin request that did
     not come through the front's /admin route (no secret), and with an /admin change that did
     not come from the /admin page (no X-Irate-Admin). Both are asked of the hub directly, on
     loopback, as anything else on the box could; neither changes anything."""
@@ -830,7 +814,6 @@ def step_admin_gate(ctx):
                 "admin-loopback",
                 gate_t,
                 M("check.cannot.hub", "The hub does not answer on its port."),
-                "F27",
             )
         ]
     asked = f"GET /admin/settings → 127.0.0.1:{_hub_port()}: {code}"
@@ -856,7 +839,6 @@ def step_admin_gate(ctx):
                     "refuses /admin without it.",
                 ),
                 evidence=[asked, str(ETC / "front-secret.env")],
-                ref="F27",
             )
         )
     else:
@@ -870,7 +852,6 @@ def step_admin_gate(ctx):
                     "The hub refuses an /admin request sent straight to its port without the web server's secret.",
                 ),
                 evidence=[asked],
-                ref="F27",
             )
         )
     if secret:
@@ -901,7 +882,6 @@ def step_admin_gate(ctx):
                         f"mode {oct(st.st_mode & 0o777)}",
                         f"uid {st.st_uid}",
                     ],
-                    ref="F27",
                 )
             )
         code = _hub_ask(
@@ -934,7 +914,6 @@ def step_admin_gate(ctx):
                     ),
                     M("admin-csrf.fix", "Update the hub."),
                     evidence=[f"POST /admin/settings: {code}"],
-                    ref="S3",
                 )
             )
         elif code is not None:
@@ -949,7 +928,6 @@ def step_admin_gate(ctx):
                         "pages send (X-Irate-Admin).",
                     ),
                     evidence=[f"POST /admin/settings: {code}"],
-                    ref="S3",
                 )
             )
     return out
@@ -1222,7 +1200,7 @@ XFF_WHY = M(
 
 
 def step_front(ctx):
-    """F2, F15, F24, F27 and S3's first line of defence: how the front is set up."""
+    """The front's part in the hub's defences (smuggling, body size, X-Forwarded-For, the /admin gate): how it is set up."""
     directives, note = ctx["front"], ctx["front_note"]
     if directives is None:
         return [
@@ -1235,13 +1213,12 @@ def step_front(ctx):
                     "The doctor could not read the web server's configuration.",
                 ),
                 evidence=[str(note)],
-                ref="F2/F15/F24",
             )
         ]
     if ctx["front_kind"] == "caddy":
         return step_front_caddy(ctx)
     out = []
-    # F2: request smuggling needs a kept-alive upstream and a hub that leaves bodies unread.
+    # Request smuggling needs a kept-alive upstream and a hub that leaves bodies unread.
     ka = [d for s, d in directives if s and s[0].startswith("upstream irate_box_hub") and d.startswith("keepalive")]
     drains = ctx["hub_drains_bodies"]
     if ka and drains is False:
@@ -1265,7 +1242,6 @@ def step_front(ctx):
                     )
                 ],
                 evidence=[ka[0]],
-                ref="F2",
             )
         )
     elif ka:
@@ -1287,7 +1263,6 @@ def step_front(ctx):
                     )
                 ),
                 evidence=[ka[0]],
-                ref="F2",
             )
         )
     else:
@@ -1301,10 +1276,9 @@ def step_front(ctx):
                     "nginx opens one connection to the hub per request. A request body that the hub "
                     "leaves unread cannot become a second request.",
                 ),
-                ref="F2",
             )
         )
-    # F15: body size.
+    # Body size.
     sizes = [(s, d) for s, d in directives if d.startswith("client_max_body_size")]
     server_level = [d.split()[-1] for s, d in sizes if s == ("server",)]
     if not server_level:
@@ -1317,7 +1291,6 @@ def step_front(ctx):
                     "front.size.default",
                     "nginx's default limit of 1 MB applies to the whole site.",
                 ),
-                ref="F15",
             )
         )
     else:
@@ -1351,7 +1324,6 @@ def step_front(ctx):
                         else []
                     ),
                     evidence=["client_max_body_size 0"] + _some(bigger),
-                    ref="F15",
                 )
             )
         elif n is None or n > 64 * 1024**2:
@@ -1370,7 +1342,6 @@ def step_front(ctx):
                     ),
                     SIZE_FIX,
                     evidence=[f"client_max_body_size {server_level[0]}"],
-                    ref="F15",
                 )
             )
         else:
@@ -1384,11 +1355,10 @@ def step_front(ctx):
                         "The site has a limit on the size of a request.",
                     ),
                     evidence=[f"client_max_body_size {server_level[0]}"],
-                    ref="F15",
                 )
             )
     out += _hub_body(ctx)
-    # F24: the first X-Forwarded-For entry is the client's to choose.
+    # The first X-Forwarded-For entry is the client's to choose.
     xff = [d for s, d in directives if d.startswith("proxy_set_header X-Forwarded-For")]
     if any("$proxy_add_x_forwarded_for" in d for d in xff):
         out.append(
@@ -1408,7 +1378,6 @@ def step_front(ctx):
                 ),
                 commands=["proxy_set_header X-Forwarded-For $remote_addr;"],
                 evidence=_some(xff),
-                ref="F24",
             )
         )
     elif xff:
@@ -1422,7 +1391,6 @@ def step_front(ctx):
                     "The web server sets the header to the connecting address only.",
                 ),
                 evidence=_some(xff),
-                ref="F24",
             )
         )
     out += _front_gates(
@@ -1451,7 +1419,6 @@ def step_front(ctx):
                         "It blocks plugins and changes of the base address, and only this address can frame the pages.",
                     )
                 ],
-                ref="S4",
             )
         )
     else:
@@ -1476,7 +1443,6 @@ def step_front(ctx):
                 commands=[
                     "add_header Content-Security-Policy \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\" always;"
                 ],
-                ref="S4",
             )
         )
     return out
@@ -1487,7 +1453,7 @@ def step_front_caddy(ctx):
     parsed = ctx["front"]
     drains = ctx["hub_drains_bodies"]
     out = []
-    # F2: Go's reverse proxy forwards bodies and reuses upstream connections unless told not to.
+    # Request smuggling: Go's reverse proxy forwards bodies and reuses upstream connections unless told not to.
     ka_off = any(not opened and re.match(r"keepalive\s+off\b", line) for _, line, opened in parsed)
     if ka_off:
         out.append(
@@ -1500,7 +1466,6 @@ def step_front_caddy(ctx):
                     "Caddy's keepalive to the hub is off. A request body that the hub leaves unread "
                     "cannot become a second request.",
                 ),
-                ref="F2",
             )
         )
     elif drains is False:
@@ -1527,7 +1492,6 @@ def step_front_caddy(ctx):
                     ),
                 ],
                 commands=["transport http { keepalive off }"],
-                ref="F2",
             )
         )
     else:
@@ -1548,10 +1512,9 @@ def step_front_caddy(ctx):
                         "the hub's code to find out if it reads every request body.",
                     )
                 ),
-                ref="F2",
             )
         )
-    # F15: Caddy has no default body cap at all.
+    # Body size: Caddy has no default body cap at all.
     site = [
         (st, line)
         for st, line, o in parsed
@@ -1572,7 +1535,6 @@ def step_front_caddy(ctx):
                 "ok",
                 M("front.size.set", "The site has a limit on the size of a request."),
                 evidence=[f"max_size {top[0]}"],
-                ref="F15",
             )
         )
     else:
@@ -1594,11 +1556,10 @@ def step_front_caddy(ctx):
                 notes=([M("front.size.routes", "Some routes set a limit of their own.")] if per else []),
                 commands=["request_body { max_size 1MB }"],
                 evidence=_some(per),
-                ref="F15",
             )
         )
     out += _hub_body(ctx)
-    # F24: Caddy (2.6+) replaces an untrusted client's X-Forwarded-For unless trusted_proxies says otherwise.
+    # X-Forwarded-For: Caddy (2.6+) replaces an untrusted client's X-Forwarded-For unless trusted_proxies says otherwise.
     trusted = [line for _, line, opened in parsed if not opened and line.startswith("trusted_proxies")]
     header_up = [
         line for _, line, opened in parsed if not opened and re.match(r"header_up\s+X-Forwarded-For", line, re.I)
@@ -1620,7 +1581,6 @@ def step_front_caddy(ctx):
                 ),
                 commands=["header_up X-Forwarded-For {remote_host}"],
                 evidence=(trusted + header_up)[:1],
-                ref="F24",
             )
         )
     else:
@@ -1641,7 +1601,6 @@ def step_front_caddy(ctx):
                     )
                 ],
                 commands=["caddy version"],
-                ref="F24",
             )
         )
     out += _front_gates(
@@ -1651,7 +1610,7 @@ def step_front_caddy(ctx):
             "The /admin routes have no basic_auth in the Caddyfile.",
         ),
     )
-    # Caddy's own admin API (localhost:2019) can rewrite the whole front; builds can reach loopback (F8).
+    # Caddy's own admin API (localhost:2019) can rewrite the whole front; builds can reach loopback.
     if not any(not opened and st == ("",) and line.startswith("admin off") for st, line, opened in parsed):
         out.append(
             finding(
@@ -1672,14 +1631,13 @@ def step_front_caddy(ctx):
                     "Add this line to the global options block of the Caddyfile.",
                 ),
                 commands=["admin off"],
-                ref="F8",
             )
         )
     return out
 
 
 def _hub_body(ctx):
-    """F15 in the hub itself: a JSON body read with no cap (probe_json_cap, else its code)."""
+    """The body-size cap in the hub itself: a JSON body read with no cap (probe_json_cap, else its code)."""
     if ctx["hub_caps_json"] is not False:
         return []
     return [
@@ -1693,13 +1651,12 @@ def _hub_body(ctx):
                 "A few large requests from one guest can use up the memory of the box.",
             ),
             FIX_HUB,
-            ref="F15",
         )
     ]
 
 
 def _front_gates(ctx, none):
-    """S3/F27 and S1: the sign-ins the front asks for on /admin, /term and /git-private. none: the
+    """The sign-ins the front asks for on /admin, /term and /git-private. none: the
     words for a missing /admin sign-in in this front's terms."""
     out = []
     admin_t = M("front.admin.title", "Administrator route authentication")
@@ -1719,7 +1676,6 @@ def _front_gates(ctx, none):
                     "front.admin.fix",
                     "Run the installer again. It restores the web server's configuration.",
                 ),
-                ref="F27",
             )
         )
     else:
@@ -1736,7 +1692,6 @@ def _front_gates(ctx, none):
                         "/admin requests that do not come through the web server.",
                     )
                 ],
-                ref="F27",
             )
         )
     for pfx, title in (
@@ -1762,7 +1717,6 @@ def _front_gates(ctx, none):
                         "front.route.fix",
                         "Run the installer again. It puts the route behind the administrator sign-in.",
                     ),
-                    ref="S1",
                 )
             )
     return out
@@ -1792,7 +1746,7 @@ def _walk_links(root, depth, cap=MAX_ENTRIES):
 
 
 def step_folders(ctx):
-    """F3, F4, F5, F13: links and root-written files in folders the hub owns."""
+    """Links and root-written files in folders the hub owns."""
     folders_t = M("folders.title", "State-directory permissions")
     if os.geteuid() != 0:
         return [
@@ -1803,7 +1757,6 @@ def step_folders(ctx):
                     "check.cannot.not-root",
                     "It needs root to read the folders of other accounts.",
                 ),
-                "F3",
                 root=True,
             )
         ]
@@ -1820,10 +1773,9 @@ def step_folders(ctx):
                     "The root helper's folder is not there. Is the hub installed?",
                 ),
                 evidence=[str(CONTROL)],
-                ref="F3",
             )
         ]
-    # Root's output folders: who owns them decides whether F3/F13 are open.
+    # Root's output folders: who owns them decides whether root can be led through a link.
     owner = _name_of(ctrl.st_uid)
     results = _lstat(CONTROL / "results")
     hub_owned = [p for p, st in (("control/", ctrl), ("control/results/", results)) if st and st.st_uid not in (0,)]
@@ -1860,7 +1812,6 @@ def step_folders(ctx):
                     "writable by the hub.",
                 ),
                 evidence=hub_owned + _some(root_in_hub),
-                ref="F3/F13",
             )
         )
     else:
@@ -1873,7 +1824,6 @@ def step_folders(ctx):
                     "folders.control.root",
                     "control/ and control/results/ belong to root.",
                 ),
-                ref="F3/F13",
             )
         )
     # Links planted in the folders root works in.
@@ -1964,7 +1914,6 @@ def step_folders(ctx):
                 ),
                 commands=["ls -l <link>"],
                 evidence=_some(f"{Path(p).relative_to(STATE)} → {t}" for p, t in links),
-                ref="F3/F4/F5",
             )
         )
     else:
@@ -1991,7 +1940,6 @@ def step_folders(ctx):
                     if inside
                     else []
                 ),
-                ref="F3/F4/F5",
             )
         )
     # The quarantine is the hub's own: health.py moves a book there as the hub, so a
@@ -2014,7 +1962,6 @@ def step_folders(ctx):
                     "Look at where it leads. If you did not make it, remove it.",
                 ),
                 commands=[f"ls -l {STATE / 'zim' / 'quarantine'}"],
-                ref="F4",
             )
         )
     ci = _lstat(STATE / "ci")
@@ -2040,14 +1987,13 @@ def step_folders(ctx):
                     "belonging to hubci.",
                 ),
                 evidence=[f"{STATE}/ci"],
-                ref="F5",
             )
         )
     return out
 
 
 def step_code(ctx):
-    """F6, F20 and the installed code: owned by root, allow-lists, markers of the review's fixes."""
+    """The installed code: owned by root, the restart allow-list, and the store's cross-origin answers."""
     out = []
     code_t = M("code.title", "Installed code ownership")
     if not CODE.is_dir():
@@ -2058,7 +2004,6 @@ def step_code(ctx):
                 "warn",
                 M("code.missing", "The installed code is not there."),
                 evidence=[str(CODE)],
-                ref="F6",
             )
         ]
     loose, seen = [], 0
@@ -2099,7 +2044,6 @@ def step_code(ctx):
                     f"sudo chmod -R go-w {CODE}",
                 ],
                 evidence=_some(loose),
-                ref="F3",
             )
         )
     else:
@@ -2113,7 +2057,6 @@ def step_code(ctx):
                     "All the installed code belongs to root, and only root can write it.",
                 ),
                 evidence=[str(CODE)],
-                ref="F3",
             )
         )
     root_dir = CODE / "irate_box" / "root"
@@ -2140,7 +2083,6 @@ def step_code(ctx):
                     ),
                     commands=[f"sudo chmod 700 {root_dir}"],
                     evidence=[f"{root_dir} {stat.S_IMODE(st.st_mode):o}"],
-                    ref="F3",
                 )
             )
         else:
@@ -2153,7 +2095,6 @@ def step_code(ctx):
                         "code.root-dir.closed",
                         "Only root can read the root helper and the doctors.",
                     ),
-                    ref="F3",
                 )
             )
     health = ctx["src"].get("health.py") or ""
@@ -2182,7 +2123,6 @@ def step_code(ctx):
                 M("code.syncthing.fix", "Disable each of these units now and at boot."),
                 commands=[f"sudo systemctl disable --now {u}" for u in foreign],
                 evidence=foreign,
-                ref="F6",
             )
         )
     if wide:
@@ -2204,7 +2144,6 @@ def step_code(ctx):
                     "Update the hub. Its restart list takes only the units that the installer made.",
                 ),
                 evidence=["health.py OUR_UNIT: syncthing@[a-z_]…"],
-                ref="F6",
             )
         )
     elif health:
@@ -2217,7 +2156,6 @@ def step_code(ctx):
                     "code.allow.narrow",
                     "The restart list of the Box doctor accepts Syncthing for the hub's account only.",
                 ),
-                ref="F6",
             )
         )
     store = ctx["src"].get("store.py") or ""
@@ -2242,7 +2180,6 @@ def step_code(ctx):
                     "Update the hub. On the box, the apps are on the same address as the store, so they do "
                     "not need the header.",
                 ),
-                ref="F20",
             )
         )
     elif store:
@@ -2252,7 +2189,6 @@ def step_code(ctx):
                 cors_t,
                 "ok",
                 M("code.cors.narrow", "The store does not answer every website."),
-                ref="F20",
             )
         )
     return out
@@ -2343,7 +2279,7 @@ def _ci_nft():
 
 
 def step_units(ctx):
-    """F8, F19: build unit's reach to loopback; sandboxing of root and hub units."""
+    """The build unit's reach to loopback; sandboxing of root and hub units."""
     units = ctx["units"]
     sandbox_t = M("units.title", "Service sandboxing")
     if not units:
@@ -2355,7 +2291,6 @@ def step_units(ctx):
                     "check.cannot.units",
                     "It found no systemd units, or systemctl does not answer.",
                 ),
-                "F19",
             )
         ]
     out, root_weak, hub_weak, exempt = [], [], [], []
@@ -2435,7 +2370,6 @@ def step_units(ctx):
                 ]
                 + exempt,
                 evidence=_some(root_weak, 12),
-                ref="F19",
             )
         )
     else:
@@ -2449,7 +2383,6 @@ def step_units(ctx):
                     "Each of the hub's root units has the sandbox lines it can have.",
                 ),
                 notes=exempt,
-                ref="F19",
             )
         )
     hub_t = M("units.hub.title", "Guest-reachable service sandboxing")
@@ -2481,7 +2414,6 @@ def step_units(ctx):
                     )
                 ],
                 evidence=_some(hub_weak),
-                ref="F19",
             )
         )
     else:
@@ -2494,7 +2426,6 @@ def step_units(ctx):
                     "units.hub.ok",
                     "Each service that guests can reach has most of the sandbox lines.",
                 ),
-                ref="F19",
             )
         )
     ci = units.get("irate-box-ci.service")
@@ -2523,7 +2454,6 @@ def step_units(ctx):
                             else ("nft: inet irate_box_ci (hubci to lo: DNS only)" if nft else f"IPAddressDeny={deny}")
                         )
                     ],
-                    ref="F8",
                 )
             )
         elif _hub_ask("GET", "/admin/settings", {"Host": "127.0.0.1"}) == 403:
@@ -2549,7 +2479,6 @@ def step_units(ctx):
                     ),
                     commands=deny_line,
                     evidence=["irate-box-ci.service"],
-                    ref="F8",
                 )
             )
         else:
@@ -2575,7 +2504,6 @@ def step_units(ctx):
                     commands=deny_line,
                     evidence=["irate-box-ci.service"]
                     + ([f"RestrictAddressFamilies={families}"] if families.strip() else []),
-                    ref="F8",
                 )
             )
     return out
@@ -2721,7 +2649,7 @@ ANYONE_TOPICS = M(
 
 
 def probe_mosquitto(ctx, a, show):
-    """S9: the broker's own config."""
+    """The broker's own config."""
     conf = _mosquitto_conf()
     if not conf.strip():
         return [_issue("config", "warn", UNREAD, evidence=[MOSQUITTO_DIR])]
@@ -3286,7 +3214,6 @@ def step_addons(ctx):
                 "addons",
                 M("addons.services.title", "Add-on services"),
                 M("check.cannot.systemctl", "systemctl does not answer."),
-                "S1 S9",
             )
         ]
     requested, listening = ctx["requested"], ctx["listening"]
@@ -3550,7 +3477,6 @@ def step_addons(ctx):
                     )
                 ],
                 evidence=[a["unit"]],
-                ref="S1 S9" if a["unit"].startswith("mosquitto") else "F19",
                 about=about,
             )
         )
@@ -3573,7 +3499,6 @@ def step_addons(ctx):
                     notes=i["notes"] + later,
                     commands=i["commands"],
                     evidence=i["evidence"],
-                    ref="S1 S9" if a["unit"].startswith("mosquitto") else "F19",
                     about=about,
                 )
             )
@@ -3602,7 +3527,7 @@ SECRET_KV = re.compile(r"^(?:--?)?[A-Za-z_-]*(pass(word)?|secret|token|credentia
 
 
 def step_cmdlines(ctx):
-    """F9: secrets on process command lines, and who can read /proc."""
+    """Secrets on process command lines, and who can read /proc."""
     hits, scanned, me = [], 0, os.getpid()
     args_t = M("cmdlines.title", "Secrets in process arguments")
     try:
@@ -3613,7 +3538,6 @@ def step_cmdlines(ctx):
                 "cmdlines",
                 args_t,
                 M("check.cannot.proc", "It cannot read {path}.", path=str(PROC)),
-                "F9",
             )
         ]
     for pid in entries:
@@ -3686,7 +3610,6 @@ def step_cmdlines(ctx):
                 )
                 + [moment],
                 evidence=_some(hits),
-                ref="F9",
             )
         )
     else:
@@ -3704,7 +3627,6 @@ def step_cmdlines(ctx):
                     n=scanned,
                 ),
                 notes=[moment],
-                ref="F9",
             )
         )
     proc_t = M("cmdlines.proc.title", "Process visibility")
@@ -3718,7 +3640,6 @@ def step_cmdlines(ctx):
                     "cmdlines.proc.hidden",
                     "Each account sees only its own processes (hidepid is set on /proc).",
                 ),
-                ref="F9",
             )
         )
     else:
@@ -3741,7 +3662,6 @@ def step_cmdlines(ctx):
                     "On Security, under Process visibility, select Each account sees only its own. Root "
                     "and the doctors keep their view of every process.",
                 ),
-                ref="F9",
             )
         )
     return out
@@ -3751,7 +3671,7 @@ SECRETY = re.compile(r"(?i)(password|passwd|token|secret|credential|api[_-]?key|
 
 
 def step_secrets(ctx):
-    """S13, F30: secrets at rest in /etc/hub and the install record."""
+    """Secrets at rest in /etc/hub and the install record."""
     files_t = M("secrets.title", "Credential-file permissions")
     if not ETC.is_dir():
         return [
@@ -3761,7 +3681,6 @@ def step_secrets(ctx):
                 "warn",
                 M("secrets.no-etc", "The hub's settings folder is not there."),
                 evidence=[str(ETC)],
-                ref="S13",
             )
         ]
     readable, creds = [], []
@@ -3803,7 +3722,6 @@ def step_secrets(ctx):
                 ),
                 commands=["sudo chmod 600 " + " ".join(shlex.quote(f"{ETC}/{n}") for n in readable)],
                 evidence=readable,
-                ref="S13",
             )
         )
     else:
@@ -3817,7 +3735,6 @@ def step_secrets(ctx):
                     "Only root can read the files that hold secrets in the hub's settings folder.",
                 ),
                 evidence=[str(ETC)],
-                ref="S13",
             )
         )
     if est and est.st_mode & 0o022:
@@ -3840,7 +3757,6 @@ def step_secrets(ctx):
                 ),
                 commands=[f"sudo chown root:root {ETC}", f"sudo chmod 755 {ETC}"],
                 evidence=[f"{ETC} {oct(est.st_mode & 0o7777)}"],
-                ref="S13",
             )
         )
     if creds:
@@ -3864,7 +3780,6 @@ def step_secrets(ctx):
                 ),
                 commands=[f"sudo chmod 600 {ETC / 'install-options'}"],
                 evidence=[str(ETC / "install-options")],
-                ref="F30",
             )
         )
     return out
@@ -3878,7 +3793,7 @@ def _git_cfg(cfg, section, key):
 
 
 def step_git(ctx):
-    """F17, F18 and the push presets: what pushed content can do."""
+    """Git servers and the push presets: what pushed content can do."""
     root = STATE / "git"
     push_t = M("git.push.title", "Git push permissions")
     if _lstat(root / "cgitrc-public") is None and _lstat(root / "cgitrc-private") is None:
@@ -3888,7 +3803,6 @@ def step_git(ctx):
                 M("git.title", "Git servers"),
                 "ok",
                 M("git.none", "The Git servers are not set up."),
-                ref="F17/F18",
             )
         ]
     out = []
@@ -3922,7 +3836,6 @@ def step_git(ctx):
                     "Remove the mimetype lines from the cgit configuration, or map the types to text/plain.",
                 ),
                 evidence=[f"cgitrc-{a}" for a in loose],
-                ref="F17",
             )
         )
     else:
@@ -3935,7 +3848,6 @@ def step_git(ctx):
                     "git.html.text",
                     "cgit serves pushed files as text, with its own Content-Security-Policy.",
                 ),
-                ref="F17",
             )
         )
     everyone, unhooked, leaky = [], [], []
@@ -3985,7 +3897,6 @@ def step_git(ctx):
                     "On Git, let only administrators push, unless guests are meant to.",
                 ),
                 evidence=_some(everyone),
-                ref="F17/F18",
             )
         )
     if unhooked:
@@ -4011,7 +3922,6 @@ def step_git(ctx):
                     "Run the installer again. It sets the hook and the check.",
                 ),
                 evidence=_some(unhooked),
-                ref="F18",
             )
         )
     if leaky:
@@ -4037,7 +3947,6 @@ def step_git(ctx):
                     "On Git, select the setting of each repository again. It sets both parts.",
                 ),
                 evidence=_some(leaky),
-                ref="F18",
             )
         )
     if not (everyone or unhooked or leaky):
@@ -4050,7 +3959,6 @@ def step_git(ctx):
                     "git.push.ok",
                     "Each repository takes pushes as its setting says, and the public ones have their hook.",
                 ),
-                ref="F18",
             )
         )
     return out
@@ -4130,7 +4038,6 @@ def step_accounts(ctx):
                     ),
                     M("acct.sudo-hub.fix", "Remove the rule."),
                     evidence=_some(f"{f}: {s}" for f, s in service),
-                    ref="F1/F3",
                 )
             )
         other = [(f, s) for f, s in nopass if (f, s) not in service]
@@ -4313,7 +4220,6 @@ def step_accounts(ctx):
                 M("acct.shells.fix", "Give each account the nologin shell."),
                 commands=[f"sudo usermod -s /usr/sbin/nologin {u}" for u in badsh],
                 evidence=badsh,
-                ref="F19",
             )
         )
     elif any(u in users for u in (HUB_USER, CI_USER)):
@@ -4326,7 +4232,6 @@ def step_accounts(ctx):
                     "acct.shells.closed",
                     "The hub's account and the build account cannot sign in with a shell.",
                 ),
-                ref="F19",
             )
         )
     return out
@@ -4539,7 +4444,7 @@ def _sysctl(name):
 
 
 def step_kernel(ctx):
-    """The kernel's own protections against the link and process tricks in F3/F9."""
+    """The kernel's own protections against link tricks and reading other processes."""
     out = []
     links = [(n, _sysctl(n)) for n in ("fs.protected_symlinks", "fs.protected_hardlinks")]
     reg = [(n, _sysctl(n)) for n in ("fs.protected_regular", "fs.protected_fifos")]
@@ -4571,7 +4476,6 @@ def step_kernel(ctx):
                     "&& sudo sysctl --system"
                 ],
                 evidence=off,
-                ref="F3",
             )
         )
     else:
@@ -4602,7 +4506,6 @@ def step_kernel(ctx):
                     else []
                 ),
                 evidence=na,
-                ref="F3",
             )
         )
     if weakreg:
@@ -4654,7 +4557,6 @@ def step_kernel(ctx):
                     "echo kernel.yama.ptrace_scope=1 | sudo tee /etc/sysctl.d/61-ptrace.conf && sudo sysctl --system"
                 ],
                 evidence=["kernel.yama.ptrace_scope=0"],
-                ref="F9",
             )
         )
     hard = [(n, _sysctl(n)) for n in ("kernel.kptr_restrict", "kernel.dmesg_restrict")]
@@ -4702,7 +4604,7 @@ def step_kernel(ctx):
     return out
 
 
-# Which apps run on an origin of their own (S4): what an app's pages run
+# Which apps run on an origin of their own: what an app's pages run
 # can act with the owner's login only where it shares the hub's origin.
 OWN_ORIGIN = (
     (
@@ -4773,7 +4675,7 @@ def _nginx_servers(text):
 
 
 def step_origins(ctx):
-    """Which origin each app is on: the hub's own port, or one of its own (S4)."""
+    """Which origin each app is on: the hub's own port, or one of its own."""
     origins_t = M("origins.title", "Application origins")
     if ctx["front_kind"] == "caddy":
         servers = _caddy_servers(ctx["front"] or [])
@@ -4786,7 +4688,6 @@ def step_origins(ctx):
                         "check.cannot.caddy-sites",
                         "It finds no site blocks in the Caddy configuration.",
                     ),
-                    "S4",
                 )
             ]
     elif ctx["front_kind"] != "nginx":
@@ -4795,7 +4696,6 @@ def step_origins(ctx):
                 "origins",
                 origins_t,
                 M("check.cannot.no-front", "It finds no nginx or Caddy configuration."),
-                "S4",
             )
         ]
     else:
@@ -4806,7 +4706,6 @@ def step_origins(ctx):
                 "origins",
                 origins_t,
                 M("check.cannot.read", "It cannot read {path}.", path=str(NGINX_CONF)),
-                "S4",
             )
         ]
     hub_ports = servers[0][0]
@@ -4837,7 +4736,6 @@ def step_origins(ctx):
                         "Serve it on a port of its own. An update of the hub does this.",
                     ),
                     evidence=[f"port {', '.join(ports)}"],
-                    ref="S4",
                 )
             )
         elif ports == hub_ports:
@@ -4859,7 +4757,6 @@ def step_origins(ctx):
                         "Serve it on a port of its own. An update of the hub does this.",
                     ),
                     evidence=[f"port {', '.join(ports)}"],
-                    ref="S4",
                 )
             )
         else:
@@ -4876,7 +4773,6 @@ def step_origins(ctx):
                         f"port {', '.join(ports)}",
                         f"hub {', '.join(hub_ports)}",
                     ],
-                    ref="S4",
                 )
             )
     return out
@@ -6115,7 +6011,6 @@ def step_tls(ctx):
                     "On Security, HTTPS, make the box's certificate. Then install it on your own devices from "
                     "/certificate.",
                 ),
-                ref="S2",
                 about=about,
             )
         ]
@@ -6571,7 +6466,6 @@ def step_mqtt(ctx):
                 acl_t,
                 "ok",
                 M("mqtt.acl.none", "The broker refuses clients with no sign-in."),
-                ref="S9",
                 about=about,
             )
         )
@@ -6585,7 +6479,6 @@ def step_mqtt(ctx):
                     "mqtt.acl.limited",
                     "Clients with no sign-in can publish and subscribe only under msh/#.",
                 ),
-                ref="S9",
                 about=about,
             )
         )
@@ -6605,7 +6498,6 @@ def step_mqtt(ctx):
                     "Install the MQTT add-on again. That restores its access list.",
                 ),
                 evidence=[acl] if acl else [],
-                ref="S9",
                 about=about,
             )
         )
@@ -7539,130 +7431,119 @@ def step_firewall(ctx):
 
 
 STEPS = [
-    ("notes", M("step.notes", "Notes add-on"), "F1", step_notes),
-    ("firewall", M("step.firewall", "Hotspot firewall"), "", step_firewall),
-    ("front", M("step.front", "Web server in front"), "F2 F15 F24 F27", step_front),
+    ("notes", M("step.notes", "Notes add-on"), step_notes),
+    ("firewall", M("step.firewall", "Hotspot firewall"), step_firewall),
+    ("front", M("step.front", "Web server in front"), step_front),
     (
         "admin-gate",
         M("step.admin-gate", "Administration pages from inside the box"),
-        "F27 F31 S3",
         step_admin_gate,
     ),
-    ("web-addons", M("step.web-addons", "Web add-ons"), "", step_web_addons),
-    ("origins", M("step.origins", "Application origins"), "S4", step_origins),
+    ("web-addons", M("step.web-addons", "Web add-ons"), step_web_addons),
+    ("origins", M("step.origins", "Application origins"), step_origins),
     (
         "folders",
         M("step.folders", "Links and root-written files in the hub's folders"),
-        "F3 F4 F5 F13",
         step_folders,
     ),
     (
         "code",
         M("step.code", "Installed code and the restart list"),
-        "F3 F6 F20",
         step_code,
     ),
     (
         "units",
         M("step.units", "Service sandboxing and the build unit"),
-        "F8 F19",
         step_units,
     ),
     (
         "addons",
         M("step.addons", "Add-ons and app services"),
-        "S1 S9 S12 F6",
         step_addons,
     ),
     (
         "cmdlines",
         M("step.cmdlines", "Secrets in process arguments"),
-        "F9",
         step_cmdlines,
     ),
-    ("secrets", M("step.secrets", "Secrets in files"), "S13 F30", step_secrets),
-    ("git", M("step.git", "Git servers and pushed content"), "F17 F18", step_git),
+    ("secrets", M("step.secrets", "Secrets in files"), step_secrets),
+    ("git", M("step.git", "Git servers and pushed content"), step_git),
     (
         "accounts",
         M("step.accounts", "sudo rules and system accounts"),
-        "",
         step_accounts,
     ),
     (
         "accounts-hub",
         M("step.accounts-hub", "Hub accounts and sign-in"),
-        "",
         step_accounts_hub,
     ),
     (
         "image",
         M("step.image", "The image underneath (Armbian, mPWRD-OS)"),
-        "",
         step_image,
     ),
-    ("kernel", M("step.kernel", "Kernel protections"), "F3 F9", step_kernel),
+    ("kernel", M("step.kernel", "Kernel protections"), step_kernel),
     (
         "debsecan",
         M(
             "step.debsecan",
             "Debian packages against Debian's security tracker (debsecan)",
         ),
-        "",
         step_debsecan,
     ),
-    ("kits-trust", M("step.kits-trust", "Toolkits from USB drives: keyring and freshness"), "M9 M10", step_kits_trust),
+    ("kits-trust", M("step.kits-trust", "Toolkits from USB drives: keyring and freshness"), step_kits_trust),
     (
         "debian-cis",
         M("step.debian-cis", "CIS benchmark (debian-cis, in the deep audit)"),
-        "",
         step_deep_cis,
     ),
-    ("lynis", M("step.lynis", "Lynis (in the deep audit)"), "", step_deep_lynis),
+    ("lynis", M("step.lynis", "Lynis (in the deep audit)"), step_deep_lynis),
     (
         "security-page",
         M("step.security-page", "Security page scan"),
-        "",
         step_security_page,
     ),
-    ("imports", M("step.imports", "Imported scans (OpenVAS, nmap)"), "", step_imports),
-    ("tls", M("step.tls", "HTTPS: the certificate and the web server"), "S2", step_tls),
-    ("mqtt", M("step.mqtt", "MQTT broker and the mesh decoder"), "S9", step_mqtt),
-    ("internet", M("step.internet", "Reached from the internet"), "", step_internet),
-    ("offline", M("step.offline", "Offline readiness"), "", step_offline),
+    ("imports", M("step.imports", "Imported scans (OpenVAS, nmap)"), step_imports),
+    ("tls", M("step.tls", "HTTPS: the certificate and the web server"), step_tls),
+    ("mqtt", M("step.mqtt", "MQTT broker and the mesh decoder"), step_mqtt),
+    ("internet", M("step.internet", "Reached from the internet"), step_internet),
+    ("offline", M("step.offline", "Offline readiness"), step_offline),
 ]
 
-# What the box's state cannot show, so the report says so instead of implying a clean bill. The
-# references are the security review's findings.
+# What the box's state cannot show, so the report says so instead of implying a clean bill.
 NOT_COVERED = [
     M(
         "not-covered.code",
         "The box's state cannot show flaws inside code paths. Code review and tests cover them: {refs}.",
         refs=[
-            "F7",
-            "F10",
-            "F12",
-            "F14",
-            "F16",
-            "F21",
-            "F23",
-            "F25",
-            "F26",
-            "F28",
-            "F29",
+            "app installs checked and unpacked by path",
+            "paths in the firmware cache",
+            "books read by kiwix-manage as root",
+            "forged requests to /admin",
+            "who may change a gallery save",
+            "the verified mark on an installed app",
+            "the build queue and its outputs",
+            "app.html framing another site",
+            "malformed input to the hub",
+            "the GitHub token across redirects",
+            "update checks run as root",
         ],
     ),
     M(
         "not-covered.network",
         "Some checks need the code or the network, so the doctor does not do them: {refs}.",
-        refs=["F11", "F22", "F30"],
+        refs=[
+            "app bundles pinned to their manifest",
+            "plain-text downloads of code and books",
+            "checksums and firmware integrity",
+        ],
     ),
     M(
         "not-covered.page",
-        "The Security page's scan covers the password sent unencrypted, SSH, updates and the ports that answer: "
-        "{refs}.",
-        refs=["S2", "S5", "S6", "S9"],
+        "The Security page's scan covers the password sent unencrypted, SSH, updates and the ports that answer.",
     ),
-    M("not-covered.npm", "npm audits do not run, because they need the network (S12)."),
+    M("not-covered.npm", "npm audits do not run, because they need the network."),
 ]
 
 
@@ -7683,7 +7564,7 @@ def make_context():
     kind, front, note = load_front()
     src = {n: _hub_source(n) for n in ("server.py", "health.py", "store.py")}
     server = src["server.py"]
-    # F2 and F15 are asked of the running hub (probe_drains, probe_json_cap): a marker in the
+    # Draining bodies and the JSON cap are asked of the running hub (probe_drains, probe_json_cap): a marker in the
     # code only says the line is there. The code's word stands
     # in when the hub does not answer.
     drains = probe_drains()
@@ -7767,9 +7648,9 @@ def audit(progress=None):
             "listening": None,
         }
     steps = []
-    for n, (sid, title, ref, fn) in enumerate(STEPS, 1):
+    for n, (sid, title, fn) in enumerate(STEPS, 1):
         found = run_step(sid, fn, ctx)
-        steps.append({"id": sid, "title": title, "ref": ref, "findings": found})
+        steps.append({"id": sid, "title": title, "findings": found})
         if progress:
             progress(n, len(STEPS), steps[-1])
     for f in (f for s in steps for f in s["findings"]):
@@ -7844,12 +7725,12 @@ def print_report(report, only_bad=False, out=sys.stdout):
         if only_bad and not shown:
             continue
         print(
-            f"\n[{n}/{len(report['steps'])}] {render(s['title'])}" + (f"  ({s['ref']})" if s["ref"] else ""),
+            f"\n[{n}/{len(report['steps'])}] {render(s['title'])}",
             file=out,
         )
         for f in shown:
             print(
-                f"  {MARK[f['status']]} {render(f['title'])}" + (f"  [{f['ref']}]" if f.get("ref") else ""),
+                f"  {MARK[f['status']]} {render(f['title'])}",
                 file=out,
             )
             if f["status"] != "ok" or not only_bad:

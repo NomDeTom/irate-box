@@ -50,7 +50,7 @@ MIN_PASSWORD, MAX_PASSWORD = 8, 128
 MIN_LENGTHS = (8, 12, 15)
 RULES = ("none", "letters-digits", "three-kinds")
 # Password checks at once (scrypt, 16 MiB each): more wait up to HASH_WAIT seconds, then are told the box is busy, so
-# a burst of sign-ins cannot take the hub's memory (audit F2).
+# a burst of sign-ins cannot take the hub's memory.
 HASHES_AT_ONCE, HASH_WAIT = 2, 3
 SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 SESSION_DAYS = 30

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""No browser pop-ups on the hub's pages (the admin pages plan, phase 5): a question is drawn on the page
+"""No browser pop-ups on the hub's pages: a question is drawn on the page
 (AW.confirmHere on /admin, askHere from web/ask.js elsewhere), an error is a line on the page, and a new name is a
 text field. Read as text, nothing run.
 

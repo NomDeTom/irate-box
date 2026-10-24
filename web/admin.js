@@ -5090,7 +5090,7 @@ function renderAudit(audit, busy, data) {
         (left, right) => RANK[left.status] - RANK[right.status],
       );
       return keptFold(
-        `audit|${st.ref || st.title}`,
+        `audit|${st.id}`,
         { className: "admin-output" },
         el(
           "summary",
@@ -5099,7 +5099,7 @@ function renderAudit(audit, busy, data) {
             className: `fstate fstate-${worst}`,
             textContent: STATE_WORD[worst],
           }),
-          ` ${st.title}${st.ref ? ` (${st.ref})` : ""}`,
+          ` ${st.title}`,
         ),
         el(
           "ul",
@@ -5118,12 +5118,6 @@ function renderAudit(audit, busy, data) {
                 ? el("span", {
                     className: "badge-push bad",
                     textContent: "new",
-                  })
-                : null,
-              finding.ref
-                ? el("span", {
-                    className: "setting-desc",
-                    textContent: ` [${finding.ref}]`,
                   })
                 : null,
               el("span", {
@@ -6449,7 +6443,7 @@ async function hlRequest(body, fid, onDone) {
 }
 
 // A repair acts at once; only setting the clock from this device asks, as only the administrator can
-// tell whether this device's clock is right (admin pages plan, phase 5).
+// tell whether this device's clock is right.
 async function hlFix(fid, action) {
   let choice = action.choice;
   let ask = null;
@@ -8419,7 +8413,7 @@ function renderNetwork(data) {
             textContent: `${uplink.stall.label[0].toUpperCase()}${uplink.stall.label.slice(1)} now`,
             onclick: () => netRequest({ action: "do", step: need }, "up"),
           }),
-          // What it costs, beside it: an action acts at once (admin pages plan, phase 5).
+          // What it costs, beside it: an action acts at once.
           el("span", {
             className: "setting-desc",
             textContent:
@@ -12675,7 +12669,7 @@ function repoCard(repo, data) {
 
 // Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(repo, data, cls) {
-  // Only Delete asks, on the page (confirmText): a move can be moved back (admin pages plan, phase 5).
+  // Only Delete asks, on the page (confirmText): a move can be moved back.
   const act = (body, confirmText, done) => async (event) => {
     // Cancelled: drawn again as it is, so a radio clicked does not stay showing a choice not made.
     if (

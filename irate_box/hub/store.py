@@ -49,7 +49,7 @@ DEV_CORS = os.environ.get("HUB_STORE_CORS", "")  # one origin, for development o
 # Total on-disk budget for everything here. The card also holds ZIMs and firmware, so
 # this is a real ceiling rather than a formality; oldest content is evicted to stay under.
 MAX_TOTAL = int(os.environ.get("HUB_STORE_MAX_TOTAL", 64 * 1024 * 1024))
-# And a ceiling on the number of files (audit L2): every write lists them all under the lock, so
+# And a ceiling on the number of files: every write lists them all under the lock, so
 # thousands of 1-byte items would make each write slow for everyone while costing no bytes.
 MAX_FILES = int(os.environ.get("HUB_STORE_MAX_FILES", 4096))
 # 0 disables. Saves are meant to persist; the file drop will set its own.
@@ -1071,7 +1071,7 @@ def _handle_saves(handler, method, path, store):
     wants_thumb = len(rest) > 1 and rest[1] == "thumb"
 
     if method == "GET" and wants_thumb:
-        # Seen by whoever may see the save itself (audit L1): ids travel in the clear on a plain-HTTP hotspot.
+        # Seen by whoever may see the save itself: ids travel in the clear on a plain-HTTP hotspot.
         meta = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
         seen = meta is not None and ((ADMIN and ADMIN(handler)) or can_see(meta, VIEWER(handler) if VIEWER else None))
         thumb = store.get_thumb(key) if seen else None

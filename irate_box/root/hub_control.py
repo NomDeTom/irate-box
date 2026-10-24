@@ -7014,7 +7014,7 @@ if __name__ == "__main__":
                 ),
             )
         sys.exit(0)
-    # The uninstaller, before it removes the hotspot's firewall (audit M6): the hotspot off and every file of it gone.
+    # The uninstaller, before it removes the hotspot's firewall: the hotspot off and every file of it gone.
     # Exit 1, saying what is still up, when that cannot be confirmed: the uninstaller then stops, the firewall kept.
     if sys.argv[1:] == ["ap-remove"]:
         if os.geteuid() != 0:

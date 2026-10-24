@@ -13,14 +13,13 @@ import re
 
 from irate_box.msg import M
 
-# key: {title, ref (the security review's finding), and each source's ids}. debian-cis's by the check's
+# key: {title, and each source's ids}. debian-cis's by the check's
 # name without its number (the benchmark renumbers: 1.9_install_updates is 1.9.1_install_updates in
 # some versions, so numbered ids never match). Lynis's by its test, or for the two tests that report each setting
 # apart (KRNL-6000: a sysctl key; SSH-7408: an sshd option) by "test:setting", from its report's details[].
 XREF = {
     "kernel-links": {
         "title": M("xref.kernel-links", "Kernel link protections (protected_symlinks, protected_hardlinks)"),
-        "ref": "F3",
         "doctor": ["kernel-links"],
         "security-page": ["kernel-links"],
         "lynis": ["KRNL-6000:fs.protected_symlinks", "KRNL-6000:fs.protected_hardlinks"],
@@ -35,14 +34,12 @@ XREF = {
     },
     "kernel-info": {
         "title": M("xref.kernel-info", "Kernel addresses and log hidden from ordinary accounts"),
-        "ref": "F9",
         "doctor": ["kernel-info"],
         "security-page": ["kernel-info"],
         "lynis": ["KRNL-6000:kernel.kptr_restrict", "KRNL-6000:kernel.dmesg_restrict"],
     },
     "kernel-ptrace": {
         "title": M("xref.kernel-ptrace", "Process tracing between processes (Yama)"),
-        "ref": "F9",
         "doctor": ["kernel-ptrace"],
         "lynis": ["KRNL-6000:kernel.yama.ptrace_scope"],
     },
@@ -116,7 +113,6 @@ XREF = {
     },
     "proc-hidden": {
         "title": M("xref.proc-hidden", "Process visibility between accounts"),
-        "ref": "F9",
         "doctor": ["cmdlines-proc"],
         "security-page": ["proc-hidden"],
     },
@@ -243,7 +239,7 @@ def title(key):
 COVERAGE = {
     "doctor": M(
         "coverage.doctor",
-        "The Security doctor checks the design of this box against the security review of irate-box. It does not "
+        "The Security doctor checks this box for the weaknesses irate-box's own design can have. It does not "
         "check general hardening.",
     ),
     "security-page": M(
@@ -744,8 +740,7 @@ def _declared_about(source, fid):
 
 # Findings nothing the owner can change on the box puts right: irate-box's own work still to do, or a limit of the
 # board or its OS. They are said, but they leave the review count for a fold of their own ("For information"), each
-# with why. (The plan's items, for whoever fixes them: units-root 27a, units-hub 129, units-ci-loopback 130. 131,
-# cmdlines-proc, has its fix on the Security page: the key proc-hidden.)
+# with why. (cmdlines-proc has its fix on the Security page: the key proc-hidden.)
 INFO = {
     "units-root": M(
         "info.units-root",

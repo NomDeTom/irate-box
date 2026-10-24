@@ -56,7 +56,7 @@ on it. Every part but "id" and "order" is optional:
                                       the app's own page in /admin's Apps group
                                       holds them; title and icon name the page when the tile does not;
                                       page: drawn on the hub page itself, not as a tile (the shoutbox,
-                                      the board: M9), its width the setting named
+                                      the board), its width the setting named
   }
 
 Local add-ons: a static web app the owner adds from /admin, with
