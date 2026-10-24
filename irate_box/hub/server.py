@@ -1233,10 +1233,10 @@ DEFAULT_SETTINGS = {
     "signin_adaptive": False,
     "signin_common": True,
     "signin_known_by": "cookie",
-    # A password being set (accounts._valid_password): its least length (8, 12 or 15), its rules ("none", NIST's
+    # A password being set (accounts._valid_password): its least length (15 by default, 12 or 8), its rules ("none", NIST's
     # advice, "letters-digits" or "three-kinds"), and whether one of the 10,000 commonest is refused. Passwords
     # already set are not checked again.
-    "signin_min_length": 8,
+    "signin_min_length": 15,
     "signin_rules": "none",
     "signin_block_common": True,
     # A post is hidden (report_hide on) only once this many different people reported it: one person's reports

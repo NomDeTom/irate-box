@@ -40,14 +40,20 @@ def said(pw, name=None):
         return e.message["id"]
 
 
-check("by default: 8 characters taken", said("tide pool") is None)
-check("  7: refused, saying how long", said("tidepoo") == "accounts.password.length")
+check("by default: 15 characters (NIST's for a password that alone signs in)", said("tide pool at dusk") is None)
+check(
+    "  14: refused, saying how long",
+    said("tide pool at du") is None and said("tide pool at d") == "accounts.password.length",
+)
+choice["min_length"] = 8
+check("shortest 8 (the administrator's choice): 8 taken", said("tide pool") is None)
+check("  7: refused", said("tidepoo") == "accounts.password.length")
 check("  one of the commonest: refused", said("password1") == "accounts.password.common")
 check("  the username in it: refused", said("alice in chains", "alice") == "accounts.password.name")
 choice["block_common"] = False
 check("common passwords allowed (the administrator's choice): taken", said("password1") is None)
 choice["min_length"] = 15
-check("shortest 15: 12 refused", said("tide pool 12") == "accounts.password.length")
+check("back to 15: 12 refused", said("tide pool 12") == "accounts.password.length")
 try:
     A._valid_password("short", None)
 except A.AccountError as e:
@@ -65,6 +71,7 @@ choice.update(A.SIGNIN_DEFAULTS)
 
 # A password set before a stricter choice still signs in: the rules are for passwords being set.
 A.set_settings(signup="open")
+choice["min_length"] = 8
 A.signup("carol", "tide pool", "10.0.0.1")
 choice["min_length"], choice["rules"] = 15, "three-kinds"
 check(
