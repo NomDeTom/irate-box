@@ -3207,6 +3207,7 @@ def probe_tailscale(ctx, a, show):
 
 DECLARED = Path(__file__).with_name("declared.py")
 DECLARED_SECONDS = 2  # all of one manifest's checks; a pattern that needs longer is broken or hostile
+DECLARED_ROOT = Path(os.environ.get("HUB_PRESENT_ROOT", "/"))  # where a check's paths are read (tests move it)
 
 
 def run_declared(a, timeout=DECLARED_SECONDS):
@@ -3234,7 +3235,8 @@ def run_declared(a, timeout=DECLARED_SECONDS):
             )
         ]
     try:
-        r = _cmd(sys.executable, "-I", str(DECLARED), timeout=timeout, input=json.dumps(checks))
+        moved = [{**c, "path": str(DECLARED_ROOT / c["path"].lstrip("/"))} for c in checks]
+        r = _cmd(sys.executable, "-I", str(DECLARED), timeout=timeout, input=json.dumps(moved))
         got = {x["id"]: x for x in json.loads(r.stdout)} if r and r.returncode == 0 else None
     except subprocess.TimeoutExpired:
         return [
@@ -3262,7 +3264,7 @@ def run_declared(a, timeout=DECLARED_SECONDS):
                 evidence=[(r.stderr.strip().splitlines() or ["?"])[-1][:200]] if r else [],
             )
         ]
-    out = []
+    out, unread = [], {}
     for c in checks:
         res = got.get(c["id"]) or {"result": "unread", "detail": "no result"}
         if res["result"] == "fail":
@@ -3278,18 +3280,22 @@ def run_declared(a, timeout=DECLARED_SECONDS):
                 )
             )
         elif res["result"] != "pass":
-            out.append(
-                _issue(
-                    c["id"],
-                    "warn",
-                    M(
-                        "addon.declared.unread",
-                        "The doctor could not read what its check ({title}) looks at.",
-                        title=c["title"],
-                    ),
-                    evidence=[c["path"], res["detail"]],
-                )
+            unread.setdefault(c["path"], ([], res["detail"]))[0].append(c["title"])
+    # A file it cannot read is said once, with the checks it held back (as a probe's "config" point).
+    for path, (titles, detail) in unread.items():
+        out.append(
+            _issue(
+                "config",
+                "warn",
+                M(
+                    "addon.declared.unread",
+                    "The doctor could not read {path}, so these checks did not run: {titles}.",
+                    path=path,
+                    titles=titles,
+                ),
+                evidence=[path, detail],
             )
+        )
     return out
 
 
@@ -3553,7 +3559,7 @@ def step_addons(ctx):
                     user=who,
                 )
             )
-        probed = any(a["unit"].startswith(p) for p, _ in ADDON_PROBES)
+        probed = any(a["unit"].startswith(p) for p, _ in ADDON_PROBES) or bool(a.get("checks"))
         out.append(
             finding(
                 f"addon-{a['id']}",

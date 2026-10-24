@@ -75,7 +75,7 @@ check("a manifest with checks of each kind is valid", valid is True, valid)
 got = {i["key"]: i for i in sd.run_declared({"id": "made-up", "checks": CHECKS})}
 check(
     "the failing checks, and only those, are points",
-    sorted(got) == ["cloak", "max-conn-ip", "should-be-there", "too-open", "unreadable"],
+    sorted(got) == ["cloak", "config", "max-conn-ip", "should-be-there", "too-open"],
     sorted(got),
 )
 check("  a point with the check's status", got["too-open"]["status"] == "problem", got["too-open"])
@@ -92,9 +92,9 @@ check(
 check("a value below its minimum fails; one at it passes", "max-conn-ip" in got and "max-conn" not in got)
 check("equals, ignoring case when asked", "dns" not in got)
 check(
-    "a file it cannot read: a warning, not a pass",
-    got["unreadable"]["status"] == "warn" and "could not read" in render(got["unreadable"]["summary"]),
-    got["unreadable"],
+    "a file it cannot read: one warning naming the checks it held back, not a pass",
+    got["config"]["status"] == "warn" and "unreadable" in render(got["config"]["summary"]),
+    got["config"],
 )
 
 # A pattern that backtracks for ever: stopped, said once, and the doctor goes on.
