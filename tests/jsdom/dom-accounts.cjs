@@ -43,12 +43,12 @@ function page(file, url, fetcher, scripts) {
     && d.getElementById('acct-https-link').href === 'https://box.local/account.html');
   check('  asking, not making', !d.getElementById('acct-signup-form').hidden && t(d.getElementById('acct-signup-button')) === 'Request account');
   const sf = d.getElementById('acct-signup-form');
-  sf.elements.name.value = 'alice'; sf.elements.password.value = 'password1';
+  sf.elements.name.value = 'alice'; sf.elements.password.value = 'harbour lantern 1';
   sf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait();
   check('  Ask: sent with the page\'s header; says it waits for the admin', posted[0].b.action === 'signup' && posted[0].h['X-Irate-Account'] === '1'
     && /after an administrator approves it/.test(t(d.getElementById('acct-note'))));
   const lf = d.getElementById('acct-login-form');
-  lf.elements.name.value = 'alice'; lf.elements.password.value = 'password1';
+  lf.elements.name.value = 'alice'; lf.elements.password.value = 'harbour lantern 1';
   lf.dispatchEvent(new p.w.Event('submit', { cancelable: true })); await wait(300);
   // jsdom does not navigate; it says it was asked to. Where to is account.js's own line: next, else the hub.
   check('sign in: on to the hub (or ?next=), where the header has their buttons, not left on this page',

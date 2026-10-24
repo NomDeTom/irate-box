@@ -207,12 +207,18 @@ try:
         _, body = go("POST", "/admin/accounts", {"action": "make", "name": name, "role": role})
         visit(
             "/api/account",
-            body={"action": "code", "code": json.loads(body)["code"], "password": "correct horse " + name},
+            body={
+                "action": "code",
+                "code": json.loads(body)["code"],
+                "password": "correct horse staple " + str(len(name)),
+            },
             account=True,
             https=True,
         )
         _, jar[name] = visit(
-            "/api/account", body={"action": "login", "name": name, "password": "correct horse " + name}, account=True
+            "/api/account",
+            body={"action": "login", "name": name, "password": "correct horse staple " + str(len(name))},
+            account=True,
         )
     st, _ = go("POST", "/admin/visibility", {"app": "draw", "visible": "admin"})
     check("visible admin taken", st == 200, st)

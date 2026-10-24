@@ -1233,6 +1233,12 @@ DEFAULT_SETTINGS = {
     "signin_adaptive": False,
     "signin_common": True,
     "signin_known_by": "cookie",
+    # A password being set (accounts._valid_password): its least length (8, 12 or 15), its rules ("none", NIST's
+    # advice, "letters-digits" or "three-kinds"), and whether one of the 10,000 commonest is refused. Passwords
+    # already set are not checked again.
+    "signin_min_length": 8,
+    "signin_rules": "none",
+    "signin_block_common": True,
     # A post is hidden (report_hide on) only once this many different people reported it: one person's reports
     # count once, but a person with many devices or accounts can still be several.
     "report_hide_min": 3,
@@ -1421,6 +1427,10 @@ def valid_setting(key, value):
         return value in accounts.LEVELS
     if key == "signin_known_by":
         return value in accounts.KNOWN_BY
+    if key == "signin_min_length":
+        return type(value) is int and value in accounts.MIN_LENGTHS
+    if key == "signin_rules":
+        return value in accounts.RULES
     if key == "report_hide_min":
         return type(value) is int and 1 <= value <= 10
     if key == "storage_share":
@@ -3390,6 +3400,9 @@ accounts.SIGNIN = lambda: {
     "adaptive": settings_snapshot()["signin_adaptive"],
     "common": settings_snapshot()["signin_common"],
     "known_by": settings_snapshot()["signin_known_by"],
+    "min_length": settings_snapshot()["signin_min_length"],
+    "rules": settings_snapshot()["signin_rules"],
+    "block_common": settings_snapshot()["signin_block_common"],
 }
 store.ADMIN = lambda handler: (
     bool(FRONT_SECRET) and hmac.compare_digest(handler.headers.get(FRONT_HEADER, "").encode(), FRONT_SECRET.encode())

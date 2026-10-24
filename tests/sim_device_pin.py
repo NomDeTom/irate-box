@@ -83,7 +83,10 @@ try:
 
     go("POST", "/admin/accounts", {"action": "settings", "signup": "open"}, admin=True)
     st, d, alice = go(
-        "POST", "/api/account", {"action": "signup", "name": "alice", "password": "correct horse alice"}, account=True
+        "POST",
+        "/api/account",
+        {"action": "signup", "name": "alice", "password": "correct horse staple 1"},
+        account=True,
     )
     check("alice signs up on her phone, on the hotspot", st == 200 and alice, (st, d))
     sessions = json.loads((state / "accounts.json").read_text())["sessions"]
@@ -107,7 +110,7 @@ try:
     _, _, bob = go(
         "POST",
         "/api/account",
-        {"action": "signup", "name": "bob", "password": "correct horse bobby"},
+        {"action": "signup", "name": "bob", "password": "correct horse staple 2"},
         account=True,
         at="192.168.1.60",
     )

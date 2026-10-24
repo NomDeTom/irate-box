@@ -232,13 +232,13 @@ try:
     )
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "mallory", "role": "admin"})
     check("  nor an admin made on Accounts (the first admin is the set-up page's)", code == 403, (code, d))
-    code, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner"})
+    code, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-keeper"})
     check(
         "the first password over plain HTTP, not chosen: refused, said why",
         code == 403 and d.get("https") is False and d["message"]["id"] == "setup.http",
         (code, d),
     )
-    code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-owner", "over_http": True})
+    code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-keeper", "over_http": True})
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
     reqs = queued()
     check(
@@ -263,7 +263,7 @@ try:
     (st / "unclaimed").unlink()  # what the root helper's claim does
     acct = {"X-Irate-Account": "1", "Cookie": cookie}
     code, d, _ = req(
-        "/api/account", {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"}, headers=acct
+        "/api/account", {"action": "password", "old": "pw-of-the-keeper", "new": "pw-of-the-keeper-2"}, headers=acct
     )
     check(
         "after it, an admin's password over plain HTTP: refused, the English in error and the message beside it",
@@ -274,7 +274,7 @@ try:
     )
     code, d, _ = req(
         "/api/account",
-        {"action": "password", "old": "pw-of-the-owner", "new": "pw-of-the-owner-2"},
+        {"action": "password", "old": "pw-of-the-keeper", "new": "pw-of-the-keeper-2"},
         headers=dict(acct, **HTTPS),
     )
     check("  over HTTPS: changed", code == 200 and d.get("changed") is True, (code, d))
