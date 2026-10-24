@@ -14,6 +14,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Run with umask 022, as CI does: the toolkit cache must be root's alone (no group or other write), and a umask that
+# lets the group write (002, a desktop's default for a user's own group) fails that check, not the code.
+_mask = os.umask(0o022)
+os.umask(_mask)
+if _mask & 0o022 != 0o022:
+    sys.exit(f"FAIL run this test with umask 022 (it is {_mask:03o}): the toolkit cache must not be group-writable")
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="kitsusb-"))
 (T / "defs").mkdir()

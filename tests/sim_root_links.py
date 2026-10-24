@@ -20,6 +20,10 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.request import Request
 
+# Run as an ordinary user, as CI does: as root, root's code runs the copies as the hub account, which cannot read this
+# test's folders, and the test fails on that, not on the code. Said once, plainly, instead.
+if os.geteuid() == 0:
+    sys.exit("FAIL run this test as an ordinary user, not root (as root, its copies run as the hub account)")
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="root-links-"))
 STATE, ETC = T / "state", T / "etc"
