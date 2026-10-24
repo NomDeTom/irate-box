@@ -3912,7 +3912,7 @@ label > .select-chips {
 .aw-foot .aw-warn {
   flex-basis: 100%;
 }
-/* The warning sign larger than the line, to stand out (Tom, 2026-10-21). */
+/* The warning sign larger than the line, to stand out. */
 .aw-foot .aw-warn::before {
   content: "⚠️";
   font-size: 1.4em;

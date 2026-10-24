@@ -216,7 +216,7 @@ check(
     and "the access point aa:bb:cc:dd:ee:ff and the 2.4 GHz band" in netinv._english(h)["detail"],
     h,
 )
-# Power saving that is on is state, not a warning (Tom, 2026-10-21): the radio's card says where it is set.
+# Power saving that is on is state, not a warning: the radio's card says where it is set.
 check(
     "power saving on, the connection's or the box default's: no finding",
     ids(link_inv({**base, "powersave": 3})) == []

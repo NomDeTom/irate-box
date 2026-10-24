@@ -76,7 +76,7 @@ DRIVER_LINE = "aic8800: firmware not answering: resetting the device"
 # Boards with a power line for their WiFi chip that software can switch: (board model, the chip's USB id) → the rfkill
 # switch on that line. The Luckfox Lyra Zero W's AIC8800DC is enabled by GPIO1_C5, which its device tree hands to
 # Bluetooth's rfkill: off takes the whole chip off the bus, and on it comes back with its firmware loaded afresh
-# (2026-10-21), where a USB reset leaves it powered and, after a real stall, still stuck.
+# (as tested on the board), where a USB reset leaves it powered and, after a real stall, still stuck.
 CHIP_POWER = {("Luckfox Lyra Zero W", "a69c:88dc"): "bt_default"}
 POWER_OFF = 5  # seconds the chip is left without power
 

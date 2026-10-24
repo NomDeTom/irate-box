@@ -7713,8 +7713,8 @@ function netHead(title, kinds = [], state = null) {
   );
 }
 // A WiFi client's power saving as a setting: on or off as the radio reports it (iw), where that is set
-// (netinv.powersave_from), and a link to change it there. On is state, not a warning (item 157 will
-// let the radio's tests set it).
+// (netinv.powersave_from), and a link to change it there. On is state, not a warning (the radio's tests
+// may later set it).
 const POWER_SAVE_WORD = { on: "On", off: "Off", 3: "On", 2: "Off" };
 function powerSaveLine(device) {
   const pf = device.powersave_from || {};
@@ -8618,7 +8618,7 @@ document.getElementById("net-retry-go").addEventListener("click", () => {
   if (card.scrollIntoView) card.scrollIntoView({ block: "center" });
 });
 // The WiFi country (hub/wificountry.py): the kernel's now, and the one saved for boot, chosen from tzdata's list.
-// A setting: it asks nothing. A warning beside it says where the box and the choice disagree (Tom, 2026-10-21).
+// A setting: it asks nothing. A warning beside it says where the box and the choice disagree.
 // Drawn again only when what it shows changes, so a choice not yet saved isn't lost to the page's polling.
 let countryShown = null;
 function renderCountry(inv, busy) {
@@ -15511,7 +15511,7 @@ const PALETTE_STANDARD = {
 // Paired presets: a light accent a shade deeper than its dark one, so each reads on its own ground.
 const PALETTE_PRESETS = [
   ["standard", "Standard palette", {}],
-  // The standard's colours until 2026-10-22: quieter secondary text, a deeper dark accent (under 4.5:1 for secondary text).
+  // The standard's earlier colours: quieter secondary text, a deeper dark accent (under 4.5:1 for secondary text).
   [
     "low",
     "Standard, low contrast",

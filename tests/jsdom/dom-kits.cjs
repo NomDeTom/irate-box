@@ -188,7 +188,7 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
   check('no stray null or undefined on the page', !stray.length, stray.join(','));
   {
-    // Save only while something differs from what is saved (Tom, 2026-10-15: active with nothing changed).
+    // Save only while something differs from what is saved (not active with nothing changed).
     const c = card('Capture');
     const save = () => [...c.querySelectorAll('.aw-foot button')].find((b) => t(b) === 'Save');
     check('a toolkit opened: Save off, nothing changed', save() && save().disabled, save() && save().outerHTML);

@@ -296,14 +296,14 @@ try:
         "/admin/settings",
         page,
         json.dumps(
-            {"notice_text": "Back <online> at 6", "notice_until": later, "keeper_contact": "Tom, on #lobby"}
+            {"notice_text": "Back <online> at 6", "notice_until": later, "keeper_contact": "Sam, on #lobby"}
         ).encode(),
     )
     _, _, home = go("GET", "/")
     check(
         "a notice: at the top of the hub page, escaped; who looks after it at the foot",
         '<p class="hub-notice" role="status">Back &lt;online&gt; at 6</p>' in home
-        and "Looked after by: Tom, on #lobby" in home
+        and "Looked after by: Sam, on #lobby" in home
         and home.index("hub-notice") < home.index("services"),
         home[:900],
     )

@@ -3829,7 +3829,7 @@ def _running_for(unit):
 
 
 def check_watchdogs_alive(now=None):
-    """Item 162: a watchdog can hang behind a lock in the kernel (the Pi, 2026-10-21: a WiFi driver's scan held the
+    """A watchdog can hang behind a lock in the kernel (seen on a Pi: a WiFi driver's scan held the
     radio's lock, crash watch waited on it holding the network's, and all that touched the network queued behind).
     Its service then still reads active, and the hardware watchdog is still fed: nothing notices. Each watchdog
     writes its time; one active but silent for three of its rounds is stuck. Files and systemctl only, with time

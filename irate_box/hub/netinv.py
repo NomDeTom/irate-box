@@ -1122,8 +1122,8 @@ def _uplink_radio(inv):
 def powersave_from(r, nm):
     """Where a NetworkManager WiFi client's power saving is set, for its card: the network's own setting
     (2 off, 3 on), else the box's default for this interface or for every connection (both under
-    Default connection settings), else the driver's choice. Power saving that is on is state, not a warning (Tom, 2026-10-21: on by
-    default until the administrator sets it, or the radio's tests do, item 157)."""
+    Default connection settings), else the driver's choice. Power saving that is on is state, not a warning (on by
+    default until the administrator sets it, or the radio's tests do)."""
     p = r.get("profile") or {}
     if p.get("powersave") in (2, 3):
         return {
