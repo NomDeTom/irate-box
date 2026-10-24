@@ -48,6 +48,7 @@ What happens when one is added:
 | `needs` | the file that proves an install whole | a path inside the add-on |
 | `addon` | its title, a one-line summary, and the **consent** text the owner agrees to | all three required; say plainly what it downloads, from where, and what it does with the network |
 | `capabilities` | `connect`: what its pages may reach besides their own address (`{box}` is the hub itself), at most 8; `storage`: whether it keeps data in the visitor's browser | `ws://`, `wss://`, `http://`, `https://` only. Everything else it tries is blocked by its Content-Security-Policy |
+| `checks` | optional: what the doctors check of the add-on itself. `file` (owner, mode) and `config` (a line its file has, lacks or sets) with a `path` inside its own folder; `http` through the web server, with a `path` inside its own address (`via`: `front`). Each with an `id`, a `status` (`warn` or `problem`), a `title` and `says`; `"doctor": "box"` for the Box doctor (does it work) | Read only. A link in its folder is never followed. The format is in `irate_box/hub/manifests.py`; no unit checks, no repairs |
 
 Nothing else is allowed in a web add-on's manifest: no services, ports, units, install options
 or restarts. Those are the built-in add-ons in `apps.d/`, which need the installer and root.

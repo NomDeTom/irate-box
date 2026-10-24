@@ -37,6 +37,46 @@ def _open(path, follow):
         os.close(fd)
 
 
+def _under(root, rel):
+    """(a descriptor of the folder holding rel's last part, that part), walked from root one folder at a time with
+    O_NOFOLLOW: a link anywhere on the way, root itself included, is an OSError, never followed. For a local
+    add-on's files, in a folder the hub owns."""
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    parts = [p for p in rel.split("/") if p]
+    try:
+        for part in parts[:-1]:
+            nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+    except OSError:
+        os.close(fd)
+        raise
+    return fd, parts[-1]
+
+
+def _read_under(root, rel):
+    dfd, name = _under(root, rel)
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=dfd)
+    finally:
+        os.close(dfd)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(f"{rel} is not a regular file")
+        with os.fdopen(fd, "rb", closefd=False) as fh:
+            return fh.read(MAX_FILE).decode("utf-8", errors="replace")
+    finally:
+        os.close(fd)
+
+
+def _stat_under(root, rel):
+    dfd, name = _under(root, rel)
+    try:
+        return os.stat(name, dir_fd=dfd, follow_symlinks=False)
+    finally:
+        os.close(dfd)
+
+
 def _name(lookup, num):
     try:
         return lookup(num)[0]
@@ -47,13 +87,18 @@ def _name(lookup, num):
 def check_file(c):
     path = c["path"]
     try:
-        st = os.stat(path) if c.get("follow", True) else os.lstat(path)
+        if c.get("root"):
+            st = _stat_under(c["root"], path)
+        else:
+            st = os.stat(path) if c.get("follow", True) else os.lstat(path)
     except FileNotFoundError:
         return ("pass", "not there") if c.get("exists") is False else ("fail", "not there")
     except OSError as exc:
         return "unread", str(exc)
     if c.get("exists") is False:
         return "fail", "there"
+    if stat.S_ISLNK(st.st_mode):
+        return "fail", "a link"
     owner = _name(pwd.getpwuid, st.st_uid)
     if "owner" in c and owner != c["owner"]:
         return "fail", f"owned by {owner}"
@@ -68,7 +113,7 @@ def check_file(c):
 
 def check_config(c):
     try:
-        text = _open(c["path"], c.get("follow", True))
+        text = _read_under(c["root"], c["path"]) if c.get("root") else _open(c["path"], c.get("follow", True))
     except OSError as exc:
         return "unread", str(exc)
     flags = re.IGNORECASE if c.get("ignore_case") else 0

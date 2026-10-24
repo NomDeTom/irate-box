@@ -2366,6 +2366,7 @@ def check_addon_declared():
 
     try:
         found = manifests.load()
+        found += manifests.load_local(builtin=found)[0]
     except (manifests.ManifestError, OSError):
         return []
     out = []
@@ -2373,13 +2374,24 @@ def check_addon_declared():
         st = m.get("status") or {}
         if not any(c.get("doctor") == "box" for c in m.get("checks") or ()):
             continue
-        unit = st["unit"].replace("@hub.", f"@{HUB_USER}.")
-        if unit_props(unit).get("LoadState") != "loaded":
-            continue  # not installed
-        a = {"id": m["id"], "unit": unit, "port": st.get("port"), "checks": m["checks"]}
+        if m.get("local"):
+            # A local add-on: installed when its folder is there; no unit, so no repair.
+            if not Path(st["local_dir"]).is_dir():
+                continue
+            a = {"id": m["id"], "local": True, "root": st["local_dir"], "checks": m["checks"]}
+            unit = None
+        else:
+            unit = st["unit"].replace("@hub.", f"@{HUB_USER}.")
+            if unit_props(unit).get("LoadState") != "loaded":
+                continue  # not installed
+            a = {"id": m["id"], "unit": unit, "port": st.get("port"), "checks": m["checks"]}
         title = named(st.get("name") or m["id"], M("addon-check.role", "add-on"))
         for i in secdoctor.run_declared(a, doctor="box"):
-            repair = {"restart": action(f"unit-restart:{unit}", RESTART), "rerun-install": RERUN}.get(i.get("repair"))
+            repair = (
+                {"restart": action(f"unit-restart:{unit}", RESTART), "rerun-install": RERUN}.get(i.get("repair"))
+                if unit
+                else None
+            )
             out.append(
                 finding(
                     f"addon-check:{m['id']}-{i['key']}",
