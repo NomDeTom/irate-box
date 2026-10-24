@@ -2304,6 +2304,59 @@ def check_port_80():
     ]
 
 
+def check_addon_front():
+    """Each running web add-on (a manifest's status with a port, a route and a unit), asked through the web server
+    as a guest's browser would (webprobe.through_front): does it answer there. A 502, 503 or 504, or nothing,
+    is a problem, with a restart. Whether the web server keeps its sign-in is the Security doctor's."""
+    from irate_box.hub import manifests
+    from irate_box.root import webprobe
+
+    try:
+        found = manifests.load()
+    except (manifests.ManifestError, OSError):
+        return []
+    out = []
+    for m in found:
+        st = m.get("status") or {}
+        if not (st.get("port") and st.get("path") and st.get("unit")):
+            continue
+        unit = st["unit"].replace("@hub.", f"@{HUB_USER}.")
+        if unit_props(unit).get("ActiveState") != "active":
+            continue  # not running: the units check says so
+        title = named(st.get("name") or m["id"], M("addon-front.role", "through the web server"))
+        r, url = webprobe.through_front(st["path"])
+        if not r["http"] or r["status"] in (502, 503, 504):
+            out.append(
+                finding(
+                    f"addon-front:{m['id']}",
+                    title,
+                    "problem",
+                    M(
+                        "addon-front.down",
+                        "It runs, but it does not answer through the web server.",
+                    ),
+                    M(
+                        "addon-front.down.why",
+                        "Its page shows an error, or nothing, to everyone who opens it.",
+                    ),
+                    M("addon-front.down.fix", "Start it again. If that does not help, run the installer again."),
+                    evidence=[f"GET {url}: {r['status'] if r['http'] else r['error']}"],
+                    actions=[action(f"unit-restart:{unit}", RESTART), RERUN],
+                )
+            )
+        else:
+            out.append(
+                finding(
+                    f"addon-front:{m['id']}",
+                    title,
+                    "ok",
+                    M("addon-front.up", "It answers through the web server."),
+                    evidence=[f"GET {url}: {r['status']}"],
+                )
+            )
+    return out
+
+
 def check_git_addon():
     """Two questions, once Git is removed (the marker): was it meant to go, and are its servers gone? A removal
     cut short leaves the units or cgit's files behind. While Git is on, check_units asks after its socket."""
@@ -3892,6 +3945,7 @@ def scan():
         check_web,
         check_port_80,
         check_git_addon,
+        check_addon_front,
         check_uplink,
         check_inventory,
         check_hotspot,

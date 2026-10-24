@@ -154,6 +154,16 @@ With the `network` block in the manifest, and no code of your own:
 - **The box doctor** treats its unit as irate-box's: expected running when its `--with-` option is in the
   install record, restartable from the page.
 
+With a web page (`status` with a `port` and a `path`), while it runs:
+
+- **The security doctor** asks it straight on its port, past the web server where the hub's sign-ins are kept
+  (`root/webprobe.py`): does it serve its pages with no sign-in of its own (a warning on loopback, a problem where
+  the box's other addresses reach it), does it believe a forged proxy's headers, does it let any website call it.
+  And through the web server: is the access chosen for it kept. Only reads: GET and OPTIONS, no body, no
+  password, never the web server's secret.
+- **The box doctor** asks it through the web server, as a guest's browser would: an error or nothing is a
+  problem, with "Start it again".
+
 **Services nobody declared** (the owner's own, or the image's) are handled too, with options from the safest:
 the Security page offers to stop and disable one, keeps it off the hotspot while the hotspot firewall is on (and says so),
 or opens its port to hotspot guests if the owner chooses; the box doctor gives each failed one a finding of its

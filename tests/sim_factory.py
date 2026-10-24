@@ -919,7 +919,10 @@ check(
     "  what builds take, said",
     f.get("builds-disk", {}).get("status") in ("ok", "warn") and f["builds-disk"]["summary"]["args"]["mb"] >= 0,
 )
-check("  in the scan", "check_builds" in (REPO / "irate_box/root/health.py").read_text().split("def scan")[1][:400])
+check(
+    "  in the scan",
+    "check_builds" in (REPO / "irate_box/root/health.py").read_text().split("def scan")[1].split("\ndef ")[0],
+)
 
 # A run cut off by a restart (item 155): its status still says running. Shown as interrupted at
 # once; written down as such when the builder next starts; then it can be deleted, and built again.

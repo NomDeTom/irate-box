@@ -3406,6 +3406,8 @@ def step_addons(ctx):
             # The checks its manifest declares; a point a probe already makes is not made twice.
             made = {i["key"] for i in issues}
             issues += [i for i in run_declared(a) if i["key"] not in made]
+        if active and a.get("port") and a.get("path"):
+            issues += web_points(a, ctx.setdefault("box_addresses", _box_addresses()))
         for prefix, probe in ADDON_PROBES:
             if a["unit"].startswith(prefix):
                 try:
@@ -7148,6 +7150,129 @@ def _ssh_log_since(days=REACH_DAYS):
         return ""
     m = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})", first)
     return m.group(1).replace("T", " ") if m else ""
+
+
+def _box_addresses():
+    """The box's own addresses beside loopback, as "address (interface)": IPv4, and IPv6 beyond the link."""
+    try:
+        r = _cmd("ip", "-o", "addr", "show", timeout=20)
+    except subprocess.SubprocessError:
+        return []
+    out = []
+    for line in (r.stdout if r else "").splitlines():
+        f = line.split()
+        if len(f) > 3 and f[2] in ("inet", "inet6"):
+            addr = f[3].split("/")[0]
+            if not (addr.startswith("127.") or addr == "::1" or addr.lower().startswith("fe80")):
+                out.append(f"{addr} ({f[1]})")
+    return out
+
+
+def web_points(a, addresses):
+    """A web add-on asked straight on its port, past the web server where the hub's sign-ins are kept, and
+    through the web server, as issues. Past it: does it serve its pages with no sign-in, on which of the box's
+    addresses, does it believe a forged proxy's headers, does it let any site call it. Through it: does the front
+    keep the access chosen for it. Only reads (webprobe.py); a port that does not speak HTTP is left to the
+    listener and firewall checks."""
+    from irate_box.hub import access as acc
+    from irate_box.root import webprobe
+
+    mode = acc.mode_of(acc.read(ETC / "access.json"), a["id"]) if a["id"] in acc.ROUTED else "public"
+    gated = mode in ("users", "private", "off") or acc.ROUTED.get(a["id"], ("", False))[1]
+    port = a["port"]
+    got = webprobe.leaks(port, a["path"], [x.split(" ")[0] for x in addresses], gated)
+    if not got["http"]:
+        return []
+    asked = f"GET {got['path']} → 127.0.0.1:{port}: {got['status']}"
+    reach = [x for x in addresses if x.split(" ")[0] in got["reach"]]
+    where = "problem" if reach else "warn"
+    out = []
+    if gated and got["open"]:
+        out.append(
+            _issue(
+                "web-open",
+                where,
+                M(
+                    "addon.web.open.reach",
+                    "It serves its pages straight on its port {port}, with no sign-in, at {addresses}. The web "
+                    "server's sign-in does not cover it there.",
+                    port=port,
+                    addresses=reach,
+                )
+                if reach
+                else M(
+                    "addon.web.open.local",
+                    "It serves its pages straight on its port {port} on this box, with no sign-in of its own.",
+                    port=port,
+                ),
+                M("addon.web.open.reach.why", "Anyone who can reach those addresses opens it without signing in.")
+                if reach
+                else M(
+                    "addon.web.open.local.why",
+                    "Any program or account on the box can open it past the web server, without signing in.",
+                ),
+                M("addon.web.open.fix", "Make it listen on 127.0.0.1 only, so the web server is the only way in.")
+                if reach
+                else M(
+                    "addon.web.open.local.fix",
+                    "Give it a sign-in of its own, or let only the web server reach it.",
+                ),
+                evidence=[asked, *reach],
+            )
+        )
+    if got["forged"]:
+        out.append(
+            _issue(
+                "web-forged",
+                where,
+                M(
+                    "addon.web.forged",
+                    "It lets a request in when the request carries a web server's headers, with no proof that the "
+                    "web server sent it.",
+                ),
+                M("addon.web.forged.why", "Anyone who reaches its port can claim to be signed in."),
+                M(
+                    "addon.web.forged.fix",
+                    "Make it trust those headers only from the web server, or listen on 127.0.0.1 only.",
+                ),
+                evidence=[asked, "with " + ", ".join(sorted(webprobe.FORGED)), *reach],
+            )
+        )
+    if got["cors"]:
+        out.append(
+            _issue(
+                "web-cors",
+                where,
+                M(
+                    "addon.web.cors",
+                    "It lets a page from any website call it from a visitor's browser.",
+                ),
+                M("addon.web.cors.why", "A page a visitor opens elsewhere can use it with the visitor's access."),
+                M("addon.web.cors.fix", "In its cross-origin settings, let only its own origin call it."),
+                evidence=[f"OPTIONS {got['path']} Origin: {webprobe.FOREIGN} → Allow-Origin: {got['allow']}"],
+            )
+        )
+    if gated:
+        front, url = webprobe.through_front(a["path"])
+        if webprobe.ok(front):
+            out.append(
+                _issue(
+                    "web-front",
+                    "problem",
+                    M(
+                        "addon.web.front.open",
+                        "The web server lets anyone open it without signing in, though its access is {mode}.",
+                        mode=mode,
+                    ),
+                    M("addon.web.front.open.why", "The access chosen for it is not kept."),
+                    M(
+                        "addon.web.front.open.fix",
+                        "Run the installer again, so the web server's settings match the access chosen for it.",
+                    ),
+                    evidence=[f"GET {url}: {front['status']}"],
+                )
+            )
+    return out
 
 
 def _global_v6():
