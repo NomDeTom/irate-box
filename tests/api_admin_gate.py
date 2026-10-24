@@ -33,7 +33,8 @@ def check(name, cond, info=""):
 
 
 try:
-    for _ in range(50):
+    # Up to 30 s for the hub to start, as for the second hub below: a busy runner takes more than 5.
+    for _ in range(300):
         try:
             http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status")
             break
