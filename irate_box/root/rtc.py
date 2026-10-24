@@ -461,7 +461,10 @@ def kernel_driver(chip):
 def find():
     """Every I2C bus, every clock address: what answers, and what it looks like."""
     if not FAKE:
-        subprocess.run(["modprobe", "i2c-dev"], capture_output=True)  # noqa: TID251
+        try:
+            subprocess.run(["modprobe", "i2c-dev"], capture_output=True)  # noqa: TID251
+        except OSError:
+            pass  # no modprobe: buses() lists what the kernel already has
     out = {"at": time.time(), "buses": buses(), "found": [], "busy": []}
     for bus in out["buses"]:
         for addr in ADDRESSES:
@@ -527,7 +530,10 @@ def kernel_rtc_dev(cfg):
     if not node.exists():
         drv = cfg.get("driver") or {}
         if drv.get("kind") == "module":
-            subprocess.run(["modprobe", drv["module"]], capture_output=True)  # noqa: TID251
+            try:
+                subprocess.run(["modprobe", drv["module"]], capture_output=True)  # noqa: TID251
+            except OSError:
+                pass  # no modprobe: a driver built in, or already loaded, still declares the device below
         try:
             Path(f"/sys/bus/i2c/devices/i2c-{bus}/new_device").write_text(f"{drv['name']} {addr:#04x}")
         except OSError as exc:
@@ -608,7 +614,12 @@ def write_module(cfg, epoch):
 
 
 def ntp_synced():
-    out = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True)  # noqa: TID251
+    try:
+        out = subprocess.run(  # noqa: TID251
+            ["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True
+        )
+    except OSError:
+        return False
     return out.stdout.strip() == "yes"
 
 
@@ -946,9 +957,12 @@ def status():
         return None
     out = {"config": cfg, "units": {}, "last": None}
     for unit in ("irate-box-rtc.service", "irate-box-rtc-save.timer"):
-        out["units"][unit] = subprocess.run(  # noqa: TID251
-            ["systemctl", "is-active", unit], capture_output=True, text=True
-        ).stdout.strip()
+        try:
+            out["units"][unit] = subprocess.run(  # noqa: TID251
+                ["systemctl", "is-active", unit], capture_output=True, text=True
+            ).stdout.strip()
+        except OSError:
+            out["units"][unit] = "unknown"
     try:
         out["last"] = json.loads(STATUS.read_text())
     except (OSError, ValueError):

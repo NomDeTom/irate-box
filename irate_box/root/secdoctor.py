@@ -36,6 +36,7 @@ import stat
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
 from irate_box.finding import current, finding
@@ -114,18 +115,32 @@ def _uid_of(name):
         return None
 
 
+# The programs a check looked for and did not find, this run: {program: the ids of the steps that wanted it}.
+MISSING = {}
+_STEP = [None]  # the step running now, so a missing program is said with the checks it held back
+
+
+def _missing(name):
+    MISSING.setdefault(Path(str(name)).name, set()).add(_STEP[0])
+
+
+def _cmd(*argv, timeout=60, **kw):
+    """The doctor's one way to run a program: its result, or None when it is not installed or cannot start (noted in
+    MISSING). A timeout still raises subprocess.TimeoutExpired, for the caller to say."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, **kw)  # noqa: TID251
+    except OSError:
+        _missing(argv[0])
+        return None
+
+
 def _sc(*args):
     """`systemctl` output, or "" when systemd is not there. Only read-only verbs are used."""
     try:
-        r = subprocess.run(  # noqa: TID251
-            ("systemctl", "--no-pager", *args),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
+        r = _cmd("systemctl", "--no-pager", *args, timeout=30)
+    except subprocess.SubprocessError:
         return ""
-    return r.stdout if r.returncode == 0 else ""
+    return r.stdout if r and r.returncode == 0 else ""
 
 
 def _show(unit, *props):
@@ -2267,15 +2282,10 @@ def _ci_nft():
     loaded. IPAddressDeny does not work on vendor kernels that cannot attach systemd's cgroup programs.
     """
     try:
-        r = subprocess.run(  # noqa: TID251
-            ("nft", "list", "table", "inet", "irate_box_ci"),
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-    except (OSError, subprocess.SubprocessError):
+        r = _cmd("nft", "list", "table", "inet", "irate_box_ci", timeout=20)
+    except subprocess.SubprocessError:
         return None
-    return r.stdout if r.returncode == 0 and re.search(r'skuid "?hubci"? oif "?lo"? drop', r.stdout) else None
+    return r.stdout if r and r.returncode == 0 and re.search(r'skuid "?hubci"? oif "?lo"? drop', r.stdout) else None
 
 
 def step_units(ctx):
@@ -2571,8 +2581,10 @@ def _requested_options():
 def _listening():
     """{port: [addresses]} of every TCP/UDP listener, loopback included; None if ss is missing."""
     try:
-        r = subprocess.run(("ss", "-H", "-ltnu"), capture_output=True, text=True, timeout=20)  # noqa: TID251
-    except (OSError, subprocess.SubprocessError):
+        r = _cmd("ss", "-H", "-ltnu", timeout=20)
+    except subprocess.SubprocessError:
+        return None
+    if r is None:
         return None
     found = {}
     for line in r.stdout.splitlines():
@@ -3126,9 +3138,9 @@ def probe_ttyd(ctx, a, show):
 
 def probe_tailscale(ctx, a, show):
     try:
-        r = subprocess.run(("tailscale", "debug", "prefs"), capture_output=True, text=True, timeout=20)  # noqa: TID251
-        prefs = json.loads(r.stdout)
-    except (OSError, subprocess.SubprocessError, ValueError):
+        r = _cmd("tailscale", "debug", "prefs", timeout=20)
+        prefs = json.loads(r.stdout if r else "")
+    except (subprocess.SubprocessError, ValueError):
         return [
             _issue(
                 "config",
@@ -4825,12 +4837,9 @@ def _debsecan_command(work):
     for d in debs.values():
         if d.name in damaged:
             return None, f"{d.name} in the security kit's cache fails its check"
-        r = subprocess.run(  # noqa: TID251
-            ["dpkg-deb", "-x", str(d), str(work)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        r = _cmd("dpkg-deb", "-x", str(d), str(work), timeout=120)
+        if r is None:
+            return None, f"unpacking {d.name}: dpkg-deb is not installed"
         if r.returncode != 0:
             return None, f"unpacking {d.name}: {r.stderr.strip()[:200]}"
     return [sys.executable, str(work / "usr" / "bin" / "debsecan")], {
@@ -4946,13 +4955,7 @@ def _debsecan(cmd, env, suite, status=None, timeout=900, feed=DEBSECAN_FEED):
     if status:
         args += ["--status", str(status)]
     try:
-        r = subprocess.run(  # noqa: TID251
-            args,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=dict(os.environ, **env),
-        )
+        r = _cmd(*args, timeout=timeout, env=dict(os.environ, **env))
     except subprocess.TimeoutExpired as exc:
         try:
             load = Path("/proc/loadavg").read_text().split()[1]
@@ -4961,6 +4964,8 @@ def _debsecan(cmd, env, suite, status=None, timeout=900, feed=DEBSECAN_FEED):
         raise RuntimeError(
             f"debsecan took over {timeout // 60} minutes (the box's load: {load}); run the doctor again when it is quieter"
         ) from exc
+    if r is None:
+        raise RuntimeError(f"{args[0]} could not start debsecan")
     if r.returncode != 0:
         raise RuntimeError((r.stderr.strip().splitlines() or ["debsecan failed"])[-1][:300])
     out = {}
@@ -4984,13 +4989,10 @@ def _debsecan(cmd, env, suite, status=None, timeout=900, feed=DEBSECAN_FEED):
 
 
 def _sources():
-    """{binary package: its source package}, from dpkg."""
-    r = subprocess.run(  # noqa: TID251
-        ["dpkg-query", "-W", "-f", "${Package}\t${source:Package}\n"],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    """{binary package: its source package}, from dpkg; empty with no dpkg."""
+    r = _cmd("dpkg-query", "-W", "-f", "${Package}\t${source:Package}\n", timeout=60)
+    if r is None:
+        return {}
     return dict(line.split("\t", 1) for line in r.stdout.splitlines() if "\t" in line)
 
 
@@ -7088,29 +7090,25 @@ def _public(addr):
 def _ssh_public(days=REACH_DAYS):
     """{address: (accepted, other)} from sshd's log, public addresses only; None if unreadable."""
     try:
-        r = subprocess.run(  # noqa: TID251
-            (
-                "journalctl",
-                "-q",
-                "--no-pager",
-                "-o",
-                "cat",
-                "--since",
-                f"-{days}d",
-                "-u",
-                "ssh.service",
-                "-u",
-                "sshd.service",
-                "-u",
-                "ssh.socket",
-            ),
-            capture_output=True,
-            text=True,
+        r = _cmd(
+            "journalctl",
+            "-q",
+            "--no-pager",
+            "-o",
+            "cat",
+            "--since",
+            f"-{days}d",
+            "-u",
+            "ssh.service",
+            "-u",
+            "sshd.service",
+            "-u",
+            "ssh.socket",
             timeout=60,
         )
-    except (OSError, subprocess.SubprocessError):
+    except subprocess.SubprocessError:
         return None
-    if r.returncode != 0:
+    if r is None or r.returncode != 0:
         return None
     seen = {}
     for line in r.stdout.splitlines():
@@ -7147,6 +7145,9 @@ def _ssh_log_since(days=REACH_DAYS):
         first = p.stdout.readline()
         p.kill()
         p.wait(timeout=10)
+    except FileNotFoundError:
+        _missing("journalctl")
+        return ""
     except (OSError, subprocess.SubprocessError):
         return ""
     m = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})", first)
@@ -7155,13 +7156,10 @@ def _ssh_log_since(days=REACH_DAYS):
 
 def _global_v6():
     try:
-        r = subprocess.run(  # noqa: TID251
-            ("ip", "-6", "-o", "addr", "show", "scope", "global"),
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-    except (OSError, subprocess.SubprocessError):
+        r = _cmd("ip", "-6", "-o", "addr", "show", "scope", "global", timeout=20)
+    except subprocess.SubprocessError:
+        return []
+    if r is None:
         return []
     out = []
     for line in r.stdout.splitlines():
@@ -7430,6 +7428,47 @@ def step_firewall(ctx):
     ]
 
 
+def step_tools(ctx):
+    """The programs the earlier steps looked for and did not find, each with the checks it held back: one finding a
+    program, which the owner can accept on a box that does without it. A step that stopped for a missing program
+    already said so (<step>-missing); it is not named again here."""
+    title = M("tools.title", "Programs the checks need")
+    names = {step[0]: step[1] for step in STEPS}
+    out = []
+    for tool in sorted(MISSING):
+        held = [names[s] for s in sorted(MISSING[tool], key=str) if s in names]
+        if not held and None not in MISSING[tool]:
+            continue  # its step said so already
+        out.append(
+            finding(
+                "tools-" + (re.sub(r"[^a-z0-9]+", "-", tool.lower()).strip("-") or "unknown"),
+                title,
+                "warn",
+                M(
+                    "tools.missing",
+                    "{tool} is not installed, so these checks could not do all they look for: {steps}.",
+                    tool=tool,
+                    steps=held,
+                )
+                if held
+                # Looked for while the doctor read the box before its steps: every step that reads that state.
+                else M(
+                    "tools.missing.start",
+                    "{tool} is not installed, so the checks that read what it reports could not do all they look for.",
+                    tool=tool,
+                ),
+                M("tools.missing.why", "A problem those checks would find can stay unseen."),
+                M(
+                    "tools.missing.fix",
+                    "Install {tool}. If this box does without it on purpose, select Accept risk.",
+                    tool=tool,
+                ),
+                evidence=[tool],
+            )
+        )
+    return out or [finding("tools", title, "ok", M("tools.all", "Every program the checks look for is installed."))]
+
+
 STEPS = [
     ("notes", M("step.notes", "Notes add-on"), step_notes),
     ("firewall", M("step.firewall", "Hotspot firewall"), step_firewall),
@@ -7509,6 +7548,7 @@ STEPS = [
     ("mqtt", M("step.mqtt", "MQTT broker and the mesh decoder"), step_mqtt),
     ("internet", M("step.internet", "Reached from the internet"), step_internet),
     ("offline", M("step.offline", "Offline readiness"), step_offline),
+    ("tools", M("step.tools", "Programs the checks need"), step_tools),
 ]
 
 # What the box's state cannot show, so the report says so instead of implying a clean bill.
@@ -7604,29 +7644,61 @@ def make_context():
 
 
 def run_step(sid, fn, ctx):
+    _STEP[0] = sid
     try:
         return fn(ctx)
-    except Exception as exc:  # noqa: BLE001 - one broken check must not hide the rest
+    except FileNotFoundError as exc:
+        # A program another module runs for this check is not installed (raised from starting it, not from a file
+        # that is not there): said as such, and as a finding the owner can accept on a box that does without it.
+        if not any(fr.filename.endswith("subprocess.py") for fr in traceback.extract_tb(exc.__traceback__)):
+            return _step_failed(sid, exc)
+        tool = Path(str(exc.filename or "?")).name
+        _missing(tool)
+        MISSING[tool].discard(sid)
         return [
             finding(
-                f"{sid}-error",
-                M("step.failed.title", "Check failed"),
+                f"{sid}-missing",
+                M("step.missing.title", "Check not done"),
                 "warn",
                 M(
-                    "step.failed",
-                    "This check stopped with an error, so its results are missing.",
+                    "step.missing",
+                    "This check needs {tool}, which is not installed, so its results are missing.",
+                    tool=tool,
                 ),
+                M("step.missing.why", "A problem this check would find stays unseen."),
                 M(
-                    "step.failed.why",
-                    "The cause can be the state of the box, or a flaw in the check itself.",
-                ),
-                M(
-                    "step.failed.fix",
-                    "Run the doctor again. If the error stays, report it with the text below.",
+                    "step.missing.fix",
+                    "Install {tool}. If this box does without it on purpose, select Accept risk.",
+                    tool=tool,
                 ),
                 evidence=[f"{type(exc).__name__}: {exc}"],
             )
         ]
+    except Exception as exc:  # noqa: BLE001 - one broken check must not hide the rest
+        return _step_failed(sid, exc)
+
+
+def _step_failed(sid, exc):
+    return [
+        finding(
+            f"{sid}-error",
+            M("step.failed.title", "Check failed"),
+            "warn",
+            M(
+                "step.failed",
+                "This check stopped with an error, so its results are missing.",
+            ),
+            M(
+                "step.failed.why",
+                "The cause can be the state of the box, or a flaw in the check itself.",
+            ),
+            M(
+                "step.failed.fix",
+                "Run the doctor again. If the error stays, report it with the text below.",
+            ),
+            evidence=[f"{type(exc).__name__}: {exc}"],
+        )
+    ]
 
 
 def audit(progress=None):
@@ -7648,6 +7720,7 @@ def audit(progress=None):
             "listening": None,
         }
     steps = []
+    MISSING.clear()
     for n, (sid, title, fn) in enumerate(STEPS, 1):
         found = run_step(sid, fn, ctx)
         steps.append({"id": sid, "title": title, "findings": found})

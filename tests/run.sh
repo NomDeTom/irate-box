@@ -63,6 +63,7 @@ run sim_account_nav.py
 run sim_health_accept.py
 run sim_clock_sources.py
 run sim_secdoctor_accounts.py
+run sim_secdoctor_missing.py
 run sim_secdoctor_sandbox.py
 run sim_ap_refresh.py
 run sim_helper_busy.py
