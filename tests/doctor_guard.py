@@ -36,7 +36,7 @@ check(
     all(c == 1 for c in ids.values()),
     [i for i, c in ids.items() if c > 1],
 )
-fns = [e.elts[3].id for e in steps.value.elts]
+fns = [e.elts[2].id for e in steps.value.elts]
 check(
     "every step names a function of its own",
     len(fns) == len(set(fns)),

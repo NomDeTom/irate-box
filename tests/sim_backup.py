@@ -295,7 +295,7 @@ from irate_box.root import usbstick as U
 
 card = T / "card.img"
 card.write_bytes(os.urandom(300_000) + b"\0" * 700_000)
-# The box mounts the stick itself (usbstick.Mounted, audit M7): its mount, stood in, is this folder.
+# The box mounts the stick itself (usbstick.Mounted): its mount, stood in, is this folder.
 U.MOUNT_ROOT = T / "mounts"
 stick = U.MOUNT_ROOT / "sdz1"
 stick.mkdir(parents=True)
@@ -364,7 +364,7 @@ try:
 except ValueError as exc:
     why = getattr(exc, "message", {}).get("id")
 check(
-    "onto a stick already mounted elsewhere: refused, nothing written there (M7)",
+    "onto a stick already mounted elsewhere: refused, nothing written there",
     why == "usb.device.mounted-elsewhere" and list(elsewhere.iterdir()) == [],
     why,
 )

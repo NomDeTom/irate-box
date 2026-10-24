@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""One Save and Discard on /admin (the save-patterns plan): every primary Save is a section's (AW.section in
+"""One Save and Discard on /admin: every primary Save is a section's (AW.section in
 web/admin-widgets.js), so it keeps one set of rules: compared with what is saved, Discard beside it, one question at
 Save, the draft kept until the save is done. Read as text, nothing run; tests/jsdom/dom-save-guard.cjs checks the
 pages as drawn.

@@ -59,7 +59,7 @@ if [ "$YES" != 1 ]; then
 	[ "${answer,,}" = y ] || { echo "Stopped. Nothing was changed."; exit 0; }
 fi
 
-# The hotspot first, while its code is still here (audit M6): off, and its units, connection and files gone. Its
+# The hotspot first, while its code is still here: off, and its units, connection and files gone. Its
 # firewall (irate-box-firewall.service, below) goes only after that: a hotspot left up without it would hand guests
 # an unfiltered way onto the box. When the hotspot cannot be confirmed off, stop here with the firewall in place.
 say "Turning off the hotspot"

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Polling and a selection, in jsdom (the save-patterns plan, phase 7): with text selected on /admin, each pane's poll
+// Polling and a selection, in jsdom: with text selected on /admin, each pane's poll
 // that brings nothing new replaces none of the text, so the selection (and a copy in progress) stays; text that did
 // change is drawn as ever. BASE is a hub of this checkout (tests/jsdom/run.sh starts one), read as admin with
 // FRONT_SECRET; each answer is kept and given again, as a poll that brings nothing new.
@@ -71,7 +71,7 @@ const LOADERS = ['loadLibrary', 'loadPackages', 'loadBox', 'loadModeration', 'lo
   check('text that changed is drawn while selected', box.textContent === 'after' && list.textContent === 'two');
   sel.removeAllRanges();
 
-  // AW.drawKept (admin pages plan, phase 4): a block whose cards hold fields, or values that move at every poll.
+  // AW.drawKept: a block whose cards hold fields, or values that move at every poll.
   const card = (name, signal, value = '') => {
     const c = d.createElement('div');
     c.className = 'card';

@@ -164,7 +164,7 @@ try:
     rid = REAL_QUEUE({"action": "app-install", "app": "eliza", "zip": "/x.zip"})
     got = json.loads((C / "requests" / f"{rid}.json").read_text())
     check(
-        "a root request is queued with control/ not writable (root's, F3)",
+        "a root request is queued with control/ not writable (root's)",
         got == {"action": "app-install", "app": "eliza", "zip": "/x.zip", "id": rid} or os.geteuid() == 0,
         got,
     )
@@ -173,7 +173,7 @@ try:
         stat.S_IMODE((C / "requests" / f"{rid}.json").stat().st_mode) == 0o600 and not list(T.glob(".request-*.tmp")),
     )
 except OSError as exc:
-    check("a root request is queued with control/ not writable (root's, F3)", False, exc)
+    check("a root request is queued with control/ not writable (root's)", False, exc)
 finally:
     C.chmod(0o755)
 

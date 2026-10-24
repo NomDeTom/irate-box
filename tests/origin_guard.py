@@ -190,7 +190,7 @@ check(
     ],
 )
 admin = by_port.get(("8095",), "")
-# The administration pages (audit M3, the wider class): an origin of their own. The hub's port only redirects.
+# The administration pages: an origin of their own. The hub's port only redirects.
 check(
     "/admin on the hub's port redirects to the administration port (its TLS twin over HTTPS), path and query kept",
     "location = /admin { return 302 $scheme://$host:$irate_box_admin_port/admin/; }" in hub
@@ -308,7 +308,7 @@ check(
 )
 check("the notes port serves nothing but notes", "location / { return 404; }" in notes)
 
-# Excalidraw, Mermaid and Syncthing's web page: an origin each (audit M3, the wider class). The hub's port redirects.
+# Excalidraw, Mermaid and Syncthing's web page: an origin each. The hub's port redirects.
 draw, mermaid_, syncb = (by_port.get((p,), "") for p in ("8096", "8097", "8098"))
 for app, port in (
     ("draw", "irate_box_draw_port"),
@@ -423,7 +423,7 @@ check(
     caddy.count('header_up Cookie "irate_session=[^;]*;?\\s*" ""') == 9,
     caddy.count("header_up Cookie"),
 )
-# Caddy, the fallback: the same origins (audit M3). Each site with its snippet in place.
+# Caddy, the fallback: the same origins. Each site with its snippet in place.
 csites = {tuple(p): b for p, b in secdoctor._caddy_servers(secdoctor.parse_caddy(caddy))}
 chub, cnotes, cwiki, cgit_ = (csites.get((p,), "") for p in ("80", "8091", "8092", "8093"))
 check(

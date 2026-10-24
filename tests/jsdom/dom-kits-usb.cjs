@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// A toolkit import from a USB drive that the clock cannot date (audit M10): the refusal offers an import without a
+// A toolkit import from a USB drive that the clock cannot date: the refusal offers an import without a
 // freshness check, behind a confirmation, and only for that refusal. Usage: [JSDOM=/path/to/node_modules/jsdom] node dom-kits-usb.cjs
 const { JSDOM } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');

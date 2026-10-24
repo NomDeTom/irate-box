@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The store's budget (audit H3): an item larger than the whole budget is refused before anything is
+"""The store's budget: an item larger than the whole budget is refused before anything is
 evicted, and an item that fits is never evicted by its own write. python3 tests/sim_store_quota.py"""
 
 import shutil

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""What a guest can send that the hub must answer rather than drop (audit L6-L9), against a hub it starts: JSON
+"""What a guest can send that the hub must answer rather than drop, against a hub it starts: JSON
 nested deeper than Python recurses, a negative Content-Length, a hue of 1e999, and a signature cookie that is
 not ASCII. Each gets an answer, and the hub still answers after. python3 tests/api_parsing.py"""
 

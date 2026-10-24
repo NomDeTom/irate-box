@@ -175,7 +175,7 @@ try:
         and "set-admin NAME" in page,
         page[:600],
     )
-    # Audit M4: until the box has an owner, /admin is the set-up page alone, to anyone; nothing else of it answers.
+    # Until the box has an owner, /admin is the set-up page alone, to anyone; nothing else of it answers.
     for path in ("/admin", "/admin/", "/admin/factory.html", "/admin/mesh.html"):
         code, _, h = req(path, raw=True)
         check(
