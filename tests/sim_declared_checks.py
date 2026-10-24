@@ -268,4 +268,109 @@ check("  with the repair the manifest names", [a["choice"] for a in f[0]["action
 got = sd.run_declared({"id": "x", "unit": "x.service", "port": PORT, "checks": box_checks})
 check("Security doctor: only its own", [i["key"] for i in got] == ["sec"], got)
 
+# A local add-on (the hub writes its manifest): checks of its own files, read without following a link, and of its
+# own pages through the web server; nothing else.
+lm = {
+    "id": "demo",
+    "order": 70,
+    "tile": {"icon": "x", "name": "Demo", "desc": "A demo"},
+    "source": {"type": "git", "repo": "https://example.org/demo.git", "pin": "a" * 40},
+    "needs": "index.html",
+    "addon": {"title": "Demo", "summary": "A demo.", "consent": "Add it?"},
+}
+local_checks = [
+    c("no-net", "config", path="index.html", absent=r"https?://(?!\{box\})", status="problem"),
+    c("data-mode", "file", path="data/notes.json", max_mode="0644"),
+    c("planted", "config", path="link.conf", present="x"),
+    c("through", "config", path="sub/inner.conf", present="x"),
+    c("page", "http", via="front", path="ok/", expect=[200]),
+]
+
+
+def local_refused(bad):
+    try:
+        manifests.check_local({**lm, "checks": bad}, "test")
+        return False
+    except manifests.ManifestError:
+        return True
+
+
+try:
+    manifests.check_local({**lm, "checks": local_checks}, "test")
+    ok_local = True
+except manifests.ManifestError as exc:
+    ok_local = str(exc)
+check("local: a manifest with checks of its own files and pages is valid", ok_local is True, ok_local)
+check(
+    "local: carried into the full manifest", manifests.local({**lm, "checks": local_checks})["checks"] == local_checks
+)
+check("local refused: an absolute path", local_refused([c("x", "file", path="/etc/passwd")]))
+check("local refused: a path through ..", local_refused([c("x", "file", path="../other/x")]))
+check("local refused: a unit check", local_refused([c("x", "unit", property="User", equals="hub")]))
+check(
+    "local refused: a web check past the web server",
+    local_refused([c("x", "http", via="direct", path="", expect=[200])]),
+)
+check(
+    "local refused: a repair",
+    local_refused([c("x", "file", path="a", doctor="box", repair="restart")]),
+)
+
+home = T / "addons/demo"
+(home / "data").mkdir(parents=True)
+(home / "index.html").write_text('<script src="https://cdn.example.com/x.js"></script>\n')
+(home / "data/notes.json").write_text("{}")
+os.chmod(home / "data/notes.json", 0o666)
+(T / "secret.conf").write_text("x = secret\n")
+(home / "link.conf").symlink_to(T / "secret.conf")
+(T / "elsewhere").mkdir()
+(T / "elsewhere/inner.conf").write_text("x\n")
+(home / "sub").symlink_to(T / "elsewhere")
+
+
+class LocalPage(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200 if self.path == "/addons/demo/ok/" else 404)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *a):
+        pass
+
+
+lsrv = ThreadingHTTPServer(("127.0.0.1", 0), LocalPage)
+threading.Thread(target=lsrv.serve_forever, daemon=True).start()
+webprobe.FRONT = ("127.0.0.1", lsrv.server_address[1])
+points = sd.run_declared({"id": "demo", "local": True, "root": str(home), "checks": local_checks})
+got = {i["key"]: i for i in points}
+check("local: its page asking another website: a problem", got.get("no-net", {}).get("status") == "problem", got)
+check("local: its data file writable by all: a point", "data-mode" in got, got)
+check("local: its page through the web server answers: no point", "page" not in got, got)
+unread = " ".join(render(i["summary"]) for i in points if i["key"] == "config")
+check(
+    "local: a link, as a file or as a folder on the way: not followed, said as not read",
+    "planted" in unread and "through" in unread,
+    unread,
+)
+check("  and nothing of what the link leads to in the evidence", "secret" not in json.dumps(points), points)
+got = sd.run_declared({"id": "demo", "local": True, "root": str(home), "checks": [c("x", "file", path="/etc/passwd")]})
+check(
+    "local: an absolute path given to the doctor anyway: not valid, none run",
+    [i["key"] for i in got] == ["checks"],
+    got,
+)
+
+# The Box doctor runs a local add-on's own box checks too, with no repair (it has no unit).
+(T / "state/apps.d").mkdir(parents=True, exist_ok=True)
+(T / "state/addons/demo").mkdir(parents=True)
+(T / "state/apps.d/demo.json").write_text(
+    json.dumps({**lm, "checks": [c("works", "http", via="front", path="gone/", expect=[200], doctor="box")]})
+)
+f = [x for x in health.check_addon_declared() if x["id"].startswith("addon-check:demo")]
+check(
+    "Box doctor: a local add-on's own check, no repair",
+    [(x["id"], x["actions"]) for x in f] == [("addon-check:demo-works", [])],
+    f,
+)
+
 sys.exit(1 if fails else 0)

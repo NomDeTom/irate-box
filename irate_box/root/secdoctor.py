@@ -1081,6 +1081,25 @@ def step_web_addons(ctx):
                     ),
                 )
             )
+    # The checks a local add-on's manifest declares: its own files and its own pages only (manifests.py).
+    for m in local:
+        if not m.get("checks") or not (root / m["id"]).is_dir():
+            continue
+        a = {"id": m["id"], "local": True, "root": str(root / m["id"]), "checks": m["checks"]}
+        for i in run_declared(a):
+            out.append(
+                finding(
+                    f"addon-{m['id']}-{i['key']}",
+                    named(m["addon"]["title"], M("addon.role", "add-on")),
+                    i["status"],
+                    i["summary"],
+                    i["why"],
+                    i["fix"],
+                    notes=i["notes"],
+                    commands=i["commands"],
+                    evidence=i["evidence"],
+                )
+            )
     try:
         cat_state = json.loads(_read(STATE / "addons-catalogue.json") or "{}")
     except ValueError:
@@ -3092,8 +3111,13 @@ def _declared_target(a, c):
     if c["kind"] == "unit":
         return a.get("unit") or "?"
     if c["kind"] == "http":
-        return f"{c['via']} {c['path']}"
-    return c["path"]
+        return f"{c['via']} {_declared_route(a, c)}"
+    return f"{a['id']}/{c['path']}" if a.get("local") else c["path"]
+
+
+def _declared_route(a, c):
+    """A web check's route: a local add-on's page is under its own address on the hub, /addons/<id>/."""
+    return f"/addons/{a['id']}/{c['path']}" if a.get("local") else c["path"]
 
 
 def _declared_got(a, checks):
@@ -3109,12 +3133,14 @@ def _declared_got(a, checks):
             c = {**c, "got": shown.get(c["property"])}
         elif c["kind"] == "http":
             if c["via"] == "front":
-                got, _ = webprobe.through_front(c["path"])
+                got, _ = webprobe.through_front(_declared_route(a, c))
             elif a.get("port"):
                 got = webprobe.ask("127.0.0.1", a["port"], "GET", c["path"])
             else:
                 got = {"http": False, "error": "no port in its manifest"}
             c = {**c, "got": {k: v for k, v in got.items() if k != "body"}}
+        elif a.get("local"):
+            c = {**c, "root": a["root"], "follow": False}  # the hub's folder: walked without following a link
         else:
             c = {**c, "path": str(DECLARED_ROOT / c["path"].lstrip("/"))}
         out.append(c)
@@ -3134,7 +3160,7 @@ def run_declared(a, timeout=DECLARED_SECONDS, doctor="security"):
             raise man.ManifestError(what)
 
     try:
-        man._check_checks(a["checks"], need)
+        man._check_checks(a["checks"], need, local=bool(a.get("local")))
     except man.ManifestError as exc:
         return [
             _issue(

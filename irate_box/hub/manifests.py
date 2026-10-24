@@ -123,7 +123,7 @@ def svg_icon(icon):
 GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")
 
 
-LOCAL_KEYS = {"api", "id", "order", "tile", "menu", "entries", "source", "needs", "addon", "capabilities"}
+LOCAL_KEYS = {"api", "id", "order", "tile", "menu", "entries", "source", "needs", "addon", "capabilities", "checks"}
 # The manifest format this irate-box reads: a manifest says which it was written for ("api", 1 if left out).
 # API goes up only when a change would mislead an older reader; API_OLDEST up only when an old form is dropped.
 # Outside the range, a local add-on is listed with the reason and not loaded; a built-in one stops the hub.
@@ -147,6 +147,9 @@ PAGE_RE = re.compile(r"^[A-Za-z0-9_-]+\.html$")
 #           status.port), and "expect" (status codes) and/or "header" with "match" (a pattern its value has)
 # "doctor": "security" (the default: is it safe) or "box" (does it work); a box check may name a "repair", one of
 # the Box doctor's own for the add-on's unit: "restart" or "rerun-install".
+# A local add-on's checks (the hub writes its manifest) reach only its own things: file and config with a path
+# inside its own folder, read without following a link; http through the web server, a route inside its own; no
+# unit, no repair.
 # Patterns are matched a line at a time, each line cut at 4 KiB; all of a manifest's checks run in one process,
 # stopped after 2 s (secdoctor.run_declared).
 CHECKS_MAX = 20
@@ -155,6 +158,7 @@ CHECK_REPAIRS = ("restart", "rerun-install")
 CHECK_PROPERTY_RE = re.compile(r"^[A-Z][A-Za-z]{1,40}$")
 CHECK_ROUTE_RE = re.compile(r"^/(?!.*/\.\.?(/|$))[A-Za-z0-9._~@+/-]{0,200}$")
 CHECK_HEADER_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+CHECK_LOCAL_RE = re.compile(r"^(?![./])(?!.*(^|/)\.\.?(/|$))[A-Za-z0-9._~/-]{1,200}$")
 CHECK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 CHECK_PATH_RE = re.compile(r"^/(?!.*/\.\.?(/|$))[A-Za-z0-9._@+/-]{1,255}$")
 CHECK_NAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -327,7 +331,7 @@ def _pattern(p):
         return None
 
 
-def _check_checks(checks, need):
+def _check_checks(checks, need, local=False):
     need(isinstance(checks, list) and 0 < len(checks) <= CHECKS_MAX, f"checks: 1 to {CHECKS_MAX} entries")
     seen = set()
     for c in checks:
@@ -337,7 +341,8 @@ def _check_checks(checks, need):
         need(cid not in seen, f"checks.id: {cid} used twice")
         seen.add(cid)
         where = f"checks.{cid}"
-        need(c.get("kind") in CHECK_KINDS, f"{where}.kind: one of {', '.join(CHECK_KINDS)}")
+        kinds = ("file", "config", "http") if local else CHECK_KINDS
+        need(c.get("kind") in kinds, f"{where}.kind: one of {', '.join(kinds)}")
         need(c.get("status") in ("warn", "problem"), f"{where}.status: warn or problem")
         need(isinstance(c.get("title"), str) and 0 < len(c["title"]) <= 80, f"{where}.title: up to 80 characters")
         for k in ("says", "why", "fix"):
@@ -356,8 +361,8 @@ def _check_checks(checks, need):
         )
         need(c.get("doctor", "security") in ("security", "box"), f"{where}.doctor: security or box")
         need(
-            "repair" not in c or (c.get("doctor") == "box" and c["repair"] in CHECK_REPAIRS),
-            f"{where}.repair: restart or rerun-install, on a box check",
+            "repair" not in c or (not local and c.get("doctor") == "box" and c["repair"] in CHECK_REPAIRS),
+            f"{where}.repair: restart or rerun-install, on a built-in add-on's box check",
         )
         if c["kind"] == "unit":
             need(
@@ -375,11 +380,18 @@ def _check_checks(checks, need):
             )
             continue
         if c["kind"] == "http":
-            need(
-                isinstance(c.get("path"), str) and CHECK_ROUTE_RE.match(c["path"]),
-                f"{where}.path: a route, e.g. /wiki/",
-            )
-            need(c.get("via") in ("front", "direct"), f"{where}.via: front or direct")
+            if local:
+                need(
+                    c.get("path") == "" or (isinstance(c.get("path"), str) and CHECK_LOCAL_RE.match(c["path"])),
+                    f"{where}.path: a page inside the add-on, e.g. index.html",
+                )
+                need(c.get("via") == "front", f"{where}.via: front (a local add-on is reached through the web server)")
+            else:
+                need(
+                    isinstance(c.get("path"), str) and CHECK_ROUTE_RE.match(c["path"]),
+                    f"{where}.path: a route, e.g. /wiki/",
+                )
+                need(c.get("via") in ("front", "direct"), f"{where}.via: front or direct")
             exp = c.get("expect")
             need(
                 exp is None
@@ -398,7 +410,13 @@ def _check_checks(checks, need):
             )
             need(exp is not None or "header" in c, f"{where}: expect, or header and match")
             continue
-        need(isinstance(c.get("path"), str) and CHECK_PATH_RE.match(c["path"]), f"{where}.path: an absolute path")
+        if local:
+            need(
+                isinstance(c.get("path"), str) and CHECK_LOCAL_RE.match(c["path"]),
+                f"{where}.path: a file inside the add-on's own folder",
+            )
+        else:
+            need(isinstance(c.get("path"), str) and CHECK_PATH_RE.match(c["path"]), f"{where}.path: an absolute path")
         if c["kind"] == "file":
             need(type(c.get("exists", True)) is bool, f"{where}.exists: true or false")
             for k in ("owner", "group"):
@@ -570,6 +588,8 @@ def check_local(m, where="local manifest", builtin_ids=()):
         "capabilities.connect: up to 8 of ws://, wss://, http:// or https:// with a host or {box}",
     )
     need(type(caps.get("storage", False)) is bool, "capabilities.storage: true or false")
+    if "checks" in m:
+        _check_checks(m["checks"], need, local=True)
 
 
 def local(m):
@@ -596,6 +616,8 @@ def local(m):
             "storage": bool(m.get("capabilities", {}).get("storage", False)),
         },
     }
+    if m.get("checks"):
+        full["checks"] = [dict(c) for c in m["checks"]]
     if m.get("menu"):
         full["menu"] = dict(m["menu"])
     if m.get("entries"):
