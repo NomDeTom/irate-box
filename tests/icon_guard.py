@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""One icon per tile (Tom, 2026-10-22): every default tile's icon (apps.d/, the catalogue's add-ons and their
+"""One icon per tile: every default tile's icon (apps.d/, the catalogue's add-ons and their
 template) is one emoji, or svg:<name> of a picture in web/icons/. A picture also needs its line in style.css
 (.svg-icon[data-icon="<name>"]), or it draws as a blank square. Tiles that share an icon are listed as a warning:
-Meshtastic, MQTT and the MQTT explorer all have 📡 until Tom picks theirs.
+Meshtastic, MQTT and the MQTT explorer all have 📡 until each has one of its own.
 
 python3 tests/icon_guard.py"""
 

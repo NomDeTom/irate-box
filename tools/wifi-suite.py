@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """A test suite for a box's WiFi radios, run by hand as root, to learn how real adapters behave before the
-tests go into the hub (root/radiotests.py). The plan: notes-sync irate-box/plans/wifi-radios-plan.md, Part 1.
+tests go into the hub (root/radiotests.py).
 
   identify   chip, USB id and speed, driver and its version, modes, bands and channels, what it can do at
              once, the regulatory country; a known WiFi dongle still in USB storage mode, with no driver

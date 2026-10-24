@@ -131,7 +131,7 @@ setTimeout(() => {
   }
   const side = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
   // The app-first menu: Overview, Apps (a page per app, from the manifests), Moderation, System
-  // (accounts under System, not Box), the Doctors, then Mock controls last (Tom, 2026-10-22); nothing left over.
+  // (accounts under System, not Box), the Doctors, then Mock controls last; nothing left over.
   const groups = t('.admin-side-group');
   check('sidebar: the groups in order, the Doctors, then Mock controls last', groups.join('|') === 'Apps|Hub layout|Moderation|System|Doctors|Mock controls', groups.join('|'));
   check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));

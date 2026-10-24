@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # A look at a box's pages in headless Chromium (look.mjs), from a dev machine with Docker:
 #
-#   tests/browser/run.sh lyra@192.168.1.181 [OUT_DIR]
+#   tests/browser/run.sh USER@BOX [OUT_DIR]
 #
 # Chromium and the script run in one container (the image needs only Chromium: this machine's
 # Node is mounted in, NODE_DIR, Node 22 or newer for its WebSocket). The box's script login

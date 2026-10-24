@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """A test suite for a box's Bluetooth controllers, run by hand as root: the Bluetooth part of wifi-suite.py,
-to learn what the controllers do before anything goes into the hub. The plan: notes-sync
-irate-box/plans/wifi-radios-plan.md, Part 4.
+to learn what the controllers do before anything goes into the hub.
 
   identify     the controller's driver, USB ID, address (and whether it is a vendor's default, shared by every
                board of its kind), Bluetooth version, maker, what it supports and has on; whether BlueZ can use it

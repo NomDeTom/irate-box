@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 NomDeTom
 // /admin → Mock controls: every control the admin pages use, drawn by the same calls the pages make, with stand-in
 // data and nothing sent. Two uses: the example to copy when a page needs a control, and the place to pick one from.
-// The list follows the menu mock's Controls view (the 2026-10-07 menu overhaul), then the controls the admin has
+// The list follows the menu mock's Controls view (from the menu overhaul), then the controls the admin has
 // had since, then the cards and findings the doctors draw, then what the pages draw beyond the shared widgets. The mock itself is out of date: none of its code is here.
 // Each row keeps its control in one cell (.mock-cell), so a second way of drawing it can sit beside it.
 (() => {
@@ -200,7 +200,7 @@
   }
 
   // ---- What the pages draw beyond the shared widgets: their own markup and admin.js's helpers ----
-  // Found by comparing every page's elements with this one's (2026-10-22). A part whose real code sends something
+  // Found by comparing every page's elements with this one's. A part whose real code sends something
   // (an app's Access) is drawn with the same helpers and a save that sends nothing.
   function fromThePages() {
     const field = (label, input) => h('label', {}, label, ' ', input);

@@ -338,7 +338,7 @@ const AW = (() => {
   //     its controls are off and nothing counts as changed
   //   2 one footer at its end: Discard, then Save (the primary); the words are always Save and Discard
   //   3 no question at Save: a setting is saved as set. What a change costs or conflicts with is a short warning in
-  //     the footer while it is not saved (opts.warn; Tom, 2026-10-21: "settings, not questions")
+  //     the footer while it is not saved (opts.warn: settings, not questions)
   //   4 "Saving…" until the save resolves (a queued job: until the root helper answers, AW.job); the draft
   //     cleared only on success; on failure it stays, with the reason under the footer
   //   5 the page's polling (update) never overwrites a changed value; a saved value changed underneath one
