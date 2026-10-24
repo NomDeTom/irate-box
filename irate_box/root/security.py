@@ -3122,22 +3122,26 @@ def _share_contain(what):
     )
 
 
+def listener_part(found, rec):
+    """The scan's findings on what listens. No ss: nothing can be said of what listens, which is not the same as
+    nothing listening."""
+    if _have("ss"):
+        return listener_findings(found, rec)
+    return [
+        finding(
+            "listeners-unread",
+            M("listeners.unread.title", "What listens on the network"),
+            "warn",
+            M("listeners.unread", "The box could not list what listens on the network: ss is not installed."),
+            fix=M("listeners.unread.fix", "Install the package iproute2."),
+        )
+    ]
+
+
 def scan():
     rec = load_record()
     found = listeners()
-    if _have("ss"):
-        findings = listener_findings(found, rec)
-    else:
-        # No ss: nothing can be said of what listens, which is not the same as nothing listening.
-        findings = [
-            finding(
-                "listeners-unread",
-                M("listeners.unread.title", "What listens on the network"),
-                "warn",
-                M("listeners.unread", "The box could not list what listens on the network: ss is not installed."),
-                fix=M("listeners.unread.fix", "Install the package iproute2."),
-            )
-        ]
+    findings = listener_part(found, rec)
     settings = sshd_settings()
     findings += cockpit_findings(found, rec)
     findings += ssh_findings(settings, keys_on_box(), rec)

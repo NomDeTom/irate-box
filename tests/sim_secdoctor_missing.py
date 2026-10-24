@@ -81,10 +81,9 @@ check("the tools step is the doctor's last", sd.STEPS[-1][0] == "tools")
 from irate_box.root import deepaudit, security
 
 check("security.run: 127 for a program not installed", security.run(NOPE).returncode == 127)
-security.listeners = lambda: []
 security._have = lambda cmd: cmd != "ss"
-ids = [x["id"] for x in security.scan()["findings"]]
-check("no ss: the scan says it cannot list listeners, not that nothing listens", "listeners-unread" in ids, ids)
+ids = [x["id"] for x in security.listener_part([], {})]
+check("no ss: the scan says it cannot list listeners, not that nothing listens", ids == ["listeners-unread"], ids)
 deepaudit.REPORT = T / "state" / "deep.json"
 deepaudit.PROGRESS = T / "state" / "deep-progress.json"
 
