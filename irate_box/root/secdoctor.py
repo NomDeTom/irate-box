@@ -2522,7 +2522,6 @@ def step_units(ctx):
 # --- add-ons: one generic check for everything apps.d declares, plus a probe table ----------
 
 MOSQUITTO_DIR = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
-NGIRCD_DIR = Path(os.environ.get("HUB_NGIRCD_DIR", "/etc/ngircd"))
 LOOPBACK_WORDS = ("127.0.0.1", "localhost", "::1", "lo")
 WIDE_WORDS = ("0.0.0.0", "::", "*", "[::]")
 
@@ -2784,107 +2783,6 @@ def probe_mosquitto(ctx, a, show):
                     "Set a connection limit for each listener in the broker's configuration.",
                 ),
                 commands=["max_connections 64"],
-            )
-        )
-    return out
-
-
-def probe_ngircd(ctx, a, show):
-    """The IRC server's own config (the one irate-box points the unit at)."""
-    conf = _read(NGIRCD_DIR / "irate-box.conf")
-    if conf is None:
-        return [_issue("config", "warn", UNREAD, evidence=[NGIRCD_DIR / "irate-box.conf"])]
-    live = "\n".join(line for line in conf.splitlines() if not line.lstrip().startswith((";", "#")))
-    out = []
-    if re.search(r"(?mi)^\s*\[Operator\]", live):
-        out.append(
-            _issue(
-                "operator",
-                "warn",
-                M("irc.operator", "The IRC server has an operator ([Operator])."),
-                M(
-                    "irc.operator.why",
-                    "Whoever has the operator password can disconnect users and change any channel. The "
-                    "password is in the configuration file.",
-                ),
-                M(
-                    "irc.operator.fix",
-                    "Keep the configuration file readable by root and the IRC account only.",
-                ),
-                evidence=[NGIRCD_DIR / "irate-box.conf"],
-            )
-        )
-    m = re.search(r"(?mi)^\s*MaxConnections\s*=\s*(\d+)", live)
-    if not m or int(m.group(1)) == 0:
-        out.append(
-            _issue(
-                "max-conn",
-                "warn",
-                M("addon.conn.none", "It has no limit on the number of connections."),
-                M(
-                    "addon.conn.why",
-                    "One client can open connections until the box runs out.",
-                ),
-                M(
-                    "irc.conn.fix",
-                    "Set a connection limit in the IRC server's configuration.",
-                ),
-                commands=["MaxConnections = 64"],
-            )
-        )
-    m = re.search(r"(?mi)^\s*MaxConnectionsIP\s*=\s*(\d+)", live)
-    if not m or int(m.group(1)) == 0:
-        out.append(
-            _issue(
-                "max-conn-ip",
-                "warn",
-                M(
-                    "irc.conn-ip.none",
-                    "The IRC server has no limit on the connections from one address.",
-                ),
-                M("irc.conn-ip.why", "One address can take every connection."),
-                M(
-                    "irc.conn-ip.fix",
-                    "Set a connection limit for each address in the IRC server's configuration.",
-                ),
-                commands=["MaxConnectionsIP = 5"],
-            )
-        )
-    if not re.search(r"(?mi)^\s*CloakHost\s*=\s*\S", live):
-        out.append(
-            _issue(
-                "cloak",
-                "warn",
-                M(
-                    "irc.cloak.none",
-                    "The IRC server shows the address of each client to every other user.",
-                ),
-                M(
-                    "irc.cloak.why",
-                    "Other users can see where each person connects from.",
-                ),
-                M(
-                    "irc.cloak.fix",
-                    "Hide the addresses in the IRC server's configuration.",
-                ),
-                commands=["CloakHost = %x.irate-box"],
-            )
-        )
-    if not re.search(r"(?mi)^\s*DNS\s*=\s*(no|false|0)\b", live):
-        out.append(
-            _issue(
-                "dns",
-                "warn",
-                M("irc.dns.on", "The IRC server looks up the name of each client."),
-                M(
-                    "irc.dns.why",
-                    "With no internet connection, each client waits for a timeout before it can register.",
-                ),
-                M(
-                    "irc.dns.fix",
-                    "Turn off the name and Ident lookups in the IRC server's configuration.",
-                ),
-                commands=["DNS = no", "Ident = no"],
             )
         )
     return out
@@ -3301,7 +3199,6 @@ def run_declared(a, timeout=DECLARED_SECONDS):
 
 ADDON_PROBES = (
     ("mosquitto", probe_mosquitto),
-    ("ngircd", probe_ngircd),
     ("syncthing@", probe_syncthing),
     ("kiwix", probe_kiwix),
     ("ttyd", probe_ttyd),

@@ -144,4 +144,44 @@ check(
     got,
 )
 
+# The IRC server's checks, moved from the doctor's code into apps.d/65-irc.json: on the config install.sh writes,
+# none; on a config with none of its settings, the five points the probe made, with its ids and words.
+import json
+import re
+
+irc = json.loads((REPO / "apps.d/65-irc.json").read_text())
+box = T / "box"
+(box / "etc/ngircd").mkdir(parents=True)
+written = re.search(r"cat >/etc/ngircd/irate-box.conf <<'EOF'\n(.*?)\nEOF\n", (REPO / "install.sh").read_text(), re.S)
+(box / "etc/ngircd/irate-box.conf").write_text(written.group(1))
+sd.DECLARED_ROOT = box
+got = sd.run_declared({"id": "irc", "checks": irc["checks"]})
+check("IRC: the config install.sh writes passes every check", got == [], got)
+(box / "etc/ngircd/irate-box.conf").write_text("[Global]\n\tName = x\n[Operator]\n\tName = op\n")
+got = {i["key"]: i for i in sd.run_declared({"id": "irc", "checks": irc["checks"]})}
+check(
+    "IRC: a config with none of it: the probe's five points, by its ids",
+    sorted(got) == ["cloak", "dns", "max-conn", "max-conn-ip", "operator"],
+    sorted(got),
+)
+said = {k: render(i["summary"]) for k, i in got.items()}
+check(
+    "  in the probe's words",
+    said
+    == {
+        "operator": "The IRC server has an operator ([Operator]).",
+        "max-conn": "It has no limit on the number of connections.",
+        "max-conn-ip": "The IRC server has no limit on the connections from one address.",
+        "cloak": "The IRC server shows the address of each client to every other user.",
+        "dns": "The IRC server looks up the name of each client.",
+    },
+    said,
+)
+check("  with its commands", got["dns"]["commands"] == ["DNS = no", "Ident = no"], got["dns"])
+(box / "etc/ngircd/irate-box.conf").unlink()
+got = sd.run_declared({"id": "irc", "checks": irc["checks"]})
+check("IRC: no config: one point, config, as the probe gave", [i["key"] for i in got] == ["config"], got)
+sd.DECLARED_ROOT = Path("/")
+check("the doctor no longer carries an IRC probe", not any(p == "ngircd" for p, _ in sd.ADDON_PROBES))
+
 sys.exit(1 if fails else 0)
