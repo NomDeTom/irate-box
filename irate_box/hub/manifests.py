@@ -37,11 +37,12 @@ on it. Every part but "id" and "order" is optional:
                                       whether the hotspot firewall opens it to hotspot guests; how its
                                       listener is rated on the Security page, and what it exposes,
                                       in one plain sentence (services.py; docs/dev/services.md)
-    "checks":  [{"id", "kind": "file" | "config", "status": "warn" | "problem", "title", "says", "why",
-                 "fix", "commands", ...the kind's own}]
-                                      what the Security doctor checks of the add-on itself, while it is
-                                      installed: read only, never a command (CHECKS below; declared.py
-                                      runs them; docs/dev/services.md)
+    "checks":  [{"id", "kind": "file" | "config" | "unit" | "http", "status": "warn" | "problem",
+                 "doctor": "security" | "box", "repair", "title", "says", "why", "fix", "commands",
+                 ...the kind's own}]
+                                      what the doctors check of the add-on itself, while it is installed:
+                                      read only, never a command (CHECKS below; declared.py runs them;
+                                      docs/dev/services.md)
     "install": {"dir", "needs", "title", "restart"},
                                       where its bundle goes, under /usr/share/hub ("apps/draw");
                                       the file (or glob) that proves a bundle is whole; a unit
@@ -140,10 +141,20 @@ PAGE_RE = re.compile(r"^[A-Za-z0-9_-]+\.html$")
 #   config: "path", "comments" (line prefixes), "ignore_case", and one of "present" or "absent" (a pattern a live
 #           line has, or none has), or "value": {"key": a pattern with one group, and one of "min", "max" (numbers),
 #           "equals" or "not" (words)}
+#   unit:   "property" (as systemctl show names it, of the add-on's own status.unit), and one of "equals" or "not"
+#           (words) or "present" or "absent" (a pattern its value has, or has not)
+#   http:   "path" (a route), "via" ("front": through the web server, as a guest's browser; "direct": its own
+#           status.port), and "expect" (status codes) and/or "header" with "match" (a pattern its value has)
+# "doctor": "security" (the default: is it safe) or "box" (does it work); a box check may name a "repair", one of
+# the Box doctor's own for the add-on's unit: "restart" or "rerun-install".
 # Patterns are matched a line at a time, each line cut at 4 KiB; all of a manifest's checks run in one process,
 # stopped after 2 s (secdoctor.run_declared).
 CHECKS_MAX = 20
-CHECK_KINDS = ("file", "config")
+CHECK_KINDS = ("file", "config", "unit", "http")
+CHECK_REPAIRS = ("restart", "rerun-install")
+CHECK_PROPERTY_RE = re.compile(r"^[A-Z][A-Za-z]{1,40}$")
+CHECK_ROUTE_RE = re.compile(r"^/(?!.*/\.\.?(/|$))[A-Za-z0-9._~@+/-]{0,200}$")
+CHECK_HEADER_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 CHECK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 CHECK_PATH_RE = re.compile(r"^/(?!.*/\.\.?(/|$))[A-Za-z0-9._@+/-]{1,255}$")
 CHECK_NAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -343,6 +354,50 @@ def _check_checks(checks, need):
             ),
             f"{where}.commands: up to 5 lines of up to 200 characters, shown and never run",
         )
+        need(c.get("doctor", "security") in ("security", "box"), f"{where}.doctor: security or box")
+        need(
+            "repair" not in c or (c.get("doctor") == "box" and c["repair"] in CHECK_REPAIRS),
+            f"{where}.repair: restart or rerun-install, on a box check",
+        )
+        if c["kind"] == "unit":
+            need(
+                isinstance(c.get("property"), str) and CHECK_PROPERTY_RE.match(c["property"]),
+                f"{where}.property: a systemd property, e.g. ExecStart",
+            )
+            need(
+                sum(k in c for k in ("equals", "not", "present", "absent")) == 1,
+                f"{where}: one of equals, not, present or absent",
+            )
+            need(
+                all(isinstance(c[k], str) and len(c[k]) <= 200 for k in ("equals", "not") if k in c)
+                and all(_pattern(c[k]) is not None for k in ("present", "absent") if k in c),
+                f"{where}: equals and not words, present and absent patterns of up to {PATTERN_MAX} characters",
+            )
+            continue
+        if c["kind"] == "http":
+            need(
+                isinstance(c.get("path"), str) and CHECK_ROUTE_RE.match(c["path"]),
+                f"{where}.path: a route, e.g. /wiki/",
+            )
+            need(c.get("via") in ("front", "direct"), f"{where}.via: front or direct")
+            exp = c.get("expect")
+            need(
+                exp is None
+                or (
+                    isinstance(exp, list)
+                    and 0 < len(exp) <= 10
+                    and all(type(x) is int and 100 <= x <= 599 for x in exp)
+                ),
+                f"{where}.expect: a list of status codes",
+            )
+            need(
+                ("header" in c) == ("match" in c)
+                and ("header" not in c or (isinstance(c["header"], str) and CHECK_HEADER_RE.match(c["header"])))
+                and ("match" not in c or _pattern(c["match"]) is not None),
+                f"{where}: header and match together, a header name and a pattern",
+            )
+            need(exp is not None or "header" in c, f"{where}: expect, or header and match")
+            continue
         need(isinstance(c.get("path"), str) and CHECK_PATH_RE.match(c["path"]), f"{where}.path: an absolute path")
         if c["kind"] == "file":
             need(type(c.get("exists", True)) is bool, f"{where}.exists: true or false")

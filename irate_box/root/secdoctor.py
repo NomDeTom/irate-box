@@ -2926,27 +2926,6 @@ def probe_syncthing(ctx, a, show):
     return out
 
 
-def probe_kiwix(ctx, a, show):
-    if "--blockexternal" in _argv_of(show):
-        return []
-    return [
-        _issue(
-            "external",
-            "warn",
-            M("kiwix.external", "Kiwix runs without --blockexternal."),
-            M(
-                "kiwix.external.why",
-                "Book pages can load content from other websites, which can then see what is read.",
-            ),
-            M(
-                "kiwix.external.fix",
-                "Add --blockexternal to the start command of Kiwix.",
-            ),
-            commands=["--blockexternal"],
-        )
-    ]
-
-
 def _ttyd_runs(argv):
     """What ttyd runs in its terminal: the words after "--" (or the last word), looking through setsid(1)
     (a session of its own) and script(1)'s -c (a terminal of its own)."""
@@ -3108,20 +3087,54 @@ DECLARED_SECONDS = 2  # all of one manifest's checks; a pattern that needs longe
 DECLARED_ROOT = Path(os.environ.get("HUB_PRESENT_ROOT", "/"))  # where a check's paths are read (tests move it)
 
 
-def run_declared(a, timeout=DECLARED_SECONDS):
-    """The checks an add-on's manifest declares (manifests.py, "checks"), as issues: one for each that fails or
-    cannot read what it needs, none for a pass. They run in a process of their own (declared.py), stopped after
-    `timeout` seconds, so a pattern that backtracks for ever holds back only this add-on's checks. The manifest's
-    sentences are arguments of fixed messages, never messages of their own."""
+def _declared_target(a, c):
+    """What a check looks at, as its evidence says it: a file, the add-on's unit, or the web address asked."""
+    if c["kind"] == "unit":
+        return a.get("unit") or "?"
+    if c["kind"] == "http":
+        return f"{c['via']} {c['path']}"
+    return c["path"]
+
+
+def _declared_got(a, checks):
+    """For the checks the doctor reads itself, what it read: a unit's properties (systemctl show, once for all)
+    and a web answer (webprobe, through the web server or on the add-on's own port), as "got" on each check."""
+    from irate_box.root import webprobe
+
+    props = sorted({c["property"] for c in checks if c["kind"] == "unit"})
+    shown = _show(a["unit"], *props) if props and a.get("unit") else {}
+    out = []
+    for c in checks:
+        if c["kind"] == "unit":
+            c = {**c, "got": shown.get(c["property"])}
+        elif c["kind"] == "http":
+            if c["via"] == "front":
+                got, _ = webprobe.through_front(c["path"])
+            elif a.get("port"):
+                got = webprobe.ask("127.0.0.1", a["port"], "GET", c["path"])
+            else:
+                got = {"http": False, "error": "no port in its manifest"}
+            c = {**c, "got": {k: v for k, v in got.items() if k != "body"}}
+        else:
+            c = {**c, "path": str(DECLARED_ROOT / c["path"].lstrip("/"))}
+        out.append(c)
+    return out
+
+
+def run_declared(a, timeout=DECLARED_SECONDS, doctor="security"):
+    """The checks an add-on's manifest declares (manifests.py, "checks") for one doctor ("security", or "box" for
+    health.py), as issues: one for each that fails or cannot read what it needs, none for a pass. The matching runs
+    in a process of its own (declared.py), stopped after `timeout` seconds, so a pattern that backtracks for ever
+    holds back only this add-on's checks. The manifest's sentences are arguments of fixed messages, never messages
+    of their own. A box check's issue carries its "repair"."""
     from irate_box.hub import manifests as man
 
     def need(cond, what):
         if not cond:
             raise man.ManifestError(what)
 
-    checks = a["checks"]
     try:
-        man._check_checks(checks, need)
+        man._check_checks(a["checks"], need)
     except man.ManifestError as exc:
         return [
             _issue(
@@ -3132,9 +3145,11 @@ def run_declared(a, timeout=DECLARED_SECONDS):
                 evidence=[str(exc)],
             )
         ]
+    checks = [c for c in a["checks"] if c.get("doctor", "security") == doctor]
+    if not checks:
+        return []
     try:
-        moved = [{**c, "path": str(DECLARED_ROOT / c["path"].lstrip("/"))} for c in checks]
-        r = _cmd(sys.executable, "-I", str(DECLARED), timeout=timeout, input=json.dumps(moved))
+        r = _cmd(sys.executable, "-I", str(DECLARED), timeout=timeout, input=json.dumps(_declared_got(a, checks)))
         got = {x["id"]: x for x in json.loads(r.stdout)} if r and r.returncode == 0 else None
     except subprocess.TimeoutExpired:
         return [
@@ -3165,6 +3180,7 @@ def run_declared(a, timeout=DECLARED_SECONDS):
     out, unread = [], {}
     for c in checks:
         res = got.get(c["id"]) or {"result": "unread", "detail": "no result"}
+        target = _declared_target(a, c)
         if res["result"] == "fail":
             out.append(
                 _issue(
@@ -3174,11 +3190,12 @@ def run_declared(a, timeout=DECLARED_SECONDS):
                     M("addon.declared.why", "{why}", why=c["why"]) if c.get("why") else None,
                     M("addon.declared.fix", "{fix}", fix=c["fix"]) if c.get("fix") else None,
                     commands=c.get("commands", ()),
-                    evidence=[c["path"], res["detail"]],
+                    evidence=[target, res["detail"]],
                 )
+                | ({"repair": c["repair"]} if c.get("repair") else {})
             )
         elif res["result"] != "pass":
-            unread.setdefault(c["path"], ([], res["detail"]))[0].append(c["title"])
+            unread.setdefault(target, ([], res["detail"]))[0].append(c["title"])
     # A file it cannot read is said once, with the checks it held back (as a probe's "config" point).
     for path, (titles, detail) in unread.items():
         out.append(
@@ -3200,7 +3217,6 @@ def run_declared(a, timeout=DECLARED_SECONDS):
 ADDON_PROBES = (
     ("mosquitto", probe_mosquitto),
     ("syncthing@", probe_syncthing),
-    ("kiwix", probe_kiwix),
     ("ttyd", probe_ttyd),
     ("tailscaled", probe_tailscale),
 )
