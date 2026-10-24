@@ -124,7 +124,7 @@ IRC section (search `WITH_IRC`) and change each of these:
   `NoNewPrivileges`, `PrivateTmp`, `ProtectHome`, `ProtectProc=invisible`, a narrow `CapabilityBoundingSet`.
   A Debian unit that already has these is fine as it is; the security doctor names any line missing.
 - **No default passwords, no admin account by default.** If it has an operator or admin role, leave it unset;
-  the security doctor warns when one is defined (`probe_ngircd`).
+  the security doctor warns when one is defined (the IRC manifest's `operator` check).
 - **Limits on an open service**: connections in all and per address, message sizes, what a client may join or
   publish (IRC: 64 connections, 5 per address, 10 channels; MQTT: an ACL to `msh/#`, 4 kB messages).
 - **No waiting on the internet**: a box often has none. Turn off reverse DNS and ident lookups, update checks
@@ -132,9 +132,12 @@ IRC section (search `WITH_IRC`) and change each of these:
 - **Hide guests from each other**: cloak addresses, don't show user names that leak device names.
 - **Nothing stored that it doesn't need**: no history by default; if it stores anything, the backup's
   settings and data levels must know where (`hub/backup.py`).
-- A check of its own in the security doctor is welcome where the generic ones can't see a risk: add a
-  `probe_<name>` to `secdoctor.py`'s `ADDON_PROBES` (the IRC one reads its config for an operator block, the
-  limits, cloaking and DNS).
+- A check of its own in the security doctor is welcome where the generic ones can't see a risk. Declare it in
+  the manifest's `checks` (the format is in `irate_box/hub/manifests.py`): a file's owner and mode, or a line
+  its config must have, lack or set. They only read, and run in a process of their own with a time limit; each
+  that fails is a point of its own, in your words. `apps.d/65-irc.json` checks its config for an operator
+  block, the limits, cloaking and DNS. Only what the manifest can't say (the program's own reading of its
+  config, or asking the program) needs a `probe_<name>` in `secdoctor.py`'s `ADDON_PROBES`.
 
 ## 6. What the box then does by itself
 
