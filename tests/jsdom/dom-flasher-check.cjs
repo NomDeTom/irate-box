@@ -23,8 +23,8 @@ const digest = crypto.createHash("sha256").update(good).digest("hex");
 const script = template
   .replace("__DIGESTS__", JSON.stringify({ "/flasher/firmware/2.8.2.c39728e/a.bin": digest }))
   .replace("__ORIGIN__", JSON.stringify(origin))
-  .replace(/^<script>/, "")
-  .replace(/<\/script>\s*$/, "");
+  .replace(/^<script>/i, "")
+  .replace(/<\/script\s*>\s*$/i, "");
 
 // What the box answers: per address, the bytes and the status.
 const served = {};
