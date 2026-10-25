@@ -8,12 +8,28 @@ Only GET and OPTIONS, with no body, no cookie and no password, and never the web
 change an add-on's data. At most LIMIT bytes of an answer are read, TIMEOUT seconds a request. Stdlib only."""
 
 import http.client
+import os
 import socket
 import ssl
+from pathlib import Path
 
 LIMIT = 64 << 10
 TIMEOUT = 5
-FRONT = ("127.0.0.1", 80)
+ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
+
+
+def front_address():
+    """The web server's plain address on this box: port 80, or the one the installer moved the hub to because port 80
+    was taken (--port, recorded in install-options; the Lyra was on 8080 until 2026-10-25)."""
+    try:
+        opts = (ETC / "install-options").read_text().split("\n")
+    except OSError:
+        opts = []
+    at = opts.index("--port") + 1 if "--port" in opts else len(opts)
+    port = opts[at] if at < len(opts) else "80"
+    return "127.0.0.1", int(port) if port.isdigit() and 0 < int(port) < 65536 else 80
+
+
 # The headers a proxy adds, as a forged request would carry them: a guest's address, an administrator's name.
 FORGED = {
     "X-Forwarded-For": "10.73.0.9",
@@ -68,7 +84,7 @@ def through_front(path, front=None):
     but not to a sign-in. The last answer, and where it came from."""
     from urllib.parse import urlsplit
 
-    host, port = front or FRONT
+    host, port = front or front_address()
     tls, where = False, path
     r = {"http": False, "error": "not asked"}
     for _ in range(4):

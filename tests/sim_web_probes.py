@@ -26,6 +26,8 @@ from irate_box.msg import render
 from irate_box.root import health, webprobe
 from irate_box.root import secdoctor as sd
 
+real_front_address = webprobe.front_address
+
 fails = 0
 
 
@@ -84,7 +86,7 @@ OTHER = ["127.0.0.2 (eth0)"]
 
 
 def points(port, front=FRONT_GATE, app="wiki"):
-    webprobe.FRONT = ("127.0.0.1", front)
+    webprobe.front_address = lambda: ("127.0.0.1", front)
     return {i["key"]: i for i in sd.web_points({"id": app, "port": port, "path": "/wiki/"}, OTHER)}
 
 
@@ -128,7 +130,7 @@ check(
     )
 )
 health.unit_props = lambda unit: {"ActiveState": "active"}
-webprobe.FRONT = ("127.0.0.1", FRONT_DOWN)
+webprobe.front_address = lambda: ("127.0.0.1", FRONT_DOWN)
 f = health.check_addon_front()
 check(
     "Box doctor: a 502 through the web server is a problem",
@@ -136,9 +138,29 @@ check(
     f,
 )
 check("  with a restart", any(a["choice"] == "unit-restart:kiwix.service" for a in f[0]["actions"]), f)
-webprobe.FRONT = ("127.0.0.1", FRONT_GATE)
+webprobe.front_address = lambda: ("127.0.0.1", FRONT_GATE)
 f = health.check_addon_front()
 check("Box doctor: a sign-in through the web server is working", [x["status"] for x in f] == ["ok"], f)
+# Item 175: nothing answers on the web server's port at all (the Lyra, its hub moved to 8080, nothing on 80): the
+# add-on's finding names the web server, with no offer to restart the add-on; and the port asked is the recorded one.
+with socket.socket() as s:
+    s.bind(("127.0.0.1", 0))
+    SILENT = s.getsockname()[1]  # closed again: nothing listens there
+webprobe.front_address = lambda: ("127.0.0.1", SILENT)
+f = health.check_addon_front()
+check(
+    "Box doctor: the web server answering nothing: a note naming it, not a restart of the add-on (item 175)",
+    [(x["id"], x["status"]) for x in f] == [("addon-front:wiki", "warn")]
+    and not f[0]["actions"]
+    and str(SILENT) in render(f[0]["summary"]),
+    f,
+)
+webprobe.front_address = real_front_address
+webprobe.ETC.mkdir(parents=True, exist_ok=True)
+(webprobe.ETC / "install-options").write_text("--repo\nx\n--port\n8080\n")
+check("  the web server asked on the port the installer recorded (--port 8080)", webprobe.front_address()[1] == 8080)
+(webprobe.ETC / "install-options").write_text("--repo\nx\n")
+check("  and on 80 with none recorded", webprobe.front_address()[1] == 80)
 health.unit_props = lambda unit: {"ActiveState": "inactive"}
 check("Box doctor: an add-on that is not running is left to the units check", health.check_addon_front() == [])
 

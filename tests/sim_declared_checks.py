@@ -206,7 +206,7 @@ class Page(BaseHTTPRequestHandler):
 srv = ThreadingHTTPServer(("127.0.0.1", 0), Page)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 PORT = srv.server_address[1]
-webprobe.FRONT = ("127.0.0.1", PORT)
+webprobe.front_address = lambda: ("127.0.0.1", PORT)
 wiki = json.loads((REPO / "apps.d/30-wiki.json").read_text())
 plain = "{ path=/usr/bin/kiwix-serve ; argv[]=/usr/bin/kiwix-serve --port 8081 /var/lib/hub/library.xml ; }"
 blocked = plain.replace("--port", "--blockexternal --port")
@@ -340,7 +340,7 @@ class LocalPage(BaseHTTPRequestHandler):
 
 lsrv = ThreadingHTTPServer(("127.0.0.1", 0), LocalPage)
 threading.Thread(target=lsrv.serve_forever, daemon=True).start()
-webprobe.FRONT = ("127.0.0.1", lsrv.server_address[1])
+webprobe.front_address = lambda: ("127.0.0.1", lsrv.server_address[1])
 points = sd.run_declared({"id": "demo", "local": True, "root": str(home), "checks": local_checks})
 got = {i["key"]: i for i in points}
 check("local: its page asking another website: a problem", got.get("no-net", {}).get("status") == "problem", got)
