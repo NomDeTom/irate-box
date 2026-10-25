@@ -2304,10 +2304,35 @@ def check_port_80():
     ]
 
 
+def _front_silent():
+    """The web server's plain port when nothing answers HTTP there at all, else None. Then an add-on asked through it
+    cannot say anything of its own: its finding names the web server, with no offer to restart the add-on (item 175:
+    the Lyra's Kiwix, Syncthing and MQTT each offered a restart while nothing served port 80)."""
+    from irate_box.root import webprobe
+
+    host, port = webprobe.front_address()
+    return None if webprobe.ask(host, port, "GET", "/")["http"] else port
+
+
+def _front_silent_finding(key, title, port):
+    return finding(
+        key,
+        title,
+        "warn",
+        M(
+            "addon-front.unchecked",
+            "Not checked: the web server does not answer on port {port}, so nothing behind it can.",
+            port=port,
+        ),
+        fix=M("addon-front.unchecked.fix", "See the web server's own findings here: Port 80 and its service."),
+    )
+
+
 def check_addon_front():
     """Each running web add-on (a manifest's status with a port, a route and a unit), asked through the web server
     as a guest's browser would (webprobe.through_front): does it answer there. A 502, 503 or 504, or nothing,
-    is a problem, with a restart. Whether the web server keeps its sign-in is the Security doctor's."""
+    is a problem, with a restart; while the web server itself answers nothing, a note that names it instead.
+    Whether the web server keeps its sign-in is the Security doctor's."""
     from irate_box.hub import manifests
     from irate_box.root import webprobe
 
@@ -2316,6 +2341,7 @@ def check_addon_front():
     except (manifests.ManifestError, OSError):
         return []
     out = []
+    silent = _front_silent()
     for m in found:
         st = m.get("status") or {}
         if not (st.get("port") and st.get("path") and st.get("unit")):
@@ -2324,6 +2350,9 @@ def check_addon_front():
         if unit_props(unit).get("ActiveState") != "active":
             continue  # not running: the units check says so
         title = named(st.get("name") or m["id"], M("addon-front.role", "through the web server"))
+        if silent is not None:
+            out.append(_front_silent_finding(f"addon-front:{m['id']}", title, silent))
+            continue
         r, url = webprobe.through_front(st["path"])
         if not r["http"] or r["status"] in (502, 503, 504):
             out.append(
@@ -2370,6 +2399,7 @@ def check_addon_declared():
     except (manifests.ManifestError, OSError):
         return []
     out = []
+    front = {}
     for m in found:
         st = m.get("status") or {}
         if not any(c.get("doctor") == "box" for c in m.get("checks") or ()):
@@ -2386,7 +2416,15 @@ def check_addon_declared():
                 continue  # not installed
             a = {"id": m["id"], "unit": unit, "port": st.get("port"), "checks": m["checks"]}
         title = named(st.get("name") or m["id"], M("addon-check.role", "add-on"))
+        via_front = {c.get("id") for c in m["checks"] if c.get("kind") == "http" and c.get("via") == "front"}
         for i in secdoctor.run_declared(a, doctor="box"):
+            if i["key"] in via_front:
+                if "port" not in front:  # asked once, and only when a check through it failed
+                    front["port"] = _front_silent()
+                if front["port"] is not None:
+                    # Asked through a web server that answers nothing: the cause is that, not the add-on.
+                    out.append(_front_silent_finding(f"addon-check:{m['id']}-{i['key']}", title, front["port"]))
+                    continue
             repair = (
                 {"restart": action(f"unit-restart:{unit}", RESTART), "rerun-install": RERUN}.get(i.get("repair"))
                 if unit
