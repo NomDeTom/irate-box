@@ -173,8 +173,23 @@ def prune(tools, pages):
     return gone
 
 
+def unlink_links(tools):
+    """Every symbolic link in the tree removed, before anything is written into it: a link named like a file this
+    adapts (directory-override.css, a page) would turn writing the copy into writing whatever it points at. The
+    librarian removes them from a fetched clone already; install.sh --apps hands this a folder as root."""
+    gone = 0
+    for path in sorted(tools.rglob("*"), reverse=True):
+        if path.is_symlink():
+            path.unlink()
+            gone += 1
+    return gone
+
+
 def main(tools_dir, static_dir):
     tools, static = Path(tools_dir), Path(static_dir)
+    gone = unlink_links(tools)
+    if gone:
+        print(f"    calculators: {gone} symbolic link(s) removed before adapting")
     keep = published(tools)
     if keep is None:  # already adapted: the pages still here are the kept ones
         keep = {p.name for p in tools.glob("*.html")}

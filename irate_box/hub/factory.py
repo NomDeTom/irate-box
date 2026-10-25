@@ -821,6 +821,9 @@ def publish(run_number):
     ]
     board_list["targets"].sort(key=lambda t: t["board"])
     _write(confine.under(folder, f"firmware-{folder.name}.json"), board_list)
+    from irate_box.library import firmware as librarian_firmware  # the digests the flasher page carries
+
+    librarian_firmware.record_digests(folder)
     return {"version": folder.name, "env": env}
 
 
@@ -856,6 +859,9 @@ def unpublish(version, env):
     board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env]
     if board_list["targets"]:
         _write(confine.under(folder, f"firmware-{version}.json"), board_list)
+        from irate_box.library import firmware as librarian_firmware
+
+        librarian_firmware.record_digests(folder)
     else:
         shutil.rmtree(folder, ignore_errors=True)
 

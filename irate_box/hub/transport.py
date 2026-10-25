@@ -15,7 +15,8 @@ Stdlib only."""
 # root's POLICY_ACTIONS (hub_control.py) except two: admin-gate, which takes nothing from the request (it writes the
 # gates from the accounts as they are), and share-allow, which a guest's agreement on the hotspot's sheet asks for
 # (over plain HTTP, as every guest page), within the level the administrator chose. Plus installing an update and
-# adding or removing an add-on, which run code as root. tests/api_https_gate.py checks the rest are all here.
+# adding or removing an add-on, which run code as root, and widening the filesystems root mounts from USB drives.
+# tests/api_https_gate.py checks the rest are all here.
 HTTPS_ONLY = frozenset(
     (
         "security-policy",
@@ -34,6 +35,7 @@ HTTPS_ONLY = frozenset(
         "admin-login",
         "share-set",
         "addon",
+        "usb-filesystems",
     )
 )
 TRUSTED = ("https", "loopback", "hub")

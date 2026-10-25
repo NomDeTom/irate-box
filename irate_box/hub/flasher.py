@@ -220,12 +220,79 @@ def installed():
     return (ROOT / "flasher.html").is_file()
 
 
-def page(host):
-    """flasher.html with the hub's address filled in, or None (not installed, or a Host that
-    cannot go into a URL)."""
-    if not installed() or not HOST_RE.match(host or ""):
+def digests():
+    """{"/flasher/firmware/<version>/<file>": sha-256} for every release here, from the sha256.json beside each
+    (firmware.record_digests, made where the files land: never computed while a page is asked for)."""
+    out = {}
+    for folder in FIRMWARE.iterdir() if FIRMWARE.is_dir() else []:
+        if not ESP_VERSION_RE.match(folder.name):
+            continue
+        try:
+            kept = json.loads((folder / "sha256.json").read_text())
+        except (OSError, ValueError):
+            continue
+        for name, v in kept.items() if isinstance(kept, dict) else ():
+            if FILE_RE.match(name) and isinstance(v, list) and len(v) == 3 and SHA256_RE.match(str(v[2])):
+                out[f"/flasher/firmware/{folder.name}/{name}"] = v[2]
+    return out
+
+
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+# Put at the top of the downloaded page: each firmware file it fetches from the box is checked against the sha-256
+# the box held when the page was downloaded, so a copy opened later, or on another network where someone else holds
+# the box's address, refuses a file that is not the one it was given. Opened from disk, the page is a secure context
+# (file:), so crypto.subtle is there. A file with no digest recorded, or another request, passes as it is.
+CHECK = """<script>
+/* irate-box: each firmware file this page fetches from the box is checked against the SHA-256 it held when the
+   page was downloaded. */
+(function () {
+  var digests = __DIGESTS__, origin = __ORIGIN__, prefix = origin + "/flasher/firmware/", plain = window.fetch;
+  if (!plain || !window.crypto || !crypto.subtle) return;
+  window.fetch = function (input) {
+    var url = input && typeof input === "object" && "url" in input ? input.url : String(input);
+    var key = url.indexOf(prefix) === 0 ? url.slice(origin.length).split(/[?#]/)[0] : null;
+    return plain.apply(this, arguments).then(function (resp) {
+      if (!key || !Object.prototype.hasOwnProperty.call(digests, key) || !resp.ok) return resp;
+      return resp
+        .clone()
+        .arrayBuffer()
+        .then(function (data) {
+          return crypto.subtle.digest("SHA-256", data);
+        })
+        .then(function (hash) {
+          var hex = Array.prototype.map
+            .call(new Uint8Array(hash), function (b) {
+              return ("0" + b.toString(16)).slice(-2);
+            })
+            .join("");
+          if (hex !== digests[key])
+            throw new Error(
+              "Firmware refused: " + key + " is not the file the box held when this flasher was downloaded."
+            );
+          return resp;
+        });
+    });
+  };
+})();
+</script>
+"""
+
+
+def page(host, scheme="http"):
+    """flasher.html with the hub's address filled in, in the scheme it was asked over (https when the guest
+    downloaded it over HTTPS), and the check above with the digests of the firmware here, or None (not installed,
+    or a Host that cannot go into a URL)."""
+    if not installed() or not HOST_RE.match(host or "") or scheme not in ("http", "https"):
         return None
-    return (ROOT / "flasher.html").read_bytes().replace(PLACEHOLDER, f"http://{host}".encode())
+    origin = f"{scheme}://{host}"
+    body = (ROOT / "flasher.html").read_bytes().replace(PLACEHOLDER, origin.encode())
+    # Neither can hold a "<" (FILE_RE, ESP_VERSION_RE, HOST_RE), so neither can end the script early.
+    script = CHECK.replace("__DIGESTS__", json.dumps(digests(), sort_keys=True)).replace(
+        "__ORIGIN__", json.dumps(origin)
+    )
+    head = re.search(rb"<head\b[^>]*>", body, re.I)
+    at = head.end() if head else 0
+    return body[:at] + script.encode() + body[at:]
 
 
 def api(path):

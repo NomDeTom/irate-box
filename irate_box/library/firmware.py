@@ -175,7 +175,14 @@ def _releases(cfg):
             "tag": rel["tag_name"],
             "published": rel.get("published_at"),
             "notes": rel.get("body") or "",
-            "deps": deps and {"url": deps["browser_download_url"], "size": deps["size"], "name": deps["name"]},
+            "list_digest": names[f"firmware-{version}.json"].get("digest"),
+            "deps": deps
+            and {
+                "url": deps["browser_download_url"],
+                "size": deps["size"],
+                "name": deps["name"],
+                "digest": deps.get("digest"),
+            },
             "source": source
             and {"url": source["browser_download_url"], "size": source["size"], "name": source["name"]},
         }
@@ -194,12 +201,65 @@ def _get_json(url):
         return json.load(resp)
 
 
+def _against_github(data, digest, what):
+    """Data fetched from release.meshtastic.org checked against the sha-256 GitHub gives for the same release asset
+    (assets[].digest, "sha256:…"): a second, independent source for it. "github-sha256" when checked, "none" when
+    GitHub names no digest; LibrarianError when they differ. Only the board list and the build cache are GitHub
+    assets: each board's own files are inside the per-platform zips, so for them the board manifest's MD5 is all
+    there is."""
+    if not (isinstance(digest, str) and digest.startswith("sha256:")):
+        return "none"
+    if hashlib.sha256(data).hexdigest() != digest.split(":", 1)[1].lower():
+        raise LibrarianError(
+            M(
+                "firmware.github-digest-mismatch",
+                "Digest mismatch. {what} differs from the copy GitHub publishes with the release. The existing "
+                "version is unchanged.",
+                what=what,
+            )
+        )
+    return "github-sha256"
+
+
 def _md5(path):
     h = hashlib.md5(usedforsecurity=False)
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+DIGESTS = "sha256.json"
+
+
+def record_digests(folder):
+    """The sha-256 of every file in a release's folder, kept beside them ({name: [size, mtime_ns, digest]}): what
+    the Meshtastic flasher page carries when it is downloaded, to check each file it fetches later (flasher.page).
+    Made where the files land (the librarian's sync, the Factory's publish), never while a page is asked for; only
+    a file whose size or time changed is read again."""
+    folder = Path(folder)
+    path = folder / DIGESTS
+    try:
+        old = json.loads(path.read_text())
+    except (OSError, ValueError):
+        old = {}
+    out = {}
+    for f in sorted(folder.iterdir()) if folder.is_dir() else []:
+        if f.name == DIGESTS or f.name.endswith(".part") or f.is_symlink() or not f.is_file():
+            continue
+        st = f.stat()
+        was = old.get(f.name)
+        if isinstance(was, list) and len(was) == 3 and was[:2] == [st.st_size, st.st_mtime_ns]:
+            out[f.name] = was
+            continue
+        h = hashlib.sha256()
+        with open(f, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        out[f.name] = [st.st_size, st.st_mtime_ns, h.hexdigest()]
+    if out != old:
+        _publish(path, out)
+    return {name: v[2] for name, v in out.items()}
 
 
 def _have(path, entry):
@@ -212,7 +272,10 @@ def _mirror_version(rel, cfg, policy, log):
     vdir = ROOT / version
     vdir.mkdir(parents=True, exist_ok=True)
     base = f"{RELEASE_BASE}/{version}"
-    board_list = _get_json(f"{base}/firmware-{version}.json")
+    with librarian._open(f"{base}/firmware-{version}.json", timeout=60) as resp:
+        raw = resp.read(4 << 20)
+    list_check = _against_github(raw, rel.get("list_digest"), f"firmware-{version}.json")
+    board_list = json.loads(raw)
     _publish(vdir / f"firmware-{version}.json", board_list)
     targets = sorted({t["board"] for t in board_list.get("targets", []) if BOARD_RE.match(t.get("board", ""))})
     wanted = targets if cfg["boards"] == "all" else [b for b in targets if b in cfg["boards"]]
@@ -237,6 +300,7 @@ def _mirror_version(rel, cfg, policy, log):
         _publish(vdir / f"firmware-{board}-{version}.mt.json", mt)
         got.append(board)
     missing = [b for b in (cfg["boards"] if cfg["boards"] != "all" else []) if b not in targets]
+    record_digests(vdir)
     return {
         "channel": rel["channel"],
         "boards": got,
@@ -245,6 +309,9 @@ def _mirror_version(rel, cfg, policy, log):
         "missing": missing,
         "unavailable": unavailable,
         "fetched": librarian.now_iso(),
+        # Which check each part had: the board list against GitHub's digest where it gives one; each board's files
+        # against its manifest's size and MD5 (from release.meshtastic.org: GitHub has no digest for them).
+        "checks": {"board_list": list_check, "files": "manifest-md5"},
     }
 
 
@@ -359,6 +426,9 @@ def _carry_cache(rel, cfg, policy, log):
     log(f"firmware {rel['version']}: downloading the build cache ({deps['size'] >> 20} MB)")
     if not (tmp.is_file() and tmp.stat().st_size == deps["size"]):
         librarian._download(deps["url"], tmp, name=f"build cache {rel['version']}", expected=deps["size"], resume=True)
+    digest = deps.get("digest") or ""
+    # GitHub's sha-256 for the asset, where it gives one: a mismatch removes the file and stops here.
+    librarian._verify_sha256(tmp, digest.split(":", 1)[1] if digest.startswith("sha256:") else None, deps["name"])
     work = dest.with_name("pio-deps.new")
     shutil.rmtree(work, ignore_errors=True)
     try:

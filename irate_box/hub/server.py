@@ -5962,6 +5962,9 @@ class Handler(BaseHTTPRequestHandler):
             action, device = payload.get("action"), str(payload.get("device", ""))
             if action == "scan":
                 self.send_json(202, {"id": control_request({"action": "usb-scan"})})
+            elif action == "filesystems" and payload.get("level") in ("common", "linux", "all"):
+                # Which filesystems root mounts from USB drives (root/usbstick.py LEVELS): the administrator's.
+                self.send_json(202, {"id": control_request({"action": "usb-filesystems", "level": payload["level"]})})
             elif action == "import" and USB_DEVICE_RE.match(device) and isinstance(payload.get("file"), str):
                 self.send_json(
                     202,
@@ -6803,7 +6806,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             return
         if path == "/flasher/flasher.html":
-            body = flasher.page(self.headers.get("Host", ""))
+            body = flasher.page(self.headers.get("Host", ""), "https" if self._https() else "http")
             if body is None:
                 self.send_json(
                     404,
