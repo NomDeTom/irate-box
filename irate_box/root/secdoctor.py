@@ -5292,6 +5292,36 @@ def step_debsecan(ctx):
         _sh.rmtree(work, ignore_errors=True)
 
 
+def step_usb_filesystems(ctx):
+    """Which filesystems root mounts from a USB drive (usbstick.LEVELS, the administrator's on Books): each one more
+    is a kernel driver a drive made to attack the box can reach. The common ones are fine; a wider setting is said."""
+    from irate_box.root import health, usbstick
+
+    title = M("usb-fs.mounted.title", "Filesystems mounted from USB drives")
+    chosen = usbstick.level()
+    names = list(dict.fromkeys(usbstick.FS_WORDS.get(fs, fs) for fs in usbstick.LEVELS[chosen]))
+    if chosen == "common":
+        return [finding("usb-mounted", title, "ok", M("usb-fs.mounted.common", "Only {names}.", names=names))]
+    return [
+        finding(
+            "usb-mounted",
+            title,
+            "warn",
+            M("usb-fs.mounted.wider", "The box mounts {names} from USB drives.", names=names),
+            M(
+                "usb-fs.mounted.wider.why",
+                "Each filesystem is a kernel driver that a drive made to attack the box can reach while root reads it.",
+            ),
+            M(
+                "usb-fs.mounted.wider.fix",
+                "On Books, USB drives, keep the common filesystems only unless you use drives you made yourself.",
+            ),
+            evidence=[f"level={chosen}"],
+            go=health.GO_BOOKS,
+        )
+    ]
+
+
 def step_kits_trust(ctx):
     """What vouches for the toolkits a USB drive brings: Debian's archive keyring (kits verify against it alone),
     and the kits imported without a freshness check (kits.unchecked: listed while the clock cannot date them, or
@@ -7696,6 +7726,7 @@ STEPS = [
         step_debsecan,
     ),
     ("kits-trust", M("step.kits-trust", "Toolkits from USB drives: keyring and freshness"), step_kits_trust),
+    ("usb-filesystems", M("step.usb-filesystems", "USB drives: the filesystems root mounts"), step_usb_filesystems),
     (
         "debian-cis",
         M("step.debian-cis", "CIS benchmark (debian-cis, in the deep audit)"),

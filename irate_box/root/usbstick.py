@@ -32,6 +32,48 @@ from irate_box.msg import M, Refused, render
 from irate_box.root import safeio
 
 MOUNT_ROOT = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
+# Which filesystems root mounts from a USB drive, a scale from the safest (the administrator's, on Books): every
+# kernel filesystem driver root asks to read a drive is code a hostile image can attack, and the formats sticks come
+# in are few. A drive another program mounted already is read where it is (the kernel has read it then).
+LEVEL_FILE = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub")) / "usb-filesystems.json"
+COMMON = ("vfat", "exfat", "ntfs", "ntfs3", "iso9660")
+LEVELS = {
+    "common": COMMON,
+    "linux": (*COMMON, "ext2", "ext3", "ext4"),
+    "all": (*COMMON, "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs"),
+}
+
+
+def level():
+    """The administrator's setting ("common" until set)."""
+    try:
+        chosen = json.loads(LEVEL_FILE.read_text()).get("level")
+    except (OSError, ValueError, AttributeError):
+        chosen = None
+    return chosen if chosen in LEVELS else "common"
+
+
+def set_level(chosen):
+    if chosen not in LEVELS:
+        raise Refused(M("usb.level.bad", "Select which filesystems the box mounts from USB drives."))
+    safeio.write(LEVEL_FILE, json.dumps({"level": chosen}), mode=0o644)
+    return M(
+        "usb.level.saved",
+        "The box now mounts these filesystems from USB drives: {names}.",
+        names=list(dict.fromkeys(FS_WORDS.get(fs, fs) for fs in LEVELS[chosen])),
+    )
+
+
+def _not_mounted_said(fs):
+    return M(
+        "usb.fs.not-mounted",
+        "The box does not mount {fs} drives: under Books, USB drives, it mounts only {names}. A wider setting lets it "
+        "read this one.",
+        fs=FS_WORDS.get(fs, fs),
+        names=list(dict.fromkeys(FS_WORDS.get(n, n) for n in LEVELS[level()])),
+    )
+
+
 FILESYSTEMS = {"vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "iso9660"}
 # Each one's kernel driver (the module's name, for modprobe), and its name in words.
 DRIVER = {
@@ -166,6 +208,9 @@ class Mounted:
                     )
                 )
             return Path(self.dev["mountpoint"])
+        fs = (self.dev.get("fstype") or "").lower()
+        if fs not in LEVELS[level()]:
+            raise Refused(_not_mounted_said(fs))
         if not re.fullmatch(r"[A-Za-z0-9_-]+", self.dev["name"]):
             raise Refused(M("usb.device.bad-name", "The device name {name} is not valid.", name=self.dev["name"]))
         self.path = MOUNT_ROOT / self.dev["name"]
@@ -251,6 +296,12 @@ def scan():
             dev["error"], dev["error_message"] = render(said), said
             out.append(dev)
             continue
+        if not dev.get("mountpoint") and fs not in LEVELS[level()]:
+            said = _not_mounted_said(fs)
+            dev["zims"], dev["kits"] = [], []
+            dev["error"], dev["error_message"] = render(said), said
+            out.append(dev)
+            continue
         try:
             with Mounted(dev) as root:
                 dev["zims"] = _zims(root)
@@ -260,7 +311,12 @@ def scan():
         except (ValueError, OSError) as exc:
             dev["zims"], dev["kits"], dev["error"] = [], [], str(exc)
         out.append(dev)
-    return {"at": time.time(), "devices": out}
+    return {
+        "at": time.time(),
+        "devices": out,
+        "filesystems": level(),
+        "levels": {k: list(v) for k, v in LEVELS.items()},
+    }
 
 
 def _find(scan_state, name):

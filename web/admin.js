@@ -12222,6 +12222,40 @@ let usbWaiting = null; // { id, at }
 let usbNote = null; // { at, text, ok }
 let usbPoll = null;
 
+// Which filesystems root mounts from a USB drive (root/usbstick.py LEVELS), safest first: each one more is a kernel
+// driver a hostile drive can attack. Chosen here, saved at once; the warning beside it says what a wider one adds.
+const USB_FS_LEVELS = [
+  ["common", "FAT, exFAT, NTFS and discs"],
+  ["linux", "and Linux's ext2–4"],
+  ["all", "and btrfs, XFS and F2FS"],
+];
+const USB_FS_WARN = {
+  common: "",
+  linux:
+    "The box also mounts ext2, ext3 and ext4 drives. Each is a kernel driver a drive made to attack it can reach. Use it for drives you made yourself.",
+  all: "The box mounts every filesystem it has a driver for, btrfs, XFS and F2FS too. Each is a kernel driver a drive made to attack it can reach.",
+};
+function drawUsbFilesystems(data, busy) {
+  const box = document.getElementById("usb-filesystems");
+  if (!box) return;
+  const chosen = data.filesystems || "common";
+  tlsChoices(
+    box,
+    USB_FS_LEVELS,
+    chosen,
+    () => busy,
+    async (value) => {
+      if (value === chosen) return;
+      usbWaiting = {
+        id: (await postJSON("/admin/usb", { action: "filesystems", level: value })).id,
+        at: "scan",
+      };
+      loadUsb();
+    },
+  );
+  box.querySelectorAll("button").forEach((b) => (b.title = ""));
+  document.getElementById("usb-filesystems-warn").textContent = USB_FS_WARN[chosen] || "";
+}
 function renderUsb(data) {
   const progress = data.progress;
   const busy = data.pending > 0 || !!usbWaiting || !!progress;
@@ -12248,6 +12282,7 @@ function renderUsb(data) {
     usb.note,
   );
   usb.scan.disabled = busy;
+  drawUsbFilesystems(data, busy);
   const devs = (data.scan && data.scan.devices) || [];
   usb.devices.replaceChildren(
     ...devs.map((device) => {

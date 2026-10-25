@@ -5275,6 +5275,13 @@ def tls_switch(req):
     return tls.front(req.get("on") is True)
 
 
+def usb_filesystems(req):
+    """Which filesystems root mounts from USB drives (usbstick.LEVELS), then the drives looked at again with it."""
+    said = usbstick.set_level(req.get("level"))
+    _write_usb(usbstick.scan())
+    return said
+
+
 def usb_scan(req):
     data = usbstick.scan()
     _write_usb(data)
@@ -6812,6 +6819,7 @@ ACTIONS = {
     "tls-box": tls_box,
     "tls-admin-only": tls_admin_only,
     "usb-scan": usb_scan,
+    "usb-filesystems": usb_filesystems,
     "usb-import": usb_import,
     "usb-export": usb_export,
     "usb-kit-import": usb_kit_import,

@@ -251,12 +251,68 @@ def dl(url, dest, auth=None, name=None, expected=0, resume=False):
 
 
 policy = {"min_free_mb": 1}
+BOARD_LIST = json.dumps({"targets": [{"board": b} for b in mts]}).encode()
+
+
+class _Body(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def board_list_open(url, auth=None, method="GET", timeout=60, extra=None):
+    assert url.endswith(f"firmware-{FV}.json"), url
+    return _Body(BOARD_LIST)
+
+
 with (
     _m.patch.object(firmware, "_get_json", gj),
+    _m.patch.object(librarian, "_open", board_list_open),
     _m.patch.object(librarian, "_download", dl),
     _m.patch.object(firmware, "_publish", lambda p, d: p.write_text(json.dumps(d))),
 ):
+    # The board list against the sha-256 GitHub gives for the same release asset (B2): a match is checked and said;
+    # a mismatch stops the release; with none from GitHub, it is said that there was none.
+    good = "sha256:" + hashlib.sha256(BOARD_LIST).hexdigest()
+    v = firmware._mirror_version(
+        {"version": FV, "channel": "alpha", "list_digest": good}, {"boards": "all"}, policy, lambda *a: None
+    )
+    check(
+        "the board list checked against GitHub's sha-256, and said; each board's files by their manifest's MD5",
+        v["checks"] == {"board_list": "github-sha256", "files": "manifest-md5"},
+        v.get("checks"),
+    )
+    try:
+        firmware._mirror_version(
+            {"version": FV, "channel": "alpha", "list_digest": "sha256:" + "0" * 64},
+            {"boards": "all"},
+            policy,
+            lambda *a: None,
+        )
+        check("  a board list that differs from GitHub's: the release stops, said", False)
+    except librarian.LibrarianError as exc:
+        check(
+            "  a board list that differs from GitHub's: the release stops, said",
+            exc.message["id"] == "firmware.github-digest-mismatch",
+            exc.message,
+        )
     v = firmware._mirror_version({"version": FV, "channel": "alpha"}, {"boards": "all"}, policy, lambda *a: None)
+    check("  GitHub naming none: said as none", v["checks"]["board_list"] == "none", v.get("checks"))
+    kept = json.loads((firmware.ROOT / FV / firmware.DIGESTS).read_text())
+    check(
+        "each file's sha-256 kept beside the release, for the flasher page (B1)",
+        kept["a.bin"][2] == hashlib.sha256(files["a.bin"]).hexdigest()
+        and kept["c.bin"][2] == hashlib.sha256(files["c.bin"]).hexdigest(),
+        kept,
+    )
+    (firmware.ROOT / FV / "c.bin").write_bytes(b"d" * 60)
+    check(
+        "  a file that changed: its digest made again",
+        firmware.record_digests(firmware.ROOT / FV)["c.bin"] == hashlib.sha256(b"d" * 60).hexdigest(),
+    )
+    (firmware.ROOT / FV / "c.bin").write_bytes(files["c.bin"])
     check(
         "a board's file missing from the release: that board left out, the rest kept",
         v["boards"] == ["alpha", "zeta"]
