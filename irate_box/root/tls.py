@@ -413,7 +413,7 @@ def _new_ca(previous, nets=None):
     CA_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(CA_DIR, 0o700)
     TLS.mkdir(parents=True, exist_ok=True)
-    os.chmod(TLS, 0o755)
+    os.chmod(TLS, 0o755)  # Public certificates; the CA key is 0600 in CA_DIR, the server key 0640. # nosec B103
     with tempfile.TemporaryDirectory() as tmp:
         key = Path(tmp) / "ca.key"
         openssl(

@@ -1259,6 +1259,7 @@ if __name__ == "__main__":
     print(f"Store running at http://0.0.0.0:{PORT}{GLOBAL_PREFIX} and /api/saves")
     print(f"State in {STATE}")
     try:
-        HTTPServer(("0.0.0.0", PORT), StoreHandler).serve_forever()
+        # Run alone for development only; the hub imports the store.
+        HTTPServer(("0.0.0.0", PORT), StoreHandler).serve_forever()  # nosec B104
     finally:
         CLOCK.stop()

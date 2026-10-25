@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-# On every push and pull request: the licences (REUSE), the tests that need only Python, the pages in jsdom,
-# then the .deb (packaging/deb/build.sh), kept as the run's artifact. A tag v* also puts the
-# .deb on that tag's release.
+# On every push and pull request: the licences (REUSE), bandit over every file, the tests that need only
+# Python, the pages in jsdom, then the .deb (packaging/deb/build.sh), kept as the run's artifact. A tag v*
+# also puts the .deb on that tag's release.
 name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: [v*]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -22,6 +22,10 @@ jobs:
           python-version: "3.12"
       - name: Licences (REUSE)
         run: pipx run reuse lint
+      - name: Security lint (bandit, every file)
+        # Trunk's bandit sees only what a pull request changes; this sees what is already there too.
+        # The version and skips are Trunk's (.trunk/trunk.yaml, .trunk/configs/.bandit); tests use fixtures on purpose.
+        run: pipx run bandit==1.9.4 -q -r . -x ./tests,./.trunk --ini .trunk/configs/.bandit
       - name: Tests (tests/run.sh)
         run: tests/run.sh
       - name: Shell scripts parse

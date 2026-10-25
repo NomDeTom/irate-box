@@ -82,7 +82,7 @@ def _busy():
 
 def _online():
     try:
-        with urllib.request.urlopen(STATUS_URL, timeout=10) as r:
+        with urllib.request.urlopen(STATUS_URL, timeout=10) as r:  # The hub on loopback. # nosec B310
             return int(json.loads(r.read()).get("online") or 0)
     except (OSError, ValueError):
         return None  # cannot tell: treat as someone there

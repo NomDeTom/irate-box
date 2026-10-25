@@ -323,7 +323,7 @@ def write_zim(path, articles, meta, main="index.html", uid=None):
         + b"".join(dirents)
         + cluster
     )
-    Path(path).write_bytes(data + hashlib.md5(data).digest())
+    Path(path).write_bytes(data + hashlib.md5(data, usedforsecurity=False).digest())
 
 
 def zim(out, version=""):

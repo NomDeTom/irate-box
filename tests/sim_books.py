@@ -423,6 +423,37 @@ check(
     and (setattr(L, "_open", lambda *a, **k: Feed(b"nope")) or L._meta4_sha256("https://x/y.meta4")) is None,
 )
 L._open = real_open
+
+
+# XML the librarian reads (Kiwix's catalogue and metalinks, library.xml): any DTD refused, so no
+# entity can read a file or expand without bound, whatever the system's expat does.
+def refused(doc):
+    try:
+        L._xml(doc.encode())
+        return False
+    except ValueError:
+        return True
+
+
+LAUGHS = '<!ENTITY a0 "lol">' + "".join(f'<!ENTITY a{i} "{f"&a{i - 1};" * 10}">' for i in range(1, 10)) + "]>"
+check(
+    "XML: a document with no DTD read; a DTD, an external entity, a billion laughs or a quadratic blowup refused",
+    L._xml(META4.encode()).tag.endswith("metalink")
+    and refused('<?xml version="1.0"?><!DOCTYPE l><library/>')
+    and refused('<!DOCTYPE l [<!ENTITY x SYSTEM "file:///etc/passwd">]><library><book>&x;</book></library>')
+    and refused('<!DOCTYPE l [<!ENTITY % p SYSTEM "file:///etc/passwd"> %p;]><library/>')
+    and refused(f"<!DOCTYPE l [{LAUGHS}<library><book>&a9;</book></library>")
+    and refused(f'<!DOCTYPE l [<!ENTITY a "{"A" * 50000}">]><library><book>{"&a;" * 50000}</book></library>')
+    and refused("<library><book>"),
+)
+(T / "with-dtd.xml").write_text('<!DOCTYPE l [<!ENTITY x "y">]><library><book id="1"/></library>')
+refused_path = True
+try:
+    L._xml(T / "with-dtd.xml")
+    refused_path = False
+except ValueError:
+    pass
+check("  a library.xml with a DTD: refused when read from its file too", refused_path)
 (T / "abc").write_bytes(b"abc")
 L._verify_sha256(T / "abc", "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD", "abc")
 L._verify_sha256(T / "abc", None, "abc")
