@@ -119,12 +119,14 @@ kept = json.loads((ETC / "update-signing.json").read_text())
 public = json.loads((STATE / "control" / "update-signing.json").read_text())
 check(
     "the level and the keys kept root's (0600)",
-    kept == {"level": "tags", "signers": [line_tom]} and ((ETC / "update-signing.json").stat().st_mode & 0o077) == 0,
+    kept == {"level": "tags", "signers": [line_tom], "owner": ""}
+    and ((ETC / "update-signing.json").stat().st_mode & 0o077) == 0,
     oct((ETC / "update-signing.json").stat().st_mode),
 )
 check(
     "/admin sees the key's name, type and comment, never the key",
-    public == {"level": "tags", "keys": [{"name": "owner@box", "type": "ssh-ed25519", "comment": "laptop"}]}
+    public
+    == {"level": "tags", "owner": "", "keys": [{"name": "owner@box", "type": "ssh-ed25519", "comment": "laptop"}]}
     and pub_tom.split()[1] not in json.dumps(public),
     public,
 )
@@ -503,6 +505,89 @@ else:
 check(
     "the shipped key is GitHub's (its current key, B5690EEEBB952194)",
     "BEGIN PGP PUBLIC KEY BLOCK" in (REPO / signing.GITHUB_KEY).read_text(),
+)
+
+# The owner trusted at "merged on GitHub" (review 2026-10-23, F1): GitHub signs commits in anyone's repository with
+# the same key, so the box keeps whose repository it follows, shows it, and moves only when the administrator
+# confirms another owner.
+check(
+    "a repository's owner: host and first path part, lower case; a path on the box, its folder",
+    [
+        signing.owner_of(a)
+        for a in (
+            "https://github.com/NomDeTom/irate-box",
+            "https://github.com/nomdetom/irate-box.git",
+            "http://box.local:8000/mirrors/irate-box",
+            "git@github.com:Eve/irate-box.git",
+            "/srv/mirrors/irate-box",
+            "file:///srv/mirrors/irate-box",
+        )
+    ]
+    == [
+        "github.com/nomdetom",
+        "github.com/nomdetom",
+        "box.local/mirrors",
+        "github.com/eve",
+        "/srv/mirrors",
+        "/srv/mirrors",
+    ],
+)
+OPTIONS_FILE.write_text("--repo\nhttps://github.com/NomDeTom/irate-box\n--branch\nmain\n")
+hub_control.update_signing({"level": "github", "signers": ""})
+public = json.loads((STATE / "control" / "update-signing.json").read_text())
+check(
+    "choosing the level keeps the recorded source's owner as the one trusted, and /admin sees it",
+    signing.load(hub_control.ETC)["owner"] == "github.com/nomdetom" and public["owner"] == "github.com/nomdetom",
+    public,
+)
+ls_remote = subprocess.CompletedProcess([], 0, "abc\trefs/heads/main\nabd\trefs/heads/dev\n", "")
+with (
+    mock.patch.object(hub_control, "run", lambda *a, **k: ls_remote),
+    mock.patch.object(hub_control, "update_clear_cache", lambda req: None),
+    mock.patch.object(hub_control, "update_poll_target", lambda req: None),
+    mock.patch.object(hub_control, "_doctor_again", lambda: None),
+):
+    try:
+        hub_control.update_set_source({"repo": "https://github.com/Eve/irate-box", "branch": "main", "confirmed": True})
+        refused = None
+    except hub_control.Refused as exc:
+        refused = exc.message
+    check(
+        "a source of another owner's, not confirmed: refused, naming both owners; nothing recorded",
+        refused
+        and refused["id"] == "update.source.other-owner"
+        and refused["args"]["account"] == "github.com/eve"
+        and refused["args"]["trusted"] == "github.com/nomdetom"
+        and "NomDeTom" in OPTIONS_FILE.read_text(),
+        refused,
+    )
+    hub_control.update_set_source(
+        {"repo": "https://github.com/Eve/irate-box", "branch": "main", "confirmed": True, "trust_owner": True}
+    )
+    check(
+        "  confirmed: recorded, and eve is the owner trusted from now on",
+        "github.com/Eve/irate-box" in OPTIONS_FILE.read_text()
+        and signing.load(hub_control.ETC)["owner"] == "github.com/eve",
+    )
+    hub_control.update_set_source({"repo": "https://github.com/eve/irate-box", "branch": "dev", "confirmed": True})
+    check("  another branch of the same owner's: no question", "dev" in OPTIONS_FILE.read_text())
+# The source recorded some other way than Updates (the file edited): the check before an install refuses it.
+OPTIONS_FILE.write_text("--repo\nhttps://github.com/mallory/irate-box\n--branch\nmain\n")
+c = hub_control._signature_check(src, None)
+check(
+    "the check before an install: a recorded source not of the trusted owner fails, saying how to trust it",
+    c and not c[0]["ok"] and c[0]["detail"]["id"] == "update.signed.other-owner" and c[0]["fix"],
+    c,
+)
+# A box set to this level before owners were kept: the source it follows is the one it trusts from then on.
+SIGNING_FILE.write_text(json.dumps({"level": "github", "signers": []}))
+OPTIONS_FILE.write_text("--repo\nhttps://github.com/NomDeTom/irate-box\n--branch\nmain\n")
+with mock.patch.object(signing, "check_commits", lambda src, revs, key: (True, M("t.ok", "Signed."), [])):
+    c = hub_control._signature_check(src, None)
+check(
+    "  a box from before owners were kept: its source's owner pinned at the first check, which goes on",
+    signing.load(hub_control.ETC)["owner"] == "github.com/nomdetom" and c and c[0]["ok"],
+    c,
 )
 
 shutil.rmtree(T, ignore_errors=True)

@@ -114,6 +114,24 @@ PROBES = (
 )
 
 
+def admin_http_allowed():
+    """Whether the owner chose, at install, to be able to open the administration pages over plain HTTP
+    (install.sh --allow-admin-http, recorded). Without it they are HTTPS only, and Security does not offer HTTP:
+    a session over plain HTTP can be copied by anyone listening on an open hotspot."""
+    try:
+        return "--allow-admin-http" in (ETC / "install-options").read_text().split("\n")
+    except OSError:
+        return False
+
+
+def http_only_install():
+    """The box was installed with --no-https (recorded): plain HTTP is all it serves, the owner's choice."""
+    try:
+        return "--no-https" in (ETC / "install-options").read_text().split("\n")
+    except OSError:
+        return False
+
+
 def settings():
     rec = _record()
     return {
@@ -248,8 +266,32 @@ def _https_by_default():
         )
         return
     rec = _record()
-    rec.update(transport="both", admin_http="allow", on=True, admin_only=False)
+    rec.update(transport="both", admin_http="block", on=True, admin_only=True)
     _write(RECORD, json.dumps(rec), 0o644)
+    publish()
+
+
+@locked
+def _admin_http_to_https_only():
+    """A box installed before the administration pages became HTTPS only (2026-10-25) moves to it at its next
+    install or update, unless the owner chose --allow-admin-http. Only with its certificate there, so nobody is
+    left without a way in; a box on plain HTTP alone (its HTTPS turned off) is said by the Security doctor."""
+    if admin_http_allowed() or not RECORD.exists():
+        return
+    st = settings()
+    if st["transport"] == "http" or st["admin_http"] == "block":
+        return
+    if not (CHAIN.exists() and KEY.exists()):
+        print("The administration pages stay open over plain HTTP: this box has no certificate yet.", file=sys.stderr)
+        return
+    rec = _record()
+    rec.update(admin_http="block", admin_only=True)
+    _write(RECORD, json.dumps(rec), 0o644)
+    print(
+        "The administration pages now open over HTTPS only. To allow plain HTTP, run install.sh again with "
+        "--allow-admin-http.",
+        file=sys.stderr,
+    )
     publish()
 
 
@@ -257,6 +299,7 @@ def initialise():
     FRONT.mkdir(parents=True, exist_ok=True)
     _write(TLS / "ports.json", json.dumps({"http": PLAIN_PORTS, "https": TWINS}), 0o644)
     _https_by_default()
+    _admin_http_to_https_only()
     policy = settings()
     files = _plain_files(**policy)
     # An older installation may have enabled HTTPS before a new origin was added.  This
@@ -286,6 +329,25 @@ def configure(transport, admin_http):
                 "Enable HTTPS before blocking administrator access over HTTP.",
             )
         )
+    if not admin_http_allowed():
+        if transport != "http" and admin_http != "block":
+            raise Refused(
+                M(
+                    "https.settings.admin-http-install",
+                    "The administration pages open over HTTPS only. Opening them over plain HTTP too is a choice made "
+                    "at install: run install.sh again with {option}.",
+                    option="--allow-admin-http",
+                )
+            )
+        if transport == "http" and not http_only_install():
+            raise Refused(
+                M(
+                    "https.settings.off-install",
+                    "Turning HTTPS off would open the administration pages over plain HTTP. That is a choice made "
+                    "at install: run install.sh again with {option}.",
+                    option="--allow-admin-http",
+                )
+            )
     FRONT.mkdir(parents=True, exist_ok=True)
     files = _plain_files(transport, admin_http)
     files.update({path: text if transport != "http" else None for path, text in _front_files().items()})
@@ -620,7 +682,8 @@ def front(on):
     """
     current = settings()
     transport = current["transport"] if on and current["transport"] != "http" else ("both" if on else "http")
-    configure(transport, current["admin_http"] if on else "allow")
+    # Turned on, the administration pages go to HTTPS only unless the owner chose otherwise at install.
+    configure(transport, (current["admin_http"] if admin_http_allowed() else "block") if on else "allow")
     return (
         M(
             "https.front.on",
@@ -915,7 +978,10 @@ def publish():
     PUBLIC.mkdir(parents=True, exist_ok=True)
     from irate_box.root import safeio
 
-    safeio.write(PUBLIC / "status.json", json.dumps(status()))
+    safeio.write(
+        PUBLIC / "status.json",
+        json.dumps({**status(), "admin_http_allowed": admin_http_allowed(), "http_only_install": http_only_install()}),
+    )
     if CA_CERT.exists():
         safeio.write(PUBLIC / "ca.crt", CA_CERT.read_text())
 

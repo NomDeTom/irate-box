@@ -56,6 +56,7 @@ def go(method, path, body=None, addr="192.168.4.23", admin=False):
     }
     if admin:
         h["X-Irate-Admin"] = "1"
+        h["X-Forwarded-Proto"] = "https"  # an administrator on HTTPS (hub/transport.py)
     c.request(method, path, body=json.dumps(body).encode() if body is not None else None, headers=h)
     r = c.getresponse()
     raw = r.read().decode()

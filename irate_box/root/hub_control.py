@@ -164,7 +164,7 @@ from pathlib import Path
 
 from irate_box.finding import action as finding_action
 from irate_box.finding import finding
-from irate_box.hub import access, gitrepos, manifests, netinv, uplink
+from irate_box.hub import access, gitrepos, manifests, netinv, transport, uplink
 from irate_box.msg import (
     M,
     Refused,
@@ -2520,6 +2520,36 @@ def _signature_check(src, installed, tag=None):
     if sig["level"] == "off":
         return []
     if sig["level"] == "github":
+        try:
+            recorded = _option(_install_options(), "--repo") or ""
+        except ValueError:
+            recorded = ""
+        owner = signing.owner_of(recorded)
+        if not sig["owner"] and owner:
+            # A box set to this level before owners were kept: the source it follows now is the one it trusts.
+            sig = signing.pin_owner(ETC, owner, _signing_write)
+            safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(sig)))
+        if owner != sig["owner"]:
+            return [
+                _check(
+                    SIGNED_CHECK,
+                    False,
+                    M("update.verify.signed.title", "Signed as this box requires"),
+                    M(
+                        "update.signed.other-owner",
+                        "The update source {repo} belongs to {account}, not to {trusted}, whose repositories this box "
+                        "trusts.",
+                        repo=recorded,
+                        account=owner,
+                        trusted=sig["owner"],
+                    ),
+                    fix=M(
+                        "update.signed.other-owner.fix",
+                        "To trust {account}, set the update source again on Updates, over HTTPS, and confirm it.",
+                        account=owner,
+                    ),
+                )
+            ]
         known = (
             bool(installed) and run("git", "-C", str(src), "cat-file", "-e", f"{installed}^{{commit}}").returncode == 0
         )
@@ -2580,19 +2610,25 @@ def _signature_check(src, installed, tag=None):
     ]
 
 
+def _signing_write(path, text):
+    safeio.write(path, text, mode=0o600)
+
+
 def update_signing(req):
-    data = signing.save(
-        ETC,
-        str(req.get("level", "")),
-        str(req.get("signers", "")),
-        lambda path, text: safeio.write(path, text, mode=0o600),
-    )
-    safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
-    # Not a block: the setting is saved. But an owner who lowers signing under a source that then stops working is told.
     try:
         recorded = _option(_install_options(), "--repo")
     except ValueError:
         recorded = None
+    # The recorded source's owner is the one trusted from here on (shown on Updates; signing.owner_of).
+    data = signing.save(
+        ETC,
+        str(req.get("level", "")),
+        str(req.get("signers", "")),
+        _signing_write,
+        owner=signing.owner_of(recorded) if recorded else None,
+    )
+    safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(data)))
+    # Not a block: the setting is saved. But an owner who lowers signing under a source that then stops working is told.
     try:
         if recorded:
             _source_check(recorded, data["level"])
@@ -4848,6 +4884,20 @@ def update_set_source(req):
                 branch=branch,
             )
         )
+    sig = signing.load(ETC)
+    owner = signing.owner_of(repo)
+    if sig["level"] == "github" and sig["owner"] and owner != sig["owner"] and req.get("trust_owner") is not True:
+        # Whose commits the box installs is the owner's to decide, once, knowingly: GitHub signs any fork's.
+        raise Refused(
+            M(
+                "update.source.other-owner",
+                "{repo} belongs to {account}. This box trusts only commits in {trusted}'s repositories. Confirm that "
+                "you trust {account} to select the code this box runs as root.",
+                repo=repo,
+                account=owner,
+                trusted=sig["owner"],
+            )
+        )
     opts = _install_options()
     out = run("git", *_source_protocols(), "ls-remote", "--heads", repo, branch, timeout=60)
     if out.returncode != 0:
@@ -4869,6 +4919,8 @@ def update_set_source(req):
     text = "\n".join(opts) + "\n"
     safeio.write(ETC / "install-options", text, mode=0o644)
     safeio.write(STATE / "install-options", text, mode=0o644)
+    if sig["owner"] != owner:
+        safeio.write(SIGNING_PUBLIC, json.dumps(signing.public(signing.pin_owner(ETC, owner, _signing_write))))
     update_clear_cache({})
     # The new branch asked about, and the doctor run again: neither says what was true of the old one.
     try:
@@ -6889,6 +6941,16 @@ def main():
                         )
                     )
                 policy_check(what)
+                if not transport.allowed(what, req.get("over")):
+                    # The hub refuses these over plain HTTP before it queues them; this catches a route it missed.
+                    raise Refused(
+                        M(
+                            "control.https-only",
+                            "The root helper does {action} only for an administrator on HTTPS. Open the "
+                            "administration pages over HTTPS and try again.",
+                            action=str(what)[:40],
+                        )
+                    )
                 detail = next(
                     (str(req[k])[:60] for k in ("kit", "app", "choice", "name") if isinstance(req.get(k), str)),
                     "",

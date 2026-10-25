@@ -68,10 +68,10 @@ check(
     rec,
 )
 check(
-    "  HTTP and HTTPS both on, the administration pages open over either",
-    got["settings"] == {"transport": "both", "admin_http": "allow"}
+    "  HTTP and HTTPS both on, the administration pages over HTTPS only (review 2026-10-23, F1)",
+    got["settings"] == {"transport": "both", "admin_http": "block"}
     and rec.get("on") is True
-    and rec.get("admin_only") is False,
+    and rec.get("admin_only") is True,
     got["settings"],
 )
 check(
@@ -124,6 +124,43 @@ check(
     "a box that chose HTTP only: left on HTTP, no certificate made",
     not chose["chain"] and chose["settings"]["transport"] == "http",
     chose,
+)
+
+
+# A box set up before the administration pages became HTTPS only (both transports, administration over either):
+# moved to HTTPS only at its next install, and said; with --allow-admin-http recorded, left as it was.
+def older_box(name, options=""):
+    box = T / name
+    first, _ = install(box, "both")  # its CA and certificate, as an older installer made them
+    rec = dict(first["record"], admin_http="allow", admin_only=False)
+    (box / "etc" / "tls" / "made.json").write_text(json.dumps(rec))
+    if options:
+        (box / "etc" / "install-options").write_text(options)
+    return box
+
+
+moved, said = install(older_box("before-https-only"), "both")
+check(
+    "a box from before HTTPS-only administration: moved to it at its next install, and said",
+    moved["settings"] == {"transport": "both", "admin_http": "block"}
+    and moved["record"]["admin_only"] is True
+    and "--allow-admin-http" in said,
+    (moved["settings"], said),
+)
+kept, _ = install(older_box("chose-plain-admin", "--repo\nx\n--allow-admin-http\n"), "both")
+check(
+    "  one installed with --allow-admin-http: left as the owner set it",
+    kept["settings"] == {"transport": "both", "admin_http": "allow"},
+    kept["settings"],
+)
+box = T / "no-cert"
+(box / "etc" / "tls").mkdir(parents=True)
+(box / "etc" / "tls" / "made.json").write_text(json.dumps({"transport": "both", "admin_http": "allow", "on": True}))
+nocert, said = install(box, "both")
+check(
+    "  one with no certificate: left as it was (no way in over HTTPS yet), and said",
+    nocert["settings"]["admin_http"] == "allow" and "no certificate" in said,
+    (nocert["settings"], said),
 )
 
 print("ok" if not fails else f"{fails} failure(s)")

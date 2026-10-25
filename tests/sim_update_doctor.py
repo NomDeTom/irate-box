@@ -304,7 +304,7 @@ for bad in ("", "-x", "a..b", "a b", "x.lock", "x/", "$(id)"):
 (T / "etc" / "update-signing.json").write_text(json.dumps({"level": "github", "signers": []}))
 for ok in ("http://example.org/x", "git://example.org/x", "file:///srv/x", "/home/hub/irate-box"):
     calls.clear()
-    got = source({"repo": ok, "branch": "dev", "confirmed": True})
+    got = source({"repo": ok, "branch": "dev", "confirmed": True, "trust_owner": True})  # each another owner's
     check(
         f"signing on: a source of {ok!r} is asked about its branch, with git's allow-list on the command",
         calls

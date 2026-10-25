@@ -103,6 +103,10 @@ The installer keeps user data and the administrator password.
                         beside HTTP, administration pages included, so the first
                         administrator can be set up over HTTPS (/certificate lets a device
                         trust it). Recorded, so updates keep it. Security, HTTPS changes it later.
+  --allow-admin-http    let the administration pages be opened over plain HTTP too, chosen on
+                        Security, HTTPS. Without it they open over HTTPS only: a session over
+                        plain HTTP can be copied by anyone on an open hotspot. Recorded, so
+                        updates keep it.
   --no-git              leave out the Git add-on: no cgit or fcgiwrap, no Git servers, no Git
                         tiles. The repositories' folder and the librarian's mirrors stay (git
                         itself is in every install). Recorded, so updates keep it; so does
@@ -166,7 +170,7 @@ EOF
 SRC="" REPO="https://github.com/NomDeTom/irate-box" REPO_GIVEN=0 BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
-HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 NO_GIT=0 WITH_GIT=0
+HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 ALLOW_ADMIN_HTTP=0 NO_GIT=0 WITH_GIT=0
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
 for _a in "$@"; do
@@ -239,6 +243,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--no-https)
 		NO_HTTPS=1
+		shift
+		;;
+	--allow-admin-http)
+		ALLOW_ADMIN_HTTP=1
 		shift
 		;;
 	--no-git)
@@ -976,6 +984,8 @@ hub_site_in() {
 }
 # HTTPS beside HTTP from the first install unless --no-https was given, now or at an earlier install (recorded).
 [ "$NO_HTTPS" = 0 ] && grep -qx -- --no-https "$ETC/install-options" 2>/dev/null && NO_HTTPS=1
+# Administration over plain HTTP stays allowed once chosen, now or at an earlier install (recorded).
+[ "$ALLOW_ADMIN_HTTP" = 0 ] && grep -qx -- --allow-admin-http "$ETC/install-options" 2>/dev/null && ALLOW_ADMIN_HTTP=1
 # The Git add-on stays out once left out, by --no-git now or before (recorded) or by "irate-box gitaddon remove"
 # (its marker), so an update does not bring it back; --with-git brings it back.
 [ "$WITH_GIT" = 1 ] && [ "$NO_GIT" = 1 ] && die "--no-git and --with-git ask for opposite things; give one"
@@ -1340,6 +1350,7 @@ fi
 	[ "$HUB_URL" != / ] && printf '%s\n' --hub-url "$HUB_URL"
 	[ "$HUB_PORT" != 80 ] && printf '%s\n' --port "$HUB_PORT"
 	[ "$NO_HTTPS" = 1 ] && echo --no-https
+	[ "$ALLOW_ADMIN_HTTP" = 1 ] && echo --allow-admin-http
 	[ "$NO_GIT" = 1 ] && echo --no-git
 	true
 } >"$ETC/install-options"

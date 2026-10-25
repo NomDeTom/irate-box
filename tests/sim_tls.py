@@ -260,6 +260,23 @@ check(
     "a renewed certificate: nginx reloaded to read it",
     reloads and "nginx-main.conf" in reloads[0],
 )
+# Without --allow-admin-http (install-options), turning HTTPS off or opening the administration pages over plain HTTP
+# is refused: either would send an administrator's session in clear (review 2026-10-23, F1).
+(tls.ETC / "install-options").unlink(missing_ok=True)
+refusals = []
+for args in (("http", "allow"), ("both", "allow"), ("both", "warning")):
+    try:
+        tls.configure(*args)
+        refusals.append(None)
+    except Refused as exc:
+        refusals.append(exc.message["id"])
+check(
+    "no --allow-admin-http: HTTPS off and plain HTTP for the administration pages refused, and said",
+    refusals == ["https.settings.off-install", "https.settings.admin-http-install", "https.settings.admin-http-install"]
+    and tls.status()["on"],
+    refusals,
+)
+(tls.ETC / "install-options").write_text("--repo\nx\n--allow-admin-http\n")
 print(tls.front(False))
 check(
     "off: the twins gone, nginx reloaded, the CA and certificate kept",
@@ -950,6 +967,7 @@ def post(body, proto):
                 headers={
                     "X-Irate-Front": SECRET,
                     "X-Irate-Admin": "1",
+                    "X-Forwarded-For": "192.168.4.20",
                     "X-Forwarded-Proto": proto,
                     "Content-Type": "application/json",
                     "Host": f"127.0.0.1:{port}",
@@ -990,8 +1008,14 @@ try:
     )
     code, _ = post({"action": "admin-only", "on": True}, "https")
     check("  accepted from an HTTPS one", code == 202)
-    code, _ = post({"action": "admin-only", "on": False}, "http")
-    check("  turning it off: from anywhere", code == 202)
+    code, body = post({"action": "admin-only", "on": False}, "http")
+    check(
+        "  turning it off: not from plain HTTP (a copied session would open the pages to plain HTTP), said",
+        code == 403 and b"hub.https-only" in body,
+        (code, body),
+    )
+    code, _ = post({"action": "admin-only", "on": False}, "https")
+    check("  from HTTPS: asked of root (which allows it only with --allow-admin-http)", code == 202)
     code, _ = post({"action": "import", "chain": "C", "key": "K"}, "https")
     staged = T / "state" / "tls-import"
     check(

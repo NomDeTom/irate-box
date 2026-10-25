@@ -3473,6 +3473,23 @@ upd.install.addEventListener("click", () => {
 // version; a change is saved after one question that names it. The root helper checks the address and the branch
 // again, and refuses it when policy is console-only.
 let updLast = null;
+// Whose a repository is, as root/signing.py's owner_of says it: host and first path part, or the folder of a path.
+function repoOwner(repo) {
+  const text = String(repo || "").trim();
+  const m =
+    text.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]*@)?([^/:]+)(?::\d+)?\/+([^/]+)/i) ||
+    text.match(/^[^@/\s]+@([^:/]+):\/*([^/]+)/);
+  if (m) return `${m[1]}/${m[2]}`.toLowerCase();
+  return text ? text.replace(/\/[^/]*\/?$/, "").toLowerCase() || "/" : "";
+}
+// At "merged on GitHub", a source of another owner's: the box would trust that owner's commits instead.
+function otherOwner(repo) {
+  const sig = (updLast && updLast.signing) || {};
+  const owner = repoOwner(repo);
+  return sig.level === "github" && sig.owner && owner !== sig.owner
+    ? { owner, trusted: sig.owner }
+    : null;
+}
 const srcSec = AW.section({
   id: "update-source",
   label: "Update source",
@@ -3481,8 +3498,12 @@ const srcSec = AW.section({
     !v.repo.trim() || !v.branch.trim()
       ? "Give a repository and a branch."
       : null,
-  warn: () =>
-    'The box runs the code from this branch as root. "Merged on GitHub" accepts a commit from any fork. To trust one person, select "Signed releases only" and add their key.',
+  warn: (c, v) => {
+    const moved = otherOwner(v.repo);
+    return moved
+      ? `This repository is ${moved.owner}'s. Saving makes the box trust ${moved.owner}'s commits instead of ${moved.trusted}'s, and run them as root. Make sure you trust ${moved.owner}.`
+      : 'The box runs the code from this branch as root. "Merged on GitHub" accepts commits GitHub signed in the trusted owner\'s repository only. To trust one person\'s key, select "Signed releases only" and add it.';
+  },
   save: async (c, v) => {
     const j = AW.job();
     updWaiting = {
@@ -3492,6 +3513,7 @@ const srcSec = AW.section({
           repo: v.repo.trim(),
           branch: v.branch.trim(),
           confirmed: true,
+          trust_owner: !!otherOwner(v.repo),
         })
       ).id,
       action: "set-source",
@@ -14793,6 +14815,9 @@ function drawTlsChoices() {
     return policySec.update({ mode: appliedMode });
   const draft = tlsSec.values(),
     mode = policySec.get("mode");
+  // Plain HTTP for the administration pages is the owner's choice at install (--allow-admin-http); without it,
+  // neither it nor turning HTTPS off is offered (root refuses both too).
+  const plainChosen = !!tlsData.admin_http_allowed;
   tlsChoices(
     tlsEl.transport,
     TLS_TRANSPORT,
@@ -14801,7 +14826,11 @@ function drawTlsChoices() {
       busy ||
       locked ||
       (value !== "http" && !tlsData.set_up) ||
-      (!secure && ["discovery", "https"].includes(value)),
+      (!secure && ["discovery", "https"].includes(value)) ||
+      (value === "http" &&
+        applied.transport !== "http" &&
+        !plainChosen &&
+        !tlsData.http_only_install),
     (value) => tlsSec.set("transport", value),
   );
   tlsChoices(
@@ -14812,7 +14841,8 @@ function drawTlsChoices() {
       busy ||
       locked ||
       (value === "block" && (!secure || draft.transport === "http")) ||
-      ["discovery", "https"].includes(draft.transport),
+      ["discovery", "https"].includes(draft.transport) ||
+      (value !== "block" && value !== applied.admin_http && !plainChosen),
     (value) => tlsSec.set("admin_http", value),
   );
   tlsChoices(
@@ -14827,7 +14857,9 @@ function drawTlsChoices() {
     draft.admin_http !== "block" &&
     !["discovery", "https"].includes(draft.transport);
   document.getElementById("tls-admin-http-warn").textContent = !plainAdmin
-    ? ""
+    ? plainChosen || draft.transport === "http"
+      ? ""
+      : "Opening the administration pages over plain HTTP is a choice made at install: run install.sh again with --allow-admin-http."
     : draft.transport === "http"
       ? "The administrator password travels over plain HTTP. Anyone who listens on an open hotspot can read it."
       : "The administration pages also answer over plain HTTP. A browser that opens them as http:// sends the administrator password unencrypted.";
@@ -17024,7 +17056,9 @@ function drawSigning(sig, results) {
   sigEl.kept.textContent =
     sig.level === "tags" && sig.keys.length
       ? `Trusted now: ${sig.keys.map((k) => `${k.name} (${k.type}${k.comment ? `, ${k.comment}` : ""})`).join(", ")}. Saving replaces the list with the keys in the box above.`
-      : `Now: ${SIG_WORDS[sig.level] || sig.level}.`;
+      : sig.level === "github" && sig.owner
+        ? `Now: ${SIG_WORDS[sig.level]}, in ${sig.owner}'s repositories only.`
+        : `Now: ${SIG_WORDS[sig.level] || sig.level}.`;
 }
 sigEl.form.addEventListener("change", sigShowKeys);
 const sigSec = AW.form(sigEl.form, {
