@@ -32,7 +32,8 @@ STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 SETTINGS = STATE / "hotspot.json"
 NETINV = STATE / "control" / "netinv.json"
 MODES = ("open", "owe", "sae", "two")
-DEFAULT = {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"}
+# No password until the owner sets one.
+DEFAULT = {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"}  # nosec B105
 PASSWORD_RE = re.compile(r"^[\x20-\x7e]{8,63}$")  # what WPA accepts as a passphrase
 
 # Refusals said in several places.

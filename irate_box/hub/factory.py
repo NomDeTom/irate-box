@@ -789,7 +789,7 @@ def publish(run_number):
         if not FILE_RE.match(name) or kept not in arts:
             continue
         data = confine.under(run, "artifacts", kept).read_bytes()
-        if entry.get("md5") and hashlib.md5(data).hexdigest() != entry["md5"]:
+        if entry.get("md5") and hashlib.md5(data, usedforsecurity=False).hexdigest() != entry["md5"]:
             raise Refused(
                 M(
                     "factory.publish.digest",
@@ -803,7 +803,7 @@ def publish(run_number):
         raise Refused(M("factory.publish.no-files", "The build kept none of the files that the manifest names."))
     folder = confine.under(FIRMWARE, version + BUILT)
     folder.mkdir(parents=True, exist_ok=True)
-    os.chmod(folder, 0o755)
+    os.chmod(folder, 0o755)  # A folder of downloads the web server serves. # nosec B103
     for name, data in plan:
         tmp = confine.under(folder, name + ".part")
         tmp.write_bytes(data)

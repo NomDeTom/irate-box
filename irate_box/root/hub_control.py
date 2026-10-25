@@ -5789,7 +5789,7 @@ def health_fix(req):
     finally:
         try:
             _write_health()
-        except Exception:  # noqa: BLE001 - the repair's own answer matters more than a fresh report
+        except Exception:  # noqa: BLE001 - the repair's own answer matters more than a fresh report # nosec B110
             pass
     return msg
 

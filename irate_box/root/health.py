@@ -2452,7 +2452,7 @@ def check_git_addon():
 def check_hub():
     title = M("hub.title", "Hub server")
     try:
-        with urllib.request.urlopen("http://127.0.0.1:8000/status", timeout=8) as r:
+        with urllib.request.urlopen("http://127.0.0.1:8000/status", timeout=8) as r:  # The hub on loopback. # nosec B310
             json.load(r)
         return [finding("hub", title, "ok", M("hub.ok", "It answers on 127.0.0.1:8000."))]
     except (OSError, ValueError) as exc:

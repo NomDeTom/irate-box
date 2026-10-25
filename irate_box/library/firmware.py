@@ -57,6 +57,7 @@ import re
 import shutil
 import struct
 import tarfile
+import urllib.parse
 import urllib.request
 import zipfile
 import zlib
@@ -194,7 +195,7 @@ def _get_json(url):
 
 
 def _md5(path):
-    h = hashlib.md5()
+    h = hashlib.md5(usedforsecurity=False)
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
@@ -579,14 +580,36 @@ def _configs_from_git(rel, work):
     return files
 
 
+def _https(url):
+    """url, if it is https://, as every download here is (a redirect included); else LibrarianError."""
+    if urllib.parse.urlparse(url).scheme != "https":
+        raise LibrarianError(
+            M("firmware.package.not-https", "Download rejected. The source package is not on an https:// address.")
+        )
+    return url
+
+
 def _ranged(url):
-    real = urllib.request.urlopen(
-        urllib.request.Request(url, method="HEAD", headers={"User-Agent": librarian.USER_AGENT}), timeout=60
-    ).url
-    return lambda off: urllib.request.urlopen(
-        urllib.request.Request(real, headers={"Range": f"bytes={off}-", "User-Agent": librarian.USER_AGENT}),
-        timeout=120,
+    real = _https(
+        urllib.request.urlopen(  # https only, checked before and after the redirect. # nosec B310
+            urllib.request.Request(_https(url), method="HEAD", headers={"User-Agent": librarian.USER_AGENT}),
+            timeout=60,
+        ).url
     )
+
+    def get(off):
+        resp = urllib.request.urlopen(  # https only, checked before and after the redirect. # nosec B310
+            urllib.request.Request(real, headers={"Range": f"bytes={off}-", "User-Agent": librarian.USER_AGENT}),
+            timeout=120,
+        )
+        try:
+            _https(resp.url)
+        except LibrarianError:
+            resp.close()
+            raise
+        return resp
+
+    return get
 
 
 def _said(exc):

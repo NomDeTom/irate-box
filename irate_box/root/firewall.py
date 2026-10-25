@@ -280,7 +280,7 @@ def services_here(wanted):
 
         if clock.serving():
             have.append("time")
-    except Exception:  # noqa: BLE001 - no clock record: nothing served
+    except Exception:  # noqa: BLE001 - no clock record: nothing served # nosec B110
         pass
     return have
 

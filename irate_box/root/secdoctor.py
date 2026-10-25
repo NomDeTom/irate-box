@@ -817,7 +817,7 @@ def step_admin_gate(ctx):
     not come from the /admin page (no X-Irate-Admin). Both are asked of the hub directly, on
     loopback, as anything else on the box could; neither changes anything."""
     out = []
-    secret = ""
+    secret = ""  # Read from front-secret.env below. # nosec B105
     for line in (_read(ETC / "front-secret.env") or "").splitlines():
         if line.startswith("HUB_FRONT_SECRET="):
             secret = line.split("=", 1)[1].strip()
@@ -2542,7 +2542,7 @@ def step_units(ctx):
 
 MOSQUITTO_DIR = Path(os.environ.get("HUB_MOSQUITTO_DIR", "/etc/mosquitto"))
 LOOPBACK_WORDS = ("127.0.0.1", "localhost", "::1", "lo")
-WIDE_WORDS = ("0.0.0.0", "::", "*", "[::]")
+WIDE_WORDS = ("0.0.0.0", "::", "*", "[::]")  # Words matched in a config, not an address bound. # nosec B104
 
 
 def load_addons():
@@ -6017,7 +6017,8 @@ def _local_headers(url):
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(urllib.request.Request(url), timeout=5, context=ctx) as r:
+        # The box's own front, on loopback.
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=5, context=ctx) as r:  # nosec B310
             return r.status, dict(r.headers)
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {})

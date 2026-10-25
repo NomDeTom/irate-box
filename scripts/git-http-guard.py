@@ -31,7 +31,7 @@ LIMIT = 80 * 2**20
 
 def main():
     if os.environ.get("REQUEST_METHOD") != "POST":
-        os.execv(BACKEND, [BACKEND])
+        os.execv(BACKEND, [BACKEND])  # A fixed program, no shell. # nosec B606
     incoming = Path(os.environ.get("GIT_PROJECT_ROOT", "/var/lib/hub/git/public")).parent / ".incoming"
     incoming.mkdir(exist_ok=True)
     with tempfile.TemporaryFile(dir=incoming) as body:

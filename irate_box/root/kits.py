@@ -330,7 +330,7 @@ def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
     kit = _kit(kit_id)
     for d in (ROOT, POOL, MANIFESTS):
         d.mkdir(parents=True, exist_ok=True)
-    os.chmod(ROOT, 0o755)
+    os.chmod(ROOT, 0o755)  # The kits folder, read by apt. # nosec B103
     debug = _debug_apt() if kit.get("debug_archive") else []
     if update_lists or debug:
         log("apt-get update" + (" (Debian's debug archive)" if debug else ""))
@@ -625,7 +625,7 @@ def install(kit_id, hours=24, log=print):
             )
         )
     POLICY_RC.write_text("#!/bin/sh\n# irate-box: a toolkit is being installed; its services stay stopped.\nexit 101\n")
-    os.chmod(POLICY_RC, 0o755)
+    os.chmod(POLICY_RC, 0o755)  # policy-rc.d is a script dpkg runs. # nosec B103
     try:
         run(["apt-get", *_apt_offline(), "update", "-q"], timeout=300)
         log(f"{kit_id}: installing from the local repository")
@@ -855,7 +855,7 @@ def define(spec):
     if not pkgs:
         raise Refused(M("kits.define.no-packages", "Enter at least one package."))
     kitdefs.OWNER.mkdir(parents=True, exist_ok=True)
-    os.chmod(kitdefs.OWNER, 0o755)
+    os.chmod(kitdefs.OWNER, 0o755)  # A folder of kit definitions the hub reads. # nosec B103
     new = not (kitdefs.OWNER / f"{kid}.json").exists()
     _write(
         kitdefs.OWNER / f"{kid}.json",
@@ -919,7 +919,7 @@ def set_extra(kit_id, packages):
     base = set(kitdefs.shipped()[kit_id]["packages"])
     pkgs = [p for p in _checked_packages(packages, 20) if p not in base]
     kitdefs.OWNER.mkdir(parents=True, exist_ok=True)
-    os.chmod(kitdefs.OWNER, 0o755)
+    os.chmod(kitdefs.OWNER, 0o755)  # A folder of kit definitions the hub reads. # nosec B103
     extras = _read(kitdefs.OWNER / "extras.json", {}) or {}
     if pkgs:
         extras[kit_id] = pkgs
@@ -969,7 +969,7 @@ def rollback(kit_id, log=print):
         if pins:
             log(f"{kit_id}: installing the previous versions of {len(pins)} packages")
             POLICY_RC.write_text("#!/bin/sh\nexit 101\n")
-            os.chmod(POLICY_RC, 0o755)
+            os.chmod(POLICY_RC, 0o755)  # policy-rc.d is a script dpkg runs. # nosec B103
             try:
                 run(["apt-get", *_apt_offline(), "update", "-q"], timeout=300)
                 run(

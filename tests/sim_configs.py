@@ -335,5 +335,47 @@ librarian._download("http://x/y", part, expected=len(whole))
 check("without resume: never a range", part.read_bytes() == whole and asked == [None], asked)
 librarian._open = real_open
 
+
+# The release's source package, streamed in ranges: https only, before a redirect and after it.
+class Answered:
+    def __init__(self, url):
+        self.url, self.closed = url, False
+
+    def close(self):
+        self.closed = True
+
+
+def refusal(fn):
+    try:
+        fn()
+    except librarian.LibrarianError as exc:
+        return exc.message["id"]
+    return None
+
+
+real_urlopen = firmware.urllib.request.urlopen
+answers = []
+firmware.urllib.request.urlopen = lambda req, timeout=None: answers.pop(0)
+answers[:] = [Answered("https://codeload.example/src.tar.gz")]
+check(
+    "a source package over plain HTTP: not asked for",
+    refusal(lambda: firmware._ranged("http://x/src.tar.gz")) == "firmware.package.not-https",
+)
+answers[:] = [Answered("http://codeload.example/src.tar.gz")]
+check(
+    "  nor one whose address redirects to plain HTTP",
+    refusal(lambda: firmware._ranged("https://x/src.tar.gz")) == "firmware.package.not-https",
+)
+answers[:] = [Answered("https://codeload.example/src.tar.gz"), Answered("https://codeload.example/src.tar.gz")]
+open_at = firmware._ranged("https://x/src.tar.gz")
+check("  over https, before and after the redirect: each range answered", open_at(0).url.startswith("https://"))
+moved = Answered("http://elsewhere/src.tar.gz")
+answers[:] = [moved]
+check(
+    "  a range redirected to plain HTTP: refused and closed",
+    refusal(lambda: open_at(10)) == "firmware.package.not-https" and moved.closed,
+)
+firmware.urllib.request.urlopen = real_urlopen
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

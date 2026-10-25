@@ -789,7 +789,7 @@ def install_local(name, zip_path):
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(new)
         for root, _dirs, files in os.walk(new):
-            os.chmod(root, 0o755)
+            os.chmod(root, 0o755)  # Folders of an unpacked app the web server serves. # nosec B103
             for f in files:
                 os.chmod(os.path.join(root, f), 0o644)
         if target.exists():
@@ -982,10 +982,14 @@ class _Answer:
 
 
 def _open(url, auth=None, method="GET", timeout=60, extra=None):
+    if urllib.parse.urlparse(url).scheme not in ("https", "http"):
+        # urllib would also open file: and ftp: addresses; nothing here is fetched that way.
+        raise LibrarianError(M("library.download.not-web", "Download rejected. {url} is not a web address.", url=url))
     if urllib.parse.urlparse(url).hostname == "api.github.com" and not url.endswith("/rate_limit"):
         _pace_hit()
     try:
-        resp = urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)
+        # Web addresses only, checked above; https never downgraded below.
+        resp = urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)  # nosec B310
         if (
             urllib.parse.urlparse(url).scheme == "https"
             and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https"
@@ -1150,7 +1154,7 @@ def _api(path, auth=None):
     if got and time.time() - got[0] < MEMO_SECONDS:
         return got[1]
     url = f"{API}{path}"
-    kept = API_CACHE / f"{hashlib.sha1(url.encode()).hexdigest()}.json"
+    kept = API_CACHE / f"{hashlib.sha1(url.encode(), usedforsecurity=False).hexdigest()}.json"
     hit = _read_json(kept, {})
     hit = hit if hit.get("url") == url and hit.get("etag") else None
     try:
@@ -1337,6 +1341,35 @@ def _resolve_url(src, auth):
     }
 
 
+# --- XML: Kiwix's catalogue and metalinks, and library.xml ------------------------------------------
+def _xml(source):
+    """The root element of an XML document (bytes, or a path read whole). ValueError if it can't be
+    read or declares a DTD: nothing read here has one, and a DTD is where entity tricks live. The
+    system's expat already ignores external entities and caps how far entities expand; refusing
+    every DTD keeps that true on any expat."""
+    import xml.etree.ElementTree as ET  # Every document is checked for a DTD first. # nosec B405
+    from xml.parsers import expat
+
+    data = source if isinstance(source, bytes) else Path(source).read_bytes()
+
+    def refuse(*_):
+        raise ValueError("the document declares a DTD")
+
+    check = expat.ParserCreate()
+    check.StartDoctypeDeclHandler = check.EntityDeclHandler = refuse
+    try:
+        check.Parse(data, True)
+        return ET.fromstring(data)  # No DTD, so no entities. # nosec B314
+    except (expat.ExpatError, ET.ParseError) as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def _xml_write(root, path):
+    import xml.etree.ElementTree as ET  # Writes only. # nosec B405
+
+    ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+
+
 # --- Kiwix's catalogue (library.kiwix.org, OPDS) ---------------------------------------------------
 KIWIX_OPDS = "https://opds.library.kiwix.org/catalog/v2/entries"
 KIWIX_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
@@ -1346,14 +1379,12 @@ _ATOM = "{http://www.w3.org/2005/Atom}"
 def _opds(params):
     """The catalogue's entries for a query: [{name, title, summary, language, category, flavour,
     updated, size, articles, url}] and the total. The download is the .zim the .meta4 names."""
-    import xml.etree.ElementTree as ET
-
     url = f"{KIWIX_OPDS}?{urllib.parse.urlencode(params)}"
     with _open(url, timeout=30) as resp:
         data = resp.read(4 << 20)
     try:
-        root = ET.fromstring(data)
-    except ET.ParseError as exc:
+        root = _xml(data)
+    except ValueError as exc:
         raise LibrarianError(
             M("library.kiwix.catalogue-unreadable", "Download failed. The box cannot read the Kiwix catalogue.")
         ) from exc
@@ -1456,14 +1487,12 @@ def _meta4_sha256(url):
     if not url or not url.startswith("https://"):
         return None
     try:
-        import xml.etree.ElementTree as ET
-
         with _open(url, timeout=60) as resp:
             text = resp.read(1 << 20)
-        for h in ET.fromstring(text).iter(f"{METALINK}hash"):
+        for h in _xml(text).iter(f"{METALINK}hash"):
             if h.get("type") == "sha-256" and re.fullmatch(r"[0-9a-fA-F]{64}", (h.text or "").strip()):
                 return h.text.strip().lower()
-    except (OSError, ValueError, LibrarianError, ET.ParseError):
+    except (OSError, ValueError, LibrarianError):
         return None
     return None
 
@@ -1653,22 +1682,19 @@ def _splice(drop_name, add_from=None):
     small board (300 books): kiwix-manage opens every book already in a library on each run,
     so even one `add` took 17 s; describing the new book alone, in an empty library beside the
     real one, and splicing its entry in takes a fraction of that. None if library.xml is unreadable."""
-    import xml.etree.ElementTree as ET
-
     try:
-        tree = ET.parse(LIBRARY_XML)
-    except (OSError, ET.ParseError):
+        root = _xml(LIBRARY_XML)
+    except (OSError, ValueError):
         return None
-    root = tree.getroot()
     for b in [b for b in root.findall("book") if Path(b.get("path", "")).name == drop_name]:
         root.remove(b)
     if add_from is not None:
         try:
-            root.extend(ET.parse(add_from).getroot().findall("book"))
-        except (OSError, ET.ParseError):
+            root.extend(_xml(add_from).findall("book"))
+        except (OSError, ValueError):
             return None
     new = ZIM_DIR / "library.xml.new"
-    tree.write(new, encoding="utf-8", xml_declaration=True)
+    _xml_write(root, new)
     os.replace(new, LIBRARY_XML)
     return True
 
@@ -2209,8 +2235,6 @@ _catalogue_cache = {"key": None, "rows": None}
 
 def _catalogue():
     """{file name: {id, title, language, date, description, articles}} from library.xml, cached."""
-    import xml.etree.ElementTree as ET
-
     try:
         key = LIBRARY_XML.stat().st_mtime_ns
     except OSError:
@@ -2218,7 +2242,7 @@ def _catalogue():
     if _catalogue_cache["key"] != key:
         rows = {}
         try:
-            for b in ET.parse(LIBRARY_XML).getroot().iter("book"):
+            for b in _xml(LIBRARY_XML).iter("book"):
                 rows[Path(b.get("path", "")).name] = {
                     "id": b.get("id"),
                     "title": b.get("title") or "",
@@ -2227,7 +2251,7 @@ def _catalogue():
                     "description": b.get("description") or "",
                     "articles": int(b.get("articleCount") or 0),
                 }
-        except (OSError, ET.ParseError):
+        except (OSError, ValueError):
             rows = {}
         _catalogue_cache.update(key=key, rows=rows)
     return _catalogue_cache["rows"]
