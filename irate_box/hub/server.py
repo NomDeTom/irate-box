@@ -56,6 +56,7 @@ from irate_box.hub import (
     refused,
     store,
     svchistory,
+    transport,
     uplink,
     watchlog,
 )
@@ -2154,8 +2155,36 @@ def hub_version():
         return "a development checkout"
 
 
+# The request this thread is answering (Handler.do_POST, do_GET), so control_request can say how it came.
+_REQUEST = threading.local()
+HTTPS_ONLY_SAID = M(
+    "hub.https-only",
+    "Over plain HTTP, others on the network could copy your session. Open the administration pages over HTTPS "
+    "to do this.",
+)
+
+
+class NeedsHTTPS(Exception):
+    """A request for root that an administrator may make only over HTTPS (transport.HTTPS_ONLY), asked over plain
+    HTTP: do_POST answers it with HTTPS_ONLY_SAID."""
+
+
+def request_over():
+    """How the request this thread answers came (transport.py): "hub" when it answers none."""
+    handler = getattr(_REQUEST, "handler", None)
+    if handler is None:
+        return "hub"
+    if not FRONT_SECRET and "X-Forwarded-For" not in handler.headers:
+        return "loopback"  # the hub run bare: no web server in front, nothing on the network to copy a session
+    return "https" if handler._https() else "http"
+
+
 def control_request(req):
-    """Queue a request for hub_control.py; returns its id, which its answer will carry."""
+    """Queue a request for hub_control.py; returns its id, which its answer will carry. Raises NeedsHTTPS for an
+    HTTPS-only action asked over plain HTTP, before anything is queued."""
+    over = request_over()
+    if not transport.allowed(req.get("action"), over):
+        raise NeedsHTTPS(req.get("action"))
     CONTROL_REQUESTS.mkdir(parents=True, exist_ok=True)
     rid = secrets.token_hex(8)
     # Written in the hub's own folder, renamed in: never read half-written. Not in control/,
@@ -2163,7 +2192,7 @@ def control_request(req):
     tmp = STATE_DIR / f".request-{rid}.tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
-        json.dump(dict(req, id=rid), fh)
+        json.dump(dict(req, id=rid, over=over), fh)
     os.replace(tmp, CONTROL_REQUESTS / f"{rid}.json")
     return rid
 
@@ -4440,6 +4469,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        _REQUEST.handler = self
+        try:
+            self._get()
+        finally:
+            _REQUEST.handler = None
+
+    def _get(self):
         note_client(self)
         self._note_account()
         refresh_manifests()
@@ -5331,6 +5367,15 @@ class Handler(BaseHTTPRequestHandler):
             return None
 
     def do_POST(self):
+        _REQUEST.handler = self
+        try:
+            self._post()
+        except NeedsHTTPS:
+            self.send_json(403, refused.say(HTTPS_ONLY_SAID))
+        finally:
+            _REQUEST.handler = None
+
+    def _post(self):
         note_client(self)
         self._note_account()
         refresh_manifests()
@@ -5645,7 +5690,9 @@ class Handler(BaseHTTPRequestHandler):
                 request.update(repo=str(payload.get("repo") or "")[:300])
             if action == "update-set-source":
                 request.update(
-                    branch=str(payload.get("branch") or "")[:100], confirmed=payload.get("confirmed") is True
+                    branch=str(payload.get("branch") or "")[:100],
+                    confirmed=payload.get("confirmed") is True,
+                    trust_owner=payload.get("trust_owner") is True,
                 )
             self.send_json(202, {"id": control_request(request)})
             return
@@ -6171,6 +6218,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/local-addons":
+            # A local add-on's files are served on the hub's own origin: only an administrator on HTTPS adds one.
+            if request_over() == "http":
+                raise NeedsHTTPS("local-addons")
             code, body = local_addons_action(payload)
             self.send_json(code, body)
             return

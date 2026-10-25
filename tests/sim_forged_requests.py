@@ -311,7 +311,7 @@ for f in hub_control.REQUESTS.glob("*.json"):
 ran, answered = [], []
 for i, what in enumerate(("update-install", "net-scan")):
     f = hub_control.REQUESTS / f"{'a' * 15}{i}.json"
-    f.write_text(json.dumps({"action": what}))
+    f.write_text(json.dumps({"action": what, "over": "https"}))
     os.utime(f, (1_000_000 + i, 1_000_000 + i))
 with (
     mock.patch.dict(
@@ -331,6 +331,50 @@ with (
     )
     hub_control.main()
     check("  which then runs it", ran == ["update", "scan"])
+# What only an administrator on HTTPS may ask (hub/transport.py): root refuses it from a request that says plain
+# HTTP or says nothing, whatever the hub did; the same request over HTTPS, from a bare hub or from the hub's own
+# work runs, and an action not on the list runs from plain HTTP too.
+for f in hub_control.REQUESTS.glob("*.json"):
+    f.unlink()
+ran, said = [], []
+for i, (what, over) in enumerate(
+    (
+        ("update-set-source", "http"),
+        ("update-install", None),
+        ("addon", "http"),
+        ("update-set-source", "https"),
+        ("update-install", "loopback"),
+        ("addon", "hub"),
+        ("net-scan", "http"),
+    )
+):
+    f = hub_control.REQUESTS / f"{'c' * 15}{i}.json"
+    f.write_text(json.dumps({"action": what, **({"over": over} if over else {})}))
+    os.utime(f, (2_000_000 + i, 2_000_000 + i))
+with (
+    mock.patch.dict(
+        hub_control.ACTIONS,
+        {
+            a: (lambda req, a=a: ran.append((a, req.get("over"))) or "done")
+            for a in ("update-set-source", "addon", "net-scan")
+        }
+        | {"update-install": lambda req: ran.append(("update-install", req.get("over"))) or "done"},
+    ),
+    mock.patch.object(hub_control, "answer", lambda rid, ok, msg: said.append((ok, msg))),
+):
+    for _ in range(3):  # it stops after each update request (refused or not): the rest runs in the next
+        hub_control.main()
+check(
+    "root refuses an HTTPS-only action from plain HTTP or from a request that does not say",
+    [r for r in ran if r[1] in ("http", None) and r[0] != "net-scan"] == []
+    and sum(1 for ok, m in said if not ok and isinstance(m, dict) and m.get("id") == "control.https-only") == 3,
+    (ran, said),
+)
+check(
+    "  and does it over HTTPS, from a bare hub, from the hub's own work; another action from plain HTTP too",
+    ran == [("update-set-source", "https"), ("update-install", "loopback"), ("addon", "hub"), ("net-scan", "http")],
+    ran,
+)
 # While a request runs the helper says which, for the hub (which cannot see root's processes); after, it is gone.
 seen = []
 f = hub_control.REQUESTS / f"{'b' * 16}.json"

@@ -142,6 +142,23 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
       d.querySelector('#tls-admin-http [data-value="block"]').disabled &&
       /Open this page over HTTPS/.test(t(d.getElementById("tls-session-note"))),
   );
+  // Plain HTTP for the administration pages is chosen at install (--allow-admin-http): without it, neither it nor
+  // turning HTTPS off is offered, and the page says where it is chosen.
+  state = Object.assign({}, ON, { admin_http: "block", admin_only: true });
+  admin.w.eval("loadTls()");
+  await wait();
+  check(
+    "no --allow-admin-http: plain HTTP for the administration pages and HTTPS off not offered, said",
+    ["warning", "allow"].every(
+      (value) => d.querySelector(`#tls-admin-http [data-value="${value}"]`).disabled,
+    ) &&
+      d.querySelector('#tls-transport [data-value="http"]').disabled &&
+      /--allow-admin-http/.test(t(d.getElementById("tls-admin-http-warn"))),
+    t(d.getElementById("tls-admin-http-warn")),
+  );
+  state = Object.assign({}, ON, { admin_http_allowed: true });
+  admin.w.eval("loadTls()");
+  await wait();
   const beforeDraft = posted.length;
   d.querySelector('#tls-admin-http [data-value="warning"]').click();
   await wait();

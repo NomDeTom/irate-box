@@ -61,6 +61,22 @@ def parse_signers(text):
     return out
 
 
+def owner_of(repo):
+    """Whose a repository is, as the box trusts it at the github level: the host and the first part of the path
+    for an address ("github.com/nomdetom"), the folder that holds it for a path on the box. Lower case. GitHub signs
+    a commit made in anyone's repository with the same key, so its signature says only "made on GitHub": the owner
+    is what says whose."""
+    text = str(repo or "").strip()
+    if text.lower().startswith("file://"):
+        text = text[len("file://") :]  # a mirror on the box: its folder, as a path
+    m = re.match(r"^[a-z][a-z0-9+.-]*://(?:[^@/]*@)?([^/:]+)(?::\d+)?/+([^/]+)", text, re.I)
+    if not m:
+        m = re.match(r"^[^@/\s]+@([^:/]+):/*([^/]+)", text)  # git@github.com:owner/repo
+    if m:
+        return f"{m.group(1)}/{m.group(2)}".lower()
+    return str(Path(text).parent).lower() if text else ""
+
+
 def load(etc):
     try:
         data = json.loads((Path(etc) / FILE_NAME).read_text())
@@ -68,11 +84,22 @@ def load(etc):
         data = {}
     level = data.get("level") if data.get("level") in LEVELS else "off"
     signers = [s for s in data.get("signers", []) if isinstance(s, str)]
-    return {"level": level, "signers": signers}
+    owner = data.get("owner") if isinstance(data.get("owner"), str) else ""
+    return {"level": level, "signers": signers, "owner": owner}
 
 
-def save(etc, level, signers_text, write):
-    """Check and keep the choice; write(path, text) is the caller's root-safe writer."""
+def pin_owner(etc, owner, write):
+    """The owner this box trusts, kept beside the level: set when the level is chosen, and moved only when the
+    administrator sets a source of another owner's and confirms it."""
+    data = load(etc)
+    data["owner"] = owner
+    write(Path(etc) / FILE_NAME, json.dumps(data, indent=2))
+    return data
+
+
+def save(etc, level, signers_text, write, owner=None):
+    """Check and keep the choice; write(path, text) is the caller's root-safe writer. owner: the recorded source's
+    (owner_of), kept as the owner this box trusts; None keeps the one recorded before."""
     if level not in LEVELS:
         raise Refused(
             M(
@@ -84,19 +111,19 @@ def save(etc, level, signers_text, write):
     signers = parse_signers(signers_text)
     if level == "tags" and not signers:
         raise Refused(M("update.signing.no-keys", "Add at least one trusted key to require signed releases."))
-    data = {"level": level, "signers": signers}
+    data = {"level": level, "signers": signers, "owner": load(etc)["owner"] if owner is None else owner}
     write(Path(etc) / FILE_NAME, json.dumps(data, indent=2))
     return data
 
 
 def public(data):
-    """What /admin may show: the level, and each key's name, type and comment (never the key)."""
+    """What /admin may show: the level, the owner trusted, and each key's name, type and comment (never the key)."""
     keys = []
     for line in data["signers"]:
         m = SIGNER.match(line)
         if m:
             keys.append({"name": m.group(1), "type": m.group(2), "comment": m.group(4) or ""})
-    return {"level": data["level"], "keys": keys}
+    return {"level": data["level"], "owner": data.get("owner", ""), "keys": keys}
 
 
 def _git(src, *args, env=None, timeout=60):
