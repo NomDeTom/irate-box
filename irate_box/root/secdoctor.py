@@ -2364,6 +2364,23 @@ def _ci_nft():
     return r.stdout if r and r.returncode == 0 and re.search(r'skuid "?hubci"? oif "?lo"? drop', r.stdout) else None
 
 
+def _ci_nft_ready():
+    """Whether the build rule (ETC/ci-loopback.nft, which the build unit loads before each build) would load on this
+    kernel, by nft's own check (-c: nothing changes): (True, None), or (False, why not)."""
+    path = ETC / "ci-loopback.nft"
+    if not path.exists():
+        return False, f"{path}: missing"
+    try:
+        r = _cmd("nft", "-c", "-f", str(path), timeout=20)
+    except subprocess.SubprocessError:
+        return False, "nft -c: no answer"
+    if r is None:
+        return False, "nft: not installed"
+    if r.returncode:
+        return False, ((r.stderr or r.stdout).strip().splitlines() or ["nft -c failed"])[0][:200]
+    return True, None
+
+
 def step_units(ctx):
     """The build unit's reach to loopback; sandboxing of root and hub units."""
     units = ctx["units"]
@@ -2519,10 +2536,25 @@ def step_units(ctx):
         deny = ci.get("IPAddressDeny", "").strip()
         private = ci.get("PrivateNetwork") == "yes"
         families = ci.get("RestrictAddressFamilies", "")
-        nft = None if private or any(x in deny for x in ("127.", "localhost", "::1", "any")) else _ci_nft()
-        blocks_loopback = private or nft is not None or any(x in deny for x in ("127.", "localhost", "::1", "any"))
+        denied = any(x in deny for x in ("127.", "localhost", "::1", "any"))
+        nft = None if private or denied else _ci_nft()
+        # Not loaded now (no build since boot): loaded before the next, if this kernel takes it.
+        ready, refused = (None, None) if private or denied or nft else _ci_nft_ready()
+        blocks_loopback = private or nft is not None or denied
         ci_t = M("units.ci.title", "Build isolation from the hub")
         deny_line = ["IPAddressDeny=localhost"]
+        # What keeps builds off when nothing else does, and why it can't here (the warnings below).
+        no_rule = (
+            [
+                M(
+                    "units.ci.nft-refused",
+                    "The box's nftables rule for builds cannot be used here: nftables is missing, or the kernel cannot "
+                    "match packets by the user that sent them.",
+                )
+            ]
+            if refused
+            else []
+        )
         if blocks_loopback:
             out.append(
                 finding(
@@ -2540,6 +2572,20 @@ def step_units(ctx):
                             else ("nft: inet irate_box_ci (hubci to lo: DNS only)" if nft else f"IPAddressDeny={deny}")
                         )
                     ],
+                )
+            )
+        elif ready:
+            out.append(
+                finding(
+                    "units-ci-loopback",
+                    ci_t,
+                    "ok",
+                    M(
+                        "units.ci.before-build",
+                        "Builds cannot connect to the loopback address. The rule that stops them is loaded before "
+                        "each build, and this kernel accepts it.",
+                    ),
+                    evidence=[f"nft -c -f {ETC / 'ci-loopback.nft'}: accepted (hubci to lo: DNS only)"],
                 )
             )
         elif _hub_ask("GET", "/admin/settings", {"Host": "127.0.0.1"}) == 403:
@@ -2564,7 +2610,8 @@ def step_units(ctx):
                         "Add this line to the build unit to keep builds off the loopback address.",
                     ),
                     commands=deny_line,
-                    evidence=["irate-box-ci.service"],
+                    notes=no_rule,
+                    evidence=["irate-box-ci.service", *([refused] if refused else [])],
                 )
             )
         else:
@@ -2588,8 +2635,10 @@ def step_units(ctx):
                         "Add this line to the build unit to keep builds off the loopback address.",
                     ),
                     commands=deny_line,
+                    notes=no_rule,
                     evidence=["irate-box-ci.service"]
-                    + ([f"RestrictAddressFamilies={families}"] if families.strip() else []),
+                    + ([f"RestrictAddressFamilies={families}"] if families.strip() else [])
+                    + ([refused] if refused else []),
                 )
             )
     return out
