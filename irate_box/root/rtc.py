@@ -1031,7 +1031,7 @@ def _auto_off():
         opts = (ETC / "install-options").read_text().split("\n")
     except OSError:
         return False
-    return any(o == "--rtc" and n == "off" for o, n in zip(opts, opts[1:])) or "--rtc=off" in opts
+    return any(o == "--rtc" and n == "off" for o, n in zip(opts, opts[1:], strict=False)) or "--rtc=off" in opts
 
 
 def _as_source():
