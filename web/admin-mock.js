@@ -143,10 +143,10 @@
 
     const scale = h('div', { 'aria-label': 'Stand-in reach' });
     AW.choices(scale, 'mock-reach', [
-      { value: 'watch', title: 'Watch only', says: 'Records an outage and does nothing else.' },
-      { value: 'reconnect', title: 'Reconnect', says: 'Reconnects the link, and nothing heavier.' },
-      { value: 'restart', title: 'Restart the service', says: 'Reconnects, then restarts the network service.' },
-      { value: 'reboot', title: 'Reboot', says: 'Every step, up to restarting the box.' },
+      { value: 'watch', title: 'Watch only', says: 'Records each outage and takes no action.' },
+      { value: 'reconnect', title: 'Reconnect to the network', says: 'Disconnects from the network and connects to it again.' },
+      { value: 'restart', title: 'Restart the service', says: 'Restarts the program that runs the network connections.' },
+      { value: 'reboot', title: 'Reboot', says: 'Restarts the whole box.' },
     ], { value: 'restart', slider: true });
 
     // In a form of the pages' kind (form.library-form), as the Updates and Firmware pages hold them: it sets the labels' size.

@@ -183,7 +183,7 @@ setTimeout(() => {
       && paceRange.getAttribute('aria-labelledby') === 'up-pace-label' && /^Level 1 of 4, Gentle: /.test(saysOf('up-pace')),
     `${paceRange.max} ${paceRange.value} ${paceRange.getAttribute('aria-valuetext')} ${saysOf('up-pace')}`);
   check('  the chips\' words: reach in words, guests Defer or Allow, the period No limit to A week',
-    tiles('up-reach').map((r) => r.textContent.trim()).join('|') === 'Watch only|Reconnect|Restart the network service|Reset the radio|Reboot'
+    tiles('up-reach').map((r) => r.textContent.trim()).join('|') === 'Watch only|Reconnect to the network|Restart the network service|Reset the radio|Reboot'
     && tiles('up-guests').map((r) => r.textContent.trim()).join('|') === 'Defer|Allow'
     && tiles('up-giveup').map((r) => r.textContent.trim()).join('|') === 'No limit|An hour|A day|A week',
     [tiles('up-reach'), tiles('up-guests'), tiles('up-giveup')].map((x) => x.map((r) => r.textContent.trim()).join('|')).join(' / '));

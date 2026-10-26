@@ -6933,7 +6933,7 @@ const STEP_DOES = {
 // the network adapter.
 const REACH_TITLE = {
   watch: "Watch only",
-  reconnect: "Reconnect",
+  reconnect: "Reconnect to the network",
   restart: "Restart the network service",
   radio: "Reset the radio",
   reboot: "Reboot",
@@ -7221,7 +7221,10 @@ function buildUpChoices(levels) {
     levels.reach.map((n) => ({
       value: n,
       title: reachTitle(n, true),
-      says: n === "radio" ? "Reconnects; restarts the network service; then resets the network adapter." : levels.describe[n] || "",
+      says:
+        n === "radio"
+          ? "Switches the network adapter off and on again, as unplugging it would. Its connection is down for up to a minute."
+          : levels.describe[n] || "",
     })),
     "slider",
   );
@@ -7379,7 +7382,7 @@ function readUpForm() {
 // The steps the watchdog may take, a row of ticks per connection (the box's WiFi and wired links, and any
 // connection steps were switched off for before): all ticked unless switched off (uplink.py steps_off).
 const UP_STEP_NAMES = {
-  reconnect: "Reconnect",
+  reconnect: "Reconnect to the network",
   restart: "Restart the network service",
   radio: "Reset the radio",
   reboot: "Reboot the box",
