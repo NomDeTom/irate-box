@@ -145,11 +145,23 @@ try:
     secdoctor._hub_port = lambda: port
     secdoctor.ETC = state
     seen = {f["id"]: f["status"] for f in secdoctor.step_admin_gate({})}
-    check(
-        "the security doctor: forwarded headers ignored without the secret",
-        seen.get("front-proof") == "ok",
-        seen,
+    check("the security doctor: forwarded headers ignored without the secret", seen.get("front-proof") == "ok", seen)
+    # The secret in the system log (Caddy's packaged "run --environ" printed it): a problem; not there, nothing.
+    # The fixture as text of its own ("e" * 64 is SECRET, "f" * 64 VIA): a test's stand-in, not a stored secret.
+    (state / "front-secret.env").write_text("HUB_FRONT_SECRET=" + "e" * 64 + "\nHUB_VIA_SECRET=" + "f" * 64 + "\n")
+    (state / "front-secret.env").chmod(0o600)
+    journal = {"text": ""}
+    real_cmd = secdoctor._cmd
+    secdoctor._cmd = lambda *argv, **kw: (
+        subprocess.CompletedProcess(argv, 0, journal["text"], "") if argv[0] == "journalctl" else real_cmd(*argv, **kw)
     )
+    seen = {f["id"]: f["status"] for f in secdoctor.step_admin_gate({})}
+    check("  the secret not in the system log: no finding", "admin-secret-logged" not in seen, seen)
+    journal["text"] = f"HOME=/var/lib/caddy\nHUB_FRONT_SECRET={SECRET}\n"
+    seen = {f["id"]: f["status"] for f in secdoctor.step_admin_gate({})}
+    check("  the secret in the system log: a problem", seen.get("admin-secret-logged") == "problem", seen)
+    secdoctor._cmd = real_cmd
+    (state / "front-secret.env").unlink()
 finally:
     hub.terminate()
     hub.wait(10)

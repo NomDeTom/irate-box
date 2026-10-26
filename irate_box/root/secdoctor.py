@@ -927,6 +927,31 @@ def step_admin_gate(ctx):
             )
         )
     if secret:
+        try:
+            logged = _cmd("journalctl", "-q", "-u", "caddy", "-o", "cat", "--no-pager", timeout=60)
+        except subprocess.SubprocessError:
+            logged = None
+        if logged is not None and secret in (logged.stdout or ""):
+            out.append(
+                finding(
+                    "admin-secret-logged",
+                    M("admin-secret.title", "Web server secret permissions"),
+                    "problem",
+                    M("admin-secret.logged", "The web server's secret is in the system log."),
+                    M(
+                        "admin-secret.logged.why",
+                        "Caddy's packaged service prints its environment there when it starts, and any account in "
+                        "the adm group reads the log. With the secret, a program on the box can send /admin "
+                        "requests that the hub takes as coming through the web server.",
+                    ),
+                    M(
+                        "admin-secret.logged.fix",
+                        "Run the installer again. It starts Caddy without printing its environment, and makes new "
+                        "secrets.",
+                    ),
+                    evidence=["journalctl -u caddy"],
+                )
+            )
         path = ETC / "front-secret.env"
         st = path.stat()
         if st.st_uid != 0 or st.st_mode & 0o077:
