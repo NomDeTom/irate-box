@@ -2718,7 +2718,8 @@ if [ -n "$UPLINK" ] || [ ! -f "$ETC/uplink.json" ]; then
 	HUB_ETC_DIR="$ETC" "$CODE/irate-box" uplink set "${up[@]}" >/dev/null || problem "--uplink $UPLINK: not taken (uplink.py set)"
 fi
 # A clock module on I2C: found and set up if there is exactly one (rtc.py auto), kept if set up
-# before. Nothing in /boot or the device tree changes.
+# before; and looked for again now and then (irate-box-rtc-look.timer), for one attached later.
+# Nothing in /boot or the device tree changes. --rtc off: no search by itself.
 if [ "$RTC" = auto ] || [ -f "$ETC/rtc.json" ]; then
 	if out="$(HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" timeout 120 "$CODE/irate-box" rtc auto 2>&1)"; then
 		echo "    $out"
@@ -2726,6 +2727,8 @@ if [ "$RTC" = auto ] || [ -f "$ETC/rtc.json" ]; then
 	else
 		problem "looking for a clock module failed: $out"
 	fi
+else
+	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" rtc look-off >/dev/null 2>&1 || true
 fi
 # Crash watch (crashwatch.py): always running, small. Its start notes the boot (and files the last one
 # as a crash if it never shut down); its stop marks a clean shutdown.

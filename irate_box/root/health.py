@@ -3059,6 +3059,11 @@ def check_module():
             if cfg["mode"] == "kernel"
             else M("rtc.driver-own", "It runs through irate-box's own driver.")
         )
+        if cfg.get("by") == "found":
+            driver = sentences(
+                driver,
+                M("rtc.found-itself", "The box found it and set it up by itself on {at}.", at=when(cfg.get("set_up"))),
+            )
         remove = action(
             "rtc-remove",
             M("rtc.remove", "Stop using it"),
@@ -3170,7 +3175,7 @@ def check_module():
                 )
             )
         return out
-    look = action("rtc-find", M("rtc.find", "Look for a clock module"))
+    look = action("rtc-look", M("rtc.find", "Look for a clock module"))
     try:
         found = json.loads(rtc.FOUND.read_text())
     except (OSError, ValueError):
@@ -4130,7 +4135,7 @@ CHOICE_RE = re.compile(
     r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$|^(kiwix-rebuild|kiwix-off)$"
     r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
     r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
-    r"|^clock-set:\d{10}$|^(rtc-find|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
+    r"|^clock-set:\d{10}$|^(rtc-find|rtc-look|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
     r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$|^clock-undo$"
     r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
     r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
@@ -4372,6 +4377,8 @@ def fix(choice):
                 if f["buses"]
                 else M("repair.rtc.no-bus", "The search found no clock module. No I2C bus is enabled.")
             )
+        if choice == "rtc-look":
+            return rtc.look(asked=True)
         if kind == "rtc-setup":
             chip, bus, addr = arg.split(":")
             return rtc.setup(chip, int(bus), addr)

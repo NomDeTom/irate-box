@@ -208,6 +208,10 @@ fi
 if [ -f "$ETC/rtc.json" ] && [ -f "$CODE/irate_box/root/rtc.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" rtc remove | sed 's/^/    /' || true
 fi
+# The search for a clock module now and then (irate-box-rtc-look.timer).
+if [ -f "$CODE/irate_box/root/rtc.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" rtc look-off || true
+fi
 
 say "Removing unit files and drop-ins"
 rm -f "$UNITDIR/irate-box-nginx-recover.service" "$UNITDIR/nginx.service.d/irate-box-recovery.conf"
