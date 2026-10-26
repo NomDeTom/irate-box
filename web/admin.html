@@ -3049,6 +3049,27 @@
             </p>
             <div id="health-ladder"></div>
           </details>
+          <!-- The card's writes by the hour (cardhistory.py): per day, by service, and before and after each change
+             of a write setting. Change the settings on Recovery → SD card writes. -->
+          <details class="sec-fold" id="health-card-fold">
+            <summary data-i18n="admin.health.summary-sd-card-writes">
+              SD card writes
+            </summary>
+            <p class="setting-desc" id="health-card-rate"></p>
+            <h4 data-i18n="admin.health.h-daily-writes">Daily writes</h4>
+            <table class="admin-table card-days" id="health-card-days"></table>
+            <h4 data-i18n="admin.health.h-writes-by-service">
+              Writes by service, last 7 days
+            </h4>
+            <p class="setting-desc" id="health-card-units-note" hidden></p>
+            <table class="admin-table" id="health-card-units"></table>
+            <h4 data-i18n="admin.health.h-setting-changes">Setting changes</h4>
+            <ul class="admin-list" id="health-card-changes"></ul>
+            <p class="setting-desc" data-i18n="admin.health.card-writes-where">
+              Change the write settings on
+              <a href="#recovery">Recovery → SD card writes</a>.
+            </p>
+          </details>
           <details class="sec-fold" id="health-install-fold">
             <summary
               data-i18n="admin.health.summary-last-installation-no-record"
