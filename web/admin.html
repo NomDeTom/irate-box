@@ -3540,19 +3540,59 @@
                         aria-labelledby="up-reach-label"
                       ></div>
                     </div>
-                    <div class="up-group">
-                      <span
-                        class="setting-name"
-                        id="up-guests-label"
-                        data-i18n="admin.network.up-guests-label"
-                        >Disruptive recovery while guests are on the hotspot</span
-                      >
-                      <div
-                        class="choice-tiles"
-                        id="up-guests"
-                        role="radiogroup"
-                        aria-labelledby="up-guests-label"
-                      ></div>
+                    <!-- Three small settings side by side, for a shorter page: when recovery starts (sensitivity), whether short
+                         roams count towards it, and whether disruptive steps wait while guests are on the hotspot. -->
+                    <div class="up-lump">
+                      <div class="up-group">
+                        <label
+                          class="setting-name"
+                          for="up-sens"
+                          data-i18n="admin.network.label-sensitivity-missed-checks-within"
+                          >Sensitivity: missed checks, within the timing window,
+                          that start recovery</label
+                        >
+                        <span class="up-sens-row"
+                          ><input
+                            type="number"
+                            id="up-sens"
+                            min="1"
+                            max="20"
+                            step="1"
+                            inputmode="numeric" />
+                          <span class="setting-desc" id="up-sens-says"></span
+                        ></span>
+                      </div>
+                      <div class="up-group up-box-only">
+                        <label
+                          class="setting"
+                          data-i18n="admin.network.label-not-count-short-roams"
+                        >
+                          <input type="checkbox" id="up-ignore-roams" />
+                          <span>
+                            <span class="setting-name">Short roams</span>
+                            <span class="setting-desc"
+                              >On: a drop that returns within 20 s on the same
+                              network is not counted as a missed check. The chart
+                              still shows it. Failed gateway checks still
+                              count.</span
+                            >
+                          </span>
+                        </label>
+                      </div>
+                      <div class="up-group">
+                        <span
+                          class="setting-name"
+                          id="up-guests-label"
+                          data-i18n="admin.network.up-guests-label"
+                          >Disruptive recovery while guests are on the hotspot</span
+                        >
+                        <div
+                          class="choice-tiles"
+                          id="up-guests"
+                          role="radiogroup"
+                          aria-labelledby="up-guests-label"
+                        ></div>
+                      </div>
                     </div>
                     <div class="up-group">
                       <span
@@ -3640,25 +3680,6 @@
                         Go to the box defaults
                       </button>
                     </div>
-                    <div class="up-group">
-                      <label
-                        class="setting-name"
-                        for="up-sens"
-                        data-i18n="admin.network.label-sensitivity-missed-checks-within"
-                        >Sensitivity: missed checks, within the timing window,
-                        that start recovery</label
-                      >
-                      <span class="up-sens-row"
-                        ><input
-                          type="number"
-                          id="up-sens"
-                          min="1"
-                          max="20"
-                          step="1"
-                          inputmode="numeric" />
-                        <span class="setting-desc" id="up-sens-says"></span
-                      ></span>
-                    </div>
                     <div class="up-group up-box-only">
                       <span
                         class="setting-name"
@@ -3681,21 +3702,6 @@
                         hidden
                         data-i18n-aria-label="admin.network.aria-access-point-lock"
                       ></div>
-                      <label
-                        class="setting"
-                        data-i18n="admin.network.label-not-count-short-roams"
-                      >
-                        <input type="checkbox" id="up-ignore-roams" />
-                        <span>
-                          <span class="setting-name">Short roams</span>
-                          <span class="setting-desc"
-                            >On: a drop that returns within 20 s on the same
-                            network is not counted as a missed check. The chart
-                            still shows it. Failed gateway checks still
-                            count.</span
-                          >
-                        </span>
-                      </label>
                     </div>
                     <!-- Which links have a watchdog of their own (uplink.py watch, watch_new), and the steps that reach every
                        link (box_steps) or meet a cable unplugged (cable_out). -->

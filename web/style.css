@@ -2681,6 +2681,13 @@ body.drop > section + section {
   gap: 0.4rem;
   min-width: 0;
 }
+/* Network recovery's small settings side by side (sensitivity, short roams, guests), wrapping on a narrow screen. */
+.up-lump {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.8rem 1.4rem;
+  align-items: start;
+}
 @media (min-width: 64rem) {
   .up-settings {
     display: grid;
@@ -2689,6 +2696,7 @@ body.drop > section + section {
     align-items: start;
   }
   .up-settings > .up-scope-row,
+  .up-settings > .up-lump,
   .up-settings > .up-steps,
   .up-settings > #up-steps-label,
   .up-settings > p.setting-desc,
