@@ -43,6 +43,7 @@ INIT_MOUNTS = Path(os.environ.get("HUB_INIT_MOUNTS", "/proc/1/mounts"))
 # Armbian's first-login marker: present until someone logs in as root at the console and answers its
 # setup (a root password, a user). Left on a box set up some other way, its image's defaults stand.
 FIRSTRUN = Path(os.environ.get("HUB_ARMBIAN_FIRSTRUN", "/root/.not_logged_in_yet"))
+ARMBIAN_SETUP = "armbian-web-config.service"  # Armbian's setup page over its first-boot hotspot
 UPDATES_LOG_NAME = "security-updates.log"
 
 # Listeners the hub knows by port, when the owning process does not say enough by itself.
@@ -1955,6 +1956,41 @@ def root_findings(rec):
                 "ok",
                 M("root-firstrun.aside", "Its marker is put aside."),
                 actions=[action("firstrun-undo", M("root-firstrun.undo", "Put the marker back"))],
+            )
+        )
+    # Armbian's setup page (armbian-web-config, mPWRD-OS's first setup over its hotspot): when its form is sent it
+    # disables its own service but keeps running until the next start, still answering on port 8080 of every
+    # network the board is on, with no check; a second form has the first sign-in setup set root's password, a user
+    # and their SSH keys again (and its values go unquoted into a file read as shell).
+    setup_title = M("armbian-setup.title", "Armbian's setup page")
+    if run("systemctl", "is-active", ARMBIAN_SETUP).stdout.strip() == "active":
+        out.append(
+            finding(
+                "armbian-setup",
+                setup_title,
+                "problem",
+                M(
+                    "armbian-setup.on",
+                    "Armbian's setup page is still running, on port 8080 of every network the box is on.",
+                ),
+                M(
+                    "armbian-setup.on.why",
+                    "Anyone who reaches it can send its form again. The box then sets the root password, a new user "
+                    "and their SSH keys to what that person entered.",
+                ),
+                M("armbian-setup.on.fix", "Stop it. It is needed only for the first setup."),
+                evidence=[ARMBIAN_SETUP],
+                actions=[action(f"unit-off:{ARMBIAN_SETUP}", M("armbian-setup.off", "Stop and disable it"))],
+            )
+        )
+    elif ARMBIAN_SETUP in rec.get("units", {}):
+        out.append(
+            finding(
+                "armbian-setup",
+                setup_title,
+                "ok",
+                M("armbian-setup.stopped", "Stopped and disabled from this page."),
+                actions=[action(f"unit-undo:{ARMBIAN_SETUP}", M("armbian-setup.undo", "Restore it"))],
             )
         )
     return out
