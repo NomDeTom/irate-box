@@ -86,6 +86,21 @@ setTimeout(async () => {
   w.renderHealth({ ...fx, report: { ...fx.report, findings: fx.report.findings.map((f) => (f.id === 'other-failed:armbian-led-state.service' ? { ...f, status: 'problem' } : f)) },
     accepted: { 'other-failed:armbian-led-state.service': { at: 1 } } });
   check('  accepted, but now a problem: shown as one', d.getElementById('health-findings').contains(led()) && led().classList.contains('finding-problem'));
+  // SD card writes (cardhistory.py): the rate and the card's size in plain terms, a bar a day, by service, a change.
+  w.renderHealth({ ...fx, card_history: {
+    days: [{ day: '2026-10-25', card: 5e9, mem_min: 2e8 }, { day: '2026-10-26', card: 1e9, mem_min: 1.5e8 }],
+    last_day: 5e9, last_day_hours: 24, card_size: 64e9, accounting: false,
+    week_units: [['irate-box.service', 3e9], ['apt-daily.service', 1e9]],
+    changes: [{ at: 1793000000, from: { card_writes: 'thrifty' }, to: { card_writes: 'gentle' }, before: 5e9, after: 2e9 }],
+    settings: { card_writes: 'gentle' } } });
+  const rate = d.getElementById('health-card-rate').textContent;
+  check('SD card writes: the daily rate, and how often a year writes the whole card', /a day is written to the SD card/.test(rate) && /about 29 times/.test(rate), rate);
+  check('  a row and a bar a day, newest first', d.querySelectorAll('#health-card-days tr').length === 2
+    && d.querySelector('#health-card-days tr td').textContent === '2026-10-26' && d.querySelectorAll('#health-card-days .card-day-bar span').length === 2);
+  check('  writes by service, and the note that they need accounting', d.querySelectorAll('#health-card-units tr').length === 2
+    && !d.getElementById('health-card-units-note').hidden);
+  const change = t('#health-card-changes li')[0] || '';
+  check('  a setting change, named, with the writes before and after', /Card write level: Reduced clock writes → Buffered writes/.test(change) && /−60 %/.test(change), change);
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);

@@ -38,6 +38,7 @@ from irate_box.hub import (
     accounts,
     backup,
     board,
+    cardhistory,
     ci,
     factory,
     flasher,
@@ -2685,6 +2686,7 @@ HEALTH_CHOICE_RE = re.compile(
     r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
+    r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
 )
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
 HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
@@ -2940,6 +2942,7 @@ def health_snapshot():
         "results": control_results(5),
         "progress": update_progress(),
         "watchers": watchers_glance(),
+        "card_history": cardhistory.snapshot(),
         "accepted": health_accepted(),
     }
 
@@ -7026,6 +7029,8 @@ if __name__ == "__main__":
     svchistory.Sampler(lambda: [s["unit"] for s in SERVICES if "unit" in s] + [MESHTASTICD]).start()
     memory_sampler = memhistory.Sampler()
     memory_sampler.start()
+    # The card's writes by the hour, with the write settings in force (the Box doctor's SD card writes).
+    cardhistory.Sampler(lambda: {"card_writes": load_settings()["card_writes"]}).start()
     notebooks.Reaper(NOTEBOOKS).start()
     # The pages the web server serves itself (no unit to sample): their use, from nginx's log of page loads.
     pagehistory.Sampler(lambda: [s["path"] for s in SERVICES if "root" in s and s.get("path")]).start()

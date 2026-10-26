@@ -2063,6 +2063,16 @@ body.about h3 {
   margin: 0.75rem 0;
   font-size: 0.9rem;
 }
+/* Box doctor, SD card writes: a bar per day, as long as that day's writes against the largest day. */
+.card-day-bar {
+  width: 40%;
+}
+.card-day-bar > span {
+  display: block;
+  height: 0.6rem;
+  border-radius: 2px;
+  background: var(--accent);
+}
 .admin-table th {
   text-align: left;
   font-size: 0.75rem;

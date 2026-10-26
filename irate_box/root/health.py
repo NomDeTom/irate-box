@@ -2571,6 +2571,216 @@ def check_space():
     return out
 
 
+# SD card writes: the hub's hourly record (cardhistory.py), read as data; per-service I/O accounting, so the record
+# can say which service writes; a journal drop-in that syncs more often than journald's default; an architecture
+# apt indexes with nothing installed for it (every package list and apt cache rebuild for it, for nothing).
+GO_CARD_WRITES = _go("card-writes", M("go.card-writes", "Recovery → SD card writes"))
+SYSTEMD_ETC = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd"))
+IO_ACCOUNTING = SYSTEMD_ETC / "system.conf.d" / "50-irate-box-io.conf"
+CARD_HIGH = 1 << 30  # bytes a day: above this, the doctor names what writes
+JOURNAL_SYNC_DEFAULT = 300  # seconds: journald's SyncIntervalSec when nothing sets it
+
+
+def _card_rows():
+    from irate_box.hub import cardhistory
+    from irate_box.root import safeio
+
+    try:
+        text = safeio.read_request(cardhistory.FILE, limit=4 << 20)
+    except OSError:
+        return []
+    rows = []
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and isinstance(row.get("at"), (int, float)) and isinstance(row.get("card"), int):
+            rows.append(row)
+    return rows
+
+
+def _seconds(text):
+    """A systemd time span ("5s", "5min", "1h", "300") in seconds, or None."""
+    m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(us|ms|s|sec|m|min|h|hr)?\s*", text or "")
+    if not m:
+        return None
+    unit = {"us": 1e-6, "ms": 1e-3, None: 1, "s": 1, "sec": 1, "m": 60, "min": 60, "h": 3600, "hr": 3600}[m[2]]
+    return float(m[1]) * unit
+
+
+def _foreign_unused():
+    """Architectures dpkg was told to add (--add-architecture) with no package installed for them."""
+    foreign = run("dpkg", "--print-foreign-architectures").stdout.split()
+    if not foreign:
+        return []
+    have = set(run("dpkg-query", "-W", "-f=${Architecture}\n").stdout.split())
+    return [a for a in foreign if re.fullmatch(r"[a-z0-9-]{1,20}", a) and a not in have]
+
+
+def check_card_writes(now=None):
+    from irate_box.hub import cardhistory
+
+    now = time.time() if now is None else now
+    out = []
+    summary = cardhistory.summarize(_card_rows(), now)
+    full_days = summary["days"][:-1][-3:]  # the last three whole days
+    if len(full_days) == 3:
+        per_day = sum(d["card"] for d in full_days) // 3
+        top = [f"{u}: {w >> 20} MB" for u, w in summary["week_units"][:3]]
+        high = per_day > CARD_HIGH
+        out.append(
+            finding(
+                "card-writes",
+                M("card-writes.title", "SD card writes"),
+                "warn" if high else "ok",
+                M("card-writes.rate", "About {mb} MB a day is written to the SD card.", mb=per_day >> 20),
+                M(
+                    "card-writes.high.why",
+                    "An SD card wears with every write. Above {gb} GB a day, a card can wear out within a year or two.",
+                    gb=CARD_HIGH >> 30,
+                )
+                if high
+                else None,
+                M(
+                    "card-writes.high.fix",
+                    "The services that wrote most this week are listed below. "
+                    "The settings on Recovery → SD card writes reduce what the box writes.",
+                )
+                if high
+                else None,
+                evidence=top,
+                go=GO_CARD_WRITES,
+            )
+        )
+    if not cardhistory.accounting():
+        out.append(
+            finding(
+                "card-accounting",
+                M("card-accounting.title", "Writes by service"),
+                "warn",
+                M("card-accounting.off", "The box does not count the SD card writes of each service."),
+                M(
+                    "card-accounting.why",
+                    "Without these counts, the record of SD card writes cannot say which service writes most.",
+                ),
+                M(
+                    "card-accounting.fix",
+                    "Switch on per-service I/O accounting. The kernel then counts each service's writes. "
+                    "It does not slow the services down.",
+                ),
+                actions=[
+                    action(
+                        "card-accounting-on",
+                        M("card-accounting.on", "Count writes by service"),
+                        M(
+                            "card-accounting.on.confirm",
+                            "Switch on per-service I/O accounting? The box adds {file} and reloads systemd. "
+                            "No service restarts.",
+                            file=str(IO_ACCOUNTING),
+                        ),
+                    )
+                ],
+            )
+        )
+    for conf in sorted((SYSTEMD_ETC / "journald.conf.d").glob("*.conf")):
+        try:
+            text = conf.read_text(errors="replace")
+        except OSError:
+            continue
+        m = re.search(r"^\s*SyncIntervalSec\s*=\s*(\S+)", text, re.M)
+        secs = _seconds(m[1]) if m else None
+        if secs is not None and secs < JOURNAL_SYNC_DEFAULT:
+            out.append(
+                finding(
+                    f"journal-sync:{conf.name}",
+                    M("journal-sync.title", "Journal synced often"),
+                    "warn",
+                    M(
+                        "journal-sync.said",
+                        "{file} makes the journal sync to the SD card every {value}. journald's default is 5 minutes.",
+                        file=str(conf),
+                        value=m[1],
+                    ),
+                    M(
+                        "journal-sync.why",
+                        "Each sync writes to the SD card. A test setting left in place can sync thousands of times a day.",
+                    ),
+                    M(
+                        "journal-sync.fix",
+                        "If nothing on this box needs it, remove the file and restart the journal.",
+                    ),
+                    commands=[f"sudo rm {conf}", "sudo systemctl restart systemd-journald"],
+                    evidence=[str(conf)],
+                )
+            )
+    for arch in _foreign_unused():
+        out.append(
+            finding(
+                f"arch-unused:{arch}",
+                M("arch-unused.title", "Package lists for {arch}", arch=arch),
+                "warn",
+                M(
+                    "arch-unused.said",
+                    "apt downloads package lists for {arch}, but no package for {arch} is installed.",
+                    arch=arch,
+                ),
+                M(
+                    "arch-unused.why",
+                    "Each list update and each rebuild of apt's cache handles every package twice, "
+                    "and writes both to the SD card.",
+                ),
+                M(
+                    "arch-unused.fix",
+                    "Remove the architecture. Add it again with dpkg --add-architecture {arch} "
+                    "if a package for it is needed later.",
+                    arch=arch,
+                ),
+                actions=[
+                    action(
+                        f"arch-remove:{arch}",
+                        M("arch-unused.remove", "Remove {arch}", arch=arch),
+                        M(
+                            "arch-unused.remove.confirm",
+                            "Remove the architecture {arch}? apt stops downloading its package lists.",
+                            arch=arch,
+                        ),
+                    )
+                ],
+            )
+        )
+    return out
+
+
+def card_accounting_on():
+    """Per-service I/O accounting: systemd's default, in a file of irate-box's, applied to running services too."""
+    IO_ACCOUNTING.parent.mkdir(parents=True, exist_ok=True)
+    IO_ACCOUNTING.write_text(
+        "# irate-box (Box doctor, SD card writes): per-service I/O accounting, so the box can say which service\n"
+        "# writes to the card. Remove this file and run systemctl daemon-reexec to undo.\n"
+        "[Manager]\nDefaultIOAccounting=yes\n"
+    )
+    # daemon-reload reads the manager's settings; daemon-reexec applies them to the services already running.
+    for verb in ("daemon-reload", "daemon-reexec"):
+        r = run("systemctl", verb, timeout=120)
+        if r.returncode:
+            raise Refused(M("repair.card-accounting.failed", "systemctl {verb} failed.", verb=verb))
+    return M("repair.card-accounting.on", "The box now counts each service's SD card writes.")
+
+
+def arch_remove(arch):
+    if arch not in _foreign_unused():
+        raise Refused(
+            M("repair.arch.not-unused", "{arch} is not an added architecture with nothing installed.", arch=arch)
+        )
+    r = run("dpkg", "--remove-architecture", arch, timeout=60)
+    if r.returncode:
+        raise Refused(
+            M("repair.arch.failed", "dpkg could not remove {arch}: {detail}", arch=arch, detail=r.stderr.strip()[-160:])
+        )
+    return M("repair.arch.removed", "The box no longer downloads package lists for {arch}.", arch=arch)
+
+
 def check_builds(now=None):
     """The builds (ci.py) and the Firmware Factory (factory.py): builds waiting over a day, a
     factory family failing every time here, and what builds take on the card."""
@@ -4075,6 +4285,7 @@ def scan():
         check_hotspot_per_account,
         check_wifi_stalls,
         check_space,
+        check_card_writes,
         check_builds,
         check_crashwatch,
         check_led,
@@ -4141,6 +4352,7 @@ CHOICE_RE = re.compile(
     r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
+    r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
 )
 
 
@@ -4310,6 +4522,10 @@ def fix(choice):
         return set_clock(int(arg))
     if kind in ("idle-off", "idle-on"):
         return idle_switch(arg, kind == "idle-on")
+    if kind == "card-accounting-on":
+        return card_accounting_on()
+    if kind == "arch-remove":
+        return arch_remove(arg)
     if kind == "uplink-reconnect":
         # A link nobody watches, parked by NetworkManager (a password check failed and nobody answered): connected
         # by hand, which also lifts NetworkManager's stop on it.

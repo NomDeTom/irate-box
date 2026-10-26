@@ -5935,6 +5935,96 @@ function renderHelperQueue(q) {
     ),
   );
 }
+// SD card writes (cardhistory.py): the rate and what it means for the card, writes per day, by service, and
+// before and after each change of a write setting.
+const CARD_SETTING_NAMES = { card_writes: "Card write level" };
+function cardSettingText(key, value) {
+  const stop = key === "card_writes" && CARD_STOPS.find((c) => c[0] === value);
+  return stop ? stop[1] : String(value);
+}
+function cardBar(share) {
+  const bar = el("span");
+  bar.style.width = `${Math.round(share * 100)}%`; // set as a property: the page's policy allows no style attribute
+  return bar;
+}
+function renderCardHistory(ch) {
+  const rateEl = document.getElementById("health-card-rate");
+  if (!rateEl) return;
+  ch = ch || { days: [], week_units: [], changes: [] };
+  const days = ch.days || [];
+  const perDay =
+    ch.last_day != null && ch.last_day_hours >= 20
+      ? ch.last_day
+      : days.length > 1
+        ? days.slice(0, -1).reduce((a, d) => a + d.card, 0) / (days.length - 1)
+        : null;
+  if (perDay == null) {
+    rateEl.textContent =
+      "The box records its card writes once an hour. The first figures show after a day.";
+  } else {
+    const yearly = ch.card_size ? (perDay * 365) / ch.card_size : null;
+    rateEl.textContent =
+      `About ${size(perDay)} a day is written to the SD card.` +
+      (yearly
+        ? ` At this rate, a year writes the whole card about ${yearly < 10 ? yearly.toFixed(1) : Math.round(yearly)} times.`
+        : "");
+  }
+  const most = Math.max(1, ...days.map((d) => d.card));
+  document.getElementById("health-card-days").replaceChildren(
+    ...days
+      .slice(-30)
+      .reverse()
+      .map((d) =>
+        el(
+          "tr",
+          {},
+          el("td", { textContent: d.day }),
+          el("td", { textContent: size(d.card) }),
+          el("td", { className: "card-day-bar" }, cardBar(d.card / most)),
+          el("td", {
+            className: "setting-desc",
+            textContent:
+              d.mem_min != null ? `Memory available, lowest: ${size(d.mem_min)}` : "",
+          }),
+        ),
+      ),
+  );
+  const note = document.getElementById("health-card-units-note");
+  note.hidden = !!ch.accounting;
+  note.textContent = ch.accounting
+    ? ""
+    : "Writes by service need per-service I/O accounting. The Box doctor offers to switch it on.";
+  document
+    .getElementById("health-card-units")
+    .replaceChildren(
+      ...(ch.week_units || []).map(([unit, bytes]) =>
+        el("tr", {}, el("td", { textContent: unit }), el("td", { textContent: size(bytes) })),
+      ),
+    );
+  const changes = ch.changes || [];
+  document.getElementById("health-card-changes").replaceChildren(
+    ...(changes.length
+      ? changes
+          .slice()
+          .reverse()
+          .map((c) => {
+            const what = Object.keys(c.to)
+              .filter((k) => c.to[k] !== c.from[k])
+              .map(
+                (k) =>
+                  `${CARD_SETTING_NAMES[k] || k}: ${cardSettingText(k, c.from[k])} → ${cardSettingText(k, c.to[k])}`,
+              )
+              .join("; ");
+            const effect =
+              c.before != null && c.after != null
+                ? `${size(c.before)} a day before, ${size(c.after)} after (${c.after <= c.before ? "−" : "+"}${Math.round((Math.abs(c.after - c.before) / Math.max(1, c.before)) * 100)} %).`
+                : "Measuring: the effect shows once 24 hours before and after are recorded.";
+            return el("li", { textContent: `${new Date(c.at * 1000).toLocaleString()}: ${what}. ${effect}` });
+          })
+      : [el("li", { className: "setting-desc", textContent: "No setting has changed in the last 30 days." })]),
+  );
+}
+
 function renderHealth(data) {
   data = AW.localise(data); // the report's messages said once, in the reader's language
   hlLast = data;
@@ -5951,6 +6041,7 @@ function renderHealth(data) {
     lad.dataset.key = ladKey;
     LadderChart.render(lad, data.ladder || [], { gaps: data.ladder_gaps });
   }
+  renderCardHistory(data.card_history);
   hl.banner.hidden = !h.stuck;
   if (h.stuck) {
     hl.bannerDetail.textContent = `${h.waiting} request${h.waiting === 1 ? " is" : "s are"} waiting, the oldest for ${minutes(h.oldest)}.`;
