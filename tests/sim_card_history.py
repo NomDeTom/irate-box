@@ -22,8 +22,12 @@ os.environ.update(
     HUB_PROC=str(PROC),
     HUB_SYS=str(SYS),
     HUB_SYSTEMD_ETC=str(T / "systemd"),
+    HUB_APT_CONF_D=str(T / "apt.conf.d"),
+    HUB_APT_CACHE_DIR=str(T / "apt-cache"),
+    HUB_SYSCTL_D=str(T / "sysctl.d"),
+    HUB_FSTAB=str(T / "fstab"),
 )
-for d in ("state", "etc", "systemd/journald.conf.d"):
+for d in ("state", "etc", "systemd/journald.conf.d", "apt.conf.d", "apt-cache"):
     (T / d).mkdir(parents=True)
 sys.path.insert(0, str(REPO))
 from irate_box.hub import cardhistory
@@ -156,6 +160,10 @@ def run(*cmd, timeout=60, **kw):
         out = "armhf\n"
     elif cmd[0] == "dpkg-query":
         out = "arm64\nall\narm64\n"
+    elif cmd[0] == "apt-config":
+        out = 'Acquire::Languages "";\nAcquire::Languages:: "en_GB";\nAcquire::Languages:: "none";\n'
+    elif cmd[0] == "systemd-analyze":
+        out = "# /usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf\n[Journal]\nStorage=volatile\n"
     return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
 
 
@@ -236,6 +244,101 @@ check(
     "fewer than three whole days recorded, accounting on: no rate yet, nothing said about accounting",
     not {"card-writes", "card-accounting"} & {f["id"] for f in health.check_card_writes()},
 )
+
+# The system's write settings (Recovery → SD card writes): their groups, then each applied and undone.
+groups = {g["key"]: g for g in health.card_groups()}
+check(
+    "the system write settings: apt's cache, package descriptions (this box downloads some), journal, write-back delay",
+    list(groups) == ["apt_cache", "apt_languages", "journal", "writeback"]
+    and groups["apt_cache"]["current"] == "card"
+    and groups["journal"]["current"] == "memory"  # the image keeps it in memory already
+    and groups["writeback"]["current"] == "standard",
+    {k: g["current"] for k, g in groups.items()},
+)
+check(
+    "  each option's choice passes the doctor's check and the hub's",
+    all(
+        health.CHOICE_RE.match(o["choice"]) and o["choice"].startswith("card-set:")
+        for g in groups.values()
+        for o in g["options"]
+    ),
+)
+check("  a value no setting has: refused by the check", not health.CHOICE_RE.match("card-set:apt_cache:disk"))
+unit = T / "systemd" / "system" / health.APT_RAM_UNIT
+(T / "apt-cache" / "pkgcache.bin").write_text("old")
+ran.clear()
+health.fix("card-set:apt_cache:memory")
+conf = (T / "apt.conf.d" / "50irate-box-cache").read_text()
+check(
+    "apt's cache in memory: a tmpfs of its own, mounted now and at every boot; apt pointed at it; the old cache gone",
+    "What=tmpfs" in unit.read_text()
+    and "size=192M" in unit.read_text()
+    and ("systemctl", "enable", "--now", health.APT_RAM_UNIT) in ran
+    and 'Dir::Cache::pkgcache "/run/irate-box-apt/pkgcache.bin";' in conf
+    and 'Dir::Cache::srcpkgcache "";' in conf
+    and not (T / "apt-cache" / "pkgcache.bin").exists()
+    and {g["key"]: g for g in health.card_groups()}["apt_cache"]["current"] == "memory",
+    ran,
+)
+ran.clear()
+health.fix("card-set:apt_cache:card")
+check(
+    "  and back on the card: the file and the mount gone",
+    not (T / "apt.conf.d" / "50irate-box-cache").exists()
+    and not unit.exists()
+    and ("systemctl", "disable", "--now", health.APT_RAM_UNIT) in ran,
+    ran,
+)
+health.fix("card-set:apt_languages:none")
+lang = T / "apt.conf.d" / "50irate-box-languages"
+check("package descriptions not downloaded: Acquire::Languages none", 'Acquire::Languages "none";' in lang.read_text())
+health.fix("card-set:apt_languages:download")
+check("  downloaded again: the file gone", not lang.exists())
+ran.clear()
+health.fix("card-set:journal:card")
+jconf = T / "systemd" / "journald.conf.d" / "50-irate-box.conf"
+check(
+    "the journal on the card: Storage=persistent, journald restarted",
+    "Storage=persistent" in jconf.read_text() and ("systemctl", "restart", "systemd-journald") in ran,
+)
+health.fix("card-set:journal:memory")
+check(
+    "  in memory: Storage=volatile, capped",
+    "Storage=volatile" in jconf.read_text()
+    and "RuntimeMaxUse=24M" in jconf.read_text()
+    and {g["key"]: g for g in health.card_groups()}["journal"]["current"] == "memory",
+)
+(T / "fstab").write_text("PARTUUID=1 /boot vfat defaults 0 2\nPARTUUID=2 / ext4 defaults,noatime 0 1\n")
+ran.clear()
+health.fix("card-set:writeback:longer")
+commit_unit = T / "systemd" / "system" / health.COMMIT_UNIT
+check(
+    "the longer write-back delay: the kernel's two settings now and at boot, / committed every 60 s, not 5",
+    "vm.dirty_expire_centisecs = 6000" in (T / "sysctl.d" / "50-irate-box-writeback.conf").read_text()
+    and ("sysctl", "-q", "-w", "vm.dirty_writeback_centisecs=1500") in ran
+    and "commit=60" in commit_unit.read_text()
+    and ("mount", "-o", "remount,commit=60", "/") in ran,
+    ran,
+)
+ran.clear()
+health.fix("card-set:writeback:standard")
+check(
+    "  standard again: the files gone, the kernel's defaults, / as fstab says",
+    not (T / "sysctl.d" / "50-irate-box-writeback.conf").exists()
+    and not commit_unit.exists()
+    and ("sysctl", "-q", "-w", "vm.dirty_expire_centisecs=3000") in ran
+    and ("mount", "-o", "remount,commit=5", "/") in ran,
+    ran,
+)
+(T / "fstab").write_text("UUID=3 / ext4 defaults,commit=120,errors=remount-ro 0 1\n")
+ran.clear()
+health.fix("card-set:writeback:longer")
+check(
+    "  a box whose fstab already commits every 120 s (the Lyra): kept at 120, no unit",
+    not commit_unit.exists() and ("mount", "-o", "remount,commit=120", "/") in ran,
+    ran,
+)
+health.fix("card-set:writeback:standard")
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

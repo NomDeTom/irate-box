@@ -2752,6 +2752,261 @@ def check_card_writes(now=None):
     return out
 
 
+# The system's write settings (Recovery → SD card writes, "System write settings"): each one a file of
+# irate-box's, written when an option other than the first is chosen and removed again by the first.
+APT_CONF_D = Path(os.environ.get("HUB_APT_CONF_D", "/etc/apt/apt.conf.d"))
+APT_CACHE_CONF = APT_CONF_D / "50irate-box-cache"
+APT_LANG_CONF = APT_CONF_D / "50irate-box-languages"
+APT_RAM = Path("/run/irate-box-apt")
+APT_CACHE_DIR = Path(os.environ.get("HUB_APT_CACHE_DIR", "/var/cache/apt"))
+APT_RAM_UNIT = "run-irate\\x2dbox\\x2dapt.mount"  # systemd-escape -p --suffix=mount /run/irate-box-apt
+JOURNAL_CONF = SYSTEMD_ETC / "journald.conf.d" / "50-irate-box.conf"
+SYSCTL_D = Path(os.environ.get("HUB_SYSCTL_D", "/etc/sysctl.d"))
+WRITEBACK_CONF = SYSCTL_D / "50-irate-box-writeback.conf"
+COMMIT_UNIT = "irate-box-commit.service"
+FSTAB = Path(os.environ.get("HUB_FSTAB", "/etc/fstab"))
+WRITEBACK = {"vm.dirty_expire_centisecs": (3000, 6000), "vm.dirty_writeback_centisecs": (500, 1500)}
+COMMIT_LONGER = 60  # seconds: ext4 commits its journal at most this often with the longer write-back delay
+
+
+def _apt_languages():
+    out = run("apt-config", "dump").stdout
+    return re.findall(r'^Acquire::Languages:: "([^"]+)";', out, re.M)
+
+
+def _journal_storage():
+    """Where the journal is kept now: "volatile" (RAM) or "persistent" (the card), as journald reads its settings."""
+    if JOURNAL_CONF.exists():
+        m = re.search(r"^Storage=(\w+)", JOURNAL_CONF.read_text(), re.M)
+        if m:
+            return "volatile" if m[1] == "volatile" else "persistent"
+    said = run("systemd-analyze", "cat-config", "systemd/journald.conf").stdout
+    found = re.findall(r"^\s*Storage\s*=\s*(\w+)", said, re.M)
+    storage = found[-1] if found else "auto"
+    if storage == "auto":  # persistent when /var/log/journal exists
+        return "persistent" if Path("/var/log/journal").exists() else "volatile"
+    return "volatile" if storage in ("volatile", "none") else "persistent"
+
+
+def card_groups():
+    """The system's write settings as choice groups, as setting_groups(): the first option is the system's own."""
+    choice = lambda key, value: f"card-set:{key}:{value}"  # noqa: E731
+    groups = [
+        {
+            "key": "apt_cache",
+            "label": M("cs.apt-cache", "apt's cache"),
+            "desc": M(
+                "cs.apt-cache.desc",
+                "apt rebuilds its cache whole, about 50 to 150 MB, whenever its package lists change. "
+                "In memory, it is never written to the SD card. It uses that much memory until the next restart.",
+            ),
+            "current": "memory" if APT_CACHE_CONF.exists() else "card",
+            "options": [
+                {"value": "card", "label": M("cs.on-card", "On the SD card"), "choice": choice("apt_cache", "card")},
+                {
+                    "value": "memory",
+                    "label": M("cs.in-memory", "In memory"),
+                    "choice": choice("apt_cache", "memory"),
+                    "confirm": M(
+                        "cs.apt-cache.confirm",
+                        "Keep apt's cache in memory? It uses up to 192 MB of memory, which holds the cache of a "
+                        "box with two architectures. apt rebuilds it after each restart, which takes a few seconds.",
+                    ),
+                },
+            ],
+        },
+        {
+            "key": "journal",
+            "label": M("cs.journal", "System journal"),
+            "desc": M(
+                "cs.journal.desc",
+                "The system's log. In memory, nothing of it is written to the SD card, but a restart or a crash loses it.",
+            ),
+            "current": "memory" if _journal_storage() == "volatile" else "card",
+            "options": [
+                {"value": "card", "label": M("cs.on-card", "On the SD card"), "choice": choice("journal", "card")},
+                {
+                    "value": "memory",
+                    "label": M("cs.in-memory", "In memory"),
+                    "choice": choice("journal", "memory"),
+                    "confirm": M(
+                        "cs.journal.confirm",
+                        "Keep the system journal in memory (up to 24 MB)? A restart or a crash loses it, "
+                        "and with it the log of what led up to a crash.",
+                    ),
+                },
+            ],
+        },
+        {
+            "key": "writeback",
+            "label": M("cs.writeback", "Write-back delay"),
+            "desc": M(
+                "cs.writeback.desc",
+                "How long changes wait in memory before they go to the SD card. A longer delay lets repeated "
+                "changes to a file reach the card once.",
+            ),
+            "current": "longer" if WRITEBACK_CONF.exists() else "standard",
+            "options": [
+                {
+                    "value": "standard",
+                    "label": M("cs.writeback.standard", "Standard (30 s)"),
+                    "choice": choice("writeback", "standard"),
+                },
+                {
+                    "value": "longer",
+                    "label": M("cs.writeback.longer", "Longer (60 s)"),
+                    "choice": choice("writeback", "longer"),
+                    "confirm": M(
+                        "cs.writeback.confirm",
+                        "Use the longer write-back delay? A power cut can then lose up to a minute of changes "
+                        "that no program saved explicitly.",
+                    ),
+                },
+            ],
+        },
+    ]
+    languages = _apt_languages()
+    if APT_LANG_CONF.exists() or [lang for lang in languages if lang != "none"]:
+        groups.insert(
+            1,
+            {
+                "key": "apt_languages",
+                "label": M("cs.languages", "Package descriptions"),
+                "desc": M(
+                    "cs.languages.desc",
+                    "The descriptions that apt show prints, downloaded with the package lists ({mb} MB or more "
+                    "on Debian) and kept in apt's cache.",
+                    mb=30,
+                ),
+                "current": "none" if APT_LANG_CONF.exists() else "download",
+                "options": [
+                    {
+                        "value": "download",
+                        "label": M("cs.languages.download", "Downloaded"),
+                        "choice": choice("apt_languages", "download"),
+                    },
+                    {
+                        "value": "none",
+                        "label": M("cs.languages.none", "Not downloaded"),
+                        "choice": choice("apt_languages", "none"),
+                    },
+                ],
+            },
+        )
+    return groups
+
+
+def _systemctl(*args):
+    r = run("systemctl", *args, timeout=120)
+    if r.returncode:
+        raise Refused(
+            M(
+                "repair.card-set.systemctl",
+                "systemctl {args} failed: {detail}",
+                args=" ".join(args),
+                detail=r.stderr.strip()[-160:],
+            )
+        )
+
+
+def _root_commit():
+    """The commit= of / in fstab, or ext4's default of 5 seconds."""
+    for line in FSTAB.read_text(errors="replace").splitlines():
+        f = line.split()
+        if len(f) >= 4 and not f[0].startswith("#") and f[1] == "/":
+            m = re.search(r"(?:^|,)commit=(\d+)", f[3])
+            return int(m[1]) if m else 5
+    return 5
+
+
+def card_set(key, value):
+    """One system write setting applied, now and for every boot."""
+    unit_dir = SYSTEMD_ETC / "system"
+    if key == "apt_cache" and value == "memory":
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        (unit_dir / APT_RAM_UNIT).write_text(
+            "# irate-box (SD card writes): RAM for apt's cache, so it is never written to the card.\n"
+            "[Unit]\nDescription=RAM for apt's cache (irate-box)\n\n"
+            f"[Mount]\nWhat=tmpfs\nWhere={APT_RAM}\nType=tmpfs\nOptions=mode=0755,nosuid,nodev,noexec,size=192M\n\n"
+            "[Install]\nWantedBy=local-fs.target\n"
+        )
+        _systemctl("daemon-reload")
+        _systemctl("enable", "--now", APT_RAM_UNIT)
+        APT_CACHE_CONF.write_text(
+            "// irate-box (SD card writes): apt's cache in RAM, never written to the card. Remove to undo.\n"
+            f'Dir::Cache::pkgcache "{APT_RAM}/pkgcache.bin";\nDir::Cache::srcpkgcache "";\n'
+        )
+        for old in ("pkgcache.bin", "srcpkgcache.bin"):
+            (APT_CACHE_DIR / old).unlink(missing_ok=True)
+        return M("repair.card-set.apt-memory", "apt's cache is now kept in memory.")
+    if key == "apt_cache" and value == "card":
+        APT_CACHE_CONF.unlink(missing_ok=True)
+        if (unit_dir / APT_RAM_UNIT).exists():
+            run("systemctl", "disable", "--now", APT_RAM_UNIT, timeout=120)
+            (unit_dir / APT_RAM_UNIT).unlink()
+            _systemctl("daemon-reload")
+        return M("repair.card-set.apt-card", "apt's cache is kept on the SD card again.")
+    if key == "apt_languages":
+        if value == "none":
+            APT_LANG_CONF.write_text(
+                "// irate-box (SD card writes): no package descriptions downloaded. Remove to undo.\n"
+                'Acquire::Languages "none";\n'
+            )
+            return M(
+                "repair.card-set.languages-none",
+                "apt no longer downloads package descriptions. It removes those it has at its next update.",
+            )
+        APT_LANG_CONF.unlink(missing_ok=True)
+        return M("repair.card-set.languages-download", "apt downloads package descriptions again.")
+    if key == "journal":
+        JOURNAL_CONF.parent.mkdir(parents=True, exist_ok=True)
+        JOURNAL_CONF.write_text(
+            "# irate-box (SD card writes): where the system journal is kept. Remove to undo.\n[Journal]\n"
+            + ("Storage=volatile\nRuntimeMaxUse=24M\n" if value == "memory" else "Storage=persistent\n")
+        )
+        _systemctl("restart", "systemd-journald")
+        return (
+            M("repair.card-set.journal-memory", "The system journal is now kept in memory.")
+            if value == "memory"
+            else M("repair.card-set.journal-card", "The system journal is now kept on the SD card.")
+        )
+    if key == "writeback":
+        longer = value == "longer"
+        if longer:
+            SYSCTL_D.mkdir(parents=True, exist_ok=True)
+            WRITEBACK_CONF.write_text(
+                "# irate-box (SD card writes): changes wait longer in memory before they go to the card. Remove to undo.\n"
+                + "".join(f"{k} = {v[1]}\n" for k, v in WRITEBACK.items())
+            )
+        else:
+            WRITEBACK_CONF.unlink(missing_ok=True)
+        for k, v in WRITEBACK.items():
+            run("sysctl", "-q", "-w", f"{k}={v[1] if longer else v[0]}")
+        commit = max(_root_commit(), COMMIT_LONGER) if longer else _root_commit()
+        unit = SYSTEMD_ETC / "system" / COMMIT_UNIT
+        if longer and commit > _root_commit():
+            unit.parent.mkdir(parents=True, exist_ok=True)
+            unit.write_text(
+                "# irate-box (SD card writes): the root filesystem's journal committed at most every "
+                f"{commit} s.\n[Unit]\nDescription=Longer write-back delay for / (irate-box)\n"
+                "After=local-fs.target\n\n[Service]\nType=oneshot\n"
+                f"ExecStart=/bin/mount -o remount,commit={commit} /\n\n[Install]\nWantedBy=multi-user.target\n"
+            )
+            _systemctl("daemon-reload")
+            _systemctl("enable", COMMIT_UNIT)
+        elif unit.exists():
+            run("systemctl", "disable", COMMIT_UNIT, timeout=120)
+            unit.unlink()
+            _systemctl("daemon-reload")
+        run("mount", "-o", f"remount,commit={commit}", "/", timeout=60)
+        return (
+            M("repair.card-set.writeback-longer", "Changes now wait up to a minute before they go to the SD card.")
+            if longer
+            else M("repair.card-set.writeback-standard", "The standard write-back delay applies again.")
+        )
+    raise Refused(M("repair.card-set.unknown", "{key} is not a write setting of the box.", key=key))
+
+
 def card_accounting_on():
     """Per-service I/O accounting: systemd's default, in a file of irate-box's, applied to running services too."""
     IO_ACCOUNTING.parent.mkdir(parents=True, exist_ok=True)
@@ -4335,6 +4590,7 @@ def doctor_settings():
             "watchdog_device": wd,
             "led": {"name": ls["led"], "show": ls["show"]} if ls else None,
             "groups": setting_groups(s, wd) + led_groups(ls, armbian_led_state() if ls else None),
+            "card_groups": card_groups(),
         }
     except Exception:  # noqa: BLE001 - the report goes out without it
         return None
@@ -4353,6 +4609,7 @@ CHOICE_RE = re.compile(
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
+    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory)|writeback:(standard|longer))$"
 )
 
 
@@ -4526,6 +4783,9 @@ def fix(choice):
         return card_accounting_on()
     if kind == "arch-remove":
         return arch_remove(arg)
+    if kind == "card-set":
+        key, _, value = arg.partition(":")
+        return card_set(key, value)
     if kind == "uplink-reconnect":
         # A link nobody watches, parked by NetworkManager (a password check failed and nobody answered): connected
         # by hand, which also lifts NetworkManager's stop on it.
