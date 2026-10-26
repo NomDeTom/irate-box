@@ -171,6 +171,16 @@ const TOUR = (() => {
   let decided = new Set();
   let muted = new Set(); // steps the owner asked not to be reminded of (setup_muted): listed, greyed, not counted
   let at = null; // the decision being toured, or null
+  // The count waits until the page has said what it knows: the settings, each step's state and whether
+  // each only: service is there, or SETTLE_MS, whichever comes first. A part of the page that never
+  // reports (its section failed to load) leaves its step "to do", as before.
+  const SETTLE_MS = 4000;
+  let settingsRead = false;
+  let settled = false;
+  const settleTimer = setTimeout(() => {
+    settled = true;
+    drawList();
+  }, SETTLE_MS);
   let bar = null;
   let marked = null; // the highlighted element
 
@@ -184,7 +194,25 @@ const TOUR = (() => {
       step.id !== "backup" &&
       (state(step.id) || {}).status === "ok");
   const left = () => STEPS.filter((step) => !isDone(step) && !muted.has(step.id));
-  const PILL = (step) => {
+  // A step whose state the page hasn't told yet: its part of the page hasn't reported, or (for a decision
+  // and the backup) the settings haven't been read.
+  const unknown = (step) =>
+    !settingsRead ||
+    (KIND[step.id] === "step" && step.id !== "backup" && !state(step.id));
+  function checking() {
+    if (settled) return false;
+    if (
+      settingsRead &&
+      OWN.every((step) => state(step.id)) &&
+      ALL.every((step) => !step.only || step.only in present)
+    ) {
+      settled = true;
+      clearTimeout(settleTimer);
+    }
+    return !settled;
+  }
+  const PILL = (step, stillChecking) => {
+    if (stillChecking && !isDone(step) && unknown(step)) return ["info-pill", "checking"];
     if (KIND[step.id] === "decision")
       return decided.has(step.id)
         ? ["ok-pill", "decided"]
@@ -250,17 +278,20 @@ const TOUR = (() => {
     if (typeof drawAttention === "function") drawAttention(); // Overview's Needs attention counts what is left
     const list = document.getElementById("setup-steps");
     if (!list) return;
+    const stillChecking = checking();
     const n = left().length;
     list.replaceChildren(
       ...STEPS.map((step, i) => {
-        const [cls, word] = PILL(step);
+        const [cls, word] = PILL(step, stillChecking);
         const li = document.createElement("li");
         li.dataset.step = step.id;
         li.className = isDone(step)
           ? "step-ok"
           : muted.has(step.id)
             ? "step-muted"
-            : `step-${(state(step.id) || {}).status || "todo"}`;
+            : stillChecking && unknown(step)
+              ? "step-checking"
+              : `step-${(state(step.id) || {}).status || "todo"}`;
         const link = Object.assign(document.createElement("a"), {
           href: "#" + step.section,
           textContent: "Open settings",
@@ -305,9 +336,11 @@ const TOUR = (() => {
     );
     const said = document.getElementById("setup-left");
     if (said)
-      said.textContent = n
-        ? `${n} of ${STEPS.length} still to do or decide. Until then the box uses each default.`
-        : "All done.";
+      said.textContent = stillChecking
+        ? "Checking the steps…"
+        : n
+          ? `${n} of ${STEPS.length} still to do or decide. Until then the box uses each default.`
+          : "All done.";
     const actions = document.querySelector("#welcome .tour-actions");
     if (!actions) return;
     let start = actions.querySelector(".tour-start");
@@ -318,11 +351,14 @@ const TOUR = (() => {
       });
       actions.prepend(start);
     }
-    start.textContent = !n
-      ? "Take the tour again"
-      : n === STEPS.length
-        ? "Start the tour"
-        : "Resume tour";
+    start.disabled = stillChecking;
+    start.textContent = stillChecking
+      ? "Checking the steps…"
+      : !n
+        ? "Take the tour again"
+        : n === STEPS.length
+          ? "Start the tour"
+          : "Resume tour";
     start.onclick = () => go(n ? STEPS.indexOf(left()[0]) : 0);
   }
 
@@ -475,6 +511,7 @@ const TOUR = (() => {
     } catch (_) {
       /* the list says what it can */
     }
+    settingsRead = true;
     drawList();
     let saved = null;
     try {
@@ -517,7 +554,7 @@ const TOUR = (() => {
     stop,
     decided: () => new Set(decided),
     drawList,
-    left: () => left().length,
+    left: () => (checking() ? null : left().length), // null while the page is still checking
   };
 })();
 if (typeof window !== "undefined") window.TOUR = TOUR;
