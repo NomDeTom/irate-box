@@ -7039,10 +7039,10 @@ const RETRY_WORDS = {
 const GIVEUP_STOPS = (period) =>
   `After ${period} the box stops retrying and reports it. If the network comes back by itself, the box still reconnects.`;
 const GIVEUP_WORDS = {
-  never: ["No limit", "The box retries for as long as needed, and reconnects whenever the network returns."],
   hour: ["An hour", GIVEUP_STOPS("an hour")],
   day: ["A day", GIVEUP_STOPS("a day")],
   week: ["A week", GIVEUP_STOPS("a week")],
+  never: ["No limit", "The box retries for as long as needed, and reconnects whenever the network returns."],
 };
 
 // Roaming: from the least change to the owner's system to the most,
@@ -7184,7 +7184,11 @@ function buildUpChoices(levels) {
   rungs(
     net.giveUp,
     "give_up",
-    Object.keys(levels.give_up || GIVEUP_WORDS).map((n) => ({
+    // Shortest first, as the other sliders run to their furthest: an hour of retries up to no limit (null) last.
+    (levels.give_up
+      ? Object.keys(levels.give_up).sort((a, b) => (levels.give_up[a] ?? Infinity) - (levels.give_up[b] ?? Infinity))
+      : Object.keys(GIVEUP_WORDS)
+    ).map((n) => ({
       value: n,
       title: GIVEUP_WORDS[n][0],
       says: GIVEUP_WORDS[n][1],

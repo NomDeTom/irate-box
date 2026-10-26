@@ -182,10 +182,10 @@ setTimeout(() => {
     paceRange.max === '3' && paceRange.value === '0' && paceRange.getAttribute('aria-valuetext') === 'Gentle'
       && paceRange.getAttribute('aria-labelledby') === 'up-pace-label' && /^Level 1 of 4, Gentle: /.test(saysOf('up-pace')),
     `${paceRange.max} ${paceRange.value} ${paceRange.getAttribute('aria-valuetext')} ${saysOf('up-pace')}`);
-  check('  the chips\' words: reach in words, guests Defer or Allow, the period No limit to A week',
+  check('  the chips\' words: reach in words, guests Defer or Allow, the period An hour to No limit',
     tiles('up-reach').map((r) => r.textContent.trim()).join('|') === 'Watch only|Reconnect to the network|Restart the network service|Reset the radio|Reboot'
     && tiles('up-guests').map((r) => r.textContent.trim()).join('|') === 'Defer|Allow'
-    && tiles('up-giveup').map((r) => r.textContent.trim()).join('|') === 'No limit|An hour|A day|A week'
+    && tiles('up-giveup').map((r) => r.textContent.trim()).join('|') === 'An hour|A day|A week|No limit' && /^Level 4 of 4, No limit: /.test(saysOf('up-giveup'))
     && tiles('up-retry').map((r) => r.textContent.trim()).join('|') === 'Sparing|Steady|Eager',
     [tiles('up-reach'), tiles('up-guests'), tiles('up-giveup'), tiles('up-retry')].map((x) => x.map((r) => r.textContent.trim()).join('|')).join(' / '));
   check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
