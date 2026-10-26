@@ -187,19 +187,19 @@ const type = (input, value) => {
   answer['/admin/health'] = (body) => (body.action === 'scan' ? [202, { id: 'scan' }] : ++n === 1 ? [202, { id: 'h1' }] : [500, { error: 'The queue is full.' }]);
   const groups = [{ key: 'g1', current: 'a', options: [{ value: 'a', choice: 'x-a' }, { value: 'b', choice: 'x-b' }] },
     { key: 'g2', current: 'a', options: [{ value: 'a', choice: 'y-a' }, { value: 'b', choice: 'y-b' }] }];
-  ev('renderDoctorSettings')({ results: [], queue: {} }, { settings: { groups } });
-  const doc = ev('docSec');
+  ev('doctorOwn').render({ results: [], queue: {} }, { settings: { groups } });
+  const doc = ev('doctorOwn').section;
   doc.set('g1', 'b');
   doc.set('g2', 'b');
   const saving = doc.save();
   await wait();
-  check("the doctor's settings: the request sent before a refusal is still waited for", ev('hsSaving && hsSaving.ids.join()') === 'h1' && doc.saving());
-  ev('renderDoctorSettings')({ results: [{ id: 'h1', ok: true, message: 'Done.' }], queue: {} }, { settings: { groups } });
+  check("the doctor's settings: the request sent before a refusal is still waited for", ev('doctorOwn').saving() && ev('doctorOwn').saving().ids.join() === 'h1' && doc.saving());
+  ev('doctorOwn').render({ results: [{ id: 'h1', ok: true, message: 'Done.' }], queue: {} }, { settings: { groups } });
   await saving;
   const hn = t(ev('hl.setNote'));
   check('  and said: one of two sent, the next refused, one still selected', /1 of 2 changes were sent\. The next change failed: The queue is full\. 1 change is still selected/.test(hn), hn);
   // The rescan: g1 now as chosen; g2 still a change not saved.
-  ev('renderDoctorSettings')({ results: [], queue: {} }, { settings: { groups: [{ ...groups[0], current: 'b' }, groups[1]] } });
+  ev('doctorOwn').render({ results: [], queue: {} }, { settings: { groups: [{ ...groups[0], current: 'b' }, groups[1]] } });
   check('  after the rescan: the change sent is saved, the one refused still waits', JSON.stringify(doc.changes()) === '{"g2":"b"}', JSON.stringify(doc.changes()));
   doc.discard();
 

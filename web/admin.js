@@ -5828,7 +5828,8 @@ function doctorSection({ id, label, prefix, groupsEl, footEl, noteEl, groupsOf, 
       if (!hsGroups.length) drawDoctorGroups();
     }
   }
-  return { render: renderDoctorSettings };
+  // The section and what is being saved, for the page tests.
+  return { render: renderDoctorSettings, section: docSec, saving: () => hsSaving };
 }
 const doctorOwn = doctorSection({
   id: "doctor-settings",
