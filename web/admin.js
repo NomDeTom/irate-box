@@ -5700,132 +5700,156 @@ function renderGlance(data, rep) {
   );
 }
 
-// The doctor's own settings as a section: each a row of choices; Save sends the changes to the root helper one
-// after another, says what waits, then what was done, and looks again so the page shows them as they are. A
-// question an option carries is asked once, at Save, with any other.
-let hsGroups = [],
-  hsFrom = "",
-  hsSaving = null;
-const docSec = AW.section({
-  id: "doctor-settings",
-  label: "The Box doctor's settings",
-  saved: null,
-  warn: (c) => {
-    const asks = Object.entries(c)
-      .map(([k, v]) => {
-        const g = hsGroups.find((x) => x.key === k);
-        const o = g && g.options.find((x) => x.value === v);
-        return o && o.confirm;
-      })
-      .filter(Boolean);
-    return asks.length ? asks.join(" ") : null;
-  },
-  save: (c) => doctorSave(c),
-  onChange: () => drawDoctorGroups(),
-});
-hl.setFoot.append(docSec.foot, docSec.reason);
-function drawDoctorGroups() {
-  if (!hsGroups.length) {
-    hl.setGroups.replaceChildren(
-      el("p", {
-        className: "setting-desc",
-        textContent: "Shown after the next check.",
+// Settings the root helper applies, as a section: each a row of choices; Save sends the changes to the root helper
+// one after another, says what waits, then what was done, and looks again so the page shows them as they are. A
+// question an option carries is asked once, at Save, with any other. Two of them: the Box doctor's own settings
+// (Automatic recovery) and the system's write settings (SD card writes), each from its groups in the report.
+function doctorSection({ id, label, prefix, groupsEl, footEl, noteEl, groupsOf, empty }) {
+  let hsGroups = [],
+    hsFrom = "",
+    hsSaving = null;
+  const docSec = AW.section({
+    id,
+    label,
+    saved: null,
+    warn: (c) => {
+      const asks = Object.entries(c)
+        .map(([k, v]) => {
+          const g = hsGroups.find((x) => x.key === k);
+          const o = g && g.options.find((x) => x.value === v);
+          return o && o.confirm;
+        })
+        .filter(Boolean);
+      return asks.length ? asks.join(" ") : null;
+    },
+    save: (c) => doctorSave(c),
+    onChange: () => drawDoctorGroups(),
+  });
+  footEl.append(docSec.foot, docSec.reason);
+  function drawDoctorGroups() {
+    if (!hsGroups.length) {
+      groupsEl.replaceChildren(
+        el("p", {
+          className: "setting-desc",
+          textContent: empty,
+        }),
+      );
+      return;
+    }
+    groupsEl.replaceChildren(
+      ...hsGroups.map((g) => {
+        const box = el("div", { id: `${prefix}-${g.key}` });
+        AW.choices(
+          box,
+          `${prefix}-${g.key}`,
+          g.options.map((o) => ({ value: o.value, title: o.label })),
+          {
+            value: docSec.get(g.key),
+            onChange: (v) => docSec.set(g.key, v, true),
+          },
+        );
+        box.setAttribute("aria-label", g.label);
+        return el(
+          "div",
+          { className: "up-group" },
+          el("span", { className: "setting-name", textContent: g.label }),
+          el("p", { className: "setting-desc", textContent: g.desc }),
+          box,
+        );
       }),
     );
-    return;
   }
-  hl.setGroups.replaceChildren(
-    ...hsGroups.map((g) => {
-      const box = el("div", { id: `hs-${g.key}` });
-      AW.choices(
-        box,
-        `hs-${g.key}`,
-        g.options.map((o) => ({ value: o.value, title: o.label })),
-        {
-          value: docSec.get(g.key),
-          onChange: (v) => docSec.set(g.key, v, true),
-        },
+  // Sent one after another; one the hub refuses stops the rest, and those already sent are still waited for and said.
+  async function doctorSave(changes) {
+    const ids = [];
+    let failed = null;
+    for (const [k, v] of Object.entries(changes)) {
+      const g = hsGroups.find((x) => x.key === k);
+      const o = g.options.find((x) => x.value === v);
+      try {
+        ids.push(
+          (await postJSON("/admin/health", { action: "fix", choice: o.choice }))
+            .id,
+        );
+      } catch (err) {
+        failed = err.message;
+        break;
+      }
+    }
+    if (!ids.length) throw new Error(failed);
+    const j = AW.job();
+    hsSaving = { ids, failed, of: Object.keys(changes).length, job: j };
+    say("Saving. Sent to the root helper.", true, noteEl);
+    loadHealth();
+    return j;
+  }
+  function renderDoctorSettings(data, rep) {
+    const st = rep && rep.settings;
+    hsGroups = (st && groupsOf(st)) || [];
+    if (hsSaving) {
+      const done = hsSaving.ids.map((id) =>
+        (data.results || []).find((result) => result.id === id),
       );
-      box.setAttribute("aria-label", g.label);
-      return el(
-        "div",
-        { className: "up-group" },
-        el("span", { className: "setting-name", textContent: g.label }),
-        el("p", { className: "setting-desc", textContent: g.desc }),
-        box,
-      );
-    }),
-  );
-}
-// Sent one after another; one the hub refuses stops the rest, and those already sent are still waited for and said.
-async function doctorSave(changes) {
-  const ids = [];
-  let failed = null;
-  for (const [k, v] of Object.entries(changes)) {
-    const g = hsGroups.find((x) => x.key === k);
-    const o = g.options.find((x) => x.value === v);
-    try {
-      ids.push(
-        (await postJSON("/admin/health", { action: "fix", choice: o.choice }))
-          .id,
-      );
-    } catch (err) {
-      failed = err.message;
-      break;
+      if (done.every(Boolean)) {
+        const bad = done.filter((result) => !result.ok);
+        const left = hsSaving.of - done.length;
+        const ok = !bad.length && !hsSaving.failed;
+        const text =
+          (bad.length
+            ? bad.map(resultSaid).join(" ")
+            : `Saved: ${done.map(resultSaid).join(" ")}`) +
+          (hsSaving.failed
+            ? ` ${done.length} of ${hsSaving.of} changes were sent. The next change failed: ${hsSaving.failed.replace(/\.?$/, ".")} ${left} change${left === 1 ? " is" : "s are"} still selected and not saved.`
+            : "");
+        const j = hsSaving.job;
+        hsSaving = null;
+        hsFrom = "";
+        say(text, ok, noteEl);
+        j.done(ok, ok ? "" : text);
+        hlRequest({ action: "scan" }, "scan");
+      } else {
+        const ahead = ((data.queue && data.queue.waiting) || []).length;
+        say(
+          `Saving: ${done.filter(Boolean).length} of ${done.length} done. Waiting for the root helper` +
+            (data.queue && data.queue.running
+              ? ` (busy with ${data.queue.running.action}${ahead ? `, ${ahead} waiting` : ""})`
+              : "") +
+            ".",
+          true,
+          noteEl,
+        );
+      }
+    }
+    // A new report: the settings as they are now; a change in progress kept over them.
+    const from = JSON.stringify(hsGroups.map((g) => [g.key, g.current]));
+    if (from !== hsFrom && !docSec.saving()) {
+      hsFrom = from;
+      docSec.update(Object.fromEntries(hsGroups.map((g) => [g.key, g.current])));
+      if (!hsGroups.length) drawDoctorGroups();
     }
   }
-  if (!ids.length) throw new Error(failed);
-  const j = AW.job();
-  hsSaving = { ids, failed, of: Object.keys(changes).length, job: j };
-  say("Saving. Sent to the root helper.", true, hl.setNote);
-  loadHealth();
-  return j;
+  return { render: renderDoctorSettings };
 }
-function renderDoctorSettings(data, rep) {
-  const st = rep && rep.settings;
-  hsGroups = (st && st.groups) || [];
-  if (hsSaving) {
-    const done = hsSaving.ids.map((id) =>
-      (data.results || []).find((result) => result.id === id),
-    );
-    if (done.every(Boolean)) {
-      const bad = done.filter((result) => !result.ok);
-      const left = hsSaving.of - done.length;
-      const ok = !bad.length && !hsSaving.failed;
-      const text =
-        (bad.length
-          ? bad.map(resultSaid).join(" ")
-          : `Saved: ${done.map(resultSaid).join(" ")}`) +
-        (hsSaving.failed
-          ? ` ${done.length} of ${hsSaving.of} changes were sent. The next change failed: ${hsSaving.failed.replace(/\.?$/, ".")} ${left} change${left === 1 ? " is" : "s are"} still selected and not saved.`
-          : "");
-      const j = hsSaving.job;
-      hsSaving = null;
-      hsFrom = "";
-      say(text, ok, hl.setNote);
-      j.done(ok, ok ? "" : text);
-      hlRequest({ action: "scan" }, "scan");
-    } else {
-      const ahead = ((data.queue && data.queue.waiting) || []).length;
-      say(
-        `Saving: ${done.filter(Boolean).length} of ${done.length} done. Waiting for the root helper` +
-          (data.queue && data.queue.running
-            ? ` (busy with ${data.queue.running.action}${ahead ? `, ${ahead} waiting` : ""})`
-            : "") +
-          ".",
-        true,
-        hl.setNote,
-      );
-    }
-  }
-  // A new report: the settings as they are now; a change in progress kept over them.
-  const from = JSON.stringify(hsGroups.map((g) => [g.key, g.current]));
-  if (from !== hsFrom && !docSec.saving()) {
-    hsFrom = from;
-    docSec.update(Object.fromEntries(hsGroups.map((g) => [g.key, g.current])));
-    if (!hsGroups.length) drawDoctorGroups();
-  }
-}
+const doctorOwn = doctorSection({
+  id: "doctor-settings",
+  label: "The Box doctor's settings",
+  prefix: "hs",
+  groupsEl: hl.setGroups,
+  footEl: hl.setFoot,
+  noteEl: hl.setNote,
+  groupsOf: (st) => st.groups,
+  empty: "Shown after the next check.",
+});
+const cardSystem = doctorSection({
+  id: "card-system-settings",
+  label: "SD card writes: system settings",
+  prefix: "cs",
+  groupsEl: document.getElementById("card-sys-groups"),
+  footEl: document.getElementById("card-sys-foot"),
+  noteEl: document.getElementById("card-sys-note"),
+  groupsOf: (st) => st.card_groups,
+  empty: "Shown after the Box doctor's next check.",
+});
 document
   .getElementById("health-search")
   .addEventListener("input", () => hlLast && renderHealth(hlLast));
@@ -6082,7 +6106,8 @@ function renderHealth(data) {
   const acc = data.accepted || {};
   const accepted = (finding) => finding.status === "warn" && !!acc[finding.id];
   renderGlance(data, rep);
-  renderDoctorSettings(data, rep);
+  doctorOwn.render(data, rep);
+  cardSystem.render(data, rep);
   const all = rep
     ? [...rep.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
     : [];

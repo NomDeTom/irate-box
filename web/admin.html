@@ -578,6 +578,40 @@
               </p>
               <div id="card-writes-box"></div>
               <p class="setting-desc" id="card-writes-rate"></p>
+              <!-- The system's write settings (health.py card_groups): applied by the root helper, each a file of
+                 irate-box's. Their effect shows in Box doctor → SD card writes. -->
+              <details class="sec-fold" id="card-sys-fold">
+                <summary data-i18n="admin.recovery.summary-system-write-settings">
+                  System write settings
+                </summary>
+                <p
+                  class="setting-desc"
+                  data-i18n="admin.recovery.system-write-settings-desc"
+                >
+                  These settings change the system's configuration. Each one is
+                  a file of irate-box's, removed again when you select the first
+                  option. The record in
+                  <a href="#health">Box doctor → SD card writes</a> shows the
+                  effect of each change.
+                </p>
+                <div id="card-sys-groups"></div>
+                <div id="card-sys-foot"></div>
+                <p
+                  class="setting-desc action-note"
+                  id="card-sys-note"
+                  role="status"
+                  hidden
+                ></p>
+                <p
+                  class="setting-desc"
+                  data-i18n="admin.recovery.always-fewer-writes"
+                >
+                  Always on: irate-box's own package runs keep apt's cache in
+                  memory, the toolkits share one package list update a day and
+                  download only the packages that changed, and the box writes a
+                  file only when it changes.
+                </p>
+              </details>
             </div>
             <!-- Crash watch's and the restarts' settings: set, then saved (each change goes to the root helper in turn). -->
             <div class="net-card setting" id="health-settings">

@@ -101,6 +101,14 @@ setTimeout(async () => {
     && !d.getElementById('health-card-units-note').hidden);
   const change = t('#health-card-changes li')[0] || '';
   check('  a setting change, named, with the writes before and after', /Card write level: Reduced clock writes → Buffered writes/.test(change) && /−60 %/.test(change), change);
+  // The system write settings: drawn in the SD card writes card on Recovery, each a row of choices with its current one.
+  const cs = { key: 'journal', label: 'System journal', desc: 'The system log.', current: 'memory',
+    options: [{ value: 'card', label: 'On the SD card', choice: 'card-set:journal:card' }, { value: 'memory', label: 'In memory', choice: 'card-set:journal:memory' }] };
+  w.renderHealth({ ...fx, report: { ...fx.report, settings: { ...(fx.report.settings || {}), groups: [], card_groups: [cs] } } });
+  const csRow = d.querySelector('#card-sys-groups .up-group');
+  check('system write settings: a row a setting in the SD card writes card, its name and its choices',
+    csRow && /System journal/.test(csRow.textContent) && /On the SD card/.test(csRow.textContent) && /In memory/.test(csRow.textContent)
+    && d.getElementById('card-sys-foot').children.length > 0, csRow && csRow.textContent);
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);
