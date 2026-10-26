@@ -26,10 +26,14 @@ on it. Every part but "id" and "order" is optional:
                                       more entries, from a JSON list [{page, title, group}] the
                                       app's adapt script leaves in its install folder: whatever
                                       the entries above do not already name
-    "status":  {"path", "name", "port" | "root_env" | "socket", "unit", "control": bool, "note"},
+    "status":  {"path", "name", "port" | "root_env" | "socket", "unit", "control": bool, "note",
+                "web_port", "websocket": bool}
                                       how /status and /admin see it: a loopback port to probe,
                                       or the environment variable naming the folder the
-                                      web server serves it from; "control" offers start/stop/boot on /admin
+                                      web server serves it from; "control" offers start/stop/boot on /admin;
+                                      "web_port" the loopback port the web server passes "path" to, when
+                                      "port" is not it (an MQTT broker's own protocol); "websocket" when
+                                      "path" speaks only WebSocket, so the doctors ask it with the handshake
     "network": {"listen": [{"proto": "tcp" | "udp", "port"}], "present", "hotspot": "open" | "closed",
                 "risk": "ok" | "warn", "says"}
                                       a service that answers the network itself, not through the
@@ -246,6 +250,9 @@ def _check(m, where):
             "status.socket: a socket under /run",
         )
         need("port" not in status or type(status["port"]) is int, "status.port: an integer")
+        need("web_port" not in status or type(status["web_port"]) is int, "status.web_port: an integer")
+        need(not status.get("web_port") or status.get("path"), "status.web_port needs a path")
+        need("websocket" not in status or type(status["websocket"]) is bool, "status.websocket: true or false")
         need("unit" not in status or UNIT_RE.match(str(status["unit"])), "status.unit: a .service name")
         need(not status.get("control") or "unit" in status, "status.control needs a unit")
     net = m.get("network")

@@ -163,8 +163,13 @@ With a web page (`status` with a `port` and a `path`), while it runs:
   the box's other addresses reach it), does it believe a forged proxy's headers, does it let any website call it.
   And through the web server: is the access chosen for it kept. Only reads: GET and OPTIONS, no body, no
   password, never the web server's secret.
-- **The box doctor** asks it through the web server, as a guest's browser would: an error or nothing is a
-  problem, with "Start it again".
+- **The box doctor** asks it both ways, through the web server as a guest's browser would and straight on its
+  own port, and says which side fails: it answers itself but not through the web server, the web server's route
+  (run the installer again); it doesn't answer itself, the add-on ("Start it again").
+
+When `port` is not the web listener (an MQTT broker's own protocol on 1883), `web_port` names the loopback port the
+web server passes `path` to; `"websocket": true` when `path` speaks only WebSocket, so both doctors ask it with the
+opening handshake and take its 101 as the answer.
 
 **Services nobody declared** (the owner's own, or the image's) are handled too, with options from the safest:
 the Security page offers to stop and disable one, keeps it off the hotspot while the hotspot firewall is on (and says so),

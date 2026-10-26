@@ -11,6 +11,8 @@
     "path": "/mqtt",
     "name": "MQTT broker (mosquitto)",
     "port": 1883,
+    "web_port": 9001,
+    "websocket": true,
     "unit": "mosquitto.service",
     "control": true
   },
