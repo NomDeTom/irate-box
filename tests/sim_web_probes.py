@@ -82,6 +82,42 @@ threading.Thread(
 FRONT_GATE = serve(lambda h: (401, {}, b""), host="127.0.0.1")
 FRONT_OPEN = serve(lambda h: (302, {"Location": f"http://127.0.0.1:{OPEN_LOCAL}/wiki/"}, b""), host="127.0.0.1")
 FRONT_DOWN = serve(lambda h: (502, {}, b"bad gateway"), host="127.0.0.1")
+
+
+def serve_ws(host="127.0.0.1"):
+    """A WebSocket-only listener, as mosquitto's on 9001: the handshake gets 101; a plain GET, the connection closed
+    with no answer (what a web server in front reports as a 502)."""
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.headers.get("Upgrade", "").lower() != "websocket":
+                self.close_connection = True
+                return
+            self.send_response(101)
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+            self.end_headers()
+            self.close_connection = True
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer((host, 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv.server_address[1]
+
+
+WS = serve_ws()
+# The web server in front of it: passes the handshake on (101), and a plain GET gets its 502.
+FRONT_WS = serve(
+    lambda h: (
+        (101, {"Upgrade": "websocket", "Connection": "Upgrade"}, b"")
+        if h.headers.get("Upgrade", "").lower() == "websocket"
+        else (502, {}, b"bad gateway")
+    ),
+    host="127.0.0.1",
+)
 OTHER = ["127.0.0.2 (eth0)"]
 
 
@@ -111,6 +147,19 @@ got = points(GUARDED)
 check("a sign-in of its own, no headers trusted, no cross-origin: nothing", got == {}, got)
 got = points(NOT_HTTP)
 check("a port that does not speak HTTP: left to the listener checks", got == {}, got)
+check(
+    "webprobe: a WebSocket route answers its handshake with 101, and a plain GET with nothing",
+    webprobe.ask("127.0.0.1", WS, "GET", "/mqtt", websocket=True)["status"] == 101
+    and not webprobe.ask("127.0.0.1", WS, "GET", "/mqtt")["http"],
+)
+lk = webprobe.leaks(WS, "/mqtt", [], False, websocket=True)
+check("  past the web server, asked with the handshake: it opens with no sign-in", lk["http"] and lk["open"], lk)
+webprobe.front_address = lambda: ("127.0.0.1", FRONT_GATE)
+got = {
+    i["key"]: i
+    for i in sd.web_points({"id": "mqtt", "port": NOT_HTTP, "web_port": WS, "websocket": True, "path": "/mqtt"}, OTHER)
+}
+check("  the Security doctor asks web_port, not the broker's own port; a public route: nothing to say", got == {}, got)
 got = points(GUARDED, front=FRONT_OPEN)
 check(
     "the web server lets it open with no sign-in, access private: web-front, a problem",
@@ -133,11 +182,57 @@ health.unit_props = lambda unit: {"ActiveState": "active"}
 webprobe.front_address = lambda: ("127.0.0.1", FRONT_DOWN)
 f = health.check_addon_front()
 check(
-    "Box doctor: a 502 through the web server is a problem",
-    [(x["id"], x["status"]) for x in f] == [("addon-front:wiki", "problem")],
+    "Box doctor: a 502 through the web server while the add-on answers on its own port: the web server's route",
+    [(x["id"], x["status"], x["summary"]["id"]) for x in f] == [("addon-front:wiki", "problem", "addon-front.route")],
     f,
 )
-check("  with a restart", any(a["choice"] == "unit-restart:kiwix.service" for a in f[0]["actions"]), f)
+check(
+    "  run the installer again, no restart of the add-on",
+    [a["choice"] for a in f[0]["actions"]] == ["rerun-install"],
+    f,
+)
+check("  both answers as evidence", len(f[0]["evidence"]) == 2 and ": 200" in f[0]["evidence"][1], f)
+with socket.socket() as s:
+    s.bind(("127.0.0.1", 0))
+    DEAD = s.getsockname()[1]  # closed again: the add-on answers nothing
+(T / "apps.d/30-wiki.json").write_text(
+    json.dumps(
+        {"id": "wiki", "order": 30, "status": {"name": "Wiki", "port": DEAD, "path": "/wiki/", "unit": "kiwix.service"}}
+    )
+)
+f = health.check_addon_front()
+check(
+    "Box doctor: a 502 through the web server and nothing on its own port either: the add-on, with a restart",
+    [(x["id"], x["status"], x["summary"]["id"]) for x in f] == [("addon-front:wiki", "problem", "addon-front.down")]
+    and any(a["choice"] == "unit-restart:kiwix.service" for a in f[0]["actions"])
+    and str(DEAD) in render(f[0]["summary"]),
+    f,
+)
+# Item 176: a WebSocket-only route (MQTT's /mqtt): a plain GET through the web server is a 502 though all is well.
+mqtt = {"name": "MQTT broker", "port": NOT_HTTP, "web_port": WS, "path": "/mqtt", "unit": "mosquitto.service"}
+(T / "apps.d/30-wiki.json").unlink()
+(T / "apps.d/85-mqtt.json").write_text(json.dumps({"id": "mqtt", "order": 85, "status": {**mqtt, "websocket": True}}))
+webprobe.front_address = lambda: ("127.0.0.1", FRONT_WS)
+f = health.check_addon_front()
+check(
+    "Box doctor: a WebSocket route asked with the handshake, 101 through the web server: fine (item 176)",
+    [(x["id"], x["status"]) for x in f] == [("addon-front:mqtt", "ok")] and "WebSocket" in f[0]["evidence"][0],
+    f,
+)
+(T / "apps.d/85-mqtt.json").write_text(json.dumps({"id": "mqtt", "order": 85, "status": mqtt}))
+f = health.check_addon_front()
+check(
+    "  the same route asked with a plain GET (no websocket in the manifest): its own listener asked on web_port",
+    [(x["id"], x["status"]) for x in f] == [("addon-front:mqtt", "problem")]
+    and f"127.0.0.1:{WS}/mqtt" in f[0]["evidence"][1],
+    f,
+)
+(T / "apps.d/85-mqtt.json").unlink()
+(T / "apps.d/30-wiki.json").write_text(
+    json.dumps(
+        {"id": "wiki", "order": 30, "status": {"name": "Wiki", "port": OPEN, "path": "/wiki/", "unit": "kiwix.service"}}
+    )
+)
 webprobe.front_address = lambda: ("127.0.0.1", FRONT_GATE)
 f = health.check_addon_front()
 check("Box doctor: a sign-in through the web server is working", [x["status"] for x in f] == ["ok"], f)

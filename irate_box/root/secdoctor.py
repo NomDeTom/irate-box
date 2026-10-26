@@ -2699,6 +2699,8 @@ def load_addons():
                 "title": ad.get("title") or st.get("name") or m.get("id", f.stem),
                 "unit": st["unit"].replace("@hub.", f"@{HUB_USER}."),
                 "port": st.get("port"),
+                "web_port": st.get("web_port"),
+                "websocket": bool(st.get("websocket")),
                 "path": st.get("path"),
                 "option": ad.get("option"),
                 "consent": ad.get("consent"),
@@ -7377,14 +7379,15 @@ def web_points(a, addresses):
     through the web server, as issues. Past it: does it serve its pages with no sign-in, on which of the box's
     addresses, does it believe a forged proxy's headers, does it let any site call it. Through it: does the front
     keep the access chosen for it. Only reads (webprobe.py); a port that does not speak HTTP is left to the
-    listener and firewall checks."""
+    listener and firewall checks. Asked on its web listener (web_port) where its own port is another protocol, and
+    with the WebSocket handshake where its route speaks only that."""
     from irate_box.hub import access as acc
     from irate_box.root import webprobe
 
     mode = acc.mode_of(acc.read(ETC / "access.json"), a["id"]) if a["id"] in acc.ROUTED else "public"
     gated = mode in ("users", "private", "off") or acc.ROUTED.get(a["id"], ("", False))[1]
-    port = a["port"]
-    got = webprobe.leaks(port, a["path"], [x.split(" ")[0] for x in addresses], gated)
+    port, websocket = a.get("web_port") or a["port"], bool(a.get("websocket"))
+    got = webprobe.leaks(port, a["path"], [x.split(" ")[0] for x in addresses], gated, websocket=websocket)
     if not got["http"]:
         return []
     asked = f"GET {got['path']} → 127.0.0.1:{port}: {got['status']}"
@@ -7457,8 +7460,8 @@ def web_points(a, addresses):
             )
         )
     if gated:
-        front, url = webprobe.through_front(a["path"])
-        if webprobe.ok(front):
+        front, url = webprobe.through_front(a["path"], websocket=websocket)
+        if webprobe.ok(front) or (websocket and webprobe.answers(front, websocket=True)):
             out.append(
                 _issue(
                     "web-front",

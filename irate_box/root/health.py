@@ -2329,10 +2329,13 @@ def _front_silent_finding(key, title, port):
 
 
 def check_addon_front():
-    """Each running web add-on (a manifest's status with a port, a route and a unit), asked through the web server
-    as a guest's browser would (webprobe.through_front): does it answer there. A 502, 503 or 504, or nothing,
-    is a problem, with a restart; while the web server itself answers nothing, a note that names it instead.
-    Whether the web server keeps its sign-in is the Security doctor's."""
+    """Each running web add-on (a manifest's status with a port, a route and a unit), asked both ways: straight on
+    its own web listener (status.web_port, else status.port), and through the web server as a guest's browser
+    would (webprobe.through_front); a WebSocket route with the handshake. Which side fails says where the fault is:
+    both answer, fine; it answers but the web server doesn't pass it on, the web server's route to it (run the
+    installer again, no restart of the add-on); it doesn't answer itself, the add-on (start it again). While the
+    web server answers nothing at all, a note that names it instead. Whether the web server keeps its sign-in is
+    the Security doctor's."""
     from irate_box.hub import manifests
     from irate_box.root import webprobe
 
@@ -2349,40 +2352,65 @@ def check_addon_front():
         unit = st["unit"].replace("@hub.", f"@{HUB_USER}.")
         if unit_props(unit).get("ActiveState") != "active":
             continue  # not running: the units check says so
+        key = f"addon-front:{m['id']}"
         title = named(st.get("name") or m["id"], M("addon-front.role", "through the web server"))
         if silent is not None:
-            out.append(_front_silent_finding(f"addon-front:{m['id']}", title, silent))
+            out.append(_front_silent_finding(key, title, silent))
             continue
-        r, url = webprobe.through_front(st["path"])
-        if not r["http"] or r["status"] in (502, 503, 504):
+        websocket = bool(st.get("websocket"))
+        how = "GET (WebSocket handshake)" if websocket else "GET"
+        own_port = st.get("web_port") or st["port"]
+        r, url = webprobe.through_front(st["path"], websocket=websocket)
+        front_said = f"{how} {url}: {r['status'] if r['http'] else r['error']}"
+        if webprobe.answers(r, websocket):
             out.append(
                 finding(
-                    f"addon-front:{m['id']}",
+                    key, title, "ok", M("addon-front.up", "It answers through the web server."), evidence=[front_said]
+                )
+            )
+            continue
+        direct = webprobe.ask("127.0.0.1", own_port, "GET", st["path"], websocket=websocket)
+        own_said = f"{how} 127.0.0.1:{own_port}{st['path']}: {direct['status'] if direct['http'] else direct['error']}"
+        if webprobe.answers(direct, websocket):
+            out.append(
+                finding(
+                    key,
                     title,
                     "problem",
                     M(
-                        "addon-front.down",
-                        "It runs, but it does not answer through the web server.",
+                        "addon-front.route",
+                        "It answers on its own port {port}, but the web server does not pass requests on to it.",
+                        port=own_port,
                     ),
+                    M("addon-front.down.why", "Its page shows an error, or nothing, to everyone who opens it."),
                     M(
-                        "addon-front.down.why",
-                        "Its page shows an error, or nothing, to everyone who opens it.",
+                        "addon-front.route.fix",
+                        "Run the installer again, so the web server's settings for it are written again.",
                     ),
-                    M("addon-front.down.fix", "Start it again. If that does not help, run the installer again."),
-                    evidence=[f"GET {url}: {r['status'] if r['http'] else r['error']}"],
-                    actions=[action(f"unit-restart:{unit}", RESTART), RERUN],
+                    evidence=[front_said, own_said],
+                    actions=[RERUN],
                 )
             )
-        else:
-            out.append(
-                finding(
-                    f"addon-front:{m['id']}",
-                    title,
-                    "ok",
-                    M("addon-front.up", "It answers through the web server."),
-                    evidence=[f"GET {url}: {r['status']}"],
-                )
+            continue
+        out.append(
+            finding(
+                key,
+                title,
+                "problem",
+                M(
+                    "addon-front.down",
+                    "It runs, but it answers neither on its own port {port} nor through the web server.",
+                    port=own_port,
+                ),
+                M(
+                    "addon-front.down.why",
+                    "Its page shows an error, or nothing, to everyone who opens it.",
+                ),
+                M("addon-front.down.fix", "Start it again. If that does not help, run the installer again."),
+                evidence=[front_said, own_said],
+                actions=[action(f"unit-restart:{unit}", RESTART), RERUN],
             )
+        )
     return out
 
 

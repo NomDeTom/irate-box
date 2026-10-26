@@ -5,7 +5,8 @@ in front, where the hub's sign-ins are kept), and through the web server, as a g
 doctor asks whether it leaks past the front; the Box doctor whether it works through it.
 
 Only GET and OPTIONS, with no body, no cookie and no password, and never the web server's secret: nothing sent can
-change an add-on's data. At most LIMIT bytes of an answer are read, TIMEOUT seconds a request. Stdlib only."""
+change an add-on's data. A route that speaks only WebSocket (an MQTT broker's) is asked with the opening handshake,
+and its 101 is taken as the answer; the connection is closed there, before anything is said over it. At most LIMIT bytes of an answer are read, TIMEOUT seconds a request. Stdlib only."""
 
 import http.client
 import os
@@ -40,11 +41,19 @@ FORGED = {
     "X-Forwarded-Proto": "https",
 }
 FOREIGN = "http://example.invalid"
+# A WebSocket's opening handshake (RFC 6455), with the RFC's own sample key.
+WEBSOCKET = {
+    "Connection": "Upgrade",
+    "Upgrade": "websocket",
+    "Sec-WebSocket-Version": "13",
+    "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+}
 
 
-def ask(host, port, method, path, headers=None, tls=False):
+def ask(host, port, method, path, headers=None, tls=False, websocket=False):
     """{http: True, status, headers (lower-case names), body (bytes, up to LIMIT)} for an HTTP answer;
-    {http: False, error} when nothing answers, or what answers does not speak HTTP."""
+    {http: False, error} when nothing answers, or what answers does not speak HTTP. websocket: the opening
+    handshake sent; a 101 has no body to read (the connection has become the WebSocket's)."""
     try:
         if tls:
             ctx = ssl.create_default_context()
@@ -53,9 +62,18 @@ def ask(host, port, method, path, headers=None, tls=False):
             conn = http.client.HTTPSConnection(host, port, timeout=TIMEOUT, context=ctx)
         else:
             conn = http.client.HTTPConnection(host, port, timeout=TIMEOUT)
-        conn.request(method, path, headers={"Host": host, "User-Agent": "irate-box-doctor", **(headers or {})})
+        conn.request(
+            method,
+            path,
+            headers={
+                "Host": host,
+                "User-Agent": "irate-box-doctor",
+                **(WEBSOCKET if websocket else {}),
+                **(headers or {}),
+            },
+        )
         r = conn.getresponse()
-        body = r.read(LIMIT)
+        body = b"" if r.status == 101 else r.read(LIMIT)
         conn.close()
         return {
             "http": True,
@@ -71,6 +89,14 @@ def ok(r):
     return r["http"] and 200 <= r["status"] < 300
 
 
+def answers(r, websocket=False):
+    """Whatever is behind it answered: a WebSocket route its 101, anything else any answer but the web server's own
+    for a backend it could not reach (502, 503, 504). A sign-in or a 404 is an answer."""
+    if not r["http"]:
+        return False
+    return r["status"] == 101 if websocket else r["status"] not in (502, 503, 504)
+
+
 def gate(r):
     """A sign-in asked for: 401, or a redirect to the hub's account page."""
     return r["http"] and (
@@ -79,16 +105,16 @@ def gate(r):
     )
 
 
-def through_front(path, front=None):
+def through_front(path, front=None, websocket=False):
     """GET path through the web server, following its redirects to an app's own origin (on loopback, up to three)
-    but not to a sign-in. The last answer, and where it came from."""
+    but not to a sign-in. The last answer, and where it came from. websocket: asked with the opening handshake."""
     from urllib.parse import urlsplit
 
     host, port = front or front_address()
     tls, where = False, path
     r = {"http": False, "error": "not asked"}
     for _ in range(4):
-        r = ask(host, port, "GET", where, tls=tls)
+        r = ask(host, port, "GET", where, tls=tls, websocket=websocket)
         if not r["http"] or r["status"] not in (301, 302, 303, 307, 308) or gate(r):
             break
         loc = urlsplit(r["headers"].get("location", ""))
@@ -100,11 +126,29 @@ def through_front(path, front=None):
     return r, f"{'https' if tls else 'http'}://{host}:{port}{where}"
 
 
-def leaks(port, path, addresses, gated):
+def leaks(port, path, addresses, gated, websocket=False):
     """How an add-on answers on its own port, past the front. gated: the front asks for a sign-in (or keeps it
     off). {http: False} when its port does not speak HTTP; else {path, open, reach, forged, cors}:
     open: it serves its pages with no sign-in; reach: the box's own addresses (beside loopback) it answers on;
-    forged: it serves them only when a request carries a proxy's headers; cors: it lets any site's page call it."""
+    forged: it serves them only when a request carries a proxy's headers; cors: it lets any site's page call it.
+    websocket: a WebSocket route, asked with the handshake: open when it accepts it with no sign-in; it has no
+    pages, so no forged or cross-origin points."""
+    if websocket:
+        plain = ask("127.0.0.1", port, "GET", path, websocket=True)
+        if not plain["http"]:
+            return {"http": False, "error": plain["error"]}
+        reach = [a for a in addresses if ask(a, port, "GET", path, websocket=True)["http"]]
+        opened = plain["status"] == 101
+        return {
+            "http": True,
+            "path": path,
+            "status": plain["status"],
+            "open": opened,
+            "reach": reach,
+            "forged": False,
+            "cors": False,
+            "allow": "",
+        }
     plain = ask("127.0.0.1", port, "GET", path)
     if not plain["http"]:
         return {"http": False, "error": plain["error"]}
