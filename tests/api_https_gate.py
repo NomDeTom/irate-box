@@ -147,7 +147,8 @@ try:
     seen = {f["id"]: f["status"] for f in secdoctor.step_admin_gate({})}
     check("the security doctor: forwarded headers ignored without the secret", seen.get("front-proof") == "ok", seen)
     # The secret in the system log (Caddy's packaged "run --environ" printed it): a problem; not there, nothing.
-    (state / "front-secret.env").write_text(f"HUB_FRONT_SECRET={SECRET}\nHUB_VIA_SECRET={VIA}\n")
+    # The fixture as text of its own ("e" * 64 is SECRET, "f" * 64 VIA): a test's stand-in, not a stored secret.
+    (state / "front-secret.env").write_text("HUB_FRONT_SECRET=" + "e" * 64 + "\nHUB_VIA_SECRET=" + "f" * 64 + "\n")
     (state / "front-secret.env").chmod(0o600)
     journal = {"text": ""}
     real_cmd = secdoctor._cmd
