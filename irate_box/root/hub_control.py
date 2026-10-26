@@ -4612,7 +4612,8 @@ def scheduled_findings(now=None):
                 go=GO_LIBRARIAN,
             )
         )
-    if not out:
+    out += _clock_window_findings(now)
+    if not [f for f in out if f["id"] != "window-clock"]:
         errors = last.get("errors", [])[:3] if not last.get("ok") else []
         out.append(
             finding(
@@ -4636,6 +4637,41 @@ def scheduled_findings(now=None):
             )
         )
     return out
+
+
+def _clock_window_findings(now):
+    """An automatic install held because the clock is not known to be right (selfupdate.clock_known): its mark in
+    the librarian's state, from a run in the last three hours (the timer's runs are hourly)."""
+    try:
+        held = json.loads((STATE / "library" / "hub-update.json").read_text()).get("clock_unknown")
+    except (OSError, ValueError, AttributeError):
+        return []
+    if not isinstance(held, (int, float)) or not 0 <= now - held < 3 * 3600:
+        return []
+    return [
+        finding(
+            "window-clock",
+            M("update.window-clock.title", "Clock for the installation window"),
+            "warn",
+            M(
+                "update.window-clock.unknown",
+                "Automatic installation is waiting. The clock is not known to be right, so the installation window "
+                "cannot be told.",
+            ),
+            M(
+                "update.window-clock.unknown.why",
+                "The window is in the box's local hours. A box with no clock module starts at about the time it last "
+                "stopped, so an update could install while people are using the box.",
+            ),
+            M(
+                "update.window-clock.unknown.fix",
+                "Connect the box to the internet for network time, or set the clock. Until then, install updates by "
+                "hand on Updates.",
+            ),
+            evidence=[f"held {when(held)}"],
+            go=GO_CLOCK,
+        )
+    ]
 
 
 def kits_findings(now=None):
