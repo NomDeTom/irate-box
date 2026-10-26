@@ -31,6 +31,7 @@ os.environ.update(
     HUB_NAND_STATE=str(T / "nand-logs.conf"),
     HUB_PROC_MTD=str(T / "mtd"),
     HUB_UBI_SYS=str(T / "ubi"),
+    HUB_ROOT_STATE_DIR=str(T / "root-state"),
 )
 for d in ("state", "etc", "systemd/journald.conf.d", "apt.conf.d", "apt-cache"):
     (T / d).mkdir(parents=True)
@@ -159,6 +160,7 @@ check(
 
 # The Box doctor. The card's record: three whole days of 2 GB, today's start.
 ran = []
+said_kernel = {"log": ""}
 
 
 def run(*cmd, timeout=60, **kw):
@@ -176,6 +178,10 @@ def run(*cmd, timeout=60, **kw):
         (T / "nand-logs.conf").write_text("mtd=0\n")
     elif cmd[0] == "bash" and cmd[2] == "off":
         (T / "nand-logs.conf").unlink()
+    elif cmd[0] == "journalctl" and "-k" in cmd:
+        out = said_kernel["log"]
+    elif cmd[0] == "systemctl" and cmd[1] == "is-active":
+        out = "inactive\n"
     elif cmd[0] == "systemd-analyze":
         out = "# /usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf\n[Journal]\nStorage=volatile\n"
     return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
@@ -412,6 +418,80 @@ check(
     "  back to memory: nand-logs.sh off first, then the journal in memory",
     any(c[0] == "bash" and c[2] == "off" for c in ran) and "Storage=volatile" in jconf.read_text(),
     ran,
+)
+
+# SD card health: the card as Linux sees it, its life's writes, the kernel's errors, read-only, and the two tests.
+host = SYS / "devices" / "mmc_host" / "mmc0" / "mmc0:aaaa"
+host.mkdir(parents=True)
+for f, v in {"type": "SD", "manfid": "0x000003", "oemid": "0x5344", "name": "SH64G", "date": "04/2024"}.items():
+    (host / f).write_text(v + "\n")
+(card / "device").symlink_to(host)
+ext4 = SYS / "fs" / "ext4" / "mmcblk0p2"
+ext4.mkdir(parents=True)
+(ext4 / "lifetime_write_kbytes").write_text(str(48 * 10**6) + "\n")  # 48 GB: 1.5 times the 32 GB card
+(ext4 / "errors_count").write_text("0\n")
+(PROC / "mounts").write_text("/dev/mmcblk0p2 / ext4 rw,noatime 0 0\n")
+f = health.check_card_health()[0]
+check(
+    "a healthy card: its maker, no errors, its life's writes and size in the evidence; both tests offered",
+    f["status"] == "ok"
+    and f["summary"]["args"] == {"maker": "SanDisk"}
+    and "1.5 times its size" in f["evidence"][1]
+    and [a["choice"] for a in f["actions"]] == ["card-speed-test", "card-scan"],
+    f,
+)
+said_kernel["log"] = (
+    "mmc0: Timeout waiting for hardware interrupt.\nI/O error, dev mmcblk0, sector 1234 op 0x0:(READ)\nwlan0: up\n"
+)
+f = health.check_card_health()[0]
+check(
+    "the kernel's errors for the card: a problem, counted, the lines as evidence, with what to do",
+    f["status"] == "problem"
+    and f["summary"]["args"] == {"n": 2}
+    and f["fix"]
+    and "I/O error" in " ".join(f["evidence"]),
+    f,
+)
+said_kernel["log"] = ""
+(PROC / "mounts").write_text("/dev/mmcblk0p2 / ext4 ro,noatime 0 0\n")
+check("  a root filesystem fallen back to read-only: a problem", health.check_card_health()[0]["status"] == "problem")
+(PROC / "mounts").write_text("/dev/mmcblk0p2 / ext4 rw,noatime 0 0\n")
+(host / "manfid").write_text("0x000000\n")
+f = health.check_card_health()[0]
+check(
+    "  no maker's ID: said, as counterfeit cards often have none",
+    f["status"] == "warn" and "counterfeit" in f["summary"]["id"],
+)
+(host / "manfid").write_text("0x000003\n")
+ran.clear()
+said = health.fix("card-speed-test")
+check(
+    "the read-speed test: dd from the card, direct, 256 MB; the result kept",
+    any(c[0] == "dd" and "if=/dev/mmcblk0" in c and "iflag=direct" in c and "count=64" in c for c in ran)
+    and said["id"] == "repair.card-speed.done"
+    and len(health._card_tests()["speed"]) == 1,
+    ran,
+)
+check("  and shown in the evidence", "read speed:" in " ".join(health.check_card_health()[0]["evidence"]))
+ran.clear()
+said = health.fix("card-scan")
+check(
+    "the whole-card read: started in a unit of its own, at the lowest priority",
+    any(c[0] == "systemd-run" and f"--unit={health.CARD_SCAN_UNIT}" in c and "IOSchedulingClass=idle" in c for c in ran)
+    and said["id"] == "repair.card-scan.started",
+    ran,
+)
+real_sub = health.subprocess.run
+health.subprocess.run = lambda cmd, **kw: type(
+    "R", (), {"returncode": 1, "stderr": "dd: error reading '/dev/mmcblk0': Input/output error\n" * 3}
+)()
+bad = health.card_scan()
+health.subprocess.run = real_sub
+f = health.check_card_health()[0]
+check(
+    "  its result: the unreadable places counted, a problem, said with the date",
+    bad == 3 and f["status"] == "problem" and f["summary"]["args"] == {"n": 3},
+    f,
 )
 
 print(f"failures: {fails}")
