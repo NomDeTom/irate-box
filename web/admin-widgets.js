@@ -680,6 +680,7 @@ const AW = (() => {
   function choices(box, name, options, opts = {}) {
     box.classList.add('choice-tiles');
     if (!box.hasAttribute('role') && box.tagName !== 'FIELDSET') box.setAttribute('role', 'radiogroup');
+    if (opts.slider) return sliderChoices(box, name, options, opts);
     if (opts.compact) return compactChoices(box, name, options, opts);
     box.replaceChildren(...options.map((o) => {
       const off = !!o.why && o.value !== opts.value;
@@ -739,6 +740,63 @@ const AW = (() => {
         if (box._onChange) box._onChange(event.target.value);
       });
       // The page marking a chip chosen (setting its radio) says that one's line too.
+      new MutationObserver(() => box._sayChosen && box._sayChosen()).observe(box, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    }
+    box._sayChosen = sayChosen;
+    box._onChange = opts.onChange || null;
+    sayChosen();
+    return box;
+  }
+  // The same choice as a slider, for an ordered scale (lightest to heaviest): a stop per option, the options'
+  // names under it, and one line under that starting with the level ("Level 4 of 5, Reset the radio: …").
+  // The radios stay, one in each name, so a page that sets them and marks .chosen moves the slider, and a
+  // click on a name chooses it; the slider is what the keyboard and a screen reader use.
+  function sliderChoices(box, name, options, opts) {
+    box.classList.add('choice-slider');
+    box.setAttribute('role', 'group');
+    box.style.setProperty('--stops', String(options.length));
+    let says = box._says;
+    if (!says) {
+      says = box._says = h('p', { class: 'setting-desc choice-says', role: 'status' });
+      box.after(says);
+    }
+    const range = h('input', { type: 'range', class: 'choice-range', min: '0', max: String(options.length - 1), step: '1' });
+    const labelledBy = box.getAttribute('aria-labelledby');
+    if (labelledBy) range.setAttribute('aria-labelledby', labelledBy);
+    else if (box.getAttribute('aria-label')) range.setAttribute('aria-label', box.getAttribute('aria-label'));
+    const radios = options.map((option) => {
+      const input = h('input', { type: 'radio', name, value: option.value, tabindex: '-1', disabled: !!option.why && option.value !== opts.value });
+      input.checked = option.value === opts.value;
+      return input;
+    });
+    const stops = h('div', { class: 'choice-stops', 'aria-hidden': 'true' }, ...options.map((option, index) =>
+      h('label', { class: 'choice-tile choice-stop' + (option.why ? ' unavailable' : '') + (radios[index].checked ? ' chosen' : ''), title: option.why ? `Not available here: ${option.why}.` : '' },
+        radios[index], h('span', { text: option.title }))));
+    box.replaceChildren(range, stops);
+    const sayChosen = () => {
+      const index = radios.findIndex((radio) => radio.checked);
+      if (index < 0) { says.textContent = ''; return; }
+      const option = options[index];
+      range.value = String(index);
+      range.setAttribute('aria-valuetext', option.title);
+      says.textContent = `Level ${index + 1} of ${options.length}, ${option.title}: ${option.says || option.desc || ''}`;
+    };
+    range.addEventListener('input', () => {
+      const radio = radios[Number(range.value)];
+      if (!radio || radio.checked) return;
+      if (radio.disabled) { sayChosen(); return; } // back to the chosen one
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    if (!box._choicesWired) {
+      box._choicesWired = true;
+      box.addEventListener('change', (event) => {
+        if (event.target.type !== 'radio') return;
+        box.querySelectorAll('.choice-tile').forEach((tile) => tile.classList.toggle('chosen', tile.querySelector('input').checked));
+        if (box._sayChosen) box._sayChosen();
+        if (box._onChange) box._onChange(event.target.value);
+      });
+      // The page marking a stop chosen (setting its radio) moves the slider and says that one's line.
       new MutationObserver(() => box._sayChosen && box._sayChosen()).observe(box, { subtree: true, attributes: true, attributeFilter: ['class'] });
     }
     box._sayChosen = sayChosen;

@@ -141,6 +141,14 @@
       { value: 'enterprise', title: 'Accounts', desc: 'Each person signs in with their own account.', why: 'this radio has no driver support for it' },
     ], { value: 'password' });
 
+    const scale = h('div', { 'aria-label': 'Stand-in reach' });
+    AW.choices(scale, 'mock-reach', [
+      { value: 'watch', title: 'Watch only', says: 'Records an outage and does nothing else.' },
+      { value: 'reconnect', title: 'Reconnect', says: 'Reconnects the link, and nothing heavier.' },
+      { value: 'restart', title: 'Restart the service', says: 'Reconnects, then restarts the network service.' },
+      { value: 'reboot', title: 'Reboot', says: 'Every step, up to restarting the box.' },
+    ], { value: 'restart', slider: true });
+
     // In a form of the pages' kind (form.library-form), as the Updates and Firmware pages hold them: it sets the labels' size.
     const asOnPages = (...kids) => h('form', { class: 'library-form', onsubmit: (event) => event.preventDefault() }, ...kids);
     const fewSelect = asOnPages(h('label', {}, 'Check interval ', h('select', { name: 'mock-few' }, ['Manual', '6 hours', '24 hours', 'Weekly'].map((label) => h('option', { value: label }, label)))));
@@ -164,6 +172,8 @@
         "AW.settings(rows, {id, label, save, warn}); kinds: text, choice, select (with warn), toggle, readout; decision: true", settings),
       row('choice-tiles', 'Choice tiles', 'One of a few, each needing a sentence. One that is not available here says why.',
         'AW.choices(box, name, [{value, title, desc, does, why}], {value, onChange})', tiles),
+      row('choice-slider', 'An ordered scale, as a slider', 'One of a few that go from lightest to heaviest. A stop for each, its names under it, and a line under them that starts with the level.',
+        'AW.choices(box, name, [{value, title, says}], {value, slider: true, onChange})', scale),
       row('select-chips', 'A drop-down of a few, as chips', 'A drop-down of up to six choices is drawn as chips. The drop-down stays underneath for the form.',
         'AW.chipSelect(select) (done for every select on the page)', fewSelect),
       row('update', 'Updates: how often, how far, and the three buttons', 'The same two choices and the same three buttons wherever something is updated.',

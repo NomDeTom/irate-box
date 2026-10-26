@@ -7123,10 +7123,12 @@ function willText(eff) {
 }
 
 // Every choice the same way: radio cards, each one's description and what it does.
-// compact: a row of chips and one line for the chosen one, where the options' words would repeat each other.
-function rungs(box, group, items, compact = false) {
+// "compact": a row of chips and one line for the chosen one, where the options' words would repeat each other;
+// "slider": the same for an ordered scale, lightest to heaviest, the line under it naming the level.
+function rungs(box, group, items, form = "") {
   AW.choices(box, `up-${group}`, items, {
-    compact,
+    compact: form === "compact",
+    slider: form === "slider",
     onChange: (name) => upChoose({ [group]: name }, netData.levels),
   });
 }
@@ -7138,13 +7140,13 @@ function buildUpChoices(levels) {
     "pace",
     // What the chosen pace does, from its own numbers (its description says the same).
     levels.pace.map((n) => ({ value: n, title: cap1(n), says: paceLine(n, levels) })),
-    true,
+    "slider",
   );
   rungs(
     net.reach,
     "reach",
     levels.reach.map((n) => ({ value: n, title: reachTitle(n, false), says: levels.describe[n] || "" })),
-    true,
+    "slider",
   );
   rungs(
     net.guests,
@@ -7154,7 +7156,7 @@ function buildUpChoices(levels) {
       title: GUEST_WORDS[n][0],
       says: GUEST_WORDS[n][1],
     })),
-    true,
+    "compact",
   );
   rungs(
     net.wedge,
@@ -7173,7 +7175,7 @@ function buildUpChoices(levels) {
       title: RETRY_WORDS[n][0],
       says: RETRY_WORDS[n][1],
     })),
-    true,
+    "slider",
   );
   rungs(
     net.giveUp,
@@ -7183,7 +7185,7 @@ function buildUpChoices(levels) {
       title: GIVEUP_WORDS[n][0],
       says: GIVEUP_WORDS[n][1],
     })),
-    true,
+    "slider",
   );
   rungs(
     net.watchNew,
@@ -7221,7 +7223,7 @@ function buildUpChoices(levels) {
       title: reachTitle(n, true),
       says: n === "radio" ? "Reconnects; restarts the network service; then resets the network adapter." : levels.describe[n] || "",
     })),
-    true,
+    "slider",
   );
 
   drawRoamTiles(levels);
@@ -7294,7 +7296,7 @@ function fillUpForm(chosen, levels) {
 
 function showUpPreset(levels) {
   for (const [boxKey, key] of UP_GROUPS) {
-    for (const input of net[boxKey].querySelectorAll("input")) {
+    for (const input of net[boxKey].querySelectorAll("input[type=radio]")) {
       input.checked = input.value === upPick[key];
       input.closest(".choice-tile").classList.toggle("chosen", input.checked);
     }

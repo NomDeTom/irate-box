@@ -170,9 +170,18 @@ setTimeout(() => {
     && vals('up-wedge') === 'ladder radio reboot', [vals('up-guests'), vals('up-wedge')]);
   // Pace, reach, guests and the retries: chips, and one line under them for the chosen one (its words said once).
   const saysOf = (id) => { const n = d.getElementById(id).nextElementSibling; return n && n.classList.contains('choice-says') ? n.textContent : null; };
-  check('pace, reach, guests and the retries: a row of chips each, one line saying what the chosen one does',
-    ['up-pace', 'up-reach', 'up-guests', 'up-retry', 'up-giveup'].every((id) => d.getElementById(id).classList.contains('choice-chips') && (saysOf(id) || '').length > 10),
-    ['up-pace', 'up-reach', 'up-guests', 'up-retry', 'up-giveup'].map((id) => `${id}: ${saysOf(id)}`).join(' | '));
+  // The ordered ones (pace, reach, the retries, the period, the cable's reach) as sliders; guests, a pair, as chips.
+  const SLIDERS = ['up-pace', 'up-reach', 'up-retry', 'up-giveup', 'up-cablereach'];
+  check('pace, reach, the retries, the period and the cable\'s reach: a slider each, the line under it starting with the level',
+    SLIDERS.every((id) => d.getElementById(id).classList.contains('choice-slider') && d.querySelector(`#${id} input[type=range]`)
+      && /^Level \d of \d, .+: .{10,}/.test(saysOf(id) || '')),
+    SLIDERS.map((id) => `${id}: ${saysOf(id)}`).join(' | '));
+  check('  guests: a row of chips, its line', d.getElementById('up-guests').classList.contains('choice-chips') && (saysOf('up-guests') || '').length > 10, saysOf('up-guests'));
+  const paceRange = d.querySelector('#up-pace input[type=range]');
+  check('  the pace slider: four stops, at the chosen one, named for the keyboard and a screen reader',
+    paceRange.max === '3' && paceRange.value === '0' && paceRange.getAttribute('aria-valuetext') === 'Gentle'
+      && paceRange.getAttribute('aria-labelledby') === 'up-pace-label' && /^Level 1 of 4, Gentle: /.test(saysOf('up-pace')),
+    `${paceRange.max} ${paceRange.value} ${paceRange.getAttribute('aria-valuetext')} ${saysOf('up-pace')}`);
   check('  the chips\' words: reach in words, guests Defer or Allow, the period No limit to A week',
     tiles('up-reach').map((r) => r.textContent.trim()).join('|') === 'Watch only|Reconnect|Restart the network service|Reset the radio|Reboot'
     && tiles('up-guests').map((r) => r.textContent.trim()).join('|') === 'Defer|Allow'
@@ -203,8 +212,13 @@ setTimeout(() => {
     && lockAps.querySelector('input:checked').value === 'aa:00:00:00:00:01');
   tiles('up-roaming')[0].querySelector('input').click();
   check('  back to roaming: the picker goes', lockAps.hidden);
+  paceRange.value = '2'; paceRange.dispatchEvent(new w.Event('input'));
+  check('moving the pace slider chooses brisk: its stop marked, its line, Save on',
+    pace[2].classList.contains('chosen') && pace[2].querySelector('input').checked && /^Level 3 of 4, Brisk: /.test(saysOf('up-pace'))
+      && !save.disabled && upNote() === 'Unsaved changes.', saysOf('up-pace'));
   pace[3].querySelector('input').click();
-  check('choosing urgent marks it, and Save comes on, "Unsaved changes." beside it', pace[3].classList.contains('chosen') && !save.disabled && upNote() === 'Unsaved changes.');
+  check('choosing urgent by its name marks it, moves the slider, and Save comes on, "Unsaved changes." beside it', pace[3].classList.contains('chosen')
+    && paceRange.value === '3' && paceRange.getAttribute('aria-valuetext') === 'Urgent' && !save.disabled && upNote() === 'Unsaved changes.');
   check('the sentence follows: urgent reboots after 30 min', /reboots after 30 min/.test(t('#up-will')[0]), t('#up-will')[0]);
   reach[3].querySelector('input').click();
   check('reach radio: the sentence says it never reboots', /resets the radio after 8 min/.test(t('#up-will')[0]) && /never reboots/.test(t('#up-will')[0]), t('#up-will')[0]);

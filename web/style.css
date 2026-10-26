@@ -5745,3 +5745,50 @@ label > .aw-onoff-box ~ .chip-group,
 .choice-says {
   margin: 0.35rem 0 0;
 }
+/* An ordered scale as a slider (AW.choices slider): a stop per option, centred over its name, the chosen name
+   in the accent colour; the radios in the names, out of sight. */
+.choice-tiles.choice-slider {
+  display: block;
+  max-width: 34rem;
+}
+.choice-range {
+  display: block;
+  width: calc(100% - 100% / var(--stops));
+  margin: 0 calc(50% / var(--stops));
+  accent-color: var(--accent);
+}
+.choice-stops {
+  display: grid;
+  grid-template-columns: repeat(var(--stops), 1fr);
+  gap: 0.25rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.choice-tile.choice-stop,
+.choice-tile.choice-stop.chosen {
+  display: block;
+  padding: 0.15rem 0.1rem;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+.choice-stop input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.choice-stop:hover {
+  color: var(--accent);
+}
+.choice-stop.chosen {
+  color: var(--accent);
+  font-weight: 600;
+}
+.choice-stop.unavailable {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
