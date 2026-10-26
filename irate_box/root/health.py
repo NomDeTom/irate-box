@@ -3356,7 +3356,10 @@ def check_card_health():
     bad = bool(errors) or read_only or bool(scan and scan.get("bad")) or emmc_worn
     status = "problem" if bad else "warn" if info["ext4_errors"] or info["manfid"] in (0, -1) else "ok"
     summary = (
-        M("card-health.read-only", "The system's filesystem has fallen back to read-only: the card may be failing.")
+        M(
+            "card-health.read-only",
+            "The system's filesystem has fallen back to read-only. That is often a sign of a failing card.",
+        )
         if read_only
         else M(
             "card-health.unreadable",
