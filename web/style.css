@@ -391,6 +391,10 @@ h2 {
   -webkit-mask-image: url(/icons/terminal2.svg);
   mask-image: url(/icons/terminal2.svg);
 }
+.svg-icon[data-icon="m-pwrd"] {
+  -webkit-mask-image: url(/icons/m-pwrd.svg);
+  mask-image: url(/icons/m-pwrd.svg);
+}
 .service-card .name {
   font-weight: 600;
 }
