@@ -2681,32 +2681,45 @@ body.drop > section + section {
   gap: 0.4rem;
   min-width: 0;
 }
-/* Network recovery's three cards, each holding its settings one under another: on a wide screen the general
-   one on the left, WiFi's and the cable's stacked on the right, as the two together are about its height;
-   one under another on a narrow screen. */
+/* Network recovery's three cards, one under another (general, WiFi, wired), each with its settings in two
+   columns on a wide screen and in one on a narrow one; a column can hold subsections, each with a subheading. */
 .up-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.up-cols {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.75rem;
+  gap: 1.25rem 2rem;
   align-items: start;
 }
 @media (min-width: 64rem) {
-  .up-cards {
+  .up-cols {
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto 1fr;
-    grid-template-areas:
-      "general wifi"
-      "general wired";
   }
-  #up-card-general {
-    grid-area: general;
-  }
-  #up-card-wifi {
-    grid-area: wifi;
-  }
-  #up-card-wired {
-    grid-area: wired;
-  }
+}
+.up-col,
+.up-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.up-col {
+  gap: 1.5rem;
+}
+/* A button in a column (Go to the box defaults) as wide as its words, not the column. */
+.up-group > button {
+  align-self: flex-start;
+}
+.net-card .up-sub > h6 {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .up-card {
   display: flex;

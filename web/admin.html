@@ -3512,284 +3512,308 @@
                       </select>
                       <p class="setting-desc" id="up-scope-says"></p>
                     </div>
-                    <!-- The settings in three cards, each one under another inside: what applies to every link, then WiFi's own, then the cable's.
-                         Side by side on a wide screen, one under another on a narrow one. -->
+                    <!-- The settings in three cards, one under another (what applies to every link, then WiFi's own, then the cable's),
+                         each in two columns on a wide screen and one on a narrow one. -->
                     <div class="up-cards">
                       <div class="up-card" id="up-card-general">
                         <h5 data-i18n="admin.network.h-up-general">General settings</h5>
-                        <div class="up-group">
-                          <span
-                            class="setting-name"
-                            id="up-pace-label"
-                            data-i18n="admin.network.up-pace-label"
-                            >Recovery timing (Pace)</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-pace"
-                            role="radiogroup"
-                            aria-labelledby="up-pace-label"
-                          ></div>
-                        </div>
-                        <div class="up-group">
-                          <span
-                            class="setting-name"
-                            id="up-reach-label"
-                            data-i18n="admin.network.up-reach-label"
-                            >Maximum recovery action (Reach)</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-reach"
-                            role="radiogroup"
-                            aria-labelledby="up-reach-label"
-                          ></div>
-                        </div>
-                        <div class="up-group">
-                          <label
-                            class="setting-name"
-                            for="up-sens"
-                            data-i18n="admin.network.label-sensitivity-missed-checks-within"
-                            >Sensitivity: missed checks, within the timing window,
-                            that start recovery</label
-                          >
-                          <span class="up-sens-row"
-                            ><input
-                              type="number"
-                              id="up-sens"
-                              min="1"
-                              max="20"
-                              step="1"
-                              inputmode="numeric" />
-                            <span class="setting-desc" id="up-sens-says"></span
-                          ></span>
-                        </div>
-                        <div class="up-group">
-                          <span
-                            class="setting-name"
-                            id="up-guests-label"
-                            data-i18n="admin.network.up-guests-label"
-                            >Disruptive recovery while guests are on the hotspot</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-guests"
-                            role="radiogroup"
-                            aria-labelledby="up-guests-label"
-                          ></div>
-                        </div>
-                        <!-- The network at fault (gone, not letting the box join, the gateway silent): reconnects only,
-                           never a radio reset or a reboot; how often, and for how long (uplink.py retry, give_up). -->
-                        <div class="up-group">
-                          <span
-                            class="setting-name"
-                            id="up-retry-label"
-                            data-i18n="admin.network.up-retry-label"
-                            >Network unavailable: retry interval</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-retry"
-                            role="radiogroup"
-                            aria-labelledby="up-retry-label"
-                          ></div>
-                        </div>
-                        <div class="up-group">
-                          <span
-                            class="setting-name"
-                            id="up-giveup-label"
-                            data-i18n="admin.network.up-giveup-label"
-                            >Network unavailable: retry period</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-giveup"
-                            role="radiogroup"
-                            aria-labelledby="up-giveup-label"
-                          ></div>
-                        </div>
-                        <div class="up-group up-box-only">
-                          <span
-                            class="setting-name"
-                            id="up-boxsteps-label"
-                            data-i18n="admin.network.up-boxsteps-label"
-                            >System-wide recovery actions: restart the network
-                            service, reboot</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-boxsteps"
-                            role="radiogroup"
-                            aria-labelledby="up-boxsteps-label"
-                          ></div>
-                        </div>
-                        <!-- Which links have a watchdog of their own (uplink.py watch, watch_new). -->
-                        <div class="up-group up-box-only" id="up-watch">
-                          <span
-                            class="setting-name"
-                            data-i18n="admin.network.monitored-interfaces"
-                            >Monitored interfaces</span
-                          >
-                          <p
-                            class="setting-desc"
-                            data-i18n="admin.network.each-monitored-interface-watchdog"
-                          >
-                            Each monitored interface has a watchdog of its own, with
-                            the settings above. The watchdog does not monitor or
-                            retry an interface that is not selected. The Box doctor
-                            reports such an interface.
-                          </p>
-                          <div class="up-watch-rows" id="up-watch-rows"></div>
-                          <span
-                            class="setting-name"
-                            id="up-watchnew-label"
-                            data-i18n="admin.network.up-watchnew-label"
-                            >New interfaces and interfaces not listed here</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-watchnew"
-                            role="radiogroup"
-                            aria-labelledby="up-watchnew-label"
-                          ></div>
+                        <div class="up-cols">
+                          <div class="up-col">
+                            <div class="up-sub">
+                              <h6 data-i18n="admin.network.h-up-steps">Recovery steps</h6>
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-pace-label"
+                                  data-i18n="admin.network.up-pace-label"
+                                  >Recovery timing (Pace)</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-pace"
+                                  role="radiogroup"
+                                  aria-labelledby="up-pace-label"
+                                ></div>
+                              </div>
+                              <div class="up-group">
+                                <label
+                                  class="setting-name"
+                                  for="up-sens"
+                                  data-i18n="admin.network.label-sensitivity-missed-checks-within"
+                                  >Sensitivity: missed checks, within the timing window,
+                                  that start recovery</label
+                                >
+                                <span class="up-sens-row"
+                                  ><input
+                                    type="number"
+                                    id="up-sens"
+                                    min="1"
+                                    max="20"
+                                    step="1"
+                                    inputmode="numeric" />
+                                  <span class="setting-desc" id="up-sens-says"></span
+                                ></span>
+                              </div>
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-reach-label"
+                                  data-i18n="admin.network.up-reach-label"
+                                  >Maximum recovery action (Reach)</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-reach"
+                                  role="radiogroup"
+                                  aria-labelledby="up-reach-label"
+                                ></div>
+                              </div>
+                              <div class="up-group up-box-only">
+                                <span
+                                  class="setting-name"
+                                  id="up-boxsteps-label"
+                                  data-i18n="admin.network.up-boxsteps-label"
+                                  >System-wide recovery actions: restart the network
+                                  service, reboot</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-boxsteps"
+                                  role="radiogroup"
+                                  aria-labelledby="up-boxsteps-label"
+                                ></div>
+                              </div>
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-guests-label"
+                                  data-i18n="admin.network.up-guests-label"
+                                  >Disruptive recovery while guests are on the hotspot</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-guests"
+                                  role="radiogroup"
+                                  aria-labelledby="up-guests-label"
+                                ></div>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="up-col">
+                            <div class="up-sub">
+                              <h6 id="up-h-unavail" data-i18n="admin.network.h-up-unavail">Network unavailable</h6>
+                              <!-- The network at fault (gone, not letting the box join, the gateway silent): reconnects only,
+                                 never a radio reset or a reboot; how often, and for how long (uplink.py retry, give_up). -->
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-retry-label"
+                                  data-i18n="admin.network.up-retry-label"
+                                  >Retry interval</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-retry"
+                                  role="radiogroup"
+                                  aria-labelledby="up-h-unavail up-retry-label"
+                                ></div>
+                              </div>
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-giveup-label"
+                                  data-i18n="admin.network.up-giveup-label"
+                                  >Retry period</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-giveup"
+                                  role="radiogroup"
+                                  aria-labelledby="up-h-unavail up-giveup-label"
+                                ></div>
+                              </div>
+                              <!-- NetworkManager's own retries, beside the watchdog's: a box default each (saved with the box defaults), and
+                                 the WiFi connection's own setting where irate-box changed it, with its undo. -->
+                              <div
+                                class="up-group up-box-only"
+                                id="up-retries-group"
+                                hidden
+                              >
+                                <span
+                                  class="setting-name"
+                                  data-i18n="admin.network.networkmanager-join-retries"
+                                  >NetworkManager join retries</span
+                                >
+                                <p
+                                  class="setting-desc"
+                                  data-i18n="admin.network.how-often-networkmanager-retries"
+                                >
+                                  How often NetworkManager retries a connection that fails
+                                  to connect, or whose password check fails. After the
+                                  last retry, it stops and waits until someone reconnects
+                                  the connection by hand. This setting applies to every
+                                  connection on the box.
+                                </p>
+                                <div class="net-defaults" id="net-retry-defaults"></div>
+                                <div id="up-profile"></div>
+                                <p
+                                  class="setting-desc"
+                                  id="net-retry-where"
+                                  data-i18n="admin.network.net-retry-where"
+                                >
+                                  These are box defaults of NetworkManager. Save or
+                                  discard them with the other box defaults.
+                                </p>
+                                <button
+                                  class="action-btn small"
+                                  type="button"
+                                  id="net-retry-go"
+                                  data-i18n="admin.network.net-retry-go"
+                                >
+                                  Go to the box defaults
+                                </button>
+                              </div>
+                            </div>
+                            <div class="up-sub up-box-only">
+                              <h6 data-i18n="admin.network.monitored-interfaces">Monitored interfaces</h6>
+                              <!-- Which links have a watchdog of their own (uplink.py watch, watch_new). -->
+                              <div class="up-group up-box-only" id="up-watch">
+                                <p
+                                  class="setting-desc"
+                                  data-i18n="admin.network.each-monitored-interface-watchdog"
+                                >
+                                  Each monitored interface has a watchdog of its own, with
+                                  the recovery settings on this page. The watchdog does not monitor or
+                                  retry an interface that is not selected. The Box doctor
+                                  reports such an interface.
+                                </p>
+                                <div class="up-watch-rows" id="up-watch-rows"></div>
+                                <span
+                                  class="setting-name"
+                                  id="up-watchnew-label"
+                                  data-i18n="admin.network.up-watchnew-label"
+                                  >New interfaces and interfaces not listed here</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-watchnew"
+                                  role="radiogroup"
+                                  aria-labelledby="up-watchnew-label"
+                                ></div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <div class="up-card" id="up-card-wifi">
                         <h5 data-i18n="admin.network.h-up-wifi">WiFi connections</h5>
-                        <div class="up-group">
-                          <span
-                            class="setting-name"
-                            id="up-wedge-label"
-                            data-i18n="admin.network.up-wedge-label"
-                            >Failed radio (driver stalled, or interface
-                            missing)</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-wedge"
-                            role="radiogroup"
-                            aria-labelledby="up-wedge-label"
-                          ></div>
-                        </div>
-                        <div class="up-group up-box-only">
-                          <label
-                            class="setting"
-                            data-i18n="admin.network.label-not-count-short-roams"
-                          >
-                            <input type="checkbox" id="up-ignore-roams" />
-                            <span>
-                              <span class="setting-name">Short roams</span>
-                              <span class="setting-desc"
-                                >On: a drop that returns within 20 s on the same
-                                network is not counted as a missed check. The chart
-                                still shows it. Failed gateway checks still
-                                count.</span
-                              >
-                            </span>
-                          </label>
-                        </div>
-                        <!-- NetworkManager's own retries, beside the watchdog's: a box default each (saved with the box defaults), and
-                           the WiFi connection's own setting where irate-box changed it, with its undo. -->
-                        <div
-                          class="up-group up-box-only"
-                          id="up-retries-group"
-                          hidden
-                        >
-                          <span
-                            class="setting-name"
-                            data-i18n="admin.network.networkmanager-join-retries"
-                            >NetworkManager join retries</span
-                          >
-                          <p
-                            class="setting-desc"
-                            data-i18n="admin.network.how-often-networkmanager-retries"
-                          >
-                            How often NetworkManager retries a connection that fails
-                            to connect, or whose password check fails. After the
-                            last retry, it stops and waits until someone reconnects
-                            the connection by hand. This setting applies to every
-                            connection on the box.
-                          </p>
-                          <div class="net-defaults" id="net-retry-defaults"></div>
-                          <div id="up-profile"></div>
-                          <p
-                            class="setting-desc"
-                            id="net-retry-where"
-                            data-i18n="admin.network.net-retry-where"
-                          >
-                            These are box defaults of NetworkManager. Save or
-                            discard them with the other box defaults.
-                          </p>
-                          <button
-                            class="action-btn small"
-                            type="button"
-                            id="net-retry-go"
-                            data-i18n="admin.network.net-retry-go"
-                          >
-                            Go to the box defaults
-                          </button>
-                        </div>
-                        <div class="up-group up-box-only">
-                          <span
-                            class="setting-name"
-                            id="up-roaming-label"
-                            data-i18n="admin.network.up-roaming-label"
-                            >Roaming between access points that share your network's
-                            name</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-roaming"
-                            role="radiogroup"
-                            aria-labelledby="up-roaming-label"
-                          ></div>
-                          <div
-                            class="net-lock-aps"
-                            id="up-lock-aps"
-                            role="radiogroup"
-                            aria-label="The access point to lock to"
-                            hidden
-                            data-i18n-aria-label="admin.network.aria-access-point-lock"
-                          ></div>
+                        <div class="up-cols">
+                          <div class="up-col">
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-wedge-label"
+                                  data-i18n="admin.network.up-wedge-label"
+                                  >Failed radio (driver stalled, or interface
+                                  missing)</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-wedge"
+                                  role="radiogroup"
+                                  aria-labelledby="up-wedge-label"
+                                ></div>
+                              </div>
+                              <div class="up-group up-box-only">
+                                <label
+                                  class="setting"
+                                  data-i18n="admin.network.label-not-count-short-roams"
+                                >
+                                  <input type="checkbox" id="up-ignore-roams" />
+                                  <span>
+                                    <span class="setting-name">Short roams</span>
+                                    <span class="setting-desc"
+                                      >On: a drop that returns within 20 s on the same
+                                      network is not counted as a missed check. The chart
+                                      still shows it. Failed gateway checks still
+                                      count.</span
+                                    >
+                                  </span>
+                                </label>
+                              </div>
+                          </div>
+                          <div class="up-col">
+                              <div class="up-group up-box-only">
+                                <span
+                                  class="setting-name"
+                                  id="up-roaming-label"
+                                  data-i18n="admin.network.up-roaming-label"
+                                  >Roaming between access points that share your network's
+                                  name</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-roaming"
+                                  role="radiogroup"
+                                  aria-labelledby="up-roaming-label"
+                                ></div>
+                                <div
+                                  class="net-lock-aps"
+                                  id="up-lock-aps"
+                                  role="radiogroup"
+                                  aria-label="The access point to lock to"
+                                  hidden
+                                  data-i18n-aria-label="admin.network.aria-access-point-lock"
+                                ></div>
+                              </div>
+                          </div>
                         </div>
                       </div>
                       <div class="up-card up-box-only" id="up-card-wired">
                         <h5 data-i18n="admin.network.h-up-wired">Wired connections</h5>
-                        <div class="up-group">
-                          <span
-                            class="setting-name"
-                            id="up-cable-label"
-                            data-i18n="admin.network.up-cable-label"
-                            >Cable disconnected (or the other end is off)</span
-                          >
-                          <div
-                            class="choice-tiles"
-                            id="up-cable"
-                            role="radiogroup"
-                            aria-labelledby="up-cable-label"
-                          ></div>
-                          <span
-                            class="setting-name"
-                            id="up-cablereach-label"
-                            data-i18n="admin.network.up-cablereach-label"
-                            >Wired-link recovery limit</span
-                          >
-                          <p
-                            class="setting-desc"
-                            data-i18n="admin.network.lost-wired-link-usually"
-                          >
-                            A lost wired link usually means that a cable is
-                            disconnected or the other end is off. No recovery action
-                            repairs that. By default, the box reconnects when the
-                            cable returns and takes no further action. It never goes
-                            past the maximum recovery action above.
-                          </p>
-                          <div
-                            class="choice-tiles"
-                            id="up-cablereach"
-                            role="radiogroup"
-                            aria-labelledby="up-cablereach-label"
-                          ></div>
+                        <div class="up-cols">
+                          <div class="up-col">
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-cable-label"
+                                  data-i18n="admin.network.up-cable-label"
+                                  >Cable disconnected (or the other end is off)</span
+                                >
+                                <div
+                                  class="choice-tiles"
+                                  id="up-cable"
+                                  role="radiogroup"
+                                  aria-labelledby="up-cable-label"
+                                ></div>
+                              </div>
+                          </div>
+                          <div class="up-col">
+                              <div class="up-group">
+                                <span
+                                  class="setting-name"
+                                  id="up-cablereach-label"
+                                  data-i18n="admin.network.up-cablereach-label"
+                                  >Wired-link recovery limit</span
+                                >
+                                <p
+                                  class="setting-desc"
+                                  data-i18n="admin.network.lost-wired-link-usually"
+                                >
+                                  A lost wired link usually means that a cable is
+                                  disconnected or the other end is off. No recovery action
+                                  repairs that. By default, the box reconnects when the
+                                  cable returns and takes no further action. It never goes
+                                  past the maximum recovery action above.
+                                </p>
+                                <div
+                                  class="choice-tiles"
+                                  id="up-cablereach"
+                                  role="radiogroup"
+                                  aria-labelledby="up-cablereach-label"
+                                ></div>
+                              </div>
+                          </div>
                         </div>
                       </div>
                     </div>
