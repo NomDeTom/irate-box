@@ -1043,7 +1043,8 @@ def _as_source():
     if rec.get("service") != "chrony" or rec.get("module"):
         return None
     on = lambda key: "1" if rec.get(key) else "0"  # noqa: E731
-    choice = f"clock-sources:chrony:{on('pool')}:{on('gps')}:1:{on('serve')}:{rec.get('local') or '-'}"
+    order = ",".join(rec.get("order") or clock.ORDER)
+    choice = f"clock-sources:chrony:{on('pool')}:{on('gps')}:1:{on('serve')}:{rec.get('local') or '-'}:{order}"
     try:
         clock.apply(choice)
     except ValueError as exc:  # Refused: said, the module set up all the same

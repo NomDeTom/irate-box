@@ -315,7 +315,8 @@ rtc.remove()
 m = rtc.look()
 check(
     "look: with chrony, the module joins its sources, every other choice kept",
-    applied == ["clock-sources:chrony:1:0:1:1:192.168.1.1"] and "rtc-module.as-source" in msg_ids(m),
+    applied == ["clock-sources:chrony:1:0:1:1:192.168.1.1:gps,local,pool,module"]
+    and "rtc-module.as-source" in msg_ids(m),
     (applied, m),
 )
 rtc.remove()

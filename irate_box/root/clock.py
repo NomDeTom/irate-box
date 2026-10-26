@@ -55,8 +55,13 @@ GPS_KIT = "gpstime"
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
 # The page's choice: clock-sources:SERVICE:POOL:GPS:MODULE:SERVE:LOCAL (LOCAL "-" for none), and clock-undo.
 CHOICE_RE = re.compile(
-    r"^clock-sources:(image|chrony):([01]):([01]):([01]):([01]):(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$"
+    r"^clock-sources:(image|chrony):([01]):([01]):([01]):([01]):(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})"
+    r"(?::((?:gps|local|pool|module)(?:,(?:gps|local|pool|module)){0,3}))?$"
 )
+# The sources in the owner's order, most trusted first (the Clock page's list). With chrony the first one chosen is
+# preferred while it answers well, the others backing it up as chrony judges them; with the image's own service the
+# servers are asked in this order.
+ORDER = ("gps", "local", "pool", "module")
 # The clock module fed to chrony: the socket chronyd makes, and the service that writes to it.
 FEED_SOCK = Path(os.environ.get("HUB_CLOCK_FEED_SOCK", "/run/chrony.irate-box-rtc.sock"))
 FEED_UNIT = "irate-box-rtc-feed.service"
@@ -142,6 +147,25 @@ def module_ready():
         return False
 
 
+def hardware():
+    """The box's hardware clock, the one that keeps the time while it is off, for the Clock page: a clock module on
+    I2C that rtc.py set up ({kind: module, chip, bus, addr, by}), the board's own (the kernel's /dev/rtc0: {kind:
+    board, name}), or none ({kind: none})."""
+    try:
+        from irate_box.root import rtc
+
+        cfg = rtc.load_config()
+    except Exception:  # noqa: BLE001
+        cfg = None
+    if cfg:
+        return {"kind": "module", "chip": cfg["label"], "bus": cfg["bus"], "addr": cfg["addr"], "by": cfg.get("by")}
+    try:
+        name = (SYS / "sys/class/rtc/rtc0/name").read_text().strip()
+    except OSError:
+        name = None
+    return {"kind": "board", "name": name} if name else {"kind": "none"}
+
+
 def parse(choice):
     """('chrony'|'image', pool, gps, module, serve, local or '') from the page's choice, or ValueError."""
     m = CHOICE_RE.match(choice or "")
@@ -173,17 +197,32 @@ def parse(choice):
         raise Refused(
             M(
                 "clock-sources.module-needs-chrony",
-                "The clock module as a source needs chrony. With the image's own service, "
-                "the module sets the time at boot only.",
+                "The hardware clock as a source needs chrony. With the image's own service, "
+                "it sets the time at boot only.",
             )
         )
     if module and not module_ready():
-        raise Refused(M("clock-sources.no-module", "No clock module is set up. Scan for one on the Clock page first."))
+        raise Refused(M("clock-sources.no-module", "No clock module is set up. Look for one on the Clock page first."))
     if local and not _host_ok(local):
         raise Refused(M("clock-sources.bad-host", "{host} is not an address or a host name.", host=local))
     if not (pool or gps or module or local):
         raise Refused(M("clock-sources.none", "Select at least one source. With none, nothing sets the clock."))
     return service, pool, gps, module, serve, local
+
+
+def parse_order(choice):
+    """The sources' order from the page's choice (its last field), each source once, any left out after in the
+    default order; the default when the choice has none."""
+    m = CHOICE_RE.match(choice or "")
+    given = [s for s in (m.group(7) or "").split(",") if s] if m else []
+    seen = list(dict.fromkeys(given))
+    return seen + [s for s in ORDER if s not in seen]
+
+
+def first_chosen(order, pool, gps, local, module):
+    """The first source in the order that is chosen: the one chrony prefers."""
+    on = {"gps": gps, "local": bool(local), "pool": pool, "module": module}
+    return next((s for s in order if on[s]), None)
 
 
 def hotspot_net():
@@ -248,20 +287,31 @@ def _install(pkg, failed):
     raise Refused(failed)
 
 
-def timesyncd_text(pool, local):
+def timesyncd_text(pool, local, order=ORDER):
+    """systemd-timesyncd asks NTP='s servers in turn: the local server and the pool in the owner's order."""
+    servers = [
+        x for s in order for x in ([local] if s == "local" and local else list(POOL) if s == "pool" and pool else [])
+    ]
     return (
-        "# Written by irate-box's Clock page (/admin): the servers systemd-timesyncd asks. Change them there.\n[Time]\n"
-        f"NTP={local}\nFallbackNTP={' '.join(POOL) if pool else ''}\n"
+        "# Written by irate-box's Clock page (/admin): the servers systemd-timesyncd asks, in the order chosen there."
+        f"\n[Time]\nNTP={' '.join(servers)}\nFallbackNTP=\n"
     )
 
 
-def chrony_sources_text(local):
-    return "# Written by irate-box's Clock page (/admin): a time server on the local network.\n" + (
-        f"server {local} iburst\n" if local else ""
-    )
+def chrony_sources_text(local, pool=False, prefer=None):
+    """The local server and the pool, ours (the image's own pool line is turned off while chrony is ours), the
+    preferred one marked."""
+    lines = [
+        "# Written by irate-box's Clock page (/admin): the time servers chosen there, the first in its order preferred."
+    ]
+    if local:
+        lines.append(f"server {local} iburst" + (" prefer" if prefer == "local" else ""))
+    if pool:
+        lines.append(f"pool {POOL[2]} iburst" + (" prefer" if prefer == "pool" else ""))
+    return "\n".join(lines) + "\n"
 
 
-def chrony_conf_text(gps, serve=False, net=None, module=False):
+def chrony_conf_text(gps, serve=False, net=None, module=False, prefer=None):
     lines = [
         "# Written by irate-box's Clock page (/admin). Change it there.",
         "# The kernel's clock kept in step, so other tools see the time as synchronised.",
@@ -270,8 +320,10 @@ def chrony_conf_text(gps, serve=False, net=None, module=False):
     if module:
         lines += [
             "# The clock module, fed by irate-box-rtc-feed.service over this socket: one-second steps and a large",
-            "# delay, so GPS and the network win whenever they answer.",
-            f"refclock SOCK {FEED_SOCK} refid RTC precision 1 delay 2",
+            "# delay, so GPS and the network win whenever they answer; and stratum 10, so a box keeping its time from",
+            "# its module alone serves it as stratum 11, below any network or GPS source, never as a reference.",
+            f"refclock SOCK {FEED_SOCK} refid RTC precision 1 delay 2 stratum 10"
+            + (" prefer" if prefer == "module" else ""),
         ]
     if serve:
         lines += [
@@ -281,7 +333,7 @@ def chrony_conf_text(gps, serve=False, net=None, module=False):
     if gps:
         lines += [
             "# GPS through gpsd: its time from the receiver's sentences (shared memory 0),",
-            "refclock SHM 0 refid GPS precision 1e-1 offset 0.0 delay 0.2",
+            "refclock SHM 0 refid GPS precision 1e-1 offset 0.0 delay 0.2" + (" prefer" if prefer == "gps" else ""),
         ]
         if (SYS / "dev/pps0").exists():
             lines += [
@@ -303,7 +355,7 @@ def _write(path, text):
     safeio.write(path, text)
 
 
-def _chrony_on(rec, pool, gps, module, serve, local, said):
+def _chrony_on(rec, pool, gps, module, serve, local, said, order=ORDER):
     img = rec["image"]
     if not _installed("chrony"):
         said.append(_install("chrony", FROM_GPS_KIT))
@@ -325,25 +377,22 @@ def _chrony_on(rec, pool, gps, module, serve, local, said):
             kits.install(GPS_KIT, None, log=lambda *_: None)
             rec["installed_gps_kit"] = True
             said.append(M("clock-sources.gps-kit-installed", "The box installed the GPS time toolkit (gpsd)."))
-    # The image's own pool line off only when the pool is not chosen; back as it was when it is.
+    # The image's own pool and server lines off while chrony is ours: the pool, when chosen, is our own line, so it
+    # can be the preferred one. Restore puts chrony.conf back as it came.
     if img.get("chrony_conf") is None and CHRONY_CONF.is_file():
         img["chrony_conf"] = CHRONY_CONF.read_text()
     if img.get("chrony_conf") is not None:
-        want = img["chrony_conf"] if pool else without_pool(img["chrony_conf"])
+        want = without_pool(img["chrony_conf"])
         if not CHRONY_CONF.is_file() or CHRONY_CONF.read_text() != want:
             _write(CHRONY_CONF, want)
-    # With no chrony.conf at all (a chrony without Debian's file), the pool goes in our sources instead.
-    _write(
-        CHRONY_SOURCES,
-        chrony_sources_text(local)
-        + ("".join(f"pool {p} iburst\n" for p in POOL[2:3]) if pool and img.get("chrony_conf") is None else ""),
-    )
-    _write(CHRONY_D, chrony_conf_text(gps, serve, module=module))
+    prefer = first_chosen(order, pool, gps, local, module)
+    _write(CHRONY_SOURCES, chrony_sources_text(local, pool, prefer))
+    _write(CHRONY_D, chrony_conf_text(gps, serve, module=module, prefer=prefer))
     # A toolkit install leaves the units it brought disabled: chrony is wanted here.
     run("systemctl", "enable", "chrony.service")
     run("systemctl", "restart", "chrony.service", timeout=120)
     _feed(module)
-    sources = _sources(pool, gps, local, module)
+    sources = _sources(pool, gps, local, module, order)
     said.append(
         M(
             "clock-sources.chrony-serves",
@@ -381,27 +430,28 @@ def _chrony_off(rec, said):
         run("systemctl", "restart", "chrony.service", timeout=120)
 
 
-def _timesyncd(pool, local, said):
-    _write(TIMESYNCD_D, timesyncd_text(pool, local))
+def _timesyncd(pool, local, said, order=ORDER):
+    _write(TIMESYNCD_D, timesyncd_text(pool, local, order))
     run("systemctl", "enable", "systemd-timesyncd.service")
     run("systemctl", "restart", "systemd-timesyncd.service", timeout=120)
     said.append(
         M(
             "clock-sources.timesyncd",
             "systemd-timesyncd now gets the time from {sources}.",
-            sources=_sources(pool, False, local),
+            sources=_sources(pool, False, local, order=order),
         )
     )
 
 
-def _sources(pool, gps, local, module=False):
-    """The sources chosen, as a list (parse lets no choice have none)."""
-    return (
-        ([M("clock-sources.gps", "GPS")] if gps else [])
-        + ([M("clock-sources.module", "the clock module")] if module else [])
-        + ([M("clock-sources.local", "the server {host} on the local network", host=local)] if local else [])
-        + ([M("clock-sources.pool", "the internet's pool")] if pool else [])
-    )
+def _sources(pool, gps, local, module=False, order=ORDER):
+    """The sources chosen, as a list in the owner's order (parse lets no choice have none)."""
+    named = {
+        "gps": M("clock-sources.gps", "GPS") if gps else None,
+        "module": M("clock-sources.module", "the hardware clock") if module else None,
+        "local": M("clock-sources.local", "the server {host} on the local network", host=local) if local else None,
+        "pool": M("clock-sources.pool", "the internet's pool") if pool else None,
+    }
+    return [named[s] for s in order if named[s]]
 
 
 FIREWALL_OPENS = M("clock-sources.firewall-opens", "The hotspot firewall now opens UDP port 123 to guests.")
@@ -411,21 +461,24 @@ FIREWALL_CLOSES = M("clock-sources.firewall-closes", "The hotspot firewall close
 def apply(choice):
     """The page's choice applied; what was done, a sentence a step."""
     service, pool, gps, module, serve, local = parse(choice)
+    order = parse_order(choice)
     rec = load()
     if "image" not in rec:
         rec["image"] = _image_as_it_was()
     said = []
     if service == "chrony":
         TIMESYNCD_D.unlink(missing_ok=True)
-        _chrony_on(rec, pool, gps, module, serve, local, said)
+        _chrony_on(rec, pool, gps, module, serve, local, said, order)
     else:
         if rec.get("service") == "chrony" or rec.get("installed_chrony"):
             _chrony_off(rec, said)
         if not _installed("systemd-timesyncd"):
             said.append(_install("systemd-timesyncd", FROM_SYSTEM_KIT))
-        _timesyncd(pool, local, said)
+        _timesyncd(pool, local, said, order)
     was_serving = serving()
-    rec.update(service=service, pool=pool, gps=gps, module=module, serve=serve, local=local, at=time.time())
+    rec.update(
+        service=service, pool=pool, gps=gps, module=module, serve=serve, local=local, order=order, at=time.time()
+    )
     _save(rec)
     if serve != was_serving and _firewall_refresh():
         said.append(FIREWALL_OPENS if serve else FIREWALL_CLOSES)
@@ -548,18 +601,34 @@ def feed(every=FEED_EVERY, once=False):
 # --- how each source stands -------------------------------------------------------------------------------
 
 
+# chronyc's mark for a source, as what it is doing: * the one setting the time, + combined with it, - answering
+# but left out, x disagreeing with the others, ~ too variable to use, ? not answering.
+MARKS = {"*": "selected", "+": "combined", "-": "spare", "x": "disagrees", "~": "unsteady", "?": "silent"}
+
+
 def parse_chronyc(text):
-    """`chronyc -n sources` as [{mode: server|refclock|peer, state, name}]; state: in-use (* or +), answering (- ~ x),
-    not-answering (?)."""
+    """`chronyc -n sources` as [{mode: server|refclock|peer, state, mark, name, ago, offset}]; state: in-use (* or +),
+    answering (- ~ x), not-answering (?); mark: MARKS; ago: seconds since its last sample (None if never); offset:
+    its last sample's offset from the system clock, in seconds."""
     out = []
     for line in text.splitlines():
-        m = re.match(r"^([\^#=])([*+\-?x~])\s+(\S+)", line)
+        m = re.match(r"^([\^#=])([*+\-?x~])\s+(\S+)(?:\s+\d+\s+\d+\s+\d+\s+(\S+)\s+([+-]?[\d.]+)(ns|us|ms|s))?", line)
         if not m:
             continue
         mode = {"^": "server", "#": "refclock", "=": "peer"}[m.group(1)]
         state = "in-use" if m.group(2) in "*+" else "not-answering" if m.group(2) == "?" else "answering"
-        out.append({"mode": mode, "state": state, "name": m.group(3)})
+        row = {"mode": mode, "state": state, "mark": MARKS[m.group(2)], "name": m.group(3), "ago": None, "offset": None}
+        if m.group(4) and m.group(4) != "-" and m.group(2) != "?":
+            row["ago"] = _ago(m.group(4))
+            row["offset"] = float(m.group(5)) * {"ns": 1e-9, "us": 1e-6, "ms": 1e-3, "s": 1.0}[m.group(6)]
+        out.append(row)
     return out
+
+
+def _ago(text):
+    """chronyc's LastRx: seconds, or with m, h, d or y."""
+    m = re.match(r"^(\d+)([mhdy]?)$", text)
+    return int(m.group(1)) * {"": 1, "m": 60, "h": 3600, "d": 86400, "y": 31536000}[m.group(2)] if m else None
 
 
 def _addresses(host):
@@ -576,6 +645,19 @@ def _best(states):
     return "not-found"
 
 
+def _best_row(rows):
+    """Of a source's lines in chronyc (a pool has several), the one that speaks for it: selected, combined, spare,
+    disagreeing, unsteady, then silent."""
+    rank = ["selected", "combined", "spare", "disagrees", "unsteady", "silent"]
+    return min(rows, key=lambda r: rank.index(r["mark"])) if rows else None
+
+
+def _with(entry, row):
+    """A source's entry with its line's mark, last sample's age and offset (or none, when chronyc has no line)."""
+    entry.update(mark=row["mark"], ago=row["ago"], offset=row["offset"]) if row else entry.update(mark=None)
+    return entry
+
+
 def gps_device():
     """A receiver gpsd could read: a serial USB device or the UART gpsd is told to use."""
     devs = [p for pat in ("dev/ttyACM*", "dev/ttyUSB*", "dev/gps*") for p in SYS.glob(pat)]
@@ -589,30 +671,45 @@ def source_states(rec, chronyc_text=None, timesync=None):
         rows = parse_chronyc(chronyc_text if chronyc_text is not None else run("chronyc", "-n", "sources").stdout)
         local_ips = _addresses(rec["local"]) if rec.get("local") else set()
         if rec.get("gps"):
-            refs = [
-                r["state"] for r in rows if r["mode"] == "refclock" and r["name"] in ("GPS", "PPS")
-            ]  # not RTC: the module
-            state = _best(refs) if refs else "not-found"
+            refs = [r for r in rows if r["mode"] == "refclock" and r["name"] in ("GPS", "PPS")]  # not RTC: the module
+            state = _best([r["state"] for r in refs]) if refs else "not-found"
             if state != "in-use" and not gps_device():
-                state = "not-found"
-            out.append({"source": "gps", "name": "GPS", "state": state})
+                state, refs = "not-found", []
+            out.append(_with({"source": "gps", "name": "GPS", "state": state}, _best_row(refs)))
         if rec.get("module"):
-            refs = [r["state"] for r in rows if r["mode"] == "refclock" and r["name"] == "RTC"]
-            out.append({"source": "module", "name": "the clock module", "state": _best(refs) if refs else "not-found"})
+            refs = [r for r in rows if r["mode"] == "refclock" and r["name"] == "RTC"]
+            out.append(
+                _with(
+                    {
+                        "source": "module",
+                        "name": "the hardware clock",
+                        "state": _best([r["state"] for r in refs]) if refs else "not-found",
+                    },
+                    _best_row(refs),
+                )
+            )
         if rec.get("local"):
-            states = [
-                r["state"]
-                for r in rows
-                if r["mode"] == "server" and (r["name"] in local_ips or r["name"] == rec["local"])
-            ]
-            out.append({"source": "local", "name": rec["local"], "state": _best(states)})
+            mine = [r for r in rows if r["mode"] == "server" and (r["name"] in local_ips or r["name"] == rec["local"])]
+            out.append(
+                _with(
+                    {"source": "local", "name": rec["local"], "state": _best([r["state"] for r in mine])},
+                    _best_row(mine),
+                )
+            )
         if rec.get("pool"):
-            states = [
-                r["state"]
+            pool = [
+                r
                 for r in rows
                 if r["mode"] == "server" and r["name"] not in local_ips and r["name"] != rec.get("local")
             ]
-            out.append({"source": "pool", "name": "the internet's pool", "state": _best(states)})
+            out.append(
+                _with(
+                    {"source": "pool", "name": "the internet's pool", "state": _best([r["state"] for r in pool])},
+                    _best_row(pool),
+                )
+            )
+        order = rec.get("order") or ORDER
+        out.sort(key=lambda e: order.index(e["source"]) if e["source"] in order else len(order))
     elif rec.get("service") == "image":
         # timesyncd says only the server it uses now.
         if timesync is None:
@@ -626,13 +723,43 @@ def source_states(rec, chronyc_text=None, timesync=None):
         name = timesync.get("ServerName", "")
         if rec.get("local"):
             out.append(
-                {"source": "local", "name": rec["local"], "state": "in-use" if name == rec["local"] else "unknown"}
+                {
+                    "source": "local",
+                    "name": rec["local"],
+                    "state": "in-use" if name == rec["local"] else "unknown",
+                    "mark": "selected" if name == rec["local"] else "standby",
+                }
             )
         if rec.get("pool"):
             out.append(
-                {"source": "pool", "name": "the internet's pool", "state": "in-use" if name in POOL else "unknown"}
+                {
+                    "source": "pool",
+                    "name": "the internet's pool",
+                    "state": "in-use" if name in POOL else "unknown",
+                    "mark": "selected" if name in POOL else "standby",
+                }
             )  # the names given it (POOL)
+        order = rec.get("order") or ORDER
+        out.sort(key=lambda e: order.index(e["source"]))
     return out
+
+
+def tracking(text=None):
+    """What the box keeps its time from now, as it would serve it (`chronyc -n tracking`): {ref: GPS, RTC, PPS or a
+    server's address, stratum, synced}. Not synchronised (no source answering, or chrony only starting): stratum 16, and
+    chrony serves nothing a client accepts: there is no `local` line to make up a time. None without chrony."""
+    if text is None:
+        r = run("chronyc", "-n", "tracking")
+        if r.returncode != 0:
+            return None
+        text = r.stdout
+    ref = re.search(r"^Reference ID\s*:\s*\S+\s*\(([^)]*)\)", text, re.M)
+    stratum = re.search(r"^Stratum\s*:\s*(\d+)", text, re.M)
+    leap = re.search(r"^Leap status\s*:\s*(.+)$", text, re.M)
+    if not stratum:
+        return None
+    synced = bool(leap) and leap.group(1).strip() != "Not synchronised" and int(stratum.group(1)) < 16
+    return {"ref": ref.group(1) if ref else "", "stratum": int(stratum.group(1)), "synced": synced}
 
 
 def status():
@@ -644,12 +771,15 @@ def status():
         "serve": bool(rec.get("serve")),
         "module": bool(rec.get("module")),
         "module_ready": module_ready(),
+        "hardware": hardware(),
+        "order": rec.get("order") or list(ORDER),
         "local": rec.get("local") or "",
         "changed": "image" in rec,
         "daemon": image_daemon(),
         "chrony_installed": _installed("chrony"),
         "gps_device": gps_device(),
         "sources": source_states(rec) if rec.get("service") else [],
+        "tracking": tracking() if rec.get("service") == "chrony" or image_daemon() == "chrony" else None,
     }
 
 

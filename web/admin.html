@@ -607,44 +607,46 @@
 
         <section class="admin-pane" id="clock" aria-labelledby="clock-title">
           <h2 id="clock-title" data-i18n="admin.clock.title">Clock</h2>
-          <p class="setting-desc" data-i18n="admin.clock.page-shows-keeps-box">
-            This page shows what keeps the box's time and what happened to the
-            time at this boot. It also shows the clock module on I2C, if there
-            is one. Many small boards have no clock of their own. Without the
-            network or a clock module, the time is wrong after a power cut. A
-            scan only reads the I2C buses. Setup of a module uses the kernel
-            driver where one exists. Setup never turns on charging.
+          <p class="setting-desc" data-i18n="admin.clock.intro">
+            What keeps the box's time, and in what order you trust it. Most
+            small boards keep no time while they are off: a hardware clock
+            keeps it for them.
           </p>
-          <p class="setting-desc" id="clock-when" data-i18n="admin.clock.when">
-            Not checked yet.
-          </p>
-          <div class="library-buttons">
-            <button
-              class="action-btn"
-              type="button"
-              id="clock-scan"
-              data-i18n="admin.clock.scan"
-            >
-              Scan for clock modules
-            </button>
-          </div>
-          <p
-            class="setting-desc action-note"
-            id="clock-note"
-            role="status"
-            hidden
-          ></p>
-          <div class="net-card setting" id="clock-sources-card">
-            <h3 data-i18n="admin.clock.h-time-sources">Time sources</h3>
-            <p class="setting-desc" data-i18n="admin.clock.sets-box-time-time">
-              What sets the box's time when it can: the time service, and the
-              sources it asks. The clock module, if there is one, sets the time
-              at boot whichever you select.
-            </p>
-            <div id="clock-sources">
-              <p class="setting-desc" data-i18n="admin.clock.not-checked-yet">
+          <div class="net-cards">
+            <div class="net-card setting" id="clock-hw-card">
+              <h3 data-i18n="admin.clock.h-hardware">Hardware clock</h3>
+              <div id="clock-hw">
+                <p class="setting-desc" data-i18n="admin.clock.not-checked-yet">
+                  Not checked yet.
+                </p>
+              </div>
+              <div class="library-buttons">
+                <button
+                  class="action-btn"
+                  type="button"
+                  id="clock-scan"
+                  data-i18n="admin.clock.scan"
+                >
+                  Look for a clock module
+                </button>
+              </div>
+              <p
+                class="setting-desc action-note"
+                id="clock-note"
+                role="status"
+                hidden
+              ></p>
+              <p class="setting-desc" id="clock-when" data-i18n="admin.clock.when">
                 Not checked yet.
               </p>
+            </div>
+            <div class="net-card setting" id="clock-sources-card">
+              <h3 data-i18n="admin.clock.h-time-sources">Time sources</h3>
+              <div id="clock-sources">
+                <p class="setting-desc" data-i18n="admin.clock.not-checked-yet">
+                  Not checked yet.
+                </p>
+              </div>
             </div>
           </div>
         </section>
