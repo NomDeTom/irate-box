@@ -85,6 +85,15 @@ def accounting():
         return False
 
 
+def memory_controller():
+    """Whether the kernel has the memory controller: without it, a service's ordinary (buffered) writes are not
+    counted as its own, only the kernel's (Raspberry Pi kernels leave it off unless cgroup_enable=memory)."""
+    try:
+        return "memory" in (CGROUP / "cgroup.controllers").read_text().split()
+    except OSError:
+        return False
+
+
 def mem_available():
     try:
         for line in (PROC / "meminfo").read_text().splitlines():
@@ -118,7 +127,7 @@ def sample(settings, mem_min, now):
         "card": total,
         "units": top,
         "other": sum(by_unit.values()) - sum(top.values()),
-        "accounting": accounting(),
+        "accounting": accounting() and memory_controller(),
         "mem_min": mem_min,
         "settings": settings,
     }

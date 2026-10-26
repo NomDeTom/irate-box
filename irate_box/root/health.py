@@ -2683,6 +2683,9 @@ def check_card_writes(now=None):
                 ],
             )
         )
+    elif not cardhistory.memory_controller():
+        out.append(_memcg_finding())
+    out += _flash_findings()
     for conf in sorted((SYSTEMD_ETC / "journald.conf.d").glob("*.conf")):
         try:
             text = conf.read_text(errors="replace")
@@ -2822,7 +2825,7 @@ def card_groups():
                 "cs.journal.desc",
                 "The system's log. In memory, nothing of it is written to the SD card, but a restart or a crash loses it.",
             ),
-            "current": "memory" if _journal_storage() == "volatile" else "card",
+            "current": "flash" if NAND_STATE.exists() else "memory" if _journal_storage() == "volatile" else "card",
             "options": [
                 {"value": "card", "label": M("cs.on-card", "On the SD card"), "choice": choice("journal", "card")},
                 {
@@ -2835,6 +2838,22 @@ def card_groups():
                         "and with it the log of what led up to a crash.",
                     ),
                 },
+                *(
+                    [
+                        {
+                            "value": "flash",
+                            "label": M("cs.on-flash", "On the onboard flash"),
+                            "choice": choice("journal", "flash"),
+                            "confirm": M(
+                                "cs.journal.flash.confirm",
+                                "Keep the system journal, the other logs and crash watch's records on the onboard "
+                                "flash? The box formats the flash first, which erases what is on it.",
+                            ),
+                        }
+                    ]
+                    if _nand()[0]
+                    else []
+                ),
             ],
         },
         {
@@ -2958,7 +2977,16 @@ def card_set(key, value):
             )
         APT_LANG_CONF.unlink(missing_ok=True)
         return M("repair.card-set.languages-download", "apt downloads package descriptions again.")
+    if key == "journal" and value == "flash":
+        JOURNAL_CONF.unlink(missing_ok=True)  # nand-logs sets the journal's own storage
+        if not NAND_STATE.exists():
+            if _nand()[0] != "free":
+                raise Refused(M("repair.card-flash.none", "This box has no free onboard flash."))
+            _nand_tool("on")
+        return M("repair.card-set.journal-flash", "The logs and crash watch's records are now on the onboard flash.")
     if key == "journal":
+        if NAND_STATE.exists():
+            _nand_tool("off")
         JOURNAL_CONF.parent.mkdir(parents=True, exist_ok=True)
         JOURNAL_CONF.write_text(
             "# irate-box (SD card writes): where the system journal is kept. Remove to undo.\n[Journal]\n"
@@ -3005,6 +3033,146 @@ def card_set(key, value):
             else M("repair.card-set.writeback-standard", "The standard write-back delay applies again.")
         )
     raise Refused(M("repair.card-set.unknown", "{key} is not a write setting of the box.", key=key))
+
+
+# Raspberry Pi kernels leave the memory controller off; without it a service's buffered writes count as the kernel's.
+RPI_CMDLINE = Path(os.environ.get("HUB_RPI_CMDLINE", "/boot/firmware/cmdline.txt"))
+MEMCG = "cgroup_enable=memory"
+
+
+def _memcg_finding():
+    pending = RPI_CMDLINE.exists() and MEMCG in RPI_CMDLINE.read_text().split()
+    return finding(
+        "card-memcg",
+        M("card-accounting.title", "Writes by service"),
+        "warn",
+        M("card-memcg.pending", "The kernel counts each service's SD card writes after the next restart.")
+        if pending
+        else M("card-memcg.off", "The kernel counts most SD card writes as its own, not as a service's."),
+        M(
+            "card-memcg.why",
+            "Without the kernel's memory controller, the writes a service leaves to the kernel are not counted "
+            "as the service's, so the record cannot say which service writes most.",
+        ),
+        None
+        if pending
+        else M(
+            "card-memcg.fix.rpi",
+            "Switch on the memory controller. It takes effect at the next restart and uses a little memory.",
+        )
+        if RPI_CMDLINE.exists()
+        else M(
+            "card-memcg.fix",
+            "Add {option} to the kernel's command line in this board's boot configuration, then restart.",
+            option=MEMCG,
+        ),
+        actions=[]
+        if pending or not RPI_CMDLINE.exists()
+        else [
+            action(
+                "card-memcg-on",
+                M("card-memcg.on", "Switch on the memory controller"),
+                M(
+                    "card-memcg.on.confirm",
+                    "Add {option} to {file}? It takes effect at the next restart.",
+                    option=MEMCG,
+                    file=str(RPI_CMDLINE),
+                ),
+            )
+        ],
+    )
+
+
+def card_memcg_on():
+    text = RPI_CMDLINE.read_text()
+    if MEMCG not in text.split():
+        lines = text.split("\n")
+        lines[0] = lines[0].rstrip() + f" {MEMCG}"
+        tmp = RPI_CMDLINE.with_name(RPI_CMDLINE.name + ".irate-box.tmp")
+        tmp.write_text("\n".join(lines))
+        os.replace(tmp, RPI_CMDLINE)
+    return M("repair.card-memcg.on", "The kernel counts each service's writes after the next restart.")
+
+
+# The onboard raw NAND flash (tools/nand-logs.sh): free, it can hold the logs; in use, its wear as UBI counts it.
+NAND_TOOL = CODE / "tools" / "nand-logs.sh"
+NAND_STATE = Path(os.environ.get("HUB_NAND_STATE", "/etc/nand-logs.conf"))
+PROC_MTD = Path(os.environ.get("HUB_PROC_MTD", "/proc/mtd"))
+UBI_SYS = Path(os.environ.get("HUB_UBI_SYS", "/sys/class/ubi"))
+
+
+def _nand():
+    """("on", None) when nand-logs keeps the logs on the flash, ("free", MiB) when a flash is free, else (None, None)."""
+    if NAND_STATE.exists():
+        return "on", None
+    if not NAND_TOOL.exists() or not PROC_MTD.exists():
+        return None, None
+    said = run("bash", str(NAND_TOOL), "check", timeout=60).stdout
+    m = re.search(r'^mtd\d+ "[^"]*": (\d+) MiB raw NAND', said, re.M)
+    return ("free", int(m[1])) if m and re.search(r"^\s+free\.", said, re.M) else (None, None)
+
+
+def _flash_findings():
+    state, mib = _nand()
+    if state == "free":
+        return [
+            finding(
+                "card-flash",
+                M("card-flash.title", "Onboard flash"),
+                "warn",
+                M(
+                    "card-flash.free",
+                    "This box has {mb} MB of onboard flash that nothing uses. It can hold the logs instead of the SD card.",
+                    mb=mib,
+                ),
+                M(
+                    "card-flash.why",
+                    "The flash takes many more writes than an SD card, and the box spreads them over all of it.",
+                ),
+                M(
+                    "card-flash.fix",
+                    "On Recovery → SD card writes, set System journal to On the onboard flash. This formats the flash.",
+                ),
+                go=GO_CARD_WRITES,
+            )
+        ]
+    if state == "on":
+        ubi = next((u for u in sorted(UBI_SYS.glob("ubi[0-9]*")) if (u / "max_ec").exists()), None)
+        try:
+            max_ec, bad = int((ubi / "max_ec").read_text()), int((ubi / "bad_peb_count").read_text())
+        except (OSError, ValueError, TypeError):
+            max_ec = bad = None
+        return [
+            finding(
+                "card-flash",
+                M("card-flash.title", "Onboard flash"),
+                "ok",
+                M(
+                    "card-flash.on",
+                    "The logs are on the onboard flash. Its most-erased block has been erased {n} times. "
+                    "Bad blocks: {bad}.",
+                    n=max_ec,
+                    bad=bad,
+                )
+                if max_ec is not None
+                else M("card-flash.on.no-counts", "The logs are on the onboard flash."),
+                go=GO_CARD_WRITES,
+            )
+        ]
+    return []
+
+
+def _nand_tool(verb):
+    r = run("bash", str(NAND_TOOL), verb, timeout=900)
+    if r.returncode:
+        raise Refused(
+            M(
+                "repair.card-flash.failed",
+                "nand-logs.sh {verb} failed: {detail}",
+                verb=verb,
+                detail=(r.stderr or r.stdout).strip()[-200:],
+            )
+        )
 
 
 def card_accounting_on():
@@ -4609,7 +4777,8 @@ CHOICE_RE = re.compile(
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
-    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory)|writeback:(standard|longer))$"
+    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer))$"
+    r"|^card-memcg-on$"
 )
 
 
@@ -4783,6 +4952,8 @@ def fix(choice):
         return card_accounting_on()
     if kind == "arch-remove":
         return arch_remove(arg)
+    if kind == "card-memcg-on":
+        return card_memcg_on()
     if kind == "card-set":
         key, _, value = arg.partition(":")
         return card_set(key, value)
