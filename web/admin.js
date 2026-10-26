@@ -6265,8 +6265,8 @@ function servedNow(c) {
 function hardwareName(hw) {
   if (!hw || hw.kind === "none") return "";
   return hw.kind === "module"
-    ? `the ${hw.chip} module on I2C bus ${hw.bus}, at ${hw.addr}`
-    : `the board's own clock${hw.name ? ` (${hw.name})` : ""}`;
+    ? `the external ${hw.chip} on I2C bus ${hw.bus}, at ${hw.addr}`
+    : `the inbuilt clock${hw.name ? ` (${hw.name})` : ""}`;
 }
 function renderClockHw(c) {
   const box = document.getElementById("clock-hw");
@@ -6278,7 +6278,7 @@ function renderClockHw(c) {
       ? `It keeps the time while the box is off, and sets the box's clock at boot. ${hw.by === "found" ? "The box found it and set it up by itself." : ""}`
       : hw.kind === "board"
         ? "It keeps the time while the box is off, and sets the box's clock at boot."
-        : "The box keeps no time while it is off. A clock module on I2C (a DS3231, an RV-8803, an RX8130) keeps it. The box looks for one now and then, and sets up one that it finds.";
+        : "None: the box keeps no time while it is off. An external clock on I2C (a DS3231, an RV-8803, an RX8130) keeps it. The box looks for one now and then, and sets up one that it finds.";
   box.replaceChildren(
     el(
       "div",
@@ -6377,8 +6377,8 @@ function renderClockSources(c, busy, own) {
       ? "With the image's own service, the hardware clock sets the time at boot only."
       : !c.module_ready
         ? c.hardware && c.hardware.kind === "board"
-          ? "chrony cannot read the board's own clock. It sets the time at boot."
-          : "No clock module is set up."
+          ? "chrony cannot read the inbuilt clock. It sets the time at boot."
+          : "No external clock is set up."
         : null,
     local: null,
     pool: null,
@@ -6547,7 +6547,7 @@ function clockWarn(cur, c) {
     words.push("the hotspot firewall closes UDP port 123 again");
   const what = [
     cur.gps ? "GPS" : "",
-    cur.module ? "the clock module" : "",
+    cur.module ? "the hardware clock" : "",
     cur.local ? `the server ${cur.local}` : "",
     cur.pool ? "the internet's pool" : "",
   ]

@@ -202,7 +202,9 @@ def parse(choice):
             )
         )
     if module and not module_ready():
-        raise Refused(M("clock-sources.no-module", "No clock module is set up. Look for one on the Clock page first."))
+        raise Refused(
+            M("clock-sources.no-module", "No external clock is set up. Look for one on the Clock page first.")
+        )
     if local and not _host_ok(local):
         raise Refused(M("clock-sources.bad-host", "{host} is not an address or a host name.", host=local))
     if not (pool or gps or module or local):
