@@ -5683,6 +5683,7 @@ label > .aw-onoff-box ~ .chip-group,
   }
 }
 .clock-source .clock-now,
+.clock-source .clock-address,
 .clock-source .clock-what {
   flex-basis: 100%;
 }

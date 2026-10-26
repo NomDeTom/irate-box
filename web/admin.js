@@ -6301,16 +6301,18 @@ const clkSec = AW.section({
   label: "Time sources",
   saved: null,
   why: (c, v) =>
-    !v.pool && !v.gps && !v.module && !v.local
-      ? "Select at least one source: with none, nothing sets the clock."
-      : null,
+    v.local_on && !v.local
+      ? "Type the local server's address, or switch it off."
+      : !v.pool && !v.gps && !v.module && !(v.local_on && v.local)
+        ? "Select at least one source: with none, nothing sets the clock."
+        : null,
   warn: (c, v) => clockWarn(v, clkLast.c),
   save: (c, v) => {
     const j = AW.job();
     hlRequest(
       {
         action: "fix",
-        choice: `clock-sources:${v.service}:${v.pool ? 1 : 0}:${v.gps ? 1 : 0}:${v.module ? 1 : 0}:${v.serve ? 1 : 0}:${v.local || "-"}:${v.order.join(",")}`,
+        choice: `clock-sources:${v.service}:${v.pool ? 1 : 0}:${v.gps ? 1 : 0}:${v.module ? 1 : 0}:${v.serve ? 1 : 0}:${(v.local_on && v.local) || "-"}:${v.order.join(",")}`,
       },
       "clock-sources",
       j.done,
@@ -6337,13 +6339,14 @@ function renderClockSources(c, busy, own) {
     document.activeElement.tagName === "INPUT"
   )
     return; // typing: left alone
-  // What is saved: the choice made here, else the image's own service as it runs (its servers its own).
+  // What is saved: the choice made here, else the system's default service as it runs (its servers its own).
   const saved = {
     service: c.service || (c.daemon === "chrony" ? "chrony" : "image"),
     pool: c.service ? !!c.pool : true,
     gps: !!c.gps,
     module: !!c.module,
     serve: !!c.serve,
+    local_on: !!c.local,
     local: c.local || "",
     order: (c.order && c.order.length ? c.order : CLOCK_ORDER).slice(),
   };
@@ -6374,7 +6377,7 @@ function renderClockSources(c, busy, own) {
   const why = {
     gps: chrony ? null : "Only with chrony.",
     module: !chrony
-      ? "With the image's own service, the hardware clock sets the time at boot only."
+      ? "With the system's default service, the hardware clock sets the time at boot only."
       : !c.module_ready
         ? c.hardware && c.hardware.kind === "board"
           ? "chrony cannot read the inbuilt clock. It sets the time at boot."
@@ -6391,7 +6394,7 @@ function renderClockSources(c, busy, own) {
     module: c.module_ready
       ? `${hardwareName(c.hardware)[0].toUpperCase()}${hardwareName(c.hardware).slice(1)}, read every 4 s. It counts whole seconds.`
       : "",
-    local: "A router or another box that serves the time. Leave it empty for none.",
+    local: "A router or another box on the same network that serves the time.",
     pool: "Public time servers (pool.ntp.org). Needs the internet.",
   };
   const move = (key, step) => {
@@ -6402,7 +6405,7 @@ function renderClockSources(c, busy, own) {
     [order[i], order[j]] = [order[j], order[i]];
     clkSec.set("order", order);
   };
-  const on = (key) => (key === "local" ? !!values.local : !!values[key]);
+  const on = (key) => (key === "local" ? !!values.local_on : !!values[key]);
   const row = (key, i) => {
     const off = busy || clkSec.disabled();
     const up = el("button", {
@@ -6421,21 +6424,25 @@ function renderClockSources(c, busy, own) {
       onclick: () => move(key, 1),
     });
     down.setAttribute("aria-label", `Move ${CLOCK_NAMES[key]} down`);
-    let control;
-    if (key === "local") {
-      control = el("input", {
+    const control =
+      key === "local"
+        ? AW.onOffChips(CLOCK_NAMES[key], !!values.local_on, off, (v) => set("local_on", v))
+        : AW.onOffChips(CLOCK_NAMES[key], !!values[key], off || !!why[key], (v) => set(key, v));
+    // The local server's address, under its switch while it is On.
+    let address = null;
+    if (key === "local" && values.local_on) {
+      address = el("input", {
         type: "text",
         value: values.local,
         placeholder: "e.g. 192.168.1.1",
         size: 24,
         disabled: off,
-        "aria-label": "A time server on the local network",
+        "aria-label": "The local time server's address",
       });
-      control.addEventListener("input", () =>
-        clkSec.set("local", control.value.trim(), true),
+      address.addEventListener("input", () =>
+        clkSec.set("local", address.value.trim(), true),
       );
-    } else
-      control = AW.onOffChips(CLOCK_NAMES[key], !!values[key], off || !!why[key], (v) => set(key, v));
+    }
     // Its state now, only for a source chosen and saved as chosen (a draft's has none yet).
     const st = on(key) && states[key];
     const [pill, word] = st
@@ -6463,6 +6470,7 @@ function renderClockSources(c, busy, own) {
               : null,
           )
         : null,
+      address ? el("span", { className: "clock-address" }, address) : null,
       el("small", {
         className: "setting-desc clock-what",
         textContent: why[key] || what[key],
@@ -6478,7 +6486,7 @@ function renderClockSources(c, busy, own) {
     ...(c.changed
       ? [
           actionButton(
-            "Restore the image's settings",
+            "Restore the system's defaults",
             () => {
               clkSec.discard();
               hlRequest({ action: "fix", choice: "clock-undo" }, "clock-sources");
@@ -6508,7 +6516,7 @@ function renderClockSources(c, busy, own) {
       "Time service",
       [
         ["chrony", "chrony (recommended)"],
-        ["image", `The image's own (${imageName})`],
+        ["image", `The system's default (${imageName})`],
       ],
       values.service,
       (v) => set("service", v),
@@ -6518,7 +6526,7 @@ function renderClockSources(c, busy, own) {
       className: "setting-desc",
       textContent: chrony
         ? "chrony asks every source selected, prefers the first one while it answers well, and falls back on the others. Selecting it installs chrony and removes systemd-timesyncd. Restore puts them back."
-        : "The image's own service asks the servers in this order, one at a time. It cannot use GPS or the hardware clock as a source.",
+        : "The time service the system came with. It asks the servers in this order, one at a time, and cannot use GPS or the hardware clock as a source.",
     }),
     el("p", { className: "setting-desc clock-order-head", textContent: "Sources, the most trusted first:" }),
     ...values.order.map(row),
@@ -6548,14 +6556,14 @@ function clockWarn(cur, c) {
   const what = [
     cur.gps ? "GPS" : "",
     cur.module ? "the hardware clock" : "",
-    cur.local ? `the server ${cur.local}` : "",
+    cur.local_on && cur.local ? `the server ${cur.local}` : "",
     cur.pool ? "the internet's pool" : "",
   ]
     .filter(Boolean)
     .join(", ");
   return (
-    `${cur.service === "chrony" ? "chrony" : "The image's own time service"} asks ${what || "nothing"}.` +
-    `${words.length ? ` On Save, ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`
+    `${cur.service === "chrony" ? "chrony" : "The system's default time service"} asks ${what || "nothing"}.` +
+    `${words.length ? ` On Save, ${words.join(". ")}.` : ""} Restore puts everything back as the system had it.`
   );
 }
 

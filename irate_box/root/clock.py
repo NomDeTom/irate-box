@@ -197,7 +197,7 @@ def parse(choice):
         raise Refused(
             M(
                 "clock-sources.module-needs-chrony",
-                "The hardware clock as a source needs chrony. With the image's own service, "
+                "The hardware clock as a source needs chrony. With the system's default service, "
                 "it sets the time at boot only.",
             )
         )
@@ -510,7 +510,7 @@ def undo():
     RECORD.unlink(missing_ok=True)
     if was_serving and _firewall_refresh():
         said.append(FIREWALL_CLOSES)
-    said.append(M("clock-sources.restored", "The clock's sources are back as the image had them."))
+    said.append(M("clock-sources.restored", "The clock's sources are back as the system had them."))
     return sentences(*said)
 
 

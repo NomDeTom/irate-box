@@ -40,6 +40,10 @@ offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog") for
     "rtc-save",
     "rtc-remove",
     "rtc-setup:ds3231:1:0x68",
+    "clock-sources:chrony:1:0:1:1:192.168.1.1",
+    "clock-sources:chrony:1:0:1:1:192.168.1.1:pool,local,gps,module",
+    "clock-sources:image:1:0:0:0:-:local,pool",
+    "clock-undo",
     "uplink-skip:wlan0:restart",
     "uplink-skip:eth0:radio",
     "idle-off:meshtasticd.service",
@@ -52,6 +56,8 @@ for c in offered:
         bool(health.CHOICE_RE.match(c)) and bool(server.HEALTH_CHOICE_RE.match(c)),
     )
 for bad in (
+    "clock-sources:chrony:1:0:1:1:-:pool,disk",
+    "clock-sources:chrony:1:0:1:1:-:pool;reboot",
     "crashwatch-preempt:reboot",
     "crashwatch-rm:on",
     "crashwatch-panic:on;reboot",

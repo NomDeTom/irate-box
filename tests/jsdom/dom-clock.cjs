@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The Clock page's time sources in jsdom: the image's own service or chrony, the pool, a local server and GPS (with
+// The Clock page's time sources in jsdom: the system's default service or chrony, the pool, a local server and GPS (with
 // chrony only), in the owner's order, held until Save and sent as one choice; Discard; what each chosen source is
 // doing, in its own row; Restore; and the hardware clock named for what it is.
 // Usage: [JSDOM=/path/to/node_modules/jsdom] node dom-clock.cjs
@@ -47,8 +47,8 @@ const report = (clock) => ({ report: { at: Date.now() / 1000, findings: [], sett
   w.renderHealth(report({ service: null, pool: null, gps: null, local: '', changed: false, daemon: 'systemd-timesyncd', chrony_installed: false,
     gps_device: false, sources: [] }));
   check('as the image has it: its own service selected, the pool on, Save and Discard off, no Restore',
-    chip("The image's own").classList.contains('selected') && tickOf("The internet's pool").checked && btn('Save').disabled && btn('Discard').disabled
-    && !btn("Restore the image's settings"), t(box()));
+    chip("The system's default").classList.contains('selected') && tickOf("The internet's pool").checked && btn('Save').disabled && btn('Discard').disabled
+    && !btn("Restore the system's defaults") && !box().querySelector('input[type=text]'), t(box()));
   check('  GPS, the module and serving the time only with chrony', tickOf('GPS').disabled && tickOf('The hardware clock').disabled
     && tickOf('Serve the time').disabled && /Only with chrony/.test(t(box())) && /sets the time at boot only/.test(t(box())));
   chip('chrony').click(); await wait();
@@ -58,6 +58,10 @@ const report = (clock) => ({ report: { at: Date.now() / 1000, findings: [], sett
   tickOf('Serve the time').click(); await wait();
   check('  serving: says the firewall opens UDP 123 to guests', /opens UDP port 123 to guests/.test(t(box())));
   check('  no module set up: its switch off, saying so', tickOf('The hardware clock').disabled && /No external clock is set up/.test(t(box())));
+  // The local server: On and Off as the other sources, its address under it while On.
+  tickOf('A server on the local network').click(); await wait();
+  check('the local server switched On: its address field shown, Save held until it has one',
+    !!box().querySelector('input[type=text]') && btn('Save').disabled && /Type the local server's address/.test(t(box())), t(box()));
   const addr = box().querySelector('input[type=text]');
   addr.value = '192.168.1.1'; addr.dispatchEvent(new w.Event('input'));
   btn('Save').click(); await wait();
@@ -114,7 +118,7 @@ const report = (clock) => ({ report: { at: Date.now() / 1000, findings: [], sett
     served({ ref: 'RTC', stratum: 11, synced: true }));
   check('  not synchronised: nothing a device accepts', /nothing a device accepts/.test(served({ ref: '', stratum: 0, synced: false })));
   const n = posted.length;
-  btn("Restore the image's settings").click(); await wait();
+  btn("Restore the system's defaults").click(); await wait();
   check('Restore: asks, then sends clock-undo', posted.length === n + 1 && posted[n].choice === 'clock-undo', JSON.stringify(posted.slice(n)));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
