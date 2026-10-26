@@ -259,6 +259,43 @@ check(
     "root with a password of its own (first login done): a warning, lock offered",
     rootf()["root-password"]["status"] == "warn" and "root-firstrun" not in rootf(),
 )
+# Armbian's setup page (armbian-web-config) still running after the first setup: a problem, stopped from here.
+setup_state = {"active": True}
+setup_ran = []
+real_root_run = security.run
+
+
+def setup_run(*c, **k):
+    setup_ran.append(c)
+    if c[:2] == ("systemctl", "is-active") and c[2] == security.ARMBIAN_SETUP:
+        out = "active\n" if setup_state["active"] else "inactive\n"
+    elif c[:2] == ("systemctl", "is-enabled"):
+        out = "disabled\n"
+    else:
+        out = ""
+    if c[:3] == ("systemctl", "disable", "--now"):
+        setup_state["active"] = False
+    return __import__("subprocess").CompletedProcess(c, 0, out, "")
+
+
+security.run = setup_run
+f = rootf()
+check(
+    "Armbian's setup page still running: a problem, Stop and disable offered",
+    f.get("armbian-setup", {}).get("status") == "problem"
+    and [a["choice"] for a in f["armbian-setup"]["actions"]] == [f"unit-off:{security.ARMBIAN_SETUP}"],
+    f.get("armbian-setup"),
+)
+security.fix(f"unit-off:{security.ARMBIAN_SETUP}", None)
+f = rootf()
+check(
+    "  stopped from here: systemctl disable --now, then ok with Restore it",
+    ("systemctl", "disable", "--now", security.ARMBIAN_SETUP) in setup_ran
+    and f["armbian-setup"]["status"] == "ok"
+    and [a["choice"] for a in f["armbian-setup"]["actions"]] == [f"unit-undo:{security.ARMBIAN_SETUP}"],
+    f.get("armbian-setup"),
+)
+security.run = real_root_run
 (T / "root-pw").write_text("NP")
 check(
     "root with no password: a problem",
