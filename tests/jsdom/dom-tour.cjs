@@ -100,6 +100,12 @@ w.fetch = async (u, o = {}) => {
 };
 w.confirm = () => true;
 w.sessionStorage.clear();
+// Every line the setup page says about what is left, in order, from the first draw on.
+const leftSaid = [];
+new w.MutationObserver(() => {
+  const text = d.getElementById("setup-left").textContent;
+  if (leftSaid[leftSaid.length - 1] !== text) leftSaid.push(text);
+}).observe(d.getElementById("setup-left"), { childList: true, characterData: true, subtree: true });
 ["admin-widgets.js", "admin-layout.js", "admin.js", "admin-tour.js"].forEach(
   (f) => w.eval(fs.readFileSync(`${WEB}/${f}`, "utf8")),
 );
@@ -108,6 +114,27 @@ const shownPage = () =>
   [...d.querySelectorAll(".admin-page")].find((p) => !p.hidden);
 (async () => {
   await wait(400);
+  // While the page's parts are still reporting (here Books never does: its fetch fails), the count waits.
+  check(
+    "while the parts report: the count waits, says so, and the start button waits too",
+    /Checking the steps/.test(d.getElementById("setup-left").textContent) &&
+      T.left() === null &&
+      d.querySelector("#welcome .tour-start").disabled &&
+      /checking/.test(d.querySelector('#setup-steps [data-step="books"]').textContent),
+    d.getElementById("setup-left").textContent,
+  );
+  await wait(4000);
+  const counts = leftSaid.filter((text) => /still to do/.test(text));
+  check(
+    "  then one count, drawn once, after the checking line",
+    /^Checking the steps/.test(leftSaid[0] || "") &&
+      counts.length === 1 &&
+      leftSaid.indexOf(counts[0]) === leftSaid.length - 1 &&
+      !d.querySelector("#welcome .tour-start").disabled &&
+      typeof T.left() === "number" &&
+      /to do/.test(d.querySelector('#setup-steps [data-step="books"]').textContent),
+    leftSaid.join(" | "),
+  );
   // One list, every step in the same form: the setup's own steps, the decisions, a backup last.
   const rows = [...d.querySelectorAll("#setup-steps > li[data-step]")];
   check(
