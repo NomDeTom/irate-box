@@ -2491,8 +2491,8 @@ def step_units(ctx):
             [
                 M(
                     "units.ci.nft-refused",
-                    "The box's nftables rule for builds can't be used here: nftables is missing, or the kernel lacks "
-                    "its owner match.",
+                    "The box's nftables rule for builds cannot be used here: nftables is missing, or the kernel cannot "
+                    "match packets by the user that sent them.",
                 )
             ]
             if refused
