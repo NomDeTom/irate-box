@@ -16,6 +16,7 @@
 - Run the tests with umask 022. `tests/local-ci.sh` sets it. A shell with umask 0002 makes some file-permission checks fail.
 - Each test makes its own temporary files and starts its own hub on a free port, if it needs one.
 - Four page tests need a running hub: `dom-appbar`, `dom-drop`, `dom-locks` and `dom-themes`. Start one with `HUB_STATE_DIR=$(mktemp -d) PORT=18099 HUB_BIND=127.0.0.1 ./irate-box server`, then run the test with `BASE=http://127.0.0.1:18099`.
+- Every module run through `./irate-box` has `faulthandler` on: a crash in C prints each thread's stack to stderr (the journal, for a service), and so does SIGUSR1, without stopping it. To see what a hung service is doing: `sudo systemctl kill -s USR1 irate-box-uplink.service`, then `journalctl -u irate-box-uplink -n 60`.
 - `dom-themes` fails three checks on `main` too: the theme menu list, and "Could not parse CSS stylesheet" twice. This is a known problem.
 - `tests/guide-pending` holds back two guide checks until the guide is updated after the language review. The file says why. Delete it in the commit that updates the guide.
 
