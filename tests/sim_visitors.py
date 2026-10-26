@@ -82,7 +82,7 @@ hub = subprocess.Popen(
     [str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
 )
 try:
-    for _ in range(50):
+    for _ in range(300):  # up to 30 s: a busy CI runner can take longer than 5 s to start the hub
         try:
             http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status")
             break
