@@ -26,6 +26,11 @@ os.environ.update(
     HUB_APT_CACHE_DIR=str(T / "apt-cache"),
     HUB_SYSCTL_D=str(T / "sysctl.d"),
     HUB_FSTAB=str(T / "fstab"),
+    HUB_RPI_CMDLINE=str(T / "cmdline.txt"),
+    HUB_CODE_DIR=str(T / "code"),
+    HUB_NAND_STATE=str(T / "nand-logs.conf"),
+    HUB_PROC_MTD=str(T / "mtd"),
+    HUB_UBI_SYS=str(T / "ubi"),
 )
 for d in ("state", "etc", "systemd/journald.conf.d", "apt.conf.d", "apt-cache"):
     (T / d).mkdir(parents=True)
@@ -58,8 +63,11 @@ cg = SYS / "fs" / "cgroup" / "system.slice"
 cg.mkdir(parents=True)
 
 
-def box(boot, written_mb, units, mem_mb=200, accounting=True):
+def box(boot, written_mb, units, mem_mb=200, accounting=True, memcg=True):
     """The counters as the kernel would show them now."""
+    (SYS / "fs" / "cgroup" / "cgroup.controllers").write_text(
+        "cpuset cpu io memory pids\n" if memcg else "cpuset cpu io pids\n"
+    )
     (PROC / "sys" / "kernel" / "random" / "boot_id").write_text(boot + "-0000-0000\n")
     sectors = written_mb * 2048
     (card / "stat").write_text(f"1 2 3 4 5 6 {sectors} 8 9 10 11\n")
@@ -162,6 +170,12 @@ def run(*cmd, timeout=60, **kw):
         out = "arm64\nall\narm64\n"
     elif cmd[0] == "apt-config":
         out = 'Acquire::Languages "";\nAcquire::Languages:: "en_GB";\nAcquire::Languages:: "none";\n'
+    elif cmd[0] == "bash" and cmd[2] == "check":
+        out = 'mtd0 "spi-nand0": 256 MiB raw NAND, erase block 128 KiB\n  free. On it (about 204 MiB usable): ramlog\n'
+    elif cmd[0] == "bash" and cmd[2] == "on":
+        (T / "nand-logs.conf").write_text("mtd=0\n")
+    elif cmd[0] == "bash" and cmd[2] == "off":
+        (T / "nand-logs.conf").unlink()
     elif cmd[0] == "systemd-analyze":
         out = "# /usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf\n[Journal]\nStorage=volatile\n"
     return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
@@ -339,6 +353,66 @@ check(
     ran,
 )
 health.fix("card-set:writeback:standard")
+
+# The kernel's memory controller: without it, accounting counts almost nothing (a Raspberry Pi kernel's default).
+box("dddd4444", 1, {}, accounting=True, memcg=False)
+(T / "cmdline.txt").write_text("console=tty1 root=PARTUUID=90ce46b6-02 rootwait quiet")
+got = {f["id"]: f for f in health.check_card_writes()}
+check(
+    "accounting on, the memory controller off: said, with the repair on a Raspberry Pi",
+    "card-memcg" in got and [a["choice"] for a in got["card-memcg"]["actions"]] == ["card-memcg-on"],
+    got.get("card-memcg"),
+)
+said = health.fix("card-memcg-on")
+check(
+    "  the option added to the one line of cmdline.txt, from the next restart",
+    (T / "cmdline.txt").read_text() == "console=tty1 root=PARTUUID=90ce46b6-02 rootwait quiet cgroup_enable=memory"
+    and said["id"] == "repair.card-memcg.on",
+    (T / "cmdline.txt").read_text(),
+)
+pending = {f["id"]: f for f in health.check_card_writes()}["card-memcg"]
+check("  until then: said as waiting for the restart, nothing to press", pending["actions"] == [], pending)
+box("dddd4444", 1, {}, accounting=True)
+# The onboard flash: free, offered as the journal's place; in use, its wear.
+(T / "code" / "tools").mkdir(parents=True)
+(T / "code" / "tools" / "nand-logs.sh").write_text("#!/bin/bash\n")
+(T / "mtd").write_text('dev:    size   erasesize  name\nmtd0: 10000000 00020000 "spi-nand0"\n')
+got = {f["id"]: f for f in health.check_card_writes()}
+check(
+    "a free onboard flash: said, with the size, pointing to the setting",
+    got.get("card-flash", {}).get("status") == "warn" and got["card-flash"]["summary"]["args"] == {"mb": 256},
+    got.get("card-flash"),
+)
+journal = {g["key"]: g for g in health.card_groups()}["journal"]
+check(
+    "  System journal offers On the onboard flash, asking first",
+    [o["value"] for o in journal["options"]] == ["card", "memory", "flash"] and journal["options"][2].get("confirm"),
+)
+ran.clear()
+health.fix("card-set:journal:flash")
+check(
+    "On the onboard flash: nand-logs.sh on, irate-box's own journal file removed",
+    any(c[0] == "bash" and c[2] == "on" for c in ran)
+    and not jconf.exists()
+    and {g["key"]: g for g in health.card_groups()}["journal"]["current"] == "flash",
+    ran,
+)
+(T / "ubi" / "ubi9").mkdir(parents=True)
+(T / "ubi" / "ubi9" / "max_ec").write_text("3\n")
+(T / "ubi" / "ubi9" / "bad_peb_count").write_text("0\n")
+on = {f["id"]: f for f in health.check_card_writes()}.get("card-flash", {})
+check(
+    "  in use: its wear as UBI counts it",
+    on.get("status") == "ok" and on["summary"]["args"] == {"n": 3, "bad": 0},
+    on,
+)
+ran.clear()
+health.fix("card-set:journal:memory")
+check(
+    "  back to memory: nand-logs.sh off first, then the journal in memory",
+    any(c[0] == "bash" and c[2] == "off" for c in ran) and "Storage=volatile" in jconf.read_text(),
+    ran,
+)
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
