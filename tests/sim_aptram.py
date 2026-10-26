@@ -16,7 +16,7 @@ RAM = Path(tempfile.mkdtemp(prefix="aptram-"))
 os.environ["HUB_APT_RAM"] = str(RAM)
 sys.path.insert(0, str(REPO))
 
-from irate_box.root import aptram  # noqa: E402
+from irate_box.root import aptram
 
 fails = 0
 
@@ -78,7 +78,7 @@ def fake_run(cmd, *a, **kw):
 
 
 subprocess.run = fake_run
-from irate_box.root import kits, pkgwatch, security  # noqa: E402
+from irate_box.root import kits, pkgwatch, security
 
 kits.run(["apt-get", "update", "-q"])
 pkgwatch.run(["apt-get", "update", "-q"])

@@ -40,8 +40,8 @@ import time
 from pathlib import Path
 
 from irate_box.hub import kitdefs
-from irate_box.root import aptram
 from irate_box.msg import M, Refused, duration, sentences, when
+from irate_box.root import aptram
 
 ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
 DPKG_STATUS = Path(os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status"))

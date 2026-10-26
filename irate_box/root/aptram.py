@@ -16,7 +16,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-RAM = Path(os.environ.get("HUB_APT_RAM", "/dev/shm"))
+# Each run's folder there is made by mkdtemp (a new name, root's alone), so the shared place is safe to use.
+RAM = Path(os.environ.get("HUB_APT_RAM", "/dev/shm"))  # nosec B108
 TOOLS = ("apt-get", "apt-cache")
 
 
