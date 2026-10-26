@@ -324,7 +324,7 @@ def step(policy, now=None, log=print):
         cached = ((st.get("kits") or {}).get(kid) or {}).get("cached") or {}
         last = max(cached.get("fetched") or 0, asked.get(kid, 0))
         if now - last >= every * 3600:
-            librarian._queue_root({"action": "kit-fetch", "kit": kid, "budget_mb": cfg["budget_mb"]})
+            librarian._queue_root({"action": "kit-fetch", "kit": kid, "budget_mb": cfg["budget_mb"], "scheduled": True})
             asked[kid] = now
             librarian._write_json(STATE, asked)
             out.append(f"downloading {kid}")

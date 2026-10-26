@@ -488,8 +488,25 @@ real_run, real_sub = security.run, security.subprocess.run
 security.run = lambda *c, **k: (
     calls.append(c) or __import__("types").SimpleNamespace(stdout=sim if "-s" in c else "", returncode=0, stderr="")
 )
+ram_cached = []  # each apt-get run: did it carry aptram's cache-in-RAM options
+
+
+def without_ram_cache(argv):
+    """argv without aptram's options (apt's cache in RAM), which every apt run here carries."""
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "-o" and i + 1 < len(argv) and argv[i + 1].startswith("Dir::Cache::"):
+            i += 2
+            continue
+        out.append(argv[i])
+        i += 1
+    return tuple(out)
+
+
 security.subprocess.run = lambda argv, **k: (
-    calls.append(tuple(argv)) or __import__("types").SimpleNamespace(returncode=0)
+    ram_cached.append(argv[0] != "apt-get" or any(a.startswith("Dir::Cache::pkgcache=") for a in argv))
+    or calls.append(without_ram_cache(argv))
+    or __import__("types").SimpleNamespace(returncode=0)
 )
 log = T / "control-log"
 got = security.fix("security-check", log)
@@ -501,6 +518,7 @@ check(
     and "$ apt-get update" in log.read_text(),
     got,
 )
+check("  every apt-get run with apt's cache in RAM (aptram)", ram_cached and all(ram_cached), ram_cached)
 calls.clear()
 got = security.fix("security-fetch", log)
 check(

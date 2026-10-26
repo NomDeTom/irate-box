@@ -47,6 +47,7 @@ import time
 from pathlib import Path
 
 from irate_box.msg import M, Refused, duration, sentences
+from irate_box.root import aptram
 
 CODE = Path(__file__).resolve().parents[2]
 DEFS = Path(os.environ.get("HUB_PKG_DEFS", CODE / "packages.d"))
@@ -68,10 +69,12 @@ APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "non
 
 
 def run(cmd, timeout=900, cwd=None):
-    """Every command goes through here (the tests stand it in)."""
-    return subprocess.run(  # noqa: TID251
-        cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=dict(os.environ, **APT_ENV)
-    )
+    """Every command goes through here (the tests stand it in). apt's cache goes in RAM (aptram): a channel's
+    own lists would otherwise leave the system's cache built from them."""
+    with aptram.argv(cmd) as full:
+        return subprocess.run(  # noqa: TID251
+            full, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=dict(os.environ, **APT_ENV)
+        )
 
 
 def _json(p, default):

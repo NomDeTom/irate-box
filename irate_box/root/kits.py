@@ -27,6 +27,7 @@ packages bring stay stopped and disabled (policy-rc.d for the transaction). Remo
 what the install added, unless another installed kit added it too.
 """
 
+import contextlib
 import hashlib
 import json
 import lzma
@@ -40,6 +41,7 @@ from pathlib import Path
 
 from irate_box.hub import kitdefs
 from irate_box.msg import M, Refused, duration, sentences, when
+from irate_box.root import aptram
 
 ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
 DPKG_STATUS = Path(os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status"))
@@ -61,10 +63,11 @@ DEAD_PROXY = "http://127.0.0.1:9"  # nothing listens there: an install that trie
 
 
 def run(cmd, timeout=1800, check=True, env=None):
-    """Every command goes through here (the tests stand it in)."""
-    out = subprocess.run(  # noqa: TID251
-        cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **APT_ENV, **(env or {}))
-    )
+    """Every command goes through here (the tests stand it in). apt's cache goes in RAM (aptram)."""
+    with aptram.argv(cmd) as full:
+        out = subprocess.run(  # noqa: TID251
+            full, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, **APT_ENV, **(env or {}))
+        )
     if check and out.returncode != 0:
         lines = (out.stderr or out.stdout).strip().splitlines()
         # apt's reason is in its E: and "Depends:" lines; its last line is often only the solver's
@@ -90,6 +93,16 @@ def _write(path, data):
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(json.dumps(data, indent=1))
     os.replace(tmp, path)
+
+
+def _write_if_changed(path, text):
+    """text into path unless it holds that already: a refresh that changed nothing writes nothing to the card."""
+    try:
+        if path.read_text() == text:
+            return
+    except OSError:
+        pass
+    path.write_text(text)
 
 
 def definitions():
@@ -143,6 +156,10 @@ def _kernel_headers():
 # rest of Debian. A kit that asks for it is fetched from it alone, its index kept apart from the
 # box's own lists (so the box's apt never sees it), and that index vouches for it on a USB stick.
 DEBUG_LISTS = ROOT / "lists-debug"
+# When _update_lists last updated the system's lists and the debug archive's; a scheduled refresh updates them
+# only when older than LISTS_FRESH_HOURS (each kit refreshes daily, in turn, so one update serves the day).
+LISTS_UPDATED = ROOT / "lists-updated.json"
+LISTS_FRESH_HOURS = 20
 DEBIAN_KEYRING = Path(os.environ.get("HUB_DEBIAN_KEYRING", "/usr/share/keyrings/debian-archive-keyring.gpg"))
 
 
@@ -324,50 +341,92 @@ def _fetch_wheels(kit_id, pip_pkgs, stage, log):
     return wheels
 
 
-def fetch(kit_id, budget_mb=500, update_lists=True, log=print):
+def _update_lists(debug, max_hours, log):
+    """apt-get update for the system's lists (or the debug archive's), unless this module updated them less than
+    max_hours ago: one update a day serves every kit refreshed that day, where each used to bring its own, and
+    every update writes the changed lists to the card."""
+    key = "debug" if debug else "system"
+    stamps = _read(LISTS_UPDATED, {}) or {}
+    if max_hours and time.time() - float(stamps.get(key) or 0) < max_hours * 3600:
+        return
+    log("apt-get update" + (" (Debian's debug archive)" if debug else ""))
+    run(["apt-get", *debug, "update", "-q"], timeout=900)
+    stamps[key] = time.time()
+    _write(LISTS_UPDATED, stamps)
+
+
+# apt-get --print-uris: one line per file to download, 'URI' FILE SIZE HASH.
+URI_RE = re.compile(r"^'[^']+' (?P<file>\S+) (?P<size>\d+)(?: SHA256:(?P<sha256>[0-9a-f]{64}))?")
+
+
+def _wanted(said):
+    """{file: (size, sha256 or None)} from apt-get --print-uris."""
+    return {
+        m["file"]: (int(m["size"]), m["sha256"])
+        for m in map(URI_RE.match, said.splitlines())
+        if m and DEB_RE.match(m["file"])
+    }
+
+
+def _link_cached(wanted, stage):
+    """The wanted files the pool holds already (any kit's), linked into the stage, where apt looks for what it has
+    downloaded: apt checks each one's size and hash and downloads only the rest. A link writes no data."""
+    for f, (size, _) in wanted.items():
+        cached = POOL / f
+        with contextlib.suppress(OSError):
+            if cached.stat().st_size == size:
+                os.link(cached, stage / f)
+
+
+def fetch(kit_id, budget_mb=500, lists_max_hours=0, log=print):
     """The kit's packages and their dependencies into the pool (online), and, for a kit that
-    names Python packages (the build kit: platformio), its wheelhouse too."""
+    names Python packages (the build kit: platformio), its wheelhouse too. lists_max_hours: the
+    lists are updated first unless updated within that many hours (0: always, as when the owner asks).
+    Every apt run in it shares one folder in RAM, which also holds the filtered dpkg status."""
+    with aptram.shared() as ram:
+        return _fetch(kit_id, budget_mb, lists_max_hours, log, ram)
+
+
+def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
     kit = _kit(kit_id)
     for d in (ROOT, POOL, MANIFESTS):
         d.mkdir(parents=True, exist_ok=True)
     os.chmod(ROOT, 0o755)  # The kits folder, read by apt. # nosec B103
     debug = _debug_apt() if kit.get("debug_archive") else []
-    if update_lists or debug:
-        log("apt-get update" + (" (Debian's debug archive)" if debug else ""))
-        run(["apt-get", *debug, "update", "-q"], timeout=900)
+    _update_lists(debug, lists_max_hours, log)
     stage = ROOT / f"stage-{kit_id}"
     shutil.rmtree(stage, ignore_errors=True)
     (stage / "partial").mkdir(parents=True)
     try:
         leave_out = _kit_added(installed_state())
-        _base_status(stage / "status", leave_out)
-        base = {
-            ln[len("Package: ") :] for ln in (stage / "status").read_text().splitlines() if ln.startswith("Package: ")
-        }
+        # dpkg's status, filtered (a few MB), in RAM: written afresh by every refresh, read once.
+        status = ram / "status"
+        _base_status(status, leave_out)
+        base = {ln[len("Package: ") :] for ln in status.read_text().splitlines() if ln.startswith("Package: ")}
         packages, left_out = _packages(kit, fetching=True)
-        log(f"{kit_id}: downloading {len(packages)} packages and what they need")
-        run(
-            [
-                "apt-get",
-                *debug,
-                "install",
-                "--download-only",
-                "-y",
-                "-q",
-                "--no-install-recommends",
-                "-o",
-                f"Dir::Cache::archives={stage}",
-                "-o",
-                f"Dir::State::status={stage / 'status'}",
-                "-o",
-                "Debug::NoLocking=1",
-                *packages,
-            ],
-            timeout=3600,
+        options = [
+            "--no-install-recommends",
+            "-o",
+            f"Dir::Cache::archives={stage}",
+            "-o",
+            f"Dir::State::status={status}",
+            "-o",
+            "Debug::NoLocking=1",
+        ]
+        # What the kit needs, resolved without downloading; what the pool has of it linked into the stage; only
+        # the rest downloaded. An unchanged kit downloads, and writes to the card, nothing.
+        wanted = _wanted(
+            run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *packages], timeout=600).stdout
         )
+        _link_cached(wanted, stage)
+        new_files = [f for f in wanted if not (stage / f).exists()]
+        if new_files:
+            log(f"{kit_id}: downloading {len(new_files)} of its {len(wanted)} packages")
+            run(["apt-get", *debug, "install", "--download-only", "-y", "-q", *options, *packages], timeout=3600)
         pkgs = []
-        for deb in sorted(stage.glob("*.deb")):
-            if not DEB_RE.match(deb.name):
+        # Only the files apt named: the stage may also hold what it does not need now.
+        for deb in sorted(stage / f for f in wanted):
+            if not deb.is_file():
                 continue
             name, version, deb_arch, source = _deb_fields(deb)
             pkgs.append(
@@ -528,21 +587,22 @@ def write_index():
             continue  # damaged since it was fetched: not offered to apt (verify() reports it)
         control = out.stdout.rstrip("\n")
         stanzas.append(f"{control}\nFilename: ./{f}\nSize: {p['size']}\nSHA256: {p['sha256']}\n")
-    (POOL / "Packages").write_text("\n".join(stanzas))
+    _write_if_changed(POOL / "Packages", "\n".join(stanzas))
     # Every cached package as dpkg's status file would list it, so debsecan --status can say
     # which of them have known vulnerabilities before any is installed.
     # With Source: as dpkg writes it, since debsecan matches vulnerabilities by source package
     # (libpython3.13's are python3.13's).
     rows = sorted({(p["name"], p["version"], p["arch"], p.get("source", "")) for p in _referenced().values()})
-    (ROOT / "kits-status").write_text(
+    _write_if_changed(
+        ROOT / "kits-status",
         "".join(
             f"Package: {n}\nStatus: install ok installed\n"
             + (f"Source: {src}\n" if src else "")
             + f"Version: {v}\nArchitecture: {a}\n\n"
             for n, v, a, src in rows
-        )
+        ),
     )
-    (ROOT / "kits.list").write_text(f"deb [trusted=yes] file:{POOL} ./\n")
+    _write_if_changed(ROOT / "kits.list", f"deb [trusted=yes] file:{POOL} ./\n")
     (ROOT / "lists").mkdir(exist_ok=True)
 
 
@@ -806,11 +866,12 @@ def _checked_packages(pkgs, most):
             )
         )
     pkgs = list(dict.fromkeys(pkgs))
-    unknown = [
-        p
-        for p in pkgs
-        if not run(["apt-cache", "show", "--no-all-versions", p], check=False, timeout=120).stdout.strip()
-    ]
+    with aptram.shared():
+        unknown = [
+            p
+            for p in pkgs
+            if not run(["apt-cache", "show", "--no-all-versions", p], check=False, timeout=120).stdout.strip()
+        ]
     if unknown:
         raise Refused(
             M(

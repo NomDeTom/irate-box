@@ -24,7 +24,7 @@ from pathlib import Path
 from irate_box.finding import action, english, finding
 from irate_box.hub import services
 from irate_box.msg import M, Refused, is_message, named, render, sentences, when
-from irate_box.root import safeio
+from irate_box.root import aptram, safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 # Whether the hotspot is up now (root/ap.py writes it): a port is open to hotspot guests only while it is.
@@ -3365,9 +3365,10 @@ def _apt_logged(log, argv, timeout):
     log.flush()
     env = dict(os.environ, **APT_ENV, HOME=os.environ.get("HOME", "/root"))
     try:
-        code = subprocess.run(  # noqa: TID251
-            argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout
-        ).returncode
+        with aptram.argv(argv) as full:
+            code = subprocess.run(  # noqa: TID251
+                full, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, timeout=timeout
+            ).returncode
     except OSError as exc:
         log.write(f"{exc}\n")
         code = 127
@@ -3376,7 +3377,8 @@ def _apt_logged(log, argv, timeout):
 
 
 def _waiting():
-    return pending_security(run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout)
+    with aptram.argv(["apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade"]) as cmd:
+        return pending_security(run(*cmd, timeout=180).stdout)
 
 
 def _lists(log):
