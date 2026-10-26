@@ -1976,7 +1976,7 @@ def root_findings(rec):
                 M(
                     "armbian-setup.on.why",
                     "Anyone who reaches it can send its form again. The box then sets the root password, a new user "
-                    "and their SSH keys to what that person chose.",
+                    "and their SSH keys to what that person entered.",
                 ),
                 M("armbian-setup.on.fix", "Stop it. It is needed only for the first setup."),
                 evidence=[ARMBIAN_SETUP],
