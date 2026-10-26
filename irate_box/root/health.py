@@ -3208,6 +3208,316 @@ def arch_remove(arch):
     return M("repair.arch.removed", "The box no longer downloads package lists for {arch}.", arch=arch)
 
 
+# SD card health. Consumer SD cards report no health of their own (only some industrial ones answer the vendor
+# command CMD56), so the check reads what every card and Linux keep: the card's identity and age, what has been
+# written to its filesystems over their life (ext4's lifetime_write_kbytes), the kernel's I/O errors for it,
+# ext4's error count, a root filesystem fallen back to read-only, and on eMMC the device's own wear estimate. Two
+# tests the owner starts, both read-only: a quick read-speed test (kept, so a card that slows down shows), and a
+# whole-card read in a unit of its own, which finds the places that can no longer be read.
+SD_MAKERS = {
+    0x01: "Panasonic",
+    0x02: "Kioxia (Toshiba)",
+    0x03: "SanDisk",
+    0x1B: "Samsung",
+    0x1D: "ADATA",
+    0x27: "Phison",
+    0x28: "Lexar",
+    0x31: "Silicon Power",
+    0x41: "Kingston",
+    0x74: "Transcend",
+    0x76: "Patriot",
+    0x82: "Sony",
+}
+CARD_ERROR_RE = re.compile(
+    r"(I/O error, dev {dev}|Buffer I/O error on dev {dev}|{host}: .*(timeout|error|CRC|reset)|EXT4-fs error \(device {dev})"
+)
+CARD_SCAN_UNIT = "irate-box-card-scan"
+CARD_SPEED_MB = 256  # read by the speed test, from the start of the card
+
+
+def _card_health_file():
+    from irate_box.root import safeio
+
+    return safeio.ROOT_STATE / "card-health.json"
+
+
+def _card_tests():
+    try:
+        return json.loads(_card_health_file().read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _card_tests_save(rec):
+    path = _card_health_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(rec, indent=1))
+    os.replace(tmp, path)
+
+
+def _sysfs(path, default=""):
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return default
+
+
+def card_info():
+    """The card under / as Linux sees it: {dev, type, maker, name, date, size, written, errors, host, emmc: {...}}."""
+    from irate_box.hub import cardhistory
+
+    found = cardhistory.card()
+    if not found:
+        return None
+    dev = found[0]
+    block = cardhistory.SYS / "class" / "block" / dev
+    device = block / "device"
+    try:
+        manfid = int(_sysfs(device / "manfid", "-1"), 16)
+    except ValueError:
+        manfid = -1
+    written = 0
+    for part in cardhistory.SYS.glob(f"fs/ext4/{dev}*"):
+        try:
+            written += int(_sysfs(part / "lifetime_write_kbytes", "0")) * 1024
+        except ValueError:
+            pass
+    ext4_errors = 0
+    for part in cardhistory.SYS.glob(f"fs/ext4/{dev}*"):
+        try:
+            ext4_errors += int(_sysfs(part / "errors_count", "0"))
+        except ValueError:
+            pass
+    host = Path(os.path.realpath(device)).parent.name.split(":")[0] if device.exists() else ""
+    return {
+        "dev": dev,
+        "type": _sysfs(device / "type"),
+        "manfid": manfid,
+        "maker": SD_MAKERS.get(manfid),
+        "oemid": _sysfs(device / "oemid"),
+        "name": _sysfs(device / "name"),
+        "date": _sysfs(device / "date"),
+        "size": cardhistory.size(dev),
+        "written": written,
+        "ext4_errors": ext4_errors,
+        "host": host,
+        "life_time": _sysfs(device / "life_time"),
+        "pre_eol": _sysfs(device / "pre_eol_info"),
+    }
+
+
+def _card_kernel_errors(info):
+    said = run("journalctl", "-k", "-b", "--no-pager", "-o", "cat", timeout=60).stdout
+    pattern = re.compile(
+        CARD_ERROR_RE.pattern.format(dev=re.escape(info["dev"]), host=re.escape(info["host"] or "mmc-")), re.I
+    )
+    return [line.strip()[:200] for line in said.splitlines() if pattern.search(line)]
+
+
+def _root_read_only():
+    for line in (PROC / "mounts").read_text().splitlines() if (PROC / "mounts").exists() else []:
+        f = line.split()
+        if len(f) >= 4 and f[1] == "/":
+            return "ro" in f[3].split(",")
+    return False
+
+
+def check_card_health():
+    info = card_info()
+    if not info or info["type"] not in ("SD", "MMC"):
+        return []
+    tests = _card_tests()
+    errors = _card_kernel_errors(info)
+    read_only = _root_read_only()
+    times = info["written"] / info["size"] if info["size"] else None
+    maker = info["maker"] or f"maker ID 0x{info['manfid'] & 0xFF:02x}"
+    evidence = [
+        f"{info['type']} {info['name']}, {info['size'] // 10**9 if info['size'] else '?'} GB, made {info['date'] or '?'}",
+        f"written over its life: {info['written'] >> 30} GB"
+        + (f" ({times:.1f} times its size)" if times is not None else ""),
+    ]
+    speeds = tests.get("speed") or []
+    if speeds:
+        evidence.append(
+            f"read speed: {speeds[-1]['mbps']} MB/s on {time.strftime('%Y-%m-%d', time.localtime(speeds[-1]['at']))}"
+            + (f" (first test: {speeds[0]['mbps']} MB/s)" if len(speeds) > 1 else "")
+        )
+    scan = tests.get("scan")
+    if scan and scan.get("done"):
+        evidence.append(
+            f"whole-card read on {time.strftime('%Y-%m-%d', time.localtime(scan['done']))}: "
+            + (f"{scan['bad']} unreadable places" if scan.get("bad") else "every part read")
+        )
+    evidence += errors[-3:]
+    emmc_worn = info["type"] == "MMC" and (
+        info["pre_eol"] in ("0x02", "0x03") or any(v in ("0x09", "0x0a", "0x0b") for v in info["life_time"].split())
+    )
+    bad = bool(errors) or read_only or bool(scan and scan.get("bad")) or emmc_worn
+    status = "problem" if bad else "warn" if info["ext4_errors"] or info["manfid"] in (0, -1) else "ok"
+    summary = (
+        M("card-health.read-only", "The system's filesystem has fallen back to read-only: the card may be failing.")
+        if read_only
+        else M(
+            "card-health.unreadable",
+            "The whole-card read found {n} places that can no longer be read.",
+            n=scan["bad"],
+        )
+        if scan and scan.get("bad")
+        else M(
+            "card-health.errors", "The kernel reported {n} errors from the card since the box started.", n=len(errors)
+        )
+        if errors
+        else M("card-health.emmc-worn", "The storage reports that it is near the end of its life.")
+        if emmc_worn
+        else M(
+            "card-health.ext4-errors",
+            "The filesystem on the card has recorded {n} errors.",
+            n=info["ext4_errors"],
+        )
+        if info["ext4_errors"]
+        else M(
+            "card-health.counterfeit",
+            "The card has no maker's ID. Counterfeit cards often have none, and can hold less than they say.",
+        )
+        if info["manfid"] in (0, -1)
+        else M(
+            "card-health.fine",
+            "{maker} card. No errors. It does not report its own wear: the record shows what is written to it.",
+            maker=maker,
+        )
+    )
+    running = run("systemctl", "is-active", CARD_SCAN_UNIT).stdout.strip() == "active"
+    notes = []
+    if running:
+        notes.append(
+            M(
+                "card-health.scan-running",
+                "The whole-card read is running (started {at}).",
+                at=when((scan or {}).get("started", 0)),
+            )
+        )
+    actions = [
+        action(
+            "card-speed-test",
+            M("card-health.speed", "Test the read speed"),
+            M(
+                "card-health.speed.confirm",
+                "Read {mb} MB from the card to measure its speed? It takes a few seconds and writes nothing.",
+                mb=CARD_SPEED_MB,
+            ),
+        )
+    ]
+    if not running:
+        actions.append(
+            action(
+                "card-scan",
+                M("card-health.scan", "Read the whole card"),
+                M(
+                    "card-health.scan.confirm",
+                    "Read every part of the card to find places that can no longer be read? It writes nothing, "
+                    "but it takes from a quarter of an hour to an hour or more, and slows the box while it runs.",
+                ),
+            )
+        )
+    return [
+        finding(
+            "card-health",
+            M("card-health.title", "SD card health"),
+            status,
+            summary,
+            M(
+                "card-health.why",
+                "A failing card loses data and can stop the box from starting. Errors and unreadable places are "
+                "the signs that show before it fails.",
+            )
+            if status != "ok"
+            else None,
+            M(
+                "card-health.fix",
+                "Copy what you need off the box, and move the system to a new card soon. "
+                "A high-endurance card lasts longer.",
+            )
+            if status == "problem"
+            else None,
+            notes=notes,
+            evidence=evidence,
+            actions=actions,
+        )
+    ]
+
+
+def card_speed_test():
+    info = card_info()
+    if not info:
+        raise Refused(M("repair.card-speed.no-card", "The box could not find the card it starts from."))
+    start = time.monotonic()
+    r = run(
+        "dd",
+        f"if=/dev/{info['dev']}",
+        "of=/dev/null",
+        "bs=4M",
+        f"count={CARD_SPEED_MB // 4}",
+        "iflag=direct",
+        "status=none",
+        timeout=600,
+    )
+    secs = max(time.monotonic() - start, 0.001)
+    if r.returncode:
+        raise Refused(
+            M("repair.card-speed.failed", "The card could not be read: {detail}", detail=r.stderr.strip()[-200:])
+        )
+    mbps = round(CARD_SPEED_MB / secs, 1)
+    rec = _card_tests()
+    rec["speed"] = [*(rec.get("speed") or [])[-19:], {"at": time.time(), "mbps": mbps}]
+    _card_tests_save(rec)
+    return M("repair.card-speed.done", "The card read {mb} MB at {speed} MB/s.", mb=CARD_SPEED_MB, speed=mbps)
+
+
+def card_scan_start():
+    """The whole-card read, in a unit of its own (the root helper does one job at a time; this takes long)."""
+    if run("systemctl", "is-active", CARD_SCAN_UNIT).stdout.strip() == "active":
+        raise Refused(M("repair.card-scan.running", "The whole-card read is already running."))
+    rec = _card_tests()
+    rec["scan"] = {"started": time.time()}
+    _card_tests_save(rec)
+    r = run(
+        "systemd-run",
+        f"--unit={CARD_SCAN_UNIT}",
+        "--collect",
+        "-p",
+        "Nice=19",
+        "-p",
+        "IOSchedulingClass=idle",
+        f"{CODE}/irate-box",
+        "health",
+        "card-scan",
+        timeout=60,
+    )
+    if r.returncode:
+        raise Refused(
+            M("repair.card-scan.failed", "The whole-card read did not start: {detail}", detail=r.stderr.strip()[-200:])
+        )
+    return M(
+        "repair.card-scan.started", "The whole-card read has started. The Box doctor shows the result when it ends."
+    )
+
+
+def card_scan():
+    """Every block of the card read once (dd, carrying on past an unreadable one); the count of unreadable ones."""
+    info = card_info()
+    rec = _card_tests()
+    out = subprocess.run(  # noqa: TID251
+        ["dd", f"if=/dev/{info['dev']}", "of=/dev/null", "bs=1M", "iflag=direct", "conv=noerror", "status=none"],
+        capture_output=True,
+        text=True,
+    )
+    bad = sum(1 for line in out.stderr.splitlines() if "Input/output error" in line)
+    rec["scan"] = {**(rec.get("scan") or {}), "done": time.time(), "bad": bad}
+    _card_tests_save(rec)
+    return bad
+
+
 def check_builds(now=None):
     """The builds (ci.py) and the Firmware Factory (factory.py): builds waiting over a day, a
     factory family failing every time here, and what builds take on the card."""
@@ -4713,6 +5023,7 @@ def scan():
         check_wifi_stalls,
         check_space,
         check_card_writes,
+        check_card_health,
         check_builds,
         check_crashwatch,
         check_led,
@@ -4782,7 +5093,7 @@ CHOICE_RE = re.compile(
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer))$"
-    r"|^card-memcg-on$"
+    r"|^card-memcg-on$|^card-speed-test$|^card-scan$"
 )
 
 
@@ -4956,6 +5267,10 @@ def fix(choice):
         return card_accounting_on()
     if kind == "arch-remove":
         return arch_remove(arg)
+    if kind == "card-speed-test":
+        return card_speed_test()
+    if kind == "card-scan":
+        return card_scan_start()
     if kind == "card-memcg-on":
         return card_memcg_on()
     if kind == "card-set":
@@ -5084,6 +5399,9 @@ def main(argv):
         text = report(scan(), problems_only=True)
         if text:
             print(text)
+    elif argv == ["card-scan"]:  # the whole-card read, in its own unit (card_scan_start)
+        bad = card_scan()
+        print(f"unreadable places: {bad}")
     elif argv == ["--json"]:
         print(json.dumps(scan(), indent=2))
     elif len(argv) == 2 and argv[0] == "fix":
