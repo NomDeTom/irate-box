@@ -3149,8 +3149,12 @@ def _flash_findings():
                 "ok",
                 M(
                     "card-flash.on",
-                    "The logs are on the onboard flash. Its most-erased block has been erased {n} times. "
-                    "Bad blocks: {bad}.",
+                    {
+                        "one": "The logs are on the onboard flash. Its most-erased block has been erased once. "
+                        "Bad blocks: {bad}.",
+                        "other": "The logs are on the onboard flash. Its most-erased block has been erased {n} times. "
+                        "Bad blocks: {bad}.",
+                    },
                     n=max_ec,
                     bad=bad,
                 )
