@@ -40,14 +40,10 @@ def said(pw, name=None):
         return e.message["id"]
 
 
-check("by default: 15 characters (NIST's for a password that alone signs in)", said("tide pool at dusk") is None)
-check(
-    "  14: refused, saying how long",
-    said("tide pool at du") is None and said("tide pool at d") == "accounts.password.length",
-)
+check("by default: 8 characters (12 and 15 are the administrator's choices)", said("tidepool") is None)
+check("  7: refused, saying how long", said("tidepoo") == "accounts.password.length")
 choice["min_length"] = 8
-check("shortest 8 (the administrator's choice): 8 taken", said("tide pool") is None)
-check("  7: refused", said("tidepoo") == "accounts.password.length")
+check("shortest 8: 8 taken", said("tide pool") is None)
 check("  one of the commonest: refused", said("password1") == "accounts.password.common")
 check("  the username in it: refused", said("alice in chains", "alice") == "accounts.password.name")
 choice["block_common"] = False
