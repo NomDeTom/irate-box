@@ -189,7 +189,7 @@ def addon_caddy_routes(state, local, login_hash, directive="basic_auth"):
         if mode == "private":
             out.append(f"\t{directive} {{\n\t\tadmin {login_hash}\n\t}}")
         elif mode == "users":
-            out.append("\tforward_auth 127.0.0.1:8000 {\n\t\turi /_irate/user?redirect=1\n\t}")
+            out.append(f"\tforward_auth 127.0.0.1:8000 {{\n\t\turi /_irate/user?redirect=1\n\t\t{CADDY_VIA}\n\t}}")
         out.append(f'\theader Content-Security-Policy "{addon_csp(m).replace("$host", "{host}")}"')
         # Its own files only; never the bundle record or anything dotted.
         out.append("\t@hidden path_regexp (^|/)(\\.|irate-box-bundle\\.json$)\n\trespond @hidden 404")
@@ -301,6 +301,8 @@ def nginx_gates(state, admin_login=True, accounts_ready=False):
 # alone applies. With the box's own login off, the Caddyfile's hashes are one nobody knows
 # (hub_control.py admin_login) and the check is a hard one: anyone else is sent to log in.
 CADDY_SESSION_HEADER = "X-Irate-Session"
+# The front's second secret on every request to the hub (server.py VIA_SECRET), from Caddy's environment.
+CADDY_VIA = "header_up X-Irate-Via {env.HUB_VIA_SECRET}"
 
 
 # The box's own login from the box itself only (Accounts: its reach, local): a login sent from anywhere else is
@@ -318,7 +320,10 @@ def caddy_admin_gate(admin_login=True, accounts_ready=False, local_only=False):
     return (
         head
         + (CADDY_FAR_LOGIN if admin_login and local_only else "")
-        + (f"forward_auth 127.0.0.1:8000 {{\n\turi /_irate/admin?{q}\n\tcopy_headers {CADDY_SESSION_HEADER}\n}}\n")
+        + (
+            f"forward_auth 127.0.0.1:8000 {{\n\turi /_irate/admin?{q}\n\tcopy_headers {CADDY_SESSION_HEADER}\n"
+            f"\t{CADDY_VIA}\n}}\n"
+        )
     )
 
 
@@ -353,7 +358,7 @@ def caddy_snippets(state, login_hash, directive="basic_auth", admin_login=True, 
             if mode == "off"
             else caddy_admin_route(login_hash, directive, admin_login, local_only)
             if mode == "private" and not ROUTED[i][1]
-            else "forward_auth 127.0.0.1:8000 {\n\turi /_irate/user?redirect=1\n}\n"
+            else f"forward_auth 127.0.0.1:8000 {{\n\turi /_irate/user?redirect=1\n\t{CADDY_VIA}\n}}\n"
             if mode == "users"
             else ""
         )

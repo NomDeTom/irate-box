@@ -3,8 +3,10 @@
 """What only an administrator on HTTPS may ask the hub to have root do (hub/transport.py, review 2026-10-23 F1), against
 a hub it starts with a front secret: the update source, installing an update, the signing level, an add-on, a local
 add-on refused over plain HTTP, with nothing queued for root; the same over HTTPS queued and marked "https"; another
-request over plain HTTP still queued, marked "http"; reading still answered. And every security-policy action of
-root's (hub_control.POLICY_ACTIONS) but admin-gate is on the list, read from the source.
+request over plain HTTP still queued, marked "http"; reading still answered. A local process claiming to be the
+front (X-Forwarded-Proto: https without the front's second secret, review V2 L10) is not believed, and the security
+doctor says whether the hub believes it. And every security-policy action of root's (hub_control.POLICY_ACTIONS) but
+admin-gate is on the list, read from the source.
 python3 tests/api_https_gate.py"""
 
 import ast
@@ -24,9 +26,11 @@ from irate_box.hub import transport
 state = Path(tempfile.mkdtemp(prefix="https-gate-"))
 port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
 SECRET = "e" * 64
+VIA = "f" * 64
 env = dict(
     os.environ,
     HUB_FRONT_SECRET=SECRET,
+    HUB_VIA_SECRET=VIA,
     HUB_STATE_DIR=str(state),
     HUB_ETC_DIR=str(state),
     PORT=str(port),
@@ -67,11 +71,12 @@ try:
         except OSError:
             time.sleep(0.1)
 
-    def go(method, path, proto, body=None):
+    def go(method, path, proto, body=None, via=VIA):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         h = {
             "Host": f"127.0.0.1:{port}",
             "X-Irate-Front": SECRET,
+            "X-Irate-Via": via,
             "X-Irate-Admin": "1",
             "X-Forwarded-For": "192.168.4.20",
             "X-Forwarded-Proto": proto,
@@ -124,9 +129,55 @@ try:
     )
     status, _ = go("GET", "/admin/update", "http")
     check("reading over plain HTTP still answered", status == 200, status)
+    for via, which in (("", "without the front's second secret"), ("0" * 64, "with a wrong one")):
+        status, said = go("POST", gated[0][0], "https", gated[0][1], via=via)
+        check(
+            f"X-Forwarded-Proto: https {which}: taken as plain HTTP, refused, nothing queued",
+            status == 403 and (said or {}).get("message", {}).get("id") == "hub.https-only" and not queued(),
+            (status, said),
+        )
+        status, said = go("GET", "/status", "https", via=via)
+        check(f"X-Forwarded-For {which}: /status says not proxied", status == 200 and said["proxied"] is False, said)
+    status, said = go("GET", "/status", "https")
+    check("X-Forwarded-For with the secret: /status says proxied", status == 200 and said["proxied"] is True, said)
+    from irate_box.root import secdoctor
+
+    secdoctor._hub_port = lambda: port
+    secdoctor.ETC = state
+    seen = {f["id"]: f["status"] for f in secdoctor.step_admin_gate({})}
+    check(
+        "the security doctor: forwarded headers ignored without the secret",
+        seen.get("front-proof") == "ok",
+        seen,
+    )
 finally:
     hub.terminate()
     hub.wait(10)
+
+# A hub without the second secret (as before the installer made it): the doctor says so.
+port += 1
+bare = subprocess.Popen(
+    [str(REPO / "irate-box"), "server"],
+    env={k: v for k, v in env.items() if k != "HUB_VIA_SECRET"} | {"PORT": str(port)},
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+try:
+    for _ in range(300):
+        try:
+            http.client.HTTPConnection("127.0.0.1", port, timeout=1).request("GET", "/status")
+            break
+        except OSError:
+            time.sleep(0.1)
+    seen = {f["id"]: f["status"] for f in secdoctor.step_admin_gate({})}
+    check(
+        "  and a problem when the hub believes them without it",
+        seen.get("front-proof") == "problem",
+        seen,
+    )
+finally:
+    bare.terminate()
+    bare.wait(10)
 
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

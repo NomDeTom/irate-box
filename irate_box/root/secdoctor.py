@@ -738,6 +738,21 @@ def _hub_ask(method, path, headers, body=None):
         return None
 
 
+def _hub_json(path, headers):
+    """The JSON the hub answers on its loopback port, past the front, or None."""
+    import http.client
+
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", _hub_port(), timeout=5)
+        conn.request("GET", path, headers=headers)
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        return json.loads(data) if resp.status == 200 else None
+    except (OSError, ValueError):
+        return None
+
+
 def _raw_response(sock):
     """The status code of the next HTTP response on `sock`, its body read by Content-Length."""
     buf = b""
@@ -867,6 +882,48 @@ def step_admin_gate(ctx):
                     "The hub refuses an /admin request sent straight to its port without the web server's secret.",
                 ),
                 evidence=[asked],
+            )
+        )
+    # A request straight to the port that claims the web server's headers, without its second secret
+    # (server.py VIA_SECRET): /status says whether the hub took it as having come through the front.
+    claimed = _hub_json("/status", {"Host": "127.0.0.1", "X-Forwarded-For": "10.73.0.9", "X-Forwarded-Proto": "https"})
+    forwarded_t = M("front-proof.title", "Forwarded request headers")
+    claim = "GET /status, X-Forwarded-For and X-Forwarded-Proto: https, no X-Irate-Via"
+    if claimed is not None and claimed.get("proxied"):
+        out.append(
+            finding(
+                "front-proof",
+                forwarded_t,
+                "problem",
+                M(
+                    "front-proof.open",
+                    "The hub believed a request sent straight to its port that claimed to come through the web server.",
+                ),
+                M(
+                    "front-proof.why",
+                    "Any program on the box can then pose as a guest at another address, or as a visit over HTTPS, "
+                    "which a change that reaches root requires.",
+                ),
+                M(
+                    "front-proof.fix",
+                    "Run the installer again. It gives the web server a second secret for every request to the hub, "
+                    "and the hub then believes those headers only beside it.",
+                ),
+                evidence=[claim, str(ETC / "front-secret.env")],
+            )
+        )
+    elif claimed is not None:
+        out.append(
+            finding(
+                "front-proof",
+                forwarded_t,
+                "ok",
+                M(
+                    "front-proof.closed",
+                    "The hub ignores the web server's headers (a guest's address, HTTPS) on a request sent straight "
+                    "to its port without the web server's secret.",
+                ),
+                evidence=[claim],
             )
         )
     if secret:
