@@ -415,6 +415,7 @@ def settings_from_env():
             "UNCLAIMED": os.environ.get("HUB_UNCLAIMED_FILE", "/etc/nginx/irate-box-unclaimed"),
             "ACCESS": str(etc / "nginx-access.conf"),
             "FRONT": os.environ.get("HUB_NGINX_FRONT", "/etc/nginx/irate-box-front.conf"),
+            "VIA": os.environ.get("HUB_NGINX_VIA", "/etc/nginx/irate-box-via.conf"),
             "ADDONS": str(state / "addons"),
             "ADDON_ACCESS": str(etc / "nginx-addons.conf"),
             "ADDON_GATES": str(etc / "nginx-addon-gates.conf.d"),

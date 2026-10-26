@@ -569,5 +569,71 @@ check(
     },
     seen,
 )
+# The front's second secret (server.py VIA_SECRET, review V2 L10): on every request to the hub, beside the headers it
+# vouches for, and on no other app's.
+raw = (REPO / "config" / "irate-box.nginx").read_text()
+lines = raw.splitlines()
+xff = [i for i, line in enumerate(lines) if line.strip() == "proxy_set_header X-Forwarded-For $remote_addr;"]
+check(
+    "nginx: the second secret's map included once, at the top level",
+    raw.count("include @VIA@;") == 1 and raw.index("include @VIA@;") < raw.index("server {"),
+)
+check(
+    "nginx: every block that sets X-Forwarded-For sets the second secret beside it",
+    xff and all(lines[i + 1].strip() == "proxy_set_header X-Irate-Via $irate_box_via;" for i in xff),
+    [i + 1 for i in xff if lines[i + 1].strip() != "proxy_set_header X-Irate-Via $irate_box_via;"],
+)
+via_map = re.search(r"map \$proxy_host \$irate_box_via \{.*?\\n\}", inst)
+check(
+    "install.sh: the map gives it to the hub's upstream alone (volatile: never kept from an auth_request)",
+    via_map is not None
+    and all(part in via_map[0] for part in ("volatile;", 'irate_box_hub "%s";', 'default "";'))
+    and 'HUB_NGINX_VIA="$NGINX_VIA"' in inst
+    and "HUB_VIA_SECRET=" in inst,
+    via_map and via_map[0],
+)
+check("the updater's nginx -t fills in a stand-in map", '"@VIA@"' in hc)
+from irate_box.hub import access
+
+every = access.clean({app: "users" for app in access.ROUTED} | {"my-addon": "users"})
+generated = "\n".join(
+    [caddy, access.addon_caddy_routes(every, [{"id": "my-addon", "capabilities": {}}], "HASH")]
+    + list(access.caddy_snippets(every, "HASH").values())
+    + list(access.caddy_snippets(access.clean({app: "private" for app in access.ROUTED}), "HASH").values())
+    + [access.caddy_admin_gate(a, b, c) for a in (True, False) for b in (True, False) for c in (True, False)]
+    + [
+        content
+        for transport in ("http", "discovery")
+        for path, content in tls._plain_files(transport, "warning").items()
+        if path.name.startswith("caddy")
+    ]
+)
+
+
+def caddy_proxies(text):
+    """Each reverse_proxy or forward_auth: its upstream line and its block, if it has one."""
+    out = []
+    for match in re.finditer(r"(?m)^\s*(reverse_proxy|forward_auth)\b([^\n{]*)(\{?)", text):
+        body, depth, i = "", 1, match.end()
+        if match[3]:
+            while depth and i < len(text):
+                depth += {"{": 1, "}": -1}.get(text[i], 0)
+                i += 1
+            body = text[match.end() : i]
+        out.append((match[2].strip(), body))
+    return out
+
+
+proxies = caddy_proxies(generated)
+to_hub = [(up, body) for up, body in proxies if up.endswith("127.0.0.1:8000")]
+check(
+    "Caddy: every reverse_proxy and forward_auth to the hub sends the second secret",
+    len(to_hub) > 20 and all("header_up X-Irate-Via {env.HUB_VIA_SECRET}" in body for _, body in to_hub),
+    [up for up, body in to_hub if "X-Irate-Via" not in body],
+)
+check(
+    "Caddy: no other upstream gets it",
+    all("HUB_VIA_SECRET" not in body for up, body in proxies if not up.endswith("127.0.0.1:8000")),
+)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -2053,6 +2053,37 @@ UNCLAIMED_FILE = Path(os.environ.get("HUB_UNCLAIMED_FILE", f"/etc/{WEB_SERVER}/i
 # is as open as it always was.
 FRONT_SECRET = os.environ.get("HUB_FRONT_SECRET", "")
 FRONT_HEADER = "X-Irate-Front"
+# The front's word that a request came through it at all: a second secret it adds to every request it
+# passes to the hub, and to no other upstream (an app or an add-on must not learn it). The headers the
+# front sets (who the guest is, whether over HTTPS, which page a check is for) are believed only
+# beside it; without it they are dropped, and the request is what it is, a local process on loopback.
+# Else anything on the box could claim another guest's address or HTTPS. Unset (the hub run bare),
+# they are believed as they always were.
+VIA_SECRET = os.environ.get("HUB_VIA_SECRET", "")
+VIA_HEADER = "X-Irate-Via"
+FORWARDED_HEADERS = (
+    "X-Forwarded-For",
+    "X-Forwarded-Proto",
+    "X-Forwarded-Host",
+    "X-Forwarded-Uri",
+    "X-Forwarded-Method",
+    "X-Original-URI",
+    "X-Original-Method",
+    "X-Real-IP",
+)
+
+
+def drop_unvouched(headers):
+    """Remove the front's headers from a request that doesn't carry the front's VIA_SECRET; remove
+    the secret itself either way, so nothing later reads or repeats it."""
+    vouched = not VIA_SECRET or hmac.compare_digest(headers.get(VIA_HEADER, "").encode(), VIA_SECRET.encode())
+    del headers[VIA_HEADER]
+    if not vouched:
+        for name in FORWARDED_HEADERS:
+            del headers[name]
+    return vouched
+
+
 SESSION_COOKIE = "irate_session"
 # A browser that has signed in to an account before (accounts.device_mark): OWASP's device cookie.
 DEVICE_COOKIE = "irate_device"
@@ -3795,6 +3826,7 @@ class Handler(BaseHTTPRequestHandler):
         # next request down a connection about to close.
         self._close_after = False
         if ok:
+            drop_unvouched(self.headers)
             try:
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -3990,7 +4022,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _https(self):
         """Over HTTPS: the web server says so (X-Forwarded-Proto, which it always sets, replacing a
-        guest's own). Run bare, the hub is plain HTTP."""
+        guest's own, and which stays only beside its VIA_SECRET). Run bare, the hub is plain HTTP."""
         return "X-Forwarded-For" in self.headers and self.headers.get("X-Forwarded-Proto") == "https"
 
     def _irate_check(self, path):

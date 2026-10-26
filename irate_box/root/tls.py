@@ -218,7 +218,7 @@ def _plain_files(transport, admin_http, access_state=None):
                     caddy += (
                         "\t@probe path "
                         + " ".join(PROBES)
-                        + "\n\thandle @probe {\n\t\treverse_proxy 127.0.0.1:8000\n\t}\n"
+                        + "\n\thandle @probe {\n\t\treverse_proxy 127.0.0.1:8000 {\n\t\t\theader_up X-Irate-Via {env.HUB_VIA_SECRET}\n\t\t}\n\t}\n"
                     )
                 caddy += f"\thandle {{\n\t\tredir https://{{host}}:{TWINS[name]}{{uri}} 302\n\t}}\n"
             else:
@@ -242,7 +242,8 @@ def _plain_files(transport, admin_http, access_state=None):
                 else f"https://{{host}}:{TWINS[name]}{{uri}}"
             )
             policy += f"\tredir @irate_admin_plain {dest} 302\n}}\n"
-        policy += "handle /http-admin-warning {\n\treverse_proxy 127.0.0.1:8000\n}\nhandle /http-admin-continue {\n\treverse_proxy 127.0.0.1:8000\n}\n"
+        for page in ("/http-admin-warning", "/http-admin-continue"):
+            policy += f"handle {page} {{\n\treverse_proxy 127.0.0.1:8000 {{\n\t\theader_up X-Irate-Via {{env.HUB_VIA_SECRET}}\n\t}}\n}}\n"
         out[FRONT / f"caddy-policy-{name}.inc"] = policy
     return out
 

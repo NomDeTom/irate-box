@@ -90,7 +90,9 @@
 		route {
 			header @asset Cache-Control "no-cache"
 			file_server @asset
-			reverse_proxy 127.0.0.1:8000
+			reverse_proxy 127.0.0.1:8000 {
+				header_up X-Irate-Via {env.HUB_VIA_SECRET}
+			}
 		}
 	}
 
@@ -102,7 +104,9 @@
 		request_body {
 			max_size 25MB
 		}
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+		}
 	}
 
 	# The themes page (its tile): public, private or off like the apps. Off hides only the
@@ -123,7 +127,9 @@
 	}
 	handle /api/drop/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/drop.caddy*
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+		}
 	}
 
 	# --- /wiki → Kiwix, on an origin of its own (irate_box_wiki, below) ------------------
@@ -246,10 +252,14 @@
 			@flasher_page path /flasher /flasher/ /flasher/flasher.html
 			handle @flasher_page {
 				import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/flasher.caddy*
-				reverse_proxy 127.0.0.1:8000
+				reverse_proxy 127.0.0.1:8000 {
+					header_up X-Irate-Via {env.HUB_VIA_SECRET}
+				}
 			}
 			@flasher_hub path /flasher/api/*
-			reverse_proxy @flasher_hub 127.0.0.1:8000
+			reverse_proxy @flasher_hub 127.0.0.1:8000 {
+				header_up X-Irate-Via {env.HUB_VIA_SECRET}
+			}
 			# The bundle's licence notices (About links them) sit beside public/, not in it.
 			handle /flasher/THIRD-PARTY-NOTICES.txt {
 				root * {$HUB_FLASHER_ROOT:/usr/share/hub/apps/flasher}
@@ -338,6 +348,7 @@
 				request_header -X-Irate-Session
 				request_header -X-Irate-User
 				forward_auth 127.0.0.1:8000 {
+					header_up X-Irate-Via {env.HUB_VIA_SECRET}
 					uri /internal/git-access?soft=1
 					header_up X-Original-URI {http.request.orig_uri}
 					header_up X-Original-Method {http.request.method}
@@ -380,6 +391,7 @@
 				request_header -X-Irate-Session
 				request_header -X-Irate-User
 				forward_auth 127.0.0.1:8000 {
+					header_up X-Irate-Via {env.HUB_VIA_SECRET}
 					uri /internal/git-access?soft=1
 					header_up X-Original-URI {http.request.orig_uri}
 					header_up X-Original-Method {http.request.method}
@@ -478,6 +490,7 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 		}
 		handle @unclaimed {
 			reverse_proxy 127.0.0.1:8000 {
+				header_up X-Irate-Via {env.HUB_VIA_SECRET}
 				# The hub's proof this came through here (server.py FRONT_SECRET), read
 				# from the environment at request time, so never in Caddy's saved config.
 				header_up X-Irate-Front {env.HUB_FRONT_SECRET}
@@ -496,6 +509,7 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 				request_header -X-Irate-Session
 			}
 			reverse_proxy 127.0.0.1:8000 {
+				header_up X-Irate-Via {env.HUB_VIA_SECRET}
 				header_up X-Irate-Front {env.HUB_FRONT_SECRET}
 			}
 		}
@@ -517,6 +531,7 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 		}
 		# The front's secret, as on /admin: the hub shows the administrator every save's thumbnail.
 		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
 			header_up X-Irate-Front {env.HUB_FRONT_SECRET}
 		}
 	}
@@ -583,11 +598,13 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-admin.inc
 	}
 	handle /api/v2/* {
 		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
 			header_up Cookie "irate_session=[^;]*;?\s*" ""
 		}
 	}
 	handle /api/saves* {
 		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
 			header_up Cookie "irate_session=[^;]*;?\s*" ""
 		}
 	}
@@ -641,11 +658,13 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-draw.inc
 	}
 	handle /api/v2/* {
 		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
 			header_up Cookie "irate_session=[^;]*;?\s*" ""
 		}
 	}
 	handle /api/saves* {
 		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
 			header_up Cookie "irate_session=[^;]*;?\s*" ""
 		}
 	}

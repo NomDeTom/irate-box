@@ -2925,6 +2925,8 @@ def _nginx_check(src, opts):
         # The front's /admin secret: its include, with a stand-in (the check only parses it).
         (Path(tmp) / "front.conf").write_text('proxy_set_header X-Irate-Front "check";\n')
         text = text.replace("@FRONT@", f"{tmp}/front.conf")
+        (Path(tmp) / "via.conf").write_text('map $proxy_host $irate_box_via { volatile; default ""; }\n')
+        text = text.replace("@VIA@", f"{tmp}/via.conf")
         (Path(tmp) / "addons.conf").write_text(access.addon_nginx_conf(access.read(ACCESS_FILE), []))
         # The TLS twins' includes: an empty folder (a box with no certificate), their ports as set.
         (Path(tmp) / "tls").mkdir()
