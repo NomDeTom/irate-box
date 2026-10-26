@@ -301,12 +301,14 @@ DESCRIBE = {
     "steady": "A reconnect after a minute, again every 5; heavier steps after 10, 20 and 60 minutes down.",
     "brisk": "A reconnect at once, again every 3 minutes; heavier steps after 5, 15 and 30 minutes down.",
     "urgent": "Everything soonest: heavier steps after 3, 8 and 30 minutes down.",
-    "watch": "Looks and logs. Nothing else: NetworkManager (or whatever runs the link) is left to itself.",
-    "reconnect": "Reconnects.",
-    "restart": "Reconnects; then restarts the network service.",
-    "radio": "Reconnects; restarts the network service; then resets the radio. A USB radio: port reset, then rebind, then "
-    "re-authorise. An SDIO radio: rebind the function, then rebind the SD host. Either, last: reload the driver.",
-    "reboot": "All of the above; then reboots the box: at most 3 times a day, never during a build or an update, nor soon after it started.",
+    # The reach: what its heaviest step does, in words; the lighter steps before it are the slider's earlier stops.
+    "watch": "Records each outage and takes no action. Whatever runs the link is left to manage it.",
+    "reconnect": "Disconnects from the network and connects to it again.",
+    "restart": "Restarts the program that runs the box's network connections. Every connection drops for a few "
+    "seconds, the hotspot's too.",
+    "radio": "Switches the WiFi radio off and on again, as unplugging it would. Its connections are down for up to "
+    "a minute, the hotspot's too when it shares the radio.",
+    "reboot": "Restarts the whole box. Never more than 3 times a day, during a build or an update, or soon after it started.",
 }
 # Every value a Custom field may set: (low, high), or the allowed words.
 FIELDS = {

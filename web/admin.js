@@ -6933,7 +6933,7 @@ const STEP_DOES = {
 // the network adapter.
 const REACH_TITLE = {
   watch: "Watch only",
-  reconnect: "Reconnect",
+  reconnect: "Reconnect to the network",
   restart: "Restart the network service",
   radio: "Reset the radio",
   reboot: "Reboot",
@@ -7039,10 +7039,10 @@ const RETRY_WORDS = {
 const GIVEUP_STOPS = (period) =>
   `After ${period} the box stops retrying and reports it. If the network comes back by itself, the box still reconnects.`;
 const GIVEUP_WORDS = {
-  never: ["No limit", "The box retries for as long as needed, and reconnects whenever the network returns."],
   hour: ["An hour", GIVEUP_STOPS("an hour")],
   day: ["A day", GIVEUP_STOPS("a day")],
   week: ["A week", GIVEUP_STOPS("a week")],
+  never: ["No limit", "The box retries for as long as needed, and reconnects whenever the network returns."],
 };
 
 // Roaming: from the least change to the owner's system to the most,
@@ -7123,10 +7123,12 @@ function willText(eff) {
 }
 
 // Every choice the same way: radio cards, each one's description and what it does.
-// compact: a row of chips and one line for the chosen one, where the options' words would repeat each other.
-function rungs(box, group, items, compact = false) {
+// "compact": a row of chips and one line for the chosen one, where the options' words would repeat each other;
+// "slider": the same for an ordered scale, lightest to heaviest, the line under it naming the level.
+function rungs(box, group, items, form = "") {
   AW.choices(box, `up-${group}`, items, {
-    compact,
+    compact: form === "compact",
+    slider: form === "slider",
     onChange: (name) => upChoose({ [group]: name }, netData.levels),
   });
 }
@@ -7138,13 +7140,13 @@ function buildUpChoices(levels) {
     "pace",
     // What the chosen pace does, from its own numbers (its description says the same).
     levels.pace.map((n) => ({ value: n, title: cap1(n), says: paceLine(n, levels) })),
-    true,
+    "slider",
   );
   rungs(
     net.reach,
     "reach",
     levels.reach.map((n) => ({ value: n, title: reachTitle(n, false), says: levels.describe[n] || "" })),
-    true,
+    "slider",
   );
   rungs(
     net.guests,
@@ -7154,7 +7156,7 @@ function buildUpChoices(levels) {
       title: GUEST_WORDS[n][0],
       says: GUEST_WORDS[n][1],
     })),
-    true,
+    "compact",
   );
   rungs(
     net.wedge,
@@ -7168,22 +7170,30 @@ function buildUpChoices(levels) {
   rungs(
     net.retry,
     "retry",
-    Object.keys(levels.retry || RETRY_WORDS).map((n) => ({
+    // Lightest first, as the other sliders: the longest wait between retries (sparing) to the shortest (eager).
+    (levels.retry
+      ? Object.keys(levels.retry).sort((a, b) => levels.retry[b] - levels.retry[a])
+      : Object.keys(RETRY_WORDS).reverse()
+    ).map((n) => ({
       value: n,
       title: RETRY_WORDS[n][0],
       says: RETRY_WORDS[n][1],
     })),
-    true,
+    "slider",
   );
   rungs(
     net.giveUp,
     "give_up",
-    Object.keys(levels.give_up || GIVEUP_WORDS).map((n) => ({
+    // Shortest first, as the other sliders run to their furthest: an hour of retries up to no limit (null) last.
+    (levels.give_up
+      ? Object.keys(levels.give_up).sort((a, b) => (levels.give_up[a] ?? Infinity) - (levels.give_up[b] ?? Infinity))
+      : Object.keys(GIVEUP_WORDS)
+    ).map((n) => ({
       value: n,
       title: GIVEUP_WORDS[n][0],
       says: GIVEUP_WORDS[n][1],
     })),
-    true,
+    "slider",
   );
   rungs(
     net.watchNew,
@@ -7219,9 +7229,12 @@ function buildUpChoices(levels) {
     levels.reach.map((n) => ({
       value: n,
       title: reachTitle(n, true),
-      says: n === "radio" ? "Reconnects; restarts the network service; then resets the network adapter." : levels.describe[n] || "",
+      says:
+        n === "radio"
+          ? "Switches the network adapter off and on again, as unplugging it would. Its connection is down for up to a minute."
+          : levels.describe[n] || "",
     })),
-    true,
+    "slider",
   );
 
   drawRoamTiles(levels);
@@ -7294,7 +7307,7 @@ function fillUpForm(chosen, levels) {
 
 function showUpPreset(levels) {
   for (const [boxKey, key] of UP_GROUPS) {
-    for (const input of net[boxKey].querySelectorAll("input")) {
+    for (const input of net[boxKey].querySelectorAll("input[type=radio]")) {
       input.checked = input.value === upPick[key];
       input.closest(".choice-tile").classList.toggle("chosen", input.checked);
     }
@@ -7377,7 +7390,7 @@ function readUpForm() {
 // The steps the watchdog may take, a row of ticks per connection (the box's WiFi and wired links, and any
 // connection steps were switched off for before): all ticked unless switched off (uplink.py steps_off).
 const UP_STEP_NAMES = {
-  reconnect: "Reconnect",
+  reconnect: "Reconnect to the network",
   restart: "Restart the network service",
   radio: "Reset the radio",
   reboot: "Reboot the box",

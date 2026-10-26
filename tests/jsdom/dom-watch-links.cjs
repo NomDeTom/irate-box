@@ -54,7 +54,7 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   check('  what each is doing now: the WiFi not watched and down, and what it would start by itself',
     /Not monitored, and down\. Autoconnect: netplan-wlan0-SKYTB1H1/.test(rows[0].textContent) && /Monitoring: up/.test(rows[1].textContent),
     rows.map((r) => r.textContent).join(' / '));
-  const tiles = (id) => [...d.querySelectorAll(`#${id} input`)].map((i) => `${i.value}${i.checked ? '*' : ''}`).join(',');
+  const tiles = (id) => [...d.querySelectorAll(`#${id} input[type=radio]`)].map((i) => `${i.value}${i.checked ? '*' : ''}`).join(',');
   check('a link not set here: while it holds the route (chosen), looked at, every link, none', tiles('up-watchnew') === 'uplink*,look,all,none', tiles('up-watchnew'));
   check('steps that reach every link: only when nothing works (chosen), for the route\'s link, for any', tiles('up-boxsteps') === 'nothing-works*,uplink,any', tiles('up-boxsteps'));
   check('a cable unplugged: wait (chosen), reconnect now and then, the whole ladder', tiles('up-cable') === 'wait*,reconnect,ladder', tiles('up-cable'));
