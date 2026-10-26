@@ -53,7 +53,7 @@ def post(path, body, extra=b""):
 
 
 try:
-    for _ in range(50):
+    for _ in range(300):  # up to 30 s: a busy CI runner can take longer than 5 s to start the hub
         try:
             if raw(f"GET /status HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n".encode(), 1) == 200:
                 break
