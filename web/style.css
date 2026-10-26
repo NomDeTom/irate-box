@@ -5659,6 +5659,45 @@ label > .aw-onoff-box ~ .chip-group,
 .aw-onoff-row > .chip-group {
   flex: none;
 }
+/* The Clock page's time sources: one row each, in the owner's order, moved with the arrows at its start. */
+.clock-source .clock-move {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+.clock-source .clock-move .action-btn {
+  padding: 0.1rem 0.45rem;
+}
+.clock-source .clock-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 18rem;
+}
+.clock-source .clock-name .aw-label {
+  min-width: 0;
+}
+@media (max-width: 40rem) {
+  .clock-source .clock-name {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+}
+.clock-source .clock-now,
+.clock-source .clock-address,
+.clock-source .clock-what {
+  flex-basis: 100%;
+}
+.clock-source .clock-now {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+#clock .net-cards {
+  align-items: start;
+}
+.clock-order-head {
+  margin: 0.8rem 0 0.1rem;
+}
 
 /* A few choices as chips (AW.choices compact): the radio in each, out of sight but focusable; the chosen one
    filled; one line under them saying what it does. */

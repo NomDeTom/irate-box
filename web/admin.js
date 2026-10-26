@@ -6201,33 +6201,118 @@ async function loadHealth() {
   }
 }
 
-// The clock's sources (clock.py): the time service and what it asks, held as a draft until Save; how each chosen
-// source stands. The page's polls redraw the states, never the draft.
-const CLOCK_STATE = {
-  "in-use": ["ok", "In use"],
-  answering: ["ok", "Answering, not used"],
-  "not-answering": ["problem", "Not answering"],
-  "not-found": ["warn", "Not found"],
-  unknown: ["ok", "Not reported"],
+// What each time source is doing now, as a short statement (clock.py's mark: chronyc's * + - x ~ ?, or timesyncd's
+// one server in use), and its pill. A source chosen but not seen at all says why, by kind.
+const CLOCK_MARK = {
+  selected: ["ok", "Sets the time"],
+  combined: ["ok", "Helps set the time"],
+  spare: ["ok", "Standing by"],
+  standby: ["ok", "Standing by"],
+  disagrees: ["warn", "Disagrees with the others"],
+  unsteady: ["warn", "Too unsteady to use"],
+  silent: ["problem", "No answer"],
 };
-// The clock's sources as a section: its value the choice (service, pool, GPS, module, serve, local server); the
-// page's polls redraw the states, and a draft is kept over a saved choice that changes.
+const CLOCK_MISSING = {
+  gps: "No receiver",
+  module: "Not running",
+  local: "Never heard",
+  pool: "Never heard",
+};
+const CLOCK_NAMES = {
+  gps: "GPS",
+  local: "A server on the local network",
+  pool: "The internet's pool",
+  module: "The hardware clock",
+};
+// A source's offset and when it was last heard, in a few words ("1.2 ms out, heard 12 s ago").
+function clockDetail(source) {
+  if (!source || source.ago == null) return "";
+  const off = Math.abs(source.offset || 0);
+  const out =
+    off < 0.001
+      ? `${Math.round(off * 1e6)} µs out`
+      : off < 1
+        ? `${(off * 1000).toFixed(1)} ms out`
+        : `${off.toFixed(1)} s out`;
+  const ago =
+    source.ago < 120
+      ? `${source.ago} s`
+      : source.ago < 7200
+        ? `${Math.round(source.ago / 60)} min`
+        : `${Math.round(source.ago / 3600)} h`;
+  return `${out}, heard ${ago} ago`;
+}
+// What the hotspot is given now, and from where (chrony's tracking): a guest's device, or another box, can tell a
+// good time from a weak one by its stratum. The hardware clock alone is served as stratum 11 (clock.py), and a box
+// that is not synchronised serves nothing a device accepts.
+function servedNow(c) {
+  const tr = c.tracking;
+  if (!tr.synced)
+    return "Served now: nothing a device accepts. The box's own time is not synchronised, and it says so.";
+  const from =
+    tr.ref === "GPS" || tr.ref === "PPS"
+      ? "GPS"
+      : tr.ref === "RTC"
+        ? hardwareName(c.hardware) || "the hardware clock"
+        : tr.ref === c.local
+          ? `the server ${c.local}`
+          : `a time server (${tr.ref})`;
+  return tr.ref === "RTC"
+    ? `Served now: the time from ${from} alone, as stratum ${tr.stratum}. That marks it as a weak source: devices and other boxes rank it below any network or GPS time.`
+    : `Served now: the time from ${from}, as stratum ${tr.stratum}.`;
+}
+// The hardware clock: what keeps the time while the box is off, named for what it is.
+function hardwareName(hw) {
+  if (!hw || hw.kind === "none") return "";
+  return hw.kind === "module"
+    ? `the external ${hw.chip} on I2C bus ${hw.bus}, at ${hw.addr}`
+    : `the inbuilt clock${hw.name ? ` (${hw.name})` : ""}`;
+}
+function renderClockHw(c) {
+  const box = document.getElementById("clock-hw");
+  if (!box || !c) return;
+  const hw = c.hardware || { kind: "none" };
+  const name = hardwareName(hw);
+  const words =
+    hw.kind === "module"
+      ? `It keeps the time while the box is off, and sets the box's clock at boot. ${hw.by === "found" ? "The box found it and set it up by itself." : ""}`
+      : hw.kind === "board"
+        ? "It keeps the time while the box is off, and sets the box's clock at boot."
+        : "None: the box keeps no time while it is off. An external clock on I2C (a DS3231, an RV-8803, an RX8130) keeps it. The box looks for one now and then, and sets up one that it finds.";
+  box.replaceChildren(
+    el(
+      "div",
+      { className: "aw-field" },
+      el("span", { className: "aw-label", textContent: "Hardware clock" }),
+      el("span", {
+        className: "output-value",
+        textContent: name ? name[0].toUpperCase() + name.slice(1) : "None",
+      }),
+      el("small", { className: "setting-desc", textContent: words.trim() }),
+    ),
+  );
+}
+// The clock's sources as a section: its value the choice (service, the sources on or off, the local server, serving
+// the hotspot, and the order). The page's polls redraw the states, and a draft is kept over a saved choice that changes.
 let clkLast = null;
+const CLOCK_ORDER = ["gps", "local", "pool", "module"];
 const clkSec = AW.section({
   id: "clock-sources",
   label: "Time sources",
   saved: null,
   why: (c, v) =>
-    !v.pool && !v.gps && !v.module && !v.local
-      ? "Select at least one source: with none, nothing sets the clock."
-      : null,
+    v.local_on && !v.local
+      ? "Type the local server's address, or switch it off."
+      : !v.pool && !v.gps && !v.module && !(v.local_on && v.local)
+        ? "Select at least one source: with none, nothing sets the clock."
+        : null,
   warn: (c, v) => clockWarn(v, clkLast.c),
   save: (c, v) => {
     const j = AW.job();
     hlRequest(
       {
         action: "fix",
-        choice: `clock-sources:${v.service}:${v.pool ? 1 : 0}:${v.gps ? 1 : 0}:${v.module ? 1 : 0}:${v.serve ? 1 : 0}:${v.local || "-"}`,
+        choice: `clock-sources:${v.service}:${v.pool ? 1 : 0}:${v.gps ? 1 : 0}:${v.module ? 1 : 0}:${v.serve ? 1 : 0}:${(v.local_on && v.local) || "-"}:${v.order.join(",")}`,
       },
       "clock-sources",
       j.done,
@@ -6239,6 +6324,7 @@ const clkSec = AW.section({
 function renderClockSources(c, busy, own) {
   const box = document.getElementById("clock-sources");
   if (!box) return;
+  renderClockHw(c);
   if (!c) {
     box.replaceChildren(
       el("p", { className: "setting-desc", textContent: "Not checked yet." }),
@@ -6253,14 +6339,16 @@ function renderClockSources(c, busy, own) {
     document.activeElement.tagName === "INPUT"
   )
     return; // typing: left alone
-  // What is saved: the choice made here, else the image's own service as it runs (its servers its own).
+  // What is saved: the choice made here, else the system's default service as it runs (its servers its own).
   const saved = {
     service: c.service || (c.daemon === "chrony" ? "chrony" : "image"),
     pool: c.service ? !!c.pool : true,
     gps: !!c.gps,
     module: !!c.module,
     serve: !!c.serve,
+    local_on: !!c.local,
     local: c.local || "",
+    order: (c.order && c.order.length ? c.order : CLOCK_ORDER).slice(),
   };
   // The saved choice, when it changes: the section draws this again (onChange) with a draft kept over it.
   if (
@@ -6275,6 +6363,7 @@ function renderClockSources(c, busy, own) {
   )
     return clkSec.update(saved);
   const values = clkSec.values();
+  const chrony = values.service === "chrony";
   const set = (k, v) => {
     if (k === "service" && v === "image") {
       clkSec.set("gps", false, true);
@@ -6283,71 +6372,151 @@ function renderClockSources(c, busy, own) {
     }
     clkSec.set(k, v);
   };
-  // A source on or off: its name and what it is, then On and Off.
-  const tick = (key, label, desc, disabled) =>
-    el(
+  const states = Object.fromEntries((c.sources || []).map((s) => [s.source, s]));
+  // Why a source can't be chosen here, or null.
+  const why = {
+    gps: chrony ? null : "Only with chrony.",
+    module: !chrony
+      ? "With the system's default service, the hardware clock sets the time at boot only."
+      : !c.module_ready
+        ? c.hardware && c.hardware.kind === "board"
+          ? "chrony cannot read the inbuilt clock. It sets the time at boot."
+          : "No external clock is set up."
+        : null,
+    local: null,
+    pool: null,
+  };
+  // What each source is, under its name.
+  const what = {
+    gps: chrony
+      ? `${c.gps_device ? "A receiver is connected." : "No receiver is connected now: connect one on USB or the UART."} Selecting GPS installs the GPS time toolkit (gpsd).`
+      : "",
+    module: c.module_ready
+      ? `${hardwareName(c.hardware)[0].toUpperCase()}${hardwareName(c.hardware).slice(1)}, read every 4 s. It counts whole seconds.`
+      : "",
+    local: "A router or another box on the same network that serves the time.",
+    pool: "Public time servers (pool.ntp.org). Needs the internet.",
+  };
+  const move = (key, step) => {
+    const order = values.order.slice();
+    const i = order.indexOf(key);
+    const j = i + step;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    clkSec.set("order", order);
+  };
+  const on = (key) => (key === "local" ? !!values.local_on : !!values[key]);
+  const row = (key, i) => {
+    const off = busy || clkSec.disabled();
+    const up = el("button", {
+      type: "button",
+      className: "action-btn small",
+      textContent: "↑",
+      disabled: off || i === 0,
+      onclick: () => move(key, -1),
+    });
+    up.setAttribute("aria-label", `Move ${CLOCK_NAMES[key]} up`);
+    const down = el("button", {
+      type: "button",
+      className: "action-btn small",
+      textContent: "↓",
+      disabled: off || i === values.order.length - 1,
+      onclick: () => move(key, 1),
+    });
+    down.setAttribute("aria-label", `Move ${CLOCK_NAMES[key]} down`);
+    const control =
+      key === "local"
+        ? AW.onOffChips(CLOCK_NAMES[key], !!values.local_on, off, (v) => set("local_on", v))
+        : AW.onOffChips(CLOCK_NAMES[key], !!values[key], off || !!why[key], (v) => set(key, v));
+    // The local server's address, under its switch while it is On.
+    let address = null;
+    if (key === "local" && values.local_on) {
+      address = el("input", {
+        type: "text",
+        value: values.local,
+        placeholder: "e.g. 192.168.1.1",
+        size: 24,
+        disabled: off,
+        "aria-label": "The local time server's address",
+      });
+      address.addEventListener("input", () =>
+        clkSec.set("local", address.value.trim(), true),
+      );
+    }
+    // Its state now, only for a source chosen and saved as chosen (a draft's has none yet).
+    const st = on(key) && states[key];
+    const [pill, word] = st
+      ? st.mark
+        ? CLOCK_MARK[st.mark] || ["ok", st.mark]
+        : ["warn", CLOCK_MISSING[key]]
+      : [null, null];
+    return el(
       "div",
-      { className: "setting inline aw-onoff-row" },
+      { className: "aw-field clock-source" },
       el(
         "span",
-        {},
-        el("span", { className: "setting-name", textContent: label }),
-        desc
-          ? el("span", { className: "setting-desc", textContent: ` ${desc}` })
-          : null,
+        { className: "clock-name" },
+        el("span", { className: "clock-move" }, up, down),
+        el("span", { className: "aw-label", textContent: `${i + 1}. ${CLOCK_NAMES[key]}` }),
       ),
-      AW.onOffChips(label, !!values[key], busy || disabled || clkSec.disabled(), (on) => set(key, on)),
+      control,
+      pill
+        ? el(
+            "span",
+            { className: "clock-now" },
+            el("span", { className: `fstate fstate-${pill}`, textContent: word }),
+            clockDetail(st)
+              ? el("small", { className: "setting-desc", textContent: ` ${clockDetail(st)}` })
+              : null,
+          )
+        : null,
+      address ? el("span", { className: "clock-address" }, address) : null,
+      el("small", {
+        className: "setting-desc clock-what",
+        textContent: why[key] || what[key],
+      }),
     );
-  const addr = el("input", {
-    type: "text",
-    value: values.local,
-    placeholder: "e.g. 192.168.1.1",
-    size: 30,
-    disabled: busy,
-    "aria-label": "A time server on the local network",
-  });
-  // Restore: an action, at once after its question.
+  };
+  const imageName =
+    c.daemon === "chrony" && !c.service ? "chrony" : "systemd-timesyncd";
+  // Restore: an action, at once.
   const footBox = el(
     "div",
     { className: "library-buttons" },
     ...(c.changed
       ? [
           actionButton(
-            "Restore the image's settings",
+            "Restore the system's defaults",
             () => {
-              {
-                clkSec.discard();
-                hlRequest(
-                  { action: "fix", choice: "clock-undo" },
-                  "clock-sources",
-                );
-              }
+              clkSec.discard();
+              hlRequest({ action: "fix", choice: "clock-undo" }, "clock-sources");
             },
             { disabled: busy },
           ),
         ]
       : []),
   );
-  addr.addEventListener("input", () =>
-    clkSec.set("local", addr.value.trim(), true),
+  const serve = el(
+    "div",
+    { className: "aw-field" },
+    el("span", { className: "aw-label", textContent: "Serve the time to the hotspot" }),
+    AW.onOffChips("Serve the time to the hotspot", !!values.serve, busy || clkSec.disabled() || !chrony, (v) => set("serve", v)),
+    el("small", {
+      className: "setting-desc",
+      textContent: chrony
+        ? "Guests' devices can ask the box for the time (NTP). The hotspot firewall opens UDP port 123 to guests while this is on."
+        : "Only with chrony.",
+    }),
+    chrony && c.serve && c.tracking
+      ? el("small", { className: "setting-desc clock-served", textContent: servedNow(c) })
+      : null,
   );
-  const states = (c.sources || []).map((source) => {
-    const [st, word] = CLOCK_STATE[source.state] || ["ok", source.state];
-    return el(
-      "li",
-      {},
-      el("span", { className: `fstate fstate-${st}`, textContent: word }),
-      ` ${source.name[0].toUpperCase()}${source.name.slice(1)}`,
-    );
-  });
-  const imageName =
-    c.daemon === "chrony" && !c.service ? "chrony" : "systemd-timesyncd";
   box.replaceChildren(
     chipRow(
       "Time service",
       [
         ["chrony", "chrony (recommended)"],
-        ["image", `The image's own (${imageName})`],
+        ["image", `The system's default (${imageName})`],
       ],
       values.service,
       (v) => set("service", v),
@@ -6355,67 +6524,13 @@ function renderClockSources(c, busy, own) {
     ),
     el("p", {
       className: "setting-desc",
-      textContent:
-        values.service === "chrony"
-          ? "chrony asks each source you select and shows how each one stands. It can use GPS. Selecting it installs chrony and removes systemd-timesyncd. Restore puts them back."
-          : "The service the image came with, asking the servers you select. It cannot use GPS, and it says only which server it uses now.",
+      textContent: chrony
+        ? "chrony asks every source selected, prefers the first one while it answers well, and falls back on the others. Selecting it installs chrony and removes systemd-timesyncd. Restore puts them back."
+        : "The time service the system came with. It asks the servers in this order, one at a time, and cannot use GPS or the hardware clock as a source.",
     }),
-    tick(
-      "pool",
-      "The internet's pool",
-      "Public time servers (pool.ntp.org). Needs the internet.",
-    ),
-    el(
-      "div",
-      { className: "aw-field" },
-      el("span", {
-        className: "aw-label",
-        textContent: "A server on the local network",
-      }),
-      addr,
-      el("span", {
-        className: "setting-desc",
-        textContent:
-          "A router or another box that serves the time. Leave it empty for none.",
-      }),
-    ),
-    tick(
-      "gps",
-      "GPS",
-      values.service === "chrony"
-        ? `${c.gps_device ? "A receiver is connected." : "No receiver is connected now: connect one on USB or the UART."} Selecting GPS installs the GPS time toolkit (gpsd).`
-        : "Only with chrony.",
-      values.service !== "chrony",
-    ),
-    tick(
-      "module",
-      "The clock module",
-      values.service !== "chrony"
-        ? "With the image's own service the module sets the time at boot only."
-        : c.module_ready
-          ? "Its time, read every 4 s. chrony uses it while GPS and the network are silent."
-          : "No clock module is set up: scan for one above. It still sets the time at boot.",
-      values.service !== "chrony" || !c.module_ready,
-    ),
-    tick(
-      "serve",
-      "Serve the time to the hotspot",
-      values.service === "chrony"
-        ? "Guests' devices can ask the box for the time (NTP). The hotspot firewall opens UDP port 123 to guests while this is on."
-        : "Only with chrony.",
-      values.service !== "chrony",
-    ),
-    states.length
-      ? el(
-          "div",
-          { className: "clock-states" },
-          el("span", {
-            className: "aw-label",
-            textContent: "How each selected source stands",
-          }),
-          el("ul", { className: "net-facts" }, ...states),
-        )
-      : null,
+    el("p", { className: "setting-desc clock-order-head", textContent: "Sources, the most trusted first:" }),
+    ...values.order.map(row),
+    serve,
     clkSec.foot,
     clkSec.reason,
     footBox,
@@ -6440,15 +6555,15 @@ function clockWarn(cur, c) {
     words.push("the hotspot firewall closes UDP port 123 again");
   const what = [
     cur.gps ? "GPS" : "",
-    cur.module ? "the clock module" : "",
-    cur.local ? `the server ${cur.local}` : "",
+    cur.module ? "the hardware clock" : "",
+    cur.local_on && cur.local ? `the server ${cur.local}` : "",
     cur.pool ? "the internet's pool" : "",
   ]
     .filter(Boolean)
     .join(", ");
   return (
-    `${cur.service === "chrony" ? "chrony" : "The image's own time service"} asks ${what || "nothing"}.` +
-    `${words.length ? ` On Save, ${words.join(". ")}.` : ""} Restore puts everything back as the image had it.`
+    `${cur.service === "chrony" ? "chrony" : "The system's default time service"} asks ${what || "nothing"}.` +
+    `${words.length ? ` On Save, ${words.join(". ")}.` : ""} Restore puts everything back as the system had it.`
   );
 }
 

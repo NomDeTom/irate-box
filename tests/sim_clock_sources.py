@@ -128,8 +128,26 @@ check(
 check("  timesyncd restarted to read it", ["systemctl", "restart", "systemd-timesyncd.service"] in calls)
 clock.apply("clock-sources:image:1:0:0:0:-")
 check(
-    "  the pool: Debian's four servers as the fallback",
-    "FallbackNTP=0.debian.pool.ntp.org" in drop.read_text() and "NTP=\n" in drop.read_text(),
+    "  the pool: Debian's four servers, asked in turn",
+    "NTP=0.debian.pool.ntp.org 1.debian.pool.ntp.org" in drop.read_text() and "FallbackNTP=\n" in drop.read_text(),
+)
+clock.apply("clock-sources:image:1:0:0:0:192.168.1.1:pool,local")
+check(
+    "  the owner's order: the pool first, then the local server",
+    "NTP=0.debian.pool.ntp.org 1.debian.pool.ntp.org 2.debian.pool.ntp.org 3.debian.pool.ntp.org 192.168.1.1\n"
+    in drop.read_text(),
+    drop.read_text(),
+)
+clock.apply("clock-sources:image:1:0:0:0:192.168.1.1")
+check(
+    "  no order given: the local server first (the default order)",
+    "NTP=192.168.1.1 0.debian.pool.ntp.org" in drop.read_text(),
+    drop.read_text(),
+)
+check(
+    "the order read from a choice: each source once, any left out after, in the default order",
+    clock.parse_order("clock-sources:chrony:1:1:0:0:-:pool,gps,pool") == ["pool", "gps", "local", "module"]
+    and clock.parse_order("clock-sources:chrony:1:1:0:0:-") == list(clock.ORDER),
 )
 
 # --- chrony in its place -----------------------------------------------------------------------------------
@@ -148,7 +166,11 @@ check(
     rec,
 )
 check("  the drop-in of timesyncd gone", not drop.exists())
-check("  the local server in our sources", src.read_text().endswith("server 192.168.1.1 iburst\n"))
+check(
+    "  the local server in our sources, preferred (the only one chosen)",
+    src.read_text().endswith("server 192.168.1.1 iburst prefer\n"),
+    src.read_text(),
+)
 check(
     "  the pool not chosen: Debian's pool line off (commented, so Restore is exact)",
     "#irate-box off: pool 2.debian.pool.ntp.org" in conf.read_text() and "\npool " not in conf.read_text(),
@@ -166,8 +188,17 @@ check(
 )
 clock.apply("clock-sources:chrony:1:0:0:0:-")
 check(
-    "  the pool chosen again: chrony.conf as it came",
-    conf.read_text() == DEBIAN_CONF and "server" not in src.read_text().split("\n", 1)[1],
+    "  the pool chosen again: our own pool line (so it can be preferred), Debian's still off for Restore",
+    "pool 2.debian.pool.ntp.org iburst prefer" in src.read_text()
+    and "server" not in src.read_text().split("\n", 1)[1]
+    and "#irate-box off: pool" in conf.read_text(),
+    (src.read_text(), conf.read_text()),
+)
+clock.apply("clock-sources:chrony:1:0:0:0:192.168.1.1:pool,local")
+check(
+    "  the owner's order: the pool first, so the pool preferred and the local server not",
+    "pool 2.debian.pool.ntp.org iburst prefer" in src.read_text() and "server 192.168.1.1 iburst\n" in src.read_text(),
+    src.read_text(),
 )
 check(
     "  the image as it was is kept from the first change, not overwritten",
@@ -382,8 +413,12 @@ CHRONYC = """MS Name/IP address         Stratum Poll Reach LastRx Last sample
 rows = clock.parse_chronyc(CHRONYC)
 check(
     "chronyc read: the mode, the state and the name of each line",
-    rows[0] == {"mode": "refclock", "state": "in-use", "name": "GPS"}
+    {k: rows[0][k] for k in ("mode", "state", "name", "mark", "ago")}
+    == {"mode": "refclock", "state": "in-use", "name": "GPS", "mark": "selected", "ago": 12}
+    and abs(rows[0]["offset"] - 0.001234) < 1e-9
     and rows[1]["state"] == "answering"
+    and (rows[1]["mark"], rows[1]["ago"], rows[1]["offset"]) == ("spare", 35, -0.002)
+    and (rows[2]["mark"], rows[2]["ago"], rows[2]["offset"]) == ("silent", None, None)
     and rows[2]["state"] == "not-answering"
     and len(rows) == 4,
     rows,
@@ -411,6 +446,31 @@ check(
     "timesyncd: the pool in use, the local server not reported (it says only the one it uses)",
     st == {"pool": "in-use", "local": "unknown"},
     st,
+)
+
+# --- what the box serves, and from where -------------------------------------------------------------------------
+check(
+    "the hardware clock as chrony's source: stratum 10, so a box on it alone serves stratum 11, never as a reference",
+    "refid RTC precision 1 delay 2 stratum 10" in clock.chrony_conf_text(False, module=True),
+    clock.chrony_conf_text(False, module=True),
+)
+check(
+    "  no `local` line: a box with no source answering serves nothing a device accepts",
+    "local" not in clock.chrony_conf_text(True, True, "192.168.4.0/24", True),
+)
+TRACK = "Reference ID    : {} ({})\nStratum         : {}\nLeap status     : {}\n"
+check(
+    "tracking: a server's address, its stratum, synchronised",
+    clock.tracking(TRACK.format("5A9B0C0D", "90.155.12.13", 2, "Normal"))
+    == {"ref": "90.155.12.13", "stratum": 2, "synced": True},
+)
+check(
+    "  the hardware clock alone: stratum 11",
+    clock.tracking(TRACK.format("52544300", "RTC", 11, "Normal")) == {"ref": "RTC", "stratum": 11, "synced": True},
+)
+check(
+    "  not synchronised: said so",
+    clock.tracking(TRACK.format("00000000", "", 0, "Not synchronised"))["synced"] is False,
 )
 
 # --- the doctor's findings, and both sides accepting the choices ---------------------------------------------
