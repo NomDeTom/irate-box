@@ -553,6 +553,21 @@ check(
     "  later than 3 h without reaching it: a problem",
     any(x["status"] == "problem" for x in hub_control.scheduled_findings(now=_t.time() + 4 * 3600)),
 )
+held = hub_control.STATE / "library" / "hub-update.json"
+held.write_text(json.dumps({"clock_unknown": _t.time()}))
+f = hub_control.scheduled_findings()
+check(
+    "an automatic install held for the clock: a warning, beside the run that went well",
+    {(x["id"], x["status"]) for x in f} == {("window-clock", "warn"), ("scheduled", "ok")}
+    and "update.window-clock.unknown" in msg_ids(next(x for x in f if x["id"] == "window-clock")),
+    f,
+)
+held.write_text(json.dumps({"clock_unknown": _t.time() - 4 * 3600}))
+check(
+    "  held more than 3 h ago, not since: nothing",
+    all(x["id"] != "window-clock" for x in hub_control.scheduled_findings()),
+)
+held.unlink()
 librarian.record_run(lambda: {"books": "up to date"}, False)
 check(
     "a run by hand doesn't count as the timer's",

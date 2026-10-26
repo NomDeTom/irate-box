@@ -8,7 +8,8 @@ chose (policy "hub_auto"):
   1  also fetch it: the root helper verifies it and caches what its installer needs
   2  also install it, but only a version that passed verification, inside the window
      (policy "hub_window_start" to "hub_window_end", the box's local hours), with nobody on
-     the hub, and nothing else running
+     the hub, and nothing else running; never while the clock is not known to be right
+     (clock_known), so the window's hours can't be told: by hand on /admin meanwhile
 
 One step per run of the timer (hourly), each only when the last has answered. A version that
 failed verification is never fetched again on its own, and never installed (that is the
@@ -94,6 +95,15 @@ def in_window(policy, hour=None):
     return start <= h < end if start < end else (h >= start or h < end) if start != end else False
 
 
+def clock_known():
+    """Whether the box's hours can be believed: network time (GPS too, through the time daemon), or set by an
+    administrator (svchistory.clock_trusted). A box with no clock module starts at about the time it last
+    stopped, so until then its hours are not the owner's."""
+    from irate_box.hub import svchistory
+
+    return svchistory.clock_trusted()
+
+
 def _due(state, hours, now):
     return hours > 0 and now - state.get("last_check", 0) >= hours * 3600 - 300
 
@@ -138,7 +148,14 @@ def step(policy, log=print, now=None):
     if auto >= 1 and upd.get("verified") != avail and state.get("fetch_tried") != avail:
         return ask("fetch", "update-fetch", fetch_tried=avail)
     if auto >= 2 and upd.get("verified") == avail and state.get("install_tried") != avail:
-        if not in_window(policy):
+        known = clock_known()
+        if known:
+            state.pop("clock_unknown", None)
+        else:
+            state["clock_unknown"] = now  # the Updates doctor says so
+        if not known:
+            reason = f"{avail} is ready. The clock is not known to be right, so the installation window cannot be told. Install it by hand on Updates, or set the clock."
+        elif not in_window(policy):
             reason = f"{avail} is ready. Waiting for the installation window, {policy['hub_window_start']:02d}:00 to {policy['hub_window_end']:02d}:00."
         elif (people := _online()) != 0:
             reason = f"{avail} is ready. Waiting until no device is active on the hub" + (

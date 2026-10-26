@@ -97,11 +97,21 @@ r = U.step(pol(hub_auto=1), now=t0 + 4 * H + 60, **quiet)
 check("  then: ready to install on /admin", "ready for manual installation" in r and not queued(), r)
 
 real_in_window = U.in_window
+U.clock_known = lambda: False
+U.in_window = lambda policy, hour=None: True
+r = U.step(pol(hub_auto=2), now=t0 + 5 * H - 60, **quiet)
+check(
+    "hub_auto 2, the clock not known to be right: no window, nothing installed, says so",
+    "clock is not known to be right" in r and not queued() and U.load_state().get("clock_unknown") == t0 + 5 * H - 60,
+    r,
+)
+U.clock_known = lambda: True
 U.in_window = lambda policy, hour=None: False
 r = U.step(pol(hub_auto=2), now=t0 + 5 * H, **quiet)
 check(
     "hub_auto 2, outside the window: waits, says when", "installation window, 02:00 to 05:00" in r and not queued(), r
 )
+check("  the clock known again: the Updates doctor's mark gone", "clock_unknown" not in U.load_state())
 U.in_window = lambda policy, hour=None: True
 ONLINE["n"] = 3
 r = U.step(pol(hub_auto=2), now=t0 + 6 * H, **quiet)
