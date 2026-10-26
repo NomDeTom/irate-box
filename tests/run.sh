@@ -34,6 +34,7 @@ run sim_wificountry.py
 run sim_knownradios.py
 run sim_tailscale.py
 run sim_watchlog.py
+run sim_faulthandler.py
 run sim_pagehistory.py
 run sim_usb_filesystems.py
 run sim_firmware_integrity.py

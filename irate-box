@@ -6,13 +6,18 @@
 #   sudo /opt/irate-box/irate-box secdoctor
 # The checkout, not the current directory, goes first on the module path, so a stray
 # irate_box/ folder where this is run from cannot stand in for the real one.
+# Every module run here, the services among them, prints each thread's stack to stderr (the journal, for a
+# unit) if it crashes in C, and on SIGUSR1 without stopping: what a hung one is doing.
+#   sudo systemctl kill -s USR1 irate-box-uplink.service; journalctl -u irate-box-uplink -n 60
 here=$(dirname "$(readlink -f "$0")")
 name=${1:-}
 [ -n "$name" ] || { echo "Usage: irate-box MODULE [ARGS...]" >&2; echo "MODULE is a file name without .py under irate_box/hub, irate_box/library or irate_box/root. Example: irate-box health summary" >&2; exit 2; }
 shift
 for part in hub library root; do
 	if [ -f "$here/irate_box/$part/$name.py" ]; then
-		exec python3 -c 'import runpy, sys
+		exec python3 -c 'import faulthandler, runpy, signal, sys
+faulthandler.enable()
+faulthandler.register(signal.SIGUSR1, all_threads=True)
 sys.path[0] = sys.argv.pop(1)
 runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)' "$here" "irate_box.$part.$name" "$@"
 	fi
