@@ -3,7 +3,7 @@
 """One icon per tile: every default tile's icon (apps.d/, the catalogue's add-ons and their
 template) is one emoji, or svg:<name> of a picture in web/icons/. A picture also needs its line in style.css
 (.svg-icon[data-icon="<name>"]), or it draws as a blank square. Tiles that share an icon are listed as a warning:
-Meshtastic, MQTT and the MQTT explorer all have 📡 until each has one of its own.
+MQTT and the MQTT explorer both have 📡 until each has one of its own.
 
 python3 tests/icon_guard.py"""
 
