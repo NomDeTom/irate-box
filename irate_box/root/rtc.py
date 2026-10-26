@@ -25,6 +25,13 @@ from the system clock, but only when that clock is trustworthy: set from the net
 the owner (health.py's "Set the clock from this browser"). A clock that came from the module
 is not written back to it.
 
+A module found becomes a time source by itself (look): a search now and then (irate-box-rtc-look.timer, a few
+minutes after boot, when a box is usually on its network, then every 6 hours) or the owner's press of the Clock page's
+scan. One module this box can drive is set up there and then: set from the system clock when that is trusted (on a
+network, most of the time), else from its own time at boot, and kept set hourly; with chrony as the time service it
+joins the Clock page's sources too. Several possibilities, or one with no driver, are left to the owner (the Box
+doctor lists them). Not by itself after `install.sh --rtc off`; a press of the scan still does it.
+
 Battery charging is never switched on. On the RX8130 the backup switch (INIEN) is turned on, as
 the kernel driver does; charging (CHGEN) is left as it is and reported, since charging a coin
 cell is a hazard.
@@ -35,6 +42,7 @@ cell is a hazard.
     sudo ./irate-box rtc save              set the module from the system clock (if trusted)
     sudo ./irate-box rtc remove            undo the setup
     sudo ./irate-box rtc auto              for install.sh: set up the one module found, if one
+    sudo ./irate-box rtc look              the timer's: look for a module, and take one in as a time source
     ./irate-box rtc boot                   (the unit's own)
 
 For tests, HUB_RTC_FAKE=/path/regs.json stands in for the I2C buses. Stdlib only.
@@ -790,6 +798,46 @@ WantedBy=timers.target
 }
 
 
+# The search now and then (look), for a module attached since: written by install.sh (auto) whether or not one is
+# found, removed by uninstall.sh.
+LOOK_UNITS = {
+    "irate-box-rtc-look.service": """[Unit]
+Description=Irate-Box: look for a clock module on I2C, and take one in as a time source (rtc.py)
+
+[Service]
+Type=oneshot
+Nice=10
+Environment=HUB_STATE_DIR={state} HUB_ETC_DIR={etc}
+ExecStart={code}/irate-box rtc look
+""",
+    "irate-box-rtc-look.timer": """[Unit]
+Description=Irate-Box: look for a clock module, a few minutes after boot and every 6 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
+""",
+}
+
+
+def write_look_units():
+    for name, text in LOOK_UNITS.items():
+        (UNIT_DIR / name).write_text(text.format(state=STATE, etc=ETC, code=CODE))
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)  # noqa: TID251
+    subprocess.run(["systemctl", "enable", "--now", "irate-box-rtc-look.timer"], capture_output=True)  # noqa: TID251
+
+
+def remove_look_units():
+    subprocess.run(["systemctl", "disable", "--now", "irate-box-rtc-look.timer"], capture_output=True)  # noqa: TID251
+    for name in LOOK_UNITS:
+        (UNIT_DIR / name).unlink(missing_ok=True)
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)  # noqa: TID251
+
+
 def write_units():
     for name, text in UNITS.items():
         (UNIT_DIR / name).write_text(text.format(state=STATE, etc=ETC, code=CODE))
@@ -798,7 +846,7 @@ def write_units():
     subprocess.run(["systemctl", "start", "irate-box-rtc-save.timer"], capture_output=True)  # noqa: TID251
 
 
-def setup(chip, bus, addr):
+def setup(chip, bus, addr, by="owner"):
     if chip not in CHIPS:
         raise RtcError(
             M(
@@ -848,6 +896,7 @@ def setup(chip, bus, addr):
         "driver": drv,
         "label": CHIPS[chip][0],
         "set_up": time.time(),
+        "by": by,  # "owner", or "found": taken in by itself (look)
     }
     done = []
     if mode == "userspace":
@@ -976,8 +1025,101 @@ def status():
     return out
 
 
+def _auto_off():
+    """install.sh was told --rtc off (its recorded options): no module is looked for or set up by itself."""
+    try:
+        opts = (ETC / "install-options").read_text().split("\n")
+    except OSError:
+        return False
+    return any(o == "--rtc" and n == "off" for o, n in zip(opts, opts[1:])) or "--rtc=off" in opts
+
+
+def _as_source():
+    """With chrony as the box's time service, the module joins the Clock page's sources (clock.py), every other choice
+    kept. With the image's own service it sets the time at boot only, as before: nothing to add."""
+    from irate_box.root import clock
+
+    rec = clock.load()
+    if rec.get("service") != "chrony" or rec.get("module"):
+        return None
+    on = lambda key: "1" if rec.get(key) else "0"  # noqa: E731
+    choice = f"clock-sources:chrony:{on('pool')}:{on('gps')}:1:{on('serve')}:{rec.get('local') or '-'}"
+    try:
+        clock.apply(choice)
+    except ValueError as exc:  # Refused: said, the module set up all the same
+        return M(
+            "rtc-module.as-source.not",
+            "chrony did not take it as a source: {why}",
+            why=getattr(exc, "message", str(exc)),
+        )
+    return M(
+        "rtc-module.as-source",
+        "chrony now has it as one of the box's time sources, used while GPS and the network are silent.",
+    )
+
+
+def look(asked=False):
+    """A module found becomes a time source: the timer's search now and then, or the owner's press of the Clock page's
+    scan (asked). One module this box can drive is set up (setup: its time set from a trusted clock, or the clock from
+    it), and with chrony added to the sources. Anything else is said, for the owner to choose."""
+    cfg = load_config()
+    if cfg:
+        return M(
+            "rtc-look.set-up",
+            "The {chip} on bus {bus} at {addr} is set up already.",
+            chip=cfg["label"],
+            bus=cfg["bus"],
+            addr=cfg["addr"],
+        )
+    if not asked and _auto_off():
+        return M("rtc-look.off", "The installer was told not to set up a clock module (--rtc off). Not looked for.")
+    if list(Path("/sys/class/rtc").glob("rtc*")) and not FAKE:
+        return M("rtc-look.kernel-rtc", "The kernel already has a hardware clock. The box does not look for a module.")
+    found = find()
+    usable = [f for f in found["found"] if f["supported"]]
+    if len(usable) == 1 and len(found["found"]) == 1:
+        f = usable[0]
+        said = [setup(f["chip"], f["bus"], f["addr"], by="owner" if asked else "found")]
+        source = _as_source()
+        if source:
+            said.append(source)
+        return sentences(*said)
+    if len(found["found"]) == 1:
+        x = found["found"][0]
+        return M(
+            "rtc-look.no-driver",
+            "The search found the {chip} on bus {bus} at {addr}. This kernel has no driver for it, and irate-box has "
+            "no driver of its own for it yet.",
+            chip=x["label"],
+            bus=x["bus"],
+            addr=x["addr"],
+        )
+    if not found["found"]:
+        return (
+            M("repair.rtc.none", "The search found no clock module.")
+            if found["buses"]
+            else M("repair.rtc.no-bus", "The search found no clock module. No I2C bus is enabled.")
+        )
+    return M(
+        "rtc-look.choose",
+        "The search found {modules}. Select which one to use on the Box doctor.",
+        modules=[
+            M(
+                "repair.rtc.found-one",
+                "the {chip} on bus {bus} at {addr}",
+                chip=x["label"],
+                bus=x["bus"],
+                addr=x["addr"],
+            )
+            for x in found["found"]
+        ],
+    )
+
+
 def auto():
-    """install.sh: refresh an existing set-up; otherwise set up the one module found, if one."""
+    """install.sh: refresh an existing set-up; otherwise set up the one module found, if one. Either way the search now
+    and then (look) is in place, for a module attached later."""
+    write_look_units()
     cfg = load_config()
     if cfg:
         write_units()
@@ -1029,6 +1171,10 @@ def main(argv):
             print(remove())
         elif argv == ["auto"]:
             print(auto())
+        elif argv == ["look"]:
+            print(render(look()))
+        elif argv == ["look-off"]:
+            remove_look_units()
         else:
             sys.exit(__doc__.split("\n\n")[-2])
     except RtcError as exc:

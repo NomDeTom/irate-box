@@ -285,6 +285,63 @@ fake({"1": {"0x68": ds}})
 print("   auto (one module):", rtc.auto())
 check("auto: one module → set up", (T / "etc/rtc.json").exists())
 rtc.remove()
+check(
+    "auto: the search now and then is in place for a module attached later",
+    (T / "units/irate-box-rtc-look.timer").exists()
+    and "rtc look" in (T / "units/irate-box-rtc-look.service").read_text(),
+)
+# 7b. look: a module found becomes a time source by itself (the timer), or at the owner's press of the scan
+from irate_box.root import clock
+
+applied = []
+clock.apply = lambda choice: applied.append(choice) or "applied"
+(T / "ntp").write_text("yes\n")
+fake({"1": {"0x68": ds}})
+m = rtc.look()
+cfg = json.loads((T / "etc/rtc.json").read_text()) if (T / "etc/rtc.json").exists() else {}
+check(
+    "look: one module found → set up by itself, its time set from the trusted clock",
+    cfg.get("by") == "found" and "rtc-module.set-up.saved" in msg_ids(m),
+    (cfg, m),
+)
+check("look: with the image's own time service, nothing added to the sources", applied == [], applied)
+check("look: set up already → no search, said so", msg_ids(rtc.look()) == ["rtc-look.set-up"])
+rtc.remove()
+(T / "etc/clock.json").write_text(
+    json.dumps(
+        {"service": "chrony", "pool": True, "gps": False, "module": False, "serve": True, "local": "192.168.1.1"}
+    )
+)
+m = rtc.look()
+check(
+    "look: with chrony, the module joins its sources, every other choice kept",
+    applied == ["clock-sources:chrony:1:0:1:1:192.168.1.1"] and "rtc-module.as-source" in msg_ids(m),
+    (applied, m),
+)
+rtc.remove()
+(T / "etc/clock.json").unlink()
+(T / "etc/install-options").write_text("--repo\nx\n--rtc\noff\n")
+m = rtc.look()
+check(
+    "look by itself after --rtc off: not looked for",
+    msg_ids(m) == ["rtc-look.off"] and not (T / "etc/rtc.json").exists(),
+    m,
+)
+rtc.look(asked=True)
+cfg = json.loads((T / "etc/rtc.json").read_text()) if (T / "etc/rtc.json").exists() else {}
+check("  the owner's press of the scan goes ahead, set up as the owner's", cfg.get("by") == "owner", cfg)
+rtc.remove()
+(T / "etc/install-options").unlink()
+fake({"4": {"0x32": both}})
+m = rtc.look()
+check(
+    "look: two possibilities → nothing set up, left to the owner",
+    msg_ids(m)[0] == "rtc-look.choose" and not (T / "etc/rtc.json").exists(),
+    m,
+)
+fake({}, drivers=())
+check("look: nothing found → said so", msg_ids(rtc.look())[0] in ("repair.rtc.none", "repair.rtc.no-bus"))
+(T / "ntp").write_text("no\n")
 # An RX-8900 (an RV-8803 by its registers) that lost power, as found on a board: its date day 0, its low-voltage
 # flag (VLF) set, the seconds ticking. Found all the same, said as not valid yet.
 lost = regs()
@@ -396,7 +453,7 @@ check(
     f
     and f[0]["status"] == "warn"
     and f[0]["summary"]["id"] == "rtc.not-found"
-    and [a["choice"] for a in f[0]["actions"]] == ["rtc-find"],
+    and [a["choice"] for a in f[0]["actions"]] == ["rtc-look"],
     [(x["status"], x["summary"]["id"]) for x in f],
 )
 print("\nfailures:", fails)

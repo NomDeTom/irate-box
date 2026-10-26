@@ -6481,7 +6481,7 @@ async function hlFix(fid, action) {
 
 hl.scan.addEventListener("click", () => hlRequest({ action: "scan" }, "scan"));
 hl.clockScan.addEventListener("click", () =>
-  hlRequest({ action: "scan" }, "clock-scan"),
+  hlRequest({ action: "fix", choice: "rtc-look" }, "clock-scan"),
 );
 window.addEventListener("hashchange", () => {
   if (paneShown("health") || paneShown("clock")) loadHealth();

@@ -2677,7 +2677,7 @@ INSTALL_LOG_DIR = Path(os.environ.get("HUB_LOG_DIR", "/var/log/irate-box"))
 HEALTH_CHOICE_RE = re.compile(
     r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
     r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
-    r"|^(kiwix-rebuild|kiwix-off|rerun-install|rerun-install-port-80|net-scan|rtc-find|rtc-save|rtc-remove)$"
+    r"|^(kiwix-rebuild|kiwix-off|rerun-install|rerun-install-port-80|net-scan|rtc-find|rtc-look|rtc-save|rtc-remove)$"
     r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
     r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
     r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})$|^clock-undo$"

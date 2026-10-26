@@ -36,6 +36,7 @@ offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog") for
     "kiwix-off",
     "clock-set:1791580000",
     "rtc-find",
+    "rtc-look",
     "rtc-save",
     "rtc-remove",
     "rtc-setup:ds3231:1:0x68",
