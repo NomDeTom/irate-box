@@ -9,6 +9,7 @@
 #   sudo tools/nand-logs.sh on [--mtd N]     format it (UBI, one UBIFS volume), mount it at /var/log.nand
 #                                            at every boot, and move the logs there
 #   sudo tools/nand-logs.sh off              the logs back to the card; the flash left formatted
+#   sudo tools/nand-logs.sh reflush          on a box set up before it: the timer that keeps the journal on the flash
 #
 # What moves, each only if the flash has room for it (smaller chips take fewer):
 #   armbian-ramlog        on Armbian, its copy of /var/log on disk (HDD_LOG, its own setting), synced daily and
@@ -30,6 +31,10 @@ RAMLOG_DEFAULT=/etc/default/armbian-ramlog
 JOURNALD_DROPIN=/etc/systemd/journald.conf.d/nand-logs.conf
 FLUSH_DROPIN=/etc/systemd/system/systemd-journal-flush.service.d/nand-logs.conf
 RAMLOG_DROPIN=/etc/systemd/system/armbian-ramlog.service.d/nand-logs.conf
+# armbian-ramlog hands the journal back to RAM after each of its syncs (journalctl --relinquish-var, by design for
+# a card): every 10 minutes the journal goes back to the flash, which is what it is there for.
+REFLUSH_UNIT=/etc/systemd/system/nand-logs-flush.service
+REFLUSH_TIMER=/etc/systemd/system/nand-logs-flush.timer
 CRASHWATCH=/var/lib/irate-box-root/crashwatch
 STATE=/etc/nand-logs.conf # what "on" changed, for "off"
 
@@ -233,6 +238,14 @@ move_ramlog() {
 	# As armbian-ramlog links it at boot: /var/log/journal to the journal beside its copy.
 	[[ -L /var/log/journal || ! -e /var/log/journal ]] && ln -sfn "$MNT/ramlog/journal" /var/log/journal
 	journal_settings "$cap" "$MNT/ramlog/journal"
+	reflush_on
+}
+
+reflush_on() {
+	printf '[Unit]\nDescription=The journal back onto the onboard flash after armbian-ramlog relinquished it (tools/nand-logs.sh)\nRequiresMountsFor=%s\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --flush\n' "$MNT" >"$REFLUSH_UNIT"
+	printf '[Unit]\nDescription=The journal back onto the onboard flash every 10 minutes (tools/nand-logs.sh)\n\n[Timer]\nOnBootSec=2min\nOnUnitActiveSec=10min\n\n[Install]\nWantedBy=timers.target\n' >"$REFLUSH_TIMER"
+	systemctl daemon-reload
+	systemctl enable -q --now nand-logs-flush.timer
 }
 
 on() {
@@ -323,6 +336,8 @@ off() {
 		sed -i "/$FSTAB_TAG\$/d" "$RAMLOG_DEFAULT"
 		[[ -n $ramlog_hdd ]] && echo "HDD_LOG=$ramlog_hdd" >>"$RAMLOG_DEFAULT"
 		rm -f "$RAMLOG_DROPIN"
+		systemctl disable -q --now nand-logs-flush.timer 2>/dev/null || true
+		rm -f "$REFLUSH_UNIT" "$REFLUSH_TIMER"
 		ln -sfn "$ramlog_old/journal" /var/log/journal
 	fi
 	if [[ -n $journal_dir ]]; then
@@ -344,7 +359,8 @@ off() {
 [[ $(id -u) == 0 ]] || die "run as root"
 case "${1:-}" in
 check) check ;;
+reflush) [[ -e $STATE ]] && grep -q '^ramlog_old=' "$STATE" && reflush_on && say "the journal goes back to the flash every 10 minutes" ;;
 on) shift && on "$@" ;;
 off) off ;;
-*) die "usage: $0 check | on [--mtd N] [--force] | off" ;;
+*) die "usage: $0 check | on [--mtd N] [--force] | off | reflush" ;;
 esac
