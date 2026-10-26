@@ -1,0 +1,350 @@
+#!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+#
+# Logs onto a board's onboard raw NAND flash instead of its SD card. Raw NAND (SLC, with UBI's wear
+# levelling under UBIFS) takes far more writes than an SD card, and an unused one is otherwise idle.
+#
+#   sudo tools/nand-logs.sh check            what flash there is, whether it is free, what would move
+#   sudo tools/nand-logs.sh on [--mtd N]     format it (UBI, one UBIFS volume), mount it at /var/log.nand
+#                                            at every boot, and move the logs there
+#   sudo tools/nand-logs.sh off              the logs back to the card; the flash left formatted
+#
+# What moves, each only if the flash has room for it (smaller chips take fewer):
+#   armbian-ramlog        on Armbian, its copy of /var/log on disk (HDD_LOG, its own setting), synced daily and
+#                         at shutdown, with the persistent journal it keeps there and links /var/log/journal to
+#   the journal           elsewhere, or where the flash is too small for ramlog's copy: the journal's folder
+#                         bind-mounted from the flash; journald's size capped to a share of the flash either way
+#   crash watch           /var/lib/irate-box-root/crashwatch, bind-mounted (safeio refuses symlinks)
+#
+# A flash is used only when nothing else does: not attached to UBI, not mounted, not named on the kernel's
+# command line, and its first two erase blocks blank. A board that boots from the flash has its loader
+# there; --force overrides that last test, for a flash known to hold nothing the board needs.
+set -euo pipefail
+
+MNT=/var/log.nand
+UBI_DEV=9 # a fixed number, so the mount can name ubi9:logs before anything else attaches
+ATTACH_UNIT=/etc/systemd/system/nand-logs-attach.service
+FSTAB_TAG="# nand-logs"
+RAMLOG_DEFAULT=/etc/default/armbian-ramlog
+JOURNALD_DROPIN=/etc/systemd/journald.conf.d/nand-logs.conf
+FLUSH_DROPIN=/etc/systemd/system/systemd-journal-flush.service.d/nand-logs.conf
+RAMLOG_DROPIN=/etc/systemd/system/armbian-ramlog.service.d/nand-logs.conf
+CRASHWATCH=/var/lib/irate-box-root/crashwatch
+STATE=/etc/nand-logs.conf # what "on" changed, for "off"
+
+say() { echo "nand-logs: $*"; }
+die() {
+	echo "nand-logs: $*" >&2
+	exit 1
+}
+mib() { echo $(($1 / 1048576)); }
+
+# Each raw NAND flash: "N size erasesize name". NAND_LOGS_TYPES widens it for a test (a block2mtd device is "ram").
+flashes() {
+	for d in /sys/class/mtd/mtd*; do
+		[[ $d =~ /mtd[0-9]+$ ]] || continue
+		[[ " ${NAND_LOGS_TYPES:-nand mlc-nand} " == *" $(cat "$d/type") "* ]] || continue
+		echo "${d##*/mtd} $(cat "$d/size") $(cat "$d/erasesize") $(cat "$d/name")"
+	done
+}
+
+# Why flash N can't be used, or nothing when it can.
+in_use() {
+	local n=$1 force=${2:-} erase
+	for u in /sys/class/ubi/ubi*; do
+		[[ -e $u/mtd_num ]] && [[ $(cat "$u/mtd_num") == "$n" ]] && [[ ${u##*/ubi} != "$UBI_DEV" ]] && {
+			echo "attached to UBI as ${u##*/}"
+			return
+		}
+	done
+	grep -qE "^/dev/mtdblock$n " /proc/mounts && {
+		echo "mounted as /dev/mtdblock$n"
+		return
+	}
+	grep -qE "(ubi\.mtd=($n|$(cat /sys/class/mtd/mtd"$n"/name))\b|mtdblock$n\b)" /proc/cmdline && {
+		echo "named on the kernel's command line"
+		return
+	}
+	if [[ -z $force ]] && ! ours "$n"; then
+		erase=$(cat /sys/class/mtd/mtd"$n"/erasesize)
+		if (($(dd if=/dev/mtd"$n"ro bs="$erase" count=2 status=none | tr -d '\377' | wc -c) > 0)); then
+			echo "its first two erase blocks hold data (a boot loader?)"
+			return
+		fi
+	fi
+}
+
+ours() { [[ -e /sys/class/ubi/ubi$UBI_DEV/mtd_num ]] && [[ $(cat /sys/class/ubi/ubi$UBI_DEV/mtd_num) == "$1" ]]; }
+ramlog() { [[ -f $RAMLOG_DEFAULT ]] && grep -q '^ENABLED=true' "$RAMLOG_DEFAULT"; }
+journal_dir() { readlink -f /var/log/journal 2>/dev/null || echo /var/log/journal; }
+
+# The parts that fit, from the volume's usable bytes, and the journal's cap last: "ramlog crashwatch 60M".
+# ramlog's copy holds up to its RAM disk's size (50 MB by default) beside the journal.
+plan() {
+	local usable=$1 parts cap
+	cap=$((usable * 30 / 100))
+	((cap > 256 * 1048576)) && cap=$((256 * 1048576))
+	if ramlog && ((usable >= 120 * 1048576)); then parts="ramlog"; else parts="journal"; fi
+	((usable >= 48 * 1048576)) && parts="$parts crashwatch"
+	echo "$parts $(mib "$cap")M"
+}
+
+check() {
+	local found=0
+	while read -r n size erase name; do
+		found=1
+		local why
+		why=$(in_use "$n")
+		echo "mtd$n \"$name\": $(mib "$size") MiB raw NAND, erase block $((erase / 1024)) KiB"
+		if ours "$n"; then
+			echo "  in use by nand-logs: ubi$UBI_DEV, mounted at $MNT: $(df -h --output=used,size "$MNT" 2>/dev/null | tail -1)"
+		elif [[ -n $why ]]; then
+			echo "  not free: $why"
+		else
+			read -r -a p <<<"$(plan $((size * 80 / 100)))"
+			echo "  free. On it (about $(mib $((size * 80 / 100))) MiB usable): ${p[*]:0:${#p[@]}-1}; the journal capped at ${p[-1]}"
+		fi
+	done < <(flashes)
+	((found)) || echo "no raw NAND flash on this board (/proc/mtd lists none)"
+	echo "now: the journal in $(journal_dir) ($(du -sh "$(journal_dir)" 2>/dev/null | cut -f1)), crash watch $(du -sh "$CRASHWATCH" 2>/dev/null | cut -f1)$(ramlog && echo ", armbian-ramlog's copy in $(ramlog_hdd)")"
+}
+
+ramlog_hdd() {
+	local h
+	h=$(sed -n 's/^HDD_LOG=//p' "$RAMLOG_DEFAULT" 2>/dev/null | tail -1)
+	echo "${h:-/var/log.hdd}"
+}
+
+need_tools() {
+	command -v ubiformat >/dev/null && return
+	say "installing mtd-utils"
+	apt-get install -y mtd-utils >/dev/null || die "mtd-utils is needed (apt-get install mtd-utils)"
+}
+
+attach_and_mount() {
+	local n=$1
+	cat >"$ATTACH_UNIT" <<EOF
+[Unit]
+Description=Onboard NAND flash for logs: attach mtd$n to UBI as ubi$UBI_DEV (tools/nand-logs.sh)
+DefaultDependencies=no
+Before=local-fs-pre.target
+Wants=local-fs-pre.target
+ConditionPathExists=/dev/mtd$n
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/modprobe -q ubi
+ExecStartPre=-/usr/sbin/modprobe -q ubifs
+ExecStart=/usr/sbin/ubiattach -m $n -d $UBI_DEV
+ExecStop=-/usr/sbin/ubidetach -d $UBI_DEV
+
+[Install]
+WantedBy=local-fs-pre.target
+EOF
+	systemctl daemon-reload
+	systemctl enable -q nand-logs-attach.service
+	if ! systemctl start nand-logs-attach.service || [[ ! -e /sys/class/ubi/ubi$UBI_DEV/volumes_count ]]; then
+		undo_attach
+		die "ubiattach failed: journalctl -u nand-logs-attach"
+	fi
+	if ! ubinfo -d $UBI_DEV -N logs >/dev/null 2>&1; then
+		ubimkvol /dev/ubi$UBI_DEV -N logs -m >/dev/null
+	fi
+	mkdir -p "$MNT"
+	add_fstab "ubi$UBI_DEV:logs $MNT ubifs noatime,nofail,x-systemd.requires=nand-logs-attach.service 0 0"
+	systemctl daemon-reload
+	if ! mountpoint -q "$MNT" && ! mount "$MNT"; then
+		undo_attach
+		die "the UBIFS volume would not mount"
+	fi
+}
+
+# Nothing moved yet: the mount, the unit and the state taken away again.
+undo_attach() {
+	sed -i "/$FSTAB_TAG\$/d" /etc/fstab
+	systemctl disable -q --now nand-logs-attach.service 2>/dev/null || true
+	rm -f "$ATTACH_UNIT" "$STATE"
+	systemctl daemon-reload
+}
+
+# A folder's contents into another: owners, modes and times kept, ACLs and other extended attributes not
+# (UBIFS has none, and a journal folder often carries them).
+copy_tree() {
+	mkdir -p "$2"
+	tar -C "$1" -cf - . | tar -C "$2" -xpf -
+}
+
+# Whatever happens, journald and crash watch running again at the end.
+restart_on_exit() { trap 'journalctl --flush 2>/dev/null; systemctl start irate-box-crashwatch.service 2>/dev/null || true' EXIT; }
+
+# journald off the disk while its files move: it keeps logging to /run, and --flush brings it back. (Stopping
+# it doesn't hold: its sockets start it again.)
+journal_away() { journalctl --relinquish-var; }
+
+add_fstab() { grep -qxF "$1 $FSTAB_TAG" /etc/fstab || echo "$1 $FSTAB_TAG" >>/etc/fstab; }
+
+# A folder's contents copied onto the flash, then the folder bind-mounted from there at every boot.
+bind_over() {
+	local from=$1 to=$2
+	mkdir -p "$to"
+	chmod --reference="$from" "$to"
+	chown --reference="$from" "$to"
+	copy_tree "$from" "$to"
+	add_fstab "$to $from none bind,x-systemd.requires-mounts-for=$MNT 0 0"
+	mountpoint -q "$from" || mount "$from"
+}
+
+# The journal's own folder (where /var/log/journal leads) bind-mounted from the flash.
+move_journal() {
+	local cap=$1 dir
+	dir=$(journal_dir)
+	mkdir -p "$dir"
+	echo "journal_dir=$dir" >>"$STATE"
+	journal_away
+	bind_over "$dir" "$MNT/journal"
+	journal_settings "$cap" "$dir"
+}
+
+journal_settings() {
+	local cap=$1 dir=$2
+	mkdir -p "${JOURNALD_DROPIN%/*}" "${FLUSH_DROPIN%/*}"
+	printf '[Journal]\nStorage=persistent\nSystemMaxUse=%s\n' "$cap" >"$JOURNALD_DROPIN"
+	printf '[Unit]\nRequiresMountsFor=%s %s\n' "$MNT" "$dir" >"$FLUSH_DROPIN"
+	systemctl daemon-reload
+	systemctl restart systemd-journald
+	journalctl --flush
+}
+
+# armbian-ramlog's copy of /var/log, its journal with it, kept on the flash (HDD_LOG).
+move_ramlog() {
+	local cap=$1 old
+	old=$(ramlog_hdd)
+	echo "ramlog_hdd=$(sed -n 's/^HDD_LOG=//p' "$RAMLOG_DEFAULT" | tail -1)" >>"$STATE"
+	echo "ramlog_old=$old" >>"$STATE"
+	journal_away # the journal's files move
+	mkdir -p "$MNT/ramlog"
+	copy_tree "$old" "$MNT/ramlog"
+	sed -i '/^HDD_LOG=/d' "$RAMLOG_DEFAULT"
+	echo "HDD_LOG=$MNT/ramlog $FSTAB_TAG" >>"$RAMLOG_DEFAULT"
+	mkdir -p "${RAMLOG_DROPIN%/*}" "$MNT/ramlog/journal"
+	printf '[Unit]\nRequiresMountsFor=%s\n' "$MNT" >"$RAMLOG_DROPIN"
+	# As armbian-ramlog links it at boot: /var/log/journal to the journal beside its copy.
+	[[ -L /var/log/journal || ! -e /var/log/journal ]] && ln -sfn "$MNT/ramlog/journal" /var/log/journal
+	journal_settings "$cap" "$MNT/ramlog/journal"
+}
+
+on() {
+	local n="" force=""
+	while (($#)); do
+		case "$1" in
+		--mtd) n=$2 && shift ;;
+		--force) force=1 ;;
+		*) die "unknown option $1" ;;
+		esac
+		shift
+	done
+	[[ -e $STATE ]] && die "already on ($STATE); 'off' first to start again"
+	restart_on_exit
+	if [[ -z $n ]]; then
+		n=$(flashes | while read -r m _; do [[ -z $(in_use "$m" "$force") ]] && echo "$m" && break; done)
+		[[ -n $n ]] || die "no free raw NAND flash (see: $0 check)"
+	fi
+	local why
+	why=$(in_use "$n" "$force")
+	[[ -z $why ]] || die "mtd$n is not free: $why"
+	need_tools
+	say "mtd$n: formatting for UBI (wear counts kept where the flash has them)"
+	ours "$n" || ubiformat /dev/mtd"$n" -y -q
+	: >"$STATE"
+	echo "mtd=$n" >>"$STATE"
+	attach_and_mount "$n"
+	local usable
+	usable=$(($(df -B1 --output=avail "$MNT" | tail -1)))
+	read -r -a p <<<"$(plan "$usable")"
+	local cap=${p[-1]}
+	for part in "${p[@]:0:${#p[@]}-1}"; do
+		case $part in
+		journal)
+			say "the journal (capped at $cap)"
+			move_journal "$cap"
+			;;
+		ramlog)
+			say "armbian-ramlog's copy of /var/log, and the journal in it (capped at $cap)"
+			move_ramlog "$cap"
+			;;
+		crashwatch)
+			[[ -d $CRASHWATCH ]] || continue
+			say "crash watch's records"
+			echo "crashwatch=1" >>"$STATE"
+			systemctl stop irate-box-crashwatch.service 2>/dev/null || true
+			bind_over "$CRASHWATCH" "$MNT/crashwatch"
+			systemctl start irate-box-crashwatch.service 2>/dev/null || true
+			;;
+		esac
+	done
+	say "done: $(df -h --output=used,size "$MNT" | tail -1 | xargs) on $MNT. Undo: $0 off"
+}
+
+# A bind mount from the flash undone: its contents copied back into the folder beneath.
+unbind() {
+	local dir=$1 tmp
+	mountpoint -q "$dir" || return 0
+	tmp=$(mktemp -d)
+	copy_tree "$dir" "$tmp"
+	umount "$dir"
+	copy_tree "$tmp" "$dir"
+	rm -r -- "$tmp"
+}
+
+off() {
+	[[ -e $STATE ]] || die "not on (no $STATE)"
+	restart_on_exit
+	local journal_dir="" crashwatch="" ramlog_hdd="" ramlog_old=""
+	while IFS='=' read -r k v; do
+		case $k in
+		journal_dir) journal_dir=$v ;;
+		crashwatch) crashwatch=1 ;;
+		ramlog_hdd) ramlog_hdd=$v ;;
+		ramlog_old) ramlog_old=$v ;;
+		esac
+	done <"$STATE"
+	if [[ -n $crashwatch ]]; then
+		say "crash watch's records back"
+		systemctl stop irate-box-crashwatch.service 2>/dev/null || true
+		unbind "$CRASHWATCH"
+		systemctl start irate-box-crashwatch.service 2>/dev/null || true
+	fi
+	journal_away
+	if [[ -n $ramlog_old ]]; then
+		say "armbian-ramlog's copy, and its journal, back to $ramlog_old"
+		copy_tree "$MNT/ramlog" "$ramlog_old"
+		sed -i "/$FSTAB_TAG\$/d" "$RAMLOG_DEFAULT"
+		[[ -n $ramlog_hdd ]] && echo "HDD_LOG=$ramlog_hdd" >>"$RAMLOG_DEFAULT"
+		rm -f "$RAMLOG_DROPIN"
+		ln -sfn "$ramlog_old/journal" /var/log/journal
+	fi
+	if [[ -n $journal_dir ]]; then
+		say "the journal back to $journal_dir"
+		unbind "$journal_dir"
+	fi
+	rm -f "$JOURNALD_DROPIN" "$FLUSH_DROPIN"
+	sed -i "/$FSTAB_TAG\$/d" /etc/fstab
+	systemctl daemon-reload
+	systemctl restart systemd-journald
+	journalctl --flush
+	umount "$MNT" 2>/dev/null || true
+	systemctl disable -q --now nand-logs-attach.service 2>/dev/null || true
+	rm -f "$ATTACH_UNIT" "$STATE"
+	systemctl daemon-reload
+	say "done: the logs are on the card again; the flash is still formatted, with its copy"
+}
+
+[[ $(id -u) == 0 ]] || die "run as root"
+case "${1:-}" in
+check) check ;;
+on) shift && on "$@" ;;
+off) off ;;
+*) die "usage: $0 check | on [--mtd N] [--force] | off" ;;
+esac
