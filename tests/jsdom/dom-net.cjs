@@ -185,8 +185,9 @@ setTimeout(() => {
   check('  the chips\' words: reach in words, guests Defer or Allow, the period No limit to A week',
     tiles('up-reach').map((r) => r.textContent.trim()).join('|') === 'Watch only|Reconnect to the network|Restart the network service|Reset the radio|Reboot'
     && tiles('up-guests').map((r) => r.textContent.trim()).join('|') === 'Defer|Allow'
-    && tiles('up-giveup').map((r) => r.textContent.trim()).join('|') === 'No limit|An hour|A day|A week',
-    [tiles('up-reach'), tiles('up-guests'), tiles('up-giveup')].map((x) => x.map((r) => r.textContent.trim()).join('|')).join(' / '));
+    && tiles('up-giveup').map((r) => r.textContent.trim()).join('|') === 'No limit|An hour|A day|A week'
+    && tiles('up-retry').map((r) => r.textContent.trim()).join('|') === 'Sparing|Steady|Eager',
+    [tiles('up-reach'), tiles('up-guests'), tiles('up-giveup'), tiles('up-retry')].map((x) => x.map((r) => r.textContent.trim()).join('|')).join(' / '));
   check('one chosen in each', ['up-pace', 'up-reach', 'up-guests', 'up-wedge'].every((id) => tiles(id).filter((r) => r.classList.contains('chosen')).length === 1));
   check('the gentle pace\'s line says when each step comes, once', /reboots after 2 h\. Each step runs only if the maximum action includes it/.test(saysOf('up-pace'))
     && !/Waits 5 minutes before the first reconnect/.test(saysOf('up-pace')), saysOf('up-pace'));

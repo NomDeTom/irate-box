@@ -7170,7 +7170,11 @@ function buildUpChoices(levels) {
   rungs(
     net.retry,
     "retry",
-    Object.keys(levels.retry || RETRY_WORDS).map((n) => ({
+    // Lightest first, as the other sliders: the longest wait between retries (sparing) to the shortest (eager).
+    (levels.retry
+      ? Object.keys(levels.retry).sort((a, b) => levels.retry[b] - levels.retry[a])
+      : Object.keys(RETRY_WORDS).reverse()
+    ).map((n) => ({
       value: n,
       title: RETRY_WORDS[n][0],
       says: RETRY_WORDS[n][1],
