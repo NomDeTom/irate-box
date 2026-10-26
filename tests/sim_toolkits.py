@@ -7,6 +7,7 @@ the install with only the local repository and services kept stopped, what it ad
 removal of only that (a package two kits share stays), expiry, the hub's half and the doctor.
 python3 tests/sim_toolkits.py"""
 
+import hashlib
 import json
 import os
 import re
@@ -105,6 +106,7 @@ WHEELS = {
 )
 calls = []
 policy_seen = []
+downloaded = []  # the files the fake apt downloaded (not those it found in the archives folder)
 
 
 def opt(cmd, key):
@@ -177,23 +179,35 @@ def fake(cmd, timeout=0, check=True, env=None):
         verb, pkgs = words[0], words[1:]
         if verb == "update":
             return R()
-        if verb == "install" and "--download-only" in cmd:
+        if verb == "install" and ("--download-only" in cmd or "--print-uris" in cmd):
             status = Path(opt(cmd, "Dir::State::status")).read_text()
             have = set(re.findall(r"^Package: (\S+)", status, re.M))
             dest = Path(opt(cmd, "Dir::Cache::archives"))
-            for p in closure(pkgs, have):
-                v = ARCHIVE[p][0]
-                (dest / f"{p}_{v}_armhf.deb").write_text(
-                    json.dumps(
-                        {
-                            "Package": p,
-                            "Version": v,
-                            "Architecture": "armhf",
-                            "Depends": ", ".join(ARCHIVE[p][1]),
-                            **({"Source": "python3.13"} if p == "libpython3.13" else {}),
-                        }
+            debs = {
+                f"{p}_{ARCHIVE[p][0]}_armhf.deb": json.dumps(
+                    {
+                        "Package": p,
+                        "Version": ARCHIVE[p][0],
+                        "Architecture": "armhf",
+                        "Depends": ", ".join(ARCHIVE[p][1]),
+                        **({"Source": "python3.13"} if p == "libpython3.13" else {}),
+                    }
+                )
+                for p in closure(pkgs, have)
+            }
+            if "--print-uris" in cmd:
+                # As apt: only what the archives folder does not hold already.
+                return R(
+                    "".join(
+                        f"'http://deb.example/{f}' {f} {len(body)} SHA256:{hashlib.sha256(body.encode()).hexdigest()}\n"
+                        for f, body in debs.items()
+                        if not (dest / f).exists()
                     )
                 )
+            for f, body in debs.items():
+                if not (dest / f).exists():  # as apt: a file it has already is not downloaded again
+                    downloaded.append(f)
+                    (dest / f).write_text(body)
             return R()
         if verb == "install":
             assert opt(cmd, "Dir::Etc::sourceparts") == "-" and opt(cmd, "Acquire::http::Proxy") == kits.DEAD_PROXY, cmd
@@ -326,9 +340,44 @@ check(
     "kits.fetch.unchanged" in ids(kits.fetch("small", budget_mb=10, log=lambda *a: None))
     and kits.manifest("small", "previous") is None,
 )
+
+
+def apt_updates():
+    return [c for c in calls if Path(c[0]).name == "apt-get" and "update" in c]
+
+
+# Fewer writes to the card: an unchanged refresh downloads nothing (apt finds the cached files linked into its
+# folder) and leaves the index files as they were; the lists are updated once a day for scheduled refreshes.
+index_files = (kits.POOL / "Packages", kits.ROOT / "kits-status", kits.ROOT / "kits.list")
+mtimes = {f: f.stat().st_mtime_ns for f in index_files}
+downloaded.clear()
+calls.clear()
+kits.fetch("small", budget_mb=10, log=lambda *a: None)
+check(
+    "an unchanged refresh downloads nothing: the cached files are linked in, apt is not asked to download",
+    downloaded == [] and not any("--download-only" in c for c in calls),
+    downloaded,
+)
+check("  the index files are not written again", all(f.stat().st_mtime_ns == t for f, t in mtimes.items()))
+check("  asked by the owner: the lists are updated first", len(apt_updates()) == 1, calls)
+calls.clear()
+kits.fetch("small", budget_mb=10, lists_max_hours=kits.LISTS_FRESH_HOURS, log=lambda *a: None)
+check("a scheduled refresh within the day of the last update: the lists are not updated again", apt_updates() == [])
+stamps = json.loads(kits.LISTS_UPDATED.read_text())
+stamps["system"] -= 21 * 3600
+kits.LISTS_UPDATED.write_text(json.dumps(stamps))
+calls.clear()
+kits.fetch("small", budget_mb=10, lists_max_hours=kits.LISTS_FRESH_HOURS, log=lambda *a: None)
+check("  21 hours later: updated", len(apt_updates()) == 1, calls)
 # A new gdb: the old set becomes previous; another new one prunes the oldest.
 ARCHIVE["gdb"] = ("16.3-2", ARCHIVE["gdb"][1])
+downloaded.clear()
 kits.fetch("small", budget_mb=10, log=lambda *a: None)
+check(
+    "a new version: only its file is downloaded, the rest linked from the cache",
+    downloaded == ["gdb_16.3-2_armhf.deb"],
+    downloaded,
+)
 check(
     "a newer version: current is new, previous is the old set",
     {p["version"] for p in kits.manifest("small")["packages"] if p["name"] == "gdb"} == {"16.3-2"}

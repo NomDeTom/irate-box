@@ -119,13 +119,15 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
       Check a bundle the librarian staged in $STATE/library/apps/ and swap it in under
       /usr/share/hub (the previous copy kept). {"action": "app-rollback", "app": ...} swaps back.
-  {"id": ..., "action": "kit-fetch", "kit": "<a shipped toolkit>", "budget_mb": 500}
+  {"id": ..., "action": "kit-fetch", "kit": "<a shipped toolkit>", "budget_mb": 500, "scheduled": true}
   {"id": ..., "action": "kit-install", "kit": ..., "hours": 24|null}
   {"id": ..., "action": "kit-remove" | "kit-keep" | "kit-rollback" | "kit-drop-previous", "kit": ...[, "hours": ...]}   {"action": "kit-expire" | "kit-drop-all-previous"}
       Toolkits (kits.py): fetch a shipped kit's packages into the local repository (online),
       install it from there with no internet (removed again after "hours"; null: never),
       remove what it added, change when it goes, or remove every kit whose time is up. A
       request names a kit, never packages. control/kits.json says what is cached and installed.
+      "scheduled" (the librarian's daily refresh): the package lists are updated only when
+      kits.py last updated them over a day ago.
   {"action": "kit-define", "kit": {id, title, summary, packages, remove_after_hours}}
   {"action": "kit-undefine", "kit": ...}   {"action": "kit-extra", "kit": ..., "packages": [...]}
       The owner's own kits, and extra tools in a shipped kit: every package name
@@ -176,6 +178,7 @@ from irate_box.msg import (
 from irate_box.msg import text as paragraph
 from irate_box.root import (
     ap,
+    aptram,
     health,
     kits,
     safeio,
@@ -4396,7 +4399,8 @@ def updates_doctor_findings():
 
     # 9. Package sources: a repository that fails verification fails every apt-get update.
     title = M("update.sources.title", "Package sources")
-    out = run("apt-get", "update", "-q", timeout=300)
+    with aptram.argv(["apt-get", "update", "-q"]) as cmd:
+        out = run(*cmd, timeout=300)
     text = out.stdout + out.stderr
     if out.returncode == 0 and not re.search(r"^(E|Err):", text, re.M):
         findings.append(
@@ -6812,7 +6816,9 @@ def _kit_req(fn):
                             max=1 << 16,
                         )
                     )
-                return kits.fetch(kit, budget_mb=budget, log=lambda *_: None)
+                # The librarian's daily refreshes share one list update; one the owner asks for updates them.
+                fresh = kits.LISTS_FRESH_HOURS if req.get("scheduled") is True else 0
+                return kits.fetch(kit, budget_mb=budget, lists_max_hours=fresh, log=lambda *_: None)
             if fn is kits.install:
                 return kits.install(kit, _kit_hours(req), log=lambda *_: None)
             if fn is kits.set_removal:
