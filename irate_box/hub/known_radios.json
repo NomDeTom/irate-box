@@ -12,25 +12,23 @@
    ],
    "driver": "aic8800_fdrv",
    "in_kernel": false,
-   "firmware": "aic8800-firmware (Radxa)",
+   "firmware": "the pinned driver's fw/aic8800D80, copied to /lib/firmware (DKMS does not install it); or aic8800-firmware (Radxa)",
    "hotspot": true,
    "bands": [
     "2.4",
     "5"
    ],
-   "namespace": false,
-   "new_id": "368b 8d81 ff a69c 8d81",
+   "namespace": true,
    "source": {
-    "name": "Radxa's aic8800-usb-dkms and aic8800-firmware",
-    "url": "https://github.com/radxa-pkg/aic8800",
-    "version": "5.0+git20260123.5f7be68d-7",
+    "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
+    "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
+    "version": "fd26d92",
     "licence": "GPL-2.0"
    },
    "notes": [
-    "Starts as a USB drive (a69c:5721): an eject switches it to WiFi.",
-    "Its driver's ID table lacks 368b:8d81: it works told to treat it as a69c:8d81 (new_id).",
+    "Starts as a USB drive (a69c:5721): an eject switches it to WiFi. The pinned drivers carry a udev rule that does it.",
+    "The pinned drivers bind 368b:8d81 themselves. Radxa's own package (-7) lacks that ID: there it needs new_id (368b 8d81 ff a69c 8d81).",
     "A reset of the whole USB device sends it back to storage mode; a reset of its WiFi interface comes back in about 4 s.",
-    "Its driver cannot move the radio into another network namespace.",
     "Keeps its own regulatory country (self-managed): the box's WiFi country setting does not apply to it."
    ],
    "tested": [
@@ -39,8 +37,20 @@
      "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8",
      "date": "2026-10-21",
      "result": "Works. Client: 2.3 ms to the router with power saving off, 8.2 ms on. Hotspot: 1–8 ms idle, 109–118 ms under load; 20-minute soak with no loss. Hotspot beside a client link: on the link's channel, the link unaffected. Once, the box hung when it started as a hotspot under load (not reproduced)."
+    },
+    {
+     "by": "irate-box",
+     "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8",
+     "date": "2026-10-26",
+     "result": "Both pinned branches built by DKMS with no warnings and loaded: bound as 368b:8d81 with no new_id, joined, Bluetooth up, stall_watch 1 (the default)."
     }
-   ]
+   ],
+   "source_also": {
+    "name": "NomDeTom/aic8800, branch irate/box: Radxa's aic8800-usb-dkms with the same fixes as quilt patches",
+    "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
+    "version": "d2d6526",
+    "licence": "GPL-2.0"
+   }
   },
   {
    "chip": "AIC8800DC",
@@ -50,21 +60,21 @@
    "storage_ids": [],
    "driver": "aic8800_fdrv",
    "in_kernel": false,
-   "firmware": "aic8800-firmware (Radxa)",
+   "firmware": "the pinned driver's fw/aic8800DC, copied to /lib/firmware (DKMS does not install it); or aic8800-firmware (Radxa)",
    "hotspot": true,
    "bands": [
     "2.4"
    ],
    "hotspot_channel": "link",
    "source": {
-    "name": "Radxa's aic8800-usb-dkms and aic8800-firmware",
-    "url": "https://github.com/radxa-pkg/aic8800",
-    "version": "5.0+git20260123.5f7be68d-7",
+    "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
+    "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
+    "version": "fd26d92",
     "licence": "GPL-2.0"
    },
    "notes": [
     "Built into the Luckfox Lyra Zero W.",
-    "Its firmware can go silent for more than 4 s: the driver then marks its command queue dead until reloaded, and a USB reset does not always bring the chip back (a power cycle does).",
+    "Its firmware can stop confirming commands while its hotspot is busy and the link joins on another channel. The pinned drivers recover by themselves: the command dropped, the USB device reset and the chip rebooted, the link back in about 8.5 s. The hotspot is started again by irate-box.",
     "Its hotspot follows the link's channel. With the hotspot on a channel of its own, the firmware can stop while the link joins or roams: 16 stalls in 2026-10-22's tests, all with the two on different channels, none in 161 joins on the same one."
    ],
    "tested": [
@@ -73,8 +83,20 @@
      "on": "Luckfox Lyra Zero W, kernel 6.1.115-vendor-rockchip",
      "date": "2026-10-21",
      "result": "Identified only (its WiFi is the board's only link). Long-running use since 2026-10-09: firmware stalls under roaming and access points that vanish."
+    },
+    {
+     "by": "irate-box",
+     "on": "Luckfox Lyra Zero W, kernel 6.1.115-vendor-rockchip",
+     "date": "2026-10-26",
+     "result": "The community branch (its code, as test build 1.0.0+irate6test1): 4 stalls recovered by the driver itself in ordinary use since 2026-10-24, no oops. Under test (T7 to T10): every stall recovered, 3 in 100 joins with the hotspot busy on another channel."
     }
-   ]
+   ],
+   "source_also": {
+    "name": "NomDeTom/aic8800, branch irate/box: Radxa's aic8800-usb-dkms with the same fixes as quilt patches",
+    "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
+    "version": "d2d6526",
+    "licence": "GPL-2.0"
+   }
   },
   {
    "chip": "AR9271",

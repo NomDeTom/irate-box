@@ -10,12 +10,15 @@
            "The kernel's headers come with the toolkit: the package that holds them on this board, found when the toolkit is fetched.",
            "Firmware for common adapters is cached with the toolkit. Install the one an adapter needs: firmware-atheros (AR9271), firmware-realtek (RTL8188, RTL8192 and RTL88xx), firmware-misc-nonfree (MediaTek, Ralink).",
            "An AIC8800 adapter that shows as a USB drive (USB ID a69c:5721): run sudo eject on its drive (lsblk lists it as a small flash drive). It then shows as a WiFi adapter.",
-           "An AIC8800D80 seen as USB ID 368b:8d81 with no WiFi interface: its driver lacks that ID. Run echo '368b 8d81 ff a69c 8d81' | sudo tee /sys/bus/usb/drivers/aic8800_fdrv/new_id after the driver is loaded. It lasts until the next restart."],
+           "An AIC8800D80 seen as USB ID 368b:8d81 with no WiFi interface: its driver lacks that ID (Radxa's own package does; the linked branches have it). With Radxa's package, run echo '368b 8d81 ff a69c 8d81' | sudo tee /sys/bus/usb/drivers/aic8800_fdrv/new_id after the driver is loaded. It lasts until the next restart."],
  "links": [
   {"title": "USB WiFi adapters on Linux (morrownr)", "url": "https://github.com/morrownr/USB-WiFi",
    "note": "The best-known community list of which USB WiFi adapters work on Linux, and with which driver. Read it before you buy an adapter."},
-  {"title": "AIC8800 driver and firmware (Radxa)", "url": "https://github.com/radxa-pkg/aic8800/releases/tag/5.0%2Bgit20260123.5f7be68d-7",
-   "version": "5.0+git20260123.5f7be68d-7", "licence": "GPL-2.0",
-   "note": "Tested by irate-box on a Raspberry Pi 3B+ (an AIC8800D80 dongle) and the Luckfox Lyra Zero W (its built-in AIC8800DC). Install aic8800-firmware and aic8800-usb-dkms from the release."}
+  {"title": "AIC8800 driver, community (NomDeTom/aic8800d80, irate/box)", "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
+   "version": "fd26d92", "licence": "GPL-2.0",
+   "note": "The one irate-box uses. The community driver (shenmintao/aic8800d80) with its recovery from a firmware that stops answering, which upstream has under review. Tested by irate-box on the Luckfox Lyra Zero W (its built-in AIC8800DC) and a Raspberry Pi 3B+ (an AIC8800D80 dongle). Build it with DKMS from its folder (its dkms.conf), and copy its fw/ folders to /lib/firmware."},
+  {"title": "AIC8800 driver, Radxa's package (NomDeTom/aic8800, irate/box)", "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
+   "version": "d2d6526", "licence": "GPL-2.0",
+   "note": "Radxa's aic8800-usb-dkms and aic8800-firmware with the same fixes as patches, the D80's 368b:8d81 and an eject rule. For a board that installs Radxa's Debian packages. Built and loaded by irate-box on a Raspberry Pi 3B+."}
  ],
  "remove_after_hours": 24}
