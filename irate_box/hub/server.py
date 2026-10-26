@@ -4520,6 +4520,8 @@ class Handler(BaseHTTPRequestHandler):
             nxt = self.path.partition("?next=")[2]
             if not nxt.startswith("/") or nxt.startswith("//") or "\\" in nxt or any(ord(char) < 32 for char in nxt):
                 nxt = "/admin/"
+            # The test above lets no CR or LF through; made plain beside the header.
+            nxt = nxt.replace("\r", "").replace("\n", "")
             if path == "/http-admin-continue":
                 self.send_response(303)
                 self.send_header("Set-Cookie", "irate_http_ok=1; Path=/; HttpOnly; SameSite=Strict")

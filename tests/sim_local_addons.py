@@ -312,7 +312,7 @@ check(
     "a new connect waits for the owner; the agreed copy keeps running",
     st["eliza"]["status"] == "held"
     and copy()["capabilities"]["connect"] == []
-    and any("wss://example.org" in h for h in st["eliza"]["held"]),
+    and st["eliza"]["held"] == ["now connects to wss://example.org"],
     st,
 )
 snap = S.local_addons_snapshot()
