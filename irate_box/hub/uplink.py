@@ -282,6 +282,8 @@ CAUSE_WORDS = {
 RETRY = {"eager": 600, "steady": 3600, "sparing": 21600}
 HOTSPOT_RETRY = 300  # seconds between starts of a hotspot found down with the link up (one that won't start isn't retried every check)
 _hotspot_tried = [0.0]  # when the last such start was tried (one for the box: several links share it)
+FOLLOW_STEADY = 20  # seconds the link holds a new channel before a hotspot that follows it moves there
+FOLLOW_HOLD = 300  # seconds between two moves of a following hotspot: each drops its guests for 15-30 s
 # How long to keep reconnecting while the network is at fault; then stop, and say so.
 GIVE_UP = {"never": None, "hour": 3600, "day": 86400, "week": 7 * 86400}
 # A pace's old name: settings saved with it still load.
@@ -2116,6 +2118,77 @@ class Roams:
         return len(self.times)
 
 
+class HotspotFollow:
+    """A hotspot that follows its link's channel, left on the old one after a roam. NetworkManager's dispatcher
+    moves it only when the link comes up, and a roam within one connection never does; on an AIC8800 a hotspot on
+    another channel than the link's is behind every recorded stall. Moved once the link has held its channel for
+    FOLLOW_STEADY with no WiFi join under way, at most every FOLLOW_HOLD (one for the box: the hotspot is one),
+    so a link that roams back in the meantime is left to settle. The move is root/ap.py's follow(), as the
+    dispatcher's (hub_control ap-follow), which also says it on the Network page."""
+
+    def __init__(self, record=None, channels=None, joining=None, move=None):
+        self.record = record or _ap_record
+        self.channels = channels or _channels_now
+        self.joining = joining or _wifi_joining
+        self.move = move or _ap_follow
+        self.seen = {}  # link -> (its channel, since when), while the hotspot is on another
+        self.moved = 0.0
+
+    def check(self, iface, now, roamed_at=None):
+        """One line of what was done, or "" (nothing to do, or not yet). roamed_at: the link's last roam, if seen."""
+        from irate_box.root import ap
+
+        rec = self.record()
+        plan = rec.get("plan") or {}
+        if not rec.get("up") or not plan.get("follows_uplink") or plan.get("uplink") != iface:
+            self.seen.pop(iface, None)
+            return ""
+        hotspot = ap.ap_iface(plan)
+        channels = self.channels()
+        link_channel, hotspot_channel = channels.get(iface), channels.get(hotspot)
+        if link_channel is None or hotspot_channel is None or link_channel == hotspot_channel:
+            self.seen.pop(iface, None)
+            return ""
+        channel, since = self.seen.get(iface, (None, now))
+        if channel != link_channel:
+            since = roamed_at if roamed_at is not None and roamed_at <= now else now
+            self.seen[iface] = (link_channel, since)
+        if now - since < FOLLOW_STEADY or now - self.moved < FOLLOW_HOLD or self.joining():
+            return ""
+        self.moved = now
+        code, out = self.move(iface)
+        if self.channels().get(hotspot) == link_channel:
+            self.seen.pop(iface, None)
+            return f"The hotspot moved to channel {link_channel} with the link (it was on {hotspot_channel})."
+        why = out.strip()[-160:] if code and out.strip() else "it is still on another channel"
+        return f"The hotspot did not move to channel {link_channel} with the link: {why}."
+
+
+def _ap_record():
+    from irate_box.root import ap
+
+    return ap._load(ap.RECORD, {})
+
+
+def _channels_now():
+    return {i: d.get("channel") for i, d in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).items()}
+
+
+def _wifi_joining():
+    from irate_box.root import radio
+
+    return radio.wifi_joining()
+
+
+def _ap_follow(iface):
+    from irate_box.root import ap
+
+    return run(str(ap.CODE / "irate-box"), "hub_control", "ap-follow", iface, timeout=180)
+
+
+_follow = HotspotFollow()
+
+
 def history_state(state, link):
     """The watched link's letter for linkhistory, from the status's state."""
     return {"off": "o", "up": "u", "checking": "g"}.get(state, "g" if link else "d")
@@ -2369,6 +2442,7 @@ class Link:
         self.ssids_known = None  # the WiFi networks NetworkManager knows, read once an outage needs them
         self.pinned = None
         self.roams = Roams()
+        self.roamed_at = None  # its last roam: a following hotspot moves once the link has held the new channel
         self.obs, self.up, self.gw, self.answers, self.roam_rows = {}, False, None, None, []
 
     def settings(self, chosen):
@@ -2407,6 +2481,8 @@ class Link:
         same = bool(link.get("ssid")) and link.get("ssid") == (self.roams.last or {}).get("ssid", link.get("ssid"))
         drops, blips = sort_drops(watcher.take(i, now, w.eff.get("blip", 20)), w.eff, same)
         self.roam_rows = self.roams.see(now, link, blips)
+        if self.roam_rows:
+            self.roamed_at = self.roam_rows[-1]["at"]
         if self.roams.last:
             self.roams.last["ssid"] = link.get("ssid") or self.roams.last.get("ssid")
         obs = {
@@ -2488,6 +2564,10 @@ class Link:
                 _hotspot_tried[0] = now
                 said = radio.restore_hotspot() or "the hotspot is up"
                 w.log(now, "result", said if due else f"The hotspot was down with the link up: {said}")
+            elif not self.dry and self.kind == "wifi" and self.obs.get("hold_until", 0) <= now:
+                said = _follow.check(self.iface, now, self.roamed_at)
+                if said:
+                    w.log(now, "result", said)
         for step in actions:
             if step == "pin":
                 result = self.actor.pin()

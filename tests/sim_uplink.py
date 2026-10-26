@@ -1411,5 +1411,81 @@ check(
     v["pace"] == "brisk" and w["per_iface"].get("wlan0", {}).get("pace") == "brisk",
     (v["pace"], w["per_iface"]),
 )
+
+
+# A hotspot that follows its link's channel, after a roam (the dispatcher moves it only when the link comes up).
+class Box:
+    """The hotspot's record, the channels iw reports, a join under way, and the moves asked of ap-follow."""
+
+    def __init__(self, follows=True, uplink="wlan0"):
+        self.rec = {
+            "up": True,
+            "plan": {"kind": "shared", "iface": "wlan0", "uplink": uplink, "follows_uplink": follows, "channel": 11},
+        }
+        self.chan = {"wlan0": 11, "ap0": 11}
+        self.join = False
+        self.moves = []
+
+    def move(self, iface):
+        self.moves.append(iface)
+        self.chan["ap0"] = self.chan[iface]
+        return 0, ""
+
+
+def follower(box):
+    return U.HotspotFollow(lambda: box.rec, lambda: dict(box.chan), lambda: box.join, box.move)
+
+
+box = Box()
+f = follower(box)
+check("following: on the link's channel, nothing to do", f.check("wlan0", 1000) == "" and not box.moves)
+box.chan["wlan0"] = 6  # roamed to an access point on channel 6
+check(
+    "  a roam just now: not moved yet (the link settles first)",
+    f.check("wlan0", 1005, roamed_at=1000) == "" and not box.moves,
+)
+box.join = True
+check("  a join under way: still waits", f.check("wlan0", 1030, roamed_at=1000) == "" and not box.moves)
+box.join = False
+said = f.check("wlan0", 1060, roamed_at=1000)
+check(
+    "  settled, no join: moved once to the link's channel, and said so",
+    box.moves == ["wlan0"]
+    and box.chan["ap0"] == 6
+    and said == "The hotspot moved to channel 6 with the link (it was on 11).",
+    (box.moves, said),
+)
+box.chan["wlan0"] = 11  # roams back within the hold-off
+check(
+    "  a roam back within 5 minutes: not moved again yet",
+    f.check("wlan0", 1200, roamed_at=1150) == "" and box.moves == ["wlan0"],
+)
+check(
+    "  after the hold-off, with the link settled there: moved back",
+    f.check("wlan0", 1400, roamed_at=1150).startswith("The hotspot moved to channel 11")
+    and box.moves == ["wlan0", "wlan0"],
+    box.moves,
+)
+box = Box(follows=False)
+box.chan["wlan0"] = 6
+f = follower(box)
+check(
+    "a hotspot whose plan doesn't follow the link: never moved",
+    f.check("wlan0", 5000, roamed_at=1000) == "" and not box.moves,
+)
+box = Box(uplink="wlan1")
+box.chan["wlan0"] = 6
+f = follower(box)
+check("  nor for a link it doesn't follow", f.check("wlan0", 5000, roamed_at=1000) == "" and not box.moves)
+box = Box()
+box.chan["wlan0"] = 6
+box.move = lambda iface: (1, "The hotspot did not start: no channel")
+f = follower(box)
+check(
+    "a move that fails: said, with the reason",
+    f.check("wlan0", 5000, roamed_at=1000)
+    == "The hotspot did not move to channel 6 with the link: The hotspot did not start: no channel.",
+)
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
