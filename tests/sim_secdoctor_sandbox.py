@@ -158,8 +158,21 @@ for box, want in (("rw,nosuid,nodev,noexec,relatime", "warn"), ("rw,nosuid,nodev
 ci = {"irate-box-ci.service": {"LoadState": "loaded", "User": "hubci", "IPAddressDeny": "", "PrivateNetwork": "no"}}
 sd._hub_ask = lambda *a, **k: 403
 sd._ci_nft = lambda: None
+sd._ci_nft_ready = lambda: (False, "Error: Could not process rule: No such file or directory")
+f = run(ci)["units-ci-loopback"]
 check(
-    "builds can reach the hub on loopback (no rule loaded): a warning", run(ci)["units-ci-loopback"]["status"] == "warn"
+    "builds can reach the hub on loopback (no rule loaded, and the kernel refuses it): a warning, saying why",
+    f["status"] == "warn"
+    and "units.ci.nft-refused" in msg_ids(f)
+    and "Error: Could not process rule: No such file or directory" in f["evidence"],
+    f,
+)
+sd._ci_nft_ready = lambda: (True, None)
+f = run(ci)["units-ci-loopback"]
+check(
+    "  not loaded now, but this kernel accepts it (it is loaded before each build): ok, said so",
+    f["status"] == "ok" and "units.ci.before-build" in msg_ids(f),
+    f,
 )
 sd._ci_nft = lambda: 'table inet irate_box_ci {\n\tchain out {\n\t\tmeta skuid "hubci" oif "lo" drop\n\t}\n}\n'
 f = run(ci)["units-ci-loopback"]
