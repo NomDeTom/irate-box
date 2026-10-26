@@ -1249,6 +1249,15 @@ if [ "$WEB" = caddy ] && getent group caddy >/dev/null; then
 	chgrp caddy "$ETC"
 	chmod 710 "$ETC"
 fi
+# The server key's group follows the front (root/tls.py FRONT_GROUP): one made while nginx was the front is root's
+# alone, and Caddy could not start with it.
+if [ -f "$ETC/tls/server.key" ]; then
+	if [ "$WEB" = caddy ] && getent group caddy >/dev/null; then
+		chgrp caddy "$ETC/tls/server.key"
+	else
+		chgrp root "$ETC/tls/server.key"
+	fi
+fi
 
 # --- the hub ---------------------------------------------------------------------
 if [ -n "$SRC" ]; then
@@ -1502,6 +1511,14 @@ fi
 # through its /admin route, where it asked for the login, and the hub refuses /admin without
 # it, so nothing else on the box that can reach the hub's loopback port is the admin. Made
 # once, kept across reinstalls; root's alone (systemd reads it for the hub and Caddy).
+# Caddy's packaged unit ran "caddy run --environ" before the drop-in below replaced it, which printed these secrets to
+# the journal, where any account in adm reads them: secrets seen there are made again. (grep reads to the end, not -q:
+# with pipefail, journalctl cut off by an early exit would fail the test.)
+if [ -f "$ETC/front-secret.env" ] && command -v journalctl >/dev/null &&
+	journalctl -q -u caddy -o cat --no-pager 2>/dev/null | grep -F -f <(sed -n 's/^HUB_[A-Z]*_SECRET=//p' "$ETC/front-secret.env") >/dev/null; then
+	notice "The web server's secrets were in the system log (Caddy printed its environment there). New ones are made now."
+	rm -f "$ETC/front-secret.env"
+fi
 if ! grep -qs '^HUB_FRONT_SECRET=[0-9a-f]\{64\}$' "$ETC/front-secret.env"; then
 	(
 		umask 077
@@ -1862,6 +1879,9 @@ if [ "$WEB" = caddy ]; then
 		# HUB_FRONT_SECRET, for /admin (header_up {env.HUB_FRONT_SECRET}), and HUB_VIA_SECRET, for every
 		# request to the hub (header_up {env.HUB_VIA_SECRET}): root's file, read by systemd.
 		EnvironmentFile=$ETC/front-secret.env
+		# Not the package's "caddy run --environ": it prints the environment, these secrets with it, to the journal.
+		ExecStart=
+		ExecStart=$(command -v caddy || echo /usr/bin/caddy) run --config /etc/caddy/Caddyfile
 	EOF
 	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi

@@ -593,6 +593,21 @@ check(
     via_map and via_map[0],
 )
 check("the updater's nginx -t fills in a stand-in map", '"@VIA@"' in hc)
+dropin = inst.split("caddy.service.d/irate-box.conf <<-EOF", 1)[1].split("\tEOF", 1)[0]
+check(
+    "Caddy's drop-in starts it without --environ (the package's prints the secrets to the journal)",
+    "\t\tExecStart=\n" in dropin
+    and "run --config /etc/caddy/Caddyfile" in dropin
+    and not any("--environ" in line for line in dropin.splitlines() if "ExecStart=" in line),
+    dropin,
+)
+check(
+    "  secrets already in Caddy's journal are made again; the server key's group follows the front",
+    "journalctl -q -u caddy" in inst
+    and 'rm -f "$ETC/front-secret.env"' in inst
+    and 'chgrp caddy "$ETC/tls/server.key"' in inst
+    and 'chgrp root "$ETC/tls/server.key"' in inst,
+)
 from irate_box.hub import access
 
 every = access.clean({app: "users" for app in access.ROUTED} | {"my-addon": "users"})
