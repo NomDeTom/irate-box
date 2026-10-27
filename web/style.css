@@ -376,6 +376,10 @@ h2 {
   font-size: 1.6rem;
   white-space: nowrap;
 }
+/* Rockchip boards (admin-rockchip.html): the board's card set apart from the words above it. */
+.rk-card {
+  margin-top: 1rem;
+}
 /* An icon that is a picture of the hub's own (manifest "svg:<name>", web/icons/<name>.svg): drawn as a mask in
    the text's colour, so it follows the theme as an emoji's place would. One line per picture. */
 .svg-icon {

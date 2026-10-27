@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="admin-rockchip.head.title">Rockchip boards · Hub administration</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔌</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="admin">
+  <!-- Rockchip boards on the box's USB (apps.d/57-rockchip.json; hub/rkusb.py, root/rkboard.py): found from sysfs by
+       the hub, switched to Loader mode and erased by the root helper. Behind /admin's login, as the Factory's page. -->
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-rockchip.header.tip-quick-help" data-i18n="admin-rockchip.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/hub" title="Back to the hub" data-i18n-title="admin-rockchip.header.tip-back-hub" data-i18n="admin-rockchip.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-rockchip.header.heading">Rockchip boards</h1>
+    <p class="subtitle" data-i18n="admin-rockchip.header.subtitle">Prepare a Luckfox Lyra over the box's USB. Administrators only.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-rockchip.header.aria-theme"></div>
+  </header>
+
+  <main class="admin-main">
+    <section class="admin-pane" id="rockchip" aria-label="Rockchip boards" data-i18n-aria-label="admin-rockchip.main.aria-rockchip-boards">
+      <p class="setting-desc" data-i18n="admin-rockchip.main.intro">
+        Prepare a Luckfox Lyra or another RK3506 board for mPWRD-OS: the box erases the board's onboard flash, so that
+        the board starts from its SD card. Connect the board's USB port to a USB port of this box. Connect one board at
+        a time.
+      </p>
+      <p class="setting-desc warn-text" id="rk-tools" hidden></p>
+      <div class="net-card setting rk-card" id="rk-card">
+        <h3 data-i18n="admin-rockchip.main.h-board">Board</h3>
+        <div id="rk-board"></div>
+        <div id="rk-chip" hidden></div>
+        <div class="library-buttons" id="rk-actions"></div>
+        <p class="setting-desc action-note" id="rk-note" role="status" hidden></p>
+      </div>
+    </section>
+  </main>
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/admin-widgets.js"></script>
+  <script src="/admin-rockchip.js"></script>
+</body>
+</html>

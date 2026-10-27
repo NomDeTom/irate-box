@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// Rockchip boards (/admin#rockchip) in jsdom against a stood-in /admin/rkboard: no board, a board running its own
+// Rockchip boards (/admin/rockchip.html, admin-rockchip.html) in jsdom against a stood-in /admin/rkboard: no board, a board running its own
 // system (Switch to Loader mode), in Loader mode (Erase the flash, asked first), in Maskrom mode (the chip chosen,
 // sent with the erase), two boards, the toolkit missing, and the root helper's answer said under the buttons.
 // Usage: [JSDOM=/path/to/node_modules/jsdom] node dom-rockchip.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
-const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const html = fs.readFileSync(`${WEB}/admin-rockchip.html`, 'utf8');
+const js = ['admin-widgets.js', 'admin-rockchip.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
-const dom = new JSDOM(html, { url: 'http://box/admin/#rockchip', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
+const dom = new JSDOM(html, { url: 'http://box/admin/rockchip.html', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
 const loaders = [{ id: 'rk3506b', chip: 'RK3506B', boards: ['Luckfox Lyra Zero W'] }, { id: 'rk3506', chip: 'RK3506', boards: ['Luckfox Lyra Plus'] }];
 const board = (mode) => ({ path: '1-1.2', id: mode === 'system' ? '2207:0013' : '2207:350f', product: mode === 'loader' ? 'USB download gadget' : 'rk3xxx', serial: 'b5', mode });
@@ -30,7 +30,7 @@ const d = w.document;
 const text = (id) => (d.getElementById(id) || {}).textContent || '';
 const buttons = () => [...d.querySelectorAll('#rk-actions button')];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const show = async (s) => { state = { ...state, ...s }; w.rkShown = ''; await w.eval('loadRockchip()'); await wait(50); };
+const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await wait(50); };
 (async () => {
   await wait(300);
   check('no board: said how to connect one, no buttons', /No Rockchip board is connected/.test(text('rk-board')) && buttons().length === 0, text('rk-board'));
@@ -48,7 +48,8 @@ const show = async (s) => { state = { ...state, ...s }; w.rkShown = ''; await w.
   await show({ boards: [board('loader'), { ...board('loader'), path: '1-1.3' }] });
   check('two boards: one at a time, no buttons', /2 boards are connected/.test(text('rk-board')) && buttons().length === 0);
   await show({ boards: [board('loader')], tools: { rkdeveloptool: false, adb: false } });
-  check('the toolkit missing: said, with the way to Toolkits; Erase disabled', !d.getElementById('rk-tools').hidden && /Rockchip boards toolkit/.test(text('rk-tools')) && d.querySelector('#rk-tools a[href="#toolkits"]') && buttons()[0].disabled, text('rk-tools'));
+  check('the toolkit missing: said, with the way to Toolkits; Erase disabled', !d.getElementById('rk-tools').hidden && /Rockchip boards toolkit/.test(text('rk-tools')) && d.querySelector('#rk-tools a[href="/admin/#toolkits"]') && buttons()[0].disabled, text('rk-tools'));
+  check('the card set apart from the words above it (its own class)', d.getElementById('rk-card').classList.contains('rk-card'));
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 })();

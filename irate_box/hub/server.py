@@ -5084,6 +5084,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/admin/mesh.html":
             # Mesh's Heard, the messages' texts too (as the Factory's page): behind /admin's login.
             path = "/admin-mesh.html"
+        elif path == "/admin/rockchip.html":
+            # Rockchip boards (apps.d/57-rockchip.json): behind /admin's login, as the Factory's page.
+            path = "/admin-rockchip.html"
 
         if path == "/api/guest-net":
             # What the sheet shows a guest: whether the owner shares the connection, at what level,
