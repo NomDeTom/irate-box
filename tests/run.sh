@@ -30,6 +30,7 @@ run sim_hotspot_guards.py
 run sim_crashwatch.py
 run sim_card_history.py
 run sim_servicewrites.py
+run sim_nand_state.py
 run sim_led.py
 run sim_port_80.py
 run sim_wificountry.py
