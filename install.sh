@@ -107,6 +107,13 @@ The installer keeps user data and the administrator password.
                         Security, HTTPS. Without it they open over HTTPS only: a session over
                         plain HTTP can be copied by anyone on an open hotspot. Recorded, so
                         updates keep it.
+  --keep-system-defaults
+                        at a first install, leave the system's own settings for writes and
+                        recovery as they are. Without it, the box takes the recommended set
+                        (apt's cache in memory, no package descriptions, the journal on the
+                        onboard flash or in memory, the longer write-back delay, a reboot
+                        after a kernel panic, the hardware watchdog), each changeable later
+                        on Recovery. Recorded, so updates keep it.
   --no-git              leave out the Git add-on: no cgit or fcgiwrap, no Git servers, no Git
                         tiles. The repositories' folder and the librarian's mirrors stay (git
                         itself is in every install). Recorded, so updates keep it; so does
@@ -170,7 +177,7 @@ EOF
 SRC="" REPO="https://github.com/NomDeTom/irate-box" REPO_GIVEN=0 BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
-HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 ALLOW_ADMIN_HTTP=0 NO_GIT=0 WITH_GIT=0
+HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 ALLOW_ADMIN_HTTP=0 NO_GIT=0 WITH_GIT=0 KEEP_SYSTEM=0
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
 for _a in "$@"; do
@@ -244,6 +251,9 @@ while [ $# -gt 0 ]; do
 	--no-https)
 		NO_HTTPS=1
 		shift
+		;;
+	--keep-system-defaults)
+		KEEP_SYSTEM=1
 		;;
 	--allow-admin-http)
 		ALLOW_ADMIN_HTTP=1
@@ -988,6 +998,10 @@ hub_site_in() {
 [ "$NO_HTTPS" = 0 ] && grep -qx -- --no-https "$ETC/install-options" 2>/dev/null && NO_HTTPS=1
 # Administration over plain HTTP stays allowed once chosen, now or at an earlier install (recorded).
 [ "$ALLOW_ADMIN_HTTP" = 0 ] && grep -qx -- --allow-admin-http "$ETC/install-options" 2>/dev/null && ALLOW_ADMIN_HTTP=1
+[ "$KEEP_SYSTEM" = 0 ] && grep -qx -- --keep-system-defaults "$ETC/install-options" 2>/dev/null && KEEP_SYSTEM=1
+# A first install: no record of an earlier one (the recommended settings are given only then).
+FIRST_INSTALL=0
+[ -f "$ETC/install-options" ] || FIRST_INSTALL=1
 # The Git add-on stays out once left out, by --no-git now or before (recorded) or by "irate-box gitaddon remove"
 # (its marker), so an update does not bring it back; --with-git brings it back.
 [ "$WITH_GIT" = 1 ] && [ "$NO_GIT" = 1 ] && die "--no-git and --with-git ask for opposite things; give one"
@@ -1363,6 +1377,7 @@ fi
 	[ "$NO_HTTPS" = 1 ] && echo --no-https
 	[ "$ALLOW_ADMIN_HTTP" = 1 ] && echo --allow-admin-http
 	[ "$NO_GIT" = 1 ] && echo --no-git
+	[ "$KEEP_SYSTEM" = 1 ] && echo --keep-system-defaults
 	true
 } >"$ETC/install-options"
 chmod 644 "$ETC/install-options"
@@ -3205,6 +3220,14 @@ for r in "${REMOVE[@]}"; do
 	esac
 done
 [ ${#REMOVE[@]} -eq 0 ] || systemctl daemon-reload
+
+# --- the recommended settings for writes and recovery, at a first install ------------------
+# (root/recommended.py; notes: recommended-defaults). An existing box is offered them in Box doctor instead.
+if [ "$FIRST_INSTALL" = 1 ] && [ "$KEEP_SYSTEM" = 0 ]; then
+	say "The recommended settings for writes and recovery"
+	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.recommended fresh | sed 's/^/    /' ||
+		problem "could not apply the recommended settings (Box doctor offers them)"
+fi
 
 # --- check -----------------------------------------------------------------------
 sleep 2

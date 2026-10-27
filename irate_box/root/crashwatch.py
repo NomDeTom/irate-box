@@ -335,8 +335,8 @@ def card_writes():
 
         value = json.loads(safeio.read_request(STATE / "settings.json")).get("card_writes")
     except (OSError, ValueError, AttributeError, ImportError):
-        return "thrifty"
-    return value if value in CARD_STOPS else "thrifty"
+        return "gentle"
+    return value if value in CARD_STOPS else "gentle"
 
 
 class SnapshotKeeper:

@@ -2836,6 +2836,60 @@ def flash_read():
     return M("repair.flash-read.ok", "The flash was read whole in {s} s, with no errors.", s=int(time.time() - start))
 
 
+def _recommended_findings():
+    """The recommended settings for writes and recovery this box does not have, and its owner has not chosen
+    otherwise: listed, with one repair for those root keeps; the SD card writes level pointed to on its page."""
+    from irate_box.root import recommended
+
+    try:
+        diffs = recommended.differences()
+        level = recommended.level_differs()
+    except Exception:  # noqa: BLE001 - the doctor goes on without this one
+        return []
+    if not diffs and not level:
+        return []
+    lines = [f"{render(label)} (now: {now})" for _, label, _, now in diffs]
+    if level:
+        lines.append(f"the SD card writes level {recommended.LEVEL} (Recovery → SD card writes)")
+    return [
+        finding(
+            "recommended",
+            M("rec.title", "Recommended settings"),
+            "warn",
+            M(
+                "rec.summary",
+                {
+                    "one": "One setting differs from the recommended set for writes and recovery.",
+                    "other": "{n} settings differ from the recommended set for writes and recovery.",
+                },
+                n=len(lines),
+            ),
+            M(
+                "rec.why",
+                "The recommended set writes less to the SD card and brings an unattended box back by itself: what a "
+                "day of measuring and the Lyra's unclean stops have shown. A setting you selected yourself is not listed.",
+            ),
+            M("rec.fix", "Use the recommended settings, or change any of them on Recovery."),
+            evidence=lines,
+            actions=[
+                action(
+                    "recommended-apply",
+                    M("rec.apply", "Use the recommended settings"),
+                    M(
+                        "rec.apply.confirm",
+                        "Use the recommended settings? The box changes: {list}. The hardware watchdog can need a restart to take "
+                        "effect. The onboard flash, if used, is formatted first, and only a blank one is used.",
+                        list=", ".join(render(label) for _, label, _, _ in diffs) or "nothing root keeps",
+                    ),
+                )
+            ]
+            if diffs
+            else [],
+            go=GO_CARD_WRITES,
+        )
+    ]
+
+
 def check_card_writes(now=None):
     from irate_box.hub import cardhistory
 
@@ -2907,6 +2961,7 @@ def check_card_writes(now=None):
     found = cardhistory.card()
     out += _service_writes_findings(summary, found[0] if found else None)
     out += _flash_findings()
+    out += _recommended_findings()
     for conf in sorted((SYSTEMD_ETC / "journald.conf.d").glob("*.conf")):
         try:
             text = conf.read_text(errors="replace")
@@ -5457,7 +5512,7 @@ CHOICE_RE = re.compile(
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash))$"
-    r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$"
+    r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )
 
@@ -5475,9 +5530,20 @@ def fix(choice):
 
         return clock.undo()
     if kind.startswith("crashwatch-"):
-        from irate_box.root import crashwatch
+        from irate_box.root import crashwatch, recommended
 
-        return crashwatch.set_option(kind[len("crashwatch-") :], arg)
+        said = crashwatch.set_option(kind[len("crashwatch-") :], arg)
+        recommended.record(kind, arg)  # the owner's own choice: never offered back
+        return said
+    if kind == "recommended-apply":
+        from irate_box.root import recommended
+
+        done = recommended.apply_all()
+        return M(
+            "rec.applied",
+            {"one": "One recommended setting applied.", "other": "{n} recommended settings applied."},
+            n=len(done),
+        )
     if kind in ("led-show", "led-led"):
         from irate_box.root import led
 
@@ -5641,8 +5707,12 @@ def fix(choice):
     if kind == "card-memcg-on":
         return card_memcg_on()
     if kind == "card-set":
+        from irate_box.root import recommended
+
         key, _, value = arg.partition(":")
-        return card_set(key, value)
+        said = card_set(key, value)
+        recommended.record(f"card-set:{key}", value)  # the owner's own choice: never offered back
+        return said
     if kind in ("card-ram", "card-ram-off"):
         from irate_box.hub import cardhistory
         from irate_box.root import servicewrites
