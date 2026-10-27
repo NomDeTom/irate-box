@@ -335,7 +335,7 @@
     if (c.place === 'chosen') { add('Locale', c.locale, 'text'); add('Time zone', c.timezone, 'text'); add('WiFi country', c.country, 'text'); }
     if (c.address === 'fixed') for (const k of ['ip', 'mask', 'gateway', 'dns']) { if (!c[k]) out.push(['Fixed address', 'Fill in the address, mask, gateway and DNS.']); add('Fixed address', c[k], 'text'); }
     add('Your SSH key', c.key, 'text');
-    if (c.route === 'serial' && c.address === 'fixed') out.push(['Address', 'A fixed address is not set over the serial console yet: choose From the network.']);
+    if (c.route === 'serial' && c.address === 'fixed') out.push(['Address', 'A fixed address is not set over the serial console yet: select From the network.']);
     if (c.route === 'serial' && !(setup.consoles || []).length) out.unshift(['', "Connect a USB serial adapter to this box, wired to the board's debug console."]);
     else if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (reaching the board and sending these choices) comes next. The choices are kept while this page is open."]);
     return out;

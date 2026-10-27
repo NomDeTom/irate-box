@@ -50,7 +50,9 @@ def _card(name, size, serial):
     if found["size"] != size or found["serial"] != (serial or ""):
         raise Refused(M("rkcard.changed", "The card in that reader is not the one shown: look at the page again."))
     if found["mounted"]:
-        raise Refused(M("rkcard.mounted", "The card is mounted (the desktop may have opened it): unmount it first."))
+        raise Refused(
+            M("rkcard.mounted", "The card is mounted (a desktop can open a card by itself): unmount it first.")
+        )
     return found
 
 

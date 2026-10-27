@@ -6639,7 +6639,7 @@ def _rk_serial_setup(req):
         ssid, wifi_password = "", ""
     if c.get("address") == "fixed":
         raise Refused(
-            M("rkserial.fixed", "A fixed address is not set over the serial console yet: choose From the network.")
+            M("rkserial.fixed", "A fixed address is not set over the serial console yet: select From the network.")
         )
     choices = {
         "user": str(c.get("userName") or "armbian"),

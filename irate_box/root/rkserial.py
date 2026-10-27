@@ -182,7 +182,9 @@ def first_login(console, root_password, user, user_password, real_name, timeout=
                 )
         elif name == "shellprompt":
             return
-    raise Refused(M("rkserial.stuck", "The board's first login stopped answering before its setup was finished."))
+    raise Refused(
+        M("rkserial.stuck", "The board stopped answering its first-boot questions before its setup was finished.")
+    )
 
 
 def configure(console, choices):
@@ -261,13 +263,13 @@ def setup(console, choices):
     if state == "initramfs":
         raise Refused(M("rkserial.initramfs", "The board stopped at its emergency shell: its SD card is not readable."))
     if state == "login":
-        raise Refused(M("rkserial.login", "The board asks for a login: its first setup is done already."))
+        raise Refused(M("rkserial.login", "The board asks for a user to sign in: its first setup is done already."))
     if state is None:
         raise Refused(
             M(
                 "rkserial.silent",
                 "Nothing came from the board's console. Check the wiring (TX to RX, RX to TX, GND). If the board is "
-                "already waiting at its first login, restart it with the console connected and Set up again: the box "
+                "already waiting at its first-boot questions, restart it with the console connected and Set up again: the box "
                 "answers its questions as it boots.",
             )
         )
