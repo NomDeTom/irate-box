@@ -250,6 +250,21 @@ setTimeout(() => {
     const save = d.querySelector('#net-country .aw-save');
     if (save) save.click();
   }, 2200);
+  // The box name: its current one in a text field; a name outside the rules warned of; a good one saved.
+  setTimeout(() => {
+    const field = d.querySelector('#net-hostname input');
+    const warnNow = () => (d.querySelector('#net-hostname .aw-warn') || {}).textContent || '';
+    check('Box name: a text field holding the box\'s name', field && field.value.length > 0, field && field.value);
+    if (field) { field.value = 'Lyra_2'; field.dispatchEvent(new w.Event('input')); }
+    check('  a name outside the rules: said beside it', /lowercase letters, digits and hyphens/.test(warnNow()), warnNow());
+    if (field) { field.value = 'lyra-2'; field.dispatchEvent(new w.Event('input')); }
+    check('  a good one: the new .local address said', /lyra-2\.local/.test(warnNow()), warnNow());
+    const save = d.querySelector('#net-hostname .aw-save');
+    if (save) save.click();
+  }, 2400);
+  setTimeout(() => {
+    check('  Save sends the hostname action', posted.some((p) => p.action === 'hostname' && p.hostname === 'lyra-2'), JSON.stringify(posted.slice(-3)));
+  }, 2900);
   setTimeout(() => {
     const sent = posted.find((p) => p.action === 'settings');
     check('Save posts both dials, the rest, and custom values', sent && sent.settings.pace === 'urgent' && sent.settings.reach === 'radio'
