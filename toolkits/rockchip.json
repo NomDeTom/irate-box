@@ -1,14 +1,23 @@
 {
  "id": "rockchip",
  "title": "Rockchip boards",
- "summary": "Prepare a Luckfox Lyra or another RK3506 board over the box's USB: erase its onboard flash so that it starts from its SD card. rkdeveloptool and adb, used by Rockchip boards on /admin, with the RK3506 and RK3506B loaders that irate-box ships.",
+ "summary": "Prepare a Luckfox Lyra or another RK3506 board over the box's USB: erase its onboard flash so that it starts from its SD card. rkdeveloptool and adb, used by Rockchip boards on /admin, with the RK3506 and RK3506B loaders that irate-box ships; a board's serial console (tio, grabserial, pexpect); and a board's SD card in a reader: its partition table (gdisk, parted), a genuine-card test (f3), an image written and checked (bmap-tools), the card's maker and date from the box's own slot (mmc-utils).",
  "packages": [
   "rkdeveloptool",
-  "adb"
+  "adb",
+  "tio",
+  "grabserial",
+  "python3-pexpect",
+  "gdisk",
+  "parted",
+  "bmap-tools",
+  "f3",
+  "mmc-utils"
  ],
- "consent": "Erasing a board's flash deletes the system on it, and it cannot be undone. adb can also open a shell on a board that runs Android's debugging service.",
+ "consent": "Erasing a board's flash deletes the system on it, and it cannot be undone. adb can also open a shell on a board that runs Android's debugging service. f3's quick test and an image written to a card replace what is on the card.",
  "notes": [
-  "Connect the board's USB port to a USB port of the box. A board that runs its factory system is switched to Loader mode for you. Otherwise hold its boot (Maskrom) button while you connect it."
+  "Connect the board's USB port to a USB port of the box. A board that runs its factory system is switched to Loader mode for you. Otherwise hold its boot (Maskrom) button while you connect it.",
+  "A board's serial console: a USB serial adapter on this box, its TX to the board's RX, its RX to the board's TX, GND to GND, at 3.3 V. tio opens it (tio -b 1500000 /dev/ttyUSB0 for a Lyra's debug console)."
  ],
  "links": [
   {

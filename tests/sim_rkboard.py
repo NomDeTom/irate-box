@@ -99,8 +99,10 @@ check(
 )
 check("  Rockchip's licence beside them", (REPO / "LICENSES" / "LicenseRef-Rockchip-rkbin.txt").is_file())
 check(
-    "the toolkit brings rkdeveloptool and adb",
-    json.loads((REPO / "toolkits/rockchip.json").read_text())["packages"] == ["rkdeveloptool", "adb"],
+    "the toolkit brings rkdeveloptool and adb first, and the console and card tools",
+    json.loads((REPO / "toolkits/rockchip.json").read_text())["packages"][:2] == ["rkdeveloptool", "adb"]
+    and {"tio", "grabserial", "python3-pexpect", "gdisk", "parted", "bmap-tools", "f3", "mmc-utils"}
+    <= set(json.loads((REPO / "toolkits/rockchip.json").read_text())["packages"]),
 )
 
 # Each mode found.
