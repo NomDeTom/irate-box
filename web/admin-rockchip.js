@@ -39,6 +39,10 @@
   let chipChosen = 'rk3506b';
   let poll = null;
   let shown = '';
+  // The loader showed the SD card when an erase was asked (rkboard.card-shown): writing an image to it is offered.
+  let cardShown = false;
+  let imageChosen = '';
+  let shaTyped = '';
 
   async function load() {
     clearTimeout(poll);
@@ -48,7 +52,7 @@
     } catch (_) {
       data = null;
     }
-    if (data) { render(data); renderSetup(data.setup); }
+    if (data) { render(data); renderCards(data); renderSetup(data.setup); }
     poll = setTimeout(load, document.hidden ? 30000 : waiting ? 2000 : 3000);
   }
 
@@ -58,7 +62,9 @@
       const done = (data.results || []).find((r) => r.id === waiting);
       if (done) {
         waiting = null;
-        say(resultSaid(done), done.ok, note);
+        if (done.msg && (done.msg.id || '').startsWith('rkserial.')) setupResult(done);
+        else if (waitingCard) { waitingCard = false; say(resultSaid(done), done.ok, document.getElementById('rk-card-result')); cardsShown = ''; }
+        else say(resultSaid(done), done.ok, note);
       }
     }
     const tools = data.tools || {};
@@ -72,7 +78,11 @@
     );
     const boards = data.boards || [];
     const busy = !!waiting || data.pending > 0;
-    const key = JSON.stringify([boards, busy, missing, chipChosen]);
+    const lastRk = (data.results || []).find((r) => r.msg && (r.msg.id || '').startsWith('rkboard.'));
+    if (lastRk) cardShown = lastRk.msg.id === 'rkboard.card-shown';
+    if (!boards.length) cardShown = false;
+    const images = data.images || [];
+    const key = JSON.stringify([boards, busy, missing, chipChosen, cardShown, images]);
     if (key === shown) return;
     shown = key;
     const board = document.getElementById('rk-board');
@@ -80,6 +90,7 @@
     const actions = document.getElementById('rk-actions');
     chip.hidden = true;
     actions.replaceChildren();
+    document.querySelectorAll('#rk-write').forEach((n) => n.remove());
     if (!boards.length) {
       board.replaceChildren(el('p', {
         className: 'setting-desc',
@@ -127,6 +138,125 @@
       chip.replaceChildren(el('span', { className: 'setting-name', textContent: 'Chip' }), box);
       actions.append(step('Erase the flash', { action: 'erase', loader: chipChosen }, ERASE_ASK));
     }
+    if (cardShown && (b.mode === 'loader' || b.mode === 'maskrom')) actions.after(writeBlock(images, busy, b, note));
+  }
+
+  // Writing an image to the SD card the board's loader shows: one of the images on the box (rkusb.IMAGES), its
+  // publisher's sha256, and the root helper writes it through the loader, reading each piece back.
+  function writeBlock(images, busy, b, note) {
+    document.querySelectorAll('#rk-write').forEach((n) => n.remove());
+    const box = el('div', { id: 'rk-write', className: 'rk-write' },
+      el('h3', { textContent: "Write an image to the board's card" }),
+      el('p', { className: 'setting-desc', textContent: "The board's loader shows its SD card, so the card can be written from here: the image replaces everything on the card, and each piece is read back as it is written." }));
+    if (!images.length) {
+      box.append(el('p', { className: 'setting-desc', textContent: 'No image is on the box yet. Put one in /var/lib/hub/rk-images: an .img or .img.xz, with its sha256 in a .sha256 file beside it.' }));
+      return box;
+    }
+    if (!images.some((i) => i.name === imageChosen)) imageChosen = images[0].name;
+    const tiles = el('div', { id: 'rk-images' });
+    AW.choices(tiles, 'rk-images', images.map((i) => ({ value: i.name, title: i.name, desc: `${(i.size / 2 ** 20).toFixed(0)} MB${i.sha256 ? ', its sha256 beside it' : ''}` })), {
+      value: imageChosen,
+      onChange: (v) => { imageChosen = v; shaTyped = ''; shown = ''; },
+    });
+    const chosen = images.find((i) => i.name === imageChosen);
+    const sha = el('input', { type: 'text', name: 'rk-sha256', autocomplete: 'off', spellcheck: false, placeholder: '64 hex digits, as its publisher lists it' });
+    sha.value = shaTyped || chosen.sha256;
+    const go = el('button', { type: 'button', className: 'action-btn', textContent: 'Write the image to the card' });
+    const ok = () => /^[0-9a-fA-F]{64}$/.test(sha.value.trim());
+    go.disabled = busy || !ok();
+    sha.addEventListener('input', () => { shaTyped = sha.value; go.disabled = busy || !ok(); });
+    go.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere(`Write ${imageChosen} to the board's SD card? Everything on the card is replaced.`, { anchor: event.currentTarget, label: 'Write the image' }))) return;
+      try {
+        waiting = (await postJSON('/admin/rkboard', { action: 'write', image: imageChosen, sha256: sha.value.trim(), loader: b.mode === 'maskrom' ? chipChosen : null })).id;
+        say("Writing the image to the board's card…", true, note);
+        shown = '';
+        load();
+      } catch (err) {
+        say(err.message, false, note);
+      }
+    });
+    box.append(tiles, el('label', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'sha256' }), sha), el('div', { className: 'library-buttons' }, go));
+    return box;
+  }
+
+  // ---- Cards in a reader (hub/rkusb.cards, root/rkcard.py): one card each, its drawer the three actions. Each is
+  // sent with the card's name, size and serial, which the root helper checks again (a card swapped is refused).
+  let cardsShown = '';
+  let waitingCard = false;
+  const cardImage = new Map();   // card name -> {image, sha}
+  function renderCards(data) {
+    const at = document.getElementById('rk-cards');
+    if (!at) return;
+    const list = data.cards || [];
+    const images = data.images || [];
+    const busy = !!waiting || data.pending > 0;
+    const key = JSON.stringify([list, images, busy]);
+    if (key === cardsShown || at.querySelector('.aw-card.open')) return;
+    cardsShown = key;
+    if (!list.length) {
+      at.replaceChildren(h('p', { class: 'setting-desc', text: 'No card is in a reader on this box.' }));
+      return;
+    }
+    at.replaceChildren(AW.cards(list.map((card) => ({
+      id: card.name,
+      title: `${card.model || 'SD card'}, ${(card.size / 1e9).toFixed(1)} GB`,
+      summary: card.mounted ? 'Mounted: unmount it first (close the window the desktop opened for it).' : `In a USB reader (${card.path}).`,
+      badges: card.mounted ? ['Mounted'] : [],
+      card,
+    })), { id: 'rk-cards-list', body: (item) => cardBody(item.card, images, busy) }));
+  }
+  function cardBody(card, images, busy) {
+    const result = document.getElementById('rk-card-result');
+    const ident = { card: card.name, size: card.size, serial: card.serial };
+    const send = async (body, said) => {
+      try {
+        waiting = (await postJSON('/admin/rkboard', { ...ident, ...body })).id;
+        waitingCard = true;
+        say(said, true, result);
+        load();
+      } catch (err) {
+        say(err.message, false, result);
+      }
+    };
+    const off = busy || card.mounted;
+    const checkB = h('button', { type: 'button', class: 'action-btn', text: 'Check the card', disabled: off });
+    checkB.addEventListener('click', () => send({ action: 'card-check' }, 'Reading the card…'));
+    const genuineB = h('button', { type: 'button', class: 'action-btn', text: 'Test that it is genuine', disabled: off });
+    genuineB.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere("Test the card? The test writes all over it: everything on the card is lost. It takes a few minutes.", { anchor: event.currentTarget, label: 'Test the card' }))) return;
+      send({ action: 'card-genuine' }, 'Testing the card…');
+    });
+    const parts = [
+      h('p', { class: 'setting-desc', text: 'Check the card reads it and writes nothing: its partition table, and each filesystem on it.' }),
+      h('div', { class: 'library-buttons' }, checkB, genuineB),
+      h('h3', { text: 'Write an image to the card' }),
+    ];
+    if (!images.length) {
+      parts.push(h('p', { class: 'setting-desc', text: 'No image is on the box yet. Put one in /var/lib/hub/rk-images: an .img or .img.xz, with its sha256 in a .sha256 file beside it.' }));
+      return parts;
+    }
+    const pick = cardImage.get(card.name) || { image: images[0].name, sha: '' };
+    if (!images.some((i) => i.name === pick.image)) pick.image = images[0].name;
+    cardImage.set(card.name, pick);
+    const tiles = h('div', { 'aria-label': 'Image' });
+    const sha = h('input', { type: 'text', name: `rk-card-sha-${card.name}`, autocomplete: 'off', spellcheck: 'false', placeholder: '64 hex digits, as its publisher lists it' });
+    const fill = () => { sha.value = pick.sha || (images.find((i) => i.name === pick.image) || {}).sha256 || ''; };
+    AW.choices(tiles, `rk-card-image-${card.name}`, images.map((i) => ({ value: i.name, title: i.name, desc: `${(i.size / 2 ** 20).toFixed(0)} MB` })), {
+      value: pick.image,
+      onChange: (v) => { pick.image = v; pick.sha = ''; fill(); ok(); },
+    });
+    fill();
+    const flashB = h('button', { type: 'button', class: 'action-btn', text: 'Write the image to the card' });
+    const ok = () => { flashB.disabled = off || !/^[0-9a-fA-F]{64}$/.test(sha.value.trim()); };
+    sha.addEventListener('input', () => { pick.sha = sha.value; ok(); });
+    ok();
+    flashB.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere(`Write ${pick.image} to the card? Everything on the card is replaced.`, { anchor: event.currentTarget, label: 'Write the image' }))) return;
+      send({ action: 'card-flash', image: pick.image, sha256: sha.value.trim() }, 'Writing the image to the card…');
+    });
+    parts.push(tiles, h('label', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'sha256' }), sha), h('div', { class: 'library-buttons' }, flashB));
+    return parts;
   }
 
   // ---- Boards to set up (hub/rksetup.py): one card per setup hotspot in range, its drawer the choices sent to the
@@ -147,11 +277,11 @@
     if (kind === 'user' && !USER_RE.test(value)) return 'A user name is lower-case letters, digits, hyphens and underscores, starting with a letter.';
     return '';
   }
-  const ROUTES = [
+  const ROUTES_ALL = [
     { value: 'hotspot', title: "The board's setup hotspot", desc: "The box joins the board's hotspot for about a minute, sends the choices below, and comes back to its own network." },
     { value: 'card', title: 'Settings on the SD card', desc: "The choices written to the card before the board's first start: no hotspot, and Armbian's default password never in use.", why: 'the box cannot write a card yet' },
     { value: 'ssh', title: "Armbian's default password, over a cable", desc: 'For stock Armbian on a wired network: the box signs in as root with Armbian\'s default password at once, and sets the board up.', why: 'the box does not look for such a board yet' },
-    { value: 'serial', title: 'The serial console', desc: "For a board wired to a USB serial adapter on this box: the box types the choices at the board's first start.", why: 'the box does not use a serial console yet' },
+    { value: 'serial', title: 'The serial console', desc: "For a board wired to a USB serial adapter on this box: press Set up, then power the board, and the box answers its first-login questions as it boots." },
     { value: 'usb', title: "Networking over the board's USB", desc: 'The cable used to erase the board, as a network.', why: 'mPWRD-OS has not been seen to offer it' },
     { value: 'bluetooth', title: 'Bluetooth', desc: "Meshtastic's flasher sends the WiFi over Bluetooth.", why: 'only Raspberry Pi images take it' },
   ];
@@ -184,7 +314,8 @@
     return picked.get(id);
   }
   // Every typed value the board would be sent, with its problem: [[label, problem]].
-  function problems(c, ready) {
+  function problems(c, setup) {
+    const ready = (setup.routes || []).includes(c.route);
     const out = [];
     const add = (label, value, kind) => { const found = problem(value, kind); if (found) out.push([label, found]); };
     if (c.route === 'ssh') {
@@ -204,7 +335,9 @@
     if (c.place === 'chosen') { add('Locale', c.locale, 'text'); add('Time zone', c.timezone, 'text'); add('WiFi country', c.country, 'text'); }
     if (c.address === 'fixed') for (const k of ['ip', 'mask', 'gateway', 'dns']) { if (!c[k]) out.push(['Fixed address', 'Fill in the address, mask, gateway and DNS.']); add('Fixed address', c[k], 'text'); }
     add('Your SSH key', c.key, 'text');
-    if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (reaching the board and sending these choices) comes next. The choices are kept while this page is open."]);
+    if (c.route === 'serial' && c.address === 'fixed') out.push(['Address', 'A fixed address is not set over the serial console yet: select From the network.']);
+    if (c.route === 'serial' && !(setup.consoles || []).length) out.unshift(['', "Connect a USB serial adapter to this box, wired to the board's debug console."]);
+    else if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (reaching the board and sending these choices) comes next. The choices are kept while this page is open."]);
     return out;
   }
 
@@ -214,7 +347,7 @@
     const action = h('button', { type: 'button', class: 'action-btn primary', text: 'Set up the board' });
     const reason = h('p', { class: 'setting-desc bad', role: 'status' });
     const refresh = () => {
-      const list = problems(c, setup.ready);
+      const list = problems(c, setup);
       action.disabled = list.length > 0;
       reason.textContent = list.length ? list.map(([label, found]) => (label ? `${label}: ${found}` : found)).join(' ') : '';
       reason.hidden = !list.length;
@@ -250,6 +383,10 @@
     const sendWarn = h('p', { class: 'setting-desc warn-text', text: "The box sends this network's password to the new board." });
     // A board found by its hotspot leads with that route; a board not listed, with the ways in that need no finding.
     const NO_FINDING = ['serial', 'card', 'ssh', 'usb'];
+    const consoles = setup.consoles || [];
+    if (!consoles.includes(c.console)) c.console = consoles[0] || '';
+    // The serial console is offered once a USB serial adapter is on the box.
+    const ROUTES = ROUTES_ALL.map((r) => (r.value === 'serial' && !consoles.length ? { ...r, why: 'no USB serial adapter is connected to this box' } : r));
     const routes = item.id === OTHER
       ? {
           main: ROUTES.filter((r) => NO_FINDING.includes(r.value)),
@@ -267,7 +404,11 @@
       // The other ways in, each with why it is not offered here, folded so the ones that fit this board stand alone.
       h('details', { class: 'sec-fold' }, h('summary', { text: 'Other ways in' }), tiles('Other ways in', 'route', routes.folded, drawSteps)),
       only('route', ['ssh'], field("The board's address", 'boardAddress', 'text', { placeholder: '192.168.1.60', help: "Its address on this box's wired network, from your router's list or the board's screen." })),
-      only('route', ['serial'], h('p', { class: 'setting-desc', text: "A USB serial adapter on this box, wired to the board's debug console: the adapter's TX to the board's RX, its RX to the board's TX, GND to GND, at 3.3 V." })),
+      only('route', ['serial'], h('div', {},
+        consoles.length > 1 ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Serial adapter' }),
+          chips('Serial adapter', 'console', consoles.map((name) => ({ value: name, title: name.replace(/^usb-/, '').replace(/-if\d+-port\d+$/, ''), says: `/dev/serial/by-id/${name}` })))) : null,
+        consoles.length === 1 ? h('p', { class: 'setting-desc', text: `The serial adapter: ${consoles[0]}.` }) : null,
+        h('p', { class: 'setting-desc', text: "Wired to the board's debug console: the adapter's TX to the board's RX, its RX to the board's TX, GND to GND, at 3.3 V." }))),
       h('h3', { text: 'Network' }),
       tiles('Network', 'network', [
         { value: 'same', title: "This box's network, its password sent", desc: boxValues.ssid ? `${boxValues.ssid}: the box sends the password it holds for it.` : "This box's WiFi network.", why: boxValues.ssid ? '' : 'this box is not on a WiFi network' },
@@ -336,8 +477,9 @@
       if (!(await AW.confirmHere(`Set up ${item.title}? The box sends it the choices above.`, { anchor: event.currentTarget, label: 'Set up the board' }))) return;
       // Generated passwords are made by the root helper, not here, and shown once in its answer.
       try {
-        waiting = (await postJSON('/admin/rkboard', { action: 'setup', hotspot: item.id, choices: { ...c } })).id;
-        say('Setting the board up…', true, reason);
+        const ask = c.route === 'serial' ? { action: 'setup', route: 'serial', console: c.console, choices: { ...c } } : { action: 'setup', hotspot: item.id, choices: { ...c } };
+        waiting = (await postJSON('/admin/rkboard', ask)).id;
+        say(c.route === 'serial' ? 'Waiting for the board on its console: power it now…' : 'Setting the board up…', true, reason);
       } catch (err) {
         say(err.message, false, reason);
       }
@@ -347,11 +489,30 @@
     return [body];
   }
 
+  // A setup's answer, above the boards: what was done, and the passwords made for the board, given once by the hub
+  // (rk-secrets) and not kept by the box.
+  async function setupResult(done) {
+    const at = document.getElementById('rk-setup-result');
+    if (!at) return;
+    at.hidden = false;
+    at.replaceChildren(h('p', { class: done.ok ? 'setting-desc' : 'setting-desc bad', text: resultSaid(done) }));
+    if (!done.ok || !done.msg || done.msg.id !== 'rkserial.done') return;
+    let secret = null;
+    try {
+      secret = (await postJSON('/admin/rkboard', { action: 'secret', id: done.id })).secret;
+    } catch (_) {
+      secret = null;
+    }
+    if (!secret) return;
+    at.append(h('p', { class: 'setting-desc warn-text', text: 'Shown once, and not kept by this box: write them down.' }),
+      AW.dl({ "Root's password": secret.root, [`${secret.user}'s password`]: secret.user_password }));
+  }
+
   function renderSetup(setup) {
     const at = document.getElementById('rk-setup');
     if (!at || !setup) return;
     const spots = setup.hotspots || [];
-    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults]);
+    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults, setup.consoles, setup.routes]);
     // A drawer being filled in is not drawn again under the person typing.
     if (key === setupShown || at.querySelector('.aw-card.open')) return;
     setupShown = key;
@@ -370,5 +531,5 @@
 
   load();
   // For the page tests: the drawing, called with data of their own.
-  if (typeof window !== 'undefined') { window.rkRender = render; window.rkRenderSetup = renderSetup; window.rkProblem = problem; }
+  if (typeof window !== 'undefined') { window.rkRender = render; window.rkRenderSetup = renderSetup; window.rkRenderCards = renderCards; window.rkProblem = problem; }
 }());

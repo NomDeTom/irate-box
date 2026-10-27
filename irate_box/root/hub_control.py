@@ -103,8 +103,16 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
       The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
   {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-write", "image": "<name>.img.xz", "sha256": "<64 hex>", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-serial-setup", "console": "<by-id name>", "choices": {...}}
+  {"id": ..., "action": "rk-card-check"|"rk-card-genuine", "card": "sda", "size": <bytes>, "serial": "..."}
+  {"id": ..., "action": "rk-card-flash", "card": "sda", "size": <bytes>, "serial": "...", "image": "...", "sha256": "..."}
       A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
-      the board's onboard flash erased (in Maskrom mode, the named loader sent first). control/rkboard.json after.
+      the board's onboard flash erased (in Maskrom mode, the named loader sent first), refused when its loader
+      shows the SD card; or an image from <state>/rk-images written to that card, read back as it goes. A new board
+      set up over its serial console (rkserial.py). A board's SD card in a reader (rkcard.py): read and checked,
+      tested as genuine (f3probe, erasing it), or an image written to it and read back.
+      control/rkboard.json after.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
       and put back at once if NetworkManager's view of them changes; undo puts the file back.
@@ -6580,6 +6588,138 @@ def _rk_erase(rkboard, req):
     return rkboard.erase(loader)
 
 
+# A new board set up over its serial console (rkserial.py): every value checked again here (rksetup.problem), the
+# console found by its /dev/serial/by-id name, this box's own WiFi password read here (never sent through the hub),
+# and the passwords made for the board kept for the page to show once (rk-secrets/<request id>.json, the hub's to
+# read and delete), never in the result.
+RK_SECRETS = CONTROL / "rk-secrets"
+SERIAL_BY_ID = Path(os.environ.get("HUB_SERIAL_BY_ID", "/dev/serial/by-id"))
+CONSOLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$")
+
+
+def _box_wifi(name):
+    """(ssid, password) of a NetworkManager connection on this box: the WiFi in use ("") or the hotspot."""
+    if not name:
+        out = run("nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active").stdout
+        name = next(
+            (
+                f.split(":")[0]
+                for f in out.splitlines()
+                if ":802-11-wireless:" in f and not f.startswith("irate-box-ap:")
+            ),
+            "",
+        )
+    if not name:
+        raise Refused(M("rkserial.no-box-wifi", "This box is not on a WiFi network, so it has none to send."))
+    got = run(
+        "nmcli", "-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk", "connection", "show", name
+    ).stdout
+    ssid, _, password = got.strip().partition("\n")
+    return ssid.strip(), password.strip()
+
+
+def _rk_serial_setup(req):
+    from irate_box.hub import rksetup
+    from irate_box.root import rkserial
+
+    c = req.get("choices") or {}
+    console = str(req.get("console") or "")
+    if not CONSOLE_RE.match(console) or not (SERIAL_BY_ID / console).exists():
+        raise Refused(M("rkserial.no-console", "That serial adapter is not connected to the box."))
+    network = c.get("network")
+    if network == "same":
+        ssid, wifi_password = _box_wifi("")
+    elif network == "hotspot":
+        ssid, wifi_password = _box_wifi("irate-box-ap")
+    elif network == "same-typed":
+        ssid, wifi_password = _box_wifi("")[0], str(c.get("wifiPass") or "")
+    elif network == "other":
+        ssid, wifi_password = str(c.get("otherSsid") or ""), str(c.get("otherPass") or "")
+    else:
+        ssid, wifi_password = "", ""
+    if c.get("address") == "fixed":
+        raise Refused(
+            M("rkserial.fixed", "A fixed address is not set over the serial console yet: select From the network.")
+        )
+    choices = {
+        "user": str(c.get("userName") or "armbian"),
+        "real_name": str(c.get("userName") or "armbian").replace("-", " ").title(),
+        "root_password": str(c.get("rootTyped") or "") if c.get("rootPass") == "typed" else "",
+        "user_password": str(c.get("userTyped") or "") if c.get("userPass") == "typed" else "",
+        "hostname": str(c.get("hostname") or ""),
+        "timezone": str(c.get("timezone") or ""),
+        "locale": str(c.get("locale") or ""),
+        "country": str(c.get("country") or "").upper(),
+        "ssid": ssid,
+        "wifi_password": wifi_password,
+        "keys": [k.strip() for k in str(c.get("key") or "").splitlines() if k.strip()],
+        "lock_root": bool(c.get("lockRoot")),
+    }
+    kinds = {"user": "user", "hostname": "hostname", "wifi_password": "wifi-password"}  # nosec B105
+    for field in (
+        "user",
+        "real_name",
+        "root_password",
+        "user_password",
+        "hostname",
+        "timezone",
+        "locale",
+        "country",
+        "ssid",
+        "wifi_password",
+    ):
+        kind = kinds.get(field, "password" if field.endswith("password") and choices[field] else "text")
+        if (why := rksetup.problem(choices[field], kind)) is not None:
+            raise Refused(M("rkserial.value", "{field}: {why}", field=field.replace("_", " "), why=why))
+    for key in choices["keys"]:
+        if (why := rksetup.problem(key, "text")) is not None:
+            raise Refused(M("rkserial.value", "{field}: {why}", field="SSH key", why=why))
+    con = rkserial.Console.open(str(SERIAL_BY_ID / console))
+    try:
+        got = rkserial.setup(con, choices)
+    finally:
+        con.close()
+    if got["root_password"]:
+        hub = pwd.getpwnam(HUB_USER)
+        safeio.mkdir(RK_SECRETS, gid=hub.pw_gid, mode=0o770)
+        with safeio.create(RK_SECRETS / f"{req['id']}.json", mode=0o640, gid=hub.pw_gid) as fh:
+            fh.write(
+                json.dumps(
+                    {"root": got["root_password"], "user": choices["user"], "user_password": got["user_password"]}
+                ).encode()
+            )
+    return M(
+        "rkserial.done",
+        "The board is set up as {name}, at {address}: {said}.",
+        name=choices["hostname"],
+        address=got["address"] or "an address not read yet",
+        said=", ".join(got["said"]),
+    )
+
+
+def _rk_card(req, what):
+    """A board's SD card in a reader (rkcard.py): checked (reads only), tested as genuine (erased), or flashed."""
+    from irate_box.root import rkcard
+
+    try:
+        size = int(req.get("size"))
+    except (TypeError, ValueError):
+        raise Refused(M("rkcard.name", "Select a card.")) from None
+    card = (str(req.get("card") or ""), size, str(req.get("serial") or ""))
+    if what == "check":
+        return rkcard.check(*card)
+    if what == "genuine":
+        return rkcard.genuine(*card)
+    return rkcard.flash(*card, str(req.get("image") or ""), str(req.get("sha256") or "").lower())
+
+
+def _rk_write(rkboard, req):
+    loader = req.get("loader")
+    if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
+        raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
+    return rkboard.write_card(str(req.get("image") or ""), str(req.get("sha256") or "").lower(), loader)
+
+
 # The box's name on its networks: the hostname (one for every interface: mDNS announces <name>.local on each, and
 # NetworkManager sends it to each network's DHCP server by default), in /etc/hostname and on /etc/hosts' 127.0.1.1
 # line. Debian's rules for a hostname: lowercase letters, digits and hyphens, not at either end, at most 63.
@@ -6995,6 +7135,11 @@ ACTIONS = {
     "wifi-country": wifi_country,
     "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
     "rk-erase": _rk(_rk_erase),
+    "rk-write": _rk(_rk_write),
+    "rk-serial-setup": _rk_serial_setup,
+    "rk-card-check": lambda req: _rk_card(req, "check"),
+    "rk-card-genuine": lambda req: _rk_card(req, "genuine"),
+    "rk-card-flash": lambda req: _rk_card(req, "flash"),
     "box-hostname": box_hostname,
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,

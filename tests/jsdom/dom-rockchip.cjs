@@ -22,7 +22,12 @@ const board = (mode) => ({ path: '1-1.2', id: mode === 'system' ? '2207:0013' : 
 let state = { boards: [], tools: { rkdeveloptool: true, adb: true }, loaders, pending: 0, results: [] };
 const posted = [];
 w.fetch = async (u, opts = {}) => {
-  if (u === '/admin/rkboard' && opts.method === 'POST') { posted.push(JSON.parse(opts.body)); return new Response('{"id":"rk1"}', { status: 202 }); }
+  if (u === '/admin/rkboard' && opts.method === 'POST') {
+    const body = JSON.parse(opts.body);
+    posted.push(body);
+    if (body.action === 'secret') return new Response(JSON.stringify({ secret: body.id === 'rk1' ? { root: 'Root16charsAbcd1', user: 'salty-parrot', user_password: 'User16charsAbcd2' } : null }), { status: 200 });
+    return new Response('{"id":"rk1"}', { status: 202 });
+  }
   if (u === '/admin/rkboard') return new Response(JSON.stringify(state), { status: 200 });
   return new Response('{}', { status: 404 });
 };
@@ -54,6 +59,59 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('the toolkit missing: said, with the way to Toolkits; Erase disabled', !d.getElementById('rk-tools').hidden && /Rockchip boards toolkit/.test(text('rk-tools')) && d.querySelector('#rk-tools a[href="/admin/#toolkits"]') && buttons()[0].disabled, text('rk-tools'));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('a card after a pane\'s words set apart by the shared rule, not a rule of this page\'s', css.includes('.admin-pane > p + :is(.net-card, .setting, .aw-block)') && css.includes('.admin-pane > p + div:not([class]) > .aw-block:first-child') && !css.includes('.rk-card') && css.includes('.admin-main > .admin-pane:not([hidden]) + .admin-pane:not([hidden])'));
+  // The loader showed the SD card (an erase refused): writing an image to the card offered instead.
+  const sha = 'a'.repeat(64);
+  await show({ boards: [board('loader')], tools: { rkdeveloptool: true, adb: true }, images: [], results: [{ id: 'rk9', ok: false, msg: { id: 'rkboard.card-shown', en: 'The board\'s loader shows 14.6 GB…' } }] });
+  check('the loader showed the card: writing an image to it offered; no image on the box yet, said where to put one', !!d.getElementById('rk-write') && /Write an image to the board's card/.test(text('rk-write')) && /rk-images/.test(text('rk-write')));
+  await show({ images: [{ name: 'mPWRD-OS_lyra-zero-w.img.xz', size: 505341292, sha256: sha }] });
+  const shaField = d.querySelector('#rk-write input[name="rk-sha256"]');
+  const writeBtn = [...d.querySelectorAll('#rk-write button')].find((x) => x.textContent === 'Write the image to the card');
+  check('  an image on the box: chosen, its sha256 from beside it, Write on', d.querySelector('#rk-images input[type=radio]').checked && shaField.value === sha && writeBtn && !writeBtn.disabled);
+  shaField.value = 'not hex';
+  shaField.dispatchEvent(new w.Event('input', { bubbles: true }));
+  check('  a sha256 that is not 64 hex digits: Write off', writeBtn.disabled);
+  shaField.value = sha;
+  shaField.dispatchEvent(new w.Event('input', { bubbles: true }));
+  posted.length = 0;
+  writeBtn.click();
+  await wait(20);
+  const confirmBtn = [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Write the image');
+  check('  asked first, saying the card is replaced', confirmBtn && /Everything on the card is replaced/.test(d.querySelector('.aw-ask').textContent));
+  confirmBtn.click();
+  await wait(50);
+  check('  then sent: write, the image, its sha256, no loader in Loader mode', posted.some((x) => x.action === 'write' && x.image === 'mPWRD-OS_lyra-zero-w.img.xz' && x.sha256 === sha && x.loader === null), posted);
+  await show({ results: [{ id: 'rk1', ok: true, msg: { id: 'rkboard.card-written', en: 'The image is on the board\'s SD card…' } }] });
+  check('  once written, the offer goes', !d.getElementById('rk-write'));
+  await show({ results: [], images: [] });
+
+  // Cards in a reader.
+  w.rkRenderCards({ cards: [], images: [], pending: 0 });
+  check('cards in a reader: none, said', /No card is in a reader on this box/.test(text('rk-cards')));
+  const sdcard = { name: 'sda', path: '/dev/sda', size: 15634268160, model: 'STORAGE DEVICE', serial: '000000001206', mounted: false };
+  w.rkRenderCards({ cards: [sdcard], images: [{ name: 'board.img.xz', size: 505341292, sha256: 'b'.repeat(64) }], pending: 0 });
+  const cc = d.querySelector('#rk-cards .aw-card');
+  check('  a card: its model and size, where it is', cc && /STORAGE DEVICE, 15.6 GB/.test(cc.textContent) && /In a USB reader \(\/dev\/sda\)/.test(cc.textContent));
+  cc.querySelector('.aw-card-head').click();
+  await wait(20);
+  const cbtn = (label) => [...cc.querySelectorAll('button')].find((x) => x.textContent === label);
+  check('  its drawer: Check, Test that it is genuine, and Write with the image and its sha256', cbtn('Check the card') && cbtn('Test that it is genuine') && cbtn('Write the image to the card') && !cbtn('Write the image to the card').disabled && cc.querySelector('input[name="rk-card-sha-sda"]').value === 'b'.repeat(64));
+  posted.length = 0;
+  cbtn('Check the card').click();
+  await wait(30);
+  check('  Check: sent at once (it writes nothing), with the card\'s name, size and serial', posted.some((x) => x.action === 'card-check' && x.card === 'sda' && x.size === 15634268160 && x.serial === '000000001206'), posted);
+  posted.length = 0;
+  cbtn('Test that it is genuine').click();
+  await wait(20);
+  check('  the genuine test asked first, saying everything on the card is lost', /everything on the card is lost/.test((d.querySelector('.aw-ask') || {}).textContent || '') && !posted.some((x) => x.action === 'card-genuine'));
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Cancel').click();
+  cc.querySelector('.aw-card-head').click();
+  w.rkRenderCards({ cards: [{ ...sdcard, mounted: true }], images: [], pending: 0 });
+  const mc = d.querySelector('#rk-cards .aw-card');
+  mc.querySelector('.aw-card-head').click();
+  await wait(20);
+  check('  a mounted card: said, its actions off', /Mounted: unmount it first/.test(mc.textContent) && [...mc.querySelectorAll('button.action-btn')].filter((x) => /Check|Test/.test(x.textContent)).every((x) => x.disabled));
+  mc.querySelector('.aw-card-head').click();
+
   // Boards to set up.
   const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, ready: false, ...extra });
   const spot = { ssid: 'armbiansetup-luckfox-lyra-zero-w', host: 'luckfox-lyra-zero-w', signal: 70, boards: 1 };
@@ -101,8 +159,28 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('a board not listed: serial, card, SSH and USB first, serial chosen; the hotspot folded, saying why', otile('serial').checked && ['serial', 'card', 'ssh', 'usb'].every((v) => !otile(v).closest('details')) && otile('hotspot').closest('details.sec-fold') && /a board that raises its setup hotspot shows as a card of its own/.test(od.textContent));
   check("  the serial route's steps and its wiring line", /Find the board's console/.test(od.querySelector('.rk-steps').textContent) && /Read them back/.test(od.textContent) && !od.querySelector('[data-rk-only="route:serial"]').hidden && /TX to the board's RX/.test(od.textContent));
   check("  Armbian's default password at an address: offered, not yet choosable, saying why; its address field kept for it", otile('ssh').disabled && /Not available here: the box does not look for such a board yet/.test(od.textContent) && od.querySelector('input[name="rk-boardAddress"]').closest('[data-rk-only]').hidden);
-  check("  Set up off, saying the box's half is not built, in words for any route", /Setting up is not built yet: the box's half \(reaching the board and sending these choices\)/.test(od.textContent));
+  check('  no serial adapter on the box: Set up off, saying to connect one; the tile saying why', /Connect a USB serial adapter to this box/.test(od.textContent) && /Not available here: no USB serial adapter is connected to this box/.test(od.textContent));
   otherCard.querySelector('.aw-card-head').click();
+  // A serial adapter on the box: the route offered, the adapter named, Set up sends the serial request.
+  w.rkRenderSetup(setup([], { consoles: ['usb-1a86_USB2.0-Serial-if00-port0'], routes: ['serial'] }));
+  const sCard = [...d.querySelectorAll('#rk-setup .aw-card')].find((c) => /A board not listed here/.test(c.textContent));
+  sCard.querySelector('.aw-card-head').click();
+  await wait(20);
+  const sd = sCard.querySelector('.aw-drawer');
+  const go2 = [...sd.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board');
+  check('a serial adapter on the box: the serial route offered and chosen, the adapter named, Set up on', sd.querySelector('input[type=radio][value="serial"]').checked && !sd.querySelector('input[type=radio][value="serial"]').closest('.unavailable') && /The serial adapter: usb-1a86_USB2.0-Serial-if00-port0/.test(sd.textContent) && go2 && !go2.disabled, sd.querySelector('p.setting-desc.bad') && sd.querySelector('p.setting-desc.bad').textContent);
+  posted.length = 0;
+  go2.click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Set up the board').click();
+  await wait(50);
+  const sent = posted.find((x) => x.action === 'setup');
+  check('  Set up: the serial request, its adapter, the choices; waiting for the board to be powered', sent && sent.route === 'serial' && sent.console === 'usb-1a86_USB2.0-Serial-if00-port0' && sent.choices.userName === 'armbian' && /power it now/.test(sd.textContent), sent);
+  w.rkRender({ ...state, results: [{ id: 'rk1', ok: true, msg: { id: 'rkserial.done', en: 'The board is set up as lyra-1, at 192.168.1.77: name lyra-1.' } }] });
+  await wait(50);
+  const res = d.getElementById('rk-setup-result');
+  check('  set up: said above the boards, its passwords shown once, the secret asked for once', !res.hidden && /set up as lyra-1, at 192.168.1.77/.test(res.textContent) && /Root16charsAbcd1/.test(res.textContent) && /salty-parrot's password/.test(res.textContent) && /Shown once/.test(res.textContent) && posted.filter((x) => x.action === 'secret').length === 1, res.textContent);
+  sCard.querySelector('.aw-card-head').click();
   w.rkRenderSetup(setup([{ ...spot, boards: 2 }]));
   check('two boards with the same name: said, one at a time', /2 boards share this hotspot's name/.test(text('rk-setup')));
   check('the check as rksetup.problem: a quote, a backtick, a line break; a fair password passes',

@@ -38,6 +38,19 @@
       </div>
     </section>
 
+    <!-- Cards in a reader (hub/rkusb.cards, root/rkcard.py): a board's SD card in a USB reader on the box, one card
+         each; its drawer checks it (reads only), tests it as genuine (erasing it), or writes an image to it. -->
+    <section class="admin-pane" id="rk-cards-pane" aria-labelledby="rk-cards-title">
+      <h2 id="rk-cards-title" data-i18n="admin-rockchip.cards.title">Cards in a reader</h2>
+      <p class="setting-desc" data-i18n="admin-rockchip.cards.intro">
+        A board's SD card in a USB card reader on this box: checked without writing to it, tested to show whether it
+        holds as much as it says, or written with a board's image. Close any window the desktop opens for it: a
+        mounted card is not touched.
+      </p>
+      <p class="setting-desc" id="rk-card-result" role="status" hidden></p>
+      <div id="rk-cards"></div>
+    </section>
+
     <!-- Boards to set up (hub/rksetup.py): a new board's setup hotspot in range, one card each; its drawer holds the
          choices sent to the board as Armbian's first-boot presets, and the steps. -->
     <section class="admin-pane" id="rk-setup-pane" aria-labelledby="rk-setup-title">
@@ -47,6 +60,7 @@
         mPWRD-OS raises a setup hotspot at its first start, and shows here while it is in range. Power one new board
         at a time, near this box: until it is set up, anyone in range can set it up instead.
       </p>
+      <div id="rk-setup-result" role="status" hidden></div>
       <div id="rk-setup"></div>
     </section>
   </main>
