@@ -391,9 +391,12 @@ h2 {
   -webkit-mask-image: url(/icons/terminal2.svg);
   mask-image: url(/icons/terminal2.svg);
 }
+/* Meshtastic's M-PWRD logo in its own colours (green top, dark band, white letters), as Meshtastic draws it: the
+   picture itself, not a mask in the text's colour. */
 .svg-icon[data-icon="m-pwrd"] {
-  -webkit-mask-image: url(/icons/m-pwrd.svg);
-  mask-image: url(/icons/m-pwrd.svg);
+  background: url(/icons/m-pwrd.svg) center / contain no-repeat;
+  -webkit-mask: none;
+  mask: none;
 }
 .service-card .name {
   font-weight: 600;
