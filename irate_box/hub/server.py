@@ -6331,6 +6331,27 @@ class Handler(BaseHTTPRequestHandler):
                     "loader": loader,
                 }
                 self.send_json(202, {"id": control_request(req)})
+            elif (
+                act == "setup"
+                and payload.get("route") == "serial"
+                and isinstance(payload.get("console"), str)
+                and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}", payload["console"])
+                and isinstance(payload.get("choices"), dict)
+                and len(json.dumps(payload["choices"])) < 8192
+            ):
+                # Every value is checked again by the root helper (rksetup.problem), which reads this box's own WiFi
+                # password itself where it is to be sent.
+                req = {"action": "rk-serial-setup", "console": payload["console"], "choices": payload["choices"]}
+                self.send_json(202, {"id": control_request(req)})
+            elif act == "secret" and isinstance(payload.get("id"), str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", payload["id"]):
+                # The passwords made for a board: given once, then gone (the root helper's rk-secrets/<id>.json).
+                secret = CONTROL_DIR / "rk-secrets" / f"{payload['id']}.json"
+                try:
+                    got = json.loads(secret.read_text())
+                    secret.unlink()
+                except (OSError, ValueError):
+                    got = None
+                self.send_json(200, {"secret": got})
             else:
                 self.send_json(400, refused.say(BAD_REQUEST))
             return

@@ -297,7 +297,11 @@ check(
     "the hub: /admin/rkboard sends loader and erase on, the loader id checked by pattern",
     '"action": "rk-loader"' in src
     and '"action": "rk-erase", "loader": loader' in src
-    and '"action": "rk-write", "image": payload["image"]' in src,
+    and '"action": "rk-write",' in src
+    and '"image": payload["image"],' in src
+    and '"action": "rk-serial-setup"' in src
+    and 'CONTROL_DIR / "rk-secrets"' in src
+    and "secret.unlink()" in src,
 )
 # The hub runs as an unprivileged user and cannot read irate_box/root (root's alone, 0700 on a box): what it shows
 # comes from hub/rkusb.py. Found on a box: the page showed a blank card, the hub failing to import root's module.

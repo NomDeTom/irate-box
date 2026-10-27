@@ -62,7 +62,8 @@
       const done = (data.results || []).find((r) => r.id === waiting);
       if (done) {
         waiting = null;
-        say(resultSaid(done), done.ok, note);
+        if (done.msg && /^rkserial\./.test(done.msg.id || '')) setupResult(done);
+        else say(resultSaid(done), done.ok, note);
       }
     }
     const tools = data.tools || {};
@@ -196,11 +197,11 @@
     if (kind === 'user' && !USER_RE.test(value)) return 'A user name is lower-case letters, digits, hyphens and underscores, starting with a letter.';
     return '';
   }
-  const ROUTES = [
+  const ROUTES_ALL = [
     { value: 'hotspot', title: "The board's setup hotspot", desc: "The box joins the board's hotspot for about a minute, sends the choices below, and comes back to its own network." },
     { value: 'card', title: 'Settings on the SD card', desc: "The choices written to the card before the board's first start: no hotspot, and Armbian's default password never in use.", why: 'the box cannot write a card yet' },
     { value: 'ssh', title: "Armbian's default password, over a cable", desc: 'For stock Armbian on a wired network: the box signs in as root with Armbian\'s default password at once, and sets the board up.', why: 'the box does not look for such a board yet' },
-    { value: 'serial', title: 'The serial console', desc: "For a board wired to a USB serial adapter on this box: the box types the choices at the board's first start.", why: 'the box does not use a serial console yet' },
+    { value: 'serial', title: 'The serial console', desc: "For a board wired to a USB serial adapter on this box: press Set up, then power the board, and the box answers its first-login questions as it boots." },
     { value: 'usb', title: "Networking over the board's USB", desc: 'The cable used to erase the board, as a network.', why: 'mPWRD-OS has not been seen to offer it' },
     { value: 'bluetooth', title: 'Bluetooth', desc: "Meshtastic's flasher sends the WiFi over Bluetooth.", why: 'only Raspberry Pi images take it' },
   ];
@@ -233,7 +234,8 @@
     return picked.get(id);
   }
   // Every typed value the board would be sent, with its problem: [[label, problem]].
-  function problems(c, ready) {
+  function problems(c, setup) {
+    const ready = (setup.routes || []).includes(c.route);
     const out = [];
     const add = (label, value, kind) => { const found = problem(value, kind); if (found) out.push([label, found]); };
     if (c.route === 'ssh') {
@@ -253,7 +255,9 @@
     if (c.place === 'chosen') { add('Locale', c.locale, 'text'); add('Time zone', c.timezone, 'text'); add('WiFi country', c.country, 'text'); }
     if (c.address === 'fixed') for (const k of ['ip', 'mask', 'gateway', 'dns']) { if (!c[k]) out.push(['Fixed address', 'Fill in the address, mask, gateway and DNS.']); add('Fixed address', c[k], 'text'); }
     add('Your SSH key', c.key, 'text');
-    if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (reaching the board and sending these choices) comes next. The choices are kept while this page is open."]);
+    if (c.route === 'serial' && c.address === 'fixed') out.push(['Address', 'A fixed address is not set over the serial console yet: choose From the network.']);
+    if (c.route === 'serial' && !(setup.consoles || []).length) out.unshift(['', "Connect a USB serial adapter to this box, wired to the board's debug console."]);
+    else if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (reaching the board and sending these choices) comes next. The choices are kept while this page is open."]);
     return out;
   }
 
@@ -263,7 +267,7 @@
     const action = h('button', { type: 'button', class: 'action-btn primary', text: 'Set up the board' });
     const reason = h('p', { class: 'setting-desc bad', role: 'status' });
     const refresh = () => {
-      const list = problems(c, setup.ready);
+      const list = problems(c, setup);
       action.disabled = list.length > 0;
       reason.textContent = list.length ? list.map(([label, found]) => (label ? `${label}: ${found}` : found)).join(' ') : '';
       reason.hidden = !list.length;
@@ -299,6 +303,10 @@
     const sendWarn = h('p', { class: 'setting-desc warn-text', text: "The box sends this network's password to the new board." });
     // A board found by its hotspot leads with that route; a board not listed, with the ways in that need no finding.
     const NO_FINDING = ['serial', 'card', 'ssh', 'usb'];
+    const consoles = setup.consoles || [];
+    if (!consoles.includes(c.console)) c.console = consoles[0] || '';
+    // The serial console is offered once a USB serial adapter is on the box.
+    const ROUTES = ROUTES_ALL.map((r) => (r.value === 'serial' && !consoles.length ? { ...r, why: 'no USB serial adapter is connected to this box' } : r));
     const routes = item.id === OTHER
       ? {
           main: ROUTES.filter((r) => NO_FINDING.includes(r.value)),
@@ -316,7 +324,11 @@
       // The other ways in, each with why it is not offered here, folded so the ones that fit this board stand alone.
       h('details', { class: 'sec-fold' }, h('summary', { text: 'Other ways in' }), tiles('Other ways in', 'route', routes.folded, drawSteps)),
       only('route', ['ssh'], field("The board's address", 'boardAddress', 'text', { placeholder: '192.168.1.60', help: "Its address on this box's wired network, from your router's list or the board's screen." })),
-      only('route', ['serial'], h('p', { class: 'setting-desc', text: "A USB serial adapter on this box, wired to the board's debug console: the adapter's TX to the board's RX, its RX to the board's TX, GND to GND, at 3.3 V." })),
+      only('route', ['serial'], h('div', {},
+        consoles.length > 1 ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Serial adapter' }),
+          chips('Serial adapter', 'console', consoles.map((name) => ({ value: name, title: name.replace(/^usb-/, '').replace(/-if\d+-port\d+$/, ''), says: `/dev/serial/by-id/${name}` })))) : null,
+        consoles.length === 1 ? h('p', { class: 'setting-desc', text: `The serial adapter: ${consoles[0]}.` }) : null,
+        h('p', { class: 'setting-desc', text: "Wired to the board's debug console: the adapter's TX to the board's RX, its RX to the board's TX, GND to GND, at 3.3 V." }))),
       h('h3', { text: 'Network' }),
       tiles('Network', 'network', [
         { value: 'same', title: "This box's network, its password sent", desc: boxValues.ssid ? `${boxValues.ssid}: the box sends the password it holds for it.` : "This box's WiFi network.", why: boxValues.ssid ? '' : 'this box is not on a WiFi network' },
@@ -385,8 +397,9 @@
       if (!(await AW.confirmHere(`Set up ${item.title}? The box sends it the choices above.`, { anchor: event.currentTarget, label: 'Set up the board' }))) return;
       // Generated passwords are made by the root helper, not here, and shown once in its answer.
       try {
-        waiting = (await postJSON('/admin/rkboard', { action: 'setup', hotspot: item.id, choices: { ...c } })).id;
-        say('Setting the board up…', true, reason);
+        const ask = c.route === 'serial' ? { action: 'setup', route: 'serial', console: c.console, choices: { ...c } } : { action: 'setup', hotspot: item.id, choices: { ...c } };
+        waiting = (await postJSON('/admin/rkboard', ask)).id;
+        say(c.route === 'serial' ? 'Waiting for the board on its console: power it now…' : 'Setting the board up…', true, reason);
       } catch (err) {
         say(err.message, false, reason);
       }
@@ -396,11 +409,30 @@
     return [body];
   }
 
+  // A setup's answer, above the boards: what was done, and the passwords made for the board, given once by the hub
+  // (rk-secrets) and not kept by the box.
+  async function setupResult(done) {
+    const at = document.getElementById('rk-setup-result');
+    if (!at) return;
+    at.hidden = false;
+    at.replaceChildren(h('p', { class: done.ok ? 'setting-desc' : 'setting-desc bad', text: resultSaid(done) }));
+    if (!done.ok || !done.msg || done.msg.id !== 'rkserial.done') return;
+    let secret = null;
+    try {
+      secret = (await postJSON('/admin/rkboard', { action: 'secret', id: done.id })).secret;
+    } catch (_) {
+      secret = null;
+    }
+    if (!secret) return;
+    at.append(h('p', { class: 'setting-desc warn-text', text: 'Shown once, and not kept by this box: write them down.' }),
+      AW.dl({ "Root's password": secret.root, [`${secret.user}'s password`]: secret.user_password }));
+  }
+
   function renderSetup(setup) {
     const at = document.getElementById('rk-setup');
     if (!at || !setup) return;
     const spots = setup.hotspots || [];
-    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults]);
+    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults, setup.consoles, setup.routes]);
     // A drawer being filled in is not drawn again under the person typing.
     if (key === setupShown || at.querySelector('.aw-card.open')) return;
     setupShown = key;

@@ -22,7 +22,12 @@ const board = (mode) => ({ path: '1-1.2', id: mode === 'system' ? '2207:0013' : 
 let state = { boards: [], tools: { rkdeveloptool: true, adb: true }, loaders, pending: 0, results: [] };
 const posted = [];
 w.fetch = async (u, opts = {}) => {
-  if (u === '/admin/rkboard' && opts.method === 'POST') { posted.push(JSON.parse(opts.body)); return new Response('{"id":"rk1"}', { status: 202 }); }
+  if (u === '/admin/rkboard' && opts.method === 'POST') {
+    const body = JSON.parse(opts.body);
+    posted.push(body);
+    if (body.action === 'secret') return new Response(JSON.stringify({ secret: body.id === 'rk1' ? { root: 'Root16charsAbcd1', user: 'salty-parrot', user_password: 'User16charsAbcd2' } : null }), { status: 200 });
+    return new Response('{"id":"rk1"}', { status: 202 });
+  }
   if (u === '/admin/rkboard') return new Response(JSON.stringify(state), { status: 200 });
   return new Response('{}', { status: 404 });
 };
@@ -126,8 +131,28 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('a board not listed: serial, card, SSH and USB first, serial chosen; the hotspot folded, saying why', otile('serial').checked && ['serial', 'card', 'ssh', 'usb'].every((v) => !otile(v).closest('details')) && otile('hotspot').closest('details.sec-fold') && /a board that raises its setup hotspot shows as a card of its own/.test(od.textContent));
   check("  the serial route's steps and its wiring line", /Find the board's console/.test(od.querySelector('.rk-steps').textContent) && /Read them back/.test(od.textContent) && !od.querySelector('[data-rk-only="route:serial"]').hidden && /TX to the board's RX/.test(od.textContent));
   check("  Armbian's default password at an address: offered, not yet choosable, saying why; its address field kept for it", otile('ssh').disabled && /Not available here: the box does not look for such a board yet/.test(od.textContent) && od.querySelector('input[name="rk-boardAddress"]').closest('[data-rk-only]').hidden);
-  check("  Set up off, saying the box's half is not built, in words for any route", /Setting up is not built yet: the box's half \(reaching the board and sending these choices\)/.test(od.textContent));
+  check('  no serial adapter on the box: Set up off, saying to connect one; the tile saying why', /Connect a USB serial adapter to this box/.test(od.textContent) && /Not available here: no USB serial adapter is connected to this box/.test(od.textContent));
   otherCard.querySelector('.aw-card-head').click();
+  // A serial adapter on the box: the route offered, the adapter named, Set up sends the serial request.
+  w.rkRenderSetup(setup([], { consoles: ['usb-1a86_USB2.0-Serial-if00-port0'], routes: ['serial'] }));
+  const sCard = [...d.querySelectorAll('#rk-setup .aw-card')].find((c) => /A board not listed here/.test(c.textContent));
+  sCard.querySelector('.aw-card-head').click();
+  await wait(20);
+  const sd = sCard.querySelector('.aw-drawer');
+  const go2 = [...sd.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board');
+  check('a serial adapter on the box: the serial route offered and chosen, the adapter named, Set up on', sd.querySelector('input[type=radio][value="serial"]').checked && !sd.querySelector('input[type=radio][value="serial"]').closest('.unavailable') && /The serial adapter: usb-1a86_USB2.0-Serial-if00-port0/.test(sd.textContent) && go2 && !go2.disabled, sd.querySelector('p.setting-desc.bad') && sd.querySelector('p.setting-desc.bad').textContent);
+  posted.length = 0;
+  go2.click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Set up the board').click();
+  await wait(50);
+  const sent = posted.find((x) => x.action === 'setup');
+  check('  Set up: the serial request, its adapter, the choices; waiting for the board to be powered', sent && sent.route === 'serial' && sent.console === 'usb-1a86_USB2.0-Serial-if00-port0' && sent.choices.userName === 'armbian' && /power it now/.test(sd.textContent), sent);
+  w.rkRender({ ...state, results: [{ id: 'rk1', ok: true, msg: { id: 'rkserial.done', en: 'The board is set up as lyra-1, at 192.168.1.77: name lyra-1.' } }] });
+  await wait(50);
+  const res = d.getElementById('rk-setup-result');
+  check('  set up: said above the boards, its passwords shown once, the secret asked for once', !res.hidden && /set up as lyra-1, at 192.168.1.77/.test(res.textContent) && /Root16charsAbcd1/.test(res.textContent) && /salty-parrot's password/.test(res.textContent) && /Shown once/.test(res.textContent) && posted.filter((x) => x.action === 'secret').length === 1, res.textContent);
+  sCard.querySelector('.aw-card-head').click();
   w.rkRenderSetup(setup([{ ...spot, boards: 2 }]));
   check('two boards with the same name: said, one at a time', /2 boards share this hotspot's name/.test(text('rk-setup')));
   check('the check as rksetup.problem: a quote, a backtick, a line break; a fair password passes',
