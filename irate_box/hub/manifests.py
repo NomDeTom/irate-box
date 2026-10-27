@@ -43,6 +43,11 @@ on it. Every part but "id" and "order" is optional:
                                       whether the hotspot firewall opens it to hotspot guests; how its
                                       listener is rated on the Security page, and what it exposes,
                                       in one plain sentence (services.py; docs/dev/services.md)
+    "writes":  {"ram": ["/abs/path", ...], "card": ["/abs/path", ...]}
+                                      where its service (status.unit) writes: "ram", paths whose contents are
+                                      throwaway (a cache, a download, an export), kept in RAM for the service
+                                      (root/servicewrites.py binds a folder in /run over each, lost at a restart);
+                                      "card", paths that must survive one (said, for Box doctor); at most 8 each
     "checks":  [{"id", "kind": "file" | "config" | "unit" | "http", "status": "warn" | "problem",
                  "doctor": "security" | "box", "repair", "title", "says", "why", "fix", "commands",
                  ...the kind's own}]
@@ -279,6 +284,20 @@ def _check(m, where):
             "network.says: one sentence, up to 300 characters",
         )
         need(status is not None and "unit" in status, "network needs status.unit (the service that listens)")
+    writes = m.get("writes")
+    if writes is not None:
+        need(isinstance(writes, dict) and set(writes) <= {"ram", "card"}, "writes: an object of ram and card")
+        need(status is not None and "unit" in status, "writes needs status.unit (the service that writes)")
+        for k in ("ram", "card"):
+            paths = writes.get(k, [])
+            need(isinstance(paths, list) and len(paths) <= 8, f"writes.{k}: a list of at most 8 paths")
+            need(
+                all(
+                    isinstance(x, str) and x.startswith("/") and ".." not in x and not x.startswith("/run/")
+                    for x in paths
+                ),
+                f"writes.{k}: absolute paths, outside /run",
+            )
     inst = m.get("install")
     if inst is not None:
         need(isinstance(inst.get("dir"), str) and DIR_RE.match(inst["dir"]), "install.dir: e.g. apps/draw")
