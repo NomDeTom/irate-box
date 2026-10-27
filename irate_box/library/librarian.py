@@ -49,6 +49,7 @@ policy.keep_old), github-token (optional, for actions), lock.
     librarian.py app-fetch APP            download and check APP's newest bundle; prints the
                                           zip's path (install.sh then has root unpack it)
     librarian.py firmware [--check]       the firmware mirror for the web flasher (firmware.py)
+    librarian.py holders [--check] [ID …] the App store's held releases (holder.py)
 
 Stdlib only: it runs on the board's Python with nothing installed.
 """
@@ -116,6 +117,8 @@ DEFAULT_POLICY = {
     "mirrors_auto": 1,
     "firmware_every_hours": 24,
     "firmware_auto": 1,
+    "holders_every_hours": 24,
+    "holders_auto": 1,
     "kits_every_hours": 24,
 }
 POLICY_MAX = {
@@ -126,6 +129,7 @@ POLICY_MAX = {
     "books_budget_mb": 10**7,
     "mirrors_auto": 1,
     "firmware_auto": 1,
+    "holders_auto": 1,
 }
 # A surface's pair, when the saved policy has none yet: (its key, the key it followed, a cap on the value).
 SURFACES = {
@@ -133,6 +137,8 @@ SURFACES = {
     "mirrors_auto": ("auto_install", 1),
     "firmware_every_hours": ("check_every_hours", None),
     "firmware_auto": ("auto_install", 1),
+    "holders_every_hours": ("check_every_hours", None),
+    "holders_auto": ("auto_install", 1),
     "kits_every_hours": ("check_every_hours", None),
 }
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -2052,6 +2058,18 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                 except (LibrarianError, OSError) as exc:
                     results["firmware"] = f"error: {exc}"
                 log(f"firmware: {results['firmware']}")
+        # The App store's held releases (holder.py), likewise.
+        if not names or "holders" in names:
+            from irate_box.library import holder
+
+            if holder.active() and (not scheduled or holder.due(policy["holders_every_hours"])):
+                try:
+                    results["holders"] = holder.sync(
+                        check_only=(not policy["holders_auto"]) if scheduled else (mode == "check"), log=log
+                    )
+                except (LibrarianError, OSError) as exc:
+                    results["holders"] = f"error: {exc}"
+                log(f"holders: {results['holders']}")
         # Mirrored git repositories (mirrors.py), likewise.
         if not names or "mirrors" in names:
             from irate_box.library import mirrors
@@ -2379,6 +2397,8 @@ def main(argv=None):
         "mirrors-auto",
         "firmware-every-hours",
         "firmware-auto",
+        "holders-every-hours",
+        "holders-auto",
         "kits-every-hours",
     ):
         pol.add_argument(f"--{k}", type=int)
@@ -2392,6 +2412,9 @@ def main(argv=None):
     af.add_argument("app")
     fw = sub.add_parser("firmware")
     fw.add_argument("--check", action="store_true")
+    hd = sub.add_parser("holders")
+    hd.add_argument("--check", action="store_true")
+    hd.add_argument("ids", nargs="*")
     args = p.parse_args(argv)
 
     try:
@@ -2441,6 +2464,11 @@ def main(argv=None):
 
             with Lock():
                 print(firmware.sync(check_only=args.check))
+        elif args.cmd == "holders":
+            from irate_box.library import holder
+
+            with Lock():
+                print(holder.sync(check_only=args.check, only=set(args.ids) or None))
         elif args.cmd == "rebuild-library":
             with Lock():
                 rebuild_library()

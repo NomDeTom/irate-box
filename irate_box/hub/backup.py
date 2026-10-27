@@ -42,6 +42,7 @@ DATA = (
 REFETCHED = (
     "zim",
     "firmware",
+    "holds",
     "ci",
     "crashwatch",
     "control",
