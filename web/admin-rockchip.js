@@ -39,6 +39,10 @@
   let chipChosen = 'rk3506b';
   let poll = null;
   let shown = '';
+  // The loader showed the SD card when an erase was asked (rkboard.card-shown): writing an image to it is offered.
+  let cardShown = false;
+  let imageChosen = '';
+  let shaTyped = '';
 
   async function load() {
     clearTimeout(poll);
@@ -72,7 +76,11 @@
     );
     const boards = data.boards || [];
     const busy = !!waiting || data.pending > 0;
-    const key = JSON.stringify([boards, busy, missing, chipChosen]);
+    const lastRk = (data.results || []).find((r) => r.msg && /^rkboard\./.test(r.msg.id || ''));
+    if (lastRk) cardShown = lastRk.msg.id === 'rkboard.card-shown';
+    if (!boards.length) cardShown = false;
+    const images = data.images || [];
+    const key = JSON.stringify([boards, busy, missing, chipChosen, cardShown, images]);
     if (key === shown) return;
     shown = key;
     const board = document.getElementById('rk-board');
@@ -80,6 +88,7 @@
     const actions = document.getElementById('rk-actions');
     chip.hidden = true;
     actions.replaceChildren();
+    document.querySelectorAll('#rk-write').forEach((n) => n.remove());
     if (!boards.length) {
       board.replaceChildren(el('p', {
         className: 'setting-desc',
@@ -127,6 +136,46 @@
       chip.replaceChildren(el('span', { className: 'setting-name', textContent: 'Chip' }), box);
       actions.append(step('Erase the flash', { action: 'erase', loader: chipChosen }, ERASE_ASK));
     }
+    if (cardShown && (b.mode === 'loader' || b.mode === 'maskrom')) actions.after(writeBlock(images, busy, b, note));
+  }
+
+  // Writing an image to the SD card the board's loader shows: one of the images on the box (rkusb.IMAGES), its
+  // publisher's sha256, and the root helper writes it through the loader, reading each piece back.
+  function writeBlock(images, busy, b, note) {
+    document.querySelectorAll('#rk-write').forEach((n) => n.remove());
+    const box = el('div', { id: 'rk-write', className: 'rk-write' },
+      el('h3', { textContent: "Write an image to the board's card" }),
+      el('p', { className: 'setting-desc', textContent: "The board's loader shows its SD card, so the card can be written from here: the image replaces everything on the card, and each piece is read back as it is written." }));
+    if (!images.length) {
+      box.append(el('p', { className: 'setting-desc', textContent: 'No image is on the box yet. Put one in /var/lib/hub/rk-images: an .img or .img.xz, with its sha256 in a .sha256 file beside it.' }));
+      return box;
+    }
+    if (!images.some((i) => i.name === imageChosen)) imageChosen = images[0].name;
+    const tiles = el('div', { id: 'rk-images' });
+    AW.choices(tiles, 'rk-images', images.map((i) => ({ value: i.name, title: i.name, desc: `${(i.size / 2 ** 20).toFixed(0)} MB${i.sha256 ? ', its sha256 beside it' : ''}` })), {
+      value: imageChosen,
+      onChange: (v) => { imageChosen = v; shaTyped = ''; shown = ''; },
+    });
+    const chosen = images.find((i) => i.name === imageChosen);
+    const sha = el('input', { type: 'text', name: 'rk-sha256', autocomplete: 'off', spellcheck: false, placeholder: '64 hex digits, as its publisher lists it' });
+    sha.value = shaTyped || chosen.sha256;
+    const go = el('button', { type: 'button', className: 'action-btn', textContent: 'Write the image to the card' });
+    const ok = () => /^[0-9a-fA-F]{64}$/.test(sha.value.trim());
+    go.disabled = busy || !ok();
+    sha.addEventListener('input', () => { shaTyped = sha.value; go.disabled = busy || !ok(); });
+    go.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere(`Write ${imageChosen} to the board's SD card? Everything on the card is replaced.`, { anchor: event.currentTarget, label: 'Write the image' }))) return;
+      try {
+        waiting = (await postJSON('/admin/rkboard', { action: 'write', image: imageChosen, sha256: sha.value.trim(), loader: b.mode === 'maskrom' ? chipChosen : null })).id;
+        say("Writing the image to the board's card…", true, note);
+        shown = '';
+        load();
+      } catch (err) {
+        say(err.message, false, note);
+      }
+    });
+    box.append(tiles, el('label', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'sha256' }), sha), el('div', { className: 'library-buttons' }, go));
+    return box;
   }
 
   // ---- Boards to set up (hub/rksetup.py): one card per setup hotspot in range, its drawer the choices sent to the

@@ -103,8 +103,11 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
       The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
   {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-write", "image": "<name>.img.xz", "sha256": "<64 hex>", "loader": "rk3506b"|null}
       A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
-      the board's onboard flash erased (in Maskrom mode, the named loader sent first). control/rkboard.json after.
+      the board's onboard flash erased (in Maskrom mode, the named loader sent first), refused when its loader
+      shows the SD card; or an image from <state>/rk-images written to that card, read back as it goes.
+      control/rkboard.json after.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
       and put back at once if NetworkManager's view of them changes; undo puts the file back.
@@ -6580,6 +6583,13 @@ def _rk_erase(rkboard, req):
     return rkboard.erase(loader)
 
 
+def _rk_write(rkboard, req):
+    loader = req.get("loader")
+    if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
+        raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
+    return rkboard.write_card(str(req.get("image") or ""), str(req.get("sha256") or "").lower(), loader)
+
+
 # The box's name on its networks: the hostname (one for every interface: mDNS announces <name>.local on each, and
 # NetworkManager sends it to each network's DHCP server by default), in /etc/hostname and on /etc/hosts' 127.0.1.1
 # line. Debian's rules for a hostname: lowercase letters, digits and hyphens, not at either end, at most 63.
@@ -6995,6 +7005,7 @@ ACTIONS = {
     "wifi-country": wifi_country,
     "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
     "rk-erase": _rk(_rk_erase),
+    "rk-write": _rk(_rk_write),
     "box-hostname": box_hostname,
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,

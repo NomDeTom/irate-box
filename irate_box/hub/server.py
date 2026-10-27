@@ -2457,6 +2457,7 @@ def rkboard_snapshot():
         "loaders": [{"id": x["id"], "chip": x["chip"], "boards": x.get("boards", [])} for x in rkusb.loaders()],
         "pending": _pending_actions("rk-"),
         "results": control_results(5),
+        "images": rkusb.images(),
         "setup": rksetup.snapshot(),
     }
 
@@ -6315,6 +6316,21 @@ class Handler(BaseHTTPRequestHandler):
                 loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
             ):
                 self.send_json(202, {"id": control_request({"action": "rk-erase", "loader": loader})})
+            elif (
+                act == "write"
+                and (loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader)))
+                and isinstance(payload.get("image"), str)
+                and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.img(?:\.xz)?", payload["image"])
+                and isinstance(payload.get("sha256"), str)
+                and re.fullmatch(r"[0-9a-fA-F]{64}", payload["sha256"])
+            ):
+                req = {
+                    "action": "rk-write",
+                    "image": payload["image"],
+                    "sha256": payload["sha256"].lower(),
+                    "loader": loader,
+                }
+                self.send_json(202, {"id": control_request(req)})
             else:
                 self.send_json(400, refused.say(BAD_REQUEST))
             return

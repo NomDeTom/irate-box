@@ -10,6 +10,7 @@ after each step; the menu entry listed only to an administrator. python3 tests/s
 
 import hashlib
 import json
+import lzma
 import os
 import re
 import shutil as real_shutil
@@ -68,7 +69,12 @@ def unplug_all():
 
 
 ran = []
-outcome = {"ef": 0}
+outcome = {"ef": 0, "corrupt": False}
+# What the loader shows (rfi): the Lyra's SPI NAND unless a test puts a card in. A card is kept as bytes, small
+# (its sectors), while its MB says gigabytes, as rfi prints both.
+NAND = {"mb": 256, "sectors": 524288}
+shows = dict(NAND)
+card = bytearray()
 
 
 def fake_run(*cmd, timeout=600):
@@ -77,6 +83,16 @@ def fake_run(*cmd, timeout=600):
         plug("1-1.2", "loader")
     if cmd[:2] == ("rkdeveloptool", "db"):
         plug("1-1.2", "loader")
+    if cmd[:2] == ("rkdeveloptool", "rfi"):
+        out = f"Flash Info:\r\n\tManufacturer: SAMSUNG, value=00\r\n\tFlash Size: {shows['mb']} MB\r\n\tFlash Size: {shows['sectors']} Sectors\r\n"
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+    if cmd[:2] == ("rkdeveloptool", "wl"):
+        data, at = Path(cmd[3]).read_bytes(), int(cmd[2]) * 512
+        card[at : at + len(data)] = data
+    if cmd[:2] == ("rkdeveloptool", "rl"):
+        at, n = int(cmd[2]) * 512, int(cmd[3]) * 512
+        back = bytes(card[at : at + n])
+        Path(cmd[4]).write_bytes(back[:-1] + b"?" if outcome["corrupt"] else back)
     rc = outcome["ef"] if cmd[:2] == ("rkdeveloptool", "ef") else 0
     return subprocess.CompletedProcess(cmd, rc, "", "erase failed" if rc else "")
 
@@ -186,6 +202,88 @@ rkboard.rkusb.LOADERS = damaged
 check("  a damaged loader: refused, not sent", refused(rkboard.erase, "rk3506b") == "rkboard.loader-damaged")
 rkboard.rkusb.LOADERS = real_loaders
 
+# The loader shows the SD card: no erase (ef would empty the card), writing an image to it instead.
+unplug_all()
+plug("1-1.2", "loader")
+shows.update(mb=14910, sectors=8192)
+card[:] = b"\xff" * (8192 * 512)
+ran.clear()
+check(
+    "the loader shows a card (gigabytes): the erase refused, saying so, nothing erased",
+    refused(rkboard.erase) == "rkboard.card-shown"
+    and ("rkdeveloptool", "rfi") in ran
+    and ("rkdeveloptool", "ef") not in ran,
+    ran,
+)
+images = T / "state" / "rk-images"
+images.mkdir(parents=True)
+raw = os.urandom(150000) + b"tail"  # not a whole number of sectors
+packed = lzma.compress(raw)
+(images / "board.img.xz").write_bytes(packed)
+digest = hashlib.sha256(packed).hexdigest()
+(images / "board.img.xz.sha256").write_text(f"{digest}  board.img.xz\n")
+(images / "linked.img").symlink_to(images / "board.img.xz")
+listed = rkboard.rkusb.images()
+check(
+    "the images on the box listed for the page, with the sha256 beside each; a link left out",
+    [(i["name"], i["sha256"]) for i in listed] == [("board.img.xz", digest)],
+    listed,
+)
+rkboard.CHUNK = 64 << 10
+rkboard.RUN = T / "run"
+ran.clear()
+check(
+    "  a name with a path in it: refused",
+    refused(rkboard.write_card, "../board.img.xz", digest) == "rkboard.image-name",
+)
+check("  a link: refused, not followed", refused(rkboard.write_card, "linked.img", digest) == "rkboard.image-missing")
+check("  no sha256 given: refused", refused(rkboard.write_card, "board.img.xz", "") == "rkboard.image-sha")
+check(
+    "  a sha256 that does not match: refused, nothing written",
+    refused(rkboard.write_card, "board.img.xz", "0" * 64) == "rkboard.image-damaged"
+    and not any(c[:2] == ("rkdeveloptool", "wl") for c in ran),
+)
+shows.update(NAND)
+check(
+    "  the loader shows the onboard flash: refused, nothing written",
+    refused(rkboard.write_card, "board.img.xz", digest) == "rkboard.not-card"
+    and not any(c[:2] == ("rkdeveloptool", "wl") for c in ran),
+)
+shows.update(mb=14910, sectors=8192)
+ran.clear()
+said = hub_control.ACTIONS["rk-write"](
+    {"action": "rk-write", "image": "board.img.xz", "sha256": digest, "loader": None}
+)
+padded = raw + bytes(-len(raw) % 512)
+wl = [c for c in ran if c[:2] == ("rkdeveloptool", "wl")]
+rl = [c for c in ran if c[:2] == ("rkdeveloptool", "rl")]
+check(
+    "the image written to the card, unpacked as it goes, in pieces each read back; the board reset",
+    bytes(card[: len(padded)]) == padded
+    and len(rl) == -(-len(padded) // rkboard.CHUNK)
+    and ("rkdeveloptool", "rd") in ran
+    and said["id"] == "rkboard.card-written",
+    (said, len(wl), len(rl)),
+)
+check(
+    "  the card's last sectors cleared (an older image's backup partition table), the space between left alone",
+    bytes(card[-2048 * 512 :]) == bytes(2048 * 512) and card[len(padded)] == 0xFF,
+)
+check("  the pieces held in RAM removed after", not list((T / "run").iterdir()))
+outcome["corrupt"] = True
+check(
+    "  a piece that does not read back the same: refused, saying where",
+    refused(rkboard.write_card, "board.img.xz", digest) == "rkboard.verify-failed",
+)
+outcome["corrupt"] = False
+shows.update(sectors=200)
+card[:] = bytes(200 * 512)
+check(
+    "  an image larger than the card: refused",
+    refused(rkboard.write_card, "board.img.xz", digest) == "rkboard.image-large",
+)
+shows.update(NAND)
+
 # A missing tool.
 del have["rkdeveloptool"]
 unplug_all()
@@ -197,7 +295,9 @@ have["rkdeveloptool"] = "/usr/bin/rkdeveloptool"
 src = (REPO / "irate_box/hub/server.py").read_text()
 check(
     "the hub: /admin/rkboard sends loader and erase on, the loader id checked by pattern",
-    '"action": "rk-loader"' in src and '"action": "rk-erase", "loader": loader' in src,
+    '"action": "rk-loader"' in src
+    and '"action": "rk-erase", "loader": loader' in src
+    and '"action": "rk-write", "image": payload["image"]' in src,
 )
 # The hub runs as an unprivileged user and cannot read irate_box/root (root's alone, 0700 on a box): what it shows
 # comes from hub/rkusb.py. Found on a box: the page showed a blank card, the hub failing to import root's module.

@@ -54,6 +54,31 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('the toolkit missing: said, with the way to Toolkits; Erase disabled', !d.getElementById('rk-tools').hidden && /Rockchip boards toolkit/.test(text('rk-tools')) && d.querySelector('#rk-tools a[href="/admin/#toolkits"]') && buttons()[0].disabled, text('rk-tools'));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('a card after a pane\'s words set apart by the shared rule, not a rule of this page\'s', css.includes('.admin-pane > p + :is(.net-card, .setting, .aw-block)') && css.includes('.admin-pane > p + div:not([class]) > .aw-block:first-child') && !css.includes('.rk-card') && css.includes('.admin-main > .admin-pane:not([hidden]) + .admin-pane:not([hidden])'));
+  // The loader showed the SD card (an erase refused): writing an image to the card offered instead.
+  const sha = 'a'.repeat(64);
+  await show({ boards: [board('loader')], tools: { rkdeveloptool: true, adb: true }, images: [], results: [{ id: 'rk9', ok: false, msg: { id: 'rkboard.card-shown', en: 'The board\'s loader shows 14.6 GB…' } }] });
+  check('the loader showed the card: writing an image to it offered; no image on the box yet, said where to put one', !!d.getElementById('rk-write') && /Write an image to the board's card/.test(text('rk-write')) && /rk-images/.test(text('rk-write')));
+  await show({ images: [{ name: 'mPWRD-OS_lyra-zero-w.img.xz', size: 505341292, sha256: sha }] });
+  const shaField = d.querySelector('#rk-write input[name="rk-sha256"]');
+  const writeBtn = [...d.querySelectorAll('#rk-write button')].find((x) => x.textContent === 'Write the image to the card');
+  check('  an image on the box: chosen, its sha256 from beside it, Write on', d.querySelector('#rk-images input[type=radio]').checked && shaField.value === sha && writeBtn && !writeBtn.disabled);
+  shaField.value = 'not hex';
+  shaField.dispatchEvent(new w.Event('input', { bubbles: true }));
+  check('  a sha256 that is not 64 hex digits: Write off', writeBtn.disabled);
+  shaField.value = sha;
+  shaField.dispatchEvent(new w.Event('input', { bubbles: true }));
+  posted.length = 0;
+  writeBtn.click();
+  await wait(20);
+  const confirmBtn = [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Write the image');
+  check('  asked first, saying the card is replaced', confirmBtn && /Everything on the card is replaced/.test(d.querySelector('.aw-ask').textContent));
+  confirmBtn.click();
+  await wait(50);
+  check('  then sent: write, the image, its sha256, no loader in Loader mode', posted.some((x) => x.action === 'write' && x.image === 'mPWRD-OS_lyra-zero-w.img.xz' && x.sha256 === sha && x.loader === null), posted);
+  await show({ results: [{ id: 'rk10', ok: true, msg: { id: 'rkboard.card-written', en: 'The image is on the board\'s SD card…' } }] });
+  check('  once written, the offer goes', !d.getElementById('rk-write'));
+  await show({ results: [], images: [] });
+
   // Boards to set up.
   const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, ready: false, ...extra });
   const spot = { ssid: 'armbiansetup-luckfox-lyra-zero-w', host: 'luckfox-lyra-zero-w', signal: 70, boards: 1 };

@@ -18,12 +18,17 @@ the Rockchip boards toolkit.
 
 import json
 import os
+import re
 import shutil
 import time
 from pathlib import Path
 
 CODE = Path(os.environ.get("HUB_CODE_DIR", Path(__file__).resolve().parents[2]))
 LOADERS = CODE / "rockchip" / "loaders"
+# Images for a board's SD card, written through its loader (root's rkboard.write_card): <name>.img or .img.xz, and
+# beside each its publisher's sha256 in <name>.sha256 when known.
+IMAGES = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "rk-images"
+IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.img(?:\.xz)?$")
 SYS_USB = Path(os.environ.get("HUB_SYS_USB", "/sys/bus/usb/devices"))
 VENDOR = "2207"
 ROCKUSB = ("ff", "06", "05")
@@ -72,6 +77,22 @@ def boards():
                 "mode": mode,
             }
         )
+    return out
+
+
+def images():
+    """The images on the box for a board's card: [{name, size, sha256}], sha256 from its sidecar or ""."""
+    out = []
+    try:
+        names = sorted(p.name for p in IMAGES.iterdir() if p.is_file() and not p.is_symlink())
+    except OSError:
+        return out
+    for name in names:
+        if not IMAGE_RE.match(name):
+            continue
+        side = _read(IMAGES / f"{name}.sha256").split()
+        sha = side[0].lower() if side and re.fullmatch(r"[0-9a-fA-F]{64}", side[0]) else ""
+        out.append({"name": name, "size": (IMAGES / name).stat().st_size, "sha256": sha})
     return out
 
 

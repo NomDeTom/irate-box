@@ -1,14 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Rockchip boards on the box's USB, root's half: a board running its own system switched to Loader mode, a board's
-onboard flash erased (in Maskrom mode, the loader for its chip sent first). The boards, their modes, the tools and
-the loaders are read by hub/rkusb.py, which the hub uses too (see there for the modes).
+onboard flash erased (in Maskrom mode, the loader for its chip sent first), or, when the board's loader shows its SD
+card instead, an image written to the card. The boards, their modes, the tools, the loaders and the images are read
+by hub/rkusb.py, which the hub uses too (see there for the modes).
+
+Which storage a loader shows is read first (rkdeveloptool rfi): a Lyra's SPI NAND is 256 MB, and a storage of
+gigabytes is its SD card. rkdeveloptool's ef erases every block of whatever the loader shows, so an erase meant for
+the onboard flash would empty the card: it is refused, and the page offers to write an image to the card instead.
+An image is written through the loader in pieces held in RAM (a whole one would be gigabytes on the box's own card),
+each read back and compared before the next.
 """
 
 import hashlib
+import lzma
+import os
 import re
+import stat
 import subprocess
 import time
+from pathlib import Path
 
 from irate_box.hub import rkusb
 from irate_box.hub.rkusb import boards, loaders, status, tools  # noqa: F401 - the root helper's names for them
@@ -16,6 +27,14 @@ from irate_box.msg import M, Refused
 
 SERIAL_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 WAIT = 25  # seconds for a board to come back after a reboot into Loader mode, or after a loader is sent
+LARGE_MB = 1024  # a Lyra's SPI NAND is 256 MB: a storage larger than this is its SD card (or a board's eMMC)
+SIZE_MB_RE = re.compile(r"Flash Size:\s*(\d+)\s*MB")
+SIZE_SECTORS_RE = re.compile(r"Flash Size:\s*(\d+)\s*Sectors")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+SECTOR = 512
+CHUNK = 32 << 20  # an image written in pieces of this size, each in RAM, then read back
+TAIL = 2048  # sectors cleared at the card's end after an image: an older image's backup partition table
+RUN = Path(os.environ.get("HUB_RK_RUN", "/run/irate-box-rk"))
 
 
 def run(*cmd, timeout=600):
@@ -108,13 +127,37 @@ def _send_loader(loader_id):
         )
 
 
+def storage():
+    """What the board's loader shows (rkdeveloptool rfi): {mb, sectors, card}; card when it is gigabytes, so not the
+    onboard flash. mb None when it could not be read."""
+    r = run("rkdeveloptool", "rfi", timeout=60)
+    text = "" if r.returncode else r.stdout or ""
+    mb, sectors = SIZE_MB_RE.search(text), SIZE_SECTORS_RE.search(text)
+    mb = int(mb.group(1)) if mb else None
+    return {"mb": mb, "sectors": int(sectors.group(1)) if sectors else None, "card": mb is not None and mb > LARGE_MB}
+
+
+def _gb(mb):
+    return f"{mb / 1024:.1f}"
+
+
 def erase(loader_id=None):
     """The board's onboard flash erased (rkdeveloptool ef), then the board reset. A board in Maskrom mode is sent
-    the loader for its chip first."""
+    the loader for its chip first. Refused when the loader shows the SD card: ef would empty the card."""
     board = _one(("loader", "maskrom"))
     _need("rkdeveloptool")
     if board["mode"] == "maskrom":
         _send_loader(loader_id)
+    shown = storage()
+    if shown["card"]:
+        raise Refused(
+            M(
+                "rkboard.card-shown",
+                "The board's loader shows {gb} GB: its SD card, not its onboard flash, so nothing was erased. Take the "
+                "card out to erase the onboard flash, or write an image to the card.",
+                gb=_gb(shown["mb"]),
+            )
+        )
     r = run("rkdeveloptool", "ef", timeout=900)
     if r.returncode:
         raise Refused(
@@ -124,4 +167,98 @@ def erase(loader_id=None):
     return M(
         "rkboard.erased",
         "The board's onboard flash is erased. Unplug the board, put its SD card in, and power it: it starts from the card.",
+    )
+
+
+def _image(name):
+    """An image in rkusb.IMAGES, opened without following a link: a regular file, or refused."""
+    if not rkusb.IMAGE_RE.match(name or ""):
+        raise Refused(M("rkboard.image-name", "Select an image to write."))
+    try:
+        fd = os.open(rkusb.IMAGES / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError:
+        raise Refused(M("rkboard.image-missing", "The image {name} is not on the box.", name=name)) from None
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise Refused(M("rkboard.image-missing", "The image {name} is not on the box.", name=name))
+    return os.fdopen(fd, "rb")
+
+
+def _digest(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def write_card(name, sha256, loader_id=None):
+    """An image from rkusb.IMAGES (.img, or .img.xz unpacked as it goes) written to the SD card the board's loader
+    shows, in pieces: each written (rkdeveloptool wl), read back (rl) and compared before the next; then the card's
+    last sectors cleared and the board reset. Its checksum (the publisher's) checked first. Refused unless the
+    loader shows a card."""
+    if not SHA_RE.match(sha256 or ""):
+        raise Refused(M("rkboard.image-sha", "Give the image's sha256, as its publisher lists it."))
+    with _image(name) as fh:
+        h = hashlib.sha256()
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    if h.hexdigest() != sha256:
+        raise Refused(
+            M("rkboard.image-damaged", "The image {name} does not match its sha256: nothing was written.", name=name)
+        )
+    board = _one(("loader", "maskrom"))
+    _need("rkdeveloptool")
+    if board["mode"] == "maskrom":
+        _send_loader(loader_id)
+    shown = storage()
+    if not shown["card"]:
+        raise Refused(
+            M(
+                "rkboard.not-card",
+                "The board's loader does not show an SD card (it shows {mb} MB): nothing was written. Put the card in "
+                "the board and connect it again.",
+                mb=shown["mb"] if shown["mb"] is not None else "?",
+            )
+        )
+    RUN.mkdir(mode=0o700, parents=True, exist_ok=True)
+    piece, back = RUN / "piece.img", RUN / "back.img"
+    sector = 0
+    try:
+        with _image(name) as fh:
+            stream = lzma.open(fh) if name.endswith(".xz") else fh
+            while data := stream.read(CHUNK):
+                if len(data) % SECTOR:
+                    data += bytes(SECTOR - len(data) % SECTOR)
+                count = len(data) // SECTOR
+                if shown["sectors"] and sector + count > shown["sectors"]:
+                    raise Refused(
+                        M("rkboard.image-large", "The image is larger than the card ({gb} GB).", gb=_gb(shown["mb"]))
+                    )
+                piece.write_bytes(data)
+                if run("rkdeveloptool", "wl", str(sector), str(piece), timeout=600).returncode:
+                    raise Refused(
+                        M("rkboard.write-failed", "Writing the card failed at {mb} MB.", mb=sector * SECTOR >> 20)
+                    )
+                read = run("rkdeveloptool", "rl", str(sector), str(count), str(back), timeout=600)
+                if read.returncode or not back.exists() or _digest(back) != hashlib.sha256(data).hexdigest():
+                    raise Refused(
+                        M(
+                            "rkboard.verify-failed",
+                            "What was written at {mb} MB did not read back the same: the card is not usable as it is.",
+                            mb=sector * SECTOR >> 20,
+                        )
+                    )
+                sector += count
+        if shown["sectors"] and shown["sectors"] > sector + TAIL:
+            piece.write_bytes(bytes(TAIL * SECTOR))
+            run("rkdeveloptool", "wl", str(shown["sectors"] - TAIL), str(piece), timeout=120)
+    finally:
+        for f in (piece, back):
+            f.unlink(missing_ok=True)
+    run("rkdeveloptool", "rd", timeout=60)
+    return M(
+        "rkboard.card-written",
+        "The image is on the board's SD card: {mb} MB written and read back. The board restarts from the card.",
+        mb=sector * SECTOR >> 20,
     )
