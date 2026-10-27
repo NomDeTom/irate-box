@@ -8700,6 +8700,7 @@ function renderNetwork(data) {
   say(un ? un.text : "", un ? un.ok : true, net.note);
 
   renderCountry(inv, busy);
+  renderHostname(inv, busy);
   renderDefaults(inv, busy);
   renderHandover(inv, busy);
   renderVisible(inv, busy);
@@ -9075,6 +9076,44 @@ function renderRockchip(data) {
   }
 }
 loadRockchip();
+// The box's name on its networks (hub_control box-hostname). Drawn again only when the name or the busy state changes.
+const HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+let hostnameShown = null;
+function renderHostname(inv, busy) {
+  const box = document.getElementById("net-hostname");
+  if (!box || !inv || !inv.host) return;
+  const shown = JSON.stringify([inv.host, busy]);
+  if (shown === hostnameShown) return;
+  hostnameShown = shown;
+  box.replaceChildren(
+    AW.settings(
+      [
+        {
+          key: "hostname",
+          label: "Name",
+          kind: "text",
+          value: inv.host,
+          warn: (value) =>
+            value && !HOSTNAME_RE.test(value)
+              ? "Use 1 to 63 lowercase letters, digits and hyphens, with no hyphen at the start or the end."
+              : value && value !== inv.host
+                ? `Devices that open ${inv.host}.local need the new address: ${value}.local.`
+                : null,
+        },
+      ],
+      {
+        id: "net-hostname",
+        label: "Box name",
+        why: (changes, values) => (HOSTNAME_RE.test(values.hostname || "") ? null : "Enter a valid name."),
+        save: (changes, values) => {
+          const j = AW.job();
+          netRequest({ action: "hostname", hostname: values.hostname }, "hostname", j.done);
+          return j;
+        },
+      },
+    ),
+  );
+}
 
 // A list said whole: "a", "a and b", "a, b and c".
 function listSaid(items) {

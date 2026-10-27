@@ -98,11 +98,13 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       drop-in in /etc/NetworkManager/conf.d, NetworkManager told to read it again. "default" takes
       irate-box's line out; with none left, the file goes.
   {"id": ..., "action": "wifi-country", "country": "GB"}
+      The WiFi country (hub/wificountry.py): applied at once (iw reg set) and kept for boot in cfg80211's
+      option file, which a netplan handover also writes. Only a code from tzdata's ISO 3166 table.
+  {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
+      The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
   {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
       A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
       the board's onboard flash erased (in Maskrom mode, the named loader sent first). control/rkboard.json after.
-      The WiFi country (hub/wificountry.py): applied at once (iw reg set) and kept for boot in cfg80211's
-      option file, which a netplan handover also writes. Only a code from tzdata's ISO 3166 table.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
       and put back at once if NetworkManager's view of them changes; undo puts the file back.
@@ -156,6 +158,7 @@ import re
 import secrets
 import shlex
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -176,6 +179,7 @@ from irate_box.msg import (
     duration,
     is_message,
     render,
+    sentences,
     when,
 )
 from irate_box.msg import text as paragraph
@@ -6574,6 +6578,71 @@ def _rk_erase(rkboard, req):
     if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
         raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
     return rkboard.erase(loader)
+# The box's name on its networks: the hostname (one for every interface: mDNS announces <name>.local on each, and
+# NetworkManager sends it to each network's DHCP server by default), in /etc/hostname and on /etc/hosts' 127.0.1.1
+# line. Debian's rules for a hostname: lowercase letters, digits and hyphens, not at either end, at most 63.
+HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+HOSTS = Path(os.environ.get("HUB_HOSTS", "/etc/hosts"))
+
+
+def box_hostname(req):
+    name = req.get("hostname")
+    if not isinstance(name, str) or not HOSTNAME_RE.match(name):
+        raise Refused(
+            M(
+                "control.hostname.bad",
+                "A box name has 1 to 63 lowercase letters, digits and hyphens, and does not start or end with a hyphen.",
+            )
+        )
+    old = socket.gethostname().split(".")[0]
+    r = run("hostnamectl", "set-hostname", name, timeout=30)
+    if r.returncode:
+        raise Refused(
+            M("control.hostname.failed", "hostnamectl failed: {detail}", detail=(r.stderr or r.stdout).strip()[-160:])
+        )
+    # /etc/hosts: the old name on the 127.0.1.1 line becomes the new one (sudo and other programs look it up there).
+    try:
+        lines = HOSTS.read_text().splitlines()
+    except OSError:
+        lines = []
+    found = False
+    for i, line in enumerate(lines):
+        fields = line.split()
+        if fields and fields[0] == "127.0.1.1":
+            lines[i] = "\t".join(
+                ["127.0.1.1", *dict.fromkeys(name if f in (old, f"{old}.localdomain") else f for f in fields[1:])]
+            )
+            if name not in lines[i].split():
+                lines[i] += f"\t{name}"
+            found = True
+    if not found:
+        lines.append(f"127.0.1.1\t{name}")
+    safeio.write(HOSTS, "\n".join(lines) + "\n", 0o644)
+    try:
+        netinv.write(netinv.scan(), CONTROL / "netinv.json")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    said = M(
+        "control.hostname.set",
+        "The box is now called {name} ({name}.local). Your router shows the new name when the box next renews its "
+        "address.",
+        name=name,
+    )
+    from irate_box.root import tls
+
+    if tls._record().get("cert"):
+        return sentences(
+            said,
+            M(
+                "control.hostname.tls",
+                "HTTPS still covers {old}.local, not {name}.local: its certificate authority names the box's .local "
+                "name. irate.home.arpa and the box's address work over HTTPS as before. To cover {name}.local, make "
+                "the certificate authority again on Access, then install it again on each device.",
+                old=old,
+                name=name,
+            ),
+        )
+    return said
 
 
 def nm_connection(req):
@@ -6924,6 +6993,7 @@ ACTIONS = {
     "wifi-country": wifi_country,
     "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
     "rk-erase": _rk(_rk_erase),
+    "box-hostname": box_hostname,
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,
     "other-ap": other_ap,

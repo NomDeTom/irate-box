@@ -605,8 +605,14 @@ const AW = (() => {
         }));
       } else if (spec.kind === 'button') ctl = btn(spec.text || spec.label, { onclick: spec.onclick });
       else if (spec.kind === 'text') {
-        ctl = h('input', { type: 'text', value: v ?? '', maxlength: spec.max || null, 'aria-label': spec.label, disabled: off, 'data-aw-key': spec.key,
-          oninput: (event) => handle.set(spec.key, event.target.value, true) });
+        const input = h('input', { type: 'text', value: v ?? '', maxlength: spec.max || null, 'aria-label': spec.label, disabled: off, 'data-aw-key': spec.key,
+          oninput: (event) => {
+            handle.set(spec.key, event.target.value, true);
+            if (warn) warn.textContent = spec.warn(event.target.value) || '';
+          } });
+        // spec.warn(value): a warning beside it, live as it is typed (the field is not drawn again, so it keeps focus).
+        const warn = spec.warn ? h('small', { class: 'setting-desc aw-warn', role: 'status', text: spec.warn(v) || '' }) : null;
+        ctl = warn ? h('span', { class: 'aw-text' }, input, warn) : input;
       } else if (spec.kind === 'colour') {
         // A colour, or '' for the theme's own (r.unset names it); r.warn(value) says what's wrong with one, live.
         const warn = h('small', { class: 'setting-desc aw-warn', role: 'status', text: (v && spec.warn && spec.warn(v)) || '' });

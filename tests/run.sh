@@ -32,6 +32,7 @@ run sim_card_history.py
 run sim_led.py
 run sim_port_80.py
 run sim_wificountry.py
+run sim_box_name.py
 run sim_knownradios.py
 run sim_tailscale.py
 run sim_watchlog.py

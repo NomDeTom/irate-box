@@ -6390,6 +6390,16 @@ class Handler(BaseHTTPRequestHandler):
                     202,
                     {"id": control_request({"action": "wifi-country", "country": payload["country"]})},
                 )
+            elif (
+                act == "hostname"
+                and isinstance(payload.get("hostname"), str)
+                and re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", payload["hostname"])
+            ):
+                # The box's name on its networks (the root helper's box-hostname).
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "box-hostname", "hostname": payload["hostname"]})},
+                )
             elif act == "profile" and type(payload.get("on")) is bool:
                 self.send_json(
                     202,
