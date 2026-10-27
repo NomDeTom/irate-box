@@ -70,6 +70,23 @@ check(
     [r["text"] for r in watchlog.read()][-1] == "new" and "ancient" not in [r["text"] for r in watchlog.read()],
     [r["text"] for r in watchlog.read()],
 )
+watchlog.LOG.unlink()
+watchlog.MAX_BYTES = 4000
+for n in range(60):
+    watchlog.add("watchdog", "info", f"recent {n}", "wlan0", at=now - 3600 + n)
+size = watchlog.LOG.stat().st_size
+ino = watchlog.LOG.stat().st_ino
+watchlog.add("watchdog", "info", "one more", "wlan0", at=now)
+check(
+    "14 days that pass its size: trimmed to half of it, the newest kept",
+    size <= 4000 and watchlog.read()[-1]["text"] == "one more" and len(watchlog.read()) < 60,
+    (size, len(watchlog.read())),
+)
+check(
+    "  the next line is appended, not the whole file rewritten again",
+    watchlog.LOG.stat().st_ino == ino,
+)
+watchlog.MAX_BYTES = old_max
 watchlog.LOG.write_text(watchlog.LOG.read_text() + "not json\n")
 check("  a broken line is passed over", len(watchlog.read()) >= 1)
 watchlog.LOG.unlink()

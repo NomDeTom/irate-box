@@ -7,8 +7,8 @@ coming back, its driver resetting it), and the box itself (why each boot happene
 own files for its own pages too; this is where they meet, for the box doctor and crash folders.
 
 One JSON object a line in $HUB_STATE_DIR/control/watchers.jsonl: {at, boot, by, kind, iface, text}.
-Written by root's watchers only, each line under a lock; trimmed to the last KEEP_DAYS once it
-passes MAX_BYTES. Stdlib only.
+Written by root's watchers only, each line under a lock; once it passes MAX_BYTES, trimmed to the last
+KEEP_DAYS and to half of MAX_BYTES, so the next rewrite comes only after as much again is added. Stdlib only.
 """
 
 import fcntl
@@ -21,7 +21,7 @@ STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 LOG = STATE / "control" / "watchers.jsonl"
 PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 KEEP_DAYS = 14
-MAX_BYTES = 1_000_000
+MAX_BYTES = 2_000_000
 # Who wrote it, in words for the pages.
 BY = {"watchdog": "the uplink watchdog", "crashwatch": "crash watch", "driver": "the radio's driver", "box": "the box"}
 # What is worth an owner's look, in the doctor's summary (the rest stays in the file).
@@ -74,11 +74,17 @@ def add(by, kind, text, iface=None, at=None, **extra):
 
 
 def _trim():
-    """Keep the last KEEP_DAYS (called with the lock held)."""
+    """Keep the last KEEP_DAYS, at most half of MAX_BYTES (called with the lock held). Trimmed to the days
+    alone, a box with 14 busy days stayed past MAX_BYTES and rewrote the whole file for every line."""
     since = time.time() - KEEP_DAYS * 86400
-    kept = [line for line in LOG.read_text(encoding="utf-8").splitlines() if _at(line) >= since]
+    kept = [line for line in LOG.read_text(encoding="utf-8").splitlines() if _at(line) >= since][-20000:]
+    start = max(len(kept) - 1, 0)  # the newest line always
+    size = len(kept[start]) + 1 if kept else 0
+    while start and size + len(kept[start - 1]) + 1 <= MAX_BYTES // 2:
+        start -= 1
+        size += len(kept[start]) + 1
     tmp = LOG.with_name(LOG.name + ".tmp")
-    tmp.write_text("".join(f"{line}\n" for line in kept[-20000:]), encoding="utf-8")
+    tmp.write_text("".join(f"{line}\n" for line in kept[start:]), encoding="utf-8")
     os.replace(tmp, LOG)
 
 
