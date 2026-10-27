@@ -6578,6 +6578,8 @@ def _rk_erase(rkboard, req):
     if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
         raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
     return rkboard.erase(loader)
+
+
 # The box's name on its networks: the hostname (one for every interface: mDNS announces <name>.local on each, and
 # NetworkManager sends it to each network's DHCP server by default), in /etc/hostname and on /etc/hosts' 127.0.1.1
 # line. Debian's rules for a hostname: lowercase letters, digits and hyphens, not at either end, at most 63.
