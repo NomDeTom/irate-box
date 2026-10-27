@@ -14,12 +14,14 @@ import tempfile
 import time
 from pathlib import Path
 
+from freeport import free_port
+
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="visibility-"))
 (state / "control").mkdir()
 # The root helper's copy of the access choices, as it leaves it in the control folder.
 (state / "control" / "access.json").write_text(json.dumps({"notes": "users", "git": "private", "wiki": "off"}))
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ,

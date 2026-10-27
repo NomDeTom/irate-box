@@ -16,6 +16,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+from freeport import free_port
+
 from irate_box.hub import manifests
 
 fails = 0
@@ -90,7 +92,7 @@ for bad in ({"sections": "books"}, {"sections": ["Books!"]}, {"title": 3}):
         check(f"a bad admin part refused: {bad}", True)
 
 state = tempfile.mkdtemp(prefix="admin-apps-")
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ,

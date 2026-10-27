@@ -20,6 +20,8 @@ work = Path(tempfile.mkdtemp(prefix="visitors-"))
 leases, arp, out = work / "dnsmasq.leases", work / "arp", work / "run" / "counts.json"
 os.environ.update(VISITORS_LEASES=str(leases), VISITORS_ARP=str(arp), VISITORS_OUT=str(out))
 sys.path.insert(0, str(REPO))
+from freeport import free_port
+
 from irate_box.hub import visitors
 
 fails = 0
@@ -67,7 +69,7 @@ check("  readable by the hub", oct(out.stat().st_mode & 0o777) == "0o644", oct(o
 # The hub: the switch for the root path unit, and the counts only while on.
 state = work / "state"
 state.mkdir()
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ,
