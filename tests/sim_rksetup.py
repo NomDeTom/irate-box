@@ -7,7 +7,6 @@ Armbian's first-boot presets cannot hold (sourced by bash inside double quotes),
 this one. python3 tests/sim_rksetup.py"""
 
 import os
-import re
 import sys
 import tempfile
 from pathlib import Path

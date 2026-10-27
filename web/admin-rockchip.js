@@ -181,7 +181,7 @@
   // Every typed value the board would be sent, with its problem: [[label, problem]].
   function problems(c, ready) {
     const out = [];
-    const add = (label, value, kind) => { const p = problem(value, kind); if (p) out.push([label, p]); };
+    const add = (label, value, kind) => { const found = problem(value, kind); if (found) out.push([label, found]); };
     if (c.network === 'same-typed') add("The network's password", c.wifiPass, 'wifi-password');
     if (c.network === 'other') {
       if (!c.otherSsid) out.push(["The network's name", 'Enter the name of the network the board joins.']);
@@ -201,13 +201,13 @@
 
   function setupBody(item, setup) {
     const c = choicesFor(item.id, setup.defaults || {});
-    const d = setup.defaults || {};
+    const boxValues = setup.defaults || {};
     const action = h('button', { type: 'button', class: 'action-btn primary', text: 'Set up the board' });
     const reason = h('p', { class: 'setting-desc bad', role: 'status' });
     const refresh = () => {
       const list = problems(c, setup.ready);
       action.disabled = list.length > 0;
-      reason.textContent = list.length ? list.map(([label, p]) => (label ? `${label}: ${p}` : p)).join(' ') : '';
+      reason.textContent = list.length ? list.map(([label, found]) => (label ? `${label}: ${found}` : found)).join(' ') : '';
       reason.hidden = !list.length;
     };
     // A typed value: its field, and its problem said under it as it is typed.
@@ -217,9 +217,9 @@
       input.value = c[key] || '';
       input.addEventListener('input', () => {
         c[key] = input.value;
-        const p = kind ? problem(input.value, kind) : '';
-        said.textContent = p;
-        said.hidden = !p;
+        const found = kind ? problem(input.value, kind) : '';
+        said.textContent = found;
+        said.hidden = !found;
         refresh();
       });
       return h('label', { class: 'aw-field' }, h('span', { class: 'aw-label', text: label }), input, props.help ? h('span', { class: 'setting-desc', text: props.help }) : null, said);
@@ -246,8 +246,8 @@
       h('details', { class: 'sec-fold' }, h('summary', { text: 'Other ways in' }), tiles('Other ways in', 'route', ROUTES.filter((r) => r.why))),
       h('h3', { text: 'Network' }),
       tiles('Network', 'network', [
-        { value: 'same', title: "This box's network, its password sent", desc: d.ssid ? `${d.ssid}: the box sends the password it holds for it.` : "This box's WiFi network.", why: d.ssid ? '' : 'this box is not on a WiFi network' },
-        { value: 'same-typed', title: "This box's network, the password typed", desc: d.ssid ? `${d.ssid}: you type its password; the box does not read its own.` : "This box's WiFi network.", why: d.ssid ? '' : 'this box is not on a WiFi network' },
+        { value: 'same', title: "This box's network, its password sent", desc: boxValues.ssid ? `${boxValues.ssid}: the box sends the password it holds for it.` : "This box's WiFi network.", why: boxValues.ssid ? '' : 'this box is not on a WiFi network' },
+        { value: 'same-typed', title: "This box's network, the password typed", desc: boxValues.ssid ? `${boxValues.ssid}: you type its password; the box does not read its own.` : "This box's WiFi network.", why: boxValues.ssid ? '' : 'this box is not on a WiFi network' },
         { value: 'other', title: 'Another network', desc: 'A network you name: a workshop, or where the board will live.' },
         { value: 'hotspot', title: "This box's hotspot", desc: 'The board joins as a guest: it reaches this box and nothing else.' },
         { value: 'none', title: 'No WiFi', desc: 'For a board on a cable.' },
@@ -270,7 +270,7 @@
       field('Name on the network', 'hostname', 'hostname', { help: `Every new Lyra starts as ${item.host || 'luckfox-lyra-zero-w'}: give each its own.` }),
       h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Locale, time zone and WiFi country' }),
         chips('Locale, time zone and WiFi country', 'place', [
-          { value: 'box', title: 'As this box', says: `${d.locale || 'en_GB.UTF-8'}, ${d.timezone || 'Etc/UTC'}, ${d.country || 'GB'}.` },
+          { value: 'box', title: 'As this box', says: `${boxValues.locale || 'en_GB.UTF-8'}, ${boxValues.timezone || 'Etc/UTC'}, ${boxValues.country || 'GB'}.` },
           { value: 'chosen', title: 'Chosen', says: 'Set below.' },
         ], showOnly)),
       only('place', ['chosen'], h('div', {}, field('Locale', 'locale', 'text', { placeholder: 'en_GB.UTF-8' }), field('Time zone', 'timezone', 'text', { placeholder: 'Europe/London' }), field('WiFi country', 'country', 'text', { placeholder: 'GB' }))),
