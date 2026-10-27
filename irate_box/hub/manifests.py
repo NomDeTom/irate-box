@@ -20,7 +20,9 @@ on it. Every part but "id" and "order" is optional:
                                       renders from every manifest's entries aimed at it; art: a
                                       krab in its bottom-left corner (web/art/); banner: text art,
                                       as written, as a faint ident in the bottom-right corner
-    "entries": [{"menus": {"<menu id>": order, ...}, "name", "desc", "href", "new_tab": bool}]
+    "entries": [{"menus": {"<menu id>": order, ...}, "name", "desc", "href", "new_tab": bool, "admin": bool}]
+                                      admin: listed only to someone signed in as an administrator (a page
+                                      under /admin that only they can use)
                                       lines on those list pages (greyed with this app's status)
     "discover": {"file", "href", "order", "groups": {"<group>": "<menu id>"}}
                                       more entries, from a JSON list [{page, title, group}] the
@@ -234,6 +236,7 @@ def _check(m, where):
         for k in ("name", "href"):
             need(isinstance(e.get(k), str), f"entries.{k}: a string")
         need(e["href"].startswith("/"), "entries.href: a path on this hub")
+        need(e.get("admin", False) in (True, False), "entries.admin: true or false")
     disc = m.get("discover")
     if disc is not None:
         need(m.get("install") is not None, "discover needs an install")

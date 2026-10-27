@@ -98,6 +98,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       drop-in in /etc/NetworkManager/conf.d, NetworkManager told to read it again. "default" takes
       irate-box's line out; with none left, the file goes.
   {"id": ..., "action": "wifi-country", "country": "GB"}
+  {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
+      A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
+      the board's onboard flash erased (in Maskrom mode, the named loader sent first). control/rkboard.json after.
       The WiFi country (hub/wificountry.py): applied at once (iw reg set) and kept for boot in cfg80211's
       option file, which a netplan handover also writes. Only a code from tzdata's ISO 3166 table.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
@@ -6550,6 +6553,29 @@ def wifi_country(req):
     )
 
 
+# Rockchip boards on the box's USB (rkboard.py, /admin → Rockchip boards): switched to Loader mode, erased.
+# control/rkboard.json is the state after each, for the page.
+
+
+def _rk(fn):
+    def action(req):
+        from irate_box.root import rkboard
+
+        try:
+            return fn(rkboard, req)
+        finally:
+            safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+    return action
+
+
+def _rk_erase(rkboard, req):
+    loader = req.get("loader")
+    if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
+        raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
+    return rkboard.erase(loader)
+
+
 def nm_connection(req):
     from irate_box.root import nmconnection, nmhandover
 
@@ -6896,6 +6922,8 @@ ACTIONS = {
     "uplink-profile": uplink_profile,
     "nm-defaults": nm_defaults,
     "wifi-country": wifi_country,
+    "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
+    "rk-erase": _rk(_rk_erase),
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,
     "other-ap": other_ap,

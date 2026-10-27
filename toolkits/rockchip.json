@@ -1,0 +1,26 @@
+{
+ "id": "rockchip",
+ "title": "Rockchip boards",
+ "summary": "Prepare a Luckfox Lyra or another RK3506 board over the box's USB: erase its onboard flash so that it starts from its SD card. rkdeveloptool and adb, used by Rockchip boards on /admin, with the RK3506 and RK3506B loaders that irate-box ships.",
+ "packages": [
+  "rkdeveloptool",
+  "adb"
+ ],
+ "consent": "Erasing a board's flash deletes the system on it, and it cannot be undone. adb can also open a shell on a board that runs Android's debugging service.",
+ "notes": [
+  "Connect the board's USB port to a USB port of the box. A board that runs its factory system is switched to Loader mode for you. Otherwise hold its boot (Maskrom) button while you connect it."
+ ],
+ "links": [
+  {
+   "title": "The loaders (Meshtastic web flasher, from Armbian's rkbin)",
+   "url": "https://github.com/meshtastic/web-flasher/tree/main/public/rockchip",
+   "version": "2aa5bee",
+   "licence": "Rockchip binary licence"
+  },
+  {
+   "title": "Meshtastic: Rockchip flashing (mPWRD-OS)",
+   "url": "https://meshtastic.org/docs/software/mpwrd-os/rockchip-flashing/"
+  }
+ ],
+ "remove_after_hours": null
+}

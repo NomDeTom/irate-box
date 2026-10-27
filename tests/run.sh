@@ -132,6 +132,7 @@ run sim_gitaddon.py
 run sim_ci_view.py
 run sim_factory.py
 run sim_toolkits.py
+run sim_rkboard.py
 run sim_aptram.py
 run sim_kits_usb.py
 run sim_bundle_apps.py

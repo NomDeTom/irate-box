@@ -1,0 +1,18 @@
+{
+  "id": "rockchip",
+  "order": 57,
+  "entries": [
+    {
+      "menus": {
+        "meshtastic": 3,
+        "flashing": 3
+      },
+      "name": "Rockchip boards",
+      "desc": "Prepare a Luckfox Lyra over the box's USB: erase its onboard flash so that it starts from its SD card. For the administrator",
+      "href": "/admin/#rockchip",
+      "new_tab": false,
+      "admin": true
+    }
+  ],
+  "admin": {"sections": ["rockchip"], "title": "Rockchip boards", "icon": "🔌"}
+}

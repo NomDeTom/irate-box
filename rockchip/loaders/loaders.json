@@ -1,0 +1,25 @@
+{
+ "about": "Loaders sent to a Rockchip board in Maskrom mode before its flash is erased (irate_box/root/rkboard.py). The binaries are Rockchip's, under Rockchip's licence (LICENSES/LicenseRef-Rockchip-rkbin.txt): the official boot_merger outputs that Armbian hosts (armbian/rkbin, rk35/, PR #46), as Meshtastic's web flasher ships them.",
+ "source": {
+  "repository": "https://github.com/meshtastic/web-flasher",
+  "commit": "2aa5bee",
+  "path": "public/rockchip/",
+  "upstream": "https://github.com/armbian/rkbin (rk35/)"
+ },
+ "loaders": [
+  {
+   "id": "rk3506b",
+   "chip": "RK3506B",
+   "file": "rk3506b_spl_loader_v1.06.112.bin",
+   "sha256": "4e57852aa3e79dd75c27eb9c6c8b883b1ae57e8b29277e2294ebbeab88da6231",
+   "boards": ["Luckfox Lyra Zero W", "Luckfox Lyra Ultra W"]
+  },
+  {
+   "id": "rk3506",
+   "chip": "RK3506",
+   "file": "rk3506_spl_loader_v1.06.112.bin",
+   "sha256": "a5fd47947a22d2648d24b79723dc05d828f6756ef71863175fe2e5f57e5580f9",
+   "boards": ["Luckfox Lyra Plus", "EByte ECB41-PGE", "ForLinx OK3506-S12"]
+  }
+ ]
+}
