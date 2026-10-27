@@ -2618,6 +2618,110 @@ def _foreign_unused():
     return [a for a in foreign if re.fullmatch(r"[a-z0-9-]{1,20}", a) and a not in have]
 
 
+SERVICE_HEAVY = 100 << 20  # a service writing more than this a day to the card (averaged over the week) is named
+MOUNTINFO = Path(os.environ.get("HUB_MOUNTINFO", "/proc/self/mountinfo"))
+
+
+def _mount_of(path):
+    """(mount point, filesystem type, source) of the mount that holds path, from mountinfo; None if unknown."""
+    best = None
+    try:
+        lines = MOUNTINFO.read_text().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        left, _, right = line.partition(" - ")
+        fields, tail = left.split(), right.split()
+        if len(fields) < 5 or len(tail) < 2:
+            continue
+        point = fields[4].replace("\\040", " ")
+        if (path == point or path.startswith(point.rstrip("/") + "/")) and (best is None or len(point) > len(best[0])):
+            best = (point, tail[0], tail[1])
+    return best
+
+
+def _on_card(path, card_name):
+    """Whether path is on the SD card: its mount's source is the card or one of its partitions (not RAM, not the
+    onboard flash, not zram)."""
+    found = _mount_of(path)
+    return bool(found and card_name and found[2].startswith(f"/dev/{card_name}"))
+
+
+def _unit_writes(unit, card_name):
+    """(confined, [card paths]): whether the unit can write only where it says (ProtectSystem=strict), and of the
+    places it says, those on the SD card (its writable paths; its state, log and cache folders; a bind into RAM is
+    not one)."""
+    out = run(
+        "systemctl", "show", unit, "-p", "ProtectSystem,ReadWritePaths,StateDirectory,LogsDirectory,CacheDirectory,BindPaths",
+        timeout=10,
+    ).stdout
+    props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    confined = props.get("ProtectSystem") == "strict"
+    bound = {}
+    for pair in props.get("BindPaths", "").split():
+        src, _, rest = pair.partition(":")
+        bound[rest.split(":")[0] or src] = src
+    paths = [p.lstrip("-") for p in props.get("ReadWritePaths", "").split()]
+    for key, root in (("StateDirectory", "/var/lib"), ("LogsDirectory", "/var/log"), ("CacheDirectory", "/var/cache")):
+        paths += [f"{root}/{name}" for name in props.get(key, "").split()]
+    on_card = []
+    for path in paths:
+        if path in bound and not _on_card(bound[path], card_name):
+            continue  # the unit's own view of it is RAM (a bind, as EWS's cache)
+        under = [d for d in bound if d != path and d.startswith(path.rstrip("/") + "/")]
+        if _on_card(path, card_name):
+            on_card.append(path + (f" (but {', '.join(under)} in RAM)" if under else ""))
+    return confined, on_card
+
+
+def _service_writes_findings(summary, card_name):
+    """The services that write most to the card, each with where it can write there (from its unit)."""
+    from irate_box.hub import cardhistory
+
+    out = []
+    days = max(1, min(7, len(summary["days"])))
+    for unit, week in summary["week_units"]:
+        per_day = week // days
+        if per_day <= SERVICE_HEAVY:
+            continue
+        if unit == cardhistory.JOBS:
+            out.append(
+                finding(
+                    "card-writer:jobs",
+                    M("card-writer.title", "Writes of {unit}", unit=M("card-writer.jobs", "jobs that ended")),
+                    "warn",
+                    M("card-writer.jobs.rate", "Jobs that run and end (timers' short runs) write about {mb} MB a day to the SD card.", mb=per_day >> 20),
+                    M("card-writer.jobs.why", "A job that ends is not counted by name: look at the box's timers (systemctl list-timers) for one that runs often."),
+                    go=GO_CARD_WRITES,
+                )
+            )
+            continue
+        if unit == cardhistory.KERNEL or not unit.endswith(".service"):
+            continue
+        confined, paths = _unit_writes(unit, card_name)
+        if confined:
+            where = M("card-writer.where", "It can write on the SD card only to {paths}.", paths=", ".join(paths) or "none of its own")
+        else:
+            where = M("card-writer.anywhere", "It can write anywhere on the SD card: its unit does not set ProtectSystem=strict.")
+        out.append(
+            finding(
+                f"card-writer:{unit}",
+                M("card-writer.title", "Writes of {unit}", unit=unit),
+                "warn",
+                M("card-writer.rate", "{unit} writes about {mb} MB a day to the SD card.", unit=unit, mb=per_day >> 20),
+                where,
+                M(
+                    "card-writer.fix",
+                    "If what it writes there is a cache, a download or an export, it can be kept in RAM instead: an "
+                    "add-on says which of its paths can be, in its manifest's writes block.",
+                ),
+                evidence=paths,
+                go=GO_CARD_WRITES,
+            )
+        )
+    return out
+
+
 def check_card_writes(now=None):
     from irate_box.hub import cardhistory
 
@@ -2685,6 +2789,8 @@ def check_card_writes(now=None):
         )
     elif not cardhistory.memory_controller():
         out.append(_memcg_finding())
+    found = cardhistory.card()
+    out += _service_writes_findings(summary, found[0] if found else None)
     out += _flash_findings()
     for conf in sorted((SYSTEMD_ETC / "journald.conf.d").glob("*.conf")):
         try:

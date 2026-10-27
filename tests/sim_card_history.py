@@ -32,6 +32,7 @@ os.environ.update(
     HUB_PROC_MTD=str(T / "mtd"),
     HUB_UBI_SYS=str(T / "ubi"),
     HUB_ROOT_STATE_DIR=str(T / "root-state"),
+    HUB_MOUNTINFO=str(T / "mountinfo"),
 )
 for d in ("state", "etc", "systemd/journald.conf.d", "apt.conf.d", "apt-cache"):
     (T / d).mkdir(parents=True)
@@ -223,6 +224,10 @@ def run(*cmd, timeout=60, **kw):
         (T / "nand-logs.conf").unlink()
     elif cmd[0] == "journalctl" and "-k" in cmd:
         out = said_kernel["log"]
+    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "apt-daily.service":
+        out = "ProtectSystem=strict\nReadWritePaths=/var/lib/apt -/var/cache/apt /run/irate-box-apt\nStateDirectory=\nBindPaths=\n"
+    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "meshtasticd.service":
+        out = "ProtectSystem=no\nReadWritePaths=\n"
     elif cmd[0] == "systemctl" and cmd[1] == "is-active":
         out = "inactive\n"
     elif cmd[0] == "systemd-analyze":
@@ -249,8 +254,23 @@ cardhistory.FILE.write_text("".join(json.dumps(r) + "\n" for r in lines))
 box("dddd4444", 1, {}, accounting=False)
 (T / "systemd" / "journald.conf.d" / "zz-test.conf").write_text("[Journal]\nSyncIntervalSec=5s\n")
 (T / "systemd" / "journald.conf.d" / "ok.conf").write_text("[Journal]\nSyncIntervalSec=10min\n")
+(T / "mountinfo").write_text(
+    "22 1 179:2 / / rw,relatime shared:1 - ext4 /dev/mmcblk0p2 rw\n"
+    "25 22 0:23 / /run rw,nosuid,nodev shared:5 - tmpfs tmpfs rw,size=48000k\n"
+)
 got = {f["id"]: f for f in health.check_card_writes(now=day0 + 3 * 86400 + 2 * H)}
 cw = got.get("card-writes", {})
+mw, aw = got.get("card-writer:meshtasticd.service", {}), got.get("card-writer:apt-daily.service", {})
+check(
+    "a service writing much: named with how much a day; one that can write anywhere said so",
+    mw.get("status") == "warn" and "anywhere on the SD card" in health.english(mw["why"]) and "meshtasticd.service writes about" in health.english(mw["summary"]),
+    mw,
+)
+check(
+    "  one confined to its paths: those on the SD card listed, the one in RAM not",
+    aw.get("evidence") == ["/var/lib/apt", "/var/cache/apt"] and "only to /var/lib/apt, /var/cache/apt" in health.english(aw["why"]),
+    aw,
+)
 check(
     "the rate over three whole days: above 1 GB a day, a warning naming the services that wrote most, with the setting",
     cw.get("status") == "warn"
