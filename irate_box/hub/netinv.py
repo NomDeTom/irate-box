@@ -624,7 +624,9 @@ def visible_networks(run_=None, known=()):
                 "known": ssid in known,
             },
         )
-        n["aps"] += 1
+        # An access point counted once by its BSSID: a box with two WiFi radios lists each one twice.
+        n.setdefault("_bssids", set()).add(f[1].lower() or object())  # a row without a BSSID counts on its own
+        n["aps"] = len(n["_bssids"])
         n["signal"] = max(n["signal"], signal)
         n["bands"].add("6 GHz" if mhz >= 5925 else "5 GHz" if mhz >= 5000 else "2.4 GHz")
         if chan.isdigit():
@@ -632,6 +634,7 @@ def visible_networks(run_=None, known=()):
     nets = sorted(by.values(), key=lambda n: (-n["signal"], n["ssid"]))
     for n in nets:
         n["bands"], n["channels"] = sorted(n["bands"]), sorted(n["channels"])
+        n.pop("_bssids", None)
     return nets
 
 
