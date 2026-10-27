@@ -6655,7 +6655,7 @@ def _rk_serial_setup(req):
         "keys": [k.strip() for k in str(c.get("key") or "").splitlines() if k.strip()],
         "lock_root": bool(c.get("lockRoot")),
     }
-    kinds = {"user": "user", "hostname": "hostname", "wifi_password": "wifi-password"}
+    kinds = {"user": "user", "hostname": "hostname", "wifi_password": "wifi-password"}  # nosec B105
     for field in (
         "user",
         "real_name",

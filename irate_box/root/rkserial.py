@@ -273,7 +273,7 @@ def setup(console, choices):
         )
     if state == "shell":
         # A root shell already (its first login done): the rest is set, and no password is changed or said.
-        return {**configure(console, choices), "root_password": None, "user_password": None}
+        return {**configure(console, choices), "root_password": None, "user_password": None}  # nosec B105
     root_password = choices.get("root_password") or generated()
     user_password = choices.get("user_password") or generated()
     first_login(console, root_password, choices["user"], user_password, choices.get("real_name") or choices["user"])

@@ -6375,11 +6375,16 @@ class Handler(BaseHTTPRequestHandler):
                 and isinstance(payload.get("id"), str)
                 and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", payload["id"])
             ):
-                # The passwords made for a board: given once, then gone (the root helper's rk-secrets/<id>.json).
-                secret = CONTROL_DIR / "rk-secrets" / f"{payload['id']}.json"
+                # The passwords made for a board: given once, then gone (the root helper's rk-secrets/<id>.json). The
+                # file is found among those there, never by a path made from the request.
+                got = None
                 try:
-                    got = json.loads(secret.read_text())
-                    secret.unlink()
+                    secret = next(
+                        (f for f in (CONTROL_DIR / "rk-secrets").glob("*.json") if f.stem == payload["id"]), None
+                    )
+                    if secret is not None and secret.is_file() and not secret.is_symlink():
+                        got = json.loads(secret.read_text())
+                        secret.unlink()
                 except (OSError, ValueError):
                     got = None
                 self.send_json(200, {"secret": got})
