@@ -232,7 +232,12 @@ def configure(console, choices):
         out = do(f'nmcli dev wifi connect "{choices["ssid"]}"{pw} 2>&1', "wifi", timeout=90)
         if "successfully activated" not in out:
             raise Refused(
-                M("rkserial.wifi", "The board did not join {ssid}: {detail}", ssid=choices["ssid"], detail=out.strip()[-160:])
+                M(
+                    "rkserial.wifi",
+                    "The board did not join {ssid}: {detail}",
+                    ssid=choices["ssid"],
+                    detail=out.strip()[-160:],
+                )
             )
         said.append(f"joined {choices['ssid']}")
     if choices.get("lock_root") and choices.get("keys"):

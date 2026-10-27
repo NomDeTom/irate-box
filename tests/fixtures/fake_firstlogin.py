@@ -60,7 +60,10 @@ if start == "firstlogin":
     say("\nShell: \x1b[92mBASH\x1b[0m\n")
     say("Internet connection was \x1b[91mnot detected\x1b[0m.\n\n")
     ask("Connect via wireless? [Y/n] ", "wifi")
-    ask("\nAt your location, more locales are possible:\n\n1) en_GB.UTF-8\n2) Skip generating locales\nPlease enter your choice:", "locale")
+    ask(
+        "\nAt your location, more locales are possible:\n\n1) en_GB.UTF-8\n2) Skip generating locales\nPlease enter your choice:",
+        "locale",
+    )
     ask("\nPlease provide a username (eg. your first name): \x1b[?25h", "user")
     user = record["answers"]["user"][-1]
     ask(f"Create user ({user}) password: ", "user1")
@@ -80,12 +83,16 @@ while True:
         continue
     key = key.group(1)
     body = ""
-    if (m := re.search(r'hostnamectl set-hostname "([\w-]+)"', line)) :
+    if m := re.search(r'hostnamectl set-hostname "([\w-]+)"', line):
         host = m.group(1)
     if key == "readname":
         body = host + "\n"
     elif key == "wifi":
-        body = "Device 'wlan0' successfully activated with '1f2e'.\n" if "GOODNET" in line else "Error: No network with SSID 'NONET' found.\n"
+        body = (
+            "Device 'wlan0' successfully activated with '1f2e'.\n"
+            if "GOODNET" in line
+            else "Error: No network with SSID 'NONET' found.\n"
+        )
     elif key == "addr":
         body = "192.168.1.77\n"
     say(f"@@B{key}\n{body}@@E{key}\n")

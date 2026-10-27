@@ -10,13 +10,12 @@ python3 tests/sim_rkserial.py"""
 
 import json
 import os
+import pwd
 import subprocess
 import sys
 import tempfile
 import termios
 from pathlib import Path
-
-import pwd
 
 REPO = Path(__file__).resolve().parents[1]
 T0 = Path(tempfile.mkdtemp(prefix="rkserial-state-"))

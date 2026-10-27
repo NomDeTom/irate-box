@@ -6596,10 +6596,19 @@ def _box_wifi(name):
     """(ssid, password) of a NetworkManager connection on this box: the WiFi in use ("") or the hotspot."""
     if not name:
         out = run("nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active").stdout
-        name = next((f.split(":")[0] for f in out.splitlines() if ":802-11-wireless:" in f and not f.startswith("irate-box-ap:")), "")
+        name = next(
+            (
+                f.split(":")[0]
+                for f in out.splitlines()
+                if ":802-11-wireless:" in f and not f.startswith("irate-box-ap:")
+            ),
+            "",
+        )
     if not name:
         raise Refused(M("rkserial.no-box-wifi", "This box is not on a WiFi network, so it has none to send."))
-    got = run("nmcli", "-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk", "connection", "show", name).stdout
+    got = run(
+        "nmcli", "-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk", "connection", "show", name
+    ).stdout
     ssid, _, password = got.strip().partition("\n")
     return ssid.strip(), password.strip()
 
@@ -6624,7 +6633,9 @@ def _rk_serial_setup(req):
     else:
         ssid, wifi_password = "", ""
     if c.get("address") == "fixed":
-        raise Refused(M("rkserial.fixed", "A fixed address is not set over the serial console yet: choose From the network."))
+        raise Refused(
+            M("rkserial.fixed", "A fixed address is not set over the serial console yet: choose From the network.")
+        )
     choices = {
         "user": str(c.get("userName") or "armbian"),
         "real_name": str(c.get("userName") or "armbian").replace("-", " ").title(),
@@ -6640,7 +6651,18 @@ def _rk_serial_setup(req):
         "lock_root": bool(c.get("lockRoot")),
     }
     kinds = {"user": "user", "hostname": "hostname", "wifi_password": "wifi-password"}
-    for field in ("user", "real_name", "root_password", "user_password", "hostname", "timezone", "locale", "country", "ssid", "wifi_password"):
+    for field in (
+        "user",
+        "real_name",
+        "root_password",
+        "user_password",
+        "hostname",
+        "timezone",
+        "locale",
+        "country",
+        "ssid",
+        "wifi_password",
+    ):
         kind = kinds.get(field, "password" if field.endswith("password") and choices[field] else "text")
         if (why := rksetup.problem(choices[field], kind)) is not None:
             raise Refused(M("rkserial.value", "{field}: {why}", field=field.replace("_", " "), why=why))
@@ -6656,7 +6678,11 @@ def _rk_serial_setup(req):
         hub = pwd.getpwnam(HUB_USER)
         safeio.mkdir(RK_SECRETS, gid=hub.pw_gid, mode=0o770)
         with safeio.create(RK_SECRETS / f"{req['id']}.json", mode=0o640, gid=hub.pw_gid) as fh:
-            fh.write(json.dumps({"root": got["root_password"], "user": choices["user"], "user_password": got["user_password"]}).encode())
+            fh.write(
+                json.dumps(
+                    {"root": got["root_password"], "user": choices["user"], "user_password": got["user_password"]}
+                ).encode()
+            )
     return M(
         "rkserial.done",
         "The board is set up as {name}, at {address}: {said}.",

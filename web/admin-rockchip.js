@@ -62,7 +62,7 @@
       const done = (data.results || []).find((r) => r.id === waiting);
       if (done) {
         waiting = null;
-        if (done.msg && /^rkserial\./.test(done.msg.id || '')) setupResult(done);
+        if (done.msg && (done.msg.id || '').startsWith('rkserial.')) setupResult(done);
         else say(resultSaid(done), done.ok, note);
       }
     }
@@ -77,7 +77,7 @@
     );
     const boards = data.boards || [];
     const busy = !!waiting || data.pending > 0;
-    const lastRk = (data.results || []).find((r) => r.msg && /^rkboard\./.test(r.msg.id || ''));
+    const lastRk = (data.results || []).find((r) => r.msg && (r.msg.id || '').startsWith('rkboard.'));
     if (lastRk) cardShown = lastRk.msg.id === 'rkboard.card-shown';
     if (!boards.length) cardShown = false;
     const images = data.images || [];

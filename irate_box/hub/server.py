@@ -6343,7 +6343,11 @@ class Handler(BaseHTTPRequestHandler):
                 # password itself where it is to be sent.
                 req = {"action": "rk-serial-setup", "console": payload["console"], "choices": payload["choices"]}
                 self.send_json(202, {"id": control_request(req)})
-            elif act == "secret" and isinstance(payload.get("id"), str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", payload["id"]):
+            elif (
+                act == "secret"
+                and isinstance(payload.get("id"), str)
+                and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", payload["id"])
+            ):
                 # The passwords made for a board: given once, then gone (the root helper's rk-secrets/<id>.json).
                 secret = CONTROL_DIR / "rk-secrets" / f"{payload['id']}.json"
                 try:
