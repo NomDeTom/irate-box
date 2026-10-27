@@ -37,6 +37,18 @@
         <p class="setting-desc action-note" id="rk-note" role="status" hidden></p>
       </div>
     </section>
+
+    <!-- Boards to set up (hub/rksetup.py): a new board's setup hotspot in range, one card each; its drawer holds the
+         choices sent to the board as Armbian's first-boot presets, and the steps. -->
+    <section class="admin-pane" id="rk-setup-pane" aria-labelledby="rk-setup-title">
+      <h2 id="rk-setup-title" data-i18n="admin-rockchip.setup.title">Boards to set up</h2>
+      <p class="setting-desc" data-i18n="admin-rockchip.setup.intro">
+        A new board joins your network with the choices set here: its network, its accounts, its name. A board with
+        mPWRD-OS raises a setup hotspot at its first start, and shows here while it is in range. Power one new board
+        at a time, near this box: until it is set up, anyone in range can set it up instead.
+      </p>
+      <div id="rk-setup"></div>
+    </section>
   </main>
   <script src="/i18n.js"></script>
   <script src="/hub.js"></script>

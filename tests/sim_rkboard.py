@@ -11,6 +11,7 @@ after each step; the menu entry listed only to an administrator. python3 tests/s
 import hashlib
 import json
 import os
+import re
 import shutil as real_shutil
 import subprocess
 import sys
@@ -200,8 +201,11 @@ check(
 # comes from hub/rkusb.py. Found on a box: the page showed a blank card, the hub failing to import root's module.
 route = src.split("def rkboard_snapshot")[1].split("\ndef ")[0]
 check(
-    "the hub's /admin/rkboard reads hub/rkusb.py, never irate_box.root (unreadable to the hub)",
-    "from irate_box.hub import rkusb" in route and "irate_box.root" not in route.replace("not irate_box.root", ""),
+    "the hub's /admin/rkboard reads hub/rkusb.py and hub/rksetup.py, never irate_box.root (unreadable to the hub)",
+    re.search(r"from irate_box\.hub import [\w, ]*\brkusb\b", route) is not None
+    and re.search(r"from irate_box\.hub import [\w, ]*\brksetup\b", route) is not None
+    and "irate_box.root" not in route.replace("not irate_box.root", "")
+    and "irate_box.root" not in (REPO / "irate_box/hub/rksetup.py").read_text(),
     route,
 )
 check(
