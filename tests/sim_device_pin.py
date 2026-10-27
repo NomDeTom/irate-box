@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from freeport import free_port
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -22,7 +23,7 @@ leases = state / "leases"
 leases.write_text(
     "1700000000 aa:aa:aa:aa:aa:01 10.9.0.11 alices-phone *\n1700000000 bb:bb:bb:bb:bb:02 10.9.0.22 someone *\n"
 )
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ,

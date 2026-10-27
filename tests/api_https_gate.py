@@ -22,9 +22,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from irate_box.hub import transport
+from freeport import free_port
 
 state = Path(tempfile.mkdtemp(prefix="https-gate-"))
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "e" * 64
 VIA = "f" * 64
 env = dict(

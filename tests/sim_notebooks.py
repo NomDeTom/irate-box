@@ -95,6 +95,7 @@ check("a hub starting again lists none (any left running stop)", wanted() == [] 
 
 # The root helper's side: the hub's list, checked, at most ten.
 from irate_box.root import hub_control
+from freeport import free_port
 
 calls = []
 
@@ -143,7 +144,7 @@ check("  never through a link: none wanted", hub_control.notebooks_sync() == [])
 
 # The hub's answers, signed out, against a hub it starts.
 hstate = Path(tempfile.mkdtemp(prefix="notebooks-hub-"))
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "e" * 64
 env = dict(
     os.environ,

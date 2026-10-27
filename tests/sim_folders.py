@@ -13,10 +13,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from freeport import free_port
 
 REPO = Path(__file__).resolve().parents[1]
 state = tempfile.mkdtemp(prefix="folders-")
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ, HUB_FRONT_SECRET=SECRET, HUB_STATE_DIR=state, HUB_ETC_DIR=state, PORT=str(port), HUB_BIND="127.0.0.1"

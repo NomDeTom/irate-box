@@ -21,6 +21,7 @@ T = Path(tempfile.mkdtemp(prefix="signin-"))
 os.environ.update(HUB_STATE_DIR=str(T / "lib"))
 sys.path.insert(0, str(REPO))
 from irate_box.hub import accounts as A
+from freeport import free_port
 
 fails = 0
 
@@ -145,7 +146,7 @@ check("adaptive off: the owner's level everywhere", A._level(("addr", "10.9.0.66
 
 # Against a hub: the device cookie, the levels' numbers, each person's storage share.
 (T / "hub").mkdir()
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ,

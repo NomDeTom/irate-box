@@ -16,12 +16,13 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from freeport import free_port
 
 REPO = Path(__file__).resolve().parents[1]
 work = Path(tempfile.mkdtemp(prefix="status-tiles-"))
 counts = work / "counts.json"
 counts.write_text(json.dumps({"day": 4, "week": 9, "date": "2026-10-08", "week_of": "2026-W41", "at": 1}))
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ,

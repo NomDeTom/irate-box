@@ -12,10 +12,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from freeport import free_port
 
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="cardwrites-"))
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "e" * 64
 env = dict(
     os.environ,

@@ -14,11 +14,12 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from freeport import free_port
 
 REPO = Path(__file__).resolve().parents[1]
 state = Path(tempfile.mkdtemp(prefix="guest-net-"))
 (state / "control" / "requests").mkdir(parents=True)
-port = 20000 + int.from_bytes(os.urandom(2), "big") % 20000
+port = free_port()
 SECRET = "f" * 64
 env = dict(
     os.environ,
