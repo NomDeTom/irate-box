@@ -341,7 +341,9 @@ hub_large() {
 # it, the large folders bound back from the card's; then the system's folders.
 state_lines() {
 	local d
-	echo "$HUB $HUB_CARD none bind 0 0"
+	# private: the root filesystem is a shared mount, so without it the flash's copy, mounted over $HUB next,
+	# would propagate into $HUB_CARD too, and the large folders be bound back from the flash's empty placeholders.
+	echo "$HUB $HUB_CARD none bind,private 0 0"
 	echo "$MNT/hub $HUB none bind,nofail,x-systemd.requires-mounts-for=$MNT,x-systemd.after=$(systemd-escape -p --suffix=mount "$HUB_CARD") 0 0"
 	for d in "$@"; do
 		echo "$HUB_CARD/$d $HUB/$d none bind,nofail,x-systemd.requires-mounts-for=$HUB,x-systemd.requires-mounts-for=$HUB_CARD 0 0"
@@ -378,6 +380,20 @@ state_plan() {
 # The hub's units, which must wait for its folder (the flash's mount is nofail: a fault there leaves the box
 # booting, the hub not starting on an empty folder).
 hub_units() { systemctl list-unit-files --no-legend 'irate-box*.service' 2>/dev/null | awk '{print $1}' | grep -v '@\.service$'; }
+# The units stopped while the state moves: those that write the hub's folder. Not the hotspot, its DNS, the firewall,
+# the clock or nginx's recovery unit (nginx requires it: stopping it stops nginx).
+WRITERS=(irate-box.service irate-box-librarian.service irate-box-ci.service irate-box-git.service irate-box-notebooks.service
+	irate-box-visitors.service irate-box-uplink.service irate-box-crashwatch.service irate-box-secdoctor.service)
+writers() { local u; for u in "${WRITERS[@]}"; do systemctl cat "$u" >/dev/null 2>&1 && echo "$u"; done; }
+
+# After mounting: the card's view of the hub, and each large folder, must be on the card's device, not the flash's.
+state_mounts_ok() {
+	local flash d
+	flash=$(stat -c %d "$MNT")
+	[[ $(stat -c %d "$HUB_CARD") != "$flash" ]] || return 1
+	[[ $(stat -c %d "$HUB") == "$flash" ]] || return 1
+	for d in "$@"; do [[ $(stat -c %d "$HUB/$d") != "$flash" ]] || return 1; done
+}
 # The units given a drop-in, each with the folder it waits for: "unit path".
 wait_units() {
 	local u d
@@ -401,9 +417,9 @@ state_on() {
 	need=$(state_plan | sed -n 's/^to the flash: \([0-9]*\) MiB.*/\1/p')
 	avail=$(($(df -k --output=avail "$MNT" | tail -1) / 1024))
 	((need + 32 < avail)) || die "the state ($need MiB) does not fit with room to spare ($avail MiB free)"
-	mapfile -t units < <(hub_units)
-	say "stopping the hub (${#units[@]} units) while its state moves"
-	for u in "${units[@]}"; do [[ $u == irate-box-control.service ]] || systemctl stop "$u" 2>/dev/null || true; done
+	mapfile -t units < <(writers)
+	say "stopping the hub's writers (${#units[@]} units) while its state moves"
+	for u in "${units[@]}"; do systemctl stop "$u" 2>/dev/null || true; done
 	trap 'for u in "${units[@]}"; do systemctl start "$u" 2>/dev/null || true; done' EXIT
 	mkdir -p "$MNT/hub" "$HUB_CARD"
 	chmod --reference="$HUB" "$MNT/hub"
@@ -433,8 +449,18 @@ state_on() {
 	systemctl daemon-reload
 	# Mounted now in the order of the lines (systemd mounts them so at the next boot).
 	mount --bind "$HUB" "$HUB_CARD"
+	mount --make-private "$HUB_CARD"
 	mount --bind "$MNT/hub" "$HUB"
 	for d in "${large[@]}"; do mount --bind "$HUB_CARD/$d" "$HUB/$d"; done
+	if ! state_mounts_ok "${large[@]}"; then
+		for d in "${large[@]}"; do umount "$HUB/$d" 2>/dev/null || true; done
+		umount "$HUB" 2>/dev/null || true
+		umount "$HUB_CARD" 2>/dev/null || true
+		sed -i "/$STATE_TAG\$/d" "$FSTAB"
+		rm -f /etc/systemd/system/*.service.d/"$STATE_DROPIN"
+		systemctl daemon-reload
+		die "the mounts did not come out as planned (a large folder not on the card): undone, the state left on the card"
+	fi
 	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && mount --bind "$MNT/sys${d//\//_}" "$d"; done
 	echo "state=1" >>"$STATE"
 	echo "state_large=${large[*]}" >>"$STATE"
@@ -445,9 +471,9 @@ state_off() {
 	grep -q '^state=1' "$STATE" 2>/dev/null || die "the state is not on the flash"
 	local large u d
 	read -r -a large <<<"$(sed -n 's/^state_large=//p' "$STATE")"
-	mapfile -t units < <(hub_units)
-	say "stopping the hub while its state moves back"
-	for u in "${units[@]}"; do [[ $u == irate-box-control.service ]] || systemctl stop "$u" 2>/dev/null || true; done
+	mapfile -t units < <(writers)
+	say "stopping the hub's writers while its state moves back"
+	for u in "${units[@]}"; do systemctl stop "$u" 2>/dev/null || true; done
 	trap 'for u in "${units[@]}"; do systemctl start "$u" 2>/dev/null || true; done' EXIT
 	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && unbind "$d"; done
 	for d in "${large[@]}"; do umount "$HUB/$d" 2>/dev/null || true; done

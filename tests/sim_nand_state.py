@@ -61,8 +61,8 @@ lines = [ln.strip() for ln in text.split("fstab:", 1)[-1].splitlines() if ln.str
 card = str(T / "lib" / "hub.card")
 esc = subprocess.run(["systemd-escape", "-p", "--suffix=mount", card], capture_output=True, text=True).stdout.strip()
 check(
-    "  the fstab lines in order: the card's hub exposed, then the flash's over it after that, nofail",
-    lines[0] == f"{hub} {card} none bind 0 0"
+    "  the fstab lines in order: the card's hub exposed (private: no propagation), then the flash's over it, nofail",
+    lines[0] == f"{hub} {card} none bind,private 0 0"
     and lines[1].startswith(f"/var/log.nand/hub {hub} none bind,nofail,")
     and f"x-systemd.after={esc}" in lines[1],
     lines[:2],
