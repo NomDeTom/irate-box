@@ -20,8 +20,9 @@ work = Path(tempfile.mkdtemp(prefix="visitors-"))
 leases, arp, out = work / "dnsmasq.leases", work / "arp", work / "run" / "counts.json"
 os.environ.update(VISITORS_LEASES=str(leases), VISITORS_ARP=str(arp), VISITORS_OUT=str(out))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import visitors
 from freeport import free_port
+
+from irate_box.hub import visitors
 
 fails = 0
 

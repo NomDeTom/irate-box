@@ -94,8 +94,9 @@ again = notebooks.Notebooks(lambda path: True, lambda k: True, lambda: dict(sett
 check("a hub starting again lists none (any left running stop)", wanted() == [] and again.wanted == set())
 
 # The root helper's side: the hub's list, checked, at most ten.
-from irate_box.root import hub_control
 from freeport import free_port
+
+from irate_box.root import hub_control
 
 calls = []
 

@@ -21,8 +21,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.hub import transport
 from freeport import free_port
+
+from irate_box.hub import transport
 
 state = Path(tempfile.mkdtemp(prefix="https-gate-"))
 port = free_port()

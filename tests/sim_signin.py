@@ -20,8 +20,9 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="signin-"))
 os.environ.update(HUB_STATE_DIR=str(T / "lib"))
 sys.path.insert(0, str(REPO))
-from irate_box.hub import accounts as A
 from freeport import free_port
+
+from irate_box.hub import accounts as A
 
 fails = 0
 
