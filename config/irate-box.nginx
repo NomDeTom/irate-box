@@ -26,6 +26,11 @@ map $remote_addr $irate_box_logins {
 	default "@HTPASSWD@.net";
 }
 
+# A large proxied answer streamed to the browser, not spilled into temporary files on the SD card first (nginx's
+# own temp path is on the card, and a file written and deleted there is still a write: the box's largest burst after
+# a boot). Uploads (client bodies) keep nginx's default: the owner's own files, large, too large for RAM.
+proxy_max_temp_file_size 0;
+
 map $http_upgrade $irate_box_connection {
 	default upgrade;
 	''      "";

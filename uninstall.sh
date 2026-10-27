@@ -104,7 +104,8 @@ systemctl stop 'irate-box-notebook@*.service' >/dev/null 2>&1 || true
 # sharing, and its sysctl file goes.
 systemctl disable --now irate-box-guest-dns.service 2>/dev/null || true
 rm -f /etc/systemd/system/irate-box-guest-dns.service
-rm -f /etc/logrotate.d/irate-box-pages
+rm -f /etc/logrotate.d/irate-box-pages /etc/tmpfiles.d/irate-box-pagelog.conf
+rm -rf /run/irate-box/pagelog
 if [ -f /etc/sysctl.d/90-irate-box-share.conf ]; then
 	rm -f /etc/sysctl.d/90-irate-box-share.conf
 	was="$(python3 -c 'import json; print(json.load(open("/etc/hub/share.json")).get("forward_was") or "")' 2>/dev/null || true)"

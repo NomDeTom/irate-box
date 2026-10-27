@@ -3,7 +3,7 @@
 """The use of the pages the web server serves itself (Excalidraw, Mermaid, the calculators, the serial
 terminal, the flashers), which have no service of their own to sample: their heatmap shows an hour as
 blank (not used), worked (used, every load answered) or failed (a load got an error), from nginx's log of
-page loads ($HUB_STATE_DIR/pagelog/pages.log: "<time> <status> <path>" a line, nothing about who asked).
+page loads (/run/irate-box/pagelog/pages.log, in RAM: "<time> <status> <path>" a line, nothing about who asked).
 
 The hub reads what is new every five minutes (the file emptied by logrotate past 1 MB: read from the start
 again when it shrinks) and keeps hourly counts for 72 days:
@@ -23,7 +23,9 @@ from pathlib import Path
 from irate_box.hub import svchistory
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
-LOG = STATE / "pagelog" / "pages.log"
+# In RAM (/run, made at each boot by install.sh's tmpfiles rule): a reboot starts it empty, and the hub, which keeps
+# its place by offset and inode, starts again from its start.
+LOG = Path(os.environ.get("HUB_PAGELOG", "/run/irate-box/pagelog/pages.log"))
 FILE = STATE / "page-history.json"
 HOUR = 3600
 KEEP = 72 * 24

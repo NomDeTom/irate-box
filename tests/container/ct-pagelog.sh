@@ -4,7 +4,7 @@
 # The pages the web server serves itself, logged as they are loaded (time, status, path; nothing about who asked),
 # for the hub's use heatmap: a page load is a line, a script or picture is not, the rest of the box no line at all.
 # Usage: ct-pagelog.sh PORT
-H=127.0.0.1:${1:-80}; L=/var/lib/hub/pagelog/pages.log
+H=127.0.0.1:${1:-80}; L=/run/irate-box/pagelog/pages.log
 fails=0; ok() { echo "  ok   $*"; }; bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 before=$(wc -l <"$L" 2>/dev/null || echo 0)
 curl -s -o /dev/null "http://$H/flasher/freeocd/"
@@ -17,4 +17,6 @@ printf '%s\n' "$new" | grep -q 'dap.umd.js' && bad "a script was logged" || ok "
 [ "$(printf '%s\n' "$new" | grep -c .)" = 1 ] && ok "the hub's own page not logged" || bad "more lines than the one page: $new"
 printf '%s\n' "$new" | grep -qE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' && bad "an address in the log" || ok "no address in the log"
 [ -f /etc/logrotate.d/irate-box-pages ] && ok "logrotate keeps it small" || bad "no logrotate entry"
+findmnt -n -o FSTYPE --target "$L" | grep -q tmpfs && ok "the log is in RAM (/run)" || bad "the log is not in RAM"
+[ -f /etc/tmpfiles.d/irate-box-pagelog.conf ] && ok "its folder made at every boot" || bad "no tmpfiles rule"
 echo "failures: $fails"; exit $((fails > 0))
