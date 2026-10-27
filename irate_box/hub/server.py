@@ -2448,12 +2448,12 @@ def update_progress():
 def rkboard_snapshot():
     """/admin/rkboard: the Rockchip boards on the box's USB as sysfs shows them now (the hub reads it itself), the
     tools the Rockchip boards toolkit brings, the loaders, and the root helper's work on them: waiting, and done."""
-    from irate_box.root import rkboard
+    from irate_box.hub import rkusb  # not irate_box.root: that folder is root's alone, unreadable to the hub
 
     return {
-        "boards": rkboard.boards(),
-        "tools": rkboard.tools(),
-        "loaders": [{"id": x["id"], "chip": x["chip"], "boards": x.get("boards", [])} for x in rkboard.loaders()],
+        "boards": rkusb.boards(),
+        "tools": rkusb.tools(),
+        "loaders": [{"id": x["id"], "chip": x["chip"], "boards": x.get("boards", [])} for x in rkusb.loaders()],
         "pending": _pending_actions("rk-"),
         "results": control_results(5),
     }

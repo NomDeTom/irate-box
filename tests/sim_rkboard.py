@@ -84,14 +84,16 @@ rkboard.run = fake_run
 rkboard.time.sleep = lambda s: None
 rkboard.WAIT = 3
 have = {"rkdeveloptool": "/usr/bin/rkdeveloptool", "adb": "/usr/bin/adb"}
-rkboard.shutil.which = lambda name: have.get(name)
+rkboard.rkusb.shutil.which = lambda name: have.get(name)
 
 # The shipped loaders: each file present and matching its sha256.
 shipped = rkboard.loaders()
 check(
     "the shipped loaders: RK3506B and RK3506, each file matching its recorded sha256",
     [x["id"] for x in shipped] == ["rk3506b", "rk3506"]
-    and all(hashlib.sha256((rkboard.LOADERS / x["file"]).read_bytes()).hexdigest() == x["sha256"] for x in shipped),
+    and all(
+        hashlib.sha256((rkboard.rkusb.LOADERS / x["file"]).read_bytes()).hexdigest() == x["sha256"] for x in shipped
+    ),
     shipped,
 )
 check("  Rockchip's licence beside them", (REPO / "LICENSES" / "LicenseRef-Rockchip-rkbin.txt").is_file())
@@ -174,12 +176,12 @@ check(
 unplug_all()
 plug("1-1.2", "maskrom")
 damaged = T / "loaders"
-real_shutil.copytree(rkboard.LOADERS, damaged)
+real_shutil.copytree(rkboard.rkusb.LOADERS, damaged)
 (damaged / "rk3506b_spl_loader_v1.06.112.bin").write_bytes(b"not a loader")
-real_loaders = rkboard.LOADERS
-rkboard.LOADERS = damaged
+real_loaders = rkboard.rkusb.LOADERS
+rkboard.rkusb.LOADERS = damaged
 check("  a damaged loader: refused, not sent", refused(rkboard.erase, "rk3506b") == "rkboard.loader-damaged")
-rkboard.LOADERS = real_loaders
+rkboard.rkusb.LOADERS = real_loaders
 
 # A missing tool.
 del have["rkdeveloptool"]
@@ -193,6 +195,14 @@ src = (REPO / "irate_box/hub/server.py").read_text()
 check(
     "the hub: /admin/rkboard sends loader and erase on, the loader id checked by pattern",
     '"action": "rk-loader"' in src and '"action": "rk-erase", "loader": loader' in src,
+)
+# The hub runs as an unprivileged user and cannot read irate_box/root (root's alone, 0700 on a box): what it shows
+# comes from hub/rkusb.py. Found on a box: the page showed a blank card, the hub failing to import root's module.
+route = src.split("def rkboard_snapshot")[1].split("\ndef ")[0]
+check(
+    "the hub's /admin/rkboard reads hub/rkusb.py, never irate_box.root (unreadable to the hub)",
+    "from irate_box.hub import rkusb" in route and "irate_box.root" not in route.replace("not irate_box.root", ""),
+    route,
 )
 check(
     "the menu entry is for administrators only",
