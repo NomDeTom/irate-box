@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """The box's often-written state onto the onboard flash (tools/nand-logs.sh state), offline: what "state plan"
 says against a stood-in hub folder: the hub's small state to the flash; the named large folders (books, firmware,
-kits, git, …) and any other past 8 MiB left on the card; the fstab lines in the order systemd must mount them (the
-card's hub exposed first, the flash's over it after it, the large folders bound back from the card's copy, each
-nofail); nothing changed by a plan. python3 tests/sim_nand_state.py"""
+kits, git, …) and any other past 8 MiB left on the card; the hub's mounts in the order the boot unit makes them (the
+card's hub exposed first, the flash's over it, the large folders bound back from the card's copy), none of them in
+fstab; the system's folders in fstab, each nofail; nothing changed by a plan. python3 tests/sim_nand_state.py"""
 
 import os
 import subprocess
@@ -57,32 +57,30 @@ check(
     "to the flash: " in text and "MiB (the hub's state" in text,
     text,
 )
+boot = [ln.strip() for ln in text.split("at boot (nand-state.service):", 1)[-1].split("fstab:", 1)[0].splitlines()]
+boot = [ln for ln in boot if ln]
 lines = [ln.strip() for ln in text.split("fstab:", 1)[-1].splitlines() if ln.strip()]
 card = str(T / "lib" / "hub.card")
-esc = subprocess.run(["systemd-escape", "-p", "--suffix=mount", card], capture_output=True, text=True).stdout.strip()
 check(
-    "  the fstab lines in order: the card's hub exposed (private: no propagation), then the flash's over it, nofail",
-    lines[0] == f"{hub} {card} none bind,private 0 0"
-    and lines[1].startswith(f"/var/log.nand/hub {hub} none bind,nofail,")
-    and f"x-systemd.after={esc}" in lines[1],
-    lines[:2],
+    "  the hub's mounts made by the boot unit in order: the card's hub exposed (private), the flash's over it",
+    boot[:2] == [f"bind {hub} {card} (private)", f"bind /var/log.nand/hub {hub}"],
+    boot,
 )
 check(
-    "  then each large folder bound back from the card's copy, after both",
-    [ln.split()[0] for ln in lines[2:5]] == [f"{card}/bigdir", f"{card}/firmware", f"{card}/zim"]
-    and all(
-        f"x-systemd.requires-mounts-for={hub}" in ln
-        and f"x-systemd.requires-mounts-for={card}" in ln
-        and "nofail" in ln
-        for ln in lines[2:5]
-    ),
-    lines[2:5],
+    "  then each large folder bound back from the card's copy",
+    boot[2:] == [f"bind {card}/{d} {hub}/{d}" for d in ("bigdir", "firmware", "zim")],
+    boot[2:],
+)
+check(
+    "  no fstab line for the hub (a bind of its own folder: an ordering cycle at boot)",
+    not any(str(hub) in ln for ln in lines),
+    lines,
 )
 check(
     "  the system's folders that exist, each from the flash; never /var/lib/systemd (read early in boot)",
-    any(ln.endswith("/var/tmp none bind,nofail,x-systemd.requires-mounts-for=/var/log.nand 0 0") for ln in lines[5:])
+    any(ln.endswith("/var/tmp none bind,nofail,x-systemd.requires-mounts-for=/var/log.nand 0 0") for ln in lines)
     and not any(" /var/lib/systemd " in ln for ln in lines),
-    lines[5:],
+    lines,
 )
 check(
     "  nothing written: the fstab and the folders as they were",
