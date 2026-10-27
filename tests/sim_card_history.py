@@ -119,6 +119,49 @@ check(
     and hours[3]["span"] is None,
     [(h["card"] >> 20, h["units"]) for h in hours],
 )
+# Jobs that ended and the kernel's own: from the slices' growth. In the hour: the card 100 MB, system.slice 60 MB
+# (of which the running service 10 MB: so 50 MB of jobs that ended), user.slice 2 MB, so 38 MB the kernel's.
+M = 1 << 20
+two = [
+    {
+        "at": 1000,
+        "boot": "dddd4444",
+        "card": 200 * M,
+        "units": {"a.service": 40 * M},
+        "slices": {"system": 100 * M, "user": 5 * M},
+        "settings": {},
+    },
+    {
+        "at": 1000 + 3600,
+        "boot": "dddd4444",
+        "card": 300 * M,
+        "units": {"a.service": 50 * M},
+        "slices": {"system": 160 * M, "user": 7 * M},
+        "settings": {},
+    },
+]
+hour = cardhistory._hours(two)[-1]
+check(
+    "jobs that ended (a slice's growth less its running services) and the kernel's own (the card's less both slices)",
+    hour["units"] == {"a.service": 10 * M, cardhistory.JOBS: 50 * M, cardhistory.KERNEL: 38 * M},
+    hour["units"],
+)
+older = [{k: v for k, v in r.items() if k != "slices"} for r in two]
+check(
+    "  lines of the older form (no slices): only the services, as before",
+    cardhistory._hours(older)[-1]["units"] == {"a.service": 10 * M},
+)
+(cg / "io.stat").write_text(
+    "179:0 rbytes=1 wbytes=734003200 rios=1 wios=1 dbytes=0 dios=0\n8:0 rbytes=1 wbytes=99 rios=1 wios=1\n"
+)
+(SYS / "fs" / "cgroup" / "user.slice").mkdir(exist_ok=True)
+(SYS / "fs" / "cgroup" / "user.slice" / "io.stat").write_text("179:0 rbytes=1 wbytes=1048576 rios=1 wios=1\n")
+check(
+    "  the slices' totals read from cgroup v2, the card's device only",
+    cardhistory.slice_written("system.slice", "179:0") == 734003200
+    and cardhistory.slice_written("user.slice", "179:0") == 1048576,
+)
+
 # Two days at the old level, two at the new: 2 GB a day, then 0.5 GB a day.
 rows = []
 for i in range(4 * 24 + 1):
