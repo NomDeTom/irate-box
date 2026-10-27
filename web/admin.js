@@ -14401,25 +14401,16 @@ function kitItem(k, st) {
   const kitState = (st.kits || {})[k.id] || {},
     c = kitState.cached,
     inst = (st.installed || {})[k.id];
-  const left =
-    inst && inst.remove_at
-      ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600))
-      : null;
+  // Badges are states, the same words on every card, so each is a filter too; dates, sizes and hours are said in
+  // the drawer's first line (kitFacts).
   const badges = [
-    c ? `cached ${dayOf(c.fetched)}, ${size(c.bytes)}` : "not cached",
-    kitState.previous
-      ? `older set kept for rollback${kitState.previous.extra_bytes ? ` (${size(kitState.previous.extra_bytes)})` : ""}`
-      : null,
-    k.owner ? "yours" : null,
-    ((kitsData || {}).flag_details || {})[k.id]
-      ? "flagged by the doctor"
-      : null,
-    (k.extra || []).length ? `+${k.extra.length} extra` : null,
-    inst
-      ? inst.remove_at
-        ? `installed: removed in ${left < 1 ? "under an hour" : `${left} h`}`
-        : "installed, kept"
-      : null,
+    c ? "Cached" : "Not cached",
+    kitState.previous ? "+1 set for rollback" : null,
+    inst ? "Installed" : null,
+    inst && inst.remove_at ? "Removal due" : null,
+    k.owner ? "Yours" : null,
+    ((kitsData || {}).flag_details || {})[k.id] ? "Flagged" : null,
+    (k.extra || []).length ? "Extra packages" : null,
   ].filter(Boolean);
   return {
     id: "kit-" + k.id,
@@ -14428,6 +14419,31 @@ function kitItem(k, st) {
     badges,
     kit: k,
   };
+}
+// What the badges leave out, in words: when the cache was made and its size, the set kept for rollback, and when
+// an installed kit is removed.
+function kitFacts(k, st) {
+  const kitState = (st.kits || {})[k.id] || {},
+    c = kitState.cached,
+    inst = (st.installed || {})[k.id];
+  const left =
+    inst && inst.remove_at
+      ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600))
+      : null;
+  return [
+    c ? `Cached ${dayOf(c.fetched)}, ${size(c.bytes)}.` : "Not cached.",
+    kitState.previous
+      ? `A set for rollback kept${kitState.previous.extra_bytes ? `, ${size(kitState.previous.extra_bytes)} more` : ""}.`
+      : "",
+    inst
+      ? inst.remove_at
+        ? `Installed: removed in ${left < 1 ? "under an hour" : `${left} h`}.`
+        : "Installed, kept."
+      : "",
+    (k.extra || []).length ? `${k.extra.length} extra package${k.extra.length === 1 ? "" : "s"}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 // Its drawer (steps 2, 3): settings held until Save (keep current, removed after by default, extra
 // tools); jobs at once (install, remove, keep longer, refresh, roll back, edit, delete), said so.
@@ -14646,6 +14662,7 @@ function kitBody(k, st, cfg, setDirty) {
       ...kids,
     );
   return [
+    el("p", { className: "setting-desc kit-facts", textContent: kitFacts(k, st) }),
     el("p", {
       className: "setting-desc",
       textContent: "These actions run immediately:",
