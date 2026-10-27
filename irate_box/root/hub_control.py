@@ -98,10 +98,13 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       drop-in in /etc/NetworkManager/conf.d, NetworkManager told to read it again. "default" takes
       irate-box's line out; with none left, the file goes.
   {"id": ..., "action": "wifi-country", "country": "GB"}
-  {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
-      The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
       The WiFi country (hub/wificountry.py): applied at once (iw reg set) and kept for boot in cfg80211's
       option file, which a netplan handover also writes. Only a code from tzdata's ISO 3166 table.
+  {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
+      The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
+  {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
+      A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
+      the board's onboard flash erased (in Maskrom mode, the named loader sent first). control/rkboard.json after.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
       and put back at once if NetworkManager's view of them changes; undo puts the file back.
@@ -6554,6 +6557,29 @@ def wifi_country(req):
     )
 
 
+# Rockchip boards on the box's USB (rkboard.py, /admin → Rockchip boards): switched to Loader mode, erased.
+# control/rkboard.json is the state after each, for the page.
+
+
+def _rk(fn):
+    def action(req):
+        from irate_box.root import rkboard
+
+        try:
+            return fn(rkboard, req)
+        finally:
+            safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+    return action
+
+
+def _rk_erase(rkboard, req):
+    loader = req.get("loader")
+    if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
+        raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
+    return rkboard.erase(loader)
+
+
 # The box's name on its networks: the hostname (one for every interface: mDNS announces <name>.local on each, and
 # NetworkManager sends it to each network's DHCP server by default), in /etc/hostname and on /etc/hosts' 127.0.1.1
 # line. Debian's rules for a hostname: lowercase letters, digits and hyphens, not at either end, at most 63.
@@ -6967,6 +6993,8 @@ ACTIONS = {
     "uplink-profile": uplink_profile,
     "nm-defaults": nm_defaults,
     "wifi-country": wifi_country,
+    "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
+    "rk-erase": _rk(_rk_erase),
     "box-hostname": box_hostname,
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,

@@ -1033,6 +1033,8 @@ MENU_TEMPLATE = """<!DOCTYPE html>
 def menu_page(m, signed_in=False):
     items = []
     for _, e, service in menu_entries(m["id"], hidden_apps(signed_in)):
+        if e.get("admin") and signed_in != "admin":
+            continue  # an administrator's page: not listed to anyone else
         href = e["href"]
         if href.startswith("/app.html#"):
             # The hub bar then offers ↑ back to this list (app.js).
@@ -2441,6 +2443,20 @@ def update_progress():
     except OSError:
         return None
     return data
+
+
+def rkboard_snapshot():
+    """/admin/rkboard: the Rockchip boards on the box's USB as sysfs shows them now (the hub reads it itself), the
+    tools the Rockchip boards toolkit brings, the loaders, and the root helper's work on them: waiting, and done."""
+    from irate_box.root import rkboard
+
+    return {
+        "boards": rkboard.boards(),
+        "tools": rkboard.tools(),
+        "loaders": [{"id": x["id"], "chip": x["chip"], "boards": x.get("boards", [])} for x in rkboard.loaders()],
+        "pending": _pending_actions("rk-"),
+        "results": control_results(5),
+    }
 
 
 def _pending_actions(prefix):
@@ -4857,6 +4873,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, health_snapshot())
             return
 
+        if path == "/admin/rkboard":
+            self.send_json(200, rkboard_snapshot())
+            return
+
         if path == "/admin/addons":
             self.send_json(200, addons_snapshot())
             return
@@ -6280,6 +6300,18 @@ class Handler(BaseHTTPRequestHandler):
                     202,
                     {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})},
                 )
+            return
+
+        if path == "/admin/rkboard":
+            act, loader = payload.get("action"), payload.get("loader")
+            if act == "loader":
+                self.send_json(202, {"id": control_request({"action": "rk-loader"})})
+            elif act == "erase" and (
+                loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
+            ):
+                self.send_json(202, {"id": control_request({"action": "rk-erase", "loader": loader})})
+            else:
+                self.send_json(400, refused.say(BAD_REQUEST))
             return
 
         if path == "/admin/health":

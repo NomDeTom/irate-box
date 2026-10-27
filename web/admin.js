@@ -50,6 +50,7 @@ const PANE_OF = {
   "/admin/tailscale": ["access"],
   "/admin/mesh": ["mesh"],
   "/admin/accounts": ["accounts"],
+  "/admin/rkboard": ["rockchip"],
 };
 const GETS_AT_ONCE = 3;
 (() => {
@@ -8954,6 +8955,127 @@ function renderCountry(inv, busy) {
   );
 }
 
+// ---- Rockchip boards (apps.d/57-rockchip.json; rkboard.py): the board on the box's USB, as the hub reads it from
+// sysfs, and the one step that fits its mode: switch a board running its own system to Loader mode (adb), erase a
+// board in Loader mode, or, in Maskrom mode, send the loader for the chip selected and erase. Each step goes to the
+// root helper; its answer is said under the buttons.
+const RK_MODE = {
+  system: "A board running its own system is connected (Luckfox's factory image). The box can switch it to Loader mode.",
+  loader: "A board in Loader mode is connected. It is ready to erase.",
+  maskrom: "A board in Maskrom mode is connected. Select its chip, so that the box sends the right loader.",
+  other: "A Rockchip device is connected, but not in a mode that the box can use. Hold its boot button while you connect it.",
+};
+let rkWaiting = null,
+  rkChip = "rk3506b",
+  rkPoll = null,
+  rkShown = "";
+async function loadRockchip() {
+  clearTimeout(rkPoll);
+  let data;
+  try {
+    data = await getJSON("/admin/rkboard");
+  } catch (_) {
+    data = null;
+  }
+  if (data) renderRockchip(data);
+  rkPoll = setTimeout(loadRockchip, paneShown("rockchip") ? (rkWaiting ? 2000 : 3000) : 30000);
+}
+function renderRockchip(data) {
+  const note = document.getElementById("rk-note");
+  if (!note) return;
+  if (rkWaiting) {
+    const done = (data.results || []).find((r) => r.id === rkWaiting);
+    if (done) {
+      rkWaiting = null;
+      say(resultSaid(done), done.ok, note);
+    }
+  }
+  const tools = data.tools || {};
+  const missing = ["rkdeveloptool", "adb"].filter((t) => !tools[t]);
+  const toolsEl = document.getElementById("rk-tools");
+  toolsEl.hidden = !missing.length;
+  toolsEl.replaceChildren(
+    `${listSaid(missing)} ${missing.length === 1 ? "is" : "are"} not installed. They come with the Rockchip boards toolkit: install it on `,
+    el("a", { href: "#toolkits", textContent: "Toolkits" }),
+    ".",
+  );
+  const boards = data.boards || [];
+  const busy = !!rkWaiting || data.pending > 0;
+  const key = JSON.stringify([boards, busy, missing, rkChip]);
+  if (key === rkShown) return;
+  rkShown = key;
+  const board = document.getElementById("rk-board");
+  const chip = document.getElementById("rk-chip");
+  const actions = document.getElementById("rk-actions");
+  chip.hidden = true;
+  actions.replaceChildren();
+  if (!boards.length) {
+    board.replaceChildren(
+      el("p", {
+        className: "setting-desc",
+        textContent:
+          "No Rockchip board is connected. Connect the board's USB port to a USB port of the box. A board with no system on its flash: hold its boot button while you connect it.",
+      }),
+    );
+    return;
+  }
+  if (boards.length > 1) {
+    board.replaceChildren(
+      el("p", { className: "setting-desc warn-text", textContent: `${boards.length} boards are connected. Connect one at a time.` }),
+    );
+    return;
+  }
+  const b = boards[0];
+  board.replaceChildren(
+    el("p", { textContent: RK_MODE[b.mode] || RK_MODE.other }),
+    el("p", {
+      className: "setting-desc",
+      textContent: `USB ${b.id}${b.product ? `, ${b.product}` : ""}, port ${b.path}.`,
+    }),
+  );
+  const step = (text, body, ask) =>
+    el("button", {
+      type: "button",
+      className: "action-btn",
+      textContent: text,
+      disabled: busy || (body.action === "loader" ? !tools.adb : !tools.rkdeveloptool),
+      onclick: async (event) => {
+        if (ask && !(await AW.confirmHere(ask, { anchor: event.currentTarget, label: text }))) return;
+        try {
+          // The chip as selected now, not when the page was drawn.
+          if (body.action === "erase" && b.mode === "maskrom") body.loader = rkChip;
+          rkWaiting = (await postJSON("/admin/rkboard", body)).id;
+          say(body.action === "loader" ? "Switching the board to Loader mode…" : "Erasing the board's flash…", true, note);
+          rkShown = "";
+          loadRockchip();
+        } catch (err) {
+          say(err.message, false, note);
+        }
+      },
+    });
+  const ERASE_ASK =
+    "Erase the board's onboard flash? This deletes the system on it, and it cannot be undone.";
+  if (b.mode === "system") actions.append(step("Switch to Loader mode", { action: "loader" }));
+  if (b.mode === "loader") actions.append(step("Erase the flash", { action: "erase", loader: null }, ERASE_ASK));
+  if (b.mode === "maskrom") {
+    chip.hidden = false;
+    const box = el("div", { id: "rk-chip-tiles" });
+    AW.choices(
+      box,
+      "rk-chip-tiles",
+      (data.loaders || []).map((l) => ({ value: l.id, title: l.chip, desc: (l.boards || []).join(", ") })),
+      {
+        value: rkChip,
+        onChange: (v) => {
+          rkChip = v;
+        },
+      },
+    );
+    chip.replaceChildren(el("span", { className: "setting-name", textContent: "Chip" }), box);
+    actions.append(step("Erase the flash", { action: "erase", loader: rkChip }, ERASE_ASK));
+  }
+}
+loadRockchip();
 // The box's name on its networks (hub_control box-hostname). Drawn again only when the name or the busy state changes.
 const HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 let hostnameShown = null;

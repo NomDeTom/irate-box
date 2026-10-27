@@ -115,3 +115,15 @@ path = "web/icons/m-pwrd.svg"
 precedence = "override"
 SPDX-FileCopyrightText = "Meshtastic LLC and the Meshtastic design contributors"
 SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "rockchip/loaders/*.bin"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2017-2023 Rockchip Electronics Co., Ltd."
+SPDX-License-Identifier = "LicenseRef-Rockchip-rkbin"
+
+[[annotations]]
+path = "rockchip/loaders/loaders.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"

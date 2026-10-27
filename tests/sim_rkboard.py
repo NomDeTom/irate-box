@@ -1,0 +1,204 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+"""Rockchip boards on the box's USB (root/rkboard.py, the root helper's rk-loader and rk-erase, /admin/rkboard),
+offline, against a made sysfs whose board changes mode as the stood-in adb and rkdeveloptool act on it: each mode
+found (its own system by its ADB interface, Loader and Maskrom by the RockUSB interface and the low bit of its USB
+version); a board running its own system switched to Loader mode; a board in Loader mode erased and reset; one in
+Maskrom mode sent the loader for the chip selected first; none, several, the wrong mode, a missing tool, an unknown
+chip and a damaged loader refused; the shipped loaders matching their recorded sha256; control/rkboard.json written
+after each step; the menu entry listed only to an administrator. python3 tests/sim_rkboard.py"""
+
+import hashlib
+import json
+import os
+import shutil as real_shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+T = Path(tempfile.mkdtemp(prefix="rkboard-"))
+USB = T / "usb"
+USB.mkdir()
+os.environ.update(HUB_SYS_USB=str(USB), HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
+(T / "state" / "control").mkdir(parents=True)
+sys.path.insert(0, str(REPO))
+from irate_box.msg import Refused
+from irate_box.root import hub_control, rkboard
+
+fails = 0
+
+
+def check(name, cond, info=""):
+    global fails
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
+
+def plug(path, mode, serial="b57290249a9b3206"):
+    """A Rockchip device at this USB path, in this mode, as sysfs shows it."""
+    dev = USB / path
+    real_shutil.rmtree(dev, ignore_errors=True)
+    dev.mkdir()
+    pid, product, version, iface = {
+        "system": ("0013", "rk3xxx", " 2.00", ("ff", "42", "01")),
+        "loader": ("350f", "USB download gadget", " 2.01", ("ff", "06", "05")),
+        "maskrom": ("350f", "", " 2.00", ("ff", "06", "05")),
+        "other": ("0006", "rk3xxx", " 2.00", ("08", "06", "50")),
+    }[mode]
+    for f, v in {
+        "idVendor": "2207",
+        "idProduct": pid,
+        "product": product,
+        "version": version,
+        "serial": serial,
+    }.items():
+        (dev / f).write_text(v + "\n")
+    i = dev / f"{path}:1.0"
+    i.mkdir()
+    for f, v in zip(("bInterfaceClass", "bInterfaceSubClass", "bInterfaceProtocol"), iface, strict=True):
+        (i / f).write_text(v + "\n")
+
+
+def unplug_all():
+    for d in USB.iterdir():
+        real_shutil.rmtree(d)
+
+
+ran = []
+outcome = {"ef": 0}
+
+
+def fake_run(*cmd, timeout=600):
+    ran.append(cmd)
+    if cmd[0] == "adb" and cmd[-2:] == ("reboot", "loader"):
+        plug("1-1.2", "loader")
+    if cmd[:2] == ("rkdeveloptool", "db"):
+        plug("1-1.2", "loader")
+    rc = outcome["ef"] if cmd[:2] == ("rkdeveloptool", "ef") else 0
+    return subprocess.CompletedProcess(cmd, rc, "", "erase failed" if rc else "")
+
+
+rkboard.run = fake_run
+rkboard.time.sleep = lambda s: None
+rkboard.WAIT = 3
+have = {"rkdeveloptool": "/usr/bin/rkdeveloptool", "adb": "/usr/bin/adb"}
+rkboard.shutil.which = lambda name: have.get(name)
+
+# The shipped loaders: each file present and matching its sha256.
+shipped = rkboard.loaders()
+check(
+    "the shipped loaders: RK3506B and RK3506, each file matching its recorded sha256",
+    [x["id"] for x in shipped] == ["rk3506b", "rk3506"]
+    and all(hashlib.sha256((rkboard.LOADERS / x["file"]).read_bytes()).hexdigest() == x["sha256"] for x in shipped),
+    shipped,
+)
+check("  Rockchip's licence beside them", (REPO / "LICENSES" / "LicenseRef-Rockchip-rkbin.txt").is_file())
+check(
+    "the toolkit brings rkdeveloptool and adb",
+    json.loads((REPO / "toolkits/rockchip.json").read_text())["packages"] == ["rkdeveloptool", "adb"],
+)
+
+# Each mode found.
+for mode in ("system", "loader", "maskrom", "other"):
+    unplug_all()
+    plug("1-1.2", mode)
+    found = rkboard.boards()
+    check(f"found in {mode} mode", [b["mode"] for b in found] == [mode], found)
+unplug_all()
+(USB / "1-1.1").mkdir()
+(USB / "1-1.1" / "idVendor").write_text("a69c\n")
+check("another vendor's device (the WiFi chip): not listed", rkboard.boards() == [])
+
+
+def refused(fn, *args):
+    try:
+        fn(*args)
+    except Refused as exc:
+        return exc.message["id"]
+    return None
+
+
+check("nothing connected: refused, said", refused(rkboard.erase) == "rkboard.none")
+plug("1-1.2", "loader")
+plug("1-1.3", "loader", serial="other")
+check("two boards: refused, one at a time", refused(rkboard.erase) == "rkboard.several")
+real_shutil.rmtree(USB / "1-1.3")
+
+# A board running its own system: switched to Loader mode by adb, through the root helper's action.
+unplug_all()
+plug("1-1.2", "system")
+check("its own system: Erase refused (the wrong mode)", refused(rkboard.erase) == "rkboard.wrong-mode")
+ran.clear()
+said = hub_control.ACTIONS["rk-loader"]({"action": "rk-loader"})
+check(
+    "Switch to Loader mode: adb reboot loader for that board, then it is in Loader mode",
+    ("adb", "-s", "b57290249a9b3206", "reboot", "loader") in ran and said["id"] == "rkboard.in-loader",
+    ran,
+)
+state = json.loads((T / "state" / "control" / "rkboard.json").read_text())
+check("  control/rkboard.json written after it", [b["mode"] for b in state["boards"]] == ["loader"], state)
+
+# In Loader mode: erased and reset, no loader needed.
+ran.clear()
+said = hub_control.ACTIONS["rk-erase"]({"action": "rk-erase", "loader": None})
+check(
+    "Loader mode: erased (ef) and reset (rd), no loader sent",
+    ("rkdeveloptool", "ef") in ran
+    and ("rkdeveloptool", "rd") in ran
+    and not any(c[:2] == ("rkdeveloptool", "db") for c in ran)
+    and said["id"] == "rkboard.erased",
+    ran,
+)
+outcome["ef"] = 1
+check("  the erase failing: said, the board not reset", refused(rkboard.erase) == "rkboard.erase-failed")
+outcome["ef"] = 0
+
+# In Maskrom mode: the loader for the chip selected first.
+unplug_all()
+plug("1-1.2", "maskrom")
+check("Maskrom with no chip selected: refused", refused(rkboard.erase, None) == "rkboard.loader-unknown")
+ran.clear()
+rkboard.erase("rk3506b")
+db = [c for c in ran if c[:2] == ("rkdeveloptool", "db")]
+check(
+    "Maskrom: the RK3506B loader sent (db), then erased",
+    db and db[0][2].endswith("rk3506b_spl_loader_v1.06.112.bin") and ("rkdeveloptool", "ef") in ran,
+    ran,
+)
+check(
+    "  an unknown chip refused by the root helper before anything runs",
+    refused(hub_control.ACTIONS["rk-erase"], {"action": "rk-erase", "loader": "rk9999"}) == "rkboard.loader-unknown",
+)
+unplug_all()
+plug("1-1.2", "maskrom")
+damaged = T / "loaders"
+real_shutil.copytree(rkboard.LOADERS, damaged)
+(damaged / "rk3506b_spl_loader_v1.06.112.bin").write_bytes(b"not a loader")
+real_loaders = rkboard.LOADERS
+rkboard.LOADERS = damaged
+check("  a damaged loader: refused, not sent", refused(rkboard.erase, "rk3506b") == "rkboard.loader-damaged")
+rkboard.LOADERS = real_loaders
+
+# A missing tool.
+del have["rkdeveloptool"]
+unplug_all()
+plug("1-1.2", "loader")
+check("rkdeveloptool missing: refused, naming the toolkit", refused(rkboard.erase) == "rkboard.no-tool")
+have["rkdeveloptool"] = "/usr/bin/rkdeveloptool"
+
+# The hub's route and the menu entry.
+src = (REPO / "irate_box/hub/server.py").read_text()
+check(
+    "the hub: /admin/rkboard sends loader and erase on, the loader id checked by pattern",
+    '"action": "rk-loader"' in src and '"action": "rk-erase", "loader": loader' in src,
+)
+check(
+    "the menu entry is for administrators only",
+    'if e.get("admin") and signed_in != "admin":' in src
+    and json.loads((REPO / "apps.d/57-rockchip.json").read_text())["entries"][0]["admin"] is True,
+)
+
+print(f"failures: {fails}")
+sys.exit(1 if fails else 0)
