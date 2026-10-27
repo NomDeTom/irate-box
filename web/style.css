@@ -184,6 +184,21 @@ h2 {
 .admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting) {
   margin-top: 1rem;
 }
+/* A card, or a list of cards, straight after a pane's words (shown or hidden): apart from them, not on them, on every
+   page. The list may sit in a container of the page's own (a div the page fills). Mock controls shows it. */
+.admin-pane > p + :is(.net-card, .setting, .aw-block),
+.admin-pane > p + div:not([class]) > .aw-block:first-child {
+  margin-top: 1rem;
+}
+/* Two panes on one page (Rockchip boards: Board, then Boards to set up): the second's heading well clear of the
+   first's last card. /admin shows one pane at a time, so this is for the pages that show several. */
+.admin-main > .admin-pane:not([hidden]) + .admin-pane:not([hidden]) {
+  margin-top: 2rem;
+}
+/* The dice beside a name field: as the shoutbox's, a small square button. */
+.rk-dice {
+  margin-left: 0.4rem;
+}
 
 /* --- Services (collapsible) --- */
 .services {
@@ -375,10 +390,6 @@ h2 {
 .service-card .icon {
   font-size: 1.6rem;
   white-space: nowrap;
-}
-/* Rockchip boards (admin-rockchip.html): the board's card set apart from the words above it. */
-.rk-card {
-  margin-top: 1rem;
 }
 /* An icon that is a picture of the hub's own (manifest "svg:<name>", web/icons/<name>.svg): drawn as a mask in
    the text's colour, so it follows the theme as an emoji's place would. One line per picture. */

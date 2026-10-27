@@ -12,23 +12,8 @@ const msgInput = document.getElementById('msg-input');
 const nameRoll = document.getElementById('name-roll');
 const decayNote = document.getElementById('shout-decay-note');
 
-// Random handle: adjective + noun, pirate-flavoured to match the box. Longest combo
-// is well inside the input's 32-char limit.
-const ADJECTIVES = [
-  'Salty', 'Rusty', 'Grumpy', 'Soggy', 'Barnacled', 'Weathered', 'Marooned',
-  'Squinting', 'Drunken', 'Peg-legged', 'One-eyed', 'Windward', 'Leeward',
-  'Scurvy', 'Mutinous', 'Becalmed', 'Shipwrecked', 'Tattooed', 'Bilge', 'Irate',
-];
-const NOUNS = [
-  'Parrot', 'Cutlass', 'Doubloon', 'Kraken', 'Compass', 'Anchor', 'Cannon',
-  'Buccaneer', 'Deckhand', 'Bosun', 'Swab', 'Sextant', 'Galleon', 'Corsair',
-  'Cabin Boy', 'Quartermaster', 'Lookout', 'Castaway', 'Spyglass', 'Grog',
-];
-
-function randomName() {
-  const pick = (list) => list[Math.floor(Math.random() * list.length)];
-  return `${pick(ADJECTIVES)} ${pick(NOUNS)}`;
-}
+// A made-up handle (names.js: an adjective and a noun, pirate-flavoured).
+const randomName = () => window.HubNames.display();
 
 let signature = '';
 let shown = [];

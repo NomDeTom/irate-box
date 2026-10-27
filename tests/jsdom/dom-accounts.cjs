@@ -73,7 +73,7 @@ function page(file, url, fetcher, scripts) {
   const board = (posting) => ({ now: nowT, ttl: 604800, threads: [{ id: 1, title: 'T', author: 'erin', account: 'erin', created: 1, active: 1, replies: 0, excerpt: 'x' }], posting });
   const home = async (posting) => {
     const h = page('index.html', 'http://box.local/', async (u) => (u === '/messages' ? json(shout(posting)) : u === '/board/threads' ? json(board(posting)) : json({}, 404)),
-      ['age.js', 'ident.js', 'emoji.js', 'shoutbox.js', 'board.js']);
+      ['age.js', 'ident.js', 'emoji.js', 'names.js', 'shoutbox.js', 'board.js']);
     await wait(300);
     return h;
   };

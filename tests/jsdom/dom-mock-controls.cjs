@@ -44,7 +44,7 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   const rows = [...d.querySelectorAll('#mock-controls .mock-row')];
   const names = rows.map((row) => text(row.querySelector('h3')));
   const want = ['Action buttons', 'Chips: one of a few', 'Filter chips: any of a few', 'On and Off chips: a yes/no setting', 'On and Off chips over a checkbox', 'Joined tabs', 'Pills', 'Help that expands', 'A fold',
-    'Uptime', 'Short entries, with a filter', 'Cards with a drawer', 'Records', 'A block of settings', 'Choice tiles', 'An ordered scale, as a slider', 'A drop-down of a few, as chips',
+    'Uptime', 'Short entries, with a filter', 'Cards with a drawer', "A card after a pane's words", 'Records', 'A block of settings', 'Choice tiles', 'An ordered scale, as a slider', 'A drop-down of a few, as chips',
     'Updates: how often, how far, and the three buttons', 'A block kept while it is drawn again', 'Finding cards, one per state', 'Findings as a short list',
     'Form fields', 'Colour', 'Progress, output and space used', 'Tabs with their panels', 'A table', 'An empty list',
     'An app\'s page: its facts and its Access', 'The home page\'s tiles', 'The setup steps', 'A link to where the reason is', 'A package\'s card',
