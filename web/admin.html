@@ -1424,26 +1424,6 @@
           <div id="fw-kept" class="admin-list"></div>
         </section>
 
-        <!-- Rockchip boards on the box's USB (apps.d/57-rockchip.json; rkboard.py): found from sysfs by the hub, switched
-           to Loader mode and erased by the root helper. Needs the Rockchip boards toolkit (rkdeveloptool, adb). -->
-        <section class="admin-pane" id="rockchip" aria-labelledby="rockchip-title">
-          <h2 id="rockchip-title" data-i18n="admin.rockchip.title">Rockchip boards</h2>
-          <p class="setting-desc" data-i18n="admin.rockchip.intro">
-            Prepare a Luckfox Lyra or another RK3506 board for mPWRD-OS: the
-            box erases the board's onboard flash, so that the board starts from
-            its SD card. Connect the board's USB port to a USB port of this box.
-            Connect one board at a time.
-          </p>
-          <p class="setting-desc warn-text" id="rk-tools" hidden></p>
-          <div class="net-card setting" id="rk-card">
-            <h3 data-i18n="admin.rockchip.h-board">Board</h3>
-            <div id="rk-board"></div>
-            <div id="rk-chip" hidden></div>
-            <div class="library-buttons" id="rk-actions"></div>
-            <p class="setting-desc action-note" id="rk-note" role="status" hidden></p>
-          </div>
-        </section>
-
         <section
           class="admin-pane"
           id="mirrors"

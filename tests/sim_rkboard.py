@@ -207,7 +207,10 @@ check(
 check(
     "the menu entry is for administrators only",
     'if e.get("admin") and signed_in != "admin":' in src
-    and json.loads((REPO / "apps.d/57-rockchip.json").read_text())["entries"][0]["admin"] is True,
+    and json.loads((REPO / "apps.d/57-rockchip.json").read_text())["entries"][0]["admin"] is True
+    and json.loads((REPO / "apps.d/57-rockchip.json").read_text())["entries"][0]["href"] == "/admin/rockchip.html"
+    and '"/admin/rockchip.html"' in src
+    and 'path = "/admin-rockchip.html"' in src,
 )
 
 print(f"failures: {fails}")

@@ -9,10 +9,9 @@
       },
       "name": "Rockchip boards",
       "desc": "Prepare a Luckfox Lyra over the box's USB: erase its onboard flash so that it starts from its SD card. For the administrator",
-      "href": "/admin/#rockchip",
+      "href": "/admin/rockchip.html",
       "new_tab": false,
       "admin": true
     }
-  ],
-  "admin": {"sections": ["rockchip"], "title": "Rockchip boards", "icon": "🔌"}
+  ]
 }

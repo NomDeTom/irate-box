@@ -210,7 +210,7 @@ check(
     and "redir /hub {scheme}://{host}:{irate_box_hub_port}/ 302" in caddy
     and all(
         'href="/hub"' in (REPO / "web" / f).read_text() and 'href="/"' not in (REPO / "web" / f).read_text()
-        for f in ("admin.html", "admin-setup.html", "admin-mesh.html", "admin-factory.html")
+        for f in ("admin.html", "admin-setup.html", "admin-mesh.html", "admin-factory.html", "admin-rockchip.html")
     ),
 )
 check(
