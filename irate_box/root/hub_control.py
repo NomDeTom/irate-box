@@ -104,9 +104,14 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
   {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
   {"id": ..., "action": "rk-write", "image": "<name>.img.xz", "sha256": "<64 hex>", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-serial-setup", "console": "<by-id name>", "choices": {...}}
+  {"id": ..., "action": "rk-card-check"|"rk-card-genuine", "card": "sda", "size": <bytes>, "serial": "..."}
+  {"id": ..., "action": "rk-card-flash", "card": "sda", "size": <bytes>, "serial": "...", "image": "...", "sha256": "..."}
       A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
       the board's onboard flash erased (in Maskrom mode, the named loader sent first), refused when its loader
-      shows the SD card; or an image from <state>/rk-images written to that card, read back as it goes.
+      shows the SD card; or an image from <state>/rk-images written to that card, read back as it goes. A new board
+      set up over its serial console (rkserial.py). A board's SD card in a reader (rkcard.py): read and checked,
+      tested as genuine (f3probe, erasing it), or an image written to it and read back.
       control/rkboard.json after.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
@@ -6692,6 +6697,22 @@ def _rk_serial_setup(req):
     )
 
 
+def _rk_card(req, what):
+    """A board's SD card in a reader (rkcard.py): checked (reads only), tested as genuine (erased), or flashed."""
+    from irate_box.root import rkcard
+
+    try:
+        size = int(req.get("size"))
+    except (TypeError, ValueError):
+        raise Refused(M("rkcard.name", "Select a card.")) from None
+    card = (str(req.get("card") or ""), size, str(req.get("serial") or ""))
+    if what == "check":
+        return rkcard.check(*card)
+    if what == "genuine":
+        return rkcard.genuine(*card)
+    return rkcard.flash(*card, str(req.get("image") or ""), str(req.get("sha256") or "").lower())
+
+
 def _rk_write(rkboard, req):
     loader = req.get("loader")
     if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
@@ -7116,6 +7137,9 @@ ACTIONS = {
     "rk-erase": _rk(_rk_erase),
     "rk-write": _rk(_rk_write),
     "rk-serial-setup": _rk_serial_setup,
+    "rk-card-check": lambda req: _rk_card(req, "check"),
+    "rk-card-genuine": lambda req: _rk_card(req, "genuine"),
+    "rk-card-flash": lambda req: _rk_card(req, "flash"),
     "box-hostname": box_hostname,
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,

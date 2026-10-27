@@ -2458,6 +2458,7 @@ def rkboard_snapshot():
         "pending": _pending_actions("rk-"),
         "results": control_results(5),
         "images": rkusb.images(),
+        "cards": rkusb.cards(),
         "setup": rksetup.snapshot(),
     }
 
@@ -6342,6 +6343,32 @@ class Handler(BaseHTTPRequestHandler):
                 # Every value is checked again by the root helper (rksetup.problem), which reads this box's own WiFi
                 # password itself where it is to be sent.
                 req = {"action": "rk-serial-setup", "console": payload["console"], "choices": payload["choices"]}
+                self.send_json(202, {"id": control_request(req)})
+            elif (
+                act in ("card-check", "card-genuine", "card-flash")
+                and isinstance(payload.get("card"), str)
+                and re.fullmatch(r"sd[a-z]{1,2}", payload["card"])
+                and isinstance(payload.get("size"), int)
+                and isinstance(payload.get("serial"), str)
+                and len(payload["serial"]) < 128
+                and (
+                    act != "card-flash"
+                    or (
+                        isinstance(payload.get("image"), str)
+                        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.img(?:\.xz)?", payload["image"])
+                        and isinstance(payload.get("sha256"), str)
+                        and re.fullmatch(r"[0-9a-fA-F]{64}", payload["sha256"])
+                    )
+                )
+            ):
+                req = {
+                    "action": f"rk-{act}",
+                    "card": payload["card"],
+                    "size": payload["size"],
+                    "serial": payload["serial"],
+                }
+                if act == "card-flash":
+                    req.update(image=payload["image"], sha256=payload["sha256"].lower())
                 self.send_json(202, {"id": control_request(req)})
             elif (
                 act == "secret"

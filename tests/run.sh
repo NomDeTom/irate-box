@@ -136,6 +136,7 @@ run sim_toolkits.py
 run sim_rkboard.py
 run sim_rksetup.py
 run sim_rkserial.py
+run sim_rkcard.py
 run sim_aptram.py
 run sim_kits_usb.py
 run sim_bundle_apps.py

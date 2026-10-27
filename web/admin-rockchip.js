@@ -52,7 +52,7 @@
     } catch (_) {
       data = null;
     }
-    if (data) { render(data); renderSetup(data.setup); }
+    if (data) { render(data); renderCards(data); renderSetup(data.setup); }
     poll = setTimeout(load, document.hidden ? 30000 : waiting ? 2000 : 3000);
   }
 
@@ -63,6 +63,7 @@
       if (done) {
         waiting = null;
         if (done.msg && (done.msg.id || '').startsWith('rkserial.')) setupResult(done);
+        else if (waitingCard) { waitingCard = false; say(resultSaid(done), done.ok, document.getElementById('rk-card-result')); cardsShown = ''; }
         else say(resultSaid(done), done.ok, note);
       }
     }
@@ -177,6 +178,85 @@
     });
     box.append(tiles, el('label', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'sha256' }), sha), el('div', { className: 'library-buttons' }, go));
     return box;
+  }
+
+  // ---- Cards in a reader (hub/rkusb.cards, root/rkcard.py): one card each, its drawer the three actions. Each is
+  // sent with the card's name, size and serial, which the root helper checks again (a card swapped is refused).
+  let cardsShown = '';
+  let waitingCard = false;
+  const cardImage = new Map();   // card name -> {image, sha}
+  function renderCards(data) {
+    const at = document.getElementById('rk-cards');
+    if (!at) return;
+    const list = data.cards || [];
+    const images = data.images || [];
+    const busy = !!waiting || data.pending > 0;
+    const key = JSON.stringify([list, images, busy]);
+    if (key === cardsShown || at.querySelector('.aw-card.open')) return;
+    cardsShown = key;
+    if (!list.length) {
+      at.replaceChildren(h('p', { class: 'setting-desc', text: 'No card is in a reader on this box.' }));
+      return;
+    }
+    at.replaceChildren(AW.cards(list.map((card) => ({
+      id: card.name,
+      title: `${card.model || 'SD card'}, ${(card.size / 1e9).toFixed(1)} GB`,
+      summary: card.mounted ? 'Mounted: unmount it first (close the window the desktop opened for it).' : `In a USB reader (${card.path}).`,
+      badges: card.mounted ? ['Mounted'] : [],
+      card,
+    })), { id: 'rk-cards-list', body: (item) => cardBody(item.card, images, busy) }));
+  }
+  function cardBody(card, images, busy) {
+    const result = document.getElementById('rk-card-result');
+    const ident = { card: card.name, size: card.size, serial: card.serial };
+    const send = async (body, said) => {
+      try {
+        waiting = (await postJSON('/admin/rkboard', { ...ident, ...body })).id;
+        waitingCard = true;
+        say(said, true, result);
+        load();
+      } catch (err) {
+        say(err.message, false, result);
+      }
+    };
+    const off = busy || card.mounted;
+    const checkB = h('button', { type: 'button', class: 'action-btn', text: 'Check the card', disabled: off });
+    checkB.addEventListener('click', () => send({ action: 'card-check' }, 'Reading the card…'));
+    const genuineB = h('button', { type: 'button', class: 'action-btn', text: 'Test that it is genuine', disabled: off });
+    genuineB.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere("Test the card? The test writes all over it: everything on the card is lost. It takes a few minutes.", { anchor: event.currentTarget, label: 'Test the card' }))) return;
+      send({ action: 'card-genuine' }, 'Testing the card…');
+    });
+    const parts = [
+      h('p', { class: 'setting-desc', text: 'Check the card reads it and writes nothing: its partition table, and each filesystem on it.' }),
+      h('div', { class: 'library-buttons' }, checkB, genuineB),
+      h('h3', { text: 'Write an image to the card' }),
+    ];
+    if (!images.length) {
+      parts.push(h('p', { class: 'setting-desc', text: 'No image is on the box yet. Put one in /var/lib/hub/rk-images: an .img or .img.xz, with its sha256 in a .sha256 file beside it.' }));
+      return parts;
+    }
+    const pick = cardImage.get(card.name) || { image: images[0].name, sha: '' };
+    if (!images.some((i) => i.name === pick.image)) pick.image = images[0].name;
+    cardImage.set(card.name, pick);
+    const tiles = h('div', { 'aria-label': 'Image' });
+    const sha = h('input', { type: 'text', name: `rk-card-sha-${card.name}`, autocomplete: 'off', spellcheck: 'false', placeholder: '64 hex digits, as its publisher lists it' });
+    const fill = () => { sha.value = pick.sha || (images.find((i) => i.name === pick.image) || {}).sha256 || ''; };
+    AW.choices(tiles, `rk-card-image-${card.name}`, images.map((i) => ({ value: i.name, title: i.name, desc: `${(i.size / 2 ** 20).toFixed(0)} MB` })), {
+      value: pick.image,
+      onChange: (v) => { pick.image = v; pick.sha = ''; fill(); ok(); },
+    });
+    fill();
+    const flashB = h('button', { type: 'button', class: 'action-btn', text: 'Write the image to the card' });
+    const ok = () => { flashB.disabled = off || !/^[0-9a-fA-F]{64}$/.test(sha.value.trim()); };
+    sha.addEventListener('input', () => { pick.sha = sha.value; ok(); });
+    ok();
+    flashB.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere(`Write ${pick.image} to the card? Everything on the card is replaced.`, { anchor: event.currentTarget, label: 'Write the image' }))) return;
+      send({ action: 'card-flash', image: pick.image, sha256: sha.value.trim() }, 'Writing the image to the card…');
+    });
+    parts.push(tiles, h('label', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'sha256' }), sha), h('div', { class: 'library-buttons' }, flashB));
+    return parts;
   }
 
   // ---- Boards to set up (hub/rksetup.py): one card per setup hotspot in range, its drawer the choices sent to the
@@ -451,5 +531,5 @@
 
   load();
   // For the page tests: the drawing, called with data of their own.
-  if (typeof window !== 'undefined') { window.rkRender = render; window.rkRenderSetup = renderSetup; window.rkProblem = problem; }
+  if (typeof window !== 'undefined') { window.rkRender = render; window.rkRenderSetup = renderSetup; window.rkRenderCards = renderCards; window.rkProblem = problem; }
 }());

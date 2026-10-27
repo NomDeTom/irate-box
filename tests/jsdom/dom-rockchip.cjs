@@ -80,9 +80,37 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   confirmBtn.click();
   await wait(50);
   check('  then sent: write, the image, its sha256, no loader in Loader mode', posted.some((x) => x.action === 'write' && x.image === 'mPWRD-OS_lyra-zero-w.img.xz' && x.sha256 === sha && x.loader === null), posted);
-  await show({ results: [{ id: 'rk10', ok: true, msg: { id: 'rkboard.card-written', en: 'The image is on the board\'s SD card…' } }] });
+  await show({ results: [{ id: 'rk1', ok: true, msg: { id: 'rkboard.card-written', en: 'The image is on the board\'s SD card…' } }] });
   check('  once written, the offer goes', !d.getElementById('rk-write'));
   await show({ results: [], images: [] });
+
+  // Cards in a reader.
+  w.rkRenderCards({ cards: [], images: [], pending: 0 });
+  check('cards in a reader: none, said', /No card is in a reader on this box/.test(text('rk-cards')));
+  const sdcard = { name: 'sda', path: '/dev/sda', size: 15634268160, model: 'STORAGE DEVICE', serial: '000000001206', mounted: false };
+  w.rkRenderCards({ cards: [sdcard], images: [{ name: 'board.img.xz', size: 505341292, sha256: 'b'.repeat(64) }], pending: 0 });
+  const cc = d.querySelector('#rk-cards .aw-card');
+  check('  a card: its model and size, where it is', cc && /STORAGE DEVICE, 15.6 GB/.test(cc.textContent) && /In a USB reader \(\/dev\/sda\)/.test(cc.textContent));
+  cc.querySelector('.aw-card-head').click();
+  await wait(20);
+  const cbtn = (label) => [...cc.querySelectorAll('button')].find((x) => x.textContent === label);
+  check('  its drawer: Check, Test that it is genuine, and Write with the image and its sha256', cbtn('Check the card') && cbtn('Test that it is genuine') && cbtn('Write the image to the card') && !cbtn('Write the image to the card').disabled && cc.querySelector('input[name="rk-card-sha-sda"]').value === 'b'.repeat(64));
+  posted.length = 0;
+  cbtn('Check the card').click();
+  await wait(30);
+  check('  Check: sent at once (it writes nothing), with the card\'s name, size and serial', posted.some((x) => x.action === 'card-check' && x.card === 'sda' && x.size === 15634268160 && x.serial === '000000001206'), posted);
+  posted.length = 0;
+  cbtn('Test that it is genuine').click();
+  await wait(20);
+  check('  the genuine test asked first, saying everything on the card is lost', /everything on the card is lost/.test((d.querySelector('.aw-ask') || {}).textContent || '') && !posted.some((x) => x.action === 'card-genuine'));
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Cancel').click();
+  cc.querySelector('.aw-card-head').click();
+  w.rkRenderCards({ cards: [{ ...sdcard, mounted: true }], images: [], pending: 0 });
+  const mc = d.querySelector('#rk-cards .aw-card');
+  mc.querySelector('.aw-card-head').click();
+  await wait(20);
+  check('  a mounted card: said, its actions off', /Mounted: unmount it first/.test(mc.textContent) && [...mc.querySelectorAll('button.action-btn')].filter((x) => /Check|Test/.test(x.textContent)).every((x) => x.disabled));
+  mc.querySelector('.aw-card-head').click();
 
   // Boards to set up.
   const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, ready: false, ...extra });
