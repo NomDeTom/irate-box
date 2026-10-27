@@ -57,6 +57,10 @@ SYS_STATE=(/var/lib/NetworkManager /var/lib/chrony /var/lib/logrotate /var/tmp)
 SYS_UNITS=(NetworkManager.service chrony.service)
 STATE_TAG="# nand-state"
 STATE_DROPIN=nand-state.conf
+# The hub's mounts are made at boot by this unit, not fstab: the card's view is a bind of /var/lib/hub, and systemd
+# orders a bind after its source's mount, so as fstab lines the card's view and the flash's cover wait for each other
+# (an ordering cycle, broken by dropping one at boot). The unit makes them in order, and checks them.
+STATE_UNIT=${NAND_STATE_UNIT:-/etc/systemd/system/nand-state.service}
 
 say() { echo "nand-logs: $*"; }
 die() {
@@ -337,17 +341,18 @@ hub_large() {
 	done
 }
 
-# The fstab lines "state on" adds, in the order systemd must mount them: the card's hub exposed, the flash's over
-# it, the large folders bound back from the card's; then the system's folders.
+# The hub's mounts, in the order the boot unit (and "state on") makes them: the card's hub exposed, the flash's over
+# it, the large folders bound back from the card's.
+hub_steps() {
+	local d
+	echo "bind $HUB $HUB_CARD (private)"
+	echo "bind $MNT/hub $HUB"
+	for d in "$@"; do echo "bind $HUB_CARD/$d $HUB/$d"; done
+}
+
+# The fstab lines "state on" adds: the system's folders, each from the flash (a bind from it: no cycle).
 state_lines() {
 	local d
-	# private: the root filesystem is a shared mount, so without it the flash's copy, mounted over $HUB next,
-	# would propagate into $HUB_CARD too, and the large folders be bound back from the flash's empty placeholders.
-	echo "$HUB $HUB_CARD none bind,private 0 0"
-	echo "$MNT/hub $HUB none bind,nofail,x-systemd.requires-mounts-for=$MNT,x-systemd.after=$(systemd-escape -p --suffix=mount "$HUB_CARD") 0 0"
-	for d in "$@"; do
-		echo "$HUB_CARD/$d $HUB/$d none bind,nofail,x-systemd.requires-mounts-for=$HUB,x-systemd.requires-mounts-for=$HUB_CARD 0 0"
-	done
 	for d in "${SYS_STATE[@]}"; do
 		[[ -d $d ]] && echo "$MNT/sys${d//\//_} $d none bind,nofail,x-systemd.requires-mounts-for=$MNT 0 0"
 	done
@@ -373,8 +378,10 @@ state_plan() {
 	if mountpoint -q "$MNT" 2>/dev/null; then
 		echo "the flash has $(($(df -k --output=avail "$MNT" | tail -1) / 1024)) MiB free"
 	fi
+	echo "at boot ($(basename "$STATE_UNIT")):"
+	hub_steps "${large[@]}" | sed 's/^/  /'
 	echo "fstab:"
-	state_lines "${large[@]}" | sed 's/^/  /'
+	state_lines | sed 's/^/  /'
 }
 
 # The hub's units, which must wait for its folder (the flash's mount is nofail: a fault there leaves the box
@@ -394,10 +401,52 @@ state_mounts_ok() {
 	[[ $(stat -c %d "$HUB") == "$flash" ]] || return 1
 	for d in "$@"; do [[ $(stat -c %d "$HUB/$d") != "$flash" ]] || return 1; done
 }
-# The units given a drop-in, each with the folder it waits for: "unit path".
+# The hub's mounts made, in order, and checked; undone if they did not come out as planned (the hub's writers then
+# do not start: they require the boot unit). Run by the boot unit, and by "state on".
+state_mount() {
+	local large d
+	read -r -a large <<<"$(sed -n 's/^state_large=//p' "$STATE")"
+	mountpoint -q "$MNT" || die "$MNT is not mounted"
+	if mountpoint -q "$HUB_CARD"; then
+		state_mounts_ok "${large[@]}" && return 0
+		die "the hub's mounts are there but not as planned"
+	fi
+	mkdir -p "$HUB_CARD"
+	# private: the root filesystem is a shared mount, so without it the flash's copy, mounted over $HUB next,
+	# would propagate into $HUB_CARD too, and the large folders be bound back from the flash's empty placeholders.
+	mount --bind "$HUB" "$HUB_CARD"
+	mount --make-private "$HUB_CARD"
+	mount --bind "$MNT/hub" "$HUB"
+	for d in "${large[@]}"; do mount --bind "$HUB_CARD/$d" "$HUB/$d"; done
+	if ! state_mounts_ok "${large[@]}"; then
+		for d in "${large[@]}"; do umount "$HUB/$d" 2>/dev/null || true; done
+		umount "$HUB" 2>/dev/null || true
+		umount "$HUB_CARD" 2>/dev/null || true
+		die "the hub's mounts did not come out as planned (a large folder not on the card): undone"
+	fi
+}
+
+state_unit() {
+	cat >"$STATE_UNIT" <<EOF
+[Unit]
+Description=irate-box: the hub's often-written state on the onboard flash (tools/nand-logs.sh state)
+RequiresMountsFor=$MNT $HUB
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash $(readlink -f "$0") state mount
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# The units given a drop-in: the hub's wait for the boot unit (its writers do not start without it; the hotspot,
+# the firewall and nginx's recovery do), the system's for the flash's folder: "unit path", no path for the hub's.
 wait_units() {
 	local u d
-	for u in $(hub_units); do echo "$u $HUB"; done
+	for u in $(hub_units); do echo "$u"; done
 	for u in "${SYS_UNITS[@]}"; do
 		systemctl cat "$u" >/dev/null 2>&1 || continue
 		case $u in
@@ -442,28 +491,30 @@ state_on() {
 	while read -r line; do
 		grep -qxF "$line $STATE_TAG" "$FSTAB" || echo "$line $STATE_TAG" >>"$FSTAB"
 	done < <(state_lines "${large[@]}")
+	echo "state_large=${large[*]}" >>"$STATE"
+	if ! (state_mount); then
+		sed -i '/^state_large=/d' "$STATE"
+		die "the state left on the card"
+	fi
+	state_unit
+	local name
+	name=$(basename "$STATE_UNIT")
 	while read -r u d; do
 		mkdir -p "/etc/systemd/system/$u.d"
-		printf '[Unit]\nRequiresMountsFor=%s\n' "$d" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
+		if [[ -z $d && " ${WRITERS[*]} " == *" $u "* ]]; then
+			printf '[Unit]\nRequires=%s\nAfter=%s\n' "$name" "$name" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
+		elif [[ -z $d ]]; then
+			printf '[Unit]\nAfter=%s\n' "$name" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
+		else
+			printf '[Unit]\nRequiresMountsFor=%s\n' "$d" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
+		fi
 	done < <(wait_units)
 	systemctl daemon-reload
-	# Mounted now in the order of the lines (systemd mounts them so at the next boot).
-	mount --bind "$HUB" "$HUB_CARD"
-	mount --make-private "$HUB_CARD"
-	mount --bind "$MNT/hub" "$HUB"
-	for d in "${large[@]}"; do mount --bind "$HUB_CARD/$d" "$HUB/$d"; done
-	if ! state_mounts_ok "${large[@]}"; then
-		for d in "${large[@]}"; do umount "$HUB/$d" 2>/dev/null || true; done
-		umount "$HUB" 2>/dev/null || true
-		umount "$HUB_CARD" 2>/dev/null || true
-		sed -i "/$STATE_TAG\$/d" "$FSTAB"
-		rm -f /etc/systemd/system/*.service.d/"$STATE_DROPIN"
-		systemctl daemon-reload
-		die "the mounts did not come out as planned (a large folder not on the card): undone, the state left on the card"
-	fi
+	systemctl enable -q "$name"
+	# Mounted already: the unit only finds the mounts as planned.
+	systemctl start "$name"
 	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && mount --bind "$MNT/sys${d//\//_}" "$d"; done
 	echo "state=1" >>"$STATE"
-	echo "state_large=${large[*]}" >>"$STATE"
 	say "done: the hub's state and the system's on the flash; on the card: ${large[*]}. Undo: $0 state off"
 }
 
@@ -486,6 +537,8 @@ state_off() {
 	rmdir "$HUB_CARD" 2>/dev/null || true
 	sed -i "/$STATE_TAG\$/d" "$FSTAB"
 	rm -f /etc/systemd/system/*.service.d/"$STATE_DROPIN"
+	systemctl disable -q "$(basename "$STATE_UNIT")" 2>/dev/null || true
+	rm -f "$STATE_UNIT"
 	systemctl daemon-reload
 	sed -i '/^state=1$/d; /^state_large=/d' "$STATE"
 	say "done: the state is on the card again; the flash keeps its copy"
@@ -555,7 +608,8 @@ state)
 	case "${2:-}" in
 	on) state_on ;;
 	off) state_off ;;
-	*) die "usage: $0 state plan | on | off" ;;
+	mount) state_mount ;;
+	*) die "usage: $0 state plan | on | off | mount" ;;
 	esac
 	;;
 check) check ;;
