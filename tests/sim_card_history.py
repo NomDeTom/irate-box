@@ -264,12 +264,15 @@ cw = got.get("card-writes", {})
 mw, aw = got.get("card-writer:meshtasticd.service", {}), got.get("card-writer:apt-daily.service", {})
 check(
     "a service writing much: named with how much a day; one that can write anywhere said so",
-    mw.get("status") == "warn" and "anywhere on the SD card" in render(mw["why"]) and "meshtasticd.service writes about" in render(mw["summary"]),
+    mw.get("status") == "warn"
+    and "anywhere on the SD card" in render(mw["why"])
+    and "meshtasticd.service writes about" in render(mw["summary"]),
     mw,
 )
 check(
     "  one confined to its paths: those on the SD card listed, the one in RAM not",
-    aw.get("evidence") == ["/var/lib/apt", "/var/cache/apt"] and "only to /var/lib/apt, /var/cache/apt" in render(aw["why"]),
+    aw.get("evidence") == ["/var/lib/apt", "/var/cache/apt"]
+    and "only to /var/lib/apt, /var/cache/apt" in render(aw["why"]),
     aw,
 )
 check(

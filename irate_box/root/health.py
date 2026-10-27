@@ -2652,7 +2652,11 @@ def _unit_writes(unit, card_name):
     places it says, those on the SD card (its writable paths; its state, log and cache folders; a bind into RAM is
     not one)."""
     out = run(
-        "systemctl", "show", unit, "-p", "ProtectSystem,ReadWritePaths,StateDirectory,LogsDirectory,CacheDirectory,BindPaths",
+        "systemctl",
+        "show",
+        unit,
+        "-p",
+        "ProtectSystem,ReadWritePaths,StateDirectory,LogsDirectory,CacheDirectory,BindPaths",
         timeout=10,
     ).stdout
     props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
@@ -2690,8 +2694,15 @@ def _service_writes_findings(summary, card_name):
                     "card-writer:jobs",
                     M("card-writer.title", "Writes of {unit}", unit=M("card-writer.jobs", "jobs that ended")),
                     "warn",
-                    M("card-writer.jobs.rate", "Jobs that run and end (timers' short runs) write about {mb} MB a day to the SD card.", mb=per_day >> 20),
-                    M("card-writer.jobs.why", "A job that ends is not counted by name: look at the box's timers (systemctl list-timers) for one that runs often."),
+                    M(
+                        "card-writer.jobs.rate",
+                        "Jobs that run and end (timers' short runs) write about {mb} MB a day to the SD card.",
+                        mb=per_day >> 20,
+                    ),
+                    M(
+                        "card-writer.jobs.why",
+                        "A job that ends is not counted by name: look at the box's timers (systemctl list-timers) for one that runs often.",
+                    ),
                     go=GO_CARD_WRITES,
                 )
             )
@@ -2700,9 +2711,42 @@ def _service_writes_findings(summary, card_name):
             continue
         confined, paths = _unit_writes(unit, card_name)
         if confined:
-            where = M("card-writer.where", "It can write on the SD card only to {paths}.", paths=", ".join(paths) or "none of its own")
+            where = M(
+                "card-writer.where",
+                "It can write on the SD card only to {paths}.",
+                paths=", ".join(paths) or "none of its own",
+            )
         else:
-            where = M("card-writer.anywhere", "It can write anywhere on the SD card: its unit does not set ProtectSystem=strict.")
+            where = M(
+                "card-writer.anywhere",
+                "It can write anywhere on the SD card: its unit does not set ProtectSystem=strict.",
+            )
+        addon = next((m for m in _manifests() if (m.get("status") or {}).get("unit") == unit), None)
+        notes = []
+        if addon is not None and "writes" not in addon:
+            notes.append(
+                M(
+                    "card-writer.no-writes",
+                    "Its add-on's manifest says nothing about where it writes (no writes block).",
+                )
+            )
+        # Each of its card paths can be kept in RAM, the owner judging what is throwaway (asked first).
+        acts = [
+            action(
+                f"card-ram:{unit}:{i}",
+                M("card-writer.ram", "Keep {path} in RAM", path=path.split(" (")[0]),
+                M(
+                    "card-writer.ram.confirm",
+                    "Keep {path} in RAM for {unit}? What it holds is lost at each restart of the service or the box, and "
+                    "made again by the service. Only for a cache, a download or an export: not for a database or "
+                    "anything kept. The service restarts.",
+                    path=path.split(" (")[0],
+                    unit=unit,
+                ),
+            )
+            for i, path in enumerate(paths[:8])
+            if confined
+        ]
         out.append(
             finding(
                 f"card-writer:{unit}",
@@ -2716,6 +2760,44 @@ def _service_writes_findings(summary, card_name):
                     "add-on says which of its paths can be, in its manifest's writes block.",
                 ),
                 evidence=paths,
+                notes=notes,
+                actions=acts,
+                go=GO_CARD_WRITES,
+            )
+        )
+    out += _service_ram_findings()
+    return out
+
+
+def _manifests():
+    try:
+        from irate_box.hub import manifests
+
+        return manifests.load()
+    except Exception:  # noqa: BLE001 - a broken manifest is the doctor's own finding elsewhere
+        return []
+
+
+def _service_ram_findings():
+    """A path declared to be in RAM (an add-on's manifest, or the owner's choice) that is not, for its service."""
+    from irate_box.root import servicewrites
+
+    out = []
+    for unit, paths in servicewrites.declared(_manifests()).items():
+        if run("systemctl", "show", unit, "-p", "LoadState", "--value", timeout=10).stdout.strip() != "loaded":
+            continue
+        if servicewrites.in_effect(unit, paths):
+            continue
+        out.append(
+            finding(
+                f"card-ram:{unit}",
+                M("card-ram.title", "Paths in RAM for {unit}", unit=unit),
+                "warn",
+                M("card-ram.off", "{unit}'s paths to be kept in RAM are on the SD card now.", unit=unit),
+                M("card-ram.why", "They are declared throwaway, so writing them to the card wears it for nothing."),
+                M("card-ram.fix", "Put them in RAM: the box writes the service's drop-in and restarts it."),
+                evidence=paths,
+                actions=[action("card-ram-apply", M("card-ram.apply", "Put them in RAM"))],
                 go=GO_CARD_WRITES,
             )
         )
@@ -5203,6 +5285,7 @@ CHOICE_RE = re.compile(
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer))$"
     r"|^card-memcg-on$|^card-speed-test$|^card-scan$"
+    r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )
 
 
@@ -5385,6 +5468,30 @@ def fix(choice):
     if kind == "card-set":
         key, _, value = arg.partition(":")
         return card_set(key, value)
+    if kind in ("card-ram", "card-ram-off"):
+        from irate_box.hub import cardhistory
+        from irate_box.root import servicewrites
+
+        unit, _, idx = arg.rpartition(":")
+        found = cardhistory.card()
+        if kind == "card-ram":
+            paths = _unit_writes(unit, found[0] if found else None)[1]
+        else:
+            paths = servicewrites.owner().get(unit, [])
+        if int(idx) >= len(paths):
+            raise Refused(
+                M(
+                    "service-ram.gone",
+                    "That path is not one of {unit}'s any more: look at the Box doctor again.",
+                    unit=unit,
+                )
+            )
+        return servicewrites.set_owner(unit, paths[int(idx)].split(" (")[0], on=kind == "card-ram")
+    if kind == "card-ram-apply":
+        from irate_box.root import servicewrites
+
+        done = servicewrites.apply()
+        return M("service-ram.applied", "The services' paths in RAM are in place ({n} changed).", n=len(done))
     if kind == "uplink-reconnect":
         # A link nobody watches, parked by NetworkManager (a password check failed and nobody answered): connected
         # by hand, which also lifts NetworkManager's stop on it.
