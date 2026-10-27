@@ -6,7 +6,11 @@ Once an hour, one line appended to card-history.jsonl: the card's bytes written 
 for the whole device under /), each service's bytes written to it since it started (cgroup v2 io.stat; needs
 per-service I/O accounting, which the Box doctor offers to switch on), the hour's lowest available memory
 (sampled every five minutes, in memory), and the write settings in force. Counts since boot, not differences:
-the next line of the same boot gives the hour's writes, so a restart of the hub loses nothing. 30 days kept,
+the next line of the same boot gives the hour's writes, so a restart of the hub loses nothing. Each line also
+keeps system.slice's and user.slice's own totals: cgroup v2 keeps a finished job's writes in its parent slice, so
+an hour's "jobs that ended" (a timer's short run, gone before the line is taken) is system.slice's growth less
+the services still running, and "the kernel" (the filesystem's journal, write-back nobody is charged for) is the
+card's growth less both slices. 30 days kept,
 about 400 bytes a line. summarize() turns the lines into what the Box doctor shows: writes per day, the services
 that write most, memory, and the writes before and after each change of a setting."""
 
@@ -77,6 +81,22 @@ def units(majmin):
     return out
 
 
+JOBS = "jobs that ended"  # in the record's list of writers: finished units, counted through their slice
+KERNEL = "the kernel"  # the card's writes charged to no slice: the filesystem's journal, unattributed write-back
+
+
+def slice_written(name, majmin):
+    """A slice's bytes written to the device since boot, its finished children included, or None."""
+    try:
+        for line in (CGROUP / name / "io.stat").read_text().splitlines():
+            fields = line.split()
+            if fields and fields[0] == majmin:
+                return int(next(f for f in fields[1:] if f.startswith("wbytes=")).split("=", 1)[1])
+    except (OSError, ValueError, StopIteration):
+        return None
+    return 0
+
+
 def accounting():
     """Whether per-service I/O accounting is on (the io controller handed to the services)."""
     try:
@@ -127,6 +147,7 @@ def sample(settings, mem_min, now):
         "card": total,
         "units": top,
         "other": sum(by_unit.values()) - sum(top.values()),
+        "slices": {"system": slice_written("system.slice", found[1]), "user": slice_written("user.slice", found[1])},
         "accounting": accounting() and memory_controller(),
         "mem_min": mem_min,
         "settings": settings,
@@ -144,6 +165,16 @@ def _hours(rows):
         for u, w in (r.get("units") or {}).items():
             before = (prev.get("units") or {}).get(u, 0) if same else 0
             by[u] = w - before if w >= before else w  # a service restarted: its count began again
+        # Jobs that ended and the kernel's own, from the slices' growth (lines of an older form have none).
+        now_s, was_s = r.get("slices") or {}, (prev.get("slices") or {}) if same else {}
+        if same and isinstance(now_s.get("system"), int) and isinstance(was_s.get("system"), int):
+            grew = now_s["system"] - was_s["system"]
+            running = sum(w for w in by.values())
+            if grew > running:
+                by[JOBS] = grew - running
+            user = (now_s.get("user") or 0) - (was_s.get("user") or 0) if isinstance(now_s.get("user"), int) else 0
+            if card_bytes > grew + max(user, 0):
+                by[KERNEL] = card_bytes - grew - max(user, 0)
         out.append(
             {
                 "at": r["at"],
