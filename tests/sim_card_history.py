@@ -479,6 +479,30 @@ check(
     on.get("status") == "ok" and on["summary"]["args"] == {"n": 3, "bad": 0},
     on,
 )
+box_state = {g["key"]: g for g in health.card_groups()}.get("box_state")
+check(
+    "the logs on the flash: Often-written state offered, on the card now, the flash asking first",
+    box_state
+    and box_state["current"] == "card"
+    and [o["value"] for o in box_state["options"]] == ["card", "flash"]
+    and box_state["options"][1].get("confirm"),
+    box_state,
+)
+ran.clear()
+health.fix("card-set:box_state:flash")
+check(
+    "  On the onboard flash: nand-logs.sh state on", any(c[0] == "bash" and c[2:4] == ("state", "on") for c in ran), ran
+)
+(T / "nand-logs.conf").write_text("mtd=0\nstate=1\nstate_large=zim firmware\n")
+check(
+    "  shown as on the flash once it is", {g["key"]: g for g in health.card_groups()}["box_state"]["current"] == "flash"
+)
+ran.clear()
+health.fix("card-set:box_state:card")
+check(
+    "  back on the card: nand-logs.sh state off", any(c[0] == "bash" and c[2:4] == ("state", "off") for c in ran), ran
+)
+(T / "nand-logs.conf").write_text("mtd=0\n")
 ran.clear()
 health.fix("card-set:journal:memory")
 check(

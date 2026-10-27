@@ -3044,6 +3044,41 @@ def card_groups():
                 ),
             ],
         },
+        *(
+            [
+                {
+                    "key": "box_state",
+                    "label": M("cs.box-state", "Often-written state"),
+                    "desc": M(
+                        "cs.box-state.desc",
+                        "The hub's settings and records, and the system's own (the network's, the timers', the "
+                        "clock's): on the SD card, or on the onboard flash with the logs. Books, firmware, kits and "
+                        "uploads stay on the card either way.",
+                    ),
+                    "current": "flash" if _box_state_on() else "card",
+                    "options": [
+                        {
+                            "value": "card",
+                            "label": M("cs.on-card", "On the SD card"),
+                            "choice": choice("box_state", "card"),
+                        },
+                        {
+                            "value": "flash",
+                            "label": M("cs.on-flash", "On the onboard flash"),
+                            "choice": choice("box_state", "flash"),
+                            "confirm": M(
+                                "cs.box-state.flash.confirm",
+                                "Keep the box's often-written state on the onboard flash? The SD card is then written "
+                                "only when content is added or the box updates. The hub stops for a moment while its "
+                                "state moves.",
+                            ),
+                        },
+                    ],
+                }
+            ]
+            if NAND_STATE.exists()
+            else []
+        ),
         {
             "key": "writeback",
             "label": M("cs.writeback", "Write-back delay"),
@@ -3186,6 +3221,21 @@ def card_set(key, value):
             if value == "memory"
             else M("repair.card-set.journal-card", "The system journal is now kept on the SD card.")
         )
+    if key == "box_state":
+        if value == "flash":
+            if not NAND_STATE.exists():
+                raise Refused(
+                    M("repair.card-state.no-logs", "Put the logs on the onboard flash first (System journal).")
+                )
+            _nand_tool("state", "on")
+            return M(
+                "repair.card-set.state-flash",
+                "The box's often-written state is on the onboard flash now: the SD card is written when content is "
+                "added or the box updates.",
+            )
+        if _box_state_on():
+            _nand_tool("state", "off")
+        return M("repair.card-set.state-card", "The box's often-written state is on the SD card again.")
     if key == "writeback":
         longer = value == "longer"
         if longer:
@@ -3289,6 +3339,14 @@ PROC_MTD = Path(os.environ.get("HUB_PROC_MTD", "/proc/mtd"))
 UBI_SYS = Path(os.environ.get("HUB_UBI_SYS", "/sys/class/ubi"))
 
 
+def _box_state_on():
+    """Whether nand-logs keeps the box's often-written state on the flash (its "state on")."""
+    try:
+        return "state=1" in NAND_STATE.read_text().split()
+    except OSError:
+        return False
+
+
 def _nand():
     """("on", None) when nand-logs keeps the logs on the flash, ("free", MiB) when a flash is free, else (None, None)."""
     if NAND_STATE.exists():
@@ -3354,14 +3412,14 @@ def _flash_findings():
     return []
 
 
-def _nand_tool(verb):
-    r = run("bash", str(NAND_TOOL), verb, timeout=900)
+def _nand_tool(*verb):
+    r = run("bash", str(NAND_TOOL), *verb, timeout=900)
     if r.returncode:
         raise Refused(
             M(
                 "repair.card-flash.failed",
                 "nand-logs.sh {verb} failed: {detail}",
-                verb=verb,
+                verb=" ".join(verb),
                 detail=(r.stderr or r.stdout).strip()[-200:],
             )
         )
@@ -5283,7 +5341,7 @@ CHOICE_RE = re.compile(
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
-    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer))$"
+    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash))$"
     r"|^card-memcg-on$|^card-speed-test$|^card-scan$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )

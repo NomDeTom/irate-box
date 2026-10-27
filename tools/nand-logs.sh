@@ -10,6 +10,11 @@
 #                                            at every boot, and move the logs there
 #   sudo tools/nand-logs.sh off              the logs back to the card; the flash left formatted
 #   sudo tools/nand-logs.sh reflush          on a box set up before it: the timer that keeps the journal on the flash
+#   sudo tools/nand-logs.sh state plan|on|off  the box's often-written state onto the flash too (the logs on first):
+#                                            the hub's own (all of /var/lib/hub but its large folders, bound back
+#                                            from the card), and the system's (NetworkManager, systemd, chrony,
+#                                            logrotate, /var/tmp); the card is then written when content is added
+#                                            or the box updates. plan says what would move, and changes nothing
 #
 # What moves, each only if the flash has room for it (smaller chips take fewer):
 #   armbian-ramlog        on Armbian, its copy of /var/log on disk (HDD_LOG, its own setting), synced daily and
@@ -36,7 +41,22 @@ RAMLOG_DROPIN=/etc/systemd/system/armbian-ramlog.service.d/nand-logs.conf
 REFLUSH_UNIT=/etc/systemd/system/nand-logs-flush.service
 REFLUSH_TIMER=/etc/systemd/system/nand-logs-flush.timer
 CRASHWATCH=/var/lib/irate-box-root/crashwatch
-STATE=/etc/nand-logs.conf # what "on" changed, for "off"
+STATE=${NAND_STATE_FILE:-/etc/nand-logs.conf} # what "on" changed, for "off"
+FSTAB=${NAND_FSTAB:-/etc/fstab}
+# The box's often-written state ("state on"): the hub's folder, whose large folders stay on the card (content the
+# owner adds: books, firmware, kits, git, the library, uploads, builds, and any other folder past BIG_KIB), bound
+# back into it from the card's own copy, exposed at HUB_CARD before the flash's covers it; and the system's.
+HUB=${NAND_HUB:-/var/lib/hub}
+HUB_CARD=${NAND_HUB_CARD:-/var/lib/hub.card}
+HUB_LARGE=(zim firmware kits git library source drop ci factory-targets)
+BIG_KIB=8192
+# Not /var/lib/systemd: its random seed and clock are read early in boot, before the flash is attached.
+SYS_STATE=(/var/lib/NetworkManager /var/lib/chrony /var/lib/logrotate /var/tmp)
+# The system's services that write there, made to wait for the flash's folder as the hub's units do (one that
+# started first would write to the card's copy beneath, hidden once the bind is made).
+SYS_UNITS=(NetworkManager.service chrony.service)
+STATE_TAG="# nand-state"
+STATE_DROPIN=nand-state.conf
 
 say() { echo "nand-logs: $*"; }
 die() {
@@ -168,7 +188,7 @@ EOF
 
 # Nothing moved yet: the mount, the unit and the state taken away again.
 undo_attach() {
-	sed -i "/$FSTAB_TAG\$/d" /etc/fstab
+	sed -i "/$FSTAB_TAG\$/d" "$FSTAB"
 	systemctl disable -q --now nand-logs-attach.service 2>/dev/null || true
 	rm -f "$ATTACH_UNIT" "$STATE"
 	systemctl daemon-reload
@@ -188,7 +208,7 @@ restart_on_exit() { trap 'journalctl --flush 2>/dev/null; systemctl start irate-
 # it doesn't hold: its sockets start it again.)
 journal_away() { journalctl --relinquish-var; }
 
-add_fstab() { grep -qxF "$1 $FSTAB_TAG" /etc/fstab || echo "$1 $FSTAB_TAG" >>/etc/fstab; }
+add_fstab() { grep -qxF "$1 $FSTAB_TAG" "$FSTAB" || echo "$1 $FSTAB_TAG" >>"$FSTAB"; }
 
 # A folder's contents copied onto the flash, then the folder bind-mounted from there at every boot.
 bind_over() {
@@ -300,6 +320,151 @@ on() {
 	say "done: $(df -h --output=used,size "$MNT" | tail -1 | xargs) on $MNT. Undo: $0 off"
 }
 
+# ---- The box's often-written state on the flash ("state") ----
+
+# The hub's entries that stay on the card: the named large ones, and any other folder past BIG_KIB.
+hub_large() {
+	local e kib
+	for e in "$HUB"/*; do
+		[[ -e $e ]] || continue
+		e=${e##*/}
+		if [[ " ${HUB_LARGE[*]} " == *" $e "* ]]; then
+			echo "$e"
+		elif [[ -d $HUB/$e ]]; then
+			kib=$(du -sxk "$HUB/$e" 2>/dev/null | cut -f1)
+			((${kib:-0} > BIG_KIB)) && echo "$e"
+		fi
+	done
+}
+
+# The fstab lines "state on" adds, in the order systemd must mount them: the card's hub exposed, the flash's over
+# it, the large folders bound back from the card's; then the system's folders.
+state_lines() {
+	local d
+	echo "$HUB $HUB_CARD none bind 0 0"
+	echo "$MNT/hub $HUB none bind,nofail,x-systemd.requires-mounts-for=$MNT,x-systemd.after=$(systemd-escape -p --suffix=mount "$HUB_CARD") 0 0"
+	for d in "$@"; do
+		echo "$HUB_CARD/$d $HUB/$d none bind,nofail,x-systemd.requires-mounts-for=$HUB,x-systemd.requires-mounts-for=$HUB_CARD 0 0"
+	done
+	for d in "${SYS_STATE[@]}"; do
+		[[ -d $d ]] && echo "$MNT/sys${d//\//_} $d none bind,nofail,x-systemd.requires-mounts-for=$MNT 0 0"
+	done
+}
+
+# What would move, its size against the flash's room, what stays on the card, and the lines: nothing changed.
+state_plan() {
+	local large small=0 kib e
+	read -r -a large <<<"$(hub_large | xargs)"
+	for e in "$HUB"/* "$HUB"/.[!.]*; do
+		[[ -e $e ]] || continue
+		[[ " ${large[*]} " == *" ${e##*/} "* ]] && continue
+		kib=$(du -sxk "$e" 2>/dev/null | cut -f1)
+		small=$((small + ${kib:-0}))
+	done
+	for e in "${SYS_STATE[@]}"; do
+		[[ -d $e ]] || continue
+		kib=$(du -sxk "$e" 2>/dev/null | cut -f1)
+		small=$((small + ${kib:-0}))
+	done
+	echo "to the flash: $((small / 1024)) MiB (the hub's state, and ${SYS_STATE[*]})"
+	echo "stays on the card: ${large[*]:-nothing}"
+	if mountpoint -q "$MNT" 2>/dev/null; then
+		echo "the flash has $(($(df -k --output=avail "$MNT" | tail -1) / 1024)) MiB free"
+	fi
+	echo "fstab:"
+	state_lines "${large[@]}" | sed 's/^/  /'
+}
+
+# The hub's units, which must wait for its folder (the flash's mount is nofail: a fault there leaves the box
+# booting, the hub not starting on an empty folder).
+hub_units() { systemctl list-unit-files --no-legend 'irate-box*.service' 2>/dev/null | awk '{print $1}' | grep -v '@\.service$'; }
+# The units given a drop-in, each with the folder it waits for: "unit path".
+wait_units() {
+	local u d
+	for u in $(hub_units); do echo "$u $HUB"; done
+	for u in "${SYS_UNITS[@]}"; do
+		systemctl cat "$u" >/dev/null 2>&1 || continue
+		case $u in
+		NetworkManager.service) d=/var/lib/NetworkManager ;;
+		chrony.service) d=/var/lib/chrony ;;
+		esac
+		[[ -d $d ]] && echo "$u $d"
+	done
+}
+
+state_on() {
+	[[ -e $STATE ]] || die "the logs are not on the flash: '$0 on' first"
+	grep -q '^state=1' "$STATE" && die "the state is on the flash already"
+	mountpoint -q "$MNT" || die "$MNT is not mounted"
+	local large u d avail need
+	read -r -a large <<<"$(hub_large | xargs)"
+	need=$(state_plan | sed -n 's/^to the flash: \([0-9]*\) MiB.*/\1/p')
+	avail=$(($(df -k --output=avail "$MNT" | tail -1) / 1024))
+	((need + 32 < avail)) || die "the state ($need MiB) does not fit with room to spare ($avail MiB free)"
+	mapfile -t units < <(hub_units)
+	say "stopping the hub (${#units[@]} units) while its state moves"
+	for u in "${units[@]}"; do [[ $u == irate-box-control.service ]] || systemctl stop "$u" 2>/dev/null || true; done
+	trap 'for u in "${units[@]}"; do systemctl start "$u" 2>/dev/null || true; done' EXIT
+	mkdir -p "$MNT/hub" "$HUB_CARD"
+	chmod --reference="$HUB" "$MNT/hub"
+	chown --reference="$HUB" "$MNT/hub"
+	local skip=()
+	for d in "${large[@]}"; do skip+=("--exclude=./$d"); done
+	tar -C "$HUB" "${skip[@]}" -cf - . | tar -C "$MNT/hub" -xpf -
+	for d in "${large[@]}"; do
+		mkdir -p "$MNT/hub/$d"
+		chmod --reference="$HUB/$d" "$MNT/hub/$d"
+		chown --reference="$HUB/$d" "$MNT/hub/$d"
+	done
+	for d in "${SYS_STATE[@]}"; do
+		[[ -d $d ]] || continue
+		mkdir -p "$MNT/sys${d//\//_}"
+		chmod --reference="$d" "$MNT/sys${d//\//_}"
+		chown --reference="$d" "$MNT/sys${d//\//_}"
+		copy_tree "$d" "$MNT/sys${d//\//_}"
+	done
+	while read -r line; do
+		grep -qxF "$line $STATE_TAG" "$FSTAB" || echo "$line $STATE_TAG" >>"$FSTAB"
+	done < <(state_lines "${large[@]}")
+	while read -r u d; do
+		mkdir -p "/etc/systemd/system/$u.d"
+		printf '[Unit]\nRequiresMountsFor=%s\n' "$d" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
+	done < <(wait_units)
+	systemctl daemon-reload
+	# Mounted now in the order of the lines (systemd mounts them so at the next boot).
+	mount --bind "$HUB" "$HUB_CARD"
+	mount --bind "$MNT/hub" "$HUB"
+	for d in "${large[@]}"; do mount --bind "$HUB_CARD/$d" "$HUB/$d"; done
+	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && mount --bind "$MNT/sys${d//\//_}" "$d"; done
+	echo "state=1" >>"$STATE"
+	echo "state_large=${large[*]}" >>"$STATE"
+	say "done: the hub's state and the system's on the flash; on the card: ${large[*]}. Undo: $0 state off"
+}
+
+state_off() {
+	grep -q '^state=1' "$STATE" 2>/dev/null || die "the state is not on the flash"
+	local large u d
+	read -r -a large <<<"$(sed -n 's/^state_large=//p' "$STATE")"
+	mapfile -t units < <(hub_units)
+	say "stopping the hub while its state moves back"
+	for u in "${units[@]}"; do [[ $u == irate-box-control.service ]] || systemctl stop "$u" 2>/dev/null || true; done
+	trap 'for u in "${units[@]}"; do systemctl start "$u" 2>/dev/null || true; done' EXIT
+	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && unbind "$d"; done
+	for d in "${large[@]}"; do umount "$HUB/$d" 2>/dev/null || true; done
+	# The flash's state onto the card's own folder (seen at HUB_CARD), its large folders left as they are.
+	local skip=()
+	for d in "${large[@]}"; do skip+=("--exclude=./$d"); done
+	tar -C "$MNT/hub" "${skip[@]}" -cf - . | tar -C "$HUB_CARD" -xpf -
+	umount "$HUB"
+	umount "$HUB_CARD"
+	rmdir "$HUB_CARD" 2>/dev/null || true
+	sed -i "/$STATE_TAG\$/d" "$FSTAB"
+	rm -f /etc/systemd/system/*.service.d/"$STATE_DROPIN"
+	systemctl daemon-reload
+	sed -i '/^state=1$/d; /^state_large=/d' "$STATE"
+	say "done: the state is on the card again; the flash keeps its copy"
+}
+
 # A bind mount from the flash undone: its contents copied back into the folder beneath.
 unbind() {
 	local dir=$1 tmp
@@ -313,6 +478,7 @@ unbind() {
 
 off() {
 	[[ -e $STATE ]] || die "not on (no $STATE)"
+	grep -q '^state=1' "$STATE" && state_off
 	restart_on_exit
 	local journal_dir="" crashwatch="" ramlog_hdd="" ramlog_old=""
 	while IFS='=' read -r k v; do
@@ -345,7 +511,7 @@ off() {
 		unbind "$journal_dir"
 	fi
 	rm -f "$JOURNALD_DROPIN" "$FLUSH_DROPIN"
-	sed -i "/$FSTAB_TAG\$/d" /etc/fstab
+	sed -i "/$FSTAB_TAG\$/d" "$FSTAB"
 	systemctl daemon-reload
 	systemctl restart systemd-journald
 	journalctl --flush
@@ -356,11 +522,19 @@ off() {
 	say "done: the logs are on the card again; the flash is still formatted, with its copy"
 }
 
+[[ ${1:-} == state && ${2:-} == plan ]] && state_plan && exit 0
 [[ $(id -u) == 0 ]] || die "run as root"
 case "${1:-}" in
+state)
+	case "${2:-}" in
+	on) state_on ;;
+	off) state_off ;;
+	*) die "usage: $0 state plan | on | off" ;;
+	esac
+	;;
 check) check ;;
 reflush) [[ -e $STATE ]] && grep -q '^ramlog_old=' "$STATE" && reflush_on && say "the journal goes back to the flash every 10 minutes" ;;
 on) shift && on "$@" ;;
 off) off ;;
-*) die "usage: $0 check | on [--mtd N] [--force] | off | reflush" ;;
+*) die "usage: $0 check | on [--mtd N] [--force] | off | reflush | state plan|on|off" ;;
 esac
