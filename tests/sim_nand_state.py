@@ -79,12 +79,9 @@ check(
     lines[2:5],
 )
 check(
-    "  the system's folders that exist, each from the flash",
-    any(
-        ln.endswith("/var/lib/systemd none bind,nofail,x-systemd.requires-mounts-for=/var/log.nand 0 0")
-        for ln in lines[5:]
-    )
-    or not Path("/var/lib/systemd").is_dir(),
+    "  the system's folders that exist, each from the flash; never /var/lib/systemd (read early in boot)",
+    any(ln.endswith("/var/tmp none bind,nofail,x-systemd.requires-mounts-for=/var/log.nand 0 0") for ln in lines[5:])
+    and not any(" /var/lib/systemd " in ln for ln in lines),
     lines[5:],
 )
 check(

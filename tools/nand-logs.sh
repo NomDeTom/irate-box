@@ -50,7 +50,11 @@ HUB=${NAND_HUB:-/var/lib/hub}
 HUB_CARD=${NAND_HUB_CARD:-/var/lib/hub.card}
 HUB_LARGE=(zim firmware kits git library source drop ci factory-targets)
 BIG_KIB=8192
-SYS_STATE=(/var/lib/NetworkManager /var/lib/systemd /var/lib/chrony /var/lib/logrotate /var/tmp)
+# Not /var/lib/systemd: its random seed and clock are read early in boot, before the flash is attached.
+SYS_STATE=(/var/lib/NetworkManager /var/lib/chrony /var/lib/logrotate /var/tmp)
+# The system's services that write there, made to wait for the flash's folder as the hub's units do (one that
+# started first would write to the card's copy beneath, hidden once the bind is made).
+SYS_UNITS=(NetworkManager.service chrony.service)
 STATE_TAG="# nand-state"
 STATE_DROPIN=nand-state.conf
 
@@ -374,6 +378,19 @@ state_plan() {
 # The hub's units, which must wait for its folder (the flash's mount is nofail: a fault there leaves the box
 # booting, the hub not starting on an empty folder).
 hub_units() { systemctl list-unit-files --no-legend 'irate-box*.service' 2>/dev/null | awk '{print $1}' | grep -v '@\.service$'; }
+# The units given a drop-in, each with the folder it waits for: "unit path".
+wait_units() {
+	local u d
+	for u in $(hub_units); do echo "$u $HUB"; done
+	for u in "${SYS_UNITS[@]}"; do
+		systemctl cat "$u" >/dev/null 2>&1 || continue
+		case $u in
+		NetworkManager.service) d=/var/lib/NetworkManager ;;
+		chrony.service) d=/var/lib/chrony ;;
+		esac
+		[[ -d $d ]] && echo "$u $d"
+	done
+}
 
 state_on() {
 	[[ -e $STATE ]] || die "the logs are not on the flash: '$0 on' first"
@@ -409,10 +426,10 @@ state_on() {
 	while read -r line; do
 		grep -qxF "$line $STATE_TAG" "$FSTAB" || echo "$line $STATE_TAG" >>"$FSTAB"
 	done < <(state_lines "${large[@]}")
-	for u in "${units[@]}"; do
+	while read -r u d; do
 		mkdir -p "/etc/systemd/system/$u.d"
-		printf '[Unit]\nRequiresMountsFor=%s\n' "$HUB" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
-	done
+		printf '[Unit]\nRequiresMountsFor=%s\n' "$d" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
+	done < <(wait_units)
 	systemctl daemon-reload
 	# Mounted now in the order of the lines (systemd mounts them so at the next boot).
 	mount --bind "$HUB" "$HUB_CARD"
@@ -442,7 +459,7 @@ state_off() {
 	umount "$HUB_CARD"
 	rmdir "$HUB_CARD" 2>/dev/null || true
 	sed -i "/$STATE_TAG\$/d" "$FSTAB"
-	for u in "${units[@]}"; do rm -f "/etc/systemd/system/$u.d/$STATE_DROPIN"; done
+	rm -f /etc/systemd/system/*.service.d/"$STATE_DROPIN"
 	systemctl daemon-reload
 	sed -i '/^state=1$/d; /^state_large=/d' "$STATE"
 	say "done: the state is on the card again; the flash keeps its copy"
