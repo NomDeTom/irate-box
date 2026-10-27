@@ -38,6 +38,7 @@ for d in ("state", "etc", "systemd/journald.conf.d", "apt.conf.d", "apt-cache"):
     (T / d).mkdir(parents=True)
 sys.path.insert(0, str(REPO))
 from irate_box.hub import cardhistory
+from irate_box.msg import render
 from irate_box.root import health
 
 fails = 0
@@ -263,12 +264,12 @@ cw = got.get("card-writes", {})
 mw, aw = got.get("card-writer:meshtasticd.service", {}), got.get("card-writer:apt-daily.service", {})
 check(
     "a service writing much: named with how much a day; one that can write anywhere said so",
-    mw.get("status") == "warn" and "anywhere on the SD card" in health.english(mw["why"]) and "meshtasticd.service writes about" in health.english(mw["summary"]),
+    mw.get("status") == "warn" and "anywhere on the SD card" in render(mw["why"]) and "meshtasticd.service writes about" in render(mw["summary"]),
     mw,
 )
 check(
     "  one confined to its paths: those on the SD card listed, the one in RAM not",
-    aw.get("evidence") == ["/var/lib/apt", "/var/cache/apt"] and "only to /var/lib/apt, /var/cache/apt" in health.english(aw["why"]),
+    aw.get("evidence") == ["/var/lib/apt", "/var/cache/apt"] and "only to /var/lib/apt, /var/cache/apt" in render(aw["why"]),
     aw,
 )
 check(
