@@ -97,6 +97,19 @@ def slice_written(name, majmin):
     return 0
 
 
+UBI_SYS = SYS / "class" / "ubi"
+
+
+def flash_wear():
+    """The onboard flash's wear where UBI holds it (nand-logs): {max_ec, bad}, or None."""
+    for ubi in sorted(UBI_SYS.glob("ubi[0-9]*")):
+        try:
+            return {"max_ec": int((ubi / "max_ec").read_text()), "bad": int((ubi / "bad_peb_count").read_text())}
+        except (OSError, ValueError):
+            continue
+    return None
+
+
 def accounting():
     """Whether per-service I/O accounting is on (the io controller handed to the services)."""
     try:
@@ -148,6 +161,7 @@ def sample(settings, mem_min, now):
         "units": top,
         "other": sum(by_unit.values()) - sum(top.values()),
         "slices": {"system": slice_written("system.slice", found[1]), "user": slice_written("user.slice", found[1])},
+        "flash": flash_wear(),
         "accounting": accounting() and memory_controller(),
         "mem_min": mem_min,
         "settings": settings,

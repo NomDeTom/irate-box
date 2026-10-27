@@ -2804,6 +2804,38 @@ def _service_ram_findings():
     return out
 
 
+def _card_life_note(per_day):
+    """How many times a year the card is written over at this rate: an estimate, as SD cards publish no rating."""
+    from irate_box.hub import cardhistory
+
+    found = cardhistory.card()
+    size = cardhistory.size(found[0]) if found else None
+    if not size or not per_day:
+        return []
+    return [
+        M(
+            "card-writes.life",
+            "At this rate the card ({gb} GB) is written over about {times} times a year. SD cards publish no "
+            "endurance rating. Consumer cards are commonly good for a few hundred to a few thousand times over.",
+            gb=round(size / 1e9),  # as cards are labelled
+            times=f"{per_day * 365 / size:.1f}",
+        )
+    ]
+
+
+def flash_read():
+    """The flash's UBI volume read whole (it writes nothing): its read errors counted, the time it took."""
+    vol = next(iter(sorted(Path("/dev").glob("ubi[0-9]*_0"))), None)
+    if vol is None:
+        raise Refused(M("repair.flash-read.none", "No UBI volume is on the onboard flash."))
+    start = time.time()
+    r = run("dd", f"if={vol}", "of=/dev/null", "bs=128k", "conv=noerror", "status=none", timeout=1800)
+    errors = len(re.findall(r"Input/output error", r.stderr or ""))
+    if errors:
+        return M("repair.flash-read.errors", "The flash was read whole: {n} blocks could not be read.", n=errors)
+    return M("repair.flash-read.ok", "The flash was read whole in {s} s, with no errors.", s=int(time.time() - start))
+
+
 def check_card_writes(now=None):
     from irate_box.hub import cardhistory
 
@@ -2836,6 +2868,7 @@ def check_card_writes(now=None):
                 if high
                 else None,
                 evidence=top,
+                notes=_card_life_note(per_day),
                 go=GO_CARD_WRITES,
             )
         )
@@ -3337,6 +3370,18 @@ NAND_TOOL = CODE / "tools" / "nand-logs.sh"
 NAND_STATE = Path(os.environ.get("HUB_NAND_STATE", "/etc/nand-logs.conf"))
 PROC_MTD = Path(os.environ.get("HUB_PROC_MTD", "/proc/mtd"))
 UBI_SYS = Path(os.environ.get("HUB_UBI_SYS", "/sys/class/ubi"))
+MTD_SYS = Path(os.environ.get("HUB_MTD_SYS", "/sys/class/mtd"))
+# Raw NAND chips the box knows, by maker (the kernel's SPI NAND probe line) and geometry (MTD's sysfs: size, erase
+# block, page, spare bytes), with their rated program/erase cycles from their datasheets.
+FLASH_PARTS = {
+    ("winbond", 256 << 20, 128 << 10, 2048, 128): {
+        "part": "W25N02KV",
+        "cycles": 60000,
+        "also": "100,000 if it is the 1.8 V W25N02KW",
+        "source": "Winbond W25N02KVxxIR/U datasheet, revision G (2021-06-25): 60,000 erase/program cycles, 10-year retention",
+    },
+}
+FLASH_WARN_SHARE = 0.5  # past this share of the rated cycles, the flash is a warning
 
 
 def _box_state_on():
@@ -3356,6 +3401,35 @@ def _nand():
     said = run("bash", str(NAND_TOOL), "check", timeout=60).stdout
     m = re.search(r'^mtd\d+ "[^"]*": (\d+) MiB raw NAND', said, re.M)
     return ("free", int(m[1])) if m and re.search(r"^\s+free\.", said, re.M) else (None, None)
+
+
+def _flash_part():
+    """The chip under the flash nand-logs uses: {part, cycles, also, source} from FLASH_PARTS, or None."""
+    try:
+        n = next(line.split("=", 1)[1] for line in NAND_STATE.read_text().split() if line.startswith("mtd="))
+        mtd = MTD_SYS / f"mtd{int(n)}"
+        geometry = tuple(int((mtd / f).read_text()) for f in ("size", "erasesize", "writesize", "oobsize"))
+    except (OSError, ValueError, StopIteration):
+        return None
+    probe = run(
+        "journalctl", "-k", "-b", "-q", "--no-pager", "-o", "cat", "--grep", "SPI NAND was found", timeout=30
+    ).stdout
+    maker = re.search(r"(\w+) SPI NAND was found", probe or "")
+    if not maker:
+        return None
+    return FLASH_PARTS.get((maker[1].lower(), *geometry))
+
+
+def _flash_rate(now=None):
+    """Erases a day of the flash's most-worn block, from the record's first and last counts a day or more apart."""
+    rows = [r for r in _card_rows() if isinstance(r.get("flash"), dict) and isinstance(r["flash"].get("max_ec"), int)]
+    if len(rows) < 2 or rows[-1]["at"] - rows[0]["at"] < 86400:
+        return None, None
+    first, last = rows[0], rows[-1]
+    days = (last["at"] - first["at"]) / 86400
+    return (last["flash"]["max_ec"] - first["flash"]["max_ec"]) / days, last["flash"].get("bad", 0) - first[
+        "flash"
+    ].get("bad", 0)
 
 
 def _flash_findings():
@@ -3388,11 +3462,47 @@ def _flash_findings():
             max_ec, bad = int((ubi / "max_ec").read_text()), int((ubi / "bad_peb_count").read_text())
         except (OSError, ValueError, TypeError):
             max_ec = bad = None
+        part = _flash_part()
+        rate, bad_grew = _flash_rate()
+        notes, evidence, status = [], [], "ok"
+        if part and max_ec is not None:
+            evidence.append(part["source"])
+            share = max_ec / part["cycles"]
+            if rate:
+                years = (part["cycles"] - max_ec) / rate / 365
+                notes.append(
+                    M(
+                        "card-flash.life",
+                        "It is rated for {cycles} erases a block ({part}, or {also}). At {rate} a day, about {years} years "
+                        "are left.",
+                        cycles=part["cycles"],
+                        part=part["part"],
+                        also=part["also"],
+                        rate=f"{rate:.1f}",
+                        years=f"{years:.0f}",
+                    )
+                )
+            else:
+                notes.append(
+                    M(
+                        "card-flash.life.counting",
+                        "It is rated for {cycles} erases a block ({part}, or {also}). Its rate shows once a day of counts "
+                        "is recorded.",
+                        cycles=part["cycles"],
+                        part=part["part"],
+                        also=part["also"],
+                    )
+                )
+            if share > FLASH_WARN_SHARE:
+                status = "warn"
+        if bad_grew:
+            status = "warn"
+            notes.append(M("card-flash.bad-grew", "Its bad blocks grew by {n} in the record's days.", n=bad_grew))
         return [
             finding(
                 "card-flash",
                 M("card-flash.title", "Onboard flash"),
-                "ok",
+                status,
                 M(
                     "card-flash.on",
                     {
@@ -3406,6 +3516,11 @@ def _flash_findings():
                 )
                 if max_ec is not None
                 else M("card-flash.on.no-counts", "The logs are on the onboard flash."),
+                notes=notes,
+                evidence=evidence,
+                actions=[
+                    action("flash-read", M("card-flash.read", "Read the whole flash (a test that writes nothing)"))
+                ],
                 go=GO_CARD_WRITES,
             )
         ]
@@ -5342,7 +5457,7 @@ CHOICE_RE = re.compile(
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash))$"
-    r"|^card-memcg-on$|^card-speed-test$|^card-scan$"
+    r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )
 
@@ -5519,6 +5634,8 @@ def fix(choice):
         return arch_remove(arg)
     if kind == "card-speed-test":
         return card_speed_test()
+    if kind == "flash-read":
+        return flash_read()
     if kind == "card-scan":
         return card_scan_start()
     if kind == "card-memcg-on":

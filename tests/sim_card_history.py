@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -33,6 +34,7 @@ os.environ.update(
     HUB_UBI_SYS=str(T / "ubi"),
     HUB_ROOT_STATE_DIR=str(T / "root-state"),
     HUB_MOUNTINFO=str(T / "mountinfo"),
+    HUB_MTD_SYS=str(T / "mtd-sys"),
 )
 for d in ("state", "etc", "systemd/journald.conf.d", "apt.conf.d", "apt-cache"):
     (T / d).mkdir(parents=True)
@@ -282,6 +284,12 @@ check(
     and cw.get("go", {}).get("section") == "card-writes",
     cw,
 )
+life = [n for n in cw.get("notes", []) if n.get("id") == "card-writes.life"]
+check(
+    "  the card's wear in context: written over about N times a year (32 GB at 2 GiB a day: about 24), an estimate",
+    life and life[0]["args"]["gb"] == 32 and 20 < float(life[0]["args"]["times"]) < 26,
+    cw.get("notes"),
+)
 check(
     "writes by service not counted: said, with the repair that switches it on",
     got.get("card-accounting", {}).get("status") == "warn"
@@ -479,6 +487,51 @@ check(
     on.get("status") == "ok" and on["summary"]["args"] == {"n": 3, "bad": 0},
     on,
 )
+# Its endurance: the chip from the kernel's probe line and MTD's geometry, its rating from its datasheet, the rate
+# from the record's counts, the years left; the whole flash read as a test.
+mtd = T / "mtd-sys" / "mtd0"
+mtd.mkdir(parents=True)
+for f, v in {"size": 256 << 20, "erasesize": 128 << 10, "writesize": 2048, "oobsize": 128}.items():
+    (mtd / f).write_text(f"{v}\n")
+said_kernel["log"] = "spi-nand spi2.0: Winbond SPI NAND was found.\n"
+saved_rows = cardhistory.FILE.read_text()
+base_row = {"boot": "eeee5555", "card": 1, "units": {}, "settings": {}}
+cardhistory.FILE.write_text(
+    json.dumps(dict(base_row, at=int(time.time()) - 2 * 86400, flash={"max_ec": 1, "bad": 4}))
+    + "\n"
+    + json.dumps(dict(base_row, at=int(time.time()), flash={"max_ec": 3, "bad": 4}))
+    + "\n"
+)
+on = {f["id"]: f for f in health.check_card_writes()}.get("card-flash", {})
+life = [n for n in on.get("notes", []) if n.get("id") == "card-flash.life"]
+check(
+    "  the chip known (a W25N02KV by its maker and geometry), its rating cited, the years left at its rate",
+    on.get("status") == "ok"
+    and life
+    and life[0]["args"]["cycles"] == 60000
+    and life[0]["args"]["rate"] == "1.0"
+    and int(life[0]["args"]["years"]) > 100
+    and any("W25N02KV" in e and "60,000" in e for e in on.get("evidence", [])),
+    on,
+)
+check(
+    "  a read of the whole flash offered (a test that writes nothing)",
+    [a["choice"] for a in on.get("actions", [])] == ["flash-read"],
+)
+cardhistory.FILE.write_text(
+    json.dumps(dict(base_row, at=int(time.time()) - 2 * 86400, flash={"max_ec": 1, "bad": 4}))
+    + "\n"
+    + json.dumps(dict(base_row, at=int(time.time()), flash={"max_ec": 3, "bad": 6}))
+    + "\n"
+)
+on = {f["id"]: f for f in health.check_card_writes()}.get("card-flash", {})
+check(
+    "  bad blocks growing: a warning, said",
+    on.get("status") == "warn" and any(n.get("id") == "card-flash.bad-grew" for n in on["notes"]),
+    on,
+)
+cardhistory.FILE.write_text(saved_rows)
+said_kernel["log"] = ""
 box_state = {g["key"]: g for g in health.card_groups()}.get("box_state")
 check(
     "the logs on the flash: Often-written state offered, on the card now, the flash asking first",
