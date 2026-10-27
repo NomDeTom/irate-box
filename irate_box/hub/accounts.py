@@ -89,7 +89,7 @@ SIGNIN_DEFAULTS = {
     "adaptive": False,
     "common": True,
     "known_by": "cookie",
-    "min_length": 15,  # NIST SP 800-63B-4 for a password that alone signs a person in
+    "min_length": 8,  # the owner chooses 12 or 15 on the Security page (NIST SP 800-63B-4 asks 15 where a password alone signs in)
     "rules": "none",
     "block_common": True,
 }
