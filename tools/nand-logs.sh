@@ -391,7 +391,18 @@ hub_units() { systemctl list-unit-files --no-legend 'irate-box*.service' 2>/dev/
 # the clock or nginx's recovery unit (nginx requires it: stopping it stops nginx).
 WRITERS=(irate-box.service irate-box-librarian.service irate-box-ci.service irate-box-git.service irate-box-notebooks.service
 	irate-box-visitors.service irate-box-uplink.service irate-box-crashwatch.service irate-box-secdoctor.service)
-writers() { local u; for u in "${WRITERS[@]}"; do systemctl cat "$u" >/dev/null 2>&1 && echo "$u"; done; }
+# And any other service with a file open, or its working folder, in the hub's (an add-on: the notes' editor, sync).
+writers() {
+	local u pid
+	{
+		for u in "${WRITERS[@]}"; do systemctl cat "$u" >/dev/null 2>&1 && echo "$u"; done
+		for pid in /proc/[0-9]*; do
+			{ [[ $(readlink "$pid/cwd" 2>/dev/null) == "$HUB"* ]] ||
+				find "$pid/fd" -maxdepth 1 -lname "$HUB/*" -print -quit 2>/dev/null | grep -q .; } || continue
+			sed -n 's|^0::.*/\([^/]*\.service\)$|\1|p' "$pid/cgroup" 2>/dev/null
+		done | grep -vxF -e irate-box-control.service -e irate-box-nginx-recover.service
+	} | sort -u
+}
 
 # After mounting: the card's view of the hub, and each large folder, must be on the card's device, not the flash's.
 state_mounts_ok() {
@@ -446,7 +457,11 @@ EOF
 # the firewall and nginx's recovery do), the system's for the flash's folder: "unit path", no path for the hub's.
 wait_units() {
 	local u d
-	for u in $(hub_units); do echo "$u"; done
+	for u in $(hub_units); do
+		# Not those that start before the system's own (the clock, the firewall): the boot unit is an ordinary
+		# service, after them, so waiting for it would be an ordering cycle.
+		[[ $(systemctl show -p DefaultDependencies --value "$u" 2>/dev/null) == no ]] || echo "$u"
+	done
 	for u in "${SYS_UNITS[@]}"; do
 		systemctl cat "$u" >/dev/null 2>&1 || continue
 		case $u in
@@ -501,14 +516,18 @@ state_on() {
 	name=$(basename "$STATE_UNIT")
 	while read -r u d; do
 		mkdir -p "/etc/systemd/system/$u.d"
-		if [[ -z $d && " ${WRITERS[*]} " == *" $u "* ]]; then
+		if [[ -z $d && " ${units[*]} " == *" $u "* ]]; then
 			printf '[Unit]\nRequires=%s\nAfter=%s\n' "$name" "$name" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
 		elif [[ -z $d ]]; then
 			printf '[Unit]\nAfter=%s\n' "$name" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
 		else
 			printf '[Unit]\nRequiresMountsFor=%s\n' "$d" >"/etc/systemd/system/$u.d/$STATE_DROPIN"
 		fi
-	done < <(wait_units)
+	done < <({
+		wait_units
+		# The add-ons found writing the hub's folder: made to wait for it too.
+		for u in "${units[@]}"; do [[ $u == irate-box* ]] || echo "$u"; done
+	})
 	systemctl daemon-reload
 	systemctl enable -q "$name"
 	# Mounted already: the unit only finds the mounts as planned.
