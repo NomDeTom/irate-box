@@ -207,6 +207,12 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
       check('  which asks the hub to drop that set', posted.length === n + 1 && posted[n].action === 'drop-previous' && posted[n].kit === 'security', JSON.stringify(posted.slice(n)));
     }
   }
+  // Every list a kit card draws has a rule of its own in the stylesheet: an unstyled list (the links had none)
+  // falls back to the browser's, its bullets outside the card and its text larger than the notes above it.
+  const sheet = require('fs').readFileSync(require('path').resolve(__dirname, '../../web/style.css'), 'utf8');
+  const adminJs = require('fs').readFileSync(require('path').resolve(__dirname, '../../web/admin.js'), 'utf8');
+  const kitLists = [...new Set([...adminJs.matchAll(/el\(\s*"ul",\s*\{\s*className: "(kit-[a-z-]+)"/g)].map((m) => m[1]))];
+  check('every list a kit card draws is styled (its class in style.css)', kitLists.length >= 2 && kitLists.every((c) => new RegExp(`\\.${c}\\b`).test(sheet)), kitLists);
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
