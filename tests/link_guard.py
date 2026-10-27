@@ -51,6 +51,9 @@ MOUNTS = {
     "/git-private/": REPO / "irate_box" / "hub" / "gitrepos.py",
 }
 
+# Exact paths the web server answers itself with a redirect (no page behind them): the admin pages' Hub link.
+REDIRECTS = {"/hub"}
+
 hub_src = HUB.read_text(encoding="utf-8")
 for r in sorted(HUB_ROUTES):
     check(
@@ -63,6 +66,12 @@ for m, src in sorted(MOUNTS.items()):
     seen = re.search(rf"location\s+(?:\^~\s+|=\s+)?{re.escape(m)}", text) if src == NGINX else f'"{m}"' in text
     check(f"mount {m}: served ({src.relative_to(REPO)})", bool(seen))
 
+for r in sorted(REDIRECTS):
+    check(
+        f"redirect {r}: answered by the web server",
+        f"location = {r} {{ return 302" in NGINX.read_text(encoding="utf-8"),
+    )
+
 
 def alive(url, base):
     """The local file or route a link names, or None: not ours to check (another site, a page anchor, a template)."""
@@ -70,7 +79,7 @@ def alive(url, base):
     if not url or re.match(r"^([a-z][a-z0-9+.-]*:|//|\$\{|\{\{)", url):
         return None
     if url.startswith("/"):
-        if url in HUB_ROUTES or any(url.startswith(m) for m in MOUNTS):
+        if url in HUB_ROUTES or url in REDIRECTS or any(url.startswith(m) for m in MOUNTS):
             return True
         target = WEB / url.lstrip("/")
     else:

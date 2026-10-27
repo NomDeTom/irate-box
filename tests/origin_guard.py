@@ -204,6 +204,16 @@ check(
     text.count("include @FRONT@;"),
 )
 check(
+    "  the admin pages' Hub link (/hub) goes to the hub's home on its port, in nginx and Caddy; their / stays the admin pages",
+    "location = /hub { return 302 $scheme://$host:$irate_box_hub_port/; }" in admin
+    and "location = / { return 302 /admin/; }" in admin
+    and "redir /hub {scheme}://{host}:{irate_box_hub_port}/ 302" in caddy
+    and all(
+        'href="/hub"' in (REPO / "web" / f).read_text() and 'href="/"' not in (REPO / "web" / f).read_text()
+        for f in ("admin.html", "admin-setup.html", "admin-mesh.html", "admin-factory.html")
+    ),
+)
+check(
     "  every other origin clears the header, whatever a client sent",
     all(block.count('proxy_set_header X-Irate-Front ""') >= 1 for port, block in by_port.items() if port != ("8095",)),
 )
