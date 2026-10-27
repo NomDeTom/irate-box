@@ -106,8 +106,8 @@ precedence = "override"
 SPDX-FileCopyrightText = "2012-2025 Serhii Pimenov"
 SPDX-License-Identifier = "MIT"
 
-# Meshtastic's M-PWRD logo (meshtastic/design, "Meshtastic Powered Logo/M-PWRD_minified.svg" @ b7ec41): its dark
-# shapes and its letters as one path, cut out (evenodd), so it draws in one colour like the other pictures.
+# Meshtastic's M-PWRD logo (meshtastic/design, "Meshtastic Powered Logo/M-PWRD_minified.svg" @ 5e0a8e6), in its
+# own colours (green top, dark band, white letters), unaltered but for its editor's layer name and line breaks.
 # Meshtastic® is a registered trademark of Meshtastic LLC; the M-PWRD logo needs no trademark grant, and using it
 # does not imply endorsement or sponsorship by the Meshtastic Project (meshtastic.org/docs/legal/licensing-and-trademark).
 [[annotations]]
