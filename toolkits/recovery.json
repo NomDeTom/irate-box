@@ -1,7 +1,7 @@
 {
  "id": "recovery",
  "title": "Recovery",
- "summary": "Storage recovery and testing. Rescue a failing storage device, test a device before you trust it, and copy and pack files. The toolkit has ddrescue, testdisk, f3 and smartmontools.",
+ "summary": "Storage recovery and testing. Rescue a failing storage device, test a device before you trust it, and copy and pack files. The toolkit has ddrescue, testdisk, f3, smartmontools and ncdu (what fills a disk).",
  "packages": [
   "gddrescue",
   "testdisk",
@@ -12,7 +12,8 @@
   "rsync",
   "zip",
   "unzip",
-  "7zip"
+  "7zip",
+  "ncdu"
  ],
  "consent": "These tools read and write raw storage. ddrescue and testdisk can overwrite a disk if you select the wrong destination. The overwrite cannot be undone. Read their prompts. Install the toolkit only while you need it.",
  "notes": [

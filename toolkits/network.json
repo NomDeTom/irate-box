@@ -1,7 +1,7 @@
 {
  "id": "network",
  "title": "Network",
- "summary": "Network diagnostics that work without internet: iperf3, mtr, iw, wavemon, dig, tcpdump and the tools of WireGuard. Use them to find the cause of a hotspot or link problem.",
+ "summary": "Network diagnostics that work without internet: iperf3, mtr, iw, wavemon, dig, tcpdump and the tools of WireGuard, and telnet (does a port answer; a client only). Use them to find the cause of a hotspot or link problem.",
  "packages": [
   "iperf3",
   "mtr-tiny",
@@ -9,7 +9,8 @@
   "wavemon",
   "bind9-dnsutils",
   "tcpdump",
-  "wireguard-tools"
+  "wireguard-tools",
+  "inetutils-telnet"
  ],
  "consent": "tcpdump can read every packet on the box. iperf3 listens for a test partner only when you start it. Install the toolkit only while you need it.",
  "notes": [

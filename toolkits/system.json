@@ -1,7 +1,7 @@
 {
  "id": "system",
  "title": "System",
- "summary": "Minimum system tools from Debian. A minimal image can lack them. The toolkit has kernel defaults, the clock tool, the firewall, security updates, small network checks, USB drive filesystems, the archive tools (zip, unzip, xz, zstd, bzip2) and the manual pages. The box keeps the toolkit installed. It also caches the alternative network and time tools. It does not install them.",
+ "summary": "Minimum system tools from Debian. A minimal image can lack them. The toolkit has kernel defaults, the clock tool, the firewall, security updates, small network checks, USB drive filesystems, the archive tools (zip, unzip, xz, zstd, bzip2), the manual pages, and everyday tools: tmux (a session that survives a dropped SSH connection), jq (JSON) and xxd (bytes in hex). The box keeps the toolkit installed. It also caches the alternative network and time tools. It does not install them.",
  "packages": [
   "linux-sysctl-defaults",
   "util-linux-extra",
@@ -29,7 +29,10 @@
   "smartmontools",
   "apparmor",
   "apparmor-utils",
-  "dmidecode"
+  "dmidecode",
+  "tmux",
+  "jq",
+  "xxd"
  ],
  "needs_64bit": [
   "dmidecode"
