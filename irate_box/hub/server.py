@@ -1274,8 +1274,9 @@ DEFAULT_SETTINGS = {
     "notebooks_max": 5,
     "notebooks_keep_free_mb": 96,
     # How hard the box writes to its card (Recovery and monitoring): what may be lost in a crash or a
-    # power cut in exchange for writing less. Owner data is written as it changes at every stop.
-    "card_writes": "thrifty",
+    # power cut in exchange for writing less. Owner data is written as it changes at every stop. Gentle is the
+    # recommended level (root/recommended.py): the clock and the mesh saved every 30 and 15 minutes.
+    "card_writes": "gentle",
 }
 POSTERS = ("guests", "users", "off")
 WIDTHS = (45, 60, 80, 90, 100)
@@ -1463,7 +1464,7 @@ CARD_WRITES = {
 
 
 def apply_settings(data):
-    clock_every, mesh_every = CARD_WRITES.get(data.get("card_writes"), CARD_WRITES["thrifty"])
+    clock_every, mesh_every = CARD_WRITES.get(data.get("card_writes"), CARD_WRITES["gentle"])
     if "CLOCK" in globals():
         CLOCK.flush_interval = clock_every
     meshbridge.SAVE_EVERY = mesh_every

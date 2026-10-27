@@ -64,7 +64,7 @@ try:
         return r.status, json.loads(r.read() or b"{}")
 
     st, got = go("GET", "/admin/settings")
-    check("thrifty by default", got.get("card_writes") == "thrifty", got.get("card_writes"))
+    check("gentle by default (the recommended level)", got.get("card_writes") == "gentle", got.get("card_writes"))
     st, got = go("POST", "/admin/settings", {"card_writes": "saver"})
     check("a stop taken", got.get("card_writes") == "saver")
     st, got = go("POST", "/admin/settings", {"card_writes": "never"})

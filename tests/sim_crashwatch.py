@@ -812,11 +812,11 @@ check("  moving off saver: what was held first, then the new one", written == [(
 cw.STATE = T
 check("ladder: crash watch reads the stop from the hub's settings", cw.card_writes() == "gentle")
 (T / "settings.json").write_text(json.dumps({"card_writes": "everything!"}))
-check("  an unknown stop is thrifty", cw.card_writes() == "thrifty")
+check("  an unknown stop is the recommended one, gentle", cw.card_writes() == "gentle")
 (T / "settings.json").unlink()
 (T / "settings.json").symlink_to(T / "elsewhere.json")
 (T / "elsewhere.json").write_text(json.dumps({"card_writes": "saver"}))
-check("  never through a link: thrifty", cw.card_writes() == "thrifty")
+check("  never through a link: gentle", cw.card_writes() == "gentle")
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
