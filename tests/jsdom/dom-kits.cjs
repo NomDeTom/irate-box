@@ -76,11 +76,13 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
     /^3 of 5 toolkits cached, 91\.0 MB of 500 MB\. Newest download: \d{4}-\d\d-\d\d\. Cached toolkits install without internet access\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));
   check('a card per kit, and the custom one last', d.querySelectorAll('#kits-grid .aw-card').length === 6 && /\+ Custom toolkit/.test(t([...d.querySelectorAll('#kits-grid .aw-card')].pop())));
-  check('closed, a card is only its name, what it is for and its state', !head('Debugging').querySelector('.aw-drawer') && /installed: removed in [45] h/.test(pills('Debugging')));
+  check('closed, a card is only its name, what it is for and its state', !head('Debugging').querySelector('.aw-drawer') && /Installed/.test(pills('Debugging')) && /Removal due/.test(pills('Debugging')), pills('Debugging'));
+  check('  its badges are states only, the same words on every card: no date, size or hours in them (each is a filter)', [...d.querySelectorAll('#kits-grid .aw-card .p')].every((p) => !/\d/.test(t(p).replace(/\+1 set/, ''))), [...d.querySelectorAll('#kits-grid .aw-card .p')].map((p) => t(p)));
+  check('  the drawer says what the badges leave out: when cached and its size, when removed', /^Cached \d{4}-\d\d-\d\d, [\d.]+ MB\. Installed: removed in [45] h\./.test(t(card('Debugging').querySelector('.kit-facts'))), t(card('Debugging').querySelector('.kit-facts')));
   check('installed: what installing it upgraded, in its drawer', /also upgraded these packages\. They remain upgraded after removal: .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
   check('one open at a time, with a ✕', d.querySelectorAll('#kits-grid .aw-card.open').length === 1 && !!card('Debugging').querySelector('.aw-close'));
   check('not cached: Install is off, and says why', button(card('Building'), 'Install toolkit…').disabled && /Refresh the cache while the box has internet access/.test(t(card('Building'))));
-  check('an older set kept: the pill with its size, and Roll back with its date', /older set kept for rollback \(1(\.0)? MB\)/.test(pills('Security'))
+  check('an older set kept: the pill with its size, and Roll back with its date', /\+1 set for rollback/.test(pills('Security')) && /A set for rollback kept, 1(\.0)? MB more\./.test(t(card('Security').querySelector('.kit-facts')))
     && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to \d{4}-/.test(t(b))), pills('Security'));
   check('  its drawer: what the older set keeps, and that the doctor checks only the newest', /Kept for rollback: the set downloaded \d{4}-\d\d-\d\d, with older versions of 2 packages \(ntfs-3g, libntfs-3g89t64\), 1(\.0)? MB more in the cache\. The Security doctor checks only the newest version of each package\./.test(t(card('Security'))), t(card('Security')));
   check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging')))
@@ -111,7 +113,7 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   check('Install… shows the consent and when it goes again, before anything happens', consent && /Capture: read this first\./.test(t(consent))
     && consent.querySelector('select.kit-hours').value === '24' && posted.length === 1);
   check('a kit the doctor flags: a pill, and the reason in the Install step, before anything happens',
-    /flagged by the doctor/.test(pills('Capture')) && /Security doctor flags the cache of this toolkit: Cached versions of tcpdump/.test(t(consent))
+    /Flagged/.test(pills('Capture')) && /Security doctor flags the cache of this toolkit: Cached versions of tcpdump/.test(t(consent))
     && !/flagged/.test(pills('Security')));
   consent.querySelector('select.kit-hours').value = '168';
   button(consent, 'Install toolkit').click();
@@ -151,10 +153,10 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   await wait();
   check('a problem with the cache is shown', /has changed since it was fetched/.test(t(d.getElementById('kits-problems'))));
   // Your own kits, and extra tools in a shipped kit.
-  check('your own kit says so, with Edit and Delete', /yours/.test(pills('Radio tools'))
+  check('your own kit says so, with Edit and Delete', /Yours/.test(pills('Radio tools'))
     && button(card('Radio tools'), 'Edit') && button(card('Radio tools'), 'Delete toolkit'));
   check('a shipped kit has no Delete, and offers extra tools', !button(card('Debugging'), 'Delete toolkit') && card('Debugging').querySelector('input.kit-extra'));
-  check('a kit with extra tools says so, and lists them', /\+1 extra/.test(pills('Capture')) && card('Capture').querySelector('input.kit-extra').value === 'ngrep');
+  check('a kit with extra tools says so, and lists them', /Extra packages/.test(pills('Capture')) && /1 extra package\./.test(t(card('Capture').querySelector('.kit-facts'))) && card('Capture').querySelector('input.kit-extra').value === 'ngrep');
   const ex = card('Debugging').querySelector('input.kit-extra');
   ex.value = 'ltrace,  gdbserver'; ex.dispatchEvent(new w.Event('input'));
   save('Debugging').click();
