@@ -14,6 +14,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="pagehist-"))
 os.environ["HUB_STATE_DIR"] = str(T)
+os.environ["HUB_PAGELOG"] = str(T / "pagelog" / "pages.log")
 sys.path.insert(0, str(REPO))
 from irate_box.hub import pagehistory as ph
 

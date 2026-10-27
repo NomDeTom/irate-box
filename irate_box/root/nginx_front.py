@@ -420,7 +420,8 @@ def settings_from_env():
             "ADDON_ACCESS": str(etc / "nginx-addons.conf"),
             "ADDON_GATES": str(etc / "nginx-addon-gates.conf.d"),
             "TLS": str(etc / "tls/front"),
-            "PAGELOG": str(state / "pagelog/pages.log"),
+            # In RAM (/run): a line a page load, read by the hub every five minutes; a reboot starts it empty.
+            "PAGELOG": os.environ.get("HUB_PAGELOG", "/run/irate-box/pagelog/pages.log"),
         }
     )
     return values
