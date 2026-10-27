@@ -621,6 +621,8 @@ server {
 	set $irate_box_csp "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'";
 	add_header Content-Security-Policy $irate_box_csp always;
 	location = / { return 302 /admin/; }
+	# The admin pages' Hub link: the hub's own home, on its port (this server's / is the admin pages).
+	location = /hub { return 302 $scheme://$host:$irate_box_hub_port/; }
 	location = /admin { return 301 /admin/; }
 	# Same login as /term and /sync. First use: while @UNCLAIMED@ exists no password has been chosen, and
 	# /admin is let through with none, where the hub serves only the set-the-password page.

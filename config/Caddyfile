@@ -482,6 +482,8 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 		default {$HUB_PORT:80}
 	}
 	redir / /admin/ 302
+	# The admin pages' Hub link: the hub's own home, on its port (this server's / is the admin pages).
+	redir /hub {scheme}://{host}:{irate_box_hub_port}/ 302
 	redir /admin /admin/ permanent
 	handle /admin/* {
 		@unclaimed file {
