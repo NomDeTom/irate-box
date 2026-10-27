@@ -3416,7 +3416,9 @@ button.danger {
   font-size: 0.85rem;
   color: var(--muted);
 }
-.kit-notes {
+/* A toolkit's notes, and where its drivers come from (its links): small and muted, inside the card. */
+.kit-notes,
+.kit-links {
   margin: 0.3rem 0;
   padding-left: 1.2rem;
   font-size: 0.85rem;
