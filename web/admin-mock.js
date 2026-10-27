@@ -117,6 +117,10 @@
           draw(false);
           return [AW.dl({ Name: item.title, State: item.summary }), h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Start at boot' }), chips)];
         } })),
+      row('card-after-words', 'A card after a pane\'s words', 'A card, or a list of cards, straight after a pane\'s words sits 1rem below them, on every page: never on the text. The list may be in a plain div the page fills. Nothing to add on the page: the shared rule does it.',
+        '.admin-pane > p + :is(.net-card, .setting, .aw-block), .admin-pane > p + div > .aw-block (style.css)',
+        h('section', { class: 'admin-pane mock-pane' }, h('p', { class: 'setting-desc', text: 'A pane\'s words: what the cards below are for.' }),
+          h('div', {}, AW.cards([{ id: 'mock-after-1', title: 'A card', summary: 'Apart from the words above it.' }], { id: 'mock-after-words' })))),
       row('records', 'Records', 'An unlimited list, newest first: a limited height, a scroll bar and a filter.',
         "AW.records([{id, title}], {noun})", AW.records(records, { id: 'mock-records', noun: 'events' })));
   }

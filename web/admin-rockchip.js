@@ -155,21 +155,26 @@
     { value: 'usb', title: "Networking over the board's USB", desc: 'The cable used to erase the board, as a network.', why: 'mPWRD-OS has not been seen to offer it' },
     { value: 'bluetooth', title: 'Bluetooth', desc: "Meshtastic's flasher sends the WiFi over Bluetooth.", why: 'only Raspberry Pi images take it' },
   ];
-  const STEPS = [
-    ['find', 'Find the board'],
-    ['join', "Join the board's setup hotspot"],
-    ['check', "Check that it is Armbian's setup"],
-    ['send', 'Send the choices'],
-    ['leave', "Back to this box's network"],
-    ['again', 'Find the board on the network'],
-    ['finish', 'Finish over SSH: the keys, the name, the setup page stopped'],
-  ];
+  // The steps, by route: what the box will do, in order.
+  const AGAIN = ['again', 'Find the board on the network'];
+  const FINISH = ['finish', 'Finish over SSH: the keys, the name, the setup page stopped'];
+  const STEPS = {
+    hotspot: [['find', 'Find the board'], ['join', "Join the board's setup hotspot"], ['check', "Check that it is Armbian's setup"], ['send', 'Send the choices'], ['leave', "Back to this box's network"], AGAIN, FINISH],
+    serial: [['console', "Find the board's console"], ['send', 'Send the choices over the console'], ['check', 'Read them back, to check they arrived whole'], ['start', 'Start its first login'], AGAIN, FINISH],
+    card: [['write', 'Write the image and the choices to the card'], ['start', 'Put the card in the board and start it'], AGAIN, FINISH],
+    ssh: [['signin', "Sign in at its address as root, with Armbian's default password"], ['send', 'Send the choices'], ['start', 'Start its first login'], AGAIN, FINISH],
+    usb: [['link', "Join the board's USB network"], ['send', 'Send the choices'], ['start', 'Start its first login'], AGAIN, FINISH],
+    bluetooth: [['send', 'Send the WiFi over Bluetooth'], AGAIN, FINISH],
+  };
+  // A board the box cannot find by itself: set up by a way in that needs no discovery (its console, its card, its
+  // address), always offered after the boards found.
+  const OTHER = 'other';
   const picked = new Map();   // hotspot name -> the choices made for that board
   let setupShown = '';
   function choicesFor(id, defaults) {
     if (!picked.has(id)) {
       picked.set(id, {
-        route: 'hotspot', network: defaults.ssid ? 'same' : 'other', wifiPass: '', otherSsid: '', otherPass: '',
+        route: id === OTHER ? 'serial' : 'hotspot', boardAddress: '', network: defaults.ssid ? 'same' : 'other', wifiPass: '', otherSsid: '', otherPass: '',
         rootPass: 'generated', rootTyped: '', userName: 'armbian', userPass: 'generated', userTyped: '', lockRoot: false, key: '',
         hostname: 'lyra-1', place: 'box', locale: defaults.locale || 'en_GB.UTF-8', timezone: defaults.timezone || 'Etc/UTC',
         country: defaults.country || 'GB', address: 'dhcp', ip: '', mask: '255.255.255.0', gateway: '', dns: '',
@@ -182,6 +187,10 @@
   function problems(c, ready) {
     const out = [];
     const add = (label, value, kind) => { const found = problem(value, kind); if (found) out.push([label, found]); };
+    if (c.route === 'ssh') {
+      if (!c.boardAddress) out.push(["The board's address", 'Enter the address the board has on the cable.']);
+      add("The board's address", c.boardAddress, 'text');
+    }
     if (c.network === 'same-typed') add("The network's password", c.wifiPass, 'wifi-password');
     if (c.network === 'other') {
       if (!c.otherSsid) out.push(["The network's name", 'Enter the name of the network the board joins.']);
@@ -195,7 +204,7 @@
     if (c.place === 'chosen') { add('Locale', c.locale, 'text'); add('Time zone', c.timezone, 'text'); add('WiFi country', c.country, 'text'); }
     if (c.address === 'fixed') for (const k of ['ip', 'mask', 'gateway', 'dns']) { if (!c[k]) out.push(['Fixed address', 'Fill in the address, mask, gateway and DNS.']); add('Fixed address', c[k], 'text'); }
     add('Your SSH key', c.key, 'text');
-    if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (joining the hotspot and sending these choices) comes next. The choices are kept while this page is open."]);
+    if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (reaching the board and sending these choices) comes next. The choices are kept while this page is open."]);
     return out;
   }
 
@@ -239,11 +248,26 @@
     const showOnly = () => body.querySelectorAll('[data-rk-only]').forEach((n) => { const [k, vs] = n.dataset.rkOnly.split(':'); n.hidden = !vs.split(',').includes(c[k]); });
 
     const sendWarn = h('p', { class: 'setting-desc warn-text', text: "The box sends this network's password to the new board." });
+    // A board found by its hotspot leads with that route; a board not listed, with the ways in that need no finding.
+    const NO_FINDING = ['serial', 'card', 'ssh', 'usb'];
+    const routes = item.id === OTHER
+      ? {
+          main: ROUTES.filter((r) => NO_FINDING.includes(r.value)),
+          folded: ROUTES.filter((r) => !NO_FINDING.includes(r.value)).map((r) => (r.value === 'hotspot' ? { ...r, why: 'a board that raises its setup hotspot shows as a card of its own' } : r)),
+        }
+      : { main: ROUTES.filter((r) => !r.why), folded: ROUTES.filter((r) => r.why) };
+    const steps = h('ol', { class: 'setup-steps rk-steps' });
+    function drawSteps() {
+      steps.replaceChildren(...(STEPS[c.route] || STEPS.hotspot).map(([id, text]) => h('li', { class: 'step-todo', 'data-step': id, text })));
+      showOnly();
+    }
     const body = h('div', { class: 'rk-setup-body' },
       h('h3', { text: 'Route' }),
-      tiles('Route', 'route', ROUTES.filter((r) => !r.why)),
-      // The ways in the box cannot use here, each with why, folded so the one it can use stands alone.
-      h('details', { class: 'sec-fold' }, h('summary', { text: 'Other ways in' }), tiles('Other ways in', 'route', ROUTES.filter((r) => r.why))),
+      tiles('Route', 'route', routes.main, drawSteps),
+      // The other ways in, each with why it is not offered here, folded so the ones that fit this board stand alone.
+      h('details', { class: 'sec-fold' }, h('summary', { text: 'Other ways in' }), tiles('Other ways in', 'route', routes.folded, drawSteps)),
+      only('route', ['ssh'], field("The board's address", 'boardAddress', 'text', { placeholder: '192.168.1.60', help: "Its address on this box's wired network, from your router's list or the board's screen." })),
+      only('route', ['serial'], h('p', { class: 'setting-desc', text: "A USB serial adapter on this box, wired to the board's debug console: the adapter's TX to the board's RX, its RX to the board's TX, GND to GND, at 3.3 V." })),
       h('h3', { text: 'Network' }),
       tiles('Network', 'network', [
         { value: 'same', title: "This box's network, its password sent", desc: boxValues.ssid ? `${boxValues.ssid}: the box sends the password it holds for it.` : "This box's WiFi network.", why: boxValues.ssid ? '' : 'this box is not on a WiFi network' },
@@ -259,7 +283,7 @@
       h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: "Root's password" }),
         chips("Root's password", 'rootPass', [{ value: 'generated', title: 'Generated', says: 'Made here, letters and digits, and shown once when the board is set up. The box does not keep it.' }, { value: 'typed', title: 'Typed', says: 'You type it here.' }], showOnly)),
       only('rootPass', ['typed'], field("Root's password", 'rootTyped', 'password', { type: 'password' })),
-      field("The user's name", 'userName', 'user', { help: "mPWRD-OS's own is armbian." }),
+      userName(),
       h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: "The user's password" }),
         chips("The user's password", 'userPass', [{ value: 'generated', title: 'Generated', says: 'Made here, and shown once.' }, { value: 'typed', title: 'Typed', says: 'You type it here.' }], showOnly)),
       only('userPass', ['typed'], field("The user's password", 'userTyped', 'password', { type: 'password' })),
@@ -285,9 +309,25 @@
       ]),
       h('p', { class: 'setting-desc', text: "The box always stops the board's setup page afterwards: left running, it answers anyone on the board's networks until the board restarts." }),
       h('h3', { text: 'Steps' }),
-      h('ol', { class: 'setup-steps rk-steps' }, STEPS.map(([id, text]) => h('li', { class: 'step-todo', 'data-step': id, text }))),
+      steps,
       h('div', { class: 'library-buttons' }, action),
       reason);
+    // The user's name: typed, made up by the dice (names.js, as the shoutbox's handle), or the image's default.
+    function userName() {
+      const DEFAULT_USER = 'armbian';
+      const wrap = field("The user's name", 'userName', 'user', { help: "Armbian's and mPWRD-OS's own is armbian." });
+      const input = wrap.querySelector('input');
+      const chip = h('button', { type: 'button', class: 'chip', text: 'Default' });
+      const mark = () => { const on = input.value === DEFAULT_USER; chip.classList.toggle('selected', on); chip.setAttribute('aria-pressed', String(on)); };
+      const put = (value) => { input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); };
+      chip.addEventListener('click', () => put(DEFAULT_USER));
+      const dice = h('button', { type: 'button', class: 'action-btn rk-dice', title: 'Make up a name', 'aria-label': 'Make up a name', text: '🎲' });
+      dice.addEventListener('click', () => put(window.HubNames ? window.HubNames.username() : DEFAULT_USER));
+      input.addEventListener('input', mark);
+      input.after(dice, chip);
+      mark();
+      return wrap;
+    }
     function lockChips() {
       let node = AW.onOffChips("Root's password locked after setup", c.lockRoot, false, (on) => { c.lockRoot = on; const next = lockChips(); node.replaceWith(next); node = next; });
       return node;
@@ -302,7 +342,7 @@
         say(err.message, false, reason);
       }
     });
-    showOnly();
+    drawSteps();
     refresh();
     return [body];
   }
@@ -315,17 +355,17 @@
     // A drawer being filled in is not drawn again under the person typing.
     if (key === setupShown || at.querySelector('.aw-card.open')) return;
     setupShown = key;
-    if (!spots.length) {
-      at.replaceChildren(h('p', { class: 'setting-desc', text: 'No board to set up is in range. A board with mPWRD-OS raises its setup hotspot within a few minutes of its first start; it shows here then.' }));
-      return;
-    }
-    at.replaceChildren(AW.cards(spots.map((s) => ({
-      id: s.ssid,
-      title: s.host || s.ssid,
-      host: s.host,
-      summary: s.boards > 1 ? `${s.boards} boards share this hotspot's name: power one at a time.` : 'Setup hotspot found, not set up.',
+    const found = spots.map((spot) => ({
+      id: spot.ssid,
+      title: spot.host || spot.ssid,
+      host: spot.host,
+      summary: spot.boards > 1 ? `${spot.boards} boards share this hotspot's name: power one at a time.` : 'Setup hotspot found, not set up.',
       badges: ['mPWRD-OS'],
-    })), { id: 'rk-setup-cards', body: (item) => setupBody(item, setup) }));
+    }));
+    const other = { id: OTHER, title: 'A board not listed here', summary: 'Set up over its serial console, its SD card or its address: ways in the box does not find by itself.', badges: [] };
+    at.replaceChildren(
+      spots.length ? '' : h('p', { class: 'setting-desc', text: 'No setup hotspot is in range. A board with mPWRD-OS raises one within a few minutes of its first start, and shows here then.' }),
+      AW.cards([...found, other], { id: 'rk-setup-cards', body: (item) => setupBody(item, setup) }));
   }
 
   load();
