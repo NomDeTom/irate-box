@@ -35,11 +35,12 @@ check('a counter filters: only what is to fix', t('#doctor-findings .ftitle').jo
 const updateData = { signing: { level: 'off', keys: [] }, metered: {}, progress: null, pending: 0, log: [], results: [], doctor: null,
   auto: { hub_check_every_hours: 24, hub_auto: 0, hub_window_start: 2, hub_window_end: 5, state: {} } };
 const candidate = { up_to_date: false, available: 'aaaaaaa', available_sha: 'a'.repeat(40), fetched: 1790950000, changes: [], checks: [] };
+// Check for updates stays open at every stage: the branch can move on after a download.
 for (const [stage, state, labels, disabled] of [
   ['initial', null, ['Check for updates', 'Check for updates and download', 'Check for updates, download and install'], [false, false, false]],
-  ['available', candidate, ['Check for updates', 'Download', 'Download and install'], [true, false, false]],
-  ['downloaded', { ...candidate, verified: 'aaaaaaa', checks: [{ ok: true, name: 'Syntax', detail: 'Valid' }] }, ['Check for updates', 'Download', 'Install'], [true, true, false]],
-  ['failed', { ...candidate, checks: [{ ok: false, name: 'Syntax', detail: 'Invalid' }] }, ['Check for updates', 'Download', 'Install'], [true, true, true]],
+  ['available', candidate, ['Check for updates', 'Download', 'Download and install'], [false, false, false]],
+  ['downloaded', { ...candidate, verified: 'aaaaaaa', checks: [{ ok: true, name: 'Syntax', detail: 'Valid' }] }, ['Check for updates', 'Download', 'Install'], [false, true, false]],
+  ['failed', { ...candidate, checks: [{ ok: false, name: 'Syntax', detail: 'Invalid' }] }, ['Check for updates', 'Download', 'Install'], [false, true, true]],
 ]) {
   w.renderUpdate({ ...updateData, state });
   const buttons = ['check', 'fetch', 'install'].map(name => d.getElementById(`update-${name}`));

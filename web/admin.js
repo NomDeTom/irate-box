@@ -3395,7 +3395,9 @@ function renderUpdate(data) {
   upd.check.textContent = "Check for updates";
   upd.fetch.textContent = found ? "Download" : "Check for updates and download";
   upd.install.textContent = fetched ? "Install" : found ? "Download and install" : "Check for updates, download and install";
-  upd.check.disabled = busy || found;
+  // Check stays open with an update found or downloaded: the branch can move on after it (a newer commit is then
+  // offered to download; the one downloaded is not installed in its place).
+  upd.check.disabled = busy;
   upd.doctor.disabled = upd.clear.disabled = busy;
   upd.fetch.disabled = busy || fetched;
   upd.install.disabled = busy || (fetched && !ready);
