@@ -129,6 +129,10 @@ setTimeout(() => {
     && items.some((i) => /Python files compile — 1 file compiles\..*does not prove that the update is safe/.test(i)), items.join(' | '));
 
   const all = ['doctor-findings', 'updoctor-fine', 'update-checks'].map((id) => d.getElementById(id).textContent).join(' ');
+  // An update found and downloaded: Check for updates stays open (the branch can move on after the download);
+  // Download is done, so it is not.
+  check('an update downloaded: Check for updates still open, Download not', !d.getElementById('update-check').disabled
+    && d.getElementById('update-fetch').disabled, `${d.getElementById('update-check').disabled} ${d.getElementById('update-fetch').disabled}`);
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);
   // The doctor's answer, said from its message (as the result file keeps it), under its button.
