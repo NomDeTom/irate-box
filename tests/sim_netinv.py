@@ -382,6 +382,18 @@ check(
     by["Cafe: Free"]["kind"] == "open" and by["Neu"]["kind"] == "sae" and by["Office"]["kind"] is None,
 )
 check("  nmcli failing: nothing", netinv.visible_networks(lambda *a, **k: (8, "")) == [])
+# A box with two WiFi radios lists each access point once per radio: counted once, by its BSSID (found on the Pi,
+# 2 radios, one Lyra's setup hotspot said as two boards).
+twice = "\n".join(
+    ["Setup:54\\:01\\:4A\\:4C\\:01\\:AD:1:2412 MHz:100:WPA2"] * 2
+    + ["Setup:54\\:01\\:4a\\:4c\\:01\\:ad:1:2412 MHz:90:WPA2"]
+)
+got = netinv.visible_networks(lambda *a, **k: (0, twice))
+check(
+    "  one access point seen by two radios: counted once",
+    len(got) == 1 and got[0]["aps"] == 1 and "_bssids" not in got[0],
+    got,
+)
 
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
