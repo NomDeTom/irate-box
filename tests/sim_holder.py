@@ -458,7 +458,18 @@ check(
     st2.get("changed"),
 )
 holder.sync(log=lambda *_: None)
-check("  the next run says nothing more", json.loads((folder / "status.json").read_text())["changed"] == [])
+check(
+    "  the next run still says it, while that version is kept",
+    json.loads((folder / "status.json").read_text())["changed"] == st2["changed"],
+)
+st3 = json.loads((folder / "status.json").read_text())
+st3["changed"].append({"tag": "v0.9.0", "name": "app.apk", "was": "a" * 12, "now": "b" * 12})
+(folder / "status.json").write_text(json.dumps(st3))
+holder.sync(log=lambda *_: None)
+check(
+    "  and not once the version has gone",
+    [change["tag"] for change in json.loads((folder / "status.json").read_text())["changed"]] == ["v1.3.0"],
+)
 served["net"] = False
 served["releases"].insert(0, raw_release("v1.4.0", 0, [("app.apk", b"G" * 100, "ok")]))
 outcome = holder.sync(log=lambda *_: None)

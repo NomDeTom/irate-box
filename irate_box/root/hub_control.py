@@ -4884,7 +4884,7 @@ def kits_findings(now=None):
 def appstore_findings(now=None):
     """The App store's holders (library/holder.py), from the state they leave, without touching the network:
     a holder failing; a holder whose check is far overdue; a newest release carrying none of the held files
-    (names drift, §9); a kept file whose digest GitHub now says differently; and a space limit that dropped
+    (the project renamed them); a kept file whose digest GitHub now says differently; and a space limit that dropped
     versions. Nothing when the App store is off or has no holders: a box that keeps no apps has nothing to say."""
     now = now or time.time()
     out = []
@@ -5013,7 +5013,8 @@ def appstore_findings(now=None):
                     M(
                         "update.appstore.digest.fix",
                         "Look at the project's release page: the files can have been replaced, or the release "
-                        "republished by mistake. On App store, select Remove files if the change is not to be kept.",
+                        "republished by mistake. If the new files are not to be trusted, select Remove on App store: "
+                        "the box would fetch them again otherwise. The note stays while that version is kept.",
                     ),
                     notes=[
                         M(

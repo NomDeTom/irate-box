@@ -264,7 +264,7 @@ def feed_xml(level):
         "<title>App store</title>",
         f"<updated>{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}</updated>",
         "<id>tag:appstore-hub</id>",
-        f'<link href="/appstore/feed.xml" rel="self"/>',
+        '<link href="/appstore/feed.xml" rel="self"/>',
     ]
     for published, title, file in entries[:MAX_FEED]:
         kind = _type_of(file["name"]) or "application/octet-stream"
@@ -401,7 +401,7 @@ def _file(handler, parts, level):
         try:
             if first:
                 start = int(first)
-                end = int(last) if last else size - 1
+                end = min(int(last), size - 1) if last else size - 1  # a last byte past the end means the end
             elif last:
                 start = max(0, size - int(last))
             if start > end or end >= size:

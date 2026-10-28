@@ -14263,6 +14263,9 @@ const asEl = {
 };
 let asPoll = null;
 let asData = null;
+// Kept across redraws, which every answer and every poll makes: the cards left open, and ticks not yet held.
+const asOpen = new Set();
+const asDrafts = {};
 
 const asPost = async (body, flash) => {
   asData = await postJSON("/admin/appstore", body);
@@ -14286,7 +14289,7 @@ function asSurveyTable(holder, at) {
     );
     return;
   }
-  const draft = holder.surveyDraft || (holder.surveyDraft = {});
+  const draft = asDrafts[holder.id] || (asDrafts[holder.id] = {});
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
   const table = el("table", { className: "appstore-kinds" });
   table.append(
@@ -14314,14 +14317,16 @@ function asSurveyTable(holder, at) {
         el("td", { textContent: size(kind.size_max) })),
     );
   }
-  const keep = Object.values(holder.channels).reduce((a, b) => a + Number(b), 0) || 1;
+  const keep =
+    Object.values(holder.channels).reduce((sum, count) => sum + Number(count), 0) +
+    (holder.extra_channels || []).reduce((sum, extra) => sum + Number(extra.keep || 0), 0);
   at.append(
     el("h3", { textContent: "What to hold" }),
     note,
     el("p", {
       className: "setting-desc",
       textContent: survey.estimate.per_version
-        ? `About ${size(survey.estimate.per_version)} a release, ${size(survey.estimate.per_version * keep)} for ${keep}.`
+        ? `About ${size(survey.estimate.per_version)} a release, ${size(survey.estimate.total)} for ${keep}.`
         : "Nothing is taken by this selection.",
     }),
     table,
@@ -14330,7 +14335,7 @@ function asSurveyTable(holder, at) {
         const sends = { ...draft };
         if (!Object.keys(sends).length) return;
         try {
-          delete holder.surveyDraft;
+          delete asDrafts[holder.id];
           await asPost({ action: "holds", id: holder.id, kinds: sends });
         } catch (err) {
           say(err.message, false, note);
@@ -14393,7 +14398,7 @@ function asSettingsForm(holder) {
 function asCard(holder) {
   const st = holder.status || {};
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
-  const body = el("div", { className: "appstore-card", hidden: true });
+  const body = el("div", { className: "appstore-card", hidden: !asOpen.has(holder.id) });
   body.append(
     el("p", {
       className: "setting-desc",
@@ -14412,17 +14417,21 @@ function asCard(holder) {
       asRun("Check now", "holder-check", holder.id, note),
       asRun("Download", "holder-update", holder.id, note),
       asRun("Look again", "survey", holder.id, note),
-      asRun("Remove files", "remove-files", holder.id, note),
-      asRun("Remove", "remove-holder", holder.id, note)),
+      asRun("Remove files", "remove-files", holder.id, note,
+        `Remove the files kept for ${holder.title || holder.id}? The next check downloads them again.`),
+      asRun("Remove", "remove-holder", holder.id, note,
+        `Remove ${holder.title || holder.id} and its files from the App store? Its settings go too.`)),
     note,
     asSettingsForm(holder),
   );
   asSurveyTable(holder, body);
   return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } },
-    el("button", { type: "button", className: "aw-card-head", "aria-expanded": "false",
+    el("button", { type: "button", className: "aw-card-head", "aria-expanded": body.hidden ? "false" : "true",
       onclick: (event) => {
         const open = body.hidden;
         body.hidden = !open;
+        if (open) asOpen.add(holder.id);
+        else asOpen.delete(holder.id);
         event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
       } },
       el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
@@ -14430,8 +14439,9 @@ function asCard(holder) {
     body);
 }
 
-function asRun(label, action, id, note) {
-  return actionButton(label, async () => {
+function asRun(label, action, id, note, ask) {
+  return actionButton(label, async (event) => {
+    if (ask && !(await AW.confirmHere(ask, { anchor: event.currentTarget, label }))) return;
     try {
       await asPost({ action, id });
     } catch (err) {
@@ -14483,8 +14493,7 @@ function asAddFlow(data) {
   draw();
 }
 
-function renderAppstore(data) {
-  asEl.enabled.checked = data.enabled;
+function asStatus(data) {
   asEl.status.textContent =
     `${data.holders.length} project(s), ${size(data.bytes_all)} kept.` +
     (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : "") +
@@ -14492,16 +14501,25 @@ function renderAppstore(data) {
     // A redraw replaces the add flow's note, so a finished add is said on the status line instead.
     (data.flash ? ` ${data.flash}` : "") +
     ((data.notes || []).length ? ` ${data.notes.map(said).join(" ")}` : "");
-  asEl.holders.replaceChildren(...data.holders.map(asCard));
-  asAddFlow(data);
-  clearTimeout(asPoll);
-  if (data.running) asPoll = setTimeout(loadAppstore, 2000);
 }
 
-async function loadAppstore() {
+// While a run works, a poll only says so on the status line: the cards, a settings form being typed into and
+// the add flow are drawn again once it is over.
+function renderAppstore(data, statusOnly = false) {
+  asEl.enabled.checked = data.enabled;
+  asStatus(data);
+  if (!statusOnly) {
+    asEl.holders.replaceChildren(...data.holders.map(asCard));
+    asAddFlow(data);
+  }
+  clearTimeout(asPoll);
+  if (data.running) asPoll = setTimeout(() => loadAppstore(true), 2000);
+}
+
+async function loadAppstore(polling = false) {
   try {
     asData = await getJSON("/admin/appstore");
-    renderAppstore(asData);
+    renderAppstore(asData, polling && asData.running);
   } catch (_) {
     asEl.status.textContent = "Could not read the App store's settings.";
   }

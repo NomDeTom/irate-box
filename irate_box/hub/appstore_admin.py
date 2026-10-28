@@ -13,12 +13,12 @@ it asks for are started by server.py under the librarian's lock, as the firmware
 
 A stored survey keeps, per kind, only what the page and the matches read (the name it had in each release is
 kept; the digests and counters are not), so status.json stays small on the card. Findings belong to the
-Updates doctor, not the page ([[findings-in-doctors]]): this says what is; the doctor says what is wrong.
+Updates doctor, not the page: this says what is; the doctor says what is wrong.
 Stdlib only.
 """
 
 from irate_box.hub import refused
-from irate_box.library import holder, holdsurvey, librarian
+from irate_box.library import holder, holdsurvey, librarian, releasever
 from irate_box.msg import M
 
 VIEW_KEYS = ("window", "short", "dimensions", "eras", "twins")
@@ -62,7 +62,9 @@ def _preview(stored, holds):
 def _size_estimate(stored, holds, keep):
     """About how many bytes one version of the holds costs, and `keep` of them: the newest release the holds
     match, its kinds at their largest size. An estimate is an estimate; the page says "about"."""
-    every_tag = sorted({tag for kind in stored.get("kinds", []) for tag in kind.get("names", {})}, reverse=True)
+    every_tag = releasever.newest_first(  # by version, so v2.7.14 comes before v2.7.9
+        {tag for kind in stored.get("kinds", []) for tag in kind.get("names", {})}, str, lambda tag: None
+    )
     for tag in every_tag:
         taken = [
             kind
@@ -176,7 +178,7 @@ def action(payload):
             elif payload.get("preset"):
                 raw.update(holdsurvey.find_preset(str(payload["preset"])))
             raw.update({key: payload[key] for key in ("id", "title", "repo", "holds") if key in payload})
-            said = raw.pop("notes", None)  # what the recipe asked for that the box does not do (§4): the page says it
+            said = raw.pop("notes", None)  # what the recipe asked for that the box does not do: the page says it
             made = holder.validate_holder(raw)
             if _index_of(current, made["id"]) is not None:
                 raise librarian.LibrarianError(
@@ -222,7 +224,10 @@ def action(payload):
                 )
             holds = list(one["holds"])
             known = {kind["shape"] for kind in stored.get("kinds", [])}
-            for shape, on in (payload.get("kinds") or {}).items():
+            ticks = payload.get("kinds") or {}
+            if not isinstance(ticks, dict):
+                raise librarian.LibrarianError(M("library.holder.holds-invalid", "Invalid list of what to hold."))
+            for shape, on in ticks.items():
                 if shape not in known:
                     raise librarian.LibrarianError(
                         M(

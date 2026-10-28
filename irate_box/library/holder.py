@@ -437,7 +437,7 @@ def _mirror_version(holder, entry, policy, log, changes=None):
     are there: [{name, size, sha256}]. A file with no digest, or one that does not match, is left out and said.
     Running out of room, or the network failing, stops the run (LibrarianError). `changes`, when given, collects
     a file whose digest GitHub now says differently from the one kept: the same tag with different bytes is a
-    finding the Updates doctor makes (§2), not something the keeper hides."""
+    finding the Updates doctor makes, not something the keeper hides."""
     folder = ROOT / holder["id"] / entry["tag"]
     folder.mkdir(parents=True, exist_ok=True)
     recorded = librarian._read_json(folder / DIGESTS, {})
@@ -610,7 +610,17 @@ def sync_holder(holder, check_only=False, log=print):
                     },
                 )
                 state["versions"] = {version["tag"]: version["channel"] for version in versions}
-                state["changed"] = changes  # kept files whose digest GitHub says differently now
+                # Kept files whose digest GitHub has changed: said for as long as that version is offered, not
+                # only on the run that saw it, since the doctor may not look in between.
+                seen_now = {(change["tag"], change["name"]) for change in changes}
+                earlier = [
+                    change
+                    for change in state.get("changed") or []
+                    if isinstance(change, dict)
+                    and change.get("tag") in state["versions"]
+                    and (change.get("tag"), change.get("name")) not in seen_now
+                ]
+                state["changed"] = earlier + changes
                 outcome = f"{len(versions)} versions, {sum(file['size'] for version in versions for file in version['files']) >> 20} MB"
         state.pop("error", None)
     except (LibrarianError, OSError, ValueError, KeyError) as exc:
