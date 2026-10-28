@@ -8,7 +8,8 @@ meshtastic/firmware, Syncthing and scrcpy.
   kinds        the files grouped; checksums, signatures and update helpers attached to their file
   tags         operating system, architecture, flavour from the names; what else varies, as a variant
   eras         Meshtastic Android's two naming eras found, and not two files of one release
-  twins        Obtainium's pairs of identical APKs
+  twins        same-size pairs, called twins only when both carry the same digest (Obtainium's two flavours
+               are the same size but different files)
   holds        what the holds take; a tick turned into a hold and back; a pattern of the admin's own; the releases
                a list matches nothing in; the size of what is held
   recipe       Tom's Obtainium recipe for Meshtastic Android as the settings of a holder
@@ -191,14 +192,51 @@ check(
 )
 twin_pairs = {frozenset((pair["first"], pair["second"])) for pair in obtainium["twins"]}
 check(
-    "twins: app-release.apk and app-fdroid-release.apk are the same size in every release",
-    frozenset(("app-release.apk", "app-fdroid-release.apk")) in twin_pairs,
+    "twins: app-release.apk and app-fdroid-release.apk are the same size, but different files, so not twins",
+    frozenset(("app-release.apk", "app-fdroid-release.apk")) not in twin_pairs,
     twin_pairs,
 )
 check(
     "  and the architectures are not twins of each other",
     frozenset(("app-arm64-v8a-release.apk", "app-x86_64-release.apk")) not in twin_pairs,
 )
+
+
+def twin_release(tag, day, first, second):
+    return {
+        "tag": tag,
+        "name": tag,
+        "published": f"2026-02-{day:02d}T00:00:00Z",
+        "prerelease": False,
+        "draft": False,
+        "notes": "",
+        "assets": [
+            {"name": "tool-a.zip", "size": 2 << 20, "url": "", "digest": first},
+            {"name": "tool-b.zip", "size": 2 << 20, "url": "", "digest": second},
+        ],
+    }
+
+
+same = holdsurvey.survey(
+    [
+        twin_release("v1.1.0", 2, "sha256:" + "a" * 64, "sha256:" + "a" * 64),
+        twin_release("v1.0.0", 1, "sha256:" + "b" * 64, "sha256:" + "b" * 64),
+    ],
+    2,
+)
+check(
+    "twins: the same size in both releases and the same digest in each are twins",
+    frozenset(("tool-a.zip", "tool-b.zip")) in {frozenset((p["first"], p["second"])) for p in same["twins"]},
+    same["twins"],
+)
+different = holdsurvey.survey(
+    [
+        twin_release("v1.1.0", 2, "sha256:" + "a" * 64, "sha256:" + "b" * 64),
+        twin_release("v1.0.0", 1, "sha256:" + "c" * 64, "sha256:" + "d" * 64),
+    ],
+    2,
+)
+check("  the same size but a different digest is not", not different["twins"], different["twins"])
 
 # --- meshtastic/firmware: commit hashes, a channel with few releases ---
 firmware = holdsurvey.survey(load("meshtastic-firmware"), 4)
