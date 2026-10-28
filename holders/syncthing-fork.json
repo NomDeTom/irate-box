@@ -1,0 +1,10 @@
+{
+  "id": "syncthing-fork",
+  "title": "Syncthing (Fork)",
+  "repo": "researchxxl/syncthing-android",
+  "holds": [
+    {"label": "the phone APKs (64-bit and 32-bit ARM)", "include": "^com\\.github\\.catfriend1\\.syncthingfork_release_v[0-9.]+_(arm64-v8a|armeabi-v7a)\\.apk$"}
+  ],
+  "channels": {"stable": 1, "pre-release": 0},
+  "summary": "The maintained Syncthing client for Android, so phones can join the box's file sync. The two phone builds: about 36 MB. The app id is still the fork's own, so a copy installed from elsewhere updates in place."
+}

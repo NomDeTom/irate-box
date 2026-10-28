@@ -1,0 +1,666 @@
+[
+  {
+    "tag_name": "v2.1.7.0",
+    "name": "Syncthing-Fork v2.1.7.0",
+    "body": "## What's Changed\r\n### Other\r\n* chore(build-release): minimize package size by @researchxxl \r\n* enhancement(custom http cert): Improved custom http certificate and key validation by @dbhavsar76 in #356\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.1.6.0...v2.1.7.0",
+    "created_at": "2026-10-21T09:22:37Z",
+    "published_at": "2026-10-21T09:47:38Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.7.0.apk",
+        "size": 61975393,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.7.0/com.github.catfriend1.syncthingfork_release_v2.1.7.0.apk",
+        "digest": "sha256:1ad568a373bd36c48100796e5fac3ebd0a0e0663ffdab1dc2baac355ab140063"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.7.0_arm64-v8a.apk",
+        "size": 19011956,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.7.0/com.github.catfriend1.syncthingfork_release_v2.1.7.0_arm64-v8a.apk",
+        "digest": "sha256:222a7860f2ad21f2bbf4782fcf16c2150b0c1dea60a1aae33f44e2f4d07371c1"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.7.0_armeabi-v7a.apk",
+        "size": 19540344,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.7.0/com.github.catfriend1.syncthingfork_release_v2.1.7.0_armeabi-v7a.apk",
+        "digest": "sha256:4ed178986bd94929f0ae95d652b56f867c28d4ce2327bbce3693784d77c86a33"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.7.0_x86.apk",
+        "size": 20437352,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.7.0/com.github.catfriend1.syncthingfork_release_v2.1.7.0_x86.apk",
+        "digest": "sha256:08a07dfddb1fbf3c6e33848f853eefa4601c33d1936905439348e69457ce37ab"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.7.0_x86_64.apk",
+        "size": 19970414,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.7.0/com.github.catfriend1.syncthingfork_release_v2.1.7.0_x86_64.apk",
+        "digest": "sha256:464e35b0dfd67a19a7d11c8673a56fac975d469de4c69477206eda96edcd050c"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.1.6.0",
+    "name": "Syncthing-Fork v2.1.6.0",
+    "body": "### Fixes\r\n- fix(AndroidManifest): add requestRawExternalStorageAccess by @researchxxl in #403\r\n- Add local network permission in onboarding @researchxxl\r\n\r\n### Other\r\n- target sdk is now Android 17\r\n- ndk version is now 30\r\n- go version is now 1.27.1\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.1.5.0...v2.1.6.0\r\n",
+    "created_at": "2026-10-06T07:41:23Z",
+    "published_at": "2026-10-06T07:56:40Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.6.0.apk",
+        "size": 68351491,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.6.0/com.github.catfriend1.syncthingfork_release_v2.1.6.0.apk",
+        "digest": "sha256:183df465d2bbefca43833128dae8a57ba9fdf7a5f815473120acb5faa1efded0"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.6.0_arm64-v8a.apk",
+        "size": 32424982,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.6.0/com.github.catfriend1.syncthingfork_release_v2.1.6.0_arm64-v8a.apk",
+        "digest": "sha256:15f17037805d87f67d9407eef436691e458ea4185b42871889297c7e98bbfd67"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.6.0_armeabi-v7a.apk",
+        "size": 32850970,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.6.0/com.github.catfriend1.syncthingfork_release_v2.1.6.0_armeabi-v7a.apk",
+        "digest": "sha256:eb2f4e5b94629f604449fc39278e30ef67c0efa0c92c904e49cdc01c2b2838d7"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.6.0_x86.apk",
+        "size": 33547274,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.6.0/com.github.catfriend1.syncthingfork_release_v2.1.6.0_x86.apk",
+        "digest": "sha256:fd5765c01cb1245592c25b1a6663e1d995943cbb13da9f956f569842951458c9"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.6.0_x86_64.apk",
+        "size": 33195024,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.6.0/com.github.catfriend1.syncthingfork_release_v2.1.6.0_x86_64.apk",
+        "digest": "sha256:4eada5720545b211bde08be326c960695642a2200e4333f0aacc4e4491bef171"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.1.5.0",
+    "name": "Syncthing-Fork v2.1.5.0",
+    "body": "Features\r\n* enhancement(RecentChangesActivity): modernize recent changes activity by @dbhavsar76 in #327\r\n\r\nOther\r\n* fix(WebGuiActivity): fix web gui not loading by @dbhavsar76 in #354\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.1.3.0...v2.1.5.0",
+    "created_at": "2026-09-08T10:32:34Z",
+    "published_at": "2026-09-08T11:01:11Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.5.0.apk",
+        "size": 68326915,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.5.0/com.github.catfriend1.syncthingfork_release_v2.1.5.0.apk",
+        "digest": "sha256:50f9b0860f013a405596529d9837096e922cd7f9fc25d52c83df281d0fa5a11c"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.5.0_arm64-v8a.apk",
+        "size": 32412694,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.5.0/com.github.catfriend1.syncthingfork_release_v2.1.5.0_arm64-v8a.apk",
+        "digest": "sha256:221c05d1b6db9788e7112a6293a230ef0e7bc676d8523a96db5ff176be94582c"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.5.0_armeabi-v7a.apk",
+        "size": 32842778,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.5.0/com.github.catfriend1.syncthingfork_release_v2.1.5.0_armeabi-v7a.apk",
+        "digest": "sha256:32ea7ee6dcefdfbe3c94977914c86d57b5ffd96d4f7d5ba64a9f72a453b9e50f"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.5.0_x86.apk",
+        "size": 33534986,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.5.0/com.github.catfriend1.syncthingfork_release_v2.1.5.0_x86.apk",
+        "digest": "sha256:e6b50d14532bd586797ef4ecc532491f83e02ddee3dda6aaaf718aca19c2c96c"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.5.0_x86_64.apk",
+        "size": 33182736,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.5.0/com.github.catfriend1.syncthingfork_release_v2.1.5.0_x86_64.apk",
+        "digest": "sha256:f6ef6226d6ff237d09859c00ec83792b4a6af927083f5599ecdbc6124d4fea22"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.1.3.0",
+    "name": "Syncthing-Fork v2.1.3.0",
+    "body": "<!-- Release notes generated using configuration in .github/release.yml at v2.1.3.0 -->\r\n\r\n## What's Changed\r\n### Fixes\r\n* fix(RestApi): end dangling find process when service stops by @researchxxl in https://github.com/researchxxl/syncthing-android/pull/331\r\n### Features\r\n* wiki: Localhost connection between two instances in different user profiles by @researchxxl in https://github.com/researchxxl/syncthing-android/pull/321\r\n### Other\r\n* updated dependencies\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.1.2.0...v2.1.3.0",
+    "created_at": "2026-08-05T14:37:23Z",
+    "published_at": "2026-08-05T14:52:44Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.3.0.apk",
+        "size": 68382292,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.3.0/com.github.catfriend1.syncthingfork_release_v2.1.3.0.apk",
+        "digest": "sha256:739f09a7904db4552155a0760894f73b65a975b662f1a8d93a628fada8a46963"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.3.0_arm64-v8a.apk",
+        "size": 32427111,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.3.0/com.github.catfriend1.syncthingfork_release_v2.1.3.0_arm64-v8a.apk",
+        "digest": "sha256:839673ba32163bbef1a034a9d23773a55a219b964a33774e7482ce13ddc7d9a5"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.3.0_armeabi-v7a.apk",
+        "size": 32791659,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.3.0/com.github.catfriend1.syncthingfork_release_v2.1.3.0_armeabi-v7a.apk",
+        "digest": "sha256:698b75f2e8b9cb4c0eefad9e550843996d0cdc4a96c822f2e0317d766a125c81"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.3.0_x86.apk",
+        "size": 33496155,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.3.0/com.github.catfriend1.syncthingfork_release_v2.1.3.0_x86.apk",
+        "digest": "sha256:7a3d1b26b6f9af3d30a8d3b720430d89b83cea924915260ea228f60fea9fb276"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.3.0_x86_64.apk",
+        "size": 33172577,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.3.0/com.github.catfriend1.syncthingfork_release_v2.1.3.0_x86_64.apk",
+        "digest": "sha256:aa5de41aa034e3064f8b520c3685476aa8a427ca02bab54d1b36695630cb4713"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.1.2.0",
+    "name": "Syncthing-Fork v2.1.2.0",
+    "body": "<!-- Release notes generated using configuration in .github/release.yml at v2.1.2.0 -->\r\n\r\n## What's Changed\r\n### Fixes\r\n* fix(deprecation): bundleOf in DeviceIdDialogFragment by @researchxxl in https://github.com/researchxxl/syncthing-android/pull/290\r\n* bug(onboarding): fix state consistency in onboarding activity by @dbhavsar76 in https://github.com/researchxxl/syncthing-android/pull/293\r\n### Features\r\n* Upgrade onboarding experience to material design by @dbhavsar76 in https://github.com/researchxxl/syncthing-android/pull/200\r\n* refactor(web gui): refactor the webgui activity to kotlin and material design by @dbhavsar76 in https://github.com/researchxxl/syncthing-android/pull/296\r\n* feature: support custom https certificate by @dbhavsar76 in https://github.com/researchxxl/syncthing-android/pull/300\r\n\r\nOther\r\n* chore(dependencies): updated\r\n* chore(syncthing): v2.1.2\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.1.1.0...v2.1.2.0",
+    "created_at": "2026-07-08T15:03:45Z",
+    "published_at": "2026-07-08T15:15:16Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.2.0.apk",
+        "size": 68066900,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.2.0/com.github.catfriend1.syncthingfork_release_v2.1.2.0.apk",
+        "digest": "sha256:dc2bbf16cd931b4318dad01b8e5d54f469955a5689b9e2968bd983ddfd988b8e"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.2.0_arm64-v8a.apk",
+        "size": 32353383,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.2.0/com.github.catfriend1.syncthingfork_release_v2.1.2.0_arm64-v8a.apk",
+        "digest": "sha256:455705b2f1dc036bea39e41e1043466c0c69337e9741108bb8c7974fa88f095c"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.2.0_armeabi-v7a.apk",
+        "size": 32717931,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.2.0/com.github.catfriend1.syncthingfork_release_v2.1.2.0_armeabi-v7a.apk",
+        "digest": "sha256:605591e02d3c9ceebb29f6de5089e5351cb722fa6d526af3070c2739e834deed"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.2.0_x86.apk",
+        "size": 33410139,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.2.0/com.github.catfriend1.syncthingfork_release_v2.1.2.0_x86.apk",
+        "digest": "sha256:0237e3cc389e97d04db0ed14c10baf45f33259fe0e68a0cae96e61966b892b11"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.2.0_x86_64.apk",
+        "size": 33086561,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.2.0/com.github.catfriend1.syncthingfork_release_v2.1.2.0_x86_64.apk",
+        "digest": "sha256:4d0f99fb8f3f2222fb3116a9965afb60f5be88341eb837b4357713bf32a881c2"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.1.1.0",
+    "name": "Syncthing-Fork v2.1.1.0",
+    "body": "## What's Changed\r\n### Fixes\r\n* fix(model): add folder.blockIndexing by @researchxxl in #261\r\n* fix: error importing or exporting config with empty string as backup path by @dbhavsar76 in #230\r\n* fix: move processing on folder add/edit confirmation to bg by @dbhavsar76 in #223\r\n* WebGuiActivity: guard external-link launch against ActivityNotFoundException by @jim-daf in #268\r\n* ui:fix element overlap in folder list (fixes #133) by @dbhavsar76 in #272\r\n### Features\r\n* style(ui): use same exit icon as drawer in fab (fixes #259) by @dbhavsar76 in #262\r\n* SyncthingRunnable: Truncate log file in constant memory by @chenxiaolong in #265\r\n* ui: use proper folder type icons in folder activity by @dbhavsar76 in #266\r\n* feat(RestApi): Trigger versioning cleanup every 10th app start to save resources by @Catfriend1 in #271\r\n### Other\r\n\r\n## New Contributors\r\n* @chenxiaolong made their first contribution in #265\r\n* @jim-daf made their first contribution in #268\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.1.0.0...v2.1.1.0",
+    "created_at": "2026-06-02T17:39:10Z",
+    "published_at": "2026-06-02T17:55:13Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.1.0.apk",
+        "size": 67862101,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.1.0/com.github.catfriend1.syncthingfork_release_v2.1.1.0.apk",
+        "digest": "sha256:e99846f5054dd03f601912071d96de93e68bab5409b19495ec7d8a9189ca8b84"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.1.0_arm64-v8a.apk",
+        "size": 32169064,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.1.0/com.github.catfriend1.syncthingfork_release_v2.1.1.0_arm64-v8a.apk",
+        "digest": "sha256:61a5495351fb2ad171ecf757099502becd7f92131071034eada56af5d0bff2dc"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.1.0_armeabi-v7a.apk",
+        "size": 32525420,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.1.0/com.github.catfriend1.syncthingfork_release_v2.1.1.0_armeabi-v7a.apk",
+        "digest": "sha256:d83e5dc2ea5de6001fd238c0abd381ad40c74e29e5bb3c9c438ccb3a4d1f45ed"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.1.0_x86.apk",
+        "size": 33225820,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.1.0/com.github.catfriend1.syncthingfork_release_v2.1.1.0_x86.apk",
+        "digest": "sha256:b651587053e0afd35948f47e1f582a3bfb2f782f46e8a5502819fe4c5b1e7206"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.1.0_x86_64.apk",
+        "size": 32898146,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.1.0/com.github.catfriend1.syncthingfork_release_v2.1.1.0_x86_64.apk",
+        "digest": "sha256:e7e40bbc146723ce74f79f1280a64397122c52d0c8ef07adab37015f8713df5e"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.1.0.0",
+    "name": "Syncthing-Fork v2.1.0.0",
+    "body": "<!-- Release notes generated using configuration in .github/release.yml at v2.1.0.0 -->\r\n\r\n## What's Changed\r\n### Fixes\r\n* fix(importSettings): cast string to int by @researchxxl in #220\r\n* fix(model): add group attr by @researchxxl in #236\r\n### Features\r\n* improvement: open folder from folder list with built in Files app by @dbhavsar76 in #217\r\n### Other\r\n* feature: auto reset database after import for invalid path and missing marker errors by @dbhavsar76 in #214\r\n* other: Remove FreeDroidWarn dialog by @Catfriend1\r\n\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.0.16.0...v2.1.0.0\r\n",
+    "created_at": "2026-05-12T21:39:49Z",
+    "published_at": "2026-05-12T21:59:35Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.0.0.apk",
+        "size": 67578581,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.0.0/com.github.catfriend1.syncthingfork_release_v2.1.0.0.apk",
+        "digest": "sha256:676d07c34414791add2ee330321d135cd70fa9eb35d51a59df52efc11a0efa27"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.0.0_arm64-v8a.apk",
+        "size": 31885544,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.0.0/com.github.catfriend1.syncthingfork_release_v2.1.0.0_arm64-v8a.apk",
+        "digest": "sha256:407b74725a396a786c8d3c794e3c5496c1a5e4d94fa4211a2c7ab5a7a5e8149a"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.0.0_armeabi-v7a.apk",
+        "size": 32241900,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.0.0/com.github.catfriend1.syncthingfork_release_v2.1.0.0_armeabi-v7a.apk",
+        "digest": "sha256:6f301a8126437a57cadeca96686b4b0971d29a51f293abcbf7c922f98bbbd7f6"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.0.0_x86.apk",
+        "size": 32942300,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.0.0/com.github.catfriend1.syncthingfork_release_v2.1.0.0_x86.apk",
+        "digest": "sha256:2c002ac35826cb19630f68c0f73b8f60dda2b378ca23f7ed273475cb7afd3009"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.1.0.0_x86_64.apk",
+        "size": 32614626,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.1.0.0/com.github.catfriend1.syncthingfork_release_v2.1.0.0_x86_64.apk",
+        "digest": "sha256:87812abde42fc29adc842edead7a3602ef107ed5fa59b1a6e7b73864c43501b8"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.0.16.0",
+    "name": "Syncthing-Fork v2.0.16.0",
+    "body": "<!-- Release notes generated using configuration in .github/release.yml at v2.0.16.0 -->\r\n\r\n## What's Changed\r\n### Fixes\r\n* fix(RunConditionMonitor): fix needing restart after changing sleep interval by @dbhavsar76 in https://github.com/researchxxl/syncthing-android/pull/177\r\n* fix(model/Options): announceLanAddresses > announceLANAddresses by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/188\r\n* fix(UI): Disable EdgeToEdge partially (fixes #184) by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/192\r\n### Features\r\n* chore(notice): Add Keep Android Open Notice by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/185\r\n### Other\r\n* Bump Syncthing submodule to v2.0.16\r\n* chore(MainActivity): Remove \"Important News\" snackbar notification by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/187\r\n* chore(scripts): Read EMULATOR_NAME from ENV by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/191\r\n* chore(gitignore): Ignore gradle/gradle-daemon-jvm.properties by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/190\r\n* chore(scripts): Fix syncthing.log path by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/193\r\n* chore(scripts): Grant permissions to skip welcome slides after reinstall by @Catfriend1 in https://github.com/researchxxl/syncthing-android/pull/194\r\n\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.0.15.0...v2.0.16.0",
+    "created_at": "2026-04-08T11:31:56Z",
+    "published_at": "2026-04-08T12:05:26Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.16.0.apk",
+        "size": 66939474,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.16.0/com.github.catfriend1.syncthingfork_release_v2.0.16.0.apk",
+        "digest": "sha256:a39083b575ddbd98d5f6a00fb29086c621b2e3e856635ec1e2a538400feb7879"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.16.0_arm64-v8a.apk",
+        "size": 31639653,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.16.0/com.github.catfriend1.syncthingfork_release_v2.0.16.0_arm64-v8a.apk",
+        "digest": "sha256:24ef2aae68e45eb88538c579ec0d7c5dae725aba9a58ba5d883c72bf69b19ec0"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.16.0_armeabi-v7a.apk",
+        "size": 31959145,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.16.0/com.github.catfriend1.syncthingfork_release_v2.0.16.0_armeabi-v7a.apk",
+        "digest": "sha256:e73d8dc2732a6949e80d6a1cd6c8561bff1e945fe091807127d1af905caf28b7"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.16.0_x86.apk",
+        "size": 32667737,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.16.0/com.github.catfriend1.syncthingfork_release_v2.0.16.0_x86.apk",
+        "digest": "sha256:92a3a45da4b97486c528f710949e30d7d257c90b5251c47b53d9dbbe14af11bf"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.16.0_x86_64.apk",
+        "size": 32352351,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.16.0/com.github.catfriend1.syncthingfork_release_v2.0.16.0_x86_64.apk",
+        "digest": "sha256:36ee2ecf14eace43dae50f52c82d5a76b13adfff9f8a763563c9158f6f3872c1"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.0.15.0",
+    "name": "Syncthing-Fork v2.0.15.0",
+    "body": "\u2139\ufe0f Everyone may update directly to v2 from an old v1/v2 catfriend release now. Please pay attention to the package ID while upgrading. \ud83d\ude80 Recommended: com.github.catfriend1.syncthingfork\r\n\r\nUpdated settings screen and drawer to material design (thanks @dbhavsar76)\r\nUpdated dependencies and translations (thanks weblate community)\r\n\r\n<!-- Release notes generated using configuration in .github/release.yml at v2.0.15.0 -->\r\n\r\n### Other\r\n* feat(docs): add obtainium download by @researchxxl in https://github.com/researchxxl/syncthing-android/pull/151\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.0.14.2...v2.0.15.0\r\n",
+    "created_at": "2026-02-26T22:40:05Z",
+    "published_at": "2026-03-05T00:43:36Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.15.0.apk",
+        "size": 67103313,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingandroid_release_v2.0.15.0.apk",
+        "digest": "sha256:8d0cf20df8e2356daf03f73ccd115c12794720b6f21642f1a313821c627c071d"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.15.0_arm64-v8a.apk",
+        "size": 31594596,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingandroid_release_v2.0.15.0_arm64-v8a.apk",
+        "digest": "sha256:89c46c2d7a91d4413e4e52c6f45e1b0bfd044975927d47c550bb116383e3b56c"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.15.0_armeabi-v7a.apk",
+        "size": 31963240,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingandroid_release_v2.0.15.0_armeabi-v7a.apk",
+        "digest": "sha256:d6aebad704241c553235802cf0b475f72e950fabf1289fdd717b127d22c445ca"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.15.0_x86.apk",
+        "size": 32659544,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingandroid_release_v2.0.15.0_x86.apk",
+        "digest": "sha256:db9ff7f7b0f7c574b6d5ce034bea3e11e71de34a04662c0b0cbb29c4a2be2472"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.15.0_x86_64.apk",
+        "size": 32327774,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingandroid_release_v2.0.15.0_x86_64.apk",
+        "digest": "sha256:bb13a1c3748c0bd060d731f200cf90f808b8a2015051f748d1e81145aaacde4b"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.15.0.apk",
+        "size": 67103313,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingfork_release_v2.0.15.0.apk",
+        "digest": "sha256:d17b65bb6d7b90c545135ee747fb280f01e6d595aef169c298ea827621199c0e"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.15.0_arm64-v8a.apk",
+        "size": 31594596,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingfork_release_v2.0.15.0_arm64-v8a.apk",
+        "digest": "sha256:012fad846c17f957ce0f9b1c8cf79e1233a720c28a1c71cb75cb5366442a984d"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.15.0_armeabi-v7a.apk",
+        "size": 31963240,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingfork_release_v2.0.15.0_armeabi-v7a.apk",
+        "digest": "sha256:948718c4b6f6b36f1f7127f91839b9ee235f00d2a8b1b333958e885e94b90a68"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.15.0_x86.apk",
+        "size": 32659544,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingfork_release_v2.0.15.0_x86.apk",
+        "digest": "sha256:552ee0cb8248584cf648db2f5f860d9ae4e5cf7be1e44a62a1632a6fe1c42017"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.15.0_x86_64.apk",
+        "size": 32327774,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.15.0/com.github.catfriend1.syncthingfork_release_v2.0.15.0_x86_64.apk",
+        "digest": "sha256:654ffb6c4b26b2ffa1e9bfce3a8961abfbd97dc57f3abe81800d299a7555487c"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.0.14.2",
+    "name": "Syncthing-Fork v2.0.14.2",
+    "body": "## Summary\r\n**\u2139\ufe0f Everyone may update directly to v2 from an old v1/v2 catfriend release now. Please pay attention to the package ID while upgrading. \ud83d\ude80 Recommended: com.github.catfriend1.syncthingfork**\r\n- **Fix the high battery drain** if local discovery is in use (thanks @bt90)\r\n- Fix F-Droid reproducible build #135 (thanks @linsui @licaon-kter)\r\n- Fix UTF-8 parsing #139 (thanks @dbhavsar76)\r\n- Update dependencies\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.0.13.1...v2.0.14.2\r\n\r\n\ud83d\udcdd We have heard your feedback and added GitHub [release attestation](https://github.com/researchxxl/syncthing-android/attestations)\r\n\ud83d\udc5c\u25b6\ufe0f Waiting for the google play update? --> We are working together with nel0x, the play release manager, here: #97\r\n",
+    "created_at": "2026-02-07T20:19:55Z",
+    "published_at": "2026-02-07T20:27:31Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.14.2.apk",
+        "size": 66394248,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingandroid_release_v2.0.14.2.apk",
+        "digest": "sha256:9d7201d2cddcdcd2acc45d266fc3cb7cf5a0d7b48661874360182cd36f431fa2"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.14.2_arm64-v8a.apk",
+        "size": 31151771,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingandroid_release_v2.0.14.2_arm64-v8a.apk",
+        "digest": "sha256:bd46951fe8da922da0d7dc28319f664935198efb846899dccce94975c2bca168"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.14.2_armeabi-v7a.apk",
+        "size": 31471263,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingandroid_release_v2.0.14.2_armeabi-v7a.apk",
+        "digest": "sha256:850ceec5319acb1970dc919d160a37301679e685aca4abd8586a0ae864d775b1"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.14.2_x86.apk",
+        "size": 32179855,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingandroid_release_v2.0.14.2_x86.apk",
+        "digest": "sha256:f9b11b2d11b7204f5d1c767cddceb8b0dc1307314d828ed82e82cec4ee730e47"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.14.2_x86_64.apk",
+        "size": 31864469,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingandroid_release_v2.0.14.2_x86_64.apk",
+        "digest": "sha256:a21721284a98f620fbb9f1b78315de02145fd98ce6e450eac780474435ea851a"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.14.2.apk",
+        "size": 66394248,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingfork_release_v2.0.14.2.apk",
+        "digest": "sha256:259c88ddc9af2edb5cba6272865bb207a21562a925c1038dd3846d3949be8c71"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.14.2_arm64-v8a.apk",
+        "size": 31151771,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingfork_release_v2.0.14.2_arm64-v8a.apk",
+        "digest": "sha256:9a875deb2d828527f2f4f09653a61da6cdbd878e17e86afc17bf21812c0dabc5"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.14.2_armeabi-v7a.apk",
+        "size": 31471263,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingfork_release_v2.0.14.2_armeabi-v7a.apk",
+        "digest": "sha256:7027df3b450f45979b09d1b84063e18ccf1296abf5f0f3b62d9d1b0d9de63645"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.14.2_x86.apk",
+        "size": 32179855,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingfork_release_v2.0.14.2_x86.apk",
+        "digest": "sha256:82b4d6b164cc99dcbc2713f2b6faf187d9f1014c82a0b56cd185166b2c4be642"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.14.2_x86_64.apk",
+        "size": 31864469,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.14.2/com.github.catfriend1.syncthingfork_release_v2.0.14.2_x86_64.apk",
+        "digest": "sha256:ebcc6bcd1fb3a29abe5a4f639231eb427d56323785a45f57c85530d6890c5654"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.0.13.1",
+    "name": "Syncthing-Fork v2.0.13.1",
+    "body": "## Summary\r\n**\u2139\ufe0f Everyone may update directly to v2 from an old v1/v2 catfriend release now. Please pay attention to the package ID while upgrading. \ud83d\ude80 Recommended: com.github.catfriend1.syncthingfork**\r\n- **Fix the high battery drain** if local discovery is in use (thanks @bt90)\r\n- Hotfix: Sync cycle sleep interval is not effective in v2.0.13.0 (thanks @dessalines)\r\n- Fix and add material style to device id and license dialogs (thanks @dbhavsar76)\r\n- Fix visual state changes of the schedule quick settings tile (thanks @normanre)\r\n- Note: because the urgent battery drain issue was fixed, this release is exceptionally based on the latest syncthing native main commit.\r\n\r\n<!-- Release notes generated using configuration in .github/release.yml at v2.0.13.0-rc.1 -->\r\n\r\n## What's Changed\r\n### Fixes\r\n* fix(runCondition): update isCharging check to include checking BATTERY_PLUGGED_DOCK by @dbhavsar76 in #77\r\n* fix(discovery): skip cellular p2p interfaces by @researchxxl in #75\r\n* fix(QuickSettingsTileSchedule): Sync from QuickSettingsTileForce by @normanre in #43\r\n### Features\r\n* views: add accessibilityDataSensitive to harden against pwd exfiltration by @researchxxl in #61\r\n* refactor(LicenseActivity): fix material you in license activity, add ApplicationTheme composable that applies correct color scheme by @dbhavsar76 in #62\r\n* refactor(DeviceIdDialog): upgrade device id dialog to compose with material styling by @dbhavsar76 in #71\r\n### Other\r\n* runconditionmonitor: replace PREF_SLEEP_INTERVAL_MINUTES by @researchxxl in #57\r\n\r\n## New Contributors\r\n* @dbhavsar76 made their first contribution in https://github.com/researchxxl/syncthing-android/pull/62\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.0.13.0...v2.0.13.1\r\n\r\n\ud83d\udc5c\u25b6\ufe0f Waiting for the google play update? --> We are working together with nel0x, the play release manager, here: #97",
+    "created_at": "2026-01-08T10:50:09Z",
+    "published_at": "2026-01-08T11:06:55Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.13.1.apk",
+        "size": 66521298,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingandroid_release_v2.0.13.1.apk",
+        "digest": "sha256:da2214a8c48f6d507c0bf0a618d5b3b891f70feb0a580753f9ae66f51fabf380"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.13.1_arm64-v8a.apk",
+        "size": 31299301,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingandroid_release_v2.0.13.1_arm64-v8a.apk",
+        "digest": "sha256:a797bcc723546fd429b3fa577ff69eadd5a290b8bf6e602d8852d81add32f8b2"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.13.1_armeabi-v7a.apk",
+        "size": 31614697,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingandroid_release_v2.0.13.1_armeabi-v7a.apk",
+        "digest": "sha256:1e29630868e172aed6ad77e5abfb7f7e93341c65c332ec062ec66008da36fa1e"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.13.1_x86.apk",
+        "size": 32323289,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingandroid_release_v2.0.13.1_x86.apk",
+        "digest": "sha256:531649efc8c6f28fcf780a6fbdbfaf22ad2cb1cbc50dcba624050dc30eaa185d"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v2.0.13.1_x86_64.apk",
+        "size": 32011999,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingandroid_release_v2.0.13.1_x86_64.apk",
+        "digest": "sha256:13ad1a30ae13775cbf252a2c2300d4d0ca06400b83f09ac99202572f84256fb7"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.13.1.apk",
+        "size": 66521298,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingfork_release_v2.0.13.1.apk",
+        "digest": "sha256:96f4d4c7969447ae3cbdd4d1ce05f6ae7f44a337bb9cb3cce98dd12b9cbd3a9a"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.13.1_arm64-v8a.apk",
+        "size": 31299301,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingfork_release_v2.0.13.1_arm64-v8a.apk",
+        "digest": "sha256:0c745afce633ce6b0289c94b9a430943289bee6eabdd2f3dcbaff151a5241820"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.13.1_armeabi-v7a.apk",
+        "size": 31614697,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingfork_release_v2.0.13.1_armeabi-v7a.apk",
+        "digest": "sha256:5c0b1a97474ef3d8a8f7a8a4208cdb9891f0c3f6d5491c95e3317205e693e764"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.13.1_x86.apk",
+        "size": 32323289,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingfork_release_v2.0.13.1_x86.apk",
+        "digest": "sha256:52e40c1187255ebe9197dceb5b74d151f882b43a9aa708b7940538bbc98e368f"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.13.1_x86_64.apk",
+        "size": 32011999,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.13.1/com.github.catfriend1.syncthingfork_release_v2.0.13.1_x86_64.apk",
+        "digest": "sha256:180321b25f0cbd2066934820cd56a43fb389945ee989eb7deadf52258bc75496"
+      }
+    ]
+  },
+  {
+    "tag_name": "v1.30.0.5",
+    "name": "Syncthing-Fork v1.30.0.5",
+    "body": "Maintenance release containing Syncthing v1.30.0 and the latest wrapper fixes.\r\nUsers requested this to temporarily fix battery drain problems until the root cause is discovered and fixed.\r\nYou can upgrade to this release if you have a previous version of the Catfriend1 v1 releases installed or you need to reinstall from scratch.\r\n\r\nRemoved libsuperuser dependency for security reasons. Running as root is not supported in this release.\r\nDropped wakelock and write secure system settings permission.\r\nDue to minimum requirements of Androidx dependencies minimum Android version was raised to 6.\r\n",
+    "created_at": "2025-12-08T09:06:06Z",
+    "published_at": "2025-12-08T09:18:59Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v1.30.0.5.apk",
+        "size": 62163285,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v1.30.0.5/com.github.catfriend1.syncthingandroid_release_v1.30.0.5.apk",
+        "digest": "sha256:1e8b28b8bb6cd7fd15f660744164250d1658638b2e5b54b95a8d23b66e99ffcc"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v1.30.0.5_arm64-v8a.apk",
+        "size": 30028657,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v1.30.0.5/com.github.catfriend1.syncthingandroid_release_v1.30.0.5_arm64-v8a.apk",
+        "digest": "sha256:6ca5650ec61357b5800b9f48e39f801063a31328542d24ba65b2d85ccd844537"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v1.30.0.5_armeabi-v7a.apk",
+        "size": 30383262,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v1.30.0.5/com.github.catfriend1.syncthingandroid_release_v1.30.0.5_armeabi-v7a.apk",
+        "digest": "sha256:07d0df73ac9687645fc0fe3c1a3fa2619886b5a881950a76e5422db4bbd8be3c"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v1.30.0.5_x86.apk",
+        "size": 31049318,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v1.30.0.5/com.github.catfriend1.syncthingandroid_release_v1.30.0.5_x86.apk",
+        "digest": "sha256:49a0f8391f59c100a212a1204725295b05ce56304ec64db3df48f7af1bdf5d1e"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingandroid_release_v1.30.0.5_x86_64.apk",
+        "size": 30694778,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v1.30.0.5/com.github.catfriend1.syncthingandroid_release_v1.30.0.5_x86_64.apk",
+        "digest": "sha256:9c34132f723edfa28d70f35c3e78c7374923997b5e82aebfb39a21bc2c66bf83"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.0.12.1",
+    "name": "Syncthing-Fork v2.0.12.1",
+    "body": "Show state changes in QuickSettingsTileSchedule by @normanre\r\nRemoved libsuperuser dependency for security reasons.\r\nDropped wakelock and write secure system settings permission.\r\nwiki: add articles, remove tipsandtricks in-app by @researchxxl\r\nDue to minimum requirements of Androidx dependencies minimum Android version was raised to 6.\r\n\r\n<!-- Release notes generated using configuration in .github/release.yml at v2.0.12.1-rc.1 -->\r\n\r\n## New Contributors\r\n* @normanre made their first contribution in https://github.com/researchxxl/syncthing-android/pull/42\r\n\r\n**Full Changelog**: https://github.com/researchxxl/syncthing-android/compare/v2.0.11.3...v2.0.12.1",
+    "created_at": "2025-12-03T09:03:15Z",
+    "published_at": "2025-12-03T09:21:16Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.12.1.apk",
+        "size": 66257387,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.12.1/com.github.catfriend1.syncthingfork_release_v2.0.12.1.apk",
+        "digest": "sha256:01ee2ff4b5455163889abeda4a2137eadfd095ff45debe0e8dc8aed545328312"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.12.1_arm64-v8a.apk",
+        "size": 31050931,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.12.1/com.github.catfriend1.syncthingfork_release_v2.0.12.1_arm64-v8a.apk",
+        "digest": "sha256:1e82373cef9b011da8d72a2a48d3be07d060628b6e4bbec66925fc79e1b82ebf"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.12.1_armeabi-v7a.apk",
+        "size": 31368479,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.12.1/com.github.catfriend1.syncthingfork_release_v2.0.12.1_armeabi-v7a.apk",
+        "digest": "sha256:1d5b5091f9f5115b58c0f317caea770266aa94b17024c787cd89905cfd0f4ef9"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.12.1_x86.apk",
+        "size": 32075392,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.12.1/com.github.catfriend1.syncthingfork_release_v2.0.12.1_x86.apk",
+        "digest": "sha256:ff55321fe7e16537006580cddd5057e71d2e241fbf4854b891ea54a9ef0e364f"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.12.1_x86_64.apk",
+        "size": 31760979,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.12.1/com.github.catfriend1.syncthingfork_release_v2.0.12.1_x86_64.apk",
+        "digest": "sha256:81fe75c3b34f4ae0fcbd5f118b0e101005411d6256580d176ce19be2585c3327"
+      }
+    ]
+  },
+  {
+    "tag_name": "v2.0.11.2",
+    "name": "Syncthing-Fork v2.0.11.2",
+    "body": "\ud83d\ude80 Syncthing-Fork v2 has arrived on F-Droid and GitHub \ud83c\udf89.\r\n\u26a1Please read [wiki/Important-News.md](wiki/Important-News.md) for instructions to do the upgrade. If you already have v2.0.7.0 or higher installed, no extra steps are needed.\r\n\u26a1Please read https://github.com/syncthing/syncthing/releases/tag/v2.0.11 to see details on the v2 milestone.\r\n\r\n## What's Changed\r\n- Updated SyncthingNative to v2.0.11\r\n- Updated translations\r\n- Removed feedback prompt about roaming\r\n- Build using go 1.25.4\r\n",
+    "created_at": "2025-11-09T21:52:20Z",
+    "published_at": "2025-11-09T22:01:19Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.11.2.apk",
+        "size": 66128579,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.11.2/com.github.catfriend1.syncthingfork_release_v2.0.11.2.apk",
+        "digest": "sha256:57739efdd8e023156e13dc5e81bb21ca39a9b8494a07f6e158f64e55a0af29da"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.11.2_arm64-v8a.apk",
+        "size": 31165801,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.11.2/com.github.catfriend1.syncthingfork_release_v2.0.11.2_arm64-v8a.apk",
+        "digest": "sha256:1b162065ff97d35bd9c40700c3078e846b9b08cb2756d706f6cf41b255a72958"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.11.2_armeabi-v7a.apk",
+        "size": 31479041,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.11.2/com.github.catfriend1.syncthingfork_release_v2.0.11.2_armeabi-v7a.apk",
+        "digest": "sha256:f0c3b5dd59c5fce31b5bf5b593732ef80baafdb0f2e0b79fbb6ecc4aafc05f28"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.11.2_x86.apk",
+        "size": 32177642,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.11.2/com.github.catfriend1.syncthingfork_release_v2.0.11.2_x86.apk",
+        "digest": "sha256:85b1431b615ab39aac9194732a74140bd6af30c9ed45dfd46d147d836f6124aa"
+      },
+      {
+        "name": "com.github.catfriend1.syncthingfork_release_v2.0.11.2_x86_64.apk",
+        "size": 31869013,
+        "browser_download_url": "https://github.com/researchxxl/syncthing-android/releases/download/v2.0.11.2/com.github.catfriend1.syncthingfork_release_v2.0.11.2_x86_64.apk",
+        "digest": "sha256:bd8fc40b2eb3ed0cbfbc1da2a5a751f125978827d26541e64f57fbdf9a8604b5"
+      }
+    ]
+  }
+]
