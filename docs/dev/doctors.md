@@ -1,14 +1,15 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
-# The three doctors
+# The four doctors
 
-A doctor checks one part of the box, lists what is wrong and offers repairs. The box has three. When someone says "the doctor", ask which one. Name it in full in code, comments and pages: Box doctor, Security doctor or Updates doctor.
+A doctor checks one part of the box, lists what is wrong and offers repairs. The box has four. When someone says "the doctor", ask which one. Name it in full in code, comments and pages: Box doctor, Security doctor, Updates doctor or Housecall doctor.
 
 | Doctor | Answers | Code | Run it | Writes |
 | --- | --- | --- | --- | --- |
 | Box doctor | Is the box healthy, and if not, why? | [health.py](../../irate_box/root/health.py) | `irate-box health`, and `health run` from its timer | `control/health.json` |
 | Security doctor | Is the box set up safely? | [secdoctor.py](../../irate_box/root/secdoctor.py) | `irate-box secdoctor` | `control/security-audit.json` |
 | Updates doctor | Can the box update, and why did an update fail? | `updates_doctor_findings()` in [hub_control.py](../../irate_box/root/hub_control.py) | /admin → Updates doctor | `control/doctor.json` |
+| Housecall doctor | Is that card, image or this box's own files healthy? | [housecall.py](../../irate_box/root/housecall.py) | `irate-box housecall --image PATH` (also `--device`, `--root`, `--this-card`) | `control/housecall.json` |
 
 ## Box doctor: overall box health
 
@@ -24,7 +25,13 @@ Is everything that `install.sh` set up still there and working? It covers:
 - the onboard flash's health, where `nand-logs.sh` uses it: corrected bits, uncorrectable reads, bad blocks,
   erase counts and UBIFS data checksum errors
 
-It is the only doctor that repairs: it restarts a unit, rebuilds the Kiwix library, or runs the install again.
+It is the only doctor that repairs by itself: it restarts a unit, rebuilds the Kiwix library, or runs the install again.
+
+## Housecall doctor: a card, an image, or this box's own files
+
+It is the examination box 190's case did by hand, on a target the owner points it at: a disk image (`--image`), a card in a reader (`--device`), this box's own files (`--root`), or the files on this box's card (`--this-card`). It reads only, and never mounts or writes the image. Each file gets a verdict: **genuine** (matches a reference), **damaged** (all 0xFF, or differs from its reference), **suspect** (all zero and no reference), or **unknown** (nothing wrong on its face; a partial 0xFF block can be genuine padding). A reference is a JSON file of path to SHA-256 (`--reference`); the card's own manifest, the packages and irate-box's git tree join as those references are built. The report is `control/housecall.json`.
+
+Its repairs come in the plan's later steps: each is asked, and something damaged from outside is imaged first when there is room. For a card of this box's own, `--this-card` reads only the files whose mount is the card; the Lyra's NAND-held state is the NAND's to check.
 
 `irate-box-boxdoctor.timer` runs `health run` every 6 hours, at a randomised delay, and keeps the report where
 /admin reads it. A run is quick except once a week, when it opens every book in Kiwix: `kiwix-manage` on a large
@@ -62,6 +69,7 @@ It is read-only apart from `apt-get update`. Each finding says what is wrong and
 | The check is about | Put it in |
 | --- | --- |
 | A unit, the install, Kiwix, the uplink, a radio, a driver, the clock, disk space | Box doctor |
+| A card in a reader, a card image, this box's own files in full | Housecall doctor |
 | A setting that exposes the box, a file's permissions, a listener, a hardening gap | Security doctor |
 | Fetching, verifying or installing an update, a source, the librarian | Updates doctor |
 

@@ -19,6 +19,8 @@ On the administration pages, open Doctors.
 
 The clock checks have their own page in the Clock section.
 
+**Housecall doctor.** It examines a card, a card image, or this box's own files, on request. Each file gets a verdict: genuine, damaged, suspect or unknown. From the console, run `sudo /opt/irate-box/irate-box housecall --image /path/to/card.img`. It reads only and writes nothing to the target.
+
 **Security doctor.** See [Security](security.md).
 
 **Updates doctor.** It shows why an update did not verify or install. It links to the page where you can correct the problem. **Install anyway** is for a version that downloaded but failed its checks. It does not install a version that does not have the signature that you require. The update cache and **Install anyway** are in **Updates → Maintenance**.

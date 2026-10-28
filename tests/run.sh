@@ -76,6 +76,8 @@ run sim_signin.py
 run sim_passwords.py
 run sim_account_nav.py
 run sim_health_accept.py
+run sim_housecall.py
+run housecall_guard.py
 run sim_clock_sources.py
 run sim_secdoctor_accounts.py
 run sim_secdoctor_missing.py
