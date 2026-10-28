@@ -9,7 +9,7 @@ Notes on how the code is written, where a choice is not obvious from the code it
 Which shell a script names depends on who runs it:
 
 | The script | Its first line | Now |
-|---|---|---|
+| --- | --- | --- |
 | Run as root, and long or using bash's arrays and tests | `#!/bin/bash -p` | `install.sh`, `uninstall.sh`, `tools/nand-logs.sh` |
 | Run as root, small, and plain POSIX | `#!/bin/sh` | `scripts/*-apply.sh`, `irate_box/root/content-import.sh`, `irate-box`, the package's `postinst`, `postrm` and `irate-box-setup` |
 | Tests and developer tools | `#!/bin/bash` | `tests/`, `packaging/deb/build.sh` |
