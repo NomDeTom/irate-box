@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Run what .github/workflows/ci.yml runs, here, so a branch is green before it is pushed:
-# the licences (REUSE), tests/run.sh, the shell scripts' parse, and the .deb build. This is
-# the "checks" and "deb" jobs of CI, in order; CI then only confirms. Beyond CI: the pages drawn in a browser
+# the licences (REUSE), tests/run.sh, the shell scripts' parse, the pages in jsdom, and the .deb build. This is
+# the "checks", "pages" and "deb" jobs of CI, in order; CI then only confirms. Beyond CI: the pages drawn in a browser
 # (tests/browser: the style audit, the tile rows, the theme picker), where Docker has the irate-chrome image.
 #
 #   tests/local-ci.sh            # everything
@@ -62,11 +62,16 @@ step "Tests (tests/run.sh)"
 tests/run.sh || rc=$((rc + 1))
 
 step "Shell scripts parse"
-for f in install.sh uninstall.sh scripts/*.sh packaging/deb/build.sh tests/run.sh tests/*.sh tests/container/*.sh; do
+for f in install.sh uninstall.sh scripts/*.sh packaging/deb/build.sh tests/run.sh tests/*.sh tests/jsdom/*.sh tests/container/*.sh; do
 	[ -f "$f" ] || continue
 	bash -n "$f" || { echo "   parse FAILED: $f"; rc=$((rc + 1)); }
 done
 echo "   ok"
+
+# CI's "pages" job: every page test in jsdom (installed once by tests/jsdom/jsdom.sh, no Docker), about 4 minutes.
+step "Pages in jsdom (tests/jsdom/run.sh)"
+tests/jsdom/run.sh | grep -v '^== ' | grep -vx 'failures: 0' | sed 's/^/   /'
+[ "${PIPESTATUS[0]}" = 0 ] || rc=$((rc + 1))
 
 # The pages as a browser draws them (beyond CI, which has no browser image): the style audit of every admin pane, the
 # same audit on pages full of findings (card-audit: needs jsdom, as tests/jsdom/run.sh does), the tile rows, the

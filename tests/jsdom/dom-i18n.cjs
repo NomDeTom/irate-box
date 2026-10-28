@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { JSDOM } = require('jsdom');
+const { JSDOM } = require(process.env.JSDOM || 'jsdom');
 
 const ROOT = path.join(__dirname, '..', '..');
 const WEB = path.join(ROOT, 'web');
