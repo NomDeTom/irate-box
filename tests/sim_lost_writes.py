@@ -85,6 +85,15 @@ check("  a whole test file: no finding", health.lost_writes_check() == [])
 first = canary.read_bytes()[:32]
 health.canary_tick()
 check("  its sequence number moves at each write", canary.read_bytes()[:32] != first)
+good = canary.read_bytes()
+check("  its checksum matches what follows it", health._canary_intact(canary))
+canary.write_bytes(good[:-64] + bytes(64))
+found = health.lost_writes_check()
+check(
+    "  a test file with part of it gone (its checksum no longer matching): the same finding",
+    len(found) == 1 and str(canary) in found[0]["evidence"],
+    found,
+)
 canary.write_bytes(b"\xff" * 4096)
 found = health.lost_writes_check()
 check(
@@ -132,6 +141,13 @@ check(
     "the boot check: a unit of its own, before the network and the hub, switched on",
     "Before=network.target irate-box.service" in (units / "system" / health.LOSTWRITES_SERVICE).read_text()
     and any("enable" in c and health.LOSTWRITES_SERVICE in c for c in calls),
+)
+boot_unit = (units / "system" / health.LOSTWRITES_SERVICE).read_text()
+check(
+    "  after the NAND's state (a Lyra's hub folder is the flash's only then), at normal priority on the boot's path",
+    "After=local-fs.target nand-state.service" in boot_unit
+    and "Nice=" not in boot_unit
+    and "IOScheduling" not in boot_unit,
 )
 health.set_canary(True)
 check(
@@ -186,6 +202,20 @@ check(
     "  the report has the timings, and the full run's time",
     json.loads((state / "control" / "health.json").read_text())["timings"]["units"] == 3.2
     and json.loads((state / "control" / "health.json").read_text())["full_at"] > 0,
+)
+
+# The builds' size: walked in the full run, kept for the quick ones (the Lyra's slow step).
+ci = state / "ci" / "run1"
+ci.mkdir(parents=True)
+(ci / "out.bin").write_bytes(b"x" * 4096)
+check("the builds' size: walked in a full run", health._builds_bytes(state / "ci", quick=False) == 4096)
+(ci / "more.bin").write_bytes(b"x" * 4096)
+check("  kept for the quick run, not walked again", health._builds_bytes(state / "ci", quick=True) == 4096)
+check("  walked again in the next full run", health._builds_bytes(state / "ci", quick=False) == 8192)
+check(
+    "/admin's run and each repair's: through run_report, so quick and keeping the full run's time",
+    "health.run_report()"
+    in (REPO / "irate_box/root/hub_control.py").read_text().split("def _write_health")[1].split("\ndef ")[0],
 )
 
 print(f"failures: {fails}")

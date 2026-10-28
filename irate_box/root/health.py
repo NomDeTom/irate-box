@@ -866,9 +866,9 @@ def library_paths():
 
 
 def check_kiwix(quick=False):
-    """The books, each cheap to check twice a day: the header always, Kiwix's own read of it only in the full run.
-    kiwix-manage opens every book, which on the Lyra took the Box doctor's run from about 8 s to 151 s; the timer
-    runs the quick check, and once a week the full one (run_check)."""
+    """The books: the header always, Kiwix's own read of each only in the full run (kiwix-manage opens every book:
+    3.5 s for box 181's four on 2026-10-28, more with a larger library). The quick run is the usual one, the full one
+    weekly (run_report)."""
     books = _books()
     unit = UNIT_DIR / "kiwix.service"
     if not books and not unit.exists():
@@ -2922,7 +2922,7 @@ RECORD_FILES = (
 )
 CANARY_MAGIC = b"irate-box-canary 1\n"
 CANARY_SIZE = 4096
-CANARY_HEADER = len(CANARY_MAGIC) + 12 + 32 + 1
+CANARY_HEADER = len(CANARY_MAGIC) + 12 + 64 + 1  # the magic, the sequence and time, the SHA-256 in hex, a newline
 BOOK_CHECK_DAYS = 7
 
 
@@ -3031,6 +3031,16 @@ def _write_synced(path, data, mode=0o600):
         os.close(dfd)
 
 
+def _canary_intact(path):
+    """Whether the test file is the one written: its checksum matching what follows it (a file read past the cache
+    by _reads_all_ff first, so this read is the card's)."""
+    data = path.read_bytes()
+    if len(data) != CANARY_SIZE or data[: len(CANARY_MAGIC)] != CANARY_MAGIC:
+        return False
+    start = len(CANARY_MAGIC) + 12
+    return hashlib.sha256(data[CANARY_HEADER:]).hexdigest().encode() == data[start : start + 64]
+
+
 def canary_tick():
     """The test file's turn: 4 KB with a sequence number and a checksum, fsynced. Only where the owner turned it on."""
     if not canary_on():
@@ -3042,7 +3052,7 @@ def canary_tick():
     payload = os.urandom(CANARY_SIZE - CANARY_HEADER)
     digest = hashlib.sha256(payload).hexdigest().encode()
     body = CANARY_MAGIC + struct.pack(">QI", _canary_seq(path) + 1, int(time.time())) + digest + b"\n" + payload
-    _write_synced(path, body[:CANARY_SIZE].ljust(CANARY_SIZE, b"\0"))
+    _write_synced(path, body)
     return True
 
 
@@ -3059,7 +3069,7 @@ def lost_writes_check():
     canary_bad = False
     if canary_on() and canary.exists():
         try:
-            canary_bad = _reads_all_ff(canary)
+            canary_bad = _reads_all_ff(canary) or not _canary_intact(canary)
         except OSError:
             canary_bad = False
     if not bad and not canary_bad:
@@ -3160,15 +3170,20 @@ def unit_text(name):
     if name == DOCTOR_TIMER:
         return (
             "[Unit]\nDescription=Irate-Box Box doctor, every 6 hours\n\n[Timer]\n"
-            "OnBootSec=30min\nOnUnitActiveSec=6h\nRandomizedDelaySec=1h\nPersistent=true\n\n[Install]\n"
+            "OnBootSec=30min\nOnUnitActiveSec=6h\nRandomizedDelaySec=1h\n\n[Install]\n"
             "WantedBy=timers.target\n"
         )
     if name == LOSTWRITES_SERVICE:
         return (
             "[Unit]\nDescription=Irate-Box: the card's often-written files, read at boot (lost writes)\n"
-            "DefaultDependencies=no\nAfter=local-fs.target\nBefore=network.target irate-box.service\n\n"
-            f"[Service]\nType=oneshot\nExecStart={code}/irate-box health boot-check\nNice=19\n"
-            "IOSchedulingClass=idle\n" + sandbox + "\n[Install]\nWantedBy=multi-user.target\n"
+            # After nand-state.service: on a Lyra with the state on its NAND, the hub's folder is the flash's only
+            # once that has run; before it, the card's stale copy beneath would be read and the report hidden.
+            # Normal priority: it holds the network and the hub back, and reads only a few small files.
+            "DefaultDependencies=no\nAfter=local-fs.target nand-state.service\n"
+            "Before=network.target irate-box.service\n\n"
+            f"[Service]\nType=oneshot\nExecStart={code}/irate-box health boot-check\n"
+            + sandbox
+            + "\n[Install]\nWantedBy=multi-user.target\n"
         )
     if name == CANARY_SERVICE:
         return (
@@ -4464,7 +4479,36 @@ def card_scan():
     return bad
 
 
-def check_builds(now=None):
+BUILDS_BYTES = "builds-bytes.json"
+
+
+def _builds_bytes(ci_root, quick):
+    """What the builds take, walked in the full run and kept for the quick ones: on box 181 the walk over
+    /var/lib/hub/ci (231 280 files, 14 GB of the builder's caches) was 132.6 s of a 143.5 s run (2026-10-28)."""
+    from irate_box.root import safeio
+
+    kept = safeio.ROOT_STATE / BUILDS_BYTES
+    if quick:
+        try:
+            return int(json.loads(kept.read_text())["bytes"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return 0
+    used = 0
+    for f in ci_root.rglob("*") if ci_root.is_dir() else []:
+        try:
+            if f.is_file() and not f.is_symlink():
+                used += f.stat().st_size
+        except OSError:
+            pass
+    try:
+        safeio.mkdir(safeio.ROOT_STATE, mode=0o700)
+        safeio.write(kept, json.dumps({"at": time.time(), "bytes": used}))
+    except OSError:
+        pass
+    return used
+
+
+def check_builds(now=None, quick=False):
     """The builds (ci.py) and the Firmware Factory (factory.py): builds waiting over a day, a
     factory family failing every time here, and what builds take on the card."""
     now = time.time() if now is None else now
@@ -4548,13 +4592,7 @@ def check_builds(now=None):
                 go=GO_FACTORY,
             )
         )
-    used = 0
-    for f in ci_root.rglob("*") if ci_root.is_dir() else []:
-        try:
-            if f.is_file() and not f.is_symlink():
-                used += f.stat().st_size
-        except OSError:
-            pass
+    used = _builds_bytes(ci_root, quick)
     total = shutil.disk_usage(STATE).total if STATE.exists() else 0
     if used and total:
         share = used / total
@@ -6010,9 +6048,10 @@ def check_watchdogs_alive(now=None):
 
 
 def scan(quick=False):
-    """Every check. quick is the timer's twice-a-day run: the books' headers without opening each in Kiwix, which
-    is the slow step on a box with a large library. Each check's time is kept, so the slow one is named on the box
-    (Part 1, step 0 of notes: the plan to bring the Lyra's 151 s run down)."""
+    """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
+    Lyra's slow step: 132.6 of 143.5 s on box 181), and the books' headers without opening each in Kiwix. Each check's
+    time is kept, so a slow one is named on the box (Part 1, step 0 of notes: the plan to bring the Lyra's 151 s run
+    down)."""
     findings, timings = [], {}
     for check in (
         check_install,
@@ -6044,7 +6083,7 @@ def scan(quick=False):
     ):
         start = time.monotonic()
         try:
-            findings += check(quick) if check is check_kiwix else check()
+            findings += check(quick=quick) if check in (check_kiwix, check_builds) else check()
         except Exception as exc:  # noqa: BLE001 - one broken check must not hide the others
             findings.append(
                 finding(
@@ -6074,9 +6113,9 @@ def _previous_report():
     return data if isinstance(data, dict) else {}
 
 
-def run_check(full=None):
-    """The timer's run: the quick checks, and the full one (the books opened in Kiwix) once a week. The report is
-    the one /admin reads; the finding counts are one line, for the journal."""
+def run_report(full=None):
+    """A run of the doctor, the timer's or /admin's: the quick checks, and the full one (the builds walked, the
+    books opened in Kiwix) once a week. Written where /admin reads it, with when the last full run was."""
     previous = _previous_report()
     now = time.time()
     full_at = previous.get("full_at") if isinstance(previous.get("full_at"), (int, float)) else None
@@ -6088,6 +6127,13 @@ def run_check(full=None):
 
     safeio.mkdir(CONTROL, mode=0o755)
     safeio.write(CONTROL / "health.json", json.dumps(data, indent=2))
+    return data
+
+
+def run_check(full=None):
+    """The timer's run (run_report), with the finding counts and the slowest checks in one line, for the journal."""
+    data = run_report(full)
+    full = not data.get("quick")
     counts = {s: sum(1 for f in data["findings"] if f["status"] == s) for s in ("problem", "warn")}
     slow = sorted(data["timings"].items(), key=lambda kv: kv[1], reverse=True)[:3]
     print(

@@ -6037,10 +6037,10 @@ HEALTH_STATE = CONTROL / "health.json"
 
 
 def _write_health():
+    """The Box doctor's report for /admin, and after each repair: the quick run, the full one when a week is up
+    (health.run_report, which writes it to HEALTH_STATE and keeps when the last full run was)."""
     os.environ["HUB_CONTROL_RUNNING"] = "1"  # the queue it would report is the one being answered
-    data = health.scan()
-    safeio.write(HEALTH_STATE, json.dumps(data, indent=2))
-    return data
+    return health.run_report()
 
 
 def health_scan(req):
