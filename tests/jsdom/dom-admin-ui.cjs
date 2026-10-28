@@ -362,8 +362,8 @@ setTimeout(() => {
   {
     // The librarian: its own work at the top; apps and books, then storage; the others' policies linked, not edited here.
     const others = [...d.querySelectorAll('#library-others dt')].map((x) => x.textContent);
-    check('the librarian: the other updates listed, each linked to its own page', others.join('|') === 'This hub|Git mirrors|Firmware mirror|Toolkits\' cache|Debian\'s security updates'
-      && ['#update-hub-card', '#mirrors', '#firmware', '#toolkits', '#updates-debian'].every((h) => d.querySelector(`#library-others a[href="${h}"]`)), others);
+    check('the librarian: the other updates listed, each linked to its own page', others.join('|') === 'This hub|Git mirrors|Firmware mirror|App store|Toolkits\' cache|Debian\'s security updates'
+      && ['#update-hub-card', '#mirrors', '#firmware', '#appstore', '#toolkits', '#updates-debian'].every((h) => d.querySelector(`#library-others a[href="${h}"]`)), others);
     check('  the hub\'s line is what is saved', /^Checks once a day\. Installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
     check('  no editor for them here', !d.querySelector('#sources [name="hub_auto"], #sources [name="mirrors_auto"]'));
     check('  source access folded, its title saying token and pacing', d.getElementById('library-token').closest('details').id === 'library-access'

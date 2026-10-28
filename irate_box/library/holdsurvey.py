@@ -30,13 +30,17 @@ Stdlib only.
 
 import difflib
 import json
+import os
 import re
 import urllib.parse
+from pathlib import Path
 
 from irate_box.library import holder, releasever
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
 
+CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/library/holdsurvey.py → the checkout
+PRESETS_DIR = Path(os.environ.get("HUB_HOLDERS_PRESETS", CHECKOUT / "holders"))  # what /admin offers to add
 WINDOW = 5  # releases of each channel to look at
 CLASSES = (
     ("phone app", (".apk", ".xapk", ".apkm", ".apks")),
@@ -466,6 +470,65 @@ def parse_recipe(text):
         "holds": holds,
         "channels": {"stable": 2, "pre-release": 1 if settings.get("includePrereleases") else 0},
         "notes": notes,
+    }
+
+
+# --- presets: recipes shipped with the hub ---------------------------------------------------
+
+
+def load_presets():
+    """The catalogue in holders/*.json (like addons/): what /admin offers to add without typing. Each
+    preset is a recipe, a name, and settings a holder is made from; a file that is not one is left out,
+    not a reason to stop the rest."""
+    out = []
+    if not PRESETS_DIR.is_dir():
+        return out
+    for path in sorted(PRESETS_DIR.glob("*.json")):
+        try:
+            raw = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(raw, dict) or not raw.get("id") or not (raw.get("recipe") or raw.get("repo")):
+            continue
+        out.append({**raw, "file": path.name})
+    return out
+
+
+def find_preset(name):
+    """A preset as the fields of a holder: {id, title, repo, holds, channels}; LibrarianError says when it
+    is not there or its recipe cannot be read."""
+    for preset in load_presets():
+        if preset["id"] == name:
+            if preset.get("recipe"):
+                made = parse_recipe(preset["recipe"])
+                return {
+                    "id": preset["id"],
+                    "title": preset.get("title") or made["title"] or made["repo"],
+                    "repo": preset.get("repo") or made["repo"],
+                    "holds": preset.get("holds") or made["holds"],
+                    "channels": preset.get("channels") or made["channels"],
+                }
+            return {
+                "id": preset["id"],
+                "title": preset.get("title") or "",
+                "repo": preset["repo"],
+                "holds": preset.get("holds") or [{"label": "Phone apps", "include": r"\.(apk|xapk|apkm|apks)$"}],
+                "channels": preset.get("channels") or dict(holder.HOLDER_DEFAULTS["channels"]),
+            }
+    raise LibrarianError(M("library.holder.preset-none", "There is no preset called {name}.", name=str(name)[:60]))
+
+
+def recipe_holder(text):
+    """A pasted recipe as the fields of a holder, with a name made from the repository: what the add
+    page fills in. `notes` travels with it: the page says what the recipe asked for that the box does not do."""
+    made = parse_recipe(text)
+    return {
+        "id": made["repo"].split("/")[-1].lower()[:64],
+        "title": made["title"] or made["repo"],
+        "repo": made["repo"],
+        "holds": made["holds"],
+        "channels": made["channels"],
+        "notes": made["notes"],
     }
 
 

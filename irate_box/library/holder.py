@@ -490,6 +490,55 @@ def holder_status(holder_id):
     return librarian._read_json(ROOT / holder_id / "status.json", {})
 
 
+def disk_uses(holder_id):
+    """What this holder's folder really holds, as the admin page counts it: its published versions, each with
+    the files still on disk (bytes from what the keeper recorded), and the total. A file published but gone
+    (a card taken out mid-run) shows in no size: the next run puts it back or drops the version."""
+    index = librarian._read_json(ROOT / holder_id / "index.json", {})
+    versions, total = [], 0
+    for version in index.get("versions", []) if isinstance(index, dict) else []:
+        if not TAG_RE.match(str(version.get("tag", ""))):
+            continue
+        files = []
+        for file in version.get("files", []):
+            if not FILE_RE.match(str(file.get("name", ""))):
+                continue
+            path = ROOT / holder_id / version["tag"] / file["name"]
+            if path.is_file() and not path.is_symlink():
+                files.append(file)
+        bytes_ = sum(file["size"] for file in files)
+        total += bytes_
+        versions.append(
+            {
+                "tag": version["tag"],
+                "channel": version.get("channel", ""),
+                "published": version.get("published"),
+                "files": files,
+                "bytes": bytes_,
+            }
+        )
+    return {"versions": versions, "bytes": total}
+
+
+def save_survey(holder_id, data):
+    """A survey the administrator asked for (holdsurvey.py), kept in the holder's status so the page can
+    show it again and the doctor can say when a holder was never looked at."""
+    state = holder_status(holder_id)
+    state["survey"] = data
+    state["surveyed"] = librarian.now_iso()
+    state.pop("survey_error", None)
+    _save_holder_status(holder_id, state)
+    return state
+
+
+def patch_status(holder_id, changes):
+    """A few keys of a holder's status, changed in place (the survey's error, say), for the admin page to read."""
+    state = holder_status(holder_id)
+    state.update(changes)
+    _save_holder_status(holder_id, state)
+    return state
+
+
 def _save_holder_status(holder_id, state):
     (ROOT / holder_id).mkdir(parents=True, exist_ok=True)
     _publish(ROOT / holder_id / "status.json", state)

@@ -45,6 +45,7 @@ const PANE_OF = {
   "/admin/git": ["git"],
   "/admin/ci": ["git"],
   "/admin/firmware": ["firmware", "factory"],
+  "/admin/appstore": ["appstore"],
   "/admin/folders": ["mirrors"],
   "/admin/status-tiles": ["status-tiles"],
   "/admin/tailscale": ["access"],
@@ -751,6 +752,12 @@ function drawLibraryOthers(pol) {
       fetchOnly(pol.firmware_every_hours, pol.firmware_auto, "new releases"),
       "firmware",
       "Firmware",
+    ],
+    [
+      "App store",
+      fetchOnly(pol.holders_every_hours, pol.holders_auto, "the kept files"),
+      "appstore",
+      "App store",
     ],
     [
       "Toolkits' cache",
@@ -14239,6 +14246,287 @@ for (const [id, action] of [
   });
 }
 loadFirmware();
+
+// --- the App store (appstore_admin.py, holder.py, holdsurvey.py): one card per holder -----------
+// The page shows state; the Updates doctor says what is wrong (findings-in-doctors). A card opens to its
+// status, its kept versions, its settings (AW.form, saved as edit-holder), the survey's table of kinds of
+// file with a tick each (saved as holds: a tick is the kind's pattern), and its own Check now / Download /
+// Look again. Add is one choice: a preset, a pasted Obtainium recipe, or a repository. The policy pair is
+// the generic surface-policy form (holders_every_hours / holders_auto), set on this page and shown as the
+// "App store" row in the librarian's "Other updates".
+const asEl = {
+  status: noteEl("appstore-status"),
+  holders: noteEl("appstore-holders"),
+  add: noteEl("appstore-add"),
+  enabled: document.getElementById("appstore-enabled"),
+};
+let asPoll = null;
+let asData = null;
+
+const asPost = async (body, flash) => {
+  asData = await postJSON("/admin/appstore", body);
+  if (flash) asData.flash = flash;
+  renderAppstore(asData);
+  return asData;
+};
+
+// The survey's table: one tick a kind. Draft ticks live on the holder until Hold these; one the hub's own
+// pattern already decides cannot be undone here (with_kind says so, and the save refuses it).
+function asSurveyTable(holder, at) {
+  const survey = holder.survey;
+  if (!survey) {
+    at.append(
+      el("p", {
+        className: "setting-desc",
+        textContent: holder.status.survey_error
+          ? `The last look failed: ${holder.status.survey_error}`
+          : "The releases have not been looked at yet. Select Look again.",
+      }),
+    );
+    return;
+  }
+  const draft = holder.surveyDraft || (holder.surveyDraft = {});
+  const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
+  const table = el("table", { className: "appstore-kinds" });
+  table.append(
+    el("tr", {},
+      el("th", { textContent: "Keep" }),
+      el("th", { textContent: "A kind of file" }),
+      el("th", { textContent: "In releases" }),
+      el("th", { textContent: "Size" })),
+  );
+  for (const kind of survey.kinds) {
+    const saved = kind.state === "all";
+    const box = el("input", { type: "checkbox", checked: kind.shape in draft ? !!draft[kind.shape] : saved });
+    box.addEventListener("change", () => {
+      if (box.checked === saved) delete draft[kind.shape];
+      else draft[kind.shape] = box.checked;
+      say(Object.keys(draft).length ? "The ticks are not saved yet: select Hold these." : "", true, note);
+    });
+    table.append(
+      el("tr", { dataset: { shape: kind.shape } },
+        el("td", {}, box),
+        el("td", {},
+          el("code", { textContent: kind.shape }),
+          el("span", { className: "setting-desc", textContent: ` ${kind.class}${kind.companions ? ` · +${kind.companions} companion(s)` : ""}` })),
+        el("td", { textContent: `${(kind.releases || []).length}` }),
+        el("td", { textContent: size(kind.size_max) })),
+    );
+  }
+  const keep = Object.values(holder.channels).reduce((a, b) => a + Number(b), 0) || 1;
+  at.append(
+    el("h3", { textContent: "What to hold" }),
+    note,
+    el("p", {
+      className: "setting-desc",
+      textContent: survey.estimate.per_version
+        ? `About ${size(survey.estimate.per_version)} a release, ${size(survey.estimate.per_version * keep)} for ${keep}.`
+        : "Nothing is taken by this selection.",
+    }),
+    table,
+    el("p", { className: "library-buttons" },
+      actionButton("Hold these", async () => {
+        const sends = { ...draft };
+        if (!Object.keys(sends).length) return;
+        try {
+          delete holder.surveyDraft;
+          await asPost({ action: "holds", id: holder.id, kinds: sends });
+        } catch (err) {
+          say(err.message, false, note);
+        }
+      }, { className: "small" })),
+  );
+  if ((survey.own || []).length) {
+    at.append(el("p", { className: "setting-desc" },
+      "A pattern of your own, not a tick: ",
+      ...survey.own.map((own) => el("code", { textContent: `${own.include} (${own.files} file(s) here) ` }))));
+  }
+}
+
+function asSettingsForm(holder) {
+  const form = el("form", { className: "library-form" });
+  const input = (name, label, value, type = "text", extra = {}) => {
+    const box = el("input", { name, type, value: String(value ?? ""), ...extra });
+    form.append(el("label", {}, `${label} `, box));
+    return box;
+  };
+  input("title", "Name", holder.title, "text", { maxlength: "80" });
+  input("repo", "Repository", holder.repo);
+  input("stable", "Stable to keep", holder.channels.stable, "number", { min: "0", max: "5" });
+  input("prerelease", "Pre-releases to keep", holder.channels["pre-release"], "number", { min: "0", max: "5" });
+  input("age", "Not before (days)", holder.min_age_days, "number", { min: "0", max: "365" });
+  input("budget", "Space (MB, 0: the free limit)", holder.budget_mb, "number", { min: "0" });
+  const vis = el("select", { name: "visibility" });
+  for (const [value, text] of [["public", "Everyone on the hotspot"], ["members", "Signed-in members only"]]) {
+    vis.append(el("option", { value, textContent: text }));
+  }
+  form.append(el("label", {}, "Who sees it ", vis));
+  const sec = AW.form(form, {
+    label: `${holder.title || holder.id} settings`,
+    save: async (c, v) => {
+      await asPost({
+        action: "edit-holder",
+        id: holder.id,
+        title: v.title,
+        repo: v.repo,
+        channels: { stable: Number(v.stable), "pre-release": Number(v.prerelease) },
+        min_age_days: Number(v.age),
+        budget_mb: Number(v.budget),
+        visibility: v.visibility,
+      });
+      return "Saved.";
+    },
+  });
+  sec.fill({
+    title: holder.title,
+    repo: holder.repo,
+    stable: holder.channels.stable,
+    prerelease: holder.channels["pre-release"],
+    age: holder.min_age_days,
+    budget: holder.budget_mb,
+    visibility: holder.visibility,
+  });
+  return form;
+}
+
+function asCard(holder) {
+  const st = holder.status || {};
+  const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
+  const body = el("div", { className: "appstore-card", hidden: true });
+  body.append(
+    el("p", {
+      className: "setting-desc",
+      textContent:
+        (st.last_check
+          ? `Last checked ${String(st.last_check).replace("T", " ").replace("Z", " UTC")}: ${st.outcome || "nothing"}.`
+          : "Not checked yet.") + (st.error ? ` Error: ${st.error}.` : ""),
+    }),
+    el("div", { className: "admin-list" },
+      ...(holder.kept.length
+        ? holder.kept.map((v) => el("p", { className: "setting-desc" },
+            el("strong", { textContent: `${v.tag} (${v.channel})` }),
+            ` ${v.files.length} file(s), ${size(v.bytes)}.`))
+        : [el("p", { className: "setting-desc", textContent: "Nothing kept yet." })])),
+    el("p", { className: "library-buttons" },
+      asRun("Check now", "holder-check", holder.id, note),
+      asRun("Download", "holder-update", holder.id, note),
+      asRun("Look again", "survey", holder.id, note),
+      asRun("Remove files", "remove-files", holder.id, note),
+      asRun("Remove", "remove-holder", holder.id, note)),
+    note,
+    asSettingsForm(holder),
+  );
+  asSurveyTable(holder, body);
+  return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } },
+    el("button", { type: "button", className: "aw-card-head", "aria-expanded": "false",
+      onclick: (event) => {
+        const open = body.hidden;
+        body.hidden = !open;
+        event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
+      } },
+      el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
+      el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version(s), ${size(holder.bytes)}` })),
+    body);
+}
+
+function asRun(label, action, id, note) {
+  return actionButton(label, async () => {
+    try {
+      await asPost({ action, id });
+    } catch (err) {
+      say(err.message, false, note);
+    }
+  }, { className: "small" });
+}
+
+// Add is one choice: a preset, a pasted recipe, or a repository. Each shows its own fields and one Add.
+function asAddFlow(data) {
+  asEl.add.replaceChildren();
+  const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
+  const mode = el("select", { name: "mode", "aria-label": "What to add" });
+  mode.append(
+    el("option", { value: "", textContent: "Select…" }),
+    ...(data.presets || []).map((p) => el("option", { value: `preset:${p.id}`, textContent: `Preset: ${p.title || p.id}` })),
+    el("option", { value: "recipe", textContent: "Paste an Obtainium recipe" }),
+    el("option", { value: "repo", textContent: "A GitHub repository" }));
+  const part = el("div", { className: "appstore-add-part" });
+  const addButton = (makeBody) =>
+    part.append(el("p", { className: "library-buttons" },
+      actionButton("Add", async () => {
+        try {
+          await asPost(makeBody(), "Added. Open its card and select Look again.");
+        } catch (err) {
+          say(err.message, false, note);
+        }
+      }, { className: "small primary" })));
+  const draw = () => {
+    part.replaceChildren(note);
+    const presetId = mode.value.startsWith("preset:") ? mode.value.slice(7) : null;
+    if (presetId) {
+      const preset = (data.presets || []).find((p) => p.id === presetId);
+      if (preset.summary) part.append(el("p", { className: "setting-desc", textContent: preset.summary }));
+      addButton(() => ({ action: "add-holder", preset: preset.id }));
+    } else if (mode.value === "recipe") {
+      const paste = el("textarea", { name: "recipe", rows: "3", placeholder: "the recipe's JSON, or an obtainium:// link" });
+      part.append(paste);
+      addButton(() => ({ action: "add-holder", recipe: paste.value }));
+    } else if (mode.value === "repo") {
+      const id = el("input", { name: "id", placeholder: "a name on the box", maxlength: "64" });
+      const repo = el("input", { name: "repo", placeholder: "meshtastic/Meshtastic-Android" });
+      part.append(id, repo);
+      addButton(() => ({ action: "add-holder", id: id.value.trim(), repo: repo.value.trim() }));
+    }
+  };
+  mode.addEventListener("change", draw);
+  asEl.add.append(mode, part);
+  draw();
+}
+
+function renderAppstore(data) {
+  asEl.enabled.checked = data.enabled;
+  asEl.status.textContent =
+    `${data.holders.length} project(s), ${size(data.bytes_all)} kept.` +
+    (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : "") +
+    (data.running ? ` Working${data.progress ? `: ${data.progress.name}` : "…"} (in the background).` : "") +
+    // A redraw replaces the add flow's note, so a finished add is said on the status line instead.
+    (data.flash ? ` ${data.flash}` : "") +
+    ((data.notes || []).length ? ` ${data.notes.map(said).join(" ")}` : "");
+  asEl.holders.replaceChildren(...data.holders.map(asCard));
+  asAddFlow(data);
+  clearTimeout(asPoll);
+  if (data.running) asPoll = setTimeout(loadAppstore, 2000);
+}
+
+async function loadAppstore() {
+  try {
+    asData = await getJSON("/admin/appstore");
+    renderAppstore(asData);
+  } catch (_) {
+    asEl.status.textContent = "Could not read the App store's settings.";
+  }
+}
+
+asEl.enabled.addEventListener("change", async () => {
+  try {
+    await asPost({ action: "enable", enabled: asEl.enabled.checked });
+  } catch (err) {
+    asEl.enabled.checked = !asEl.enabled.checked;
+    asEl.status.textContent = err.message;
+  }
+});
+for (const [id, action] of [
+  ["appstore-check", "holder-check"],
+  ["appstore-update", "holder-update"],
+]) {
+  document.getElementById(id).addEventListener("click", async () => {
+    try {
+      await asPost({ action });
+    } catch (err) {
+      asEl.status.textContent = err.message;
+    }
+  });
+}
+loadAppstore();
 
 // --- toolkits (toolkits.py, root's kits.py): a card per kit, Kiwix's library as the model --------
 // Each action is a request for the root helper; the page shows "Working…" until its answer is in.

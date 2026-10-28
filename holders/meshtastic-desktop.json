@@ -1,0 +1,11 @@
+{
+  "id": "meshtastic-desktop",
+  "title": "Meshtastic Desktop",
+  "repo": "meshtastic/Meshtastic-Android",
+  "holds": [
+    {"label": "Debian packages", "include": "^Meshtastic_Desktop-.*-(arm64|amd64)\\.deb$"},
+    {"label": "the AppImage", "include": "^Meshtastic_Desktop-.*-x86_64\\.AppImage$"}
+  ],
+  "channels": {"stable": 1, "pre-release": 0},
+  "summary": "The desktop app, from the same releases. Each platform is about 100-135 MB: hold what the box's visitors need."
+}

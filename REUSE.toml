@@ -8,6 +8,7 @@ path = [
   "apps.d/*.json",
   "addons/*.json",
   "addons/templates/*.json",
+  "holders/*.json",
   "toolkits/*.json",
   "packages.d/*.json",
 ]
