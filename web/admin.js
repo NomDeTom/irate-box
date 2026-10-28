@@ -14425,18 +14425,18 @@ function asCard(holder) {
     asSettingsForm(holder),
   );
   asSurveyTable(holder, body);
-  return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } },
-    el("button", { type: "button", className: "aw-card-head", "aria-expanded": body.hidden ? "false" : "true",
-      onclick: (event) => {
-        const open = body.hidden;
-        body.hidden = !open;
-        if (open) asOpen.add(holder.id);
-        else asOpen.delete(holder.id);
-        event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
-      } },
-      el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
-      el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version(s), ${size(holder.bytes)}` })),
-    body);
+  const head = el("button", { type: "button", className: "aw-card-head",
+    onclick: (event) => {
+      const open = body.hidden;
+      body.hidden = !open;
+      if (open) asOpen.add(holder.id);
+      else asOpen.delete(holder.id);
+      event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
+    } },
+    el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
+    el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version(s), ${size(holder.bytes)}` }));
+  head.setAttribute("aria-expanded", body.hidden ? "false" : "true");
+  return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } }, head, body);
 }
 
 function asRun(label, action, id, note, ask) {
