@@ -15,10 +15,10 @@
   {"title": "USB WiFi adapters on Linux (morrownr)", "url": "https://github.com/morrownr/USB-WiFi",
    "note": "The best-known community list of which USB WiFi adapters work on Linux, and with which driver. Read it before you buy an adapter."},
   {"title": "AIC8800 driver, community (NomDeTom/aic8800d80, irate/box)", "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
-   "version": "fd26d92", "licence": "GPL-2.0",
+   "version": "f0c8813", "licence": "GPL-2.0",
    "note": "The one irate-box uses: the community driver with recovery from a firmware that stops answering. Tested on the Luckfox Lyra Zero W (AIC8800DC) and a Raspberry Pi 3B+ (AIC8800D80). Build it with DKMS from its folder, and copy its fw/ folders to /lib/firmware."},
   {"title": "AIC8800 driver, Radxa's package (NomDeTom/aic8800, irate/box)", "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
-   "version": "d2d6526", "licence": "GPL-2.0",
+   "version": "7a491d3", "licence": "GPL-2.0",
    "note": "Radxa's aic8800-usb-dkms with the same fixes as patches, the D80's 368b:8d81 and an eject rule: for a board that installs Radxa's Debian packages. Built and loaded by irate-box on a Raspberry Pi 3B+."}
  ],
  "remove_after_hours": 24}
