@@ -54,14 +54,11 @@ Select **👤 Sign in** at the top of the hub. After you sign in as an administr
 
 The administration pages open with a list of **setup steps**. The steps are:
 
-1. Set the administrator password.
-2. Set how guests reach the box, including the hotspot firewall.
-3. Set the WiFi country.
-4. Review what the box exposes.
-5. Add add-ons.
-6. Add books.
-7. Decide the security settings: visitor counts, signed-in names, account registration, locked tiles, HTTP and HTTPS, the root helper's policy, hotspot security, guest internet access, SSH password sign-in, remote access, Cockpit and the terminal.
-8. Make a backup.
+1. Set how guests reach the box.
+2. Set what the hub shows guests.
+3. Add add-ons and books.
+4. Make decisions about visitor counts, new accounts, HTTPS, the hotspot and remote access.
+5. Make a backup.
 
 You can skip a step and do it later.
 

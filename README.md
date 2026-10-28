@@ -3,13 +3,13 @@
 
 # Irate-Box
 
-A self-contained offline hub for a small board. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, offline-first, and built from maintained, packaged components rather than a 2013 shell-script. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page (the Hub), with an anonymous shoutbox and forum and filedrop just like the original.
+A self-contained offline hub for a small board. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, HTTPS-free by design, and built from maintained, packaged components rather than a 2013 shell-script. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page (the Hub), with an anonymous shoutbox and forum and filedrop just like the original.
 
 <img src="docs/images/iratebox-hub.webp" alt="Irate-Box hub home page" width="960">
 
 That's about as far as the similarities go: the Hub has tiles for the other hosted applications you can reach, such as a whiteboard, a diagram editor, an offline encyclopaedia (courtesy of Kiwix), a small GIT repository, a series of calculators and many many more - all with no internet required at any point.
 
-**Status: installs and runs on a real board, hosts a real hotspot** `install.sh` puts the whole hub on an Armbian or mPWRD-OS board in one command. It has been tested end to end on a Luckfox Lyra Zero W (mPWRD-OS 26.05, armv7l, 512 MB), and a Raspberry Pi 3b+ (Raspberry Pi OS 64-bit). With everything running, the Lyra still has about 320 MB of memory free. The hub is served on whatever network the board is already on: the access point, dnsmasq and the captive portal are working, although not without some help since Android doesn't support HTTP captive portals. HTTPS with its own certificate authority, accounts and the hotspot firewall are built too. Every push to `main` builds the `.deb`; no release is tagged and there is no apt repository yet.
+**Status: installs and runs on a real board, hosts a real hotspot** `install.sh` puts the whole hub on an Armbian or mPWRD-OS board in one command. It has been tested end to end on a Luckfox Lyra Zero W (mPWRD-OS 26.05, armv7l, 512 MB), and a Raspberry Pi 3b+ (Raspberry Pi OS 64-bit). With everything running, the Lyra still has about 320 MB of memory free. The hub is served on whatever network the board is already on: the access point, dnsmasq and the captive portal are working, although not without some help since Android doesn't support HTTP captive portals, and I'm working towards a full `.deb` packages.
 
 Target hardware is a Raspberry Pi Zero W or a similar 512 MB board, and that drives every design decision: static assets plus a handful of small native daemons.
 

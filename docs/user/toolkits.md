@@ -4,7 +4,7 @@
 
 *Software for jobs on the box. Install it without an internet connection. On the administration pages: System → Toolkits.*
 
-A toolkit is a set of Debian packages for one kind of job. The toolkits are Building, Capture, Debugging, Driver resources, GPS time, Network, Radio, Recovery, Rockchip boards, Security, Debug symbols and System.
+A toolkit is a set of Debian packages for one kind of job. The toolkits are Building, Capture, Debugging, GPS time, Network, Radio, Recovery, Security, Debug symbols and System.
 
 While the box is online, it downloads the packages of each toolkit into a local cache. When the cache of a toolkit is complete, you can install the toolkit without an internet connection. After an installation, the services of the toolkit stay stopped. The exceptions are on the card of each toolkit.
 

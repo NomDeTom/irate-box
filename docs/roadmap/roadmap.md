@@ -52,7 +52,6 @@ A feature moves up one step at a time. Update its row in the same change that mo
 | Syncthing | basic | |
 | Terminal (ttyd) | basic | |
 | Web add-ons: a catalogue, each on an origin of its own (ELIZA, MQTT explorer) | basic | |
-| App store: kept release files of GitHub projects, served with no internet | basic | GitHub only. The phone is untested. |
 | Toolkits: sets of Debian packages, cached for use with no internet | basic | A page to operate the tools is in the pipeline. |
 
 ### Network
@@ -87,24 +86,25 @@ A feature moves up one step at a time. Update its row in the same change that mo
 | Box doctor                                                                       | basic  |                                                             |
 | Update doctor                                                                    | basic  |                                                             |
 | Security doctor, deep audit and CIS cross-reference                              | basic  |                                                             |
-| Messages with stable IDs, and one shape for every doctor finding                 | basic  |                                                             |
-| An origin of its own for each app that runs others' code                         | basic  | Draw, Mermaid, Notes, Kiwix, cgit and the admin pages       |
 
 ## Features in the pipeline
 
 | Feature                                                                             | Status  | Notes                         |
 | ----------------------------------------------------------------------------------- | ------- | ----------------------------- |
+| Messages with string IDs, ready for translation; one shape for every doctor finding | plan    |                               |
 | Notebooks encrypted at rest, and in the box's backup                                | concept | needs fleshing out            |
 | Choosing the clock's source (GPS, clock module, local NTP, internet NTP)            | concept |                               |
 | Hub as a Tor onion service, as an add-on                                            | idea    | Parked.                       |
 | Remote access through an anonymous discovery service                                | concept | Parked.                       |
 | Add-ons that state the oldest irate-box release they work with                      | idea    | Needs signed release numbers. |
+| App store: kept release files of GitHub projects, served with no internet           | basic   | GitHub only; phone untested.  |
 | Bluetooth scanner, and control of BLE nodes                                         | idea    |                               |
 | A page to operate the toolkits                                                      | concept | Reuses the toolkit cards.     |
 | Web Serial over HTTPS with a certificate that browsers trust (DNS-01)               | idea    |                               |
 | An offline base map for the mesh page                                               | idea    |                               |
 | Bigger versions for bigger boards                                                   | idea    |                               |
 | Security updates from a USB drive                                                   | idea    |                               |
+| The editors on an origin of their own                                               | idea    |                               |
 | A box OS image built on Debian                                                      | MVP     |                               |
 | Package sources stated truly, with fallbacks                                        | MVP     |                               |
 | Proving offline firmware builds for each board family                               | plan    | Paused.                       |
@@ -114,3 +114,4 @@ A feature moves up one step at a time. Update its row in the same change that mo
 | Lightweighting: less memory and fewer writes on small boards                        | idea    |                               |
 | Better test suite                                                                   | idea    |                               |
 | Reduced dev tooling to match the minimalist / offline principle                     | idea    |                               |
+| Choosing the clock's source                                                         | concept |                               |
