@@ -26,6 +26,28 @@ check("no function or class defined twice", all(c == 1 for c in names.values()),
 for flag in ("--image", "--device", "--root", "--this-card", "--reference"):
     check(f"the command line takes {flag}", f'"{flag}"' in src)
 check("the report is control/housecall.json", 'CONTROL / "housecall.json"' in src)
+check(
+    "from inside: the hub's large folders left out whole (box 181: 14 GB of build caches in 231 280 files)",
+    "skip=large" in src and '"ci"' in src and '"zim"' in src,
+)
+check(
+    "  and /etc/systemd read once, with /etc, not listed again",
+    '"/etc/systemd"' not in src,
+)
+check(
+    "from inside: the settings, code, hub state, root's records and systemd's folders",
+    all(
+        f'"{folder}"' in src
+        for folder in (
+            "/etc",
+            "/opt/irate-box",
+            "/var/lib/hub",
+            "/var/lib/irate-box-root",
+            "/lib/systemd/system",
+            "/usr/lib/systemd/system",
+        )
+    ),
+)
 check("a whole-disk filesystem is read without a partition table", "_scan_ext" in src and "blkid(path, 0)" in src)
 check("debugfs is never asked to write (no -w)", '"-w"' not in src)
 check("e2fsck runs read-only (-n)", '"e2fsck", "-fn"' in src)

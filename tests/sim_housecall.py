@@ -135,6 +135,35 @@ check("a reference manifest is read", housecall.load_references(refs) == {"/good
 refs.write_text(json.dumps({"files": {"/bad": "not-a-digest"}}))
 check("  a digest that is not SHA-256 is left out", housecall.load_references(refs) == {})
 
+# From inside: this box's own folders, with a file on the NAND left out and said to be the NAND's.
+box = T / "box"
+(box / "etc").mkdir(parents=True)
+(box / "nand").mkdir(parents=True)
+(box / "etc" / "damaged").write_bytes(ff)
+(box / "nand" / "state.json").write_bytes(ff)
+real_on_card = housecall._on_card
+housecall._on_card = lambda path: "nand" not in str(path)
+inside_report = housecall.examine_this_card(roots=[box])
+housecall._on_card = real_on_card
+by_path = {r["path"]: r for r in inside_report["files"]}
+check(
+    "from inside: a card file turned to 0xFF is found and named",
+    by_path.get("/etc/damaged", {}).get("verdict") == "damaged",
+    inside_report["files"],
+)
+check(
+    "  a file on the NAND is left out, and the report says it is the NAND's",
+    "/nand/state.json" not in by_path
+    and any(
+        f["id"] == "housecall-scope" and "housecall.scope.nand" in message_ids(f) for f in inside_report["findings"]
+    ),
+    inside_report["findings"],
+)
+check(
+    "  the scan writes nothing under the folders it reads",
+    sorted(str(p.relative_to(box)) for p in box.rglob("*")) == ["etc", "etc/damaged", "nand", "nand/state.json"],
+)
+
 # The report the page reads.
 housecall.write_report(card_report)
 saved = json.loads((T / "state" / "control" / "housecall.json").read_text())

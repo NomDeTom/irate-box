@@ -49,6 +49,17 @@ SKIP_DIRS = {"proc", "sys", "dev", "run"}
 # whole from inside (on box 181, 2026-10-28, the build caches alone were 14 GB in 231 280 files). As nand-logs.sh's
 # HUB_LARGE.
 LARGE = ("zim", "firmware", "kits", "git", "library", "source", "drop", "ci", "factory-targets")
+# This box's own files, as the plan's "from inside" lists them: the settings, the code, the hub's state, root's
+# records, and systemd's units (its drop-ins in /etc/systemd are read with /etc). Only the files whose mount is the
+# SD card are read, and not the hub's large folders.
+CARD_FOLDERS = (
+    "/etc",
+    "/opt/irate-box",
+    "/var/lib/hub",
+    "/var/lib/irate-box-root",
+    "/lib/systemd/system",
+    "/usr/lib/systemd/system",
+)
 FF = b"\xff"
 ZERO = b"\x00"
 
@@ -138,9 +149,10 @@ def _direct_chunks(path):
         os.close(fd)
 
 
-def scan_dir(root, references=None, on_card=False, skip=()):
+def scan_dir(root, references=None, on_card=False, skipped=None, skip=()):
     """Every regular file under root, read past the cache. on_card leaves out files not on the SD card (for
-    --this-card: the Lyra's NAND state is the NAND's to check); skip leaves out those folders whole."""
+    --this-card: the Lyra's NAND state is the NAND's to check), and names them in skipped when it is a list; skip
+    leaves out those folders whole."""
     root = Path(root)
     references = references or {}
     skip = {Path(p) for p in skip}
@@ -158,6 +170,8 @@ def scan_dir(root, references=None, on_card=False, skip=()):
             if not stat.S_ISREG(metadata.st_mode) or path.is_symlink():
                 continue
             if on_card and not _on_card(path):
+                if skipped is not None:
+                    skipped.append(str(path))
                 continue
             relative = "/" + str(path.relative_to(root))
             try:
@@ -553,14 +567,16 @@ def _own_disk(path):
     return Path(path).name == disk or _parent_disk(path) == disk
 
 
-def examine_this_card(references=None):
-    """This box's own files on the SD card (the plan's step 4, basic): the folders the box writes, card files only."""
-    roots = [Path("/etc"), Path("/opt/irate-box"), STATE, Path("/var/lib/irate-box-root")]
+def examine_this_card(references=None, roots=None):
+    """This box's own files on the SD card (the plan's step 4): the folders the box writes and systemd's, card
+    files only, the hub's large folders left out. A file on the NAND (nand-logs' state) is left out and said to be
+    the NAND's, whose UBIFS checks it."""
+    folders = [Path(root) for root in (roots or CARD_FOLDERS)]
     large = [STATE / name for name in LARGE if (STATE / name).is_dir()]
-    records = []
-    for root in roots:
+    records, skipped = [], []
+    for root in folders:
         if root.is_dir():
-            records += scan_dir(root, references, on_card=True, skip=large)
+            records += scan_dir(root, references, on_card=True, skipped=skipped, skip=large)
     notes = []
     if large:
         notes.append(
@@ -578,10 +594,33 @@ def examine_this_card(references=None):
             "ok",
             M("housecall.target.this-card", "The box's own files on the SD card are being read. Nothing is written."),
             notes=notes,
-            evidence=[str(r) for r in roots],
+            evidence=[str(r) for r in folders],
         ),
         _files_finding(records, "this card"),
     ]
+    if skipped:
+        findings.append(
+            finding(
+                "housecall-scope",
+                M("housecall.scope.title", "Files left out"),
+                "ok",
+                M(
+                    "housecall.scope.nand",
+                    {
+                        "one": "{n} file was left out: it is not on the SD card.",
+                        "other": "{n} files were left out: they are not on the SD card.",
+                    },
+                    n=len(skipped),
+                ),
+                notes=[
+                    M(
+                        "housecall.scope.ubifs",
+                        "The onboard flash's own UBIFS checks its data, including the Lyra's state when it is kept there.",
+                    )
+                ],
+                evidence=skipped[:40] + ([f"… and {len(skipped) - 40} more"] if len(skipped) > 40 else []),
+            )
+        )
     return _report(None, findings, records, None)
 
 
