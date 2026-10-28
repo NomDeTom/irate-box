@@ -27,6 +27,8 @@ const report = {
   counts: { files: 3, damaged: 1, suspect: 0, genuine: 0, unknown: 2 },
 };
 let done = false;
+let running = false;
+const runningReport = () => ({ at: Date.now() / 1000, running: true, target: '/tmp/card.img', findings: [], counts: {} });
 w.fetch = async (u, opts = {}) => {
   calls.push([u, opts.method || 'GET']);
   if (u === '/admin/housecall' && opts.method === 'POST') {
@@ -35,7 +37,7 @@ w.fetch = async (u, opts = {}) => {
     return new Response(JSON.stringify({ id: 'hc1' }), { status: 202 });
   }
   if (u === '/admin/housecall') {
-    return new Response(JSON.stringify({ report: done ? report : null }), { status: 200 });
+    return new Response(JSON.stringify({ report: running ? runningReport() : done ? report : null }), { status: 200 });
   }
   return new Response('{}', { status: 404 });
 };
@@ -76,6 +78,20 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
     target.dispatchEvent(new w.Event('change', { bubbles: true }));
     return path.disabled && !d.getElementById('housecall-dpkg').disabled && !d.getElementById('housecall-git').disabled;
   })());
+  check('  finished: no Stop offered, and Examine can be selected again', d.getElementById('housecall-stop').hidden && !d.getElementById('housecall-scan').disabled);
+  // A long examination: its running report is shown with Stop, which asks the root helper to stop it.
+  target.value = 'image';
+  target.dispatchEvent(new w.Event('change', { bubbles: true }));
+  running = true;
+  d.getElementById('housecall-scan').click();
+  await later(1800);
+  check(
+    'while it runs: Stop is offered and Examine is not',
+    !d.getElementById('housecall-stop').hidden && d.getElementById('housecall-scan').disabled,
+  );
+  d.getElementById('housecall-stop').click();
+  await later(100);
+  check('  Stop asks the root helper to stop it', posted.some((b) => b.action === 'stop'), posted);
   check('no page errors', errors.length === 0, errors);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

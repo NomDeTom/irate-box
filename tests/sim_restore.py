@@ -58,19 +58,35 @@ check(
     target.read_bytes() == b"from the copy\n" and (T / "settings.json.damaged.2").exists(),
 )
 
-# A read-back that differs must not leave the new file in place: the old one goes back.
-real_sha_file = restore.sha_file
-restore.sha_file = lambda path: "0" * 64
+# A read-back that differs must not leave the new file in place: nothing changes.
+real_read_back = restore._read_back_sha
+restore._read_back_sha = lambda dfd, name: "0" * 64
 target.write_bytes(b"old\n")
 try:
     restore.from_bytes(target, b"new\n")
     check("a read-back that differs: refused", False)
 except Refused:
     check("a read-back that differs: refused", True)
-restore.sha_file = real_sha_file
+restore._read_back_sha = real_read_back
 check(
-    "  and the old file is back, nothing half-written",
-    target.read_bytes() == b"old\n" and not (T / "settings.json.damaged.3").exists(),
+    "  and the old file is untouched, nothing half-written beside it",
+    target.read_bytes() == b"old\n"
+    and not (T / "settings.json.damaged.3").exists()
+    and not [p for p in T.iterdir() if p.name.endswith(".tmp")],
+)
+
+# The new file takes the old one's mode (server.key is 0640 for its group), and the old one is kept by a link made
+# before the switch: the target is never missing.
+key = T / "server.key"
+key.write_bytes(b"damaged\n")
+key.chmod(0o640)
+restore.from_bytes(key, b"key\n")
+check(
+    "the old file's mode kept on the new one, the old one kept beside it",
+    key.read_bytes() == b"key\n"
+    and (key.stat().st_mode & 0o777) == 0o640
+    and (T / "server.key.damaged").read_bytes() == b"damaged\n",
+    oct(key.stat().st_mode & 0o777),
 )
 
 # irate-box's own file from the updater's checkout.
@@ -96,6 +112,21 @@ check(
     "  a file not in that commit: refused",
     refused(restore.from_git, target, repo, commit, "no-such-file") == "restore.git",
 )
+(repo / "tool.sh").write_bytes(b"#!/bin/sh\necho ok\n")
+(repo / "tool.sh").chmod(0o755)
+subprocess.run(["git", "-C", str(repo), "add", "tool.sh"], check=True)
+subprocess.run(
+    ["git", "-C", str(repo), "-c", "user.name=test", "-c", "user.email=t@example.invalid", "commit", "-qm", "two"],
+    check=True,
+)
+commit2 = subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+).stdout.strip()
+tool = T / "tool.sh"
+tool.write_bytes(b"\xff" * 8)
+tool.chmod(0o644)
+restore.from_git(tool, repo, commit2, "tool.sh")
+check("  an executable comes back executable (git's mode, 100755)", (tool.stat().st_mode & 0o777) == 0o755)
 
 
 # The package reinstall: non-conffile and conffile, with the tools stood in for.
@@ -139,6 +170,24 @@ check(
     "Dpkg::Options::=--force-confmiss" in calls[-1] and (T / "x.damaged").exists(),
     calls,
 )
+# Offline, the reinstall fails: the damaged conffile goes back rather than leaving none at all.
+(T / "x.damaged").unlink()
+target.write_text("damaged conffile\n")
+
+
+def apt_fails(*cmd, **kw):
+    return Result(rc=100, err="Temporary failure resolving") if "apt-get" in cmd else fake_run(*cmd, **kw)
+
+
+restore.run = apt_fails
+check(
+    "  a reinstall that fails: refused, and the conffile put back",
+    refused(restore.from_package, target, "pkg") == "restore.package" and target.read_text() == "damaged conffile\n",
+)
+restore.run = fake_run
+state["target"] = str(T / "x.conf")
+check("  a conffile is matched whole: /x is not /x.conf", not restore.is_conffile(target, "pkg"))
+state["target"] = str(target)
 restore.run = lambda *cmd, **kw: Result(rc=1, err="no")
 check(
     "  dpkg does not know the file: refused",

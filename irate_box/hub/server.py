@@ -6479,6 +6479,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
+        if path == "/admin/housecall" and payload.get("action") == "stop":
+            self.send_json(202, {"id": control_request({"action": "housecall-stop"})})
+            return
+
         if path == "/admin/housecall":
             target = payload.get("target")
             path_arg = str(payload.get("path") or "")

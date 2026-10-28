@@ -47,7 +47,7 @@ REPORT = CONTROL / "housecall.json"
 CHUNK = 4096
 SKIP_DIRS = {"proc", "sys", "dev", "run"}
 # The hub's large folders: content fetched again, or to be checked against its release's checksums, never read
-# whole from inside (on box 181, 2026-10-28, the build caches alone were 14 GB in 231 280 files). As nand-logs.sh's
+# whole from inside (a Lyra's build caches alone were 14 GB in 231 280 files). As nand-logs.sh's
 # HUB_LARGE.
 LARGE = ("zim", "firmware", "kits", "git", "library", "source", "drop", "ci", "factory-targets")
 # This box's own files, as the plan's "from inside" lists them: the settings, the code, the hub's state, root's
@@ -80,7 +80,8 @@ def _text(result):
 def file_facts(chunks, size=0):
     """(blocks, ff_blocks, zero_blocks, sha256, md5, git, bytes): the facts a verdict needs, from the file's chunks.
     `git` is the blob SHA-1 that a git tree names the file by (the header needs the size before the data)."""
-    sha, md5, git = hashlib.sha256(), hashlib.md5(), hashlib.sha1()
+    # MD5 and SHA-1 only to match what dpkg and git name files by, never for security.
+    sha, md5, git = hashlib.sha256(), hashlib.md5(usedforsecurity=False), hashlib.sha1(usedforsecurity=False)
     git.update(f"blob {size}\0".encode())
     blocks, ff_blocks, zero_blocks, nbytes = 0, 0, 0, 0
     for chunk in chunks:
@@ -665,6 +666,46 @@ def examine_this_card(references=None, roots=None):
     return _report(None, findings, records, None)
 
 
+def running_report(target):
+    """What the page shows while an examination runs (the root helper writes it as it starts the unit)."""
+    now = time.time()
+    return {
+        "at": now,
+        "running": True,
+        "started": now,
+        "target": target,
+        "findings": [
+            finding(
+                "housecall-running",
+                M("housecall.running.title", "Examining"),
+                "ok",
+                M(
+                    "housecall.running.said",
+                    "The doctor is examining {target}. Nothing is written to it.",
+                    target=target,
+                ),
+            )
+        ],
+        "files": [],
+        "counts": {"files": 0, "damaged": 0, "suspect": 0, "genuine": 0, "unknown": 0},
+    }
+
+
+def ended_report(target, why):
+    """An examination that ended without a report: refused, failed, or stopped."""
+    report = running_report(target or "the target")
+    report["running"] = False
+    report["findings"] = [
+        finding(
+            "housecall-ended",
+            M("housecall.ended.title", "Not examined"),
+            "warn",
+            M("housecall.ended.said", "The examination ended without a report: {why}", why=str(why)[:300]),
+        )
+    ]
+    return report
+
+
 def _report(target, findings, records, before):
     damaged = [r for r in records if r["verdict"] == "damaged"]
     suspect = [r for r in records if r["verdict"] == "suspect"]
@@ -732,12 +773,13 @@ def references_from_dpkg(root="/"):
 
 
 def installed_commit(root="/"):
-    """The commit in /opt/irate-box/VERSION, or None."""
+    """The commit in /opt/irate-box/VERSION, or None. The installer writes it short ("4ccfedc (installed …)"), so
+    7 to 40 hex digits; references_from_git resolves it in the checkout."""
     try:
         first = (Path(root) / "opt/irate-box/VERSION").read_text().split()[0]
     except (OSError, IndexError):
         return None
-    return first if re.fullmatch(r"[0-9a-f]{40}", first) else None
+    return first if re.fullmatch(r"[0-9a-f]{7,40}", first) else None
 
 
 def references_from_git(root="/", repo=None, commit=None):
@@ -749,7 +791,11 @@ def references_from_git(root="/", repo=None, commit=None):
         raise Refused(
             M("housecall.git.no-commit", "The installed commit is not recorded, so the tree cannot be checked.")
         )
-    said = run("git", "-C", str(repo), "ls-tree", "-r", "-z", commit, "--", "irate_box", binary=True)
+    full = run("git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}")
+    if full.returncode == 0 and full.stdout.strip():
+        commit = full.stdout.strip()
+    # The whole tree: /opt/irate-box holds all of it (web/, install.sh, tools/ …), not only irate_box/.
+    said = run("git", "-C", str(repo), "ls-tree", "-r", "-z", commit, binary=True)
     if said.returncode:
         raise Refused(
             M(
@@ -832,7 +878,8 @@ def main(argv):
             report = examine_this_card(references)
         else:
             sys.exit("choose --image, --device, --root or --this-card")
-    except Refused as exc:
+    except (Refused, OSError, ValueError, subprocess.SubprocessError) as exc:
+        write_report(ended_report(target or kind, exc))  # the page's running report must not stay running
         sys.exit(f"housecall: {exc}")
     write_report(report)
     if as_json:

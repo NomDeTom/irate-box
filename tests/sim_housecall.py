@@ -184,6 +184,15 @@ check(
     git_refs == {"/opt/irate-box/irate_box/example.py": {"git": blob}},
     git_refs,
 )
+# The boxes write VERSION short ("4ccfedc (installed 2026-10-27)" on box 181): it is read, and resolved in the checkout.
+(gitroot / "opt/irate-box/VERSION").write_text(f"{commit[:7]} (installed 2026-10-27)\n")
+check(
+    "  the short commit in VERSION, as the boxes write it, is read", housecall.installed_commit(gitroot) == commit[:7]
+)
+check(
+    "  and resolves in the checkout to the same references",
+    housecall.references_from_git(gitroot, repo) == {"/opt/irate-box/irate_box/example.py": {"git": blob}},
+)
 check(
     "  and a file that matches it is genuine",
     next(
@@ -223,20 +232,58 @@ check(
     sorted(str(p.relative_to(box)) for p in box.rglob("*")) == ["etc", "etc/damaged", "nand", "nand/state.json"],
 )
 
-# The root helper's action the page asks for: the same image, its report written.
+# The root helper's action the page asks for: started in a unit of its own (it does one job at a time under a
+# 50-minute limit, and an image took 32.5 min on the Pi), its running report written first.
+from irate_box.msg import Refused
 from irate_box.root import hub_control
 
+ran, active = [], {"state": "inactive"}
+
+
+def helper_run(*cmd, timeout=None, **kw):
+    ran.append(cmd)
+    out = active["state"] + "\n" if cmd[:2] == ("systemctl", "is-active") else ""
+    return subprocess.CompletedProcess(cmd, 0, out, "")
+
+
+real_helper_run = hub_control.run
+hub_control.run = helper_run
 said = hub_control.housecall_scan({"target": "image", "path": str(image)})
+started = [c for c in ran if c[0] == "systemd-run"]
+running = json.loads((T / "state" / "control" / "housecall.json").read_text())
 check(
-    "the root helper's housecall-scan writes the report and says the counts",
-    said.get("id") == "control.housecall.scanned" and (T / "state" / "control" / "housecall.json").is_file(),
-    said,
+    "the root helper's housecall-scan starts it in a unit of its own, at low priority, and says so",
+    said.get("id") == "control.housecall.started"
+    and len(started) == 1
+    and f"--unit={hub_control.HOUSECALL_UNIT}" in started[0]
+    and "IOSchedulingClass=idle" in started[0]
+    and started[0][-3:] == ("--image", str(image), "--summary"),
+    (said, started),
 )
+check("  its running report is written first, for the page", running.get("running") is True, running)
+for refused_req, why in (
+    ({"target": "nonsense"}, "an unknown target"),
+    ({"target": "image", "path": str(image), "dpkg": True}, "the package references for an image"),
+):
+    try:
+        hub_control.housecall_scan(refused_req)
+        check(f"  {why}: refused", False)
+    except Refused:
+        check(f"  {why}: refused", True)
+active["state"] = "active"
 try:
-    hub_control.housecall_scan({"target": "nonsense"})
-    check("  an unknown target: refused", False)
-except Exception as exc:  # Refused
-    check("  an unknown target: refused", "Refused" in type(exc).__name__ or exc.__class__.__name__ == "Refused")
+    hub_control.housecall_scan({"target": "image", "path": str(image)})
+    check("  a second while one runs: refused", False)
+except Refused:
+    check("  a second while one runs: refused", True)
+said = hub_control.housecall_stop({})
+stopped = json.loads((T / "state" / "control" / "housecall.json").read_text())
+check(
+    "  stopped: the unit stopped, and the report no longer running",
+    any(c[:2] == ("systemctl", "stop") for c in ran) and stopped.get("running") is False,
+    stopped,
+)
+hub_control.run = real_helper_run
 
 # The report the page reads.
 housecall.write_report(card_report)

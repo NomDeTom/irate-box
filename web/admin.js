@@ -17933,6 +17933,7 @@ const hc = {
   dpkg: document.getElementById("housecall-dpkg"),
   git: document.getElementById("housecall-git"),
   scan: document.getElementById("housecall-scan"),
+  stop: document.getElementById("housecall-stop"),
   note: document.getElementById("housecall-note"),
   when: document.getElementById("housecall-when"),
   findings: document.getElementById("housecall-findings"),
@@ -17963,18 +17964,23 @@ function hcRender(report) {
   );
   hc.findings.replaceChildren(...rows);
 }
-async function hcWait(previous, started) {
-  while (Date.now() - started < 120000) {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+// The examination runs in a unit of its own and can take half an hour or more (an image took 32.5 min on the Pi):
+// its running report is shown, with Stop, until the finished one replaces it.
+async function hcWait(previous) {
+  for (let polls = 0; ; polls++) {
+    await new Promise((resolve) => setTimeout(resolve, polls ? 5000 : 1500));
     const data = await getJSON("/admin/housecall");
     const report = data && data.report;
-    if (report && (report.at || 0) > previous) {
+    if (!report || (report.at || 0) < previous) continue;
+    hcRender(report);
+    hc.stop.hidden = !report.running;
+    hc.scan.disabled = Boolean(report.running);
+    if (!report.running) {
       hc.note.hidden = true;
-      hcRender(report);
       return;
     }
+    hc.note.textContent = "Examining, in the background. Its report shows here when it ends.";
   }
-  hc.note.textContent = "Still examining. Open this page again later for its report.";
 }
 if (hc.scan) {
   hc.target.addEventListener("change", hcPathState);
@@ -17984,8 +17990,8 @@ if (hc.scan) {
       action: "scan",
       target: hc.target.value,
       path: hc.path.value.trim(),
-      dpkg: hc.dpkg.checked,
-      git_tree: hc.git.checked,
+      dpkg: !hc.dpkg.disabled && hc.dpkg.checked,
+      git_tree: !hc.git.disabled && hc.git.checked,
     };
     if (body.target !== "this-card" && !body.path) {
       hc.note.hidden = false;
@@ -18003,9 +18009,19 @@ if (hc.scan) {
     hc.note.textContent = "Examining…";
     try {
       await postJSON("/admin/housecall", body);
-      await hcWait(previous, Date.now());
+      await hcWait(previous);
     } catch (err) {
       hc.note.textContent = err && err.message ? err.message : "The doctor could not start.";
+      hc.scan.disabled = false;
+      hc.stop.hidden = true;
+    }
+  });
+  hc.stop.addEventListener("click", async () => {
+    try {
+      await postJSON("/admin/housecall", { action: "stop" });
+    } catch (err) {
+      hc.note.hidden = false;
+      hc.note.textContent = err && err.message ? err.message : "The doctor could not be stopped.";
     }
   });
 }
