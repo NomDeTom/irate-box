@@ -52,17 +52,18 @@ Creating the account ends first use. The administrator then signs in where every
 
 The administration pages then guide the administrator through the setup steps (`web/admin-tour.js`). Each step opens the page where its setting lives and highlights it. The administrator keeps the default ("Keep this, next") or changes the setting there. The box runs on the defaults until each step is done, and the Overview counts the steps left.
 
-The steps, in order:
+The steps, in order (`web/admin-tour.js`):
 
 1. **Administrator password**: set at first use, changeable here.
-2. **How guests reach the box**: through the network that the box is on, or through its own hotspot.
-3. **What the box exposes**: what a device on the network can reach, and the settings that change it.
-4. **Add-ons**: the extras this box needs.
-5. **Books**: the offline library.
-6. **The security decisions**, each with its default stated: visitor counts, signed-in name visibility, account registration, locked tiles, HTTPS, hotspot security, guest internet access, SSH password sign-in, remote access (Tailscale), Cockpit, the terminal. Steps for things the image does not have (Tailscale, Cockpit) show only where they exist.
-7. **Take a backup**, and keep the file off the box.
+2. **How guests reach the box**: through the network that the box is on, or through its own hotspot. This step includes the hotspot firewall.
+3. **WiFi country**: the country the box is in, so its radios use the right channels and power. Done already where the operating system has set one.
+4. **What the box exposes**: what a device on the network can reach, and the settings that change it.
+5. **Add-ons**: the extras this box needs.
+6. **Books**: the offline library.
+7. **The security decisions**, each with its default stated: visitor counts, signed-in name visibility, account registration, locked tiles, HTTP and HTTPS, the root helper's policy, hotspot security, guest internet access, SSH password sign-in, remote access (Tailscale), Cockpit, the terminal. Steps for things the image does not have (Tailscale, Cockpit) show only where they exist.
+8. **Take a backup**, and keep the file off the box.
 
-A new setting that changes what guests or users can reach, or that weakens the box's security, must be a step here, with its default stated. The hotspot firewall is not yet a step of its own. It shows only among the findings of step 3.
+A new setting that changes what guests or users can reach, or that weakens the box's security, must be a step here, with its default stated.
 
 ## 4. Everyday use
 
