@@ -250,6 +250,7 @@ def _index(level, firmware_visible=False):
                                 "name": file["name"],
                                 "size": file["size"],
                                 "sha256": file["sha256"],
+                                "of": file.get("of"),
                                 "url": f"/appstore/files/{index['id']}/{version['tag']}/{file['name']}",
                                 "latest_url": f"/appstore/latest/{index['id']}/{file['name']}",
                             }
@@ -413,17 +414,36 @@ def page(host, scheme, level, firmware_visible=False):
                     f'    <details class="appstore-notes"><summary>{_esc(M("appstore.release-notes", "Release notes"))}'
                     f"</summary><pre>{html.escape(version['notes'])}</pre></details>"
                 )
-            parts.append('    <ul class="appstore-files">')
-            for file in version["files"]:
+
+            def item(file, nested=""):
                 tags = html.escape(" ".join(sorted(w for ws in holdsurvey.tags_of(file["name"]).values() for w in ws)))
-                parts.append(
+                return (
                     f'      <li data-tags="{tags}">'
                     f'<a href="{html.escape(file["url"])}"><code translate="no">{html.escape(file["name"])}</code></a>'
                     f' <span class="appstore-size">{_size(file["size"])}</span>'
                     f' <details class="appstore-digest"><summary>{_esc(M("appstore.details", "Details"))}</summary>'
                     f'<p><code translate="no">{_esc(M("appstore.sha256", "sha-256: {digest}", digest=file["sha256"]))}'
-                    "</code></p></details></li>"
+                    f"</code></p></details>{nested}</li>"
                 )
+
+            companions = {}
+            for file in version["files"]:
+                if file.get("of"):
+                    companions.setdefault(file["of"], []).append(file)
+            parts.append('    <ul class="appstore-files">')
+            for file in version["files"]:
+                if file.get("of"):
+                    continue
+                nested = companions.pop(file["name"], [])
+                under = (
+                    '<ul class="appstore-files appstore-companions">' + "".join(item(comp) for comp in nested) + "</ul>"
+                    if nested
+                    else ""
+                )
+                parts.append(item(file, under))
+            for orphan in companions.values():
+                for file in orphan:
+                    parts.append(item(file))
             parts.append("    </ul>")
         parts.append("  </section>")
     certificate = str(M("appstore.certificate", "This box's certificate"))

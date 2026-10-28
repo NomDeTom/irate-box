@@ -68,6 +68,13 @@ check(
     code == 200 and made["repo"] == "meshtastic/Meshtastic-Android" and len(made["holds"]) == 2,
     made,
 )
+code, out = post({"action": "add-holder", "preset": "obtainium"})
+check(
+    "  a preset that asks for companions: the holder is made with them",
+    code == 200 and out["holders"][-1]["companions"] is True,
+    out["holders"][-1],
+)
+post({"action": "remove-holder", "id": "obtainium"})
 check("  its survey is not there yet", made["survey"] is None and made["status"]["survey_error"] is None)
 check(
     "  it remembers when it was added, so 'never checked' waits one interval",
@@ -186,12 +193,17 @@ code, out = post(
         "title": "Scrcpy again",
         "channels": {"stable": 3, "pre-release": 1},
         "budget_mb": 500,
+        "companions": True,
     }
 )
 one = next(h for h in out["holders"] if h["id"] == "by-hand")
 check(
     "edit changes the fields, keeps the id",
-    code == 200 and one["title"] == "Scrcpy again" and one["channels"]["stable"] == 3 and one["budget_mb"] == 500,
+    code == 200
+    and one["title"] == "Scrcpy again"
+    and one["channels"]["stable"] == 3
+    and one["budget_mb"] == 500
+    and one["companions"] is True,
     one,
 )
 check(

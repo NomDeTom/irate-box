@@ -503,8 +503,8 @@ def load_presets():
 
 
 def find_preset(name):
-    """A preset as the fields of a holder: {id, title, repo, holds, channels}; LibrarianError says when it
-    is not there or its recipe cannot be read."""
+    """A preset as the fields of a holder: {id, title, repo, holds, channels, companions}; LibrarianError
+    says when it is not there or its recipe cannot be read."""
     for preset in load_presets():
         if preset["id"] == name:
             if preset.get("recipe"):
@@ -515,6 +515,7 @@ def find_preset(name):
                     "repo": preset.get("repo") or made["repo"],
                     "holds": preset.get("holds") or made["holds"],
                     "channels": preset.get("channels") or made["channels"],
+                    "companions": bool(preset.get("companions")),
                 }
             return {
                 "id": preset["id"],
@@ -522,6 +523,7 @@ def find_preset(name):
                 "repo": preset["repo"],
                 "holds": preset.get("holds") or [{"label": "Phone apps", "include": r"\.(apk|xapk|apkm|apks)$"}],
                 "channels": preset.get("channels") or dict(holder.HOLDER_DEFAULTS["channels"]),
+                "companions": bool(preset.get("companions")),
             }
     raise LibrarianError(M("library.holder.preset-none", "There is no preset called {name}.", name=str(name)[:60]))
 

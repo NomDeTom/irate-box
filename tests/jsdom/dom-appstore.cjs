@@ -21,10 +21,12 @@ const state = fs.mkdtempSync(path.join(os.tmpdir(), 'domappstore-'));
 const holds = path.join(state, 'holds');
 const name1 = 'androidApp-fdroid-universal-release.apk';
 const name2 = 'androidApp-fdroid-arm64-v8a-release.apk';
+const side1 = `${name1}.sha256`;
 fs.mkdirSync(path.join(holds, 'demo', 'v2.0.0'), { recursive: true });
 fs.mkdirSync(path.join(holds, 'demo', 'v1.9.0'), { recursive: true });
+fs.writeFileSync(path.join(holds, 'demo', 'v2.0.0', side1), 'checksum');
 fs.writeFileSync(path.join(holds, 'demo', 'v2.0.0', 'sha256.json'), JSON.stringify({
-  [name1]: [100, 1, sha(name1)], [name2]: [80, 1, sha(name2)],
+  [name1]: [100, 1, sha(name1)], [name2]: [80, 1, sha(name2)], [side1]: [8, 1, sha(side1)],
 }));
 fs.writeFileSync(path.join(holds, 'demo', 'index.json'), JSON.stringify({
   id: 'demo', title: 'Demo', repo: 'a/b', provider: 'github', visibility: 'public', updated: 'x',
@@ -32,6 +34,7 @@ fs.writeFileSync(path.join(holds, 'demo', 'index.json'), JSON.stringify({
     { tag: 'v2.0.0', channel: 'stable', published: '2026-10-02T00:00:00Z', notes: 'newest', files: [
       { name: name1, size: 45000000, sha256: sha(name1) },
       { name: name2, size: 32000000, sha256: sha(name2) },
+      { name: side1, size: 8, sha256: sha(side1), of: name1 },
     ] },
     { tag: 'v1.9.0', channel: 'pre-release', published: '2026-10-01T00:00:00Z', notes: '', files: [
       { name: name1, size: 44000000, sha256: sha(name1) },
@@ -94,13 +97,16 @@ function page(storage) {
 const w = page();
 const d = w.document;
 const demo = () => d.querySelector('section[data-holder="demo"]');
-check('the page renders the holder and its two versions', demo().querySelectorAll('.appstore-files').length === 2
+check('the page renders the holder and its two versions', demo().querySelectorAll(':scope > .appstore-files').length === 2
   && html.includes(name1) && html.includes(name2));
 check('newest first, its notes and digest there', (() => {
   const first = d.querySelector('.appstore-files').querySelector('li');
   return first.textContent.includes(name1) && d.querySelector('.appstore-notes pre').textContent === 'newest'
     && first.querySelector('details').textContent.includes(sha(name1));
 })(), d.querySelector('details') && d.querySelector('details').textContent.slice(0, 40));
+check('a companion is listed under its file, not beside it', demo().querySelector(`li > .appstore-companions [href$="${side1}"]`) !== null
+  && demo().querySelector('.appstore-companions li').parentElement.closest('li') === demo().querySelector('.appstore-files > li'),
+  demo().querySelector('.appstore-companions') && demo().querySelector('.appstore-companions').outerHTML.slice(0, 120));
 check('the links are the hub\'s own addresses', d.querySelector('.appstore-files li a').getAttribute('href')
   === `/appstore/files/demo/v2.0.0/${name1}`);
 

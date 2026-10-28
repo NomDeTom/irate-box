@@ -14373,6 +14373,8 @@ function asSettingsForm(holder) {
     vis.append(el("option", { value, textContent: text }));
   }
   form.append(el("label", {}, "Who sees it ", vis));
+  const companions = el("input", { name: "companions", type: "checkbox", checked: !!holder.companions });
+  form.append(onOffLine("label", {}, "Also hold checksums and signatures ", companions));
   const sec = AW.form(form, {
     label: `${holder.title || holder.id} settings`,
     save: async (c, v) => {
@@ -14385,6 +14387,7 @@ function asSettingsForm(holder) {
         min_age_days: Number(v.age),
         budget_mb: Number(v.budget),
         visibility: v.visibility,
+        companions: !!v.companions,
       });
       return "Saved.";
     },
@@ -14397,6 +14400,7 @@ function asSettingsForm(holder) {
     age: holder.min_age_days,
     budget: holder.budget_mb,
     visibility: holder.visibility,
+    companions: !!holder.companions,
   });
   return form;
 }

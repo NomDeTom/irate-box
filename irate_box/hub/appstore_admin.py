@@ -290,4 +290,5 @@ _EDITABLE = (
     "min_age_days",
     "budget_mb",
     "visibility",
+    "companions",
 )

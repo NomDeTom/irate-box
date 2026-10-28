@@ -29,6 +29,7 @@ Settings ($HUB_STATE_DIR/library/holders.json):
     budget_mb       all of the holder's files at most this (0: only the librarian's min_free_mb); over it,
                     the oldest version goes first, but never the newest of a channel
     visibility      "public" or "members": who the hub shows the files to
+    companions      also hold a held file's checksum, signature and update helper (app.apk's .sha256, say)
 
 A release counts only if it has a held file, so a release that lacks them (Meshtastic's v2.7.13 against a pattern for
 v2.7.14's names) is passed over and an older one takes its place. Drafts and releases titled "Revoked" never count.
@@ -65,6 +66,7 @@ HOLDER_DEFAULTS = {
     "min_age_days": 0,
     "budget_mb": 0,
     "visibility": "public",
+    "companions": False,
 }
 PROVIDERS = ("github",)
 VISIBILITIES = ("public", "members")
@@ -227,6 +229,8 @@ def validate_holder(raw):
     _compile(holder["tag_pattern"])
     holder["min_age_days"] = _count(holder["min_age_days"], "min_age_days", 365)
     holder["budget_mb"] = _count(holder["budget_mb"], "budget_mb", 10**7)
+    if not isinstance(holder["companions"], bool):
+        raise LibrarianError(M("library.holder.companions-invalid", "Invalid setting for checksums and signatures."))
     return holder
 
 
@@ -331,12 +335,13 @@ def keep_for(holder, channel):
 
 
 def held_files(release, holder):
-    """The assets of a release the holds name: some hold's `include` matches the name and its `exclude` does not."""
+    """The assets of a release the holds name: some hold's `include` matches the name and its `exclude` does not.
+    With `companions`, a checksum, signature or update helper of a held file comes too, saying whose it is (`of`)."""
     holds = [
         (_compile(hold["include"]), _compile(hold["exclude"]) if hold.get("exclude") else None)
         for hold in holder["holds"]
     ]
-    return [
+    direct = [
         asset
         for asset in release["assets"]
         if FILE_RE.match(asset["name"])
@@ -345,6 +350,21 @@ def held_files(release, holder):
             for include, exclude in holds
         )
     ]
+    if not holder.get("companions"):
+        return direct
+    names = {asset["name"] for asset in release["assets"]}
+    held = {asset["name"] for asset in direct}
+    from irate_box.library import holdsurvey
+
+    extra = []
+    for asset in release["assets"]:
+        name = asset["name"]
+        if name in held or not FILE_RE.match(name):
+            continue
+        parent = holdsurvey.parent_of(name, names)
+        if parent in held:
+            extra.append({**asset, "of": parent})
+    return direct + extra
 
 
 def newest_first(releases):
@@ -483,6 +503,8 @@ def _mirror_version(holder, entry, policy, log, changes=None):
             changes.append({"tag": entry["tag"], "name": name, "was": note[2][:12], "now": expected[:12]})
         if stat and note == [stat.st_size, stat.st_mtime_ns, expected] and stat.st_size == asset["size"]:
             have[name] = {"name": name, "size": stat.st_size, "sha256": expected}
+            if asset.get("of"):
+                have[name]["of"] = asset["of"]
             continue
         turned_away = refused.get(name)
         if turned_away and turned_away[0] == expected and time.time() - turned_away[1] < REFUSED_RETRY_SECONDS:
@@ -514,6 +536,8 @@ def _mirror_version(holder, entry, policy, log, changes=None):
         stat = path.stat()
         recorded[name] = [stat.st_size, stat.st_mtime_ns, expected]
         have[name] = {"name": name, "size": stat.st_size, "sha256": expected}
+        if asset.get("of"):
+            have[name]["of"] = asset["of"]
     recorded = {name: note for name, note in recorded.items() if name in have}
     _publish(folder / DIGESTS, recorded)
     refused = {name: note for name, note in refused.items() if name in names and name not in have}
