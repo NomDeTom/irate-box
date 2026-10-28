@@ -15,8 +15,8 @@ survey(releases) reads the newest releases of each channel, no file downloaded, 
                is that kind's `variant` (Syncthing's 386, mips64le, s390x need no table to be told apart)
   eras         kinds that never share a release, are alike and of one class: probably the same file under a new
                name (Meshtastic Android: app-fdroid-release.apk, then androidApp-fdroid-universal-release.apk)
-  twins        two kinds the same size in every release they share (Obtainium's app-release.apk and
-               app-fdroid-release.apk): probably the same file twice
+  twins        two kinds the same size in every release they share, and with the same digest where both carry
+               one (Obtainium's two flavours are the same size but different files, so not twins): probably the same file twice
 
 and the holds model, which makes what is ticked and what is typed one list (holder.py's `holds`):
 
@@ -211,6 +211,7 @@ def build_kinds(chosen):
             kind["sizes"][release["tag"]] = asset["size"]
             kind["channels"].setdefault(channel, set()).add(release["tag"])
             kind["digests"] += bool(asset.get("digest"))
+            kind["digest"][release["tag"]] = asset.get("digest")
             kind["files"] += 1
             if kind["newest"] is None or order[release["tag"]] < order[kind["newest"]]:
                 kind["newest"], kind["example"] = release["tag"], name
@@ -243,6 +244,7 @@ def _new_kind(shape_text, example):
         "channels": {},
         "companions": set(),
         "digests": 0,
+        "digest": {},
         "files": 0,
         "newest": None,
     }
@@ -295,6 +297,12 @@ def twins(kinds):
                 and first["class"] not in ("checksum or signature", "companion", "data")
                 and all(first["sizes"][tag] == second["sizes"][tag] for tag in shared)
                 and first["size_max"] > 1 << 20
+                and not any(
+                    first["digest"].get(tag)
+                    and second["digest"].get(tag)
+                    and first["digest"][tag] != second["digest"][tag]
+                    for tag in shared
+                )
             ):
                 found.append({"first": first["shape"], "second": second["shape"], "releases": len(shared)})
     return found[:MAX_TWINS]
