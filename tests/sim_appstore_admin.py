@@ -70,6 +70,10 @@ check(
 )
 check("  its survey is not there yet", made["survey"] is None and made["status"]["survey_error"] is None)
 check(
+    "  it remembers when it was added, so 'never checked' waits one interval",
+    bool(holder.holder_status("meshtastic-android").get("added")),
+)
+check(
     "  a preset twice: refused",
     refused({"action": "add-holder", "preset": "meshtastic-android"}, "library.holder.id-taken"),
 )

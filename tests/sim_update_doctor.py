@@ -1245,6 +1245,8 @@ lib.mkdir(parents=True, exist_ok=True)
                 {"id": "broken", "title": "Broken"},
                 {"id": "old", "title": "Old"},
                 {"id": "quiet", "title": "Quiet"},
+                {"id": "fresh", "title": "Fresh"},
+                {"id": "waiting", "title": "Waiting"},
             ],
         }
     )
@@ -1261,6 +1263,8 @@ for hid, state in {
     "broken": {"last_check": iso(now), "error": "GitHub said no."},
     "old": {"last_check": iso(now - 10 * 86400)},
     "quiet": {"last_check": iso(now - 3600)},
+    "fresh": {"added": iso(now - 60)},
+    "waiting": {"added": iso(now - 2 * 86400)},
 }.items():
     (H.STATE / "holds" / hid).mkdir(parents=True)
     (H.STATE / "holds" / hid / "status.json").write_text(json.dumps(state))
@@ -1274,6 +1278,7 @@ check(
         "appstore:android:budget",
         "appstore:broken:failing",
         "appstore:old:stale",
+        "appstore:waiting:stale",
     },
     sorted(fs),
 )
@@ -1297,6 +1302,11 @@ check(
 check(
     "  a budget that dropped versions: a warning naming them",
     fs["appstore:android:budget"]["status"] == "warn" and "v2.7.0" in render(fs["appstore:android:budget"]["notes"][0]),
+)
+check(
+    "  a holder added a minute ago is not said to have never checked; one added two days ago is",
+    "appstore:fresh:stale" not in fs and fs["appstore:waiting:stale"]["summary"]["id"] == "update.appstore.never",
+    sorted(fs),
 )
 check(
     "  a check far overdue: a warning with the last time",
