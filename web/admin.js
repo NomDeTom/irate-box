@@ -333,7 +333,13 @@ const el = (tag, props = {}, ...kids) => {
   for (const [k, v] of Object.entries(rest))
     if (MARKUP_PROP.test(k) || (/^on/i.test(k) && v != null && typeof v !== "function"))
       throw new TypeError(`el(): ${k} is not set from props`);
-  const node = Object.assign(document.createElement(tag), rest);
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(rest)) {
+    // aria-* and role are attributes, not properties: Object.assign would leave them as stray JS fields
+    // that assistive technology never sees.
+    if (k === "role" || k.startsWith("aria-")) node.setAttribute(k, String(v));
+    else node[k] = v;
+  }
   if (dataset) Object.assign(node.dataset, dataset);
   node.append(...kids.filter((k) => k !== null && k !== undefined));
   return node;

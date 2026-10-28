@@ -61,6 +61,8 @@ const gitData = { installed: true, max_push: 67108864, free: 5e10, now: 17909500
       releases: { list: [['v2.8.1', true, false], ['v2.8.0.47db0e3', true, true]], fetched: 1790940000 },
       releases_cached: { since: 1790940000, why: 'GitHub API rate limit reached (60/hour without a token)' } } }], running: false };
 // Firmware: the source not mirrored yet; the build cache kept, its control on the Git page.
+const appstore = { enabled: false, holders: [], presets: [],
+  policy: { holders_every_hours: 24, holders_auto: false, min_free_mb: 512 }, free_mb: 9000, bytes_all: 0, running: false, progress: null };
 const fwFix = { settings: { enabled: false, boards: [], keep_alpha: 2, keep_beta: 1, cache: 'native', configs: true },
   status: { last_check: '2026-10-06T15:00:00Z', outcome: 'build cache 215 MB', cache: { version: '2.8.1.8e6a88d', mode: 'native', bytes: 215 * 2 ** 20 } },
   targets: [], free_mb: 9000, source: null };
@@ -88,6 +90,7 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/apps') return new Response(JSON.stringify({ apps: adminApps() }), { status: 200 });
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
   if (u === '/admin/firmware') return new Response(JSON.stringify(fwFix), { status: 200 });
+  if (u === '/admin/appstore') return new Response(JSON.stringify(appstore), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/tiles') return new Response(JSON.stringify(tilesData), { status: 200 });
   if (u === '/admin/moderation') return new Response(JSON.stringify({ now: 1790950000, messages: [{ created: 1790949000, name: 'Moth', text: 'buy cheap things' }, { created: 1790949500, name: 'Ant', text: 'hello' }], board: { threads: [] }, drops: [], threads: [],
@@ -129,6 +132,12 @@ setTimeout(() => {
     check('  each off while nothing has changed, and nothing counted unsaved', !on.length && !w.AW.unsaved().length,
       on.map((b) => (b.closest('[id]') || {}).id).join(', ') + ' / ' + w.AW.unsaved().map((x) => x.id).join(', '));
   }
+  const addMode = d.querySelector('#appstore-add select');
+  check(
+    'el() sets aria-* as attributes, so assistive technology sees them',
+    addMode && addMode.getAttribute('aria-label') === 'What to add',
+    addMode && addMode.outerHTML.slice(0, 120),
+  );
   const side = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
   // The app-first menu: Overview, Apps (a page per app, from the manifests), Moderation, System
   // (accounts under System, not Box), the Doctors, then Mock controls last; nothing left over.
