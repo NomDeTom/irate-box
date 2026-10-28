@@ -2632,8 +2632,9 @@ MOUNTINFO = Path(os.environ.get("HUB_MOUNTINFO", "/proc/self/mountinfo"))
 
 
 def _mount_of(path):
-    """(mount point, filesystem type, source) of the mount that holds path, from mountinfo; None if unknown."""
-    best = None
+    """(mount point, filesystem type, source) of the mount that holds path (a str or a Path), from mountinfo; None if
+    unknown."""
+    path, best = str(path), None
     try:
         lines = MOUNTINFO.read_text().splitlines()
     except OSError:
@@ -4593,7 +4594,9 @@ def check_builds(now=None, quick=False):
             )
         )
     used = _builds_bytes(ci_root, quick)
-    total = shutil.disk_usage(STATE).total if STATE.exists() else 0
+    # The builds' own filesystem: with nand-logs' state on, the hub's folder is the onboard flash's and the builds
+    # stay on the card, so the hub's folder's size gave box 181 "6100% of the card" (2026-10-28).
+    total = shutil.disk_usage(ci_root if ci_root.is_dir() else STATE).total if STATE.exists() else 0
     if used and total:
         share = used / total
         big = share > 0.2
