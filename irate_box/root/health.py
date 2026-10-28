@@ -3453,7 +3453,7 @@ def _nand():
         return "on", None
     if not NAND_TOOL.exists() or not PROC_MTD.exists():
         return None, None
-    said = run("bash", str(NAND_TOOL), "check", timeout=60).stdout
+    said = run("bash", "-p", str(NAND_TOOL), "check", timeout=60).stdout
     m = re.search(r'^mtd\d+ "[^"]*": (\d+) MiB raw NAND', said, re.M)
     return ("free", int(m[1])) if m and re.search(r"^\s+free\.", said, re.M) else (None, None)
 
@@ -3583,7 +3583,7 @@ def _flash_findings():
 
 
 def _nand_tool(*verb):
-    r = run("bash", str(NAND_TOOL), *verb, timeout=900)
+    r = run("bash", "-p", str(NAND_TOOL), *verb, timeout=900)
     if r.returncode:
         raise Refused(
             M(

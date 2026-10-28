@@ -11,4 +11,4 @@ if [ "$#" = 0 ] && [ -f /etc/hub/install-options ]; then
 	# The recorded options, one per line; --repo and --branch are where /admin's updates come from.
 	set -- $(cat /etc/hub/install-options)
 fi
-exec bash "$src/install.sh" --src "$src" "$@"
+exec bash -p "$src/install.sh" --src "$src" "$@"
