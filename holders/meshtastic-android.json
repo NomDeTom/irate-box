@@ -1,11 +1,11 @@
 {
   "id": "meshtastic-android",
-  "title": "Meshtastic (Android, F-Droid builds)",
+  "title": "Meshtastic (Android)",
   "repo": "meshtastic/Meshtastic-Android",
   "holds": [
-    {"label": "F-Droid release APKs", "include": "^androidApp-fdroid-(arm64-v8a|armeabi-v7a|universal)-release\\.apk$"},
-    {"label": "the older name (to v2.7.13)", "include": "^app-fdroid-release\\.apk$"}
+    {"label": "the release APK", "include": "^androidApp-google-release\\.apk$"},
+    {"label": "the older name (to v2.7.13)", "include": "^app-google-release\\.apk$"}
   ],
   "channels": {"stable": 2, "pre-release": 0},
-  "summary": "The phone app's F-Droid builds: every phone, no Google services. Two versions kept, about 90 MB."
+  "summary": "The phone app, the build the Play Store has: one APK for every phone. Two versions kept, about 125 MB."
 }

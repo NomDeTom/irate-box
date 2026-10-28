@@ -143,7 +143,7 @@ check(
 holder.fetch_releases = lambda repo: RELEASES
 
 # --- the survey's table turned back into holds ---
-shape = "androidApp-google-release.apk"
+shape = "androidApp-fdroid-universal-release.apk"
 code, out = post({"action": "holds", "id": "meshtastic-android", "kinds": {shape: True}})
 one = next(h for h in out["holders"] if h["id"] == "meshtastic-android")
 check(
@@ -154,8 +154,7 @@ check(
 check("  and its state is all", next(k for k in one["survey"]["kinds"] if k["shape"] == shape)["state"] == "all")
 check(
     "  a kind the preset already holds needs no tick of its own",
-    next(k for k in one["survey"]["kinds"] if k["shape"] == "androidApp-fdroid-universal-release.apk")["state"]
-    == "all",
+    next(k for k in one["survey"]["kinds"] if k["shape"] == "androidApp-google-release.apk")["state"] == "all",
 )
 code, out = post({"action": "holds", "id": "meshtastic-android", "kinds": {shape: False}})
 one = next(h for h in out["holders"] if h["id"] == "meshtastic-android")
