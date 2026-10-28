@@ -468,5 +468,25 @@ check(
     ),
 )
 
+# --- the presets shipped in holders/ ---
+obtainium_preset = holdsurvey.find_preset("obtainium")
+newest_obtainium = holder.newest_first([r for r in load("obtainium") if not r["prerelease"]])[0]
+check(
+    "the Obtainium preset holds the plain build's two phone APKs, not the fdroid ones",
+    sorted(a["name"] for a in holder.held_files(newest_obtainium, {"holds": obtainium_preset["holds"]}))
+    == ["app-arm64-v8a-release.apk", "app-armeabi-v7a-release.apk"],
+    [a["name"] for a in holder.held_files(newest_obtainium, {"holds": obtainium_preset["holds"]})],
+)
+android_preset = holdsurvey.find_preset("meshtastic-android")
+check(
+    "the Meshtastic Android preset holds the Play Store build, under its new name and its old one",
+    {
+        a["name"]
+        for release in load("meshtastic-android")
+        for a in holder.held_files(release, {"holds": android_preset["holds"]})
+    }
+    == {"androidApp-google-release.apk", "app-google-release.apk"},
+)
+
 print(f"{fails} failures" if fails else "ok")
 sys.exit(1 if fails else 0)

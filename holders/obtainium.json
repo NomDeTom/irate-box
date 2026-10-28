@@ -1,0 +1,10 @@
+{
+  "id": "obtainium",
+  "title": "Obtainium",
+  "repo": "ImranR98/Obtainium",
+  "holds": [
+    {"label": "the phone APKs (64-bit and 32-bit ARM)", "include": "^app-(arm64-v8a|armeabi-v7a)-release\\.apk$"}
+  ],
+  "channels": {"stable": 1, "pre-release": 0},
+  "summary": "The app that keeps other apps up to date, so a phone can follow this App store. The plain build, for 64-bit and 32-bit phones: about 65 MB."
+}
