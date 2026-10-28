@@ -343,7 +343,7 @@ try:
                     (f"firmware-{board}-{version}.factory.bin", None),
                     (f"firmware-{board}-{version}.bin", "app0"),
                     (f"littlefs-{board}-{version}.bin", "spiffs"),
-                    (f"mt-esp32s3-ota.bin", "app1"),
+                    ("mt-esp32s3-ota.bin", "app1"),
                 ]
             files = []
             for name, part in names:
@@ -394,7 +394,7 @@ try:
         and "Meshtastic firmware" in fwpage
         and '<details class="appstore-board"' in fwpage
         and '<details class="appstore-board" open' not in fwpage
-        and f"/flasher/firmware/2.8.2.abc1234/firmware-rak4631-2.8.2.abc1234.uf2" in fwpage,
+        and "/flasher/firmware/2.8.2.abc1234/firmware-rak4631-2.8.2.abc1234.uf2" in fwpage,
         st,
     )
     check(
