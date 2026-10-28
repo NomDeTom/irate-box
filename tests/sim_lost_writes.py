@@ -40,7 +40,17 @@ def check(name, cond, info=""):
 
 
 cardhistory.card = lambda: ("mmcblk0", "179:0")
-health._on_card = lambda path, name: str(path).startswith(str(state)) or str(path).startswith(str(root))
+# The real _on_card, against a mount table with the test's folders on the card (it is handed Paths: box 181 found
+# that _mount_of took only a str, 2026-10-28).
+(mountinfo := T / "mountinfo").write_text(
+    f"30 1 179:1 / / rw - ext4 /dev/mmcblk0p1 rw\n"
+    f"31 30 0:30 / {state} rw - ext4 /dev/mmcblk0p1 rw\n"
+    f"32 30 0:31 / {root} rw - ext4 /dev/mmcblk0p1 rw\n"
+)
+health.MOUNTINFO = mountinfo
+check(
+    "the records found on the card through the real mount lookup, from Paths", health._on_card(state / "x", "mmcblk0")
+)
 
 record = state / "memory-history.json"
 record.write_text('{"rows": []}\n')
@@ -217,6 +227,15 @@ check(
     "health.run_report()"
     in (REPO / "irate_box/root/hub_control.py").read_text().split("def _write_health")[1].split("\ndef ")[0],
 )
+
+# A record on the onboard flash (nand-logs' state on) is not the card's.
+mountinfo.write_text(
+    f"30 1 179:1 / / rw - ext4 /dev/mmcblk0p1 rw\n31 30 0:30 /hub {state} rw - ubifs ubi9:logs rw\n"
+    f"32 30 0:31 / {root} rw - ext4 /dev/mmcblk0p1 rw\n"
+)
+record.write_text('{"rows": []}\n')
+check("  a record on the onboard flash is not counted", record not in health.records_on_card())
+check("  nor a record on the onboard flash given as a str", not health._on_card(str(record), "mmcblk0"))
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
