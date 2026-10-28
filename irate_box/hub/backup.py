@@ -107,11 +107,11 @@ def git_mirrors(state, mirrors=None):
 
 
 def walk(state, git_mirrors_=None):
-    """{settings, data, syncthing: bytes, books, firmware: bytes left out} for $STATE. A folder never
-    backed up is not walked (ci/ is gigabytes of small files); the two big ones the page names are measured."""
+    """{settings, data, syncthing: bytes, books, firmware, holds: bytes left out} for $STATE. A folder never
+    backed up is not walked (ci/ is gigabytes of small files); the big ones the page names are measured."""
     root = Path(state)
     gm = git_mirrors(root) if git_mirrors_ is None else git_mirrors_
-    sums = {"settings": 0, "data": 0, "syncthing": 0, "books": 0, "firmware": 0}
+    sums = {"settings": 0, "data": 0, "syncthing": 0, "books": 0, "firmware": 0, "holds": 0}
     for base, dirs, files in os.walk(root):
         rel_base = os.path.relpath(base, root)
         rel_base = "" if rel_base == "." else rel_base
@@ -123,6 +123,8 @@ def walk(state, git_mirrors_=None):
                     sums["books"] = du(root / rel)
                 elif rel == "firmware":
                     sums["firmware"] = du(root / rel)
+                elif rel == "holds":
+                    sums["holds"] = du(root / rel)
         for f in files:
             rel = f"{rel_base}/{f}" if rel_base else f
             try:
@@ -232,7 +234,7 @@ def plan(state, zim_dir, kits_status=None, mirrors=None, apps_dir=None, kit_titl
     return {
         "levels": {"settings": sums["settings"], "data": sums["settings"] + sums["data"]},
         "syncthing": sums["syncthing"],
-        "left_out": {"books": sums["books"], "firmware": sums["firmware"]},
+        "left_out": {"books": sums["books"], "firmware": sums["firmware"], "holds": sums["holds"]},
         "image": image_estimate(card_size()),
         "books": books,
         "kits": kits,

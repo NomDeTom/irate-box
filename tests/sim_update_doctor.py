@@ -1226,6 +1226,94 @@ check(
 H.UPDATE_STATE.unlink()
 shutil.rmtree(src, ignore_errors=True)
 
+
+# --- the App store's holders (appstore_findings): what the holders recorded, said without any network of its own ---
+def iso(seconds):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(seconds))
+
+
+now = time.time()
+lib = H.STATE / "library"
+lib.mkdir(parents=True, exist_ok=True)
+(lib / "sources.json").write_text(json.dumps({"policy": {"holders_every_hours": 24}}))
+(lib / "holders.json").write_text(
+    json.dumps(
+        {
+            "enabled": True,
+            "holders": [
+                {"id": "android", "title": "Meshtastic (Android)"},
+                {"id": "broken", "title": "Broken"},
+                {"id": "old", "title": "Old"},
+                {"id": "quiet", "title": "Quiet"},
+            ],
+        }
+    )
+)
+for hid, state in {
+    "android": {
+        "last_check": iso(now),
+        "newest": {"tag": "v2.8.4", "held": False},
+        "over_budget": ["v2.7.0"],
+        "changed": [
+            {"tag": "v2.8.3", "name": "androidApp-fdroid-universal-release.apk", "was": "a" * 12, "now": "b" * 12}
+        ],
+    },
+    "broken": {"last_check": iso(now), "error": "GitHub said no."},
+    "old": {"last_check": iso(now - 10 * 86400)},
+    "quiet": {"last_check": iso(now - 3600)},
+}.items():
+    (H.STATE / "holds" / hid).mkdir(parents=True)
+    (H.STATE / "holds" / hid / "status.json").write_text(json.dumps(state))
+fs = {f["id"]: f for f in H.appstore_findings(now=now)}
+check(
+    "App store: five said, the checked-and-quiet one nothing",
+    set(fs)
+    == {
+        "appstore:android:newest",
+        "appstore:android:digest",
+        "appstore:android:budget",
+        "appstore:broken:failing",
+        "appstore:old:stale",
+    },
+    sorted(fs),
+)
+check(
+    "  a failing holder is a problem with its error as evidence",
+    fs["appstore:broken:failing"]["status"] == "problem"
+    and fs["appstore:broken:failing"]["evidence"] == ["GitHub said no."],
+    fs["appstore:broken:failing"],
+)
+check(
+    "  a newest release with none of the held files: a warning naming it",
+    fs["appstore:android:newest"]["status"] == "warn"
+    and fs["appstore:android:newest"]["summary"]["args"]["tag"] == "v2.8.4",
+)
+check(
+    "  a changed digest: a problem, and the file between its old and new digest",
+    fs["appstore:android:digest"]["status"] == "problem"
+    and "androidApp-fdroid-universal-release.apk" in render(fs["appstore:android:digest"]["notes"][0]),
+    fs["appstore:android:digest"]["notes"],
+)
+check(
+    "  a budget that dropped versions: a warning naming them",
+    fs["appstore:android:budget"]["status"] == "warn" and "v2.7.0" in render(fs["appstore:android:budget"]["notes"][0]),
+)
+check(
+    "  a check far overdue: a warning with the last time",
+    fs["appstore:old:stale"]["status"] == "warn"
+    and fs["appstore:old:stale"]["notes"][0]["id"] == "update.appstore.last-check",
+)
+check(
+    "  each goes to the App store's page",
+    all(f["go"]["section"] == "appstore" for f in fs.values()),
+    [f["go"] for f in fs.values()],
+)
+(lib / "holders.json").write_text(json.dumps({"enabled": False, "holders": []}))
+check("off, or with nothing kept, the App store says nothing", H.appstore_findings(now=now) == [])
+(lib / "holders.json").unlink()
+(lib / "sources.json").unlink()
+shutil.rmtree(H.STATE / "holds", ignore_errors=True)
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

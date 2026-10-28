@@ -215,6 +215,16 @@ check(
     ),
 )
 check("nothing chosen to hold: nothing kept", holder.plan(mine(holds=[]), releases) == [])
+rec = {}
+holder.plan(mine(channels={"stable": 5, "pre-release": 0}), releases, record=rec)
+check(
+    "the record: the newest release that counts, and whether it carries any held file",
+    rec["newest"] == {"tag": "v2.8.3", "held": True} and rec["over_budget"] == [],
+    rec,
+)
+rec = {}
+holder.plan(mine(holds=[{"include": "\\.bin$"}]), releases, record=rec)
+check("  a newest release with none of the held files says so", rec["newest"] == {"tag": "v2.8.3", "held": False}, rec)
 
 # --- plan: built releases ---
 now = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
@@ -298,6 +308,9 @@ check(
 )
 tiny = holder.validate_holder({**tight, "budget_mb": 1})
 check("  but the newest of a channel always stays", tags(holder.plan(tiny, sized, now)) == ["v3.0"])
+rec = {}
+holder.plan(tight, sized, now, record=rec)
+check("  and the record names the versions the budget dropped", rec["over_budget"] == ["v1.0"], rec)
 check("a tag that cannot be a folder is passed over", holder.plan(simple, [release("v1/../2", 1)], now) == [])
 
 # --- sync ---
@@ -428,6 +441,24 @@ check(
     status["last_check"] and status["versions"] == {"v1.3.0": "stable", "v1.2.0": "stable"} and "error" not in status,
     status,
 )
+check(
+    "  the newest is recorded, nothing dropped and nothing changed",
+    status["newest"] == {"tag": "v1.3.0", "held": True} and status["over_budget"] == [] and status["changed"] == [],
+    status,
+)
+old_sha = hashlib.sha256(b"F" * 2000).hexdigest()
+served["releases"][0] = raw_release("v1.3.0", 0, [("app.apk", b"F" * 2001, "ok")])
+holder.sync(log=lambda *_: None)
+st2 = json.loads((folder / "status.json").read_text())
+check(
+    "GitHub giving a different digest for a kept file: fetched again and said",
+    st2["changed"]
+    == [{"tag": "v1.3.0", "name": "app.apk", "was": old_sha[:12], "now": hashlib.sha256(b"F" * 2001).hexdigest()[:12]}]
+    and (folder / "v1.3.0" / "app.apk").read_bytes() == b"F" * 2001,
+    st2.get("changed"),
+)
+holder.sync(log=lambda *_: None)
+check("  the next run says nothing more", json.loads((folder / "status.json").read_text())["changed"] == [])
 served["net"] = False
 served["releases"].insert(0, raw_release("v1.4.0", 0, [("app.apk", b"G" * 100, "ok")]))
 outcome = holder.sync(log=lambda *_: None)

@@ -176,6 +176,7 @@ import time
 import urllib.parse
 import urllib.request
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from irate_box.finding import action as finding_action
@@ -3703,6 +3704,7 @@ GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access
 GO_SOURCE_REPO = _go("updoctor", M("go.update-source", "Update source"), "update-source-repo")
 GO_SOURCE_BRANCH = _go("updoctor", M("go.update-source", "Update source"), "update-source-branch")
 GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
+GO_APPSTORE = _go("appstore", M("go.appstore", "App store"))
 
 # One failed attempt says what happened, not why.
 PROBE_NOTE = M(
@@ -4510,6 +4512,7 @@ def updates_doctor_findings():
         pass
     findings += scheduled_findings()
     findings += kits_findings()
+    findings += appstore_findings()
     return findings
 
 
@@ -4876,6 +4879,198 @@ def kits_findings(now=None):
                 )
             )
     return out
+
+
+def appstore_findings(now=None):
+    """The App store's holders (library/holder.py), from the state they leave, without touching the network:
+    a holder failing; a holder whose check is far overdue; a newest release carrying none of the held files
+    (names drift, §9); a kept file whose digest GitHub now says differently; and a space limit that dropped
+    versions. Nothing when the App store is off or has no holders: a box that keeps no apps has nothing to say."""
+    now = now or time.time()
+    out = []
+    try:
+        cfg = json.loads((STATE / "library" / "holders.json").read_text())
+    except (OSError, ValueError):
+        return out
+    holders = [h for h in (cfg.get("holders") or []) if isinstance(h, dict) and librarian_name(h.get("id"))]
+    if not cfg.get("enabled") or not holders:
+        return out
+    try:
+        every = int(json.loads((STATE / "library" / "sources.json").read_text())["policy"]["holders_every_hours"])
+    except (OSError, ValueError, TypeError, KeyError):
+        every = 24
+    title = M("update.appstore.title", "App store")
+    for one in holders:
+        hid = one["id"]
+        name = one.get("title") or hid
+        try:
+            st = json.loads((STATE / "holds" / hid / "status.json").read_text())
+        except (OSError, ValueError):
+            st = {}
+        if st.get("error"):
+            out.append(
+                finding(
+                    f"appstore:{hid}:failing",
+                    title,
+                    "problem",
+                    M(
+                        "update.appstore.failing",
+                        "The App store could not update {name}.",
+                        name=name,
+                    ),
+                    M(
+                        "update.appstore.failing.why",
+                        "Until a check finishes, the files the box keeps for {name} stay as they are.",
+                        name=name,
+                    ),
+                    M(
+                        "update.appstore.failing.fix",
+                        "Check the box has internet access, then open App store and select Check now. "
+                        "If it stays, read the librarian's log.",
+                    ),
+                    evidence=[str(st["error"])[:300]],
+                    commands=[LIBRARIAN_LOG],
+                    go=GO_APPSTORE,
+                )
+            )
+            continue
+        checked = _holder_checked_epoch(st.get("last_check"))
+        if checked is None or now - checked > max(every, 1) * 3600 * 2:
+            out.append(
+                finding(
+                    f"appstore:{hid}:stale",
+                    title,
+                    "warn",
+                    (
+                        M("update.appstore.never", "The App store has never checked {name}.", name=name)
+                        if checked is None
+                        else M(
+                            "update.appstore.stale",
+                            "The App store has not checked {name} for over {hours} hours.",
+                            name=name,
+                            hours=max(every, 1) * 2,
+                        )
+                    ),
+                    fix=M(
+                        "update.appstore.stale.fix",
+                        "Check the box has internet access and that the schedule on App store is what you set. "
+                        "Select Check now to make a run.",
+                    ),
+                    notes=[]
+                    if checked is None
+                    else [M("update.appstore.last-check", "Last checked: {when}.", when=when(checked))],
+                    go=GO_APPSTORE,
+                )
+            )
+        newest = st.get("newest")
+        if isinstance(newest, dict) and newest.get("tag") and not newest.get("held"):
+            out.append(
+                finding(
+                    f"appstore:{hid}:newest",
+                    title,
+                    "warn",
+                    M(
+                        "update.appstore.newest",
+                        "The newest release of {name}, {tag}, has none of the files you hold.",
+                        name=name,
+                        tag=str(newest["tag"])[:80],
+                    ),
+                    M(
+                        "update.appstore.newest.why",
+                        "Projects change what they call their files. The box keeps offering the older releases "
+                        "until it is told what to hold now.",
+                    ),
+                    M(
+                        "update.appstore.newest.fix",
+                        "Open App store, open {name} and select Look again. Tick the files the new releases carry "
+                        "and select Hold these.",
+                        name=name,
+                    ),
+                    go=GO_APPSTORE,
+                )
+            )
+        changed = st.get("changed")
+        if isinstance(changed, list) and changed:
+            out.append(
+                finding(
+                    f"appstore:{hid}:digest",
+                    title,
+                    "problem",
+                    M(
+                        "update.appstore.digest",
+                        {
+                            "one": "GitHub gives a different digest for {n} kept file of {name} than the box had.",
+                            "other": "GitHub gives a different digest for {n} kept files of {name} than the box had.",
+                        },
+                        n=len(changed),
+                        name=name,
+                    ),
+                    M(
+                        "update.appstore.digest.why",
+                        "A release should not change after it is published. The box fetched the files again and "
+                        "checked them against the new digests.",
+                    ),
+                    M(
+                        "update.appstore.digest.fix",
+                        "Look at the project's release page: the files can have been replaced, or the release "
+                        "republished by mistake. On App store, select Remove files if the change is not to be kept.",
+                    ),
+                    notes=[
+                        M(
+                            "update.appstore.digest.file",
+                            "{tag}: {name} was {was}, now {now}.",
+                            tag=str(c.get("tag", ""))[:80],
+                            name=str(c.get("name", ""))[:128],
+                            was=str(c.get("was", ""))[:12],
+                            now=str(c.get("now", ""))[:12],
+                        )
+                        for c in changed[:6]
+                    ],
+                    go=GO_APPSTORE,
+                )
+            )
+        dropped = st.get("over_budget")
+        if isinstance(dropped, list) and dropped:
+            out.append(
+                finding(
+                    f"appstore:{hid}:budget",
+                    title,
+                    "warn",
+                    M(
+                        "update.appstore.budget",
+                        {
+                            "one": "The space limit of {name} dropped {n} older version.",
+                            "other": "The space limit of {name} dropped {n} older versions.",
+                        },
+                        n=len(dropped),
+                        name=name,
+                    ),
+                    M(
+                        "update.appstore.budget.why",
+                        "The newest of each channel is always kept. The versions beyond the limit go first.",
+                    ),
+                    M(
+                        "update.appstore.budget.fix",
+                        "Raise the space limit on App store, or keep fewer versions.",
+                    ),
+                    notes=[M("update.appstore.budget.tags", "Dropped: {tags}.", tags=", ".join(map(str, dropped[:8])))],
+                    go=GO_APPSTORE,
+                )
+            )
+    return out
+
+
+def librarian_name(value):
+    """A holder id as the librarian names things: letters, digits, dots, hyphens and underscores, from a file
+    an administrator may have edited by hand. The doctor reads state by path, so only a real name is followed."""
+    return isinstance(value, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$", value) is not None
+
+
+def _holder_checked_epoch(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+    except (TypeError, ValueError):
+        return None
 
 
 def _doctor_again():

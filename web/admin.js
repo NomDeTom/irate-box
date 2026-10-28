@@ -10488,7 +10488,8 @@ function drawBackup() {
   const lo = plan.left_out || {};
   bku.leftOut.textContent =
     `Omitted from every download: books (${size(lo.books)}), the firmware mirror (${size(lo.firmware)}), ` +
-    "the git mirrors, builds and their caches, crash evidence and the archive of the library. The box can download them again.";
+    `the App store files (${size(lo.holds)}), the git mirrors, builds and their caches, crash evidence and ` +
+    "the archive of the library. The box can download them again.";
   drawBackupGo();
 }
 function drawBackupGo() {

@@ -76,6 +76,7 @@ for rel in (
     "ci/home/big",
     "ci/runs/r",
     "firmware/2.8/fw.bin",
+    "holds/demo/v1.2.0/app.apk",
     "zim/book.zim",
     "crashwatch/snap.log",
     "control/x.json",
@@ -143,12 +144,13 @@ check(
     ),
 )
 check(
-    "never: builds, the firmware and git mirrors, books, crash evidence, caches, the token, transient files",
+    "never: builds, the firmware and git mirrors, books, the App store files, crash evidence, caches, the token, transient files",
     all(
         k(r) == "refetched"
         for r in (
             "ci/home/big",
             "firmware/2.8/fw.bin",
+            "holds/demo/v1.2.0/app.apk",
             "zim/book.zim",
             "git/public/firmware.git/HEAD",
             "crashwatch/snap.log",
@@ -199,7 +201,9 @@ check(
     "settings and data: both (25 files), nothing fetched again, no keys; small (a real box's would be 14 GB)",
     len(m) == 25
     and "git/public/mine.git/HEAD" in m
-    and not any(x.startswith(("ci/", "firmware/", "zim/", "git/public/firmware.git", "crashwatch/")) for x in m)
+    and not any(
+        x.startswith(("ci/", "firmware/", "holds/", "zim/", "git/public/firmware.git", "crashwatch/")) for x in m
+    )
     and ".local/state/syncthing/key.pem" not in m
     and n < 5000,
     (len(m), n),
@@ -221,7 +225,7 @@ check(
     and p["kits"] == [{"id": "build", "title": "Building", "size": 25 << 20}]
     and {(r["name"], r["mirror"]) for r in p["repos"]}
     == {("mine", False), ("firmware", True), ("firmware--protobufs", True), ("secret", False)}
-    and p["left_out"] == {"books": 100000, "firmware": 100000}
+    and p["left_out"] == {"books": 100000, "firmware": 100000, "holds": 100000}
     and "used" in p["image"],
     p,
 )

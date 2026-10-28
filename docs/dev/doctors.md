@@ -38,6 +38,9 @@ The Security page (`security.py`) is not a doctor. It shows what a guest can rea
 It looks at what an update needs from outside the box, and runs when a check for updates fails. It covers:
 
 - the librarian: its sources, its access token and its checks
+- the App store's holders: a failing or overdue check, a newest release with none of the held files,
+  a kept file whose digest GitHub says differently now, a space limit that dropped versions
+  (what the holders recorded, read from their state — no network of its own)
 - toolkit updates
 - the hub's update of itself
 - Linux updates in general (`apt`)

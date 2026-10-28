@@ -346,10 +346,13 @@ def _age_days(published, now):
     return (now - then).total_seconds() / 86400
 
 
-def plan(holder, releases, now=None):
+def plan(holder, releases, now=None, record=None):
     """The versions to keep, newest first: [{tag, channel, published, notes, files}]. Each channel keeps its own
     number of the newest releases that count (channel_of), are old enough, have a folder-safe tag and hold at least
-    one file; one that does not is passed over and an older one takes its place. Then the budget."""
+    one file; one that does not is passed over and an older one takes its place. Then the budget.
+    `record`, when given, takes two things the Updates doctor later reads from the holder's status:
+    `newest` (the newest release that counts, and whether it carries any of the held files at all — naming drift
+    shows up here first) and `over_budget` (the versions the space limit dropped)."""
     now = now or datetime.now(timezone.utc)
     ordered = releasever.newest_first(releases, lambda release: release["tag"], lambda release: release["published"])
     kept, counts = [], {}
@@ -377,7 +380,22 @@ def plan(holder, releases, now=None):
             }
         )
     kept.sort(key=lambda entry: entry["published"] or "", reverse=True)
-    return _within_budget(holder, kept)
+    if record is not None:
+        newest = next(
+            (
+                release
+                for release in ordered
+                if channel_of(release, holder) is not None and TAG_RE.match(release["tag"])
+            ),
+            None,
+        )
+        record["newest"] = {"tag": newest["tag"], "held": bool(held_files(newest, holder))} if newest else None
+    before = [entry["tag"] for entry in kept]
+    kept = _within_budget(holder, kept)
+    if record is not None:
+        left = {entry["tag"] for entry in kept}
+        record["over_budget"] = [tag for tag in before if tag not in left]
+    return kept
 
 
 def _within_budget(holder, kept):
@@ -414,10 +432,12 @@ def _sha256_of(path):
     return digest.hexdigest()
 
 
-def _mirror_version(holder, entry, policy, log):
+def _mirror_version(holder, entry, policy, log, changes=None):
     """One version's held files into <id>/<tag>/, each checked against GitHub's digest; returns the files that
     are there: [{name, size, sha256}]. A file with no digest, or one that does not match, is left out and said.
-    Running out of room, or the network failing, stops the run (LibrarianError)."""
+    Running out of room, or the network failing, stops the run (LibrarianError). `changes`, when given, collects
+    a file whose digest GitHub now says differently from the one kept: the same tag with different bytes is a
+    finding the Updates doctor makes (§2), not something the keeper hides."""
     folder = ROOT / holder["id"] / entry["tag"]
     folder.mkdir(parents=True, exist_ok=True)
     recorded = librarian._read_json(folder / DIGESTS, {})
@@ -443,6 +463,8 @@ def _mirror_version(holder, entry, policy, log):
         path = folder / name
         note = recorded.get(name)
         stat = path.stat() if path.is_file() and not path.is_symlink() else None
+        if stat and note and changes is not None and len(note) > 2 and note[2] != expected:
+            changes.append({"tag": entry["tag"], "name": name, "was": note[2][:12], "now": expected[:12]})
         if stat and note == [stat.st_size, stat.st_mtime_ns, expected] and stat.st_size == asset["size"]:
             have[name] = {"name": name, "size": stat.st_size, "sha256": expected}
             continue
@@ -551,17 +573,23 @@ def sync_holder(holder, check_only=False, log=print):
     try:
         if not holder["holds"]:
             outcome = "nothing chosen to hold"
+            for stale in ("newest", "over_budget", "changed"):
+                state.pop(stale, None)
         else:
-            kept = plan(holder, fetch_releases(holder["repo"]))
+            record = {}
+            kept = plan(holder, fetch_releases(holder["repo"]), record=record)
             state["latest"] = [{"tag": entry["tag"], "channel": entry["channel"]} for entry in kept]
+            state["newest"] = record["newest"]  # the newest release that counts, and whether any held file is in it
+            state["over_budget"] = record["over_budget"]  # versions the space limit dropped this run
             if check_only:
                 outcome = "newest: " + (", ".join(f"{entry['tag']} ({entry['channel']})" for entry in kept) or "none")
             else:
                 policy = librarian.load_config()["policy"]
                 versions = []
+                changes = []
                 for entry in kept:
                     log(f"holder {holder['id']} {entry['tag']}: {len(entry['files'])} files")
-                    files = _mirror_version(holder, entry, policy, log)
+                    files = _mirror_version(holder, entry, policy, log, changes)
                     versions.append(
                         {**{key: entry[key] for key in ("tag", "channel", "published", "notes")}, "files": files}
                     )
@@ -582,6 +610,7 @@ def sync_holder(holder, check_only=False, log=print):
                     },
                 )
                 state["versions"] = {version["tag"]: version["channel"] for version in versions}
+                state["changed"] = changes  # kept files whose digest GitHub says differently now
                 outcome = f"{len(versions)} versions, {sum(file['size'] for version in versions for file in version['files']) >> 20} MB"
         state.pop("error", None)
     except (LibrarianError, OSError, ValueError, KeyError) as exc:
