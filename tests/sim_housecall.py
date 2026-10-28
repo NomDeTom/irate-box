@@ -148,5 +148,60 @@ check(
     any("housecall.files.damaged" in message_ids(f) for f in saved["findings"]),
 )
 
+# A file read short, or not at all, is damage, never left out (a truncated debugfs read, an I/O error).
+short = housecall._record("/short", 8192, iter([b"x" * 4096]), {})
+check("a file that reads back short is damaged", short["verdict"] == "damaged", short)
+real_chunks = housecall._direct_chunks
+
+
+def failing_chunks(path):
+    raise OSError(5, "Input/output error")
+    yield b""  # a generator, as the real one
+
+
+(bad_dir := T / "unreadable").mkdir()
+(bad_dir / "f").write_bytes(b"data")
+housecall._direct_chunks = failing_chunks
+records = housecall.scan_dir(bad_dir)
+housecall._direct_chunks = real_chunks
+check(
+    "  a file that cannot be read at all is in the count, damaged",
+    len(records) == 1 and records[0]["verdict"] == "damaged" and records[0]["sha256"] is None,
+    records,
+)
+
+# From inside, the hub's large folders are left out whole.
+(big := T / "inside" / "zim").mkdir(parents=True)
+(big / "book.zim").write_bytes(b"\xff" * 4096)
+(T / "inside" / "settings.json").write_bytes(b"{}")
+records = housecall.scan_dir(T / "inside", skip=[big])
+check(
+    "a skipped folder is not read (the large content, from inside)",
+    [r["path"] for r in records] == ["/settings.json"],
+    records,
+)
+
+# The box's own disk, refused: the root partition's own disk, or another partition of it.
+real_run = housecall.run
+
+
+def fake_run(*cmd, timeout=None):
+    out = ""
+    if cmd[0] == "findmnt":
+        out = "/dev/null\n"  # stands for the root partition: a device that exists
+    elif cmd[0] == "lsblk":
+        out = {"/dev/null": "mmcblk0", str(T / "mmcblk0p1"): "mmcblk0"}.get(cmd[-1], "") + "\n"
+    return subprocess.CompletedProcess(cmd, 0, out, "")
+
+
+for name in ("mmcblk0", "mmcblk0p1", "sda"):
+    (T / name).write_bytes(b"")
+housecall.run = fake_run
+check(
+    "the box's own disk is refused, and its other partitions; another disk is not",
+    housecall._own_disk(T / "mmcblk0") and housecall._own_disk(T / "mmcblk0p1") and not housecall._own_disk(T / "sda"),
+)
+housecall.run = real_run
+
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

@@ -45,7 +45,10 @@ CONTROL = STATE / "control"
 REPORT = CONTROL / "housecall.json"
 CHUNK = 4096
 SKIP_DIRS = {"proc", "sys", "dev", "run"}
-MOUNTINFO = Path(os.environ.get("HUB_MOUNTINFO", "/proc/self/mountinfo"))
+# The hub's large folders: content fetched again, or to be checked against its release's checksums, never read
+# whole from inside (on box 181, 2026-10-28, the build caches alone were 14 GB in 231 280 files). As nand-logs.sh's
+# HUB_LARGE.
+LARGE = ("zim", "firmware", "kits", "git", "library", "source", "drop", "ci", "factory-targets")
 FF = b"\xff"
 ZERO = b"\x00"
 
@@ -63,20 +66,25 @@ def _text(result):
 
 
 def file_facts(chunks):
-    """(blocks, ff_blocks, zero_blocks, sha256): the four facts a verdict needs, from the file's chunks."""
-    digest, blocks, ff_blocks, zero_blocks = hashlib.sha256(), 0, 0, 0
+    """(blocks, ff_blocks, zero_blocks, sha256, bytes): the facts a verdict needs, from the file's chunks."""
+    digest, blocks, ff_blocks, zero_blocks, nbytes = hashlib.sha256(), 0, 0, 0, 0
     for chunk in chunks:
         blocks += 1
+        nbytes += len(chunk)
         digest.update(chunk)
         if chunk == FF * len(chunk):
             ff_blocks += 1
         elif chunk == ZERO * len(chunk):
             zero_blocks += 1
-    return blocks, ff_blocks, zero_blocks, digest.hexdigest()
+    return blocks, ff_blocks, zero_blocks, digest.hexdigest(), nbytes
 
 
-def _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references):
+def _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references, nbytes=None):
     """The verdict for one file, and why, as the plan's four kinds."""
+    if size is not None and nbytes is not None and nbytes < size:
+        return "damaged", M(
+            "housecall.why-short", "It read back short: {got} of its {size} bytes.", got=nbytes, size=size
+        )
     wanted = references.get(path)
     if wanted and wanted == digest:
         return "genuine", None
@@ -89,9 +97,22 @@ def _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references):
     return "unknown", None
 
 
+def _unreadable(path, size, exc):
+    """A file that could not be read at all: the strongest sign of damage, never left out of the count."""
+    return {
+        "path": path,
+        "verdict": "damaged",
+        "size": size,
+        "sha256": None,
+        "blocks": 0,
+        "ff_blocks": 0,
+        "reason": M("housecall.why-unreadable", "It could not be read: {why}", why=str(exc)[:160]),
+    }
+
+
 def _record(path, size, chunks, references):
-    blocks, ff_blocks, zero_blocks, digest = file_facts(chunks)
-    verdict, why = _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references)
+    blocks, ff_blocks, zero_blocks, digest, nbytes = file_facts(chunks)
+    verdict, why = _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references, nbytes)
     return {
         "path": path,
         "verdict": verdict,
@@ -117,15 +138,17 @@ def _direct_chunks(path):
         os.close(fd)
 
 
-def scan_dir(root, references=None, on_card=False):
+def scan_dir(root, references=None, on_card=False, skip=()):
     """Every regular file under root, read past the cache. on_card leaves out files not on the SD card (for
-    --this-card: the Lyra's NAND state is the NAND's to check)."""
+    --this-card: the Lyra's NAND state is the NAND's to check); skip leaves out those folders whole."""
     root = Path(root)
     references = references or {}
+    skip = {Path(p) for p in skip}
     out = []
     for directory, subdirs, files in os.walk(root):
         if Path(directory) == root:
             subdirs[:] = [d for d in subdirs if d not in SKIP_DIRS]
+        subdirs[:] = [d for d in subdirs if Path(directory) / d not in skip]
         for name in sorted(files):
             path = Path(directory) / name
             try:
@@ -139,35 +162,22 @@ def scan_dir(root, references=None, on_card=False):
             relative = "/" + str(path.relative_to(root))
             try:
                 record = _record(relative, metadata.st_size, _direct_chunks(path), references)
-            except OSError:
-                continue
+            except OSError as exc:
+                record = _unreadable(relative, metadata.st_size, exc)
             out.append(record)
     return out
 
 
 def _on_card(path):
-    """Whether path is on the SD card (its mount's source is the card), by mountinfo."""
+    """Whether path is on the SD card (its mount's source is the card), by Box doctor's own mount lookup; True where
+    the card cannot be named."""
     from irate_box.hub import cardhistory
+    from irate_box.root import health
 
     found_card = cardhistory.card()
     if not found_card:
         return True
-    card = found_card[0]
-    best, found = None, None
-    try:
-        lines = MOUNTINFO.read_text().splitlines()
-    except OSError:
-        return True
-    for line in lines:
-        left, _, right = line.partition(" - ")
-        fields, tail = left.split(), right.split()
-        if len(fields) < 5 or len(tail) < 2:
-            continue
-        point = fields[4].replace("\\040", " ")
-        path = str(path)
-        if (path == point or path.startswith(point.rstrip("/") + "/")) and (best is None or len(point) > len(best)):
-            best, found = point, tail[1]
-    return bool(found and Path(found).name.startswith(card))
+    return health._on_card(path, found_card[0])
 
 
 LS_RE = re.compile(r"^/(\d+)/([0-7]+)/\d+/\d+/(.*)$")
@@ -210,6 +220,8 @@ def _ext_chunks(source, inode):
     try:
         while chunk := proc.stdout.read(CHUNK):
             yield chunk
+        if proc.wait() != 0:
+            raise OSError(f"debugfs could not read inode {inode}")
     finally:
         proc.stdout.close()
         proc.wait()
@@ -228,8 +240,8 @@ def _scan_ext(source, references=None, prefix=""):
             else:
                 try:
                     record = _record(path, size, _ext_chunks(source, child), references)
-                except OSError:
-                    continue
+                except OSError as exc:
+                    record = _unreadable(path, size, exc)
                 out.append(record)
 
     walk(2, prefix.rstrip("/"))
@@ -521,33 +533,51 @@ def examine_device(path, references=None):
     return _report(path, findings, records, None)
 
 
+def _parent_disk(path):
+    """The disk a partition is on (lsblk's PKNAME: mmcblk0 for /dev/mmcblk0p2), or '' for a whole disk."""
+    return run("lsblk", "-n", "-d", "-o", "PKNAME", str(path), timeout=30).stdout.strip()
+
+
 def _own_disk(path):
-    """Whether path is the box's own root disk (or one of its partitions)."""
+    """Whether path is the box's own root disk, or a partition of it."""
     said = run("findmnt", "-n", "-o", "SOURCE", "/", timeout=30).stdout.strip()
-    if not said:
+    if not said or not Path(said).exists():
         return False
-    root = Path(said)
-    if not root.exists():
-        return False
+    disk = _parent_disk(said) or Path(said).name
     try:
-        return os.stat(root).st_rdev == os.stat(path).st_rdev or root.parent.name == path.name
+        root_st, path_st = os.stat(said), os.stat(path)
     except OSError:
         return False
+    if stat.S_ISBLK(root_st.st_mode) and stat.S_ISBLK(path_st.st_mode) and root_st.st_rdev == path_st.st_rdev:
+        return True
+    return Path(path).name == disk or _parent_disk(path) == disk
 
 
 def examine_this_card(references=None):
     """This box's own files on the SD card (the plan's step 4, basic): the folders the box writes, card files only."""
-    roots = [Path("/etc"), Path("/opt/irate-box"), Path("/var/lib/hub"), Path("/var/lib/irate-box-root")]
+    roots = [Path("/etc"), Path("/opt/irate-box"), STATE, Path("/var/lib/irate-box-root")]
+    large = [STATE / name for name in LARGE if (STATE / name).is_dir()]
     records = []
     for root in roots:
         if root.is_dir():
-            records += scan_dir(root, references, on_card=True)
+            records += scan_dir(root, references, on_card=True, skip=large)
+    notes = []
+    if large:
+        notes.append(
+            M(
+                "housecall.this-card.large",
+                "Left out: the hub's large folders ({names}). They are fetched again, or checked against their "
+                "release's checksums, rather than read whole from inside.",
+                names=", ".join(p.name for p in large),
+            )
+        )
     findings = [
         finding(
             "housecall-target",
             M("housecall.target.title", "Target"),
             "ok",
             M("housecall.target.this-card", "The box's own files on the SD card are being read. Nothing is written."),
+            notes=notes,
             evidence=[str(r) for r in roots],
         ),
         _files_finding(records, "this card"),
