@@ -248,6 +248,26 @@ server {
 		proxy_pass http://irate_box_hub;
 	}
 
+	# --- /appstore -> the App store: the page, and the files the keeper holds ----------------
+	# All of it the hub's (appstore.py): it lists only what each holder's own sha256.json recorded, and holds
+	# the path to the folder. The session cookie goes with the request: a holder may be for members, which the
+	# hub checks again whatever the gate says. Range is passed through, so a phone resumes a cut download.
+	location = /appstore {
+		if ($irate_box_off_appstore) { return 404; }
+		return 301 /appstore/;
+	}
+	location /appstore/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
+		if ($irate_box_off_appstore) { return 404; }
+		auth_basic $irate_box_auth_appstore;
+		include @ACCESS@.d/gate-appstore.conf*;
+		auth_basic_user_file $irate_box_logins;
+		proxy_pass http://irate_box_hub;
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
+
 	# --- /wiki -> Kiwix, on an origin of its own (the server block at the end, port @WIKI_PORT@):
 	# a book's pages run whatever script the book carries, from a download, a stick or a URL,
 	# so on the hub's origin a book could act with the owner's login.

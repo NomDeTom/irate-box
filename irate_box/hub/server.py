@@ -36,6 +36,7 @@ from irate_box import confine, finding
 from irate_box.hub import (
     access,
     accounts,
+    appstore,
     backup,
     board,
     cardhistory,
@@ -4582,6 +4583,10 @@ class Handler(BaseHTTPRequestHandler):
             self._flasher(path)
             return
 
+        if path in ("/appstore", "/appstore/") or path.startswith("/appstore/"):
+            self._appstore(path)
+            return
+
         if path in ("/source", "/source/", "/source/irate-box-source.tar.gz"):
             self._send_source()
             return
@@ -6939,6 +6944,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not store.handle(self, "OPTIONS", path, STORE, DROP):
             self.send_empty(404)
+
+    def _appstore(self, path):
+        """The App store (appstore.py): the page, the files held by the keeper, their lists. The app's own
+        switch and each holder's visibility decide what this visitor is shown; Range is honoured, so a phone
+        whose download is cut short resumes it."""
+        appstore.route(self, path, access.mode_of(access.read(ACCESS_STATE), "appstore"))
 
     def _flasher(self, path):
         """The web flashers (flasher.py): /flasher/ the light one's page, in place; the Meshtastic one
