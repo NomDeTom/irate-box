@@ -1,0 +1,2438 @@
+[
+ {
+  "tag_name": "v1.7.3",
+  "name": "v1.7.3",
+  "published_at": "2026-10-25T02:16:13Z",
+  "created_at": "2026-10-25T00:45:35Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Fix Uptodown search URLs and dates, and localize the Galaxy Store option by @HotKids in https://git",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 34532014,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:afd28d1ecf7a5fa462517d22007f4b2a3be062bd80193dadfc1f93d2d8824b14"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 275994,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:bacf39bc90b6c1ccee0ba669d8b964aa9c9f580fe5af05e1a61a661a004c88e3"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:3e7205dea421235cf339e28534fdc5b4a19717614836f4645a18741d8523ab5a"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:fb36fad55281d1a84a43edda224dc45a64b1aabaf3984d96bf4c80193ab29879"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 34532014,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-release.apk",
+    "digest": "sha256:3a3caf4611b32fa665cd5d19a4b593c6b8678a3ceb69981a0e5c2253b3dc8f30"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 275994,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:0c38f713bcf2eb3a8f0898813a1efbce06c27de71e8019445abdeb8fccb43514"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:4bce078c06cba2843704c75ebee9ab89c1cdde4b4f954df3b7ab823ebebc4bb0"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:c593ba58a59fdadc6f845a680043a1daaea0f49d3fd3d23f5ab3281f4e47b660"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 30444216,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:02b9bc8ec90a7c4534eeb09b4dd00141183dc615325283d9344b9248b85d4c50"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 247322,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:b68c610f2cd4a8b0cb3420030b792ad57fba02c810855933474ffc0af67a28a1"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:f7394a8f7eb7b6379ea33f18207e9af95e3e32784a9c2c44333cd99133593c2b"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:700203f44cc6f70e2002e7b0128e3986c9b8bb9bbe9b315f554131d97029b364"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 30444216,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-release.apk",
+    "digest": "sha256:db52cf7c9739bf035714f270bd7369ec8d93592555883b3a8d479fb3890301ee"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 247322,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:deef786a6119b30367bfdaa83da87d3f82edb9e8007fe724ca1baade6e31c768"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:76925356f7f5836e6fb9fdf135ccb0a47b3b4062e8434a007de3823884400b3c"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:3161a0335f1131edc8a778293a8ceffa83c1bdfe8530ba35332109ec9a6cf235"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 93924789,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-fdroid-release.apk",
+    "digest": "sha256:c6984c55b04be0d14132bc94c9354c644d2f4b7338afffc5c8792bbf97edf196"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 751130,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-fdroid-release.apk.idsig",
+    "digest": "sha256:59b0e6871ff34ee1a69cbd942d090575cc94c7e95b37bf4aedb515b4c45f7a64"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-fdroid-release.apk.sha256",
+    "digest": "sha256:a0b0de63b72f03402f3bbd6a4cfbf832669d9026c921cb3cd6ee3a1af9b1c2fe"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:0c27350bc2bdfb00d54cc6cfa1633b1b6e2bedfe2d100887c807dacb114f708e"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 93924789,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-release.apk",
+    "digest": "sha256:aa2c58d559d244a1c409c5624fc3703ef7f7fa44a83f5957ea1d7b4a1a691dcf"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 751130,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-release.apk.idsig",
+    "digest": "sha256:6f46eb277fd6d57065cb01ddbfb5b10a7459a3c8134c06b0d15deca3b6b0425a"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-release.apk.sha256",
+    "digest": "sha256:3072f25791c3f0b4fc733b1c5ded93c4d102ea0044b9ef57bb1ab4370c69ab18"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-release.apk.sha256.sig",
+    "digest": "sha256:39e82e5479eb6952e1aa8c4aba6e1dee5afe31b5ffb1fe904883e10f72159f17"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 36858527,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:95e3894a345a4f9abaa7cec47e5df0f88e5f0c81e6027f8f2c6b4c92ccb39060"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 296474,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:ffa746d9c7271614016ec08ec9fcc867207d6387729e627976fa3aed6c20898a"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:85f62e1055f424f1244b104c6f7564c10cccf34224388f719f001196bbdd82d2"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:9e7f78dc6f8037d89077152007d88680abffa85873c30347b664ff2ab95ccd6d"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 36858527,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-release.apk",
+    "digest": "sha256:678bb84c6019775e1b318cdef18e5e13764379b431e45f25fa2ffde5650e5f8e"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 296474,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-release.apk.idsig",
+    "digest": "sha256:522d5524aeda24d0184d0f588e44f7a463e365519590369108ed35ae6b7c3e3b"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-release.apk.sha256",
+    "digest": "sha256:672308fb4c141d323c10070194f14ba15e617c0071321c15ae65dd01c2f86eaf"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.3/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:e7567087cee8af78cf806b4542ca9d5099fb3eb171db34b187cbfadb9f2fceb5"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.7.2",
+  "name": "v1.7.2",
+  "published_at": "2026-10-24T01:53:03Z",
+  "created_at": "2026-10-24T01:35:36Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Fix remaining casing and wording suggestions (#2381) by @huseyinapa in https://github.com/ImranR98/",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 34511439,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:abfacb407183becb8d6dbdea5ff3b619c83c2bad8c04245b65af97a4aeec6642"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 275994,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:68216abf7d6e85aa0f294d3b5434dac1db60f52010d3b71dbbb5531391be1c77"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:104c34705f46f91055650a914f1473e995284dda72878718e5b195be591bc513"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:f0a8070e7ca715474465cafaa59bf0080ffa6187d6c2ee1c8989c065a522fc35"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 34511439,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-release.apk",
+    "digest": "sha256:f6c83f6e948a701746a0fd7fb52e6ee485b3ca952e719f7cfa3d80567a1e2f13"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 275994,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:e81123f6b0c49ee9e96643d68c5226f5714a71ae4dca05272bdcf4572b17fcee"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:bdd6d690ef115b956a59b44c3ecc9a477acb37b708565f3331b565cafc48547d"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:2d8c6341df778318d62812a058ca6ad3fb2eee249b5bc4dd77c719191a2e000a"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 30423641,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:26b88c56dcd39e38f0d782ced21023125f16bdc481e97500165b3b72a7bd7415"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 247322,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:a52786d75e5c252de38cea57f14a8d315f0a1e1513d9b4dd96f82778cb71a078"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:2c95cfe0bed7178a24ca0f76746da9563fa1ef86ef5918951343620b88e9e294"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:e62b9e363a6087596d0f728259f73338e7790891c83af54c8bd53015e35e41e8"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 30423641,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-release.apk",
+    "digest": "sha256:f28ce5593e6bca895fc1f0dc6b152b9a776e0eab4f0e181c35228ecbe426a00e"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 247322,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:079bb3e09cef12d34b56185ae42f6840541272d143e62537647a0314defb54a3"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:6c028179abadb565928e8dd1777b400c58c1b0fc8b734423862b5e92c9bc9436"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:fe85b5bfd4e23790ce7172e6b205b7db596b6d15781639aac1c0aea7c650c860"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 93904214,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-fdroid-release.apk",
+    "digest": "sha256:d94fadde3d6d0660e0eb92dcf5f57492fdb9c2bab2411c43ef93f7a3579e9ea9"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 751130,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-fdroid-release.apk.idsig",
+    "digest": "sha256:54110544b9736e3bc1cb56b6432ce2ad7fd4257ceface8ed0c4dca92b2095e02"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-fdroid-release.apk.sha256",
+    "digest": "sha256:364c1e66482c3ca3d098f7430c106a902439f0338f60a16029d7c2eb339f5155"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:3eb1270a855d2f84e6394a41d6fffef6531b1d4ac61a8e3bd011de314d60625b"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 93904214,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-release.apk",
+    "digest": "sha256:7ee48749f35f8253a01af6e6a9311c382fa726a60d8dff694a313166e63eacf3"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 751130,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-release.apk.idsig",
+    "digest": "sha256:19a708ba463ad7ada04d870dfeb5cd5411c164b94fed10e199b0d0afd2b71117"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-release.apk.sha256",
+    "digest": "sha256:f035f93e7b424758654135676f88547bde8c9420acc6b692212126251dd84575"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-release.apk.sha256.sig",
+    "digest": "sha256:2f4b5ca6638888884aa0e3064f05ac21b3face609e45ccc3b8cd7e7f777ee79f"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 36837952,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:41ead5555ee12047a05d5af543936711f2c6c91f7eceba8870e1b31aff40e01b"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 296474,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:8c56d6a6a5eef0344c8395e1f8dc4186e3f9ebd86012d8ee1b8ef903c479cfcc"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:0fa58406e292d556f2d875f1bad3edcbe2defdc5c13ee89fd15b2aca856208b6"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:684bb39e511ea6c795aef52f3020cea957418b2e6116811b956e535533f58a48"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 36837952,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-release.apk",
+    "digest": "sha256:eb17c70c8737b4c861735c8f402e14c59cea010bdb453d1c415f38070be52a65"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 296474,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-release.apk.idsig",
+    "digest": "sha256:29474ad02d5cc45fcdce2aad38715a34bcee2b375279fb8ead4d895b293702b9"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-release.apk.sha256",
+    "digest": "sha256:e395c981090e4886f2378b7e772818e63c6f330c79dbf695c0d78d255ec7239a"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.2/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:fd46631d8e7fe5bf4210c52433c96538e234b0a6835966caecce98a0a162f97a"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.7.1",
+  "name": "v1.7.1",
+  "published_at": "2026-10-18T17:16:53Z",
+  "created_at": "2026-10-18T09:12:34Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* By @ImranR98 in https://github.com/ImranR98/Obtainium/pull/3393\r\n    * Keep marked-updated versions",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 27194505,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:78f330b9e23c94bd3d5958bd707606821af9ad332face5d90e9d9e5d1fe0cd07"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:b8d9dca26d379ace423f5d46f805d8a172afff9bfc607b4a8bfe22009051e631"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:4304c1ae022bb903be76aeb8c2cecd1e736e41f51b88c7f09f20425b07b55a08"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:fe9e8e318c95ee50a43118d7a4e5d1305c7c6ee7ba9dd861baff53ad734460bc"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 27194505,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-release.apk",
+    "digest": "sha256:04dfd02c56dae8d5271d2d402977e1b07c8eeffb313df054a13e71b75b8b8a26"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:843a22f3777520811420b91858eee9a97268feb73329ccee06f764cf23edeb05"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:6d7d435db7fb9b452138f3d96c54d1e22d26978eaec99986d4ace5e0ea6bef2c"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:9b7d54494d33eed9d5334c5b117f99adfe8ef7d692ccb992ecedef00da9c89c1"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 25425041,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:e9cec89edc03808123e78d67b9451cad6b761521a78940e4d53ea85523b879e3"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:fc5c1739fbd50d1c19d432a1ae1c3503b408ef5d456270e92a2fd72e5367e46d"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:0751235fa320fc974cc52fcb3889003b3aab16bd201f8cd5937f304ce61167b3"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:79ee4adb1d3b892e1249d45896721cdd709d92b9104b91dd1d9dd8c3af2de5ca"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 25425041,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-release.apk",
+    "digest": "sha256:365f979af37c1500709c403635123ed0d3acad9904d055abf25fb7650145beca"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:d847d912302c4ec56a50e7be66b8925edeb7a22d1e5514a0eea3b1d699907bc9"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:69a186ee2095e953ee6cffb3aa66a3493f5a3fe44393f49912972347677973b7"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:1d24d50ad918d3370221b9542cd1b376305844cb69d548603db429b2ebc98f22"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 74245863,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-fdroid-release.apk",
+    "digest": "sha256:3aad86ceed1ac0b823cf82f4c87329ba1c56367fa870e23464458aaa932de47a"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 595482,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-fdroid-release.apk.idsig",
+    "digest": "sha256:567ecb1f6aac5ee17f9b769e652ac0908a2727becfd9c57fbf0b68d35acfc71f"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-fdroid-release.apk.sha256",
+    "digest": "sha256:f31de4c1d69532e890ffd69354ba26824453476c28bc1eedc3ced093869d9b2a"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:de78d8f83e3e8f92ff5b69a7096ff1532165891a7269bc080d92935a1fa7e19d"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 74245863,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-release.apk",
+    "digest": "sha256:fc6cd1083e976ec6017c3818ccf17db818c17afda1fd44fd32a3b85e21db447d"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 595482,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-release.apk.idsig",
+    "digest": "sha256:84beefe3767bb5302ada5adf6dcc80216e35ebaa62494404d8de189691e09d89"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-release.apk.sha256",
+    "digest": "sha256:110a6ac41816001bcb999766b77c52a1506a757e2e187faf2c1e4cbc633737ef"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-release.apk.sha256.sig",
+    "digest": "sha256:a61c0d2b29bc8acbbf0dc69ddd4067f0cb32e0784d6e0acb64fb7e85c22e5548"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 28808317,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:808d6dc098066d5ed973f82183e06e44d693c142618b36f5b444350920d82dae"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 230938,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:e97ed33ac20fd2c69118c5a84c47272ef0fcd7446d4ac4852756c2caf905ff65"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:da215b6f19117a24180daa4b66d457c8f6096717456ac5cec5169988b2f45f48"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:6b5f93ff3eb6a0caa528540c2027754a3175c131470f8ea66f432afe7b85d6c7"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 28808317,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-release.apk",
+    "digest": "sha256:8e168b139626aac8e366ca0bbe401bbb06e85e01eb38f9a15b6fb686a4a0447d"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 230938,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-release.apk.idsig",
+    "digest": "sha256:97b8c7351f52953dc0934d1b41133f53e8ffad8adb4c3c019318d8fbb91aee15"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-release.apk.sha256",
+    "digest": "sha256:e6cda035e33af318878fecb9e7766b3b73dd2ef57e80368b0f0d0f82d6c05dba"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.1/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:39573c72e9b68d18f76da787a33b53c375032d9868d741df5d5b81df9cdb95c5"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.7.0",
+  "name": "v1.7.0",
+  "published_at": "2026-10-17T04:01:43Z",
+  "created_at": "2026-10-17T03:38:48Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Fix Material You surface colors by @ImranR98 in https://github.com/ImranR98/Obtainium/pull/3323\r\n* ",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 27190409,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:2cda9b8cc04a43f3aad492b42e8f8b0756bc5d9172a38860da3bcfda608ce61b"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:4358860704ff0554c2a0d47f1c41f6cd188ed6fbd70bf06edd0b788c0e9d43ea"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:79814f31c1d04b960269cd1154332db0ef043f3f1f6c0c959f793dfe6bbd1f40"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:034c21ef35d8357650160f6a474ba3f00af8e6a5f304e68010f033d1130907fe"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 27190409,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-release.apk",
+    "digest": "sha256:418e478a2b332750a5ee015ec622963f689475f1e28b1149097856b7b368ad38"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:40b319f5a1b21d3597bb24a45c5da31298051b75068cfcb9f90f9553dbd79f51"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:034574978e348917709c2b33720baf2129ea04b618ffdea736a39ffd1acd1d6a"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:093a9353caae769b37031347d60a45a4b9fde3e1bb990c10252f111f76265cd2"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 25400465,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:37502ad79e740f3939df762fa9eff0217d36a369406423af5e0f7c211c303452"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:a84a8f48fd429cfefb202835f15a4b729c5fd6e09a56705b892132aa3d9bf10e"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:f27e68dce72e3120bb954ea4daf1d9c7cc48f983d9437329803ae7957d26e3b4"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:fc5cb0be3e7a576113cd57e877ab5fb221b03706029930fccaf04a26e97a6e2b"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 25400465,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-release.apk",
+    "digest": "sha256:9532d009b8ca43ebbc0684ad5579314f37b429579103f29bc6b455c669c5bc37"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:561525b9911a49cdb444ac887dbd5191c396c6a9833e32165c0ba8032f72a436"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:0178ec7d114dc58e835c166486d02fb92d6e30dd7dd53764c81433e1161d3a01"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:1d1915cf3733599cc89f614eafebaa968dee9eadad11d3c49e3a73f3f31cf335"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 74221287,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-fdroid-release.apk",
+    "digest": "sha256:5ed60c93fc0d79e0e301b8a98b8c1f2bf745f2638acc67da0381396e52ee01a5"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 595482,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-fdroid-release.apk.idsig",
+    "digest": "sha256:9713a5862f368591c68386fdb8f37e1b528d7b5c3c2c99403686b21bf246cff4"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-fdroid-release.apk.sha256",
+    "digest": "sha256:8200247f21c3674a24bf4c59302833beca4f21b2c1114567db2be76f3158eb7e"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:d14f9dd89f2908fb7773806eb1fa9bcb66cd365bf4ed8da407a1510e0a41250c"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 74221287,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-release.apk",
+    "digest": "sha256:a2d056e8bd3681e144763a1cf7735c56d68edf27cdfc07483b912d3fe0dab002"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 595482,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-release.apk.idsig",
+    "digest": "sha256:c29fc588d0a6816789e139b490ed58acc96e8a5d610e8e2c56509424dacfa95a"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-release.apk.sha256",
+    "digest": "sha256:730f62843d8b7c8625c7942f41619d2284865b94f3d500fe55ca09248621ccfa"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-release.apk.sha256.sig",
+    "digest": "sha256:db23175da872e117ce4689363e9a8403d2c4801c80fb4c7a64f097fee80bfad9"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 28804221,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:a17aef3ea8b94ad96ea3defb0b59cdde0d366416d2a44a7af5d4ae4b702bee17"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 230938,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:167b5cd3226f61928928332c25f428c8c6de07aa741536b74a1e997487c0908d"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:2e00e6cc7b00f35cede86a8cae9ae50cede3b406714fcfbb2c191c35cecfe156"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:646c44fe492bcd92df3d1be17a3d7dc3b86cae2c9892367c444d745ef058bf9d"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 28804221,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-release.apk",
+    "digest": "sha256:90808938e31aafdc8cb0b2289511f52e2b20bd6d67a69dd629f33660af341e16"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 230938,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-release.apk.idsig",
+    "digest": "sha256:80352986b9e7cb0cdebb0646df8e0814807f3e2ba26175e6c4d5eed651ade8e1"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-release.apk.sha256",
+    "digest": "sha256:09744591f49c4e92ef89d960a5e94cd3d8ef5e5eefb364491f517d58503640c1"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.7.0/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:3c455874b29f9845f5d7be597d2ce43aad925f718278adf77d0d6e54a3c1ffbd"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.17",
+  "name": "v1.6.17",
+  "published_at": "2026-09-13T18:08:26Z",
+  "created_at": "2026-09-13T17:47:37Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Update ru.json by @solokot in https://github.com/ImranR98/Obtainium/pull/3314\r\n* Translation: Updat",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 26088490,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:8d03b4f02f070d8e64f448ce77ad66daccce9a585e4015b984ee5a7ddee9c29c"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:ef1bba884b032bffa3ca22126f545da55f8af9cac1b1b8aa4c7d964daf8dfdc0"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:160e776f08e4b1a209110fd210e04014fe85da857ecd6981855cf8dc525b273a"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:55ec8a06e0a5949322037376d54b7b540651ea4a92d89ce70100b943c7bb3c8e"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 26154026,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-release.apk",
+    "digest": "sha256:ce1aa65430af809289f4045994838b1b072a2021bd82fceab1a6f4a90d0108d4"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:e07666041363a3806601537f8f34003d87171e2ac86eb13aa220c1b55c18f285"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:b22a093b5dc5f5d39ac68687cb77f2137bdf8a30fd8e27bc4fc753fed7ed3cfb"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:e2f9df6f9756ea9e0c431c316d59569eeb43d4030b175a5116fb8606bb3c0e9f"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 24282162,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:59e4aefe44ab35def7c12f71230250a50a3f25d9ba33ecf4bd75ccf7f969701e"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 198170,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:58aafdfb91ead8a0ab1f9bab249a37ee6a986ca4252f639a9db497c17d80b729"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:75d277d78c7e2b04c9d264b6e9c97e805bf414b0617dd6e263a34e0d9a256ebf"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:0319c53454494a2f198078df36bfc9e06f12735128fcb4d34793d476c15729d6"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 24282162,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-release.apk",
+    "digest": "sha256:455c53a5253f0b7b0ed41261d2f916ec7d0f41fcc1beb411eb9507383da27ef1"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 198170,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:1686c473f11357affb187c569ba654a4b12edcd83624424cb21e2cc66fc0f7ef"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:3963046ca72a999759090bd3aeca079c7c6f6e56ea9340feec73ff9b79cfb68b"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:1250d7faa7bc6d7045ea9535f266c3790f8e534b3786259946d241046a29b9b5"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 72185480,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-fdroid-release.apk",
+    "digest": "sha256:e5999db0a6aa91ad7bb2589c03e0625a5c24fd55bfdbf440b71af8d42a35cf77"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 579098,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-fdroid-release.apk.idsig",
+    "digest": "sha256:4311062436ae3ffa36f444bed7b901a4313c19563fd138c3c0b8ca8c4504a009"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-fdroid-release.apk.sha256",
+    "digest": "sha256:abc5d61adbad0baf057b49b7f109a09aa868de34edc9a683ec41147dc829c35a"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:768895b55b1d4d3546916666e392d89f3435b0e008f0a5687cc135a51711b933"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 72251016,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-release.apk",
+    "digest": "sha256:46d31797016e4d0c2085e21ebe61fa30de236e31b30ff9622b51593034b76971"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 579098,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-release.apk.idsig",
+    "digest": "sha256:1ec9c8cc84997a66dfbb17d58cd890e8ae7f228953341a6526a730511fff0424"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-release.apk.sha256",
+    "digest": "sha256:df6245cc0cdb3fc5272c603fda67162448fc38501d41c1c572234eafd5dbf6a6"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-release.apk.sha256.sig",
+    "digest": "sha256:af77b9e0fafa2aca52b06b096e8eaffe32941bcc88f00d87ee41bc0f13daa69a"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 27702302,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:59760bc519fc175997b0d356ed524b4aa9755ba2425037940acd6f5546168040"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:7496936be95297ea910c52a8d1c73869a9eb614b3ba4d8c58eb9f9e135ddd084"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:8ede6eb74da6816493087dc4a0decb3f0c4816fd539a8cb396c0c47431b4b3dd"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:89e25a1a9e1e6be51216b57249e0b0c5e78789176cd333d1a10a637b25372282"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 27702302,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-release.apk",
+    "digest": "sha256:ebdaaa34b464286e3bbed8cfe311bdd74dc04673609740da8aa6a1523602119e"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-release.apk.idsig",
+    "digest": "sha256:521764381eb46b0f64f4f5d23fb9cedd7910822cd243ec7202c4384fc631761c"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-release.apk.sha256",
+    "digest": "sha256:43741be556218ab9caa0ec9d3165a9d4960728b39658cec07472f15dce35e207"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.17/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:1c4b5c54c705308a7d1e98a855c397bb49005d3bf6cbfc61720e7063925e8dd8"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.16",
+  "name": "v1.6.16",
+  "published_at": "2026-09-13T08:23:47Z",
+  "created_at": "2026-09-13T07:59:27Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Fix GitHub issue templates by @DonDae001 in https://github.com/ImranR98/Obtainium/pull/3284\r\n* i18n",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 26088490,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:9b5e6f6229daece05e1464fc9f716cf005980363799d94b558a3ed236764732d"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:80830276764a2e59650e26b5861bc23714ab0bde5a36d4aacb6d6a231b29da8e"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:adc55e35b87ff1a99972eedf19cb75b56c8c3936bb70e59f1bcf9e44a5922fea"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:b4ccb5d37b4fdf827890e75579dcf814c9e99a5babf174eb095cbda6e339addd"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 26154026,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-release.apk",
+    "digest": "sha256:420ad4383a5bb9e45d9ba8ba35da565ddb1ab56efbf15f6ef07a07700849afa5"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:8b9eaf96b96f1d7b898893989409d075fc833c1aa29623b678f8c83e34b8420c"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:7ade558c0711773faeafc1596e1a1f983972066a153f3ebb9aebe1bfececeff6"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:fdca75ae985b3c3c82c7ae4c1e6e1a71d9f8fed5932cfdc56b610ab69e6e04fc"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 24282162,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:ce724326dc57969329fd338feee4080ec4154f1da6789b91481adfe5e2afe35b"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 198170,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:8e2ab8191c3c14505ddebef7cf4f1a763bead6a628ae88cafde45f50c4f2b89a"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:7d793fd892665c2b2b04e512610040c4b43a6295ffa8c42c446a8bcadae3eeb8"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:014368b6da9958d1d9583e97407082cb3e1acea341013ba7cdcbeec9a0e68c94"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 24282162,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-release.apk",
+    "digest": "sha256:bce91daf018ad28d631fa83a4a030e432d85c07e6d502e736cf603c3a01721ca"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 198170,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:6809b131fd33b0354c9d185ad22dece4ed5e87f970910097c4b5efbd34cdf48b"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:cd6f2073350e86c2158c1c8960c149ab82dc3b3ce4ad17edecc383f24128f2ac"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:e28a7cd7df73c38c9f360ec0b476ffa3c676e3cb62483a6e939ddb1954efb816"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 72185480,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-fdroid-release.apk",
+    "digest": "sha256:d9595eeec5855e155ba216bbc82318c8bf15d68e7aab51f9561bcdfe49fcf838"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 579098,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-fdroid-release.apk.idsig",
+    "digest": "sha256:7d0527515e2b2dfd932f4d7effca4dda06e5cefa3ac165fd82887f581c8b6ff7"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-fdroid-release.apk.sha256",
+    "digest": "sha256:f7aa4ba2939df8469d41475367b44ff25c9e76b9c3792328ae0334cc5f8bed1f"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:864de09b90c75cf24d97571dfdc4a7f9d6a1fc6dd01a96fd9a31758608e17d6e"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 72251016,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-release.apk",
+    "digest": "sha256:1a3d896cfbd627f3ad2a60142523b13299c2fb37c0ae4b0e1250d581c02bbc90"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 579098,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-release.apk.idsig",
+    "digest": "sha256:c28e526b7bdb923e89746857d5a8889218dfbbfbcb49666571ef36fad3ac5666"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-release.apk.sha256",
+    "digest": "sha256:fc4cd66d486011930064addcb10731d2e534cb5f7bb03c090c28a9f37002f2dd"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-release.apk.sha256.sig",
+    "digest": "sha256:0976d3dace76a2a6a6f74f5edb75a8c8d9da37a93754852853c503270794fca8"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 27702302,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:7ed5d7fb6f86fd6dc177be60f6ac0d5ab1a79653d59aae0b5be336d4a03ae07d"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:66a3735b7b17bfefef5b1b92679918c9e1260fcaa28ed2f381ccd2343f31ddc7"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:85906a97d160f9c4a3975d357ad3773991b1ed44345d6dd304cc3d81baaa6116"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:c0379b97c92efc636c0cdab90b8c3493f31d6443fc55cc531d2cca038b436e13"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 27702302,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-release.apk",
+    "digest": "sha256:c7326c69e240da40a06bd125fbd4e913d23620625bfe8e49b57471933866cd51"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-release.apk.idsig",
+    "digest": "sha256:67e3aae3129feb60b38bf05e4285395eec3a8afa1bea2035765514d1742aa3d7"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-release.apk.sha256",
+    "digest": "sha256:693629d647e874739df88a5166f9b5f489cb2c9e936aed3ea99a77b986db246f"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.16/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:b00a002488a5f96f27772b11af8c607da9d13b82aab289f8c6911090564dadc2"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.15",
+  "name": "v1.6.15",
+  "published_at": "2026-09-06T07:09:48Z",
+  "created_at": "2026-09-06T06:22:01Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Translation: Update hu.json by @summoner001 in https://github.com/ImranR98/Obtainium/pull/3260\r\n* f",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 25654392,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:33169e6565f335156c04d9894183d03511db4f23e1f6e986bbf3f55b996ff5d5"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:de624187827fa5acad4cfd442825a6f402cb0d5048d2d9d7fe73af627f508ab2"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:19f32983fe5a991979840896fa8382415a03fa23a9bc8cce40e8a9f81061235d"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:2958d329f7e020c34f4a555d24087fac176f6591ece871cc3b68f693843bb0f8"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 25654392,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-release.apk",
+    "digest": "sha256:011e8e05bd4b2e48df6c749f8bb0f8a3f2e8a01e6edc07e49fd2c9dbad3e8095"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:d0291919f4f1d50048d234e7dbd0d0f5818458fdf77616702020a797d6a5e441"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:cb500c8be2c5169c1814ee42f0e59cfc441a3a8103bfb4c780f811deae838a8b"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:2d455f3b4a1cc265d8fd6dcc62f58d2dc323651fe219ce55b2b655a78c0d1357"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 23852160,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:1490454b0c4af527240991c52dae2d2a4a1c049e5ec7ff44db30b2f1f2b49e46"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 194074,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:0b69542cdbb242f2426189c0a0be6cd3dd802ac0491cda93c738102d39fe8925"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:9d274cf460709a4e5e9979ae8f509657b9f03c1fe52f52c3fa6ff2af2b34bc78"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:a7931caa9807dfe71ff14cc1027c564549bfdeec2db626205d1459bcaac60b2a"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 23852160,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-release.apk",
+    "digest": "sha256:dce424984242b00133feaf77945ae9cc40f2631cac5e62f35c0707ea0d5592a3"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 194074,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:6def32ba2534f476df912e591de10e033d582dcc32d7ee48c5274232b327251a"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:4eef52c9f306ea72d7777ffb6a022dcee41d973d0f1e6e1eeafb78087e922ba5"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:f4cdabd32f5e05cda1e807c184e553f6bab925387d1d75aaaf0b45c706823d6a"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 70969046,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-fdroid-release.apk",
+    "digest": "sha256:b801cac12d3f44896336932a34e6c03a772e37a208471358da1368189513f497"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 570906,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-fdroid-release.apk.idsig",
+    "digest": "sha256:e60e86685c2942c94018389f3fa53e49f5563d0a4c13aaf7e14f58eb76ce8a5f"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-fdroid-release.apk.sha256",
+    "digest": "sha256:a885f33ec037998b7938d54983295c9046ac32f73e22c65425138d80bbf24d92"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:59cb1298c45c32d76f1bd6e756044ab0364f06450e1aa2664e5565d7bb4d900f"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 70969046,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-release.apk",
+    "digest": "sha256:5099f94541bbcee7620d910664a45edc6edbb39b80affbf98f1e8b2f9c9e2b36"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 570906,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-release.apk.idsig",
+    "digest": "sha256:5d14f7e32d3234926bfa9decfb937d883ed51c72aa2661891acc02e1155c664f"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-release.apk.sha256",
+    "digest": "sha256:047c9c75f683ed629504168c9c0b2270b1f550ec6b7869ef8b3692ed5bd35283"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-release.apk.sha256.sig",
+    "digest": "sha256:10f384effce815428113bb8a3ad423eecb58d804dc9070f6dd62de7d6b50bde7"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 27272300,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:453114d1de046e8381296a2110bdd0e050fb57c93c63b6573414e6ada9a02785"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:4d85e68c8047136c6f2d737715285327b26dd3551dfaba80f75d38484959e43a"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:8136c45c50af6cdf724bd6b7f5615318051fedb061708d7b7a1b4e84c206a096"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:b40f1600e73b5bc84256f4fe768b18935cc48511f957c52510a53991452249db"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 27272300,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-release.apk",
+    "digest": "sha256:82f5fe0801ea3e802ccd45e0a2f77de8d43fd4a27d07ab13fe7d8ffe106b0154"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-release.apk.idsig",
+    "digest": "sha256:05e78b930e64251a0fb3481696be1f25dfe2a742ed570b63143b93c7c4c84899"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-release.apk.sha256",
+    "digest": "sha256:1eb0e541f4536202572772ea275a33c6a6eece77a43b48b00cf59dcdd2249827"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.15/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:d77fe76e16e8ed28a70ac10bae79dbaf2e8795c4211c63cae6563287c9cbc3e2"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.14",
+  "name": "v1.6.14",
+  "published_at": "2026-08-29T06:46:24Z",
+  "created_at": "2026-08-29T06:10:13Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Update zh.json translations by @Jursin in https://github.com/ImranR98/Obtainium/pull/3256\r\n* Update",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 25392248,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:300ad91ccc92f3e279f219432844c2c18f5f6c2c530eeeffe46c32acfb938b66"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:16af02c1f5a47145c3483bc84fe98ca78ab72f31ae1bc33658647b042ca787c8"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:1fdad8a9759eba862b222d11e771e5ebe915c59743d9861f83a16b6915dd4ed3"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:19d23feeffb4c277711ea9b75c5aab6cb5ebf6db9408ff9c1b342a935ceea308"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 25392248,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-release.apk",
+    "digest": "sha256:e25fa507bae1b5c30cd11f43424c452cd880752dc7588a414ef89ab8e06b8a70"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:65c701a937e1045599f78370dad0c2502620ba53f45690a95539c2f42ef494d8"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:d42717605ac1de16edec91cc2a6cbdc55ed7afeb88335fce1f1148202f99d1fd"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:73c249641f6b4b83c2aa0d28f74989ec2d9d4707eada25d717a590f1eed87cb8"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 23536768,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:afe6b0bdf189ae2fb73df03946164ce0312b8396cd45bb2f841a3222c40b4393"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 189978,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:53b6ebf8d898467c1a135f84b15b860e4b3c485befe77b07f6c36a1fc2735cc7"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:a1621b68e77d27b005de2982c7b0861f1cb0a4a589a3267a058a6cc0a6fa7d31"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:52d6f839f8747e85a244a8e9e98c6ba0217e78f729eadaf7542d1f564e79c532"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 23536768,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-release.apk",
+    "digest": "sha256:6fe441ffef254679a4a73677a040dd4c67632e754498bf0e517232dc6e83a11a"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 189978,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:e3cc7cc32fd26a799657fe0641992cd13da404ae422bd987404418d1a77e9523"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:ce699b4f2b888257f1f66591d39158823c6f5f474a22c85a355267cde7610d27"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:58dc98cb489a5b3aade6752ea1fc04054dbffdafadcd9d9f975f50138dc3f816"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 70129366,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-fdroid-release.apk",
+    "digest": "sha256:c014d4c656063284ce651e285bfaaf95848a1b04a0d41043b482fdf9b0850f21"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-fdroid-release.apk.idsig",
+    "digest": "sha256:c3a5b78e74c097f5f75a25417fa4abc90ef137ecb3240d430b033da5143e8af1"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-fdroid-release.apk.sha256",
+    "digest": "sha256:50b5b2e6d4dacad3803d2027f3d73391fc2f2941bceceb79e7dd5702c5a4169b"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:53818897d209b28f2459f2064ff94414e79765299dc5baaa047a1f46e81cb7fb"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 70129366,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-release.apk",
+    "digest": "sha256:c195d4d683d8fc771b779bb8119b03d488c05937d7a2d6077470725c0b9e7fea"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-release.apk.idsig",
+    "digest": "sha256:f159bea629df12f7b7a84e7efc107b3ff17fe416859eaacb840f4461ab5052aa"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-release.apk.sha256",
+    "digest": "sha256:4ec6005ff2b0305b5eb48b98855b205f6fe707826880eefeae456d3379d4730d"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-release.apk.sha256.sig",
+    "digest": "sha256:2e378382a80db6535a97c85f3cc59f0f9b9191aee0c740908ea00088973e29b6"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 27006060,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:25addfcde1de699567dcd7f3a60bfbc2438ec173b3952df557173666b4d3c551"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:24665de802bda51c2e5b0b6099daa3cd8bc705f944eb868251498bb28fc7df67"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:eea7f2242b1fc5115fa4ede1fd8b1ab51881efb72b250d9892c0d94c93d4877f"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:3978d2d737b728b1d93b77d5f292c8037bd9eec93d80b022823dbca794c08109"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 27006060,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-release.apk",
+    "digest": "sha256:64374c528428dbce76ef84832aba5fd72e3b372af86dbe3dcce88f281eaf2668"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-release.apk.idsig",
+    "digest": "sha256:1a8da8a367864868757c7992e3c1cc62dd83be33b4dfc66e37f3d6052c3c0372"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-release.apk.sha256",
+    "digest": "sha256:82e19f056e9c09d24d3306035d92b99cdb98b5e8157393c034e548e3d2524834"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.14/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:ccda7a0f62422d8af60abfd961c301ee30d1e0c383f56209a4ac60869e8f886d"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.13",
+  "name": "v1.6.13",
+  "published_at": "2026-08-24T05:33:48Z",
+  "created_at": "2026-08-24T05:12:27Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n- Allow HTTPS-to-HTTP redirect downgrades for sources that opt in, fixing Vivo source downloads (#322",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 25379513,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:fae58cba2bd06994cc8b9be6810cd408ff31679f66b9821e940cd29f59b5a222"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:8294e8fcbcdd606434c52f42969dca3d7d7ad29b861898af6a83a3a3d4ba591f"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:9cb50d00e9e2cd61507edae4c942ca1a18944a496127b18d23e792552de5bf1b"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:d7f3f7a15058056dd32d5211932689a6ae80c0c5f52995559751adb2a40356ec"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 25379513,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-release.apk",
+    "digest": "sha256:c7d1a385635eda9f137db89ad839bbfa63cfdf4ecce92367d15cc4c1d40e1403"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:d9f8be54ca87386cbafed00c082cf178d5f2289659ffaebfa1b7e4315f4e7b46"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:567c9a27c29cbe6ce9c7e6953fe6ec4061493d85eed1e326e16bec8607fab87c"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:7828a88aa10dce046c732764acd8d9fdb4352fb9ffa32b9192033ca0b1dd9843"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 23491265,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:5da5838d80c404738f8aba899efc900590d3214d6d0d38129fac24094f57e281"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 189978,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:0ae29526b3cd7370e73cbf4ec2cb6b3f5ddf898a7b39b794b50f0ed1f0eb310b"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:502bf0fa8bcd96feec815d9d43b8fe0a9e18b253159b00a5988f4dbc0010be9e"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:88c5813cc34b1ebadbe73d803f67c51cdc968c359f8bcbe2f3a962d86d81e6df"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 23491265,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-release.apk",
+    "digest": "sha256:5d5eb39f9a651b0096f45fba762aa86a6c4a62ec26be4df87c8ba9468fedf7a2"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 189978,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:065160e16ce38f92c341956c4dd4e947e1bacb20a16e46b54e61ec1797ee3fda"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:a0c20648b22cf322a6cb514a8660c8c52a86849266e02fb4ba957c0f4f9173b0"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:ad6791c04ec07f8602add011fe69a4acf1b09e79a64e9b4d1b65c2c5440b049d"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 70018327,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-fdroid-release.apk",
+    "digest": "sha256:7817c4454daeddce31ee9a9fc1c32606735c67664123b29037c80e35837b216f"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-fdroid-release.apk.idsig",
+    "digest": "sha256:313a711e512dbc44327b827315f26b3925a89f13b492cddfa0714c3d87024875"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-fdroid-release.apk.sha256",
+    "digest": "sha256:bde2d16c540a054b1386c886dde2a3104b921b2bc1b3d222c87ae4036df8383e"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:495c8a9a8a1938143d04b9bae9adb9f4e1cdb66c957a92b6d99fb9458d980457"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 70018327,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-release.apk",
+    "digest": "sha256:f70c46258517bf31e12c734e7afc6e3203c2c83af55019b03991bf910516f9bc"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-release.apk.idsig",
+    "digest": "sha256:d37e7e212f480892358524d190580dcefe0cbc3c5b213ec34654a6174be1ae1a"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-release.apk.sha256",
+    "digest": "sha256:d84fb0410e43625b41dd454b90764605e1e98f60039994491b5c3d41f6f66e21"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-release.apk.sha256.sig",
+    "digest": "sha256:1799907ee4738041ea7cac0ed00f5a6aaf18d1966ce9291664707c6c0109d48e"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 26927789,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:b6d3fb75c63ab10fabcb1a75ff1f57a15ae36c1e1c4958b487a9ddf3bc6454ba"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:a55aad9fbc7eb478a9c1869bf062a5d1710400525ca399a6bd97fc98f69df463"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:e69d0cb13f1dcf3bd98eb74cb72af03775fd3fb9c17fd3b460ec90c97e3b43d5"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:53e8fae6d424d111936711675b1454180010ad8a24ca438d9ff029c7ec67c1fd"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 26927789,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-release.apk",
+    "digest": "sha256:653a8060af822cf195d0c1780c89367820584b29f6f84ca8f93f9c7b9d1dee3b"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-release.apk.idsig",
+    "digest": "sha256:37e80af43d28ac6d94871618f508c89d54bb45ed9c01beb65c05da1e1873e8b4"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-release.apk.sha256",
+    "digest": "sha256:86eb569b06743b1846833e007f1dedd86d8b14bede737f6b32ad87970831ebc1"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.13/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:112eeff23b1a009de5c329d164a5fd4b7c8c7d4329b91f68474fae3d68b7f3bd"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.12",
+  "name": "v1.6.12",
+  "published_at": "2026-08-23T21:45:45Z",
+  "created_at": "2026-08-23T21:16:44Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Fix RuStore 419 by @skrimix in https://github.com/ImranR98/Obtainium/pull/3209\r\n* Fix RTL version-u",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 25375417,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:862d4b1b3d1d7d59f46e882d29835702d700204d5b0bd182da10626a28a4776c"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:ca061d052aec6695281ee77ccb5a6c611eb8304fca98c78a114b491407382349"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:e70d70fae08fc7d4b8e8bceb5ddc2e7765235c7d32c69d9433f20ad59c06d7ee"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:7b049722886db248afed800946c486ec3f1834c8287cf2e7812bd6f43a8d00e1"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 25375417,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-release.apk",
+    "digest": "sha256:81dfb857f2c58b5b3d5d323ffdc660805dbd38ecd501f9f7c2fe35db7b1c1e48"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 206362,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:422f21a31bd9c76d0a353d62b551900a75d4518323b0f6c4c88813728d7d25c0"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:f4de8a525528a10dc22495f06ff6722936dfb90b05150fc350e47a5cb38d44e0"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:e9a1c5afed1edf8ad026d0b0f49930ceb9cdec6228b948f7bdc99fd79b1d7038"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 23470785,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:98f1221db04b449ccb75859931737700446dac39ecf28e11609d671597b29c7b"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 189978,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:49b6a363b00b0e5f97cd3036027234e038688932658eb99e3341f3088c43fb95"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:912daff1edb111d5105543abd7bf36d6f6c1d07efa62562f9831d9587c20110a"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:d17d652ff0e52f5c2b45a38e553895ed5e6ffb32e6b69f847bce5dabcba947cd"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 23470785,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-release.apk",
+    "digest": "sha256:244071fdb90351a986ddb014510ae9561c33c0b8e4f3ca0ea63225f2228c24c8"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 189978,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:7a8d2151a06d2345f295e19684b998ff47b1bea3ec00fedac7ab08a22f912490"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:2a7a2af44ed3863b19dffbc0268c0966d864c6a3449456350133794abe630974"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:b508671e3e8fcffc9fd6d5b5871cd2e8ba7195afae53bcad8b546fdaa9f1dfa1"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 69997847,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-fdroid-release.apk",
+    "digest": "sha256:de5d3241d9a16328d9d21cb2105468180eda75bdfa537b805a6f85be5c46f140"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-fdroid-release.apk.idsig",
+    "digest": "sha256:fc1f214fee42a0540fecb212e1f23fc7b65bf7556914fdca87f9b5134086c15a"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-fdroid-release.apk.sha256",
+    "digest": "sha256:dfa762e498e3d33ed8b25d08b535ac9676c690b7b6cfa5238fa01744eb73d9cc"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:89c20c793a6c004b9fc02e84bab586cfff07bca2c77f2ba297362a0f437ba0b0"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 69997847,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-release.apk",
+    "digest": "sha256:19f218fa5302feb71258d527ac10db8e85ca191b8389672dfad9c8a7e1791f44"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-release.apk.idsig",
+    "digest": "sha256:73738fa8a5efbb9469da265bd1838c7c5133c19c2aba9a03675ced34535123de"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-release.apk.sha256",
+    "digest": "sha256:7a25c39a548718a7848947cceaf922c05b2a0a8cac2c3b8942451c356538fd99"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-release.apk.sha256.sig",
+    "digest": "sha256:0866ba0b2b075867f86e1630a06fb765fe2db30ff549e3c50de75af9176c47ae"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 26923693,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:b6169494c57885c4874a8e65160052d9ee63ba41b6208d2268d805030169af1c"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:76a5d3ecb8e7d6105f5f216e4ea8c4f817f7b8c2d107ee53ef6e6c3e4560a6bd"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:1d865e9f8d421a41389a4b703c696e0a01d9980cf9cd4b5b745a01173c9ebc37"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:b553706e1c08cd7667503f296ab0c065ca0a2144ce89dbf77a7378148aa58236"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 26923693,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-release.apk",
+    "digest": "sha256:57edd256c3f300cb617afcc210dc697912506f3cbfb5868366f1bf9b9892bf34"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 218650,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-release.apk.idsig",
+    "digest": "sha256:a7bc4edcd276f64cf46a5cccda7df80c64a5a9d3710e46728bddf7eaa9f88445"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-release.apk.sha256",
+    "digest": "sha256:5173e7423ebd58fb301269213fd84e5144261006c282af3a6371fd8df9a3773b"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.12/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:75f1631dbe905e88fe728395d61cc4aed461e70337e8257b2303ed542f0911e1"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.11",
+  "name": "v1.6.11",
+  "published_at": "2026-08-07T20:42:00Z",
+  "created_at": "2026-08-07T19:59:21Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* Improve french translation by @mgdx in https://github.com/ImranR98/Obtainium/pull/3165\r\n* Update ar",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 26117325,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:d5038004620ea3d8e928d7072c68667a4bf18e6fe29901c2f399e648b71bf9c9"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:07c0108e414a334d9ed7b939893c0db39602dcb542b7daa2cf5ccf593639e610"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:f8cfba7fd3b3c9281abdf1c69d9923b2ed0b46ff4464a51f3e98448f3bc8e093"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:3e06691f10d95338fcaf7dc952f4137e60ee0b7401c58eb5e8c9924e4fd17a66"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 26117325,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-release.apk",
+    "digest": "sha256:650becd8894ce331ce489657ac622a1694bab2dfc47a96de6907be28d38221a0"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:9a33f76ecfe6c7b035a58c5a84a1a4c2d5ad41322b9a4f70b07b031c3150d2d6"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:9ea83fb78c056c009f99d6f828ec94fe8d4d3e073f19e7a34f1aa4e5fe26a34f"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:7503d971b5dc2fce7a638bad42ec3c7a0b11d5ffe5eed6741c6ecf6fa294cb1f"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 24204501,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:973783e0afecf7348c9750af41ba7a2f18bef796e470f4c2ab2e0e8727b44aac"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 198170,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:2843d45b77dc208a9d65e0e2ea797a97f2f8cb675803138d82bce1ef950bee18"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:bddc4dff914e51532cf4404685e4a91de59dce07487c91e754ad9175646d6ea7"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:a002e0bbdb23f2f8dcf8aa1f35b9ad6c95c3a49b02e9c013c181ad183766ddc9"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 24204501,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-release.apk",
+    "digest": "sha256:3349fcc8fbea8199ec0421ee6316c880b8c48b989865931f785baa8e38de6e85"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 198170,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:5da1c45a30bc2a289aa98b58c1145cae2db698dfa5440e6700140b64d066bbf8"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:e88b9341d2c1ac36ed8b812de08d5d4c78f47e473b3e46d18d56788dc941c82f"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:ea0e3956da012d360f970c2a11c4c54a79def88648a66660b56dca0aea5177c6"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 70092587,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-fdroid-release.apk",
+    "digest": "sha256:3ab2fa3af7d8c57a4176ef261b6d2e4c5da7c4cd9fba78536365305c19b01fdd"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-fdroid-release.apk.idsig",
+    "digest": "sha256:1a51754781115adb35fdb3af803d1ec0c0e8c4ab7e66d455f386a1e04c1d57f2"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-fdroid-release.apk.sha256",
+    "digest": "sha256:2cffa02f175878b9e5f34dc7930d5fac145c50a3509c03328a4d4e57bd129888"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:f643fe4a3c4c814c04cbac92018f672fdc16e6720693e39c8bc3d08546b14884"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 70092587,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-release.apk",
+    "digest": "sha256:72962875d2377b9fbde4f067cbe7d23942ab20258e48ca96d571b40ae25b9c92"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-release.apk.idsig",
+    "digest": "sha256:a5bfe7ff223809c755412a1df0c57d2724924ca0c7c138a2c090644bbef1f63b"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-release.apk.sha256",
+    "digest": "sha256:9d0d4b273cf9e57ec2ebd2b6a3fb1c2655d55e1b27fd089e4306755ec2b55d60"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-release.apk.sha256.sig",
+    "digest": "sha256:d712339a14dda02feb0b30255e0ef892d9fd0c8cf2c1eed376757053af7f89d5"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 27641025,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:13b96ab2bb910ea79eb2fe20e55dcc61af12748a1421bc72b508e35c12d361d3"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:924d3566ceecc9f482e064b35de5c408b81c0d0c262cb41ecdc334674d77e39b"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:9ef764e5de870c0635638c8de6f13216140ebfdab3385e5d77dc82c40295e5fe"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:1a164a789e9be238e83b248a1a0b373ba17a5294ea15bc6ffbe09d0f9e20b591"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 27641025,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-release.apk",
+    "digest": "sha256:b58cc56da26868ef2189ba195c7aeb510bfb0cccfe6a740443863b5815e13034"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-release.apk.idsig",
+    "digest": "sha256:08bb4629f0377994215cf145d3e5122205eb0821f10edc3e2e14f90d1981dab7"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-release.apk.sha256",
+    "digest": "sha256:54b9b2abf4ff7c68d2a96189165abdaa4f4c40226b3c0dd84d0c40d6f52e79ea"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.11/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:6362e40066d6dff0f7d849e345e4e5bba9010064c58a30789e45c8b2d1e20d0d"
+   }
+  ]
+ },
+ {
+  "tag_name": "v1.6.10",
+  "name": "v1.6.10",
+  "published_at": "2026-07-19T23:37:04Z",
+  "created_at": "2026-07-19T22:29:46Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n* By @ImranR98 in https://github.com/ImranR98/Obtainium/pull/3114\r\n    - Compact page headers \u2014 The \"",
+  "assets": [
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk",
+    "size": 25998534,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-fdroid-release.apk",
+    "digest": "sha256:baee81fcda0e083d1b0e21f3f094824bc7e33dcb0c05ca8b7c17232dacb567b5"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-fdroid-release.apk.idsig",
+    "digest": "sha256:62bdd3c3f48a163f17084beb0253672fdab9bcc9815c25d6bb65fff80865c6c6"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-fdroid-release.apk.sha256",
+    "digest": "sha256:c70006e14e5fa9d5bdc76fab6ff376b35948e4f778aef4ef076c525a87741a06"
+   },
+   {
+    "name": "app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:016e12bb3d7371998d6dd747683e6607ce45630450264f90dcdd3245da00157d"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk",
+    "size": 25998534,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-release.apk",
+    "digest": "sha256:e0ef91ec5c1a0c7f3aa0dd10682830f74f3d80d94c7b3cc7960a3bd287e78a16"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.idsig",
+    "size": 210458,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-release.apk.idsig",
+    "digest": "sha256:93c377300a7e2d6471e0ba16083d7c74718971165f85163a5ab6d38baf886e25"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-release.apk.sha256",
+    "digest": "sha256:29e693f6db3c5e421572086ec4cbd1363379b3f963e1c3a4ea61dd2ef50d0200"
+   },
+   {
+    "name": "app-arm64-v8a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-arm64-v8a-release.apk.sha256.sig",
+    "digest": "sha256:d03b027fabe30d35cc55fd6dac4e03c98fb5a0aafeaad903ed999a986674e68e"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk",
+    "size": 24114382,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-fdroid-release.apk",
+    "digest": "sha256:f86f46e2ddbf2f194b2bc37ebe0086bedb28cd3f80a6f8276537718e59d0d8f2"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.idsig",
+    "size": 194074,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-fdroid-release.apk.idsig",
+    "digest": "sha256:a3e1843bc670519a7badac019b075badd6e6bda7e2db160c0986a414155cc676"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-fdroid-release.apk.sha256",
+    "digest": "sha256:a250f429a24783d757d7810baa64af30e2ffa795bf081cfb52f85101c897ceb6"
+   },
+   {
+    "name": "app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:8f0ae9c5d710808f02bfa2ac46e634a845fe6c2bbd4fedba9322dc0c34f8565d"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk",
+    "size": 24097998,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-release.apk",
+    "digest": "sha256:2f4ff5227e486af985c665b6615a67effb498d6516662b98096bf1d0c43054cf"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.idsig",
+    "size": 194074,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-release.apk.idsig",
+    "digest": "sha256:f408b1b635273c7f117f60ea8342e733643b6f44b75ff09a852f9968ff1c5135"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-release.apk.sha256",
+    "digest": "sha256:5004d404bfb84e54002644d65500ea53651f2b94f3e2bb1678b4da5b6508f221"
+   },
+   {
+    "name": "app-armeabi-v7a-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-armeabi-v7a-release.apk.sha256.sig",
+    "digest": "sha256:0c8befa7f940d586229705fe686c5f7f43c9fc4af6ff9bcc1bc27ff9fefe617a"
+   },
+   {
+    "name": "app-fdroid-release.apk",
+    "size": 69842724,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-fdroid-release.apk",
+    "digest": "sha256:5906ecdcf2e0a333f6ced38c0e9ab8882ba0949a42c23b50842813f8bb57591b"
+   },
+   {
+    "name": "app-fdroid-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-fdroid-release.apk.idsig",
+    "digest": "sha256:1e84cd1faab382d36b65ada824903c5056ab904d94555320f7b6d1270a5138b6"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-fdroid-release.apk.sha256",
+    "digest": "sha256:a2de338aaa8ef73bbb61b22bcb3f154917e25a73b954fd01cc66f7b12f9106f2"
+   },
+   {
+    "name": "app-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:ea0014c9ca48d1696dad3ab802b2a3e6d88005b8194af7627efb5c21cbcdfe1e"
+   },
+   {
+    "name": "app-release.apk",
+    "size": 69826340,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-release.apk",
+    "digest": "sha256:1173accd9f21520abb397909ca6bcd0bd1715b4de9af9c9bc1d9523b239fbb0d"
+   },
+   {
+    "name": "app-release.apk.idsig",
+    "size": 562714,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-release.apk.idsig",
+    "digest": "sha256:4de8f37b651f103cdf826d7e747d537e0935b29552b37fd3b86d85c70b997c65"
+   },
+   {
+    "name": "app-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-release.apk.sha256",
+    "digest": "sha256:c58031c837f00f6d6a6f8a1a4ae33477317fd9db644f6f20995023ef5fe0b6dc"
+   },
+   {
+    "name": "app-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-release.apk.sha256.sig",
+    "digest": "sha256:7547382c62c98acf68dd377b3502db873036cf718cd9442288fdadbb3bdce432"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk",
+    "size": 27522234,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-fdroid-release.apk",
+    "digest": "sha256:b41b3106ee17061a0b5d6ddefd16bd47eb3ace60af6ba0c0bedb4d52bcf62de6"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-fdroid-release.apk.idsig",
+    "digest": "sha256:dce50cd3816b35ad0dbfa0c250cab104166fd57c86c0779e1d57aed43f3f0c29"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-fdroid-release.apk.sha256",
+    "digest": "sha256:9bfd2e5d99152ff95710d0585fc643310dfc381237b32ed2f5083424f5555dd6"
+   },
+   {
+    "name": "app-x86_64-fdroid-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-fdroid-release.apk.sha256.sig",
+    "digest": "sha256:4194263987bc6922e242422edd7e5a84a8606a2c0ee867778b4d5f0dbbd2ca7d"
+   },
+   {
+    "name": "app-x86_64-release.apk",
+    "size": 27522234,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-release.apk",
+    "digest": "sha256:c507fea5ffa707da21823723116d90db323bbfa7252cfa0b9a9e319b75b293e6"
+   },
+   {
+    "name": "app-x86_64-release.apk.idsig",
+    "size": 222746,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-release.apk.idsig",
+    "digest": "sha256:193e100554633c30b9fdadc89f22a36a93c7a80dd241fbcafc603331495d0d41"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256",
+    "size": 65,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-release.apk.sha256",
+    "digest": "sha256:e580d9e06bdb0317b825ac97d78c7c563ecf8ccc6bb602cf68b038097fe13b62"
+   },
+   {
+    "name": "app-x86_64-release.apk.sha256.sig",
+    "size": 119,
+    "browser_download_url": "https://github.com/ImranR98/Obtainium/releases/download/v1.6.10/app-x86_64-release.apk.sha256.sig",
+    "digest": "sha256:a70418fcf3904eedff206483d77fc5d1177fe2bc08986b038c26c9b4f262de94"
+   }
+  ]
+ }
+]

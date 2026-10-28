@@ -50,6 +50,8 @@ policy.keep_old), github-token (optional, for actions), lock.
                                           zip's path (install.sh then has root unpack it)
     librarian.py firmware [--check]       the firmware mirror for the web flasher (firmware.py)
     librarian.py holders [--check] [ID …] the App store's held releases (holder.py)
+    librarian.py holders --survey OWNER/REPO [--window N]
+                        look at a project's newest releases without holding anything (holdsurvey.py)
 
 Stdlib only: it runs on the board's Python with nothing installed.
 """
@@ -2414,6 +2416,12 @@ def main(argv=None):
     fw.add_argument("--check", action="store_true")
     hd = sub.add_parser("holders")
     hd.add_argument("--check", action="store_true")
+    hd.add_argument(
+        "--survey", metavar="OWNER/REPO", help="print what the newest releases of a project carry; nothing is fetched"
+    )
+    hd.add_argument(
+        "--window", type=int, default=None, metavar="N", help="releases of each channel to look at (default 5)"
+    )
     hd.add_argument("ids", nargs="*")
     args = p.parse_args(argv)
 
@@ -2465,6 +2473,19 @@ def main(argv=None):
             with Lock():
                 print(firmware.sync(check_only=args.check))
         elif args.cmd == "holders":
+            if args.survey:
+                from irate_box.library import holdsurvey
+
+                if args.check or args.ids:
+                    raise LibrarianError(
+                        M(
+                            "library.holders.survey-args",
+                            "--survey looks at one project: give its path, like meshtastic/Meshtastic-Android, and nothing else.",
+                        )
+                    )
+                with Lock():
+                    print(holdsurvey.report(holdsurvey.inspect(args.survey, args.window or holdsurvey.WINDOW)))
+                return 0
             from irate_box.library import holder
 
             with Lock():

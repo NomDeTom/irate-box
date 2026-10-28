@@ -1,0 +1,2654 @@
+[
+ {
+  "tag_name": "v2.1.7",
+  "name": "v2.1.7",
+  "published_at": "2026-10-21T06:09:14Z",
+  "created_at": "2026-10-21T05:54:58Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## What's Changed\r\n\r\nBuilt with Go 1.27.3.\r\n\r\n### Fixes\r\n* fix: handle missing max-sequence file entries by @calmh in ht",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 8797,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/sha1sum.txt.asc",
+    "digest": "sha256:a1ca7f48fb8e6d9f1b44448abddf0b61557c3de0ef935ebfc6a8826916a95659"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11029,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/sha256sum.txt.asc",
+    "digest": "sha256:c512202f9138caca4aa22cc8f9b71fb4288c8a16d5af97f45206275efabd0d1d"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.7.tar.gz",
+    "size": 14815289,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-freebsd-386-v2.1.7.tar.gz",
+    "digest": "sha256:686c99126277425d38819df4cad1299fa8e718c699422d0567257a46fb1029c3"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.7.tar.gz",
+    "size": 15460437,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-freebsd-amd64-v2.1.7.tar.gz",
+    "digest": "sha256:7e463460aebe4915eb744f12e270596cdf6fb3f0063b69ce91dc77b7996c091c"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.7.tar.gz",
+    "size": 14712163,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-freebsd-arm-v2.1.7.tar.gz",
+    "digest": "sha256:a2a421d1ca32ae735b6cb278b81604202349924969c715c7b94af38c1baa3702"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.7.tar.gz",
+    "size": 14273155,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-freebsd-arm64-v2.1.7.tar.gz",
+    "digest": "sha256:ce03a631d5341abe24d4dc421d4a660db43f032d5ad1f5954281418109af4339"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.7.tar.gz",
+    "size": 17268391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-illumos-amd64-v2.1.7.tar.gz",
+    "digest": "sha256:a4d3e226e908c91eacaf285ee36976bd10905aa95168485606df96aa2f893669"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.7.tar.gz",
+    "size": 13497205,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-386-v2.1.7.tar.gz",
+    "digest": "sha256:3cbee24e509011d19859a2147f641b6cfff6e63e23ad3c30a410ea79f9322bac"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.7.tar.gz",
+    "size": 14046697,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-amd64-v2.1.7.tar.gz",
+    "digest": "sha256:2edc416e7ed136b7c858ed5f3f02a3b8316589605e54c380228ceea7acbf0142"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.7.tar.gz",
+    "size": 13374338,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-arm-v2.1.7.tar.gz",
+    "digest": "sha256:d8b59029e25992bc0d280fccc5626e5dca743b285fca1a36db1148fcf871b639"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.7.tar.gz",
+    "size": 12866755,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-arm64-v2.1.7.tar.gz",
+    "digest": "sha256:48e456690cd2b97e7d26b02b5ac35f62a3b36172267b144cfeaf02c993ab955c"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.7.tar.gz",
+    "size": 13452399,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-loong64-v2.1.7.tar.gz",
+    "digest": "sha256:52014efc779094de6f7517113be056671f43d759e65814a23cbbac4a37f8622a"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.7.tar.gz",
+    "size": 13172361,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-mips-v2.1.7.tar.gz",
+    "digest": "sha256:8962396492888bb52aab8fb02dc25685cf77a379a375f05933e910bc87d3e0e5"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.7.tar.gz",
+    "size": 13793158,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-mips64-v2.1.7.tar.gz",
+    "digest": "sha256:b98f89cd9621b422317f04cf5ba3a1ddbb68aa39474d8aa5d9fe9aa9ce21de63"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.7.tar.gz",
+    "size": 13484466,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-mips64le-v2.1.7.tar.gz",
+    "digest": "sha256:edb7d72289501fc82fb883485db158c2e22d05294132dab6c42969ffbc35fc64"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.7.tar.gz",
+    "size": 12977376,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-mipsle-v2.1.7.tar.gz",
+    "digest": "sha256:33e5eac4af717d6a9cb7c8c34da2284291ae4eecba6a1b663f01e55d6a7e8842"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.7.tar.gz",
+    "size": 13100175,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-ppc64le-v2.1.7.tar.gz",
+    "digest": "sha256:6e18fa230ef99d3d789cd06b15c7db55b9c5af14fd48d5cb6e59fe8de01402ed"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.7.tar.gz",
+    "size": 13328126,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-riscv64-v2.1.7.tar.gz",
+    "digest": "sha256:ea710ba8bc286f293b362e8fb37697a36877c9d29b8ca6ec1c05444d631a937b"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.7.tar.gz",
+    "size": 13932347,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-linux-s390x-v2.1.7.tar.gz",
+    "digest": "sha256:dc8f22801a74235ee57f979dc05687b3114e8226824311bc03e27829b8efe538"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.7.zip",
+    "size": 14889765,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-macos-amd64-v2.1.7.zip",
+    "digest": "sha256:b8be90176d0f24daebae7b5aaddac52ebfae395df6d99f5e0e54656db00868cb"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.7.zip",
+    "size": 13372993,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-macos-arm64-v2.1.7.zip",
+    "digest": "sha256:2df075b463231a307c91da657157beaed06383a941ba7ea04d33d536e3c4af38"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.7.zip",
+    "size": 28225573,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-macos-universal-v2.1.7.zip",
+    "digest": "sha256:a98fb709c79412e5586c81a1586bfb256b6e5a97b067ddf7447155bcdf6aac3f"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.7.tar.gz",
+    "size": 15378950,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-netbsd-amd64-v2.1.7.tar.gz",
+    "digest": "sha256:9fa611b26012e93e5f790fc09b1d4431427010fe78fd1d06a43d542c70200448"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.7.tar.gz",
+    "size": 15402753,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-openbsd-amd64-v2.1.7.tar.gz",
+    "digest": "sha256:8e38b3f4390343d7be5b3169572c7f49e7879846896c858b6434a2b99e517a8a"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.7.tar.gz",
+    "size": 14226361,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-openbsd-arm64-v2.1.7.tar.gz",
+    "digest": "sha256:8670c3c46db1d978c5692a5fc77ffc80ce6cc1dd890f87a774763c603c492852"
+   },
+   {
+    "name": "syncthing-source-v2.1.7.tar.gz",
+    "size": 43763455,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-source-v2.1.7.tar.gz",
+    "digest": "sha256:5b84abd0e8b187f618fb2c38c37fa37ce0b377a275d3e0b981bad94176a24afa"
+   },
+   {
+    "name": "syncthing-source-v2.1.7.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-source-v2.1.7.tar.gz.asc",
+    "digest": "sha256:6c429d34ef5f8a7b747c3ab4c72e11047258802f9c17dd234a42c560df2b0cf1"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.7.zip",
+    "size": 13919162,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-windows-386-v2.1.7.zip",
+    "digest": "sha256:8b3ef0563cc21d923c9faa4282f07c94eea039dba658ef435ab5ac99020ed122"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.7.zip",
+    "size": 14281765,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-windows-amd64-v2.1.7.zip",
+    "digest": "sha256:3ce7da770f546a8d02b65b2e7ee31f2a3b8b7c3f990ede045590cca4172ecfe1"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.7.zip",
+    "size": 12924843,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing-windows-arm64-v2.1.7.zip",
+    "digest": "sha256:d535ffd611b3af223de64bc5dfc60c378881eb13d5c8ecb1431b7407094c15ff"
+   },
+   {
+    "name": "syncthing_2.1.7_amd64.deb",
+    "size": 14054904,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing_2.1.7_amd64.deb",
+    "digest": "sha256:01400d260bb6e47f1fe432bbb462cdb35ea6f78fc498198dfba6e292a3614837"
+   },
+   {
+    "name": "syncthing_2.1.7_arm64.deb",
+    "size": 12901050,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing_2.1.7_arm64.deb",
+    "digest": "sha256:1ce6836149febb1409ebe2a9876cb8cd5bba917d64029ed75afe72b780c691a9"
+   },
+   {
+    "name": "syncthing_2.1.7_armel.deb",
+    "size": 13374754,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing_2.1.7_armel.deb",
+    "digest": "sha256:4414dec5389d95d96aa45bc1fa1045fa924071344ae9b1b5aea79df840362f37"
+   },
+   {
+    "name": "syncthing_2.1.7_armhf.deb",
+    "size": 13374638,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7/syncthing_2.1.7_armhf.deb",
+    "digest": "sha256:d1cf332114ef72af8f198d41042ee60575cd9e7da6af58240ab4c3eba2fee331"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.7-rc.4",
+  "name": "v2.1.7-rc.4",
+  "published_at": "2026-10-21T05:46:04Z",
+  "created_at": "2026-10-21T05:30:08Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/sha1sum.txt.asc",
+    "digest": "sha256:565d25d8950b19b02b67b037c05b0f95cb833c08c77d0a3a6cf0a35202c70692"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/sha256sum.txt.asc",
+    "digest": "sha256:9d58bdd1c56879eefaf5dd10677e47731bc250ed5f1febe661756366ca0694ff"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.7-rc.4.tar.gz",
+    "size": 14815329,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-freebsd-386-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:4a3bf422badefc5dee8e3d824dbd5e055ed0e10b55ce24cb81aad223d344d659"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.7-rc.4.tar.gz",
+    "size": 15460438,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-freebsd-amd64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:980f73750b8a39abee51a22975fafb781c2cdedc5be1723c4d8af29003736daa"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.7-rc.4.tar.gz",
+    "size": 14713029,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-freebsd-arm-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:6812039d90b39332e9e13bcdd5a7525543f11d067d6e4dafd4f1401e70176c52"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.7-rc.4.tar.gz",
+    "size": 14273458,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-freebsd-arm64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:f08755590f6eb61eb465485f3bc21c49bbacf5a6f968d86527ec5c42d7b1f478"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.7-rc.4.tar.gz",
+    "size": 17268473,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-illumos-amd64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:2cad606bec9041e5dee208777720553e5592cb1945e92fcfacf1b95e80cb4a44"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.7-rc.4.tar.gz",
+    "size": 13497107,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-386-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:8569f968491d4e7a16c96f5a8ec595274973e959477b4919b9c26b1a225b0daa"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.7-rc.4.tar.gz",
+    "size": 14046990,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-amd64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:3dccbdd688a38983deba7b81cf4ee2bf9b1d8722e3eab37403cf65f4eb52bc3e"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.7-rc.4.tar.gz",
+    "size": 13374398,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-arm-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:ad35cd2e89dddf736e85fc96713feedebea92ebcac7099c68288d3043f3e7afc"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.7-rc.4.tar.gz",
+    "size": 12866681,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-arm64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:c0d2f401f8cd5e2e43959f72b31c1c6a9dd6f2c9f468ba4ca8f8915c1c56e889"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.7-rc.4.tar.gz",
+    "size": 13451980,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-loong64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:8e2134727b808f3fab3400e92cff71ff5448014c29df57482228ff327ec9e311"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.7-rc.4.tar.gz",
+    "size": 13172371,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-mips-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:1d53e1c791b4c047dbf154473d8b97ab20b03dd73dbab3ee2e3d8330b37482e5"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.7-rc.4.tar.gz",
+    "size": 13791841,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-mips64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:d44102aee114c0ed61bad3c27113484a2fe1848b39dc51142eb2603363417e44"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.7-rc.4.tar.gz",
+    "size": 13484340,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-mips64le-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:ba062f8e92234032b40e1eac531ac83e42ce124e1cf1418c3373914f1832e093"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.7-rc.4.tar.gz",
+    "size": 12977324,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-mipsle-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:2f128a2e1512979295cebdc37c36cd9f33e6cf0d7205e50960a307e8c2e400b9"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.7-rc.4.tar.gz",
+    "size": 13100360,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-ppc64le-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:74f3b956be5f7d60067b589ea424bbc25c17e18531fb1452731ea90e9dea8940"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.7-rc.4.tar.gz",
+    "size": 13328085,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-riscv64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:b09d8fa07486e642a668c0cf2944963a21e84faf4c5cbe7533b50469374d7c79"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.7-rc.4.tar.gz",
+    "size": 13932399,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-linux-s390x-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:e0ce5d9dac3be1c40dd39a00be50155d77ac3d5395d5f54fbafdefe2138eacfd"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.7-rc.4.zip",
+    "size": 14889939,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-macos-amd64-v2.1.7-rc.4.zip",
+    "digest": "sha256:d08cd9f33f7f087815afeec82e5f5e9fdc7654c33045b9a3f633f8abca79d0b1"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.7-rc.4.zip",
+    "size": 13371254,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-macos-arm64-v2.1.7-rc.4.zip",
+    "digest": "sha256:9673605aff4f81f57b26d95e3deb6e97572ea79bc4ea9440da0bd83aca55991a"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.7-rc.4.zip",
+    "size": 28226137,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-macos-universal-v2.1.7-rc.4.zip",
+    "digest": "sha256:423ab30c0d0a74b5f4dfd4e5c4dacecfb9e0e67c7bc02c00da4e8c28c8e46157"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.7-rc.4.tar.gz",
+    "size": 15378665,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-netbsd-amd64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:671c1841bf38abbc3014fd8f44c7c5798010343aafbce10ed7f71882a0059be3"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.7-rc.4.tar.gz",
+    "size": 15402726,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-openbsd-amd64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:2c57ade1941b7ba88a9d9bce41a2dba766e77774cf00c1c90e23622913b4e39f"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.7-rc.4.tar.gz",
+    "size": 14226657,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-openbsd-arm64-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:c0aa334fc589615d4608ea9b7b5f86adc1e9866e4762671793a779c1fcbb7800"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.4.tar.gz",
+    "size": 43763154,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-source-v2.1.7-rc.4.tar.gz",
+    "digest": "sha256:546cf20d9968004449392a8ad9120e215afef3c162e33f792fd9c1941f64ec74"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.4.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-source-v2.1.7-rc.4.tar.gz.asc",
+    "digest": "sha256:27601a8e3c829a74fb6bed6b2c9ba256dc96a3e23472ddf1df9df749e1e7bff7"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.7-rc.4.zip",
+    "size": 13919605,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-windows-386-v2.1.7-rc.4.zip",
+    "digest": "sha256:dcbf6179a824f3f5a1e104803ee790215d26bc58f818881cec885a20ba7d9167"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.7-rc.4.zip",
+    "size": 14282184,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-windows-amd64-v2.1.7-rc.4.zip",
+    "digest": "sha256:6694a485c62b684bd698e6b9328aaf00804c5c7826236dceb8d0ef09e9b20394"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.7-rc.4.zip",
+    "size": 12925298,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing-windows-arm64-v2.1.7-rc.4.zip",
+    "digest": "sha256:2112ab584341fa577506577b2f8959f08acbe6e012aa378ca8d9f252563ecb0d"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.4_amd64.deb",
+    "size": 14055020,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing_2.1.7.rc.4_amd64.deb",
+    "digest": "sha256:1bf992bdbc34103f4337cbcee4d96f53c801c803e83691b1b6714572daf49d19"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.4_arm64.deb",
+    "size": 12900862,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing_2.1.7.rc.4_arm64.deb",
+    "digest": "sha256:b44fc84686fb8ea3f823135eddf3620fd0a0d93f3949f3266e374803be098ca3"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.4_armel.deb",
+    "size": 13375786,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing_2.1.7.rc.4_armel.deb",
+    "digest": "sha256:25ad0426505478f2424f8355ca3b77637b63207c95eaa411f72c75b1bca3bc35"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.4_armhf.deb",
+    "size": 13375762,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.4/syncthing_2.1.7.rc.4_armhf.deb",
+    "digest": "sha256:a0dcdda7454cf201ac001003bc026ff6725aba942adf5f917a83a646cb23a048"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.7-rc.3",
+  "name": "v2.1.7-rc.3",
+  "published_at": "2026-10-18T10:12:08Z",
+  "created_at": "2026-10-18T09:58:38Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/sha1sum.txt.asc",
+    "digest": "sha256:936105684e15a761d42e6b7106d690ae583a456771aaf0c29aab9756ed742e06"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/sha256sum.txt.asc",
+    "digest": "sha256:adaab31c01287c1b487e42cc87fb4bcfe1bc4966851b99774ab741f0f854be87"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.7-rc.3.tar.gz",
+    "size": 14811119,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-freebsd-386-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:c8236c5cbfaf15ad86a808370fb6d0ab70af8bb8ef4d1b21f6672bcb1c827c79"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.7-rc.3.tar.gz",
+    "size": 15461029,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-freebsd-amd64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:f9355bffdf2a439806c96366a3dbd8ba15466c8584973c2984d2d8c03f604c8d"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.7-rc.3.tar.gz",
+    "size": 14708771,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-freebsd-arm-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:4cb89c0f42dc0756c0274e8d6d79bab16fb2084a8777dec34a5887bdd4c38b5e"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.7-rc.3.tar.gz",
+    "size": 14270368,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-freebsd-arm64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:11c2c6b8c24ff267d6bfaa15219f762653e71acfee8e100a050efbbac5db2dbd"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.7-rc.3.tar.gz",
+    "size": 17268649,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-illumos-amd64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:e89dab1bc3db55476a596678cc8f09a6ef32165193075fa4b2976914507b4274"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.7-rc.3.tar.gz",
+    "size": 13496432,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-386-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:b9a6abaa87c55d2a8e7d807610d31fc8d7b2f39b90ff739e6ba07efd75dbd568"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.7-rc.3.tar.gz",
+    "size": 14045822,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-amd64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:f0b53be3d70c75211460a31b6eba69886d1a5f1b185b6326fdc13210f8ed2e5b"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.7-rc.3.tar.gz",
+    "size": 13372892,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-arm-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:f7e732394ebdb15c603bd602a1b714677e2abd63976991d032765040d0cd6c71"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.7-rc.3.tar.gz",
+    "size": 12863533,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-arm64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:aba5e58bc1d1e56023057b175d58ee321c6af53404ff79b6d834c6ce8d450105"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.7-rc.3.tar.gz",
+    "size": 13452990,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-loong64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:f4ef54878b51ca15cb6afdf97b2cb793a49de6defbca3c7d229863e081ddf41a"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.7-rc.3.tar.gz",
+    "size": 13169888,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-mips-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:eebc6eb2cff912872f3eaae11e85f7ea0b2c698acc31ae2e04cfb733458a5451"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.7-rc.3.tar.gz",
+    "size": 13790063,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-mips64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:89dfe94f0ad69689b724235cf7ef50158b1247baa59c01060f5ee55f2ea66d81"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.7-rc.3.tar.gz",
+    "size": 13482713,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-mips64le-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:233f917cc2f8c342f6d846cbf4bc6645352a7ce3ba4010227cf1f1bce30cda01"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.7-rc.3.tar.gz",
+    "size": 12974181,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-mipsle-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:d7776821d37cd67acc48b0b462c032c14d28f36aee3e0578ded80ad8e7613db7"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.7-rc.3.tar.gz",
+    "size": 13095594,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-ppc64le-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:29525953697925bac95cf468d63d10b0d529f082352a2868d011297400dedc58"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.7-rc.3.tar.gz",
+    "size": 13327740,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-riscv64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:8365fc076fcc48eeef9076479daf01e530b1092a2328f2266f25595272bbd63a"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.7-rc.3.tar.gz",
+    "size": 13932113,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-linux-s390x-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:3fc586ae45ded20977e41f957adaa5ce70253dd1165fb09e26771346978e2c90"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.7-rc.3.zip",
+    "size": 14885472,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-macos-amd64-v2.1.7-rc.3.zip",
+    "digest": "sha256:3b621291d582e1aed5cbe0db1ed92d4232f527c7e5e18e4b05abeb440fd67bd7"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.7-rc.3.zip",
+    "size": 13371169,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-macos-arm64-v2.1.7-rc.3.zip",
+    "digest": "sha256:f464dbbbd3d44e7537669ff19716b92c00af9519ae1184b18692518d2f161f21"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.7-rc.3.zip",
+    "size": 28221089,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-macos-universal-v2.1.7-rc.3.zip",
+    "digest": "sha256:a8b239b6895198b059cbe3b007f580f7f502051a93c62209f92a47ca07722c34"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.7-rc.3.tar.gz",
+    "size": 15378997,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-netbsd-amd64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:6ec42f3f251426e6ad82388f0afa2cd1fd91cea4d74c96f95a30bc6fe3333c33"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.7-rc.3.tar.gz",
+    "size": 15402802,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-openbsd-amd64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:32c23fd058729f9d08e71f886f78218f73e3129c51b9c20588057326753675c9"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.7-rc.3.tar.gz",
+    "size": 14223308,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-openbsd-arm64-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:beb91e2f3a49e6953f0cc45768e3194c5d0ebfab66035d45b28df9fe9edcf21e"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.3.tar.gz",
+    "size": 43757907,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-source-v2.1.7-rc.3.tar.gz",
+    "digest": "sha256:729cd82dc4d594887c59f3c29f81870627a5a7a3bc711b24266872e60738b68e"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.3.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-source-v2.1.7-rc.3.tar.gz.asc",
+    "digest": "sha256:a3010943072fe7200cc6d3271a7be456cf56ec9d36698258842a1d7a35eeddf8"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.7-rc.3.zip",
+    "size": 13918658,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-windows-386-v2.1.7-rc.3.zip",
+    "digest": "sha256:631de665da42f3532a997bdd7e640663034c74867c9b299a2597e4bc2a033f77"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.7-rc.3.zip",
+    "size": 14280577,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-windows-amd64-v2.1.7-rc.3.zip",
+    "digest": "sha256:b49f2dc45c4b62d2b6488d57484af9437bdf965cedca00254da8e9fba421a33e"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.7-rc.3.zip",
+    "size": 12926355,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing-windows-arm64-v2.1.7-rc.3.zip",
+    "digest": "sha256:0633c7756cd2d6f73037c63968db6c0858d486234a2f46b83869b15f8fc1bad8"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.3_amd64.deb",
+    "size": 14053282,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing_2.1.7.rc.3_amd64.deb",
+    "digest": "sha256:9006f721ed5324a75f6fb5cefa41f2c630094201bd521879f7f1b2b85ada1ade"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.3_arm64.deb",
+    "size": 12901392,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing_2.1.7.rc.3_arm64.deb",
+    "digest": "sha256:f82f3a2031d17a79157721f8074b451380a5e1c02d938907c6f309c3435f4c64"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.3_armel.deb",
+    "size": 13375056,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing_2.1.7.rc.3_armel.deb",
+    "digest": "sha256:625b3e03a27d311fcc18f79185a6ab9fd7d52fa35df3df00c80fb68ad592081e"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.3_armhf.deb",
+    "size": 13375094,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.3/syncthing_2.1.7.rc.3_armhf.deb",
+    "digest": "sha256:498409e8c643ba10fefcb36c26f31cd632fd7f43b8c0f7ef40bd77fd8342048e"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.7-rc.2",
+  "name": "v2.1.7-rc.2",
+  "published_at": "2026-10-13T07:31:50Z",
+  "created_at": "2026-10-13T07:18:22Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/sha1sum.txt.asc",
+    "digest": "sha256:0c54119bc17a979b7564a20015e3e3d8383216645babcb1eb906de47a64ce915"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/sha256sum.txt.asc",
+    "digest": "sha256:f76eea10977af951c3ab288746d788e83f7cb9d4f15a7fade45e4a4b83e42049"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.7-rc.2.tar.gz",
+    "size": 12639093,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-freebsd-386-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:7fd4f95325688e35034ebdba6ea4d47f6e8f0ef84b2c53778b564d3c90a8b85e"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.7-rc.2.tar.gz",
+    "size": 13132910,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-freebsd-amd64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:d0259c71be6a710d48e057500ead415fc108fe9d1cb1ff24742c23c29c6358ef"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.7-rc.2.tar.gz",
+    "size": 12535817,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-freebsd-arm-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:6522435f30e571ce75c8ae4b4169c15110fd853c85768256fa0f1f042986b2d5"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.7-rc.2.tar.gz",
+    "size": 12182342,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-freebsd-arm64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:8b4ab0f9e2a2c3f480255230627c87147813813ec8f367c5daeb199de42f928f"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.7-rc.2.tar.gz",
+    "size": 14795941,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-illumos-amd64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:01545c8c75218390c4865e976e545ac9338065fee20b7fee86a1a8479b1eda5c"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.7-rc.2.tar.gz",
+    "size": 11470806,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-386-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:9734662df96e88dc86dbdcc56ebe6ad406ca70d5dd4fadcd9fc3868d5d932da1"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.7-rc.2.tar.gz",
+    "size": 11870292,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-amd64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:f25e71781db9167fc1348b33ee4e0b5d18ff7bb2a442ab826829c8582576bc9e"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.7-rc.2.tar.gz",
+    "size": 11351178,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-arm-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:748df2900dc33e3b7e35f3a36783ff3c7b1f559f32f90b14591c2f57de082dc9"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.7-rc.2.tar.gz",
+    "size": 10916684,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-arm64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:aba1e61bba8946e34baa216fe8e7c7f912984266c4396155317fad99ae9296fe"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.7-rc.2.tar.gz",
+    "size": 11411745,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-loong64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:3db7b3a8c0d80b8be2890fd288426a2fd0f92f0d7014d9eae4d57a1a6a55991b"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.7-rc.2.tar.gz",
+    "size": 11258473,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-mips-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:b15b2abc5e5087662d9c888b60d9e07cca1a30055273dace38cbe692aa89b87e"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.7-rc.2.tar.gz",
+    "size": 11728640,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-mips64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:ee028f48e5b8a9d1fa656d3590090b2f19a2a726b9ba44a3c2e8502f58647f3f"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.7-rc.2.tar.gz",
+    "size": 11494661,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-mips64le-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:1da034cad0c76759f1c8ba3ab95e0d2a698df1531173878004fbda5aed4d1952"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.7-rc.2.tar.gz",
+    "size": 11108139,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-mipsle-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:24b1f0757c3bd4b5787ae524f637482649a14948662d4af5c860664aef8e7241"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.7-rc.2.tar.gz",
+    "size": 11134153,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-ppc64le-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:23d6d6cc4a3e3fd928656edf91c0a164ffa3b93cb359cdbd53bd668050ee8074"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.7-rc.2.tar.gz",
+    "size": 11284856,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-riscv64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:77ccd4703fec2eb04362fc06f7ef9221f5c3d632151c8e6322670931e279314a"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.7-rc.2.tar.gz",
+    "size": 11768794,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-linux-s390x-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:cafdf8a15426f4dfd935f1aba69dc1682516bc689871ce53fafaa96fc89eafe0"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.7-rc.2.zip",
+    "size": 12512431,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-macos-amd64-v2.1.7-rc.2.zip",
+    "digest": "sha256:3e75cb9ac7fd7fbee7604d271523e4e58f0d245126999a639f39383a4c5ec27b"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.7-rc.2.zip",
+    "size": 11272785,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-macos-arm64-v2.1.7-rc.2.zip",
+    "digest": "sha256:a0935d24585a32d3c9967100c4b0fc87914f6ba4ab6cfa1f522f186ef735b3f1"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.7-rc.2.zip",
+    "size": 23749316,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-macos-universal-v2.1.7-rc.2.zip",
+    "digest": "sha256:7b1bc09aab920469335f5a833880a76d3e2a5fc2948e6865b159282386f32ce2"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.7-rc.2.tar.gz",
+    "size": 13054065,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-netbsd-amd64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:cfa803c915b77856d35815ff4b84fe724cc44fc8b1165dff41eb290a59294194"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.7-rc.2.tar.gz",
+    "size": 13074664,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-openbsd-amd64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:783c292489155a7c390376e821569819cc6b33ef296f564b4665e90a0d8c4627"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.7-rc.2.tar.gz",
+    "size": 12136655,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-openbsd-arm64-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:973b83e9ecc917536d6ae99a7ae8223935918925a4f56cada8aa154f8d77148e"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.2.tar.gz",
+    "size": 42775685,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-source-v2.1.7-rc.2.tar.gz",
+    "digest": "sha256:a4cf23566005434d025dd03d9c38804fadf8398a29a45b5cddbd0fee284b4f96"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.2.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-source-v2.1.7-rc.2.tar.gz.asc",
+    "digest": "sha256:1504559e37810a3e5c9f139e410cbe2f74bc567d20ec036bffc2493bbcec3ef2"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.7-rc.2.zip",
+    "size": 11798471,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-windows-386-v2.1.7-rc.2.zip",
+    "digest": "sha256:3d24cabbb945a54c0c4f107deeeb389d7c41e5b26be190110446d910288ae4fa"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.7-rc.2.zip",
+    "size": 12063470,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-windows-amd64-v2.1.7-rc.2.zip",
+    "digest": "sha256:7c76ca182b3748c36a67094febdf2472a256010e1496ecf63b024f8ed368e06e"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.7-rc.2.zip",
+    "size": 10968282,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing-windows-arm64-v2.1.7-rc.2.zip",
+    "digest": "sha256:f0b164f3f40c958a617812941796b4bcca3250acea2aca6f8ebd91c3a18f58b0"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.2_amd64.deb",
+    "size": 11893922,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing_2.1.7.rc.2_amd64.deb",
+    "digest": "sha256:65481850ad11de448898ef49b5a073fb365dd24649042d8c7112785cfef08f6b"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.2_arm64.deb",
+    "size": 10963762,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing_2.1.7.rc.2_arm64.deb",
+    "digest": "sha256:cfe4608076f429c32dad800e47418239cda7d44edf675af27d7d873e3f811fdd"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.2_armel.deb",
+    "size": 11368842,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing_2.1.7.rc.2_armel.deb",
+    "digest": "sha256:bbc96b29942ef8283d7cb0cd2ec0f877373f2eb34e3243a6d3f5b19c6cadef0e"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.2_armhf.deb",
+    "size": 11368714,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.2/syncthing_2.1.7.rc.2_armhf.deb",
+    "digest": "sha256:df7b59e4d12a21fae294ba178cc07a118e91d97a7534f1159f8b9329dba9923e"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.7-rc.1",
+  "name": "v2.1.7-rc.1",
+  "published_at": "2026-10-08T07:15:17Z",
+  "created_at": "2026-10-08T06:58:02Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/sha1sum.txt.asc",
+    "digest": "sha256:00e86ccdda703184a3a5d9e5bf933e2f99dbb7a52cf163695e2bc0d77d53cdc7"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/sha256sum.txt.asc",
+    "digest": "sha256:e6c81feaa4ead5dd63779096ba6b3d511945650b9f144d146ddeeb0d6d5b03fe"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.7-rc.1.tar.gz",
+    "size": 12554376,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-freebsd-386-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:303f2a7160424c5db7d8607e7b3336c0d2221f9e6dbf40efe86c7680a8f52d77"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.7-rc.1.tar.gz",
+    "size": 13048352,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-freebsd-amd64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:f90f2aeb44a24335cad67c7f1aecd80d51f84fe6b2f837cd4585eab4df516aa1"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.7-rc.1.tar.gz",
+    "size": 12456704,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-freebsd-arm-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:4a1103aeac7ee72dfcdc616d9f25720548575c20f5b593eb84b3e7a802689892"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.7-rc.1.tar.gz",
+    "size": 12105371,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-freebsd-arm64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:61eb6b1fb87bd337ae78a2610c3ef64c86089aee4bf46f888727a9fa4df50471"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.7-rc.1.tar.gz",
+    "size": 14706532,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-illumos-amd64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:624b6a95bceebadc1b7f2181fd5f886805fe9a72ade9ae75928df7b9579deb5c"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.7-rc.1.tar.gz",
+    "size": 11397517,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-386-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:1d96a75f0de7a7227094aa1984fa160c2c7419097ec6fc662b5fbdfc4db409fa"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.7-rc.1.tar.gz",
+    "size": 11788531,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-amd64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:9f76d102f2161dafe0cadb3c82f5bceebfa0305f6c3879259ef3cbd1d391e24e"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.7-rc.1.tar.gz",
+    "size": 11274855,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-arm-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:fb307a9e09b8ed9b5f24af8b8ea167b2c3162a63feef529542fab29dab76b65b"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.7-rc.1.tar.gz",
+    "size": 10842898,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-arm64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:3e8d592e8e642201a2cacffbd76ec144a8981260f0622020add953d413e924f7"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.7-rc.1.tar.gz",
+    "size": 11335113,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-loong64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:42374589ed20d14c9fda6a1cfba1384a8ecf429ccd3a392a1be419279e2f4e1f"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.7-rc.1.tar.gz",
+    "size": 11185648,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-mips-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:f1846b2ab2dbce3409d6a03225752ecbf22ae403cca32980db2a4c4cc204054f"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.7-rc.1.tar.gz",
+    "size": 11654975,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-mips64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:6d0cd0e35eaa2d5ba51192b65a4eae53320316e34ff6aa85fdad378dbb061dcf"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.7-rc.1.tar.gz",
+    "size": 11422021,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-mips64le-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:bb07fe5d0584f01dc572b760262b695acf60384ca1411dc6b4b651ba50bbccc2"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.7-rc.1.tar.gz",
+    "size": 11038466,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-mipsle-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:91db497c294fe02012b9ae4fdae71a149347a79c1f40f6bc2ada1b55614c4fa3"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.7-rc.1.tar.gz",
+    "size": 11058923,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-ppc64le-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:3c194f1602f45dbe3a84d5c3d5b4cd4f7a6a5a87bfd392d140fb131d873c7765"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.7-rc.1.tar.gz",
+    "size": 11210812,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-riscv64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:17f88d9ef59bd81e77de0d4bddeb13036bc95507cd23fb9a1d392aecdbce0036"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.7-rc.1.tar.gz",
+    "size": 11690900,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-linux-s390x-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:adfae53a7c40b00259b928a083d7e14c952004578f86730e7482b581d6fbd2a3"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.7-rc.1.zip",
+    "size": 12421769,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-macos-amd64-v2.1.7-rc.1.zip",
+    "digest": "sha256:dec202e117324796ca970c114e42de6d2f8faf1eae8bfa0db6aecc92f7819703"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.7-rc.1.zip",
+    "size": 11192463,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-macos-arm64-v2.1.7-rc.1.zip",
+    "digest": "sha256:4144e8e3541827ef805f1905a22658ed8ee19c0d2d22027c3c7ad8668a0bd159"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.7-rc.1.zip",
+    "size": 23579091,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-macos-universal-v2.1.7-rc.1.zip",
+    "digest": "sha256:ba91d32b8873231862db3bebe83aac86055e87482c2ecec2de032edaa4b64238"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.7-rc.1.tar.gz",
+    "size": 12970438,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-netbsd-amd64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:05e3bfd337c69e636a192cab88d9ad00f85996fc915918a2acde4c3c831dd6c3"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.7-rc.1.tar.gz",
+    "size": 12989978,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-openbsd-amd64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:a0bcdd61ab226545f55d9a821279b118ad11621ed12efef7997ba4e047a9a191"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.7-rc.1.tar.gz",
+    "size": 12058234,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-openbsd-arm64-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:7a1d68edd218ba7a8b272cfd9f2fb898c5de381756e3fe1a6c59b6d113b79a0f"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.1.tar.gz",
+    "size": 43169059,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-source-v2.1.7-rc.1.tar.gz",
+    "digest": "sha256:42f7f8bd1fcae039ab272ab36612e46a040b62316b69913b7dc273579cd58e8d"
+   },
+   {
+    "name": "syncthing-source-v2.1.7-rc.1.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-source-v2.1.7-rc.1.tar.gz.asc",
+    "digest": "sha256:a1d49c9d4ed4c1b9a96d1c8599a9fcf9405255a26ff1973b3e61dc6748985529"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.7-rc.1.zip",
+    "size": 11718509,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-windows-386-v2.1.7-rc.1.zip",
+    "digest": "sha256:4e4a7f8e1cc6b9c2db0549af4de2aac5659ca72b6108a23c554078bc5881d7f4"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.7-rc.1.zip",
+    "size": 11978832,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-windows-amd64-v2.1.7-rc.1.zip",
+    "digest": "sha256:9cbf3701bed251f38605ef164284618893c34492760ddc2aa53a1758badedd46"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.7-rc.1.zip",
+    "size": 10897163,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing-windows-arm64-v2.1.7-rc.1.zip",
+    "digest": "sha256:07000f3dc136840b075c3035bae4a7d78952808a1d9a3bb0455d534079e9533a"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.1_amd64.deb",
+    "size": 11815884,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing_2.1.7.rc.1_amd64.deb",
+    "digest": "sha256:18cfc42d1f61ea14a8b73d3168da5bcc7a8881a0add0836ddd613eb0f672e9e5"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.1_arm64.deb",
+    "size": 10893264,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing_2.1.7.rc.1_arm64.deb",
+    "digest": "sha256:c88f5ccc9415dc5b338014e7140b73001d90fcafa0990009319789b1bf0ebf53"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.1_armel.deb",
+    "size": 11294064,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing_2.1.7.rc.1_armel.deb",
+    "digest": "sha256:85ed8ee8846c5e09bfd5eae54e77588a691ffe6e7ef20f9f4141f0729efd65f5"
+   },
+   {
+    "name": "syncthing_2.1.7.rc.1_armhf.deb",
+    "size": 11294082,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.7-rc.1/syncthing_2.1.7.rc.1_armhf.deb",
+    "digest": "sha256:af781d2e0956c7e1aa2600ddb23f1c5ed4693287b868d4e7b34eb2926a001c26"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.6",
+  "name": "v2.1.6",
+  "published_at": "2026-10-06T06:08:27Z",
+  "created_at": "2026-10-06T05:55:05Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## Major changes in 2.1\r\n\r\n- Devices and folders can now be grouped in the GUI by setting the new\r\n  `group` attribute.\r",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 8797,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/sha1sum.txt.asc",
+    "digest": "sha256:5e5ec2892567a39cd8870530fc2e2a6b93ea76a9d0c8e383f28bd3f709a7023a"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11029,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/sha256sum.txt.asc",
+    "digest": "sha256:1a4199996799db57d80f45f581de0d2b0d2cd5e248217e37a132d61a5f22c8aa"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.6.tar.gz",
+    "size": 12554389,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-freebsd-386-v2.1.6.tar.gz",
+    "digest": "sha256:aaeaa0c98734f2b2545e7610455ffd156d5b371ce157c1c835f7ddce1eaa4fa5"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.6.tar.gz",
+    "size": 13048372,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-freebsd-amd64-v2.1.6.tar.gz",
+    "digest": "sha256:23708d02f521d3e0600890df529b8d6a7e5ed8ae925cbb8d2d645817a055947b"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.6.tar.gz",
+    "size": 12456517,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-freebsd-arm-v2.1.6.tar.gz",
+    "digest": "sha256:7f14d216bb75255a1653403fa47012b9304c72aae0aaeed1f4b037efd7d6a074"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.6.tar.gz",
+    "size": 12105886,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-freebsd-arm64-v2.1.6.tar.gz",
+    "digest": "sha256:98388f8f9057d8a91bf8e189ca8840628284f748e457002c11f88ec5582931ed"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.6.tar.gz",
+    "size": 14705954,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-illumos-amd64-v2.1.6.tar.gz",
+    "digest": "sha256:15c0f87ae212d45182c81b2c699c22aef460f5706076b4445366033b4bf0bcfa"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.6.tar.gz",
+    "size": 11397279,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-386-v2.1.6.tar.gz",
+    "digest": "sha256:31e621ed61b8a2a0a7959c66c7b344e52cb1066255a8045266d4f2ebaa1deb13"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.6.tar.gz",
+    "size": 11788735,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-amd64-v2.1.6.tar.gz",
+    "digest": "sha256:524ef4e1df1850b719e2378c8369956f4e5f2ab9a46fdf7f45f2b925012147aa"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.6.tar.gz",
+    "size": 11274069,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-arm-v2.1.6.tar.gz",
+    "digest": "sha256:2a558bbb4b960c6a2314406cdd16f99c94f74c92da7c652e9de36d1d1945d718"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.6.tar.gz",
+    "size": 10844382,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-arm64-v2.1.6.tar.gz",
+    "digest": "sha256:f054de02462d5d58bd126908f2f92b63aba74f162a5be85e50e96d656e7db47d"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.6.tar.gz",
+    "size": 11335006,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-loong64-v2.1.6.tar.gz",
+    "digest": "sha256:8ee53ab7439f6f994fc1e369cfb4ed1a042ae065a4e1de558bf18ca1af6d2564"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.6.tar.gz",
+    "size": 11185947,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-mips-v2.1.6.tar.gz",
+    "digest": "sha256:f9b061470995d98ba6ff9878c7a679abd3a806ef95aba483d5f90b820bb09332"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.6.tar.gz",
+    "size": 11655671,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-mips64-v2.1.6.tar.gz",
+    "digest": "sha256:500df80be734eda119c51b0e331f03ca6d79b9bfa49f5c05f3ba0bdc3b823bce"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.6.tar.gz",
+    "size": 11421887,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-mips64le-v2.1.6.tar.gz",
+    "digest": "sha256:c235c54e20cd8ecfc576ed44c2748be31bb8f1233baab65661b11b99434425ad"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.6.tar.gz",
+    "size": 11037758,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-mipsle-v2.1.6.tar.gz",
+    "digest": "sha256:0afd1c5a758300febea5d1d823deb8dcff33f48778b1e345e174810ce4d4af91"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.6.tar.gz",
+    "size": 11059202,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-ppc64le-v2.1.6.tar.gz",
+    "digest": "sha256:5dcaf7cf41ff47ac6df6f16894c87da438bce6245023fa068dbb98cf657dfe83"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.6.tar.gz",
+    "size": 11209081,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-riscv64-v2.1.6.tar.gz",
+    "digest": "sha256:be0fb60df0e8d965f99adbeca5e121186e2ce9dd1dcb86989dc555ac45b38c68"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.6.tar.gz",
+    "size": 11689489,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-linux-s390x-v2.1.6.tar.gz",
+    "digest": "sha256:532e03996b24e7e66d2a589e4f0aa607b33fa3e384caf335fa8224bd648e26d4"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.6.zip",
+    "size": 12420300,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-macos-amd64-v2.1.6.zip",
+    "digest": "sha256:d1464be24a7157440dfb52e2d84939f83caf89c129761945abcdd4956e09ffb1"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.6.zip",
+    "size": 11192122,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-macos-arm64-v2.1.6.zip",
+    "digest": "sha256:f86bfa0bdbb5b1b13229a7e5643e898e3c4e017a4fff6dd525994ebaf28ff6e2"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.6.zip",
+    "size": 23577031,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-macos-universal-v2.1.6.zip",
+    "digest": "sha256:83d2898de5607d12c25d66856b1e3aa40326814e8ded6af98ab8ba68c2a545bc"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.6.tar.gz",
+    "size": 12969082,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-netbsd-amd64-v2.1.6.tar.gz",
+    "digest": "sha256:a457b44537638fc4ffab4ed058f8a040ad0e5d0247987282e6dcd3468a697f99"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.6.tar.gz",
+    "size": 12992580,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-openbsd-amd64-v2.1.6.tar.gz",
+    "digest": "sha256:8f00b486c44da236fa86034dddd5a7a97532371262d3092941fc57264d4fc9e0"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.6.tar.gz",
+    "size": 12058554,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-openbsd-arm64-v2.1.6.tar.gz",
+    "digest": "sha256:273e3b208a8366f90240edcc5a894d3693cdf6a30cf481d6cf7584f943ae9d21"
+   },
+   {
+    "name": "syncthing-source-v2.1.6.tar.gz",
+    "size": 43172847,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-source-v2.1.6.tar.gz",
+    "digest": "sha256:4927b6b0f3a5c395486bad6accf128aa7c30bfd41b43ad0e423c4f85dd6677f2"
+   },
+   {
+    "name": "syncthing-source-v2.1.6.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-source-v2.1.6.tar.gz.asc",
+    "digest": "sha256:321e55f1d48d57b6075a6378587b73902ef993aea125a5d8d7452e1448540074"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.6.zip",
+    "size": 11718143,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-windows-386-v2.1.6.zip",
+    "digest": "sha256:9df79230c758bbaf172cfcbec97074907f1c1fb7430c8eb8b722c92f6f6b2ce5"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.6.zip",
+    "size": 11980853,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-windows-amd64-v2.1.6.zip",
+    "digest": "sha256:589098269cabb9a5a1703a934305b4153609d7623e978e1c94f0f49d77ae5e9f"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.6.zip",
+    "size": 10896902,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing-windows-arm64-v2.1.6.zip",
+    "digest": "sha256:ddb25a3cf556157e329263bd3331d889ea7bb952b85a5f530320175105bab072"
+   },
+   {
+    "name": "syncthing_2.1.6_amd64.deb",
+    "size": 11814934,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing_2.1.6_amd64.deb",
+    "digest": "sha256:1c2412c50df54b61bd18d61a947943122a92169e9e73dcc54ad787f295935938"
+   },
+   {
+    "name": "syncthing_2.1.6_arm64.deb",
+    "size": 10892992,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing_2.1.6_arm64.deb",
+    "digest": "sha256:b1ebceb1f07b1fe41903def0c98d80e48fc3e243a6e3f3477fac5e76ff807b0a"
+   },
+   {
+    "name": "syncthing_2.1.6_armel.deb",
+    "size": 11293960,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing_2.1.6_armel.deb",
+    "digest": "sha256:7378081c88fe33b204dad60794fd4d98d0500cb33553efba6fb519ce95e8ab35"
+   },
+   {
+    "name": "syncthing_2.1.6_armhf.deb",
+    "size": 11293802,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6/syncthing_2.1.6_armhf.deb",
+    "digest": "sha256:51ffa5360a0093bd3e4038909519b540def692802dd78f1e1dae1aeddc0ea50c"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.6-rc.4",
+  "name": "v2.1.6-rc.4",
+  "published_at": "2026-09-30T07:55:44Z",
+  "created_at": "2026-09-30T07:41:56Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/sha1sum.txt.asc",
+    "digest": "sha256:de0913ae4a9fd3aa3e943c811abcb084cfd5d338726ad31506e0b8aee5826300"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/sha256sum.txt.asc",
+    "digest": "sha256:05749a3fe6e0302b4d53a68ade9d06843a92cd720604bbb5d2916edc7d932cd9"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.6-rc.4.tar.gz",
+    "size": 12551403,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-freebsd-386-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:450ade438354ee68d38c28bb7ba658ef873ec87ddfcb597f1901ae5a77ae9c32"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.6-rc.4.tar.gz",
+    "size": 13043809,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-freebsd-amd64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:e2551b0356540199a14f5203f23fb7c60db93cd8f147bc1edafc055b3bf9f310"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.6-rc.4.tar.gz",
+    "size": 12450633,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-freebsd-arm-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:9737cee6ca78fe83753ce50796dbee396255aefd32010c81c835ceb09a114f08"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.6-rc.4.tar.gz",
+    "size": 12102960,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-freebsd-arm64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:f0c66875479d4160bc40962892f003d16f127cfc91426632ba552131f6e3b33a"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.6-rc.4.tar.gz",
+    "size": 14704425,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-illumos-amd64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:d4371c52da4fdb5b65f44955a16fc4d0ab78d11641b4282c406a8845016fd608"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.6-rc.4.tar.gz",
+    "size": 11390751,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-386-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:43a1ac6bb21d8d117df3c3d3df90cce60bf507bb321a5625a101d18acb046829"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.6-rc.4.tar.gz",
+    "size": 11783645,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-amd64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:ad66e31a2b90e8c3409b079c3db27665b7a1f97b29bc07c9ee498586cf42b859"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.6-rc.4.tar.gz",
+    "size": 11271710,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-arm-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:1d313e066b2f0b73a78f9434e3c8451cb1fa7b5f8e90843da511cb70defc0e68"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.6-rc.4.tar.gz",
+    "size": 10837582,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-arm64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:c8ea8753a6fd4c9f47b6b9c0c2338ac3f7c8de12c105db25e1bfcd2276b52a8a"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.6-rc.4.tar.gz",
+    "size": 11337162,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-loong64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:5b73628e4e7d2fb8e947164ec594858b6d0f2cef1293a70016076c74734eec08"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.6-rc.4.tar.gz",
+    "size": 11179953,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-mips-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:be07b7398aafdaf5e168c3d5bef515b077aad762ff00299c7a0d484e82cd754a"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.6-rc.4.tar.gz",
+    "size": 11651435,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-mips64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:49553df7ea0a43591116cdb8e06cd34a46b01aa3596fa0e2eb2cc3bf44fad373"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.6-rc.4.tar.gz",
+    "size": 11418888,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-mips64le-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:123c294fc2ecae29df381c273a4b6eca343ad773bf93b6aa951503802e48592f"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.6-rc.4.tar.gz",
+    "size": 11030033,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-mipsle-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:378cd82b8aeb080009d97f3b67278643e06b9b85a51f0b22fcce7e56c6de1ce4"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.6-rc.4.tar.gz",
+    "size": 11056032,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-ppc64le-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:3e9e5db501eb720229b6c2ed493a8637056c34e19a74b900d542f61b3830cf9d"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.6-rc.4.tar.gz",
+    "size": 11205183,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-riscv64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:5f4ff37520303a13e0c13761fe92b6ad2b3633ecae16c5ce441c315cd08a7688"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.6-rc.4.tar.gz",
+    "size": 11679552,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-linux-s390x-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:ed1dd5ab8f9c61084b01933d217a68c5680911fe740cb45f07a688d297f80909"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.6-rc.4.zip",
+    "size": 12419881,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-macos-amd64-v2.1.6-rc.4.zip",
+    "digest": "sha256:ef0eaba8c0a62bf4ee1467e66e369b8a437de11067133a8d0a5a7334afed44e9"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.6-rc.4.zip",
+    "size": 11187853,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-macos-arm64-v2.1.6-rc.4.zip",
+    "digest": "sha256:9b28118bfc5ee42a0fcdfb8eaf7b014749a33b05a68d7866bc6259647cd9c04e"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.6-rc.4.zip",
+    "size": 23571304,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-macos-universal-v2.1.6-rc.4.zip",
+    "digest": "sha256:d0690cd79f70bcf240f0c77ed18049d216097212b07c62cdc97832768cb6c657"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.6-rc.4.tar.gz",
+    "size": 12966546,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-netbsd-amd64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:9abae9854326aa2c3c65fccce64c8caa7dfa9f8afff9910fd90c5464bc8d7732"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.6-rc.4.tar.gz",
+    "size": 12987144,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-openbsd-amd64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:5f33716971f2bd0c83b5f80b489095a384a9caf5c8cecaa5dbac7b21da49fc28"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.6-rc.4.tar.gz",
+    "size": 12056640,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-openbsd-arm64-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:a4d080ed735a702d051fd5ca355d81ca6c50e8c036cc73dd812a802fd6ecb587"
+   },
+   {
+    "name": "syncthing-source-v2.1.6-rc.4.tar.gz",
+    "size": 43163241,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-source-v2.1.6-rc.4.tar.gz",
+    "digest": "sha256:efcf2387554790bf0b0d49fbf50991291f433fb8e8c573261e2e105c9bb70c87"
+   },
+   {
+    "name": "syncthing-source-v2.1.6-rc.4.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-source-v2.1.6-rc.4.tar.gz.asc",
+    "digest": "sha256:0884be58c726c206aee83e92f586ee896ece09ab12c71bed7d2ce7d3c0e04241"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.6-rc.4.zip",
+    "size": 11721354,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-windows-386-v2.1.6-rc.4.zip",
+    "digest": "sha256:7fe06d9f54090e8f435a5693e34b29ffd12571cb7adc346aa5cf096455d81628"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.6-rc.4.zip",
+    "size": 11977728,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-windows-amd64-v2.1.6-rc.4.zip",
+    "digest": "sha256:8df9cdc9d5badfc25b36990e43954e06c8077c912bb569af3c7fd212b4c0f899"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.6-rc.4.zip",
+    "size": 10895077,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing-windows-arm64-v2.1.6-rc.4.zip",
+    "digest": "sha256:4bf7d81c6936eb95858a0e88307a88ccb29a6ad065fe97edfa491766bad6d319"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.4_amd64.deb",
+    "size": 11805934,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing_2.1.6.rc.4_amd64.deb",
+    "digest": "sha256:9981ee04d2b1719b57326d622ded12dc3605aa5bee10745ddbe95a98b54d5d77"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.4_arm64.deb",
+    "size": 10886260,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing_2.1.6.rc.4_arm64.deb",
+    "digest": "sha256:debf980e6a12c27602249f32656b73f1b0ed54295019b577ee34e57aa6c4faa2"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.4_armel.deb",
+    "size": 11291144,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing_2.1.6.rc.4_armel.deb",
+    "digest": "sha256:4ed9e1933baaa357c11238f2bd39d860de13bae19147d6b4a15896ae99b522af"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.4_armhf.deb",
+    "size": 11291142,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.4/syncthing_2.1.6.rc.4_armhf.deb",
+    "digest": "sha256:a0f0d1ed2596c8ae4bd658fa3260f404e6b0dd4fd043d92c310f68d2c207bbcf"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.6-rc.3",
+  "name": "v2.1.6-rc.3",
+  "published_at": "2026-09-22T13:13:35Z",
+  "created_at": "2026-09-22T12:52:13Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/sha1sum.txt.asc",
+    "digest": "sha256:a7a7a81787ee25fd8b8f60e96fa63cc3d9fdbada44f6f8552f225575ae32b4fc"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/sha256sum.txt.asc",
+    "digest": "sha256:9d63fc7e70fdaa2088db1260f9407c4e6d7c4c25fc17f59decae6f751cc5bb32"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.6-rc.3.tar.gz",
+    "size": 12553200,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-freebsd-386-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:a8de8626e3d450b6c89291a48b5bfb5f88431e05a5e294713c00e1ffcdd0dc5d"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.6-rc.3.tar.gz",
+    "size": 13043369,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-freebsd-amd64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:efd206f5cd05e31f71cfc02b676e4586ee496dbbc5f1cece0a70db9e75c6aca3"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.6-rc.3.tar.gz",
+    "size": 12449418,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-freebsd-arm-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:bba4999b9397fbe501bfbbe65ede54ed57d6aa35f1b1e2836aab7bc86b9373a5"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.6-rc.3.tar.gz",
+    "size": 12103583,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-freebsd-arm64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:ebd1562b880a87df01b678f6459de84f6afcab52d6afa0f04f776b2a8dc1f804"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.6-rc.3.tar.gz",
+    "size": 14703302,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-illumos-amd64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:ed6faa29b20e946d8c18167ad2142e768ca052e1316aa6567e083fa9cb1a6c3d"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.6-rc.3.tar.gz",
+    "size": 11390711,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-386-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:c1d4aec59f832c4c6cd6682d0b76b080afaddda553d200ad70c55aaa099f587a"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.6-rc.3.tar.gz",
+    "size": 11785450,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-amd64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:c89d9f410a9c699eef0e28c931f7d4a3a671433a53a2d002f1158ac56bce3f2a"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.6-rc.3.tar.gz",
+    "size": 11272704,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-arm-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:9bf3e3057dcf0e1eb05af5f792086e3c937a01ccd7194c98acd854f57fb1800c"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.6-rc.3.tar.gz",
+    "size": 10838363,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-arm64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:bcaacf5eef449c096c70d249450b9fcf0518575f78ad05780b8a6ec86a195e2c"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.6-rc.3.tar.gz",
+    "size": 11337109,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-loong64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:f267c578bed25c3a9f0eafcd71a8a21e417232b05acda6ae453a3b768a70ca2e"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.6-rc.3.tar.gz",
+    "size": 11180834,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-mips-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:ead2114c9780415165c1b351e5fdb24b0c26cdff3893eecdab04b645b44b97c6"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.6-rc.3.tar.gz",
+    "size": 11651537,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-mips64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:909720b8fc180f4d680cff45f77b2fb50e8969828c4aef886c458c552f649588"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.6-rc.3.tar.gz",
+    "size": 11419473,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-mips64le-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:70f87ea4151158e23aefb1d3dbb6f52551a083df9eb1514cd935b43b277084c6"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.6-rc.3.tar.gz",
+    "size": 11032417,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-mipsle-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:3cefbfad181ff336e91ed5a0505a1d154556fa867d1eb612f274925c43262252"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.6-rc.3.tar.gz",
+    "size": 11056212,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-ppc64le-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:17648550a1d3f92bdeaa853815db01522e1491f7f04bbfa7567bcf479f501d19"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.6-rc.3.tar.gz",
+    "size": 11208617,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-riscv64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:a879e6bd1d44fe1b622e0f46b010393009118f42604f341514a847ef955e3275"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.6-rc.3.tar.gz",
+    "size": 11681169,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-linux-s390x-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:bafcddfb2b59684b3fdca0ca8d70ca88e383e49333f9d7fc05972cb32fda2552"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.6-rc.3.zip",
+    "size": 12421227,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-macos-amd64-v2.1.6-rc.3.zip",
+    "digest": "sha256:cc1067fcdafda5f8067f2e35c1354f38f5978048a185bc21bc68083b0ecdfc49"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.6-rc.3.zip",
+    "size": 11190684,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-macos-arm64-v2.1.6-rc.3.zip",
+    "digest": "sha256:007c7d06ea1bf83a42b9fb207e33e73a2dcf7ca36eead4a9659b832bf1c14d0f"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.6-rc.3.zip",
+    "size": 23574251,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-macos-universal-v2.1.6-rc.3.zip",
+    "digest": "sha256:6685dad0e4341ea897741b2a17c3b3679ca97fca08b1de593f75f7ea08004573"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.6-rc.3.tar.gz",
+    "size": 12964858,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-netbsd-amd64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:778b9bace244193b31dd5ff9cebf4bc51d500efd2f4f523b91539eb6b42a38ca"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.6-rc.3.tar.gz",
+    "size": 12987812,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-openbsd-amd64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:2e5434d030417f477302c7e620458429da1d9e58ce9ad77642ac57fa7bb99a7e"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.6-rc.3.tar.gz",
+    "size": 12056363,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-openbsd-arm64-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:505817ff04458be754c015cc7f855fb925d2a246b54815f2e611640fd0074e8b"
+   },
+   {
+    "name": "syncthing-source-v2.1.6-rc.3.tar.gz",
+    "size": 43176540,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-source-v2.1.6-rc.3.tar.gz",
+    "digest": "sha256:3209c66e1b9709b8ea29e836b467d7c9c2066df69d572797bb5a4c701af1816b"
+   },
+   {
+    "name": "syncthing-source-v2.1.6-rc.3.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-source-v2.1.6-rc.3.tar.gz.asc",
+    "digest": "sha256:f43c182dedb90d59e51068af81a04c1e1310049c4584d0c7fc41f88c1c11058d"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.6-rc.3.zip",
+    "size": 11723498,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-windows-386-v2.1.6-rc.3.zip",
+    "digest": "sha256:97ee6f5655ed78767b9b1aa8471344f86f305d8040363b2ba641ae973c8d5e29"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.6-rc.3.zip",
+    "size": 11978696,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-windows-amd64-v2.1.6-rc.3.zip",
+    "digest": "sha256:6d7bc1764615b61a8e900d364f68383c89a6149e0011279f934efec57d08a0be"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.6-rc.3.zip",
+    "size": 10895840,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing-windows-arm64-v2.1.6-rc.3.zip",
+    "digest": "sha256:932a8842e9239e0f02728dc5c4d020e51762033bff7fc08749be3a1c9b522d43"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.3_amd64.deb",
+    "size": 11809498,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing_2.1.6.rc.3_amd64.deb",
+    "digest": "sha256:3d815f21116531a12062851f1951065f9167bd755626d6a53ec8ae2c104ed369"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.3_arm64.deb",
+    "size": 10885872,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing_2.1.6.rc.3_arm64.deb",
+    "digest": "sha256:6febc333712647db2600254792efe49e5210e40a7a0db545606efd9f336c2d02"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.3_armel.deb",
+    "size": 11293378,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing_2.1.6.rc.3_armel.deb",
+    "digest": "sha256:2823c4645bc7fd5997b8016efb6e45ef6b149382125dae7e54ad3a76246ada54"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.3_armhf.deb",
+    "size": 11293386,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.3/syncthing_2.1.6.rc.3_armhf.deb",
+    "digest": "sha256:e5bbcf8872e42257a8039c187f3f188ed737f008fc9909bd69a4948c1efd3848"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.6-rc.1",
+  "name": "v2.1.6-rc.1",
+  "published_at": "2026-09-15T12:18:28Z",
+  "created_at": "2026-09-15T12:01:34Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/sha1sum.txt.asc",
+    "digest": "sha256:7175ff54d7ab099464523439ceaaaa0c193650054e21524a9f824f65cbfe2142"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/sha256sum.txt.asc",
+    "digest": "sha256:0036d995a8d578fb13e2a1d25753df18b73fc3e4a579b8ccff1c32aaebaba631"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.6-rc.1.tar.gz",
+    "size": 12550036,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-freebsd-386-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:88de43e42997f43fc7d6ef5df4963d4d07bd608154cb29888c32e329e0c4916c"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.6-rc.1.tar.gz",
+    "size": 13043089,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-freebsd-amd64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:265db9c63d4e017705d02eddc113ca085db8d4e50cb54143857d15cec02e680c"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.6-rc.1.tar.gz",
+    "size": 12450157,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-freebsd-arm-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:c0b0c3682bdb369936b4cf2aedcb73ce7415f7d321f52bc47ca1cb8dd44981c8"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.6-rc.1.tar.gz",
+    "size": 12102500,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-freebsd-arm64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:5a6d3851c799f54367305175dfebec54851dd9e3d9fe12215f8af26a19f52bf5"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.6-rc.1.tar.gz",
+    "size": 14702933,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-illumos-amd64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:fa0edc605b6f8fe08d83e9d212b9e7392cab5e9877f7d8f67b5096778e66c9bb"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.6-rc.1.tar.gz",
+    "size": 11389832,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-386-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:227f89c3ae3323022588e154cb36bd4a8a695121746359ea5ea9c280f50a98c1"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.6-rc.1.tar.gz",
+    "size": 11782505,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-amd64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:74e941735a3a3779871bb1e5dae61929c539cccc093dec7784e7b73d1287494a"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.6-rc.1.tar.gz",
+    "size": 11271946,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-arm-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:b4ae7f3ee8421e28ea2b035a897c59e145b6c8e37498a2ff7ebe914576c0abaa"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.6-rc.1.tar.gz",
+    "size": 10837947,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-arm64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:2a73b81642c6f1ae801d98cdddf42266cad81507f6242bc5dd26d2f4181856fe"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.6-rc.1.tar.gz",
+    "size": 11336621,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-loong64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:606ef7d2ce7977c0d531f0d055005fabe6d14e300448f0b55145d3ebc291cdaf"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.6-rc.1.tar.gz",
+    "size": 11181173,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-mips-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:f700580e6750f77ea4840ee6e2be6647c9df9fcc044e10d64de0fa201de4bd25"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.6-rc.1.tar.gz",
+    "size": 11651202,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-mips64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:e7d4d54e15cf884bdc90c48a0a0271c558b725365a2606bc8afec9c734851fbc"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.6-rc.1.tar.gz",
+    "size": 11418356,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-mips64le-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:16232e1acf5daf79b8e91cfe916fb08133aef2c8092b10a06dcbd0c52bf977d2"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.6-rc.1.tar.gz",
+    "size": 11030307,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-mipsle-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:12c5fc377fde0be0a8fd14f614dbd76a3049e1966c1f78cca6f2a3958f0f822c"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.6-rc.1.tar.gz",
+    "size": 11055950,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-ppc64le-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:d4a9ed80c1acab4c95a5a0e2fbbf3c0f19f560fce6cbd5d1974b332515fb229f"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.6-rc.1.tar.gz",
+    "size": 11206585,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-riscv64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:cc5d0ac2a31d30ea904b1029ba82b359d421f7e889cfabc2decfebe6037cf7ff"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.6-rc.1.tar.gz",
+    "size": 11681086,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-linux-s390x-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:605927987bb84a5594e0c667561f7d2f8a98f42126eb8bcad06aa2675cad794c"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.6-rc.1.zip",
+    "size": 12419939,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-macos-amd64-v2.1.6-rc.1.zip",
+    "digest": "sha256:8aa86aa7b12ebcc1b0aa293caa275fd762a58c1c2b3a9f8cb642c26b04963bf2"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.6-rc.1.zip",
+    "size": 11188125,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-macos-arm64-v2.1.6-rc.1.zip",
+    "digest": "sha256:dc8e2b8bab0c7a8560fde723159037608497c6a453ce9d37268fca84e66a9ef8"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.6-rc.1.zip",
+    "size": 23571863,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-macos-universal-v2.1.6-rc.1.zip",
+    "digest": "sha256:3104616ebb9bbab91ce6ff12c455d3978b1332c0d2fb00d352674a1010c114cf"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.6-rc.1.tar.gz",
+    "size": 12962332,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-netbsd-amd64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:8472a16e370154b1fc0f1fc43572300c8c2cfdd38ca7035b5743bb339568ec33"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.6-rc.1.tar.gz",
+    "size": 12988904,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-openbsd-amd64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:337684ab64e512b3ce84bbfb257dbd3201d9c64eccf438cecd583d84cee5f35e"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.6-rc.1.tar.gz",
+    "size": 12055683,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-openbsd-arm64-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:3fc697fc372cdf8c4447b9fd1a22c24d371d2a24b98101896240eb2599f5d21b"
+   },
+   {
+    "name": "syncthing-source-v2.1.6-rc.1.tar.gz",
+    "size": 43175744,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-source-v2.1.6-rc.1.tar.gz",
+    "digest": "sha256:0183888d8f5bcdb4081b4cf790e8ad6bf8583e67fda407cb3d6efb7b9b482577"
+   },
+   {
+    "name": "syncthing-source-v2.1.6-rc.1.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-source-v2.1.6-rc.1.tar.gz.asc",
+    "digest": "sha256:d20f1a5d63a10e29d86fa4db9a8c5469896f7fe56d866906ae3c3db8a298971d"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.6-rc.1.zip",
+    "size": 11720613,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-windows-386-v2.1.6-rc.1.zip",
+    "digest": "sha256:0ebef58575bcb46e124b761ecf4c5c0acf5c98e5758dec12ad80b3b5eed77f7f"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.6-rc.1.zip",
+    "size": 11976674,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-windows-amd64-v2.1.6-rc.1.zip",
+    "digest": "sha256:a3775baaff3f8284ebc03885b2dc9375e4790ba30870d47b6edc2e9bf6df9729"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.6-rc.1.zip",
+    "size": 10894057,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing-windows-arm64-v2.1.6-rc.1.zip",
+    "digest": "sha256:af4e2736f4fc57cf02b08995e46202f5188a9962f3305138422010fd15e6c93a"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.1_amd64.deb",
+    "size": 11805826,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing_2.1.6.rc.1_amd64.deb",
+    "digest": "sha256:0f18cf4f60a649bf4e16087280fd28546389082424387daa79c8ed5bc9af3092"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.1_arm64.deb",
+    "size": 10884738,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing_2.1.6.rc.1_arm64.deb",
+    "digest": "sha256:e68bb711f5b2de41755d897d84114be12b44c3c37ca655ec2b0d1b4fe6867e28"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.1_armel.deb",
+    "size": 11292094,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing_2.1.6.rc.1_armel.deb",
+    "digest": "sha256:b6bd1f44aa33c0bf3eae51c6a3e130ed8ff2d9eb8f0b35090357356a9d05b062"
+   },
+   {
+    "name": "syncthing_2.1.6.rc.1_armhf.deb",
+    "size": 11292166,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.6-rc.1/syncthing_2.1.6.rc.1_armhf.deb",
+    "digest": "sha256:7a9b119ecb45eb6e2abb844a131d44b07c3b5f27510247860e0b3a58d0f18bf0"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.5",
+  "name": "v2.1.5",
+  "published_at": "2026-09-08T07:35:00Z",
+  "created_at": "2026-09-08T07:22:05Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 8797,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/sha1sum.txt.asc",
+    "digest": "sha256:f6f186fe0745cf7aa82c10d19d752c049b0e3906fcdda49ac400c49a5f90b1b2"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11029,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/sha256sum.txt.asc",
+    "digest": "sha256:250e5b306fd2c9b36d3502466cb6715e79fd73bfc985d0c36ec219c8f79aebc9"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.5.tar.gz",
+    "size": 12549841,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-freebsd-386-v2.1.5.tar.gz",
+    "digest": "sha256:830cf257a719be10aae262c9f96a609b442b9a6265e27824939336b6e3c15784"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.5.tar.gz",
+    "size": 13042852,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-freebsd-amd64-v2.1.5.tar.gz",
+    "digest": "sha256:688d8f7b78389dce13312e7e6afd865910759bd279aa2accca9f0a3eaee47073"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.5.tar.gz",
+    "size": 12450167,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-freebsd-arm-v2.1.5.tar.gz",
+    "digest": "sha256:71cb8f9f5be82f6a721240839b68e91d39e0345dba1f70aaf3ef1e05da14e904"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.5.tar.gz",
+    "size": 12101932,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-freebsd-arm64-v2.1.5.tar.gz",
+    "digest": "sha256:d5f3e28e18768a20c02d19e1b6aea3dc2458bb6043ba4f95b19b009b0566d868"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.5.tar.gz",
+    "size": 14703431,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-illumos-amd64-v2.1.5.tar.gz",
+    "digest": "sha256:59191f02127004287b801243d3869c21e43552d7f2bb7c040be7ff4ef02196a0"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.5.tar.gz",
+    "size": 11389832,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-386-v2.1.5.tar.gz",
+    "digest": "sha256:f8bb9f6714876b3bc3004ff09c70fc42fcf8884cf60ed10231ce131c9e0f0df0"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.5.tar.gz",
+    "size": 11782578,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-amd64-v2.1.5.tar.gz",
+    "digest": "sha256:3d222b609f7ab2944e02748cb10488b4160d446b49e0eafc107ef2a525ab3486"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.5.tar.gz",
+    "size": 11271683,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-arm-v2.1.5.tar.gz",
+    "digest": "sha256:bb328aa18f70545b91cfa91c88416bec9d11de3500cbc63315d6fcd670ce6076"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.5.tar.gz",
+    "size": 10837698,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-arm64-v2.1.5.tar.gz",
+    "digest": "sha256:3666f3069feeee3651e185f867759206059755101797bdd69ea5317610130855"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.5.tar.gz",
+    "size": 11335930,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-loong64-v2.1.5.tar.gz",
+    "digest": "sha256:12e2755802a32b75771c8f8d118f38c94bd02f71ba52745f3ae5968b6bdbccb0"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.5.tar.gz",
+    "size": 11180319,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-mips-v2.1.5.tar.gz",
+    "digest": "sha256:c7cb0df2728d6a62a17f90d6e48407c21ab847be6139188277bbb992fbadf050"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.5.tar.gz",
+    "size": 11650756,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-mips64-v2.1.5.tar.gz",
+    "digest": "sha256:c9c0e20a37d0dc5b106d29c16d1572053da3415bcd0d3cd3c03f07a065bb1b1e"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.5.tar.gz",
+    "size": 11418085,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-mips64le-v2.1.5.tar.gz",
+    "digest": "sha256:b1fb99de7a14e0d5d9424755e4453ce1d513f9fb7bcb93351e94c93c30effc2d"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.5.tar.gz",
+    "size": 11030060,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-mipsle-v2.1.5.tar.gz",
+    "digest": "sha256:9b3e924371666f3454e82f5e327ad9f705d3ff0f180c170e1fa10c8afff95f1b"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.5.tar.gz",
+    "size": 11056355,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-ppc64le-v2.1.5.tar.gz",
+    "digest": "sha256:d5692986a2cd4e7935747fe9ae7f440f341145204dd3d200b0fea3a624ed6d43"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.5.tar.gz",
+    "size": 11206184,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-riscv64-v2.1.5.tar.gz",
+    "digest": "sha256:de7b19328f37b466456ff33950bcea03c6696425db96ca7b2c48002040f4ef4c"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.5.tar.gz",
+    "size": 11680656,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-s390x-v2.1.5.tar.gz",
+    "digest": "sha256:d6adfddef8f4f15137f7929bd8cbe121097aa3a2e0d68b5947024a04bd1f5665"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.5.zip",
+    "size": 12419653,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-macos-amd64-v2.1.5.zip",
+    "digest": "sha256:f4535e479472a1ae43d3e6ffc4bcfc7651179e948387c08f3696847d142b62c7"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.5.zip",
+    "size": 11187879,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-macos-arm64-v2.1.5.zip",
+    "digest": "sha256:4a3153cce6f3bdc6290824e409b1622c3b78ad8b8a8b2fc846c0061b61e44d4a"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.5.zip",
+    "size": 23570748,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-macos-universal-v2.1.5.zip",
+    "digest": "sha256:e4ed8fc7cd7570f77293783adbccacd1abc822a5905a50e90ab38dc55a813c54"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.5.tar.gz",
+    "size": 12963533,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-netbsd-amd64-v2.1.5.tar.gz",
+    "digest": "sha256:bf5294e1ae0ea897546649c71abe238138fde83b593be7a75d984f71a8bb3539"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.5.tar.gz",
+    "size": 12988759,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-openbsd-amd64-v2.1.5.tar.gz",
+    "digest": "sha256:77fcb764c174880a09bff59b6cdf27452b48bbeaf5c8505930ecb5663ef5612d"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.5.tar.gz",
+    "size": 12055007,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-openbsd-arm64-v2.1.5.tar.gz",
+    "digest": "sha256:72f899fa473d5ed360b8a61c53862e9e328d39abb9920939e892d82bf528e456"
+   },
+   {
+    "name": "syncthing-source-v2.1.5.tar.gz",
+    "size": 43177700,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-source-v2.1.5.tar.gz",
+    "digest": "sha256:11f129cff64fb4ba7cda33f9dae3a39eab8738a60bbbe8813cadecfdc94bd13d"
+   },
+   {
+    "name": "syncthing-source-v2.1.5.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-source-v2.1.5.tar.gz.asc",
+    "digest": "sha256:a9976be7303bbcde6644c3ca1a8c311ca484733d22fa9ea2ee31980936722856"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.5.zip",
+    "size": 11720125,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-windows-386-v2.1.5.zip",
+    "digest": "sha256:c532e971d91035f73c176a3b0ebdb07785b16e292b10f718e391ad211bb36a2c"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.5.zip",
+    "size": 11975789,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-windows-amd64-v2.1.5.zip",
+    "digest": "sha256:39571e4d0900c2a2cab14c0b170f49751340a869e49734ccc8079d9b98a7974b"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.5.zip",
+    "size": 10893238,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-windows-arm64-v2.1.5.zip",
+    "digest": "sha256:082de37dc99621064bde8378ea26b28378f312f0a4147f52844ce7425f1baab0"
+   },
+   {
+    "name": "syncthing_2.1.5_amd64.deb",
+    "size": 11806144,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing_2.1.5_amd64.deb",
+    "digest": "sha256:fd8daf356255a56db4d9259e0a6972193a9bdc0bb6229ed1c091f4a418280a39"
+   },
+   {
+    "name": "syncthing_2.1.5_arm64.deb",
+    "size": 10883972,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing_2.1.5_arm64.deb",
+    "digest": "sha256:35cf54b9bac9e2f37f022e19affee4856200128747b8794afa2aec167ecec999"
+   },
+   {
+    "name": "syncthing_2.1.5_armel.deb",
+    "size": 11292136,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing_2.1.5_armel.deb",
+    "digest": "sha256:27effa941a4b58828604d5d20c35f7d38595d5a4cb55514ffe76d2afee120e4b"
+   },
+   {
+    "name": "syncthing_2.1.5_armhf.deb",
+    "size": 11292132,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing_2.1.5_armhf.deb",
+    "digest": "sha256:3e034ec95ccabb745b1112a9b58753b736301895cf75c62ff98b1ec8e5edd831"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.4-rc.2",
+  "name": "v2.1.4-rc.2",
+  "published_at": "2026-08-24T19:15:28Z",
+  "created_at": "2026-08-24T19:02:44Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/compat.json",
+    "digest": "sha256:172e33009e6183aefe7aa902c1f33be62ed2ede8a16abafba536654743af1fa0"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/sha1sum.txt.asc",
+    "digest": "sha256:26a598e2a119d95cb91365285f6cff9e3d0904dde9fc6cf163eda913337cc492"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/sha256sum.txt.asc",
+    "digest": "sha256:36691f6b4b5fec2079579a4233e1454a9f8250d7fc62b0bdce53bf0c4f2a8a31"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.4-rc.2.tar.gz",
+    "size": 12550646,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-freebsd-386-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:60f04823ffbedfcfa59039b893b227c4f2554d693d43f8a092524b571af129c4"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.4-rc.2.tar.gz",
+    "size": 13043231,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-freebsd-amd64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:5224e9b54466092db66799dfbf8b9ed82d28141fefa2951ad1af7b778ce404af"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.4-rc.2.tar.gz",
+    "size": 12450281,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-freebsd-arm-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:92152e86a9e069411d16a57d54a7b622eb1f0d8affba4056c84b5326aba6b347"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.4-rc.2.tar.gz",
+    "size": 12102783,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-freebsd-arm64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:ad70f81cdc1f2b1f48fb385397f6f4b80e30cbe1dedf37d80da573b36d2b66c4"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.4-rc.2.tar.gz",
+    "size": 14704451,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-illumos-amd64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:6079f531c4588655c561d9a857d9554c3ba9cfac7ceba0a68801dabf37522c71"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.4-rc.2.tar.gz",
+    "size": 11389583,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-386-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:7385c60be3a7cf7ffa033f750d675a7df45c6f547f6ac8ec858b5a53f608aacb"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.4-rc.2.tar.gz",
+    "size": 11782522,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-amd64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:5723d4633648465ed6ab93fa632ca041088595a0bf1032c8261e9c0a0d5f6ea6"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.4-rc.2.tar.gz",
+    "size": 11272138,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-arm-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:fe0b433f630c19de2d622844f6ca87de45d752ac026f1d654c3b17c91144ee22"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.4-rc.2.tar.gz",
+    "size": 10838033,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-arm64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:7ccc26c04885e7df4bc0d2d0259ed9e415ea7418296d4eafadbc45d09185dff7"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.4-rc.2.tar.gz",
+    "size": 11334900,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-loong64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:f2b813d09152a7996831a480478aad801dafe906baa02b6bf3dc31894cdbb5b6"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.4-rc.2.tar.gz",
+    "size": 11179840,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-mips-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:b424a805b88c6f07cabef0e6bb051d88420bf94915a00e93bf972d15c99e4b1e"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.4-rc.2.tar.gz",
+    "size": 11651178,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-mips64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:e2aa33cc67896c2eb1676dd4b7bd3b39ea1dd95f1a90d9910a010af4ba2df78d"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.4-rc.2.tar.gz",
+    "size": 11418910,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-mips64le-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:faebb1b5b30d1c065ff891f88df85f220314d1ee8b09a2e406745e4bb50801b8"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.4-rc.2.tar.gz",
+    "size": 11030436,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-mipsle-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:f85113e2019edd819440aa808dea0ac5c7473e048ab80aabb3334e7b42b29f21"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.4-rc.2.tar.gz",
+    "size": 11055931,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-ppc64le-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:93e966a26c3dd9c68d3c1a56721555caff033c17fec4d6bfbcc46480a54ea327"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.4-rc.2.tar.gz",
+    "size": 11205145,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-riscv64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:e2ee01b63ac7ff78d74524ea401eee372ebf593ed916fd7d31fa5e75875c6b60"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.4-rc.2.tar.gz",
+    "size": 11679183,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-linux-s390x-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:e2adc17307f233524325933e916faee33a869db5c871dec60a13c1470929c990"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.4-rc.2.zip",
+    "size": 12419509,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-macos-amd64-v2.1.4-rc.2.zip",
+    "digest": "sha256:4a125bb13e3f248752e50bfec1e8f74d624f18a32910620b53de00ea50157a35"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.4-rc.2.zip",
+    "size": 11187957,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-macos-arm64-v2.1.4-rc.2.zip",
+    "digest": "sha256:20b50edb6349f5f82c0e644ba079f30b9bfc3bd9008a3587cd2bae4db39f9fb0"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.4-rc.2.zip",
+    "size": 23570520,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-macos-universal-v2.1.4-rc.2.zip",
+    "digest": "sha256:9ec4b738d6366a718c4bd68c8f8100b792baaa61294a5eeca2353298fe04d230"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.4-rc.2.tar.gz",
+    "size": 12964432,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-netbsd-amd64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:f09f0eefe607c5c97355ed7fc74074d84ad5b3cbc0fa2b223bd1f534801e306c"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.4-rc.2.tar.gz",
+    "size": 12989486,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-openbsd-amd64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:95af43f3440a2597c97a01ffba39a10d1f45e2386739fc3ad4852197f1622e8b"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.4-rc.2.tar.gz",
+    "size": 12056041,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-openbsd-arm64-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:b8e3919dde08c57dc195a43ddb45f9467aeaead761011debf68206a30c3ee4d8"
+   },
+   {
+    "name": "syncthing-source-v2.1.4-rc.2.tar.gz",
+    "size": 43179064,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-source-v2.1.4-rc.2.tar.gz",
+    "digest": "sha256:bf51db8f7ba978e48580e175aeeb93c2c18e53cde8fac439a2ac0277007c63b8"
+   },
+   {
+    "name": "syncthing-source-v2.1.4-rc.2.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-source-v2.1.4-rc.2.tar.gz.asc",
+    "digest": "sha256:e0336f90ec8541a9602f22661e177d08edb170519237db45bcb7f01ba661780f"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.4-rc.2.zip",
+    "size": 11720463,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-windows-386-v2.1.4-rc.2.zip",
+    "digest": "sha256:fb5e02ee100d4c12892223d0af130f164340d8644036b798d4b6cc1b48c89eac"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.4-rc.2.zip",
+    "size": 11978587,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-windows-amd64-v2.1.4-rc.2.zip",
+    "digest": "sha256:6c651eeec8a5a154ad9488481a8a4969fea1cb44e5896c62f732d78747eace0e"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.4-rc.2.zip",
+    "size": 10894074,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing-windows-arm64-v2.1.4-rc.2.zip",
+    "digest": "sha256:afe894685c5b4175b2a2fe212513e3877443cc94be487ea519414ded58f776d6"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.2_amd64.deb",
+    "size": 11806172,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing_2.1.4.rc.2_amd64.deb",
+    "digest": "sha256:a4a1882fdc27b2103e485194e4facff607fbd501b4986934b0ef6e57f5be1506"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.2_arm64.deb",
+    "size": 10883480,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing_2.1.4.rc.2_arm64.deb",
+    "digest": "sha256:1ca9fe1f3b9a8e64033e140010e89980c5d0db14239a4bc44187fc99bd5fb582"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.2_armel.deb",
+    "size": 11290094,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing_2.1.4.rc.2_armel.deb",
+    "digest": "sha256:6ce8cc38c2c7c3a89282d2f4d3e8c3c1e6d4ab0c4b57efbcc325761669141dd2"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.2_armhf.deb",
+    "size": 11290044,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.2/syncthing_2.1.4.rc.2_armhf.deb",
+    "digest": "sha256:331bc46e85823e7d90bb498b6a9529d719fdadea6e77329fd934273d969c0975"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.1.4-rc.1",
+  "name": "v2.1.4-rc.1",
+  "published_at": "2026-08-19T10:39:46Z",
+  "created_at": "2026-08-19T10:28:04Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## Major changes in 2.1\n\n- Devices and folders can now be grouped in the GUI by setting the new\n  `group` attribute.\n\n- ",
+  "assets": [
+   {
+    "name": "compat.json",
+    "size": 112,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/compat.json",
+    "digest": "sha256:b5b4c89437fcf7b116711cabbb5a7ffe7d8f30b55146d65f6c67d22ed445593b"
+   },
+   {
+    "name": "sha1sum.txt.asc",
+    "size": 9262,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/sha1sum.txt.asc",
+    "digest": "sha256:490fae76f0f396f5d39f45f87cf2f0236bc49e6ee1d304fedfb09b5dd51a01aa"
+   },
+   {
+    "name": "sha256sum.txt.asc",
+    "size": 11494,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/sha256sum.txt.asc",
+    "digest": "sha256:c7d4c871d80b5017ac010ad529d16715521493d7c2a950da072b5ce2ae8e63e4"
+   },
+   {
+    "name": "syncthing-freebsd-386-v2.1.4-rc.1.tar.gz",
+    "size": 12587815,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-freebsd-386-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:00dd7ee58dbbaf25a418ed7c5ac805f034122e619cb61a482206661dabdc4fc0"
+   },
+   {
+    "name": "syncthing-freebsd-amd64-v2.1.4-rc.1.tar.gz",
+    "size": 13103503,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-freebsd-amd64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:f0394b43b7d2dd27d6fd504741814002f6431533be2c82903595a673404e227a"
+   },
+   {
+    "name": "syncthing-freebsd-arm-v2.1.4-rc.1.tar.gz",
+    "size": 12463935,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-freebsd-arm-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:acc022b2f124ece4414fc0de9259e7cd52c5df792ee6aacffd657759c675913d"
+   },
+   {
+    "name": "syncthing-freebsd-arm64-v2.1.4-rc.1.tar.gz",
+    "size": 12184194,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-freebsd-arm64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:6dc1875df4e78432147a2cc6751498281b51b4036cf99a89f43a1c0802410159"
+   },
+   {
+    "name": "syncthing-illumos-amd64-v2.1.4-rc.1.tar.gz",
+    "size": 14784547,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-illumos-amd64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:46c52a97e11f031b8c72272da92d51bcfc3fa45e68ebb5afded59c8f6e543f44"
+   },
+   {
+    "name": "syncthing-linux-386-v2.1.4-rc.1.tar.gz",
+    "size": 11409517,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-386-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:26543cd381491b9ded0fa51386bd05984c9f69a524bfd567a56110c9f906ff05"
+   },
+   {
+    "name": "syncthing-linux-amd64-v2.1.4-rc.1.tar.gz",
+    "size": 11830406,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-amd64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:521af7819b9e85b5b9749082175c10e08ead99d8202cc240a21d9cf0ea585fbe"
+   },
+   {
+    "name": "syncthing-linux-arm-v2.1.4-rc.1.tar.gz",
+    "size": 11275717,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-arm-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:3e1047b84976cc835634df2d0ffce201c4ea5c58a88e482cd931c7488ba7e634"
+   },
+   {
+    "name": "syncthing-linux-arm64-v2.1.4-rc.1.tar.gz",
+    "size": 10905224,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-arm64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:7df0505020557ccb1f65a7ad4b9f481ebb71d7346ca8a80878faae453d589455"
+   },
+   {
+    "name": "syncthing-linux-loong64-v2.1.4-rc.1.tar.gz",
+    "size": 11404316,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-loong64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:7d9561bc01e521d96b279bba768def91dc5298da4d795d8fc000b66f69fe7b86"
+   },
+   {
+    "name": "syncthing-linux-mips-v2.1.4-rc.1.tar.gz",
+    "size": 11178901,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-mips-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:76fe3da001f5a866e2c089a738de2a470f3425c37094771928c708a10fe308eb"
+   },
+   {
+    "name": "syncthing-linux-mips64-v2.1.4-rc.1.tar.gz",
+    "size": 11715534,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-mips64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:d05a0701151592efcd0b5b812fbbcd4badda6c08986dcb9b24992af233989bd2"
+   },
+   {
+    "name": "syncthing-linux-mips64le-v2.1.4-rc.1.tar.gz",
+    "size": 11473830,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-mips64le-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:29ef5531b4237d60b280baa2813b175c3e530848f44ad6a6db8f6f49f6e3e8e7"
+   },
+   {
+    "name": "syncthing-linux-mipsle-v2.1.4-rc.1.tar.gz",
+    "size": 11028350,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-mipsle-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:f937db0f56ee82fede1fafbb81d1baaa6b4e3eefd9191c2e45b81917974dbcfc"
+   },
+   {
+    "name": "syncthing-linux-ppc64le-v2.1.4-rc.1.tar.gz",
+    "size": 11111292,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-ppc64le-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:dd529918b8e2147ea89a5843c59c3bbeaf26694d34f0fda9614f75124ce7907d"
+   },
+   {
+    "name": "syncthing-linux-riscv64-v2.1.4-rc.1.tar.gz",
+    "size": 11181797,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-riscv64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:559db999098b33bcf9af8ddef7f6eb8abc6c5afdbb86ed18636265e1bc42178f"
+   },
+   {
+    "name": "syncthing-linux-s390x-v2.1.4-rc.1.tar.gz",
+    "size": 11744780,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-linux-s390x-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:7f5207c7e88c5795c17f21019c9f2f23d6e136844f18feb4ee7f7106a386d22b"
+   },
+   {
+    "name": "syncthing-macos-amd64-v2.1.4-rc.1.zip",
+    "size": 12495130,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-macos-amd64-v2.1.4-rc.1.zip",
+    "digest": "sha256:3ca2ab430ee4f5ca2bb69469f423d68b592226e4bcd769be87b08e750c24e655"
+   },
+   {
+    "name": "syncthing-macos-arm64-v2.1.4-rc.1.zip",
+    "size": 11280374,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-macos-arm64-v2.1.4-rc.1.zip",
+    "digest": "sha256:88918af9a7f34b7179de413a9c19d12208449f26c4610f5d5162f4b3259d021c"
+   },
+   {
+    "name": "syncthing-macos-universal-v2.1.4-rc.1.zip",
+    "size": 23741722,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-macos-universal-v2.1.4-rc.1.zip",
+    "digest": "sha256:dba940f10216f2ab380b7413c5b960be5547abb4e40365ecbdb01f0b30f95d06"
+   },
+   {
+    "name": "syncthing-netbsd-amd64-v2.1.4-rc.1.tar.gz",
+    "size": 13024474,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-netbsd-amd64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:da9dd7d4fc430ed4dc075b00fd0a1611b195c82571b73ee9439a2f5d51766103"
+   },
+   {
+    "name": "syncthing-openbsd-amd64-v2.1.4-rc.1.tar.gz",
+    "size": 13046475,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-openbsd-amd64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:2cf4d157424012d084eea20c242719fa5e1b7e6c226ea8f976308708cedfee8b"
+   },
+   {
+    "name": "syncthing-openbsd-arm64-v2.1.4-rc.1.tar.gz",
+    "size": 12135526,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-openbsd-arm64-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:26c2822d7d2b2aaa77816c8ac36c4e9a5b363fd5e6002faeb097c142d8d47a50"
+   },
+   {
+    "name": "syncthing-source-v2.1.4-rc.1.tar.gz",
+    "size": 42941481,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-source-v2.1.4-rc.1.tar.gz",
+    "digest": "sha256:a11bc6d464b4e036644f0a573c653943704a10dfba3f92c84d7263feba30376f"
+   },
+   {
+    "name": "syncthing-source-v2.1.4-rc.1.tar.gz.asc",
+    "size": 1391,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-source-v2.1.4-rc.1.tar.gz.asc",
+    "digest": "sha256:bddcdd5bd370c0ba1dfc1957edb36779bedf3cdc1f55fd9656ca4e4849d09415"
+   },
+   {
+    "name": "syncthing-windows-386-v2.1.4-rc.1.zip",
+    "size": 11720864,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-windows-386-v2.1.4-rc.1.zip",
+    "digest": "sha256:78a601b9b2436828de57fc90c28888276e12f1a24b8abfe8a150dec996733a90"
+   },
+   {
+    "name": "syncthing-windows-amd64-v2.1.4-rc.1.zip",
+    "size": 12019316,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-windows-amd64-v2.1.4-rc.1.zip",
+    "digest": "sha256:fc18890925f0d559dfc4f9d607d14d944602f9e6be7552b13d8b275397531a0c"
+   },
+   {
+    "name": "syncthing-windows-arm64-v2.1.4-rc.1.zip",
+    "size": 10948559,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing-windows-arm64-v2.1.4-rc.1.zip",
+    "digest": "sha256:fd231df158bd5cef52f421e854c120009ee278027592bd8c58698d18adc7b1fe"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.1_amd64.deb",
+    "size": 11852862,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing_2.1.4.rc.1_amd64.deb",
+    "digest": "sha256:0deeee229015c6c26abd5fbc5366c292d9b1602791c0790101e1e58df285eb02"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.1_arm64.deb",
+    "size": 10951766,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing_2.1.4.rc.1_arm64.deb",
+    "digest": "sha256:39b4c52809ad8f2c55d90bfa94326fdf1b379236e9412b9cec055e6985b45970"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.1_armel.deb",
+    "size": 11291958,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing_2.1.4.rc.1_armel.deb",
+    "digest": "sha256:e93b1240314bfd4ecc809fa1934192e01cfc297d2c01c94771739e9ddee0cd51"
+   },
+   {
+    "name": "syncthing_2.1.4.rc.1_armhf.deb",
+    "size": 11291904,
+    "browser_download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.4-rc.1/syncthing_2.1.4.rc.1_armhf.deb",
+    "digest": "sha256:8fb9ae1450814f4483bfc43c5e9c1ac532e8b793ca1616c64a1f4fff7677a863"
+   }
+  ]
+ }
+]
