@@ -168,11 +168,14 @@ else
 fi
 
 state="$(mktemp -d)"
-port=$((20000 + RANDOM % 20000))
-HUB_STATE_DIR="$state" PORT=$port HUB_BIND=127.0.0.1 "$repo/irate-box" server >"$state/server.log" 2>&1 &
-pid=$!
-for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$port/status" && break; sleep 0.1; done
-PORT=$port run api_locks.py
+# shellcheck source=tests/start-hub.sh
+. "$here/start-hub.sh"
+if start_hub "$state" "$state/server.log"; then
+	PORT=$port run api_locks.py
+else
+	echo "== api_locks.py: no hub to run against"
+	failed=$((failed + 1))
+fi
 
 # A warning, not a failure: names, plan references and dated comments in the code (history_guard.py --strict fails).
 echo "== history_guard.py"

@@ -21,21 +21,21 @@ run_tmp="$(mktemp -d "${TMPDIR:-/tmp}/irate-box-pages.XXXXXX")"
 export TMPDIR="$run_tmp"
 state="$run_tmp/state"
 mkdir -p "$state"
-port=$((20000 + RANDOM % 20000))
 # The front's secret, as the web server sends it: tests of /admin (dom-net) send it too and are answered as admin.
 FRONT_SECRET="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 export FRONT_SECRET
-HUB_STATE_DIR="$state" PORT=$port HUB_BIND=127.0.0.1 HUB_FRONT_SECRET="$FRONT_SECRET" "$repo/irate-box" server >"$run_tmp/server.log" 2>&1 &
-pid=$!
+pid=""
 cleanup() {
-	kill "$pid" 2>/dev/null
+	[ -z "$pid" ] || kill "$pid" 2>/dev/null
 	rm -rf "$run_tmp"
 }
 trap cleanup EXIT
-for _ in $(seq 50); do
-	curl -s -o /dev/null "http://127.0.0.1:$port/status" && break
-	sleep 0.1
-done
+# shellcheck source=tests/start-hub.sh
+. "$repo/tests/start-hub.sh"
+if ! start_hub "$state" "$run_tmp/server.log" HUB_FRONT_SECRET="$FRONT_SECRET"; then
+	echo "no hub for the pages that need one" >&2
+	exit 1
+fi
 export BASE="http://127.0.0.1:$port"
 for t in "$here"/dom-*.cjs; do
 	name="$(basename "$t")"
