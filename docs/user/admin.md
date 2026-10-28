@@ -12,7 +12,7 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
   - **Memory and disk history** (folded) shows the last day or week of both, with a point every five minutes.
   - **Trends**: administrators see a **▸ Trends** triangle on the memory and disk tile of the hub. It opens the last day below the tiles. Other users cannot open or request it.
   - **Setup steps** stays beside it until you hide it.
-- **Apps**: one page for each app on the box. Examples are Excalidraw, the file drop, Kiwix, Git, Notes, the shoutbox, the board and the Firmware Factory.
+- **Apps**: one page for each app on the box. Examples are Excalidraw, the file drop, Kiwix, Git, Notes, the shoutbox, the board, the App store, Mesh and the Firmware Factory.
   - Each page starts with the name of the app and its state. It shows **Open**, **Add** or the **Start** and **Stop** of its service where they apply.
   - Next are the settings and the content of the app.
   - The folded sections follow: **Access** (who can open the app), **Hub tile** (a summary, with a link to arrange it on Home tiles) and **Maintenance**.
@@ -31,6 +31,7 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
   - The librarian page shows what the librarian is doing and the schedule for books and apps. It shows the storage limit for books and apps. It links to the schedules of other updates and holds the GitHub token.
   - **Recovery and monitoring** sets what crash watch keeps, what restarts a frozen box, and **SD card writes**.
 - **Doctors**: the Box doctor, the Security doctor and the Updates doctor. Each doctor checks one part of the box and lists the problems in plain words. Where a repair exists, the doctor shows a button for it.
+- **Mock controls**: every control the pages use, with sample data, at the bottom. It is for copying a control into a page and for comparing them. It changes nothing.
 
 Where more than one answer is sensible, a page shows the answers from the most restrictive to the least restrictive. The most restrictive answer is selected by default. Changes that need an optional risky setting need your approval.
 
