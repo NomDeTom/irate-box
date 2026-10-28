@@ -487,6 +487,17 @@ check(
     }
     == {"androidApp-google-release.apk", "app-google-release.apk"},
 )
+syncthing_preset = holdsurvey.find_preset("syncthing-fork")
+newest_syncthing = holder.newest_first([r for r in load("syncthing-fork") if not r["prerelease"]])[0]
+check(
+    "the Syncthing-Fork preset holds the two phone APKs, not the universal or the x86 ones",
+    sorted(a["name"] for a in holder.held_files(newest_syncthing, {"holds": syncthing_preset["holds"]}))
+    == [
+        "com.github.catfriend1.syncthingfork_release_v2.1.7.0_arm64-v8a.apk",
+        "com.github.catfriend1.syncthingfork_release_v2.1.7.0_armeabi-v7a.apk",
+    ],
+    [a["name"] for a in holder.held_files(newest_syncthing, {"holds": syncthing_preset["holds"]})],
+)
 
 print(f"{fails} failures" if fails else "ok")
 sys.exit(1 if fails else 0)
