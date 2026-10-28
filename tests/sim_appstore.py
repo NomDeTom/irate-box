@@ -58,6 +58,7 @@ def request(method, path, headers=None):
 sys.path.insert(0, str(REPO))
 os.environ.update(HUB_STATE_DIR=str(state), HUB_HOLDS_ROOT=str(holds))
 from irate_box.hub import server as hub_server
+from irate_box.library import holder
 
 ADMIN_COOKIE = "irate_admin_seen=" + hub_server.admin_seen_value()
 
@@ -306,7 +307,153 @@ try:
     st, _, body = request("GET", "/")
     check("the tile is on the home page", "/appstore/" in body.decode())
 
+    # --- the firmware mirror: a read-only entry that follows the flasher's access ---
+    fwroot = state / "firmware"
+    fwroot.mkdir()
+    FW_VERSIONS = {
+        "2.8.2.abc1234": ("beta", ["rak4631", "heltec-v3"], 1792886401),
+        "2.8.1.def5678": ("alpha", ["rak4631"], 1792886400),
+    }
+
+    def firmware_version(version, channel, boards, epoch):
+        vdir = fwroot / version
+        vdir.mkdir()
+        (vdir / f"firmware-{version}.json").write_text(
+            json.dumps({"version": version, "targets": [{"board": b, "platform": "x"} for b in boards]})
+        )
+        digests = {}
+        info = {
+            "channel": channel,
+            "boards": boards,
+            "files": 0,
+            "bytes": 0,
+            "fetched": "2026-10-28T00:00:00Z",
+            "checks": {},
+        }
+        for board in boards:
+            if board == "rak4631":
+                names = [
+                    (f"firmware-{board}-{version}.uf2", None),
+                    (f"firmware-{board}-{version}.hex", None),
+                    (f"firmware-{board}-{version}-ota.zip", None),
+                    (f"firmware-{board}-{version}.elf", None),
+                ]
+            else:
+                names = [
+                    (f"firmware-{board}-{version}.factory.bin", None),
+                    (f"firmware-{board}-{version}.bin", "app0"),
+                    (f"littlefs-{board}-{version}.bin", "spiffs"),
+                    ("mt-esp32s3-ota.bin", "app1"),
+                ]
+            files = []
+            for name, part in names:
+                data = f"{version}:{name}".encode()
+                (vdir / name).write_bytes(data)
+                digests[name] = [len(data), 1, hashlib.sha256(data).hexdigest()]
+                entry = {"name": name, "bytes": len(data), "md5": hashlib.md5(data).hexdigest()}
+                if part:
+                    entry["part_name"] = part
+                files.append(entry)
+                info["files"] += 1
+                info["bytes"] += len(data)
+            (vdir / f"firmware-{board}-{version}.mt.json").write_text(
+                json.dumps(
+                    {
+                        "version": version,
+                        "displayName": "RAK WisBlock 4631" if board == "rak4631" else "Heltec V3",
+                        "architecture": "nrf52840" if board == "rak4631" else "esp32-s3",
+                        "build_epoch": epoch,
+                        "files": files,
+                    }
+                )
+            )
+        (vdir / "sha256.json").write_text(json.dumps(digests))
+        return info
+
+    fwstatus = {"versions": {}, "last_check": "2026-10-28T00:00:00Z"}
+    for version, (channel, boards, epoch) in FW_VERSIONS.items():
+        fwstatus["versions"][version] = firmware_version(version, channel, boards, epoch)
+    (fwroot / "status.json").write_text(json.dumps(fwstatus))
+    (fwroot / "index.json").write_text(
+        json.dumps(
+            {
+                "releases": {
+                    "stable": [{"id": "v2.8.2.abc1234", "release_notes": "Beta notes as text."}],
+                    "alpha": [{"id": "v2.8.1.def5678", "release_notes": ""}],
+                }
+            }
+        )
+    )
+    fwsettings = state / "library" / "firmware.json"
+    fwsettings.write_text(json.dumps({"enabled": True}))
+    st, _, body = page()
+    fwpage = body.decode()
+    check(
+        "firmware: the entry is on the page, its boards folded, its files at the flasher's addresses",
+        st == 200
+        and "Meshtastic firmware" in fwpage
+        and '<details class="appstore-board"' in fwpage
+        and '<details class="appstore-board" open' not in fwpage
+        and "/flasher/firmware/2.8.2.abc1234/firmware-rak4631-2.8.2.abc1234.uf2" in fwpage,
+        st,
+    )
+    check(
+        "  a role from the name: the UF2, the DFU, the OTA, the full flash",
+        "UF2" in fwpage and "DFU" in fwpage and "Update (OTA)" in fwpage and "Full flash" in fwpage,
+    )
+    check("  the .elf never listed", ".elf" not in fwpage)
+    st, head, _ = request("GET", "/appstore/latest/meshtastic-firmware/rak4631/uf2")
+    check(
+        "  the stable link goes to the newest version with that board and role",
+        st == 302 and head.get("location") == "/flasher/firmware/2.8.2.abc1234/firmware-rak4631-2.8.2.abc1234.uf2",
+        (st, head.get("location")),
+    )
+    st, head, _ = request("GET", "/appstore/latest/meshtastic-firmware/rak4631/uf2?channel=alpha")
+    check(
+        "  and the channel asked for",
+        st == 302 and head.get("location") == "/flasher/firmware/2.8.1.def5678/firmware-rak4631-2.8.1.def5678.uf2",
+        (st, head.get("location")),
+    )
+    st, _, _ = request("GET", "/appstore/latest/meshtastic-firmware/nope/uf2")
+    check("  a board not kept: 404", st == 404, st)
+    st, _, body = request("GET", "/appstore/index.json")
+    fwrow = next((h for h in json.loads(body)["holders"] if h["id"] == "meshtastic-firmware"), None)
+    check(
+        "  index.json: the entry, with board, architecture and role on each file",
+        fwrow is not None
+        and fwrow["versions"][0]["files"][0]["board"] == "rak4631"
+        and fwrow["versions"][0]["files"][0]["architecture"] == "nrf52840"
+        and fwrow["versions"][0]["files"][0]["role"] == "uf2",
+        fwrow and fwrow["versions"][0]["files"][0],
+    )
+    st, _, body = request("GET", "/appstore/feed.xml")
+    check(
+        "  the feed includes the firmware files and their board",
+        st == 200 and "/flasher/firmware/" in body.decode() and 'term="rak4631"' in body.decode(),
+        st,
+    )
+    fwsettings.write_text(json.dumps({"enabled": False}))
+    st, _, body = page()
+    check("  downloads off: the entry is not shown", st == 200 and "Meshtastic firmware" not in body.decode())
+    fwsettings.write_text(json.dumps({"enabled": True}))
+    (state / "control" / "access.json").write_text(json.dumps({"appstore": "public", "flasher": "off"}))
+    st, _, body = page()
+    check("  the flasher off: the entry is not shown", st == 200 and "Meshtastic firmware" not in body.decode())
+    (state / "control" / "access.json").write_text(json.dumps({"appstore": "public", "flasher": "private"}))
+    st, _, body = page()
+    check("  the flasher private: a guest is not shown it", st == 200 and "Meshtastic firmware" not in body.decode())
+    st, _, body = page({"Cookie": ADMIN_COOKIE})
+    check("  the administrator is", st == 200 and "Meshtastic firmware" in body.decode())
+    (state / "control" / "access.json").write_text(json.dumps({"appstore": "public", "flasher": "public"}))
+    try:
+        holder.validate_holder({"id": "meshtastic-firmware", "repo": "a/b", "holds": []})
+        reserved = False
+    except holder.LibrarianError as exc:
+        reserved = getattr(exc, "message", {}).get("id") == "library.holder.reserved"
+    check("  a holder cannot take the firmware's name", reserved)
+
     # Nothing kept yet: the page says so, and only the administrator is pointed at the setting.
+    fwsettings.write_text(json.dumps({"enabled": False}))
     settings.write_text(json.dumps({"enabled": False, "holders": []}))
     st, _, body = page()
     check(

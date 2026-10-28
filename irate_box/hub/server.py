@@ -6986,7 +6986,13 @@ class Handler(BaseHTTPRequestHandler):
         """The App store (appstore.py): the page, the files held by the keeper, their lists. The app's own
         switch and each holder's visibility decide what this visitor is shown; Range is honoured, so a phone
         whose download is cut short resumes it."""
-        appstore.route(self, path, access.mode_of(access.read(ACCESS_STATE), "appstore"))
+        state = access.read(ACCESS_STATE)
+        appstore.route(
+            self,
+            path,
+            access.mode_of(state, "appstore"),
+            access.mode_of(state, "flasher"),
+        )
 
     def _flasher(self, path):
         """The web flashers (flasher.py): /flasher/ the light one's page, in place; the Meshtastic one

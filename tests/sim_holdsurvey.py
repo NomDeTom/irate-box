@@ -510,10 +510,20 @@ check(
 obtainium_preset = holdsurvey.find_preset("obtainium")
 newest_obtainium = holder.newest_first([r for r in load("obtainium") if not r["prerelease"]])[0]
 check(
-    "the Obtainium preset holds the plain build's two phone APKs, not the fdroid ones",
-    sorted(a["name"] for a in holder.held_files(newest_obtainium, {"holds": obtainium_preset["holds"]}))
-    == ["app-arm64-v8a-release.apk", "app-armeabi-v7a-release.apk"],
-    [a["name"] for a in holder.held_files(newest_obtainium, {"holds": obtainium_preset["holds"]})],
+    "the Obtainium preset holds the plain build's two phone APKs and their checksums and signatures, not the "
+    "fdroid ones",
+    sorted(a["name"] for a in holder.held_files(newest_obtainium, obtainium_preset))
+    == [
+        "app-arm64-v8a-release.apk",
+        "app-arm64-v8a-release.apk.idsig",
+        "app-arm64-v8a-release.apk.sha256",
+        "app-arm64-v8a-release.apk.sha256.sig",
+        "app-armeabi-v7a-release.apk",
+        "app-armeabi-v7a-release.apk.idsig",
+        "app-armeabi-v7a-release.apk.sha256",
+        "app-armeabi-v7a-release.apk.sha256.sig",
+    ],
+    [a["name"] for a in holder.held_files(newest_obtainium, obtainium_preset)],
 )
 android_preset = holdsurvey.find_preset("meshtastic-android")
 check(

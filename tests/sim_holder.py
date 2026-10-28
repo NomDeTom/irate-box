@@ -207,6 +207,27 @@ check(
         for f in holder.plan(mine(holds=[{**recipe, "exclude": "universal"}]), releases)[0]["files"]
     ),
 )
+sided = {
+    "assets": [
+        {"name": "app.apk", "size": 10, "url": "", "digest": "sha256:" + "a" * 64},
+        {"name": "app.apk.sha256", "size": 1, "url": "", "digest": "sha256:" + "b" * 64},
+        {"name": "app.apk.sha256.sig", "size": 1, "url": "", "digest": "sha256:" + "c" * 64},
+        {"name": "other.apk.sha256", "size": 1, "url": "", "digest": "sha256:" + "d" * 64},
+    ]
+}
+plain = holder.held_files(sided, {"holds": [{"include": "\\.apk$"}]})
+check("companions are not held unless asked", [a["name"] for a in plain] == ["app.apk"], plain)
+sided_held = holder.held_files(sided, {"holds": [{"include": "\\.apk$"}], "companions": True})
+check(
+    "  asked, a held file's checksum and signature come too, saying whose they are",
+    [(a["name"], a.get("of")) for a in sided_held]
+    == [
+        ("app.apk", None),
+        ("app.apk.sha256", "app.apk"),
+        ("app.apk.sha256.sig", "app.apk"),
+    ],
+    sided_held,
+)
 check("nothing chosen to hold: nothing kept", holder.plan(mine(holds=[]), releases) == [])
 rec = {}
 holder.plan(mine(channels={"stable": 5, "pre-release": 0}), releases, record=rec)

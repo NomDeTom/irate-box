@@ -85,6 +85,29 @@
     make(kind, (chips[kind] || []).slice(0, 24));
   });
   apply();
+  var boards = [].slice.call(document.querySelectorAll('.appstore-board'));
+  if (boards.length) {
+    var first = document.querySelector('.appstore-boards');
+    var row = document.createElement('p');
+    row.className = 'appstore-board-filter';
+    var name = document.createElement('label');
+    name.textContent = 'Filter boards ';
+    var input = document.createElement('input');
+    input.type = 'search';
+    input.id = 'appstore-board-filter';
+    input.setAttribute('placeholder', 'a board or a chip');
+    name.appendChild(input);
+    row.appendChild(name);
+    if (first && first.parentNode) first.parentNode.insertBefore(row, first);
+    else document.body.appendChild(row);
+    input.addEventListener('input', function () {
+      var query = input.value.trim().toLowerCase();
+      boards.forEach(function (board) {
+        var words = (board.getAttribute('data-board') + ' ' + (board.getAttribute('data-arch') || '')).toLowerCase();
+        board.hidden = !!query && words.indexOf(query) < 0;
+      });
+    });
+  }
   var qr = document.getElementById('appstore-qr');
   if (qr && typeof qrcode === 'function' && qr.getAttribute('data-url')) {
     try {

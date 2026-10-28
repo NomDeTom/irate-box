@@ -68,6 +68,13 @@ check(
     code == 200 and made["repo"] == "meshtastic/Meshtastic-Android" and len(made["holds"]) == 2,
     made,
 )
+code, out = post({"action": "add-holder", "preset": "obtainium"})
+check(
+    "  a preset that asks for companions: the holder is made with them",
+    code == 200 and out["holders"][-1]["companions"] is True,
+    out["holders"][-1],
+)
+post({"action": "remove-holder", "id": "obtainium"})
 check("  its survey is not there yet", made["survey"] is None and made["status"]["survey_error"] is None)
 check(
     "  it remembers when it was added, so 'never checked' waits one interval",
@@ -186,12 +193,17 @@ code, out = post(
         "title": "Scrcpy again",
         "channels": {"stable": 3, "pre-release": 1},
         "budget_mb": 500,
+        "companions": True,
     }
 )
 one = next(h for h in out["holders"] if h["id"] == "by-hand")
 check(
     "edit changes the fields, keeps the id",
-    code == 200 and one["title"] == "Scrcpy again" and one["channels"]["stable"] == 3 and one["budget_mb"] == 500,
+    code == 200
+    and one["title"] == "Scrcpy again"
+    and one["channels"]["stable"] == 3
+    and one["budget_mb"] == 500
+    and one["companions"] is True,
     one,
 )
 check(
@@ -246,6 +258,30 @@ check(
     not any(h["id"] == "by-hand" for h in appstore_admin.snapshot()["holders"])
     and not (T / "holds" / "by-hand").exists(),
 )
+
+# --- the firmware card: its own bytes, not the App store's ---
+(T / "state" / "library").mkdir(parents=True, exist_ok=True)
+(T / "state" / "library" / "firmware.json").write_text(json.dumps({"enabled": True}))
+(T / "state" / "firmware").mkdir(parents=True, exist_ok=True)
+(T / "state" / "firmware" / "status.json").write_text(
+    json.dumps(
+        {
+            "versions": {
+                "2.8.2.abc1234": {"boards": ["rak4631", "heltec-v3"], "bytes": 1000},
+                "2.8.1.def5678": {"boards": ["rak4631"], "bytes": 500},
+            }
+        }
+    )
+)
+snap = appstore_admin.snapshot()
+check(
+    "the firmware card: two versions, two boards, its bytes, not in the App store's total",
+    snap["firmware"] == {"versions": 2, "boards": 2, "bytes": 1500, "href": "/admin/#firmware"}
+    and snap["bytes_all"] == 0,
+    snap["firmware"],
+)
+(T / "state" / "library" / "firmware.json").write_text(json.dumps({"enabled": False}))
+check("  downloads off: no card", appstore_admin.snapshot()["firmware"] is None)
 
 print("ok" if not fails else f"{fails} failures")
 sys.exit(1 if fails else 0)

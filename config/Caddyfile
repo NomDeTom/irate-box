@@ -293,6 +293,8 @@
 				file_server
 			}
 			handle_path /flasher/firmware/* {
+				@firmware_download path_regexp \.(bin|uf2|zip)$
+				header @firmware_download Content-Disposition "attachment"
 				header Access-Control-Allow-Origin "*"
 				header Cache-Control "no-cache"
 				@preflight method OPTIONS
