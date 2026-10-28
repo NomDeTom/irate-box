@@ -1266,6 +1266,7 @@ def _offline_kit(room, zims, apps, arch, need, kit_ids=(), repo_dirs=(), state="
         kit = work / "irate-box-kit"
         args = [
             "bash",
+            "-p",
             str(CODE / "install.sh"),
             "--make-offline-bundle",
             str(kit),
@@ -3610,7 +3611,7 @@ def _run_install(src, args, action, steps=None):
     """Run src's install.sh with args, its output in control/update.log and its "==> " steps in
     update-progress.json. steps: what the last install here printed (a guess until one has).
     Returns the steps it printed; raises ValueError if it fails."""
-    cmd = ["bash", str(src / "install.sh"), "--src", str(src), *args]
+    cmd = ["bash", "-p", str(src / "install.sh"), "--src", str(src), *args]
     if "--download-cache" in (src / "install.sh").read_text():
         cmd += ["--download-cache", str(DOWNLOADS)]
     # systemd gives the helper no HOME, and Caddy (the fallback) warns about it on every validate.

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Irate-Box installer for Debian-family boards: Armbian, and mPWRD-OS (which is an
@@ -884,7 +884,7 @@ make_bundle() {
 		here="$(cd "$(dirname "$0")" && pwd)"
 		set -- --src "$here/irate-box" --apps "$here/apps" --download-cache "$here/downloads" "$@"
 		for z in "$here"/zim/*.zim; do [ -f "$z" ] && set -- "$@" --zim "$z"; done
-		bash "$here/irate-box/install.sh" "$@" || exit $?
+		bash -p "$here/irate-box/install.sh" "$@" || exit $?
 		# What the kit's maker chose to bring: the old box's state, git repositories, toolkits.
 		if [ -f "$here/state-backup.tar.gz" ]; then
 			echo "==> The state of the box this kit was made on"
