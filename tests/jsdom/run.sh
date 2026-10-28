@@ -2,13 +2,20 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Every page test here (dom-*.cjs) in jsdom, the ones that need a hub against one started here on a spare port
-# with throwaway state, as tests/run.sh starts its own, and the front's secret set (as nginx sends it). jsdom is not the repository's: give its folder with
-# JSDOM=/path/to/node_modules/jsdom, or have it where node finds it (NODE_PATH). CI installs a pinned one.
+# with throwaway state, as tests/run.sh starts its own, and the front's secret set (as nginx sends it). jsdom is not the
+# repository's: jsdom.sh installs the pinned one once, outside the repository (or give one with JSDOM=…/jsdom). CI runs
+# this script as it is, so the same jsdom.
 #   tests/jsdom/run.sh             all of them
 #   tests/jsdom/run.sh dom-kits    the ones whose names contain dom-kits
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
+# shellcheck source=tests/jsdom/jsdom.sh
+. "$here/jsdom.sh"
+if ! node -e "require(process.env.JSDOM || 'jsdom')" 2>/dev/null; then
+	echo "no jsdom to run the pages in (see above); give one with JSDOM=/path/to/node_modules/jsdom" >&2
+	exit 2
+fi
 failed=0
 run_tmp="$(mktemp -d "${TMPDIR:-/tmp}/irate-box-pages.XXXXXX")"
 export TMPDIR="$run_tmp"

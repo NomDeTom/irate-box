@@ -38,10 +38,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-      - name: jsdom (pinned, outside the repository)
-        run: npm install --no-save --prefix "$RUNNER_TEMP/jsdom" jsdom@22.1.0
-      - name: Page tests (tests/jsdom/run.sh)
-        run: NODE_PATH="$RUNNER_TEMP/jsdom/node_modules" tests/jsdom/run.sh
+      - name: Page tests (tests/jsdom/run.sh; jsdom.sh installs the pinned jsdom, outside the repository)
+        run: JSDOM_CACHE="$RUNNER_TEMP/jsdom" tests/jsdom/run.sh
   deb:
     needs: checks
     runs-on: ubuntu-latest
