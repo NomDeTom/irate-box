@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The App store's keeper (holder.py, releasever.py), offline: GitHub's release list is a recorded one
+"""The App store's keeper (holder.py), offline: GitHub's release list is a recorded one
 (tests/fixtures/github-releases-meshtastic-android.json, read 2026-10-27) or built here, and the downloads are
 files made here.
-  releasever   328 standard shapes; the numbers decide where tags share a shape, else the date
+  order        newest first by the date published, not by the numbers in the tags
   patterns     a Dart pattern as Python reads it; the ones the box cannot read are refused in words
   settings     a holder is validated; GitHub is the one source for now
   plan         the recipe's pattern keeps v2.8.3..v2.7.14 and passes over v2.7.13 and older; a second hold for
@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="holder-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_HOLDS_ROOT=str(T / "holds"))
 sys.path.insert(0, str(REPO))
-from irate_box.library import holder, librarian, releasever
+from irate_box.library import holder, librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import held
 
@@ -48,32 +48,25 @@ def refused(call, message_id):
     return False
 
 
-# --- releasever ---
-check("328 standard shapes", len(releasever.PATTERNS) == 328, len(releasever.PATTERNS))
-check("v2.7.14 is newer than v2.7.9 (as numbers, not as text)", releasever.compare("v2.7.14", "v2.7.9") == 1)
-check("  and the other way round", releasever.compare("v2.7.9", "v2.7.14") == -1)
-check(
-    "  a four-number tag with a hash after it (Meshtastic firmware)",
-    releasever.compare("v2.8.0.47db0e3", "v2.7.26.54e0d8d") == 1,
-)
-check("  equal numbers are 0", releasever.compare("2.1.7", "v2.1.7") == 0)
-check("a tag with no shape (`snapshot`) cannot be compared by number", releasever.compare("snapshot", "v2.8.3") is None)
-mixed = [
-    {"tag": "v2.7.9", "date": "2025-12-11T00:00:00Z"},
-    {"tag": "v2.7.14", "date": "2026-06-03T00:00:00Z"},
-    {"tag": "v2.7.10", "date": "2025-12-27T00:00:00Z"},
-    {"tag": "v2.8.0", "date": "2026-07-29T00:00:00Z"},
+# --- order ---
+dated = [
+    {"tag": "v2.7.9", "published": "2025-12-11T00:00:00Z"},
+    {"tag": "v2.7.14", "published": "2026-06-03T00:00:00Z"},
+    {"tag": "nightly", "published": None},
+    {"tag": "v2.7.10", "published": "2025-12-27T00:00:00Z"},
+    {"tag": "v2.8.0", "published": "2026-07-29T00:00:00Z"},
 ]
 check(
-    "newest first, by number",
-    [r["tag"] for r in releasever.newest_first(mixed, lambda r: r["tag"], lambda r: r["date"])]
-    == ["v2.8.0", "v2.7.14", "v2.7.10", "v2.7.9"],
+    "newest first, by the date published; one with no date last",
+    [r["tag"] for r in holder.newest_first(dated)] == ["v2.8.0", "v2.7.14", "v2.7.10", "v2.7.9", "nightly"],
 )
-same_numbers = [{"tag": "v1.0", "date": "2026-01-02T00:00:00Z"}, {"tag": "1.0", "date": "2026-03-04T00:00:00Z"}]
+hashed = [
+    {"tag": "v2.8.0.47db0e3", "published": "2026-08-02T00:00:00Z"},
+    {"tag": "v2.8.0.7239fe8", "published": "2026-07-30T00:00:00Z"},
+]
 check(
-    "  the same numbers: the later date first",
-    [r["date"][:7] for r in releasever.newest_first(same_numbers, lambda r: r["tag"], lambda r: r["date"])]
-    == ["2026-03", "2026-01"],
+    "  the same numbers and a commit hash after them: the date decides, not the hash's digits",
+    [r["tag"] for r in holder.newest_first(hashed)] == ["v2.8.0.47db0e3", "v2.8.0.7239fe8"],
 )
 
 # --- patterns ---

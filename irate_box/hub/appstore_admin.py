@@ -18,7 +18,7 @@ Stdlib only.
 """
 
 from irate_box.hub import refused
-from irate_box.library import holder, holdsurvey, librarian, releasever
+from irate_box.library import holder, holdsurvey, librarian
 from irate_box.msg import M
 
 VIEW_KEYS = ("window", "short", "dimensions", "eras", "twins")
@@ -28,6 +28,7 @@ KIND_KEYS = (
     "example",
     "names",
     "releases",
+    "position",
     "seen",
     "size_min",
     "size_max",
@@ -62,8 +63,15 @@ def _preview(stored, holds):
 def _size_estimate(stored, holds, keep):
     """About how many bytes one version of the holds costs, and `keep` of them: the newest release the holds
     match, its kinds at their largest size. An estimate is an estimate; the page says "about"."""
-    every_tag = releasever.newest_first(  # by version, so v2.7.14 comes before v2.7.9
-        {tag for kind in stored.get("kinds", []) for tag in kind.get("names", {})}, str, lambda tag: None
+    # The survey numbered the releases newest first (each kind's `position`, beside its `releases`).
+    rank = {
+        tag: position
+        for kind in stored.get("kinds", [])
+        for tag, position in zip(kind.get("releases", []), kind.get("position", []), strict=False)
+    }
+    every_tag = sorted(
+        {tag for kind in stored.get("kinds", []) for tag in kind.get("names", {})},
+        key=lambda tag: rank.get(tag, len(rank)),
     )
     for tag in every_tag:
         taken = [

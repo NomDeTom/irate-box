@@ -35,7 +35,7 @@ import re
 import urllib.parse
 from pathlib import Path
 
-from irate_box.library import holder, releasever
+from irate_box.library import holder
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
 
@@ -158,7 +158,7 @@ def window(releases, per_channel=WINDOW):
     """The releases to look at, newest first in each channel: {"stable": [...], "pre-release": [...]} and
     which channels came up short. Drafts, revoked releases and tags that are not versions are left out."""
     counting = {"tag_pattern": holder.HOLDER_DEFAULTS["tag_pattern"], "extra_channels": []}
-    ordered = releasever.newest_first(releases, lambda release: release["tag"], lambda release: release["published"])
+    ordered = holder.newest_first(releases)
     chosen = {"stable": [], "pre-release": []}
     for release in ordered:
         channel = holder.channel_of(release, counting)

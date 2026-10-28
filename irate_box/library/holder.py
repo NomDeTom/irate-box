@@ -32,7 +32,8 @@ Settings ($HUB_STATE_DIR/library/holders.json):
 
 A release counts only if it has a held file, so a release that lacks them (Meshtastic's v2.7.13 against a pattern for
 v2.7.14's names) is passed over and an older one takes its place. Drafts and releases titled "Revoked" never count.
-Versions are ordered by their numbers where the tags share a standard shape (releasever.py), else by date.
+Versions are ordered by the date they were published, newest first (a patch to an older line published after a
+newer release counts as the newer).
 
 Runs inside the librarian (its lock, schedule and progress): librarian.py holders [--check] [ID ...].
 Stdlib only.
@@ -46,7 +47,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from irate_box.library import librarian, releasever
+from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
 
@@ -338,6 +339,13 @@ def held_files(release, holder):
     ]
 
 
+def newest_first(releases):
+    """The releases by the date they were published, newest first; one with no date last. Ties keep GitHub's own
+    order. By date, not by the numbers in the tags: a tag such as v2.8.0.47db0e3 ends in a commit hash, whose digits
+    say nothing about which came first."""
+    return sorted(releases, key=lambda release: release["published"] or "", reverse=True)
+
+
 def _age_days(published, now):
     try:
         then = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -354,7 +362,7 @@ def plan(holder, releases, now=None, record=None):
     `newest` (the newest release that counts, and whether it carries any of the held files at all — naming drift
     shows up here first) and `over_budget` (the versions the space limit dropped)."""
     now = now or datetime.now(timezone.utc)
-    ordered = releasever.newest_first(releases, lambda release: release["tag"], lambda release: release["published"])
+    ordered = newest_first(releases)
     kept, counts = [], {}
     for release in ordered:
         channel = channel_of(release, holder)
