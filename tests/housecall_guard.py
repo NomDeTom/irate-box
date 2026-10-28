@@ -27,7 +27,9 @@ for flag in ("--image", "--device", "--root", "--this-card", "--reference"):
     check(f"the command line takes {flag}", f'"{flag}"' in src)
 check("the report is control/housecall.json", 'CONTROL / "housecall.json"' in src)
 check("a whole-disk filesystem is read without a partition table", "_scan_ext" in src and "blkid(path, 0)" in src)
-check("the image is never opened for writing", '"-w"' not in src.replace('"write ', '"write ').replace('"-w"', ""))
+check("debugfs is never asked to write (no -w)", '"-w"' not in src)
+check("e2fsck runs read-only (-n)", '"e2fsck", "-fn"' in src)
+check("blkid probes without writing (-p)", '"blkid", "-p"' in src)
 check("the reference's SHA-256 is checked", 're.fullmatch(r"[0-9a-f]{64}"' in src)
 
 doctors = (REPO / "docs" / "dev" / "doctors.md").read_text()
