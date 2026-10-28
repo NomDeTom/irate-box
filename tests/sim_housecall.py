@@ -131,9 +131,68 @@ check(
 # The reference manifest as a file, and its refusal of a bad digest.
 refs = T / "refs.json"
 refs.write_text(json.dumps({"version": 1, "files": {"/good": {"sha256": hashlib.sha256(good).hexdigest()}}}))
-check("a reference manifest is read", housecall.load_references(refs) == {"/good": hashlib.sha256(good).hexdigest()})
+check(
+    "a reference manifest is read",
+    housecall.load_references(refs) == {"/good": {"sha256": hashlib.sha256(good).hexdigest()}},
+)
 refs.write_text(json.dumps({"files": {"/bad": "not-a-digest"}}))
 check("  a digest that is not SHA-256 is left out", housecall.load_references(refs) == {})
+
+# The references the box already has: its packages' MD5 sums, and irate-box's git tree.
+pkgroot = T / "pkgroot"
+(pkgroot / "etc").mkdir(parents=True)
+(pkgroot / "var/lib/dpkg/info").mkdir(parents=True)
+(pkgroot / "etc" / "example.conf").write_bytes(b"package file\n")
+(pkgroot / "var/lib/dpkg/info/example.md5sums").write_text(
+    f"{hashlib.md5(b'package file\n').hexdigest()}  etc/example.conf\n"
+)
+dpkg_refs = housecall.references_from_dpkg(pkgroot)
+check(
+    "the installed packages' MD5 sums become references",
+    dpkg_refs == {"/etc/example.conf": {"md5": hashlib.md5(b"package file\n").hexdigest()}},
+    dpkg_refs,
+)
+check(
+    "  and a package file that matches is genuine",
+    next(r["verdict"] for r in housecall.scan_dir(pkgroot, dpkg_refs) if r["path"] == "/etc/example.conf") == "genuine",
+)
+
+repo = T / "repo"
+(repo / "irate_box").mkdir(parents=True)
+(repo / "irate_box" / "example.py").write_bytes(b"print('ok')\n")
+subprocess.run(["git", "init", "-q", str(repo)], check=True)
+subprocess.run(["git", "-C", str(repo), "add", "irate_box/example.py"], check=True)
+subprocess.run(
+    ["git", "-C", str(repo), "-c", "user.name=test", "-c", "user.email=t@example.invalid", "commit", "-qm", "one"],
+    check=True,
+)
+commit = subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+).stdout.strip()
+gitroot = T / "gitroot"
+(gitroot / "opt/irate-box/irate_box").mkdir(parents=True)
+(gitroot / "opt/irate-box/irate_box/example.py").write_bytes(b"print('ok')\n")
+git_refs = housecall.references_from_git(gitroot, repo, commit)
+blob = subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", f"{commit}:irate_box/example.py"],
+    capture_output=True,
+    text=True,
+    check=True,
+).stdout.strip()
+check(
+    "irate-box's git tree becomes references, by the blob SHA-1",
+    git_refs == {"/opt/irate-box/irate_box/example.py": {"git": blob}},
+    git_refs,
+)
+check(
+    "  and a file that matches it is genuine",
+    next(
+        r["verdict"]
+        for r in housecall.scan_dir(gitroot / "opt/irate-box", git_refs, prefix="/opt/irate-box")
+        if r["path"] == "/opt/irate-box/irate_box/example.py"
+    )
+    == "genuine",
+)
 
 # From inside: this box's own folders, with a file on the NAND left out and said to be the NAND's.
 box = T / "box"
@@ -148,12 +207,12 @@ housecall._on_card = real_on_card
 by_path = {r["path"]: r for r in inside_report["files"]}
 check(
     "from inside: a card file turned to 0xFF is found and named",
-    by_path.get("/etc/damaged", {}).get("verdict") == "damaged",
+    next((r for path, r in by_path.items() if path.endswith("/etc/damaged")), {}).get("verdict") == "damaged",
     inside_report["files"],
 )
 check(
     "  a file on the NAND is left out, and the report says it is the NAND's",
-    "/nand/state.json" not in by_path
+    not any(path.endswith("/nand/state.json") for path in by_path)
     and any(
         f["id"] == "housecall-scope" and "housecall.scope.nand" in message_ids(f) for f in inside_report["findings"]
     ),

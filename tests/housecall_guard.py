@@ -23,7 +23,7 @@ def check(name, cond, info=""):
 
 names = Counter(n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.ClassDef)))
 check("no function or class defined twice", all(c == 1 for c in names.values()), [n for n, c in names.items() if c > 1])
-for flag in ("--image", "--device", "--root", "--this-card", "--reference"):
+for flag in ("--image", "--device", "--root", "--this-card", "--reference", "--dpkg", "--git-tree"):
     check(f"the command line takes {flag}", f'"{flag}"' in src)
 check("the report is control/housecall.json", 'CONTROL / "housecall.json"' in src)
 check(
@@ -52,7 +52,8 @@ check("a whole-disk filesystem is read without a partition table", "_scan_ext" i
 check("debugfs is never asked to write (no -w)", '"-w"' not in src)
 check("e2fsck runs read-only (-n)", '"e2fsck", "-fn"' in src)
 check("blkid probes without writing (-p)", '"blkid", "-p"' in src)
-check("the reference's SHA-256 is checked", 're.fullmatch(r"[0-9a-f]{64}"' in src)
+check("a reference's digest is checked", "re.fullmatch" in src and "sha256" in src and "md5" in src and "git" in src)
+check("the package and git references exist", "references_from_dpkg" in src and "references_from_git" in src)
 
 doctors = (REPO / "docs" / "dev" / "doctors.md").read_text()
 check("the doctors' page counts four", "# The four doctors" in doctors)
