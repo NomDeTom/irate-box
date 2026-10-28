@@ -2725,6 +2725,7 @@ def security_snapshot():
 
 
 HEALTH_STATE = CONTROL_DIR / "health.json"
+HOUSECALL_STATE = CONTROL_DIR / "housecall.json"
 INSTALL_LOG_DIR = Path(os.environ.get("HUB_LOG_DIR", "/var/log/irate-box"))
 HEALTH_CHOICE_RE = re.compile(
     r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
@@ -2963,6 +2964,15 @@ def helper_state():
             "sudo /opt/irate-box/irate-box health",
         ],
     }
+
+
+def housecall_snapshot():
+    """The Housecall doctor's last report (root helper), or None before its first examination."""
+    try:
+        report = json.loads(HOUSECALL_STATE.read_text())
+    except (OSError, ValueError):
+        report = None
+    return {"report": finding.current(report)}
 
 
 def health_snapshot():
@@ -4912,6 +4922,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, health_snapshot())
             return
 
+        if path == "/admin/housecall":
+            self.send_json(200, housecall_snapshot())
+            return
+
         if path == "/admin/rkboard":
             self.send_json(200, rkboard_snapshot())
             return
@@ -6463,6 +6477,36 @@ class Handler(BaseHTTPRequestHandler):
                 )
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
+            return
+
+        if path == "/admin/housecall":
+            target = payload.get("target")
+            path_arg = str(payload.get("path") or "")
+            reference = str(payload.get("reference") or "")
+            if target not in ("image", "device", "root", "this-card"):
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
+            elif target != "this-card" and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
+                self.send_json(400, refused.say(M("hub.housecall.path", "Give the path the doctor examines.")))
+            elif len(reference) > 4096 or "\0" in reference:
+                self.send_json(
+                    400, refused.say(M("hub.housecall.reference", "The reference file's path is not valid."))
+                )
+            else:
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {
+                                "action": "housecall-scan",
+                                "target": target,
+                                "path": path_arg,
+                                "reference": reference,
+                                "dpkg": payload.get("dpkg") is True,
+                                "git_tree": payload.get("git_tree") is True,
+                            }
+                        )
+                    },
+                )
             return
 
         if path == "/admin/network":

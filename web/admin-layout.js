@@ -42,7 +42,8 @@ const AL = (() => {
     { name: 'Doctors', art: 'doctor', pages: [
       { title: 'Box doctor', sections: ['health'] },
       { title: 'Security doctor', sections: ['secdoctor'] },
-      { title: 'Updates doctor', sections: ['updoctor'] }] },
+      { title: 'Updates doctor', sections: ['updoctor'] },
+      { title: 'Housecall doctor', sections: ['housecall'] }] },
     // Last: every control the pages use, with stand-in data (admin-mock.js), to copy from and to pick from.
     { name: 'Mock controls', art: 'controller', pages: [
       { title: 'Mock controls', sections: ['mock-controls'] }] },

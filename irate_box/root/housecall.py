@@ -589,6 +589,25 @@ def _own_disk(path):
     return Path(path).name == disk or _parent_disk(path) == disk
 
 
+def examine_root(root, references=None):
+    """A folder the owner points at, read past the cache: the same per-file verdicts, paths from that folder."""
+    root = Path(root)
+    if not root.is_dir():
+        raise Refused(M("housecall.not-folder", "{path} is not a folder.", path=str(root)))
+    records = scan_dir(root, references)
+    findings = [
+        finding(
+            "housecall-target",
+            M("housecall.target.title", "Target"),
+            "ok",
+            M("housecall.target.root", "The folder {path} is being read. Nothing is written.", path=str(root)),
+            evidence=[str(root)],
+        ),
+        _files_finding(records, str(root)),
+    ]
+    return _report(root, findings, records, None)
+
+
 def examine_this_card(references=None, roots=None):
     """This box's own files on the SD card (the plan's step 4): the folders the box writes and systemd's, card
     files only, the hub's large folders left out. A file on the NAND (nand-logs' state) is left out and said to be
@@ -808,7 +827,7 @@ def main(argv):
         elif kind == "device":
             report = examine_device(target, references)
         elif kind == "root":
-            report = _report(Path(target), [_files_finding(scan_dir(target, references), str(target))], [], None)
+            report = examine_root(target, references)
         elif kind == "this-card":
             report = examine_this_card(references)
         else:

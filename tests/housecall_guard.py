@@ -66,6 +66,14 @@ check(
     "documents how to run it on an image",
     "irate-box housecall --image" in doctors,
 )
+page = (REPO / "web" / "admin.html").read_text()
+layout = (REPO / "web" / "admin-layout.js").read_text()
+control = (REPO / "irate_box" / "root" / "hub_control.py").read_text()
+server = (REPO / "irate_box" / "hub" / "server.py").read_text()
+check("the page has the Housecall doctor's section", 'id="housecall"' in page and 'id="housecall-scan"' in page)
+check("  and the Doctors group lists it", "title: 'Housecall doctor', sections: ['housecall']" in layout)
+check("the root helper takes housecall-scan", '"housecall-scan": housecall_scan' in control)
+check("  and the hub serves its report and its scan", '"/admin/housecall"' in server and "housecall_snapshot" in server)
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

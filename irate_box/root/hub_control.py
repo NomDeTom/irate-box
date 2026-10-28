@@ -80,6 +80,11 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       "rerun-install": install.sh again from a copy of the installed code, recorded options;
       "rerun-install-port-80" the same with the hub moved to port 80.
       Then the Box doctor looks again.
+  {"id": ..., "action": "housecall-scan", "target": "image"|"device"|"root"|"this-card", "path": "...",
+   "reference": "...", "dpkg": true|false, "git_tree": true|false}
+      The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
+      only, with a verdict for each file; to control/housecall.json. "reference" is a JSON manifest, "dpkg" and
+      "git_tree" add the package and irate-box tree references.
   {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
       What the box has for networking (netinv.py): radios, who runs them, what each can do,
       what is in the way; to control/netinv.json. With "iface", that device alone.
@@ -6109,6 +6114,45 @@ def health_fix(req):
     return msg
 
 
+def housecall_scan(req):
+    """The Housecall doctor (housecall.py): an image, a card device, a folder or this box's own files, read only."""
+    from irate_box.root import housecall
+
+    kind = str(req.get("target") or "")
+    path = str(req.get("path") or "")
+    if kind not in ("image", "device", "root", "this-card"):
+        raise Refused(M("control.housecall.target", "Select what the doctor examines."))
+    if kind != "this-card" and (not path or "\0" in path or len(path) > 4096):
+        raise Refused(M("control.housecall.path", "Give the path the doctor examines."))
+    references = {}
+    if req.get("reference"):
+        references = housecall.load_references(str(req["reference"]))
+    if req.get("dpkg") or req.get("git_tree"):
+        base = "/" if kind == "this-card" else path
+        if req.get("dpkg"):
+            references = housecall.merge_references(references, housecall.references_from_dpkg(base))
+        if req.get("git_tree"):
+            references = housecall.merge_references(references, housecall.references_from_git(base))
+    if kind == "image":
+        report = housecall.examine_image(path, references)
+    elif kind == "device":
+        report = housecall.examine_device(path, references)
+    elif kind == "root":
+        report = housecall.examine_root(path, references)
+    else:
+        report = housecall.examine_this_card(references)
+    housecall.write_report(report)
+    c = report["counts"]
+    return M(
+        "control.housecall.scanned",
+        "The Housecall doctor examined {target}: {damaged} damaged, {suspect} suspect, {genuine} genuine.",
+        target=report["target"],
+        damaged=c["damaged"],
+        suspect=c["suspect"],
+        genuine=c["genuine"],
+    )
+
+
 # --- network: inventory and the uplink watchdog ------------------------------------------
 
 IFACE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")  # no leading "-": it would be an option
@@ -7325,6 +7369,7 @@ ACTIONS = {
     "content-export": content_export,
     "health-scan": health_scan,
     "health-fix": health_fix,
+    "housecall-scan": housecall_scan,
     "net-scan": net_scan,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,

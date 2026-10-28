@@ -223,6 +223,21 @@ check(
     sorted(str(p.relative_to(box)) for p in box.rglob("*")) == ["etc", "etc/damaged", "nand", "nand/state.json"],
 )
 
+# The root helper's action the page asks for: the same image, its report written.
+from irate_box.root import hub_control
+
+said = hub_control.housecall_scan({"target": "image", "path": str(image)})
+check(
+    "the root helper's housecall-scan writes the report and says the counts",
+    said.get("id") == "control.housecall.scanned" and (T / "state" / "control" / "housecall.json").is_file(),
+    said,
+)
+try:
+    hub_control.housecall_scan({"target": "nonsense"})
+    check("  an unknown target: refused", False)
+except Exception as exc:  # Refused
+    check("  an unknown target: refused", "Refused" in type(exc).__name__ or exc.__class__.__name__ == "Refused")
+
 # The report the page reads.
 housecall.write_report(card_report)
 saved = json.loads((T / "state" / "control" / "housecall.json").read_text())

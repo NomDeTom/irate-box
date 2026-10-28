@@ -5542,6 +5542,34 @@
           </details>
         </section>
 
+        <section class="admin-pane" id="housecall" aria-labelledby="housecall-title">
+          <h2 id="housecall-title" data-i18n="admin.housecall.title">Housecall doctor</h2>
+          <p class="setting-desc" data-i18n="admin.housecall.intro">
+            Examine a card image, a card in a reader, a folder, or this box's own
+            files, and give every file a verdict: genuine, damaged, suspect or
+            unknown. It reads only: nothing is written to the card or image. From
+            a terminal, run
+            <code>sudo /opt/irate-box/irate-box housecall --image PATH</code>.
+          </p>
+          <div class="library-buttons">
+            <label data-i18n="admin.housecall.what">What to examine
+              <select id="housecall-target">
+                <option value="image" data-i18n="admin.housecall.image">A card image</option>
+                <option value="device" data-i18n="admin.housecall.device">A card in a reader</option>
+                <option value="root" data-i18n="admin.housecall.folder">A folder</option>
+                <option value="this-card" data-i18n="admin.housecall.this-card">This box's own files</option>
+              </select></label>
+            <label data-i18n="admin.housecall.path-label">Path
+              <input type="text" id="housecall-path" size="32" placeholder="/path/to/card.img" autocomplete="off" spellcheck="false" data-i18n-placeholder="admin.housecall.path-placeholder" /></label>
+            <label data-i18n="admin.housecall.packages"><input type="checkbox" id="housecall-dpkg" /> the packages' checksums</label>
+            <label data-i18n="admin.housecall.tree"><input type="checkbox" id="housecall-git" /> irate-box's git tree</label>
+            <button class="action-btn" type="button" id="housecall-scan" data-i18n="admin.housecall.scan">Examine</button>
+          </div>
+          <p class="setting-desc action-note" id="housecall-note" role="status" hidden></p>
+          <p class="setting-desc" id="housecall-when" data-i18n="admin.housecall.when">Not examined yet.</p>
+          <div class="findings" id="housecall-findings"></div>
+        </section>
+
         <section class="admin-pane" id="mock-controls" aria-labelledby="mock-controls-title">
           <h2 id="mock-controls-title" data-i18n="admin.mock-controls.title">Mock controls</h2>
           <p class="setting-desc" data-i18n="admin.mock-controls.intro">

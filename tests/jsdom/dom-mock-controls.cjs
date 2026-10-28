@@ -34,7 +34,7 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   const links = [...d.querySelectorAll('#admin-side-list a')];
   // Last of the box's own groups, after the doctors (here the apps' list never comes, so "More" may follow it).
   const at = links.map(text).indexOf('Mock controls');
-  check('in the sidebar, right after the doctors', at > 0 && text(links[at - 1]) === 'Updates doctor', links.map(text).slice(at - 2, at + 1).join(' | '));
+  check('in the sidebar, right after the doctors', at > 0 && text(links[at - 1]) === 'Housecall doctor', links.map(text).slice(at - 2, at + 1).join(' | '));
   check('not drawn before it is opened', !d.getElementById('mock-controls-body').children.length);
 
   w.location.hash = '#mock-controls';
