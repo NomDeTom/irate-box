@@ -22,7 +22,7 @@
    "source": {
     "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
     "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
-    "version": "fd26d92",
+    "version": "f0c8813",
     "licence": "GPL-2.0"
    },
    "notes": [
@@ -43,12 +43,18 @@
      "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8",
      "date": "2026-10-26",
      "result": "Both pinned branches built by DKMS with no warnings and loaded: bound as 368b:8d81 with no new_id, joined, Bluetooth up, stall_watch 1 (the default)."
+    },
+    {
+     "by": "irate-box",
+     "on": "Raspberry Pi 3B+, kernel 6.18.50+rpt-rpi-v8",
+     "date": "2026-10-28",
+     "result": "Both pinned branches, with three fixes from review (the per-port reset table, times that survive a long uptime, the stall watch at unload), built with no new warnings. Not yet loaded."
     }
    ],
    "source_also": {
     "name": "NomDeTom/aic8800, branch irate/box: Radxa's aic8800-usb-dkms with the same fixes as quilt patches",
     "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
-    "version": "d2d6526",
+    "version": "7a491d3",
     "licence": "GPL-2.0"
    }
   },
@@ -69,7 +75,7 @@
    "source": {
     "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
     "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
-    "version": "fd26d92",
+    "version": "f0c8813",
     "licence": "GPL-2.0"
    },
    "notes": [
@@ -89,12 +95,18 @@
      "on": "Luckfox Lyra Zero W, kernel 6.1.115-vendor-rockchip",
      "date": "2026-10-26",
      "result": "The community branch (its code, as test build 1.0.0+irate6test1): 4 stalls recovered by the driver itself in ordinary use since 2026-10-24, no oops. Under test (T7 to T10): every stall recovered, 3 in 100 joins with the hotspot busy on another channel."
+    },
+    {
+     "by": "irate-box",
+     "on": "Luckfox Lyra Zero W, kernel 6.1.115-vendor-rockchip",
+     "date": "2026-10-28",
+     "result": "Both pinned branches, with three fixes from review (the per-port reset table, times that survive a long uptime, the stall watch at unload), built with no new warnings. Not yet loaded."
     }
    ],
    "source_also": {
     "name": "NomDeTom/aic8800, branch irate/box: Radxa's aic8800-usb-dkms with the same fixes as quilt patches",
     "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
-    "version": "d2d6526",
+    "version": "7a491d3",
     "licence": "GPL-2.0"
    }
   },
