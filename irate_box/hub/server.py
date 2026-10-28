@@ -36,6 +36,8 @@ from irate_box import confine, finding
 from irate_box.hub import (
     access,
     accounts,
+    appstore,
+    appstore_admin,
     backup,
     board,
     cardhistory,
@@ -61,7 +63,7 @@ from irate_box.hub import (
     uplink,
     watchlog,
 )
-from irate_box.library import firmware, librarian, zimcheck
+from irate_box.library import firmware, holder, librarian, zimcheck
 from irate_box.msg import M, render
 
 CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/hub/server.py → the checkout
@@ -2025,6 +2027,34 @@ def firmware_action(payload):
     snap = firmware.snapshot()
     snap.update(running=librarian.is_running(), progress=librarian.progress())
     return 200, snap
+
+
+def appstore_action(payload):
+    """(status, body) for POST /admin/appstore: the settings (appstore_admin.action), or a run: one holder's
+    Look again, or every holder's check or update, each under the librarian's lock, as the firmware's page
+    starts its own. An answer of a run is read when the page asks again (running, progress)."""
+    action = payload.get("action")
+    if action in ("survey", "holder-check", "holder-update"):
+        holder_id = str(payload.get("id") or "")
+        if action == "survey" and not holder_id:
+            return 400, refused.say(M("appstore.survey-no-holder", "Select one to look at."))
+
+        def run():
+            with librarian.Lock():
+                if action == "survey":
+                    return {"survey": appstore_admin.survey_job(holder_id)}
+                only = {holder_id} if holder_id else None
+                return {"holders": holder.sync(check_only=(action == "holder-check"), only=only, log=lambda *_: None)}
+
+        if not library_start(f"appstore-{action}", run):
+            return 409, refused.say(librarian.BUSY)
+        snap = appstore_admin.snapshot()
+        snap.update(running=True, progress=librarian.progress())
+        return 200, snap
+    try:
+        return appstore_admin.action(payload)
+    except (librarian.LibrarianError, OSError, ValueError) as exc:
+        return _busy_or(400, exc)
 
 
 # --- admin: box and services, moderation, saved work, password, backup -----------
@@ -4582,6 +4612,10 @@ class Handler(BaseHTTPRequestHandler):
             self._flasher(path)
             return
 
+        if path in ("/appstore", "/appstore/") or path.startswith("/appstore/"):
+            self._appstore(path)
+            return
+
         if path in ("/source", "/source/", "/source/irate-box-source.tar.gz"):
             self._send_source()
             return
@@ -4965,6 +4999,10 @@ class Handler(BaseHTTPRequestHandler):
             snap = firmware.snapshot()
             snap.update(running=librarian.is_running(), progress=librarian.progress())
             self.send_json(200, snap)
+            return
+
+        if path == "/admin/appstore":
+            self.send_json(200, appstore_admin.snapshot())
             return
 
         if path == "/admin/factory":
@@ -5774,6 +5812,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/firmware":
             self.send_json(*firmware_action(payload))
+            return
+
+        if path == "/admin/appstore":
+            self.send_json(*appstore_action(payload))
             return
 
         if path == "/admin/mesh":
@@ -6939,6 +6981,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not store.handle(self, "OPTIONS", path, STORE, DROP):
             self.send_empty(404)
+
+    def _appstore(self, path):
+        """The App store (appstore.py): the page, the files held by the keeper, their lists. The app's own
+        switch and each holder's visibility decide what this visitor is shown; Range is honoured, so a phone
+        whose download is cut short resumes it."""
+        appstore.route(self, path, access.mode_of(access.read(ACCESS_STATE), "appstore"))
 
     def _flasher(self, path):
         """The web flashers (flasher.py): /flasher/ the light one's page, in place; the Meshtastic one

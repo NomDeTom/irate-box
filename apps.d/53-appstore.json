@@ -1,0 +1,17 @@
+{
+  "id": "appstore",
+  "order": 53,
+  "tile": {
+    "icon": "🛒",
+    "name": "App store",
+    "desc": "App files kept on this box, ready with no internet",
+    "href": "/appstore/"
+  },
+  "admin": {
+    "sections": [
+      "appstore"
+    ],
+    "title": "App store",
+    "icon": "🛒"
+  }
+}

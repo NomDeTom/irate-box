@@ -155,14 +155,15 @@ def block_of(text, start):
 check(
     "a baseline CSP on the hub's origin: server-wide, and beside every Cache-Control the hub block sets",
     "set $irate_box_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'\";" in hub
-    # the hub's own pages (/, /index.html, its static files, drop and themes) have the stricter one
-    and hub.count(csp_line) + hub.count(page_line) == hub.count("add_header Cache-Control") + 1 + 2,
+    # the hub's own pages (/, /index.html, its static files, drop, themes, the App store) have the stricter one;
+    # the App store's location sets no Cache-Control of its own (the hub says it per response, the files long-cached)
+    and hub.count(csp_line) + hub.count(page_line) == hub.count("add_header Cache-Control") + 1 + 3,
     (hub.count(csp_line), hub.count(page_line), hub.count("add_header Cache-Control")),
 )
 check(
     "  the hub's own pages run only the scripts it serves (script-src 'self'), the apps beside them the baseline",
     "set $irate_box_page_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'\";" in hub
-    and hub.count(page_line) == 5
+    and hub.count(page_line) == 6  # index, /, the statics, drop, themes, the App store's own pages
     and "irate_box_page_csp" in block_of(hub, "\tlocation = / {")
     and csp_line in block_of(hub, "\tlocation ^~ /tools/ {")
     and "irate_box_page_csp" not in block_of(hub, "\tlocation ^~ /tools/ {"),

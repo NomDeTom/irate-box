@@ -132,6 +132,19 @@
 		}
 	}
 
+	# --- /appstore → the App store: the page, and the files the keeper holds ----------------
+	# All of it the hub's (appstore.py): it lists only what each holder's own sha256.json recorded, and holds
+	# the path to the folder. The session cookie goes with the request: a holder may be for members, which the
+	# hub checks again whatever the gate above says. Range goes through untouched, so a phone resumes.
+	handle /appstore* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/appstore.caddy*
+		# The address is not *.html, so the server-wide page CSP above would miss it: the hub's own page rules.
+		header Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'"
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+		}
+	}
+
 	# --- /wiki → Kiwix, on an origin of its own (irate_box_wiki, below) ------------------
 	# A book's pages run whatever script the book carries, from a download, a stick or a URL,
 	# so on the hub's origin a book could act with the owner's login. Here: the off switch, then

@@ -97,7 +97,7 @@ A feature moves up one step at a time. Update its row in the same change that mo
 | Hub as a Tor onion service, as an add-on                                            | idea    | Parked.                       |
 | Remote access through an anonymous discovery service                                | concept | Parked.                       |
 | Add-ons that state the oldest irate-box release they work with                      | idea    | Needs signed release numbers. |
-| Hosting the desktop Meshtastic app and the Android app as downloads                 | concept |                               |
+| App store: kept release files of GitHub projects, served with no internet           | basic   | GitHub only; phone untested.  |
 | Bluetooth scanner, and control of BLE nodes                                         | idea    |                               |
 | A page to operate the toolkits                                                      | concept | Reuses the toolkit cards.     |
 | Web Serial over HTTPS with a certificate that browsers trust (DNS-01)               | idea    |                               |

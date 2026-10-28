@@ -1,0 +1,1327 @@
+[
+ {
+  "tag_name": "v2.8.1.8e6a88d",
+  "name": "Meshtastic Firmware 2.8.1.8e6a88d Alpha",
+  "published_at": "2026-10-01T17:19:05Z",
+  "created_at": "2026-09-28T10:29:53Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Big changes\r\n\r\n> [!WARNING]\r\n> **New US nodes now default to LongTurbo, not LongFast.** Only applies to first-time ",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.8.1.8e6a88d.zip",
+    "size": 241714924,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-esp32-2.8.1.8e6a88d.zip",
+    "digest": "sha256:8869cc6802d5dee214625f01def3babfe596a7d8f6df7e226ae480658373f93d"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.8.1.8e6a88d.zip",
+    "size": 32047065,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-esp32c3-2.8.1.8e6a88d.zip",
+    "digest": "sha256:4cd474a6d2ec41b3cbc91e73b9c164784a4c5c836d7b0eb8dbbd0679dd686846"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.8.1.8e6a88d.zip",
+    "size": 52904799,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-esp32c6-2.8.1.8e6a88d.zip",
+    "digest": "sha256:9b5775f6ade8903b0ebe73e4420c8d41eb1547193940182e82d9b9c48693ac28"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.8.1.8e6a88d.zip",
+    "size": 1375021777,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-esp32s3-2.8.1.8e6a88d.zip",
+    "digest": "sha256:bf01d9aed2f595dae21ce6a70f15494926ca2868766cdaac59286415aa213496"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.8.1.8e6a88d.zip",
+    "size": 30811522,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-nrf52840-2.8.1.8e6a88d.zip",
+    "digest": "sha256:e430308edbe0c9e0a3a77c84b63d8885a2d5b2dab061a5e966897431a45c3f24"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.8.1.8e6a88d.zip",
+    "size": 6631463,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-rp2040-2.8.1.8e6a88d.zip",
+    "digest": "sha256:d8c24e1062d5d35f064ebe9c357cfec15ea56f220290f8239e3f8f95f32ef667"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.8.1.8e6a88d.zip",
+    "size": 4195022,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-rp2350-2.8.1.8e6a88d.zip",
+    "digest": "sha256:d982709f8c61b4f2b1e89373ac37ad84b32b33ddd6fcfd58b7b7574b9ba84f4f"
+   },
+   {
+    "name": "debug-elfs-stm32-2.8.1.8e6a88d.zip",
+    "size": 7300806,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/debug-elfs-stm32-2.8.1.8e6a88d.zip",
+    "digest": "sha256:bee1212fc147e0fd2d8e6b1168ccfe199fa97ae737b558fe81a31771a1021c43"
+   },
+   {
+    "name": "firmware-2.8.1.8e6a88d.json",
+    "size": 11680,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-2.8.1.8e6a88d.json",
+    "digest": "sha256:067588b46cde0ddeb1c06ba7f8803413dedffed02a6453082c3f8ad15c53f5c5"
+   },
+   {
+    "name": "firmware-esp32-2.8.1.8e6a88d.zip",
+    "size": 39980216,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-esp32-2.8.1.8e6a88d.zip",
+    "digest": "sha256:5d8e2d34021931a3f72558c2251f3b3f43b5facb182940208f0dabe37b9e3eb2"
+   },
+   {
+    "name": "firmware-esp32c3-2.8.1.8e6a88d.zip",
+    "size": 5426300,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-esp32c3-2.8.1.8e6a88d.zip",
+    "digest": "sha256:0d0d62c53fd560999e9284800db66237dbd9a87ba26f97eae6b7739ae2af67d0"
+   },
+   {
+    "name": "firmware-esp32c6-2.8.1.8e6a88d.zip",
+    "size": 9372036,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-esp32c6-2.8.1.8e6a88d.zip",
+    "digest": "sha256:f30ebacd31192be8f75f38a0eacade7c7aa6eac3e7200f57461de533f4bc5456"
+   },
+   {
+    "name": "firmware-esp32s3-2.8.1.8e6a88d.zip",
+    "size": 216195229,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-esp32s3-2.8.1.8e6a88d.zip",
+    "digest": "sha256:11dd08adf57e3a88b93f9c730178942a4073e48d064c3ed90e1b1585806798aa"
+   },
+   {
+    "name": "firmware-nrf52840-2.8.1.8e6a88d.zip",
+    "size": 54235328,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-nrf52840-2.8.1.8e6a88d.zip",
+    "digest": "sha256:84680cfebb3ff738349e0ab18f2b920eb29ae2d7c18a8ab11ef0c2fd315fb798"
+   },
+   {
+    "name": "firmware-rp2040-2.8.1.8e6a88d.zip",
+    "size": 3129315,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-rp2040-2.8.1.8e6a88d.zip",
+    "digest": "sha256:1d60ce519db51200112001f146576ed723ce43e269e47b8f40f5f97f3df0cd61"
+   },
+   {
+    "name": "firmware-rp2350-2.8.1.8e6a88d.zip",
+    "size": 1949677,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-rp2350-2.8.1.8e6a88d.zip",
+    "digest": "sha256:8107fe80a07a2534c387ec432b5b6350a14ee0e56ae04639c4c91ad91a984912"
+   },
+   {
+    "name": "firmware-stm32-2.8.1.8e6a88d.zip",
+    "size": 315335,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/firmware-stm32-2.8.1.8e6a88d.zip",
+    "digest": "sha256:8e7e3c4441e2f9e9c6c2b43c006b5e0aa890af6c8f3cba53e84c034f8dbba04c"
+   },
+   {
+    "name": "meshtasticd-2.8.1.34209.local8e6a88d-src.zip",
+    "size": 465605838,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/meshtasticd-2.8.1.34209.local8e6a88d-src.zip",
+    "digest": "sha256:6384a92d9a65dd041c74d6cacee30f507e33d95b6833511e3d7f951712bcd93a"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.8.1.8e6a88d.zip",
+    "size": 507347029,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.1.8e6a88d/platformio-deps-native-tft-2.8.1.8e6a88d.zip",
+    "digest": "sha256:a2adc844779254c68384ed4809067cae3262f044386e456302ec768a36fb9750"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.8.0.47db0e3",
+  "name": "Meshtastic Firmware 2.8.0.47db0e3 Alpha (Revoked)",
+  "published_at": "2026-09-01T10:56:13Z",
+  "created_at": "2026-08-31T19:38:35Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Big changes\r\n\r\n> [!WARNING]\r\n> **New US nodes now default to LongTurbo, not LongFast.** Only applies to first-time ",
+  "assets": [
+   {
+    "name": "firmware-2.8.0.47db0e3.json",
+    "size": 11367,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-2.8.0.47db0e3.json",
+    "digest": "sha256:b230111d77e4b1cd18b46396fb1cf8aaacd80974bf5c4b1703e48a354de95df2"
+   },
+   {
+    "name": "firmware-esp32-2.8.0.47db0e3.zip",
+    "size": 41259196,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-esp32-2.8.0.47db0e3.zip",
+    "digest": "sha256:5e75f3df92578c5e63834be7fe0b46c4509db4af96e28cc6fa4fed089342c73b"
+   },
+   {
+    "name": "firmware-esp32c3-2.8.0.47db0e3.zip",
+    "size": 5535156,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-esp32c3-2.8.0.47db0e3.zip",
+    "digest": "sha256:4166c20d552b8736f43c0ff3eac8f4c41b1625ff0c3161ca3ab9182b125fc6b6"
+   },
+   {
+    "name": "firmware-esp32c6-2.8.0.47db0e3.zip",
+    "size": 9263704,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-esp32c6-2.8.0.47db0e3.zip",
+    "digest": "sha256:b0d2ee5a549d57158ae58dfc7f759e39214827b9c13deff8a0a08ef731e15119"
+   },
+   {
+    "name": "firmware-esp32s3-2.8.0.47db0e3.zip",
+    "size": 212253844,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-esp32s3-2.8.0.47db0e3.zip",
+    "digest": "sha256:be3d0d60f56554275e8d59eb80e63a4341d03ee59c9421cfa6209d9ef80a7fdd"
+   },
+   {
+    "name": "firmware-nrf52840-2.8.0.47db0e3.zip",
+    "size": 58592416,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-nrf52840-2.8.0.47db0e3.zip",
+    "digest": "sha256:72b90d93ea2b2bfb9d1d483a74bef771adc7d32f1a909dec81cd365ee8175e9f"
+   },
+   {
+    "name": "firmware-rp2040-2.8.0.47db0e3.zip",
+    "size": 3333080,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-rp2040-2.8.0.47db0e3.zip",
+    "digest": "sha256:7979a79d24fbc0c1e3fd37f1c6b5ac9b3952dad56f2e00d607ead1dea157d4bc"
+   },
+   {
+    "name": "firmware-rp2350-2.8.0.47db0e3.zip",
+    "size": 2091876,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-rp2350-2.8.0.47db0e3.zip",
+    "digest": "sha256:c9da3a4fd0cd54911861840a891a069bb53448adff8ce8accf46a0e76bb48a70"
+   },
+   {
+    "name": "firmware-stm32-2.8.0.47db0e3.zip",
+    "size": 338699,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.8.0.47db0e3/firmware-stm32-2.8.0.47db0e3.zip",
+    "digest": "sha256:318cf987376fbefd25a424fc99c462b058e01e1b327ac9b3dcaabd5211e6af2c"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.8.0.7239fe8",
+  "name": "Meshtastic Firmware 2.8.0.7239fe8 (Revoked)",
+  "published_at": "2026-08-30T00:52:23Z",
+  "created_at": "2026-08-29T16:31:55Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "\r\n> [!WARNING]\r\n> This initial cut of 2.8.0 was revoked due to issues encountered with LR1110 initialization. This becam",
+  "assets": []
+ },
+ {
+  "tag_name": "v2.7.26.54e0d8d",
+  "name": "Meshtastic Firmware 2.7.26.54e0d8d Beta",
+  "published_at": "2026-06-24T11:19:27Z",
+  "created_at": "2026-06-23T16:26:52Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "> [!WARNING]\r\n> If you encounter touch screen accuracy issues on a T-Deck, please run the screen calibration in MUI tool",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.26.54e0d8d.zip",
+    "size": 106392496,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-esp32-2.7.26.54e0d8d.zip",
+    "digest": "sha256:dc5f4824a436b53751bce5d8b87aa2c6a7b5a7777ca450cea66e3dd87b10f8fe"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.26.54e0d8d.zip",
+    "size": 12692891,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-esp32c3-2.7.26.54e0d8d.zip",
+    "digest": "sha256:ca28d54dd911152fd68dc285493a85ad3f40dd3dc388994233e70e107da226c4"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.26.54e0d8d.zip",
+    "size": 23989151,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-esp32c6-2.7.26.54e0d8d.zip",
+    "digest": "sha256:b1202462c31f749eb597b4976e165ac72e6b1a4546f4c3f4930eef6c3e1dce83"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.26.54e0d8d.zip",
+    "size": 447478887,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-esp32s3-2.7.26.54e0d8d.zip",
+    "digest": "sha256:3975e05fd38cc451b2e3eaf1fa4d93e4c91cec85a82e9d120a84f2534983f4a2"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.26.54e0d8d.zip",
+    "size": 27130336,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-nrf52840-2.7.26.54e0d8d.zip",
+    "digest": "sha256:a734410efaf063fb82dd0bcc8ba4fd3c7825a02e216b598d3685215132816629"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.26.54e0d8d.zip",
+    "size": 15641470,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-rp2040-2.7.26.54e0d8d.zip",
+    "digest": "sha256:27b7de2cf8b40eb93677e86147d5982ec8fa33fa06b93b81f33ad063d8dbdd64"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.26.54e0d8d.zip",
+    "size": 8148861,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-rp2350-2.7.26.54e0d8d.zip",
+    "digest": "sha256:5624e70c6ba6e5ac2ba56a1f194afaa4e22b1219394a645d142a00f54e75bd62"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.26.54e0d8d.zip",
+    "size": 6703604,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/debug-elfs-stm32-2.7.26.54e0d8d.zip",
+    "digest": "sha256:9ad62cc0f4b7e635f12d8a139d46ba2e425e705701bfe4d3ce5bf557a0ccf3a9"
+   },
+   {
+    "name": "firmware-2.7.26.54e0d8d.json",
+    "size": 9825,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-2.7.26.54e0d8d.json",
+    "digest": "sha256:507898c53b605bc23fc8fc0d62feefb180c8e9bd094e5a1fbf0441a688b5cd0e"
+   },
+   {
+    "name": "firmware-esp32-2.7.26.54e0d8d.zip",
+    "size": 40738495,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-esp32-2.7.26.54e0d8d.zip",
+    "digest": "sha256:67f94bb2f0fe32c0f64d34429527e89fcb3d3c84fa444965987e297ce80745d1"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.26.54e0d8d.zip",
+    "size": 5170067,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-esp32c3-2.7.26.54e0d8d.zip",
+    "digest": "sha256:5ebb8ac56b539b5bea38534e2179e2a6f4160b77344535f7547413ff53112c0c"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.26.54e0d8d.zip",
+    "size": 4706449,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-esp32c6-2.7.26.54e0d8d.zip",
+    "digest": "sha256:bc61afe18de65cea2b7cecd67c6ede4adb35a1d022e3fe789f51121ca7973ff8"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.26.54e0d8d.zip",
+    "size": 170272165,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-esp32s3-2.7.26.54e0d8d.zip",
+    "digest": "sha256:339650ced8b8c859751f04be69c6af845fea96baca1327518f199afd2595a9d4"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.26.54e0d8d.zip",
+    "size": 46259773,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-nrf52840-2.7.26.54e0d8d.zip",
+    "digest": "sha256:69ae5c1f38474e32d815dc8bc54291944fb1eb2bf0c3bd0abf5513cb078de5b2"
+   },
+   {
+    "name": "firmware-rp2040-2.7.26.54e0d8d.zip",
+    "size": 3046948,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-rp2040-2.7.26.54e0d8d.zip",
+    "digest": "sha256:1f23e6135e0aca332c259650eb0b8faaf1c3c739287b18ff2aceaabdab12c19e"
+   },
+   {
+    "name": "firmware-rp2350-2.7.26.54e0d8d.zip",
+    "size": 1651586,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-rp2350-2.7.26.54e0d8d.zip",
+    "digest": "sha256:9b42460eb1abd886bdded30834fd4306d7892ca1cef562f9edf64eab5805976c"
+   },
+   {
+    "name": "firmware-stm32-2.7.26.54e0d8d.zip",
+    "size": 284898,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/firmware-stm32-2.7.26.54e0d8d.zip",
+    "digest": "sha256:629dc883d8741dd4e834d452c38302f58da4279a85d30278ad9bea2e4e72c9da"
+   },
+   {
+    "name": "meshtasticd-2.7.26.29100.local54e0d8d-src.zip",
+    "size": 444914870,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/meshtasticd-2.7.26.29100.local54e0d8d-src.zip",
+    "digest": "sha256:1a66f43712a5259c71e1c19bd9e60fb58d0c08e7f4dfe0cd9b0054c2ca73a6d1"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.26.54e0d8d.zip",
+    "size": 488051668,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.26.54e0d8d/platformio-deps-native-tft-2.7.26.54e0d8d.zip",
+    "digest": "sha256:9ce0661d576e0297213890872399379e0faa7c4c1210d8e43ff16114f6860632"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.25.104df5f",
+  "name": "Meshtastic Firmware 2.7.25.104df5f Alpha",
+  "published_at": "2026-06-10T00:18:32Z",
+  "created_at": "2026-06-08T21:20:05Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Enhancements\r\n\r\n- Noise floor by @RCGV1 in https://github.com/meshtastic/firmware/pull/9347\r\n- Compass improvements",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.25.104df5f.zip",
+    "size": 106389092,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-esp32-2.7.25.104df5f.zip",
+    "digest": "sha256:a4a1bbfdc9e646f986b6fe7b04a2a0a3e1874b57c2797919f3de610c1ffd03d4"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.25.104df5f.zip",
+    "size": 12691817,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-esp32c3-2.7.25.104df5f.zip",
+    "digest": "sha256:21592941e2add5a9bf3b067cea14dbcbc15953afe4eb7acba92b822ddfb2c88c"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.25.104df5f.zip",
+    "size": 23989311,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-esp32c6-2.7.25.104df5f.zip",
+    "digest": "sha256:7a66679088b0ea13251cce7c19c19863b676756b7a777fc75627b1b21a2faf95"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.25.104df5f.zip",
+    "size": 447461180,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-esp32s3-2.7.25.104df5f.zip",
+    "digest": "sha256:f9efa627e6180b3b9b94f6f600ad0683f11d84a29352f43d39d12a076a899928"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.25.104df5f.zip",
+    "size": 27130848,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-nrf52840-2.7.25.104df5f.zip",
+    "digest": "sha256:4f4c76319d931bdbfdecf8da732216e0f16e1032b62074dfce54df5385ba3504"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.25.104df5f.zip",
+    "size": 15641560,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-rp2040-2.7.25.104df5f.zip",
+    "digest": "sha256:79549cd834f2a249d538e9857a1e02e5f19f4864c80f2d099eb72eeafb120f4f"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.25.104df5f.zip",
+    "size": 8147763,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-rp2350-2.7.25.104df5f.zip",
+    "digest": "sha256:d4ab2bc86d4700186f7890dce8218217bae6a62961bacdee780755f28a5049ab"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.25.104df5f.zip",
+    "size": 6713695,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/debug-elfs-stm32-2.7.25.104df5f.zip",
+    "digest": "sha256:7eda514e62f91dbea71cb065de986788d38a4bdd022ef71bfec6b6715baa9b8e"
+   },
+   {
+    "name": "firmware-2.7.25.104df5f.json",
+    "size": 9825,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-2.7.25.104df5f.json",
+    "digest": "sha256:451ea798e754c607fdd4bd7e4cd6a85d1dad434fd214f85c8048d5a472b45480"
+   },
+   {
+    "name": "firmware-esp32-2.7.25.104df5f.zip",
+    "size": 40733490,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-esp32-2.7.25.104df5f.zip",
+    "digest": "sha256:2cd8b79bc81925cb6f9d39510b8f1e843e6e6fa8c62e8eda9125af9877e104fc"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.25.104df5f.zip",
+    "size": 5170455,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-esp32c3-2.7.25.104df5f.zip",
+    "digest": "sha256:ebb7dbc9b7947e4ebe849a4e0df11c21eb5e2bfe4257c23e0c51fa8c0ab98dc7"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.25.104df5f.zip",
+    "size": 4706423,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-esp32c6-2.7.25.104df5f.zip",
+    "digest": "sha256:ec2ef2c3ad277cc875ca4dc1184bee326079f16c5b741ecb2a879e927e62c44e"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.25.104df5f.zip",
+    "size": 170250678,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-esp32s3-2.7.25.104df5f.zip",
+    "digest": "sha256:6aab2e5e5c2e1871a0ec8c17b83828714b14ae7695f79be7758fcd0a97251874"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.25.104df5f.zip",
+    "size": 46273037,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-nrf52840-2.7.25.104df5f.zip",
+    "digest": "sha256:7895c5129f089c9212c72155d3f95a72b9277b51c890246374a4b43185ba86a5"
+   },
+   {
+    "name": "firmware-rp2040-2.7.25.104df5f.zip",
+    "size": 3047336,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-rp2040-2.7.25.104df5f.zip",
+    "digest": "sha256:d55816e8223a384ef9190ed4627c80b7586dc8f294371c5aa7a270ade284041c"
+   },
+   {
+    "name": "firmware-rp2350-2.7.25.104df5f.zip",
+    "size": 1651843,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-rp2350-2.7.25.104df5f.zip",
+    "digest": "sha256:f51b0b417f2f44ec470bbd42a7bcf3b5687ac03674ceeacc133f0195e61eb719"
+   },
+   {
+    "name": "firmware-stm32-2.7.25.104df5f.zip",
+    "size": 285210,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/firmware-stm32-2.7.25.104df5f.zip",
+    "digest": "sha256:d0bded6685341c345d802ee4db1e80cfae740cb5c28dd05be0a80bf8f9abe8f8"
+   },
+   {
+    "name": "meshtasticd-2.7.25.28559.local104df5f-src.zip",
+    "size": 444718101,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/meshtasticd-2.7.25.28559.local104df5f-src.zip",
+    "digest": "sha256:51fe30995b42eb565fc0131530abdec8e128c324e55cdff8437894b01de0ec3a"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.25.104df5f.zip",
+    "size": 488015128,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.25.104df5f/platformio-deps-native-tft-2.7.25.104df5f.zip",
+    "digest": "sha256:7e65d29d0bfc9cd11621f426bf6c56cc07c4fa34931b748b0e193eb3180ef01c"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.24.472b14c",
+  "name": "Meshtastic Firmware 2.7.24.472b14c Alpha",
+  "published_at": "2026-05-23T01:12:32Z",
+  "created_at": "2026-05-22T19:57:28Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Enhancements\r\n\r\n- ThinkNode M7 by @caveman99 in https://github.com/meshtastic/firmware/pull/8077\r\n- Implement rotat",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.24.472b14c.zip",
+    "size": 106273809,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-esp32-2.7.24.472b14c.zip",
+    "digest": "sha256:daeb1066ee6955bca656e2a88de94794f1ed791db922b4e114b4e4ccfb4aa777"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.24.472b14c.zip",
+    "size": 12676082,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-esp32c3-2.7.24.472b14c.zip",
+    "digest": "sha256:1b82470a3fc73e224a76ddf5f03287ef962eb24f8a7b1834e8ffe678a9372849"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.24.472b14c.zip",
+    "size": 23754374,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-esp32c6-2.7.24.472b14c.zip",
+    "digest": "sha256:c3619540bceaf4b3384516289fc8493da05a96af60276d3d0d4bcb9af0585176"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.24.472b14c.zip",
+    "size": 446900821,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-esp32s3-2.7.24.472b14c.zip",
+    "digest": "sha256:5f86cfce2f88dcbe76cea4e6d6819b5788a4b897354bd52a116f903b6fd094a6"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.24.472b14c.zip",
+    "size": 25492270,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-nrf52840-2.7.24.472b14c.zip",
+    "digest": "sha256:69423f160f5c10f6a19bd9296c3eae0630fcc12c6ba9a4aeea32402c1c760cde"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.24.472b14c.zip",
+    "size": 15598363,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-rp2040-2.7.24.472b14c.zip",
+    "digest": "sha256:88a39cfab48e3364769508745a4ecb392890bc033d662ee8381fafa316160bb9"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.24.472b14c.zip",
+    "size": 8128987,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-rp2350-2.7.24.472b14c.zip",
+    "digest": "sha256:c48be7a515a049ace1eed91a7c29f9e0114c6cc6420b1e9d7b19b7e79d25603a"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.24.472b14c.zip",
+    "size": 6704917,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/debug-elfs-stm32-2.7.24.472b14c.zip",
+    "digest": "sha256:ef6ac5f72f4c6b4950ad4b62aa5545a935a051cca36e34342ded4b928e53f4be"
+   },
+   {
+    "name": "firmware-2.7.24.472b14c.json",
+    "size": 9670,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-2.7.24.472b14c.json",
+    "digest": "sha256:cc19e86df86bdc1e4519228e38b3baaeddca9d9711587957eac72b276b0bb8b6"
+   },
+   {
+    "name": "firmware-esp32-2.7.24.472b14c.zip",
+    "size": 40561270,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-esp32-2.7.24.472b14c.zip",
+    "digest": "sha256:1809832ac7509ff48e319b45ca3341090239958b51701920a79f1d0e4454980f"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.24.472b14c.zip",
+    "size": 5144241,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-esp32c3-2.7.24.472b14c.zip",
+    "digest": "sha256:3f588cbf4b6914bd8af33bb5d3ea589fa9a347c0e32634ef5905cedb8b8dcc49"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.24.472b14c.zip",
+    "size": 4676820,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-esp32c6-2.7.24.472b14c.zip",
+    "digest": "sha256:4470534035631729095a05a401db9a5f85a0c9f5fa63a6a59e67bc184b6f2388"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.24.472b14c.zip",
+    "size": 169413695,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-esp32s3-2.7.24.472b14c.zip",
+    "digest": "sha256:210135527037deaf25e2820aa4d4578c4805cdcb64e2be2fdb88fe13e4848e3f"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.24.472b14c.zip",
+    "size": 43693060,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-nrf52840-2.7.24.472b14c.zip",
+    "digest": "sha256:6ca28f5846130706e02256195c012971171459143defa5186987cff6ff92a685"
+   },
+   {
+    "name": "firmware-rp2040-2.7.24.472b14c.zip",
+    "size": 3016280,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-rp2040-2.7.24.472b14c.zip",
+    "digest": "sha256:f9081569bc8c47f065c7709a63253b8a1cc8aba33297214e9a3e9b9062f2f032"
+   },
+   {
+    "name": "firmware-rp2350-2.7.24.472b14c.zip",
+    "size": 1635735,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-rp2350-2.7.24.472b14c.zip",
+    "digest": "sha256:4ee40fade9a96d9c71237273fdb7dd3d1c19124dd70a2e9b21d54b91e9a51c61"
+   },
+   {
+    "name": "firmware-stm32-2.7.24.472b14c.zip",
+    "size": 284494,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/firmware-stm32-2.7.24.472b14c.zip",
+    "digest": "sha256:31a7a7d90e3585b7559c4ce245a1a12d03ea25b7d76a5419ff2f18727e8985f3"
+   },
+   {
+    "name": "meshtasticd-2.7.24.28047.local472b14c-src.zip",
+    "size": 441082367,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/meshtasticd-2.7.24.28047.local472b14c-src.zip",
+    "digest": "sha256:dcca2c116815469788817571febeaa83ced7c3fbb9e3841a53d81175ba1dd00b"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.24.472b14c.zip",
+    "size": 483696297,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.24.472b14c/platformio-deps-native-tft-2.7.24.472b14c.zip",
+    "digest": "sha256:5d396b50ab84d74e7eefda4aa1592856c2d7d13b93a309b1e28986fe07d03ffc"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.23.b246bcd",
+  "name": "Meshtastic Firmware 2.7.23.b246bcd Alpha",
+  "published_at": "2026-05-08T10:43:32Z",
+  "created_at": "2026-05-07T01:52:30Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Enhancements\r\n\r\n- Reduce key duplication by enabling hardware RNG by @Komzpa in https://github.com/meshtastic/firmw",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.23.b246bcd.zip",
+    "size": 106266824,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-esp32-2.7.23.b246bcd.zip",
+    "digest": "sha256:dcdfa0d71d8fde00862582c6edbffc086b9f2edf41b340018b4ed96ae2b7123e"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.23.b246bcd.zip",
+    "size": 12674344,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-esp32c3-2.7.23.b246bcd.zip",
+    "digest": "sha256:284e19d28bf4c1ca92837475b3d0a40708f88e6b8e38ee4706adadba02f6ea90"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.23.b246bcd.zip",
+    "size": 23704456,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-esp32c6-2.7.23.b246bcd.zip",
+    "digest": "sha256:a571ae5ae13b15244ae01594de58997313634a14254d4c00035566f6fd498652"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.23.b246bcd.zip",
+    "size": 424639272,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-esp32s3-2.7.23.b246bcd.zip",
+    "digest": "sha256:ac62f38a84019f77bc721f243b09d419f501535b8101e48370283b685815f9f0"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.23.b246bcd.zip",
+    "size": 25467498,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-nrf52840-2.7.23.b246bcd.zip",
+    "digest": "sha256:97cf20ede045a4564b04fb3ed3e160782e6c0a2fa07a7a0d77c5e12b0e3de089"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.23.b246bcd.zip",
+    "size": 15596084,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-rp2040-2.7.23.b246bcd.zip",
+    "digest": "sha256:748ec3ec82daf87289c5e5fbfc9d44d05eaadacda13a0f0f0fffe5b3fd064ed1"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.23.b246bcd.zip",
+    "size": 8127883,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-rp2350-2.7.23.b246bcd.zip",
+    "digest": "sha256:152839d33d4bd0f74e2ebdd5e32b58c71b5db55fb3ffcb062c64c15d3023baa1"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.23.b246bcd.zip",
+    "size": 6673095,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/debug-elfs-stm32-2.7.23.b246bcd.zip",
+    "digest": "sha256:009d8e7636c18d78e23285f8a9bbf4ea22c15988f164bc3366f6407f8429610f"
+   },
+   {
+    "name": "firmware-2.7.23.b246bcd.json",
+    "size": 9456,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-2.7.23.b246bcd.json",
+    "digest": "sha256:de01db6bd85104554acee1610a34eb33a06a12fb7e3c2e6c2785f258cc04a541"
+   },
+   {
+    "name": "firmware-esp32-2.7.23.b246bcd.zip",
+    "size": 40548362,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-esp32-2.7.23.b246bcd.zip",
+    "digest": "sha256:a10565257f12b0adcde143fa20b590ea3656a68dd8e1cb52a2389829ab765030"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.23.b246bcd.zip",
+    "size": 5143128,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-esp32c3-2.7.23.b246bcd.zip",
+    "digest": "sha256:4e242081e8ede555ed72fa438eac3a62aec2aadc78741bb4d612316f7a238518"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.23.b246bcd.zip",
+    "size": 4675298,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-esp32c6-2.7.23.b246bcd.zip",
+    "digest": "sha256:a128a149645a1c247357fe78ed124193b392719192c36383b3c6d070b841a5a8"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.23.b246bcd.zip",
+    "size": 161568870,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-esp32s3-2.7.23.b246bcd.zip",
+    "digest": "sha256:6dc1f3d5999ba5dd582b3c64152a7c479fd5ffd466811d26c8739abd6492567d"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.23.b246bcd.zip",
+    "size": 43662335,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-nrf52840-2.7.23.b246bcd.zip",
+    "digest": "sha256:b3b302792157c02e39512e0ae9a4946c6b3112cd731d6aeedd7eee23ebafd122"
+   },
+   {
+    "name": "firmware-rp2040-2.7.23.b246bcd.zip",
+    "size": 3014260,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-rp2040-2.7.23.b246bcd.zip",
+    "digest": "sha256:9eeb8223921ced6a13eee1b18d2d2477b1b2c3fa27f0c418b3d758c74be89c46"
+   },
+   {
+    "name": "firmware-rp2350-2.7.23.b246bcd.zip",
+    "size": 1634870,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-rp2350-2.7.23.b246bcd.zip",
+    "digest": "sha256:255dcd2349c669857e1c61a36c62adca37cde511647526ff41ea696040d2fc54"
+   },
+   {
+    "name": "firmware-stm32-2.7.23.b246bcd.zip",
+    "size": 284235,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/firmware-stm32-2.7.23.b246bcd.zip",
+    "digest": "sha256:a163fc1d9e8cdfc9dbc9813a489090cfed1b03b31256b08b5db8cf6300178f07"
+   },
+   {
+    "name": "meshtasticd-2.7.23.27511.localb246bcd-src.zip",
+    "size": 439961935,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/meshtasticd-2.7.23.27511.localb246bcd-src.zip",
+    "digest": "sha256:7c198f512993607aa0044914cb3c7ac50c933bc0fdee1b50c7f9f1a0b2c3a6e7"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.23.b246bcd.zip",
+    "size": 483695292,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.23.b246bcd/platformio-deps-native-tft-2.7.23.b246bcd.zip",
+    "digest": "sha256:66c46e5839fdd9fe2dfcd51597bb81e1ee525ac3e3c7ace30751b6fd8c729589"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.22.96dd647",
+  "name": "Meshtastic Firmware 2.7.22.96dd647 Alpha",
+  "published_at": "2026-04-14T12:29:08Z",
+  "created_at": "2026-04-13T19:50:51Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\udc1b Bug fixes and maintenance\r\n\r\n- Fix(native): implement BinarySemaphorePosix with proper pthread synchronization by @",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.22.96dd647.zip",
+    "size": 106231445,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-esp32-2.7.22.96dd647.zip",
+    "digest": "sha256:f4bce22018ffd5a051ab930cf6ee64092622457db70c04e0ba7b0ecd01e131f8"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.22.96dd647.zip",
+    "size": 12668402,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-esp32c3-2.7.22.96dd647.zip",
+    "digest": "sha256:eec00c57ca255a00ede89ca1128c66452a4e392b5e9f810c31b77e4388ffc945"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.22.96dd647.zip",
+    "size": 23462043,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-esp32c6-2.7.22.96dd647.zip",
+    "digest": "sha256:7876a19272b8ec0a50aff28a3178d3b0f9f14d92c524779d28f2065f456de2d2"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.22.96dd647.zip",
+    "size": 400982959,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-esp32s3-2.7.22.96dd647.zip",
+    "digest": "sha256:909228ceb3a270c0b5adcc94362d7c07ad60ffed80bef749a7ce2df3e0af4287"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.22.96dd647.zip",
+    "size": 25330108,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-nrf52840-2.7.22.96dd647.zip",
+    "digest": "sha256:a8676fdf9d14f1f7ec282be0badd278e75e5ad3f558ba949548d26bb5d48e4a6"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.22.96dd647.zip",
+    "size": 15585827,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-rp2040-2.7.22.96dd647.zip",
+    "digest": "sha256:13ae7f5aa0dd3a866b56c1f0c892c435d572b5869acbfe14ed60fff4167bae58"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.22.96dd647.zip",
+    "size": 8122093,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-rp2350-2.7.22.96dd647.zip",
+    "digest": "sha256:0945696f10b3039e0c0447474e4b0b56d792f79dfdf664d40a49ce42f6b69a02"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.22.96dd647.zip",
+    "size": 6536732,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/debug-elfs-stm32-2.7.22.96dd647.zip",
+    "digest": "sha256:3b7f277a6886b2d9068dc676ea424baa0b7465678c4f877e78e687e0596cd922"
+   },
+   {
+    "name": "firmware-2.7.22.96dd647.json",
+    "size": 9228,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-2.7.22.96dd647.json",
+    "digest": "sha256:98e8bf458b40e498d3c92830441e67db977d70857e45f171bab5fd435d555d1d"
+   },
+   {
+    "name": "firmware-esp32-2.7.22.96dd647.zip",
+    "size": 40491785,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-esp32-2.7.22.96dd647.zip",
+    "digest": "sha256:9667d797cdb955cfa3210cb17803bef2b7321dac99e52ae96a231e72f92cabec"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.22.96dd647.zip",
+    "size": 5135264,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-esp32c3-2.7.22.96dd647.zip",
+    "digest": "sha256:7d7bbbbcb14abf39d792065523793ec04effad7e599e5af800e90c837b15e876"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.22.96dd647.zip",
+    "size": 4666853,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-esp32c6-2.7.22.96dd647.zip",
+    "digest": "sha256:2f26e9963bc87566c428f9854d172aecc03451d8560185f48cefa91402092431"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.22.96dd647.zip",
+    "size": 151851751,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-esp32s3-2.7.22.96dd647.zip",
+    "digest": "sha256:c356f2070166881c8f5eaf4dc046149f46dfa9b2e7f6ce06f620ae249ffdfa95"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.22.96dd647.zip",
+    "size": 43446223,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-nrf52840-2.7.22.96dd647.zip",
+    "digest": "sha256:b1002e06a46b7508920b903327bc4b98694bf4f6b2eeb4d941067cb496a1d843"
+   },
+   {
+    "name": "firmware-rp2040-2.7.22.96dd647.zip",
+    "size": 3003440,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-rp2040-2.7.22.96dd647.zip",
+    "digest": "sha256:31d610bbafe5506cdf76f0f30a3c41692e061afd4f952eae3565cbebe3d1e6b1"
+   },
+   {
+    "name": "firmware-rp2350-2.7.22.96dd647.zip",
+    "size": 1631798,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-rp2350-2.7.22.96dd647.zip",
+    "digest": "sha256:aa552998dbfe77be612df348f3c7a10fdc14981ce09c28422486ae84a1e577a8"
+   },
+   {
+    "name": "firmware-stm32-2.7.22.96dd647.zip",
+    "size": 281206,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/firmware-stm32-2.7.22.96dd647.zip",
+    "digest": "sha256:c2b0d990b18db81e04b86b01b21f25046d5e5c5b21b60c0f9452291beee714da"
+   },
+   {
+    "name": "meshtasticd-2.7.22.26470.local96dd647-src.zip",
+    "size": 438562325,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/meshtasticd-2.7.22.26470.local96dd647-src.zip",
+    "digest": "sha256:5d091de1e8dfe296ff08d680e4b09fcee64fa49936e6a1c024ef54fe7536bba0"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.22.96dd647.zip",
+    "size": 482249585,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.22.96dd647/platformio-deps-native-tft-2.7.22.96dd647.zip",
+    "digest": "sha256:6bdaec9f38a25c31174698547bef9f5bbcbdadf002db3720dcbf91a1c38608eb"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.21.1370b23",
+  "name": "Meshtastic Firmware 2.7.21.1370b23 Alpha",
+  "published_at": "2026-04-06T11:33:39Z",
+  "created_at": "2026-04-05T12:48:24Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "> [!WARNING]\r\n> Due to resource constraints, the HTTP server is deprecated on original-generation ESP32 devices and shou",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.21.1370b23.zip",
+    "size": 106232387,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-esp32-2.7.21.1370b23.zip",
+    "digest": "sha256:b4a5458d79b745d386fc285a1d28f62ac2caef3e2c626745e057de1a431767a3"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.21.1370b23.zip",
+    "size": 12668144,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-esp32c3-2.7.21.1370b23.zip",
+    "digest": "sha256:25957ddd1821cd72fd91a9bff0d2e91979869d4cc1a37ad27a8ec7160d5632c7"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.21.1370b23.zip",
+    "size": 23464140,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-esp32c6-2.7.21.1370b23.zip",
+    "digest": "sha256:8992edcd858acadf99ff86f257f9d29454e23fce42c95ad3280417df256eeb14"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.21.1370b23.zip",
+    "size": 400983285,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-esp32s3-2.7.21.1370b23.zip",
+    "digest": "sha256:0f06d82b1aed4638e87d5442d1f956a6bdae3cdf7b8174e68b73c4f9c16600ea"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.21.1370b23.zip",
+    "size": 25325075,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-nrf52840-2.7.21.1370b23.zip",
+    "digest": "sha256:747858c3f2df41cb5eb1d7e603d65bd86405f0db41a46a24f9f6ae5162bf17b5"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.21.1370b23.zip",
+    "size": 15585755,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-rp2040-2.7.21.1370b23.zip",
+    "digest": "sha256:074b96ae4ca6fbc03878449db2b709d1c83bd777bf267a58cd8bba54708e2fce"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.21.1370b23.zip",
+    "size": 8122536,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-rp2350-2.7.21.1370b23.zip",
+    "digest": "sha256:4773671e825cb414ebae7bea69659269a6a837e62a4238a1c4a60b5bd339a7bf"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.21.1370b23.zip",
+    "size": 6531425,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/debug-elfs-stm32-2.7.21.1370b23.zip",
+    "digest": "sha256:b788e9e2bdfd2b27cd8c3f050fecf04428b6e3de10233781fb2ca0fff4416391"
+   },
+   {
+    "name": "firmware-2.7.21.1370b23.json",
+    "size": 9228,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-2.7.21.1370b23.json",
+    "digest": "sha256:4cb5b3866256b9248629192d14ab732399900c03c9616675980149b223044643"
+   },
+   {
+    "name": "firmware-esp32-2.7.21.1370b23.zip",
+    "size": 40491332,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-esp32-2.7.21.1370b23.zip",
+    "digest": "sha256:3a32c15003f4123169845dd2e5b4cafaca4e32446bcdac50f283e863b2e068c7"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.21.1370b23.zip",
+    "size": 5135211,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-esp32c3-2.7.21.1370b23.zip",
+    "digest": "sha256:5f910974ad4aa02740ae451964136defaafad989d2fdc2343317b37987d71050"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.21.1370b23.zip",
+    "size": 4666411,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-esp32c6-2.7.21.1370b23.zip",
+    "digest": "sha256:96b5509b7ddfea00ac339bb524568b1f895f8baa9c58c3633c364fc73823c67b"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.21.1370b23.zip",
+    "size": 151850020,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-esp32s3-2.7.21.1370b23.zip",
+    "digest": "sha256:bd1c23762a53cb5409dcbfff25e5433fc3654bce46dd05dd2dc05e1bb02441a8"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.21.1370b23.zip",
+    "size": 43439739,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-nrf52840-2.7.21.1370b23.zip",
+    "digest": "sha256:f0223932f698ade8336cfb8ad204961f2306d03b511c61cd2a1365ca8073cbd8"
+   },
+   {
+    "name": "firmware-rp2040-2.7.21.1370b23.zip",
+    "size": 3003291,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-rp2040-2.7.21.1370b23.zip",
+    "digest": "sha256:5a1b08792d84efecb208e7162aa711b1feceef2d8955cf9236c6479e058c15d6"
+   },
+   {
+    "name": "firmware-rp2350-2.7.21.1370b23.zip",
+    "size": 1631359,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-rp2350-2.7.21.1370b23.zip",
+    "digest": "sha256:d8db887dbcd2745105b8245ca602dfdeff0af0de39bb8877c32b49738715b49e"
+   },
+   {
+    "name": "firmware-stm32-2.7.21.1370b23.zip",
+    "size": 281202,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/firmware-stm32-2.7.21.1370b23.zip",
+    "digest": "sha256:dd832c5847a3bf50d35ee2d7702969c96aa59dbed29da61d5c98b4fefed38c98"
+   },
+   {
+    "name": "meshtasticd-2.7.21.26211.local1370b23-src.zip",
+    "size": 424031520,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/meshtasticd-2.7.21.26211.local1370b23-src.zip",
+    "digest": "sha256:e6b2d2634cf0083a202a465e7d25a12d57164cde66bf9bc306c6842fab44dade"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.21.1370b23.zip",
+    "size": 469375820,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.21.1370b23/platformio-deps-native-tft-2.7.21.1370b23.zip",
+    "digest": "sha256:fb0ed378420c2e374c99d218a28546b9e82f2283b66a0397c6db82a61a2bd5e6"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.20.6658ec2",
+  "name": "Meshtastic Firmware 2.7.20.6658ec2 Alpha",
+  "published_at": "2026-03-11T11:43:26Z",
+  "created_at": "2026-03-07T01:56:01Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Enhancements\r\n\r\n- Xiao NRF - define suitable i2c pins for the sub-variants by @NomDeTom in https://github.com/mesht",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.20.6658ec2.zip",
+    "size": 110420076,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-esp32-2.7.20.6658ec2.zip",
+    "digest": "sha256:7257cab9eb228adf9fc3eaf268ca5dd14d41ff22b4a798fe5365e291fa357705"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.20.6658ec2.zip",
+    "size": 12676057,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-esp32c3-2.7.20.6658ec2.zip",
+    "digest": "sha256:94cff6ba0f65e5bbc25c9416ca6d2bf6fde8f2fc7036ee8229024134c97da51f"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.20.6658ec2.zip",
+    "size": 23198996,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-esp32c6-2.7.20.6658ec2.zip",
+    "digest": "sha256:8a33783bc5a47d9a74236935a797329de930659bead3c41685b37d97dca3ee03"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.20.6658ec2.zip",
+    "size": 378415352,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-esp32s3-2.7.20.6658ec2.zip",
+    "digest": "sha256:53e52eb15e21d46e72e8e4397328ea00de3d7244d8839c012739638ab9746f8b"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.20.6658ec2.zip",
+    "size": 24673034,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-nrf52840-2.7.20.6658ec2.zip",
+    "digest": "sha256:47310c1a4dc8c36abab5f3a434bbef33398c8d355ed8ad867a9738ca3d36639b"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.20.6658ec2.zip",
+    "size": 15585673,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-rp2040-2.7.20.6658ec2.zip",
+    "digest": "sha256:22a7e1eeb9ba7f0001363fac4eba979c5c44767d86b235e51fb9ca1632e99d05"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.20.6658ec2.zip",
+    "size": 8124049,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-rp2350-2.7.20.6658ec2.zip",
+    "digest": "sha256:8dfdfcf16c76264e81af4a217b0fc57bedddf4b15a386236cebcbf6e8f28a91b"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.20.6658ec2.zip",
+    "size": 6463307,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/debug-elfs-stm32-2.7.20.6658ec2.zip",
+    "digest": "sha256:c10a06788ddbc2a68ec3fa7dbc2637737a078f64ab483e79751fb5955129834d"
+   },
+   {
+    "name": "firmware-2.7.20.6658ec2.json",
+    "size": 8917,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-2.7.20.6658ec2.json",
+    "digest": "sha256:d7c9d513e3f3c316ac8e28a7c2688119b3f4e00ed3ef94b333e451381751176d"
+   },
+   {
+    "name": "firmware-esp32-2.7.20.6658ec2.zip",
+    "size": 42687446,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-esp32-2.7.20.6658ec2.zip",
+    "digest": "sha256:a56b02596f5d209b7e9e1fffa8f8306d2ccaffd3dc3da7432a104bcb7b3bc1bd"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.20.6658ec2.zip",
+    "size": 5127492,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-esp32c3-2.7.20.6658ec2.zip",
+    "digest": "sha256:37dd5310160d7d434847a9c4769efe4515a558b3c8000bc60197e98042cfdb83"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.20.6658ec2.zip",
+    "size": 4666561,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-esp32c6-2.7.20.6658ec2.zip",
+    "digest": "sha256:0afcbdbf6204fa88d7f3176c4fe5c3d8455887c46a31cc4e6ae723c727a3b7da"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.20.6658ec2.zip",
+    "size": 143239618,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-esp32s3-2.7.20.6658ec2.zip",
+    "digest": "sha256:7565e67fad303c51c013661a19d031627fd513c1777d33ae419bbc9bb7f5eb18"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.20.6658ec2.zip",
+    "size": 42416554,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-nrf52840-2.7.20.6658ec2.zip",
+    "digest": "sha256:52b6c0aadf2ea0df41137a1e93b528a33f7323ab1afe14eb3662c9b2acdb0e18"
+   },
+   {
+    "name": "firmware-rp2040-2.7.20.6658ec2.zip",
+    "size": 3002482,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-rp2040-2.7.20.6658ec2.zip",
+    "digest": "sha256:231db3c49071ee91ccb4e87a4c1bc8c3e231b15b5a3d0929017fb4ebaa795d5b"
+   },
+   {
+    "name": "firmware-rp2350-2.7.20.6658ec2.zip",
+    "size": 1631664,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-rp2350-2.7.20.6658ec2.zip",
+    "digest": "sha256:491ec2d43c551193dc10a77149f029521d71134bd4bba005a9f17d5e5ff18300"
+   },
+   {
+    "name": "firmware-stm32-2.7.20.6658ec2.zip",
+    "size": 290425,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/firmware-stm32-2.7.20.6658ec2.zip",
+    "digest": "sha256:3c1f5f05b09d76129d518ed1e8869e665f885c886aa661a3183812dda25726f9"
+   },
+   {
+    "name": "meshtasticd-2.7.20.25358.local6658ec2-src.zip",
+    "size": 318773285,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/meshtasticd-2.7.20.25358.local6658ec2-src.zip",
+    "digest": "sha256:f20f4016866636d2763dbdfe437ec8871f96a00d22ff3b34306125837d5a8948"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.20.6658ec2.zip",
+    "size": 338908732,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.20.6658ec2/platformio-deps-native-tft-2.7.20.6658ec2.zip",
+    "digest": "sha256:32cd08cc9df5194bbc972929167e576b97a7729f04c1610b6aab8cf172e045ed"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.19.bb3d6d5",
+  "name": "Meshtastic Firmware 2.7.19.bb3d6d5 Alpha",
+  "published_at": "2026-02-11T12:19:19Z",
+  "created_at": "2026-02-08T17:20:15Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Enhancements\r\n\r\n- Feat/add sen5x by @oscgonfer in https://github.com/meshtastic/firmware/pull/7245\r\n- Add initial N",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.19.bb3d6d5.zip",
+    "size": 109934658,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-esp32-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:d333944cbbdea239b4f7b56568c262720c5e38dd87af6e219c64a676196fc559"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.19.bb3d6d5.zip",
+    "size": 12644194,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-esp32c3-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:6303eb37ad63da886eee0015ad66658ecd72082dd44472fad7a9c1157913a5a9"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.19.bb3d6d5.zip",
+    "size": 22424127,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-esp32c6-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:48c7d7378e0efcd83dddf05b1656f0a8df69a85b4861dc830943a45951013b05"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.19.bb3d6d5.zip",
+    "size": 354964320,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-esp32s3-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:e9630e01eb6a5e1c44f8c5bdb52ef89b9e7b6b1e0ebb73e308234b34a8bdd740"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.19.bb3d6d5.zip",
+    "size": 24190066,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-nrf52840-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:b0aee2f34c8bbf7d18780bff31b469d6ba0b26f8764f3ee3370f267201db57ca"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.19.bb3d6d5.zip",
+    "size": 15533779,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-rp2040-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:c6e473f2237d5e0764e94119226f7bd12cb8197f0bd1bbd34ea64cb82a59f108"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.19.bb3d6d5.zip",
+    "size": 8106732,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-rp2350-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:14872bbc7ea9c8b978e15669e7fa78ffb47ad2e56318b158e693f2f60819792e"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.19.bb3d6d5.zip",
+    "size": 6120704,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/debug-elfs-stm32-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:5bf1b6d5baaf42f41ad3c56d9c49a2670152d74aaba1de9c5a5cf1c5f64e5c86"
+   },
+   {
+    "name": "firmware-2.7.19.bb3d6d5.json",
+    "size": 8684,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-2.7.19.bb3d6d5.json",
+    "digest": "sha256:3a24e9d2cb965a59abe688f4c78781328a8597ab0a34360b089cc2c312c35962"
+   },
+   {
+    "name": "firmware-esp32-2.7.19.bb3d6d5.zip",
+    "size": 42127085,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-esp32-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:005ede6175df18f0e2c3d1c98f3fcd0fe289082c8db19d92f83b6d7bf78203f4"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.19.bb3d6d5.zip",
+    "size": 5081492,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-esp32c3-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:c942a727dbac677260d6227b9971322905a5bed3a623c9a87bbc6fecab807959"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.19.bb3d6d5.zip",
+    "size": 4637697,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-esp32c6-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:cc2987a08f5e5f2c2c0d61a7deca66d266b7555a5dd559df77fc79989167cfa4"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.19.bb3d6d5.zip",
+    "size": 133914498,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-esp32s3-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:986bc5b2fff4ba14c63aa68d4dd6da4ae350025038d4d584e08fc1026269ee50"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.19.bb3d6d5.zip",
+    "size": 41657990,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-nrf52840-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:26097a02f2e78c777060d677db839abf6e063ee8f61aab7880ce1f8b79925c67"
+   },
+   {
+    "name": "firmware-rp2040-2.7.19.bb3d6d5.zip",
+    "size": 2976396,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-rp2040-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:a0e83bb6c2248080e8eb7571fb4423f0b75ebca745fbb8f64ecbb2d56d1547f9"
+   },
+   {
+    "name": "firmware-rp2350-2.7.19.bb3d6d5.zip",
+    "size": 1618762,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-rp2350-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:5f958054f9aae81c9d70bfe17febefdf952e27fc703511f3e1727412e1742392"
+   },
+   {
+    "name": "firmware-stm32-2.7.19.bb3d6d5.zip",
+    "size": 286652,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/firmware-stm32-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:bca09cd60eebf62c7d9ef45b91586baa50588ea9bc5cfc352a356caf7c5d5185"
+   },
+   {
+    "name": "meshtasticd-2.7.19.24313.localbb3d6d5-src.zip",
+    "size": 319160035,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/meshtasticd-2.7.19.24313.localbb3d6d5-src.zip",
+    "digest": "sha256:747b3c68ae047d99f67e07ebd66ee2df2f31d919c0db1645db99855cc04a8939"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.19.bb3d6d5.zip",
+    "size": 338752740,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.19.bb3d6d5/platformio-deps-native-tft-2.7.19.bb3d6d5.zip",
+    "digest": "sha256:32485bdfaa0532608d9aa024d4ac16ab5aca6c1c76e6821848f6cb73ec1e70c2"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.7.18.fb3bf78",
+  "name": "Meshtastic Firmware 2.7.18.fb3bf78 Alpha",
+  "published_at": "2026-01-22T22:17:05Z",
+  "created_at": "2026-01-20T02:00:41Z",
+  "prerelease": true,
+  "draft": false,
+  "body": "## \ud83d\ude80 Enhancements\r\n\r\n- Move PMSA003I to separate class and update AQ telemetry by @oscgonfer in https://github.com/mesht",
+  "assets": [
+   {
+    "name": "debug-elfs-esp32-2.7.18.fb3bf78.zip",
+    "size": 109762636,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-esp32-2.7.18.fb3bf78.zip",
+    "digest": "sha256:ed5306ba58adc79d34bf9376fb547375a1b066751ef37de6a0ec8c08fdced66b"
+   },
+   {
+    "name": "debug-elfs-esp32c3-2.7.18.fb3bf78.zip",
+    "size": 12629620,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-esp32c3-2.7.18.fb3bf78.zip",
+    "digest": "sha256:6eda8568bce9a08ac6bd8ce8b70332ffaa0e73f216969e2a199412b1ec89fca7"
+   },
+   {
+    "name": "debug-elfs-esp32c6-2.7.18.fb3bf78.zip",
+    "size": 22236393,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-esp32c6-2.7.18.fb3bf78.zip",
+    "digest": "sha256:301d134d4b9c55687bc6de63ba64851413f3cf02485b918840866c8e720fd8cc"
+   },
+   {
+    "name": "debug-elfs-esp32s3-2.7.18.fb3bf78.zip",
+    "size": 354508351,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-esp32s3-2.7.18.fb3bf78.zip",
+    "digest": "sha256:5ab23333eaa453976c3a424461583dc4324e9a32f0309df08f1260654e84cf71"
+   },
+   {
+    "name": "debug-elfs-nrf52840-2.7.18.fb3bf78.zip",
+    "size": 23799972,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-nrf52840-2.7.18.fb3bf78.zip",
+    "digest": "sha256:d10ca66714dc83c992032253cfb0cfd2a71f402c85af986ba2d8ed85db213d15"
+   },
+   {
+    "name": "debug-elfs-rp2040-2.7.18.fb3bf78.zip",
+    "size": 15512500,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-rp2040-2.7.18.fb3bf78.zip",
+    "digest": "sha256:5943ff90df1e77daaae389c08bbd3a4215ec129bebc143c4cfe2970ca96e17cc"
+   },
+   {
+    "name": "debug-elfs-rp2350-2.7.18.fb3bf78.zip",
+    "size": 8096211,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-rp2350-2.7.18.fb3bf78.zip",
+    "digest": "sha256:ea618295ce9daa6775acfa5180fbf2fabba66a8736f5d60373b3efe3baf56953"
+   },
+   {
+    "name": "debug-elfs-stm32-2.7.18.fb3bf78.zip",
+    "size": 6140016,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/debug-elfs-stm32-2.7.18.fb3bf78.zip",
+    "digest": "sha256:aa02725e3caa1e29fd72c886b11cd28bfee2082137cc82b7d20e71b5d8c95aaf"
+   },
+   {
+    "name": "firmware-2.7.18.fb3bf78.json",
+    "size": 8684,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-2.7.18.fb3bf78.json",
+    "digest": "sha256:499d503d2708a6df8e02d40359c8cb218dff9f772b18069f99bb5aae55721863"
+   },
+   {
+    "name": "firmware-esp32-2.7.18.fb3bf78.zip",
+    "size": 41879459,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-esp32-2.7.18.fb3bf78.zip",
+    "digest": "sha256:640a1981daa76f2ab158bef52032e602927432c724df58decb9d75b815bad4de"
+   },
+   {
+    "name": "firmware-esp32c3-2.7.18.fb3bf78.zip",
+    "size": 5054354,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-esp32c3-2.7.18.fb3bf78.zip",
+    "digest": "sha256:fa2a00fec9929b043db61eac1a0b0062b283aea99ef79e016bd3dfb703346469"
+   },
+   {
+    "name": "firmware-esp32c6-2.7.18.fb3bf78.zip",
+    "size": 4610431,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-esp32c6-2.7.18.fb3bf78.zip",
+    "digest": "sha256:deccfa316d7a96324359c7afda9258b7c9281d75e9e634459f352afffad5e321"
+   },
+   {
+    "name": "firmware-esp32s3-2.7.18.fb3bf78.zip",
+    "size": 133225937,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-esp32s3-2.7.18.fb3bf78.zip",
+    "digest": "sha256:40ecd11b577840387c9aa27056717ae3ce6071f62dfeb73b712f7b918e4f8aa0"
+   },
+   {
+    "name": "firmware-nrf52840-2.7.18.fb3bf78.zip",
+    "size": 40950412,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-nrf52840-2.7.18.fb3bf78.zip",
+    "digest": "sha256:8d4b4851dacf4286cf62d1fce45437060eb992c0a1794fa50f09d2348c807a03"
+   },
+   {
+    "name": "firmware-rp2040-2.7.18.fb3bf78.zip",
+    "size": 2959110,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-rp2040-2.7.18.fb3bf78.zip",
+    "digest": "sha256:8ca51b791c1527d34c980126f599de6f97ac505dc29ebb950cb5036ad9170222"
+   },
+   {
+    "name": "firmware-rp2350-2.7.18.fb3bf78.zip",
+    "size": 1610426,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-rp2350-2.7.18.fb3bf78.zip",
+    "digest": "sha256:a9781307c5e4ad35467a41853938f1f62b0c547292d0c6b8f8cb42c1ae11ff04"
+   },
+   {
+    "name": "firmware-stm32-2.7.18.fb3bf78.zip",
+    "size": 283725,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/firmware-stm32-2.7.18.fb3bf78.zip",
+    "digest": "sha256:c00edb7bc2d8769edc42f3274e75399973cc771e5c687deb4abb2f46e5c6b3bb"
+   },
+   {
+    "name": "meshtasticd-2.7.18.23452.localfb3bf78-src.zip",
+    "size": 318897577,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/meshtasticd-2.7.18.23452.localfb3bf78-src.zip",
+    "digest": "sha256:f71fea070ba568bc222c74b5e9f83e09228e96f89924a865030513a29b914996"
+   },
+   {
+    "name": "platformio-deps-native-tft-2.7.18.fb3bf78.zip",
+    "size": 338531870,
+    "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.18.fb3bf78/platformio-deps-native-tft-2.7.18.fb3bf78.zip",
+    "digest": "sha256:0a36b620fb6db0858f8b1b504368e06379b11cd2532a17e2063e159bd36f4c46"
+   }
+  ]
+ }
+]

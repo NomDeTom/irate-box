@@ -43,6 +43,10 @@ run sim_faulthandler.py
 run sim_pagehistory.py
 run sim_usb_filesystems.py
 run sim_firmware_integrity.py
+run sim_holder.py
+run sim_holdsurvey.py
+run sim_appstore.py
+run sim_appstore_admin.py
 run sim_root_copies.py
 run sim_doctor_choices.py
 run sim_idle.py

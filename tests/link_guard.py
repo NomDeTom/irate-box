@@ -48,6 +48,7 @@ MOUNTS = {
     "/serial/": NGINX,
     "/sync/": NGINX,
     "/wiki/": NGINX,
+    "/appstore/": REPO / "irate_box" / "hub" / "appstore.py",
     "/git/": REPO / "irate_box" / "hub" / "gitrepos.py",
     "/git-private/": REPO / "irate_box" / "hub" / "gitrepos.py",
 }

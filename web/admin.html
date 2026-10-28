@@ -1426,6 +1426,74 @@
 
         <section
           class="admin-pane"
+          id="appstore"
+          aria-labelledby="appstore-title"
+        >
+          <h2 id="appstore-title" data-i18n="admin.appstore.title">App store</h2>
+          <p
+            class="setting-desc"
+            data-i18n="admin.appstore.keeps-files-from-project-releases"
+          >
+            The App store keeps the files you select from a project's releases on
+            the box, so people download them with no internet access. You add a project
+            (a GitHub repository), look at what its newest releases hold, select
+            which files to keep and how many versions of each kind. The box checks
+            as often as you set below, when it has internet access. Every file is
+            checked against the SHA-256 GitHub gives for it. What is kept shows on
+            the <a href="/appstore/">App store page</a> and its tile.
+          </p>
+          <label
+            class="inline"
+            data-i18n="admin.appstore.label-keep-files-box"
+            ><input type="checkbox" id="appstore-enabled" />Keep app files on this
+            box</label
+          >
+          <p class="setting-desc" id="appstore-status" role="status"></p>
+          <form id="appstore-policy" class="library-form surface-policy">
+            <div
+              data-update-pattern
+              data-often="holders_every_hours"
+              data-act="holders_auto"
+              data-acts="0,1"
+              data-says-1="The box downloads the files a check finds newer."
+              data-why="Downloading is the update of a kept release. The box installs nothing."
+              data-i18n-why="admin.appstore.policy-why"
+              data-i18n-says-1="admin.appstore.policy-says-1"
+            ></div>
+            <button
+              class="action-btn primary"
+              type="submit"
+              data-i18n="admin.appstore.btn-save"
+            >
+              Save
+            </button>
+          </form>
+          <p class="setting-desc action-note" role="status" hidden></p>
+          <p class="library-buttons update-buttons">
+            <button
+              class="action-btn"
+              type="button"
+              id="appstore-check"
+              data-i18n="admin.appstore.btn-check"
+            >
+              Check now
+            </button>
+            <button
+              class="action-btn"
+              type="button"
+              id="appstore-update"
+              data-i18n="admin.appstore.btn-download"
+            >
+              Download
+            </button>
+          </p>
+          <div id="appstore-holders" class="admin-list"></div>
+          <h3 data-i18n="admin.appstore.h-add">Add a project</h3>
+          <div id="appstore-add"></div>
+        </section>
+
+        <section
+          class="admin-pane"
           id="mirrors"
           aria-labelledby="mirrors-title"
         >

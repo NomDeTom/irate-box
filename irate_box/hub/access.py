@@ -51,6 +51,7 @@ ROUTED = {
     "term": ("public", True),
     "sync": ("private", True),
     "themes": ("public", False),
+    "appstore": ("public", False),
 }
 REALM = "Irate-Box"
 

@@ -1,0 +1,728 @@
+[
+ {
+  "tag_name": "v5.0.1",
+  "name": "scrcpy 5.0.1",
+  "published_at": "2026-10-08T06:44:27Z",
+  "created_at": "2026-10-08T06:41:35Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v5.0.1.tar.gz",
+    "size": 17883742,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-linux-x86_64-v5.0.1.tar.gz",
+    "digest": "sha256:9f969d30cc574816077edecda65719c1c70b0aee1df1ba5fa00779ac07b8fd6e"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v5.0.1.tar.gz",
+    "size": 12565912,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-macos-aarch64-v5.0.1.tar.gz",
+    "digest": "sha256:33611e51977a8289e2e124b220f727895181ef2eb9060e0987a4dc2db9cf0d6b"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v5.0.1.tar.gz",
+    "size": 13478118,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-macos-x86_64-v5.0.1.tar.gz",
+    "digest": "sha256:31a5467a9e907f162b093267cbbab1276b15c6e709c2ea8159566a8d165beb50"
+   },
+   {
+    "name": "scrcpy-server-v5.0.1",
+    "size": 733930,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-server-v5.0.1",
+    "digest": "sha256:764eb6f79811d5211fe9df341120882ba9994c7a61b897d7bf3fb662e53bc536"
+   },
+   {
+    "name": "scrcpy-win32-v5.0.1.zip",
+    "size": 10133753,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-win32-v5.0.1.zip",
+    "digest": "sha256:0cb65ebf1bce892fa4d1502d699af0c7a1a7f24d7febcb9ef72894e3f23fc2ad"
+   },
+   {
+    "name": "scrcpy-win64-v5.0.1.zip",
+    "size": 11264634,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-win64-v5.0.1.zip",
+    "digest": "sha256:b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5"
+   },
+   {
+    "name": "scrcpy-winarm64-v5.0.1.zip",
+    "size": 9825739,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-winarm64-v5.0.1.zip",
+    "digest": "sha256:16c3fc2068df64946f670e3504b4752073ebae47a416a45b46e79a5ab19c689b"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 661,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/SHA256SUMS.txt",
+    "digest": "sha256:b6e9a0b549caaaa4d0e5e1a2ef56069f9516cc10eced9477406dee4bb59180f8"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/SHA256SUMS.txt.asc",
+    "digest": "sha256:9a43dfcac155dbaac309681b676cc92789aa90a74d5810b1e3f982ae893d96c4"
+   }
+  ]
+ },
+ {
+  "tag_name": "v5.0",
+  "name": "scrcpy 5.0",
+  "published_at": "2026-10-05T10:30:35Z",
+  "created_at": "2026-10-05T10:27:03Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v5.0.tar.gz",
+    "size": 17883086,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/scrcpy-linux-x86_64-v5.0.tar.gz",
+    "digest": "sha256:f052ad9eb981879e8c5f066c5ef122b39b6c9853b383d6497219030e6549baed"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v5.0.tar.gz",
+    "size": 12565892,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/scrcpy-macos-aarch64-v5.0.tar.gz",
+    "digest": "sha256:7cb4e41c859b05b36e89dc9be6c353cc5980c00d7f7f6a763b5b355551b82e9c"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v5.0.tar.gz",
+    "size": 13479803,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/scrcpy-macos-x86_64-v5.0.tar.gz",
+    "digest": "sha256:dacb995c8eb42528cb96b2da2a2e3110fe5c82281378e6044fc7cccf48a7c39a"
+   },
+   {
+    "name": "scrcpy-server-v5.0",
+    "size": 733974,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/scrcpy-server-v5.0",
+    "digest": "sha256:26cbc9ad0aced6c2282455bef4fb43462605c1f8758c74b4ab1dbf818c229daa"
+   },
+   {
+    "name": "scrcpy-win32-v5.0.zip",
+    "size": 10133772,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/scrcpy-win32-v5.0.zip",
+    "digest": "sha256:31413dd59a80cb76e7747ef91b4994934b546c8860e8e7976046c612a50e5cc3"
+   },
+   {
+    "name": "scrcpy-win64-v5.0.zip",
+    "size": 11264659,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/scrcpy-win64-v5.0.zip",
+    "digest": "sha256:44c10d9e82f20ea67227d14d37bf9fbe3603117c5736df3f514544a02ba20a73"
+   },
+   {
+    "name": "scrcpy-winarm64-v5.0.zip",
+    "size": 9825783,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/scrcpy-winarm64-v5.0.zip",
+    "digest": "sha256:afc1db17b216f91470d2c8f41ea786ae18ab1cb2bc2324bc05ec3d7685aa6054"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 647,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/SHA256SUMS.txt",
+    "digest": "sha256:63f619d01b947ac04187af85835fe184b1b66a72a710da769c6c3acb7d3bd5ec"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v5.0/SHA256SUMS.txt.asc",
+    "digest": "sha256:db0aac98d9fb995605e87ac83bec641a98fcaeb39528b13eaf505cbb2cc8547a"
+   }
+  ]
+ },
+ {
+  "tag_name": "v4.1",
+  "name": "scrcpy 4.1",
+  "published_at": "2026-07-12T18:15:37Z",
+  "created_at": "2026-07-12T18:11:06Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v4.1.tar.gz",
+    "size": 17762813,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-linux-x86_64-v4.1.tar.gz",
+    "digest": "sha256:ad56ae8bfeedf41e824945c11dbf55fcb092b3e615b9b486f48a50e30d389635"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v4.1.tar.gz",
+    "size": 12981888,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-macos-aarch64-v4.1.tar.gz",
+    "digest": "sha256:20fd47c9014dd5e0fa77091f3cb7adbda8445a360c4584aeaa0150b5b3988ff3"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v4.1.tar.gz",
+    "size": 13904869,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-macos-x86_64-v4.1.tar.gz",
+    "digest": "sha256:ee2a7223bc8dbdc4f482db1134bcf441178dafb833492b71ca4c22090c58ce72"
+   },
+   {
+    "name": "scrcpy-server-v4.1",
+    "size": 733706,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-server-v4.1",
+    "digest": "sha256:deacb991ed2509715160ffdc7907e47b4160eb30d1566217e9047fd5b8850cae"
+   },
+   {
+    "name": "scrcpy-win32-v4.1.zip",
+    "size": 10191501,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-win32-v4.1.zip",
+    "digest": "sha256:fa57b36622a53b6aec74c5e5b5c08236165efa445c4f186d48f176ebf9c24eec"
+   },
+   {
+    "name": "scrcpy-win64-v4.1.zip",
+    "size": 11305298,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-win64-v4.1.zip",
+    "digest": "sha256:5b12172b3264b2889f4583ee64752ce832e29bc8b1089dca81093459697165db"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 556,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/SHA256SUMS.txt",
+    "digest": "sha256:c622ac56f2c2c1c4b84bd562f76fb1a92d10940430bd8b1ec6141dbb5e3fffbb"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.1/SHA256SUMS.txt.asc",
+    "digest": "sha256:694a317185bedd3a730bb0d967cb487ff62e334b8d3938bcabb5b235e85e985d"
+   }
+  ]
+ },
+ {
+  "tag_name": "v4.0",
+  "name": "scrcpy 4.0",
+  "published_at": "2026-05-12T19:47:27Z",
+  "created_at": "2026-05-12T19:35:52Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v4.0.tar.gz",
+    "size": 21101429,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-linux-x86_64-v4.0.tar.gz",
+    "digest": "sha256:7daf05af5d575862e62b068cf6852d6068faf7ef3178f3735e3953e778fbf0ab"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v4.0.tar.gz",
+    "size": 12627753,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-macos-aarch64-v4.0.tar.gz",
+    "digest": "sha256:f5167fe047fe4a2ae2c2ea8634c7145a4d64d0b6005f24bb45639a965b8c60d4"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v4.0.tar.gz",
+    "size": 13316104,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-macos-x86_64-v4.0.tar.gz",
+    "digest": "sha256:b83169f856d7022ed0e4428d98acea18dde2d63f49611b52ea137577ce4efe6b"
+   },
+   {
+    "name": "scrcpy-server-v4.0",
+    "size": 732226,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0",
+    "digest": "sha256:84924bd564a1eb6089c872c7521f968058977f91f5ff02514a8c74aff3210f3a"
+   },
+   {
+    "name": "scrcpy-win32-v4.0.zip",
+    "size": 14621065,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-win32-v4.0.zip",
+    "digest": "sha256:5f860ad2fc66042bd490e31b983d5e40fd749314f28f0dcb9fec697fa89861be"
+   },
+   {
+    "name": "scrcpy-win64-v4.0.zip",
+    "size": 15747604,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-win64-v4.0.zip",
+    "digest": "sha256:75dbeb5b00e6f64292f26f70900ae55ca397786bdfb0b9bbeb481a0549047457"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 556,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/SHA256SUMS.txt",
+    "digest": "sha256:19d7980ca2d634fd5b7c62d4207a7bc1e06e04b317375fa8594d5dfec0c5424f"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v4.0/SHA256SUMS.txt.asc",
+    "digest": "sha256:11dffed850930b4245d70bb2143b8bf952ae288de128d8117d5f5b91c2bf068d"
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.3.4",
+  "name": "scrcpy v3.3.4",
+  "published_at": "2025-12-17T19:26:16Z",
+  "created_at": "2025-12-17T19:21:09Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.3.4.tar.gz",
+    "size": 12854835,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-linux-x86_64-v3.3.4.tar.gz",
+    "digest": "sha256:0305d98c06178c67e12427bbf340c436d0d58c9e2a39bf9ffbbf8f54d7ef95a5"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.3.4.tar.gz",
+    "size": 9486795,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-macos-aarch64-v3.3.4.tar.gz",
+    "digest": "sha256:8fef43520405dd523c74e1530ac68febcc5a405ea89712c874936675da8513dd"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.3.4.tar.gz",
+    "size": 10155380,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-macos-x86_64-v3.3.4.tar.gz",
+    "digest": "sha256:cf9b3453a33279b6009dfb256b1a84c374bd4c30a71edd74bacab28d72a5d929"
+   },
+   {
+    "name": "scrcpy-server-v3.3.4",
+    "size": 90980,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-server-v3.3.4",
+    "digest": "sha256:8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e"
+   },
+   {
+    "name": "scrcpy-win32-v3.3.4.zip",
+    "size": 6937302,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-win32-v3.3.4.zip",
+    "digest": "sha256:393f7d5379dabd8aacc41184755c3d0df975cd2861353cb7a8d50e0835e2eb72"
+   },
+   {
+    "name": "scrcpy-win64-v3.3.4.zip",
+    "size": 7287033,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-win64-v3.3.4.zip",
+    "digest": "sha256:d8a155b7c180b7ca4cdadd40712b8750b63f3aab48cb5b8a2a39ac2d0d4c5d38"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 568,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/SHA256SUMS.txt",
+    "digest": "sha256:4cb7069421050db158d2519ce766f5dd1ee26728a022a61a6724733bde86761a"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/SHA256SUMS.txt.asc",
+    "digest": "sha256:5d83342739d17484a1186c1cffae776759154d4aaef16027b5417e1570c49703"
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.3.3",
+  "name": "scrcpy v3.3.3",
+  "published_at": "2025-09-27T14:12:27Z",
+  "created_at": "2025-09-27T14:10:28Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.3.3.tar.gz",
+    "size": 12854418,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-linux-x86_64-v3.3.3.tar.gz",
+    "digest": "sha256:9b30e813e8191329ba8025dc80cb0f198fb0a318960a3b5c15395cf675c9c638"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.3.3.tar.gz",
+    "size": 9486162,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-macos-aarch64-v3.3.3.tar.gz",
+    "digest": "sha256:b93299468f19ae89ac70f7c1453914c41f1f2bcd31f6ab530038da885c19581f"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.3.3.tar.gz",
+    "size": 10154018,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-macos-x86_64-v3.3.3.tar.gz",
+    "digest": "sha256:c767fc1d41e4ae26e40558656570962f474739924fd22ee023d8754889ee4366"
+   },
+   {
+    "name": "scrcpy-server-v3.3.3",
+    "size": 90164,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-server-v3.3.3",
+    "digest": "sha256:7e70323ba7f259649dd4acce97ac4fefbae8102b2c6d91e2e7be613fd5354be0"
+   },
+   {
+    "name": "scrcpy-win32-v3.3.3.zip",
+    "size": 6936466,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-win32-v3.3.3.zip",
+    "digest": "sha256:e3d43e21c0bd6e070381c390c1e4cccd48a1e71ae73a8c217e6e6b8506598c79"
+   },
+   {
+    "name": "scrcpy-win64-v3.3.3.zip",
+    "size": 7286191,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-win64-v3.3.3.zip",
+    "digest": "sha256:4b458d33d0436688c69875cd267cae6fa8be08aa3c17772edf3a940a3dc4b17e"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 568,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/SHA256SUMS.txt",
+    "digest": "sha256:3202dcc6769c0acf0a704410b0ac42446662431cc1f1662e62bfd52b665f13cc"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/SHA256SUMS.txt.asc",
+    "digest": "sha256:1d92d7a2c1086dad17fbefaaadb1ee275bdbda508f04fdf3aaa3307bc8266dc1"
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.3.2",
+  "name": "scrcpy v3.3.2",
+  "published_at": "2025-09-06T13:00:20Z",
+  "created_at": "2025-09-06T12:55:10Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.3.2.tar.gz",
+    "size": 12851275,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/scrcpy-linux-x86_64-v3.3.2.tar.gz",
+    "digest": "sha256:92bed0fa274b9165eb8740e07cf2e2692ebe09ad6911175b0ee42e08799dc51c"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.3.2.tar.gz",
+    "size": 9486471,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/scrcpy-macos-aarch64-v3.3.2.tar.gz",
+    "digest": "sha256:a213eeff8ac95893e69c4bc6a001a402c6680dbfcb74cb353c0124184ed88e8d"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.3.2.tar.gz",
+    "size": 10153996,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/scrcpy-macos-x86_64-v3.3.2.tar.gz",
+    "digest": "sha256:2a1b27fbb67821a886c7e8dea641899836c0abbe7afd37905584b99bcd21bc04"
+   },
+   {
+    "name": "scrcpy-server-v3.3.2",
+    "size": 90808,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/scrcpy-server-v3.3.2",
+    "digest": "sha256:2ee5ca0863ef440f5b7c75856bb475c5283d0a8359cb370b1c161314fd29dfd9"
+   },
+   {
+    "name": "scrcpy-win32-v3.3.2.zip",
+    "size": 6937129,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/scrcpy-win32-v3.3.2.zip",
+    "digest": "sha256:cff2bbebdcfe14a023b77cd601fc4420b5631b19bd4b09ce4dcd4e5bf8e63244"
+   },
+   {
+    "name": "scrcpy-win64-v3.3.2.zip",
+    "size": 7286813,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/scrcpy-win64-v3.3.2.zip",
+    "digest": "sha256:8f7b19371657b872e271e6b02a0c758c61c6e31e032e9df55a83aa3aab960bfa"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 568,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/SHA256SUMS.txt",
+    "digest": "sha256:83ea6bdd19d3926ab2ef3509fff3bb0d4dd3874990625d42e430d42063976baa"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.2/SHA256SUMS.txt.asc",
+    "digest": "sha256:aafc05967f43e02b6f88149f76b002d9d20fa8b77181cef15e1d211e468fb8d0"
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.3.1",
+  "name": "scrcpy v3.3.1",
+  "published_at": "2025-06-20T18:18:43Z",
+  "created_at": "2025-06-20T18:15:00Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.3.1.tar.gz",
+    "size": 12852412,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/scrcpy-linux-x86_64-v3.3.1.tar.gz",
+    "digest": "sha256:bbfe54c6b178adafeaffbbfbbc1548a74486553170c63e63bdd41863ad123422"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.3.1.tar.gz",
+    "size": 9437719,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/scrcpy-macos-aarch64-v3.3.1.tar.gz",
+    "digest": "sha256:907b925900ebd8499c1e47acc9689a95bd3a6f9930eb1d7bdfbca8375ae4f139"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.3.1.tar.gz",
+    "size": 10154869,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/scrcpy-macos-x86_64-v3.3.1.tar.gz",
+    "digest": "sha256:69772491dad718eea82fc65c8e89febff7d41c4ce6faff02f4789a588d10fd7d"
+   },
+   {
+    "name": "scrcpy-server-v3.3.1",
+    "size": 90788,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/scrcpy-server-v3.3.1",
+    "digest": "sha256:a0f70b20aa4998fbf658c94118cd6c8dab6abbb0647a3bdab344d70bc1ebcbb8"
+   },
+   {
+    "name": "scrcpy-win32-v3.3.1.zip",
+    "size": 6937133,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/scrcpy-win32-v3.3.1.zip",
+    "digest": "sha256:ccdf1b4f5d19dfe760446a107e55b0a010a00e097d46533a161499c9333a20a6"
+   },
+   {
+    "name": "scrcpy-win64-v3.3.1.zip",
+    "size": 7286822,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/scrcpy-win64-v3.3.1.zip",
+    "digest": "sha256:4fcad494772a3ae5de9a133149f8856d2fc429b41795f7cf7c754e0c1bb6fbc0"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 568,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/SHA256SUMS.txt",
+    "digest": "sha256:253bba6f9b6c78c12483664f8234dfdb623e3d8be13564e82c32d269ca5f9cbf"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/SHA256SUMS.txt.asc",
+    "digest": "sha256:69fabd52c2751369993d1fb0d3297179af611dd37a1188a5fb162aed7d687a64"
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.3",
+  "name": "scrcpy v3.3",
+  "published_at": "2025-06-11T20:18:03Z",
+  "created_at": "2025-06-11T19:58:24Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.3.tar.gz",
+    "size": 12852697,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/scrcpy-linux-x86_64-v3.3.tar.gz",
+    "digest": "sha256:a0abf37003c3c47a53c1b2a12420296a2b0ee323cf3610fd6fbf9d9bab9d99f3"
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.3.tar.gz",
+    "size": 9437555,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/scrcpy-macos-aarch64-v3.3.tar.gz",
+    "digest": "sha256:7a4cdaeb8ba74593edda278c000ddedc8d70a51263a80b16a6345475d42ac21e"
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.3.tar.gz",
+    "size": 10153425,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/scrcpy-macos-x86_64-v3.3.tar.gz",
+    "digest": "sha256:bb3c13aac166b92539371883a8781aa861a7cd18e3e6077e570ab7a1f562f774"
+   },
+   {
+    "name": "scrcpy-server-v3.3",
+    "size": 90752,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/scrcpy-server-v3.3",
+    "digest": "sha256:351cb2edc7e4c2c75f09a7933fdabcf137be52e2602df154f24ec02db46e9e51"
+   },
+   {
+    "name": "scrcpy-win32-v3.3.zip",
+    "size": 6936947,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/scrcpy-win32-v3.3.zip",
+    "digest": "sha256:e409ab83f8c57bd6ac741d652635cab7699fcf3d384e233833872f117b993ca6"
+   },
+   {
+    "name": "scrcpy-win64-v3.3.zip",
+    "size": 7286607,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/scrcpy-win64-v3.3.zip",
+    "digest": "sha256:a120cb4be7cde2891af38e83d2008173a0b6b6b5e344b2dfe668d0f892999933"
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 556,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/SHA256SUMS.txt",
+    "digest": "sha256:d21024e539af817727461e173e23d1cb05f7a63faa563dc2ec07c840a6cc2e25"
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3/SHA256SUMS.txt.asc",
+    "digest": "sha256:fec69095d38565b0cffbb451b39e66d4955b831cb1c2caa42a3d6faa6b961cad"
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.2",
+  "name": "scrcpy v3.2",
+  "published_at": "2025-03-29T15:24:03Z",
+  "created_at": "2025-03-29T15:15:31Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.2.tar.gz",
+    "size": 12937042,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/scrcpy-linux-x86_64-v3.2.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.2.tar.gz",
+    "size": 8792501,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/scrcpy-macos-aarch64-v3.2.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.2.tar.gz",
+    "size": 9506261,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/scrcpy-macos-x86_64-v3.2.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-release-v3.2.zip",
+    "size": 44579484,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/scrcpy-release-v3.2.zip",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-server-v3.2",
+    "size": 90888,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/scrcpy-server-v3.2",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-win32-v3.2.zip",
+    "size": 6602213,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/scrcpy-win32-v3.2.zip",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-win64-v3.2.zip",
+    "size": 6950959,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/scrcpy-win64-v3.2.zip",
+    "digest": null
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 556,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/SHA256SUMS.txt",
+    "digest": null
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.2/SHA256SUMS.txt.asc",
+    "digest": null
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.1",
+  "name": "scrcpy v3.1",
+  "published_at": "2024-12-09T22:14:45Z",
+  "created_at": "2024-12-09T21:42:39Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.1.tar.gz",
+    "size": 12815009,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/scrcpy-linux-x86_64-v3.1.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.1.tar.gz",
+    "size": 8787600,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/scrcpy-macos-aarch64-v3.1.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.1.tar.gz",
+    "size": 9503665,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/scrcpy-macos-x86_64-v3.1.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-server-v3.1",
+    "size": 90640,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/scrcpy-server-v3.1",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-win32-v3.1.zip",
+    "size": 6593360,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/scrcpy-win32-v3.1.zip",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-win64-v3.1.zip",
+    "size": 6939768,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/scrcpy-win64-v3.1.zip",
+    "digest": null
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 556,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/SHA256SUMS.txt",
+    "digest": null
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.1/SHA256SUMS.txt.asc",
+    "digest": null
+   }
+  ]
+ },
+ {
+  "tag_name": "v3.0.2",
+  "name": "scrcpy v3.0.2",
+  "published_at": "2024-12-04T21:51:49Z",
+  "created_at": "2024-12-04T21:48:33Z",
+  "prerelease": false,
+  "draft": false,
+  "body": "_To receive a notification when a new release is available, click on **Watch > Custom > Releases** at the top._\r\n\r\n---\r\n",
+  "assets": [
+   {
+    "name": "scrcpy-linux-x86_64-v3.0.2.tar.gz",
+    "size": 11557937,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/scrcpy-linux-x86_64-v3.0.2.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-macos-aarch64-v3.0.2.tar.gz",
+    "size": 8435417,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/scrcpy-macos-aarch64-v3.0.2.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-macos-x86_64-v3.0.2.tar.gz",
+    "size": 8742403,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/scrcpy-macos-x86_64-v3.0.2.tar.gz",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-server-v3.0.2",
+    "size": 90396,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/scrcpy-server-v3.0.2",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-win32-v3.0.2.zip",
+    "size": 6055984,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/scrcpy-win32-v3.0.2.zip",
+    "digest": null
+   },
+   {
+    "name": "scrcpy-win64-v3.0.2.zip",
+    "size": 6080557,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/scrcpy-win64-v3.0.2.zip",
+    "digest": null
+   },
+   {
+    "name": "SHA256SUMS.txt",
+    "size": 568,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/SHA256SUMS.txt",
+    "digest": null
+   },
+   {
+    "name": "SHA256SUMS.txt.asc",
+    "size": 833,
+    "browser_download_url": "https://github.com/Genymobile/scrcpy/releases/download/v3.0.2/SHA256SUMS.txt.asc",
+    "digest": null
+   }
+  ]
+ }
+]

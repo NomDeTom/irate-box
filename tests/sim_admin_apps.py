@@ -34,6 +34,13 @@ apps = manifests.admin_apps(ms)
 by = {a["id"]: a for a in apps}
 check("Kiwix owns Books", by.get("wiki", {}).get("sections") == ["books"], by.get("wiki"))
 check(
+    "the App store owns its own page",
+    by.get("appstore", {}).get("sections") == ["appstore"]
+    and by.get("appstore", {}).get("name") == "App store"
+    and by.get("appstore", {}).get("icon") == "🛒",
+    by.get("appstore"),
+)
+check(
     "installable add-ons are marked for their app pages",
     by.get("irc", {}).get("addon") is True
     and by.get("notes", {}).get("addon") is True

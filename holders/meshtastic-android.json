@@ -1,0 +1,11 @@
+{
+  "id": "meshtastic-android",
+  "title": "Meshtastic (Android)",
+  "repo": "meshtastic/Meshtastic-Android",
+  "holds": [
+    {"label": "the release APK", "include": "^androidApp-google-release\\.apk$"},
+    {"label": "the older name (to v2.7.13)", "include": "^app-google-release\\.apk$"}
+  ],
+  "channels": {"stable": 2, "pre-release": 0},
+  "summary": "The phone app, the build the Play Store has: one APK for every phone. Two versions kept, about 125 MB."
+}
