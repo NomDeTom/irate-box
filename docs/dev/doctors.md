@@ -6,7 +6,7 @@ A doctor checks one part of the box, lists what is wrong and offers repairs. The
 
 | Doctor | Answers | Code | Run it | Writes |
 | --- | --- | --- | --- | --- |
-| Box doctor | Is the box healthy, and if not, why? | [health.py](../../irate_box/root/health.py) | `irate-box health` | `control/health.json` |
+| Box doctor | Is the box healthy, and if not, why? | [health.py](../../irate_box/root/health.py) | `irate-box health`, and `health run` from its timer | `control/health.json` |
 | Security doctor | Is the box set up safely? | [secdoctor.py](../../irate_box/root/secdoctor.py) | `irate-box secdoctor` | `control/security-audit.json` |
 | Updates doctor | Can the box update, and why did an update fail? | `updates_doctor_findings()` in [hub_control.py](../../irate_box/root/hub_control.py) | /admin → Updates doctor | `control/doctor.json` |
 
@@ -19,8 +19,18 @@ Is everything that `install.sh` set up still there and working? It covers:
 - the uplink watchdog, the network inventory and the web server's configuration
 - crash watch, the space left and the clock
 - WiFi and radio checks, including the drivers and the logging they depend on
+- loses writes: the often-written files on the card, read past the cache at every boot, and an optional 4 KB
+  test file where the card holds none (`irate-box-lostwrites.service`, `irate-box-canary.timer`)
+- the onboard flash's health, where `nand-logs.sh` uses it: corrected bits, uncorrectable reads, bad blocks,
+  erase counts and UBIFS data checksum errors
 
 It is the only doctor that repairs: it restarts a unit, rebuilds the Kiwix library, or runs the install again.
+
+`irate-box-boxdoctor.timer` runs `health run` every 6 hours, at a randomised delay, and keeps the report where
+/admin reads it. A run is quick except once a week, when it opens every book in Kiwix: `kiwix-manage` on a large
+library took the Lyra's run from about 8 s to 151 s. Each check's time is in the report's `timings`, so the slow one
+is named on the box. The timer, the boot check and the test file are each a setting on Recovery and monitoring;
+switched off, their units and files are gone.
 
 ## Security doctor: our checks, Lynis and others
 

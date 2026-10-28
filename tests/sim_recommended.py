@@ -30,6 +30,7 @@ def check(name, cond, info=""):
 
 box = {"apt_cache": "card", "apt_languages": "download", "journal": "card", "writeback": "standard"}
 cw = {"snapshots": True, "panic": False, "watchdog": False}
+units = {"health-timer": True, "lost-writes": True, "canary": False}
 nand = {"state": None}
 level = {"now": "thrifty"}
 applied = []
@@ -53,9 +54,21 @@ def set_option(key, value):
     return {"id": "cw", "en": f"{key} {value}"}
 
 
+def set_unit(key, on):
+    applied.append((key, "on" if on else "off"))
+    units[key] = on
+    return {"id": "unit", "en": f"{key} {'on' if on else 'off'}"}
+
+
 health.card_groups = groups
 health.card_set = card_set
 health._nand = lambda: (nand["state"], None)
+health.timer_on = lambda: units["health-timer"]
+health.lostwrites_on = lambda: units["lost-writes"]
+health.set_timer = lambda on: set_unit("health-timer", on)
+health.set_lostwrites = lambda on: set_unit("lost-writes", on)
+health.set_canary = lambda on: set_unit("canary", on)
+health.records_on_card = lambda: []
 crashwatch.load_settings = lambda: dict(cw)
 crashwatch.set_option = set_option
 crashwatch.card_writes = lambda: level["now"]

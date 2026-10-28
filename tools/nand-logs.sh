@@ -10,6 +10,9 @@
 #                                            at every boot, and move the logs there
 #   sudo tools/nand-logs.sh off              the logs back to the card; the flash left formatted
 #   sudo tools/nand-logs.sh reflush          on a box set up before it: the timer that keeps the journal on the flash
+#   sudo tools/nand-logs.sh crc on|off        UBIFS checks its data on read (chk_data_crc): on, a damaged read is
+#                                            an error rather than quietly used data; off, it trusts the chip's own
+#                                            correction. On by default when the flash is first used.
 #   sudo tools/nand-logs.sh state plan|on|off  the box's often-written state onto the flash too (the logs on first):
 #                                            the hub's own (all of /var/lib/hub but its large folders, bound back
 #                                            from the card), and the system's (NetworkManager, systemd, chrony,
@@ -128,6 +131,7 @@ check() {
 		echo "mtd$n \"$name\": $(mib "$size") MiB raw NAND, erase block $((erase / 1024)) KiB"
 		if ours "$n"; then
 			echo "  in use by nand-logs: ubi$UBI_DEV, mounted at $MNT: $(df -h --output=used,size "$MNT" 2>/dev/null | tail -1)"
+			echo "  UBIFS data checked on read: $(crc_on && echo yes || echo no)"
 		elif [[ -n $why ]]; then
 			echo "  not free: $why"
 		else
@@ -182,7 +186,7 @@ EOF
 		ubimkvol /dev/ubi$UBI_DEV -N logs -m >/dev/null
 	fi
 	mkdir -p "$MNT"
-	add_fstab "ubi$UBI_DEV:logs $MNT ubifs noatime,nofail,x-systemd.requires=nand-logs-attach.service 0 0"
+	add_fstab "ubi$UBI_DEV:logs $MNT ubifs $(mount_opts) 0 0"
 	systemctl daemon-reload
 	if ! mountpoint -q "$MNT" && ! mount "$MNT"; then
 		undo_attach
@@ -213,6 +217,40 @@ restart_on_exit() { trap 'journalctl --flush 2>/dev/null; systemctl start irate-
 journal_away() { journalctl --relinquish-var; }
 
 add_fstab() { grep -qxF "$1 $FSTAB_TAG" "$FSTAB" || echo "$1 $FSTAB_TAG" >>"$FSTAB"; }
+
+# UBIFS's data checks on read (a setting; on when the flash is first used). crc=1 in the state file is the switch.
+crc_on() { [[ -f $STATE ]] && grep -qx 'crc=1' "$STATE"; }
+mount_opts() {
+	local opts="noatime,no_chk_data_crc,nofail,x-systemd.requires=nand-logs-attach.service"
+	crc_on && opts="noatime,chk_data_crc,nofail,x-systemd.requires=nand-logs-attach.service"
+	echo "$opts"
+}
+
+# The mount option changed now and for every boot: the fstab line for the volume, then a remount.
+crc_set() {
+	local want=$1 opts
+	[[ $want == on || $want == off ]] || die "usage: $0 crc on|off"
+	[[ -e $STATE ]] || die "the onboard flash is not in use (run: $0 on)"
+	if [[ $want == on ]]; then
+		grep -qx 'crc=1' "$STATE" || echo "crc=1" >>"$STATE"
+	else
+		sed -i '/^crc=1$/d' "$STATE"
+	fi
+	opts=$(mount_opts)
+	if grep -qE "^ubi$UBI_DEV:logs $MNT ubifs .*$FSTAB_TAG$" "$FSTAB"; then
+		sed -i "s|^ubi$UBI_DEV:logs $MNT ubifs .*$FSTAB_TAG$|ubi$UBI_DEV:logs $MNT $opts $FSTAB_TAG|" "$FSTAB"
+	else
+		add_fstab "ubi$UBI_DEV:logs $MNT ubifs $opts 0 0"
+	fi
+	if mountpoint -q "$MNT"; then
+		if [[ $want == on ]]; then
+			mount -o remount,chk_data_crc "$MNT" || say "the new option applies at the next boot (the remount was refused)"
+		else
+			mount -o remount,no_chk_data_crc "$MNT" || say "the new option applies at the next boot (the remount was refused)"
+		fi
+	fi
+	say "UBIFS data checked on read: $want"
+}
 
 # A folder's contents copied onto the flash, then the folder bind-mounted from there at every boot.
 bind_over() {
@@ -296,6 +334,7 @@ on() {
 	ours "$n" || ubiformat /dev/mtd"$n" -y -q
 	: >"$STATE"
 	echo "mtd=$n" >>"$STATE"
+	echo "crc=1" >>"$STATE"
 	attach_and_mount "$n"
 	local usable
 	usable=$(($(df -B1 --output=avail "$MNT" | tail -1)))
@@ -632,8 +671,9 @@ state)
 	esac
 	;;
 check) check ;;
+crc) crc_set "${2:-}" ;;
 reflush) [[ -e $STATE ]] && grep -q '^ramlog_old=' "$STATE" && reflush_on && say "the journal goes back to the flash every 10 minutes" ;;
 on) shift && on "$@" ;;
 off) off ;;
-*) die "usage: $0 check | on [--mtd N] [--force] | off | reflush | state plan|on|off" ;;
+*) die "usage: $0 check | on [--mtd N] [--force] | off | crc on|off | reflush | state plan|on|off" ;;
 esac

@@ -13,7 +13,8 @@ On the administration pages, open Doctors.
 - **Summary**: the last start of the box and the reason for it, the last repair, what restarts a frozen box and how much the box writes to its storage card.
 - **Findings**: each problem and what to do about it.
 - **Repairs**: buttons for the safe repairs. Select **Look again** to run the checks now.
-- **Settings links**: a finding links to the page where you change the setting. You set what crash watch keeps and what restarts a frozen box in **System → Recovery and monitoring**. The doctor does the repairs that have one correct result.
+- **Settings links**: a finding links to the page where you change the setting. You set what crash watch keeps, what restarts a frozen box, and whether the doctor checks the box by itself, watches for lost writes, or keeps a 4 KB test file, in **System → Recovery and monitoring**. The doctor does the repairs that have one correct result.
+- **Lost writes**: the Box doctor runs by itself every 6 hours. At every boot it also reads the files the box writes often. A file that reads back as 0xFF means the card lost a write at a power cut, and the finding says to replace the card.
 - **History** (folded): the queue of the root helper, each outage, the steps that the network watchdog took, and the last install. The last install opens by itself when it failed.
 
 The clock checks have their own page in the Clock section.

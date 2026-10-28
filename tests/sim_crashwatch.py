@@ -271,12 +271,14 @@ check(
 g = {x["key"]: x for x in health.doctor_settings()["groups"]}
 check(
     "the doctor's settings: snapshots, a panic, and the watchdog where there is one, each with its current choice, the safest first",
-    [k for k in g] == ["snapshots", "panic", "watchdog"]
+    [k for k in g][:3] == ["snapshots", "panic", "watchdog"]
     and g["snapshots"]["current"] == "on"
     and g["panic"]["current"] == "off"
     and [o["value"] for o in g["panic"]["options"]] == ["off", "on"]
     and g["panic"]["options"][1]["confirm"]
-    and g["watchdog"]["options"][1]["choice"] == "crashwatch-watchdog:on",
+    and g["watchdog"]["options"][1]["choice"] == "crashwatch-watchdog:on"
+    and g["health-timer"]["options"][0]["choice"] == "health-timer:on"
+    and g["lost-writes"]["options"][0]["choice"] == "lost-writes:on",
     g,
 )
 check("  in the report too", health.scan()["settings"]["groups"][0]["key"] == "snapshots")

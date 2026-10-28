@@ -59,10 +59,13 @@ Writing a check (irate_box/finding.py says what each part of a finding is for):
   - The check's docstring says what it asks and, when a real box showed the need, which and when.
 """
 
+import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -862,7 +865,10 @@ def library_paths():
     return [(LIBRARY.parent / p).resolve() for p in re.findall(r'<book [^>]*\bpath="([^"]+)"', text)]
 
 
-def check_kiwix():
+def check_kiwix(quick=False):
+    """The books: the header always, Kiwix's own read of each only in the full run (kiwix-manage opens every book:
+    3.5 s for box 181's four on 2026-10-28, more with a larger library). The quick run is the usual one, the full one
+    weekly (run_report)."""
     books = _books()
     unit = UNIT_DIR / "kiwix.service"
     if not books and not unit.exists():
@@ -885,7 +891,7 @@ def check_kiwix():
         )
     good, bad = [], []
     for b in books:
-        why = zim_header_problem(b) or kiwix_reads(b)
+        why = zim_header_problem(b) or (None if quick else kiwix_reads(b))
         (bad if why else good).append((b, why))
     for b, why in bad:
         out.append(
@@ -924,6 +930,9 @@ def check_kiwix():
                 M("zim-ok.title", "Books"),
                 "ok",
                 M("zim-ok.count", {"one": "{n} book can be read.", "other": "{n} books can be read."}, n=len(good)),
+                notes=[M("zim-ok.quick", "Kiwix's own read of each book is checked in the full run, once a week.")]
+                if quick
+                else [],
                 evidence=names[:6] + (["…"] if len(names) > 6 else []),
             )
         )
@@ -2890,6 +2899,378 @@ def _recommended_findings():
     ]
 
 
+# --- lost writes: the card that says it saved a file and returns 0xFF for it ----------------------------------
+# Box 190's card lost 55 files, each read back whole as 0xFF, with its size and mtime kept: a card genuine by
+# f3probe and badblocks that drops its newest writes at a power cut. The records the box rewrites every few
+# minutes are the evidence, where they live on the card; where none does (a Lyra with nand-logs' state on), an
+# optional 4 KB test file, rewritten every 10 minutes. Both are read past the cache, because the page cache can
+# hold the copy the box believes it wrote.
+SYSTEMD_UNITS = SYSTEMD_ETC / "system"
+DOCTOR_SERVICE = "irate-box-boxdoctor.service"
+DOCTOR_TIMER = "irate-box-boxdoctor.timer"
+LOSTWRITES_SERVICE = "irate-box-lostwrites.service"
+CANARY_SERVICE = "irate-box-canary.service"
+CANARY_TIMER = "irate-box-canary.timer"
+LOST_WRITES_REPORT = CONTROL / "lost-writes.json"
+RECORD_FILES = (
+    "memory-history.json",
+    "service-history.json",
+    "page-history.json",
+    "card-history.jsonl",
+    "clock.json",
+    "boot_id",
+)
+CANARY_MAGIC = b"irate-box-canary 1\n"
+CANARY_SIZE = 4096
+CANARY_HEADER = len(CANARY_MAGIC) + 12 + 64 + 1  # the magic, the sequence and time, the SHA-256 in hex, a newline
+BOOK_CHECK_DAYS = 7
+
+
+def _boot_id():
+    """This boot's id: /proc's, or the hub's own, so a finding from an older boot is not shown as this one's."""
+    said = os.environ.get("HUB_BOOT_ID")
+    if said:
+        return said
+    for path in (Path("/proc/sys/kernel/random/boot_id"), STATE / "boot_id"):
+        try:
+            text = path.read_text().strip()
+        except OSError:
+            continue
+        if text:
+            return text
+    return ""
+
+
+def _reads_all_ff(path, limit=8 << 20):
+    """Whether the file reads back as nothing but 0xFF: read past the cache, because the page cache may hold the
+    copy the box believes it wrote."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        except (AttributeError, OSError):
+            pass
+        seen, left = False, limit
+        while left > 0:
+            chunk = os.read(fd, min(1 << 20, left))
+            if not chunk:
+                break
+            seen = True
+            if chunk.count(0xFF) != len(chunk):
+                return False
+            left -= len(chunk)
+        return seen
+    finally:
+        os.close(fd)
+
+
+def records_on_card():
+    """The records the box rewrites often that live on the SD card (by its mounts); [] where none does."""
+    from irate_box.hub import cardhistory
+
+    found = cardhistory.card()
+    if not found:
+        return []
+    name = found[0]
+    return [p for p in (STATE / filename for filename in RECORD_FILES) if p.exists() and _on_card(p, name)]
+
+
+def _canary_path():
+    from irate_box.root import safeio
+
+    return safeio.ROOT_STATE / "canary.bin"
+
+
+def _chosen():
+    from irate_box.root import recommended
+
+    return recommended.chosen()
+
+
+def canary_on():
+    return _chosen().get("canary") == "on"
+
+
+def _canary_seq(path):
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return 0
+    if len(data) < CANARY_HEADER or data[: len(CANARY_MAGIC)] != CANARY_MAGIC:
+        return 0
+    try:
+        return struct.unpack(">Q", data[len(CANARY_MAGIC) : len(CANARY_MAGIC) + 8])[0]
+    except struct.error:
+        return 0
+
+
+def _write_synced(path, data, mode=0o600):
+    """A file in place atomically, fsynced before the rename and the folder after it: a write the card must keep
+    or return as 0xFF."""
+    path = Path(path)
+    dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    tmp = f".{path.name}.{secrets.token_hex(8)}.tmp"
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, mode, dir_fd=dfd)
+        try:
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view) :]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path.name, src_dir_fd=dfd, dst_dir_fd=dfd)
+        os.fsync(dfd)
+    except BaseException:
+        try:
+            os.unlink(tmp, dir_fd=dfd)
+        except OSError:
+            pass
+        raise
+    finally:
+        os.close(dfd)
+
+
+def _canary_intact(path):
+    """Whether the test file is the one written: its checksum matching what follows it (a file read past the cache
+    by _reads_all_ff first, so this read is the card's)."""
+    data = path.read_bytes()
+    if len(data) != CANARY_SIZE or data[: len(CANARY_MAGIC)] != CANARY_MAGIC:
+        return False
+    start = len(CANARY_MAGIC) + 12
+    return hashlib.sha256(data[CANARY_HEADER:]).hexdigest().encode() == data[start : start + 64]
+
+
+def canary_tick():
+    """The test file's turn: 4 KB with a sequence number and a checksum, fsynced. Only where the owner turned it on."""
+    if not canary_on():
+        return False
+    path = _canary_path()
+    from irate_box.root import safeio
+
+    safeio.mkdir(path.parent, mode=0o700)
+    payload = os.urandom(CANARY_SIZE - CANARY_HEADER)
+    digest = hashlib.sha256(payload).hexdigest().encode()
+    body = CANARY_MAGIC + struct.pack(">QI", _canary_seq(path) + 1, int(time.time())) + digest + b"\n" + payload
+    _write_synced(path, body)
+    return True
+
+
+def lost_writes_check():
+    """The finding for a card that lost its newest writes: a record on it, or the test file, reading as 0xFF."""
+    bad = []
+    for path in records_on_card():
+        try:
+            if _reads_all_ff(path):
+                bad.append(path)
+        except OSError:
+            continue
+    canary = _canary_path()
+    canary_bad = False
+    if canary_on() and canary.exists():
+        try:
+            canary_bad = _reads_all_ff(canary) or not _canary_intact(canary)
+        except OSError:
+            canary_bad = False
+    if not bad and not canary_bad:
+        return []
+    names = ", ".join(p.name for p in bad) or canary.name
+    notes = []
+    if canary_bad and bad:
+        notes.append(M("lost-writes.canary", "The test file on the card reads back as 0xFF too."))
+    housecall = CODE / "irate_box/root/housecall.py"
+    if housecall.exists():
+        notes.append(
+            M(
+                "lost-writes.housecall",
+                "The Housecall doctor can examine the whole card and name every file that it damaged.",
+            )
+        )
+    return [
+        finding(
+            "card-lost-writes",
+            M("lost-writes.title", "Lost writes"),
+            "problem",
+            M("lost-writes.found", "The SD card returned nothing but 0xFF for {names}.", names=names),
+            M(
+                "lost-writes.why",
+                "The card loses its newest writes at a power cut, even writes it has said are saved. Other files "
+                "written since can be lost the same way.",
+            ),
+            M(
+                "lost-writes.fix",
+                "Replace the SD card, and copy the box's settings and the data you keep onto the new one.",
+            ),
+            notes=notes,
+            evidence=[str(p) for p in bad] + ([str(canary)] if canary_bad else []),
+            commands=[f"sudo {CODE}/irate-box housecall --this-card"] if housecall.exists() else [],
+            go=GO_CARD_WRITES,
+        )
+    ]
+
+
+def boot_check():
+    """At every boot, before the hub: the records on the card and the test file, read past the cache. The finding
+    is kept for the doctor, so a record rewritten a minute later does not hide what the boot found."""
+    found = lost_writes_check()
+    from irate_box.root import safeio
+
+    safeio.mkdir(CONTROL, mode=0o755)
+    safeio.write(LOST_WRITES_REPORT, json.dumps({"at": time.time(), "boot": _boot_id(), "findings": found}, indent=1))
+    return found
+
+
+def check_lost_writes():
+    """The boot's finding where it is this boot's; otherwise the check now (a box whose boot unit is not installed)."""
+    try:
+        data = json.loads(LOST_WRITES_REPORT.read_text())
+    except (OSError, ValueError):
+        return lost_writes_check()
+    if not isinstance(data, dict) or data.get("boot") != _boot_id():
+        return lost_writes_check()
+    return [f for f in data.get("findings") or [] if isinstance(f, dict)]
+
+
+def timer_on():
+    return (SYSTEMD_UNITS / DOCTOR_TIMER).exists()
+
+
+def lostwrites_on():
+    return (SYSTEMD_UNITS / LOSTWRITES_SERVICE).exists()
+
+
+def canary_installed():
+    return (SYSTEMD_UNITS / CANARY_TIMER).exists()
+
+
+def _unit(name, text):
+    SYSTEMD_UNITS.mkdir(parents=True, exist_ok=True)
+    from irate_box.root import safeio
+
+    safeio.write(SYSTEMD_UNITS / name, text)
+
+
+def unit_text(name):
+    """A unit of the Box doctor's own (install.sh writes them, and set_timer/lostwrites/canary here)."""
+    from irate_box.root import safeio
+
+    code, state = CODE, STATE
+    root_state = safeio.ROOT_STATE
+    sandbox = (
+        "ProtectSystem=strict\n"
+        f"ReadWritePaths={state}/control {root_state}\n"
+        "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=read-only\nProtectProc=invisible\n"
+    )
+    if name == DOCTOR_SERVICE:
+        return (
+            "[Unit]\nDescription=Irate-Box Box doctor: the box's own checks, its report for /admin\n"
+            "After=local-fs.target\n\n[Service]\nType=oneshot\n"
+            f"ExecStart={code}/irate-box health run\nNice=19\nIOSchedulingClass=idle\n" + sandbox
+        )
+    if name == DOCTOR_TIMER:
+        return (
+            "[Unit]\nDescription=Irate-Box Box doctor, every 6 hours\n\n[Timer]\n"
+            "OnBootSec=30min\nOnUnitActiveSec=6h\nRandomizedDelaySec=1h\n\n[Install]\n"
+            "WantedBy=timers.target\n"
+        )
+    if name == LOSTWRITES_SERVICE:
+        return (
+            "[Unit]\nDescription=Irate-Box: the card's often-written files, read at boot (lost writes)\n"
+            # After nand-state.service: on a Lyra with the state on its NAND, the hub's folder is the flash's only
+            # once that has run; before it, the card's stale copy beneath would be read and the report hidden.
+            # Normal priority: it holds the network and the hub back, and reads only a few small files.
+            "DefaultDependencies=no\nAfter=local-fs.target nand-state.service\n"
+            "Before=network.target irate-box.service\n\n"
+            f"[Service]\nType=oneshot\nExecStart={code}/irate-box health boot-check\n"
+            + sandbox
+            + "\n[Install]\nWantedBy=multi-user.target\n"
+        )
+    if name == CANARY_SERVICE:
+        return (
+            "[Unit]\nDescription=Irate-Box: a test file for lost writes on the SD card\n\n"
+            f"[Service]\nType=oneshot\nExecStart={code}/irate-box health canary\nNice=19\n"
+            "IOSchedulingClass=idle\nProtectSystem=strict\n"
+            f"ReadWritePaths={root_state}\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
+        )
+    if name == CANARY_TIMER:
+        return (
+            "[Unit]\nDescription=Irate-Box: the test file for lost writes, every 10 minutes\n\n[Timer]\n"
+            "OnBootSec=2min\nOnUnitActiveSec=10min\n\n[Install]\nWantedBy=timers.target\n"
+        )
+    raise ValueError(f"no unit text for {name}")
+
+
+def _system(*args):
+    r = run("systemctl", *args, timeout=120)
+    if r.returncode:
+        raise Refused(
+            M(
+                "health-timer.systemctl",
+                "systemctl {args} failed: {detail}",
+                args=" ".join(args),
+                detail=(r.stderr or r.stdout).strip()[-160:],
+            )
+        )
+
+
+def set_timer(on):
+    """The Box doctor's timer: written and started, or gone (and nothing of it left)."""
+    if on:
+        _unit(DOCTOR_SERVICE, unit_text(DOCTOR_SERVICE))
+        _unit(DOCTOR_TIMER, unit_text(DOCTOR_TIMER))
+        _system("daemon-reload")
+        _system("enable", "--now", DOCTOR_TIMER)
+        return M("health-timer.set-on", "The Box doctor now checks the box every 6 hours.")
+    run("systemctl", "disable", "--now", DOCTOR_TIMER, timeout=120)
+    (SYSTEMD_UNITS / DOCTOR_TIMER).unlink(missing_ok=True)
+    (SYSTEMD_UNITS / DOCTOR_SERVICE).unlink(missing_ok=True)
+    _system("daemon-reload")
+    return M("health-timer.set-off", "The Box doctor's timer is gone. It runs when you open its page.")
+
+
+def set_lostwrites(on):
+    """The boot check of the card's often-written files: written and started, or gone."""
+    if on:
+        _unit(LOSTWRITES_SERVICE, unit_text(LOSTWRITES_SERVICE))
+        _system("daemon-reload")
+        _system("enable", "--now", LOSTWRITES_SERVICE)
+        return M("lost-writes.set-on", "The box now reads its often-written files at every boot.")
+    run("systemctl", "disable", "--now", LOSTWRITES_SERVICE, timeout=120)
+    (SYSTEMD_UNITS / LOSTWRITES_SERVICE).unlink(missing_ok=True)
+    LOST_WRITES_REPORT.unlink(missing_ok=True)
+    _system("daemon-reload")
+    return M("lost-writes.set-off", "The box no longer checks its often-written files at boot.")
+
+
+def set_canary(on):
+    """The optional test file: its timer written and started, or gone, with the file."""
+    if on:
+        _unit(CANARY_SERVICE, unit_text(CANARY_SERVICE))
+        _unit(CANARY_TIMER, unit_text(CANARY_TIMER))
+        _system("daemon-reload")
+        _system("enable", "--now", CANARY_TIMER)
+        return M("canary.set-on", "The box now writes a 4 KB test file every 10 minutes and checks it at boot.")
+    run("systemctl", "disable", "--now", CANARY_TIMER, timeout=120)
+    (SYSTEMD_UNITS / CANARY_TIMER).unlink(missing_ok=True)
+    (SYSTEMD_UNITS / CANARY_SERVICE).unlink(missing_ok=True)
+    _canary_path().unlink(missing_ok=True)
+    _system("daemon-reload")
+    return M("canary.set-off", "The test file for lost writes is gone.")
+
+
+def install_units():
+    """install.sh: the doctor's timer and its boot check (the recommended set, and switched off only by the owner's
+    choice), and the test file where the owner turned it on. A unit the owner turned off is removed, so an update
+    does not bring it back."""
+    from irate_box.root import safeio
+
+    safeio.mkdir(safeio.ROOT_STATE, mode=0o700)  # the units may write only into it
+    chosen = _chosen()
+    set_timer(chosen.get("health-timer") != "off")
+    set_lostwrites(chosen.get("lost-writes") != "off")
+    set_canary(chosen.get("canary") == "on")
+
+
 def check_card_writes(now=None):
     from irate_box.hub import cardhistory
 
@@ -3195,6 +3576,31 @@ def card_groups():
             ],
         },
     ]
+    if NAND_STATE.exists():
+        groups.append(
+            {
+                "key": "flash_crc",
+                "label": M("cs.flash-crc", "Check the onboard flash's data on read"),
+                "desc": M(
+                    "cs.flash-crc.desc",
+                    "UBIFS can check each piece of data it reads against its checksum. A damaged read is then an "
+                    "error, not quietly used data. It costs some processor time on each read from the flash.",
+                ),
+                "current": "on" if nand_crc_on() else "off",
+                "options": [
+                    {
+                        "value": "on",
+                        "label": M("cs.flash-crc.on", "Checked"),
+                        "choice": choice("flash_crc", "on"),
+                    },
+                    {
+                        "value": "off",
+                        "label": M("cs.flash-crc.off", "Not checked"),
+                        "choice": choice("flash_crc", "off"),
+                    },
+                ],
+            }
+        )
     languages = _apt_languages()
     if APT_LANG_CONF.exists() or [lang for lang in languages if lang != "none"]:
         groups.insert(
@@ -3324,6 +3730,15 @@ def card_set(key, value):
         if _box_state_on():
             _nand_tool("state", "off")
         return M("repair.card-set.state-card", "The box's often-written state is on the SD card again.")
+    if key == "flash_crc":
+        if not NAND_STATE.exists():
+            raise Refused(M("repair.card-crc.none", "The onboard flash is not in use on this box."))
+        _nand_tool("crc", value)
+        return (
+            M("repair.card-set.crc-on", "UBIFS now checks the flash's data on each read.")
+            if value == "on"
+            else M("repair.card-set.crc-off", "UBIFS no longer checks the flash's data on each read.")
+        )
     if key == "writeback":
         longer = value == "longer"
         if longer:
@@ -3487,6 +3902,79 @@ def _flash_rate(now=None):
     ].get("bad", 0)
 
 
+def nand_crc_on():
+    """Whether the UBIFS volume is mounted with chk_data_crc (nand-logs' setting): data nodes checked on read."""
+    try:
+        return "crc=1" in NAND_STATE.read_text().split()
+    except OSError:
+        return False
+
+
+def _nand_mtd():
+    """The MTD number nand-logs uses, from its state file, or None."""
+    try:
+        return int(next(line.split("=", 1)[1] for line in NAND_STATE.read_text().split() if line.startswith("mtd=")))
+    except (OSError, ValueError, StopIteration):
+        return None
+
+
+def _nand_metrics():
+    """The chip's own counters and UBI's, or None: {mtd, corrected, ecc_failures, max_ec, bad}."""
+    n = _nand_mtd()
+    if n is None:
+        return None
+    mtd, ubi = MTD_SYS / f"mtd{n}", None
+    for candidate in sorted(UBI_SYS.glob("ubi[0-9]*")):
+        try:
+            if (candidate / "mtd_num").read_text().strip() == str(n):
+                ubi = candidate
+                break
+        except OSError:
+            continue
+    out = {"mtd": n}
+    for key, path in (
+        ("corrected", mtd / "corrected_bits"),
+        ("ecc_failures", mtd / "ecc_failures"),
+        ("max_ec", (ubi / "max_ec") if ubi else None),
+        ("bad", (ubi / "bad_peb_count") if ubi else None),
+    ):
+        try:
+            out[key] = int(path.read_text())
+        except (AttributeError, OSError, ValueError):
+            out[key] = None
+    return out
+
+
+NAND_HEALTH = "nand-health.json"
+
+
+def _nand_previous():
+    from irate_box.root import safeio
+
+    try:
+        data = json.loads((safeio.ROOT_STATE / NAND_HEALTH).read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _nand_remember(metrics):
+    from irate_box.root import safeio
+
+    try:
+        safeio.mkdir(safeio.ROOT_STATE, mode=0o700)
+        safeio.write(safeio.ROOT_STATE / NAND_HEALTH, json.dumps(metrics, indent=1, sort_keys=True))
+    except OSError:
+        pass
+
+
+def _nand_crc_errors():
+    """The kernel log's UBIFS data checksum errors this boot, the last few lines (a read of the flash's data that
+    UBIFS refused: chk_data_crc must be on for these)."""
+    said = run("journalctl", "-k", "-b", "-q", "--no-pager", "-o", "cat", "--grep", "UBIFS", timeout=30).stdout
+    return [line.strip()[:200] for line in said.splitlines() if "CRC" in line][-3:]
+
+
 def _flash_findings():
     state, mib = _nand()
     if state == "free":
@@ -3553,6 +4041,60 @@ def _flash_findings():
         if bad_grew:
             status = "warn"
             notes.append(M("card-flash.bad-grew", "Its bad blocks grew by {n} in the record's days.", n=bad_grew))
+        metrics = _nand_metrics()
+        if metrics:
+            previous = _nand_previous()
+            corrected, ecc = metrics.get("corrected"), metrics.get("ecc_failures")
+            was = previous.get("corrected")
+            if corrected is not None:
+                evidence.append(f"mtd{metrics['mtd']}: {corrected} corrected bit(s)")
+                if isinstance(was, int) and corrected > was:
+                    status = "warn"
+                    notes.append(
+                        M(
+                            "card-flash.corrected-grew",
+                            "The bits the chip has had to correct grew by {n} since the last check.",
+                            n=corrected - was,
+                        )
+                    )
+            if ecc:
+                status = "problem"
+                notes.append(
+                    M(
+                        "card-flash.ecc",
+                        "The flash had {n} read(s) whose errors the chip could not correct. Data on it can be lost.",
+                        n=ecc,
+                    )
+                )
+            bad_before = previous.get("bad")
+            if bad is not None and isinstance(bad_before, int) and bad > bad_before:
+                status = "warn"
+                notes.append(
+                    M(
+                        "card-flash.bad-grew-check",
+                        "Its bad blocks grew by {n} since the last check.",
+                        n=bad - bad_before,
+                    )
+                )
+            crc = _nand_crc_errors()
+            if crc:
+                status = "problem"
+                notes.append(
+                    M(
+                        "card-flash.crc",
+                        "The kernel's log has UBIFS data checksum errors this boot: data on the flash was read "
+                        "wrong. It was caught, not silently used.",
+                    )
+                )
+                evidence += crc
+            _nand_remember(metrics)
+        if NAND_STATE.exists() and not nand_crc_on():
+            notes.append(
+                M(
+                    "card-flash.crc-off",
+                    "UBIFS does not check its data on read. Switch on Check the onboard flash's data on read.",
+                )
+            )
         return [
             finding(
                 "card-flash",
@@ -3937,7 +4479,36 @@ def card_scan():
     return bad
 
 
-def check_builds(now=None):
+BUILDS_BYTES = "builds-bytes.json"
+
+
+def _builds_bytes(ci_root, quick):
+    """What the builds take, walked in the full run and kept for the quick ones: on box 181 the walk over
+    /var/lib/hub/ci (231 280 files, 14 GB of the builder's caches) was 132.6 s of a 143.5 s run (2026-10-28)."""
+    from irate_box.root import safeio
+
+    kept = safeio.ROOT_STATE / BUILDS_BYTES
+    if quick:
+        try:
+            return int(json.loads(kept.read_text())["bytes"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return 0
+    used = 0
+    for f in ci_root.rglob("*") if ci_root.is_dir() else []:
+        try:
+            if f.is_file() and not f.is_symlink():
+                used += f.stat().st_size
+        except OSError:
+            pass
+    try:
+        safeio.mkdir(safeio.ROOT_STATE, mode=0o700)
+        safeio.write(kept, json.dumps({"at": time.time(), "bytes": used}))
+    except OSError:
+        pass
+    return used
+
+
+def check_builds(now=None, quick=False):
     """The builds (ci.py) and the Firmware Factory (factory.py): builds waiting over a day, a
     factory family failing every time here, and what builds take on the card."""
     now = time.time() if now is None else now
@@ -4021,13 +4592,7 @@ def check_builds(now=None):
                 go=GO_FACTORY,
             )
         )
-    used = 0
-    for f in ci_root.rglob("*") if ci_root.is_dir() else []:
-        try:
-            if f.is_file() and not f.is_symlink():
-                used += f.stat().st_size
-        except OSError:
-            pass
+    used = _builds_bytes(ci_root, quick)
     total = shutil.disk_usage(STATE).total if STATE.exists() else 0
     if used and total:
         share = used / total
@@ -5061,6 +5626,66 @@ def setting_groups(s, wd):
                 ],
             }
         )
+    # The Box doctor's own schedule and its checks for a card that loses writes (notes: box-doctor-hardening-plan,
+    # Part 1, steps 0 and 2). All three are the recommended set's, and gone when switched off.
+    groups += [
+        {
+            "key": "health-timer",
+            "label": M("health-timer.title", "Box doctor checks the box by itself"),
+            "desc": M(
+                "health-timer.desc",
+                "Every 6 hours the Box doctor checks the box without anyone opening its page, and keeps what it "
+                "finds where the page reads it. Once a week it opens every book in Kiwix: that full run is slower. "
+                "The checks run at low priority, in the background.",
+            ),
+            "current": "on" if timer_on() else "off",
+            "options": [
+                {"value": "on", "label": M("health-timer.on", "Every 6 hours"), "choice": "health-timer:on"},
+                {"value": "off", "label": M("health-timer.off", "Only when asked"), "choice": "health-timer:off"},
+            ],
+        },
+        {
+            "key": "lost-writes",
+            "label": M("lost-writes.setting.title", "Watch the card for lost writes"),
+            "desc": M(
+                "lost-writes.setting.desc",
+                "At every boot, before the services start, the box reads the files it writes often past the cache. "
+                "One that reads back as 0xFF means the card lost a write at a power cut. It writes nothing.",
+            ),
+            "current": "on" if lostwrites_on() else "off",
+            "options": [
+                {"value": "on", "label": M("lost-writes.setting.on", "At every boot"), "choice": "lost-writes:on"},
+                {"value": "off", "label": M("lost-writes.setting.off", "Do not check"), "choice": "lost-writes:off"},
+            ],
+        },
+    ]
+    if not records_on_card():
+        groups.append(
+            {
+                "key": "canary",
+                "label": M("canary.title", "A test file for lost writes"),
+                "desc": M(
+                    "canary.desc",
+                    "This card holds no record that the box rewrites often, so there is nothing to notice a lost "
+                    "write from. The box writes a 4 KB test file every 10 minutes and checks it at boot. It adds "
+                    "about 2 to 7 MB a day of writes to the card.",
+                ),
+                "current": "on" if canary_installed() else "off",
+                "options": [
+                    {"value": "off", "label": M("canary.off", "Off"), "choice": "canary:off"},
+                    {
+                        "value": "on",
+                        "label": M("canary.on", "Every 10 minutes"),
+                        "choice": "canary:on",
+                        "confirm": M(
+                            "canary.confirm",
+                            "Write a 4 KB test file to the card every 10 minutes, so the box can tell whether the "
+                            "card loses writes at a power cut? It adds about 2 to 7 MB a day of writes.",
+                        ),
+                    },
+                ],
+            }
+        )
     return groups
 
 
@@ -5422,8 +6047,12 @@ def check_watchdogs_alive(now=None):
     return out
 
 
-def scan():
-    findings = []
+def scan(quick=False):
+    """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
+    Lyra's slow step: 132.6 of 143.5 s on box 181), and the books' headers without opening each in Kiwix. Each check's
+    time is kept, so a slow one is named on the box (Part 1, step 0 of notes: the plan to bring the Lyra's 151 s run
+    down)."""
+    findings, timings = [], {}
     for check in (
         check_install,
         check_hub,
@@ -5443,6 +6072,7 @@ def scan():
         check_space,
         check_card_writes,
         check_card_health,
+        check_lost_writes,
         check_builds,
         check_crashwatch,
         check_led,
@@ -5451,8 +6081,9 @@ def scan():
         check_idle,
         check_usb_filesystems,
     ):
+        start = time.monotonic()
         try:
-            findings += check()
+            findings += check(quick=quick) if check in (check_kiwix, check_builds) else check()
         except Exception as exc:  # noqa: BLE001 - one broken check must not hide the others
             findings.append(
                 finding(
@@ -5463,7 +6094,54 @@ def scan():
                     evidence=[repr(exc)[:300]],
                 )
             )
-    return {"at": time.time(), "findings": findings, "settings": doctor_settings(), "clock": clock_choice()}
+        timings[check.__name__.removeprefix("check_")] = round(time.monotonic() - start, 3)
+    return {
+        "at": time.time(),
+        "findings": findings,
+        "settings": doctor_settings(),
+        "clock": clock_choice(),
+        "timings": timings,
+        "quick": quick,
+    }
+
+
+def _previous_report():
+    try:
+        data = json.loads((CONTROL / "health.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def run_report(full=None):
+    """A run of the doctor, the timer's or /admin's: the quick checks, and the full one (the builds walked, the
+    books opened in Kiwix) once a week. Written where /admin reads it, with when the last full run was."""
+    previous = _previous_report()
+    now = time.time()
+    full_at = previous.get("full_at") if isinstance(previous.get("full_at"), (int, float)) else None
+    if full is None:
+        full = full_at is None or now - full_at > BOOK_CHECK_DAYS * 86400
+    data = scan(quick=not full)
+    data["full_at"] = now if full else full_at
+    from irate_box.root import safeio
+
+    safeio.mkdir(CONTROL, mode=0o755)
+    safeio.write(CONTROL / "health.json", json.dumps(data, indent=2))
+    return data
+
+
+def run_check(full=None):
+    """The timer's run (run_report), with the finding counts and the slowest checks in one line, for the journal."""
+    data = run_report(full)
+    full = not data.get("quick")
+    counts = {s: sum(1 for f in data["findings"] if f["status"] == s) for s in ("problem", "warn")}
+    slow = sorted(data["timings"].items(), key=lambda kv: kv[1], reverse=True)[:3]
+    print(
+        f"box doctor: {counts['problem']} problem(s), {counts['warn']} warning(s)"
+        + (", full run" if full else "")
+        + "".join(f", {name} {secs:.1f} s" for name, secs in slow if secs >= 1)
+    )
+    return data
 
 
 def clock_choice():
@@ -5511,8 +6189,9 @@ CHOICE_RE = re.compile(
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
-    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash))$"
+    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off))$"
     r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
+    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )
 
@@ -5533,6 +6212,13 @@ def fix(choice):
         from irate_box.root import crashwatch, recommended
 
         said = crashwatch.set_option(kind[len("crashwatch-") :], arg)
+        recommended.record(kind, arg)  # the owner's own choice: never offered back
+        return said
+    if kind in ("health-timer", "lost-writes", "canary"):
+        from irate_box.root import recommended
+
+        on = arg == "on"
+        said = {"health-timer": set_timer, "lost-writes": set_lostwrites, "canary": set_canary}[kind](on)
         recommended.record(kind, arg)  # the owner's own choice: never offered back
         return said
     if kind == "recommended-apply":
@@ -5863,6 +6549,20 @@ def main(argv):
     elif argv == ["card-scan"]:  # the whole-card read, in its own unit (card_scan_start)
         bad = card_scan()
         print(f"unreadable places: {bad}")
+    elif argv == ["run"]:  # the timer's (irate-box-boxdoctor.timer)
+        run_check()
+    elif argv == ["run-full"]:
+        run_check(full=True)
+    elif argv == ["boot-check"]:  # the boot's (irate-box-lostwrites.service)
+        found = boot_check()
+        print(f"lost writes: {len(found)} finding(s)")
+    elif argv == ["canary"]:  # the test file's turn (irate-box-canary.timer)
+        canary_tick()
+    elif argv == ["install-units"]:  # install.sh: the units, as the owner's choices leave them
+        try:
+            install_units()
+        except ValueError as exc:
+            sys.exit(f"health.py install-units: {exc}")
     elif argv == ["--json"]:
         print(json.dumps(scan(), indent=2))
     elif len(argv) == 2 and argv[0] == "fix":
@@ -5877,7 +6577,9 @@ def main(argv):
         except ValueError as exc:
             sys.exit(f"health.py fix: {exc}")
     else:
-        sys.exit("usage: health.py [summary | --json | fix CHOICE]")
+        sys.exit(
+            "usage: health.py [summary | --json | run | run-full | boot-check | canary | install-units | fix CHOICE]"
+        )
 
 
 if __name__ == "__main__":
