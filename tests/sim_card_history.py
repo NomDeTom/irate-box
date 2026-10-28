@@ -219,11 +219,11 @@ def run(*cmd, timeout=60, **kw):
         out = "arm64\nall\narm64\n"
     elif cmd[0] == "apt-config":
         out = 'Acquire::Languages "";\nAcquire::Languages:: "en_GB";\nAcquire::Languages:: "none";\n'
-    elif cmd[0] == "bash" and cmd[2] == "check":
+    elif cmd[:2] == ("bash", "-p") and cmd[3] == "check":
         out = 'mtd0 "spi-nand0": 256 MiB raw NAND, erase block 128 KiB\n  free. On it (about 204 MiB usable): ramlog\n'
-    elif cmd[0] == "bash" and cmd[2] == "on":
+    elif cmd[:2] == ("bash", "-p") and cmd[3] == "on":
         (T / "nand-logs.conf").write_text("mtd=0\n")
-    elif cmd[0] == "bash" and cmd[2] == "off":
+    elif cmd[:2] == ("bash", "-p") and cmd[3] == "off":
         (T / "nand-logs.conf").unlink()
     elif cmd[0] == "journalctl" and "-k" in cmd:
         out = said_kernel["log"]
@@ -473,7 +473,7 @@ ran.clear()
 health.fix("card-set:journal:flash")
 check(
     "On the onboard flash: nand-logs.sh on, irate-box's own journal file removed",
-    any(c[0] == "bash" and c[2] == "on" for c in ran)
+    any(c[:2] == ("bash", "-p") and c[3] == "on" for c in ran)
     and not jconf.exists()
     and {g["key"]: g for g in health.card_groups()}["journal"]["current"] == "flash",
     ran,
@@ -544,7 +544,9 @@ check(
 ran.clear()
 health.fix("card-set:box_state:flash")
 check(
-    "  On the onboard flash: nand-logs.sh state on", any(c[0] == "bash" and c[2:4] == ("state", "on") for c in ran), ran
+    "  On the onboard flash: nand-logs.sh state on",
+    any(c[:2] == ("bash", "-p") and c[3:5] == ("state", "on") for c in ran),
+    ran,
 )
 (T / "nand-logs.conf").write_text("mtd=0\nstate=1\nstate_large=zim firmware\n")
 check(
@@ -553,14 +555,16 @@ check(
 ran.clear()
 health.fix("card-set:box_state:card")
 check(
-    "  back on the card: nand-logs.sh state off", any(c[0] == "bash" and c[2:4] == ("state", "off") for c in ran), ran
+    "  back on the card: nand-logs.sh state off",
+    any(c[:2] == ("bash", "-p") and c[3:5] == ("state", "off") for c in ran),
+    ran,
 )
 (T / "nand-logs.conf").write_text("mtd=0\n")
 ran.clear()
 health.fix("card-set:journal:memory")
 check(
     "  back to memory: nand-logs.sh off first, then the journal in memory",
-    any(c[0] == "bash" and c[2] == "off" for c in ran) and "Storage=volatile" in jconf.read_text(),
+    any(c[:2] == ("bash", "-p") and c[3] == "off" for c in ran) and "Storage=volatile" in jconf.read_text(),
     ran,
 )
 
