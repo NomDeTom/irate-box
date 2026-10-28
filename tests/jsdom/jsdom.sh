@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # The jsdom the page tests run in, sourced by tests/jsdom/run.sh and tests/browser/card-audit.sh. jsdom is not the
