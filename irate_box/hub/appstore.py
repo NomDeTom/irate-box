@@ -144,13 +144,25 @@ PAGE_HEAD = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🛒 App store · Hub</title>
+  <title>{title}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
   <link rel="stylesheet" href="/style.css">
   <script src="/themes.js"></script>
   <link rel="stylesheet" href="/layout.css">
 </head>
 """
+
+
+def _channel(name):
+    if name == "pre-release":
+        return M("appstore.channel.pre-release", "Pre-release")
+    if name in ("", "stable"):
+        return M("appstore.channel.stable", "Stable")
+    return str(name).capitalize()
+
+
+def _esc(message):
+    return html.escape(str(message))
 
 
 def page(host, scheme, level):
@@ -161,29 +173,34 @@ def page(host, scheme, level):
     rows' data-tags feed the filter buttons appstore.js adds: the page says everything again without them."""
     listings = _index(level)
     parts = [
-        PAGE_HEAD,
+        PAGE_HEAD.format(title=_esc(M("appstore.page.title", "🛒 App store · Hub"))),
         '<body class="appstore">',
         "<header>",
-        '  <nav class="head-nav"><a class="head-btn labelled" href="/help.html"><span class="head-emoji" '
-        'aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/"><span class="head-emoji" '
-        'aria-hidden="true">🏠</span> Hub</a></nav>',
-        "<h1>🛒 App store</h1>",
-        '  <p class="subtitle">App files kept on this box. Open one to install it.</p>',
-        '  <div class="theme-picker" role="group" aria-label="Theme"></div>',
+        f'  <nav class="head-nav"><a class="head-btn labelled" href="/help.html"><span class="head-emoji" '
+        f'aria-hidden="true">🛟</span> {_esc(M("appstore.help", "Help"))}</a><a class="head-btn labelled" href="/">'
+        f'<span class="head-emoji" aria-hidden="true">🏠</span> {_esc(M("appstore.hub", "Hub"))}</a></nav>',
+        f"<h1>{_esc(M('appstore.heading', '🛒 App store'))}</h1>",
+        f'  <p class="subtitle">{_esc(M("appstore.subtitle", "App files kept on this box. Open one to install it."))}</p>',
+        f'  <div class="theme-picker" role="group" aria-label="{_esc(M("appstore.theme", "Theme"))}"></div>',
         "</header>",
     ]
     if not any(not entry["empty"] for entry in listings):
         parts.append(f"  <section><p>{html.escape(str(M('appstore.empty', 'Nothing is kept yet.')))}</p>")
         if level == "admin":
-            parts.append('  <p><a href="/admin/#appstore">App store settings</a></p>')
+            parts.append(
+                f'  <p><a href="/admin/#appstore">{_esc(M("appstore.admin-link", "App store settings"))}</a></p>'
+            )
         parts.append("  </section>")
     for entry in listings:
         label = html.escape(entry["title"])
-        repo = html.escape(entry["repo"])
+        repo = entry["repo"]
         parts.append(f'  <section data-holder="{html.escape(entry["id"])}">')
         parts.append(f"    <h2>{label}</h2>")
         if repo:
-            parts.append(f'    <p class="setting-desc">From <code translate="no">{repo}</code></p>')
+            said = html.escape(str(M("appstore.from", "From {repo}", repo=repo))).replace(
+                html.escape(repo), f'<code translate="no">{html.escape(repo)}</code>'
+            )
+            parts.append(f'    <p class="setting-desc">{said}</p>')
         if entry["empty"]:
             parts.append(
                 f'    <p class="setting-desc">{html.escape(str(M("appstore.none-yet", "Nothing kept yet.")))}</p>'
@@ -191,13 +208,7 @@ def page(host, scheme, level):
             parts.append("  </section>")
             continue
         for version in entry["versions"]:
-            channel = (
-                "Pre-release"
-                if version["channel"] == "pre-release"
-                else version["channel"].capitalize()
-                if version["channel"] not in ("", "stable")
-                else "Stable"
-            )
+            channel = html.escape(str(_channel(version["channel"])))
             parts.append(
                 f'    <h3><span translate="no">{html.escape(version["tag"])}</span>'
                 f' <span class="appstore-badge">{channel}</span>'
@@ -205,8 +216,8 @@ def page(host, scheme, level):
             )
             if version["notes"]:
                 parts.append(
-                    '    <details class="appstore-notes"><summary>Release notes</summary>'
-                    f"<pre>{html.escape(version['notes'])}</pre></details>"
+                    f'    <details class="appstore-notes"><summary>{_esc(M("appstore.release-notes", "Release notes"))}'
+                    f"</summary><pre>{html.escape(version['notes'])}</pre></details>"
                 )
             parts.append('    <ul class="appstore-files">')
             for file in version["files"]:
@@ -215,21 +226,30 @@ def page(host, scheme, level):
                     f'      <li data-tags="{tags}">'
                     f'<a href="{html.escape(file["url"])}"><code translate="no">{html.escape(file["name"])}</code></a>'
                     f' <span class="appstore-size">{_size(file["size"])}</span>'
-                    f' <details class="appstore-digest"><summary>Details</summary>'
-                    f'<p><code translate="no">sha-256: {html.escape(file["sha256"])}</code></p></details></li>'
+                    f' <details class="appstore-digest"><summary>{_esc(M("appstore.details", "Details"))}</summary>'
+                    f'<p><code translate="no">{_esc(M("appstore.sha256", "sha-256: {digest}", digest=file["sha256"]))}'
+                    "</code></p></details></li>"
                 )
             parts.append("    </ul>")
         parts.append("  </section>")
-    parts.append(
-        '  <p class="setting-desc">📱 A phone needs permission to install an app from the browser you '
-        "downloaded it with. Turn that on once, for this browser. A plain (unencrypted) address can bring a "
-        'warning. <a href="/certificate">This box\'s certificate</a> lets the phone trust it, and the HTTPS '
-        "address of this page downloads without a warning.</p>"
-    )
+    certificate = str(M("appstore.certificate", "This box's certificate"))
+    phone = html.escape(
+        str(
+            M(
+                "appstore.phone",
+                "📱 A phone needs permission to install an app from the browser you downloaded it with. Turn that on "
+                "once, for this browser. A plain (unencrypted) address can bring a warning. {certificate} lets the "
+                "phone trust it, and the HTTPS address of this page downloads without a warning.",
+                certificate=certificate,
+            )
+        )
+    ).replace(html.escape(certificate), f'<a href="/certificate">{html.escape(certificate)}</a>')
+    parts.append(f'  <p class="setting-desc">{phone}</p>')
     address = html.escape(f"{scheme}://{host}/appstore/", quote=True)
     parts.append(
-        f'  <section><p>Scan to open this page:</p><span class="qr" id="appstore-qr" data-url="{address}" '
-        'role="img" aria-label="QR code for the App store"></span></section>'
+        f"  <section><p>{_esc(M('appstore.scan', 'Scan to open this page:'))}</p>"
+        f'<span class="qr" id="appstore-qr" data-url="{address}" role="img" '
+        f'aria-label="{_esc(M("appstore.qr-label", "QR code for the App store"))}"></span></section>'
     )
     chips = json.dumps(_chips(listings)).replace("<", "\\u003c")
     parts.append(f'  <script type="application/json" id="appstore-chips">{chips}</script>')
@@ -261,7 +281,7 @@ def feed_xml(level):
     out = [
         '<?xml version="1.0" encoding="utf-8"?>',
         '<feed xmlns="http://www.w3.org/2005/Atom">',
-        "<title>App store</title>",
+        f"<title>{_esc(M('appstore.feed-title', 'App store'))}</title>",
         f"<updated>{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}</updated>",
         "<id>tag:appstore-hub</id>",
         '<link href="/appstore/feed.xml" rel="self"/>',
