@@ -4935,7 +4935,9 @@ def appstore_findings(now=None):
             )
             continue
         checked = _holder_checked_epoch(st.get("last_check"))
-        if checked is None or now - checked > max(every, 1) * 3600 * 2:
+        added = _holder_checked_epoch(st.get("added"))
+        just_added = checked is None and added is not None and now - added <= max(every, 1) * 3600
+        if not just_added and (checked is None or now - checked > max(every, 1) * 3600 * 2):
             out.append(
                 finding(
                     f"appstore:{hid}:stale",

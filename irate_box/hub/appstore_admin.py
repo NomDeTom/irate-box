@@ -193,6 +193,7 @@ def action(payload):
                     M("library.holder.id-taken", "There is already one kept called {id}.", id=made["id"])
                 )
             holder.set_settings(holders=current + [made])
+            holder.patch_status(made["id"], {"added": librarian.now_iso()})
             if said:
                 return 200, {**snapshot(), "notes": said}
         elif kind == "edit-holder":
