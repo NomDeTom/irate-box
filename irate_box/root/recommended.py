@@ -9,6 +9,9 @@ install, and what Box doctor offers an existing box, one change at a time listed
   write-back delay       longer             (repeated rewrites of a block merge in memory)
   reboot after a panic   on                 (an unattended box comes back)
   hardware watchdog      on                 (a frozen box restarts itself)
+  Box doctor's timer     on                 (a down service is found without anyone on /admin)
+  lost writes at boot    on                 (a card that drops its newest writes is named at once)
+  UBIFS data checks      on                 (a damaged read from the onboard flash is an error)
 
 The SD card writes level (gentle) is the hub's own setting: its default for new installs is in hub/server.py, and an
 existing box is pointed to it. HTTPS stays as the installer sets it: on, administration over HTTPS only.
@@ -81,6 +84,31 @@ def _items():
                 "on",
                 "on" if s.get(key) else "off",
                 lambda k=key: crashwatch.set_option(k, "on"),
+            )
+        )
+    for key, label, now, apply in (
+        (
+            "health-timer",
+            M("rec.health-timer", "the Box doctor's own checks, every 6 hours"),
+            health.timer_on(),
+            lambda: health.set_timer(True),
+        ),
+        (
+            "lost-writes",
+            M("rec.lost-writes", "the check for lost writes at every boot"),
+            health.lostwrites_on(),
+            lambda: health.set_lostwrites(True),
+        ),
+    ):
+        out.append((key, label, "on", "on" if now else "off", apply))
+    if not health.records_on_card():
+        out.append(
+            (
+                "canary",
+                M("rec.canary", "a test file for lost writes"),
+                "off",
+                "on" if health.canary_installed() else "off",
+                lambda: health.set_canary(False),
             )
         )
     return out

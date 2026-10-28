@@ -50,6 +50,7 @@ check(
 )
 # The doctor runs daily from a timer, and says what is new since the last run.
 inst = (Path(__file__).resolve().parents[1] / "install.sh").read_text()
+src2 = (Path(__file__).resolve().parents[1] / "irate_box" / "root" / "health.py").read_text()
 uninst = (Path(__file__).resolve().parents[1] / "uninstall.sh").read_text()
 check(
     "install.sh writes and enables irate-box-secdoctor.timer, running `secdoctor run` as a hardened oneshot",
@@ -74,6 +75,23 @@ check(
 check(
     "secdoctor.py has the `run` command the timer calls",
     '"run"' in src and "write_report(rep)" in src,
+)
+# The Box doctor's own schedule and its lost-writes checks (notes: box-doctor-hardening-plan Part 1, steps 0 and 2):
+# install.sh asks health.py for the units, so an owner's off choice is kept at the next install too.
+check(
+    "install.sh sets up the Box doctor's timer, boot check and test file through health.install_units",
+    "health install-units" in inst
+    and "the Box doctor's timer was not set up: journalctl -u irate-box-boxdoctor.timer" in inst,
+)
+check(
+    "uninstall.sh takes the Box doctor's units away",
+    "irate-box-boxdoctor.{service,timer}" in uninst
+    and "irate-box-lostwrites.service" in uninst
+    and "irate-box-canary.{service,timer}" in uninst,
+)
+check(
+    "health.py has the run, boot-check, canary and install-units commands those units call",
+    all(f'argv == ["{cmd}"]' in src2 for cmd in ("run", "boot-check", "canary", "install-units")),
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.root import secdoctor as sd

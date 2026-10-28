@@ -2918,6 +2918,12 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+# The Box doctor's own schedule, and its checks for a card that loses writes (health.py): the timer every 6 hours
+# (the books opened in Kiwix weekly, the rest at each run), the card's often-written files read at every boot, and
+# the optional 4 KB test file. Each is a setting: health.install_units leaves off what the owner turned off.
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" health install-units ||
+	problem "the Box doctor's timer was not set up: journalctl -u irate-box-boxdoctor.timer"
+
 # --- Unique visitors ---------------------------------------------------------------
 # A helper of its own reads the leases and the neighbour table every minute, hashes each address
 # with a salt made for the day (and one for the week) that it holds only in memory, and writes two
