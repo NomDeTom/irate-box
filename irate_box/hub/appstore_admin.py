@@ -18,7 +18,7 @@ Stdlib only.
 """
 
 from irate_box.hub import refused
-from irate_box.library import holder, holdsurvey, librarian
+from irate_box.library import firmware, holder, holdsurvey, librarian
 from irate_box.msg import M
 
 VIEW_KEYS = ("window", "short", "dimensions", "eras", "twins")
@@ -110,6 +110,28 @@ def _survey_view(stored, cfg_holder):
     return out
 
 
+def firmware_summary():
+    """The firmware mirror as the card on the admin page: how many versions and boards, and its size. None
+    when the downloads are off or nothing with boards is kept; the App store does not count these bytes."""
+    try:
+        if not firmware.settings().get("enabled"):
+            return None
+    except (OSError, ValueError):
+        return None
+    state = firmware.status()
+    versions = state.get("versions") if isinstance(state.get("versions"), dict) else {}
+    kept = [info for info in versions.values() if isinstance(info, dict) and info.get("boards")]
+    if not kept:
+        return None
+    boards = {board for info in kept for board in info.get("boards", []) if isinstance(board, str)}
+    return {
+        "versions": len(kept),
+        "boards": len(boards),
+        "bytes": sum(int(info.get("bytes") or 0) for info in kept),
+        "href": "/admin/#firmware",
+    }
+
+
 def snapshot():
     """Everything the App store's page shows, in one answer."""
     cfg = holder.settings()
@@ -140,6 +162,7 @@ def snapshot():
         "policy": {key: policy[key] for key in ("holders_every_hours", "holders_auto", "min_free_mb")},
         "free_mb": (librarian._free_bytes(holder.ROOT) >> 20) if holder.ROOT.exists() else None,
         "bytes_all": sum(entry["bytes"] for entry in holders),
+        "firmware": firmware_summary(),
         "running": librarian.is_running(),
         "progress": librarian.progress(),
     }

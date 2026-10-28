@@ -14401,6 +14401,15 @@ function asSettingsForm(holder) {
   return form;
 }
 
+function asFirmware(fw) {
+  return el("div", { className: "aw-card appstore-firmware" },
+    el("div", { className: "aw-drawer" },
+      el("p", {}, el("strong", { textContent: "🧩 Meshtastic firmware" })),
+      el("p", { className: "setting-desc", textContent: `${fw.versions} version(s), ${fw.boards} board(s), ${size(fw.bytes)}.` }),
+      el("p", { className: "setting-desc", textContent: "Set on the Firmware page; the App store only lists it." }),
+      el("p", {}, el("a", { href: fw.href, textContent: "Firmware settings" }))));
+}
+
 function asCard(holder) {
   const st = holder.status || {};
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
@@ -14502,6 +14511,7 @@ function asAddFlow(data) {
 function asStatus(data) {
   asEl.status.textContent =
     `${data.holders.length} project(s), ${size(data.bytes_all)} kept.` +
+    (data.firmware ? ` Plus ${size(data.firmware.bytes)} of firmware, on the Firmware page.` : "") +
     (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : "") +
     (data.running ? ` Working${data.progress ? `: ${data.progress.name}` : "…"} (in the background).` : "") +
     // A redraw replaces the add flow's note, so a finished add is said on the status line instead.
@@ -14515,7 +14525,10 @@ function renderAppstore(data, statusOnly = false) {
   asEl.enabled.checked = data.enabled;
   asStatus(data);
   if (!statusOnly) {
-    asEl.holders.replaceChildren(...data.holders.map(asCard));
+    asEl.holders.replaceChildren(
+      ...(data.firmware ? [asFirmware(data.firmware)] : []),
+      ...data.holders.map(asCard),
+    );
     asAddFlow(data);
   }
   clearTimeout(asPoll);

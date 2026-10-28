@@ -26,10 +26,11 @@ import html
 import json
 import re
 import time
+import urllib.parse
 
 from irate_box import confine
 from irate_box.hub import refused
-from irate_box.library import holder, holdsurvey, librarian
+from irate_box.library import firmware, holder, holdsurvey, librarian
 from irate_box.msg import M
 
 TYPES = {
@@ -54,6 +55,14 @@ HOST_RE = re.compile(
 )  # flasher.py's: a port may come
 NAME_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")  # a holder id or a tag as a folder name
 MAX_FEED = 200
+FIRMWARE_ID = "meshtastic-firmware"
+FIRMWARE_ROLES = {
+    "full": M("appstore.firmware.role.full", "Full flash"),
+    "ota": M("appstore.firmware.role.ota", "Update (OTA)"),
+    "uf2": M("appstore.firmware.role.uf2", "UF2"),
+    "dfu": M("appstore.firmware.role.dfu", "DFU"),
+    "filesystem": M("appstore.firmware.role.filesystem", "File system"),
+}
 
 
 def _type_of(name):
@@ -76,7 +85,133 @@ def _day(published):
     return str(published or "")[:10] or "-"
 
 
-def _index(level):
+def _firmware_role(name, entry):
+    """The role a kept firmware file plays, from its name and the manifest's part_name (the manifests carry no
+    role field). None when the table does not know it: the name is shown without a role."""
+    low = name.lower()
+    part = str(entry.get("part_name") or "")
+    if low.endswith(".elf"):
+        return None
+    if low.startswith("littlefs-") or part == "spiffs":
+        return "filesystem"
+    if low.endswith("-ota.zip") or low.endswith("-ota.bin") or part in ("app0", "app1"):
+        return "ota"
+    if low.endswith(".factory.bin"):
+        return "full"
+    if low.endswith(".uf2"):
+        return "uf2"
+    if low.endswith(".hex"):
+        return "dfu"
+    if low.endswith(".bin"):
+        return "full"
+    return None
+
+
+def _firmware_entry(visible):
+    """The firmware mirror as a read-only App store entry, from what firmware.py wrote. None when the
+    downloads are off, nothing with boards is kept, or the flasher's access keeps this visitor out."""
+    if not visible:
+        return None
+    try:
+        if not firmware.settings().get("enabled"):
+            return None
+    except (OSError, ValueError):
+        return None
+    state = firmware.status()
+    versions = state.get("versions") if isinstance(state.get("versions"), dict) else {}
+    notes = {}
+    try:
+        listed = json.loads((firmware.ROOT / "index.json").read_text())
+    except (OSError, ValueError):
+        listed = {}
+    for channel in ("stable", "alpha"):
+        for item in (listed.get("releases") or {}).get(channel, []) if isinstance(listed, dict) else []:
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                notes[item["id"]] = item
+    out = []
+    for version, info in versions.items():
+        if not isinstance(info, dict) or not info.get("boards") or not firmware.VERSION_RE.match(str(version)):
+            continue
+        vdir = firmware.ROOT / version
+        boards = []
+        flat = []
+        digests = librarian._read_json(vdir / firmware.DIGESTS, {})
+        build_epoch = None
+        for board in info["boards"]:
+            if not isinstance(board, str) or not firmware.BOARD_RE.match(board):
+                continue
+            mt = librarian._read_json(vdir / f"firmware-{board}-{version}.mt.json", {})
+            if not isinstance(mt, dict) or not mt:
+                continue
+            architecture = str(mt.get("architecture") or "")
+            if isinstance(mt.get("build_epoch"), int):
+                build_epoch = max(build_epoch or 0, mt["build_epoch"])
+            role_files = []
+            for entry in mt.get("files", []) if isinstance(mt.get("files"), list) else []:
+                name = entry.get("name") if isinstance(entry, dict) else None
+                if not isinstance(name, str) or not firmware.FILE_RE.match(name) or name.endswith(".elf"):
+                    continue
+                path = vdir / name
+                if not path.is_file() or path.is_symlink():
+                    continue
+                recorded = digests.get(name) if isinstance(digests, dict) else None
+                sha = recorded[2] if isinstance(recorded, list) and len(recorded) == 3 else None
+                role = _firmware_role(name, entry)
+                template = f"/appstore/latest/{FIRMWARE_ID}/{board}/{role}" if role else None
+                file = {
+                    "name": name,
+                    "size": int(entry.get("bytes") or path.stat().st_size),
+                    "sha256": sha,
+                    "md5": entry.get("md5"),
+                    "url": f"/flasher/firmware/{version}/{name}",
+                    "latest_url": template,
+                    "board": board,
+                    "architecture": architecture,
+                    "role": role,
+                }
+                role_files.append(file)
+                flat.append(file)
+            if role_files:
+                boards.append(
+                    {
+                        "board": board,
+                        "name": str(mt.get("displayName") or board),
+                        "architecture": architecture,
+                        "files": role_files,
+                    }
+                )
+        if not boards:
+            continue
+        if build_epoch:
+            published = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(build_epoch))
+        else:
+            published = info.get("fetched") or ""
+        note = notes.get(f"v{version}") or notes.get(version) or {}
+        out.append(
+            {
+                "tag": version,
+                "channel": info.get("channel", ""),
+                "published": published,
+                "notes": note.get("release_notes", ""),
+                "boards": boards,
+                "files": flat,
+            }
+        )
+    if not out:
+        return None
+    out.sort(key=lambda item: item["published"] or "", reverse=True)
+    return {
+        "id": FIRMWARE_ID,
+        "title": str(M("appstore.firmware.title", "Meshtastic firmware")),
+        "repo": "meshtastic/firmware",
+        "visibility": "public",
+        "updated": state.get("last_check"),
+        "empty": False,
+        "versions": out,
+    }
+
+
+def _index(level, firmware_visible=False):
     """The holders the visitor may see, each with its kept versions, as the page, index.json and feed read them."""
     out = []
     for cfg_holder in holder.settings()["holders"]:
@@ -125,6 +260,10 @@ def _index(level):
                 ],
             }
         )
+    if firmware_visible:
+        entry = _firmware_entry(True)
+        if entry:
+            out.append(entry)
     return out
 
 
@@ -136,6 +275,8 @@ def _chips(listings):
             for file in version["files"]:
                 for label, words in holdsurvey.tags_of(file["name"]).items():
                     out.setdefault(label, set()).update(words)
+                if file.get("architecture"):
+                    out.setdefault("architecture", set()).add(file["architecture"])
     return {label: sorted(words) for label, words in out.items()}
 
 
@@ -165,13 +306,13 @@ def _esc(message):
     return html.escape(str(message))
 
 
-def page(host, scheme, level):
+def page(host, scheme, level, firmware_visible=False):
     """The /appstore/ page, whole: what is kept, newest first, as plain links and words.
 
     Every name on it came from a recorded file list or a title the administrator set, and is escaped; the
     release notes are shown as text in a <pre> and never as HTML. The words behind the JSON block and the
     rows' data-tags feed the filter buttons appstore.js adds: the page says everything again without them."""
-    listings = _index(level)
+    listings = _index(level, firmware_visible)
     parts = [
         PAGE_HEAD.format(title=_esc(M("appstore.page.title", "🛒 App store · Hub"))),
         '<body class="appstore">',
@@ -205,6 +346,59 @@ def page(host, scheme, level):
             parts.append(
                 f'    <p class="setting-desc">{html.escape(str(M("appstore.none-yet", "Nothing kept yet.")))}</p>'
             )
+            parts.append("  </section>")
+            continue
+        if entry["id"] == FIRMWARE_ID:
+            parts.append(
+                f'    <p class="setting-desc">{_esc(M("appstore.firmware.where", "These are the files the Firmware page keeps."))}</p>'
+            )
+            for version in entry["versions"]:
+                channel = html.escape(str(_channel(version["channel"])))
+                parts.append(
+                    f'    <h3><span translate="no">{html.escape(version["tag"])}</span>'
+                    f' <span class="appstore-badge">{channel}</span>'
+                    f' <span class="appstore-day">{_day(version["published"])}</span></h3>'
+                )
+                if version["notes"]:
+                    parts.append(
+                        f'    <details class="appstore-notes"><summary>'
+                        f"{_esc(M('appstore.release-notes', 'Release notes'))}</summary>"
+                        f"<pre>{html.escape(version['notes'])}</pre></details>"
+                    )
+                parts.append('    <div class="appstore-boards">')
+                for board in version["boards"]:
+                    board_id = html.escape(board["board"], quote=True)
+                    arch = html.escape(board["architecture"], quote=True)
+                    count = len(board["files"])
+                    name = html.escape(board["name"])
+                    parts.append(
+                        f'      <details class="appstore-board" data-board="{board_id}" data-arch="{arch}">'
+                        f'        <summary><code translate="no">{board_id}</code>'
+                        f' <span class="setting-desc">{name} · {html.escape(board["architecture"])} · '
+                        f"{_esc(M('appstore.firmware.file-count', {'one': '{n} file', 'other': '{n} files'}, n=count))}"
+                        "</span></summary>"
+                    )
+                    parts.append('        <ul class="appstore-files">')
+                    for file in board["files"]:
+                        role = FIRMWARE_ROLES.get(file.get("role"))
+                        role_html = f' <span class="appstore-role">{_esc(role)}</span>' if role else ""
+                        digest = (
+                            _esc(M("appstore.sha256", "sha-256: {digest}", digest=file["sha256"]))
+                            if file.get("sha256")
+                            else ""
+                        )
+                        md5 = _esc(M("appstore.md5", "md5: {digest}", digest=file["md5"])) if file.get("md5") else ""
+                        details = "".join(f'<p><code translate="no">{d}</code></p>' for d in (digest, md5) if d)
+                        parts.append(
+                            f'          <li><a href="{html.escape(file["url"])}">'
+                            f'<code translate="no">{html.escape(file["name"])}</code></a>{role_html}'
+                            f' <span class="appstore-size">{_size(file["size"])}</span>'
+                            f' <details class="appstore-digest"><summary>'
+                            f"{_esc(M('appstore.details', 'Details'))}</summary>{details}</details></li>"
+                        )
+                    parts.append("        </ul>")
+                    parts.append("      </details>")
+                parts.append("    </div>")
             parts.append("  </section>")
             continue
         for version in entry["versions"]:
@@ -261,19 +455,19 @@ def page(host, scheme, level):
     return "\n".join(parts).encode()
 
 
-def index_json(level):
+def index_json(level, firmware_visible=False):
     return {
         "app": "appstore",
         "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "holders": _index(level),
+        "holders": _index(level, firmware_visible),
     }
 
 
-def feed_xml(level):
+def feed_xml(level, firmware_visible=False):
     """The held files as Atom, newest first: titles, sizes, types, links. No script, no HTML."""
     entries = [
         (version["published"] or "", entry["title"], file)
-        for entry in _index(level)
+        for entry in _index(level, firmware_visible)
         for version in entry["versions"]
         for file in version["files"]
     ]
@@ -288,13 +482,24 @@ def feed_xml(level):
     ]
     for published, title, file in entries[:MAX_FEED]:
         kind = _type_of(file["name"]) or "application/octet-stream"
-        heading = html.escape(f"{title} {file['name']}")
+        where = ""
+        if file.get("board"):
+            role = FIRMWARE_ROLES.get(file.get("role"))
+            where = f" ({file['board']}{' · ' + str(role) if role else ''})"
+        heading = html.escape(f"{title} {file['name']}{where}")
+        identifier = file.get("sha256") or urllib.parse.quote(file["url"])
+        categories = "".join(
+            f'    <category term="{html.escape(str(file[key]), quote=True)}"/>\n'
+            for key in ("board", "architecture", "role")
+            if file.get(key)
+        )
         out += [
             "  <entry>",
             f"    <title>{heading}</title>",
             f'    <link rel="enclosure" type="{kind}" length="{file["size"]}" '
             f'href="{html.escape(file["url"], quote=True)}"/>',
-            f"    <id>urn:sha256:{html.escape(file['sha256'])}</id>",
+            f"    <id>urn:sha256:{html.escape(identifier)}</id>",
+            categories.rstrip("\n"),
             f"    <updated>{html.escape(published)}</updated>",
             "  </entry>",
         ]
@@ -309,9 +514,10 @@ def _not_found(handler):
     handler.send_json(404, refused.say(M("hub.not-found", "Not found.")))
 
 
-def route(handler, path, mode):
+def route(handler, path, mode, flasher_mode="off"):
     """GET/HEAD under /appstore. The app's switch covers every address here; a holder marked "members"
-    needs a signed-in visitor as well, page and file alike."""
+    needs a signed-in visitor as well, page and file alike. The firmware entry also follows the
+    flasher's access: a visitor who could not fetch /flasher/firmware/… is not shown it."""
     if (
         mode == "off"
         or (mode == "private" and handler._viewer() != "admin")
@@ -319,12 +525,13 @@ def route(handler, path, mode):
     ):
         return _not_found(handler)
     level = handler._viewer()
+    firmware_visible = flasher_mode == "public" or (flasher_mode == "private" and level == "admin")
     if path in ("/appstore", "/appstore/"):
         # The Host as it came, port and all: a QR of this page must answer on the address it was loaded from.
         host = handler.headers.get("Host", "")
         if not HOST_RE.match(host):
             host = "box.local"
-        body = page(host, "https" if handler._https() else "http", level)
+        body = page(host, "https" if handler._https() else "http", level, firmware_visible)
         handler.send_response(200)
         handler.send_header("Content-Type", "text/html; charset=utf-8")
         handler.send_header("X-Content-Type-Options", "nosniff")
@@ -335,7 +542,7 @@ def route(handler, path, mode):
             handler.wfile.write(body)
         return
     if path == "/appstore/index.json":
-        body = json.dumps(index_json(level)).encode()
+        body = json.dumps(index_json(level, firmware_visible)).encode()
         handler.send_response(200)
         handler.send_header("Content-Type", "application/json")
         handler.send_header("Cache-Control", "no-cache")
@@ -345,7 +552,7 @@ def route(handler, path, mode):
             handler.wfile.write(body)
         return
     if path == "/appstore/feed.xml":
-        body = feed_xml(level)
+        body = feed_xml(level, firmware_visible)
         handler.send_response(200)
         handler.send_header("Content-Type", "application/atom+xml; charset=utf-8")
         handler.send_header("X-Content-Type-Options", "nosniff")
@@ -356,7 +563,10 @@ def route(handler, path, mode):
             handler.wfile.write(body)
         return
     if path.startswith("/appstore/latest/"):
-        return _latest(handler, path[len("/appstore/latest/") :].strip("/").split("/"), level)
+        parts = path[len("/appstore/latest/") :].strip("/").split("/")
+        if parts[:1] == [FIRMWARE_ID]:
+            return _firmware_latest(handler, parts[1:], firmware_visible)
+        return _latest(handler, parts, level)
     if path.startswith("/appstore/files/"):
         return _file(handler, path[len("/appstore/files/") :].strip("/").split("/"), level)
     return _not_found(handler)
@@ -386,6 +596,33 @@ def _latest(handler, parts, level):
             handler.send_header("Content-Length", "0")
             handler.end_headers()
             return
+    return _not_found(handler)
+
+
+def _firmware_latest(handler, parts, visible):
+    """The newest kept version of the firmware that has this board and role, as a 302 to the flasher's own
+    address for the file. `?channel=alpha|beta` narrows it; either channel by default."""
+    if not visible or len(parts) != 2:
+        return _not_found(handler)
+    board, role = parts
+    if not NAME_PART_RE.match(board) or role not in FIRMWARE_ROLES:
+        return _not_found(handler)
+    wanted = urllib.parse.parse_qs(urllib.parse.urlsplit(handler.path).query).get("channel", [""])[0]
+    entry = _firmware_entry(True)
+    for version in entry["versions"] if entry else []:
+        if wanted and version["channel"] != wanted:
+            continue
+        for one in version["boards"]:
+            if one["board"] != board:
+                continue
+            for file in one["files"]:
+                if file.get("role") == role:
+                    handler.send_response(302)
+                    handler.send_header("Location", file["url"])
+                    handler.send_header("Cache-Control", "no-store")
+                    handler.send_header("Content-Length", "0")
+                    handler.end_headers()
+                    return
     return _not_found(handler)
 
 

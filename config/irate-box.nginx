@@ -43,6 +43,12 @@ map $uri $irate_box_page_load {
 	~(/|\.html)$ 1;
 	default 0;
 }
+
+# Firmware files are downloads, not pages: a phone that opens one saves it, as the flasher's own links do.
+map $uri $irate_box_firmware_attachment {
+	~\.(bin|uf2|zip)$ attachment;
+	default "";
+}
 log_format irate_box_pages '$msec $status $uri';
 
 # HTTPS: each origin's port for the scheme a request came in on, so a
@@ -449,6 +455,7 @@ server {
 	location ^~ /flasher/firmware/ {
 		if ($irate_box_off_flasher) { return 404; }
 		alias @FIRMWARE@/;
+		add_header Content-Disposition $irate_box_firmware_attachment;
 		add_header Access-Control-Allow-Origin "*" always;
 		add_header Cache-Control "no-cache";
 		add_header Content-Security-Policy $irate_box_csp always;

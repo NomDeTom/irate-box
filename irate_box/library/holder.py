@@ -151,6 +151,14 @@ def validate_holder(raw):
                 "Invalid name. Use letters, digits, dots, hyphens and underscores, starting with a letter or digit.",
             )
         )
+    if holder["id"] == "meshtastic-firmware":
+        raise LibrarianError(
+            M(
+                "library.holder.reserved",
+                "The name {id} is kept for the box's firmware, which has a page of its own.",
+                id=holder["id"],
+            )
+        )
     if holder["provider"] not in PROVIDERS:
         raise LibrarianError(
             M(
