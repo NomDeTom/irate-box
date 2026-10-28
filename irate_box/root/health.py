@@ -867,7 +867,7 @@ def library_paths():
 
 def check_kiwix(quick=False):
     """The books: the header always, Kiwix's own read of each only in the full run (kiwix-manage opens every book:
-    3.5 s for box 181's four on 2026-10-28, more with a larger library). The quick run is the usual one, the full one
+    a few seconds for a handful of books, more with a larger library). The quick run is the usual one, the full one
     weekly (run_report)."""
     books = _books()
     unit = UNIT_DIR / "kiwix.service"
@@ -4484,8 +4484,8 @@ BUILDS_BYTES = "builds-bytes.json"
 
 
 def _builds_bytes(ci_root, quick):
-    """What the builds take, walked in the full run and kept for the quick ones: on box 181 the walk over
-    /var/lib/hub/ci (231 280 files, 14 GB of the builder's caches) was 132.6 s of a 143.5 s run (2026-10-28)."""
+    """What the builds take, walked in the full run and kept for the quick ones: on a Lyra the walk over
+    /var/lib/hub/ci (231 280 files, 14 GB of the builder's caches) was 132.6 s of a 143.5 s run."""
     from irate_box.root import safeio
 
     kept = safeio.ROOT_STATE / BUILDS_BYTES
@@ -4595,7 +4595,7 @@ def check_builds(now=None, quick=False):
         )
     used = _builds_bytes(ci_root, quick)
     # The builds' own filesystem: with nand-logs' state on, the hub's folder is the onboard flash's and the builds
-    # stay on the card, so the hub's folder's size gave box 181 "6100% of the card" (2026-10-28).
+    # stay on the card, so the hub's folder's size gave a Lyra "6100% of the card".
     total = shutil.disk_usage(ci_root if ci_root.is_dir() else STATE).total if STATE.exists() else 0
     if used and total:
         share = used / total
@@ -6052,7 +6052,7 @@ def check_watchdogs_alive(now=None):
 
 def scan(quick=False):
     """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
-    Lyra's slow step: 132.6 of 143.5 s on box 181), and the books' headers without opening each in Kiwix. Each check's
+    Lyra's slow step: 132.6 of a 143.5 s run), and the books' headers without opening each in Kiwix. Each check's
     time is kept, so a slow one is named on the box (Part 1, step 0 of notes: the plan to bring the Lyra's 151 s run
     down)."""
     findings, timings = [], {}

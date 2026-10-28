@@ -80,6 +80,13 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       "rerun-install": install.sh again from a copy of the installed code, recorded options;
       "rerun-install-port-80" the same with the hub moved to port 80.
       Then the Box doctor looks again.
+  {"id": ..., "action": "housecall-scan", "target": "image"|"device"|"root"|"this-card", "path": "...",
+   "reference": "...", "dpkg": true|false, "git_tree": true|false}
+      The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
+      only, with a verdict for each file, in a unit of its own; to control/housecall.json. "reference" is a JSON
+      manifest, "dpkg" and "git_tree" add the package and irate-box tree references (a folder or this box only).
+  {"id": ..., "action": "housecall-stop"}
+      The running examination stopped.
   {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
       What the box has for networking (netinv.py): radios, who runs them, what each can do,
       what is in the way; to control/netinv.json. With "iface", that device alone.
@@ -6109,6 +6116,77 @@ def health_fix(req):
     return msg
 
 
+HOUSECALL_UNIT = "irate-box-housecall"
+
+
+def housecall_scan(req):
+    """The Housecall doctor (housecall.py): an image, a card device, a folder or this box's own files, read only,
+    in a unit of its own (as Box doctor's whole-card read): an image took 32.5 min on the Pi, and this helper does
+    one job at a time under a 50-minute limit. Its report replaces the running one when it ends."""
+    from irate_box.root import housecall
+
+    kind = str(req.get("target") or "")
+    path = str(req.get("path") or "")
+    if kind not in ("image", "device", "root", "this-card"):
+        raise Refused(M("control.housecall.target", "Select what the doctor examines."))
+    if kind != "this-card" and (not path or "\0" in path or len(path) > 4096):
+        raise Refused(M("control.housecall.path", "Give the path the doctor examines."))
+    reference = str(req.get("reference") or "")
+    if "\0" in reference or len(reference) > 4096:
+        raise Refused(M("control.housecall.reference", "The reference file's path is not valid."))
+    if kind in ("image", "device") and (req.get("dpkg") or req.get("git_tree")):
+        raise Refused(
+            M(
+                "control.housecall.refs-own",
+                "The packages' checksums and irate-box's git tree are read from a box's own folders. Use them with "
+                "a folder or this box's own files.",
+            )
+        )
+    if run("systemctl", "is-active", HOUSECALL_UNIT).stdout.strip() == "active":
+        raise Refused(M("control.housecall.running", "The Housecall doctor is already examining. Stop it first."))
+    args = [f"{CODE}/irate-box", "housecall"]
+    args += ["--this-card"] if kind == "this-card" else [f"--{kind}", path]
+    if reference:
+        args += ["--reference", reference]
+    if req.get("dpkg"):
+        args.append("--dpkg")
+    if req.get("git_tree"):
+        args.append("--git-tree")
+    label = "this box's own files" if kind == "this-card" else path
+    housecall.write_report(housecall.running_report(label))
+    said = run(
+        "systemd-run",
+        f"--unit={HOUSECALL_UNIT}",
+        "--collect",
+        "-p",
+        "Nice=19",
+        "-p",
+        "IOSchedulingClass=idle",
+        *args,
+        "--summary",
+        timeout=60,
+    )
+    if said.returncode:
+        housecall.write_report(housecall.ended_report(label, said.stderr.strip()[-200:] or "systemd-run failed"))
+        raise Refused(
+            M("control.housecall.start", "The Housecall doctor did not start: {why}", why=said.stderr.strip()[-200:])
+        )
+    return M(
+        "control.housecall.started",
+        "The Housecall doctor is examining {target}, in the background. Its report shows here when it ends.",
+        target=label,
+    )
+
+
+def housecall_stop(req):
+    """The running examination stopped; its report says so."""
+    from irate_box.root import housecall
+
+    run("systemctl", "stop", HOUSECALL_UNIT, timeout=120)
+    housecall.write_report(housecall.ended_report(None, "stopped"))
+    return M("control.housecall.stopped", "The Housecall doctor's examination is stopped.")
+
+
 # --- network: inventory and the uplink watchdog ------------------------------------------
 
 IFACE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")  # no leading "-": it would be an option
@@ -7325,6 +7403,8 @@ ACTIONS = {
     "content-export": content_export,
     "health-scan": health_scan,
     "health-fix": health_fix,
+    "housecall-scan": housecall_scan,
+    "housecall-stop": housecall_stop,
     "net-scan": net_scan,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,

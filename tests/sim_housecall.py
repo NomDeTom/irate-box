@@ -131,9 +131,159 @@ check(
 # The reference manifest as a file, and its refusal of a bad digest.
 refs = T / "refs.json"
 refs.write_text(json.dumps({"version": 1, "files": {"/good": {"sha256": hashlib.sha256(good).hexdigest()}}}))
-check("a reference manifest is read", housecall.load_references(refs) == {"/good": hashlib.sha256(good).hexdigest()})
+check(
+    "a reference manifest is read",
+    housecall.load_references(refs) == {"/good": {"sha256": hashlib.sha256(good).hexdigest()}},
+)
 refs.write_text(json.dumps({"files": {"/bad": "not-a-digest"}}))
 check("  a digest that is not SHA-256 is left out", housecall.load_references(refs) == {})
+
+# The references the box already has: its packages' MD5 sums, and irate-box's git tree.
+pkgroot = T / "pkgroot"
+(pkgroot / "etc").mkdir(parents=True)
+(pkgroot / "var/lib/dpkg/info").mkdir(parents=True)
+(pkgroot / "etc" / "example.conf").write_bytes(b"package file\n")
+(pkgroot / "var/lib/dpkg/info/example.md5sums").write_text(
+    f"{hashlib.md5(b'package file\n').hexdigest()}  etc/example.conf\n"
+)
+dpkg_refs = housecall.references_from_dpkg(pkgroot)
+check(
+    "the installed packages' MD5 sums become references",
+    dpkg_refs == {"/etc/example.conf": {"md5": hashlib.md5(b"package file\n").hexdigest()}},
+    dpkg_refs,
+)
+check(
+    "  and a package file that matches is genuine",
+    next(r["verdict"] for r in housecall.scan_dir(pkgroot, dpkg_refs) if r["path"] == "/etc/example.conf") == "genuine",
+)
+
+repo = T / "repo"
+(repo / "irate_box").mkdir(parents=True)
+(repo / "irate_box" / "example.py").write_bytes(b"print('ok')\n")
+subprocess.run(["git", "init", "-q", str(repo)], check=True)
+subprocess.run(["git", "-C", str(repo), "add", "irate_box/example.py"], check=True)
+subprocess.run(
+    ["git", "-C", str(repo), "-c", "user.name=test", "-c", "user.email=t@example.invalid", "commit", "-qm", "one"],
+    check=True,
+)
+commit = subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+).stdout.strip()
+gitroot = T / "gitroot"
+(gitroot / "opt/irate-box/irate_box").mkdir(parents=True)
+(gitroot / "opt/irate-box/irate_box/example.py").write_bytes(b"print('ok')\n")
+git_refs = housecall.references_from_git(gitroot, repo, commit)
+blob = subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", f"{commit}:irate_box/example.py"],
+    capture_output=True,
+    text=True,
+    check=True,
+).stdout.strip()
+check(
+    "irate-box's git tree becomes references, by the blob SHA-1",
+    git_refs == {"/opt/irate-box/irate_box/example.py": {"git": blob}},
+    git_refs,
+)
+# The boxes write VERSION short ("4ccfedc (installed 2026-10-27)" on box 181): it is read, and resolved in the checkout.
+(gitroot / "opt/irate-box/VERSION").write_text(f"{commit[:7]} (installed 2026-10-27)\n")
+check(
+    "  the short commit in VERSION, as the boxes write it, is read", housecall.installed_commit(gitroot) == commit[:7]
+)
+check(
+    "  and resolves in the checkout to the same references",
+    housecall.references_from_git(gitroot, repo) == {"/opt/irate-box/irate_box/example.py": {"git": blob}},
+)
+check(
+    "  and a file that matches it is genuine",
+    next(
+        r["verdict"]
+        for r in housecall.scan_dir(gitroot / "opt/irate-box", git_refs, prefix="/opt/irate-box")
+        if r["path"] == "/opt/irate-box/irate_box/example.py"
+    )
+    == "genuine",
+)
+
+# From inside: this box's own folders, with a file on the NAND left out and said to be the NAND's.
+box = T / "box"
+(box / "etc").mkdir(parents=True)
+(box / "nand").mkdir(parents=True)
+(box / "etc" / "damaged").write_bytes(ff)
+(box / "nand" / "state.json").write_bytes(ff)
+real_on_card = housecall._on_card
+housecall._on_card = lambda path: "nand" not in str(path)
+inside_report = housecall.examine_this_card(roots=[box])
+housecall._on_card = real_on_card
+by_path = {r["path"]: r for r in inside_report["files"]}
+check(
+    "from inside: a card file turned to 0xFF is found and named",
+    next((r for path, r in by_path.items() if path.endswith("/etc/damaged")), {}).get("verdict") == "damaged",
+    inside_report["files"],
+)
+check(
+    "  a file on the NAND is left out, and the report says it is the NAND's",
+    not any(path.endswith("/nand/state.json") for path in by_path)
+    and any(
+        f["id"] == "housecall-scope" and "housecall.scope.nand" in message_ids(f) for f in inside_report["findings"]
+    ),
+    inside_report["findings"],
+)
+check(
+    "  the scan writes nothing under the folders it reads",
+    sorted(str(p.relative_to(box)) for p in box.rglob("*")) == ["etc", "etc/damaged", "nand", "nand/state.json"],
+)
+
+# The root helper's action the page asks for: started in a unit of its own (it does one job at a time under a
+# 50-minute limit, and an image took 32.5 min on the Pi), its running report written first.
+from irate_box.msg import Refused
+from irate_box.root import hub_control
+
+ran, active = [], {"state": "inactive"}
+
+
+def helper_run(*cmd, timeout=None, **kw):
+    ran.append(cmd)
+    out = active["state"] + "\n" if cmd[:2] == ("systemctl", "is-active") else ""
+    return subprocess.CompletedProcess(cmd, 0, out, "")
+
+
+real_helper_run = hub_control.run
+hub_control.run = helper_run
+said = hub_control.housecall_scan({"target": "image", "path": str(image)})
+started = [c for c in ran if c[0] == "systemd-run"]
+running = json.loads((T / "state" / "control" / "housecall.json").read_text())
+check(
+    "the root helper's housecall-scan starts it in a unit of its own, at low priority, and says so",
+    said.get("id") == "control.housecall.started"
+    and len(started) == 1
+    and f"--unit={hub_control.HOUSECALL_UNIT}" in started[0]
+    and "IOSchedulingClass=idle" in started[0]
+    and started[0][-3:] == ("--image", str(image), "--summary"),
+    (said, started),
+)
+check("  its running report is written first, for the page", running.get("running") is True, running)
+for refused_req, why in (
+    ({"target": "nonsense"}, "an unknown target"),
+    ({"target": "image", "path": str(image), "dpkg": True}, "the package references for an image"),
+):
+    try:
+        hub_control.housecall_scan(refused_req)
+        check(f"  {why}: refused", False)
+    except Refused:
+        check(f"  {why}: refused", True)
+active["state"] = "active"
+try:
+    hub_control.housecall_scan({"target": "image", "path": str(image)})
+    check("  a second while one runs: refused", False)
+except Refused:
+    check("  a second while one runs: refused", True)
+said = hub_control.housecall_stop({})
+stopped = json.loads((T / "state" / "control" / "housecall.json").read_text())
+check(
+    "  stopped: the unit stopped, and the report no longer running",
+    any(c[:2] == ("systemctl", "stop") for c in ran) and stopped.get("running") is False,
+    stopped,
+)
+hub_control.run = real_helper_run
 
 # The report the page reads.
 housecall.write_report(card_report)

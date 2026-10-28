@@ -17922,3 +17922,106 @@ document.querySelectorAll("[data-inv]").forEach((b) =>
 document.getElementById("inv-q").addEventListener("input", renderInventory);
 AL.onBuild(renderInventory);
 renderInventory(); // the menu may have been built before this script ran
+
+// --- Housecall doctor -------------------------------------------------------------------
+// A card image, a card in a reader, a folder, or this box's own files: the root helper reads it and writes
+// control/housecall.json; this page shows the last report and can ask for another. Nothing is written to the
+// target. It does not load on page open: the examination can be long, and the report is there when it is asked for.
+const hc = {
+  target: document.getElementById("housecall-target"),
+  path: document.getElementById("housecall-path"),
+  dpkg: document.getElementById("housecall-dpkg"),
+  git: document.getElementById("housecall-git"),
+  scan: document.getElementById("housecall-scan"),
+  stop: document.getElementById("housecall-stop"),
+  note: document.getElementById("housecall-note"),
+  when: document.getElementById("housecall-when"),
+  findings: document.getElementById("housecall-findings"),
+};
+function hcPathState() {
+  if (!hc.target) return;
+  const whole = hc.target.value === "this-card";
+  hc.path.disabled = whole;
+  hc.path.placeholder = whole ? "" : "/path/to/card.img";
+  hc.dpkg.disabled = !["root", "this-card"].includes(hc.target.value);
+  hc.git.disabled = hc.dpkg.disabled;
+}
+function hcRender(report) {
+  if (!report) return;
+  hc.when.textContent = report.at ? new Date(report.at * 1000).toLocaleString() : "";
+  const rows = (report.findings || []).map((f, i) =>
+    findingRow({
+      id: `housecall-${i}`,
+      state: f.status,
+      title: said(f.title),
+      detail: said(f.summary),
+      why: said(f.why),
+      notes: (f.notes || []).map(said),
+      evidence: f.evidence || [],
+      commands: f.commands || [],
+      controls: [],
+    }),
+  );
+  hc.findings.replaceChildren(...rows);
+}
+// The examination runs in a unit of its own and can take half an hour or more (an image took 32.5 min on the Pi):
+// its running report is shown, with Stop, until the finished one replaces it.
+async function hcWait(previous) {
+  for (let polls = 0; ; polls++) {
+    await new Promise((resolve) => setTimeout(resolve, polls ? 5000 : 1500));
+    const data = await getJSON("/admin/housecall");
+    const report = data && data.report;
+    if (!report || (report.at || 0) < previous) continue;
+    hcRender(report);
+    hc.stop.hidden = !report.running;
+    hc.scan.disabled = Boolean(report.running);
+    if (!report.running) {
+      hc.note.hidden = true;
+      return;
+    }
+    hc.note.textContent = "Examining, in the background. Its report shows here when it ends.";
+  }
+}
+if (hc.scan) {
+  hc.target.addEventListener("change", hcPathState);
+  hcPathState();
+  hc.scan.addEventListener("click", async () => {
+    const body = {
+      action: "scan",
+      target: hc.target.value,
+      path: hc.path.value.trim(),
+      dpkg: !hc.dpkg.disabled && hc.dpkg.checked,
+      git_tree: !hc.git.disabled && hc.git.checked,
+    };
+    if (body.target !== "this-card" && !body.path) {
+      hc.note.hidden = false;
+      hc.note.textContent = "Give the path the doctor examines.";
+      return;
+    }
+    let previous = 0;
+    try {
+      const before = await getJSON("/admin/housecall");
+      previous = (before && before.report && before.report.at) || 0;
+    } catch (err) {
+      previous = 0;
+    }
+    hc.note.hidden = false;
+    hc.note.textContent = "Examining…";
+    try {
+      await postJSON("/admin/housecall", body);
+      await hcWait(previous);
+    } catch (err) {
+      hc.note.textContent = err && err.message ? err.message : "The doctor could not start.";
+      hc.scan.disabled = false;
+      hc.stop.hidden = true;
+    }
+  });
+  hc.stop.addEventListener("click", async () => {
+    try {
+      await postJSON("/admin/housecall", { action: "stop" });
+    } catch (err) {
+      hc.note.hidden = false;
+      hc.note.textContent = err && err.message ? err.message : "The doctor could not be stopped.";
+    }
+  });
+}

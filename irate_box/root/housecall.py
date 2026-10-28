@@ -9,10 +9,11 @@ or the folders on the card when it runs on the box.
 
   irate-box housecall --image card.img [--reference refs.json]
   irate-box housecall --device /dev/sda [--reference refs.json]
-  irate-box housecall --root /some/folder [--reference refs.json]
-  irate-box housecall --this-card
+  irate-box housecall --root /some/folder [--reference refs.json] [--dpkg] [--git-tree]
+  irate-box housecall --this-card [--reference refs.json] [--dpkg] [--git-tree]
 
-Each file gets a verdict (notes: housecall-doctor-plan, "Identifying the damage"):
+Each file gets a verdict (notes: housecall-doctor-plan, "Identifying the damage") from a reference of SHA-256,
+MD5 (a package's .md5sums) or a git blob SHA-1 (irate-box's own tree):
   genuine   its SHA-256 matches a reference that should match
   damaged   it is entirely 0xFF, or it differs from its reference
   suspect   it is entirely zero and there is no reference
@@ -46,47 +47,65 @@ REPORT = CONTROL / "housecall.json"
 CHUNK = 4096
 SKIP_DIRS = {"proc", "sys", "dev", "run"}
 # The hub's large folders: content fetched again, or to be checked against its release's checksums, never read
-# whole from inside (on box 181, 2026-10-28, the build caches alone were 14 GB in 231 280 files). As nand-logs.sh's
+# whole from inside (a Lyra's build caches alone were 14 GB in 231 280 files). As nand-logs.sh's
 # HUB_LARGE.
 LARGE = ("zim", "firmware", "kits", "git", "library", "source", "drop", "ci", "factory-targets")
+# This box's own files, as the plan's "from inside" lists them: the settings, the code, the hub's state, root's
+# records, and systemd's units (its drop-ins in /etc/systemd are read with /etc). Only the files whose mount is the
+# SD card are read, and not the hub's large folders.
+CARD_FOLDERS = (
+    "/etc",
+    "/opt/irate-box",
+    "/var/lib/hub",
+    "/var/lib/irate-box-root",
+    "/lib/systemd/system",
+    "/usr/lib/systemd/system",
+)
 FF = b"\xff"
 ZERO = b"\x00"
 
 
-def run(*cmd, timeout=1800):
+def run(*cmd, timeout=1800, binary=False):
     """Every command goes through here (the tests stand it in)."""
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+        return subprocess.run(cmd, capture_output=True, text=not binary, timeout=timeout)  # noqa: TID251
     except (OSError, subprocess.SubprocessError) as exc:
-        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+        return subprocess.CompletedProcess(cmd, 127, b"" if binary else "", b"" if binary else str(exc))
 
 
 def _text(result):
     return ((result.stdout or "") + (result.stderr or "")).strip()
 
 
-def file_facts(chunks):
-    """(blocks, ff_blocks, zero_blocks, sha256, bytes): the facts a verdict needs, from the file's chunks."""
-    digest, blocks, ff_blocks, zero_blocks, nbytes = hashlib.sha256(), 0, 0, 0, 0
+def file_facts(chunks, size=0):
+    """(blocks, ff_blocks, zero_blocks, sha256, md5, git, bytes): the facts a verdict needs, from the file's chunks.
+    `git` is the blob SHA-1 that a git tree names the file by (the header needs the size before the data)."""
+    # MD5 and SHA-1 only to match what dpkg and git name files by, never for security.
+    sha, md5, git = hashlib.sha256(), hashlib.md5(usedforsecurity=False), hashlib.sha1(usedforsecurity=False)
+    git.update(f"blob {size}\0".encode())
+    blocks, ff_blocks, zero_blocks, nbytes = 0, 0, 0, 0
     for chunk in chunks:
         blocks += 1
         nbytes += len(chunk)
-        digest.update(chunk)
+        sha.update(chunk)
+        md5.update(chunk)
+        git.update(chunk)
         if chunk == FF * len(chunk):
             ff_blocks += 1
         elif chunk == ZERO * len(chunk):
             zero_blocks += 1
-    return blocks, ff_blocks, zero_blocks, digest.hexdigest(), nbytes
+    return blocks, ff_blocks, zero_blocks, sha.hexdigest(), md5.hexdigest(), git.hexdigest(), nbytes
 
 
 def _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references, nbytes=None):
-    """The verdict for one file, and why, as the plan's four kinds."""
+    """The verdict for one file, and why, as the plan's four kinds. A reference is one algorithm and digest, or
+    a dict of them ({"sha256": …}, {"md5": …}, {"git": …})."""
     if size is not None and nbytes is not None and nbytes < size:
         return "damaged", M(
             "housecall.why-short", "It read back short: {got} of its {size} bytes.", got=nbytes, size=size
         )
-    wanted = references.get(path)
-    if wanted and wanted == digest:
+    wanted = _normalise_reference(references.get(path))
+    if wanted and any(digest.get(algo) == value for algo, value in wanted.items()):
         return "genuine", None
     if blocks and ff_blocks == blocks:
         return "damaged", M("housecall.why-ff", "It reads back whole as 0xFF.")
@@ -110,14 +129,26 @@ def _unreadable(path, size, exc):
     }
 
 
+def _normalise_reference(value):
+    """A reference as {algorithm: digest}: a bare string is a SHA-256, a {"sha256": …} or {"md5": …} is itself."""
+    if isinstance(value, str):
+        return {"sha256": value}
+    if isinstance(value, dict):
+        return {k: v for k, v in value.items() if k in ("sha256", "md5", "git") and isinstance(v, str)}
+    return {}
+
+
 def _record(path, size, chunks, references):
-    blocks, ff_blocks, zero_blocks, digest, nbytes = file_facts(chunks)
+    blocks, ff_blocks, zero_blocks, sha256, md5, git, nbytes = file_facts(chunks, size)
+    digest = {"sha256": sha256, "md5": md5, "git": git}
     verdict, why = _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references, nbytes)
     return {
         "path": path,
         "verdict": verdict,
         "size": size,
-        "sha256": digest,
+        "sha256": sha256,
+        "md5": md5,
+        "git": git,
         "blocks": blocks,
         "ff_blocks": ff_blocks,
         "reason": why,
@@ -138,9 +169,11 @@ def _direct_chunks(path):
         os.close(fd)
 
 
-def scan_dir(root, references=None, on_card=False, skip=()):
+def scan_dir(root, references=None, on_card=False, skipped=None, prefix="", skip=()):
     """Every regular file under root, read past the cache. on_card leaves out files not on the SD card (for
-    --this-card: the Lyra's NAND state is the NAND's to check); skip leaves out those folders whole."""
+    --this-card: the Lyra's NAND state is the NAND's to check), and names them in skipped when it is a list.
+    prefix is put before the path (this box's folders, so a report names /etc/… not /hostname); skip leaves out
+    those folders whole."""
     root = Path(root)
     references = references or {}
     skip = {Path(p) for p in skip}
@@ -158,8 +191,12 @@ def scan_dir(root, references=None, on_card=False, skip=()):
             if not stat.S_ISREG(metadata.st_mode) or path.is_symlink():
                 continue
             if on_card and not _on_card(path):
+                if skipped is not None:
+                    skipped.append(str(path))
                 continue
             relative = "/" + str(path.relative_to(root))
+            if prefix:
+                relative = prefix.rstrip("/") + relative
             try:
                 record = _record(relative, metadata.st_size, _direct_chunks(path), references)
             except OSError as exc:
@@ -553,14 +590,35 @@ def _own_disk(path):
     return Path(path).name == disk or _parent_disk(path) == disk
 
 
-def examine_this_card(references=None):
-    """This box's own files on the SD card (the plan's step 4, basic): the folders the box writes, card files only."""
-    roots = [Path("/etc"), Path("/opt/irate-box"), STATE, Path("/var/lib/irate-box-root")]
+def examine_root(root, references=None):
+    """A folder the owner points at, read past the cache: the same per-file verdicts, paths from that folder."""
+    root = Path(root)
+    if not root.is_dir():
+        raise Refused(M("housecall.not-folder", "{path} is not a folder.", path=str(root)))
+    records = scan_dir(root, references)
+    findings = [
+        finding(
+            "housecall-target",
+            M("housecall.target.title", "Target"),
+            "ok",
+            M("housecall.target.root", "The folder {path} is being read. Nothing is written.", path=str(root)),
+            evidence=[str(root)],
+        ),
+        _files_finding(records, str(root)),
+    ]
+    return _report(root, findings, records, None)
+
+
+def examine_this_card(references=None, roots=None):
+    """This box's own files on the SD card (the plan's step 4): the folders the box writes and systemd's, card
+    files only, the hub's large folders left out. A file on the NAND (nand-logs' state) is left out and said to be
+    the NAND's, whose UBIFS checks it."""
+    folders = [Path(root) for root in (roots or CARD_FOLDERS)]
     large = [STATE / name for name in LARGE if (STATE / name).is_dir()]
-    records = []
-    for root in roots:
+    records, skipped = [], []
+    for root in folders:
         if root.is_dir():
-            records += scan_dir(root, references, on_card=True, skip=large)
+            records += scan_dir(root, references, on_card=True, skipped=skipped, prefix=str(root), skip=large)
     notes = []
     if large:
         notes.append(
@@ -578,11 +636,74 @@ def examine_this_card(references=None):
             "ok",
             M("housecall.target.this-card", "The box's own files on the SD card are being read. Nothing is written."),
             notes=notes,
-            evidence=[str(r) for r in roots],
+            evidence=[str(r) for r in folders],
         ),
         _files_finding(records, "this card"),
     ]
+    if skipped:
+        findings.append(
+            finding(
+                "housecall-scope",
+                M("housecall.scope.title", "Files left out"),
+                "ok",
+                M(
+                    "housecall.scope.nand",
+                    {
+                        "one": "{n} file was left out: it is not on the SD card.",
+                        "other": "{n} files were left out: they are not on the SD card.",
+                    },
+                    n=len(skipped),
+                ),
+                notes=[
+                    M(
+                        "housecall.scope.ubifs",
+                        "The onboard flash's own UBIFS checks its data, including the Lyra's state when it is kept there.",
+                    )
+                ],
+                evidence=skipped[:40] + ([f"… and {len(skipped) - 40} more"] if len(skipped) > 40 else []),
+            )
+        )
     return _report(None, findings, records, None)
+
+
+def running_report(target):
+    """What the page shows while an examination runs (the root helper writes it as it starts the unit)."""
+    now = time.time()
+    return {
+        "at": now,
+        "running": True,
+        "started": now,
+        "target": target,
+        "findings": [
+            finding(
+                "housecall-running",
+                M("housecall.running.title", "Examining"),
+                "ok",
+                M(
+                    "housecall.running.said",
+                    "The doctor is examining {target}. Nothing is written to it.",
+                    target=target,
+                ),
+            )
+        ],
+        "files": [],
+        "counts": {"files": 0, "damaged": 0, "suspect": 0, "genuine": 0, "unknown": 0},
+    }
+
+
+def ended_report(target, why):
+    """An examination that ended without a report: refused, failed, or stopped."""
+    report = running_report(target or "the target")
+    report["running"] = False
+    report["findings"] = [
+        finding(
+            "housecall-ended",
+            M("housecall.ended.title", "Not examined"),
+            "warn",
+            M("housecall.ended.said", "The examination ended without a report: {why}", why=str(why)[:300]),
+        )
+    ]
+    return report
 
 
 def _report(target, findings, records, before):
@@ -615,9 +736,84 @@ def load_references(path):
     for key, value in files.items():
         if not isinstance(key, str):
             continue
-        sha = value.get("sha256") if isinstance(value, dict) else value
-        if isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha):
-            out["/" + key.lstrip("/")] = sha
+        reference = _normalise_reference(value)
+        if reference and all(
+            re.fullmatch(r"[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{64}", digest) for digest in reference.values()
+        ):
+            out["/" + key.lstrip("/")] = reference
+    return out
+
+
+def merge_references(*groups):
+    """Several reference maps as one; a later one adds to a path's algorithms rather than replacing them."""
+    out = {}
+    for group in groups:
+        for path, value in (group or {}).items():
+            out.setdefault(path, {}).update(_normalise_reference(value))
+    return out
+
+
+def references_from_dpkg(root="/"):
+    """Every installed package's files, by the MD5 in /var/lib/dpkg/info/*.md5sums: {path: {"md5": …}}."""
+    info = Path(root) / "var/lib/dpkg/info"
+    out = {}
+    for sums in sorted(info.glob("*.md5sums")) if info.is_dir() else []:
+        try:
+            lines = sums.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            digest, _, relative = line.strip().partition("  ")
+            if not re.fullmatch(r"[0-9a-f]{32}", digest) or not relative:
+                continue
+            path = "/" + relative.lstrip("/")
+            if (Path(root) / relative).exists():
+                out[path] = {"md5": digest}
+    return out
+
+
+def installed_commit(root="/"):
+    """The commit in /opt/irate-box/VERSION, or None. The installer writes it short ("4ccfedc (installed …)"), so
+    7 to 40 hex digits; references_from_git resolves it in the checkout."""
+    try:
+        first = (Path(root) / "opt/irate-box/VERSION").read_text().split()[0]
+    except (OSError, IndexError):
+        return None
+    return first if re.fullmatch(r"[0-9a-f]{7,40}", first) else None
+
+
+def references_from_git(root="/", repo=None, commit=None):
+    """irate-box's own tree at the installed commit, by the git blob SHA-1 in the updater's checkout:
+    {/opt/irate-box/path: {"git": …}}."""
+    repo = Path(repo or "/var/cache/irate-box/src")
+    commit = commit or installed_commit(root)
+    if not commit:
+        raise Refused(
+            M("housecall.git.no-commit", "The installed commit is not recorded, so the tree cannot be checked.")
+        )
+    full = run("git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}")
+    if full.returncode == 0 and full.stdout.strip():
+        commit = full.stdout.strip()
+    # The whole tree: /opt/irate-box holds all of it (web/, install.sh, tools/ …), not only irate_box/.
+    said = run("git", "-C", str(repo), "ls-tree", "-r", "-z", commit, binary=True)
+    if said.returncode:
+        raise Refused(
+            M(
+                "housecall.git.no-tree",
+                "The git checkout does not have {commit}: {why}",
+                commit=commit,
+                why=(said.stderr or b"").decode(errors="replace").strip()[-200:],
+            )
+        )
+    out = {}
+    for entry in said.stdout.split(b"\0"):
+        if not entry:
+            continue
+        meta, _, relative = entry.partition(b"\t")
+        fields = meta.split()
+        if len(fields) < 3 or fields[1] != b"blob":
+            continue
+        out["/opt/irate-box/" + relative.decode(errors="surrogateescape")] = {"git": fields[2].decode()}
     return out
 
 
@@ -635,6 +831,8 @@ def main(argv):
     target = None
     kind = ""
     references = {}
+    use_dpkg = False
+    use_tree = False
     as_json = False
     summary = False
     i = 0
@@ -646,6 +844,10 @@ def main(argv):
                 references = load_references(argv[i])
             else:
                 kind, target = arg[2:], argv[i]
+        elif arg == "--dpkg":
+            use_dpkg = True
+        elif arg == "--git-tree":
+            use_tree = True
         elif arg in ("--json", "--summary"):
             as_json = arg == "--json"
             summary = arg == "--summary"
@@ -654,21 +856,30 @@ def main(argv):
         else:
             sys.exit(
                 "usage: housecall.py [--image PATH | --device PATH | --root PATH | --this-card] "
-                "[--reference PATH] [--json | --summary]"
+                "[--reference PATH] [--dpkg] [--git-tree] [--json | --summary]"
             )
         i += 1
     try:
+        if use_dpkg or use_tree:
+            if kind not in ("root", "this-card"):
+                sys.exit("--dpkg and --git-tree read a box's own filesystem: use them with --root or --this-card")
+            base = target if kind == "root" else "/"
+            if use_dpkg:
+                references = merge_references(references, references_from_dpkg(base))
+            if use_tree:
+                references = merge_references(references, references_from_git(base))
         if kind == "image":
             report = examine_image(target, references)
         elif kind == "device":
             report = examine_device(target, references)
         elif kind == "root":
-            report = _report(Path(target), [_files_finding(scan_dir(target, references), str(target))], [], None)
+            report = examine_root(target, references)
         elif kind == "this-card":
             report = examine_this_card(references)
         else:
             sys.exit("choose --image, --device, --root or --this-card")
-    except Refused as exc:
+    except (Refused, OSError, ValueError, subprocess.SubprocessError) as exc:
+        write_report(ended_report(target or kind, exc))  # the page's running report must not stay running
         sys.exit(f"housecall: {exc}")
     write_report(report)
     if as_json:
