@@ -34,7 +34,9 @@ The watchdog also finds out why the link is down.
 - The box resets the radio at once.
 - The box resets the radio at once. If the radio is not back after three minutes, the box restarts.
 
-**The network is unavailable.** The network is out of range, the network does not let the box join, or the router does not answer. A reset or a reboot cannot help. The box only reconnects. Set **Network unavailable: retry interval** (eager, steady, or sparing for a box on a battery). Set **Network unavailable: retry period** (forever by default, or an hour, a day or a week).
+**The network is unavailable.** The network is out of range, the network does not let the box join, or the router does not answer. A reset or a reboot cannot help. The box only reconnects. Under **Network unavailable**, set **Retry interval**
+(eager, steady, or sparing for a box on a battery) and **Retry period** (forever by default, or an hour, a day or a
+week).
 
 ## Monitored interfaces
 

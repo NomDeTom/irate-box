@@ -19,7 +19,7 @@
 | Hotspot | The WiFi network of the box |
 | Hotspot firewall | Limits what devices on the hotspot can reach on the box. It does not filter the home network |
 | Hub | The front page of the box and the program behind it |
-| Initial setup | The state of a new box before an administrator account exists. Until an administrator creates the account, anyone on the network can open the administration pages |
+| Initial setup | The state of a new box before an administrator account exists. The set-up page asks for the setup code that the installer prints, and only the console can show it |
 | Install | Put a downloaded package or add-on into use |
 | Mirror | A copy of a repository from another server, kept on the box |
 | Recovery steps | The repairs of the network watchdog, from the lightest to the heaviest (also called the ladder) |
