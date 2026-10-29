@@ -547,8 +547,19 @@ def main():
         print(render(Path(args[0]).read_text(), values, Path("/proc/net/if_inet6").exists()), end="")
     elif command == "prepare" and len(args) == 3:
         print(prepare(args[0], args[1], values, args[2], Path("/proc/net/if_inet6").exists()))
+    elif command == "write-batch" and len(args) == 1:
+        with front_lock():
+            import json
+
+            from irate_box import durable
+
+            plan = json.loads(Path(args[0]).read_text())
+            entries = [(Path(e["path"]), e["text"], int(e.get("mode", 0o644)), e.get("group")) for e in plan]
+            if not durable.write_batch(entries):
+                raise ValueError("The card did not keep every front file")
+            Path(args[0]).unlink(missing_ok=True)
     else:
-        raise ValueError("Usage: nginx_front render TEMPLATE | prepare TEMPLATE PRIVATE_DIR SOURCE")
+        raise ValueError("Usage: nginx_front render TEMPLATE | prepare TEMPLATE PRIVATE_DIR SOURCE | write-batch PLAN")
 
 
 if __name__ == "__main__":

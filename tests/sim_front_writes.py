@@ -107,9 +107,6 @@ for call in (
     'write_if_changed "$ETC/hub.env" 644',
     'write_if_changed "$ETC/install-options" 644',
     'write_if_changed "$STATE/install-options" 644',
-    'write_if_changed "$NGINX_LOGINS" 640 "$ngx_group"',
-    'write_if_changed "$NGINX_FRONT" 600',
-    'write_if_changed "$NGINX_VIA" 600',
 ):
     check(f"  {call}", call in inst, call)
 check(
@@ -117,8 +114,17 @@ check(
     'openssl passwd -6 -salt "$salt" -stdin' in inst and 'hash="${existing#*:}"' in inst,
 )
 check(
-    "  the site is installed only when it differs",
-    'if ! cmp -s "$nginx_bundle/site.conf" "$NGINX_SITE"; then' in inst,
+    "  the front's four files are written together through write-batch",
+    'nginx_prepare write-batch "$front_plan"' in inst
+    and '"path": site, "text": open(site_src).read(), "mode": 0o644' in inst
+    and '"path": front, "text": front_text, "mode": 0o600' in inst
+    and '"path": via, "text": via_text, "mode": 0o600' in inst
+    and '"path": logins, "text": f"admin:{hash_}\\n", "mode": 0o640, "group": group' in inst,
+)
+nf = (REPO / "irate_box/root/nginx_front.py").read_text()
+check(
+    "  nginx_front has the write-batch command, using durable.write_batch",
+    'command == "write-batch"' in nf and "durable.write_batch(entries)" in nf,
 )
 for rewrites in ('>"$NGINX_FRONT"', '>"$NGINX_VIA"', 'cat >"$ETC/hub.env"', '} >"$ETC/install-options"'):
     check(f"  no in-place rewrite left: {rewrites}", rewrites not in inst, rewrites)
