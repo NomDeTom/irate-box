@@ -14478,7 +14478,7 @@ function asCard(holder) {
       asRun("Check for newer versions", "holder-check", holder.id, note),
       asRun("Download newer versions", "holder-update", holder.id, note),
       asRun("Delete the kept files", "remove-files", holder.id, note,
-        `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download fetches the files again.`),
+        `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download gets the files again.`),
       asRun("Remove this project", "remove-holder", holder.id, note,
         `Remove ${holder.title || holder.id} from the App store? Its settings and its kept files go too.`,
         { className: "danger" })),
