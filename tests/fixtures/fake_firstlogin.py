@@ -116,7 +116,10 @@ while True:
     elif key == "wifidev":
         body = "wlan0\n"
     elif key == "wifi" and "netplan apply" in line:
-        body = "netplan applied\n" if "GOODNET" in line else "Invalid YAML\n"
+        if os.environ.get("FAKE_NM_SWITCH_FAIL") == "1" and "renderer: NetworkManager" in line:
+            body = "Invalid YAML\n"
+        else:
+            body = "netplan applied\n" if "GOODNET" in line else "Invalid YAML\n"
     elif key == "wifi":
         body = (
             "Device 'wlan0' successfully activated with '1f2e'.\n"

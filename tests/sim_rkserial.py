@@ -44,7 +44,7 @@ def check(name, cond, info=""):
     fails += not cond
 
 
-def board(start="firstlogin", garble=0, locales=1, nm=True, nm_install=True):
+def board(start="firstlogin", garble=0, locales=1, nm=True, nm_install=True, nm_switch_fail=False):
     """The stand-in console on a pty: (Console on its master side, the process, its record file)."""
     master, slave = os.openpty()
     attrs = termios.tcgetattr(slave)
@@ -59,6 +59,7 @@ def board(start="firstlogin", garble=0, locales=1, nm=True, nm_install=True):
         FAKE_LOCALES=str(locales),
         FAKE_NM="1" if nm else "0",
         FAKE_NM_INSTALL="1" if nm_install else "0",
+        FAKE_NM_SWITCH_FAIL="1" if nm_switch_fail else "0",
     )
     proc = subprocess.Popen(
         [sys.executable, str(REPO / "tests/fixtures/fake_firstlogin.py")],
@@ -240,8 +241,8 @@ def access_point(text):
     return json.loads(scalar) if scalar.startswith('"') else scalar
 
 
-# Armbian's minimal image has no NetworkManager (a Lyra Zero W, 2026-10-29): join with systemd-networkd first
-# (the install needs that network), then install NetworkManager, hand it the WiFi and apply.
+# A stock Armbian minimal image has no NetworkManager: join with systemd-networkd first (the install needs that
+# network), then install NetworkManager, hand it the WiFi and apply.
 con, proc, rec = board("shell", nm=False)
 got = rkserial.setup(con, dict(choices, listen=1, wifi_password="S!x&y72CKN3LKP"))
 proc.kill()
@@ -269,6 +270,18 @@ check(
     "  the SSID is a quoted YAML scalar, so yes, true, 123 or a colon is a name and not a number or mapping",
     len(pairs) == 4 and all(access_point(netplan_yaml(c)) == ssid for ssid, c in pairs),
     [(ssid, netplan_yaml(c)) for ssid, c in pairs],
+)
+
+con, proc, rec = board("shell", nm=False, nm_switch_fail=True)
+got = rkserial.setup(con, dict(choices, listen=1))
+proc.kill()
+cmds = json.loads(rec.read_text())["commands"]
+check(
+    "NetworkManager installs but its file will not apply: it is stopped, and the networkd file is put back",
+    any("systemctl disable --now NetworkManager" in c for c in cmds)
+    and any("systemd-networkd" in said for said in got["said"])
+    and "joined GOODNET" in " ".join(got["said"]),
+    (cmds, got),
 )
 
 con, proc, rec = board("shell", nm=False, nm_install=False)

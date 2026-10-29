@@ -288,6 +288,8 @@ def _netplan_wifi(do, choices):
     switched = write(True)
     if "netplan applied" in switched:
         return switched, ""
+    # Both managers would contend for the radio: stop NetworkManager before putting the networkd file back.
+    do("systemctl disable --now NetworkManager >/dev/null 2>&1; true", "nmoff")
     write(False)  # put back the file that joined, rather than leave a NetworkManager file nothing serves
     return joined, "NetworkManager was installed but did not take the WiFi; the board stays on systemd-networkd."
 
