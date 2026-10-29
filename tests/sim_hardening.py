@@ -199,6 +199,24 @@ check(
     out.getvalue().splitlines() == ["B", "good", "bad"],
     out.getvalue(),
 )
+with open(devmem, "wb") as fh:
+    fh.truncate(0xFF911000)
+hardening.set_default("A")
+with contextlib.redirect_stdout(io.StringIO()):
+    hardening.rauc_handler(["set-primary", "B"])
+check(
+    "set-primary B with default A: the default stays A, and B is on trial",
+    hardening.default_slot() == "a" and hardening.status()["armed"] is True,
+    hardening.status(),
+)
+with contextlib.redirect_stdout(io.StringIO()):
+    hardening.rauc_handler(["set-state", "b", "good"])
+check(
+    "  set-state good while B runs: only then is B the default",
+    hardening.default_slot() == "b",
+    hardening.status(),
+)
+devmem.unlink()
 check(
     "  with a spare register, the boot script reads the default from ab.txt and takes the one-shot flag",
     said.get("id") == "harden.ab.tryboot.lyra"
@@ -234,6 +252,12 @@ except Refused as exc:
     )
 (dt / "model").write_bytes(b"Raspberry Pi 3 Model B Plus Rev 1.3\0")
 hardening.set_ab("tryboot")
+hardening.set_default("A")
+try:
+    hardening.rauc_handler(["set-primary", "B"])
+    check("  the Pi has no arm for set-primary, so it refuses rather than commit untried", False)
+except SystemExit as exc:
+    check("  the Pi has no arm for set-primary, so it refuses rather than commit untried", "Pi" in str(exc))
 check(
     "  the Pi's tryboot writes its tryboot configuration instead",
     (etc / "ab" / "tryboot.txt").is_file() and not (etc / "ab" / "boot.cmd").exists(),

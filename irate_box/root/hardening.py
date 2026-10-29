@@ -497,7 +497,7 @@ def status():
 
 def _slot_state(slot):
     try:
-        said = (AB_DIR / f"{slot.lower()}.state").read_text().strip()
+        said = (AB_STATE_DIR / f"{slot.lower()}.state").read_text().strip()
     except OSError:
         return "good"
     return said if said in ("good", "bad") else "good"
@@ -508,19 +508,33 @@ def rauc_handler(argv):
     The default slot and the one-shot trial are the same files and register the boot script reads."""
     command = argv[0] if argv else ""
     if command == "get-primary":
-        print((default_slot() or "a").upper())
+        slot = default_slot()
+        if not slot:
+            raise SystemExit("hardening rauc: there is no default slot to read")
+        print(slot.upper())
         return
     if command == "set-primary" and len(argv) == 2 and argv[1].lower() in ("a", "b"):
-        set_default(argv[1].upper())
-        if ab() == "tryboot" and board() == "lyra":
-            arm_tryboot()
+        slot = argv[1].lower()
+        if not default_slot():
+            set_default(slot.upper())
+            return
+        if slot == default_slot():
+            return
+        # The trial boots the slot that is not the default: leave the default, arm the new slot once. Only a
+        # set-state good while it runs makes it the default.
+        if board() != "lyra":
+            raise SystemExit("hardening rauc: the Pi's tryboot is not armed by set-primary yet")
+        arm_tryboot()
         return
     if command == "get-state" and len(argv) == 2 and argv[1].lower() in ("a", "b"):
         print(_slot_state(argv[1]))
         return
     if command == "set-state" and len(argv) == 3 and argv[1].lower() in ("a", "b") and argv[2] in ("good", "bad"):
-        AB_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-        safeio.write_checked(AB_DIR / f"{argv[1].lower()}.state", argv[2] + "\n", 0o600)
+        slot = argv[1].lower()
+        AB_STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        safeio.write_checked(AB_STATE_DIR / f"{slot}.state", argv[2] + "\n", 0o600)
+        if argv[2] == "good" and running_slot() == slot:
+            set_default(slot.upper())
         return
     raise SystemExit("usage: hardening rauc get-primary | set-primary A|B | get-state A|B | set-state A|B good|bad")
 
