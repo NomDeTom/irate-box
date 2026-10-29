@@ -6334,6 +6334,170 @@ def check_led(ls=None, active=None):
     ]
 
 
+RFKILL_LABEL = {
+    "on": M("hs.rfkill.on", "On at every start"),
+    "off": M("hs.rfkill.off", "Off at every start"),
+    "leave": M("hs.rfkill.leave", "As the image has it"),
+}
+RFKILL_SAID = {
+    "on": lambda radio: M("rfkill.ok.on", "{radio} switched on at every start", radio=radio),
+    "off": lambda radio: M("rfkill.ok.off", "{radio} switched off at every start", radio=radio),
+    "leave": lambda radio: M("rfkill.ok.leave", "{radio} left as the image has it", radio=radio),
+}
+
+
+def rfkill_status():
+    try:
+        from irate_box.root import rfkill
+
+        return rfkill.status()
+    except Exception:  # noqa: BLE001 - the report goes out without it
+        return None
+
+
+def rfkill_groups(st):
+    """The radios' choices for the settings card: one per radio the board has a switch for."""
+    if not st:
+        return []
+    from irate_box.root import rfkill
+
+    s, line = st["settings"], st.get("power_line")
+    groups = []
+    for radio in rfkill.RADIOS:
+        if not any(sw["radio"] == radio for sw in st["switches"]):
+            continue
+        desc = [
+            M(
+                "hs.rfkill.desc",
+                "The box switches {radio} on at every start unless you select otherwise here. "
+                "As the image has it: the box leaves its rfkill switches alone.",
+                radio=rfkill.RADIO_WORDS[radio],
+            )
+        ]
+        if line and radio == "wifi":
+            desc.append(
+                M(
+                    "hs.rfkill.power-line",
+                    "On this board, {switch} is the WiFi chip's power. Off takes Bluetooth off too.",
+                    switch=line,
+                )
+            )
+        if line and radio == "bluetooth" and s["wifi"] == "off":
+            desc.append(
+                M(
+                    "hs.rfkill.bluetooth-chip-off",
+                    "WiFi is set to off, which takes the chip off, so Bluetooth stays off whatever is set here.",
+                )
+            )
+        groups.append(
+            {
+                "key": f"rfkill-{radio}",
+                "label": M("hs.rfkill", "{radio} radio", radio=rfkill.RADIO_WORDS[radio]),
+                "desc": sentences(*desc),
+                "current": s[radio],
+                "options": [
+                    {"value": v, "label": RFKILL_LABEL[v], "choice": f"rfkill:{radio}:{v}"} for v in rfkill.CHOICES
+                ],
+            }
+        )
+    return groups
+
+
+def check_rfkill(st=None):
+    """The radios' rfkill switches: one blocked or unblocked against its radio's setting, or held by the board."""
+    st = rfkill_status() if st is None else st
+    if not st:
+        return []
+    from irate_box.root import rfkill
+
+    ours = [sw for sw in st["switches"] if sw["radio"]]
+    if not ours:
+        return []
+    title = M("rfkill.title", "Radio switches")
+    go = _go("health-settings", RECOVERY, f"hs-rfkill-{ours[0]['radio']}")
+    hard = [sw for sw in ours if sw["hard"]]
+    odds = [sw for sw in ours if rfkill.at_odds(sw, st["settings"])]
+    out = []
+    if odds:
+
+        def said(sw):
+            what = M("rfkill.blocked", "blocked") if sw["soft"] else M("rfkill.unblocked", "unblocked")
+            if sw["power_line"]:
+                return M("rfkill.odd.line", "{name} (the WiFi chip's power) is {what}", name=sw["name"], what=what)
+            return M(
+                "rfkill.odd",
+                "{name} ({radio}) is {what}",
+                name=sw["name"],
+                radio=rfkill.RADIO_WORDS[sw["radio"]],
+                what=what,
+            )
+
+        wifi_off = any(sw["radio"] == "wifi" and sw["soft"] for sw in odds)
+        out.append(
+            finding(
+                "rfkill",
+                title,
+                "problem" if wifi_off else "warn",
+                M(
+                    "rfkill.odds",
+                    "Not as set: {list}.",
+                    list=[said(sw) for sw in odds],
+                ),
+                M(
+                    "rfkill.odds.why",
+                    "The box sets each radio's switches at every start. Something changed them since: the image's "
+                    "own tools, a program, or a person.",
+                ),
+                M("rfkill.odds.fix", "Set them again, or select otherwise on Recovery and monitoring."),
+                commands=["rfkill list"],
+                actions=[action("rfkill-apply", M("rfkill.apply", "Set them again"))],
+                go=go,
+                glance=M("rfkill.odds.glance", "A radio is not as set."),
+            )
+        )
+    if hard:
+        out.append(
+            finding(
+                "rfkill:hard",
+                title,
+                "warn",
+                M(
+                    "rfkill.hard",
+                    "A switch on the board holds a radio off: {names}. Software cannot release it.",
+                    names=", ".join(sw["name"] for sw in hard),
+                ),
+                fix=M("rfkill.hard.fix", "Look for a radio switch or jumper on the board or its case."),
+                commands=["rfkill list"],
+            )
+        )
+    if out:
+        return out
+    s, chosen = st["settings"], st.get("chosen") or []
+    present = [r for r in rfkill.RADIOS if any(sw["radio"] == r for sw in ours)]
+    return [
+        finding(
+            "rfkill",
+            title,
+            "ok",
+            M(
+                "rfkill.ok",
+                "As set: {list}.",
+                list=[RFKILL_SAID[s[r]](rfkill.RADIO_WORDS[r]) for r in present],
+            ),
+            notes=[]
+            if set(present) <= set(chosen)
+            else [
+                M(
+                    "rfkill.default",
+                    "An administrator has not selected a setting yet, so the box switches them on at every start.",
+                )
+            ],
+            go=go,
+            glance=M("rfkill.ok.glance", "Radios as set."),
+        )
+    ]
+
+
 def check_watchers(now=None):
     """What the watchers saw and did in the last day, in one time line (watchlog): the uplink
     watchdog's outages, causes and steps, crash watch's radio failures, the driver's own resets, and
@@ -6910,6 +7074,7 @@ def scan(quick=False):
         check_crashwatch,
         check_power,
         check_led,
+        check_rfkill,
         check_watchers,
         check_watchdogs_alive,
         check_idle,
@@ -7004,7 +7169,9 @@ def doctor_settings():
             "watchdog": s["watchdog"],
             "watchdog_device": wd,
             "led": {"name": ls["led"], "show": ls["show"]} if ls else None,
-            "groups": setting_groups(s, wd) + led_groups(ls, armbian_led_state() if ls else None),
+            "groups": setting_groups(s, wd)
+            + led_groups(ls, armbian_led_state() if ls else None)
+            + rfkill_groups(rfkill_status()),
             "card_groups": card_groups(),
         }
     except Exception:  # noqa: BLE001 - the report goes out without it
@@ -7022,6 +7189,7 @@ CHOICE_RE = re.compile(
     r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
     r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
+    r"|^rfkill:(wifi|bluetooth):(on|off|leave)$|^rfkill-apply$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off))$"
@@ -7073,6 +7241,19 @@ def fix(choice):
         from irate_box.root import led
 
         return led.flash(arg)
+    if kind == "rfkill":
+        from irate_box.root import rfkill
+
+        radio, _, value = arg.partition(":")
+        return rfkill.set_option(radio, value)
+    if kind == "rfkill-apply":
+        from irate_box.root import rfkill
+
+        changed = rfkill.apply()
+        failed = [sw["name"] for sw, _, error in changed if error]
+        if failed:
+            return M("repair.rfkill.failed", "These switches could not be changed: {names}.", names=", ".join(failed))
+        return M("repair.rfkill.done", "Every radio switch is as set.")
     if kind == "armbian-led":
         if not armbian_led_state() and arg == "off":
             raise Refused(
