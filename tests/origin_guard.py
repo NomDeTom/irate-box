@@ -594,14 +594,14 @@ check(
     xff and all(lines[i + 1].strip() == "proxy_set_header X-Irate-Via $irate_box_via;" for i in xff),
     [i + 1 for i in xff if lines[i + 1].strip() != "proxy_set_header X-Irate-Via $irate_box_via;"],
 )
-via_map = re.search(r"map \$proxy_host \$irate_box_via \{.*?\\n\}", inst)
 check(
     "install.sh: the map gives it to the hub's upstream alone (volatile: never kept from an auth_request)",
-    via_map is not None
-    and all(part in via_map[0] for part in ("volatile;", 'irate_box_hub "%s";', 'default "";'))
+    "map $proxy_host $irate_box_via {" in inst
+    and '"\\tvolatile;\\n"' in inst
+    and 'irate_box_hub "{via_secret}"' in inst
+    and "'\\tdefault \"\";\\n'" in inst
     and 'HUB_NGINX_VIA="$NGINX_VIA"' in inst
     and "HUB_VIA_SECRET=" in inst,
-    via_map and via_map[0],
 )
 check("the updater's nginx -t fills in a stand-in map", '"@VIA@"' in hc)
 dropin = inst.split("caddy.service.d/irate-box.conf <<-EOF", 1)[1].split("\tEOF", 1)[0]

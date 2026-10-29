@@ -25,6 +25,7 @@ import os
 import re
 from pathlib import Path
 
+from irate_box import durable
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -219,10 +220,7 @@ def validate(raw, caps):
 
 def save(raw, caps=None):
     s = validate(raw, caps or capabilities())
-    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-    tmp = SETTINGS.with_name(SETTINGS.name + ".tmp")
-    tmp.write_text(json.dumps(s, indent=2))
-    os.replace(tmp, SETTINGS)
+    durable.write_checked(SETTINGS, json.dumps(s, indent=2))
     return s
 
 

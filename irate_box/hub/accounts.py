@@ -33,6 +33,7 @@ import threading
 import time
 from pathlib import Path
 
+from irate_box import durable
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -151,13 +152,7 @@ def _save(data):
     now = time.time()
     data["sessions"] = {k: v for k, v in data["sessions"].items() if v.get("expires", 0) > now}
     data["codes"] = {k: v for k, v in data["codes"].items() if v.get("expires", 0) > now}
-    tmp = FILE.with_name(FILE.name + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump(data, fh)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, FILE)
+    durable.write_checked(FILE, json.dumps(data), 0o600)
 
 
 def _digest(token):
