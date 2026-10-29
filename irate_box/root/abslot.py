@@ -138,10 +138,8 @@ def patch(slot, running="/", *, apt_lists=None, code_source=None, run=run):
         _check(run("mount", "--rbind", str(lists), str(lists_dest)), "bind apt lists")
         _check(run("mount", "--make-rslave", str(lists_dest)), "make apt lists private")
         mounts.append(lists_dest)
-        resolver, resolver_before = _resolver(slot, run)
-        if resolver:
-            mounts.append(resolver)
-        # The running slot's settings come over before apt. Its state is outside /etc, and fstab belongs to the slot.
+        # The running slot's settings come over before apt. Its state is outside /etc, fstab belongs to the slot,
+        # and resolv.conf is copied on its own after this: the resolver is a bind, and rsync cannot replace a mount.
         _check(
             run(
                 "rsync",
@@ -150,11 +148,15 @@ def patch(slot, running="/", *, apt_lists=None, code_source=None, run=run):
                 "--numeric-ids",
                 "--delete",
                 "--exclude=fstab",
+                "--exclude=resolv.conf",
                 f"{running}/etc/",
                 f"{slot}/etc/",
             ),
             "copy /etc",
         )
+        resolver, resolver_before = _resolver(slot, run)
+        if resolver:
+            mounts.append(resolver)
         _check(
             run(
                 "chroot",

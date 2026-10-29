@@ -50,10 +50,15 @@ check(
 )
 copy = next(i for i, c in enumerate(calls) if c[0] == "rsync" and "--delete" in c)
 apt = next(i for i, c in enumerate(calls) if c[0] == "chroot" and "apt-get" in c)
+resolver = next(
+    i for i, c in enumerate(calls) if c[:2] == ("mount", "--bind") and any("resolv.conf" in str(x) for x in c)
+)
 check(
-    "the running /etc comes over before apt runs, its fstab left out",
-    copy < apt and any("--exclude=fstab" in c for c in calls),
-    (copy, apt),
+    "the running /etc comes over before apt and before the resolver is bound, with fstab and resolv.conf left out",
+    copy < resolver < apt
+    and any("--exclude=fstab" in c for c in calls)
+    and any("--exclude=resolv.conf" in c for c in calls),
+    (copy, resolver, apt),
 )
 check(
     "apt works in the slot with the lists outside it",
