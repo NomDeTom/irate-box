@@ -186,5 +186,95 @@ check(
     calls,
 )
 
+# Extra stores: a NAND folder or a USB drive, named in retain.json.
+store2 = T / "store2"
+(T / "etc" / "retain.json").write_text(json.dumps({"stores": [str(store2)]}))
+retain.sweep()
+check(
+    "an extra store gets the copy and its manifest",
+    (store2 / "manifest.json").is_file() and (store2 / retain._ident(hub_env)).read_text() == hub_env.read_text(),
+    list(store2.iterdir()) if store2.exists() else None,
+)
+
+# Damage the copy and its .prev in this store; the extra store's copy brings the file back.
+real_owned = retain._package_owned
+retain._package_owned = lambda path: False
+good_env = hub_env.read_text()
+put(hub_env, "damaged\n", 0o600)
+entry = json.loads(retain.MANIFEST.read_text())["entries"][str(hub_env)]
+os.utime(hub_env, ns=(entry["mtime_ns"], entry["mtime_ns"]))
+retain._copy(hub_env).write_bytes(b"\xff" * 16)
+retain._prev(hub_env).unlink(missing_ok=True)
+(store2 / retain._ident(hub_env)).write_text(good_env)
+repairs = retain.boot_check()
+check(
+    "  when the card's copy is bad, the extra store's copy is used",
+    hub_env.read_text() == good_env and any("restored" in r["action"] for r in repairs),
+    repairs,
+)
+
+# Regeneration: the server key and chain from the CA, before the copy is tried.
+(etc / "tls" / "ca").mkdir(parents=True, exist_ok=True)
+(etc / "tls" / "ca" / "ca.key").write_text("CA\n")
+(etc / "tls" / "server.key").write_bytes(b"\xff" * 8)
+(etc / "tls" / "server.key").chmod(0o640)
+retain.sweep()
+(etc / "tls" / "server.key").write_bytes(b"\xff" * 8)
+(etc / "tls" / "server.key").chmod(0o640)
+os.utime(
+    etc / "tls" / "server.key",
+    ns=(json.loads(retain.MANIFEST.read_text())["entries"][str(etc / "tls" / "server.key")]["mtime_ns"],) * 2,
+)
+for bad in (retain._copy(etc / "tls" / "server.key"), retain._prev(etc / "tls" / "server.key")):
+    bad.write_bytes(b"\xff" * 8)
+
+
+class FakeTls:
+    @staticmethod
+    def make_cert():
+        put(etc / "tls" / "server.key", "MADE\n", 0o640)
+        return {}
+
+
+import irate_box.root.tls as real_tls
+
+real_tls_make = real_tls.make_cert
+real_tls.make_cert = FakeTls.make_cert
+repairs = retain.boot_check()
+real_tls.make_cert = real_tls_make
+check(
+    "a server key that can be made again is, before the copy",
+    (etc / "tls" / "server.key").read_text() == "MADE\n" and any("made again" in r["action"] for r in repairs),
+    repairs,
+)
+
+# A package conffile with no copy comes back from its package.
+journald.write_bytes(b"\xff" * 8)
+journald.chmod(0o644)
+retain.sweep()
+journald.write_bytes(b"\xff" * 8)
+journald.chmod(0o644)
+for bad in (retain._copy(journald), retain._prev(journald)):
+    bad.write_bytes(b"\xff" * 8)
+real_owned, real_package = retain._package_owned, retain.restore.from_package
+real_stores = retain.extra_stores
+retain.extra_stores = lambda: []
+retain._package_owned = lambda path: True
+
+
+def fake_package(path):
+    put(path, "[Journal]\nStorage=volatile\n")
+    return "package"
+
+
+retain.restore.from_package = fake_package
+repairs = retain.boot_check()
+retain._package_owned, retain.restore.from_package, retain.extra_stores = real_owned, real_package, real_stores
+check(
+    "a package conffile with no good copy is reinstalled",
+    journald.read_text().startswith("[Journal]") and any("package" in r["action"] for r in repairs),
+    repairs,
+)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
