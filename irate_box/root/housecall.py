@@ -809,6 +809,316 @@ def _own_disk(path):
     return Path(path).name == disk or _parent_disk(path) == disk
 
 
+# The card the box runs from: read only. A fake repeats its start past its real size, so a write there is lost;
+# box 190's card lost its newest writes that way. None of these checks writes.
+SYS_BLOCK = Path(os.environ.get("HUB_SYS_BLOCK", "/sys/class/block"))
+CARD_BYTES = 4096
+CARD_POWERS = tuple(1 << (30 + n) for n in range(7))  # 1, 2, 4 … 64 GiB below the size it reports
+KNOWN_MAKERS = {
+    0x01: "Panasonic",
+    0x02: "Toshiba/Kioxia",
+    0x03: "SanDisk",
+    0x1B: "Samsung",
+    0x1D: "ADATA",
+    0x27: "Phison",
+    0x28: "Lexar",
+    0x41: "Kingston",
+    0x74: "Transcend",
+}
+
+
+def _read_at(path, offset, count):
+    """count bytes at offset, read only; (bytes, why) with why when it could not be read."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+    except OSError as exc:
+        return b"", str(exc)
+    try:
+        return os.pread(fd, count, offset), ""
+    except OSError as exc:
+        return b"", str(exc)
+    finally:
+        os.close(fd)
+
+
+def _hex_value(text):
+    try:
+        return int(str(text).strip().lower().removeprefix("0x"), 16)
+    except (TypeError, ValueError):
+        return None
+
+
+def _csd_size(csd):
+    """The capacity an SD card's CSD register names, in bytes; None if it is not a form this reads."""
+    text = re.sub(r"[^0-9a-fA-F]", "", csd or "")
+    if len(text) != 32:
+        return None
+    value = int(text, 16)
+    structure = (value >> 126) & 0x3
+    if structure == 1:  # SDHC/SDXC: C_SIZE is 22 bits at 69:48, in 512 KiB units
+        return (((value >> 48) & 0x3FFFFF) + 1) * 512 * 1024
+    if structure == 0:
+        c_size_mult = (value >> 47) & 0x7
+        read_bl_len = (value >> 80) & 0xF
+        return (((value >> 62) & 0xFFF) + 1) * (1 << (c_size_mult + 2)) * (1 << read_bl_len)
+    return None
+
+
+def _size_words(n):
+    return f"{n / (1 << 30):.1f} GB" if n and n >= 1 << 30 else f"{n >> 20} MB" if n else "unknown"
+
+
+def _root_source():
+    said = run("findmnt", "-n", "-o", "SOURCE,FSTYPE", "/", timeout=30)
+    parts = said.stdout.split()
+    return (parts[0], parts[1]) if len(parts) >= 2 else ("", "")
+
+
+def _root_disk():
+    source, _ = _root_source()
+    if not source:
+        return ""
+    return _parent_disk(source) or Path(source).name
+
+
+def _partition_offset(path):
+    """The byte offset a partition starts at on its card; 0 for a whole disk or an image file."""
+    said = run("lsblk", "-n", "-o", "START", str(path), timeout=30)
+    try:
+        return int(said.stdout.strip().split()[0]) * 512
+    except (IndexError, ValueError):
+        return 0
+
+
+def _disk_size(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    if stat.S_ISREG(st.st_mode):
+        return st.st_size
+    said = run("blockdev", "--getsize64", str(path), timeout=60)
+    return int(said.stdout.strip()) if said.returncode == 0 and said.stdout.strip().isdigit() else None
+
+
+def card_identity(disk=None, sys_dir=None):
+    """The card's maker, name, date, serial, and the capacity its CSD register names against the one the system sees."""
+    disk = disk or _root_disk()
+    base = (Path(sys_dir) if sys_dir else SYS_BLOCK) / disk if disk else None
+    if not base or not base.is_dir():
+        return None
+    device = base / "device"
+
+    def text(name, where=device):
+        try:
+            return (where / name).read_text().strip()
+        except OSError:
+            return ""
+
+    sectors = text("size", base)
+    seen = int(sectors) * 512 if sectors.isdigit() else None
+    return {
+        "disk": disk,
+        "seen": seen,
+        "manfid": _hex_value(text("manfid")),
+        "oemid": _hex_value(text("oemid")),
+        "name": text("name"),
+        "date": text("date"),
+        "serial": text("serial"),
+        "csd": _csd_size(text("csd")),
+    }
+
+
+def card_wrap(device, size):
+    """Whether the card reads its start back at a power-of-two size below the size it reports. Nothing is written."""
+    first, why = _read_at(device, 0, CARD_BYTES)
+    if not first:
+        return {"checked": False, "why": why or "the start could not be read"}
+    if not any(first):
+        return {"checked": False, "why": "the start is blank (all zero), so there is nothing to compare"}
+    for at in CARD_POWERS:
+        if at + len(first) > size:
+            break
+        got, _ = _read_at(device, at, len(first))
+        if got and got == first:
+            return {"checked": True, "fake": True, "at": at}
+    return {"checked": True, "fake": False, "up_to": min(size, CARD_POWERS[-1])}
+
+
+def card_extent(part, offset=0):
+    """How far the ext4 filesystem's own backup superblocks read back with its magic and UUID. Reads only."""
+    said = run("dumpe2fs", str(part), timeout=300)
+    if said.returncode != 0:
+        return None
+    bs = re.search(r"^Block size:\s*(\d+)", said.stdout, re.M)
+    uuid_hex = re.search(r"^(?:Filesystem )?UUID:\s*([0-9a-fA-F-]+)", said.stdout, re.M)
+    if not bs or not uuid_hex:
+        return None
+    try:
+        want = bytes.fromhex(uuid_hex.group(1).replace("-", ""))
+    except ValueError:
+        return None
+    blocks = [int(n) for n in re.findall(r"^\s*Backup superblock at (\d+)", said.stdout, re.M)]
+    good = []
+    for block in blocks:
+        base = block * int(bs.group(1))
+        buf, _ = _read_at(part, base, 2048)
+        for start in (0, 1024):
+            if len(buf) < start + 120:
+                continue
+            if (
+                int.from_bytes(buf[start + 56 : start + 58], "little") == 0xEF53
+                and buf[start + 104 : start + 120] == want
+            ):
+                good.append(offset + base + start)
+                break
+    return {"far": max(good), "backups": len(blocks), "read": len(good)} if good else None
+
+
+def card_finding(disk=None, sys_dir=None, device=None, part=None, size=None):
+    """The verdict on the card the box runs from: identity, wrap-around, and how far its ext4 copies read back."""
+    source, fstype = _root_source()
+    disk = disk or _root_disk()
+    # The wrap-around test is on the whole card, not the root partition: the start it compares with is the card's
+    # partition table and bootloader.
+    device = device or (f"/dev/{disk}" if disk else source)
+    if part is None and fstype.startswith("ext"):
+        part = source
+    if size is None:
+        size = _disk_size(device) if device else None
+    ident = card_identity(disk, sys_dir)
+    if ident and size is None:
+        size = ident["seen"]
+    if not ident and not (device and size):
+        return finding(
+            "housecall-card",
+            M("housecall.own-card.title", "The card this box runs from"),
+            "ok",
+            M("housecall.card.no-sd", "The root is not an SD card this reads, so there is no card identity to judge."),
+        )
+    wrap = card_wrap(device, size) if device and size else {"checked": False, "why": "the card could not be read"}
+    extent = card_extent(part, _partition_offset(part)) if part and size else None
+    fake = wrap.get("fake") is True
+    notes = []
+    evidence = []
+    if ident:
+        maker = KNOWN_MAKERS.get(ident["manfid"])
+        maker_text = (
+            f"0x{ident['manfid']:02x}" + (f" ({maker})" if maker else " (not in the short known list)")
+            if ident["manfid"] is not None
+            else "unknown"
+        )
+        oem = f"0x{ident['oemid']:04x}" if ident["oemid"] is not None else "unknown"
+        evidence += [
+            f"maker {maker_text}",
+            f"OEM {oem}",
+            f"name {ident['name'] or 'unknown'}",
+            f"date {ident['date'] or 'unknown'}",
+            f"serial {ident['serial'] or 'unknown'}",
+            f"system size {_size_words(ident['seen'])}",
+        ]
+        if ident["manfid"] is not None and maker is None:
+            notes.append(
+                M(
+                    "housecall.card.unknown-maker",
+                    "The maker {maker} is not in the short known list. This does not judge it, and a fake often names one.",
+                    maker=maker_text,
+                )
+            )
+        if ident["csd"] and ident["seen"] and abs(ident["csd"] - ident["seen"]) > max(1 << 20, ident["seen"] // 100):
+            evidence.append(f"CSD size {_size_words(ident['csd'])}")
+            notes.append(
+                M(
+                    "housecall.card.csd-mismatch",
+                    "The CSD register says {csd}. The system sees {seen}. A card that disagrees with itself is worth replacing.",
+                    csd=_size_words(ident["csd"]),
+                    seen=_size_words(ident["seen"]),
+                )
+            )
+    fake_why = M(
+        "housecall.card.fake-why",
+        "At {at} the card reads back as its start: everything written past {at} is lost. Copy what matters off it and replace it.",
+        at=_size_words(wrap["at"]) if wrap.get("fake") else "unknown",
+    )
+    if wrap.get("fake"):
+        notes.append(fake_why)
+        evidence.append(f"wrap-around at {_size_words(wrap['at'])}")
+    elif wrap.get("checked"):
+        notes.append(
+            M(
+                "housecall.card.no-wrap",
+                "No wrap-around at 1, 2, 4 … GiB up to {upto}.",
+                upto=_size_words(wrap.get("up_to") or size),
+            )
+        )
+    else:
+        notes.append(
+            M(
+                "housecall.card.wrap-skipped",
+                "The wrap-around check was not made: {why}.",
+                why=wrap.get("why", "unknown"),
+            )
+        )
+    if extent:
+        evidence.append(f"furthest ext4 backup {_size_words(extent['far'])}")
+        notes.append(
+            M(
+                "housecall.card.extent",
+                "The filesystem's own backup copies read back with the right magic and UUID as far as {far} of {size}. "
+                "The rest cannot be checked without writing to it.",
+                far=_size_words(extent["far"]),
+                size=_size_words(size),
+            )
+        )
+    elif part:
+        notes.append(
+            M(
+                "housecall.card.no-extent",
+                "The root filesystem is not ext4, so its backup copies could not show how far the card keeps data.",
+            )
+        )
+    if fake:
+        summary = M(
+            "housecall.card.fake",
+            "Fake: at {at} the card reads back as its start. Copy what matters off it, and replace it.",
+            at=_size_words(wrap["at"]),
+        )
+    elif extent:
+        summary = M(
+            "housecall.card.far",
+            "Genuine as far as {far} of {size}. The rest could not be checked without writing to it.",
+            far=_size_words(extent["far"]),
+            size=_size_words(size),
+        )
+    else:
+        summary = M("housecall.card.read", "The card's identity was read. The far-copy check did not run.")
+    return finding(
+        "housecall-card",
+        M("housecall.own-card.title", "The card this box runs from"),
+        "problem" if fake else "ok",
+        summary,
+        fake_why if fake else None,
+        notes=notes,
+        evidence=evidence,
+    )
+
+
+def examine_card(disk=None, sys_dir=None):
+    """The card the box runs from, on its own: identity, wrap-around, and the furthest ext4 copy. Reads only."""
+    findings = [
+        finding(
+            "housecall-target",
+            M("housecall.target.title", "Target"),
+            "ok",
+            M("housecall.target.card", "The card this box runs from is being read. Nothing is written."),
+        ),
+        card_finding(disk=disk, sys_dir=sys_dir),
+    ]
+    report = _report(None, findings, [], None)
+    report["root"] = "/"
+    return report
+
+
 def examine_root(root, references=None, manifest=None):
     """A folder the owner points at, read past the cache: the same per-file verdicts, paths from that folder."""
     root = Path(root)
@@ -890,6 +1200,7 @@ def examine_this_card(references=None, roots=None, manifest=None):
                 evidence=skipped[:40] + ([f"… and {len(skipped) - 40} more"] if len(skipped) > 40 else []),
             )
         )
+    findings.append(card_finding())
     report = _report(None, findings, records, None)
     report["root"] = "/"
     return report
@@ -1692,7 +2003,10 @@ def write_report(report, path=REPORT):
 
 def main(argv):
     if os.geteuid() != 0:
-        sys.exit("run as root: sudo ./irate-box housecall [--image PATH | --device PATH | --root PATH | --this-card]")
+        sys.exit(
+            "run as root: sudo ./irate-box housecall "
+            "[--image PATH | --device PATH | --root PATH | --this-card | --card-check | --peer NAME]"
+        )
     target = None
     kind = ""
     references = {}
@@ -1737,11 +2051,13 @@ def main(argv):
             summary = arg == "--summary"
         elif arg == "--this-card":
             kind = "this-card"
+        elif arg == "--card-check":
+            kind = "card"
         else:
             sys.exit(
                 "usage: housecall.py [--image PATH | --device PATH [--image-first PATH [--on-own-card]] | "
-                "--root PATH | --this-card | --peer NAME] [--reference PATH] [--manifest PATH] [--dpkg] "
-                "[--git-tree] [--json | --summary]"
+                "--root PATH | --this-card | --card-check | --peer NAME] [--reference PATH] [--manifest PATH] "
+                "[--dpkg] [--git-tree] [--json | --summary]"
             )
         i += 1
     if image_first and kind != "device":
@@ -1787,10 +2103,12 @@ def main(argv):
             report = examine_root(target, references, manifest=manifest or None)
         elif kind == "this-card":
             report = examine_this_card(references, manifest=manifest or None)
+        elif kind == "card":
+            report = examine_card()
         elif kind == "peer":
             report = peer_examine(target)
         else:
-            sys.exit("choose --image, --device, --root, --this-card or --peer")
+            sys.exit("choose --image, --device, --root, --this-card, --card-check or --peer")
         if prepared:
             report["source_device"] = str(Path(prepared[0]).resolve())
             report["image"] = str(Path(prepared[1]).resolve())

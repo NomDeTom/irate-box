@@ -91,6 +91,11 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
     return path.disabled && d.getElementById('housecall-path-label').hidden
       && !d.getElementById('housecall-dpkg').disabled && !d.getElementById('housecall-git').disabled;
   })());
+  check('this box\'s card on its own: the path and the package and tree boxes are not asked for', (() => {
+    target.value = 'card';
+    target.dispatchEvent(new w.Event('change', { bubbles: true }));
+    return path.disabled && d.getElementById('housecall-dpkg').disabled && d.getElementById('housecall-git').disabled;
+  })());
   check('  finished: no Stop offered, and Examine can be selected again', d.getElementById('housecall-stop').hidden && !d.getElementById('housecall-scan').disabled);
   // A card in a reader can be imaged first; the image path and the own-card permission go with the request.
   target.value = 'device';

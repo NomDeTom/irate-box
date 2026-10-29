@@ -17966,7 +17966,7 @@ const hc = {
 };
 function hcPathState() {
   if (!hc.target) return;
-  const whole = hc.target.value === "this-card";
+  const whole = hc.target.value === "this-card" || hc.target.value === "card";
   const peer = hc.target.value === "peer";
   hc.path.disabled = whole;
   hc.pathLabel.hidden = whole; // this box's own files: there is no path to give
@@ -17983,8 +17983,8 @@ function hcPathState() {
   hc.onOwnCard.disabled = !first;
   hc.manifestLabel.hidden = whole || peer;
   hc.manifest.disabled = whole || peer;
-  hc.dpkg.disabled = peer;
-  hc.git.disabled = peer;
+  hc.dpkg.disabled = peer || hc.target.value === "card";
+  hc.git.disabled = peer || hc.target.value === "card";
 }
 function hcRender(report) {
   if (!report) return;
@@ -18068,7 +18068,7 @@ if (hc.scan) {
         return;
       }
     }
-    if (body.target !== "this-card" && !body.path) {
+    if (body.target !== "this-card" && body.target !== "card" && !body.path) {
       hc.note.hidden = false;
       hc.note.textContent = "Give the path the doctor examines.";
       return;

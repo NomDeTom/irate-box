@@ -6504,9 +6504,9 @@ class Handler(BaseHTTPRequestHandler):
             reference = str(payload.get("reference") or "")
             image_first = str(payload.get("image_first") or "")
             manifest = str(payload.get("manifest") or "")
-            if target not in ("image", "device", "root", "this-card", "peer"):
+            if target not in ("image", "device", "root", "this-card", "card", "peer"):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
-            elif target != "this-card" and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
+            elif target not in ("this-card", "card") and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
                 self.send_json(400, refused.say(M("hub.housecall.path", "Give the path the doctor examines.")))
             elif len(reference) > 4096 or "\0" in reference:
                 self.send_json(
