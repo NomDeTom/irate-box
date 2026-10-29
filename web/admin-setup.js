@@ -44,11 +44,12 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const pw = form.elements.password.value, name = form.elements.name.value.trim();
+    const code = form.elements.code.value.trim().toUpperCase();
     if (pw !== form.elements.confirm.value) { say('The passwords do not match.', false); return; }
     form.querySelector('button').disabled = true;
     try {
       const answer = await fetch('/admin/setup', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' }, body: JSON.stringify({ name, password: pw, over_http: plain && httpOk.checked }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' }, body: JSON.stringify({ name, code, password: pw, over_http: plain && httpOk.checked }),
       });
       const data = await answer.json().catch(() => ({}));
       if (!answer.ok) throw new Error(data.error || `HTTP ${answer.status}`);
