@@ -105,6 +105,12 @@ while True:
         host = m.group(1)
     if key == "readname":
         body = host + "\n"
+    elif key == "manager":
+        body = "nm\n" if os.environ.get("FAKE_NM", "1") == "1" else "netplan\n"
+    elif key == "wifidev":
+        body = "wlan0\n"
+    elif key == "wifi" and "netplan apply" in line:
+        body = "netplan applied\n" if "GOODNET" in line else "Invalid YAML\n"
     elif key == "wifi":
         body = (
             "Device 'wlan0' successfully activated with '1f2e'.\n"

@@ -6,7 +6,7 @@ there with `read`: root's password twice, the shell, whether to connect over WiF
 was not found from the internet, tzselect's menus), then the user's name, password twice and real name. Each is
 answered here as it comes, in whatever order; "Skip generating locales" is chosen, which skips the locale and time
 zone block (tzselect with it). At the root shell that follows, the rest is set with commands, each answer read back:
-the WiFi (nmcli), the name, the time zone, the locale, the keys, the setup page stopped, root's password locked if
+the WiFi (nmcli, or netplan where there is no NetworkManager), the name, the time zone, the locale, the keys, the setup page stopped, root's password locked if
 chosen.
 
 The console is a USB serial adapter at 1 500 000 baud (a Rockchip board's debug console). Characters are sent one at
@@ -234,6 +234,30 @@ def first_login(console, root_password, user, user_password, real_name, timeout=
     )
 
 
+def _netplan_wifi(do, choices):
+    """The WiFi on an image without NetworkManager (Armbian's minimal images: netplan and systemd-networkd), as
+    armbian-firstlogin does it there: /etc/netplan/30-wifis-dhcp.yaml (0600), the password as a block scalar so YAML
+    takes it as written, the device up, then netplan apply. Every value has passed rksetup.problem, so it is safe
+    inside double quotes."""
+    device = do("iw dev | awk '$1==\"Interface\"{print $2; exit}'", "wifidev").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", device):
+        raise Refused(M("rkserial.no-wifi-device", "The board has no WiFi device that it can name."))
+    point = (
+        '        \\"%s\\":\\n          password: |-\\n            %s\\n'
+        if choices.get("wifi_password")
+        else '        \\"%s\\": {}\\n'
+    )
+    values = f'"{choices["ssid"]}"' + (f' "{choices["wifi_password"]}"' if choices.get("wifi_password") else "")
+    return do(
+        'umask 077; printf "# Written by irate-box over the serial console\\nnetwork:\\n  wifis:\\n    %s:\\n'
+        "      dhcp4: yes\\n      dhcp6: yes\\n      access-points:\\n" + point + f'" "{device}" {values}'
+        " > /etc/netplan/30-wifis-dhcp.yaml && chmod 600 /etc/netplan/30-wifis-dhcp.yaml"
+        f" && ip link set {device} up && netplan apply 2>&1 && echo netplan applied",
+        "wifi",
+        timeout=90,
+    )
+
+
 def configure(console, choices):
     """At the root shell: the rest of the choices set, each read back. {said: [...]} of what was done, and the
     board's address once on the network."""
@@ -245,8 +269,14 @@ def configure(console, choices):
             raise Refused(M("rkserial.no-answer", "The board did not answer at its shell ({step}).", step=key))
         return out
 
-    # History expansion off first: the console's bash is interactive, so a "!" inside double quotes (a WiFi password
-    # such as "S!dp…") is expanded, and the command fails with "event not found" (a Lyra Zero W, 2026-10-29).
+    # The console 500 columns wide first, sent bare (a line too short to wrap): bash's line editor redraws a line
+    # that passes column 80, and on this console a wrapped command was then often not run at all (a Lyra Zero W,
+    # 2026-10-29: 8 long lines of 8 went through once it was wide, about half before).
+    console.buf = ""
+    console.send("stty cols 500\r")
+    console.expect({"shell": SHELL_RE}, 10)
+    # History expansion off next: the console's bash is interactive, so a "!" inside double quotes (a WiFi password
+    # such as "S!dp…") is expanded, and the command fails with "event not found" (the same board).
     do("set +H", "nohistory")
     name = choices["hostname"]
     do(f'hostnamectl set-hostname "{name}" && sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1\\t{name}/" /etc/hosts', "name")
@@ -280,9 +310,13 @@ def configure(console, choices):
         country = choices.get("country") or ""
         if country:
             do(f'iw reg set "{country}" 2>/dev/null; true', "country")
-        pw = f' password "{choices["wifi_password"]}"' if choices.get("wifi_password") else ""
-        out = do(f'nmcli dev wifi connect "{choices["ssid"]}"{pw} 2>&1', "wifi", timeout=90)
-        if "successfully activated" not in out:
+        manager = do("command -v nmcli >/dev/null && echo nm || echo netplan", "manager").strip()
+        if manager == "netplan":
+            out = _netplan_wifi(do, choices)
+        else:
+            pw = f' password "{choices["wifi_password"]}"' if choices.get("wifi_password") else ""
+            out = do(f'nmcli dev wifi connect "{choices["ssid"]}"{pw} 2>&1', "wifi", timeout=90)
+        if "successfully activated" not in out and "netplan applied" not in out:
             raise Refused(
                 M(
                     "rkserial.wifi",

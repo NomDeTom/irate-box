@@ -44,7 +44,7 @@ def check(name, cond, info=""):
     fails += not cond
 
 
-def board(start="firstlogin", garble=0, locales=1):
+def board(start="firstlogin", garble=0, locales=1, nm=True):
     """The stand-in console on a pty: (Console on its master side, the process, its record file)."""
     master, slave = os.openpty()
     attrs = termios.tcgetattr(slave)
@@ -52,7 +52,12 @@ def board(start="firstlogin", garble=0, locales=1):
     termios.tcsetattr(slave, termios.TCSANOW, attrs)
     record = T / f"record-{start}-{garble}.json"
     env = dict(
-        os.environ, FAKE_RECORD=str(record), FAKE_START=start, FAKE_GARBLE=str(garble), FAKE_LOCALES=str(locales)
+        os.environ,
+        FAKE_RECORD=str(record),
+        FAKE_START=start,
+        FAKE_GARBLE=str(garble),
+        FAKE_LOCALES=str(locales),
+        FAKE_NM="1" if nm else "0",
     )
     proc = subprocess.Popen(
         [sys.executable, str(REPO / "tests/fixtures/fake_firstlogin.py")],
@@ -95,8 +100,8 @@ r = json.loads(rec.read_text())
 a = r["answers"]
 cmds = "\n".join(r["commands"])
 check(
-    'history expansion switched off before any other command (a "!" in a WiFi password, 2026-10-29)',
-    r["commands"] and "set +H" in r["commands"][0],
+    'the console 500 columns wide, then history expansion off, before any other command (a "!" in a WiFi password)',
+    r["commands"][:1] == ["stty cols 500"] and "set +H" in r["commands"][1],
     r["commands"][:2],
 )
 check(
@@ -201,6 +206,25 @@ check(
     and tried[0] <= 340 + 30 + 1
     and a["user"] == ["salty-parrot"],
     tried[:3] + ["..."] + tried[-3:],
+)
+
+# Armbian's minimal image has no NetworkManager (a Lyra Zero W, 2026-10-29): the WiFi written for netplan, as
+# armbian-firstlogin writes it there, and applied.
+con, proc, rec = board("shell", nm=False)
+got = rkserial.setup(con, dict(choices, listen=1, wifi_password="S!x&y72CKN3LKP"))
+proc.kill()
+cmds = json.loads(rec.read_text())["commands"]
+wifi = next((c for c in cmds if "30-wifis-dhcp.yaml" in c), "")
+check(
+    "no NetworkManager: the WiFi written to /etc/netplan/30-wifis-dhcp.yaml (0600) and applied, no nmcli connect",
+    "umask 077" in wifi
+    and '"wlan0" "GOODNET" "S!x&y72CKN3LKP"' in wifi
+    and "password: |-" in wifi
+    and "chmod 600" in wifi
+    and "netplan apply" in wifi
+    and not any("nmcli dev wifi connect" in c for c in cmds)
+    and "joined GOODNET" in got["said"],
+    (wifi, got),
 )
 
 con, proc, rec = board("shell")
