@@ -79,7 +79,7 @@ You can skip a step and do it later.
 ## Troubleshooting
 
 - **You forgot the password.** Run `sudo /opt/irate-box/irate-box hub_control set-admin yourname` over SSH. The command sets a new password.
-- **The setup code is gone.** Run `sudo /opt/irate-box/irate-box hub_control setup-code` at the console while the box has no administrator account. Once an account exists there is no setup code.
+- **The setup code is gone.** Print it again at the console as in step 2, while the box has no administrator account. Once an account exists there is no setup code.
 - **You want to change the password.** Use your account page over HTTPS, or the SSH command above. The box refuses an administrator password change over HTTP.
 - **A script calls the administration pages** (`curl -u admin:…`). The script needs a script login. Create it with `sudo /opt/irate-box/irate-box hub_control script-login`. Remove it with the `--off` option. See [Accounts](accounts.md).
 - **The installer fails.** Read the log in `/var/log/irate-box/install.log`. You can run the installer again: it repairs the installation and upgrades it, and it keeps your settings and add-ons. See [Troubleshooting](troubleshooting.md).

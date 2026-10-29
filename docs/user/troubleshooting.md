@@ -19,7 +19,7 @@ On the administration pages, open Doctors.
 
 The clock checks have their own page in the Clock section.
 
-**Housecall doctor.** It examines a card, a card image, or this box's own files, on request. Each file gets a verdict: genuine, damaged, suspect or unknown. From the console, run `sudo /opt/irate-box/irate-box housecall --image /path/to/card.img`. It reads only and writes nothing to the target. With **This box's own files** it also reads the card the box runs from: its maker and date, whether it repeats its start past a size, and how far its ext4 backup superblocks read back. The target **This box's card** does only that check, and is the one to use when the box itself is suspect.
+**Housecall doctor.** It examines a card, a card image, or this box's own files, on request. Each file gets a verdict: genuine, damaged, suspect or unknown. From the console, run `sudo /opt/irate-box/irate-box housecall --image /path/to/card.img`. It reads only and writes nothing to the target. With **This box's own files** it also reads the card the box runs from: its maker and date, whether it repeats its start past a size, and how far its ext4 backup superblocks read back. The target **This box's card: identity and extent (reads only)** does only that check, and is the one to use when the box itself is suspect.
 
 **Security doctor.** See [Security](security.md).
 
