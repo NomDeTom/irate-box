@@ -10,7 +10,6 @@ import http.client
 import json
 import os
 import re
-import secrets
 import shutil
 import ssl
 import stat
@@ -455,7 +454,10 @@ def prepare(template, parent, values, identity, ipv6=True):
     ):
         raise ValueError("nginx staging requires a private directory owned by the installer")
     text = render(Path(template).read_text(), values, ipv6)
-    generation = hashlib.sha256((identity + text + secrets.token_hex(16)).encode()).hexdigest()
+    # The generation names this render, not this run: the same template, settings and installed source render the
+    # same bytes, so a repeat install leaves the site alone (notes: box-doctor-hardening-plan Part 2 step 6). A
+    # changed input changes the generation, and the health check then asks for the new one.
+    generation = hashlib.sha256((identity + text).encode()).hexdigest()
     text = re.sub(
         r"(?m)^server \{",
         lambda match: (
@@ -466,6 +468,17 @@ def prepare(template, parent, values, identity, ipv6=True):
         ),
         text,
     )
+    # A bundle that already holds this render is the one to use: nothing is written for an install that changes no
+    # front file. A bundle is kept while a transaction may name it; the staging folder is private to the installer.
+    for existing in parent.iterdir():
+        if not existing.name.startswith("nginx-") or not existing.is_dir():
+            continue
+        try:
+            old, old_site = read_bundle(existing)
+        except (OSError, ValueError):
+            continue
+        if old.get("generation") == generation and old_site.read_bytes() == text.encode():
+            return existing
     bundle = Path(tempfile.mkdtemp(prefix="nginx-", dir=parent))
     site = bundle / "site.conf"
     site.write_text(text)

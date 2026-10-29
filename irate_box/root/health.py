@@ -6050,6 +6050,391 @@ def check_watchdogs_alive(now=None):
     return out
 
 
+# --- package files and irate-box's own tree: damage dpkg and git can name -------------------------------
+# The weekly check (notes: box-doctor-hardening-plan Part 1, step 1). A package's files never change, and irate-box's
+# tree is held against the updater's checkout at the installed commit. Read only, at the doctor's low priority; after a
+# boot the startup packages alone, so a run from /admin stays quick. Box 190's card was not caught by this: none of its
+# 55 files was a package file or under /opt/irate-box, but the check is the cheapest whole-system reading of the
+# box's files, and when it does find damage it names the card.
+UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
+PACKAGE_CHECK = CONTROL / "package-check.json"
+# What the box boots and serves with: install.sh's own package list and nginx, the base system, and the network.
+STARTUP_PACKAGES = (
+    "systemd",
+    "libc6",
+    "dpkg",
+    "apt",
+    "python3",
+    "curl",
+    "ca-certificates",
+    "git",
+    "unzip",
+    "fcgiwrap",
+    "cgit",
+    "python3-markdown",
+    "libjs-highlight.js",
+    "iw",
+    "dnsmasq-base",
+    "nftables",
+    "procps",
+    "gpgv",
+    "nginx",
+    "openssl",
+    "network-manager",
+    "wpasupplicant",
+    "hostapd",
+)
+
+
+def _installed_commit():
+    """The commit in VERSION (git describe output: abc1234, or v1.2-3-gabc1234, maybe -dirty), or None."""
+    try:
+        first = (CODE / "VERSION").read_text().split()[0].removesuffix("-dirty")
+    except (OSError, IndexError):
+        return None
+    match = re.search(r"-g([0-9a-f]{7,40})$", first) or re.match(r"^([0-9a-f]{7,40})$", first)
+    return match.group(1) if match else None
+
+
+def _dep_names(text):
+    """The package names a Depends field names, one for each alternative group (the first alternative)."""
+    out = []
+    for clause in text.split(","):
+        name = re.split(r"[\s:(]", clause.split("|")[0].strip(), maxsplit=1)[0]
+        if name:
+            out.append(name)
+    return out
+
+
+def startup_packages():
+    """The startup packages and their dependencies, recursively, as dpkg records them. Missing packages are left
+    out: a box served by Caddy has no nginx, and one without an add-on's package is still healthy."""
+    said = run("dpkg-query", "-W", "-f=${Package}\t${Pre-Depends}\t${Depends}\n", timeout=120)
+    if said.returncode:
+        raise OSError((said.stderr or said.stdout or "dpkg-query failed").strip()[-200:])
+    deps = {}
+    for line in (said.stdout or "").splitlines():
+        name, _, rest = line.partition("\t")
+        if name:
+            deps[name] = _dep_names(rest)
+    want, seen = [p for p in STARTUP_PACKAGES if p in deps], set()
+    while want:
+        name = want.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        want.extend(d for d in deps.get(name, ()) if d in deps and d not in seen)
+    if not seen:
+        raise OSError("dpkg-query named none of the startup packages")
+    return sorted(seen)
+
+
+def _dpkg_verify(packages=()):
+    """dpkg --verify's findings as (path, conffile): the files whose recorded checksum does not match. A line whose
+    nine-character marker is all "?" is one dpkg could not check (unreadable or unrecorded), not damage. A "5" is a
+    checksum mismatch, and an "m" at the front a missing file."""
+    said = run("dpkg", "--verify", *packages, timeout=900)
+    if said.returncode not in (0, 1):
+        raise OSError((said.stderr or said.stdout or "dpkg --verify failed").strip()[-200:])
+    out = []
+    for line in (said.stdout or "").splitlines():
+        marker, _, rest = line.partition(" ")
+        if not marker or not rest:
+            continue
+        conffile = rest.startswith("c ")
+        path = rest[2:].strip() if conffile else rest.strip()
+        if path and (marker.startswith("m") or "5" in marker):
+            out.append({"path": path, "conffile": conffile})
+    return out
+
+
+def _git_blob(path):
+    """The blob SHA-1 git names a file by: its header needs the size before the data."""
+    sha = hashlib.sha1(usedforsecurity=False)
+    sha.update(f"blob {path.stat().st_size}\0".encode())
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
+def _git_tree():
+    """irate-box's files at the installed commit, as {relative path: blob SHA-1}, from the updater's checkout; or
+    (None, message) when the commit or the checkout is not there to check against."""
+    commit = _installed_commit()
+    if not commit:
+        return None, M("package-tree.no-version", "The installed commit is not recorded in {path}.", path=str(CODE))
+    full = run("git", "-C", str(UPDATE_SRC), "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}", timeout=60)
+    if full.returncode != 0 or not full.stdout.strip():
+        return None, M(
+            "package-tree.no-checkout",
+            "The updater's checkout does not have the installed commit {commit}.",
+            commit=commit,
+        )
+    said = run("git", "-C", str(UPDATE_SRC), "ls-tree", "-r", "-z", commit, timeout=120)
+    if said.returncode:
+        return None, M(
+            "package-tree.no-tree",
+            "The updater's checkout could not list the installed commit {commit}: {why}",
+            commit=commit,
+            why=(said.stderr or said.stdout or "").strip()[-200:],
+        )
+    out = {}
+    for entry in (said.stdout or "").split("\0"):
+        meta, _, relative = entry.partition("\t")
+        fields = meta.split()
+        if len(fields) >= 3 and fields[1] == "blob":
+            out[relative] = fields[2]
+    return out, None
+
+
+def _housecall_note():
+    """The Housecall doctor's fuller examination, where that doctor is installed."""
+    if (CODE / "irate_box/root/housecall.py").exists():
+        return M(
+            "packages.housecall",
+            "The Housecall doctor can examine the whole card and name every file it damaged.",
+        )
+    return None
+
+
+def _package_findings(damaged, scope):
+    """The findings for dpkg --verify's list. A file that reads back as 0xFF is damage; one that reads otherwise
+    was changed, by its package's own build or by someone editing it, and only the Housecall doctor can tell which.
+    A conffile is the same question, and dpkg already names it apart."""
+    broken, changed, conffiles = [], [], []
+    for item in damaged:
+        if item["conffile"]:
+            conffiles.append(item)
+            continue
+        path = Path(item["path"])
+        try:
+            if not path.exists():
+                changed.append(item)  # removed by the board's own build, or by someone: not a card's 0xFF
+            elif _reads_all_ff(path):
+                broken.append(item)
+            else:
+                changed.append(item)
+        except OSError:
+            changed.append(item)  # unreadable: not the 0xFF a card returns
+    out = []
+    if broken:
+        out.append(
+            finding(
+                "package-files",
+                M("packages.title", "Package files"),
+                "problem",
+                M(
+                    "packages.damaged",
+                    {
+                        "one": "The card returns wrong contents for {n} system file: it can be failing.",
+                        "other": "The card returns wrong contents for {n} system files: it can be failing.",
+                    },
+                    n=len(broken),
+                ),
+                M(
+                    "packages.damaged.why",
+                    "A package's files never change. When one does, the box's copy is damaged, or something wrote "
+                    "over it. A card that loses writes does this.",
+                ),
+                M(
+                    "packages.damaged.fix",
+                    "Replace the SD card, then reinstall the damaged packages. The Housecall doctor can examine the "
+                    "whole card first.",
+                ),
+                notes=[n for n in (_housecall_note(),) if n],
+                commands=[f"sudo {CODE}/irate-box housecall --this-card"]
+                if (CODE / "irate_box/root/housecall.py").exists()
+                else [],
+                evidence=[r["path"] for r in broken],
+                go=GO_CARD_WRITES,
+            )
+        )
+    if changed:
+        out.append(
+            finding(
+                "package-changed",
+                M("packages.changed.title", "Package files that changed"),
+                "warn",
+                M(
+                    "packages.changed",
+                    {
+                        "one": "{n} package file has changed since its package was installed: edited, generated by "
+                        "the system, removed, or damaged.",
+                        "other": "{n} package files have changed since their packages were installed: edited, "
+                        "generated by the system, removed, or damaged.",
+                    },
+                    n=len(changed),
+                ),
+                M(
+                    "packages.changed.why",
+                    "A package's checksum cannot tell an edit or a generated file from damage. Modules' indexes and "
+                    "the release's own files change on this board by design. Any other change is worth a look.",
+                ),
+                M(
+                    "packages.changed.fix",
+                    "Check the files listed. If none is a change you made, the Housecall doctor can tell damage from "
+                    "a generated file.",
+                ),
+                notes=[n for n in (_housecall_note(),) if n],
+                commands=[f"sudo {CODE}/irate-box housecall --this-card"]
+                if (CODE / "irate_box/root/housecall.py").exists()
+                else [],
+                evidence=[r["path"] for r in changed],
+            )
+        )
+    if conffiles:
+        out.append(
+            finding(
+                "package-conffiles",
+                M("conffiles.title", "Configuration files from packages"),
+                "warn",
+                M(
+                    "conffiles.changed",
+                    {
+                        "one": "{n} configuration file has changed since its package was installed: edited, or damaged.",
+                        "other": "{n} configuration files have changed since their packages were installed: "
+                        "edited, or damaged.",
+                    },
+                    n=len(conffiles),
+                ),
+                M(
+                    "conffiles.changed.why",
+                    "A package's checksum cannot tell an edit from damage: both change the file. The box's own "
+                    "changes are expected. Any other change is worth a look.",
+                ),
+                M(
+                    "conffiles.changed.fix",
+                    "Check each file against its package's version, and put the package's own version back if the "
+                    "change was not yours.",
+                ),
+                evidence=[r["path"] for r in conffiles],
+            )
+        )
+    if not out:
+        out.append(
+            finding(
+                "package-files",
+                M("packages.title", "Package files"),
+                "ok",
+                M(
+                    "packages.ok-startup",
+                    "The startup packages' files match their recorded checksums ({n} packages checked).",
+                    n=len(scope),
+                )
+                if scope
+                else M("packages.ok", "Every package file matches its recorded checksum."),
+            )
+        )
+    return out
+
+
+def _tree_findings():
+    """irate-box's own files against the updater's checkout: damage, or a hand edit, the same to git."""
+    refs, why = _git_tree()
+    if refs is None:
+        return [
+            finding(
+                "irate-box-tree",
+                M("package-tree.title", "irate-box's own files"),
+                "warn",
+                why,
+                M(
+                    "package-tree.unchecked.why",
+                    "The box cannot check its own files against the copy the update came from.",
+                ),
+                M(
+                    "package-tree.unchecked.fix",
+                    "Run the updates check, and install the same update again if the checkout is missing.",
+                ),
+                evidence=[str(UPDATE_SRC)],
+                go=GO_UPDATES,
+            )
+        ]
+    bad, missing = [], []
+    for relative, want in refs.items():
+        try:
+            got = _git_blob(CODE / relative)
+        except OSError:
+            missing.append(relative)
+            continue
+        if got != want:
+            bad.append(relative)
+    if not bad and not missing:
+        return [
+            finding(
+                "irate-box-tree",
+                M("package-tree.title", "irate-box's own files"),
+                "ok",
+                M("package-tree.ok", "irate-box's files match the installed commit ({n} files).", n=len(refs)),
+            )
+        ]
+    return [
+        finding(
+            "irate-box-tree",
+            M("package-tree.title", "irate-box's own files"),
+            "problem",
+            M(
+                "package-tree.damaged",
+                {
+                    "one": "{n} of irate-box's files differs from the installed commit, or is missing.",
+                    "other": "{n} of irate-box's files differ from the installed commit, or are missing.",
+                },
+                n=len(bad) + len(missing),
+            ),
+            M(
+                "package-tree.damaged.why",
+                "The box's code should be exactly the copy the update came from. A difference is damage, unless "
+                "someone edited the code by hand.",
+            ),
+            M(
+                "package-tree.damaged.fix",
+                "Install the same update again. If the files are damaged, replace the SD card and check the whole "
+                "card with the Housecall doctor first.",
+            ),
+            notes=[n for n in (_housecall_note(),) if n],
+            commands=[f"sudo {CODE}/irate-box housecall --this-card"]
+            if (CODE / "irate_box/root/housecall.py").exists()
+            else [],
+            evidence=[f"{p} (missing)" for p in missing] + bad,
+            go=GO_UPDATES,
+        )
+    ]
+
+
+def _package_cache():
+    try:
+        data = json.loads(PACKAGE_CHECK.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_package_cache(findings):
+    from irate_box.root import safeio
+
+    safeio.mkdir(CONTROL, mode=0o755)
+    safeio.write(PACKAGE_CHECK, json.dumps({"at": time.time(), "boot": _boot_id(), "findings": findings}, indent=1))
+
+
+def check_package_files(quick=False):
+    """Package files and irate-box's own tree (notes: box-doctor-hardening-plan Part 1, step 1). The weekly full run
+    verifies every package and the tree; a quick run, after a boot, verifies the startup packages and their
+    dependencies once, keeping that boot's answer for the runs from /admin. Both read only, and the timer's run is
+    already at low priority and idle I/O, so neither delays a service."""
+    if quick:
+        cached = _package_cache()
+        if cached.get("boot") == _boot_id() and isinstance(cached.get("findings"), list):
+            return cached["findings"]
+        packages = startup_packages()
+        found = _package_findings(_dpkg_verify(packages), packages)
+        _write_package_cache(found)
+        return found
+    found = _package_findings(_dpkg_verify(), ()) + _tree_findings()
+    _write_package_cache(found)
+    return found
+
+
 def scan(quick=False):
     """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
     Lyra's slow step: 132.6 of a 143.5 s run), and the books' headers without opening each in Kiwix. Each check's
@@ -6083,10 +6468,11 @@ def scan(quick=False):
         check_watchdogs_alive,
         check_idle,
         check_usb_filesystems,
+        check_package_files,
     ):
         start = time.monotonic()
         try:
-            findings += check(quick=quick) if check in (check_kiwix, check_builds) else check()
+            findings += check(quick=quick) if check in (check_kiwix, check_builds, check_package_files) else check()
         except Exception as exc:  # noqa: BLE001 - one broken check must not hide the others
             findings.append(
                 finding(
