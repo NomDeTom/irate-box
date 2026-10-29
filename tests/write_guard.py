@@ -81,7 +81,7 @@ check(
     "retain writes its copy and the manifest through durable.write_checked",
     "durable.write_checked(copy," in retain and "durable.write_checked(\n        MANIFEST," in retain,
 )
-check("retain restores through restore.from_copy", "restore.from_copy(path, source, sha256=wanted)" in retain)
+check("retain restores through restore.from_copy", "restore.from_copy(" in retain and "sha256=wanted" in retain)
 inst = source("install.sh")
 check(
     "install.sh installs and sweeps the second copy",

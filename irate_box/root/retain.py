@@ -37,7 +37,10 @@ MANIFEST = STORE / "manifest.json"
 FINDINGS = ROOT / "protected-findings.json"
 SYSTEMD = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd")) / "system"
 SERVICE = "irate-box-protected.service"
+SWEEP_SERVICE = "irate-box-protected-sweep.service"
 TIMER = "irate-box-protected.timer"
+DAMAGED = STORE / "damaged"
+STREAK = ROOT / "protected-streak.json"
 NGINX = Path(os.environ.get("HUB_NGINX_CONF_DIR", "/etc/nginx"))
 NM = Path(os.environ.get("HUB_NM_DIR", "/etc/NetworkManager/system-connections"))
 JOURNALD = Path(os.environ.get("HUB_JOURNALD_CONF", "/etc/systemd/journald.conf"))
@@ -96,8 +99,9 @@ def _sha(data):
 
 
 def _bad(data):
-    """Nothing, or all 0xFF, or all zero: what a card returns for data it did not keep."""
-    return not data or data.count(FF[0]) == len(data) or data.count(ZERO[0]) == len(data)
+    """All 0xFF or all zero: what a card returns for data it did not keep. An empty file is not damage: an empty
+    include is a legitimate file."""
+    return bool(data) and (data.count(FF[0]) == len(data) or data.count(ZERO[0]) == len(data))
 
 
 def _read(path):
@@ -152,10 +156,47 @@ def _boot_id():
     return ""
 
 
+def _entry(path, data, copy):
+    metadata = path.stat()
+    return {
+        "size": len(data),
+        "mtime_ns": metadata.st_mtime_ns,
+        "sha256": _sha(data),
+        "copy": copy.name,
+        "uid": metadata.st_uid,
+        "gid": metadata.st_gid,
+        "mode": metadata.st_mode & 0o777,
+    }
+
+
+def _streak(current, repaired):
+    """How many boots in a row the check repaired or lost a file. Reset by a boot with none."""
+    try:
+        state = json.loads(STREAK.read_text())
+    except (OSError, ValueError):
+        state = {}
+    if state.get("boot") != current:
+        streak = (state.get("streak", 0) + 1) if state.get("repaired") and repaired else (1 if repaired else 0)
+        state = {"boot": current, "streak": streak, "repaired": repaired}
+        durable.write_checked(STREAK, json.dumps(state), 0o600)
+    return state.get("streak", 0) if state.get("boot") == current else 0
+
+
+def streak():
+    try:
+        state = json.loads(STREAK.read_text())
+    except (OSError, ValueError):
+        return 0
+    return int(state.get("streak", 0)) if state.get("boot") == _boot_id() else 0
+
+
 def sweep():
     """The copy: every protected file that reads back right, written beside the last one (which is kept as .prev).
-    A file that is already in the copy unchanged is not written again."""
+    A file that is already in the copy unchanged is not written again. A file that reads back damaged keeps its
+    previous entry and copy, so the boot check can still restore it; a file the owner removed leaves the manifest,
+    and its copy is removed with it."""
     STORE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    previous = _load_manifest().get("entries", {})
     entries, bad = {}, []
     for path in protected():
         try:
@@ -164,6 +205,8 @@ def sweep():
             continue
         if _bad(data):
             bad.append({"path": str(path), "action": "not copied: it reads back as 0xFF or zero"})
+            if str(path) in previous:
+                entries[str(path)] = previous[str(path)]
             continue
         copy = _copy(path)
         try:
@@ -174,27 +217,32 @@ def sweep():
             if copy.exists():
                 os.replace(copy, _prev(path))
             durable.write_checked(copy, data, 0o600)
-        entries[str(path)] = {
-            "size": len(data),
-            "mtime_ns": path.stat().st_mtime_ns,
-            "sha256": _sha(data),
-            "copy": copy.name,
-        }
+        entries[str(path)] = _entry(path, data, copy)
     durable.write_checked(
         MANIFEST, json.dumps({"version": 1, "at": time.time(), "entries": entries}, indent=1, sort_keys=True), 0o600
     )
+    keep = {entry.get("copy") for entry in entries.values() if entry.get("copy")}
+    for old in STORE.iterdir():
+        if old.name in ("manifest.json", "damaged") or not old.is_file():
+            continue
+        if old.name.endswith(".prev"):
+            continue
+        if old.name not in keep:
+            old.unlink(missing_ok=True)
     if bad:
         _findings(bad, "sweep")
     return bad
 
 
 def boot_check():
-    """Every protected file, read past the cache and compared with the manifest. A change the owner made is left
-    alone. Damage is put back from the copy, then from the copy's .prev; when neither checks out, a finding says what
-    is lost."""
+    """Every protected file, read past the cache and compared with the manifest. A file the owner removed is left
+    removed. A change the owner made (its mtime moved) is left alone. Damage is put back from the copy, then from
+    the copy's .prev, with the file's own owner and mode; the damaged file is kept outside the folders a web server
+    includes by glob. When neither copy checks out, a finding says what is lost."""
     manifest = _load_manifest()
     if not manifest:
         return []
+    current = _boot_id()
     repairs, lost = [], []
     for path_str, entry in manifest["entries"].items():
         path = Path(path_str)
@@ -203,19 +251,30 @@ def boot_check():
             data = _read(path)
         except OSError:
             data = None
-        if data is not None and not _bad(data) and _sha(data) == wanted:
+        if data is None:
+            continue  # removed by the owner or the hub: the next sweep drops it, and it is not a card's damage
+        if not _bad(data) and _sha(data) == wanted:
             continue
         try:
             mtime = path.stat().st_mtime_ns
         except OSError:
             mtime = None
-        if data is not None and not _bad(data) and mtime != entry.get("mtime_ns"):
+        if not _bad(data) and mtime != entry.get("mtime_ns"):
             continue  # the owner changed it: the next sweep copies it
         done = False
         for source in (_copy(path), _prev(path)):
             try:
                 if source.is_file() and _sha(_read(source)) == wanted:
-                    restore.from_copy(path, source, sha256=wanted)
+                    DAMAGED.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    keep_at = DAMAGED / f"{_ident(path)}.{int(time.time())}"
+                    restore.from_copy(
+                        path,
+                        source,
+                        sha256=wanted,
+                        mode=entry.get("mode"),
+                        owner=(entry.get("uid"), entry.get("gid")),
+                        keep_at=keep_at,
+                    )
                     repairs.append({"path": str(path), "action": "restored from " + source.name})
                     done = True
                     break
@@ -223,8 +282,9 @@ def boot_check():
                 continue
         if not done:
             lost.append({"path": str(path), "action": "damaged, and no good copy: reinstall or restore it by hand"})
+    _streak(current, bool(repairs or lost))
     if repairs or lost:
-        _findings(repairs + lost, "boot")
+        _findings(repairs + lost, "boot", boot=current)
     return repairs + lost
 
 
@@ -238,15 +298,22 @@ def unit_text(name):
     if name == SERVICE:
         return (
             "[Unit]\nDescription=Irate-Box: the settings and keys, checked at boot\n"
-            "DefaultDependencies=no\nAfter=local-fs.target\n"
+            "DefaultDependencies=no\nAfter=local-fs.target nand-state.service\n"
             "Before=network.target irate-box.service nginx.service caddy.service\n\n"
             "[Service]\nType=oneshot\n"
             f"ExecStart={code}/irate-box retain boot-check\n" + sandbox + "\n[Install]\nWantedBy=multi-user.target\n"
         )
+    if name == SWEEP_SERVICE:
+        return (
+            "[Unit]\nDescription=Irate-Box: the second copy of the settings and keys\n"
+            "After=local-fs.target nand-state.service\n\n[Service]\nType=oneshot\n"
+            f"ExecStart={code}/irate-box retain sweep\nNice=19\nIOSchedulingClass=idle\n" + sandbox
+        )
     if name == TIMER:
         return (
             "[Unit]\nDescription=Irate-Box: the second copy of the settings and keys\n\n[Timer]\n"
-            "OnBootSec=45min\nOnUnitActiveSec=6h\nRandomizedDelaySec=15min\n\n[Install]\nWantedBy=timers.target\n"
+            "OnBootSec=45min\nOnUnitActiveSec=6h\nRandomizedDelaySec=15min\n"
+            f"Unit={SWEEP_SERVICE}\n\n[Install]\nWantedBy=timers.target\n"
         )
     raise ValueError(f"no unit text for {name}")
 
@@ -258,15 +325,16 @@ def installed():
 def install_units(on=True):
     SYSTEMD.mkdir(parents=True, exist_ok=True)
     if on:
-        durable.write_checked(SYSTEMD / SERVICE, unit_text(SERVICE), 0o644)
-        durable.write_checked(SYSTEMD / TIMER, unit_text(TIMER), 0o644)
+        for name in (SERVICE, SWEEP_SERVICE, TIMER):
+            durable.write_checked(SYSTEMD / name, unit_text(name), 0o644)
         restore.run("systemctl", "daemon-reload")
+        restore.run("systemctl", "enable", SERVICE)
         restore.run("systemctl", "enable", "--now", TIMER)
         return M("retain.on", "The box now keeps a copy of its settings and keys and checks them at every boot.")
-    for verb in ("disable", "--now", TIMER):
-        restore.run("systemctl", verb, TIMER)
-    (SYSTEMD / TIMER).unlink(missing_ok=True)
-    (SYSTEMD / SERVICE).unlink(missing_ok=True)
+    restore.run("systemctl", "disable", "--now", TIMER)
+    restore.run("systemctl", "disable", "--now", SERVICE)
+    for name in (TIMER, SERVICE, SWEEP_SERVICE):
+        (SYSTEMD / name).unlink(missing_ok=True)
     restore.run("systemctl", "daemon-reload")
     return M("retain.off", "The copy is gone, and the boot check with it.")
 
