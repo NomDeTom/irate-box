@@ -129,6 +129,35 @@ def _copy_owned(source, destination):
                 os.close(descriptor)
 
 
+def _snapshot_owned(source, destination):
+    """The old file kept for a rollback, as a hard link where the file system allows it: the snapshot then costs a
+    directory entry, not a copy. Every front writer replaces its file by a rename (durable.write_checked and
+    write_batch, install.sh's write_if_changed), so the link keeps the old contents. A copy is the fallback: another
+    file system, a directory, or a file openssl writes in place (`ca.srl`)."""
+    source, destination = Path(source), Path(destination)
+    if source.is_symlink():
+        destination.symlink_to(os.readlink(source))
+    elif source.is_dir():
+        destination.mkdir(mode=0o700)
+        for child in source.iterdir():
+            _snapshot_owned(child, destination / child.name)
+        shutil.copystat(source, destination, follow_symlinks=False)
+    elif source.is_file():
+        if source.name.endswith(".srl"):
+            shutil.copy2(source, destination)
+            metadata = source.lstat()
+            os.chown(destination, metadata.st_uid, metadata.st_gid)
+        else:
+            try:
+                os.link(source, destination, follow_symlinks=False)
+            except OSError:
+                shutil.copy2(source, destination)
+                metadata = source.lstat()
+                os.chown(destination, metadata.st_uid, metadata.st_gid)
+    else:
+        raise ValueError("Unsupported nginx transaction file type")
+
+
 def _private(directory):
     directory = Path(directory)
     if (
@@ -165,7 +194,7 @@ def begin(directory, paths, runner=None):
             raise ValueError("Unsafe nginx transaction destination")
         exists = path.exists() or path.is_symlink()
         if exists:
-            _copy_owned(path, snapshot / str(index))
+            _snapshot_owned(path, snapshot / str(index))
         entries.append({"path": str(path), "exists": exists, "snapshot": str(index)})
     _sync_directory(snapshot)
     previous_values = settings_from_env()

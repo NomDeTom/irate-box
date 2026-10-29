@@ -550,8 +550,9 @@ def reset_password():
     """Back to unclaimed: an unknown random login everywhere, and the first-use form on
     /admin. For the console, when the owner has lost the password."""
     set_login(secrets.token_urlsafe(24), keep=False)
-    UNCLAIMED.write_text("no admin password chosen yet (hub_control.py reset-password)\n")
-    UNCLAIMED.chmod(0o644)
+    from irate_box import durable
+
+    durable.write_checked(UNCLAIMED, "no admin password chosen yet (hub_control.py reset-password)\n", 0o644)
     return M(
         "control.password.reset",
         "The password of the user {user} is reset, and initial setup is open again. "

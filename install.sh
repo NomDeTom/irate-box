@@ -1557,10 +1557,8 @@ if [ -f "$ETC/front-secret.env" ] && command -v journalctl >/dev/null &&
 	rm -f "$ETC/front-secret.env"
 fi
 if ! grep -qs '^HUB_FRONT_SECRET=[0-9a-f]\{64\}$' "$ETC/front-secret.env"; then
-	(
-		umask 077
-		printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >"$ETC/front-secret.env"
-	)
+	printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" |
+		write_if_changed "$ETC/front-secret.env" 600
 fi
 # A second secret in the same file (server.py VIA_SECRET): the web server adds it to every request it
 # passes to the hub, and to no other app, and the hub believes the web server's headers (the guest's
@@ -1960,8 +1958,7 @@ if [ -n "$TAKE_UNIT" ]; then
 	"$CODE/irate-box" security unit-off "$TAKE_UNIT" "install.sh --take-port-80" | sed 's/^/    /'
 fi
 if [ "$UNCLAIMED" = 1 ]; then
-	echo "no admin password chosen yet (install.sh)" >"$UNCLAIMED_MARK"
-	chmod 644 "$UNCLAIMED_MARK"
+	echo "no admin password chosen yet (install.sh)" | write_if_changed "$UNCLAIMED_MARK" 644
 else
 	rm -f "$UNCLAIMED_MARK"
 fi

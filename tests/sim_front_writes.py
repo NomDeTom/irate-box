@@ -21,6 +21,7 @@ for p in (etc, state, stage):
 os.environ.update(HUB_ETC_DIR=str(etc), HUB_STATE_DIR=str(state), HUB_CODE_DIR=str(REPO))
 stage.chmod(0o700)
 sys.path.insert(0, str(REPO))
+from irate_box import durable
 from irate_box.root import nginx_front, tls
 
 fails = 0
@@ -101,6 +102,28 @@ check(
     nginx_front.read_bundle(changed)[0]["generation"] != third_generation,
 )
 
+# The transaction's snapshot: a hard link for a file every writer replaces by rename, a copy for ca.srl, which
+# openssl writes in place. A rollback restores the old contents of both.
+tx, live, srl = T / "tx", T / "live.conf", T / "ca.srl"
+live.write_text("old\n")
+srl.write_text("1\n")
+nginx_front.begin(tx, [live, srl])
+snap = tx / "previous" / "0"
+check("a front file's snapshot is a hard link (same inode, no copy)", snap.stat().st_ino == live.stat().st_ino, snap)
+check(
+    "  ca.srl is copied, as openssl writes it in place",
+    (tx / "previous" / "1").stat().st_ino != srl.stat().st_ino,
+)
+durable.write_checked(live, "new\n")
+durable.write_checked(srl, "2\n")
+nginx_front.recover(tx)
+check(
+    "a rollback restores both, sharing no inode risk with the rewrite",
+    live.read_text() == "old\n" and srl.read_text() == "1\n",
+    (live.read_text(), srl.read_text()),
+)
+check("  and the transaction is restored", nginx_front.transaction_state(tx)["state"] == "restored")
+
 inst = (REPO / "install.sh").read_text()
 check("install.sh has the write-if-changed helper", "write_if_changed() {" in inst and 'cmp -s "$tmp" "$path"' in inst)
 for call in (
@@ -126,7 +149,14 @@ check(
     "  nginx_front has the write-batch command, using durable.write_batch",
     'command == "write-batch"' in nf and "durable.write_batch(entries)" in nf,
 )
-for rewrites in ('>"$NGINX_FRONT"', '>"$NGINX_VIA"', 'cat >"$ETC/hub.env"', '} >"$ETC/install-options"'):
+for rewrites in (
+    '>"$NGINX_FRONT"',
+    '>"$NGINX_VIA"',
+    'cat >"$ETC/hub.env"',
+    '} >"$ETC/install-options"',
+    '>"$UNCLAIMED_MARK"',
+    '>"$ETC/front-secret.env"',
+):
     check(f"  no in-place rewrite left: {rewrites}", rewrites not in inst, rewrites)
 
 shutil.rmtree(T, ignore_errors=True)
