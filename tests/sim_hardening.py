@@ -5,6 +5,8 @@ two choices and their current values, a filesystem recorded, the U-Boot/RAUC and
 plan's partitions, the Box doctor findings, and the Recovery choices through health.fix.
 python3 tests/sim_hardening.py"""
 
+import contextlib
+import io
 import json
 import os
 import sys
@@ -18,14 +20,16 @@ etc.mkdir()
 dt.mkdir()
 boot.mkdir()
 (dt / "model").write_bytes(b"Luckfox Lyra Zero W\0")
-bootstate, devmem = T / "bootstate", T / "mem"
+bootstate, devmem, cmdline = T / "bootstate", T / "mem", T / "cmdline"
 bootstate.mkdir()
+cmdline.write_text("console=ttyS2 root=/dev/disk/by-partlabel/irate-system-b ro\n")
 os.environ.update(
     HUB_ETC_DIR=str(etc),
     HUB_DEVICE_TREE=str(dt),
     HUB_BOOT_DIR=str(boot),
     HUB_AB_STATE_DIR=str(bootstate),
     HUB_DEV_MEM=str(devmem),
+    HUB_PROC_CMDLINE=str(cmdline),
 )
 (boot / "armbianEnv.txt").write_text("verbosity=1\n")
 sys.path.insert(0, str(REPO))
@@ -144,6 +148,14 @@ check(
     and "ab_default" not in (boot / "armbianEnv.txt").read_text(),
     said,
 )
+check(
+    "the status: the running slot, the default, and whether a trial is armed",
+    hardening.running_slot() == "b"
+    and hardening.default_slot() == "b"
+    and hardening.status()["running"] == "b"
+    and hardening.status()["default"] == "b",
+    hardening.status(),
+)
 os.environ["HUB_AB_STATE_DIR"] = str(T / "not-mounted")
 hardening.AB_STATE_DIR = T / "not-mounted"
 try:
@@ -168,9 +180,43 @@ check(
     and sum(1 for b in page if b) == 2,
     (said, word),
 )
+check(
+    "  arming the trial shows in the status, read back from the register",
+    hardening.status()["armed"] is True,
+    hardening.status(),
+)
 devmem.unlink()
 said = hardening.set_ab("tryboot")
 tryboot_cmd = (etc / "ab" / "boot.cmd").read_text()
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    hardening.rauc_handler(["get-primary"])
+    hardening.rauc_handler(["get-state", "b"])
+    hardening.rauc_handler(["set-state", "b", "bad"])
+    hardening.rauc_handler(["get-state", "b"])
+check(
+    "the RAUC handler: the default slot, and a slot state kept",
+    out.getvalue().splitlines() == ["B", "good", "bad"],
+    out.getvalue(),
+)
+with open(devmem, "wb") as fh:
+    fh.truncate(0xFF911000)
+hardening.set_default("A")
+with contextlib.redirect_stdout(io.StringIO()):
+    hardening.rauc_handler(["set-primary", "B"])
+check(
+    "set-primary B with default A: the default stays A, and B is on trial",
+    hardening.default_slot() == "a" and hardening.status()["armed"] is True,
+    hardening.status(),
+)
+with contextlib.redirect_stdout(io.StringIO()):
+    hardening.rauc_handler(["set-state", "b", "good"])
+check(
+    "  set-state good while B runs: only then is B the default",
+    hardening.default_slot() == "b",
+    hardening.status(),
+)
+devmem.unlink()
 check(
     "  with a spare register, the boot script reads the default from ab.txt and takes the one-shot flag",
     said.get("id") == "harden.ab.tryboot.lyra"
@@ -206,6 +252,12 @@ except Refused as exc:
     )
 (dt / "model").write_bytes(b"Raspberry Pi 3 Model B Plus Rev 1.3\0")
 hardening.set_ab("tryboot")
+hardening.set_default("A")
+try:
+    hardening.rauc_handler(["set-primary", "B"])
+    check("  the Pi has no arm for set-primary, so it refuses rather than commit untried", False)
+except SystemExit as exc:
+    check("  the Pi has no arm for set-primary, so it refuses rather than commit untried", "Pi" in str(exc))
 check(
     "  the Pi's tryboot writes its tryboot configuration instead",
     (etc / "ab" / "tryboot.txt").is_file() and not (etc / "ab" / "boot.cmd").exists(),

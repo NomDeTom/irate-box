@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from irate_box import confine, durable, finding
+from irate_box import confine, durable, finding, setup_code
 from irate_box.choices import CHOICE_RE as HEALTH_CHOICE_RE
 from irate_box.hub import (
     access,
@@ -2017,7 +2017,7 @@ def firmware_action(payload):
 
 def appstore_action(payload):
     """(status, body) for POST /admin/appstore: the settings (appstore_admin.action), or a run: one holder's
-    Look again, or every holder's check or update, each under the librarian's lock, as the firmware's page
+    Read the releases again, or every holder's check or update, each under the librarian's lock, as the firmware's page
     starts its own. An answer of a run is read when the page asks again (running, progress)."""
     action = payload.get("action")
     if action in ("survey", "holder-check", "holder-update"):
@@ -5434,7 +5434,28 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
+            self._not_found()
+
+    def _not_found(self):
+        """A 404 for an address the hub does not have. A browser asking for a page (Accept: text/html) gets the box's
+        not-found page, the confused krab; a script's request (fetch's */*), nothing, as before."""
+        body = None
+        if "text/html" in self.headers.get("Accept", ""):
+            try:
+                body = (STATIC / "not-found.html").read_bytes()
+            except OSError:
+                body = None
+        if body is None:
             self.send_empty(404)
+            return
+        self.send_response(404)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _read_payload(self):
         """The request's JSON, or None. Larger than MAX_JSON is not read at all: the
@@ -5569,6 +5590,18 @@ class Handler(BaseHTTPRequestHandler):
                     403,
                     refused.say(
                         M("setup.done", "This box is already set up. Sign in to change its accounts or passwords.")
+                    ),
+                )
+            elif not setup_code.verify(str(payload.get("code") or "")):
+                time.sleep(1.2)
+                self.send_json(
+                    403,
+                    refused.say(
+                        M(
+                            "setup.code",
+                            "The setup code is not right. It is printed at the end of the install, or run: "
+                            "sudo /opt/irate-box/irate-box hub_control setup-code",
+                        )
                     ),
                 )
             elif not self._https() and payload.get("over_http") is not True:
@@ -6497,9 +6530,9 @@ class Handler(BaseHTTPRequestHandler):
             reference = str(payload.get("reference") or "")
             image_first = str(payload.get("image_first") or "")
             manifest = str(payload.get("manifest") or "")
-            if target not in ("image", "device", "root", "this-card", "peer"):
+            if target not in ("image", "device", "root", "this-card", "card", "peer"):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
-            elif target != "this-card" and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
+            elif target not in ("this-card", "card") and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
                 self.send_json(400, refused.say(M("hub.housecall.path", "Give the path the doctor examines.")))
             elif len(reference) > 4096 or "\0" in reference:
                 self.send_json(

@@ -55,7 +55,7 @@
   },
   {
    "term": "Initial setup",
-   "definition": "The state of a new box before an administrator account exists. Until an administrator creates the account, anyone on the network can open the administration pages"
+   "definition": "The state of a new box before an administrator account exists. The set-up page asks for the setup code that the installer prints, and only the console can show it"
   },
   {
    "term": "Install",
