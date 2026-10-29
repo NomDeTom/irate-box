@@ -18,7 +18,7 @@ Add or remove each add-on on its own. Use the administration pages (the same ins
 
 To remove an add-on, use `--remove NAME` or select **Remove**. The box stops the service and removes its settings. The data of the add-on stays on the box.
 
-**Web add-ons** are small pages that you add from a catalogue. They need no installer. Examples are ELIZA, an MQTT explorer, draw.io and JS Paint. The hub serves each web add-on from its own web origin, separate from the hub.
+**Web add-ons** are small pages that you add from a catalogue. They need no installer. Examples are ELIZA, an MQTT explorer, draw.io and JS Paint. The **Drawing** folder lists Excalidraw and the last two once they are added. The hub serves each web add-on from its own web origin, separate from the hub.
 
 ## Books
 

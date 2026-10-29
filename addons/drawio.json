@@ -1,6 +1,6 @@
 {
   "id": "drawio",
-  "order": 11,
+  "order": 12,
   "tile": {
     "icon": "📐",
     "name": "draw.io",
@@ -23,5 +23,15 @@
   "capabilities": {
     "storage": true,
     "local": true
-  }
+  },
+  "entries": [
+    {
+      "menus": {
+        "drawing": 20
+      },
+      "name": "draw.io",
+      "desc": "Flowcharts, UML, network and other diagrams",
+      "path": "index.html"
+    }
+  ]
 }

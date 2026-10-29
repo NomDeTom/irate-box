@@ -98,10 +98,17 @@ refused("refuses an absolute href as a path", dict(good, tile=dict(good["tile"],
 refused("refuses connect to javascript:", dict(good, capabilities={"connect": ["javascript:alert(1)"]}), "connect")
 refused("refuses a quote in connect", dict(good, capabilities={"connect": ['ws://a";/']}), "connect")
 refused("refuses no consent", dict(good, addon={"title": "t", "summary": "s"}), "consent")
+shared = dict(good, entries=[{"menus": {"draw": 1}, "name": "n", "path": "x.html"}])
+M.check_local(shared, "t", {"draw", "drawing"})
+check("an entry may join a folder built into the hub", True)
 refused(
     "refuses entries on another list",
-    dict(good, menu={"title": "t", "subtitle": "s"}, entries=[{"menus": {"tools": 1}, "name": "n", "path": "x.html"}]),
-    "own list",
+    dict(
+        good,
+        menu={"title": "t", "subtitle": "s"},
+        entries=[{"menus": {"not-a-folder": 1}, "name": "n", "path": "x.html"}],
+    ),
+    "folder built into the hub",
 )
 
 full = M.local(good)
