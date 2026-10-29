@@ -41,6 +41,8 @@ result = subprocess.run(
         str(versions),
         "--kernel-modules",
         "/tmp/kernel-modules",
+        "--kernel-version",
+        "6.1.0-lyra",
         "--aic8800",
         "/tmp/aic8800.ko",
     ],
@@ -51,16 +53,26 @@ text = result.stdout
 check("a dry run: apk.static for armv7, an initdb root, no scripts", result.returncode == 0, result.stderr)
 check("  the Alpine release and the armv7 arch are named", "Alpine 3.22" in text and "--arch armv7" in text, text)
 check("  the packages' scripts are left for the Pi or qemu", "--no-scripts" in text, text)
+check(
+    "  Alpine's keys are given to apk, never --allow-untrusted",
+    "--keys-dir" in text and "--allow-untrusted" not in text,
+    text,
+)
 check("  a pinned version replaces the name", "python3=3.12.0-r0" in text, text)
 check(
-    "  the kernel modules and the AIC8800 driver are copied",
-    "/tmp/kernel-modules" in text and "/tmp/aic8800.ko" in text,
+    "  the kernel modules and the AIC8800 driver are copied, the driver under its kernel",
+    "/tmp/kernel-modules" in text and "lib/modules/6.1.0-lyra/extra/" in text and "depmod" in text,
     text,
 )
 check(
     "  the root is measured and made a zstd squashfs",
     "du -sk" in text and "mksquashfs" in text and "-comp zstd" in text,
     text,
+)
+check(
+    "  the source and key notes are in the recipe",
+    (REPO / "tools" / "alpine" / "README.md").is_file()
+    and (REPO / "tools" / "alpine" / "keys" / "README.md").is_file(),
 )
 check("  nothing was made", not out.exists(), list(T.iterdir()))
 print(f"failures: {fails}")

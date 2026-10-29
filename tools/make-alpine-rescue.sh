@@ -7,8 +7,9 @@
 # is a snapshot. The packages' scripts run on the Pi or under qemu, not here.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-alpine="3.22" out="$PWD/alpine-rescue" root="" squash="" apk="apk.static"
-packages="$here/alpine/packages.txt" versions="" repos="" kernel_modules="" aic8800="" dry=0
+alpine="3.22" out="$PWD/alpine-rescue" root="" squash="" apk="apk.static" apk_sha=""
+keys="$here/alpine/keys" packages="$here/alpine/packages.txt" versions="" repos=""
+kernel_modules="" kernel_version="" aic8800="" dry=0
 usage() {
 	echo "usage: $0 [--alpine VERSION] [--out DIR] [--root DIR] [--squashfs FILE] [--apk PATH] [--packages FILE] [--versions FILE] [--repositories FILE] [--kernel-modules DIR] [--aic8800 KO] [--dry-run]"
 	exit 2
@@ -20,10 +21,13 @@ while [ $# -gt 0 ]; do
 	--root) root=${2:-}; shift 2 ;;
 	--squashfs) squash=${2:-}; shift 2 ;;
 	--apk) apk=${2:-}; shift 2 ;;
+	--apk-sha256) apk_sha=${2:-}; shift 2 ;;
+	--keys-dir) keys=${2:-}; shift 2 ;;
 	--packages) packages=${2:-}; shift 2 ;;
 	--versions) versions=${2:-}; shift 2 ;;
 	--repositories) repos=${2:-}; shift 2 ;;
 	--kernel-modules) kernel_modules=${2:-}; shift 2 ;;
+	--kernel-version) kernel_version=${2:-}; shift 2 ;;
 	--aic8800) aic8800=${2:-}; shift 2 ;;
 	--dry-run) dry=1; shift ;;
 	*) usage ;;
@@ -31,7 +35,23 @@ while [ $# -gt 0 ]; do
 done
 [ -r "$packages" ] || { echo "make-alpine-rescue: no package list at $packages" >&2; exit 1; }
 root=${root:-"$out/root"}
-squash=${squash:-"$out/rescue.squashfs"}
+squash=${squash:-"$out/rescue-unconfigured.squashfs"}
+case "$out" in /|"") echo "make-alpine-rescue: refusing --out $out" >&2; exit 1 ;; esac
+out=$(realpath -m "$out")
+root=$(realpath -m "$root")
+case "$root" in "$out"/*) ;; *) echo "make-alpine-rescue: --root must be under --out" >&2; exit 1 ;; esac
+if [ -d "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ] && [ ! -f "$out/VERSIONS.txt" ] && [ ! -f "$out/BUILD.txt" ]; then
+	echo "make-alpine-rescue: refusing to clear a non-build folder: $out" >&2
+	exit 1
+fi
+if [ -d "$root" ] && [ -n "$(ls -A "$root" 2>/dev/null)" ] && [ ! -f "$out/VERSIONS.txt" ]; then
+	echo "make-alpine-rescue: $root is not empty and is not a previous build" >&2
+	exit 1
+fi
+if [ -n "$aic8800" ] && [ -z "$kernel_version" ]; then
+	echo "make-alpine-rescue: --aic8800 needs --kernel-version" >&2
+	exit 1
+fi
 doit() {
 	if [ "$dry" = 1 ]; then printf '  %s\n' "$*"; else "$@"; fi
 }
@@ -52,6 +72,11 @@ if [ "$dry" = 0 ]; then
 	[ "$(id -u)" = 0 ] || { echo "make-alpine-rescue: run as root" >&2; exit 1; }
 	command -v "$apk" >/dev/null || { echo "make-alpine-rescue: $apk is not installed" >&2; exit 1; }
 	command -v mksquashfs >/dev/null || { echo "make-alpine-rescue: mksquashfs is not installed" >&2; exit 1; }
+	[ -d "$keys" ] && compgen -G "$keys/*.pub" >/dev/null || { echo "make-alpine-rescue: no Alpine signing keys in $keys" >&2; exit 1; }
+	if [ -n "$apk_sha" ] && [ "$(sha256sum "$apk" | cut -d' ' -f1)" != "$apk_sha" ]; then
+		echo "make-alpine-rescue: $apk does not match --apk-sha256" >&2
+		exit 1
+	fi
 fi
 if [ -n "$repos" ]; then
 	[ -r "$repos" ] || { echo "make-alpine-rescue: no repositories file at $repos" >&2; exit 1; }
@@ -63,9 +88,10 @@ say "Alpine $alpine, armv7, root $root, squashfs $squash"
 say "packages: ${names[*]}"
 if [ "$dry" = 1 ]; then
 	[ -n "$repos" ] || printf '  write %s: https://dl-cdn.alpinelinux.org/alpine/v%s/{main,community}\n' "$repo_file" "$alpine"
-	doit "$apk" --arch armv7 --root "$root" --initdb --no-scripts --repositories-file "$repo_file" add "${names[@]}"
+	doit "$apk" --arch armv7 --root "$root" --initdb --no-scripts --keys-dir "$keys" --repositories-file "$repo_file" add "${names[@]}"
 	[ -z "$kernel_modules" ] || doit cp -a "$kernel_modules" "$root/lib/modules/"
-	[ -z "$aic8800" ] || doit cp "$aic8800" "$root/lib/modules/"
+	[ -z "$aic8800" ] || doit cp "$aic8800" "$root/lib/modules/$kernel_version/extra/"
+	[ -z "$aic8800" ] || doit depmod -b "$root" "$kernel_version"
 	doit "$apk" --root "$root" --arch armv7 info -v
 	doit du -sk "$root"
 	doit mksquashfs "$root" "$squash" -comp zstd -noappend
@@ -78,16 +104,17 @@ if [ -z "$repos" ]; then
 fi
 rm -rf "$root"
 mkdir -p "$root"
-"$apk" --arch armv7 --root "$root" --initdb --no-scripts --repositories-file "$repo_file" add "${names[@]}"
+"$apk" --arch armv7 --root "$root" --initdb --no-scripts --keys-dir "$keys" --repositories-file "$repo_file" add "${names[@]}"
 if [ -n "$kernel_modules" ]; then
 	mkdir -p "$root/lib/modules"
 	cp -a "$kernel_modules" "$root/lib/modules/"
 fi
 if [ -n "$aic8800" ]; then
-	mkdir -p "$root/lib/modules"
-	cp "$aic8800" "$root/lib/modules/"
+	mkdir -p "$root/lib/modules/$kernel_version/extra"
+	cp "$aic8800" "$root/lib/modules/$kernel_version/extra/"
+	depmod -b "$root" "$kernel_version"
 fi
-"$apk" --root "$root" --arch armv7 info -v | sort >"$out/VERSIONS.new"
+"$apk" --root "$root" --arch armv7 info -v | sed -E 's/^(.*)-([0-9][^-]*-r[0-9]+)$/\1=\2/' | sort >"$out/VERSIONS.new"
 if [ -f "$out/VERSIONS.txt" ] && ! cmp -s "$out/VERSIONS.txt" "$out/VERSIONS.new"; then
 	echo "make-alpine-rescue: the resolved versions differ from the last build:" >&2
 	diff -u "$out/VERSIONS.txt" "$out/VERSIONS.new" >&2 || true
@@ -104,6 +131,8 @@ mksquashfs "$root" "$squash" -comp zstd -noappend >"$out/mksquashfs.log"
 	echo "squashfs_kib $(du -sk "$squash" | cut -f1)"
 	echo "packages ${names[*]}"
 	echo "versions $out/VERSIONS.txt"
-	echo "scripts: not run here (run them on the Pi or under qemu-user with binfmt)"
+	echo "apk_sha256 $(sha256sum "$apk" | cut -d' ' -f1)"
+	echo "unconfigured: the packages' scripts were not run; run them on the Pi or under qemu-user before booting"
+	echo "squashfs $squash"
 } | tee "$out/BUILD.txt"
 say "done; the budget is in $out/BUILD.txt"
