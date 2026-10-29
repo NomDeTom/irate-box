@@ -2994,7 +2994,7 @@ HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" HUB_CODE_DIR="$CODE" "$CODE/irate-box"
 	problem "the second copy of the settings was not taken"
 # The Lyra's BOOT key as a clean-shutdown button, held for three seconds (notes: box-doctor-hardening-plan Part 3,
 # step 3). Only where the board has the ADC reading; a Pi has none.
-if [ -r /sys/bus/iio/devices/iio:device0/in_voltage1_raw ]; then
+if HUB_CODE_DIR="$CODE" "$CODE/irate-box" bootkey supported; then
 	HUB_SYSTEMD_ETC=/etc/systemd HUB_CODE_DIR="$CODE" "$CODE/irate-box" bootkey install-units ||
 		problem "the BOOT key shutdown was not set up: journalctl -u irate-box-bootkey.service"
 fi

@@ -227,6 +227,8 @@ os.utime(
 )
 for bad in (retain._copy(etc / "tls" / "server.key"), retain._prev(etc / "tls" / "server.key")):
     bad.write_bytes(b"\xff" * 8)
+real_stores = retain.extra_stores
+retain.extra_stores = lambda: []
 
 
 class FakeTls:
@@ -242,9 +244,59 @@ real_tls_make = real_tls.make_cert
 real_tls.make_cert = FakeTls.make_cert
 repairs = retain.boot_check()
 real_tls.make_cert = real_tls_make
+retain.extra_stores = real_stores
 check(
     "a server key that can be made again is, before the copy",
     (etc / "tls" / "server.key").read_text() == "MADE\n" and any("made again" in r["action"] for r in repairs),
+    repairs,
+)
+
+# A good copy is used before a new server key is made.
+put(etc / "tls" / "server.key", "COPY KEY\n", 0o640)
+retain.sweep()
+(etc / "tls" / "server.key").write_bytes(b"\xff" * 8)
+os.utime(
+    etc / "tls" / "server.key",
+    ns=(json.loads(retain.MANIFEST.read_text())["entries"][str(etc / "tls" / "server.key")]["mtime_ns"],) * 2,
+)
+made = []
+real_make = real_tls.make_cert
+real_tls.make_cert = lambda: made.append(True)
+repairs = retain.boot_check()
+real_tls.make_cert = real_make
+check(
+    "a good copy is used before a new server key is made",
+    (etc / "tls" / "server.key").read_text() == "COPY KEY\n"
+    and not made
+    and any("restored" in r["action"] for r in repairs),
+    (made, repairs),
+)
+
+# nginx files that tls.initialise does not write come from the copy, and are never called regenerated.
+htpasswd = put(nginx / "irate-box.htpasswd", "admin:hash\n", 0o644)
+retain.sweep()
+htpasswd.write_bytes(b"\xff" * 16)
+os.utime(htpasswd, ns=(json.loads(retain.MANIFEST.read_text())["entries"][str(htpasswd)]["mtime_ns"],) * 2)
+repairs = retain.boot_check()
+check(
+    "an nginx file tls.initialise does not write is restored from its copy, not called regenerated",
+    htpasswd.read_text() == "admin:hash\n"
+    and any("restored" in r["action"] for r in repairs)
+    and not any("rendered" in r["action"] for r in repairs),
+    repairs,
+)
+site = put(nginx / "conf.d" / "irate-box.conf", "server {}\n", 0o644)
+retain.sweep()
+site.write_bytes(b"\xff" * 16)
+os.utime(site, ns=(json.loads(retain.MANIFEST.read_text())["entries"][str(site)]["mtime_ns"],) * 2)
+for bad in (retain._copy(site), retain._prev(site)):
+    bad.write_bytes(b"\xff" * 16)
+retain.extra_stores = lambda: []
+repairs = retain.boot_check()
+retain.extra_stores = real_stores
+check(
+    "  with no copy either, it is a loss, not a false regeneration",
+    any("no good copy" in r["action"] for r in repairs) and not any("rendered" in r["action"] for r in repairs),
     repairs,
 )
 

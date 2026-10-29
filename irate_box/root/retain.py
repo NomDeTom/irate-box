@@ -203,9 +203,11 @@ def extra_stores():
 
 
 def regenerate(path):
-    """Put back a file the box can make again: the server key and chain from the CA, and the front's includes
-    from the settings. The CA itself cannot be made again; it comes from the copy. Returns a message or None."""
+    """Put back a file the box can make again: the server key and chain from the CA, and the front includes that
+    tls.initialise writes. The CA itself cannot be made again; it comes from the copy. The file is read back, and
+    only a file that now reads well counts as done: otherwise the copies are tried. Returns a message or None."""
     path = Path(path)
+    front = (ETC / "nginx-access.conf", ETC / "nginx-addons.conf")
     try:
         if path in (ETC / "tls" / "server.key", ETC / "tls" / "fullchain.crt"):
             from irate_box.root import tls
@@ -213,15 +215,20 @@ def regenerate(path):
             if not (ETC / "tls" / "ca" / "ca.key").exists():
                 return None
             tls.make_cert()
-            return M("retain.regenerated.server", "The server key and chain were made again from the CA.")
-        if str(path).startswith(str(ETC / "tls" / "front")) or str(path).startswith(str(NGINX)):
+            said = M("retain.regenerated.server", "The server key and chain were made again from the CA.")
+        elif path in front or str(path).startswith(str(ETC / "tls" / "front")):
             from irate_box.root import tls
 
             tls.initialise()
-            return M("retain.regenerated.front", "The front's includes were rendered again from the settings.")
-    except Exception:  # noqa: BLE001 - the copy is the fallback when a regeneration cannot run # nosec B110
+            said = M("retain.regenerated.front", "The front's includes were rendered again from the settings.")
+        else:
+            return None
+        data = _read(path)
+        if _bad(data):
+            return None
+        return said
+    except (OSError, Refused):
         return None
-    return None
 
 
 def _package_owned(path):
@@ -328,11 +335,7 @@ def boot_check():
         if not _bad(data) and mtime != entry.get("mtime_ns"):
             continue  # the owner changed it: the next sweep copies it
         done = False
-        made = regenerate(path)
-        if made:
-            repairs.append({"path": str(path), "action": str(made)})
-            done = True
-        for source in _store_sources(path) if not done else ():
+        for source in _store_sources(path):
             try:
                 if source.is_file() and _sha(_read(source)) == wanted:
                     DAMAGED.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -350,6 +353,11 @@ def boot_check():
                     break
             except (OSError, Refused):
                 continue
+        if not done:
+            made = regenerate(path)
+            if made:
+                repairs.append({"path": str(path), "action": str(made)})
+                done = True
         if not done and _package_owned(path):
             try:
                 said = restore.from_package(path)

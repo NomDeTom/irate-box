@@ -21,7 +21,11 @@ from pathlib import Path
 
 from irate_box.msg import M, Refused
 
-ADC = Path(os.environ.get("HUB_BOOTKEY_ADC", "/sys/bus/iio/devices/iio:device0/in_voltage1_raw"))
+IIO = Path(os.environ.get("HUB_IIO_DEVICES", "/sys/bus/iio/devices"))
+ADC_NAME = "ff4e8000.adc"
+ADC = Path(os.environ["HUB_BOOTKEY_ADC"]) if os.environ.get("HUB_BOOTKEY_ADC") else None
+DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
+MODEL = "Lyra Zero W"
 THRESHOLD = int(os.environ.get("HUB_BOOTKEY_THRESHOLD", "500"))
 HOLD = float(os.environ.get("HUB_BOOTKEY_HOLD", "3"))
 POLL = float(os.environ.get("HUB_BOOTKEY_POLL", "0.2"))
@@ -39,17 +43,48 @@ def run(*cmd, timeout=60):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
-def adc_present(path=None):
+def model():
+    """The board's model from the device tree."""
     try:
-        return (Path(path) if path else ADC).is_file()
+        return (DT / "model").read_bytes().rstrip(b"\0\n").decode(errors="replace")
+    except OSError:
+        return ""
+
+
+def adc_path():
+    """The Lyra's SARADC channel, found by the device's name, not by its iio:device number (which can move if
+    another driver loads first)."""
+    if ADC is not None:
+        return ADC
+    for device in sorted(IIO.glob("iio:device*")) if IIO.is_dir() else []:
+        try:
+            if (device / "name").read_text().strip() == ADC_NAME:
+                return device / "in_voltage1_raw"
+        except OSError:
+            continue
+    return None
+
+
+def supported():
+    """Only the Lyra Zero W, where SARADC_IN1 is the BOOT key. Another board's ADC channel 1 can be anything."""
+    return MODEL in model() and adc_path() is not None and adc_path().is_file()
+
+
+def adc_present(path=None):
+    found = Path(path) if path else adc_path()
+    try:
+        return bool(found) and found.is_file()
     except OSError:
         return False
 
 
 def read_value(path=None):
     """The ADC reading, or None when the board has no such pin."""
+    found = Path(path) if path else adc_path()
+    if not found:
+        return None
     try:
-        return int((Path(path) if path else ADC).read_text().strip())
+        return int(found.read_text().strip())
     except (OSError, ValueError):
         return None
 
@@ -61,6 +96,7 @@ def watch(
     ignored. Testable with a reader, a clock and a limit on the reads stood in."""
     poweroff = poweroff or (lambda: run("systemctl", "poweroff", timeout=30))
     started = None
+    released = False
     reads = 0
     while True:
         if stop_after is not None and reads >= stop_after:
@@ -102,8 +138,10 @@ def install_units(on=True):
         (SYSTEMD / UNIT).unlink(missing_ok=True)
         run("systemctl", "daemon-reload")
         return M("bootkey.off", "The BOOT key no longer shuts the box down.")
-    if not adc_present():
-        raise Refused(M("bootkey.no-adc", "This board has no BOOT key reading to watch."))
+    if not supported():
+        raise Refused(
+            M("bootkey.not-lyra", "The BOOT key shutdown is for the Lyra Zero W: this board has no such key.")
+        )
     SYSTEMD.mkdir(parents=True, exist_ok=True)
     (SYSTEMD / UNIT).write_text(unit_text())
     (SYSTEMD / UNIT).chmod(0o644)
@@ -117,15 +155,17 @@ def main(argv):
     if command == "run":
         if os.geteuid() != 0:
             raise SystemExit("run as root")
-        if not adc_present():
+        if not supported():
             return
         watch()
+    elif command == "supported":
+        raise SystemExit(0 if supported() else 1)
     elif command in ("install-units", "uninstall-units"):
         if os.geteuid() != 0:
             raise SystemExit("run as root")
         print(install_units(command == "install-units"))
     else:
-        raise SystemExit("usage: bootkey run | install-units | uninstall-units")
+        raise SystemExit("usage: bootkey run | supported | install-units | uninstall-units")
 
 
 if __name__ == "__main__":
