@@ -74,7 +74,7 @@ EXEMPT = {
 # tried with a build. Listed so the test names them; remove each as it is added.
 
 sys.path.insert(0, str(REPO))
-from irate_box.root import bootkey  # noqa: E402
+from irate_box.root import bootkey
 
 text = (REPO / "install.sh").read_text()
 sandbox = re.search(r'^HUB_SANDBOX="(.*?)"$', text, re.S | re.M).group(1)
