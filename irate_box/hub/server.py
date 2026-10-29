@@ -2722,6 +2722,7 @@ HEALTH_CHOICE_RE = re.compile(
     r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
     r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
+    r"|^rfkill:(wifi|bluetooth):(on|off|leave)$|^rfkill-apply$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer))$"
