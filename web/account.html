@@ -30,7 +30,7 @@
       <h2 data-i18n="account.acct-me.heading-change-password">Change your password</h2>
       <label data-i18n="account.acct-me.label-current-password">Current password <input type="password" name="old" autocomplete="current-password" required></label>
       <label data-i18n="account.acct-me.label-new-password">New password <input type="password" name="new" autocomplete="new-password" minlength="8" maxlength="128" required></label>
-      <button type="submit" data-i18n="account.acct-me.btn-change-password">Change password</button>
+      <button type="submit" class="action-btn primary" data-i18n="account.acct-me.btn-change-password">Change password</button>
     </form>
     <form id="acct-prefs-form" class="acct-form acct-prefs">
       <h2 data-i18n="account.acct-me.heading-settings">Your settings</h2>
@@ -76,21 +76,21 @@
       <h2 data-i18n="account.acct-guest.heading-sign">Sign in</h2>
       <label data-i18n="account.acct-guest.label-username">Username <input name="name" autocomplete="username" required></label>
       <label data-i18n="account.acct-guest.label-password">Password <input type="password" name="password" autocomplete="current-password" required></label>
-      <button type="submit" data-i18n="account.acct-guest.btn-sign">Sign in</button>
+      <button type="submit" class="action-btn primary" data-i18n="account.acct-guest.btn-sign">Sign in</button>
     </form>
     <form id="acct-signup-form" class="acct-form" hidden>
       <h2 id="acct-signup-title" data-i18n="account.acct-guest.acct-signup-title">Create account</h2>
       <p class="setting-desc" id="acct-signup-desc"></p>
       <label data-i18n="account.acct-guest.label-username">Username <input name="name" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" title="3–32 letters, digits, dots, dashes or underscores" required data-i18n-title="account.acct-guest.tip-3-32-letters-digits"></label>
       <label data-i18n="account.acct-guest.label-password">Password <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
-      <button type="submit" id="acct-signup-button" data-i18n="account.acct-guest.acct-signup-button">Create account</button>
+      <button type="submit" class="action-btn primary" id="acct-signup-button" data-i18n="account.acct-guest.acct-signup-button">Create account</button>
     </form>
     <form id="acct-code-form" class="acct-form">
       <h2 data-i18n="account.acct-guest.heading-set-password-code">Set your password with a code</h2>
       <p class="setting-desc" data-i18n="account.acct-guest.administrator-gives-code-new">An administrator gives you this code with a new account or to reset a password. It works once. It expires after 24 hours.</p>
       <label data-i18n="account.acct-guest.label-code">Code <input name="code" autocomplete="one-time-code" required></label>
       <label data-i18n="account.acct-guest.label-new-password">New password <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
-      <button type="submit" data-i18n="account.acct-guest.btn-set-password">Set password</button>
+      <button type="submit" class="action-btn primary" data-i18n="account.acct-guest.btn-set-password">Set password</button>
     </form>
   </section>
   <p id="acct-note" role="status"></p>

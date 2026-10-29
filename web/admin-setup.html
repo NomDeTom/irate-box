@@ -26,8 +26,11 @@
       <p data-i18n="admin-setup.body.box-no-administrator-account"><strong>This box has no administrator account yet.</strong> The person who creates the administrator
         account here controls the box. The account opens the administration pages, the terminal at /term and
         Syncthing at /sync. Later, sign in with it where everyone signs in (👤 Sign in, at the top of the hub).</p>
-      <p data-i18n="admin-setup.body.until-account-exists-anyone">Until the account exists, anyone on this network can create it and become the administrator. Create the account
-        now. If you are a guest and not the administrator, do not use this page.</p>
+      <p data-i18n="admin-setup.body.until-account-exists-anyone">Until the account exists, this page asks for the setup code. Only the box's console can show it. If you are a
+        guest and not the administrator, do not use this page.</p>
+      <p data-i18n="admin-setup.body.setup-code">This box asks for the setup code printed at the end of its install.
+        At the console, print it again with
+        <code>sudo /opt/irate-box/irate-box hub_control setup-code</code>.</p>
       <p data-i18n="admin-setup.body.after-step-administration-pages-sign-in">After this step, the administration pages guide you through the rest: the box's own
         sign-in for scripts, how guests reach the box, what the box exposes, add-ons and books. You can skip each step and do it later.</p>
     </div>
@@ -45,6 +48,7 @@
     </div>
     <p class="settings-note admin-note" id="setup-note" hidden></p>
     <form id="setup-form" class="library-form">
+      <label data-i18n="admin-setup.body.label-setup-code">Setup code <input name="code" minlength="16" maxlength="24" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required></label>
       <label data-i18n="admin-setup.body.label-username-3-32-letters">Username (3–32 letters, digits, dots, dashes or underscores) <input name="name" minlength="3" maxlength="32" pattern="[A-Za-z0-9._-]{3,32}" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label data-i18n="admin-setup.body.label-password">Password <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
       <label data-i18n="admin-setup.body.label-confirm-password">Confirm password <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>

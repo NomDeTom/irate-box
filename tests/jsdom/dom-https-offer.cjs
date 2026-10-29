@@ -32,7 +32,8 @@ async function offered(url, answer) {
   await new Promise((resolve) => setTimeout(resolve, 50));
   const offer = w.document.getElementById('https-offer');
   const links = [...offer.querySelectorAll('a')].map((link) => link.getAttribute('href'));
-  return { shown: !offer.hidden, asked, links, text: offer.textContent.replace(/\s+/g, ' ').trim() };
+  const lines = [...offer.querySelectorAll('p')].map((line) => line.textContent.replace(/\s+/g, ' ').trim());
+  return { shown: !offer.hidden, asked, links, lines, text: offer.textContent.replace(/\s+/g, ' ').trim() };
 }
 
 (async () => {
@@ -40,6 +41,9 @@ async function offered(url, answer) {
   check('plain HTTP, HTTPS on: this page over HTTPS first, then the certificate',
     seen.shown && seen.links[0] === 'https://box/' && seen.links[1] === '/certificate', JSON.stringify(seen));
   check('  the browser warning said in plain words', /If your browser shows a warning, do not go past it/.test(seen.text), seen.text);
+  check('  on two lines: the offer, then the warning with the certificate',
+    seen.lines.length === 2 && /^This box also serves its pages over HTTPS/.test(seen.lines[0])
+    && /^If your browser shows a warning/.test(seen.lines[1]), JSON.stringify(seen.lines));
   seen = await offered('http://box:8080/?full#board', { set_up: true, on: true, port: 8443 });
   check('  at the box\'s HTTPS port, not this page\'s; the query and fragment kept',
     seen.shown && seen.links[0] === 'https://box:8443/?full#board', JSON.stringify(seen));

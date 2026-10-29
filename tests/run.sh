@@ -33,6 +33,7 @@ run sim_servicewrites.py
 run sim_nand_state.py
 run sim_recommended.py
 run sim_hardening.py
+run sim_abslot.py
 run sim_lost_writes.py
 run sim_bootkey.py
 run sim_powerwatch.py
@@ -58,6 +59,7 @@ run sim_firmware_integrity.py
 run sim_holder.py
 run sim_holdsurvey.py
 run sim_appstore.py
+run sim_not_found.py
 run sim_appstore_admin.py
 run sim_root_copies.py
 run sim_doctor_choices.py
@@ -87,6 +89,7 @@ run sim_passwords.py
 run sim_account_nav.py
 run sim_health_accept.py
 run sim_housecall.py
+run sim_card_genuine.py
 run housecall_guard.py
 run sim_restore.py
 run sim_clock_sources.py
@@ -114,6 +117,7 @@ run sim_rtc.py
 run sim_tls.py
 run sim_tls_default.py
 run sim_mesh.py
+run sim_setup_code.py
 run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py

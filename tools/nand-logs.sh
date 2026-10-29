@@ -17,7 +17,10 @@
 #                                            the hub's own (all of /var/lib/hub but its large folders, bound back
 #                                            from the card), and the system's (NetworkManager, systemd, chrony,
 #                                            logrotate, /var/tmp); the card is then written when content is added
-#                                            or the box updates. plan says what would move, and changes nothing
+#                                            or the box updates. plan says what would move, and changes nothing.
+#   sudo tools/nand-logs.sh state adopt       move a named large folder the flash still holds back to the card
+#                                            (state mount does this at every start; use this when its boot unit did
+#                                            not run, with the hub's mounts down)
 #
 # What moves, each only if the flash has room for it (smaller chips take fewer):
 #   armbian-ramlog        on Armbian, its copy of /var/log on disk (HDD_LOG, its own setting), synced daily and
@@ -31,7 +34,7 @@
 # there; --force overrides that last test, for a flash known to hold nothing the board needs.
 set -euo pipefail
 
-MNT=/var/log.nand
+MNT=${NAND_MNT:-/var/log.nand}
 UBI_DEV=9 # a fixed number, so the mount can name ubi9:logs before anything else attaches
 ATTACH_UNIT=/etc/systemd/system/nand-logs-attach.service
 FSTAB_TAG="# nand-logs"
@@ -51,7 +54,8 @@ FSTAB=${NAND_FSTAB:-/etc/fstab}
 # back into it from the card's own copy, exposed at HUB_CARD before the flash's covers it; and the system's.
 HUB=${NAND_HUB:-/var/lib/hub}
 HUB_CARD=${NAND_HUB_CARD:-/var/lib/hub.card}
-HUB_LARGE=(zim firmware kits git library source drop ci factory-targets)
+HUB_LARGE=() # filled from irate_box/large_folders.txt below, the one list housecall.LARGE also reads
+HUB_LARGE_BUILTIN=(zim firmware kits git library source drop ci factory-targets holds)
 BIG_KIB=8192
 # Not /var/lib/systemd: its random seed and clock are read early in boot, before the flash is attached.
 SYS_STATE=(/var/lib/NetworkManager /var/lib/chrony /var/lib/logrotate /var/tmp)
@@ -70,6 +74,18 @@ die() {
 	echo "nand-logs: $*" >&2
 	exit 1
 }
+# One list for the shell and the Housecall doctor: irate_box/large_folders.txt beside this script's tree.
+load_large_folders() {
+	local file=${NAND_LARGE_FILE:-$(dirname "$(readlink -f "$0")")/../irate_box/large_folders.txt}
+	if [[ -r $file ]]; then
+		mapfile -t HUB_LARGE < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$file")
+	fi
+	if ((${#HUB_LARGE[@]} == 0)); then
+		HUB_LARGE=("${HUB_LARGE_BUILTIN[@]}")
+		say "the large-folder list is missing or empty: using the built-in list"
+	fi
+}
+load_large_folders
 mib() { echo $(($1 / 1048576)); }
 
 # Each raw NAND flash: "N size erasesize name". NAND_LOGS_TYPES widens it for a test (a block2mtd device is "ram").
@@ -451,6 +467,54 @@ state_mounts_ok() {
 	[[ $(stat -c %d "$HUB") == "$flash" ]] || return 1
 	for d in "$@"; do [[ $(stat -c %d "$HUB/$d") != "$flash" ]] || return 1; done
 }
+
+# Every named large folder belongs on the card: create it on both sides if it is missing, and adopt one the flash
+# still holds from a move made before the list named it. Its data goes back to the card, the name into state_large=,
+# and the flash's copy is emptied but for the mount point. Before the hub's mounts are made nothing writes either
+# side (the hub's writers wait for the boot unit, and the card's folder is not yet covered by the flash's). Run by
+# state_mount, and by "state adopt" for a box whose boot unit did not run.
+state_adopt() {
+	local d large=() added=() moved=() card_has nand_has
+	read -r -a large <<<"$(sed -n 's/^state_large=//p' "$STATE")"
+	# If the flash's hub is still bound over the card's, rm below would delete the data about to be copied.
+	if mountpoint -q "$HUB" && [[ $(stat -c %d "$HUB") == $(stat -c %d "$MNT") ]]; then
+		die "the flash's hub is over the card's: refusing to adopt"
+	fi
+	for d in "${HUB_LARGE[@]}"; do
+		if [[ ! -d $HUB/$d ]]; then
+			mkdir -p "$HUB/$d"
+			chmod --reference="$HUB" "$HUB/$d"
+			chown --reference="$HUB" "$HUB/$d"
+		fi
+		if [[ ! -d $MNT/hub/$d ]]; then
+			mkdir -p "$MNT/hub/$d"
+			chmod --reference="$HUB/$d" "$MNT/hub/$d"
+			chown --reference="$HUB/$d" "$MNT/hub/$d"
+		fi
+		[[ " ${large[*]} " == *" $d "* ]] && continue
+		card_has=$(find "$HUB/$d" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)
+		nand_has=$(find "$MNT/hub/$d" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)
+		if [[ -n $nand_has ]]; then
+			say "the flash holds $d: moving its copy back to the card"
+			rm -rf -- "${HUB:?}/${d:?}"
+			copy_tree "$MNT/hub/$d" "$HUB/$d"
+			chmod --reference="$MNT/hub/$d" "$HUB/$d"
+			chown --reference="$MNT/hub/$d" "$HUB/$d"
+			moved+=("$d")
+		elif [[ -z $card_has ]]; then
+			say "the flash and the card have no $d: keeping it on the card"
+		fi
+		large+=("$d")
+		added+=("$d")
+	done
+	((${#added[@]})) || return 0
+	sed -i '/^state_large=/d' "$STATE"
+	echo "state_large=${large[*]}" >>"$STATE"
+	for d in "${moved[@]}"; do
+		find "$MNT/hub/$d" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+	done
+}
+
 # The hub's mounts made, in order, and checked; undone if they did not come out as planned (the hub's writers then
 # do not start: they require the boot unit). Run by the boot unit, and by "state on".
 state_mount() {
@@ -461,6 +525,8 @@ state_mount() {
 		state_mounts_ok "${large[@]}" && return 0
 		die "the hub's mounts are there but not as planned"
 	fi
+	state_adopt
+	read -r -a large <<<"$(sed -n 's/^state_large=//p' "$STATE")"
 	mkdir -p "$HUB_CARD"
 	# private: the root filesystem is a shared mount, so without it the flash's copy, mounted over $HUB next,
 	# would propagate into $HUB_CARD too, and the large folders be bound back from the flash's empty placeholders.
@@ -679,7 +745,8 @@ state)
 	on) state_on ;;
 	off) state_off ;;
 	mount) state_mount ;;
-	*) die "usage: $0 state plan | on | off | mount" ;;
+	adopt) mountpoint -q "$HUB_CARD" && die "the hub's mounts are up: adopt has to run before them"; state_adopt ;;
+	*) die "usage: $0 state plan | on | off | mount | adopt" ;;
 	esac
 	;;
 check) check ;;
@@ -687,5 +754,5 @@ crc) crc_set "${2:-}" ;;
 reflush) [[ -e $STATE ]] && grep -q '^ramlog_old=' "$STATE" && reflush_on && say "the journal goes back to the flash every 10 minutes" ;;
 on) shift && on "$@" ;;
 off) off ;;
-*) die "usage: $0 check | on [--mtd N] [--force] | off | crc on|off | reflush | state plan|on|off" ;;
+*) die "usage: $0 check | on [--mtd N] [--force] | off | crc on|off | reflush | state plan|on|off|adopt" ;;
 esac
