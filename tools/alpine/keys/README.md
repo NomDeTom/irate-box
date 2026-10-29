@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: MIT
-# SPDX-FileCopyrightText: 2026 NomDeTom
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 
 # Alpine signing keys
 

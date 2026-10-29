@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+
 # The Alpine rescue root
 
 `tools/make-alpine-rescue.sh` makes an armv7 root with Alpine's `apk.static`, then measures it and makes a zstd
