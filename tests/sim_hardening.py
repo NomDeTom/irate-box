@@ -18,7 +18,15 @@ etc.mkdir()
 dt.mkdir()
 boot.mkdir()
 (dt / "model").write_bytes(b"Luckfox Lyra Zero W\0")
-os.environ.update(HUB_ETC_DIR=str(etc), HUB_DEVICE_TREE=str(dt), HUB_BOOT_DIR=str(boot))
+bootstate, devmem = T / "bootstate", T / "mem"
+bootstate.mkdir()
+os.environ.update(
+    HUB_ETC_DIR=str(etc),
+    HUB_DEVICE_TREE=str(dt),
+    HUB_BOOT_DIR=str(boot),
+    HUB_AB_STATE_DIR=str(bootstate),
+    HUB_DEV_MEM=str(devmem),
+)
 (boot / "armbianEnv.txt").write_text("verbosity=1\n")
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
@@ -70,11 +78,26 @@ check(
     and {"system.conf", "boot.cmd", "fw_env.config.example"} <= artifacts
     and "bootname=A" in (etc / "ab" / "system.conf").read_text()
     and "BOOT_ORDER" in (etc / "ab" / "boot.cmd").read_text()
-    and "zImage" in (etc / "ab" / "boot.cmd").read_text()
-    and "bootz" in (etc / "ab" / "boot.cmd").read_text()
-    and "booti" not in (etc / "ab" / "boot.cmd").read_text()
     and "setenv BOOT_A_LEFT 2" in (etc / "ab" / "boot.cmd").read_text(),
     (said, artifacts),
+)
+uboot_cmd = (etc / "ab" / "boot.cmd").read_text()
+check(
+    "  each slot boots through its own Armbian boot.scr, from its own partition, loaded clear of load_addr",
+    "setenv devnum 0:${BOOT_PART}" in uboot_cmd
+    and "part number mmc 0 irate-system-${irate_slot} BOOT_PART" in uboot_cmd
+    and "load mmc 0:${BOOT_PART} ${scriptaddr} /boot/boot.scr" in uboot_cmd
+    and "source ${scriptaddr}" in uboot_cmd
+    and "rootdev=PARTLABEL=irate-system-a" in uboot_cmd,
+    uboot_cmd,
+)
+check(
+    "  and sets no device tree, kernel or root of its own (the slot's armbianEnv.txt and boot.scr do)",
+    "fdtfile" not in uboot_cmd.split("# CONFIG")[0].replace("its fdtfile", "")
+    and "setenv fdtfile" not in uboot_cmd
+    and "booti" not in uboot_cmd
+    and "setenv bootargs" not in uboot_cmd,
+    uboot_cmd,
 )
 env_example = (etc / "ab" / "fw_env.config.example").read_text().splitlines()
 check(
@@ -104,25 +127,83 @@ try:
     check("  address zero is refused", False)
 except Refused as exc:
     check("  address zero is refused", exc.message["id"] == "harden.ab.reg.invalid")
+for bad in ("0xff910201", "0x00001000", "0xff911000", "0xff90fffc", "ff910208"):
+    try:
+        hardening.set_tryboot_reg(bad)
+        check(f"  {bad} is refused (unaligned, or outside the PMU GRF page)", False)
+    except Refused as exc:
+        check(
+            f"  {bad} is refused (unaligned, or outside the PMU GRF page)", exc.message["id"] == "harden.ab.reg.invalid"
+        )
 hardening.set_tryboot_reg("0xff910208")
 said = hardening.set_default("B")
 check(
-    "  the default slot is written where the boot script reads it",
-    said.get("id") == "harden.ab.default.set" and "ab_default=B" in (boot / "armbianEnv.txt").read_text(),
+    "  the default slot is written to ab.txt on the bootstate partition, where the boot script reads it",
+    said.get("id") == "harden.ab.default.set"
+    and (bootstate / "ab.txt").read_text() == "ab_default=B\n"
+    and "ab_default" not in (boot / "armbianEnv.txt").read_text(),
     said,
 )
-said = hardening.set_ab("tryboot")
+os.environ["HUB_AB_STATE_DIR"] = str(T / "not-mounted")
+hardening.AB_STATE_DIR = T / "not-mounted"
+try:
+    hardening.set_default("A")
+    check("  with the bootstate partition not mounted, refused", False)
+except Refused as exc:
+    check("  with the bootstate partition not mounted, refused", exc.message["id"] == "harden.ab.default.no-state")
+os.environ["HUB_AB_STATE_DIR"] = str(bootstate)
+hardening.AB_STATE_DIR = bootstate
+# Arming: the magic at the register's offset, through a stand-in /dev/mem (sparse, as large as the address).
+with open(devmem, "wb") as fh:
+    fh.truncate(0xFF911000)
+said = hardening.arm_tryboot()
+with open(devmem, "rb") as fh:
+    fh.seek(0xFF910000)
+    page = fh.read(0x1000)  # the one page: the file is as large as the address, sparse
+word = page[0x208:0x20C]
 check(
-    "  with a spare register, the boot script uses zImage/bootz and the one-shot flag",
+    "  arming writes the magic at the recorded register, and nothing else in its page",
+    said.get("id") == "harden.ab.tryboot.armed"
+    and word == (0x5442).to_bytes(4, "little")
+    and sum(1 for b in page if b) == 2,
+    (said, word),
+)
+devmem.unlink()
+said = hardening.set_ab("tryboot")
+tryboot_cmd = (etc / "ab" / "boot.cmd").read_text()
+check(
+    "  with a spare register, the boot script reads the default from ab.txt and takes the one-shot flag",
     said.get("id") == "harden.ab.tryboot.lyra"
-    and "itest.l *0xff910208" in (etc / "ab" / "boot.cmd").read_text()
-    and "zImage" in (etc / "ab" / "boot.cmd").read_text()
-    and "bootz" in (etc / "ab" / "boot.cmd").read_text()
-    and "booti" not in (etc / "ab" / "boot.cmd").read_text(),
-    said,
+    and "load mmc 0:${STATE_PART} ${scriptaddr} ab.txt" in tryboot_cmd
+    and "env import -t ${scriptaddr} ${filesize}" in tryboot_cmd
+    and "itest.l *0xff910208 == 0x5442" in tryboot_cmd
+    and "mw.l 0xff910208 0 1" in tryboot_cmd
+    and "setenv fdtfile" not in tryboot_cmd
+    and "booti" not in tryboot_cmd,
+    tryboot_cmd,
+)
+check(
+    "  a trial boots the slot that is not the default, and falls back to the default if it returns",
+    tryboot_cmd.index("setenv irate_slot ${irate_other}") > tryboot_cmd.index("itest.l")
+    and 'if test "${irate_slot}" != "${irate_default}"' in tryboot_cmd
+    and tryboot_cmd.count("source ${scriptaddr}") == 2,
+    tryboot_cmd,
+)
+check(
+    "  the plan's bootstate is FAT for this route (U-Boot reads ab.txt, Linux writes it)",
+    hardening.plan()["partitions"][0] == {"name": "bootstate", "size": "16 MiB", "filesystem": "vfat"},
+    hardening.plan()["partitions"][0],
 )
 (dt / "model").write_bytes(b"Rockchip RK3588 EVB\0")
 check("a Rockchip board that is not a Lyra is not offered the Lyra boot script", hardening.board() == "other")
+try:
+    hardening.arm_tryboot()
+    check("  and arming the one-shot flag there is refused, before /dev/mem", False)
+except Refused as exc:
+    check(
+        "  and arming the one-shot flag there is refused, before /dev/mem",
+        exc.message["id"] == "harden.ab.tryboot.not-lyra" and not devmem.exists(),
+    )
 (dt / "model").write_bytes(b"Raspberry Pi 3 Model B Plus Rev 1.3\0")
 hardening.set_ab("tryboot")
 check(

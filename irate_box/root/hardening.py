@@ -42,6 +42,15 @@ DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
 FILESYSTEMS = ("ext4", "btrfs", "f2fs", "btrfs+f2fs")
 AB_MODES = ("off", "tryboot", "uboot")
 DEFAULT = {"filesystem": "ext4", "ab": "off"}
+# The tryboot route's default slot: ab.txt on the bootstate partition (FAT for this route), which U-Boot reads and
+# Linux writes whichever slot is running.
+AB_STATE_DIR = Path(os.environ.get("HUB_AB_STATE_DIR", "/mnt/irate-bootstate"))
+DEV_MEM = os.environ.get("HUB_DEV_MEM", "/dev/mem")
+# The one-shot register: a word in the 4 KiB page of the RK3506's PMU GRF that holds U-Boot's own boot-mode register
+# (0xff910200, which U-Boot clears before the script runs). Narrower than the block until the TRM is read.
+REG_PAGE = 0xFF910000
+BOOT_MODE_REG = 0xFF910200
+TRYBOOT_MAGIC = 0x5442
 
 
 def run(*cmd, timeout=60):
@@ -206,45 +215,47 @@ def _system_conf():
     )
 
 
+HAND_OVER = (
+    "  if part number mmc 0 irate-system-${irate_slot} BOOT_PART; then\n"
+    "    setenv devtype mmc\n"
+    "    setenv devnum 0:${BOOT_PART}\n"
+    "    setenv prefix /boot/\n"
+    "    if load mmc 0:${BOOT_PART} ${scriptaddr} /boot/boot.scr; then source ${scriptaddr}; fi\n"
+    "  fi\n"
+)
+SLOT_NOTES = (
+    "# Each slot boots through its own Armbian boot.scr: devnum is set to the slot's partition, so that script reads\n"
+    "# the slot's armbianEnv.txt (its fdtfile, overlays and console) and loads its zImage, uInitrd and device tree.\n"
+    "# Each slot's armbianEnv.txt must carry rootdev=PARTLABEL=irate-system-a (or -b). A slot whose script returns\n"
+    "# did not boot, and the next is tried. boot.scr is loaded at scriptaddr, clear of the load_addr it uses.\n"
+)
+
+
 def _uboot_boot_cmd():
     return (
-        "# RAUC's U-Boot script, adapted for the Lyra Zero W (notes: 2026-10-29-bootloader-bootcount).\n"
-        "# The Lyra boots zImage with bootz, and needs its device tree and initrd (the board's own /boot/boot.cmd).\n"
-        "# It needs U-Boot rebuilt with a persistent redundant environment (CONFIG_ENV_IS_IN_MMC,\n"
+        "# RAUC's U-Boot script for the Lyra Zero W (notes: 2026-10-29-bootloader-bootcount).\n"
+        + SLOT_NOTES
+        + "# It needs U-Boot rebuilt with a persistent redundant environment (CONFIG_ENV_IS_IN_MMC,\n"
         "# CONFIG_SYS_REDUNDAND_ENVIRONMENT), CONFIG_CMD_SAVEENV, and, for a failed boot that never reaches\n"
         "# userspace, CONFIG_BOOTCOUNT_LIMIT with CONFIG_BOOTCOUNT_ENV. Build with mkimage -T script.\n"
         'if test "${BOOT_ORDER}" = ""; then setenv BOOT_ORDER "A B"; fi\n'
         'if test "${BOOT_A_LEFT}" = ""; then setenv BOOT_A_LEFT 3; fi\n'
         'if test "${BOOT_B_LEFT}" = ""; then setenv BOOT_B_LEFT 3; fi\n'
-        'if test -z "${fdtfile}"; then setenv fdtfile rockchip/rk3506-luckfox-lyra-zero-w.dtb; fi\n'
         "for BOOT_SLOT in ${BOOT_ORDER}; do\n"
+        "  setenv irate_slot\n"
         '  if test "x${BOOT_SLOT}" = "xA" && test ${BOOT_A_LEFT} -gt 0; then\n'
         "    if test ${BOOT_A_LEFT} = 3; then setenv BOOT_A_LEFT 2; elif test ${BOOT_A_LEFT} = 2; then "
         "setenv BOOT_A_LEFT 1; else setenv BOOT_A_LEFT 0; fi\n"
-        "    saveenv\n"
-        "    if part number mmc 0 irate-system-a BOOT_PART; then\n"
-        "      load mmc 0:${BOOT_PART} ${kernel_addr_r} /boot/zImage &&\n"
-        "      load mmc 0:${BOOT_PART} ${fdt_addr_r} /boot/dtb/${fdtfile} &&\n"
-        "      load mmc 0:${BOOT_PART} ${ramdisk_addr_r} /boot/uInitrd &&\n"
-        '      setenv bootargs "root=/dev/disk/by-partlabel/irate-system-a" &&\n'
-        "      bootz ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}\n"
-        "    fi\n"
+        "    setenv irate_slot a\n"
         '  elif test "x${BOOT_SLOT}" = "xB" && test ${BOOT_B_LEFT} -gt 0; then\n'
         "    if test ${BOOT_B_LEFT} = 3; then setenv BOOT_B_LEFT 2; elif test ${BOOT_B_LEFT} = 2; then "
         "setenv BOOT_B_LEFT 1; else setenv BOOT_B_LEFT 0; fi\n"
-        "    saveenv\n"
-        "    if part number mmc 0 irate-system-b BOOT_PART; then\n"
-        "      load mmc 0:${BOOT_PART} ${kernel_addr_r} /boot/zImage &&\n"
-        "      load mmc 0:${BOOT_PART} ${fdt_addr_r} /boot/dtb/${fdtfile} &&\n"
-        "      load mmc 0:${BOOT_PART} ${ramdisk_addr_r} /boot/uInitrd &&\n"
-        '      setenv bootargs "root=/dev/disk/by-partlabel/irate-system-b" &&\n'
-        "      bootz ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}\n"
-        "    fi\n"
+        "    setenv irate_slot b\n"
         "  fi\n"
+        '  if test -n "${irate_slot}"; then\n'
+        "    saveenv\n" + HAND_OVER.replace("\n  ", "\n    ").replace("  if part", "    if part", 1) + "  fi\n"
         "done\n"
-        "# No slot confirmed: the rescue system, or the last slot that booted (notes: nand-recovery-os-plan).\n"
-        'setenv bootargs "root=/dev/disk/by-partlabel/irate-system-a"\n'
-        "bootz ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}\n"
+        'echo "irate-box: no slot booted (A ${BOOT_A_LEFT} left, B ${BOOT_B_LEFT} left)"\n'
     )
 
 
@@ -254,20 +265,24 @@ def _lyra_tryboot_cmd(reg):
         f"# The register {reg} must be a spare PMU GRF register that survives a warm reset and is cleared on a power\n"
         "# cut. Confirm it on the board before trusting this: read it at the U-Boot prompt (md.l), reboot, read it\n"
         "# again, then power-cycle and read it again. Never use 0xff910200: U-Boot clears it before this runs.\n"
-        "# The default slot is ab_default in armbianEnv.txt, which Linux writes.\n"
-        'if test "${ab_default}" = "B"; then setenv tryboot_slot B; else setenv tryboot_slot A; fi\n'
-        f"if itest.l *{reg} == 0x5442; then\n"
+        "# The default slot is ab_default in ab.txt on the bootstate partition (FAT), which Linux writes whichever\n"
+        "# slot runs. A trial boots the other slot once; if its boot returns, the default is booted.\n"
+        + SLOT_NOTES
+        + "setenv ab_default A\n"
+        "if part number mmc 0 irate-bootstate STATE_PART; then\n"
+        "  if load mmc 0:${STATE_PART} ${scriptaddr} ab.txt; then env import -t ${scriptaddr} ${filesize}; fi\n"
+        "fi\n"
+        'if test "${ab_default}" = "B"; then setenv irate_default b; setenv irate_other a; '
+        "else setenv irate_default a; setenv irate_other b; fi\n"
+        "setenv irate_slot ${irate_default}\n"
+        f"if itest.l *{reg} == 0x{TRYBOOT_MAGIC:x}; then\n"
         f"  mw.l {reg} 0 1\n"
-        "  setenv tryboot_slot B\n"
+        "  setenv irate_slot ${irate_other}\n"
         "fi\n"
-        'if test "${fdtfile}" = ""; then setenv fdtfile rockchip/rk3506-luckfox-lyra-zero-w.dtb; fi\n'
-        "if part number mmc 0 irate-system-${tryboot_slot} BOOT_PART; then\n"
-        "  load mmc 0:${BOOT_PART} ${kernel_addr_r} /boot/zImage &&\n"
-        "  load mmc 0:${BOOT_PART} ${fdt_addr_r} /boot/dtb/${fdtfile} &&\n"
-        "  load mmc 0:${BOOT_PART} ${ramdisk_addr_r} /boot/uInitrd &&\n"
-        '  setenv bootargs "root=/dev/disk/by-partlabel/irate-system-${tryboot_slot}" &&\n'
-        "  bootz ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}\n"
-        "fi\n"
+        + HAND_OVER.replace("\n  ", "\n").replace("  if part", "if part", 1)
+        + 'if test "${irate_slot}" != "${irate_default}"; then\n'
+        "  setenv irate_slot ${irate_default}\n" + HAND_OVER + "fi\n"
+        'echo "irate-box: no slot booted"\n'
     )
 
 
@@ -341,7 +356,8 @@ def prepare(value=None):
     return M(
         "harden.ab.tryboot.lyra",
         "Wrote boot.cmd under {dir} with register {reg}. Build it as boot.scr, then test the trial and the power cut. "
-        "The default slot is ab_default in armbianEnv.txt.",
+        "The default slot is ab_default in ab.txt on the bootstate partition, and each slot's armbianEnv.txt "
+        "names its own root.",
         dir=str(AB_DIR),
         reg=reg,
     )
@@ -357,37 +373,62 @@ def set_ab(value):
     return said
 
 
+def _reg_ok(value):
+    """A 4-byte-aligned word in REG_PAGE that is not U-Boot's own boot-mode register."""
+    if not re.fullmatch(r"0x[0-9a-fA-F]{1,8}", value or ""):
+        return False
+    address = int(value, 16)
+    return address % 4 == 0 and REG_PAGE <= address < REG_PAGE + 0x1000 and address != BOOT_MODE_REG
+
+
 def set_tryboot_reg(value):
-    """Record the spare PMU GRF register the Lyra's tryboot uses. U-Boot's own boot-mode register is refused."""
-    if not re.fullmatch(r"0x[0-9a-fA-F]{1,8}", value or "") or int(value, 16) == 0 or value.lower() == "0xff910200":
-        raise Refused(M("harden.ab.reg.invalid", "{value} is not a spare PMU GRF register.", value=value))
+    """Record the spare PMU GRF register the Lyra's tryboot uses: a word in the page that holds U-Boot's boot-mode
+    register, which itself is refused."""
+    if not _reg_ok(value):
+        raise Refused(
+            M(
+                "harden.ab.reg.invalid",
+                "{value} is not a spare PMU GRF register: a 4-byte-aligned address from 0xff910000 to 0xff910ffc, "
+                "other than 0xff910200.",
+                value=value,
+            )
+        )
     data = state()
-    data["tryboot_reg"] = value
+    data["tryboot_reg"] = value.lower()
     _save(data)
-    return M("harden.ab.reg.set", "The tryboot register is {reg}.", reg=value)
+    return M("harden.ab.reg.set", "The tryboot register is {reg}.", reg=value.lower())
 
 
 def set_default(slot):
-    """The default slot, in armbianEnv.txt, which Linux writes and the boot script reads."""
+    """The default slot: ab.txt on the bootstate partition, which the boot script reads whichever slot runs."""
     if slot not in ("A", "B"):
         raise Refused(M("harden.ab.default.invalid", "The default slot is A or B."))
-    env = Path(os.environ.get("HUB_BOOT_DIR", "/boot")) / "armbianEnv.txt"
-    if not env.exists():
-        raise Refused(M("harden.ab.default.no-env", "There is no armbianEnv.txt on this box."))
-    lines = [line for line in env.read_text().splitlines() if not line.startswith("ab_default=")]
-    lines.append(f"ab_default={slot}")
-    safeio.write_checked(env, "\n".join(lines) + "\n", 0o644)
+    mounted = AB_STATE_DIR.is_dir() and (os.environ.get("HUB_AB_STATE_DIR") or os.path.ismount(AB_STATE_DIR))
+    if not mounted:
+        raise Refused(
+            M(
+                "harden.ab.default.no-state",
+                "The bootstate partition is not mounted at {dir}, so the default slot cannot be written.",
+                dir=str(AB_STATE_DIR),
+            )
+        )
+    safeio.write_checked(AB_STATE_DIR / "ab.txt", f"ab_default={slot}\n", 0o644)
     return M("harden.ab.default.set", "The default slot is {slot}.", slot=slot)
 
 
 def arm_tryboot():
-    """Set the one-shot flag for the next boot, in the recorded PMU GRF register. Requires /dev/mem and root."""
+    """Set the one-shot flag for the next boot, in the recorded PMU GRF register: only on a Lyra, only a register
+    _reg_ok takes. Requires /dev/mem and root."""
+    if board() != "lyra":
+        raise Refused(M("harden.ab.tryboot.not-lyra", "The one-shot tryboot is for the Lyra: this board has none."))
     reg = state().get("tryboot_reg")
     if not reg:
         raise Refused(M("harden.ab.reg.missing", "Record the tryboot register first."))
+    if not _reg_ok(reg):
+        raise Refused(M("harden.ab.reg.invalid-recorded", "The recorded register {reg} is not a spare one.", reg=reg))
     address = int(reg, 16)
     try:
-        fd = os.open("/dev/mem", os.O_RDWR | os.O_SYNC | os.O_CLOEXEC)
+        fd = os.open(DEV_MEM, os.O_RDWR | os.O_SYNC | os.O_CLOEXEC)
     except OSError as exc:
         raise Refused(M("harden.ab.mem", "The one-shot flag could not be written: {why}", why=str(exc))) from None
     try:
@@ -396,12 +437,12 @@ def arm_tryboot():
         page = address & ~0xFFF
         page_map = mmap.mmap(fd, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=page)
         try:
-            page_map[address - page : address - page + 4] = (0x5442).to_bytes(4, "little")
+            page_map[address - page : address - page + 4] = TRYBOOT_MAGIC.to_bytes(4, "little")
         finally:
             page_map.close()
     finally:
         os.close(fd)
-    return M("harden.ab.tryboot.armed", "The next boot tries slot B once, then falls back to the default.")
+    return M("harden.ab.tryboot.armed", "The next boot tries the other slot once, then falls back to the default.")
 
 
 def status():
@@ -424,7 +465,7 @@ def plan():
         "filesystem": filesystem(),
         "ab": ab(),
         "partitions": [
-            {"name": "bootstate", "size": "16 MiB", "filesystem": "raw"},
+            {"name": "bootstate", "size": "16 MiB", "filesystem": "vfat" if ab() == "tryboot" else "raw"},
             *[
                 {"name": f"system-{chr(ord('a') + i)}", "size": f"{system_gb} GiB", "filesystem": "ext4"}
                 for i in range(slots)
