@@ -221,7 +221,9 @@ for bad in ("other-restart:sshd.service", "other-restart:irate-box.service", "ot
 
 # --- the manifest format a manifest was written for ("api") ------------------------------------------------
 cat = json.loads(sorted((REPO / "addons").glob("*.json"))[0].read_text())
-manifests.check_local(dict(cat, api=manifests.API))
+builtins = {m["id"] for m in manifests.load()}
+folders = {m["id"] for m in manifests.load() if m.get("menu")}
+manifests.check_local(dict(cat, api=manifests.API), builtin_ids=builtins, folder_ids=folders)
 check("a catalogue add-on at this hub's format: accepted, and with api left out (1)", True)
 for api, why in (
     (manifests.API + 1, "update the hub"),
@@ -229,7 +231,7 @@ for api, why in (
     ("1", "an integer"),
 ):
     try:
-        manifests.check_local(dict(cat, api=api))
+        manifests.check_local(dict(cat, api=api), builtin_ids=builtins, folder_ids=folders)
         check(f"api {api!r}: refused", False)
     except manifests.ManifestError as exc:
         check(f"api {api!r}: refused, saying what to do ({why})", why in str(exc), str(exc))

@@ -1,0 +1,27 @@
+{
+  "id": "jspaint",
+  "order": 12,
+  "tile": {
+    "icon": "🖌️",
+    "name": "JS Paint",
+    "desc": "A remake of MS Paint, in the browser",
+    "path": "index.html"
+  },
+  "source": {
+    "type": "git",
+    "repo": "https://github.com/1j01/jspaint",
+    "branch": "master",
+    "pin": "53be67ab8c47cc0d2168899e7481bc04839c4c81",
+    "adapt": "adapt_jspaint.py"
+  },
+  "needs": "index.html",
+  "addon": {
+    "title": "JS Paint",
+    "summary": "Isaiah Odhner's remake of MS Paint, running in the visitor's browser. It paints with the classic tools and palettes, and saves PNG, JPEG, GIF, BMP, TIFF and SVG to the device. It autosaves the current picture in this browser; because all web add-ons share one origin, another add-on on this box can read that autosave. It needs about 18 MB of storage. It is English only. PDF import, the Head Tracker, online sessions, Imgur upload and Load From URL are not included; the Dwell Clicker stays. It makes no requests outside the box.",
+    "consent": "This downloads JS Paint from github.com/1j01/jspaint at the commit that this hub pins. A new web add-on starts disabled. After you enable it, the hub serves it to the visitors that its Access setting lets open it. The copy is adapted for the box: online multi-user sessions, Imgur upload and Load From URL are removed, English is the only language, PDF import and the Head Tracker are left out, and a strict Content-Security-Policy stops every request outside the box. Pictures stay in this browser, where other web add-ons on the box can read them, unless the visitor saves one to their device. Add JS Paint?"
+  },
+  "capabilities": {
+    "storage": true,
+    "local": true
+  }
+}

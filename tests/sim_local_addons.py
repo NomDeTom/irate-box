@@ -67,6 +67,23 @@ for f in sorted((REPO / "addons").glob("*.json")) + sorted((REPO / "addons" / "t
         check(f"addons/{f.relative_to(REPO / 'addons')} passes", True)
     except M.ManifestError as exc:
         check(f"addons/{f.relative_to(REPO / 'addons')} passes", False, str(exc))
+
+for name in ("drawio", "jspaint"):
+    m = json.loads((REPO / "addons" / f"{name}.json").read_text())
+    adapt = REPO / "irate_box" / "library" / m["source"]["adapt"]
+    check(
+        f"{name}: a full commit pin and the hub's own adapt script",
+        len(m["source"]["pin"]) == 40
+        and all(c in "0123456789abcdef" for c in m["source"]["pin"])
+        and adapt.is_file()
+        and adapt.parent == REPO / "irate_box" / "library",
+        m["source"],
+    )
+    check(
+        f"{name}: a tile that needs its own page, and no outside connection",
+        m["tile"]["path"] == m["needs"] == "index.html" and not m.get("capabilities", {}).get("connect"),
+        m,
+    )
 refused("refuses keys a local add-on may not have", dict(good, install={"dir": "x"}), "cannot use these fields")
 refused("refuses a built-in's id", dict(good, id="draw"), "already used by the hub server")
 refused("refuses an id the hub's pages use", dict(good, id="admin"), "already used by the hub server")

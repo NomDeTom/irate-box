@@ -85,18 +85,20 @@ write), says much less than one here, and is turned into the full shape by local
     "order": 65,
     "tile": {"icon", "name", "desc", "path"}      path: the page inside the add-on (default "")
     "menu": {"title", "subtitle", "about", "banner"}   optional: a list page at /<id>.html
-    "entries": [{"menus": {"<id>": order}, "name", "desc", "path"}]   lines on its list page
+    "entries": [{"menus": {"<id>": order}, "name", "desc", "path"}]   lines on its own list,
+             or on a folder built into the hub by its id (drawing)
     "source": {"type": "git", "repo", "branch", "pin", "adapt"}   pin required; adapt only a
              | {"type": "bundle", "repo", "workflow", "branch", "pattern"}   script of this code
     "needs": "eliza.html",            the file that proves an install whole
     "addon": {"title", "summary", "consent"}      consent required
-    "capabilities": {"connect": ["ws://{box}/mqtt", ...], "storage": true}
+    "capabilities": {"connect": ["ws://{box}/mqtt", ...], "storage": true, "local": true}
   }
 
 It is served on the add-on origin (a second port of the web server, from
 $HUB_STATE_DIR/addons/<id>/), reached as /addons/<id>/ on the hub's own, which redirects there;
 its pages are framed by app.html like any app. connect: what its pages may reach besides
 their own origin ({box}: the hub's own host), the rest of its Content-Security-Policy.
+local: the app keeps work in the page (data: and blob: URLs), so the policy allows those.
 
 Stdlib only.
 """
@@ -531,7 +533,7 @@ def _hub_pages():
     }
 
 
-def check_local(m, where="local manifest", builtin_ids=()):
+def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
     """A local add-on's manifest, as pasted or from the catalogue: only what it may say."""
 
     def need(cond, what):
@@ -609,7 +611,10 @@ def check_local(m, where="local manifest", builtin_ids=()):
         "addon: title, summary and consent",
     )
     caps = m.get("capabilities", {})
-    need(isinstance(caps, dict) and set(caps) <= {"connect", "storage"}, "capabilities: connect, storage")
+    need(
+        isinstance(caps, dict) and set(caps) <= {"connect", "storage", "local"},
+        "capabilities: connect, storage, local",
+    )
     need(
         isinstance(caps.get("connect", []), list)
         and len(caps.get("connect", [])) <= 8
@@ -617,6 +622,7 @@ def check_local(m, where="local manifest", builtin_ids=()):
         "capabilities.connect: up to 8 of ws://, wss://, http:// or https:// with a host or {box}",
     )
     need(type(caps.get("storage", False)) is bool, "capabilities.storage: true or false")
+    need(type(caps.get("local", False)) is bool, "capabilities.local: true or false")
     if "checks" in m:
         _check_checks(m["checks"], need, local=True)
 
@@ -661,14 +667,16 @@ def load_local(folder=None, builtin=None):
     """([full manifest], {file name: why it was left out}): the local add-ons. A bad one is
     left out and said, never fatal: the hub wrote it, perhaps from a pasted manifest."""
     folder = Path(folder or LOCAL_D)
-    builtin_ids = {m["id"] for m in (builtin if builtin is not None else load())}
+    built = builtin if builtin is not None else load()
+    builtin_ids = {m["id"] for m in built}
+    folder_ids = {m["id"] for m in built if m.get("menu")}
     out, errors, seen = [], {}, set()
     for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
         try:
             if path.is_symlink() or path.stat().st_size > 64 << 10:
                 raise ManifestError(f"{path.name}: a link, or over 64 KB")
             m = json.loads(path.read_text(encoding="utf-8"))
-            check_local(m, path.name, builtin_ids)
+            check_local(m, path.name, builtin_ids, folder_ids)
             if m["id"] in seen or path.stem != m["id"]:
                 raise ManifestError(f"{path.name}: the file is named for its id, once")
             seen.add(m["id"])
@@ -700,10 +708,12 @@ def agreed_part(m):
 def catalogue():
     """{id: raw local manifest} for the add-ons the hub offers (addons/ in this code)."""
     out = {}
-    builtin_ids = {m["id"] for m in load()}
+    built = load()
+    builtin_ids = {m["id"] for m in built}
+    folder_ids = {m["id"] for m in built if m.get("menu")}
     for path in sorted(CATALOGUE.glob("*.json")) if CATALOGUE.is_dir() else []:
         m = json.loads(path.read_text(encoding="utf-8"))
-        check_local(m, f"addons/{path.name}", builtin_ids)
+        check_local(m, f"addons/{path.name}", builtin_ids, folder_ids)
         out[m["id"]] = m
     return out
 

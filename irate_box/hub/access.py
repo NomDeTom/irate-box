@@ -107,8 +107,9 @@ def mode_of(state, i):
 
 def addon_csp(m):
     """A local add-on's Content-Security-Policy: its own origin, plus what its manifest says it
-    connects to ({box} becomes the hub's host, $host to nginx). Built only from checked
-    manifests (manifests.check_local), whose values cannot hold a quote or a semicolon."""
+    connects to ({box} becomes the hub's host, $host to nginx), and data:/blob: for its own
+    work when capabilities.local. Built only from checked manifests (manifests.check_local),
+    whose values cannot hold a quote or a semicolon."""
     # Each ws:// or http:// it may reach, also as wss:// or https://: served over HTTPS,
     # a page may not use the plain one (the MQTT explorer goes to wss://<box>/mqtt there).
     allowed = []
@@ -118,9 +119,20 @@ def addon_csp(m):
             if c.startswith(plain):
                 allowed.append(secure + c[len(plain) :])
     connect = " ".join(dict.fromkeys(c.replace("{box}", "$host") for c in allowed))
+    local = m.get("capabilities", {}).get("local", False)
+    # An app that keeps the visitor's work in the page needs data: and blob: URLs (autosave,
+    # imports, workers). It asks for that with capabilities.local; the rest stay same-origin.
+    media = " data: blob:" if local else ""
     return (
         "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'; connect-src 'self'"
+        "script-src 'self' 'unsafe-inline'" + (" blob:" if local else "") + "; "
+        "font-src 'self'" + (" data:" if local else "") + "; "
+        "media-src 'self'" + media + "; worker-src 'self'" + (" blob:" if local else "") + "; "
+        "child-src 'self'" + (" blob:" if local else "") + "; "
+        "frame-src 'self'"
+        + (" blob:" if local else "")
+        + "; connect-src 'self'"
+        + (" data: blob:" if local else "")
         + (" " + connect if connect else "")
         + "; frame-ancestors 'self' http://$host:* https://$host:*; base-uri 'none'; form-action 'self'"
     )
