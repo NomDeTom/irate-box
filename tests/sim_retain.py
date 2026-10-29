@@ -155,10 +155,15 @@ check("a boot with no repairs clears the finding", health.check_protected() == [
 calls = []
 
 
+nginx_ok = True
+
+
 def fake_restore_run(*a, **kw):
     calls.append(a)
     if a and a[0] == "openssl":
         return subprocess.run(a, capture_output=True)
+    if a[:1] == ("nginx",) and not nginx_ok:
+        return type("R", (), {"returncode": 1, "stdout": "", "stderr": "nginx: invalid"})()
     return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
 
@@ -180,6 +185,14 @@ check(
 check(
     "  the timer runs the sweep, not the boot check",
     f"Unit={retain.SWEEP_SERVICE}" in timer.read_text() and "retain sweep" in sweep_service.read_text(),
+)
+check(
+    "  the sweep's sandbox lets it write where a USB drive mounts and the data copy goes",
+    "/media" in sweep_service.read_text()
+    and "/run/media" in sweep_service.read_text()
+    and "/run/irate-box" in sweep_service.read_text()
+    and "/var/log.nand" in sweep_service.read_text(),
+    sweep_service.read_text(),
 )
 check(
     "  the boot check is enabled, and the timer started",
@@ -225,6 +238,50 @@ check(
     repairs,
 )
 
+# One copy that cannot be read does not stop the boot check: the next source is used for that file, and the other
+# files are still checked.
+manifest_now = json.loads(retain.MANIFEST.read_text())
+for path in (front, settings):
+    old = path.read_bytes()
+    path.write_bytes(b"\xff" * len(old))
+    path.chmod(stat.S_IMODE(path.stat().st_mode))
+    os.utime(path, ns=(manifest_now["entries"][str(path)]["mtime_ns"],) * 2)
+front_copy = retain._copy(front)
+front_copy.unlink()
+front_copy.mkdir()
+repairs = retain.boot_check()
+front_copy.rmdir()
+check(
+    "a copy that is a directory is skipped: the drive's copy is used, and the other files are checked",
+    front.read_text() == "front\n"
+    and settings.read_text() == '{"hub_title": "Box"}\n'
+    and any("restored" in r["action"] for r in repairs),
+    repairs,
+)
+
+# A copy that will not decrypt is skipped and reported, and the next file is still checked.
+manifest_now = json.loads(retain.MANIFEST.read_text())
+empty.write_bytes(b"\xff" * 8)
+empty.chmod(0o644)
+os.utime(empty, ns=(manifest_now["entries"][str(empty)]["mtime_ns"],) * 2)
+for bad_copy in (retain._copy(empty), retain._prev(empty), store2 / retain._ident(empty)):
+    bad_copy.unlink(missing_ok=True)
+(store2 / (retain._ident(empty) + ".enc")).write_bytes(b"not an encrypted file")
+old = settings.read_bytes()
+settings.write_bytes(b"\xff" * len(old))
+settings.chmod(0o600)
+os.utime(settings, ns=(manifest_now["entries"][str(settings)]["mtime_ns"],) * 2)
+repairs = retain.boot_check()
+check(
+    "a copy that will not decrypt is reported, and the next file is still restored",
+    any("would not decrypt" in r["action"] for r in repairs) and settings.read_text() == '{"hub_title": "Box"}\n',
+    repairs,
+)
+(store2 / (retain._ident(empty) + ".enc")).unlink()
+empty.write_bytes(b"")
+empty.chmod(0o644)
+retain.sweep()
+
 # Extra stores as settings: a removable drive's keys are encrypted, never plaintext; leave them out is the default.
 store3, store4 = T / "store3", T / "store4"
 ca_key = put(etc / "tls" / "ca" / "ca.key", "CA\n", 0o600)
@@ -240,6 +297,83 @@ check(
     and not (store4 / (retain._ident(ca_key) + ".enc")).exists(),
     (sorted(p.name for p in store3.iterdir()), sorted(p.name for p in store4.iterdir())),
 )
+# The other secrets travel the same way: the server key, the passwords, the accounts, the hotspot's passphrase, and
+# the key that encrypts them is kept on the card and not put in the drive with them.
+accounts = put(state / "accounts.json", '{"admin": "x"}\n', 0o600)
+hotspot = put(state / "hotspot.json", '{"password": "Published1"}\n', 0o600)
+server = put(etc / "tls" / "server.key", "SERVER\n", 0o600)
+put(etc / "admin-password", "secret\n", 0o600)
+put(etc / "front-secret.env", "SECRET=x\n", 0o600)
+put(nginx / "irate-box.htpasswd", "admin:hash\n", 0o644)
+retain.sweep()
+manifest_now = json.loads(retain.MANIFEST.read_text())
+check(
+    "every secret is encrypted in the drive's copy, never written there as it is",
+    all((store3 / (retain._ident(path) + ".enc")).is_file() for path in (accounts, hotspot, server))
+    and all(not (store3 / retain._ident(path)).exists() for path in (accounts, hotspot, server)),
+    sorted(p.name for p in store3.iterdir()),
+)
+check(
+    "  the key that encrypts them is in the manifest and the card's copy, never in the drive's",
+    str(retain.KEYFILE) in manifest_now["entries"]
+    and retain._copy(retain.KEYFILE).is_file()
+    and not (store3 / retain._ident(retain.KEYFILE)).exists()
+    and not (store3 / (retain._ident(retain.KEYFILE) + ".enc")).exists(),
+    sorted(retain.KEYFILE.parent.iterdir()),
+)
+before = (store3 / (retain._ident(accounts) + ".enc")).stat().st_mtime_ns
+retain.sweep()
+check(
+    "  a sweep with nothing changed does not write the encrypted copy again",
+    (store3 / (retain._ident(accounts) + ".enc")).stat().st_mtime_ns == before,
+)
+retain.set_keys("leave-out")
+retain.sweep()
+check(
+    "  leave them out removes the encrypted copies the drive already had",
+    not (store3 / (retain._ident(accounts) + ".enc")).exists()
+    and not (store3 / (retain._ident(ca_key) + ".enc")).exists(),
+    sorted(p.name for p in store3.iterdir()),
+)
+key_store = T / "store-key"
+retain.set_keys("encrypt")
+retain.set_store(str(key_store), True, keys=True)
+KEYFILE = retain.KEYFILE
+good_key = KEYFILE.read_bytes()
+KEYFILE.write_bytes(b"\xff" * len(good_key))
+KEYFILE.chmod(0o600)
+bad = retain.sweep()
+check(
+    "a damaged encryption key is reported, not quietly replaced, and nothing new is encrypted",
+    any("key is missing or damaged" in item["action"] for item in bad)
+    and KEYFILE.read_bytes() == b"\xff" * len(good_key)
+    and not any(p.name.endswith(".enc") for p in key_store.iterdir()),
+    (bad, sorted(p.name for p in key_store.iterdir())),
+)
+KEYFILE.write_bytes(good_key)
+KEYFILE.chmod(0o600)
+retain.set_store(str(key_store), False)
+enc_store = T / "store-enc"
+retain.set_keys("encrypt")
+retain.set_store(str(enc_store), True, keys=True)
+retain.sweep()
+manifest_now = json.loads(retain.MANIFEST.read_text())
+ca_key.write_bytes(b"\xff" * 8)
+ca_key.chmod(0o600)
+os.utime(ca_key, ns=(manifest_now["entries"][str(ca_key)]["mtime_ns"],) * 2)
+retain._copy(ca_key).unlink(missing_ok=True)
+retain._prev(ca_key).unlink(missing_ok=True)
+repairs = retain.boot_check()
+check(
+    "a damaged file is restored from the encrypted copy in the drive",
+    ca_key.read_text() == "CA\n" and any(r["action"].endswith(".enc") for r in repairs),
+    repairs,
+)
+retain.set_store(str(enc_store), False)
+retain.set_keys("leave-out")
+(ca_key).write_text("CA\n")
+retain.sweep()
+retain._copy(KEYFILE).write_bytes(good_key)
 retain.set_store(str(store3), False)
 retain.set_store(str(store4), False)
 check(
@@ -248,10 +382,19 @@ check(
     and not (store3 / "manifest.json").exists()
     and all(entry["path"] != str(store3) for entry in retain._store_entries()),
 )
-retain.set_keys("leave-out")
+# The key is made only by an encrypting sweep; a restore never makes one.
+saved_key = KEYFILE.read_bytes()
+KEYFILE.unlink()
+check(
+    "a restore never makes a new key: decrypting with no key returns nothing",
+    retain._crypt(b"x", decrypt=True) is None and not KEYFILE.exists(),
+)
+KEYFILE.write_bytes(saved_key)
+KEYFILE.chmod(0o600)
+retain.sweep()
 # The owner's data budget: notes copied into a removable store, within the MB asked for.
 data_store = T / "store5"
-retain.set_data_mb(1)
+retain.set_data_mb(64)
 retain.set_store(str(data_store), True, keys=False)
 put(state / "notes" / "a.md", "note\n")
 retain.sweep()
@@ -260,26 +403,77 @@ check(
     (data_store / "data" / "notes" / "a.md").read_text() == "note\n",
     list((data_store / "data").rglob("*")) if (data_store / "data").exists() else None,
 )
+before = (data_store / "data" / "notes" / "a.md").stat().st_mtime_ns
+retain.sweep()
+check(
+    "  an unchanged data file is not copied again",
+    (data_store / "data" / "notes" / "a.md").stat().st_mtime_ns == before,
+)
+(state / "notes" / "a.md").unlink()
+retain.sweep()
+check(
+    "  a note the owner deleted is pruned from the copy",
+    not (data_store / "data" / "notes" / "a.md").exists(),
+)
+retain.set_data_mb(0)
+retain.sweep()
+check(
+    "  lowering the budget to none removes the data copy",
+    not (data_store / "data").exists(),
+)
+owner_data = data_store / "data"
+owner_data.mkdir(parents=True, exist_ok=True)
+(owner_data / "mine.txt").write_text("the owner's own\n")
 retain.set_store(str(data_store), False)
+check(
+    "  a folder the owner already called data is not deleted with the store",
+    (owner_data / "mine.txt").is_file(),
+)
 retain.set_data_mb(0)
 
-# The main front site rendered again from the settings, not only the TLS includes.
+# The main front site rendered again as the installer does: the saved port, the prepared generation line, no
+# IPv6 listen where the box has none, and nginx -t before it is kept.
 (code / "config").mkdir(parents=True, exist_ok=True)
-(code / "config" / "irate-box.nginx").write_text("server { listen @PORT@; }\n")
+(code / "config" / "irate-box.nginx").write_text("server {\n  listen @PORT@;\n  listen [::]:@PORT@;\n}\n")
+(etc / "install-options").write_text("--repo\nhttps://example.invalid/box\n--port\n8080\n")
+os.environ["HUB_IF_INET6"] = str(T / "no-inet6")
 nginx_site = nginx / "conf.d" / "irate-box.conf"
 nginx_site.parent.mkdir(parents=True, exist_ok=True)
 nginx_site.write_text("damaged\n")
 said = retain.regenerate(nginx_site)
+site_text = nginx_site.read_text() if nginx_site.exists() else ""
 check(
-    "the main front site is rendered again from the settings",
-    said and "HUB_PORT" not in nginx_site.read_text() and nginx_site.read_text().startswith("server"),
-    (said, nginx_site.read_text() if nginx_site.exists() else None),
+    "the main front site is rendered again: the saved port, the generation line, no IPv6, after nginx -t",
+    said
+    and "@PORT@" not in site_text
+    and "listen 8080;" in site_text
+    and "_irate_front_ready" in site_text
+    and "listen [::]" not in site_text
+    and any(c[:2] == ("nginx", "-t") for c in calls),
+    (said, site_text),
 )
+nginx_ok = False
+nginx_site.write_text("a site that works\n")
+check(
+    "a site nginx refuses is put back, not kept",
+    retain.regenerate(nginx_site) is None and nginx_site.read_text() == "a site that works\n",
+)
+nginx_ok = True
+try:
+    retain.set_data_mb(1)
+    invalid_data = False
+except retain.Refused:
+    invalid_data = True
+check("a data size the page does not offer is refused", invalid_data)
 
 # The setting names a folder; the root helper takes only a place it found itself, with that place's own keys rule.
 nand_store = T / "log.nand" / "protected"
+usb_store = T / "usb" / "drive"
 real_candidates = retain.store_candidates
-retain.store_candidates = lambda: [(nand_store, "the onboard flash", True)]
+retain.store_candidates = lambda: [
+    (nand_store, "the onboard flash", True),
+    (usb_store, "the drive", False),
+]
 elsewhere = f"{nand_store.parent}/../elsewhere"
 try:
     health.fix(f"retain-store:on:{retain.encode_store(elsewhere)}")
@@ -298,6 +492,13 @@ check(
     retain._store_entries(),
 )
 health.fix(f"retain-store:off:{retain.encode_store(nand_store)}")
+health.fix(f"retain-store:on:{retain.encode_store(usb_store)}")
+check(
+    "  a drive the box found with keys off stays without them, whatever the hub asks",
+    {"path": str(usb_store), "keys": False} in retain._store_entries(),
+    retain._store_entries(),
+)
+health.fix(f"retain-store:off:{retain.encode_store(usb_store)}")
 retain.store_candidates = real_candidates
 
 # Regeneration: the server key and chain from the CA, before the copy is tried.

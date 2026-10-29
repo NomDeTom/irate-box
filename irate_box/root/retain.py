@@ -20,6 +20,7 @@ running is the card verdict. Stdlib only.
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -97,6 +98,7 @@ def protected():
     for folder in (STATE / "apps.d", STATE / "addons"):
         if folder.is_dir():
             out += sorted(p for p in folder.glob("*.json") if p.is_file() and not p.is_symlink())
+    out.append(KEYFILE)
     return [p for p in out if p.is_file() and not p.is_symlink()]
 
 
@@ -228,9 +230,10 @@ def keys_mode():
 
 def data_mb():
     try:
-        return max(0, int(_config().get("data_mb") or 0))
+        value = int(_config().get("data_mb") or 0)
     except (TypeError, ValueError):
         return 0
+    return value if value in (0, 64, 256, 1024) else 0
 
 
 def set_keys(mode):
@@ -242,13 +245,16 @@ def set_keys(mode):
     return M("retain.keys.set", "Keys in a removable copy are {mode}.", mode=mode)
 
 
+DATA_MB = (0, 64, 256, 1024)
+
+
 def set_data_mb(value):
     try:
         value = int(value)
     except (TypeError, ValueError):
-        value = 0
-    if value < 0:
-        raise Refused(M("retain.data.invalid", "Give a budget in MB, or 0 for none."))
+        value = None
+    if value not in DATA_MB:
+        raise Refused(M("retain.data.invalid", "Select one of the sizes the page offers, or 0 for none."))
     data = _config()
     data["data_mb"] = value
     durable.write_checked(CONFIG, json.dumps(data, indent=1, sort_keys=True), 0o600)
@@ -266,23 +272,55 @@ def extra_stores():
     return [Path(entry["path"]) for entry in _store_entries()]
 
 
-def _key():
-    """The key that encrypts a removable copy's keys, kept on the card root-only; made once."""
+def _key(create=False):
+    """The key that encrypts a removable copy's keys, kept on the card root-only. A missing key is made only by an
+    encrypting sweep, never by a restore; an empty or 0xFF key is reported and never replaced."""
     try:
-        return KEYFILE.read_bytes()
+        value = KEYFILE.read_bytes()
     except OSError:
-        KEYFILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        value = secrets.token_hex(32).encode()
-        KEYFILE.write_bytes(value)
-        KEYFILE.chmod(0o600)
-        return value
+        value = None
+    if value is not None:
+        return value if value and not _bad(value) else None
+    if not create:
+        return None
+    KEYFILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    value = secrets.token_hex(32).encode()
+    try:
+        fd = os.open(KEYFILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        try:
+            again = KEYFILE.read_bytes()
+        except OSError:
+            return None
+        return again if again and not _bad(again) else None
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(value)
+        fh.flush()
+        os.fsync(fh.fileno())
+    return value
+
+
+def _crypt_folder():
+    """A private folder in RAM for plaintext while openssl runs; /tmp may be the card."""
+    for parent in (Path(os.environ.get("HUB_RUN_DIR", "/run")), Path(tempfile.gettempdir())):
+        try:
+            folder = Path(tempfile.mkdtemp(prefix="retain-crypt-", dir=parent))
+            folder.chmod(0o700)
+            return folder
+        except OSError:
+            continue
+    return Path(tempfile.mkdtemp(prefix="retain-crypt-"))
 
 
 def _crypt(data, decrypt=False):
-    """Encrypt (or decrypt) one file's bytes with openssl and the card's key; returns bytes or None."""
-    _key()
-    with tempfile.TemporaryDirectory(prefix="retain-crypt-") as folder:
-        source, target = Path(folder) / "in", Path(folder) / "out"
+    """Encrypt (or decrypt) one file's bytes with openssl and the card's key; returns bytes or None. A missing key
+    is made only for an encrypting sweep, and a missing, empty or 0xFF key encrypts nothing."""
+    key = _key(create=not decrypt)
+    if not key:
+        return None
+    folder = _crypt_folder()
+    try:
+        source, target = folder / "in", folder / "out"
         source.write_bytes(data)
         cmd = ["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-pass", f"file:{KEYFILE}"]
         if decrypt:
@@ -291,6 +329,8 @@ def _crypt(data, decrypt=False):
         if said.returncode or not target.is_file():
             return None
         return target.read_bytes()
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _removable(store):
@@ -350,7 +390,8 @@ def remove_store_copies(path, only=None):
                 pass
     try:
         (Path(path) / "manifest.json").unlink(missing_ok=True)
-        shutil.rmtree(Path(path) / "data", ignore_errors=True)
+        # Only the data folder irate-box made: an owner's own "data" in a chosen folder is left alone.
+        _drop_data(path)
     except OSError:
         pass
 
@@ -378,7 +419,22 @@ def set_store(path, on, keys=False):
 
 
 def _is_key(path):
-    return path == ETC / "tls" / "ca" / "ca.key" or NM in Path(path).parents
+    """A secret: a key, a password, a login, the accounts, the hotspot's passphrase, or the key that encrypts them."""
+    path = Path(path)
+    return (
+        path
+        in {
+            ETC / "tls" / "ca" / "ca.key",
+            ETC / "tls" / "server.key",
+            ETC / "admin-password",
+            ETC / "front-secret.env",
+            NGINX / "irate-box.htpasswd",
+            STATE / "accounts.json",
+            STATE / "hotspot.json",
+            KEYFILE,
+        }
+        or NM in path.parents
+    )
 
 
 def regenerate(path):
@@ -404,8 +460,46 @@ def regenerate(path):
             from irate_box.root import nginx_front
 
             template = CODE / "config" / "irate-box.nginx"
-            text = nginx_front.render(template.read_text(), nginx_front.settings_from_env())
-            durable.write_checked(path, text.encode(), 0o644)
+            values = nginx_front.settings_from_env()
+            try:
+                options = (ETC / "install-options").read_text().split("\n")
+            except OSError:
+                options = []
+            if "--port" in options and options.index("--port") + 1 < len(options):
+                port = options[options.index("--port") + 1]
+                if port.isdigit():
+                    values["PORT"] = port
+            text = nginx_front.render(
+                template.read_text(),
+                values,
+                Path(os.environ.get("HUB_IF_INET6", "/proc/net/if_inet6")).exists(),
+            )
+            try:
+                old_bytes = path.read_bytes()
+            except OSError:
+                old_bytes = None
+            old_text = old_bytes.decode(errors="replace") if old_bytes is not None else ""
+            found = re.search(r'return 200 "([0-9a-f]{16,})', old_text)
+            generation = found.group(1) if found else hashlib.sha256(("retain-site:" + text).encode()).hexdigest()
+            text = re.sub(
+                r"(?m)^server \{",
+                lambda match: (
+                    match[0]
+                    + '\n\tlocation = /_irate_front_ready { default_type text/plain; return 200 "'
+                    + generation
+                    + '\\n"; }'
+                ),
+                text,
+            )
+            if not durable.write_checked(path, text.encode(), 0o644):
+                return None
+            said = restore.run("nginx", "-t", "-q", timeout=60)
+            if said.returncode:
+                if old_bytes is not None and not _bad(old_bytes):
+                    durable.write_checked(path, old_bytes, 0o644)
+                else:
+                    path.unlink(missing_ok=True)
+                return None
             said = M("retain.regenerated.site", "The main front site was rendered again from the settings.")
         else:
             return None
@@ -422,21 +516,38 @@ def _package_owned(path):
     return said.returncode == 0
 
 
-def _store_sources(path):
-    """Every copy of one file to try: name, path, bytes. An encrypted extra copy is decrypted here."""
-    out = [
-        (candidate.name, candidate, _read(candidate)) for candidate in (_copy(path), _prev(path)) if candidate.is_file()
-    ]
+def _store_sources(path, bad=None):
+    """Every copy of one file to try, read one at a time: name, path, bytes. A copy that cannot be read or decrypted
+    is skipped and, when `bad` is given, reported, so the next source and the other files are still tried."""
+    for candidate in (_copy(path), _prev(path)):
+        try:
+            if candidate.is_file():
+                yield candidate.name, candidate, _read(candidate)
+        except OSError:
+            if bad is not None:
+                bad.append({"path": str(candidate), "action": "damaged, and this copy could not be read"})
     for store in extra_stores():
         for name in (_ident(path), _ident(path) + ".prev"):
             plain, crypt = store / name, store / (name + ".enc")
-            if plain.is_file():
-                out.append((name, plain, _read(plain)))
-            if crypt.is_file():
-                data = _crypt(crypt.read_bytes(), decrypt=True)
+            try:
+                if plain.is_file():
+                    yield name, plain, _read(plain)
+            except OSError:
+                if bad is not None:
+                    bad.append({"path": str(plain), "action": "damaged, and this copy could not be read"})
+            try:
+                is_crypt = crypt.is_file()
+            except OSError:
+                is_crypt = False
+            if is_crypt:
+                try:
+                    data = _crypt(crypt.read_bytes(), decrypt=True)
+                except OSError:
+                    data = None
                 if data is not None:
-                    out.append((name + ".enc", crypt, data))
-    return out
+                    yield name + ".enc", crypt, data
+                elif bad is not None:
+                    bad.append({"path": str(crypt), "action": "a copy that would not decrypt was skipped"})
 
 
 def sweep():
@@ -445,6 +556,10 @@ def sweep():
     previous entry and copy, so the boot check can still restore it; a file the owner removed leaves the manifest,
     and its copy is removed with it."""
     STORE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # A key is made only by an encrypting sweep; a damaged one is left alone and reported, never replaced under the
+    # copies it protects.
+    if keys_mode() == "encrypt":
+        _key(create=True)
     previous = _load_manifest().get("entries", {})
     entries, bad = {}, []
     for path in protected():
@@ -486,37 +601,51 @@ def sweep():
             for source in STORE.iterdir():
                 if not source.is_file() or source.name.endswith(".lock"):
                     continue
+                # The key that encrypts the copies is never put in an extra store: that would give it away with them.
+                if source.name == _ident(KEYFILE):
+                    continue
                 key = source.name in key_ids
-                if key and not store_keys(store):
+                if key and (not store_keys(store) or (removable and keys_mode() != "encrypt")):
+                    # "Leave them out" means the old key copies go too, whichever mode wrote them.
+                    for suffix in ("", ".prev", ".enc", ".prev.enc"):
+                        (store / (source.name + suffix)).unlink(missing_ok=True)
                     continue
                 encrypted = key and removable
-                if encrypted and keys_mode() != "encrypt":
-                    continue
                 target = store / (source.name + ".enc" if encrypted else source.name)
                 try:
-                    data = source.read_bytes()
+                    plain = source.read_bytes()
                 except OSError:
                     continue
                 if encrypted:
-                    data = _crypt(data)
-                    if data is None:
-                        bad.append({"path": str(source), "action": "the key could not be encrypted"})
-                        continue
-                    if (store / source.name).exists():
-                        (store / source.name).unlink(missing_ok=True)
                     try:
                         have = _crypt(target.read_bytes(), decrypt=True)
                     except OSError:
                         have = None
+                    if have == plain:
+                        continue  # the copy already holds this plaintext: do not write a new salt for nothing
+                    data = _crypt(plain)
+                    if data is None:
+                        bad.append(
+                            {
+                                "path": str(source),
+                                "action": "the key could not be encrypted: the key is missing or damaged",
+                            }
+                        )
+                        continue
+                    (store / source.name).unlink(missing_ok=True)
                 else:
                     try:
                         have = target.read_bytes()
                     except OSError:
                         have = None
-                if have != data:
+                    data = plain
+                if have != plain:
                     durable.write_checked(target, data, 0o600)
-            if removable and data_mb():
-                _copy_data(store)
+            if removable:
+                if data_mb():
+                    _copy_data(store)
+                else:
+                    _drop_data(store)
         except OSError:
             bad.append({"path": str(store), "action": "the extra copy could not be written here"})
     if bad:
@@ -524,11 +653,22 @@ def sweep():
     return bad
 
 
+def _drop_data(store):
+    """The data copy irate-box made, and only that: an owner's own folder named data is left alone."""
+    target = Path(store) / "data"
+    if (target / ".irate-box-data").is_file():
+        shutil.rmtree(target, ignore_errors=True)
+
+
 def _copy_data(store):
-    """The owner's data, as a backup in a removable store, up to the size budget. It is not a boot check's copy."""
+    """The owner's data, as a plaintext backup in a removable store, up to the size budget. It is not a boot check's
+    copy. A file is written only when its size or mtime differs, and one the owner removed is pruned."""
     budget = data_mb() << 20
     used = 0
     target = Path(store) / "data"
+    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+    (target / ".irate-box-data").write_text("irate-box: the administrator's data copy\n")
+    wanted = set()
     for rel in ("notes", "store", "drop", "board.json", "messages.json"):
         source = STATE / rel
         if not source.exists():
@@ -538,11 +678,28 @@ def _copy_data(store):
                 continue
             size = path.stat().st_size
             if used + size > budget:
-                return
+                continue
             destination = target / path.relative_to(STATE)
+            wanted.add(destination)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, destination)
+            try:
+                same = destination.stat().st_size == size and destination.stat().st_mtime_ns == path.stat().st_mtime_ns
+            except OSError:
+                same = False
+            if not same:
+                shutil.copy2(path, destination)
             used += size
+    # A note the owner deleted leaves the copy, and lowering the budget shrinks it.
+    for existing in sorted(target.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if existing.name == ".irate-box-data" or existing in wanted:
+            continue
+        if existing.is_file() and existing not in wanted:
+            existing.unlink(missing_ok=True)
+        elif existing.is_dir():
+            try:
+                existing.rmdir()
+            except OSError:
+                pass
 
 
 def boot_check():
@@ -573,14 +730,15 @@ def boot_check():
         if not _bad(data) and mtime != entry.get("mtime_ns"):
             continue  # the owner changed it: the next sweep copies it
         done = False
-        for name, _source, data in _store_sources(path):
+        skipped = []
+        for name, _source, candidate in _store_sources(path, skipped):
             try:
-                if _sha(data) != wanted:
+                if _sha(candidate) != wanted:
                     continue
                 DAMAGED.mkdir(parents=True, exist_ok=True, mode=0o700)
                 keep_at = DAMAGED / f"{_ident(path)}.{int(time.time())}"
                 with tempfile.NamedTemporaryFile(prefix="retain-restore-", delete=False) as fh:
-                    fh.write(data)
+                    fh.write(candidate)
                     temporary = Path(fh.name)
                 try:
                     restore.from_copy(
@@ -612,6 +770,7 @@ def boot_check():
                 done = False
         if not done:
             lost.append({"path": str(path), "action": "damaged, and no good copy: reinstall or restore it by hand"})
+        lost.extend(skipped)
     _streak(current, bool(repairs or lost))
     if repairs or lost:
         _findings(repairs + lost, "boot", boot=current)
@@ -620,9 +779,23 @@ def boot_check():
 
 def unit_text(name):
     code, etc, state, root = CODE, ETC, STATE, ROOT
+    usb = Path(os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"))
+    required = {etc, state, root, NGINX, Path("/etc/systemd"), NM}
+    # A drive may not be mounted yet: a "-" path systemd leaves alone until it is.
+    optional = {
+        usb.parent,
+        Path("/media"),
+        Path("/run/media"),
+        Path(os.environ.get("HUB_NAND_MOUNT", "/var/log.nand")),
+        Path("/var/log/nginx"),
+        Path("/var/lib/nginx"),
+        Path("/run/nginx.pid"),
+        *extra_stores(),
+    }
+    paths = [str(path) for path in sorted(required)] + [f"-{path}" for path in sorted(optional)]
     sandbox = (
         "ProtectSystem=strict\n"
-        f"ReadWritePaths={etc} {state} {root} {NGINX} /etc/systemd {NM}\n"
+        f"ReadWritePaths={' '.join(paths)}\n"
         "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
     )
     if name == SERVICE:
