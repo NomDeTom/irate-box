@@ -24,6 +24,7 @@ os.environ.update(
     HUB_NM_RUN_CONNECTIONS=str(T / "run/nm"),
     HUB_MODPROBE_DIR=str(T / "modprobe.d"),
     HUB_UDEV_RULES_DIR=str(T / "udev"),
+    HUB_NM_CONF_DIRS=f"{T}/usr-nm-conf:{T}/etc-nm-conf",
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from irate_box.msg import Refused, args_of, ids
@@ -91,6 +92,9 @@ def gen(root, prof_dir):
                     "# netplan: network.wifis.wlan0 (on NetworkManager allow-list)\n"
                     'SUBSYSTEM=="net", ACTION=="add|change|move", ENV{ID_NET_NAME}=="wlan0", ENV{NM_UNMANAGED}="0"\n'
                 )
+        if "wifis:" in text:
+            # netplan's empty file that has NetworkManager manage every device (Armbian's netplan writes it)
+            put((root if root != T else T) / "run/NetworkManager/conf.d/10-globally-managed-devices.conf", "")
         if "regulatory-domain:" in text:
             put(
                 (root if root != T else T) / "run/systemd/system/netplan-regdom.service",
@@ -162,10 +166,22 @@ put(
     T / "etc/nm/netplan-wlan0-Home-0c3bb1fa.nmconnection", profile("netplan-wlan0-Home", HOME, psk="s3cret-pass")
 )  # an older nmcli change
 
+# Where a NetworkManager file of that name exists (Ubuntu's), netplan's empty one masks it: refused.
+put(T / "usr-nm-conf/10-globally-managed-devices.conf", "[keyfile]\nunmanaged-devices=*,except:type:wifi\n")
+masked = {f["name"]: f for f in H.candidates()["files"]}
+check(
+    "netplan's managed-devices file masking NetworkManager's own: the WiFi file refused, the file named",
+    not masked["30-wifis-dhcp.yaml"]["ok"]
+    and "10-globally-managed-devices.conf" in masked["30-wifis-dhcp.yaml"]["why"],
+    masked["30-wifis-dhcp.yaml"],
+)
+(T / "usr-nm-conf/10-globally-managed-devices.conf").unlink()
+
 c = H.candidates()
 by = {f["name"]: f for f in c["files"]}
 check(
-    "candidates: the WiFi file can be handed over, with its connection and country",
+    "candidates: the WiFi file can be handed over, with its connection and country (netplan's empty "
+    "managed-devices file masks nothing here)",
     by["30-wifis-dhcp.yaml"]["ok"]
     and by["30-wifis-dhcp.yaml"]["regdom"] == "GB"
     and by["30-wifis-dhcp.yaml"]["connections"] == [{"name": "netplan-wlan0-Home", "uuid": HOME}],

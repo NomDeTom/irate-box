@@ -24,6 +24,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box.hub import netinv
 from irate_box.msg import M, Refused, duration, render, sentences
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -133,6 +134,13 @@ def check_ready(inv, iface, exp):
             )
         )
     if exp == "follows-roam":
+        if not netinv.nm_runs_wifi(inv):
+            raise Refused(
+                M(
+                    "radio-test.no-nm",
+                    "NetworkManager does not run the WiFi of this box, so the test cannot start a roam.",
+                )
+            )
         if not ap:
             raise Refused(
                 M(
