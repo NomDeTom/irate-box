@@ -6,7 +6,7 @@ it again. Both import this, so a new choice is added once and cannot be accepted
 import re
 
 CHOICE_RE = re.compile(
-    r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$"
+    r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
     r"|^(kiwix-rebuild|kiwix-off|rerun-install|rerun-install-port-80|net-scan)$"
     r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
     r"|^crashwatch-(snapshots|panic|watchdog|undervoltage):(on|off)$|^crashwatch-undervoltage-mv:(3000|4630|11000)$|^crashwatch-power-action:(log|sync|shutdown)$"

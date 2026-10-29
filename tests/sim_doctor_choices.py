@@ -4,6 +4,7 @@
 """Every choice the box doctor offers gets past the hub: the hub's own pattern (server.py) accepts
 each choice health.py does, so no button on the page is refused before it reaches root."""
 
+import ast
 import os
 import sys
 import tempfile
@@ -17,7 +18,7 @@ os.environ.update(
 sys.path.insert(0, str(REPO))
 from irate_box import choices
 from irate_box.hub import server
-from irate_box.root import health
+from irate_box.root import crashwatch, health
 
 fails = 0
 
@@ -31,6 +32,36 @@ def check(name, ok, extra=None):
 check(
     "one shared pattern: the hub and the root helper use the same object",
     health.CHOICE_RE is choices.CHOICE_RE and server.HEALTH_CHOICE_RE is choices.CHOICE_RE,
+)
+groups = health.card_groups() + health.hardening_groups() + health.setting_groups(crashwatch.load_settings(), None)
+group_choices = [option["choice"] for group in groups for option in group.get("options", [])]
+check(
+    "every choice a settings group offers passes the shared pattern",
+    all(choices.CHOICE_RE.match(choice) for choice in group_choices),
+    [choice for choice in group_choices if not choices.CHOICE_RE.match(choice)],
+)
+source = ast.parse((REPO / "irate_box" / "root" / "health.py").read_text())
+actions = {
+    node.args[0].value
+    for node in ast.walk(source)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Name)
+    and node.func.id == "action"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and isinstance(node.args[0].value, str)
+}
+
+
+# The page completes clock-set with the time it read; it is the one action whose literal is a prefix.
+def action_choice(choice):
+    return "clock-set:1791580000" if choice == "clock-set" else choice
+
+
+check(
+    "every literal finding action passes the shared pattern",
+    all(choices.CHOICE_RE.match(action_choice(choice)) for choice in actions),
+    sorted(choice for choice in actions if not choices.CHOICE_RE.match(action_choice(choice))),
 )
 offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog", "undervoltage") for v in ("on", "off")] + [
     "crashwatch-undervoltage-mv:4630",
