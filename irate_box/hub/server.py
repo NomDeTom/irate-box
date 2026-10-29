@@ -2016,7 +2016,7 @@ def firmware_action(payload):
 
 def appstore_action(payload):
     """(status, body) for POST /admin/appstore: the settings (appstore_admin.action), or a run: one holder's
-    Look again, or every holder's check or update, each under the librarian's lock, as the firmware's page
+    Read the releases again, or every holder's check or update, each under the librarian's lock, as the firmware's page
     starts its own. An answer of a run is read when the page asks again (running, progress)."""
     action = payload.get("action")
     if action in ("survey", "holder-check", "holder-update"):

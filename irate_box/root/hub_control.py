@@ -4991,8 +4991,8 @@ def appstore_findings(now=None):
                     ),
                     M(
                         "update.appstore.newest.fix",
-                        "Open App store, open {name} and select Look again. Tick the files the new releases carry "
-                        "and select Hold these.",
+                        "Open App store, open {name} and select Read the releases again. Tick the files the new "
+                        "releases carry and select Hold these.",
                         name=name,
                     ),
                     go=GO_APPSTORE,

@@ -14268,8 +14268,8 @@ loadFirmware();
 // --- the App store (appstore_admin.py, holder.py, holdsurvey.py): one card per holder -----------
 // The page shows state; the Updates doctor says what is wrong (findings-in-doctors). A card opens to its
 // status, its kept versions, its settings (AW.form, saved as edit-holder), the survey's table of kinds of
-// file with a tick each (saved as holds: a tick is the kind's pattern), and its own Check now / Download /
-// Look again. Add is one choice: a preset, a pasted Obtainium recipe, or a repository. The policy pair is
+// file with a tick each (saved as holds: a tick is the kind's pattern, read again from its heading), and its own
+// check, download and removals. Add is one choice: a preset, a pasted Obtainium recipe, or a repository. The policy pair is
 // the generic surface-policy form (holders_every_hours / holders_auto), set on this page and shown as the
 // "App store" row in the librarian's "Other updates".
 const asEl = {
@@ -14295,19 +14295,25 @@ const asPost = async (body, flash) => {
 // pattern already decides cannot be undone here (with_kind says so, and the save refuses it).
 function asSurveyTable(holder, at) {
   const survey = holder.survey;
+  const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
+  // The table's own button beside its heading: reading the releases again redraws this table, nothing else.
+  const heading = el("div", { className: "appstore-hold-head" },
+    el("h3", { textContent: "What to hold" }),
+    asRun("Read the releases again", "survey", holder.id, note));
   if (!survey) {
     at.append(
+      heading,
+      note,
       el("p", {
         className: "setting-desc",
         textContent: holder.status.survey_error
-          ? `The last look failed: ${holder.status.survey_error}`
-          : "The releases have not been looked at yet. Select Look again.",
+          ? `The last reading failed: ${holder.status.survey_error}`
+          : "The releases have not been read yet. Select Read the releases again.",
       }),
     );
     return;
   }
   const draft = asDrafts[holder.id] || (asDrafts[holder.id] = {});
-  const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
   const table = el("table", { className: "appstore-kinds" });
   table.append(
     el("tr", {},
@@ -14329,7 +14335,14 @@ function asSurveyTable(holder, at) {
         el("td", {}, box),
         el("td", {},
           el("code", { textContent: kind.shape }),
-          el("span", { className: "setting-desc", textContent: ` ${kind.class}${kind.companions ? ` · +${kind.companions} companion(s)` : ""}` })),
+          el("span", {
+            className: "setting-desc",
+            textContent: ` ${kind.class}${
+              (kind.companions || []).length
+                ? ` · +${kind.companions.length} companion${kind.companions.length === 1 ? "" : "s"}`
+                : ""
+            }`,
+          })),
         el("td", { textContent: `${(kind.releases || []).length}` }),
         el("td", { textContent: size(kind.size_max) })),
     );
@@ -14338,7 +14351,7 @@ function asSurveyTable(holder, at) {
     Object.values(holder.channels).reduce((sum, count) => sum + Number(count), 0) +
     (holder.extra_channels || []).reduce((sum, extra) => sum + Number(extra.keep || 0), 0);
   at.append(
-    el("h3", { textContent: "What to hold" }),
+    heading,
     note,
     el("p", {
       className: "setting-desc",
@@ -14362,30 +14375,43 @@ function asSurveyTable(holder, at) {
   if ((survey.own || []).length) {
     at.append(el("p", { className: "setting-desc" },
       "A pattern of your own, not a tick: ",
-      ...survey.own.map((own) => el("code", { textContent: `${own.include} (${own.files} file(s) here) ` }))));
+      ...survey.own.map((own) =>
+        el("code", { textContent: `${own.include} (${own.files} file${own.files === 1 ? "" : "s"} here) ` }))));
   }
 }
 
 function asSettingsForm(holder) {
-  const form = el("form", { className: "library-form" });
-  const input = (name, label, value, type = "text", extra = {}) => {
-    const box = el("input", { name, type, value: String(value ?? ""), ...extra });
-    form.append(el("label", {}, `${label} `, box));
-    return box;
+  const form = el("form", { className: "appstore-settings" });
+  // One setting a row, its name on the left, as Home tiles draw a tile's settings.
+  const row = (name, label, control) => {
+    control.id = `as-${holder.id}-${name}`;
+    const words = el("label", { className: "aw-label", textContent: label });
+    words.setAttribute("for", control.id);
+    form.append(el("div", { className: "aw-field" }, words, control));
+    return control;
   };
+  const input = (name, label, value, type = "text", extra = {}) =>
+    row(name, label, el("input", { name, type, value: String(value ?? ""), ...extra }));
   input("title", "Name", holder.title, "text", { maxlength: "80" });
   input("repo", "Repository", holder.repo);
   input("stable", "Stable to keep", holder.channels.stable, "number", { min: "0", max: "5" });
   input("prerelease", "Pre-releases to keep", holder.channels["pre-release"], "number", { min: "0", max: "5" });
   input("age", "Not before (days)", holder.min_age_days, "number", { min: "0", max: "365" });
   input("budget", "Space (MB, 0: the free limit)", holder.budget_mb, "number", { min: "0" });
-  const vis = el("select", { name: "visibility" });
-  for (const [value, text] of [["public", "Everyone on the hotspot"], ["members", "Signed-in members only"]]) {
-    vis.append(el("option", { value, textContent: text }));
+  // Visibility, in the words Home tiles use; the line under the chips says what the chosen one means.
+  const vis = row("visibility", "Visibility", el("select", { name: "visibility", "aria-label": "Visibility" }));
+  for (const [value, text, says] of [
+    ["public", "Guests", "Guests: every device on the box's network sees this project and can download its files."],
+    ["members", "Users", "Users: signed-in accounts see this project and download its files. Guests do not see it."],
+  ]) {
+    vis.append(el("option", { value, textContent: text, dataset: { says } }));
   }
-  form.append(el("label", {}, "Who sees it ", vis));
-  const companions = el("input", { name: "companions", type: "checkbox", checked: !!holder.companions });
-  form.append(onOffLine("label", {}, "Also hold checksums and signatures ", companions));
+  const companions = row(
+    "companions",
+    "Also hold checksums and signatures",
+    el("input", { name: "companions", type: "checkbox", checked: !!holder.companions }),
+  );
+  AW.onOff(companions, "Also hold checksums and signatures");
   const sec = AW.form(form, {
     label: `${holder.title || holder.id} settings`,
     save: async (c, v) => {
@@ -14428,14 +14454,18 @@ function asFirmware(fw) {
 function asCard(holder) {
   const st = holder.status || {};
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
-  const body = el("div", { className: "appstore-card", hidden: !asOpen.has(holder.id) });
+  const body = el("div", { className: "aw-drawer appstore-card", hidden: !asOpen.has(holder.id) });
+  const checked = st.last_check ? String(st.last_check).replace("T", " ").replace("Z", " UTC") : "";
+  // A failed check's outcome is its error already ("error: …"): said once, with its own full stop.
+  const sentence = (text) => `${String(text).trim().replace(/\.+$/, "")}.`;
   body.append(
     el("p", {
       className: "setting-desc",
-      textContent:
-        (st.last_check
-          ? `Last checked ${String(st.last_check).replace("T", " ").replace("Z", " UTC")}: ${st.outcome || "nothing"}.`
-          : "Not checked yet.") + (st.error ? ` Error: ${st.error}.` : ""),
+      textContent: !checked
+        ? "Not checked yet."
+        : st.error
+          ? `Last checked ${checked}: the check failed. ${sentence(st.error)}`
+          : `Last checked ${checked}: ${sentence(st.outcome || "nothing")}`,
     }),
     el("div", { className: "admin-list" },
       ...(holder.kept.length
@@ -14443,14 +14473,20 @@ function asCard(holder) {
             el("strong", { textContent: `${v.tag} (${v.channel})` }),
             ` ${v.files.length} file${v.files.length === 1 ? "" : "s"}, ${size(v.bytes)}.`))
         : [el("p", { className: "setting-desc", textContent: "Nothing kept yet." })])),
-    el("p", { className: "library-buttons" },
-      asRun("Check now", "holder-check", holder.id, note),
-      asRun("Download", "holder-update", holder.id, note),
-      asRun("Look again", "survey", holder.id, note),
-      asRun("Remove files", "remove-files", holder.id, note,
-        `Remove the files kept for ${holder.title || holder.id}? The next check downloads them again.`),
-      asRun("Remove", "remove-holder", holder.id, note,
-        `Remove ${holder.title || holder.id} and its files from the App store? Its settings go too.`)),
+    // Each button says what it acts on; removing the project, the one that cannot be undone, set apart at the end.
+    el("p", { className: "library-buttons appstore-actions" },
+      asRun("Check for newer versions", "holder-check", holder.id, note),
+      asRun("Download newer versions", "holder-update", holder.id, note),
+      asRun("Delete the kept files", "remove-files", holder.id, note,
+        `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download fetches the files again.`),
+      asRun("Remove this project", "remove-holder", holder.id, note,
+        `Remove ${holder.title || holder.id} from the App store? Its settings and its kept files go too.`,
+        { className: "danger" })),
+    el("p", { className: "setting-desc" },
+      "Checking, downloading and reading the releases each ask GitHub, which answers 60 requests an hour " +
+        "without a token. For more, ",
+      el("a", { href: "#library-access", textContent: "add a GitHub token in The librarian" }),
+      "."),
     note,
     asSettingsForm(holder),
   );
@@ -14471,7 +14507,7 @@ function asCard(holder) {
   return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } }, head, body);
 }
 
-function asRun(label, action, id, note, ask) {
+function asRun(label, action, id, note, ask, extra = {}) {
   return actionButton(label, async (event) => {
     if (ask && !(await AW.confirmHere(ask, { anchor: event.currentTarget, label }))) return;
     try {
@@ -14479,7 +14515,7 @@ function asRun(label, action, id, note, ask) {
     } catch (err) {
       say(err.message, false, note);
     }
-  }, { className: "small" });
+  }, { className: `small${extra.className ? ` ${extra.className}` : ""}` });
 }
 
 // Add is one choice: a preset, a pasted recipe, or a repository. Each shows its own fields and one Add.
@@ -14497,7 +14533,7 @@ function asAddFlow(data) {
     part.append(el("p", { className: "library-buttons" },
       actionButton("Add", async () => {
         try {
-          await asPost(makeBody(), "Added. Open its card and select Look again.");
+          await asPost(makeBody(), "Added. Open its card and select Read the releases again.");
         } catch (err) {
           say(err.message, false, note);
         }
