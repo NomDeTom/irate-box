@@ -44,7 +44,7 @@ def check(name, cond, info=""):
     fails += not cond
 
 
-def board(start="firstlogin", garble=0, locales=1, nm=True):
+def board(start="firstlogin", garble=0, locales=1, nm=True, nm_install=True):
     """The stand-in console on a pty: (Console on its master side, the process, its record file)."""
     master, slave = os.openpty()
     attrs = termios.tcgetattr(slave)
@@ -58,6 +58,7 @@ def board(start="firstlogin", garble=0, locales=1, nm=True):
         FAKE_GARBLE=str(garble),
         FAKE_LOCALES=str(locales),
         FAKE_NM="1" if nm else "0",
+        FAKE_NM_INSTALL="1" if nm_install else "0",
     )
     proc = subprocess.Popen(
         [sys.executable, str(REPO / "tests/fixtures/fake_firstlogin.py")],
@@ -208,26 +209,131 @@ check(
     tried[:3] + ["..."] + tried[-3:],
 )
 
-# Armbian's minimal image has no NetworkManager (a Lyra Zero W, 2026-10-29): the WiFi written for netplan, as
-# armbian-firstlogin writes it there, and applied.
+
+def written_wifi(ssid, password="S!x&y72CKN3LKP"):
+    """The commands _netplan_wifi writes: both files, after a stand-in board's answers."""
+    asked = []
+
+    def do(command, key, timeout=60):
+        asked.append((key, command))
+        return {"wifidev": "wlan0\n", "nminstall": "nm-installed\n", "wifi": "netplan applied\n"}[key]
+
+    _out, _note = rkserial._netplan_wifi(do, {"ssid": ssid, "wifi_password": password})
+    return [command for key, command in asked if key == "wifi"]
+
+
+def netplan_yaml(command):
+    """Run the printf of a recorded netplan command in bash (its path swapped to a temp file) and read it back."""
+    printf = command.split(" > /etc/netplan/30-wifis-dhcp.yaml", 1)[0]
+    target = T / "30-wifis-dhcp.yaml"
+    subprocess.run(["bash", "-c", printf + f" > {target}"], check=True)
+    return target.read_text()
+
+
+def access_point(text):
+    """The one SSID under access-points, read as a YAML double-quoted scalar (JSON's rules are the same here)."""
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip() == "access-points:")
+    line = lines[start + 1].strip()
+    assert line.endswith(":"), line
+    scalar = line[:-1]
+    return json.loads(scalar) if scalar.startswith('"') else scalar
+
+
+# Armbian's minimal image has no NetworkManager (a Lyra Zero W, 2026-10-29): join with systemd-networkd first
+# (the install needs that network), then install NetworkManager, hand it the WiFi and apply.
 con, proc, rec = board("shell", nm=False)
 got = rkserial.setup(con, dict(choices, listen=1, wifi_password="S!x&y72CKN3LKP"))
 proc.kill()
 cmds = json.loads(rec.read_text())["commands"]
-wifi = next((c for c in cmds if "30-wifis-dhcp.yaml" in c), "")
+wifi = [c for c in cmds if "30-wifis-dhcp.yaml" in c]
 check(
-    "no NetworkManager: it is installed, the WiFi written with renderer NetworkManager and applied",
-    any("apt-get install -y network-manager" in c and "policy-rc.d" in c for c in cmds)
-    and "umask 077" in wifi
-    and "renderer: NetworkManager" in wifi
-    and '"wlan0" "GOODNET" "S!x&y72CKN3LKP"' in wifi
-    and "password: |-" in wifi
-    and "chmod 600" in wifi
-    and "systemctl enable --now NetworkManager" in wifi
-    and "netplan apply" in wifi
+    "no NetworkManager: join over systemd-networkd, install it, then write renderer NetworkManager and apply",
+    len(wifi) == 2
+    and "renderer:" not in wifi[0]
+    and "renderer: NetworkManager" in wifi[1]
+    and any("apt-get install" in c and "network-manager" in c and "policy-rc.d" in c for c in cmds)
+    and any("mktemp -d" in c and "/tmp/irate-box-policy-rc.d" not in c for c in cmds)
+    and "umask 077" in wifi[1]
+    and '"wlan0" "GOODNET" "S!x&y72CKN3LKP"' in wifi[1]
+    and "password: |-" in wifi[1]
+    and "chmod 600" in wifi[1]
+    and "systemctl enable --now NetworkManager" in wifi[1]
+    and "netplan apply" in wifi[1]
     and not any("nmcli dev wifi connect" in c for c in cmds)
     and "joined GOODNET" in got["said"],
     (cmds, wifi, got),
+)
+pairs = [(ssid, command) for ssid in ("yes", "a: b") for command in written_wifi(ssid)]
+check(
+    "  the SSID is a quoted YAML scalar, so yes, true, 123 or a colon is a name and not a number or mapping",
+    len(pairs) == 4 and all(access_point(netplan_yaml(c)) == ssid for ssid, c in pairs),
+    [(ssid, netplan_yaml(c)) for ssid, c in pairs],
+)
+
+con, proc, rec = board("shell", nm=False, nm_install=False)
+got = rkserial.setup(con, dict(choices, listen=1))
+proc.kill()
+cmds = json.loads(rec.read_text())["commands"]
+wifi = [c for c in cmds if "30-wifis-dhcp.yaml" in c]
+check(
+    "no NetworkManager and no way to install it: the networkd file stays, the board still joins, and it is said",
+    wifi
+    and all("renderer:" not in c for c in wifi)
+    and not any("systemctl enable --now NetworkManager" in c for c in cmds)
+    and "joined GOODNET" in " ".join(got["said"])
+    and any("systemd-networkd" in said for said in got["said"]),
+    (cmds, got),
+)
+
+
+def install_output(existing=None, apt_ok=True):
+    """Run the install command against a temp /usr/sbin/policy-rc.d and stub apt-get/nmcli."""
+    asked = []
+
+    def do(command, key, timeout=60):
+        asked.append((key, command))
+        return {"wifidev": "wlan0\n", "nminstall": "nm-installed\n", "wifi": "netplan applied\n"}[key]
+
+    rkserial._netplan_wifi(do, {"ssid": "GOODNET", "wifi_password": "eight888"})
+    command = next(c for key, c in asked if key == "nminstall")
+    box = Path(tempfile.mkdtemp(prefix="rkserial-policy-"))
+    policy = box / "policy-rc.d"
+    if existing is not None:
+        policy.write_bytes(existing)
+    stub = box / "bin"
+    stub.mkdir()
+    apt = stub / "apt-get"
+    apt.write_text(
+        "#!/bin/sh\n" + ("exit 0\n" if apt_ok else "echo 'E: Unable to fetch some archives' >&2\nexit 100\n")
+    )
+    apt.chmod(0o755)
+    nmcli = stub / "nmcli"
+    nmcli.write_text("#!/bin/sh\nexit 0\n")
+    nmcli.chmod(0o755)
+    env = dict(os.environ, PATH=f"{stub}:{os.environ['PATH']}")
+    done = subprocess.run(
+        ["bash", "-c", command.replace("/usr/sbin/policy-rc.d", str(policy))],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=env,
+    )
+    return done.stdout, policy.exists(), policy.read_bytes() if policy.exists() else None
+
+
+old = b"#!/bin/sh\nexit 0\n"
+out, there, data = install_output(existing=old)
+check(
+    "policy-rc.d that was there is put back byte for byte, and the install says it worked",
+    there and data == old and "nm-installed" in out,
+    (out, there, data),
+)
+out, there, data = install_output(apt_ok=False)
+check(
+    "a failed install keeps its last lines and leaves no policy-rc.d",
+    not there and "E: Unable to fetch some archives" in out and "systemd-networkd" in out,
+    (out, there, data),
 )
 
 con, proc, rec = board("shell")

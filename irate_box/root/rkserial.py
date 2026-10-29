@@ -235,43 +235,61 @@ def first_login(console, root_password, user, user_password, real_name, timeout=
 
 
 def _netplan_wifi(do, choices):
-    """The WiFi on an image without NetworkManager (Armbian's minimal images): install NetworkManager with a
-    policy-rc.d that starts nothing, write the netplan file with renderer: NetworkManager, then start it and apply.
-    If the install cannot run (no network yet), the same file goes to systemd-networkd, so the board still joins.
-    Every value has passed rksetup.problem, so it is safe inside double quotes."""
+    """The WiFi on an image without NetworkManager (Armbian's minimal images): join with systemd-networkd first,
+    because the install of NetworkManager needs the very network the WiFi gives, then install it with a policy-rc.d
+    that starts nothing, write the netplan file with renderer: NetworkManager, start it and apply. If the install
+    cannot run (no network, or no package), the networkd file stays and the board still joins. Every value has passed
+    rksetup.problem, so it is safe inside double quotes."""
     device = do("iw dev | awk '$1==\"Interface\"{print $2; exit}'", "wifidev").strip()
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", device):
         raise Refused(M("rkserial.no-wifi-device", "The board has no WiFi device that it can name."))
+
+    def write(network_manager):
+        point = (
+            '        \\"%s\\":\\n          password: |-\\n            %s\\n'
+            if choices.get("wifi_password")
+            else '        \\"%s\\": {}\\n'
+        )
+        values = f'"{choices["ssid"]}"' + (f' "{choices["wifi_password"]}"' if choices.get("wifi_password") else "")
+        renderer = "  renderer: NetworkManager\\n" if network_manager else ""
+        start_nm = "systemctl enable --now NetworkManager >/dev/null 2>&1; " if network_manager else ""
+        return do(
+            'umask 077; printf "# Written by irate-box over the serial console\\nnetwork:\\n'
+            + renderer
+            + "  wifis:\\n    %s:\\n      dhcp4: yes\\n      dhcp6: yes\\n      access-points:\\n"
+            + point
+            + f'" "{device}" {values}'
+            " > /etc/netplan/30-wifis-dhcp.yaml && chmod 600 /etc/netplan/30-wifis-dhcp.yaml"
+            f" && ip link set {device} up && {start_nm}netplan apply 2>&1 && echo netplan applied",
+            "wifi",
+            timeout=180,
+        )
+
+    joined = write(False)
+    if "netplan applied" not in joined:
+        return joined, ""
     installed = do(
-        "saved=/tmp/irate-box-policy-rc.d; "
+        "tmp=$(mktemp -d); saved=$tmp/policy-rc.d; log=$tmp/apt.log; "
         '[ -e /usr/sbin/policy-rc.d ] && cp /usr/sbin/policy-rc.d "$saved" || rm -f "$saved"; '
         "printf '#!/bin/sh\\nexit 101\\n' > /usr/sbin/policy-rc.d; chmod 755 /usr/sbin/policy-rc.d; "
-        "apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y network-manager >/dev/null 2>&1; "
+        "ok=0; "
+        'apt-get update -o Acquire::http::Timeout=20 -o Acquire::Retries=0 >"$log" 2>&1 && '
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y -o Acquire::http::Timeout=20 "
+        ' -o Acquire::Retries=0 network-manager >>"$log" 2>&1 && ok=1; '
         'if [ -e "$saved" ]; then mv "$saved" /usr/sbin/policy-rc.d; else rm -f /usr/sbin/policy-rc.d; fi; '
-        "command -v nmcli >/dev/null && echo nm-installed || true",
+        'if [ "$ok" = 1 ] && command -v nmcli >/dev/null; then echo nm-installed; '
+        'else echo "NetworkManager was not installed; the board stays on systemd-networkd:"; tail -n 5 "$log"; fi; '
+        'rm -rf "$tmp"',
         "nminstall",
         timeout=900,
     )
-    use_nm = "nm-installed" in installed
-    point = (
-        '        "%s":\\n          password: |-\\n            %s\\n'
-        if choices.get("wifi_password")
-        else '        "%s": {}\\n'
-    )
-    values = f'"{choices["ssid"]}"' + (f' "{choices["wifi_password"]}"' if choices.get("wifi_password") else "")
-    renderer = "  renderer: NetworkManager\\n" if use_nm else ""
-    start_nm = "systemctl enable --now NetworkManager >/dev/null 2>&1; " if use_nm else ""
-    return do(
-        'umask 077; printf "# Written by irate-box over the serial console\\nnetwork:\\n'
-        + renderer
-        + "  wifis:\\n    %s:\\n      dhcp4: yes\\n      dhcp6: yes\\n      access-points:\\n"
-        + point
-        + f'" "{device}" {values}'
-        " > /etc/netplan/30-wifis-dhcp.yaml && chmod 600 /etc/netplan/30-wifis-dhcp.yaml"
-        f" && ip link set {device} up && {start_nm}netplan apply 2>&1 && echo netplan applied",
-        "wifi",
-        timeout=180,
-    )
+    if "nm-installed" not in installed:
+        return joined, installed.strip()[-400:]
+    switched = write(True)
+    if "netplan applied" in switched:
+        return switched, ""
+    write(False)  # put back the file that joined, rather than leave a NetworkManager file nothing serves
+    return joined, "NetworkManager was installed but did not take the WiFi; the board stays on systemd-networkd."
 
 
 def configure(console, choices):
@@ -327,8 +345,9 @@ def configure(console, choices):
         if country:
             do(f'iw reg set "{country}" 2>/dev/null; true', "country")
         manager = do("command -v nmcli >/dev/null && echo nm || echo netplan", "manager").strip()
+        note = ""
         if manager == "netplan":
-            out = _netplan_wifi(do, choices)
+            out, note = _netplan_wifi(do, choices)
         else:
             pw = f' password "{choices["wifi_password"]}"' if choices.get("wifi_password") else ""
             out = do(f'nmcli dev wifi connect "{choices["ssid"]}"{pw} 2>&1', "wifi", timeout=90)
@@ -342,6 +361,8 @@ def configure(console, choices):
                 )
             )
         said.append(f"joined {choices['ssid']}")
+        if note:
+            said.append(note)
     if choices.get("lock_root") and choices.get("keys"):
         do("passwd -l root", "lock")
         said.append("root's password locked")

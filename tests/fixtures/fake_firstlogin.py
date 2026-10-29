@@ -108,7 +108,11 @@ while True:
     elif key == "manager":
         body = "nm\n" if os.environ.get("FAKE_NM", "1") == "1" else "netplan\n"
     elif key == "nminstall":
-        body = "nm-installed\n" if os.environ.get("FAKE_NM_INSTALL", "1") == "1" else ""
+        body = (
+            "nm-installed\n"
+            if os.environ.get("FAKE_NM_INSTALL", "1") == "1"
+            else "NetworkManager was not installed; the board stays on systemd-networkd:\nE: Unable to fetch some archives\n"
+        )
     elif key == "wifidev":
         body = "wlan0\n"
     elif key == "wifi" and "netplan apply" in line:
