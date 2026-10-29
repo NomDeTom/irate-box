@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# The rescue system's Alpine packages, one a line. The packages' own scripts do not run here (--no-scripts): they
+# run on the Pi, where armv7 runs natively, or under qemu-user with binfmt.
+alpine-base
+alpine-keys
+openssh
+wpa_supplicant
+python3
+e2fsprogs
+util-linux
+gdisk
+f3
+dpkg
+git

@@ -1,6 +1,6 @@
 {
   "id": "jspaint",
-  "order": 12,
+  "order": 13,
   "tile": {
     "icon": "🖌️",
     "name": "JS Paint",
@@ -23,5 +23,15 @@
   "capabilities": {
     "storage": true,
     "local": true
-  }
+  },
+  "entries": [
+    {
+      "menus": {
+        "drawing": 30
+      },
+      "name": "JS Paint",
+      "desc": "A remake of MS Paint, in the browser",
+      "path": "index.html"
+    }
+  ]
 }

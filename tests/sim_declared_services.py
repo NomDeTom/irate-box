@@ -222,7 +222,7 @@ for bad in ("other-restart:sshd.service", "other-restart:irate-box.service", "ot
 # --- the manifest format a manifest was written for ("api") ------------------------------------------------
 cat = json.loads(sorted((REPO / "addons").glob("*.json"))[0].read_text())
 builtins = {m["id"] for m in manifests.load()}
-folders = {m["id"] for m in manifests.load() if m.get("menu")}
+folders = {m["id"] for m in manifests.load() if (m.get("menu") or {}).get("addons")}
 manifests.check_local(dict(cat, api=manifests.API), builtin_ids=builtins, folder_ids=folders)
 check("a catalogue add-on at this hub's format: accepted, and with api left out (1)", True)
 for api, why in (

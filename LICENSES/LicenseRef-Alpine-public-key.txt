@@ -1,0 +1,5 @@
+Alpine Linux public signing keys
+
+These files are the public keys published in Alpine Linux's alpine-keys package. They are public
+verification material, not creative works; Alpine Linux publishes them for this use. No copyright is
+claimed here.

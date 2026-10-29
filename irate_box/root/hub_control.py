@@ -6913,6 +6913,16 @@ def wifi_country(req):
 # control/rkboard.json is the state after each, for the page.
 
 
+def pins(_req):
+    """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
+    from irate_box.root import pinmap
+
+    data = pinmap.snapshot()
+    data["at"] = time.time()
+    safeio.write(CONTROL / "pins.json", json.dumps(data, indent=1))
+    return M("control.pins", "{n} GPIO lines read.", n=len(data["lines"]))
+
+
 def _rk(fn):
     def action(req):
         from irate_box.root import rkboard
@@ -6929,7 +6939,7 @@ def _rk_erase(rkboard, req):
     loader = req.get("loader")
     if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
         raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
-    return rkboard.erase(loader)
+    return rkboard.erase(loader, req.get("confirm"))
 
 
 # A new board set up over its serial console (rkserial.py): every value checked again here (rksetup.problem), the
@@ -7486,6 +7496,7 @@ ACTIONS = {
     "housecall-pair": housecall_pair,
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
+    "pins": pins,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,
     "uplink-hold": uplink_hold,
@@ -7494,6 +7505,7 @@ ACTIONS = {
     "wifi-country": wifi_country,
     "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
     "rk-erase": _rk(_rk_erase),
+    "rk-read": _rk(lambda rkboard, req: rkboard.read_flash(req.get("loader"))),
     "rk-write": _rk(_rk_write),
     "rk-serial-setup": _rk_serial_setup,
     "rk-card-check": lambda req: _rk_card(req, "check"),

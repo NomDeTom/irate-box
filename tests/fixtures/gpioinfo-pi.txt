@@ -1,0 +1,64 @@
+gpiochip0 - 54 lines:
+	line   0:	"ID_SDA"        	input
+	line   1:	"ID_SCL"        	input
+	line   2:	"GPIO2"         	input
+	line   3:	"GPIO3"         	input
+	line   4:	"GPIO4"         	input
+	line   5:	"GPIO5"         	input
+	line   6:	"GPIO6"         	input
+	line   7:	"GPIO7"         	input
+	line   8:	"GPIO8"         	input
+	line   9:	"GPIO9"         	input
+	line  10:	"GPIO10"        	input
+	line  11:	"GPIO11"        	input
+	line  12:	"GPIO12"        	input
+	line  13:	"GPIO13"        	input
+	line  14:	"GPIO14"        	input
+	line  15:	"GPIO15"        	input
+	line  16:	"GPIO16"        	input
+	line  17:	"GPIO17"        	input
+	line  18:	"GPIO18"        	input
+	line  19:	"GPIO19"        	input
+	line  20:	"GPIO20"        	input
+	line  21:	"GPIO21"        	input
+	line  22:	"GPIO22"        	input
+	line  23:	"GPIO23"        	input
+	line  24:	"GPIO24"        	input
+	line  25:	"GPIO25"        	input
+	line  26:	"GPIO26"        	input
+	line  27:	"GPIO27"        	input
+	line  28:	"HDMI_HPD_N"    	input active-low consumer="hpd"
+	line  29:	"STATUS_LED_G"  	output consumer="ACT"
+	line  30:	"CTS0"          	input consumer="kernel"
+	line  31:	"RTS0"          	input consumer="kernel"
+	line  32:	"TXD0"          	input consumer="kernel"
+	line  33:	"RXD0"          	input consumer="kernel"
+	line  34:	"SD1_CLK"       	input consumer="kernel"
+	line  35:	"SD1_CMD"       	input consumer="kernel"
+	line  36:	"SD1_DATA0"     	input consumer="kernel"
+	line  37:	"SD1_DATA1"     	input consumer="kernel"
+	line  38:	"SD1_DATA2"     	input consumer="kernel"
+	line  39:	"SD1_DATA3"     	input consumer="kernel"
+	line  40:	"PWM0_OUT"      	input consumer="kernel"
+	line  41:	"PWM1_OUT"      	input consumer="kernel"
+	line  42:	"ETH_CLK"       	input
+	line  43:	"WIFI_CLK"      	input consumer="kernel"
+	line  44:	"SDA0"          	input
+	line  45:	"SCL0"          	input
+	line  46:	"SMPS_SCL"      	input
+	line  47:	"SMPS_SDA"      	output
+	line  48:	"SD_CLK_R"      	input consumer="kernel"
+	line  49:	"SD_CMD_R"      	input consumer="kernel"
+	line  50:	"SD_DATA0_R"    	input consumer="kernel"
+	line  51:	"SD_DATA1_R"    	input consumer="kernel"
+	line  52:	"SD_DATA2_R"    	input consumer="kernel"
+	line  53:	"SD_DATA3_R"    	input consumer="kernel"
+gpiochip1 - 8 lines:
+	line   0:	"BT_ON"         	output consumer="shutdown"
+	line   1:	"WL_ON"         	output
+	line   2:	"PWR_LED_R"     	output active-low consumer="PWR"
+	line   3:	"LAN_RUN"       	output
+	line   4:	"NC"            	input
+	line   5:	"CAM_GPIO0"     	output consumer="cam1_regulator"
+	line   6:	"CAM_GPIO1"     	output
+	line   7:	"NC"            	input
