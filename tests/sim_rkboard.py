@@ -181,9 +181,23 @@ check("  control/rkboard.json written after it", [b["mode"] for b in state["boar
 # In Loader mode: erased and reset, no loader needed. What the flash holds is read before the erase.
 card[:] = b"UBI#" + b"\0" * 16 + b"rescue\0logs\0state\0"
 ran.clear()
-said = hub_control.ACTIONS["rk-erase"]({"action": "rk-erase", "loader": None})
+read = hub_control.ACTIONS["rk-read"]({"action": "rk-read", "loader": None})
 check(
-    "Loader mode: erased (ef) and reset (rd), no loader sent, and what it held said first",
+    "the flash read says what it holds, with the token to confirm",
+    read.get("token") == "logs,rescue,state" and "rescue" in render(read),
+    read,
+)
+try:
+    rkboard.erase(None)
+    check("  a non-blank flash is not erased without the confirmation", False)
+except Refused as exc:
+    check(
+        "  a non-blank flash is not erased without the confirmation", exc.message["id"] == "rkboard.erase.unconfirmed"
+    )
+ran.clear()
+said = hub_control.ACTIONS["rk-erase"]({"action": "rk-erase", "loader": None, "confirm": read["args"]["token"]})
+check(
+    "Loader mode: read, confirmed, erased (ef) and reset (rd), no loader sent",
     ("rkdeveloptool", "ef") in ran
     and ("rkdeveloptool", "rd") in ran
     and any(c[:2] == ("rkdeveloptool", "rl") for c in ran)
