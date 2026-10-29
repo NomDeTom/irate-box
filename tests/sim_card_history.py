@@ -150,6 +150,33 @@ check(
     hour["units"] == {"a.service": 10 * M, cardhistory.JOBS: 50 * M, cardhistory.KERNEL: 38 * M},
     hour["units"],
 )
+# A unit outside the top by name, or moving in or out of it, is still counted: only the jobs that ended are JOBS.
+two_other = [
+    {
+        "at": 2000,
+        "boot": "eeee5555",
+        "card": 200 * M,
+        "units": {"a.service": 40 * M, "b.service": 60 * M},
+        "other": 0,
+        "slices": {"system": 100 * M, "user": 0},
+        "settings": {},
+    },
+    {
+        "at": 2000 + 3600,
+        "boot": "eeee5555",
+        "card": 300 * M,
+        "units": {"a.service": 50 * M},
+        "other": 160 * M,
+        "slices": {"system": 160 * M, "user": 0},
+        "settings": {},
+    },
+]
+hour = cardhistory._hours(two_other)[-1]
+check(
+    "a unit moving out of the named top is not called a job that ended",
+    hour["units"] == {"a.service": 10 * M, cardhistory.KERNEL: 40 * M},
+    hour["units"],
+)
 older = [{k: v for k, v in r.items() if k != "slices"} for r in two]
 check(
     "  lines of the older form (no slices): only the services, as before",
