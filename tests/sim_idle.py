@@ -76,8 +76,9 @@ health.watched_units = lambda: {}
 
 f = {x["id"]: x for x in health.check_idle()}
 check(
-    "meshtasticd with no LoRa radio: said, with why (its own words) and that systemd gave up",
+    "meshtasticd with no LoRa radio: a note, with why (its own words) and that systemd gave up",
     "idle:meshtasticd.service" in f
+    and f["idle:meshtasticd.service"]["status"] == "note"
     and any("No sx1262 radio" in e for e in f["idle:meshtasticd.service"]["evidence"])
     and "idle.meshtasticd.gave-up" in msg_ids(f["idle:meshtasticd.service"]),
     f.get("idle:meshtasticd.service"),

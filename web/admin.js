@@ -3135,7 +3135,7 @@ const upd = {
   udFineCount: document.getElementById("updoctor-fine-count"),
   udFine: document.getElementById("updoctor-fine"),
 };
-const MARK = { ok: "✅", warn: "⚠️", problem: "❌" };
+const MARK = { ok: "✅", note: "•", warn: "⚠️", problem: "❌" };
 // evidence: what a check saw (an error line, a file), as data; note: what the check does not show.
 const checkItem = (status, title, detail, fix, evidence = [], note = "") =>
   el(
@@ -3721,7 +3721,7 @@ const sec = {
   auditDeep: document.getElementById("audit-deep"),
   auditDeepWhen: document.getElementById("audit-deep-when"),
 };
-const RANK = { problem: 0, warn: 1, ok: 2 };
+const RANK = { problem: 0, warn: 1, note: 2, ok: 3 };
 let secWaiting = null; // { id, fid }: a request, and the line its answer goes under
 let secNote = null; // { fid, text, ok }
 let secPoll = null;
@@ -3862,6 +3862,7 @@ const secFoot = (finding) =>
 const STATE_WORD = {
   problem: "To fix",
   warn: "To review",
+  note: "Note",
   ok: "Passed",
   suggest: "Suggestion",
   info: "Info",
@@ -5521,6 +5522,9 @@ const hl = {
   setNote: document.getElementById("health-settings-note"),
   fineFold: document.getElementById("health-fine-fold"),
   fineCount: document.getElementById("health-fine-count"),
+  noteFold: document.getElementById("health-note-fold"),
+  noteCount: document.getElementById("health-note-count"),
+  notes: document.getElementById("health-notes"),
   install: document.getElementById("health-install"),
   output: document.getElementById("health-output"),
   log: document.getElementById("health-log"),
@@ -6232,6 +6236,7 @@ function renderHealth(data) {
   const open = services.filter(
     (service) =>
       service.status !== "ok" &&
+      service.status !== "note" &&
       !accepted(service) &&
       match(service) &&
       (hlShow === "all" || service.status === hlShow),
@@ -6263,6 +6268,10 @@ function renderHealth(data) {
   hl.fineFold.hidden = !fine.length;
   hl.fineCount.textContent = `(${fine.length})`;
   if (redraw) hl.fine.replaceChildren(...fine.map(item));
+  const notes = services.filter((service) => service.status === "note" && match(service));
+  hl.noteFold.hidden = !notes.length;
+  hl.noteCount.textContent = `(${notes.length})`;
+  if (redraw) hl.notes.replaceChildren(...notes.map(item));
   const loose =
     hlNote &&
     (hlNote.fid === "scan" ||
@@ -18029,13 +18038,13 @@ function hcRender(report) {
   hc.when.textContent = report.at ? new Date(report.at * 1000).toLocaleString() : "";
   const rows = (report.findings || []).map((f, i) => {
     const controls = (f.actions || [])
-      .filter((a) => a.choice === "housecall-restore")
+      .filter((a) => a.choice === "housecall-restore" || String(a.choice).startsWith("housecall-unpair:"))
       .map((a) =>
         el("button", {
           type: "button",
           className: "action-btn",
           textContent: said(a.label),
-          onclick: () => hcRestore(a),
+          onclick: () => (String(a.choice).startsWith("housecall-unpair:") ? hcUnpair(a) : hcRestore(a)),
         }),
       );
     return findingRow({
@@ -18064,6 +18073,20 @@ async function hcRestore(act) {
     hc.note.hidden = true;
   } catch (err) {
     hc.note.textContent = err && err.message ? err.message : "The file could not be restored.";
+  }
+}
+// Remove a paired box: the entry and the files this box made for it; the other box's line is the owner's to remove.
+// The root helper does it, so its own answer (removed, or no such box) replaces the note when it comes.
+async function hcUnpair(act) {
+  const name = String(act.choice).slice("housecall-unpair:".length);
+  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { label: said(act.label) }))) return;
+  hc.note.hidden = false;
+  hc.note.textContent = "Removing the pairing…";
+  try {
+    waitingFor = { id: (await postJSON("/admin/housecall", { action: "unpair", name })).id, at: hc.note };
+    loadBox();
+  } catch (err) {
+    hc.note.textContent = err && err.message ? err.message : "The pairing could not be removed.";
   }
 }
 // The examination runs in a unit of its own and can take half an hour or more (an image took 32.5 min on the Pi):
@@ -18133,14 +18156,21 @@ if (hc.scan) {
     hc.pairNote.hidden = false;
     hc.pairNote.textContent = "Pairing…";
     try {
-      await postJSON("/admin/housecall", {
-        action: "pair",
-        name: hc.peerName.value.trim(),
-        host: hc.peerHost.value.trim(),
-        user: hc.peerUser.value.trim() || "root",
-        port: Number(hc.peerPort.value) || 22,
-      });
-      hc.pairNote.textContent = "Paired. Put this box's public key on the other box, then examine it.";
+      // The root helper makes the key and scans the host, so its own answer (the line to paste, or why not)
+      // replaces the note when it comes.
+      waitingFor = {
+        id: (
+          await postJSON("/admin/housecall", {
+            action: "pair",
+            name: hc.peerName.value.trim(),
+            host: hc.peerHost.value.trim(),
+            user: hc.peerUser.value.trim() || "root",
+            port: Number(hc.peerPort.value) || 22,
+          })
+        ).id,
+        at: hc.pairNote,
+      };
+      loadBox();
     } catch (err) {
       hc.pairNote.textContent = err && err.message ? err.message : "The box could not be paired.";
     }

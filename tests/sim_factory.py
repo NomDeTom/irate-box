@@ -917,7 +917,7 @@ check(
 )
 check(
     "  what builds take, said",
-    f.get("builds-disk", {}).get("status") in ("ok", "warn") and f["builds-disk"]["summary"]["args"]["mb"] >= 0,
+    f.get("builds-disk", {}).get("status") in ("note", "warn") and f["builds-disk"]["summary"]["args"]["mb"] >= 0,
 )
 check(
     "  in the scan",

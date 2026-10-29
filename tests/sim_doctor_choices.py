@@ -4,6 +4,7 @@
 """Every choice the box doctor offers gets past the hub: the hub's own pattern (server.py) accepts
 each choice health.py does, so no button on the page is refused before it reaches root."""
 
+import ast
 import os
 import sys
 import tempfile
@@ -15,8 +16,9 @@ os.environ.update(
     HUB_STATE_DIR=str(T / "state"), HUB_SYSFS=str(T / "sys"), HUB_PROC=str(T / "proc"), HUB_ETC_DIR=str(T / "etc")
 )
 sys.path.insert(0, str(REPO))
+from irate_box import choices
 from irate_box.hub import server
-from irate_box.root import health
+from irate_box.root import crashwatch, health
 
 fails = 0
 
@@ -27,7 +29,66 @@ def check(name, ok, extra=None):
     fails += not ok
 
 
-offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog") for v in ("on", "off")] + [
+check(
+    "one shared pattern: the hub and the root helper use the same object",
+    health.CHOICE_RE is choices.CHOICE_RE and server.HEALTH_CHOICE_RE is choices.CHOICE_RE,
+)
+led_state = {
+    "found": ["ACT", "PWR"],
+    "settings": {"show": "leave"},
+    "suggested": "leave",
+    "led": "the light",
+}
+rfkill_state = {
+    "settings": {"wifi": "on", "bluetooth": "leave"},
+    "switches": [
+        {"radio": "wifi", "name": "phy0", "soft": False, "hard": False, "power_line": None},
+        {"radio": "bluetooth", "name": "hci0", "soft": False, "hard": False, "power_line": None},
+    ],
+    "power_line": None,
+}
+groups = (
+    health.card_groups()
+    + health.hardening_groups()
+    + health.setting_groups(crashwatch.load_settings(), None)
+    + health.led_groups(led_state, "failed")
+    + health.rfkill_groups(rfkill_state)
+)
+group_choices = [option["choice"] for group in groups for option in group.get("options", [])]
+check(
+    "every choice a settings group offers passes the shared pattern (and the groups were found)",
+    "card-set:journal:memory" in group_choices and all(choices.CHOICE_RE.match(choice) for choice in group_choices),
+    [choice for choice in group_choices if not choices.CHOICE_RE.match(choice)],
+)
+source = ast.parse((REPO / "irate_box" / "root" / "health.py").read_text())
+actions = {
+    node.args[0].value
+    for node in ast.walk(source)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Name)
+    and node.func.id == "action"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and isinstance(node.args[0].value, str)
+}
+
+
+# The page completes clock-set with the time it read; it is the one action whose literal is a prefix.
+def action_choice(choice):
+    return "clock-set:1791580000" if choice == "clock-set" else choice
+
+
+check(
+    "every literal finding action passes the shared pattern (and the actions were found)",
+    "net-scan" in actions and all(choices.CHOICE_RE.match(action_choice(choice)) for choice in actions),
+    sorted(choice for choice in actions if not choices.CHOICE_RE.match(action_choice(choice))),
+)
+offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog", "undervoltage") for v in ("on", "off")] + [
+    "crashwatch-undervoltage-mv:4630",
+    "crashwatch-power-action:shutdown",
+    "card-ram:irate-box.service:0",
+    "card-ram-off:irate-box.service:0",
+    "card-ram-apply",
     "unit-restart:meshtasticd.service",
     "unit-enable:irate-box-uplink.service",
     "kiwix-quarantine:book",
@@ -49,6 +110,9 @@ offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog") for
     "idle-off:meshtasticd.service",
     "idle-on:bluetooth.service",
     "idle-off:ModemManager.service",
+    "rerun-install",
+    "rerun-install-port-80",
+    "net-scan",
 ]
 for c in offered:
     check(

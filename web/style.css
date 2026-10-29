@@ -4793,6 +4793,9 @@ html[data-palette="contrast"] .help-item.down {
 .finding-warn {
   --f: var(--warn);
 }
+.finding-note {
+  --f: var(--muted);
+}
 .finding-ok,
 .finding-fixed {
   --f: var(--ok);
@@ -5003,6 +5006,9 @@ a.action-btn.go-btn {
 }
 .fstate-warn {
   color: var(--warn);
+}
+.fstate-note {
+  color: var(--muted);
 }
 .fstate-ok,
 .fstate-fixed {
