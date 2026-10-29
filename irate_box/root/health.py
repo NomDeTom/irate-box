@@ -2546,6 +2546,127 @@ def check_hub():
         ]
 
 
+def _midnight(now):
+    local = time.localtime(now)
+    return time.mktime((local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0, 0, 0, -1))
+
+
+def check_power(now=None):
+    """The supply: an INA2xx's voltage or the Pi's rpi_volt/get_throttled, and the power-fail hook (NUT or a pin) as
+    crashwatch records them (Part 3, step 2). An undervoltage is a count and its times; a power failure is a problem."""
+    from irate_box.root import crashwatch as cw
+
+    now = time.time() if now is None else now
+    try:
+        reading = cw.power_now()
+        events = cw.power_events()
+    except (OSError, ValueError):
+        return []
+    today = [e for e in events if isinstance(e.get("at"), (int, float)) and e["at"] >= _midnight(now)]
+    fails = [e for e in today if e.get("kind") == "power-fail"]
+    under = [e for e in today if e.get("kind") == "undervoltage"]
+    title = M("power.title", "Power supply")
+    go = _go("health-settings", RECOVERY, "hs-undervoltage")
+    if fails:
+        latest = max(e["at"] for e in fails)
+        return [
+            finding(
+                "power",
+                title,
+                "problem",
+                M(
+                    "power.failed",
+                    {
+                        "one": "The box lost power {n} time today.",
+                        "other": "The box lost power {n} times today.",
+                    },
+                    n=len(fails),
+                ),
+                M(
+                    "power.failed.why",
+                    "A power cut can lose the newest writes, and a card that loses writes can damage the files the "
+                    "box keeps.",
+                ),
+                M(
+                    "power.failed.fix",
+                    "Check the supply and its cable. The setting When the power fails can sync the disks or shut "
+                    "the box down while the hold-up lasts.",
+                ),
+                notes=[M("power.failed.last", "The last one was {when}.", when=when(latest))],
+                evidence=[render(when(e["at"])) for e in fails[-10:]],
+                go=go,
+            )
+        ]
+    if under or reading["undervoltage"]:
+        latest = max((e["at"] for e in under), default=now)
+        summary = (
+            M("power.low", "The supply is below {mv} mV now.", mv=cw.UNDERVOLTAGE_MV)
+            if reading["undervoltage"]
+            else M(
+                "power.dropped",
+                {
+                    "one": "The supply dropped below {mv} mV {n} time today.",
+                    "other": "The supply dropped below {mv} mV {n} times today.",
+                },
+                mv=cw.UNDERVOLTAGE_MV,
+                n=len(under),
+            )
+        )
+        return [
+            finding(
+                "power",
+                title,
+                "problem" if reading["undervoltage"] else "warn",
+                summary,
+                M(
+                    "power.dropped.why",
+                    "A supply that sags can reset a radio, corrupt a write, or make the box stop. A weak supply or a "
+                    "thin cable is the usual cause.",
+                ),
+                M(
+                    "power.dropped.fix",
+                    "Use the supply the board asks for, with a short, thick cable. This finding counts each drop and "
+                    "keeps the times.",
+                ),
+                notes=[M("power.dropped.last", "The last one was {when}.", when=when(latest))] if under else [],
+                evidence=[render(when(e["at"])) for e in under[-10:]],
+                go=go,
+            )
+        ]
+    if not reading["measured"]:
+        return [
+            finding(
+                "power",
+                title,
+                "ok",
+                M("power.not-measured", "This board's supply is not measured."),
+                notes=[
+                    M(
+                        "power.not-measured.note",
+                        "A Raspberry Pi reports it as rpi_volt. A Lyra needs an INA219 or INA226 on I2C. Until then, an "
+                        "undervoltage cannot be seen here.",
+                    )
+                ],
+                go=go,
+            )
+        ]
+    return [
+        finding(
+            "power",
+            title,
+            "ok",
+            M(
+                "power.ok",
+                "The supply is {mv} mV, above the {threshold} mV threshold.",
+                mv=reading["mv"],
+                threshold=cw.UNDERVOLTAGE_MV,
+            ),
+            evidence=[reading["source"] or ""],
+            go=go,
+        )
+    ]
+
+
 def check_space():
     out = []
     for fid_title, path, need in (
@@ -5629,6 +5750,49 @@ def setting_groups(s, wd):
                 ],
             }
         )
+    groups += [
+        {
+            "key": "undervoltage",
+            "label": M("hs.undervoltage", "Undervoltage"),
+            "desc": M(
+                "hs.undervoltage.desc",
+                "Watch the supply where the board measures it, and keep each drop with its time. A Raspberry Pi "
+                "reports it. A Lyra needs an INA219 or INA226 on I2C.",
+            ),
+            "current": "on" if s["undervoltage"] else "off",
+            "options": [
+                {"value": "on", "label": ON, "choice": "crashwatch-undervoltage:on"},
+                {"value": "off", "label": OFF, "choice": "crashwatch-undervoltage:off"},
+            ],
+        },
+        {
+            "key": "power-action",
+            "label": M("hs.power-action", "When the power fails"),
+            "desc": M(
+                "hs.power-action.desc",
+                "A power-fail line or a UPS says the power is going. Log it, sync the disks, or shut the box down "
+                "while the hold-up lasts.",
+            ),
+            "current": s["power_action"],
+            "options": [
+                {"value": "log", "label": M("hs.power-log", "Log it"), "choice": "crashwatch-power-action:log"},
+                {
+                    "value": "sync",
+                    "label": M("hs.power-sync", "Sync the disks"),
+                    "choice": "crashwatch-power-action:sync",
+                },
+                {
+                    "value": "shutdown",
+                    "label": M("hs.power-shutdown", "Shut down"),
+                    "choice": "crashwatch-power-action:shutdown",
+                    "confirm": M(
+                        "hs.power-shutdown.confirm",
+                        "A power failure shuts the box down at once. It comes back when the power does.",
+                    ),
+                },
+            ],
+        },
+    ]
     # The Box doctor's own schedule and its checks for a card that loses writes (notes: box-doctor-hardening-plan,
     # Part 1, steps 0 and 2). All three are the recommended set's, and gone when switched off.
     groups += [
@@ -6078,6 +6242,7 @@ def scan(quick=False):
         check_lost_writes,
         check_builds,
         check_crashwatch,
+        check_power,
         check_led,
         check_watchers,
         check_watchdogs_alive,
@@ -6184,7 +6349,7 @@ def doctor_settings():
 CHOICE_RE = re.compile(
     r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$|^(kiwix-rebuild|kiwix-off)$"
     r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
-    r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
+    r"|^crashwatch-(snapshots|panic|watchdog|undervoltage):(on|off)$|^crashwatch-power-action:(log|sync|shutdown)$"
     r"|^clock-set:\d{10}$|^(rtc-find|rtc-look|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
     r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})(:(gps|local|pool|module)(,(gps|local|pool|module)){0,3})?$|^clock-undo$"
     r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"

@@ -33,6 +33,7 @@ run sim_servicewrites.py
 run sim_nand_state.py
 run sim_recommended.py
 run sim_lost_writes.py
+run sim_powerwatch.py
 run sim_nand_health.py
 run sim_led.py
 run sim_port_80.py
