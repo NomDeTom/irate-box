@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- The box's page for an app that is not answering (a 502, 503 or 504 from the web server): still starting, or
+     not set up yet (the books with none, the notes not installed). Static, so the web server shows it alone. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="not-ready.head.title">Not running yet · Hub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦀</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help not-found">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="not-ready.header.tip-back-hub" data-i18n="not-ready.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="not-ready.header.heading">Not running yet</h1>
+    <p class="subtitle" data-i18n="not-ready.header.subtitle">That app on this box is not running.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="not-ready.header.aria-theme"></div>
+  </header>
+
+  <section class="krab-figure">
+    <img src="/art/krab-confused.webp" alt="" width="240" height="240">
+    <p data-i18n="not-ready.body.what">It is still starting, or it is not set up on this box yet. Try again in a minute, or ask the box's administrator.</p>
+    <p><a class="action-btn primary" href="/" data-i18n="not-ready.body.back">Back to the hub</a></p>
+  </section>
+
+  <script src="/i18n.js"></script>
+</body>
+</html>
