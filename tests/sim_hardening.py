@@ -19,6 +19,7 @@ dt.mkdir()
 boot.mkdir()
 (dt / "model").write_bytes(b"Luckfox Lyra Zero W\0")
 os.environ.update(HUB_ETC_DIR=str(etc), HUB_DEVICE_TREE=str(dt), HUB_BOOT_DIR=str(boot))
+(boot / "armbianEnv.txt").write_text("verbosity=1\n")
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
 from irate_box.msg import Refused
@@ -68,8 +69,18 @@ check(
     said.get("id") == "harden.ab.uboot.ready"
     and {"system.conf", "boot.cmd", "fw_env.config.example"} <= artifacts
     and "bootname=A" in (etc / "ab" / "system.conf").read_text()
-    and "BOOT_ORDER" in (etc / "ab" / "boot.cmd").read_text(),
+    and "BOOT_ORDER" in (etc / "ab" / "boot.cmd").read_text()
+    and "zImage" in (etc / "ab" / "boot.cmd").read_text()
+    and "bootz" in (etc / "ab" / "boot.cmd").read_text()
+    and "booti" not in (etc / "ab" / "boot.cmd").read_text()
+    and "setenv BOOT_A_LEFT 2" in (etc / "ab" / "boot.cmd").read_text(),
     (said, artifacts),
+)
+env_example = (etc / "ab" / "fw_env.config.example").read_text().splitlines()
+check(
+    "  the environment example has no active device line",
+    all(not line or line.startswith("#") for line in env_example),
+    env_example,
 )
 check(
     "  its status says the route and which tools are missing",
@@ -79,10 +90,39 @@ check(
 )
 said = hardening.set_ab("tryboot")
 check(
-    "the Lyra's tryboot writes a boot script with the one-shot register",
-    said.get("id") == "harden.ab.tryboot.lyra" and "itest.l" in (etc / "ab" / "boot.cmd").read_text(),
+    "the Lyra's tryboot waits until a spare register is recorded",
+    said.get("id") == "harden.ab.tryboot.lyra.waiting" and not (etc / "ab" / "boot.cmd").exists(),
     said,
 )
+try:
+    hardening.set_tryboot_reg("0xff910200")
+    check("  U-Boot's own boot-mode register is refused", False)
+except Refused as exc:
+    check("  U-Boot's own boot-mode register is refused", exc.message["id"] == "harden.ab.reg.invalid")
+try:
+    hardening.set_tryboot_reg("0x0")
+    check("  address zero is refused", False)
+except Refused as exc:
+    check("  address zero is refused", exc.message["id"] == "harden.ab.reg.invalid")
+hardening.set_tryboot_reg("0xff910208")
+said = hardening.set_default("B")
+check(
+    "  the default slot is written where the boot script reads it",
+    said.get("id") == "harden.ab.default.set" and "ab_default=B" in (boot / "armbianEnv.txt").read_text(),
+    said,
+)
+said = hardening.set_ab("tryboot")
+check(
+    "  with a spare register, the boot script uses zImage/bootz and the one-shot flag",
+    said.get("id") == "harden.ab.tryboot.lyra"
+    and "itest.l *0xff910208" in (etc / "ab" / "boot.cmd").read_text()
+    and "zImage" in (etc / "ab" / "boot.cmd").read_text()
+    and "bootz" in (etc / "ab" / "boot.cmd").read_text()
+    and "booti" not in (etc / "ab" / "boot.cmd").read_text(),
+    said,
+)
+(dt / "model").write_bytes(b"Rockchip RK3588 EVB\0")
+check("a Rockchip board that is not a Lyra is not offered the Lyra boot script", hardening.board() == "other")
 (dt / "model").write_bytes(b"Raspberry Pi 3 Model B Plus Rev 1.3\0")
 hardening.set_ab("tryboot")
 check(
@@ -137,6 +177,14 @@ check(
 check(
     "a Box doctor check adds the two findings",
     {f["id"] for f in health.check_hardening()} == {"hardening-filesystem", "hardening-ab"},
+)
+from irate_box.hub import server
+
+choices = [o["choice"] for g in health.card_groups() + health.hardening_groups() for o in g["options"]]
+check(
+    "every choice the page offers is accepted by the hub's health check",
+    all(server.HEALTH_CHOICE_RE.match(c) for c in choices),
+    [c for c in choices if not server.HEALTH_CHOICE_RE.match(c)],
 )
 
 print(f"failures: {fails}")
