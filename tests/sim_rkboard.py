@@ -195,7 +195,7 @@ except Refused as exc:
         "  a non-blank flash is not erased without the confirmation", exc.message["id"] == "rkboard.erase.unconfirmed"
     )
 ran.clear()
-said = hub_control.ACTIONS["rk-erase"]({"action": "rk-erase", "loader": None, "confirm": read["args"]["token"]})
+said = hub_control.ACTIONS["rk-erase"]({"action": "rk-erase", "loader": None, "confirm": read["token"]})
 check(
     "Loader mode: read, confirmed, erased (ef) and reset (rd), no loader sent",
     ("rkdeveloptool", "ef") in ran
