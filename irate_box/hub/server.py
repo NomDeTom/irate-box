@@ -33,6 +33,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 from irate_box import confine, durable, finding
+from irate_box.choices import CHOICE_RE as HEALTH_CHOICE_RE
 from irate_box.hub import (
     access,
     accounts,
@@ -2712,23 +2713,7 @@ def security_snapshot():
 HEALTH_STATE = CONTROL_DIR / "health.json"
 HOUSECALL_STATE = CONTROL_DIR / "housecall.json"
 INSTALL_LOG_DIR = Path(os.environ.get("HUB_LOG_DIR", "/var/log/irate-box"))
-HEALTH_CHOICE_RE = re.compile(
-    r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
-    r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
-    r"|^(kiwix-rebuild|kiwix-off|rerun-install|rerun-install-port-80|net-scan|rtc-find|rtc-look|rtc-save|rtc-remove)$"
-    r"|^crashwatch-(snapshots|panic|watchdog):(on|off)$"
-    r"|^clock-set:\d{10}$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
-    r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})(:(gps|local|pool|module)(,(gps|local|pool|module)){0,3})?$|^clock-undo$"
-    r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
-    r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
-    r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
-    r"|^rfkill:(wifi|bluetooth):(on|off|leave)$|^rfkill-apply$"
-    r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
-    r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
-    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off)|filesystem:(ext4|btrfs|f2fs|btrfs[+]f2fs)|ab:(off|tryboot|uboot))$"
-    r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
-    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$"
-)
+
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
 HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
 # Busy spells logged, so that patterns in false alarms can be seen:
