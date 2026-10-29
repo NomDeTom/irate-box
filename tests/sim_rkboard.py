@@ -39,24 +39,33 @@ def check(name, cond, info=""):
 
 
 def plug(path, mode, serial="b57290249a9b3206"):
-    """A Rockchip device at this USB path, in this mode, as sysfs shows it."""
+    """A Rockchip device at this USB path, in this mode, as sysfs shows it. "spl" is the RK3506B's SPL loader sent
+    from Maskrom, as a Lyra Zero W showed it on 2026-10-29: USB 2.00 like the boot ROM, but named. The boot ROM has
+    no names at all, so sysfs has no manufacturer, product or serial file for it."""
     dev = USB / path
     real_shutil.rmtree(dev, ignore_errors=True)
     dev.mkdir()
-    pid, product, version, iface = {
-        "system": ("0013", "rk3xxx", " 2.00", ("ff", "42", "01")),
-        "loader": ("350f", "USB download gadget", " 2.01", ("ff", "06", "05")),
-        "maskrom": ("350f", "", " 2.00", ("ff", "06", "05")),
-        "other": ("0006", "rk3xxx", " 2.00", ("08", "06", "50")),
+    pid, manufacturer, product, version, iface = {
+        "system": ("0013", "rockchip", "rk3xxx", " 2.00", ("ff", "42", "01")),
+        "loader": ("350f", "", "USB download gadget", " 2.01", ("ff", "06", "05")),
+        "spl": ("350f", "RockChip", "USB-MSC", " 2.00", ("ff", "06", "05")),
+        "maskrom": ("350f", None, None, " 2.00", ("ff", "06", "05")),
+        "other": ("0006", "", "rk3xxx", " 2.00", ("08", "06", "50")),
     }[mode]
+    if mode == "spl":
+        serial = "rockchip"
+    elif mode == "maskrom":
+        serial = None
     for f, v in {
         "idVendor": "2207",
         "idProduct": pid,
+        "manufacturer": manufacturer,
         "product": product,
         "version": version,
         "serial": serial,
     }.items():
-        (dev / f).write_text(v + "\n")
+        if v:
+            (dev / f).write_text(v + "\n")
     i = dev / f"{path}:1.0"
     i.mkdir()
     for f, v in zip(("bInterfaceClass", "bInterfaceSubClass", "bInterfaceProtocol"), iface, strict=True):
@@ -82,7 +91,7 @@ def fake_run(*cmd, timeout=600):
     if cmd[0] == "adb" and cmd[-2:] == ("reboot", "loader"):
         plug("1-1.2", "loader")
     if cmd[:2] == ("rkdeveloptool", "db"):
-        plug("1-1.2", "loader")
+        plug("1-1.2", "spl")  # as the real RK3506B loader comes up: still USB 2.00, but named
     if cmd[:2] == ("rkdeveloptool", "rfi"):
         out = f"Flash Info:\r\n\tManufacturer: SAMSUNG, value=00\r\n\tFlash Size: {shows['mb']} MB\r\n\tFlash Size: {shows['sectors']} Sectors\r\n"
         return subprocess.CompletedProcess(cmd, 0, out, "")
@@ -127,6 +136,14 @@ for mode in ("system", "loader", "maskrom", "other"):
     plug("1-1.2", mode)
     found = rkboard.boards()
     check(f"found in {mode} mode", [b["mode"] for b in found] == [mode], found)
+unplug_all()
+plug("1-1.2", "spl")
+found = rkboard.boards()
+check(
+    "the RK3506B's SPL loader sent from Maskrom (USB 2.00, but named): Loader mode, not Maskrom",
+    [b["mode"] for b in found] == ["loader"],
+    found,
+)
 unplug_all()
 (USB / "1-1.1").mkdir()
 (USB / "1-1.1" / "idVendor").write_text("a69c\n")
