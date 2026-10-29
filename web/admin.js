@@ -5866,6 +5866,16 @@ const cardSystem = doctorSection({
   groupsOf: (st) => st.card_groups,
   empty: "Shown after the Box doctor's next check.",
 });
+const hardeningSettings = doctorSection({
+  id: "hardening-settings",
+  label: "Hardening",
+  prefix: "harden",
+  groupsEl: document.getElementById("hardening-groups"),
+  footEl: document.getElementById("hardening-foot"),
+  noteEl: document.getElementById("hardening-note"),
+  groupsOf: (st) => st.hardening_groups,
+  empty: "Shown after the Box doctor's next check.",
+});
 document
   .getElementById("health-search")
   .addEventListener("input", () => hlLast && renderHealth(hlLast));
@@ -6124,6 +6134,7 @@ function renderHealth(data) {
   renderGlance(data, rep);
   doctorOwn.render(data, rep);
   cardSystem.render(data, rep);
+  hardeningSettings.render(data, rep);
   const all = rep
     ? [...rep.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
     : [];
