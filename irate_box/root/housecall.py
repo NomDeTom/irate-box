@@ -27,6 +27,8 @@ debugfs lists and streams each file (a whole-disk filesystem works too). A card 
 blkid and debugfs read it read-only, and it is refused while mounted or if it is the box's own disk.
 """
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -34,6 +36,7 @@ import re
 import stat
 import subprocess  # Fixed argv, trusted executables, no shell. # nosec B404
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -105,11 +108,15 @@ def _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references, nby
             "housecall.why-short", "It read back short: {got} of its {size} bytes.", got=nbytes, size=size
         )
     wanted = _normalise_reference(references.get(path))
-    if wanted and any(digest.get(algo) == value for algo, value in wanted.items()):
+    if wanted and any(digest.get(algo) == value for algo, value in wanted.items() if algo != "manifest"):
         return "genuine", None
     if blocks and ff_blocks == blocks:
         return "damaged", M("housecall.why-ff", "It reads back whole as 0xFF.")
     if wanted:
+        if wanted.get("manifest"):
+            return "changed", M(
+                "housecall.why-changed", "It changed since Box doctor last copied it. That is a change, not damage."
+            )
         return "damaged", M("housecall.why-reference", "It differs from its reference.")
     if blocks and zero_blocks == blocks:
         return "suspect", M("housecall.why-zero", "It reads back whole as zero, and there is no reference.")
@@ -134,7 +141,7 @@ def _normalise_reference(value):
     if isinstance(value, str):
         return {"sha256": value}
     if isinstance(value, dict):
-        return {k: v for k, v in value.items() if k in ("sha256", "md5", "git") and isinstance(v, str)}
+        return {k: v for k, v in value.items() if k in ("sha256", "md5", "git", "manifest") and isinstance(v, str)}
     return {}
 
 
@@ -366,13 +373,29 @@ def _files_finding(records, where):
     """One finding for a filesystem's files: the damaged and suspect ones named, the rest counted."""
     damaged = [r for r in records if r["verdict"] == "damaged"]
     suspect = [r for r in records if r["verdict"] == "suspect"]
+    changed = [r for r in records if r["verdict"] == "changed"]
     genuine = [r for r in records if r["verdict"] == "genuine"]
     counts = {
         "damaged": len(damaged),
         "suspect": len(suspect),
+        "changed": len(changed),
         "genuine": len(genuine),
         "unknown": len([r for r in records if r["verdict"] == "unknown"]),
     }
+    notes = []
+    if suspect:
+        notes.append(M("housecall.files.suspect", "{n} more read as all zero.", n=len(suspect)))
+    if changed:
+        notes.append(
+            M(
+                "housecall.files.changed",
+                {
+                    "one": "{n} changed since Box doctor last copied it: a change, not damage.",
+                    "other": "{n} changed since Box doctor last copied it: changes, not damage.",
+                },
+                n=len(changed),
+            )
+        )
     evidence = [
         f"{r['path']}: {r['verdict']}" + (f" ({render(r['reason'])})" if r.get("reason") else "")
         for r in (damaged + suspect)[:60]
@@ -422,7 +445,7 @@ def _files_finding(records, where):
                 "Replace the card, or restore the named files from a copy. Box doctor's boot check mends the "
                 "settings and keys it knows.",
             ),
-            notes=[] if not suspect else [M("housecall.files.suspect", "{n} more read as all zero.", n=len(suspect))],
+            notes=notes,
             evidence=evidence,
             actions=acts,
             counts=counts,
@@ -440,8 +463,27 @@ def _files_finding(records, where):
                 },
                 n=len(suspect),
             ),
-            notes=[M("housecall.files.suspect.why", "An empty or zeroed file can be genuine.")],
+            notes=[M("housecall.files.suspect.why", "An empty or zeroed file can be genuine."), *notes[1:]],
             evidence=evidence,
+            counts=counts,
+        )
+    if changed:
+        return finding(
+            f"housecall-files:{where}",
+            M("housecall.files.title", "Files on {name}", name=where),
+            "warn",
+            M(
+                "housecall.files.changed.only",
+                {
+                    "one": "{n} file changed since Box doctor last copied it. It is not damage.",
+                    "other": "{n} files changed since Box doctor last copied it. They are not damage.",
+                },
+                n=len(changed),
+            ),
+            notes=[
+                M("housecall.files.changed.why", "The next copy takes the new contents. Nothing is restored over it.")
+            ],
+            evidence=[f"{r['path']}: changed" for r in changed[:60]],
             counts=counts,
         )
     return finding(
@@ -632,21 +674,22 @@ def _free_bytes(folder):
 
 
 def copy_device(device, image, on_own_card=False, progress=None):
-    """The card imaged first, read only: `dd` with noerror (a read error is zero-filled and counted), sync and
-    fsync. The image is written as <image>.part and renamed only when its size matches the card's, so a stopped or
-    failed copy never looks like a card. It is refused on this box's own card unless the owner says so."""
+    """The card imaged first, read only. dd reads 4 KiB at a time with noerror and sync (a bad sector is zero-filled,
+    not the whole 4 MiB block), and the image is trimmed to the card's exact size: a card is rarely a whole number of
+    blocks. It is written as <image>.part and renamed only when whole, so a stopped or failed copy never looks like a
+    card. It is refused on this box's own card unless the owner says so."""
     device, image = Path(device).resolve(), Path(image).resolve()
     if not image.parent.is_dir():
         raise Refused(
             M("housecall.image-first.no-folder", "The folder {folder} is not there.", folder=str(image.parent))
         )
     if image.exists():
-        raise Refused(M("housecall.image-first.exists", "{path} is already there. Choose a new name.", path=str(image)))
+        raise Refused(M("housecall.image-first.exists", "{path} is already there. Select a new name.", path=str(image)))
     if _destination_on_card(image) and not on_own_card:
         raise Refused(
             M(
                 "housecall.image-first.own-card",
-                "That image would be written on this box's own card. Tick that it may be, or choose a USB drive.",
+                "That image would be written on this box's own card. Tick that it can be, or select a USB drive.",
             )
         )
     size = _source_size(device)
@@ -655,14 +698,14 @@ def copy_device(device, image, on_own_card=False, progress=None):
         raise Refused(
             M(
                 "housecall.image-first.space",
-                "The image needs {need} MB, and {free} MB is free there. Choose another folder.",
+                "The image needs {need} MB, and {free} MB is free there. Select another folder.",
                 need=size >> 20,
                 free=max(free, 0) >> 20,
             )
         )
     part = image.with_name(image.name + ".part")
     part.unlink(missing_ok=True)
-    args = ["dd", f"if={device}", f"of={part}", "bs=4M"]
+    args = ["dd", f"if={device}", f"of={part}", "bs=4096"]
     try:
         if stat.S_ISBLK(device.stat().st_mode):
             args += list(DIRECT)
@@ -671,18 +714,41 @@ def copy_device(device, image, on_own_card=False, progress=None):
         args += ["conv=noerror,sync,fsync", "status=none"]
     if progress:
         progress(0, size)
+    stop = threading.Event()
+
+    def watch():
+        while not stop.wait(1):
+            try:
+                done = part.stat().st_size
+            except OSError:
+                continue
+            progress(min(done, size), size)
+
+    watcher = threading.Thread(target=watch, daemon=True) if progress else None
+    if watcher:
+        watcher.start()
     said = run(*args, timeout=6 * 3600)
-    if said.returncode or not part.exists() or part.stat().st_size != size:
+    stop.set()
+    if watcher:
+        watcher.join(timeout=2)
+    errors = (said.stderr or "").count("error reading")
+    if (said.returncode and not errors) or not part.exists() or part.stat().st_size < size:
         part.unlink(missing_ok=True)
         raise Refused(
             M(
                 "housecall.image-first.failed",
                 "The card was not imaged: {why}",
-                why=(_text(said)[-200:] or "the copy stopped or wrote a different size"),
+                why=(_text(said)[-200:] or "the copy stopped or wrote less than the card"),
             )
         )
+    if part.stat().st_size > size:
+        os.truncate(part, size)
+    if part.stat().st_size != size:
+        part.unlink(missing_ok=True)
+        raise Refused(M("housecall.image-first.failed", "The card was not imaged: {why}", why="the size is wrong"))
     os.replace(part, image)
-    errors = (said.stderr or "").count("error reading")
+    if progress:
+        progress(size, size)
     return M(
         "housecall.image-first.done",
         "The card was imaged to {image} ({mb} MB){errors} before it was read.",
@@ -739,12 +805,15 @@ def _own_disk(path):
     return Path(path).name == disk or _parent_disk(path) == disk
 
 
-def examine_root(root, references=None):
+def examine_root(root, references=None, manifest=None):
     """A folder the owner points at, read past the cache: the same per-file verdicts, paths from that folder."""
     root = Path(root)
     if not root.is_dir():
         raise Refused(M("housecall.not-folder", "{path} is not a folder.", path=str(root)))
-    records = plan_restore(scan_dir(root, references), root)
+    manifests = manifest_entries(manifest) if manifest else None
+    if manifest:
+        references = merge_references(references, load_manifest(manifest))
+    records = plan_restore(scan_dir(root, references), root, manifests=manifests)
     findings = [
         finding(
             "housecall-target",
@@ -760,10 +829,12 @@ def examine_root(root, references=None):
     return report
 
 
-def examine_this_card(references=None, roots=None):
+def examine_this_card(references=None, roots=None, manifest=None):
     """This box's own files on the SD card (the plan's step 4): the folders the box writes and systemd's, card
     files only, the hub's large folders left out. A file on the NAND (nand-logs' state) is left out and said to be
     the NAND's, whose UBIFS checks it."""
+    if manifest:
+        references = merge_references(references, load_manifest(manifest))
     folders = [Path(root) for root in (roots or CARD_FOLDERS)]
     large = [STATE / name for name in LARGE if (STATE / name).is_dir()]
     records, skipped = [], []
@@ -780,7 +851,7 @@ def examine_this_card(references=None, roots=None):
                 names=", ".join(p.name for p in large),
             )
         )
-    records = plan_restore(records, "/")
+    records = plan_restore(records, "/", manifests=manifest_entries(manifest) if manifest else None)
     findings = [
         finding(
             "housecall-target",
@@ -869,11 +940,12 @@ def _report(target, findings, records, before):
         "at": time.time(),
         "target": str(target) if target else "this box's card",
         "findings": findings,
-        "files": [r for r in records if r["verdict"] in ("damaged", "suspect", "genuine")],
+        "files": [r for r in records if r["verdict"] in ("damaged", "suspect", "changed", "genuine")],
         "counts": {
             "files": len(records),
             "damaged": len(damaged),
             "suspect": len(suspect),
+            "changed": len([r for r in records if r["verdict"] == "changed"]),
             "genuine": len([r for r in records if r["verdict"] == "genuine"]),
             "unknown": len([r for r in records if r["verdict"] == "unknown"]),
         },
@@ -1006,7 +1078,7 @@ def load_manifest(path=None):
     for key, value in manifest_entries(path).items():
         digest = value.get("sha256")
         if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
-            out[key] = {"sha256": digest}
+            out[key] = {"sha256": digest, "manifest": "1"}
     return out
 
 
@@ -1123,12 +1195,20 @@ def references_from_target(path, device=False, use_dpkg=False, use_tree=False, r
 
 
 def _target_for(path, root):
-    """A report path as the file to write, under root (/ for this box's own files)."""
+    """A report path as the file to write, under root (/ for this box's own files). Another card is untrusted: a
+    folder on the way may be a symlink out of it, so the parent is resolved and must stay inside the root."""
     base = Path(root or "/")
     relative = str(path).lstrip("/")
     if ".." in Path(relative).parts:
         raise Refused(M("housecall.restore.path", "That path is not inside what was examined."))
-    return Path(path) if str(base) == "/" else base / relative
+    if str(base) == "/":
+        return Path(path)
+    root_resolved = base.resolve()
+    target = root_resolved / relative
+    parent = target.parent.resolve()
+    if parent != root_resolved and root_resolved not in parent.parents:
+        raise Refused(M("housecall.restore.outside", "That path leads outside what was examined."))
+    return target
 
 
 def _copy_source(entry):
@@ -1182,8 +1262,11 @@ def _candidate(path, root, manifests, allow_package, repo=None):
 
 
 def plan_restore(records, root, manifests=None, repo=None):
-    """Add a way back to every damaged file that has one, so the finding can offer it and the page can ask."""
-    manifests = manifest_entries() if manifests is None else manifests
+    """Add a way back to every damaged file that has one, so the finding can offer it and the page can ask. Box
+    doctor's default manifest is this box's, so it is used only for this box's own files (/): another card's must
+    give its own (--manifest)."""
+    if manifests is None:
+        manifests = manifest_entries() if str(Path(root or "/")) == "/" else {}
     allow_package = str(Path(root or "/")) == "/"
     for record in records:
         if record.get("verdict") != "damaged":
@@ -1227,7 +1310,7 @@ def restore_file(path, root, restore_plan):
         )
     if kind == "package":
         return restore_mod.from_package(target)
-    raise Refused(M("housecall.restore.kind", "Choose how the file comes back."))
+    raise Refused(M("housecall.restore.kind", "Select how the file comes back."))
 
 
 def restore_from_report(path, kind=None):
@@ -1265,47 +1348,331 @@ def restore_from_report(path, kind=None):
     return said
 
 
-def record_card(card, action, said):
-    """A result from the Rockchip boards page (rkcard.py) as a finding here, so a card checked there is in this
-    doctor's report too. The report's files and counts, if it had any, are kept."""
+PEERS = ROOT_STATE / "peers.json"
+PEER_DIR = ROOT_STATE / "peers"
+PEER_KEY = Path(os.environ.get("HUB_PEER_KEY", "/root/.ssh/id_ed25519"))
+PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
+HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
+USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+PEER_COMMAND = (
+    "for f in /var/lib/hub/control/health.json /var/lib/hub/control/security-audit.json "
+    '/var/lib/hub/control/doctor.json /opt/irate-box/VERSION; do printf "\n=== %s\n" "$f"; '
+    'cat "$f" 2>/dev/null; done'
+)
+PEER_DOCTORS = (
+    ("box-doctor", "/var/lib/hub/control/health.json"),
+    ("security-doctor", "/var/lib/hub/control/security-audit.json"),
+    ("updates-doctor", "/var/lib/hub/control/doctor.json"),
+)
+LOCAL_VERSION = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box")) / "VERSION"
+
+
+def load_peers():
     try:
-        report = json.loads(REPORT.read_text())
+        data = json.loads(PEERS.read_text())
     except (OSError, ValueError):
-        report = {}
-    if not isinstance(report, dict) or not isinstance(report.get("findings"), list):
-        report = {"at": time.time(), "target": "cards in a reader", "findings": [], "files": [], "counts": {}}
-    fid = f"housecall-card:{card}:{action}"
-    report["findings"] = [f for f in report["findings"] if f.get("id") != fid]
-    if action == "genuine":
-        status = "problem" if (isinstance(said, dict) and said.get("id") == "rkcard.fake") else "ok"
-    elif action == "check":
-        words = render(said).lower()
-        status = "warn" if ("damaged" in words or "errors found" in words or "not checked" in words) else "ok"
-    else:
-        status = "ok"
-    report["findings"].append(
-        finding(
-            fid,
-            M("housecall.card.title", "Card {name}", name=card),
-            status,
-            said,
-            notes=[
-                M("housecall.card.rockchip", "From the Rockchip boards page, where the card in the reader is handled.")
-            ],
-            evidence=[f"The {action} of the card {card}"],
+        return {}
+    peers = data.get("peers") if isinstance(data, dict) else None
+    return peers if isinstance(peers, dict) else {}
+
+
+def _valid_peer(name, host, user, port):
+    if not PEER_RE.match(name or ""):
+        raise Refused(M("housecall.peer.name", "Give the other box a short name: letters, digits, dots, dashes."))
+    if not HOST_RE.match(host or "") or host.startswith("-"):
+        raise Refused(M("housecall.peer.host", "Give its address: a host name or an IP address."))
+    if not USER_RE.match(user or "") or user.startswith("-"):
+        raise Refused(
+            M("housecall.peer.user", "Give the user this box signs in as: lower-case letters, digits, _ and -.")
         )
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        raise Refused(M("housecall.peer.port", "Give its SSH port, 1 to 65535."))
+
+
+def pair_peer(name, host, user="root", port=22):
+    """One pairing, made once: remember the box, and its SSH host key as ssh-keyscan gives it now. The owner then
+    puts this box's public key on the other box. No password is stored."""
+    _valid_peer(name, host, user, port)
+    peers = load_peers()
+    if name in peers and (peers[name].get("host"), peers[name].get("user"), peers[name].get("port")) != (
+        host,
+        user,
+        port,
+    ):
+        raise Refused(
+            M(
+                "housecall.peer.exists",
+                "{name} is already paired with {host}. Select another name.",
+                name=name,
+                host=peers[name].get("host"),
+            )
+        )
+    if not PEER_KEY.is_file():
+        made = run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(PEER_KEY), timeout=120)
+        if made.returncode or not PEER_KEY.is_file():
+            raise Refused(
+                M(
+                    "housecall.peer.no-key",
+                    "This box has no SSH key, and one could not be made: {why}",
+                    why=_text(made)[-200:],
+                )
+            )
+    PEER_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    known = PEER_DIR / f"{name}.known_hosts"
+    scan = run("ssh-keyscan", "-p", str(port), host, timeout=60)
+    if scan.returncode or "ssh-" not in (scan.stdout or ""):
+        raise Refused(
+            M("housecall.peer.scan", "The other box's SSH host key could not be read: {why}", why=_text(scan)[-200:])
+        )
+    safeio.write_checked(known, scan.stdout, 0o600)
+    peers[name] = {"host": host, "user": user, "port": port, "known_hosts": str(known), "key": str(PEER_KEY)}
+    safeio.write_checked(PEERS, json.dumps({"version": 1, "peers": peers}, indent=1, sort_keys=True), 0o644)
+    public = run("ssh-keygen", "-y", "-f", str(PEER_KEY), timeout=60)
+    pub = (public.stdout or "").strip()
+    return M(
+        "housecall.peer.paired",
+        "{name} is paired at {user}@{host}. Put this box's public key ({key}) in its authorized_keys for {user}, "
+        "then examine it. Nothing else is shared.",
+        name=name,
+        user=user,
+        host=host,
+        key=str(PEER_KEY) + ".pub" if pub else str(PEER_KEY),
     )
-    report["at"] = time.time()
-    write_report(report)
+
+
+def _peer_reports(text):
+    """The other box's reports, split by the fixed command's === path lines: {path: text}."""
+    out, current, lines = {}, None, []
+    for line in (text or "").splitlines():
+        if line.startswith("=== "):
+            if current is not None:
+                out[current] = "\n".join(lines).strip()
+            current, lines = line[4:].strip(), []
+        elif current is not None:
+            lines.append(line)
+    if current is not None:
+        out[current] = "\n".join(lines).strip()
+    return out
+
+
+def _peer_doctor(label, path, reports):
+    """One doctor on the other box, from its report: its problems and warnings, not its whole report."""
+    raw = reports.get(path) or ""
+    try:
+        data = json.loads(raw) if raw else None
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+        return finding(
+            f"housecall-peer:{label}",
+            M("housecall.peer.doctor", "{doctor} on the other box", doctor=label),
+            "warn",
+            M("housecall.peer.no-report", "There is no report from its {doctor}.", doctor=label),
+        )
+    found = data["findings"]
+    problems = [f for f in found if f.get("status") == "problem"]
+    warns = [f for f in found if f.get("status") == "warn"]
+    status = "problem" if problems else ("warn" if warns else "ok")
+    if problems:
+        summary = M(
+            "housecall.peer.problems",
+            {"one": "{n} problem, and {w} warning(s).", "other": "{n} problems, and {w} warning(s)."},
+            n=len(problems),
+            w=len(warns),
+        )
+    elif warns:
+        summary = M(
+            "housecall.peer.warnings",
+            {"one": "No problems, {w} warning.", "other": "No problems, {w} warnings."},
+            n=len(warns),
+            w=len(warns),
+        )
+    else:
+        summary = M("housecall.peer.clean", "No problems, no warnings.")
+    return finding(
+        f"housecall-peer:{label}",
+        M("housecall.peer.doctor", "{doctor} on the other box", doctor=label),
+        status,
+        summary,
+        evidence=[f"{f.get('id')}: {f.get('status')}" for f in (problems + warns)[:20]],
+    )
+
+
+def peer_examine(name):
+    """Another paired box, read only over SSH: its three doctors' reports and its version, as findings. An
+    unreachable box is a finding, not an error."""
+    peers = load_peers()
+    peer = peers.get(name)
+    if not peer:
+        raise Refused(M("housecall.peer.unknown", "No box is paired as {name}. Pair it first.", name=name))
+    said = run(
+        "ssh",
+        "-i",
+        str(peer.get("key") or PEER_KEY),
+        "-p",
+        str(peer.get("port") or 22),
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        f"UserKnownHostsFile={peer.get('known_hosts') or PEER_DIR / (name + '.known_hosts')}",
+        "-o",
+        "ConnectTimeout=8",
+        f"{peer.get('user') or 'root'}@{peer.get('host')}",
+        PEER_COMMAND,
+        timeout=120,
+    )
+    if said.returncode:
+        report = _report(
+            None,
+            [
+                finding(
+                    "housecall-peer",
+                    M("housecall.peer.title", "Another box"),
+                    "problem",
+                    M(
+                        "housecall.peer.unreachable",
+                        "{name} could not be read: {why}",
+                        name=name,
+                        why=_text(said)[-200:],
+                    ),
+                )
+            ],
+            [],
+            None,
+        )
+        report["target"] = f"the box {name}"
+        return report
+    reports = _peer_reports(said.stdout)
+    remote_version = (reports.get("/opt/irate-box/VERSION") or "").split()
+    try:
+        local_version = LOCAL_VERSION.read_text().split()[0]
+    except (OSError, IndexError):
+        local_version = ""
+    found = [
+        finding(
+            "housecall-peer",
+            M("housecall.peer.title", "Another box"),
+            "ok",
+            M(
+                "housecall.peer.reached",
+                "{name} was read, read only: its three doctors and its version.",
+                name=name,
+            ),
+            evidence=[f"{peer.get('user') or 'root'}@{peer.get('host')}"],
+        )
+    ]
+    if remote_version:
+        status = "ok" if remote_version[0] == local_version else "warn"
+        found.append(
+            finding(
+                "housecall-peer-version",
+                M("housecall.peer.version", "Its irate-box"),
+                status,
+                M(
+                    "housecall.peer.version.said",
+                    "It runs {remote}. This box runs {local}.",
+                    remote=remote_version[0],
+                    local=local_version or "an unknown version",
+                ),
+            )
+        )
+    else:
+        found.append(
+            finding(
+                "housecall-peer-version",
+                M("housecall.peer.version", "Its irate-box"),
+                "warn",
+                M("housecall.peer.version.missing", "Its irate-box version was not read."),
+            )
+        )
+    found += [_peer_doctor(label, path, reports) for label, path in PEER_DOCTORS]
+    report = _report(None, found, [], None)
+    report["target"] = f"the box {name}"
     return report
 
 
-def write_report(report, path=REPORT):
+def record_card(card, action, said):
+    """A result from the Rockchip boards page (rkcard.py) as a finding here, so a card checked there is in this
+    doctor's report too. The report's files and counts, if it had any, are kept."""
+    with _report_lock(REPORT):
+        try:
+            report = json.loads(REPORT.read_text())
+        except (OSError, ValueError):
+            report = {}
+        if not isinstance(report, dict) or not isinstance(report.get("findings"), list):
+            report = {"at": time.time(), "target": "cards in a reader", "findings": [], "files": [], "counts": {}}
+        fid = f"housecall-card:{card}:{action}"
+        report["findings"] = [f for f in report["findings"] if f.get("id") != fid]
+        status = said.get("status") if isinstance(said, dict) else None
+        if action == "genuine" and isinstance(said, dict) and said.get("id") == "rkcard.fake":
+            status = "problem"
+        status = status if status in ("ok", "warn", "problem") else "ok"
+        report["findings"].append(
+            finding(
+                fid,
+                M("housecall.card.title", "Card {name}", name=card),
+                status,
+                said,
+                notes=[
+                    M(
+                        "housecall.card.rockchip",
+                        "From the Rockchip boards page, where the card in the reader is handled.",
+                    )
+                ],
+                evidence=[f"The {action} of the card {card}"],
+            )
+        )
+        report["at"] = time.time()
+        _write_report(report)
+        return report
+
+
+@contextlib.contextmanager
+def _report_lock(path):
+    """One writer at a time for the report: an examination ending and a card result must not overwrite each
+    other. A lock that cannot be taken is not fatal: the write still happens."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(path) + ".lock", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+    except OSError:
+        yield
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _write_report(report, path=REPORT):
     parent = Path(path).parent
     parent.mkdir(parents=True, exist_ok=True)
     safeio.mkdir(parent, mode=0o755)
     safeio.write(path, json.dumps(report, indent=2))
     return report
+
+
+def write_report(report, path=REPORT):
+    """Write the report, keeping any Rockchip card result already in it: a card checked while an examination runs
+    is not lost when that examination ends."""
+    with _report_lock(path):
+        try:
+            old = json.loads(Path(path).read_text())
+        except (OSError, ValueError):
+            old = {}
+        if isinstance(old, dict) and isinstance(report, dict) and isinstance(report.get("findings"), list):
+            cards = [
+                f
+                for f in old.get("findings") or []
+                if isinstance(f, dict) and str(f.get("id", "")).startswith("housecall-card:")
+            ]
+            have = {f.get("id") for f in report["findings"] if isinstance(f, dict)}
+            report["findings"] += [f for f in cards if f.get("id") not in have]
+        return _write_report(report, path)
 
 
 def main(argv):
@@ -1324,7 +1691,15 @@ def main(argv):
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("--image", "--device", "--root", "--reference", "--image-first", "--manifest") and i + 1 < len(argv):
+        if arg in (
+            "--image",
+            "--device",
+            "--root",
+            "--reference",
+            "--image-first",
+            "--manifest",
+            "--peer",
+        ) and i + 1 < len(argv):
             i += 1
             if arg == "--reference":
                 references = load_references(argv[i])
@@ -1332,6 +1707,8 @@ def main(argv):
                 manifest = argv[i]
             elif arg == "--image-first":
                 image_first = argv[i]
+            elif arg == "--peer":
+                kind, target = "peer", argv[i]
             else:
                 kind, target = arg[2:], argv[i]
         elif arg == "--dpkg":
@@ -1348,8 +1725,8 @@ def main(argv):
         else:
             sys.exit(
                 "usage: housecall.py [--image PATH | --device PATH [--image-first PATH [--on-own-card]] | "
-                "--root PATH | --this-card] [--reference PATH] [--manifest PATH] [--dpkg] [--git-tree] "
-                "[--json | --summary]"
+                "--root PATH | --this-card | --peer NAME] [--reference PATH] [--manifest PATH] [--dpkg] "
+                "[--git-tree] [--json | --summary]"
             )
         i += 1
     if image_first and kind != "device":
@@ -1362,7 +1739,7 @@ def main(argv):
                     f"the card {target}",
                     M(
                         "housecall.image-first.running",
-                        "The card is being imaged to {image} first; it is only read. The examination runs on the image.",
+                        "The card is being imaged to {image} first. It is only read. The examination runs on the image.",
                         image=image_first,
                     ),
                 )
@@ -1392,11 +1769,13 @@ def main(argv):
         elif kind == "device":
             report = examine_device(target, references)
         elif kind == "root":
-            report = examine_root(target, references)
+            report = examine_root(target, references, manifest=manifest or None)
         elif kind == "this-card":
-            report = examine_this_card(references)
+            report = examine_this_card(references, manifest=manifest or None)
+        elif kind == "peer":
+            report = peer_examine(target)
         else:
-            sys.exit("choose --image, --device, --root or --this-card")
+            sys.exit("choose --image, --device, --root, --this-card or --peer")
         if prepared:
             report["source_device"] = str(Path(prepared[0]).resolve())
             report["image"] = str(Path(prepared[1]).resolve())

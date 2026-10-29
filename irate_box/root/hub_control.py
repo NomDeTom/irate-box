@@ -6127,9 +6127,11 @@ def housecall_scan(req):
 
     kind = str(req.get("target") or "")
     path = str(req.get("path") or "")
-    if kind not in ("image", "device", "root", "this-card"):
+    if kind not in ("image", "device", "root", "this-card", "peer"):
         raise Refused(M("control.housecall.target", "Select what the doctor examines."))
-    if kind != "this-card" and (not path or "\0" in path or len(path) > 4096):
+    if kind == "peer" and (not path or "\0" in path or len(path) > 64):
+        raise Refused(M("control.housecall.peer", "Select a paired box."))
+    if kind not in ("this-card", "peer") and (not path or "\0" in path or len(path) > 4096):
         raise Refused(M("control.housecall.path", "Give the path the doctor examines."))
     reference = str(req.get("reference") or "")
     if "\0" in reference or len(reference) > 4096:
@@ -6145,7 +6147,12 @@ def housecall_scan(req):
     if run("systemctl", "is-active", HOUSECALL_UNIT).stdout.strip() == "active":
         raise Refused(M("control.housecall.running", "The Housecall doctor is already examining. Stop it first."))
     args = [f"{CODE}/irate-box", "housecall"]
-    args += ["--this-card"] if kind == "this-card" else [f"--{kind}", path]
+    if kind == "this-card":
+        args.append("--this-card")
+    elif kind == "peer":
+        args += ["--peer", path]
+    else:
+        args += [f"--{kind}", path]
     manifest = str(req.get("manifest") or "")
     if "\0" in manifest or len(manifest) > 4096:
         raise Refused(M("control.housecall.manifest", "The manifest's path is not valid."))
@@ -6161,7 +6168,15 @@ def housecall_scan(req):
         args.append("--dpkg")
     if req.get("git_tree"):
         args.append("--git-tree")
-    label = "this box's own files" if kind == "this-card" else (f"{path}, imaged first" if image_first else path)
+    label = (
+        "this box's own files"
+        if kind == "this-card"
+        else f"the box {path}"
+        if kind == "peer"
+        else f"{path}, imaged first"
+        if image_first
+        else path
+    )
     housecall.write_report(housecall.running_report(label))
     said = run(
         "systemd-run",
@@ -6187,13 +6202,29 @@ def housecall_scan(req):
     )
 
 
+def housecall_pair(req):
+    """Pair another box once, for the Housecall doctor to read: its address and SSH host key, no password."""
+    from irate_box.root import housecall
+
+    try:
+        port = int(req.get("port") or 22)
+    except (TypeError, ValueError):
+        port = 0
+    return housecall.pair_peer(
+        str(req.get("name") or "").strip(),
+        str(req.get("host") or "").strip(),
+        str(req.get("user") or "root").strip(),
+        port,
+    )
+
+
 def housecall_restore(req):
     """One file from the last report put back, from the copy, tree or package that report named."""
     from irate_box.root import housecall
 
     path = str(req.get("path") or "")
     if not path or "\0" in path or len(path) > 4096:
-        raise Refused(M("control.housecall.restore-path", "Choose a damaged file from the last report."))
+        raise Refused(M("control.housecall.restore-path", "Select a damaged file from the last report."))
     return housecall.restore_from_report(path, str(req.get("kind") or "") or None)
 
 
@@ -7008,10 +7039,14 @@ def _rk_card(req, what):
         said = rkcard.genuine(*card)
     else:
         said = rkcard.flash(*card, str(req.get("image") or ""), str(req.get("sha256") or "").lower())
-    # The result is on the Rockchip page and in the Housecall doctor: the card is what that doctor examines.
+    # The result is on the Rockchip page and in the Housecall doctor: the card is what that doctor examines. A
+    # report that cannot be written does not fail the card action that already succeeded.
     from irate_box.root import housecall
 
-    housecall.record_card(card[0], what, said)
+    try:
+        housecall.record_card(card[0], what, said)
+    except Exception:  # noqa: BLE001 # nosec B110 - the card action is the answer; the doctor's copy is best effort
+        pass
     return said
 
 
@@ -7431,6 +7466,7 @@ ACTIONS = {
     "housecall-scan": housecall_scan,
     "housecall-stop": housecall_stop,
     "housecall-restore": housecall_restore,
+    "housecall-pair": housecall_pair,
     "net-scan": net_scan,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,

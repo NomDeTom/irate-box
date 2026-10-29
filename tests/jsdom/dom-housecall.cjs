@@ -113,6 +113,24 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
       && posted[0].on_own_card === true
       && posted[0].manifest === '/var/lib/irate-box-root/protected/manifest.json',
     posted);
+  // Another box: a paired name, and the one-time pairing form.
+  target.value = 'peer';
+  target.dispatchEvent(new w.Event('change', { bubbles: true }));
+  check('another box: its name asked for, the reference boxes off', path.placeholder === "the other box's name" && d.getElementById('housecall-dpkg').disabled);
+  path.value = 'pi';
+  running = false;
+  done = true;
+  await later(1700);
+  posted.length = 0;
+  d.getElementById('housecall-scan').click();
+  await later(1800);
+  check('  the peer name goes to the root helper', posted.length === 1 && posted[0].target === 'peer' && posted[0].path === 'pi', posted);
+  d.getElementById('housecall-peer-name').value = 'pi';
+  d.getElementById('housecall-peer-host').value = 'box.local';
+  posted.length = 0;
+  d.getElementById('housecall-pair').click();
+  await later(200);
+  check('  pairing sends its name, address, user and port', posted.length === 1 && posted[0].action === 'pair' && posted[0].host === 'box.local' && posted[0].port === 22, posted);
   // A long examination: its running report is shown with Stop, which asks the root helper to stop it.
   target.value = 'image';
   target.dispatchEvent(new w.Event('change', { bubbles: true }));

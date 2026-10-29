@@ -72,6 +72,21 @@ check(
     "a card can be imaged first, and is refused on the box's own card unless allowed",
     "copy_device" in src and "image-first.own-card" in src,
 )
+check(
+    "each damaged file with a way back offers it (copy, git, package)",
+    "plan_restore" in src and "restore_from_report" in src and '"housecall-restore"' in src,
+)
+control_src = (REPO / "irate_box" / "root" / "hub_control.py").read_text()
+page_src = (REPO / "web" / "admin.html").read_text()
+check(
+    "the Rockchip page's card results feed the Housecall doctor",
+    "record_card" in src and "housecall.record_card" in control_src,
+)
+check(
+    "another box is paired once and read over SSH, read only",
+    "pair_peer" in src and "peer_examine" in src and "housecall-pair" in control_src,
+)
+check("  the page offers it, and the pairing", 'id="housecall-pair"' in page_src and 'value="peer"' in page_src)
 
 doctors = (REPO / "docs" / "dev" / "doctors.md").read_text()
 check("the doctors' page counts four", "# The four doctors" in doctors)

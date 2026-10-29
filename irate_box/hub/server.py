@@ -6459,15 +6459,36 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(202, {"id": control_request({"action": "housecall-stop"})})
             return
 
+        if path == "/admin/housecall" and payload.get("action") == "pair":
+            try:
+                port = int(payload.get("port") or 22)
+            except (TypeError, ValueError):
+                port = 0
+            self.send_json(
+                202,
+                {
+                    "id": control_request(
+                        {
+                            "action": "housecall-pair",
+                            "name": str(payload.get("name") or ""),
+                            "host": str(payload.get("host") or ""),
+                            "user": str(payload.get("user") or "root"),
+                            "port": port,
+                        }
+                    )
+                },
+            )
+            return
+
         if path == "/admin/housecall" and payload.get("action") == "restore":
             path_arg = str(payload.get("path") or "")
             kind = str(payload.get("kind") or "")
             if not path_arg or "\0" in path_arg or len(path_arg) > 4096:
                 self.send_json(
-                    400, refused.say(M("hub.housecall.restore-path", "Choose a damaged file from the last report."))
+                    400, refused.say(M("hub.housecall.restore-path", "Select a damaged file from the last report."))
                 )
             elif kind not in ("", "copy", "git", "package"):
-                self.send_json(400, refused.say(M("hub.housecall.restore-kind", "Choose how the file comes back.")))
+                self.send_json(400, refused.say(M("hub.housecall.restore-kind", "Select how the file comes back.")))
             else:
                 self.send_json(
                     202,
@@ -6481,7 +6502,7 @@ class Handler(BaseHTTPRequestHandler):
             reference = str(payload.get("reference") or "")
             image_first = str(payload.get("image_first") or "")
             manifest = str(payload.get("manifest") or "")
-            if target not in ("image", "device", "root", "this-card"):
+            if target not in ("image", "device", "root", "this-card", "peer"):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             elif target != "this-card" and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
                 self.send_json(400, refused.say(M("hub.housecall.path", "Give the path the doctor examines.")))

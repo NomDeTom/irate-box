@@ -5558,20 +5558,40 @@
                 <option value="device" data-i18n="admin.housecall.device">A card in a reader</option>
                 <option value="root" data-i18n="admin.housecall.folder">A folder</option>
                 <option value="this-card" data-i18n="admin.housecall.this-card">This box's own files</option>
+                <option value="peer" data-i18n="admin.housecall.peer">Another box (paired)</option>
               </select></label>
             <label data-i18n="admin.housecall.path-label">Path
               <input type="text" id="housecall-path" size="32" placeholder="/path/to/card.img" autocomplete="off" spellcheck="false" data-i18n-placeholder="admin.housecall.path-placeholder" /></label>
             <label id="housecall-image-first-label" hidden data-i18n="admin.housecall.image-first"><input type="checkbox" id="housecall-image-first" /> image the card first, and examine the image</label>
             <label id="housecall-image-first-path-label" hidden data-i18n="admin.housecall.image-first-path">Image file
-              <input type="text" id="housecall-image-first-path" size="32" placeholder="/media/usb/card.img" autocomplete="off" spellcheck="false" /></label>
+              <input type="text" id="housecall-image-first-path" size="32" placeholder="/media/usb/card.img" autocomplete="off" spellcheck="false" data-i18n-placeholder="admin.housecall.image-first-placeholder" /></label>
             <label id="housecall-on-own-card-label" hidden data-i18n="admin.housecall.on-own-card"><input type="checkbox" id="housecall-on-own-card" /> the image goes on this box's own card</label>
             <label id="housecall-manifest-label" data-i18n="admin.housecall.manifest">Box doctor's manifest
-              <input type="text" id="housecall-manifest" size="32" placeholder="its manifest.json, for an image or another card" autocomplete="off" spellcheck="false" /></label>
+              <input type="text" id="housecall-manifest" size="32" placeholder="its manifest.json, for an image or another card" autocomplete="off" spellcheck="false" data-i18n-placeholder="admin.housecall.manifest-placeholder" /></label>
             <label data-i18n="admin.housecall.packages"><input type="checkbox" id="housecall-dpkg" /> the packages' checksums</label>
             <label data-i18n="admin.housecall.tree"><input type="checkbox" id="housecall-git" /> irate-box's git tree</label>
             <button class="action-btn" type="button" id="housecall-scan" data-i18n="admin.housecall.scan">Examine</button>
             <button class="action-btn" type="button" id="housecall-stop" data-i18n="admin.housecall.stop" hidden>Stop</button>
           </div>
+          <details id="housecall-pair-block">
+            <summary data-i18n="admin.housecall.pair-title">Pair another box</summary>
+            <p class="setting-desc" data-i18n="admin.housecall.pair-intro">
+              Read another irate-box's doctors over SSH, read only. The other box must have this box's key in its
+              authorized_keys: its public key is shown after pairing.
+            </p>
+            <div class="library-buttons">
+              <label data-i18n="admin.housecall.pair-name">Name
+                <input type="text" id="housecall-peer-name" size="16" autocomplete="off" spellcheck="false" /></label>
+              <label data-i18n="admin.housecall.pair-host">Address
+                <input type="text" id="housecall-peer-host" size="24" placeholder="box.local" autocomplete="off" spellcheck="false" data-i18n-placeholder="admin.housecall.peer-host-placeholder" /></label>
+              <label data-i18n="admin.housecall.pair-user">User
+                <input type="text" id="housecall-peer-user" size="10" value="root" autocomplete="off" spellcheck="false" /></label>
+              <label data-i18n="admin.housecall.pair-port">Port
+                <input type="number" id="housecall-peer-port" size="6" value="22" min="1" max="65535" /></label>
+              <button class="action-btn" type="button" id="housecall-pair" data-i18n="admin.housecall.pair-action">Pair</button>
+            </div>
+            <p class="setting-desc action-note" id="housecall-pair-note" role="status" hidden></p>
+          </details>
           <p class="setting-desc action-note" id="housecall-note" role="status" hidden></p>
           <p class="setting-desc" id="housecall-when" data-i18n="admin.housecall.when">Not examined yet.</p>
           <div class="findings" id="housecall-findings"></div>

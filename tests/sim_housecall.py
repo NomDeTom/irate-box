@@ -16,7 +16,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="housecall-"))
-os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
+os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HUB_PEER_KEY=str(T / "peer-key"))
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
 from irate_box.msg import M, Refused
@@ -190,7 +190,7 @@ pkgroot = T / "pkgroot"
 (pkgroot / "var/lib/dpkg/info").mkdir(parents=True)
 (pkgroot / "etc" / "example.conf").write_bytes(b"package file\n")
 (pkgroot / "var/lib/dpkg/info/example.md5sums").write_text(
-    f"{hashlib.md5(b'package file\n').hexdigest()}  etc/example.conf\n"
+    f"{hashlib.md5(b'package file\n', usedforsecurity=False).hexdigest()}  etc/example.conf\n"
 )
 dpkg_refs = housecall.references_from_dpkg(pkgroot)
 check(
@@ -254,7 +254,7 @@ manifest = T / "manifest.json"
 manifest.write_text(json.dumps({"entries": {"/good": {"sha256": hashlib.sha256(good).hexdigest()}}}))
 check(
     "Box doctor's manifest becomes references (its protected files)",
-    housecall.load_manifest(manifest) == {"/good": {"sha256": hashlib.sha256(good).hexdigest()}},
+    housecall.load_manifest(manifest) == {"/good": {"sha256": hashlib.sha256(good).hexdigest(), "manifest": "1"}},
     housecall.load_manifest(manifest),
 )
 default_manifest = housecall.MANIFEST
@@ -262,7 +262,7 @@ default_manifest.parent.mkdir(parents=True, exist_ok=True)
 default_manifest.write_text(json.dumps({"entries": {"/etc/key": {"sha256": "a" * 64}}}))
 check(
     "  this box's own manifest is found where Box doctor keeps it",
-    housecall.load_manifest() == {"/etc/key": {"sha256": "a" * 64}},
+    housecall.load_manifest() == {"/etc/key": {"sha256": "a" * 64, "manifest": "1"}},
     housecall.load_manifest(),
 )
 image = T / "refs.img"
@@ -292,7 +292,7 @@ ext_write(image, "etc/example.conf", b"package file\n")
 ext_write(
     image,
     "var/lib/dpkg/info/example.md5sums",
-    f"{hashlib.md5(b'package file\n').hexdigest()}  etc/example.conf\n".encode(),
+    f"{hashlib.md5(b'package file\n', usedforsecurity=False).hexdigest()}  etc/example.conf\n".encode(),
 )
 check(
     "an image's own packages' md5sums become references",
@@ -370,7 +370,13 @@ housecall.MANIFEST.write_text(
         }
     )
 )
-restore_report = housecall.examine_root(restore_root)
+without_manifest = housecall.examine_root(restore_root)
+check(
+    "another card's folder is not offered this box's protected copy",
+    not any(a.get("path") == "/sub/ff" for f in without_manifest["findings"] for a in f.get("actions", [])),
+    without_manifest["findings"],
+)
+restore_report = housecall.examine_root(restore_root, manifest=housecall.MANIFEST)
 action = next(
     (a for f in restore_report["findings"] for a in f.get("actions", []) if a.get("path") == "/sub/ff"),
     None,
@@ -396,6 +402,69 @@ try:
     check("  a file whose report has no way back is refused", False)
 except Refused as exc:
     check("  a file whose report has no way back is refused", exc.message["id"] == "housecall.restore.no-plan")
+# A protected file that differs from its copy because it changed is not damage, and offers no restore.
+changed_root = T / "changed-root"
+(changed_root / "sub").mkdir(parents=True)
+(changed_root / "sub" / "ff").write_bytes(b"the owner changed it\n")
+changed_report = housecall.examine_root(changed_root, manifest=housecall.MANIFEST)
+changed = next((r for r in changed_report["files"] if r["path"] == "/sub/ff"), {})
+check(
+    "a protected file changed since its copy is 'changed', not damaged, and offers no restore",
+    changed.get("verdict") == "changed"
+    and not any(a.get("path") == "/sub/ff" for f in changed_report["findings"] for a in f.get("actions", [])),
+    changed_report["files"],
+)
+
+# A source whose size is not a whole number of blocks is copied exactly (the dd padding trimmed).
+odd = T / "odd-size.bin"
+odd.write_bytes(b"x" * (10 * 1024 * 1024 + 1536))
+odd_copy = T / "odd-size.img"
+housecall.copy_device(odd, odd_copy)
+check(
+    "a card whose size is not a whole number of blocks is imaged exactly",
+    odd_copy.stat().st_size == odd.stat().st_size
+    and hashlib.sha256(odd_copy.read_bytes()).hexdigest() == hashlib.sha256(odd.read_bytes()).hexdigest(),
+    odd_copy.stat().st_size,
+)
+
+# A read error is zero-filled and the copy still finishes (dd exits non-zero, its stderr says so).
+real_copy_run = housecall.run
+
+
+def padded_run(*cmd, timeout=None, binary=False):
+    if cmd[0] == "blockdev":
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+    if cmd[0] == "dd":
+        part = Path(cmd[2].split("=", 1)[1])
+        part.write_bytes(odd.read_bytes() + b"\0" * 4096)
+        return subprocess.CompletedProcess(cmd, 1, "", "dd: error reading '/dev/sda': Input/output error\n")
+    return real_copy_run(*cmd, timeout=timeout, binary=binary)
+
+
+housecall.run = padded_run
+err_copy = T / "error-copy.img"
+said = housecall.copy_device(odd, err_copy)
+housecall.run = real_copy_run
+check(
+    "a read error is zero-filled, counted, and the exact size is kept",
+    said.get("id") == "housecall.image-first.done"
+    and "1 read error" in str(said)
+    and err_copy.stat().st_size == odd.stat().st_size,
+    said,
+)
+
+# A folder on the way out of another card is not followed.
+outside = T / "outside"
+outside.mkdir()
+linked = T / "linked-root"
+linked.mkdir()
+(linked / "link").symlink_to(outside)
+try:
+    housecall._target_for("/link/x", linked)
+    check("a symlink out of another card's folder: refused", False)
+except Refused as exc:
+    check("a symlink out of another card's folder: refused", exc.message["id"] == "housecall.restore.outside")
+
 # A package file, on this box's own files: the package is the way back.
 real_restore_run = housecall.restore.run
 housecall.restore.run = lambda *cmd, **kw: subprocess.CompletedProcess(cmd, 0, f"pkg: {cmd[-1]}\n", "")
@@ -488,6 +557,97 @@ check(
     said,
 )
 
+# Step 8: another box, paired once and read only over SSH.
+housecall.PEER_KEY.write_text("PRIVATE\n")
+peer_calls = []
+
+
+def peer_run(*cmd, timeout=None, binary=False):
+    peer_calls.append(cmd)
+    if cmd[0] == "ssh-keyscan":
+        return subprocess.CompletedProcess(cmd, 0, "box.local ssh-ed25519 AAAAHOSTKEY\n", "")
+    if cmd[0] == "ssh-keygen":
+        return subprocess.CompletedProcess(cmd, 0, "ssh-ed25519 AAAAPUBLIC this-box\n", "")
+    if cmd[0] == "ssh":
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            "\n=== /var/lib/hub/control/health.json\n"
+            '{"findings": [{"id": "card", "status": "problem", "summary": {"id": "s", "en": "bad"}}]}\n'
+            "=== /var/lib/hub/control/security-audit.json\n"
+            '{"findings": [{"id": "ok", "status": "ok", "summary": {"id": "s2", "en": "fine"}}]}\n'
+            "=== /var/lib/hub/control/doctor.json\n"
+            "=== /opt/irate-box/VERSION\n"
+            "abc1234 (installed 2026-10-27)\n",
+            "",
+        )
+    return subprocess.CompletedProcess(cmd, 127, "", "no")
+
+
+real_peer_run = housecall.run
+housecall.run = peer_run
+said = housecall.pair_peer("pi", "192.0.2.10", "root", 22)
+peers = housecall.load_peers()
+check(
+    "another box is paired once: its address and host key, never a password",
+    said.get("id") == "housecall.peer.paired"
+    and peers.get("pi", {}).get("host") == "192.0.2.10"
+    and "password" not in json.dumps(peers)
+    and (housecall.PEER_DIR / "pi.known_hosts").read_text().startswith("box.local ssh-ed25519"),
+    (said, peers),
+)
+peer = housecall.peer_examine("pi")
+found = {f["id"]: f for f in peer["findings"]}
+check(
+    "  examining it reads its three doctors and its version, read only",
+    found["housecall-peer"]["status"] == "ok"
+    and found["housecall-peer-version"]["status"] == "warn"
+    and found["housecall-peer:box-doctor"]["status"] == "problem"
+    and found["housecall-peer:security-doctor"]["status"] == "ok"
+    and found["housecall-peer:updates-doctor"]["status"] == "warn",
+    peer["findings"],
+)
+
+
+def peer_unreachable(*cmd, timeout=None, binary=False):
+    return subprocess.CompletedProcess(cmd, 255, "", "Connection refused")
+
+
+housecall.run = peer_unreachable
+unreachable = housecall.peer_examine("pi")
+check(
+    "  an unreachable box is a finding, not an error",
+    any(f["id"] == "housecall-peer" and f["status"] == "problem" for f in unreachable["findings"]),
+    unreachable["findings"],
+)
+try:
+    housecall.peer_examine("nobody")
+    check("  a box that was never paired: refused", False)
+except Refused as exc:
+    check("  a box that was never paired: refused", exc.message["id"] == "housecall.peer.unknown")
+housecall.run = real_peer_run
+# Pairing, and a scan of a paired box, through the root helper.
+housecall.run = peer_run
+hub_control.run = helper_run
+active["state"] = "inactive"
+ran.clear()
+paired = hub_control.housecall_pair({"name": "pi2", "host": "192.0.2.11", "user": "root", "port": 22})
+check(
+    "the root helper pairs a box, and passes a peer scan to the doctor",
+    paired.get("id") == "housecall.peer.paired" and ("systemd-run" not in " ".join(str(c) for c in ran)),
+    (paired, ran),
+)
+ran.clear()
+said = hub_control.housecall_scan({"target": "peer", "path": "pi2"})
+started = [c for c in ran if c[0] == "systemd-run"]
+check(
+    "  a peer scan is started with --peer, and its label names the box",
+    said.get("id") == "control.housecall.started" and started and "--peer" in started[0] and "pi2" in started[0],
+    (said, started),
+)
+housecall.run = real_peer_run
+hub_control.run = real_helper_run
+
 # The Rockchip page's card results: written here too, and kept beside an earlier examination.
 before_card = json.loads((T / "state" / "control" / "housecall.json").read_text())
 card_record = housecall.record_card(
@@ -503,22 +663,26 @@ later_card = housecall.record_card(
 check(
     "a Rockchip card check is a finding here, and an earlier report is kept",
     any(f["id"] == "housecall-card:sda:check" and f["status"] == "ok" for f in card_record["findings"])
-    and any(f["id"].startswith("housecall-restored:") for f in card_record["findings"])
     and any(f["id"] == "housecall-card:sda:genuine" and f["status"] == "problem" for f in later_card["findings"]),
     later_card["findings"],
 )
-warn_card = housecall.record_card(
-    "sdb",
-    "check",
-    M(
-        "rkcard.checked",
-        "The card was read, nothing written: {said}.",
-        said="sdb1 (ext4): errors found, nothing changed",
-    ),
+warn_msg = M(
+    "rkcard.checked",
+    "The card was read, nothing written: {said}.",
+    said="sdb1 (ext4): errors found, nothing changed",
 )
+warn_msg["status"] = "warn"
+warn_card = housecall.record_card("sdb", "check", warn_msg)
 check(
     "  a check that found errors is a warning",
     any(f["id"] == "housecall-card:sdb:check" and f["status"] == "warn" for f in warn_card["findings"]),
+)
+survivor = {"at": 1, "target": "/dev/sda", "findings": [], "files": [], "counts": {}}
+housecall.write_report(survivor)
+check(
+    "a card result is kept when an examination report is written over the file",
+    any(f["id"] == "housecall-card:sdb:check" for f in json.loads(housecall.REPORT.read_text())["findings"]),
+    housecall.REPORT.read_text(),
 )
 
 # The report the page reads.

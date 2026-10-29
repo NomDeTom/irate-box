@@ -17938,6 +17938,12 @@ const hc = {
   onOwnCardLabel: document.getElementById("housecall-on-own-card-label"),
   manifest: document.getElementById("housecall-manifest"),
   manifestLabel: document.getElementById("housecall-manifest-label"),
+  peerName: document.getElementById("housecall-peer-name"),
+  peerHost: document.getElementById("housecall-peer-host"),
+  peerUser: document.getElementById("housecall-peer-user"),
+  peerPort: document.getElementById("housecall-peer-port"),
+  pair: document.getElementById("housecall-pair"),
+  pairNote: document.getElementById("housecall-pair-note"),
   dpkg: document.getElementById("housecall-dpkg"),
   git: document.getElementById("housecall-git"),
   scan: document.getElementById("housecall-scan"),
@@ -17949,8 +17955,9 @@ const hc = {
 function hcPathState() {
   if (!hc.target) return;
   const whole = hc.target.value === "this-card";
+  const peer = hc.target.value === "peer";
   hc.path.disabled = whole;
-  hc.path.placeholder = whole ? "" : "/path/to/card.img";
+  hc.path.placeholder = whole ? "" : peer ? "the other box's name" : "/path/to/card.img";
   const card = hc.target.value === "device";
   const first = card && hc.imageFirst.checked;
   hc.imageFirstLabel.hidden = !card;
@@ -17958,10 +17965,10 @@ function hcPathState() {
   hc.onOwnCardLabel.hidden = !first;
   hc.imagePath.disabled = !first;
   hc.onOwnCard.disabled = !first;
-  hc.manifestLabel.hidden = whole;
-  hc.manifest.disabled = whole;
-  hc.dpkg.disabled = false;
-  hc.git.disabled = false;
+  hc.manifestLabel.hidden = whole || peer;
+  hc.manifest.disabled = whole || peer;
+  hc.dpkg.disabled = peer;
+  hc.git.disabled = peer;
 }
 function hcRender(report) {
   if (!report) return;
@@ -18032,9 +18039,9 @@ if (hc.scan) {
       action: "scan",
       target: hc.target.value,
       path: hc.path.value.trim(),
-      dpkg: hc.dpkg.checked,
-      git_tree: hc.git.checked,
-      manifest: hc.manifest.value.trim(),
+      dpkg: !hc.dpkg.disabled && hc.dpkg.checked,
+      git_tree: !hc.git.disabled && hc.git.checked,
+      manifest: hc.manifest.disabled ? "" : hc.manifest.value.trim(),
     };
     if (body.target === "device" && hc.imageFirst.checked) {
       body.image_first = hc.imagePath.value.trim();
@@ -18066,6 +18073,22 @@ if (hc.scan) {
       hc.note.textContent = err && err.message ? err.message : "The doctor could not start.";
       hc.scan.disabled = false;
       hc.stop.hidden = true;
+    }
+  });
+  hc.pair.addEventListener("click", async () => {
+    hc.pairNote.hidden = false;
+    hc.pairNote.textContent = "Pairing…";
+    try {
+      await postJSON("/admin/housecall", {
+        action: "pair",
+        name: hc.peerName.value.trim(),
+        host: hc.peerHost.value.trim(),
+        user: hc.peerUser.value.trim() || "root",
+        port: Number(hc.peerPort.value) || 22,
+      });
+      hc.pairNote.textContent = "Paired. Put this box's public key on the other box, then examine it.";
+    } catch (err) {
+      hc.pairNote.textContent = err && err.message ? err.message : "The box could not be paired.";
     }
   });
   hc.stop.addEventListener("click", async () => {
