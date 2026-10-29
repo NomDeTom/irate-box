@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import os
 import pwd
+import re
 import secrets
 from pathlib import Path
 
@@ -25,8 +26,18 @@ def _unclaimed():
     return Path(f"/etc/{os.environ.get('HUB_WEB_SERVER', 'nginx')}/irate-box-unclaimed")
 
 
+def normalize(code):
+    return re.sub(r"[^A-Za-z0-9]", "", code or "").upper()
+
+
+def format_code(code):
+    """ABCD-EFGH-IJKL-MNOP: easier to read out and type; normalize() drops the dashes."""
+    code = normalize(code)
+    return "-".join(code[i : i + 4] for i in range(0, len(code), 4))
+
+
 def _hash(code):
-    return hashlib.sha256((code or "").encode()).hexdigest()
+    return hashlib.sha256(normalize(code).encode()).hexdigest()
 
 
 def verify(code):
@@ -88,5 +99,4 @@ def ensure(unclaimed=None):
 
 def show(unclaimed=None):
     """The plain code for the console, made first if the box is still unclaimed."""
-    code = ensure(unclaimed)
-    return code or ""
+    return format_code(ensure(unclaimed) or "")

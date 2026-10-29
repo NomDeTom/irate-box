@@ -44,7 +44,7 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const pw = form.elements.password.value, name = form.elements.name.value.trim();
-    const code = form.elements.code.value.trim().toUpperCase();
+    const code = form.elements.code.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     if (pw !== form.elements.confirm.value) { say('The passwords do not match.', false); return; }
     form.querySelector('button').disabled = true;
     try {
