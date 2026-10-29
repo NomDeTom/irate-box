@@ -801,13 +801,23 @@ except ValueError:
 candidate = "a" * 40
 transaction = T / "nginx-transaction"
 old_site = T / "old-site.conf"
+
+
+def replace(path, data):
+    """A change the way the front's writers make it: a new file, then a rename, so a hard-linked snapshot keeps the
+    old contents (durable.write_checked and write_batch, install.sh's write_if_changed)."""
+    tmp = path.with_name(path.name + ".new")
+    tmp.write_bytes(data if isinstance(data, bytes) else data.encode())
+    os.replace(tmp, path)
+
+
 old_site.write_text("old")
 old_site.chmod(0o640)
 old_link = T / "default-site"
 old_link.symlink_to("owner-site")
 new_file = T / "new-include.conf"
 nginx_front.begin(transaction, [old_site, old_link, new_file])
-old_site.write_text("new")
+replace(old_site, "new")
 old_link.unlink()
 new_file.write_text("new")
 nginx_front.recover(transaction)
@@ -824,7 +834,7 @@ for failure in ("none", "validation", "reload", "health", "candidate", "rollback
     directory = T / ("activation-" + failure)
     nginx_front.begin(directory, [old_site])
     prepared = nginx_front.prepare(REPO / "config/irate-box.nginx", private_stage, render_values, candidate)
-    old_site.write_bytes((prepared / "site.conf").read_bytes())
+    replace(old_site, (prepared / "site.conf").read_bytes())
     nginx_front.seal(directory, prepared, old_site)
     commands = []
     probes = []
@@ -844,7 +854,7 @@ for failure in ("none", "validation", "reload", "health", "candidate", "rollback
             raise ValueError("injected health failure")
 
     if failure == "candidate":
-        old_site.write_text("tampered")
+        replace(old_site, "tampered")
     try:
         nginx_front.finish(directory, prepared, render_values, runner=activate, probe=probe)
         check(

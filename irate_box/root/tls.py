@@ -27,7 +27,6 @@ import ipaddress
 import json
 import os
 import re
-import shutil
 import socket
 import subprocess
 import sys
@@ -441,18 +440,12 @@ def _record():
 
 
 def _write(path, text, mode, group=None):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(text)
-    os.chmod(tmp, mode)
-    if group and os.geteuid() == 0:
-        try:
-            shutil.chown(tmp, group=group)
-        except (LookupError, OSError):
-            pass
-    os.replace(tmp, path)
+    """The file, mode and group, through safeio.write_checked: a file that already holds the same words is left
+    alone (a repeat install must not rewrite what it does not change), and a write the card does not keep is named
+    for Box doctor."""
+    from irate_box.root import safeio
+
+    safeio.write_checked(path, text, mode, group=group)
 
 
 @locked

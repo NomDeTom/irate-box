@@ -22,10 +22,10 @@ All ages come from hubclock, never the wall clock. See hubclock.py for why.
 """
 
 import json
-import os
 import threading
 from pathlib import Path
 
+from irate_box import durable
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -86,13 +86,7 @@ class Board:
         return state
 
     def _save(self, state):
-        tmp = self.path.parent / (self.path.name + ".tmp")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(tmp, "w") as fh:
-            json.dump(state, fh)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, self.path)
+        durable.write_checked(self.path, json.dumps(state))
 
     def clear(self):
         """Every thread gone; the id counter carries on, so an old link never names a new thread."""

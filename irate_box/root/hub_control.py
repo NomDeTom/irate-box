@@ -550,8 +550,9 @@ def reset_password():
     """Back to unclaimed: an unknown random login everywhere, and the first-use form on
     /admin. For the console, when the owner has lost the password."""
     set_login(secrets.token_urlsafe(24), keep=False)
-    UNCLAIMED.write_text("no admin password chosen yet (hub_control.py reset-password)\n")
-    UNCLAIMED.chmod(0o644)
+    from irate_box import durable
+
+    durable.write_checked(UNCLAIMED, "no admin password chosen yet (hub_control.py reset-password)\n", 0o644)
     return M(
         "control.password.reset",
         "The password of the user {user} is reset, and initial setup is open again. "
@@ -1402,14 +1403,12 @@ def _caddy_directive():
 
 
 def _write_root_file(path, text, mode=0o644, group=None):
-    tmp = path.with_name(f".{path.name}.new")  # a leading dot: Caddy's <id>.caddy* imports never see it
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(text)
-    if group is not None:
-        os.chown(tmp, 0, group)
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    """Root's file, through safeio.write_checked: written only when it differs, fsynced, and read back from the card;
+    a write the card did not keep is named for Box doctor. A leading-dot temporary name means Caddy's <id>.caddy*
+    imports never see it."""
+    from irate_box.root import safeio
+
+    safeio.write_checked(path, text, mode, group=group)
 
 
 @locked
@@ -6044,10 +6043,10 @@ HEALTH_STATE = CONTROL / "health.json"
 
 
 def _write_health():
-    """The Box doctor's report for /admin, and after each repair: the quick run, the full one when a week is up
-    (health.run_report, which writes it to HEALTH_STATE and keeps when the last full run was)."""
+    """The Box doctor's report for /admin, and after each repair: always the quick run, so the page does not wait
+    for the weekly full one (the timer's run does that). health.run_report writes it to HEALTH_STATE."""
     os.environ["HUB_CONTROL_RUNNING"] = "1"  # the queue it would report is the one being answered
-    return health.run_report()
+    return health.run_report(full=False)
 
 
 def health_scan(req):

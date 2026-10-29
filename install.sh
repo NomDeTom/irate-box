@@ -509,6 +509,29 @@ problem() {
 	state_write
 }
 fail=0
+# A file's new contents (on stdin), written only when they differ from what is there. A repeat
+# install must not rewrite the front or a TLS file it does not change: those writes are the
+# bursts a card like box 190's lost (notes: box-doctor-hardening-plan Part 2 step 6).
+#   write_if_changed PATH MODE [GROUP]
+write_if_changed() {
+	local path="$1" mode="$2" group="${3:-}" tmp dest
+	mkdir -p "$(dirname "$path")"
+	# The comparison copy goes in RAM: comparing on the card would write it there twice over.
+	tmp="$(mktemp -p /run irate-write.XXXXXX 2>/dev/null || mktemp)"
+	cat >"$tmp"
+	if [ -f "$path" ] && [ ! -L "$path" ] && cmp -s "$tmp" "$path"; then
+		rm -f "$tmp"
+		chmod "$mode" "$path"
+		if [ -n "$group" ]; then chown "root:$group" "$path" 2>/dev/null || true; fi
+		return 0
+	fi
+	dest="$(dirname "$path")/.$(basename "$path").irate-new.$$"
+	cp "$tmp" "$dest"
+	rm -f "$tmp"
+	chmod "$mode" "$dest"
+	if [ -n "$group" ]; then chown "root:$group" "$dest" 2>/dev/null || true; fi
+	mv -f "$dest" "$path"
+}
 
 # Folders under $STATE: the hub owns $STATE, so any folder in it may have been swapped for a
 # link, and `install -d -o/-m` (chown, chmod) would change wherever the link leads. Each path is
@@ -1379,11 +1402,12 @@ fi
 	[ "$NO_GIT" = 1 ] && echo --no-git
 	[ "$KEEP_SYSTEM" = 1 ] && echo --keep-system-defaults
 	true
-} >"$ETC/install-options"
-chmod 644 "$ETC/install-options"
+} | write_if_changed "$ETC/install-options" 644
 # A copy the hub can read ($ETC is 750: it holds the admin password), for /admin's Add-ons
 # page to show what is added. Display only: updates and add-ons run from the root-owned one.
-install -m 644 "$ETC/install-options" "$STATE/install-options"
+if ! cmp -s "$ETC/install-options" "$STATE/install-options"; then
+	install -m 644 "$ETC/install-options" "$STATE/install-options"
+fi
 
 # --- static apps -----------------------------------------------------------------
 if [ -n "$APPS_SRC" ]; then
@@ -1535,10 +1559,8 @@ if [ -f "$ETC/front-secret.env" ] && command -v journalctl >/dev/null &&
 	rm -f "$ETC/front-secret.env"
 fi
 if ! grep -qs '^HUB_FRONT_SECRET=[0-9a-f]\{64\}$' "$ETC/front-secret.env"; then
-	(
-		umask 077
-		printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >"$ETC/front-secret.env"
-	)
+	printf 'HUB_FRONT_SECRET=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" |
+		write_if_changed "$ETC/front-secret.env" 600
 fi
 # A second secret in the same file (server.py VIA_SECRET): the web server adds it to every request it
 # passes to the hub, and to no other app, and the hub believes the web server's headers (the guest's
@@ -1556,7 +1578,7 @@ chmod 600 "$ETC/front-secret.env"
 FRONT_SECRET="$(sed -n 's/^HUB_FRONT_SECRET=//p' "$ETC/front-secret.env")"
 VIA_SECRET="$(sed -n 's/^HUB_VIA_SECRET=//p' "$ETC/front-secret.env")"
 
-cat >"$ETC/hub.env" <<EOF
+write_if_changed "$ETC/hub.env" 644 <<EOF
 # Read by irate-box.service. Changes take effect on: systemctl restart irate-box
 PORT=8000
 HUB_BIND=127.0.0.1
@@ -1727,16 +1749,21 @@ if [ "$WEB" = nginx ]; then
 	ngx_user="$(sed -n 's/^[[:space:]]*user[[:space:]]\{1,\}\([^[:space:];]\{1,\}\).*/\1/p' /etc/nginx/nginx.conf 2>/dev/null | head -1)"
 	ngx_group="$(id -gn "${ngx_user:-www-data}" 2>/dev/null || echo root)"
 	hash="$(printf '%s\n' "$ADMIN_PW" | openssl passwd -6 -stdin)"
-	(
-		umask 077
-		printf 'admin:%s\n' "$hash" >"$NGINX_LOGINS.new"
-	)
-	chown "root:$ngx_group" "$NGINX_LOGINS.new"
-	chmod 640 "$NGINX_LOGINS.new"
-	mv "$NGINX_LOGINS.new" "$NGINX_LOGINS"
+	# Keep the stored hash when it still verifies the password: a new salt would rewrite the file at every
+	# install for nothing (notes: box-doctor-hardening-plan Part 2 step 6).
+	if [ -f "$NGINX_LOGINS" ]; then
+		existing="$(head -1 "$NGINX_LOGINS" 2>/dev/null || true)"
+		salt="$(printf '%s\n' "${existing#*:}" | cut -d'$' -f3)"
+		if [ "${existing%%:*}" = admin ] && [ -n "$salt" ] &&
+			[ "$(printf '%s\n' "$ADMIN_PW" | openssl passwd -6 -salt "$salt" -stdin)" = "${existing#*:}" ]; then
+			hash="${existing#*:}"
+		fi
+	fi
 	if [ -e "$NGINX_DEFAULT" ] && nginx_default_untouched; then
 		rm -f "$NGINX_DEFAULT"
-		echo "the nginx package's default site, switched off by irate-box $(date -u +%Y-%m-%d); uninstall.sh turns it back on" >"$NGINX_DEFAULT_MARK"
+		if [ ! -e "$NGINX_DEFAULT_MARK" ]; then
+			echo "the nginx package's default site, switched off by irate-box $(date -u +%Y-%m-%d); uninstall.sh turns it back on" >"$NGINX_DEFAULT_MARK"
+		fi
 	fi
 	if [ "$HUB_PORT" = 80 ] && nginx_serves_port 80; then
 		pick_own_port || die "the existing nginx config serves :80, and 8080, 8088 and 8888 are taken too: pass --port N"
@@ -1744,16 +1771,6 @@ if [ "$WEB" = nginx ]; then
 		notice "The existing nginx config already serves :80, so the hub is on :$HUB_PORT instead. The hotspot's sign-in sheet needs :80, so it will not pop up."
 	fi
 	access_install nginx >/dev/null
-	(
-		umask 077
-		printf '# Generated by irate-box install.sh from %s. Root only.\nproxy_set_header X-Irate-Front "%s";\n' \
-			"$ETC/front-secret.env" "$FRONT_SECRET" >"$NGINX_FRONT"
-		# The hub's alone: $proxy_host is the upstream the request is going to (volatile: an auth_request's
-		# answer is not kept for the main request, which may go to another app).
-		# shellcheck disable=SC2016 # $proxy_host is nginx's, not the shell's
-		printf '# Generated by irate-box install.sh from %s. Root only.\nmap $proxy_host $irate_box_via {\n\tvolatile;\n\tirate_box_hub "%s";\n\t127.0.0.1:8000 "%s";\n\tdefault "";\n}\n' \
-			"$ETC/front-secret.env" "$VIA_SECRET" "$VIA_SECRET" >"$NGINX_VIA"
-	)
 	# The page loads of the pages nginx serves itself (pagehistory.py reads them): in RAM, as a line a page load
 	# on the SD card was a write each, its folder made at every boot by a tmpfiles rule (the hub can read it), the
 	# file nginx's own (root), emptied by logrotate past 1 MB (the hub starts again when it shrinks).
@@ -1764,8 +1781,55 @@ if [ "$WEB" = nginx ]; then
 	printf '%s\n' "# Written by irate-box install.sh: the page loads the hub's use heatmap reads (pagehistory.py)." \
 		"/run/irate-box/pagelog/pages.log {" "	size 1M" "	rotate 0" "	copytruncate" "	missingok" "	notifempty" "}" >/etc/logrotate.d/irate-box-pages
 	install -d -m 700 "$ETC/nginx-staging"
-	nginx_bundle="$(nginx_prepare prepare "$CODE/config/irate-box.nginx" "$ETC/nginx-staging" "$(git -C "${SRC:-$CODE}" rev-parse HEAD 2>/dev/null || echo installed-source)")"
-	install -m 644 "$nginx_bundle/site.conf" "$NGINX_SITE"
+	front_id="$(git -C "${SRC:-$CODE}" rev-parse HEAD 2>/dev/null || echo installed-source)-$(printf '%s\n' "$FRONT_SECRET" "$VIA_SECRET" "$hash" | sha256sum | cut -c1-16)"
+	nginx_bundle="$(nginx_prepare prepare "$CODE/config/irate-box.nginx" "$ETC/nginx-staging" "$front_id")"
+	# The front's four files written together: each only when it differs, then one syncfs and a read-back of each
+	# from the card (durable.write_batch, through nginx_front). The notes are root's alone (0600); the logins are
+	# the web server's group's, as nginx reads the password file itself.
+	front_plan="$(mktemp -p /run irate-front.XXXXXX)"
+	front_hash="$(mktemp -p /run irate-hash.XXXXXX)"
+	printf '%s\n' "$hash" >"$front_hash"
+	(
+		umask 077
+		python3 - "$front_plan" "$nginx_bundle/site.conf" "$NGINX_SITE" "$NGINX_FRONT" "$NGINX_VIA" \
+			"$NGINX_LOGINS" "$ngx_group" "$ETC/front-secret.env" "$front_hash" <<'PY'
+import json, sys
+plan, site_src, site, front, via, logins, group, secret_file, hash_file = sys.argv[1:]
+secrets = {}
+with open(secret_file) as fh:
+    for line in fh:
+        key, sep, value = line.strip().partition("=")
+        if sep:
+            secrets[key] = value
+front_secret, via_secret = secrets["HUB_FRONT_SECRET"], secrets["HUB_VIA_SECRET"]
+with open(hash_file) as fh:
+    hash_ = fh.read().strip()
+front_text = (
+    f"# Generated by irate-box install.sh from {secret_file}. Root only.\n"
+    f'proxy_set_header X-Irate-Front "{front_secret}";\n'
+)
+via_text = (
+    f"# Generated by irate-box install.sh from {secret_file}. Root only.\n"
+    "map $proxy_host $irate_box_via {\n"
+    "\tvolatile;\n"
+    f'\tirate_box_hub "{via_secret}";\n'
+    f'\t127.0.0.1:8000 "{via_secret}";\n'
+    '\tdefault "";\n'
+    "}\n"
+)
+entries = [
+    {"path": site, "text": open(site_src).read(), "mode": 0o644},
+    {"path": front, "text": front_text, "mode": 0o600},
+    {"path": via, "text": via_text, "mode": 0o600},
+    {"path": logins, "text": f"admin:{hash_}\n", "mode": 0o640, "group": group},
+]
+with open(plan, "w") as fh:
+    json.dump(entries, fh)
+PY
+	)
+	chmod 600 "$front_plan" "$front_hash"
+	nginx_prepare write-batch "$front_plan"
+	rm -f "$front_plan" "$front_hash"
 	if ! out="$(nginx -t 2>&1)"; then
 		printf '%s\n' "$out" | tail -3 >&2
 		die "the hub's nginx site does not pass nginx -t; restoring the previous frontend configuration"
@@ -1909,8 +1973,7 @@ if [ -n "$TAKE_UNIT" ]; then
 	"$CODE/irate-box" security unit-off "$TAKE_UNIT" "install.sh --take-port-80" | sed 's/^/    /'
 fi
 if [ "$UNCLAIMED" = 1 ]; then
-	echo "no admin password chosen yet (install.sh)" >"$UNCLAIMED_MARK"
-	chmod 644 "$UNCLAIMED_MARK"
+	echo "no admin password chosen yet (install.sh)" | write_if_changed "$UNCLAIMED_MARK" 644
 else
 	rm -f "$UNCLAIMED_MARK"
 fi
@@ -2923,6 +2986,12 @@ EOF
 # the optional 4 KB test file. Each is a setting: health.install_units leaves off what the owner turned off.
 HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" health install-units ||
 	problem "the Box doctor's timer was not set up: journalctl -u irate-box-boxdoctor.timer"
+# The second copy of the settings and keys, and its check at every boot (notes: box-doctor-hardening-plan Part 2,
+# step 4): retain takes the copy here, and its timer keeps it, before the network and the hub start at the next boot.
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" HUB_CODE_DIR="$CODE" "$CODE/irate-box" retain install-units ||
+	problem "the second copy of the settings was not set up: journalctl -u irate-box-protected.timer"
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" HUB_CODE_DIR="$CODE" "$CODE/irate-box" retain sweep ||
+	problem "the second copy of the settings was not taken"
 
 # --- Unique visitors ---------------------------------------------------------------
 # A helper of its own reads the leases and the neighbour table every minute, hashes each address

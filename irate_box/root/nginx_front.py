@@ -10,7 +10,6 @@ import http.client
 import json
 import os
 import re
-import secrets
 import shutil
 import ssl
 import stat
@@ -130,6 +129,35 @@ def _copy_owned(source, destination):
                 os.close(descriptor)
 
 
+def _snapshot_owned(source, destination):
+    """The old file kept for a rollback, as a hard link where the file system allows it: the snapshot then costs a
+    directory entry, not a copy. Every front writer replaces its file by a rename (durable.write_checked and
+    write_batch, install.sh's write_if_changed), so the link keeps the old contents. A copy is the fallback: another
+    file system, a directory, or a file openssl writes in place (`ca.srl`)."""
+    source, destination = Path(source), Path(destination)
+    if source.is_symlink():
+        destination.symlink_to(os.readlink(source))
+    elif source.is_dir():
+        destination.mkdir(mode=0o700)
+        for child in source.iterdir():
+            _snapshot_owned(child, destination / child.name)
+        shutil.copystat(source, destination, follow_symlinks=False)
+    elif source.is_file():
+        if source.name.endswith(".srl"):
+            shutil.copy2(source, destination)
+            metadata = source.lstat()
+            os.chown(destination, metadata.st_uid, metadata.st_gid)
+        else:
+            try:
+                os.link(source, destination, follow_symlinks=False)
+            except OSError:
+                shutil.copy2(source, destination)
+                metadata = source.lstat()
+                os.chown(destination, metadata.st_uid, metadata.st_gid)
+    else:
+        raise ValueError("Unsupported nginx transaction file type")
+
+
 def _private(directory):
     directory = Path(directory)
     if (
@@ -166,7 +194,7 @@ def begin(directory, paths, runner=None):
             raise ValueError("Unsafe nginx transaction destination")
         exists = path.exists() or path.is_symlink()
         if exists:
-            _copy_owned(path, snapshot / str(index))
+            _snapshot_owned(path, snapshot / str(index))
         entries.append({"path": str(path), "exists": exists, "snapshot": str(index)})
     _sync_directory(snapshot)
     previous_values = settings_from_env()
@@ -455,7 +483,10 @@ def prepare(template, parent, values, identity, ipv6=True):
     ):
         raise ValueError("nginx staging requires a private directory owned by the installer")
     text = render(Path(template).read_text(), values, ipv6)
-    generation = hashlib.sha256((identity + text + secrets.token_hex(16)).encode()).hexdigest()
+    # The generation names this render, not this run: the same template, settings and installed source render the
+    # same bytes, so a repeat install leaves the site alone (notes: box-doctor-hardening-plan Part 2 step 6). A
+    # changed input changes the generation, and the health check then asks for the new one.
+    generation = hashlib.sha256((identity + text).encode()).hexdigest()
     text = re.sub(
         r"(?m)^server \{",
         lambda match: (
@@ -466,6 +497,17 @@ def prepare(template, parent, values, identity, ipv6=True):
         ),
         text,
     )
+    # A bundle that already holds this render is the one to use: nothing is written for an install that changes no
+    # front file. A bundle is kept while a transaction may name it; the staging folder is private to the installer.
+    for existing in parent.iterdir():
+        if not existing.name.startswith("nginx-") or not existing.is_dir():
+            continue
+        try:
+            old, old_site = read_bundle(existing)
+        except (OSError, ValueError):
+            continue
+        if old.get("generation") == generation and old_site.read_bytes() == text.encode():
+            return existing
     bundle = Path(tempfile.mkdtemp(prefix="nginx-", dir=parent))
     site = bundle / "site.conf"
     site.write_text(text)
@@ -534,8 +576,19 @@ def main():
         print(render(Path(args[0]).read_text(), values, Path("/proc/net/if_inet6").exists()), end="")
     elif command == "prepare" and len(args) == 3:
         print(prepare(args[0], args[1], values, args[2], Path("/proc/net/if_inet6").exists()))
+    elif command == "write-batch" and len(args) == 1:
+        with front_lock():
+            import json
+
+            from irate_box import durable
+
+            plan = json.loads(Path(args[0]).read_text())
+            entries = [(Path(e["path"]), e["text"], int(e.get("mode", 0o644)), e.get("group")) for e in plan]
+            if not durable.write_batch(entries):
+                raise ValueError("The card did not keep every front file")
+            Path(args[0]).unlink(missing_ok=True)
     else:
-        raise ValueError("Usage: nginx_front render TEMPLATE | prepare TEMPLATE PRIVATE_DIR SOURCE")
+        raise ValueError("Usage: nginx_front render TEMPLATE | prepare TEMPLATE PRIVATE_DIR SOURCE | write-batch PLAN")
 
 
 if __name__ == "__main__":

@@ -11,9 +11,12 @@ A board shows itself on USB in one of three ways (vendor 0x2207):
             2207:350f on the RK3506): ready to erase
   maskrom   only the chip's boot ROM (the boot button held while plugging in): a loader is sent first
             (rockchip/loaders/, by the board's chip), then it is in Loader mode
-The two download modes share the RockUSB interface (ff/06/05); rkdeveloptool tells them apart by the low bit of
-the device's USB version (bcdUSB): odd for Loader (2.01), even for Maskrom (2.00). rkdeveloptool and adb come from
-the Rockchip boards toolkit.
+The two download modes share the RockUSB interface (ff/06/05). rkdeveloptool tells them apart by the low bit of
+the device's USB version (bcdUSB): odd for Loader (2.01), even for Maskrom (2.00). That is not enough on its own: the
+RK3506B's SPL loader, once sent from Maskrom, keeps 2.00 (and rkdeveloptool still says Maskrom), but it names itself
+("RockChip", "USB-MSC", "rockchip"), and the boot ROM gives no names at all. So a RockUSB device that names itself
+is in Loader mode too (seen on a Lyra Zero W, 2026-10-29). rkdeveloptool and adb come from the Rockchip boards
+toolkit.
 """
 
 import json
@@ -64,7 +67,8 @@ def boards():
         }
         if ROCKUSB in ifaces:
             version = _read(dev / "version").replace(" ", "")
-            mode = "loader" if version.endswith(("1", "3", "5", "7", "9")) else "maskrom"
+            named = any(_read(dev / name) for name in ("manufacturer", "product", "serial"))
+            mode = "loader" if named or version.endswith(("1", "3", "5", "7", "9")) else "maskrom"
         elif ADB in ifaces:
             mode = "system"
         else:

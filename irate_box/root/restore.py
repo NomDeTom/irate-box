@@ -26,6 +26,7 @@ Stdlib only.
 import hashlib
 import os
 import secrets
+import shutil
 import stat
 import subprocess  # Fixed argv, trusted executables, no shell. # nosec B404
 from pathlib import Path
@@ -116,9 +117,10 @@ def _write_beside(path, data, mode, owner):
         raise
 
 
-def from_bytes(target, data, mode=None, expect=None, keep=True, owner=None):
-    """`data` at target, checked, with the old file kept beside it. mode and owner (uid, gid) default to the old
-    file's, else 0644 and root's. The message says what was done."""
+def from_bytes(target, data, mode=None, expect=None, keep=True, owner=None, keep_at=None):
+    """`data` at target, checked, with the old file kept beside it (or at keep_at, outside a folder a web server
+    includes by glob). mode and owner (uid, gid) default to the old file's, else 0644 and root's. The message says
+    what was done."""
     target = Path(target)
     digest = _sha(data)
     if expect and expect != digest:
@@ -143,8 +145,12 @@ def from_bytes(target, data, mode=None, expect=None, keep=True, owner=None):
     try:
         kept = None
         if old is not None and keep:
-            kept = _damaged(target)
-            os.link(target.name, kept.name, src_dir_fd=dfd, dst_dir_fd=dfd, follow_symlinks=False)
+            kept = Path(keep_at) if keep_at else _damaged(target)
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(target, kept, follow_symlinks=False)
+            except OSError:
+                shutil.copy2(target, kept)
         os.replace(tmp, target.name, src_dir_fd=dfd, dst_dir_fd=dfd)
         os.fsync(dfd)
     except BaseException:
@@ -165,8 +171,9 @@ def from_bytes(target, data, mode=None, expect=None, keep=True, owner=None):
     return M("restore.done", "The new {name} reads back the same.", name=target.name)
 
 
-def from_copy(target, source, sha256=None, mode=None):
-    """A file from a copy beside it, on a USB drive or in Box doctor's second copy."""
+def from_copy(target, source, sha256=None, mode=None, owner=None, keep_at=None):
+    """A file from a copy beside it, on a USB drive or in Box doctor's second copy. mode and owner come back as the
+    caller says (Box doctor's manifest), else the old file's, else the copy's."""
     source = Path(source)
     try:
         data = source.read_bytes()
@@ -177,7 +184,7 @@ def from_copy(target, source, sha256=None, mode=None):
             mode = stat.S_IMODE(source.stat().st_mode)
         except OSError:
             mode = None
-    return from_bytes(target, data, mode=mode, expect=sha256)  # mode None: the old file's, else the copy's
+    return from_bytes(target, data, mode=mode, expect=sha256, owner=owner, keep_at=keep_at)
 
 
 def from_git(target, repo, commit, relative, mode=None):
