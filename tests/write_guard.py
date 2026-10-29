@@ -76,6 +76,23 @@ for record in (
     text = source(record)
     check(f"{record} stays a plain write (a record, not a setting)", "write_checked(" not in text)
 
+retain = source("irate_box/root/retain.py")
+check(
+    "retain writes its copy and the manifest through durable.write_checked",
+    "durable.write_checked(copy," in retain and "durable.write_checked(\n        MANIFEST," in retain,
+)
+check("retain restores through restore.from_copy", "restore.from_copy(" in retain and "sha256=wanted" in retain)
+inst = source("install.sh")
+check(
+    "install.sh installs and sweeps the second copy",
+    '"$CODE/irate-box" retain install-units' in inst and '"$CODE/irate-box" retain sweep' in inst,
+)
+check(
+    "uninstall.sh removes the units and the copy",
+    "irate-box-protected.{service,timer}" in source("uninstall.sh")
+    and "/var/lib/irate-box-root/protected" in source("uninstall.sh"),
+)
+
 nf = source("irate_box/root/nginx_front.py")
 check("the front writes its files together with durable.write_batch", "durable.write_batch(entries)" in nf)
 check("install.sh calls nginx_front write-batch", 'nginx_prepare write-batch "$front_plan"' in source("install.sh"))
