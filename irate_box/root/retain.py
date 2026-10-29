@@ -44,6 +44,7 @@ STREAK = ROOT / "protected-streak.json"
 NGINX = Path(os.environ.get("HUB_NGINX_CONF_DIR", "/etc/nginx"))
 NM = Path(os.environ.get("HUB_NM_DIR", "/etc/NetworkManager/system-connections"))
 JOURNALD = Path(os.environ.get("HUB_JOURNALD_CONF", "/etc/systemd/journald.conf"))
+CONFIG = ETC / "retain.json"
 FF, ZERO = b"\xff", b"\x00"
 KEEP = 50
 
@@ -190,6 +191,59 @@ def streak():
     return int(state.get("streak", 0)) if state.get("boot") == _boot_id() else 0
 
 
+def extra_stores():
+    """Further places the copy is kept (a NAND folder, a USB drive): retain.json's "stores", each a folder. A
+    store that is not there is skipped; one that cannot be written is named in the findings."""
+    try:
+        data = json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        return []
+    stores = data.get("stores") if isinstance(data, dict) else None
+    return [Path(s) for s in stores if isinstance(s, str) and s.startswith("/")] if isinstance(stores, list) else []
+
+
+def regenerate(path):
+    """Put back a file the box can make again: the server key and chain from the CA, and the front includes that
+    tls.initialise writes. The CA itself cannot be made again; it comes from the copy. The file is read back, and
+    only a file that now reads well counts as done: otherwise the copies are tried. Returns a message or None."""
+    path = Path(path)
+    front = (ETC / "nginx-access.conf", ETC / "nginx-addons.conf")
+    try:
+        if path in (ETC / "tls" / "server.key", ETC / "tls" / "fullchain.crt"):
+            from irate_box.root import tls
+
+            if not (ETC / "tls" / "ca" / "ca.key").exists():
+                return None
+            tls.make_cert()
+            said = M("retain.regenerated.server", "The server key and chain were made again from the CA.")
+        elif path in front or str(path).startswith(str(ETC / "tls" / "front")):
+            from irate_box.root import tls
+
+            tls.initialise()
+            said = M("retain.regenerated.front", "The front's includes were rendered again from the settings.")
+        else:
+            return None
+        data = _read(path)
+        if _bad(data):
+            return None
+        return said
+    except (OSError, Refused):
+        return None
+
+
+def _package_owned(path):
+    said = restore.run("dpkg", "-S", str(path), timeout=60)
+    return said.returncode == 0
+
+
+def _store_sources(path):
+    """Every copy of one file to try: this store's copy and .prev, then each extra store's."""
+    out = [_copy(path), _prev(path)]
+    for store in extra_stores():
+        out += [store / _ident(path), store / (_ident(path) + ".prev")]
+    return out
+
+
 def sweep():
     """The copy: every protected file that reads back right, written beside the last one (which is kept as .prev).
     A file that is already in the copy unchanged is not written again. A file that reads back damaged keeps its
@@ -229,6 +283,25 @@ def sweep():
             continue
         if old.name not in keep:
             old.unlink(missing_ok=True)
+    for store in extra_stores():
+        try:
+            store.mkdir(parents=True, exist_ok=True, mode=0o700)
+            for source in STORE.iterdir():
+                if not source.is_file() or source.name.endswith(".lock"):
+                    continue
+                target = store / source.name
+                try:
+                    data = source.read_bytes()
+                except OSError:
+                    continue
+                try:
+                    have = target.read_bytes()
+                except OSError:
+                    have = None
+                if have != data:
+                    durable.write_checked(target, data, 0o600)
+        except OSError:
+            bad.append({"path": str(store), "action": "the extra copy could not be written here"})
     if bad:
         _findings(bad, "sweep")
     return bad
@@ -262,7 +335,7 @@ def boot_check():
         if not _bad(data) and mtime != entry.get("mtime_ns"):
             continue  # the owner changed it: the next sweep copies it
         done = False
-        for source in (_copy(path), _prev(path)):
+        for source in _store_sources(path):
             try:
                 if source.is_file() and _sha(_read(source)) == wanted:
                     DAMAGED.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -280,6 +353,18 @@ def boot_check():
                     break
             except (OSError, Refused):
                 continue
+        if not done:
+            made = regenerate(path)
+            if made:
+                repairs.append({"path": str(path), "action": str(made)})
+                done = True
+        if not done and _package_owned(path):
+            try:
+                said = restore.from_package(path)
+                repairs.append({"path": str(path), "action": str(said)})
+                done = True
+            except (OSError, Refused):
+                done = False
         if not done:
             lost.append({"path": str(path), "action": "damaged, and no good copy: reinstall or restore it by hand"})
     _streak(current, bool(repairs or lost))

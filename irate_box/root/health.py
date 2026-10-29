@@ -6132,6 +6132,30 @@ def setting_groups(s, wd):
                 ],
             }
         )
+    from irate_box.root import bootkey
+
+    if bootkey.supported():
+        groups.append(
+            {
+                "key": "bootkey",
+                "label": M("bootkey.setting.title", "The BOOT key as a shutdown button"),
+                "desc": M(
+                    "bootkey.setting.desc",
+                    "On the Lyra, the BOOT key is read by nothing while the box runs. Held for three seconds, it "
+                    "can shut the box down cleanly. A short press does nothing, and holding it at power-on still "
+                    "gives Loader mode.",
+                ),
+                "current": "on" if bootkey.installed() else "off",
+                "options": [
+                    {"value": "off", "label": OFF, "choice": "bootkey:off"},
+                    {
+                        "value": "on",
+                        "label": M("bootkey.setting.on", "Hold for three seconds"),
+                        "choice": "bootkey:on",
+                    },
+                ],
+            }
+        )
     return groups
 
 
@@ -7194,7 +7218,7 @@ CHOICE_RE = re.compile(
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off))$"
     r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
-    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$"
+    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )
 
@@ -7408,6 +7432,10 @@ def fix(choice):
         return card_scan_start()
     if kind == "card-memcg-on":
         return card_memcg_on()
+    if kind == "bootkey":
+        from irate_box.root import bootkey
+
+        return bootkey.install_units(arg == "on")
     if kind == "card-set":
         from irate_box.root import recommended
 
