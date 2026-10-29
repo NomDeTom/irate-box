@@ -245,8 +245,8 @@ check(
     f["crash-flood"],
 )
 check(
-    "  the radio watched, its failure in the last day, nothing to choose here: where repairs are set, said",
-    f["crash-radio"]["status"] == "warn"
+    "  the radio watched, one failure in the last day: a note, with where repairs are set",
+    f["crash-radio"]["status"] == "note"
     and msg_args(f["crash-radio"], "crash-radio.watching")["radios"] == ["wlan0 (AIC8800DC)"]
     and any("wlan0 failed" in e for e in f["crash-radio"]["evidence"])
     and not f["crash-radio"]["actions"]

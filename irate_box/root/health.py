@@ -611,7 +611,7 @@ def check_units():
             finding(
                 f"other-failed:{ARMBIAN_LED}",
                 M("armbian-led.title", "The image's LED restore service failed"),
-                "warn",
+                "note",
                 M(
                     "armbian-led.failed",
                     "{unit} fails at every start on this board. The box's status light is separate, and works.",
@@ -757,7 +757,7 @@ def check_idle():
             finding(
                 f"idle:{i['unit']}",
                 i["title"],
-                "warn",
+                "note",
                 i["summary"],
                 i["why"],
                 M("idle.fix", "If this box does not need it, switch it off. You can switch it on again here."),
@@ -2906,7 +2906,7 @@ def _service_writes_findings(summary, card_name):
                 finding(
                     "card-writer:jobs",
                     M("card-writer.title", "Writes of {unit}", unit=M("card-writer.jobs", "jobs that ended")),
-                    "warn",
+                    "note",
                     M(
                         "card-writer.jobs.rate",
                         "Jobs that run and end (timers' short runs) write about {mb} MB a day to the SD card.",
@@ -5099,7 +5099,7 @@ def check_builds(now=None, quick=False):
             finding(
                 "builds-disk",
                 M("builds-disk.title", "Space used by firmware builds"),
-                "warn" if big else "ok",
+                "warn" if big else "note",
                 M(
                     "builds-disk.used",
                     "Builds use {mb} MB, {share} of the card: runs, and the builder's tools and caches.",
@@ -5919,7 +5919,8 @@ def check_crashwatch(now=None):
         if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "driver-reset", "recovered", "reset", "reboot")
     ]
     kept = [i for i in st.get("incidents", []) if i.get("at", 0) > now - 7 * 86400]
-    failed = any(e.get("kind") in ("failed", "driver-reset") for e in day)
+    failures = [e for e in day if e.get("kind") in ("failed", "driver-reset")]
+    failed = bool(failures)
     notes = [M("crash-radio.role", "Crash watch records a failing radio. The uplink watchdog does the repairs.")]
     if kept:
         notes.append(
@@ -5960,7 +5961,7 @@ def check_crashwatch(now=None):
         finding(
             "crash-radio",
             M("crash-radio.title", "The WiFi radio"),
-            "warn" if failed else "ok",
+            "warn" if len(failures) > 1 else "note" if failed else "ok",
             M("crash-radio.watching", "Crash watch watches {radios}.", radios=radios)
             if radios
             else M("crash-radio.none", "Crash watch finds no radio to watch."),
@@ -7784,13 +7785,13 @@ def fix(choice):
 
 # --- plain text ------------------------------------------------------------------------------------
 
-MARK = {"ok": "ok     ", "warn": "note   ", "problem": "problem"}
+MARK = {"ok": "ok     ", "note": "note   ", "warn": "note   ", "problem": "problem"}
 
 
 def report(data, problems_only=False):
     lines = []
     for f in data["findings"]:
-        if problems_only and f["status"] == "ok":
+        if problems_only and f["status"] in ("ok", "note"):
             continue
         said = english(f)
         lines.append(f"{MARK[f['status']]}  {said['title']}: {said['detail']}")
