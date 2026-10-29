@@ -50,9 +50,14 @@ REPORT = CONTROL / "housecall.json"
 CHUNK = 4096
 SKIP_DIRS = {"proc", "sys", "dev", "run"}
 # The hub's large folders: content fetched again, or to be checked against its release's checksums, never read
-# whole from inside (a Lyra's build caches alone were 14 GB in 231 280 files). As nand-logs.sh's
-# HUB_LARGE.
-LARGE = ("zim", "firmware", "kits", "git", "library", "source", "drop", "ci", "factory-targets")
+# whole from inside (a Lyra's build caches alone were 14 GB in 231 280 files). The one list nand-logs.sh's
+# HUB_LARGE also reads.
+LARGE_FILE = Path(__file__).resolve().parents[1] / "large_folders.txt"
+LARGE = tuple(
+    line.strip()
+    for line in LARGE_FILE.read_text(encoding="utf-8").splitlines()
+    if line.strip() and not line.lstrip().startswith("#")
+)
 # This box's own files, as the plan's "from inside" lists them: the settings, the code, the hub's state, root's
 # records, and systemd's units (its drop-ins in /etc/systemd are read with /etc). Only the files whose mount is the
 # SD card are read, and not the hub's large folders.

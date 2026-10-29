@@ -1,0 +1,13 @@
+# The hub's large folders: content fetched again, or checked against its release's checksums, never read whole
+# from inside. They stay on the SD card when the box's often-written state moves to the onboard flash
+# (tools/nand-logs.sh's HUB_LARGE, housecall.LARGE). One name a line; a new folder goes here once.
+zim
+firmware
+kits
+git
+library
+source
+drop
+ci
+factory-targets
+holds

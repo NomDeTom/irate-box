@@ -36,9 +36,10 @@ for flag in (
 ):
     check(f"the command line takes {flag}", f'"{flag}"' in src)
 check("the report is control/housecall.json", 'CONTROL / "housecall.json"' in src)
+large_src = (REPO / "irate_box" / "large_folders.txt").read_text()
 check(
     "from inside: the hub's large folders left out whole (box 181: 14 GB of build caches in 231 280 files)",
-    "skip=large" in src and '"ci"' in src and '"zim"' in src,
+    "skip=large" in src and "large_folders.txt" in src and "ci" in large_src and "zim" in large_src,
 )
 check(
     "  and /etc/systemd read once, with /etc, not listed again",
