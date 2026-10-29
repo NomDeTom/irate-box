@@ -36,6 +36,7 @@ run sim_lost_writes.py
 run sim_bootkey.py
 run sim_powerwatch.py
 run sim_package_verify.py
+run sim_space.py
 run sim_front_writes.py
 run sim_write_checked.py
 run write_guard.py
