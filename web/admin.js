@@ -12463,10 +12463,10 @@ async function setSetupDone(done) {
 }
 
 // The hub's own address, which these pages (on a port of their own) name in what they show and copy: this
-// page's host with the hub's port, which the box tells (/admin/box).
+// page's host with the hub's port, which the box tells (/admin/box). secure: the HTTPS port, else the plain
+// HTTP one; by default this page's protocol. An address written with http:// asks for the plain one.
 var hubPorts = null;
-function hubHost() {
-  const secure = location.protocol === "https:";
+function hubHost(secure = location.protocol === "https:") {
   const port = hubPorts ? (secure ? hubPorts.tls : hubPorts.plain) : null;
   return port && port !== (secure ? 443 : 80) ? `${location.hostname}:${port}` : location.hostname;
 }
@@ -12475,7 +12475,7 @@ function hubOrigin() {
 }
 // How guests reach the box: the address of the hub's page, and whether it is on port 80.
 function drawConnectionStep() {
-  const host = hubHost();
+  const host = hubHost(false);
   const port = host.includes(":") ? host.split(":").pop() : "";
   setupStep(
     "connection",
@@ -13670,7 +13670,7 @@ git.form.addEventListener("submit", async (event) => {
       }),
     );
     say(
-      `Created ${fields.name.value.replace(/\.git$/, "")}.git. Push to it with: git push http://${hubHost()}${fields.area.value === "public" ? "/git/" : "/git-private/"}${fields.name.value.replace(/\.git$/, "")}.git main`,
+      `Created ${fields.name.value.replace(/\.git$/, "")}.git. Push to it with: git push http://${hubHost(false)}${fields.area.value === "public" ? "/git/" : "/git-private/"}${fields.name.value.replace(/\.git$/, "")}.git main`,
       true,
       git.createNote,
     );

@@ -50,6 +50,8 @@ for (const [stage, state, labels, disabled] of [
 check('the hub address, before the box has said its port: the page host alone', w.eval('hubHost()') === 'box' && w.eval('hubOrigin()') === 'http://box');
 w.eval('hubPorts = { plain: 8080, tls: 8443 }');
 check('  with the hub on port 8080: the host and that port, not this page\'s', w.eval('hubHost()') === 'box:8080' && w.eval('hubOrigin()') === 'http://box:8080', w.eval('hubHost()'));
+check('  an address written http:// takes the plain port, one written https:// the HTTPS port, whatever this page is on',
+  w.eval('hubHost(false)') === 'box:8080' && w.eval('hubHost(true)') === 'box:8443', `${w.eval('hubHost(false)')} ${w.eval('hubHost(true)')}`);
 w.eval('hubPorts = { plain: 80, tls: 443 }');
 check('  on port 80: the host alone', w.eval('hubHost()') === 'box');
 check('repairs belong to the doctor, not Updates', d.getElementById('update-clear').closest('.admin-pane').id === 'updoctor');

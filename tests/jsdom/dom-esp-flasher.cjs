@@ -10,18 +10,25 @@ const WEB = require('path').resolve(__dirname, '../../web');
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const html = fs.readFileSync(`${WEB}/esp-flasher.html`, 'utf8');
+const address = fs.readFileSync(`${WEB}/https-address.js`, 'utf8');
 const js = fs.readFileSync(`${WEB}/esp-flasher.js`, 'utf8');
 const two = [{ version: '2.9.0.1234567-built', env: 'heltec-v3', name: 'Meshtastic for heltec-v3', chip: 'ESP32-S3', parts: 3 },
   { version: '2.9.0.1234567-built', env: 'tbeam', name: 'Meshtastic for tbeam', chip: 'ESP32', parts: 2 }];
 const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 
-async function page(url, api, { serial = false, secure } = {}) {
+// certificate: what /certificate.json says (the box's HTTPS), or none for a 404.
+async function page(url, api, { serial = false, secure, certificate } = {}) {
   const dom = new JSDOM(html, { url, runScripts: 'outside-only' });
   const w = dom.window;
-  w.fetch = async (u) => (u === '/flasher/api/esp' ? new w.Response(JSON.stringify(api), { status: 200 }) : new w.Response('{}', { status: 404 }));
+  w.fetch = async (u) => {
+    if (u === '/flasher/api/esp') return new w.Response(JSON.stringify(api), { status: 200 });
+    if (u === '/certificate.json' && certificate) return new w.Response(JSON.stringify(certificate), { status: 200 });
+    return new w.Response('{}', { status: 404 });
+  };
   if (w.Response === undefined) w.Response = Response;
   if (serial) Object.defineProperty(w.navigator, 'serial', { value: {} });
   if (secure !== undefined) Object.defineProperty(w, 'isSecureContext', { value: secure });
+  w.eval(address);
   w.eval(js);
   await new Promise((r) => setTimeout(r, 50));
   return w.document;
@@ -36,6 +43,10 @@ async function page(url, api, { serial = false, secure } = {}) {
     && /Meshtastic for heltec-v3 · ESP32-S3 · 2\.9\.0\.1234567 · cached upstream release$/.test(t(d.querySelector('#flash-list li'))) && !d.querySelector('esp-web-install-button'),
     t(d.querySelector('#flash-list li')));
   check('  the Meshtastic download hidden when it is not there', d.getElementById('flash-download').hidden);
+  d = await page('http://box.local:8080/flasher/', { targets: two, engine: true, download: false }, { secure: false, certificate: { on: true, port: 8443 } });
+  check('  at the box\'s HTTPS port, not this page\'s', d.querySelector('#flash-can a').getAttribute('href') === 'https://box.local:8443/flasher/', t(d.getElementById('flash-can')));
+  d = await page('http://box.local/flasher/', { targets: two, engine: true, download: false }, { secure: false, certificate: { on: false, port: 443 } });
+  check('  HTTPS off on this box: said, no dead link', /this box does not serve HTTPS/.test(t(d.getElementById('flash-can'))) && !d.querySelector('#flash-can a'), t(d.getElementById('flash-can')));
   d = await page('https://box.local/flasher/', { targets: two, engine: true, download: true }, { secure: true });
   check('HTTPS, no Web Serial: Chrome or Edge on a computer said', /Unsupported browser.*Use Chrome or Edge on a computer/.test(t(d.getElementById('flash-can'))), t(d.getElementById('flash-can')));
   check('  the Meshtastic download offered when it is there', !d.getElementById('flash-download').hidden

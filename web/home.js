@@ -7,16 +7,15 @@
 // Back to this page from the browser's back-forward cache (after signing in or out): drawn afresh, so its header
 // buttons are those of whoever is signed in now.
 window.addEventListener('pageshow', (event) => { if (event.persisted) location.reload(); });
-// On plain HTTP, when the box also serves HTTPS: a line offering its certificate (/certificate says how to install it).
+// On plain HTTP, when the box also serves HTTPS: a line offering this page over HTTPS (at the box's HTTPS port),
+// then the certificate for a device that warns (/certificate says how to install it). No answer: nothing offered.
 (async () => {
   const offer = document.getElementById('https-offer');
   if (!offer || location.protocol !== 'http:') return;
-  try {
-    const data = await (await fetch('/certificate.json', { cache: 'no-store' })).json();
-    offer.hidden = !data.on;
-  } catch {
-    // No answer: nothing offered.
-  }
+  const info = await httpsInfo();
+  if (!info || !info.on) return;
+  document.getElementById('https-offer-link').href = httpsHere(info.port);
+  offer.hidden = false;
 })();
 (() => {
   const tabs = document.querySelectorAll('.home-tabs [data-tab]');

@@ -18,7 +18,7 @@
     <p class="subtitle" data-i18n="index.header.subtitle">You are connected to the network of the box.</p>
     <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="index.header.aria-theme"></div>
   </header>
-  <p class="https-offer" id="https-offer" hidden data-i18n="index.https-offer.text">This box also serves its pages over HTTPS. <a href="/certificate">Install the box's certificate</a> so your device trusts them.</p>
+  <p class="https-offer" id="https-offer" hidden data-i18n="index.https-offer.open-over-https">This box also serves its pages over HTTPS. <a id="https-offer-link" href="/">Open this page over HTTPS</a>. If your browser shows a warning, do not go past it: <a href="/certificate">install the box's certificate</a> first.</p>
   <!-- first use -->
 
   <div id="guest-net" class="guest-net" hidden></div>
@@ -109,6 +109,7 @@
   <script src="names.js"></script>
   <script src="shoutbox.js"></script>
   <script src="board.js"></script>
+  <script src="https-address.js"></script>
   <script src="home.js"></script>
   <script src="guest-net.js"></script>
 </body>
