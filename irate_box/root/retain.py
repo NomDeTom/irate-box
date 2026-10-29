@@ -563,8 +563,14 @@ def main(argv):
         if os.geteuid() != 0:
             sys.exit("run as root")
         print(install_units(command == "install-units"))
+    elif command in ("add-store", "remove-store") and len(argv) >= 2:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        print(set_store(argv[1], command == "add-store", keys="--keys" in argv[2:]))
     else:
-        sys.exit("usage: retain sweep | boot-check | install-units | uninstall-units")
+        sys.exit(
+            "usage: retain sweep | boot-check | install-units | uninstall-units | add-store PATH [--keys] | remove-store PATH"
+        )
 
 
 if __name__ == "__main__":

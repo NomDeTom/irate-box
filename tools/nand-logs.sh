@@ -574,6 +574,13 @@ state_on() {
 	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && mount --bind "$MNT/sys${d//\//_}" "$d"; done
 	echo "state=1" >>"$STATE"
 	crc_set on
+	retain=$(dirname "$(readlink -f "$0")")/../irate-box
+	if [[ -x $retain ]]; then
+		"$retain" retain add-store "$MNT/protected" --keys ||
+			say "the NAND's second copy could not be recorded (the card's copy is still kept)"
+	else
+		say "the NAND's second copy could not be recorded (the card's copy is still kept)"
+	fi
 	say "done: the hub's state and the system's on the flash; on the card: ${large[*]}. Undo: $0 state off"
 }
 
@@ -587,6 +594,10 @@ state_off() {
 	trap 'for u in "${units[@]}"; do systemctl start "$u" 2>/dev/null || true; done' EXIT
 	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && unbind "$d"; done
 	for d in "${large[@]}"; do umount "$HUB/$d" 2>/dev/null || true; done
+	retain=$(dirname "$(readlink -f "$0")")/../irate-box
+	if [[ -x $retain ]]; then
+		"$retain" retain remove-store "$MNT/protected" || true
+	fi
 	# The flash's state onto the card's own folder (seen at HUB_CARD), its large folders left as they are.
 	local skip=()
 	for d in "${large[@]}"; do skip+=("--exclude=./$d"); done
