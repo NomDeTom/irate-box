@@ -6127,11 +6127,11 @@ def housecall_scan(req):
 
     kind = str(req.get("target") or "")
     path = str(req.get("path") or "")
-    if kind not in ("image", "device", "root", "this-card", "peer"):
+    if kind not in ("image", "device", "root", "this-card", "card", "peer"):
         raise Refused(M("control.housecall.target", "Select what the doctor examines."))
     if kind == "peer" and (not path or "\0" in path or len(path) > 64):
         raise Refused(M("control.housecall.peer", "Select a paired box."))
-    if kind not in ("this-card", "peer") and (not path or "\0" in path or len(path) > 4096):
+    if kind not in ("this-card", "card", "peer") and (not path or "\0" in path or len(path) > 4096):
         raise Refused(M("control.housecall.path", "Give the path the doctor examines."))
     reference = str(req.get("reference") or "")
     if "\0" in reference or len(reference) > 4096:
@@ -6149,6 +6149,8 @@ def housecall_scan(req):
     args = [f"{CODE}/irate-box", "housecall"]
     if kind == "this-card":
         args.append("--this-card")
+    elif kind == "card":
+        args.append("--card-check")
     elif kind == "peer":
         args += ["--peer", path]
     else:
@@ -6171,6 +6173,8 @@ def housecall_scan(req):
     label = (
         "this box's own files"
         if kind == "this-card"
+        else "the card this box runs from"
+        if kind == "card"
         else f"the box {path}"
         if kind == "peer"
         else f"{path}, imaged first"

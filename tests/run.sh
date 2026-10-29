@@ -85,6 +85,7 @@ run sim_passwords.py
 run sim_account_nav.py
 run sim_health_accept.py
 run sim_housecall.py
+run sim_card_genuine.py
 run housecall_guard.py
 run sim_restore.py
 run sim_clock_sources.py

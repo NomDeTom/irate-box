@@ -33,9 +33,14 @@ for flag in (
     "--git-tree",
     "--image-first",
     "--on-own-card",
+    "--card-check",
 ):
     check(f"the command line takes {flag}", f'"{flag}"' in src)
 check("the report is control/housecall.json", 'CONTROL / "housecall.json"' in src)
+check(
+    "the card the box runs from is checked on its own and with this box's files",
+    "def examine_card(" in src and "card_finding(" in src and "findings.append(card_finding())" in src,
+)
 check(
     "from inside: the hub's large folders left out whole (box 181: 14 GB of build caches in 231 280 files)",
     "skip=large" in src and '"ci"' in src and '"zim"' in src,
