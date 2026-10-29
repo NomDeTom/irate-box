@@ -2724,8 +2724,9 @@ HEALTH_CHOICE_RE = re.compile(
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
-    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer))$"
-    r"|^card-memcg-on$|^card-speed-test$|^card-scan$"
+    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off)|filesystem:(ext4|btrfs|f2fs|btrfs[+]f2fs)|ab:(off|tryboot|uboot))$"
+    r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
+    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$"
 )
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
 HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too

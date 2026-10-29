@@ -104,7 +104,10 @@ def watch(
         reads += 1
         value = reader()
         now = clock()
-        if value is not None and value < threshold:
+        if value is not None and value >= threshold:
+            released = True
+            started = None
+        elif value is not None and value < threshold and released:
             if started is None:
                 started = now
             elif now - started >= hold:
