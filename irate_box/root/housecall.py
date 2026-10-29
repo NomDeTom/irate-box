@@ -1265,6 +1265,41 @@ def restore_from_report(path, kind=None):
     return said
 
 
+def record_card(card, action, said):
+    """A result from the Rockchip boards page (rkcard.py) as a finding here, so a card checked there is in this
+    doctor's report too. The report's files and counts, if it had any, are kept."""
+    try:
+        report = json.loads(REPORT.read_text())
+    except (OSError, ValueError):
+        report = {}
+    if not isinstance(report, dict) or not isinstance(report.get("findings"), list):
+        report = {"at": time.time(), "target": "cards in a reader", "findings": [], "files": [], "counts": {}}
+    fid = f"housecall-card:{card}:{action}"
+    report["findings"] = [f for f in report["findings"] if f.get("id") != fid]
+    if action == "genuine":
+        status = "problem" if (isinstance(said, dict) and said.get("id") == "rkcard.fake") else "ok"
+    elif action == "check":
+        words = render(said).lower()
+        status = "warn" if ("damaged" in words or "errors found" in words or "not checked" in words) else "ok"
+    else:
+        status = "ok"
+    report["findings"].append(
+        finding(
+            fid,
+            M("housecall.card.title", "Card {name}", name=card),
+            status,
+            said,
+            notes=[
+                M("housecall.card.rockchip", "From the Rockchip boards page, where the card in the reader is handled.")
+            ],
+            evidence=[f"The {action} of the card {card}"],
+        )
+    )
+    report["at"] = time.time()
+    write_report(report)
+    return report
+
+
 def write_report(report, path=REPORT):
     parent = Path(path).parent
     parent.mkdir(parents=True, exist_ok=True)

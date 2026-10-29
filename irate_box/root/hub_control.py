@@ -7003,10 +7003,16 @@ def _rk_card(req, what):
         raise Refused(M("rkcard.name", "Select a card.")) from None
     card = (str(req.get("card") or ""), size, str(req.get("serial") or ""))
     if what == "check":
-        return rkcard.check(*card)
-    if what == "genuine":
-        return rkcard.genuine(*card)
-    return rkcard.flash(*card, str(req.get("image") or ""), str(req.get("sha256") or "").lower())
+        said = rkcard.check(*card)
+    elif what == "genuine":
+        said = rkcard.genuine(*card)
+    else:
+        said = rkcard.flash(*card, str(req.get("image") or ""), str(req.get("sha256") or "").lower())
+    # The result is on the Rockchip page and in the Housecall doctor: the card is what that doctor examines.
+    from irate_box.root import housecall
+
+    housecall.record_card(card[0], what, said)
+    return said
 
 
 def _rk_write(rkboard, req):

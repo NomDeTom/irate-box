@@ -19,7 +19,7 @@ T = Path(tempfile.mkdtemp(prefix="housecall-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
-from irate_box.msg import Refused
+from irate_box.msg import M, Refused
 from irate_box.root import housecall
 
 fails = 0
@@ -486,6 +486,39 @@ check(
     "the root helper's housecall-restore puts the file back and updates the report",
     said.get("id") == "restore.done.kept" and (restore_root / "sub" / "ff").read_bytes() == good,
     said,
+)
+
+# The Rockchip page's card results: written here too, and kept beside an earlier examination.
+before_card = json.loads((T / "state" / "control" / "housecall.json").read_text())
+card_record = housecall.record_card(
+    "sda",
+    "check",
+    M("rkcard.checked", "The card was read, nothing written: {said}.", said="partition table: no problems"),
+)
+later_card = housecall.record_card(
+    "sda",
+    "genuine",
+    M("rkcard.fake", "The card is not what it says: only {usable} of it can be used. Replace it.", usable="2 GB"),
+)
+check(
+    "a Rockchip card check is a finding here, and an earlier report is kept",
+    any(f["id"] == "housecall-card:sda:check" and f["status"] == "ok" for f in card_record["findings"])
+    and any(f["id"].startswith("housecall-restored:") for f in card_record["findings"])
+    and any(f["id"] == "housecall-card:sda:genuine" and f["status"] == "problem" for f in later_card["findings"]),
+    later_card["findings"],
+)
+warn_card = housecall.record_card(
+    "sdb",
+    "check",
+    M(
+        "rkcard.checked",
+        "The card was read, nothing written: {said}.",
+        said="sdb1 (ext4): errors found, nothing changed",
+    ),
+)
+check(
+    "  a check that found errors is a warning",
+    any(f["id"] == "housecall-card:sdb:check" and f["status"] == "warn" for f in warn_card["findings"]),
 )
 
 # The report the page reads.
