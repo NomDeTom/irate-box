@@ -137,6 +137,60 @@ check(
     all("/etc/unreadable" not in e for f in found.values() for e in f["evidence"]),
     found,
 )
+
+# The files this image always changes: left out, counted in a note, still damage when they read back as 0xFF.
+armbian = T / "armbian-release"
+armbian.write_text("BOARD=luckfox-lyra-zero-w\n")
+health.ARMBIAN_RELEASE = armbian
+by_design = (
+    "??5??????   /lib/modules/6.1.115-vendor-rockchip/modules.alias.bin\n"
+    "??5??????   /etc/armbian-release\n"
+    "??5??????   /usr/src/linux-headers-6.1.115-vendor-rockchip/include/generated/autoconf.h\n"
+    "??5?????? c /etc/logrotate.d/nginx\n"
+    "??5?????? c /etc/systemd/journald.conf\n"
+)
+verify["full"] = by_design + f"??5??????   {changed_file}\n" + "??5?????? c /etc/broken.conf\n"
+found = {f["id"]: f for f in health.check_package_files(quick=False)}
+check(
+    "on Armbian, the files it always changes are left out: only the others are listed, and the rest counted",
+    found["package-changed"]["evidence"] == [str(changed_file)]
+    and found["package-conffiles"]["evidence"] == ["/etc/broken.conf"]
+    and "packages.by-design" in message_ids(found["package-changed"])
+    and any(
+        n.get("id") == "packages.by-design" and (n.get("args") or {}).get("n") == 5
+        for n in found["package-changed"]["notes"]
+    ),
+    found,
+)
+verify["full"] = by_design
+found = {f["id"]: f for f in health.check_package_files(quick=False)}
+check(
+    "  with nothing else changed, the finding is ok, and still says how many were left out",
+    "package-changed" not in found
+    and "package-conffiles" not in found
+    and found["package-files"]["status"] == "ok"
+    and "packages.by-design" in message_ids(found["package-files"]),
+    found,
+)
+real_by_design = health._by_design
+health._by_design = lambda path: path == str(ff_file) or real_by_design(path)
+verify["full"] = f"??5??????   {ff_file}\n"
+found = {f["id"]: f for f in health.check_package_files(quick=False)}
+check(
+    "  a file changed by design that reads back as 0xFF is still damage",
+    found["package-files"]["status"] == "problem" and found["package-files"]["evidence"] == [str(ff_file)],
+    found,
+)
+health._by_design = real_by_design
+armbian.unlink()
+verify["full"] = "??5??????   /etc/armbian-release\n??5?????? c /etc/logrotate.d/nginx\n"
+found = {f["id"]: f for f in health.check_package_files(quick=False)}
+check(
+    "  without Armbian, its files count as changes again",
+    found["package-changed"]["evidence"] == ["/etc/armbian-release"]
+    and found["package-conffiles"]["evidence"] == ["/etc/logrotate.d/nginx"],
+    found,
+)
 check(
     "the tree matches the installed commit: fine",
     found["irate-box-tree"]["status"] == "ok" and "package-tree.ok" in message_ids(found["irate-box-tree"]),
