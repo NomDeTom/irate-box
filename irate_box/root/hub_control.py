@@ -187,6 +187,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from irate_box import setup_code
 from irate_box.finding import action as finding_action
 from irate_box.finding import finding
 from irate_box.hub import access, gitrepos, manifests, netinv, transport, uplink
@@ -554,13 +555,13 @@ def reset_password():
     from irate_box import durable
 
     durable.write_checked(UNCLAIMED, "no admin password chosen yet (hub_control.py reset-password)\n", 0o644)
+    setup_code.ensure(UNCLAIMED)
     return M(
         "control.password.reset",
         "The password of the user {user} is reset, and initial setup is open again. "
-        "Until someone sets a new password, any person who can reach the box can open {page}, "
-        "set the password and become the administrator.",
+        "It asks for the setup code (print it with: sudo /opt/irate-box/irate-box hub_control setup-code). "
+        "Only the console can show that code.",
         user=SCRIPT_USER,
-        page="/admin",
     )
 
 
@@ -2020,6 +2021,7 @@ def claim(req):
     """
     if not UNCLAIMED.exists():
         raise Refused(M("control.setup.already", "Initial setup is already complete."))
+    setup_code.clear()
     UNCLAIMED.unlink()
     (ETC / "admin-password").unlink(missing_ok=True)
     if not ADMIN_LOGIN_OFF.exists():
@@ -2080,6 +2082,7 @@ def console_set_admin(name):
     if out.returncode != 0:
         sys.exit(out.stderr.strip() or out.stdout.strip() or "accounts: failed")
     # The accounts command's own line, then what the helper did: for the terminal, in English.
+    setup_code.clear()
     said = [out.stdout.strip()]
     if UNCLAIMED.exists():
         said.append(claim({}))
@@ -4991,8 +4994,8 @@ def appstore_findings(now=None):
                     ),
                     M(
                         "update.appstore.newest.fix",
-                        "Open App store, open {name} and select Look again. Tick the files the new releases carry "
-                        "and select Hold these.",
+                        "Open App store, open {name} and select Read the releases again. Tick the files the new "
+                        "releases carry and select Hold these.",
                         name=name,
                     ),
                     go=GO_APPSTORE,
@@ -6127,11 +6130,11 @@ def housecall_scan(req):
 
     kind = str(req.get("target") or "")
     path = str(req.get("path") or "")
-    if kind not in ("image", "device", "root", "this-card", "peer"):
+    if kind not in ("image", "device", "root", "this-card", "card", "peer"):
         raise Refused(M("control.housecall.target", "Select what the doctor examines."))
     if kind == "peer" and (not path or "\0" in path or len(path) > 64):
         raise Refused(M("control.housecall.peer", "Select a paired box."))
-    if kind not in ("this-card", "peer") and (not path or "\0" in path or len(path) > 4096):
+    if kind not in ("this-card", "card", "peer") and (not path or "\0" in path or len(path) > 4096):
         raise Refused(M("control.housecall.path", "Give the path the doctor examines."))
     reference = str(req.get("reference") or "")
     if "\0" in reference or len(reference) > 4096:
@@ -6149,6 +6152,8 @@ def housecall_scan(req):
     args = [f"{CODE}/irate-box", "housecall"]
     if kind == "this-card":
         args.append("--this-card")
+    elif kind == "card":
+        args.append("--card-check")
     elif kind == "peer":
         args += ["--peer", path]
     else:
@@ -6171,6 +6176,8 @@ def housecall_scan(req):
     label = (
         "this box's own files"
         if kind == "this-card"
+        else "the card this box runs from"
+        if kind == "card"
         else f"the box {path}"
         if kind == "peer"
         else f"{path}, imaged first"
@@ -7723,6 +7730,14 @@ if __name__ == "__main__":
         if not off:
             sys.exit("The hotspot could not be confirmed off: " + "; ".join(problems))
         print("The hotspot is off, and its units, connection and files are removed.")
+        sys.exit(0)
+    if sys.argv[1:] == ["setup-code"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo /opt/irate-box/irate-box hub_control setup-code")
+        code = setup_code.show(UNCLAIMED)
+        if not code:
+            sys.exit("This box has an administrator account: there is no setup code.")
+        print(code)
         sys.exit(0)
     if len(sys.argv) == 3 and sys.argv[1] == "set-admin":
         if os.geteuid() != 0:

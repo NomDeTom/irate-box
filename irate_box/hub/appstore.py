@@ -295,6 +295,13 @@ PAGE_HEAD = """<!DOCTYPE html>
 """
 
 
+def _last_error(holder_id):
+    """A holder's last check's error, for an administrator's view of an empty holder; None when it had none."""
+    status = librarian._read_json(holder.ROOT / holder_id / "status.json", {})
+    error = status.get("error") if isinstance(status, dict) else None
+    return str(error)[:300] if error else None
+
+
 def _channel(name):
     if name == "pre-release":
         return M("appstore.channel.pre-release", "Pre-release")
@@ -327,7 +334,11 @@ def page(host, scheme, level, firmware_visible=False):
         "</header>",
     ]
     if not any(not entry["empty"] for entry in listings):
-        parts.append(f"  <section><p>{html.escape(str(M('appstore.empty', 'Nothing is kept yet.')))}</p>")
+        # Nothing set up yet: the confused krab (web/art), as the box's not-found and not-running pages show it.
+        parts.append(
+            '  <section class="krab-figure"><img src="/art/krab-confused.webp" alt="" width="240" height="240">'
+            f"<p>{html.escape(str(M('appstore.empty', 'Nothing to install yet.')))}</p>"
+        )
         if level == "admin":
             parts.append(
                 f'  <p><a href="/admin/#appstore">{_esc(M("appstore.admin-link", "App store settings"))}</a></p>'
@@ -345,8 +356,14 @@ def page(host, scheme, level, firmware_visible=False):
             parts.append(f'    <p class="setting-desc">{said}</p>')
         if entry["empty"]:
             parts.append(
-                f'    <p class="setting-desc">{html.escape(str(M("appstore.none-yet", "Nothing kept yet.")))}</p>'
+                f'    <p class="setting-desc">{html.escape(str(M("appstore.none-yet", "Nothing to install yet.")))}</p>'
             )
+            failed = _last_error(entry["id"]) if level == "admin" else None
+            if failed:
+                parts.append(
+                    f'    <p class="setting-desc bad">'
+                    f"{_esc(M('appstore.last-error', 'The last check failed: {error}', error=failed))}</p>"
+                )
             parts.append("  </section>")
             continue
         if entry["id"] == FIRMWARE_ID:
@@ -447,23 +464,28 @@ def page(host, scheme, level, firmware_visible=False):
             parts.append("    </ul>")
         parts.append("  </section>")
     certificate = str(M("appstore.certificate", "This box's certificate"))
-    phone = html.escape(
+    permission = M(
+        "appstore.phone.permission",
+        "📱 A phone needs permission to install an app from the browser you downloaded it with. Turn that on once, "
+        "for this browser.",
+    )
+    warning = html.escape(
         str(
             M(
-                "appstore.phone",
-                "📱 A phone needs permission to install an app from the browser you downloaded it with. Turn that on "
-                "once, for this browser. A plain (unencrypted) address can bring a warning. {certificate} lets the "
-                "phone trust it, and the HTTPS address of this page downloads without a warning.",
+                "appstore.phone.certificate",
+                "A plain (unencrypted) address can bring a warning. {certificate} lets the phone trust this box, and "
+                "the HTTPS address of this page downloads without one.",
                 certificate=certificate,
             )
         )
     ).replace(html.escape(certificate), f'<a href="/certificate">{html.escape(certificate)}</a>')
-    parts.append(f'  <p class="setting-desc">{phone}</p>')
+    parts.append(f'  <p class="setting-desc appstore-hint">{_esc(permission)}</p>')
+    parts.append(f'  <p class="setting-desc appstore-hint">{warning}</p>')
     address = html.escape(f"{scheme}://{host}/appstore/", quote=True)
     parts.append(
-        f"  <section><p>{_esc(M('appstore.scan', 'Scan to open this page:'))}</p>"
-        f'<span class="qr" id="appstore-qr" data-url="{address}" role="img" '
-        f'aria-label="{_esc(M("appstore.qr-label", "QR code for the App store"))}"></span></section>'
+        f'  <section class="appstore-qr-block"><span class="qr" id="appstore-qr" data-url="{address}" role="img" '
+        f'aria-label="{_esc(M("appstore.qr-label", "QR code for the App store"))}"></span>'
+        f'<p class="setting-desc">{_esc(M("appstore.scan", "Scan to open this page on another phone."))}</p></section>'
     )
     chips = json.dumps(_chips(listings)).replace("<", "\\u003c")
     parts.append(f'  <script type="application/json" id="appstore-chips">{chips}</script>')

@@ -1,0 +1,7 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# RAUC's custom bootloader backend: the handler in hardening.py, which reads and writes the same default slot and
+# one-shot trial the boot script does.
+here="$(cd "$(dirname "$0")" && pwd)"
+exec "$here/../irate-box" hardening rauc "$@"

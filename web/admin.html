@@ -1443,24 +1443,23 @@
           aria-labelledby="appstore-title"
         >
           <h2 id="appstore-title" data-i18n="admin.appstore.title">App store</h2>
-          <p
-            class="setting-desc"
-            data-i18n="admin.appstore.keeps-files-from-project-releases"
-          >
-            The App store keeps the files you select from a project's releases on
-            the box, so people download them with no internet access. You add a project
-            (a GitHub repository), look at what its newest releases hold, select
-            which files to keep and how many versions of each kind. The box checks
-            as often as you set below, when it has internet access. Every file is
-            checked against the SHA-256 GitHub gives for it. What is kept shows on
-            the <a href="/appstore/">App store page</a> and its tile.
+          <p class="setting-desc" data-i18n="admin.appstore.intro-what">
+            The App store keeps files from a project's releases on the box, so people
+            can download them with no internet access. What is kept shows on the
+            <a href="/appstore/">App store page</a> and its tile.
           </p>
-          <label
-            class="inline"
-            data-i18n="admin.appstore.label-keep-files-box"
-            ><input type="checkbox" id="appstore-enabled" />Keep app files on this
-            box</label
-          >
+          <p class="setting-desc" data-i18n="admin.appstore.intro-how">
+            Add a project (a GitHub repository), look at what its newest releases hold,
+            then select which files to keep and how many versions of each kind.
+          </p>
+          <p class="setting-desc" data-i18n="admin.appstore.intro-checks">
+            The box checks as often as you set below, when it has internet access, and
+            checks every file against the SHA-256 GitHub gives for it.
+          </p>
+          <label class="setting appstore-enabled-row">
+            <input type="checkbox" id="appstore-enabled" />
+            <span class="setting-name" data-i18n="admin.appstore.label-keep-files-box">Keep app files on this box</span>
+          </label>
           <p class="setting-desc" id="appstore-status" role="status"></p>
           <form id="appstore-policy" class="library-form surface-policy">
             <div
@@ -1482,7 +1481,9 @@
             </button>
           </form>
           <p class="setting-desc action-note" role="status" hidden></p>
-          <p class="library-buttons update-buttons">
+          <div id="appstore-holders" class="admin-list"></div>
+          <p class="library-buttons update-buttons appstore-all">
+            <span class="setting-desc" data-i18n="admin.appstore.all-projects">Every project:</span>
             <button
               class="action-btn"
               type="button"
@@ -1497,12 +1498,11 @@
               id="appstore-update"
               data-i18n="admin.appstore.btn-download"
             >
-              Download
+              Download what is newer
             </button>
           </p>
-          <div id="appstore-holders" class="admin-list"></div>
           <h3 data-i18n="admin.appstore.h-add">Add a project</h3>
-          <div id="appstore-add"></div>
+          <div id="appstore-add" class="library-form"></div>
         </section>
 
         <section
@@ -5571,6 +5571,7 @@
                 <option value="device" data-i18n="admin.housecall.device">A card in a reader</option>
                 <option value="root" data-i18n="admin.housecall.folder">A folder</option>
                 <option value="this-card" data-i18n="admin.housecall.this-card">This box's own files</option>
+                <option value="card" data-i18n="admin.housecall.card">This box's card: identity and extent (reads only)</option>
                 <option value="peer" data-i18n="admin.housecall.peer">Another box (paired)</option>
               </select></label>
             <label id="housecall-path-label" data-i18n="admin.housecall.path-label">Path

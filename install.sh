@@ -1976,6 +1976,8 @@ if [ -n "$TAKE_UNIT" ]; then
 fi
 if [ "$UNCLAIMED" = 1 ]; then
 	echo "no admin password chosen yet (install.sh)" | write_if_changed "$UNCLAIMED_MARK" 644
+	HUB_ETC_DIR="$ETC" HUB_WEB_SERVER="$WEB" HUB_UNCLAIMED_FILE="$UNCLAIMED_MARK" \
+		"$CODE/irate-box" hub_control setup-code >/dev/null 2>&1 || true
 else
 	rm -f "$UNCLAIMED_MARK"
 fi
@@ -3358,9 +3360,11 @@ echo
 say "Installation $([ $fail = 0 ] && echo completed || echo "completed with ${#PROBLEMS[@]} problem$([ ${#PROBLEMS[@]} = 1 ] || echo s) (below)"). Open Irate-Box at $where/"
 echo "    web server: $WEB$([ "$WEB" = caddy ] && echo ' (the fallback; --web nginx switches to the default)')"
 if [ "$UNCLAIMED" = 1 ]; then
-	echo "    administrator account required: not set yet. Until it is, any device on this network can use $where/admin/. Make the account"
-	echo "           now over HTTPS ($where/admin/setup with https://), or here over SSH:"
+	setup_code="$(HUB_ETC_DIR="$ETC" HUB_WEB_SERVER="$WEB" HUB_UNCLAIMED_FILE="$UNCLAIMED_MARK" "$CODE/irate-box" hub_control setup-code 2>/dev/null || true)"
+	echo "    administrator account required: not set yet. Until it is, $where/admin/setup asks for the setup code"
+	echo "           below (again at the console: sudo $CODE/irate-box hub_control setup-code), or here over SSH:"
 	echo "           sudo $CODE/irate-box hub_control set-admin NAME"
+	echo "    setup code: ${setup_code:-not made; run the console command above}"
 else
 	echo "    administrator sign-in: admin / (in $ETC/admin-password)"
 fi
