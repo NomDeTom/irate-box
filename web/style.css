@@ -1595,6 +1595,14 @@ body[data-art] > header {
 [data-art]:not([data-art=""]) {
   padding-bottom: calc(var(--art-w) * var(--art-r) + 2.5rem);
 }
+/* On /admin a page names its art on its own section, and admin-layout.js copies the name to .admin-main for the
+   picture: the room once, on .admin-main, less the body's own 4rem below it, so the foot is the public pages'. */
+.admin-main > .admin-page[data-art] {
+  padding-bottom: 0;
+}
+.admin-main[data-art]:not([data-art=""]) {
+  padding-bottom: max(0rem, calc(var(--art-w) * var(--art-r) + 2.5rem - 4rem));
+}
 .admin-art {
   display: none;
   position: fixed;
