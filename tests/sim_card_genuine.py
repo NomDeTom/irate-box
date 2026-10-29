@@ -31,7 +31,7 @@ def check(name, cond, info=""):
 def csd_for(size):
     """An SD v2.0 CSD naming size bytes."""
     c_size = size // (512 * 1024) - 1
-    return f"{((1 << 126) | (c_size << 62)):032x}"
+    return f"{((1 << 126) | (c_size << 48)):032x}"
 
 
 def stand_in(manfid, name, date, serial, size, csd=True):
@@ -59,6 +59,11 @@ def image(path, size, wrap_at=None):
 size = 2 << 30
 stand_in(0x03, "SH64G", "04/2024", "0x1234", size)
 ident = housecall.card_identity(disk, sysdir)
+check(
+    "box 181's real CSD register names its 60 906 MiB",
+    housecall._csd_size("400e0032db790001dbd37f800a4040f9") == 60906 * (1 << 20),
+    housecall._csd_size("400e0032db790001dbd37f800a4040f9"),
+)
 check(
     "the card's identity: maker, name, date, serial, and the size its CSD names against the system's",
     ident
@@ -106,6 +111,12 @@ check(
     "the furthest ext4 backup superblock reads back with its magic and UUID",
     extent and extent["far"] > 0 and extent["read"] > 0,
     extent,
+)
+shifted = housecall.card_extent(ext, 8 << 20)
+check(
+    "  on a partition, the copy is measured from the card's start, not the partition's",
+    shifted and shifted["far"] == extent["far"] + (8 << 20),
+    (extent, shifted),
 )
 stand_in(0x03, "SH64G", "04/2024", "0x1234", 256 << 20)
 said = housecall.card_finding(disk=disk, sys_dir=sysdir, device=ext, part=ext, size=256 << 20)

@@ -810,6 +810,11 @@ KNOWN_MAKERS = {
     0x02: "Toshiba/Kioxia",
     0x03: "SanDisk",
     0x1B: "Samsung",
+    0x1D: "ADATA",
+    0x27: "Phison",
+    0x28: "Lexar",
+    0x41: "Kingston",
+    0x74: "Transcend",
 }
 
 
@@ -841,8 +846,8 @@ def _csd_size(csd):
         return None
     value = int(text, 16)
     structure = (value >> 126) & 0x3
-    if structure == 1:  # SDHC/SDXC: C_SIZE is in 512 KiB units
-        return (((value >> 62) & 0xFFF) + 1) * 512 * 1024
+    if structure == 1:  # SDHC/SDXC: C_SIZE is 22 bits at 69:48, in 512 KiB units
+        return (((value >> 48) & 0x3FFFFF) + 1) * 512 * 1024
     if structure == 0:
         c_size_mult = (value >> 47) & 0x7
         read_bl_len = (value >> 80) & 0xF
@@ -865,6 +870,15 @@ def _root_disk():
     if not source:
         return ""
     return _parent_disk(source) or Path(source).name
+
+
+def _partition_offset(path):
+    """The byte offset a partition starts at on its card; 0 for a whole disk or an image file."""
+    said = run("lsblk", "-n", "-o", "START", str(path), timeout=30)
+    try:
+        return int(said.stdout.strip().split()[0]) * 512
+    except (IndexError, ValueError):
+        return 0
 
 
 def _disk_size(path):
@@ -938,7 +952,7 @@ def card_extent(part, offset=0):
     blocks = [int(n) for n in re.findall(r"^\s*Backup superblock at (\d+)", said.stdout, re.M)]
     good = []
     for block in blocks:
-        base = offset + block * int(bs.group(1))
+        base = block * int(bs.group(1))
         buf, _ = _read_at(part, base, 2048)
         for start in (0, 1024):
             if len(buf) < start + 120:
@@ -947,7 +961,7 @@ def card_extent(part, offset=0):
                 int.from_bytes(buf[start + 56 : start + 58], "little") == 0xEF53
                 and buf[start + 104 : start + 120] == want
             ):
-                good.append(base + start)
+                good.append(offset + base + start)
                 break
     return {"far": max(good), "backups": len(blocks), "read": len(good)} if good else None
 
@@ -974,7 +988,7 @@ def card_finding(disk=None, sys_dir=None, device=None, part=None, size=None):
             M("housecall.card.no-sd", "The root is not an SD card this reads, so there is no card identity to judge."),
         )
     wrap = card_wrap(device, size) if device and size else {"checked": False, "why": "the card could not be read"}
-    extent = card_extent(part) if part and size else None
+    extent = card_extent(part, _partition_offset(part)) if part and size else None
     fake = wrap.get("fake") is True
     notes = []
     evidence = []
