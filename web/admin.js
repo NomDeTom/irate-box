@@ -17930,6 +17930,7 @@ renderInventory(); // the menu may have been built before this script ran
 const hc = {
   target: document.getElementById("housecall-target"),
   path: document.getElementById("housecall-path"),
+  pathLabel: document.getElementById("housecall-path-label"),
   imageFirst: document.getElementById("housecall-image-first"),
   imageFirstLabel: document.getElementById("housecall-image-first-label"),
   imagePath: document.getElementById("housecall-image-first-path"),
@@ -17957,7 +17958,11 @@ function hcPathState() {
   const whole = hc.target.value === "this-card";
   const peer = hc.target.value === "peer";
   hc.path.disabled = whole;
-  hc.path.placeholder = whole ? "" : peer ? "the other box's name" : "/path/to/card.img";
+  hc.pathLabel.hidden = whole; // this box's own files: there is no path to give
+  hc.path.placeholder =
+    { image: "/path/to/card.img", device: "/dev/sda", root: "/mnt/card", peer: "the other box's name" }[
+      hc.target.value
+    ] || "";
   const card = hc.target.value === "device";
   const first = card && hc.imageFirst.checked;
   hc.imageFirstLabel.hidden = !card;

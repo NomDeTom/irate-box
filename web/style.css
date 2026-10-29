@@ -1363,6 +1363,15 @@ body.app-frame iframe {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+/* The Housecall doctor's form: the options' heading a little apart from the fields above it. */
+.housecall-form {
+  margin: 0.8rem 0 1rem;
+}
+.housecall-form .housecall-also {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
 /* A form's buttons keep their own width, in a row when there are several. */
 .library-form > button,
 .library-form > .library-buttons {
@@ -4540,6 +4549,13 @@ html[data-palette="contrast"] .help-item.down {
 }
 .https-offer a {
   color: var(--accent);
+}
+/* Two lines: the offer, then the warning, each its own line rather than one that wraps anywhere. */
+.https-offer p {
+  margin: 0;
+}
+.https-offer p + p {
+  margin-top: 0.2rem;
 }
 .guest-net {
   margin: 0 auto 1rem;
