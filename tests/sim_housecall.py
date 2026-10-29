@@ -606,10 +606,12 @@ check(
     said.get("id") == "housecall.peer.paired"
     and peers.get("pi", {}).get("host") == "192.0.2.10"
     and "password" not in json.dumps(peers)
-    and peers.get("pi", {}).get("user") == "hub"
+    and peers.get("pi", {}).get("user") == "root"
     and (housecall.PEER_DIR / "pi.known_hosts").read_text().startswith("box.local ssh-ed25519")
     and "SHA256:FINGERPRINT" in str(said)
+    and len((housecall.PEER_DIR / "pi.authorized_key").read_text().splitlines()) == 1
     and (housecall.PEER_DIR / "pi.authorized_key").read_text().startswith("restrict,command=")
+    and "\\\\n=== %s\\\\n" in (housecall.PEER_DIR / "pi.authorized_key").read_text()
     and (housecall.PEERS.stat().st_mode & 0o777) == 0o600,
     (said, peers),
 )

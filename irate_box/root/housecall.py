@@ -1350,9 +1350,9 @@ PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 PEER_COMMAND = (
-    "for f in /var/lib/hub/control/health.json /var/lib/hub/control/security-audit.json "
-    '/var/lib/hub/control/doctor.json /opt/irate-box/VERSION; do printf "\n=== %s\n" "$f"; '
-    'cat "$f" 2>/dev/null; done'
+    r"for f in /var/lib/hub/control/health.json /var/lib/hub/control/security-audit.json "
+    r"/var/lib/hub/control/doctor.json /opt/irate-box/VERSION; do printf '\n=== %s\n' $f; "
+    r"cat $f 2>/dev/null; done"
 )
 PEER_DOCTORS = (
     ("box-doctor", "/var/lib/hub/control/health.json"),
@@ -1384,7 +1384,7 @@ def _valid_peer(name, host, user, port):
         raise Refused(M("housecall.peer.port", "Give its SSH port, 1 to 65535."))
 
 
-def pair_peer(name, host, user="hub", port=22):
+def pair_peer(name, host, user="root", port=22):
     """One pairing, made once: remember the box, and its SSH host key as ssh-keyscan gives it now. The owner then
     puts this box's public key on the other box. No password is stored."""
     _valid_peer(name, host, user, port)
@@ -1424,7 +1424,8 @@ def pair_peer(name, host, user="hub", port=22):
     safeio.write_checked(PEERS, json.dumps({"version": 1, "peers": peers}, indent=1, sort_keys=True), 0o600)
     public = run("ssh-keygen", "-y", "-f", str(PEER_KEY), timeout=60)
     pub = (public.stdout or "").strip()
-    line = f'restrict,command="{PEER_COMMAND}" {pub}' if pub else ""
+    escaped = PEER_COMMAND.replace("\\", "\\\\").replace('"', '\\"')
+    line = f'restrict,command="{escaped}" {pub}' if pub else ""
     auth = PEER_DIR / f"{name}.authorized_key"
     safeio.write_checked(auth, line + "\n", 0o600)
     shown = run("ssh-keygen", "-lf", str(known), timeout=60).stdout.strip()
@@ -1522,7 +1523,7 @@ def peer_examine(name):
         "ConnectTimeout=8",
         "-o",
         "IdentitiesOnly=yes",
-        f"{peer.get('user') or 'hub'}@{peer.get('host')}",
+        f"{peer.get('user') or 'root'}@{peer.get('host')}",
         PEER_COMMAND,
         timeout=120,
     )
@@ -1563,7 +1564,7 @@ def peer_examine(name):
                 "{name} was read, read only: its three doctors and its version.",
                 name=name,
             ),
-            evidence=[f"{peer.get('user') or 'hub'}@{peer.get('host')}"],
+            evidence=[f"{peer.get('user') or 'root'}@{peer.get('host')}"],
         )
     ]
     if remote_version:

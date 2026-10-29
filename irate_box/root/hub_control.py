@@ -6213,7 +6213,7 @@ def housecall_pair(req):
     return housecall.pair_peer(
         str(req.get("name") or "").strip(),
         str(req.get("host") or "").strip(),
-        str(req.get("user") or "hub").strip(),
+        str(req.get("user") or "root").strip(),
         port,
     )
 
