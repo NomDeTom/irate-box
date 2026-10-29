@@ -575,11 +575,15 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
         need(
             isinstance(e.get("menus"), dict)
             and e["menus"]
-            and set(e["menus"]) <= ({m["id"]} | set(builtin_ids))
+            and set(e["menus"]) <= ({m["id"]} | set(folder_ids))
             and all(type(v) is int for v in e["menus"].values()),
             "entries.menus: this add-on's own list, or a folder built into the hub",
         )
         need(isinstance(e.get("name"), str) and LOCAL_PATH_RE.match(str(e.get("path", ""))), "entries: name and path")
+    need(
+        not any(m["id"] in e["menus"] for e in m.get("entries", [])) or menu is not None,
+        "entries for the add-on's own list need a menu",
+    )
     src = m.get("source")
     need(isinstance(src, dict) and src.get("type") in ("git", "bundle"), "source: git or bundle")
     if src["type"] == "git":
