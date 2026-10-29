@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The read-only system (root/readonly.py), offline: the Lyra's overlayroot config and apt hooks, the Pi's
-raspi-config switch, the setting's choices, and switching both off without leaving a mark.
+"""The read-only system (root/readonly.py), offline: overlayroot installed or not on the Lyra, the Pi's
+raspi-config and its package check, the setting's choices, every failure leaving the board as it was, and the
+lower root written when the overlay is already live.
 python3 tests/sim_readonly.py"""
 
 import os
@@ -12,18 +13,23 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="readonly-"))
+(T / "dt").mkdir()
+MOUNTS = T / "mounts"
+MOUNTS.write_text("/dev/root / ext4 rw,relatime 0 0\n")
 os.environ.update(
     HUB_ETC_DIR=str(T / "etc"),
     HUB_OVERLAYROOT_CONF=str(T / "overlayroot.conf"),
     HUB_READONLY_HOOK=str(T / "apt.conf"),
     HUB_DEVICE_TREE=str(T / "dt"),
+    HUB_READONLY_MOUNTS=str(MOUNTS),
 )
-(T / "dt").mkdir()
 sys.path.insert(0, str(REPO))
+from irate_box.msg import Refused
 from irate_box.root import readonly
 
 calls = []
 fails = 0
+state = {"installed": True, "apt_ok": True, "initramfs_ok": True, "raspi_ok": True, "chroot_ok": True}
 
 
 def check(name, cond, info=""):
@@ -34,43 +40,175 @@ def check(name, cond, info=""):
 
 def run(*cmd, timeout=600):
     calls.append(tuple(cmd))
-    return subprocess.CompletedProcess(cmd, 0, "", "")
+    ok = 0
+    if cmd[:2] == ("dpkg", "-s"):
+        ok = 0 if state["installed"] else 1
+    elif cmd[:2] == ("apt-get", "install"):
+        ok = 0 if state["apt_ok"] else 100
+        state["installed"] = state["apt_ok"]
+    elif cmd[:1] == ("update-initramfs",):
+        ok = 0 if state["initramfs_ok"] else 1
+    elif cmd[:2] == ("raspi-config", "nonint"):
+        ok = 0 if state["raspi_ok"] else 1
+    elif cmd[:1] == ("overlayroot-chroot",):
+        ok = 0 if state["chroot_ok"] else 1
+    return subprocess.CompletedProcess(cmd, ok, "", "" if ok else "it failed")
+
+
+def reset(**changes):
+    calls.clear()
+    readonly.HOOK.unlink(missing_ok=True)
+    readonly.MARK.unlink(missing_ok=True)
+    readonly.CONF.unlink(missing_ok=True)
+    state.update({"installed": True, "apt_ok": True, "initramfs_ok": True, "raspi_ok": True, "chroot_ok": True})
+    state.update(changes)
+    MOUNTS.write_text("/dev/root / ext4 rw,relatime 0 0\n")
+
+
+def refused(fn, *args):
+    try:
+        fn(*args)
+    except Refused as exc:
+        return exc.message["id"]
+    return None
 
 
 readonly.run = run
 (T / "dt" / "model").write_bytes(b"Luckfox Lyra Zero W\0")
+
+reset()
 said = readonly.enable(True)
 check(
-    "the Lyra: overlayroot's tmpfs config, the apt hooks, the mark and a new initramfs",
+    "the Lyra: overlayroot's tmpfs config, a new initramfs, the mark, and no apt hook",
     readonly.enabled()
     and 'overlayroot="tmpfs"' in readonly.CONF.read_text()
-    and "DPkg::Pre-Invoke" in readonly.HOOK.read_text()
     and ("update-initramfs", "-u") in calls
-    and said["id"] == "readonly.on",
+    and not readonly.HOOK.exists()
+    and said["id"] == "readonly.on"
+    and "after the next restart" in said["en"],
     (said, calls),
 )
-check("  the setting shows it on", readonly.groups()[0]["current"] == "on")
+setting = readonly.groups()[0]
+check(
+    "  the setting is on, the confirmation is on Read-only, and its words say what is lost",
+    setting["current"] == "on"
+    and "confirm" in setting["options"][0]
+    and "confirm" not in setting["options"][1]
+    and "RAM" in setting["desc"]["en"]
+    and "/boot" in setting["desc"]["en"]
+    and "updates" in setting["desc"]["en"],
+    setting,
+)
 said = readonly.enable(False)
 check(
-    "  off removes the config, hooks and mark",
+    "  off removes the config and mark, and says it takes the next restart",
     not readonly.enabled()
     and not readonly.CONF.exists()
     and not readonly.HOOK.exists()
-    and said["id"] == "readonly.off",
+    and said["id"] == "readonly.off"
+    and "after the next restart" in said["en"],
     (said, calls),
 )
-(T / "dt" / "model").write_bytes(b"Raspberry Pi 3 Model B Plus Rev 1.3\0")
-calls.clear()
+
+reset(installed=False, apt_ok=True)
 said = readonly.enable(True)
 check(
-    "the Pi: raspi-config's overlay switch, with the hooks and mark",
-    ("raspi-config", "nonint", "enable_overlayfs") in calls
+    "no overlayroot installed: it is installed first, then the config and mark",
+    any(c[:2] == ("apt-get", "install") and "overlayroot" in c for c in calls)
     and readonly.enabled()
-    and readonly.HOOK.is_file()
+    and 'overlayroot="tmpfs"' in readonly.CONF.read_text(),
+    calls,
+)
+
+reset(installed=False, apt_ok=False)
+check(
+    "  and when it cannot be installed: refused, with no mark and no config",
+    refused(readonly.enable, True) == "readonly.lyra-not-installed"
+    and not readonly.enabled()
+    and not readonly.CONF.exists(),
+    calls,
+)
+
+reset(initramfs_ok=False)
+check(
+    "update-initramfs fails: the config it wrote is removed, and no mark is written",
+    refused(readonly.enable, True) == "readonly.failed" and not readonly.CONF.exists() and not readonly.enabled(),
+    calls,
+)
+
+reset()
+readonly.enable(True)
+calls.clear()
+state["initramfs_ok"] = False
+check(
+    "off fails: the config and mark stay, so the setting still shows what the next boot will do",
+    refused(readonly.enable, False) == "readonly.off-failed" and readonly.CONF.exists() and readonly.enabled(),
+    calls,
+)
+
+reset()
+(T / "dt" / "model").write_bytes(b"Raspberry Pi 3 Model B Plus Rev 1.3\0")
+said = readonly.enable(True)
+check(
+    "the Pi: raspi-config's switch, the package check, the mark, and no apt hook",
+    ("raspi-config", "nonint", "enable_overlayfs") in calls
+    and ("dpkg", "-s", "overlayroot") in calls
+    and readonly.enabled()
+    and not readonly.HOOK.exists()
     and said["id"] == "readonly.on",
     calls,
 )
+reset(raspi_ok=False)
+check(
+    "  raspi-config fails: refused, and nothing is recorded",
+    refused(readonly.enable, True) == "readonly.failed" and not readonly.enabled(),
+    calls,
+)
+reset(installed=False)
+check(
+    "  raspi-config succeeds without overlayroot: refused, the switch put back, no mark",
+    refused(readonly.enable, True) == "readonly.pi-not-installed"
+    and ("raspi-config", "nonint", "disable_overlayfs") in calls
+    and not readonly.enabled(),
+    calls,
+)
+reset()
+readonly.enable(True)
+calls.clear()
+state["raspi_ok"] = False
+check(
+    "  off fails: the mark stays",
+    refused(readonly.enable, False) == "readonly.off-failed" and readonly.enabled(),
+    calls,
+)
+
+(T / "dt" / "model").write_bytes(b"Some Other Board\0")
+reset()
+check(
+    "another board: no setting, and switching it on is refused",
+    readonly.groups() == [] and refused(readonly.enable, True) == "readonly.unsupported",
+)
+
+(T / "dt" / "model").write_bytes(b"Luckfox Lyra Zero W\0")
+reset()
+readonly.enable(True)
+MOUNTS.write_text("/dev/root / ext4 rw,relatime 0 0\noverlay / overlay rw,relatime 0 0\n")
+calls.clear()
 readonly.enable(False)
-check("  off calls the Pi's switch off", ("raspi-config", "nonint", "disable_overlayfs") in calls, calls)
+check(
+    "the overlay already live: off removes the files from the lower root through overlayroot-chroot too",
+    not readonly.enabled() and not readonly.CONF.exists() and any(c[:1] == ("overlayroot-chroot",) for c in calls),
+    calls,
+)
+reset()
+readonly.enable(True)
+MOUNTS.write_text("/dev/root / ext4 rw,relatime 0 0\noverlay / overlay rw,relatime 0 0\n")
+calls.clear()
+state["chroot_ok"] = False
+check(
+    "  and when that fails, nothing in the live root is removed",
+    refused(readonly.enable, False) == "readonly.off-failed" and readonly.enabled(),
+    calls,
+)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
