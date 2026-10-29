@@ -18104,14 +18104,21 @@ if (hc.scan) {
     hc.pairNote.hidden = false;
     hc.pairNote.textContent = "Pairing…";
     try {
-      await postJSON("/admin/housecall", {
-        action: "pair",
-        name: hc.peerName.value.trim(),
-        host: hc.peerHost.value.trim(),
-        user: hc.peerUser.value.trim() || "root",
-        port: Number(hc.peerPort.value) || 22,
-      });
-      hc.pairNote.textContent = "Paired. Put this box's public key on the other box, then examine it.";
+      // The root helper makes the key and scans the host, so its own answer (the line to paste, or why not)
+      // replaces the note when it comes.
+      waitingFor = {
+        id: (
+          await postJSON("/admin/housecall", {
+            action: "pair",
+            name: hc.peerName.value.trim(),
+            host: hc.peerHost.value.trim(),
+            user: hc.peerUser.value.trim() || "root",
+            port: Number(hc.peerPort.value) || 22,
+          })
+        ).id,
+        at: hc.pairNote,
+      };
+      loadBox();
     } catch (err) {
       hc.pairNote.textContent = err && err.message ? err.message : "The box could not be paired.";
     }
