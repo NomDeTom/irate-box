@@ -85,7 +85,40 @@ def _policy(slot):
     return path, before
 
 
-def patch(slot, running="/", *, apt_lists=None, run=run):
+def _resolver(slot, run=run):
+    """The host's resolver file, read-only in the slot: /etc/resolv.conf is often a link into /run, which the slot
+    does not have. The slot's own file is put back afterwards."""
+    source = Path("/etc/resolv.conf").resolve()
+    if not source.is_file():
+        return None, None
+    target = slot / "etc" / "resolv.conf"
+    _dir(target.parent)
+    if target.is_symlink():
+        before = ("link", os.readlink(target))
+        target.unlink()
+    elif target.exists():
+        before = ("file", target.read_bytes())
+        target.unlink()
+    else:
+        before = None
+    target.touch()
+    _check(run("mount", "--bind", str(source), str(target)), "bind resolver")
+    run("mount", "-o", "remount,bind,ro", str(target))
+    return target, before
+
+
+def _restore_resolver(target, before):
+    if target is None:
+        return
+    if target.is_symlink() or target.exists():
+        target.unlink(missing_ok=True)
+    if before and before[0] == "link":
+        target.symlink_to(before[1])
+    elif before:
+        target.write_bytes(before[1])
+
+
+def patch(slot, running="/", *, apt_lists=None, code_source=None, run=run):
     """Patch one inactive slot from the running system. Returns the report: commands and the check's differences."""
     slot, running = Path(slot).resolve(), Path(running).resolve()
     if not slot.is_dir():
@@ -96,6 +129,8 @@ def patch(slot, running="/", *, apt_lists=None, run=run):
     lists.mkdir(parents=True, exist_ok=True)
     mounts = []
     policy, before = _policy(slot)
+    resolver, resolver_before = None, None
+    verify = None
     try:
         mounts = _mount(slot, run)
         lists_dest = slot / "var" / "lib" / "apt" / "lists"
@@ -103,47 +138,67 @@ def patch(slot, running="/", *, apt_lists=None, run=run):
         _check(run("mount", "--rbind", str(lists), str(lists_dest)), "bind apt lists")
         _check(run("mount", "--make-rslave", str(lists_dest)), "make apt lists private")
         mounts.append(lists_dest)
-        # The running slot's settings come over before apt and irate-box run in the slot. Its state is outside /etc.
-        _check(run("rsync", "-a", "--delete", f"{running}/etc/", f"{slot}/etc/"), "copy /etc")
+        resolver, resolver_before = _resolver(slot, run)
+        if resolver:
+            mounts.append(resolver)
+        # The running slot's settings come over before apt. Its state is outside /etc, and fstab belongs to the slot.
         _check(
-            run("chroot", str(slot), "apt-get", "update", "-o", "Dir::State::Lists=/var/lib/apt/lists"),
+            run(
+                "rsync",
+                "-aHAX",
+                "-x",
+                "--numeric-ids",
+                "--delete",
+                "--exclude=fstab",
+                f"{running}/etc/",
+                f"{slot}/etc/",
+            ),
+            "copy /etc",
+        )
+        _check(
+            run(
+                "chroot",
+                str(slot),
+                "env",
+                "FORCE_UBOOT_UPDATE=no",
+                "apt-get",
+                "update",
+                "-o",
+                "Dir::State::Lists=/var/lib/apt/lists",
+            ),
             "apt-get update",
         )
         _check(
-            run("chroot", str(slot), "apt-get", "-y", "full-upgrade", "-o", "Dir::State::Lists=/var/lib/apt/lists"),
+            run(
+                "chroot",
+                str(slot),
+                "env",
+                "FORCE_UBOOT_UPDATE=no",
+                "apt-get",
+                "-y",
+                "full-upgrade",
+                "-o",
+                "Dir::State::Lists=/var/lib/apt/lists",
+            ),
             "apt-get full-upgrade",
         )
-        updater = slot / "opt" / "irate-box" / "irate-box"
-        if updater.is_file():
-            _check(run("chroot", str(slot), "/opt/irate-box/irate-box", "update"), "irate-box update in the slot")
+        if code_source:
+            _check(
+                run(
+                    "rsync",
+                    "-aHAX",
+                    "-x",
+                    "--numeric-ids",
+                    "--delete",
+                    f"{code_source}/",
+                    f"{slot}/opt/irate-box/",
+                ),
+                "copy irate-box's code",
+            )
         verify = run("chroot", str(slot), "dpkg", "--verify")
-        changes = _check(
-            run(
-                "rsync",
-                "-a",
-                "--checksum",
-                "--dry-run",
-                "--itemize-changes",
-                "--exclude=/proc",
-                "--exclude=/sys",
-                "--exclude=/dev",
-                "--exclude=/run",
-                "--exclude=/tmp",
-                "--exclude=/var/lib/hub",
-                "--exclude=/var/lib/apt/lists",
-                str(running) + "/",
-                str(slot) + "/",
-            ),
-            "rsync check",
-        )
-        return {
-            "slot": str(slot),
-            "verify": (verify.stdout or "").strip().splitlines(),
-            "changes": (changes.stdout or "").strip().splitlines(),
-            "mounts": [str(m) for m in mounts],
-        }
     finally:
         left = _unmount(mounts, run)
+        _restore_resolver(resolver, resolver_before)
         if before is None:
             policy.unlink(missing_ok=True)
         else:
@@ -155,3 +210,39 @@ def patch(slot, running="/", *, apt_lists=None, run=run):
             )
         if apt_lists is None:
             shutil.rmtree(lists, ignore_errors=True)
+    excludes = [
+        "--exclude=/proc",
+        "--exclude=/sys",
+        "--exclude=/dev",
+        "--exclude=/run",
+        "--exclude=/tmp",
+        "--exclude=/var/lib/hub",
+        "--exclude=/var/lib/apt/lists",
+        "--exclude=/var/cache/apt",
+        "--exclude=/var/log.nand",
+        "--exclude=/mnt",
+        "--exclude=/media",
+    ]
+    if running == Path("/") and slot != Path("/"):
+        excludes.append(f"--exclude=/{slot.relative_to(running)}")
+    changes = _check(
+        run(
+            "rsync",
+            "-aHAX",
+            "-x",
+            "--checksum",
+            "--dry-run",
+            "--itemize-changes",
+            "--numeric-ids",
+            *excludes,
+            f"{running}/",
+            f"{slot}/",
+        ),
+        "rsync check",
+    )
+    return {
+        "slot": str(slot),
+        "verify": (verify.stdout or "").strip().splitlines(),
+        "changes": (changes.stdout or "").strip().splitlines(),
+        "mounts": [str(m) for m in mounts],
+    }

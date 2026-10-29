@@ -44,19 +44,30 @@ check(
     "every bind is rslave, and each is unmounted on its own",
     sum(1 for c in calls if c[:2] == ("mount", "--rbind")) == 4
     and sum(1 for c in calls if c[:2] == ("mount", "--make-rslave")) == 4
-    and sum(1 for c in calls if c[0] == "umount") == 4
+    and sum(1 for c in calls if c[0] == "umount") == 5
     and not any(c[:2] == ("umount", "-R") for c in calls),
     calls,
 )
 copy = next(i for i, c in enumerate(calls) if c[0] == "rsync" and "--delete" in c)
 apt = next(i for i, c in enumerate(calls) if c[0] == "chroot" and "apt-get" in c)
-check("the running /etc comes over before apt runs in the slot", copy < apt, (copy, apt))
+check(
+    "the running /etc comes over before apt runs, its fstab left out",
+    copy < apt and any("--exclude=fstab" in c for c in calls),
+    (copy, apt),
+)
 check(
     "apt works in the slot with the lists outside it",
     any(
         c[0] == "chroot" and "full-upgrade" in c and any("Dir::State::Lists=/var/lib/apt/lists" in a for a in c)
         for c in calls
     ),
+    calls,
+)
+check(
+    "the check runs after the unmounts, on one filesystem",
+    next(i for i, c in enumerate(calls) if c[0] == "rsync" and "--dry-run" in c)
+    > max(i for i, c in enumerate(calls) if c[0] == "umount")
+    and any("-x" in c for c in calls if c[0] == "rsync" and "--dry-run" in c),
     calls,
 )
 check(
