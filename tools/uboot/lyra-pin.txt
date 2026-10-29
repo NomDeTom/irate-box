@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+# The pin Armbian build PR #9390 uses for the Lyra Zero W's U-Boot.
+repo=https://source.denx.de/u-boot/contributors/kwiboo/u-boot.git
+commit=0b8e25bd9e16e8043b600e8f49b926b95572dc47
+defconfig=luckfox-lyra-zero-w-rk3506b_defconfig
+dts=arch/arm/dts/rk3506b-luckfox-lyra-zero-w-sd.dts

@@ -34,21 +34,21 @@ check(
     "  it does not use the eMMC hardware partition setting",
     not any(line.startswith("CONFIG_SYS_MMC_ENV_PART=") for line in fragment.splitlines()),
 )
+pin = (REPO / "tools" / "uboot" / "lyra-pin.txt").read_text()
+check(
+    "the pin: the repository, the tested commit and the Lyra defconfig",
+    "source.denx.de/u-boot/contributors/kwiboo/u-boot.git" in pin
+    and "0b8e25bd9e16e8043b600e8f49b926b95572dc47" in pin
+    and "luckfox-lyra-zero-w-rk3506b_defconfig" in pin,
+    pin,
+)
+check(
+    "  the device-tree fragment names the bootstate partition",
+    "u-boot,mmc-env-partition" in (REPO / "tools" / "uboot" / "irate-bootstate.dtsi").read_text(),
+)
 out = Path(tempfile.mkdtemp(prefix="uboot-out-"))
 result = subprocess.run(
-    [
-        "bash",
-        str(REPO / "tools" / "build-uboot.sh"),
-        "--dry-run",
-        "--repo",
-        "https://example.invalid/u-boot.git",
-        "--commit",
-        "abc123",
-        "--defconfig",
-        "rk3506_defconfig",
-        "--out",
-        str(out),
-    ],
+    ["bash", str(REPO / "tools" / "build-uboot.sh"), "--dry-run", "--out", str(out)],
     capture_output=True,
     text=True,
 )
@@ -58,7 +58,11 @@ check(
     result.returncode == 0,
     result.stderr,
 )
-check("  the commit and the defconfig are named", "abc123" in text and "rk3506_defconfig" in text, text)
+check(
+    "  the pinned commit and defconfig are named",
+    "0b8e25bd9e16e8043b600e8f49b926b95572dc47" in text and "luckfox-lyra-zero-w-rk3506b_defconfig" in text,
+    text,
+)
 check(
     "  the fragment is merged and the config read back", "merge_config.sh" in text and "SOURCE_DATE_EPOCH" in text, text
 )
