@@ -401,6 +401,20 @@ check(
     ran,
 )
 ran.clear()
+said = health.fix("card-set:card_accounting:off")
+check(
+    "  and off removes only irate-box's file, leaving no record behind",
+    not health.IO_ACCOUNTING.exists()
+    and not health.IO_ACCOUNTING_STATE.exists()
+    and ("systemctl", "daemon-reexec") in ran
+    and said["id"] == "repair.card-accounting.off",
+    ran,
+)
+check(
+    "  the setting's choices pass the shared pattern",
+    all(health.CHOICE_RE.match(c) for c in ("card-set:card_accounting:on", "card-set:card_accounting:off")),
+)
+ran.clear()
 said = health.fix("arch-remove:armhf")
 check(
     "Remove armhf: dpkg --remove-architecture",
@@ -420,11 +434,23 @@ check(
     not {"card-writes", "card-accounting"} & {f["id"] for f in health.check_card_writes()},
 )
 
+small_jobs = health._service_writes_findings(
+    {"days": [1, 2, 3], "week_units": [(cardhistory.JOBS, 3 * 120 << 20)]}, "/dev/mmcblk0p2"
+)[0]
+big_jobs = health._service_writes_findings(
+    {"days": [1, 2, 3], "week_units": [(cardhistory.JOBS, 3 * (2 << 30))]}, "/dev/mmcblk0p2"
+)[0]
+check(
+    "jobs that ended: a note under a gigabyte a day, a warning above it",
+    small_jobs["status"] == "note" and big_jobs["status"] == "warn",
+    (small_jobs, big_jobs),
+)
+
 # The system's write settings (Recovery → SD card writes): their groups, then each applied and undone.
 groups = {g["key"]: g for g in health.card_groups()}
 check(
     "the system write settings: apt's cache, package descriptions (this box downloads some), journal, write-back delay",
-    list(groups) == ["apt_cache", "apt_languages", "journal", "writeback"]
+    list(groups) == ["apt_cache", "apt_languages", "journal", "writeback", "card_accounting"]
     and groups["apt_cache"]["current"] == "card"
     and groups["journal"]["current"] == "memory"  # the image keeps it in memory already
     and groups["writeback"]["current"] == "standard",

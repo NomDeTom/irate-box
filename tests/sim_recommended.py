@@ -39,6 +39,8 @@ applied = []
 def groups():
     opts = {"apt_cache": ["card", "memory"], "apt_languages": ["download", "none"], "writeback": ["standard", "longer"]}
     opts["journal"] = ["card", "memory"] + (["flash"] if nand["state"] else [])
+    if nand["state"] == "on":
+        opts["flash_crc"] = ["on", "off"]
     return [{"key": k, "current": box[k], "options": [{"value": v} for v in vs]} for k, vs in opts.items()]
 
 
@@ -92,6 +94,13 @@ check(
     "  a free onboard flash: the journal on the flash",
     dict((k, w) for k, _, w, _ in recommended.differences())["card-set:journal"] == "flash",
 )
+box["flash_crc"] = "off"
+nand["state"] = "on"
+check(
+    "  the state on the flash: its data checked on read is recommended on",
+    dict((k, w) for k, _, w, _ in recommended.differences())["card-set:flash_crc"] == "on",
+)
+box["flash_crc"] = "on"
 nand["state"] = None
 check("  the SD card writes level differs (thrifty, not gentle): said, not set by root", recommended.level_differs())
 

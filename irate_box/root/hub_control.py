@@ -6225,6 +6225,16 @@ def housecall_pair(req):
     )
 
 
+def housecall_unpair(req):
+    """Forget a paired box, with its host key and the authorized-key line made for it."""
+    from irate_box.root import housecall
+
+    name = str(req.get("name") or "").strip()
+    if not name or "\0" in name or len(name) > 64:
+        raise Refused(M("control.housecall.peer", "Select a paired box."))
+    return housecall.unpair_peer(name)
+
+
 def housecall_restore(req):
     """One file from the last report put back, from the copy, tree or package that report named."""
     from irate_box.root import housecall
@@ -7474,6 +7484,7 @@ ACTIONS = {
     "housecall-stop": housecall_stop,
     "housecall-restore": housecall_restore,
     "housecall-pair": housecall_pair,
+    "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,

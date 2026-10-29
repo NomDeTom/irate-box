@@ -20,8 +20,10 @@ running is the card verdict. Stdlib only.
 import hashlib
 import json
 import os
+import shutil
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 from irate_box import durable
@@ -191,15 +193,111 @@ def streak():
     return int(state.get("streak", 0)) if state.get("boot") == _boot_id() else 0
 
 
-def extra_stores():
-    """Further places the copy is kept (a NAND folder, a USB drive): retain.json's "stores", each a folder. A
-    store that is not there is skipped; one that cannot be written is named in the findings."""
+def _store_entries():
+    """retain.json's stores, each {path, keys}. A plain path (the older form) is kept but its keys are left out."""
     try:
         data = json.loads(CONFIG.read_text())
     except (OSError, ValueError):
         return []
-    stores = data.get("stores") if isinstance(data, dict) else None
-    return [Path(s) for s in stores if isinstance(s, str) and s.startswith("/")] if isinstance(stores, list) else []
+    found = data.get("stores") if isinstance(data, dict) else None
+    out = []
+    for item in found if isinstance(found, list) else []:
+        if isinstance(item, str) and item.startswith("/"):
+            out.append({"path": item, "keys": False})
+        elif isinstance(item, dict) and isinstance(item.get("path"), str) and item["path"].startswith("/"):
+            out.append({"path": item["path"], "keys": item.get("keys") is True})
+    return out
+
+
+def _write_stores(entries):
+    durable.write_checked(CONFIG, json.dumps({"version": 1, "stores": entries}, indent=1, sort_keys=True), 0o600)
+
+
+def extra_stores():
+    """Further places the copy is kept (a NAND folder, a USB drive), in the order listed."""
+    return [Path(entry["path"]) for entry in _store_entries()]
+
+
+def store_keys(path):
+    """Whether the CA key and WiFi secrets go into this store. A removable drive does not, unless it says so."""
+    path = str(path)
+    return next((entry["keys"] for entry in _store_entries() if entry["path"] == path), False)
+
+
+def encode_store(path):
+    return urllib.parse.quote(str(path), safe="")
+
+
+def decode_store(value):
+    return urllib.parse.unquote(value)
+
+
+def store_candidates():
+    """Places found for a second copy: the onboard flash when the box's state is on it, and mounted USB drives."""
+    out = []
+    nand = Path(os.environ.get("HUB_NAND_MOUNT", "/var/log.nand"))
+    if nand.is_dir() and os.path.ismount(nand):
+        out.append((nand / "protected", M("retain.store.nand", "the onboard flash"), True))
+    seen = set()
+    for root in (os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"), "/media", "/run/media"):
+        base = Path(root)
+        if not base.is_dir():
+            continue
+        for mount in base.iterdir():
+            if not mount.is_dir() or not os.path.ismount(mount) or mount in seen:
+                continue
+            seen.add(mount)
+            out.append(
+                (mount / ".irate-box-protected", M("retain.store.usb", "the drive {name}", name=mount.name), False)
+            )
+    return out
+
+
+def remove_store_copies(path, only=None):
+    """The copies irate-box made in one store, and nothing else on the drive."""
+    ids = {_ident(file) for file in protected()}
+    try:
+        ids |= {_ident(Path(entry)) for entry in _load_manifest().get("entries", {})}
+    except (OSError, ValueError):
+        pass
+    if only is not None:
+        ids &= set(only)
+    for ident in ids:
+        for name in (ident, ident + ".prev"):
+            try:
+                (Path(path) / name).unlink(missing_ok=True)
+            except OSError:
+                pass
+    try:
+        (Path(path) / "manifest.json").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def set_store(path, on, keys=False):
+    """Add or remove one extra place. Removing it deletes the copies irate-box made there; turning its keys off
+    deletes the key copies already there."""
+    path = str(path)
+    if not path.startswith("/") or "\0" in path:
+        raise Refused(M("retain.store.path", "That is not a folder this box can use."))
+    entries = _store_entries()
+    before = next((entry for entry in entries if entry["path"] == path), None)
+    entries = [entry for entry in entries if entry["path"] != path]
+    if on:
+        entries.append({"path": path, "keys": bool(keys)})
+    if before and (not on or not keys):
+        kept = {_ident(file) for file in protected() if _is_key(file)} if not keys else set()
+        remove_store_copies(path, only=kept)
+    if not on:
+        remove_store_copies(path)
+    _write_stores(entries)
+    if on:
+        return M("retain.store.on", "The copy is also kept at {path}.", path=path)
+    return M("retain.store.off", "The copy is no longer kept at {path}, and its copies there are gone.", path=path)
+
+
+def _is_key(path):
+    return path == ETC / "tls" / "ca" / "ca.key" or NM in Path(path).parents
 
 
 def regenerate(path):
@@ -283,11 +381,14 @@ def sweep():
             continue
         if old.name not in keep:
             old.unlink(missing_ok=True)
+    key_ids = {_ident(path) for path in protected() if _is_key(path)}
     for store in extra_stores():
         try:
             store.mkdir(parents=True, exist_ok=True, mode=0o700)
             for source in STORE.iterdir():
                 if not source.is_file() or source.name.endswith(".lock"):
+                    continue
+                if source.name in key_ids and not store_keys(store):
                     continue
                 target = store / source.name
                 try:
@@ -407,6 +508,15 @@ def installed():
     return (SYSTEMD / SERVICE).exists()
 
 
+def remove_copy():
+    """The copy and its manifest, here and in every extra place: what switching the step off leaves behind is
+    nothing. Only files with our names are removed from an extra place; the rest of a USB drive is left alone."""
+    shutil.rmtree(STORE, ignore_errors=True)
+    MANIFEST.unlink(missing_ok=True)
+    for store in extra_stores():
+        remove_store_copies(store)
+
+
 def install_units(on=True):
     SYSTEMD.mkdir(parents=True, exist_ok=True)
     if on:
@@ -421,6 +531,7 @@ def install_units(on=True):
     for name in (TIMER, SERVICE, SWEEP_SERVICE):
         (SYSTEMD / name).unlink(missing_ok=True)
     restore.run("systemctl", "daemon-reload")
+    remove_copy()
     return M("retain.off", "The copy is gone, and the boot check with it.")
 
 
@@ -438,8 +549,14 @@ def main(argv):
         if os.geteuid() != 0:
             sys.exit("run as root")
         print(install_units(command == "install-units"))
+    elif command in ("add-store", "remove-store") and len(argv) >= 2:
+        if os.geteuid() != 0:
+            sys.exit("run as root")
+        print(set_store(argv[1], command == "add-store", keys="--keys" in argv[2:]))
     else:
-        sys.exit("usage: retain sweep | boot-check | install-units | uninstall-units")
+        sys.exit(
+            "usage: retain sweep | boot-check | install-units | uninstall-units | add-store PATH [--keys] | remove-store PATH"
+        )
 
 
 if __name__ == "__main__":
