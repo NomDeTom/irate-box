@@ -11,12 +11,13 @@ The hub's copy changes only this much:
 
   * a strict Content-Security-Policy (no outside requests) replaces the permissive one, and the
     page says it was adapted;
-  * the Multi-User and Upload To Imgur menus go: both need a network service, and the app is
-    otherwise entirely local. Sessions are forced to LocalSession, so "New session" still
-    autosaves in this browser but never contacts Firebase;
+  * the Multi-User, Upload To Imgur and Load From URL menus go: all need a network service,
+    and the app is otherwise entirely local. Sessions are forced to LocalSession, so "New
+    session" still autosaves in this browser but never contacts Firebase;
   * English is the only language kept (localization/<lang> is 8.6 MB for all 26), and the
-    language list says so. PDF import (pdf.js, 13 MB) and head tracking (Tracky Mouse, 22 MB)
-    are left out; painting, opening and saving images are unaffected;
+    language list says so. PDF import (pdf.js, 13 MB) and the Head Tracker (Tracky Mouse's
+    face-tracking model, 22 MB) are left out. Tracky Mouse's dwell clicker stays: it needs
+    only its 84 KB script and stylesheet, no camera and no model;
   * the build files, Cypress tests, Electron and Discord shells, the PWA manifest and the
     source repository's own paper files go. /jspaint/ serves the whole folder, so they must
     not remain.
@@ -75,13 +76,13 @@ DROP_LIB = (
     "discord-embedded-app-sdk-v1.2.0-bundled-with-skypack.js",
     "firebase.js",
     "pdf.js",
-    "tracky-mouse",
 )
 
 NOTE = """<!-- {mark}: {origin} at the commit in irate-box-bundle.json.
      Adapted for the Irate-Box by irate_box/library/adapt_jspaint.py: no outside requests, no
-     online sessions or Imgur upload, English only, and the optional PDF and head-tracking
-     bundles were left out. Painting, opening and saving are unchanged. -->
+     online sessions, Imgur upload or Load From URL, English only, and the optional PDF import
+     and Head Tracker were left out. The Dwell Clicker stays. Painting, opening and saving are
+     unchanged. -->
 """
 
 POLICY = (
@@ -94,14 +95,12 @@ POLICY = (
     "media-src 'self' data: blob:; "
     "frame-src 'self' blob:; "
     "worker-src 'self' blob:; "
-    "connect-src 'self'; "
+    "connect-src 'self' data: blob:; "
     "object-src 'none'; "
     "base-uri 'self'\">"
 )
 
 CSP = re.compile(r'<meta http-equiv="Content-Security-Policy" content=".*?">', re.S)
-TRACKY_CSS = re.compile(r'^\s*<link href="lib/tracky-mouse/core/tracky-mouse.css"[^>]*>\s*$\n?', re.M)
-TRACKY_JS = re.compile(r'^\s*<script src="lib/tracky-mouse/core/tracky-mouse.js"></script>\s*$\n?', re.M)
 PDF_JS = re.compile(r'^\s*<script src="lib/pdf.js/build/pdf.js"></script>\s*$\n?', re.M)
 MANIFEST_LINK = re.compile(r'^\s*<link rel="manifest"[^>]*>\s*$\n?', re.M)
 IMGUR_MENU = re.compile(
@@ -113,7 +112,19 @@ MULTIUSER_MENU = re.compile(
     r'\n\t\t\{\n\t\t\temoji_icon: "👥",.*?\n\t\t\},\n(?=\t\t\{\n\t\t\temoji_icon: "💄",)',
     re.S,
 )
+HEAD_TRACKER_MENU = re.compile(r'\n\t\t\{\n\t\t\temoji_icon: "🧑",.*?\n\t\t\},\n(?=\t\t// Later on)', re.S)
+LOAD_URL_MENU = re.compile(
+    r'\n\t\t\{\n\t\t\tlabel: localize\("&Load From URL"\),.*?\n\t\t\},\n\t\tMENU_DIVIDER,\n'
+    r'(?=\t\t\{\n\t\t\tlabel: localize\("Manage Storage"\))',
+    re.S,
+)
+BODY = re.compile(r"(<body\b[^>]*>)", re.I)
 LANGUAGES = re.compile(r"const available_languages = \[[^\n]*\];")
+NOTE_HTML = (
+    '<p class="irate-box-adapted"><strong>This copy on the Irate-Box</strong> has no online '
+    "multi-user sessions, Imgur upload or Load From URL. Pictures stay in this browser, where "
+    "other web add-ons on the box can read them, unless you save one to your device.</p>\n"
+)
 IMGUR_BUTTON = re.compile(r'\n\t\t\t\$win\.\$Button\("Upload to Imgur",.*?\n\t\t\t\}\)\.focus\(\);\n', re.S)
 
 
@@ -132,8 +143,6 @@ def adapt_page(text):
     rest = CSP.sub(POLICY, rest, count=1)
     rest = rest.replace("lib/tracky-mouse/images/tracky-mouse-logo-512.png", "images/tracky-mouse-16x16.png")
     for pattern, what in (
-        (TRACKY_CSS, "the Tracky Mouse stylesheet"),
-        (TRACKY_JS, "the Tracky Mouse script"),
         (PDF_JS, "the PDF.js script"),
         (MANIFEST_LINK, "the web-app manifest"),
     ):
@@ -159,8 +168,13 @@ def adapt(tree):
         if not path.is_file():
             raise AdaptError(f"the app has changed: no {path.relative_to(tree)}")
     menu_text = menus.read_text(encoding="utf-8")
-    if len(MULTIUSER_MENU.findall(menu_text)) != 1 or len(IMGUR_MENU.findall(menu_text)) != 1:
-        raise AdaptError("src/menus.js changed: the Multi-User or Upload To Imgur menu is not found once")
+    if (
+        len(MULTIUSER_MENU.findall(menu_text)) != 1
+        or len(IMGUR_MENU.findall(menu_text)) != 1
+        or len(HEAD_TRACKER_MENU.findall(menu_text)) != 1
+        or len(LOAD_URL_MENU.findall(menu_text)) != 1
+    ):
+        raise AdaptError("src/menus.js changed: a menu to remove is not found once")
     functions = tree / "src" / "functions.js"
     if not functions.is_file():
         raise AdaptError("the app has changed: no src/functions.js")
@@ -175,7 +189,7 @@ def adapt(tree):
         raise AdaptError("src/app-localization.js changed: the language list is not found once")
 
     page_text = adapt_page(index.read_text(encoding="utf-8"))
-    menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", menu_text))
+    menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", HEAD_TRACKER_MENU.sub("", LOAD_URL_MENU.sub("", menu_text))))
     function_text = IMGUR_BUTTON.sub("", function_text)
     session_text = session_text.replace(
         "\t\t\tif (local) {\n",
@@ -183,7 +197,20 @@ def adapt(tree):
         1,
     )
     language_text = LANGUAGES.sub('const available_languages = ["en"];', language_text)
+    pages = {}
+    for name in ("about.html", "privacy.html"):
+        page = tree / name
+        if not page.is_file():
+            raise AdaptError(f"the app has changed: no {name}")
+        body = BODY.search(page.read_text(encoding="utf-8"))
+        if body is None:
+            raise AdaptError(f"{name} has no <body> to put the note in")
+        pages[name] = (
+            page.read_text(encoding="utf-8")[: body.end()] + NOTE_HTML + page.read_text(encoding="utf-8")[body.end() :]
+        )
 
+    # The librarian clones into a throwaway tree and drops it on failure, so deleting first and
+    # writing after is safe here; draw.io stages a new tree because it replaces the whole clone.
     shutil.rmtree(tree / ".git", ignore_errors=True)
     for name in DROP_FILES:
         (tree / name).unlink(missing_ok=True)
@@ -195,6 +222,14 @@ def adapt(tree):
             shutil.rmtree(path)
         else:
             path.unlink(missing_ok=True)
+    # Dwell Clicker needs TrackyMouse itself (84 KB), not the face-tracking model or images.
+    tracky = tree / "lib" / "tracky-mouse"
+    for path in tracky.iterdir():
+        if path.name != "core":
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
+    for path in (tracky / "core").iterdir():
+        if path.name not in ("tracky-mouse.js", "tracky-mouse.css"):
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
     for path in (tree / "localization").iterdir():
         if path.is_dir() and path.name != "en":
             shutil.rmtree(path)
@@ -204,6 +239,8 @@ def adapt(tree):
     functions.write_text(function_text, encoding="utf-8")
     sessions.write_text(session_text, encoding="utf-8")
     localization.write_text(language_text, encoding="utf-8")
+    for name, text in pages.items():
+        (tree / name).write_text(text, encoding="utf-8")
 
 
 def main(argv):

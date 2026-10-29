@@ -17,10 +17,11 @@
   "needs": "index.html",
   "addon": {
     "title": "draw.io",
-    "summary": "The draw.io editor from JGraph, running in the visitor's browser. It draws flowcharts, UML, network, BPMN, ER and other diagrams. It saves to the device, or opens a file from it. It needs about 43 MB of storage. The cloud services, templates, web fonts and update check are not included. It makes no requests outside the box.",
+    "summary": "The draw.io editor from JGraph, running in the visitor's browser. It draws flowcharts, UML, network, BPMN, ER and other diagrams. It saves to the device, or opens a file from it. Its settings and drafts stay in this browser, where other web add-ons on the box can read them. It needs about 43 MB of storage. The cloud services, templates, web fonts and update check are not included. It makes no requests outside the box.",
     "consent": "This downloads the draw.io web app from github.com/jgraph/drawio at the commit that this hub pins. A new web add-on starts disabled. After you enable it, the hub serves it to the visitors that its Access setting lets open it. The copy is adapted for the box: cloud storage, the template gallery, web fonts and the update check are removed, and a strict Content-Security-Policy stops every request outside the box. The app still contains links to draw.io's help and other sites; they open in a new page only when a visitor chooses them. Add draw.io?"
   },
   "capabilities": {
-    "storage": true
+    "storage": true,
+    "local": true
   }
 }
