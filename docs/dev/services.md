@@ -95,6 +95,9 @@ documented field by field at the top of `irate_box/hub/manifests.py`; the parts 
   traffic; `ok` only if it is authenticated and encrypted.
 - **`network.says`**: one plain sentence a non-expert understands: who can do what. It appears on the Security
   page, in the security doctor's item and in the hotspot firewall's question before opening it.
+- **`writes`**: where the service writes, `ram` or `card`. A `ram` path is thrown away at a restart: the root
+  helper binds a folder in `/run` over it, so a cache or download never touches the SD card. A `card` path must
+  survive and is counted by the Box doctor's card-write record (`root/servicewrites.py`).
 - **`addon.consent`**: what the owner is agreeing to, said before it is added. Name the port, who can reach it,
   and what is missing (accounts, encryption).
 
