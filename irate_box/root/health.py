@@ -6282,7 +6282,7 @@ def setting_groups(s, wd):
             ],
         }
     )
-    for path, label, keys in retain.store_candidates():
+    for path, label, rule in retain.store_candidates():
         encoded = retain.encode_store(path)
         groups.append(
             {
@@ -6293,11 +6293,16 @@ def setting_groups(s, wd):
                         "retain.store.desc.keys",
                         "Keep the settings and keys here as well as on the card, the keys included.",
                     )
-                    if keys
+                    if rule == "plain"
                     else M(
                         "retain.store.desc.usb",
-                        "Keep the settings and keys here as well as on the card. The drive's copy leaves out the "
-                        "CA key and the WiFi secrets.",
+                        "Keep the settings and keys here as well as on the card. A drive's copy takes the CA key "
+                        "and the WiFi secrets only when Keys in a removable copy is Encrypt them, and only encrypted.",
+                    )
+                    if rule == "encrypted"
+                    else M(
+                        "retain.store.desc.none",
+                        "Keep the settings here as well as on the card. The keys are left out.",
                     )
                 ),
                 "current": "on" if path in retain.extra_stores() else "off",
@@ -6319,6 +6324,47 @@ def setting_groups(s, wd):
     from irate_box.root import readonly
 
     groups += readonly.groups()
+    groups += [
+        {
+            "key": "retain-keys",
+            "label": M("retain.keys.title", "Keys in a removable copy"),
+            "desc": M(
+                "retain.keys.desc",
+                "Keys, passwords, the accounts and the hotspot's passphrase are left out of a USB drive's copy, or "
+                "encrypted there with a key kept on the card. The onboard flash's copy takes them as they are: it is "
+                "the board's own.",
+            ),
+            "current": retain.keys_mode(),
+            "options": [
+                {
+                    "value": "leave-out",
+                    "label": M("retain.keys.leave", "Leave them out"),
+                    "choice": "retain-keys:leave-out",
+                },
+                {
+                    "value": "encrypt",
+                    "label": M("retain.keys.encrypt", "Encrypt them"),
+                    "choice": "retain-keys:encrypt",
+                },
+            ],
+        },
+        {
+            "key": "retain-data",
+            "label": M("retain.data.title", "The administrator's data in a removable copy"),
+            "desc": M(
+                "retain.data.desc",
+                "Keep notes, saved work, messages and the drop in a USB drive's copy, up to this size. It is a "
+                "plaintext backup, not the boot check's copy, and not encrypted like the keys. 0 leaves the data out.",
+            ),
+            "current": str(retain.data_mb()),
+            "options": [
+                {"value": "0", "label": M("retain.data.none", "None"), "choice": "retain-data:0"},
+                {"value": "64", "label": M("retain.data.mb", "{mb} MB", mb="64"), "choice": "retain-data:64"},
+                {"value": "256", "label": M("retain.data.mb", "{mb} MB", mb="256"), "choice": "retain-data:256"},
+                {"value": "1024", "label": M("retain.data.mb", "{mb} MB", mb="1024"), "choice": "retain-data:1024"},
+            ],
+        },
+    ]
     from irate_box.root import bootkey
 
     if bootkey.supported():
@@ -7658,17 +7704,26 @@ def fix(choice):
         on, _, encoded = arg.partition(":")
         path = Path(retain.decode_store(encoded))
         # Only a place this box found itself, or one already in use (to switch off): the choice names a folder, and
-        # root writes the copy there, the keys included on the flash, so the folder is never taken on the hub's word.
-        found = {candidate: keys for candidate, _label, keys in retain.store_candidates()}
+        # root writes the copy there, the keys included only where that place's own rule allows them, so the folder
+        # is never taken on the hub's word.
+        found = {candidate: rule for candidate, _label, rule in retain.store_candidates()}
         if on == "on" and path not in found:
             raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
         if on == "off" and path not in found and path not in retain.extra_stores():
             raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
-        return retain.set_store(str(path), on == "on", keys=found.get(path, False))
+        return retain.set_store(str(path), on == "on", keys=found.get(path, "none"))
     if kind == "readonly":
         from irate_box.root import readonly
 
         return readonly.enable(arg == "on")
+    if kind == "retain-keys":
+        from irate_box.root import retain
+
+        return retain.set_keys(arg)
+    if kind == "retain-data":
+        from irate_box.root import retain
+
+        return retain.set_data_mb(arg)
     if kind == "card-set":
         from irate_box.root import recommended
 
