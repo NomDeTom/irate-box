@@ -46,6 +46,7 @@ DEFAULT = {"filesystem": "ext4", "ab": "off"}
 # Linux writes whichever slot is running.
 AB_STATE_DIR = Path(os.environ.get("HUB_AB_STATE_DIR", "/mnt/irate-bootstate"))
 DEV_MEM = os.environ.get("HUB_DEV_MEM", "/dev/mem")
+BOOTSTATE_DEVICE = Path(os.environ.get("HUB_BOOTSTATE_DEVICE", "/dev/disk/by-partlabel/irate-bootstate"))
 CMDLINE = Path(os.environ.get("HUB_PROC_CMDLINE", "/proc/cmdline"))
 # The one-shot register: a word in the 4 KiB page of the RK3506's PMU GRF that holds U-Boot's own boot-mode register
 # (0xff910200, which U-Boot clears before the script runs). Narrower than the block until the TRM is read.
@@ -296,12 +297,25 @@ def _pi_tryboot_txt():
     )
 
 
+def _env_offsets():
+    """U-Boot puts the environment at the top of the bootstate partition: the last 8 KiB, and the copy before it."""
+    size = 16 << 20
+    said = run("blockdev", "--getsize64", str(BOOTSTATE_DEVICE), timeout=30)
+    if said.returncode == 0 and said.stdout.strip().isdigit():
+        size = int(said.stdout.strip())
+    return size - 0x2000, size - 0x4000
+
+
 def _fw_env_example():
+    first, second = _env_offsets()
     return (
         "# irate-box (A/B updates): where U-Boot's saved environment lives.\n"
         "# Nothing here is active until the offset is confirmed on the board (notes:\n"
         "# 2026-10-29-bootloader-bootcount). Copying this file as it stands does nothing.\n"
-        "# device offset size\n# /dev/disk/by-partlabel/irate-bootstate 0x00000000 0x2000\n"
+        "# With the partition named in the device tree, U-Boot keeps the environment at its top.\n"
+        "# device offset size\n"
+        f"# {BOOTSTATE_DEVICE} 0x{first:08X} 0x2000\n"
+        f"# {BOOTSTATE_DEVICE} 0x{second:08X} 0x2000\n"
     )
 
 

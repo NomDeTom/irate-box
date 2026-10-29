@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* SPDX-FileCopyrightText: 2026 NomDeTom */
+/* The U-Boot route's raw environment lives in the bootstate partition, never at LBA 0. */
+/ {
+	config {
+		u-boot,mmc-env-partition = "irate-bootstate";
+	};
+};

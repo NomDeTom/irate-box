@@ -409,6 +409,14 @@ check(
     "connect-src 'self' ws://$host/mqtt wss://$host/mqtt https://api.github.com;" in csp,
     csp,
 )
+local_csp = access.addon_csp({"capabilities": {"storage": True, "local": True}})
+check(
+    "an add-on that keeps its work in the page may read data: and blob: URLs",
+    "connect-src 'self' data: blob:;" in local_csp
+    and "worker-src 'self' blob:;" in local_csp
+    and "script-src 'self' 'unsafe-inline' blob:;" in local_csp,
+    local_csp,
+)
 # The hub's public routes: /certificate.json says only public facts, /certificate/ca.crt is
 # the CA's certificate as a download, never a key.
 tls.front(True)

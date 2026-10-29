@@ -41,7 +41,6 @@ NOT_LABELS = {
     "Steady on": "an LED pattern, described",
     "Quick flashes": "an LED pattern, described",
     "Two short flashes": "an LED pattern, described",
-    "The theme picker": "names the control, which shows an icon and no words",
     "A script calls the administration pages": "a case in a list (first-use.md), not a control",
     "Settings links": "a part of the Box doctor page, described (troubleshooting.md), not a control",
 }

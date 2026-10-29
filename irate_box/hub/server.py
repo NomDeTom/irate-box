@@ -3299,7 +3299,13 @@ def local_addons_action(payload):
                         "Read the warning about pasted add-ons and confirm it first.",
                     )
                 )
-            manifests.check_local(m, "the pasted manifest", {x["id"] for x in manifests.load()})
+            built = manifests.load()
+            manifests.check_local(
+                m,
+                "the pasted manifest",
+                {x["id"] for x in built},
+                {x["id"] for x in built if x.get("menu")},
+            )
             return 202, _local_add(m, "pasted")
         if action == "accept":
             # The catalogue's newer entry, whose agreed part changed: the owner has read the

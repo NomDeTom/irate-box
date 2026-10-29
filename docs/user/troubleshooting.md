@@ -19,7 +19,7 @@ On the administration pages, open Doctors.
 
 The clock checks have their own page in the Clock section.
 
-**Housecall doctor.** It examines a card, a card image, or this box's own files, on request. Each file gets a verdict: genuine, damaged, suspect or unknown. From the console, run `sudo /opt/irate-box/irate-box housecall --image /path/to/card.img`. It reads only and writes nothing to the target.
+**Housecall doctor.** It examines a card, a card image, or this box's own files, on request. Each file gets a verdict: genuine, damaged, suspect or unknown. From the console, run `sudo /opt/irate-box/irate-box housecall --image /path/to/card.img`. It reads only and writes nothing to the target. With **This box's own files** it also reads the card the box runs from: its maker and date, whether it repeats its start past a size, and how far its ext4 backup superblocks read back. The target **This box's card: identity and extent (reads only)** does only that check, and is the one to use when the box itself is suspect.
 
 **Security doctor.** See [Security](security.md).
 
@@ -36,8 +36,9 @@ sudo /opt/irate-box/irate-box health summary
 Use SSH to sign in to the box. These commands are available:
 
 - `sudo /opt/irate-box/irate-box hub_control set-admin NAME`: create an administrator account, or set a new password.
+- `sudo /opt/irate-box/irate-box hub_control setup-code`: print the code the set-up page asks for, while the box has no administrator account.
 - `sudo /opt/irate-box/irate-box hub_control script-login`: create a script login (the `--off` option removes it).
-- `sudo /opt/irate-box/irate-box hub_control reset-password`: reset the initial setup. After this command, anyone on the network can open the administration pages until you create an administrator account again. Run it only if you accept this.
+- `sudo /opt/irate-box/irate-box hub_control reset-password`: reset the initial setup and make a new setup code. Print it with `setup-code`; the page asks for it until you create an administrator account again.
 - `sudo ./install.sh`: run the installer again. The installer repairs and upgrades the box. It keeps your settings and add-ons. It can restart services. Read the log in `/var/log/irate-box/install.log` afterward.
 - `sudo ./uninstall.sh`: remove the box. This also deletes your data unless you add `--keep-state`. Make a backup first.
 
