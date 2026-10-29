@@ -254,6 +254,19 @@ check(
     and f["crash-radio"]["go"]["mark"] == "up-wedge",
     f["crash-radio"],
 )
+cw._write(
+    cw.EVENTS,
+    [
+        {"at": now - 600, "iface": "wlan0", "kind": "failed", "text": "wlan0 is gone"},
+        {"at": now - 300, "iface": "wlan0", "kind": "failed", "text": "wlan0 is gone again"},
+    ],
+)
+f2 = {x["id"]: x for x in health.check_crashwatch(now=now)}
+check(
+    "  a radio that fails twice in the day: a warning, not a note",
+    f2["crash-radio"]["status"] == "warn",
+    f2["crash-radio"],
+)
 check(
     "  a frozen box after a crash, nothing to restart it: a warning; the choice is the doctor's settings', linked to its row",
     f["crash-hang"]["status"] == "warn"

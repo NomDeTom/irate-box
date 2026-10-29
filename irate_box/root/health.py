@@ -2906,7 +2906,7 @@ def _service_writes_findings(summary, card_name):
                 finding(
                     "card-writer:jobs",
                     M("card-writer.title", "Writes of {unit}", unit=M("card-writer.jobs", "jobs that ended")),
-                    "note",
+                    "warn" if per_day > CARD_HIGH else "note",
                     M(
                         "card-writer.jobs.rate",
                         "Jobs that run and end (timers' short runs) write about {mb} MB a day to the SD card.",
@@ -7785,7 +7785,7 @@ def fix(choice):
 
 # --- plain text ------------------------------------------------------------------------------------
 
-MARK = {"ok": "ok     ", "note": "note   ", "warn": "note   ", "problem": "problem"}
+MARK = {"ok": "ok     ", "note": "note   ", "warn": "review ", "problem": "problem"}
 
 
 def report(data, problems_only=False):

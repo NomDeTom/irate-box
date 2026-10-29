@@ -86,6 +86,17 @@ setTimeout(async () => {
   w.renderHealth({ ...fx, report: { ...fx.report, findings: fx.report.findings.map((f) => (f.id === 'other-failed:armbian-led-state.service' ? { ...f, status: 'problem' } : f)) },
     accepted: { 'other-failed:armbian-led-state.service': { at: 1 } } });
   check('  accepted, but now a problem: shown as one', d.getElementById('health-findings').contains(led()) && led().classList.contains('finding-problem'));
+  // A note is worth knowing, not a problem: its own folded list, outside the open list and the counts.
+  fx.report.findings.push({ id: 'a-note', title: 'A note', status: 'note', summary: 'Worth knowing.',
+    why: null, fix: null, notes: [], commands: [], evidence: [], actions: [] });
+  w.renderHealth({ ...fx, accepted: {} });
+  const note = d.getElementById('hl-a-note');
+  check('a note: in its own folded list, not the open list or the counts',
+    note && d.getElementById('health-notes').contains(note)
+    && !d.getElementById('health-findings').contains(note)
+    && !d.getElementById('health-note-fold').open
+    && ![...d.querySelectorAll('#health-summary .sec-count')].some((b) => b.textContent.includes('A note')),
+    note && note.textContent);
   // SD card writes (cardhistory.py): the rate and the card's size in plain terms, a bar a day, by service, a change.
   w.renderHealth({ ...fx, card_history: {
     days: [{ day: '2026-10-25', card: 5e9, mem_min: 2e8 }, { day: '2026-10-26', card: 1e9, mem_min: 1.5e8 }],

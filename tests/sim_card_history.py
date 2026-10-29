@@ -434,6 +434,18 @@ check(
     not {"card-writes", "card-accounting"} & {f["id"] for f in health.check_card_writes()},
 )
 
+small_jobs = health._service_writes_findings(
+    {"days": [1, 2, 3], "week_units": [(cardhistory.JOBS, 3 * 120 << 20)]}, "/dev/mmcblk0p2"
+)[0]
+big_jobs = health._service_writes_findings(
+    {"days": [1, 2, 3], "week_units": [(cardhistory.JOBS, 3 * (2 << 30))]}, "/dev/mmcblk0p2"
+)[0]
+check(
+    "jobs that ended: a note under a gigabyte a day, a warning above it",
+    small_jobs["status"] == "note" and big_jobs["status"] == "warn",
+    (small_jobs, big_jobs),
+)
+
 # The system's write settings (Recovery → SD card writes): their groups, then each applied and undone.
 groups = {g["key"]: g for g in health.card_groups()}
 check(
