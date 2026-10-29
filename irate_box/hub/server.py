@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from irate_box import confine, durable, finding
+from irate_box import confine, durable, finding, setup_code
 from irate_box.hub import (
     access,
     accounts,
@@ -5586,6 +5586,18 @@ class Handler(BaseHTTPRequestHandler):
                         M("setup.done", "This box is already set up. Sign in to change its accounts or passwords.")
                     ),
                 )
+            elif not setup_code.verify(str(payload.get("code") or "")):
+                time.sleep(1.2)
+                self.send_json(
+                    403,
+                    refused.say(
+                        M(
+                            "setup.code",
+                            "The setup code is not right. It is printed at the end of the install, or run: "
+                            "sudo /opt/irate-box/irate-box hub_control setup-code",
+                        )
+                    ),
+                )
             elif not self._https() and payload.get("over_http") is not True:
                 # The first password over plain HTTP only when the owner chooses it, having been told.
                 self.send_json(
@@ -6504,9 +6516,9 @@ class Handler(BaseHTTPRequestHandler):
             reference = str(payload.get("reference") or "")
             image_first = str(payload.get("image_first") or "")
             manifest = str(payload.get("manifest") or "")
-            if target not in ("image", "device", "root", "this-card", "peer"):
+            if target not in ("image", "device", "root", "this-card", "card", "peer"):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
-            elif target != "this-card" and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
+            elif target not in ("this-card", "card") and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
                 self.send_json(400, refused.say(M("hub.housecall.path", "Give the path the doctor examines.")))
             elif len(reference) > 4096 or "\0" in reference:
                 self.send_json(

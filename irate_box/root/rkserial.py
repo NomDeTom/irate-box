@@ -270,8 +270,8 @@ def configure(console, choices):
         return out
 
     # The console 500 columns wide first, sent bare (a line too short to wrap): bash's line editor redraws a line
-    # that passes column 80, and on this console a wrapped command was then often not run at all (a Lyra Zero W,
-    # 2026-10-29: 8 long lines of 8 went through once it was wide, about half before).
+    # that passes column 80, and on this console a wrapped command was then often not run at all (on a Lyra Zero W,
+    # 8 long lines of 8 went through once it was wide, about half before).
     console.buf = ""
     console.send("stty cols 500\r")
     console.expect({"shell": SHELL_RE}, 10)

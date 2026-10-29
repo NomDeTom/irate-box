@@ -46,6 +46,7 @@ DEFAULT = {"filesystem": "ext4", "ab": "off"}
 # Linux writes whichever slot is running.
 AB_STATE_DIR = Path(os.environ.get("HUB_AB_STATE_DIR", "/mnt/irate-bootstate"))
 DEV_MEM = os.environ.get("HUB_DEV_MEM", "/dev/mem")
+CMDLINE = Path(os.environ.get("HUB_PROC_CMDLINE", "/proc/cmdline"))
 # The one-shot register: a word in the 4 KiB page of the RK3506's PMU GRF that holds U-Boot's own boot-mode register
 # (0xff910200, which U-Boot clears before the script runs). Narrower than the block until the TRM is read.
 REG_PAGE = 0xFF910000
@@ -445,14 +446,97 @@ def arm_tryboot():
     return M("harden.ab.tryboot.armed", "The next boot tries the other slot once, then falls back to the default.")
 
 
+def running_slot():
+    """a, b or "": the slot the running system came from, from the kernel's root=."""
+    try:
+        text = CMDLINE.read_text()
+    except OSError:
+        return ""
+    found = re.search(r"root=(?:/dev/disk/by-partlabel/|PARTLABEL=)irate-system-([ab])\b", text)
+    return found.group(1) if found else ""
+
+
+def default_slot():
+    """a, b or "": ab_default in ab.txt on the bootstate partition."""
+    try:
+        found = re.search(r"^ab_default=([AB])$", (AB_STATE_DIR / "ab.txt").read_text(), re.M)
+    except OSError:
+        return ""
+    return found.group(1).lower() if found else ""
+
+
+def armed():
+    """Whether the one-shot flag in the recorded register is set. Reads /dev/mem; never writes."""
+    reg = state().get("tryboot_reg")
+    if not reg or not _reg_ok(reg):
+        return False
+    try:
+        fd = os.open(DEV_MEM, os.O_RDONLY | os.O_CLOEXEC)
+    except OSError:
+        return False
+    try:
+        return int.from_bytes(os.pread(fd, 4, int(reg, 16)), "little") == TRYBOOT_MAGIC
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+
+
 def status():
     return {
         "board": board(),
         "filesystem": filesystem(),
         "ab": ab(),
+        "running": running_slot(),
+        "default": default_slot(),
+        "armed": armed(),
         "artifacts": sorted(p.name for p in AB_DIR.iterdir() if p.is_file()) if AB_DIR.is_dir() else [],
         "tools": {tool: bool(shutil.which(tool)) for tool in ("fw_printenv", "fw_setenv", "rauc", "mkimage")},
     }
+
+
+def _slot_state(slot):
+    try:
+        said = (AB_STATE_DIR / f"{slot.lower()}.state").read_text().strip()
+    except OSError:
+        return "good"
+    return said if said in ("good", "bad") else "good"
+
+
+def rauc_handler(argv):
+    """RAUC's custom bootloader handler: get-primary, set-primary SLOT, get-state SLOT, set-state SLOT STATE.
+    The default slot and the one-shot trial are the same files and register the boot script reads."""
+    command = argv[0] if argv else ""
+    if command == "get-primary":
+        slot = default_slot()
+        if not slot:
+            raise SystemExit("hardening rauc: there is no default slot to read")
+        print(slot.upper())
+        return
+    if command == "set-primary" and len(argv) == 2 and argv[1].lower() in ("a", "b"):
+        slot = argv[1].lower()
+        if not default_slot():
+            set_default(slot.upper())
+            return
+        if slot == default_slot():
+            return
+        # The trial boots the slot that is not the default: leave the default, arm the new slot once. Only a
+        # set-state good while it runs makes it the default.
+        if board() != "lyra":
+            raise SystemExit("hardening rauc: the Pi's tryboot is not armed by set-primary yet")
+        arm_tryboot()
+        return
+    if command == "get-state" and len(argv) == 2 and argv[1].lower() in ("a", "b"):
+        print(_slot_state(argv[1]))
+        return
+    if command == "set-state" and len(argv) == 3 and argv[1].lower() in ("a", "b") and argv[2] in ("good", "bad"):
+        slot = argv[1].lower()
+        AB_STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        safeio.write_checked(AB_STATE_DIR / f"{slot}.state", argv[2] + "\n", 0o600)
+        if argv[2] == "good" and running_slot() == slot:
+            set_default(slot.upper())
+        return
+    raise SystemExit("usage: hardening rauc get-primary | set-primary A|B | get-state A|B | set-state A|B good|bad")
 
 
 def plan():
@@ -587,10 +671,12 @@ def main(argv):
         print(set_default(argv[1]))
     elif command == "tryboot":
         print(arm_tryboot())
+    elif command == "rauc":
+        rauc_handler(argv[1:])
     else:
         raise SystemExit(
             "usage: hardening status | plan | filesystem VALUE | ab VALUE | prepare [VALUE] | tryboot-reg ADDRESS | "
-            "default A|B | tryboot"
+            "default A|B | tryboot | rauc get-primary|set-primary|get-state|set-state"
         )
 
 

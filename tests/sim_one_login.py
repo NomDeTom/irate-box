@@ -117,6 +117,14 @@ check(
 st = T / "hub"
 st.mkdir()
 (st / "unclaimed").write_text("no admin password chosen yet\n")
+from irate_box import setup_code
+
+setup_code.ETC = st
+setup_code.CODE_FILE = st / "setup-code"
+setup_code.HASH_FILE = st / "setup-code.hash"
+setup_code._unclaimed = lambda: st / "unclaimed"
+setup_code.WEB_SERVER = "nginx"
+code = setup_code.ensure()
 s_ = socket.socket()
 s_.bind(("127.0.0.1", 0))
 port = s_.getsockname()[1]
@@ -229,7 +237,7 @@ try:
     code, page, _ = req("/admin/setup", raw=True)
     check(
         "  the set-up page at /admin/setup, its HTTP warning and the console's way",
-        code == 200 and 'id="setup-http"' in page and "set-admin NAME" in page,
+        code == 200 and 'id="setup-http"' in page and "set-admin NAME" in page and 'name="code"' in page,
         code,
     )
     code, d, _ = req("/admin/password", {"password": "pw-for-scripts"})
@@ -240,13 +248,21 @@ try:
     )
     code, d, _ = req("/admin/accounts", {"action": "make", "name": "mallory", "role": "admin"})
     check("  nor an admin made on Accounts (the first admin is the set-up page's)", code == 403, (code, d))
-    code, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-keeper"})
+    code_answer, d, _ = req("/admin/setup", {"name": "owner", "password": "pw-of-the-keeper"})
+    check(
+        "the first account without the setup code: refused, and says where it is",
+        code_answer == 403 and d["message"]["id"] == "setup.code",
+        (code_answer, d),
+    )
+    code, d, _ = req("/admin/setup", {"name": "owner", "code": setup_code.show(), "password": "pw-of-the-keeper"})
     check(
         "the first password over plain HTTP, not chosen: refused, said why",
         code == 403 and d.get("https") is False and d["message"]["id"] == "setup.http",
         (code, d),
     )
-    code, d, h = req("/admin/setup", {"name": "owner", "password": "pw-of-the-keeper", "over_http": True})
+    code, d, h = req(
+        "/admin/setup", {"name": "owner", "code": setup_code.show(), "password": "pw-of-the-keeper", "over_http": True}
+    )
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
     reqs = queued()
     check(
