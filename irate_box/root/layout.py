@@ -12,8 +12,8 @@ import os
 import re
 import shutil
 import stat
-import subprocess
-import tempfile  # Fixed argv, trusted executables, no shell. # nosec B404
+import subprocess  # Fixed argv, trusted executables, no shell. # nosec B404
+import tempfile
 from pathlib import Path
 
 from irate_box.msg import M, Refused
@@ -82,25 +82,46 @@ def plan(size, board="lyra", filesystem="ext4", ab="off"):
     return out
 
 
+def _disk(path):
+    said = run("lsblk", "-n", "-d", "-o", "PKNAME", str(path), timeout=30)
+    return said.stdout.strip() or Path(path).name
+
+
+def _root_disk():
+    said = run("findmnt", "-n", "-o", "SOURCE", "/", timeout=30)
+    source = said.stdout.strip()
+    return _disk(source) if source else ""
+
+
 def _own(path, own_device=None):
-    if own_device is None:
-        return False
+    """The running card's disk and any partition of it; own_device may name it for a test."""
     try:
-        return os.stat(path).st_rdev == os.stat(own_device).st_rdev and stat.S_ISBLK(os.stat(path).st_mode)
+        if stat.S_ISBLK(os.stat(path).st_mode):
+            if own_device and os.path.exists(own_device):
+                return _disk(path) == _disk(own_device)
+            root = _root_disk()
+            return bool(root) and _disk(path) == root
     except OSError:
         return False
+    return False
+
+
+def _mounted(path):
+    said = run("lsblk", "-n", "-o", "MOUNTPOINTS", str(path), timeout=30)
+    return any(line.strip() for line in said.stdout.splitlines())
 
 
 def _sgdisk(path, parts):
     commands = [["sgdisk", "--clear", "-a", "1", str(path)]]
     for index, part in enumerate(parts, 1):
         size = f"+{part['size'] // 512}" if part["name"] != "irate-content" else "0"
+        code = "0700" if part["filesystem"] == "vfat" else "8300"
         commands.append(
             [
                 "sgdisk",
                 f"--new={index}:{part['start'] // 512}:{size}",
                 f"--change-name={index}:{part['name']}",
-                f"--typecode={index}:8300",
+                f"--typecode={index}:{code}",
                 str(path),
             ]
         )
@@ -118,7 +139,7 @@ def _mkfs(device, part):
     if fs == "raw":
         return None
     if fs == "vfat":
-        return ["mkfs.vfat", "-F", "32", "-n", label, device]
+        return ["mkfs.vfat", "-F", "16", "-n", label, device]
     if fs == "btrfs":
         return ["mkfs.btrfs", "-f", "-L", label, device]
     if fs == "f2fs":
@@ -138,6 +159,8 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
         size = path.stat().st_size
     if _own(path, own_device or os.environ.get("HUB_OWN_DEVICE")):
         raise Refused(M("layout.own", "That is the box's own card. Use a card in a reader or an image file."))
+    if _mounted(path):
+        raise Refused(M("layout.mounted", "That card has a mounted partition. Unmount it, or use another card."))
     parts = plan(size, board, filesystem, ab)
     if block:
         device = str(path)
@@ -162,8 +185,8 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
                 raise Refused(
                     M("layout.sgdisk", "The partition table was not written: {why}", why=result.stderr.strip()[-300:])
                 )
-        if loop:
-            run("partprobe", device)
+        run("partprobe", device)
+        run("udevadm", "settle")
         for index, part in enumerate(parts, 1):
             device_part = _part(device if loop else str(path), index)
             mkfs = _mkfs(device_part, part)
@@ -193,15 +216,42 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
                                 why=result.stderr.strip()[-300:],
                             )
                         )
-                    used.append(["rsync", "-a", "--delete", f"{source}/", f"{mnt}/"])
-                    result = run("rsync", "-a", "--delete", f"{source}/", f"{mnt}/")
+                    used.append(["rsync", "-aHAX", "-x", "--numeric-ids", "--delete", f"{source}/", f"{mnt}/"])
+                    result = run(
+                        "rsync",
+                        "-aHAX",
+                        "-x",
+                        "--numeric-ids",
+                        "--delete",
+                        "--exclude=/proc",
+                        "--exclude=/sys",
+                        "--exclude=/dev",
+                        "--exclude=/run",
+                        "--exclude=/tmp",
+                        "--exclude=/var/log.nand",
+                        "--exclude=/mnt",
+                        "--exclude=/media",
+                        "--exclude=/var/lib/hub",
+                        "--exclude=/etc/fstab",
+                        f"{source}/",
+                        f"{mnt}/",
+                    )
                     if result.returncode:
                         raise Refused(
                             M("layout.copy", "The system was not copied: {why}", why=result.stderr.strip()[-300:])
                         )
                 finally:
-                    if run("umount", mnt).returncode == 0:
+                    unmounted = run("umount", mnt)
+                    if unmounted.returncode == 0:
                         shutil.rmtree(mnt, ignore_errors=True)
+                    else:
+                        raise Refused(
+                            M(
+                                "layout.umount",
+                                "The copy could not be unmounted: {why}",
+                                why=unmounted.stderr.strip()[-200:],
+                            )
+                        )
         table = run("sgdisk", "-p", str(path))
         read_back = run("blkid", *[_part(device, i) for i in range(1, len(parts) + 1)], timeout=120)
         rows = {}
@@ -209,8 +259,12 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
             found = re.match(r"^\s*(\d+)\s+(\d+)\s+\d+\s+[\d.]+ [A-Za-z]+\s+\S+\s+(.+?)\s*$", line)
             if found:
                 rows[int(found.group(1))] = (int(found.group(2)), found.group(3))
-        matches = all(rows.get(i) == (part["start"] // 512, part["name"]) for i, part in enumerate(parts, 1))
-        if rows and not matches:
+        matches = (
+            bool(rows)
+            and len(rows) == len(parts)
+            and all(rows.get(i) == (part["start"] // 512, part["name"]) for i, part in enumerate(parts, 1))
+        )
+        if not matches:
             raise Refused(M("layout.mismatch", "The card does not read back as the layout that was written."))
         return {
             "parts": parts,

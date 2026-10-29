@@ -85,5 +85,32 @@ check(
     and len(report["blkid"].splitlines()) == len(parts),
     report,
 )
+
+
+def empty_run(*cmd, timeout=3600):
+    if cmd[:2] == ("sgdisk", "-p"):
+        return subprocess.CompletedProcess(cmd, 0, "Number Start End Size Code Name\n", "")
+    return run(*cmd, timeout=timeout)
+
+
+image2 = T / "card2.img"
+with open(image2, "wb") as fh:
+    fh.truncate(20 << 30)
+try:
+    layout.write(image2, run=empty_run)
+    check("a read-back that parses nothing is refused", False)
+except Refused as exc:
+    check("a read-back that parses nothing is refused", exc.message["id"] == "layout.mismatch", exc.message)
+
+real_stat = layout.os.stat
+layout._root_disk = lambda: "mmcblk0"
+layout.run = lambda *c, **k: subprocess.CompletedProcess(c, 0, "mmcblk0\n", "")
+layout.os.stat = lambda path: type("S", (), {"st_mode": 0, "st_rdev": 7})()
+layout.stat.S_ISBLK = lambda mode: True
+check(
+    "the running card is refused even with no own_device", layout._own("/dev/mmcblk0") and layout._own("/dev/mmcblk0p1")
+)
+layout.os.stat = real_stat
+layout.stat.S_ISBLK = __import__("stat").S_ISBLK
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
