@@ -18024,14 +18024,15 @@ async function hcRestore(act) {
   }
 }
 // Remove a paired box: the entry and the files this box made for it; the other box's line is the owner's to remove.
+// The root helper does it, so its own answer (removed, or no such box) replaces the note when it comes.
 async function hcUnpair(act) {
   const name = String(act.choice).slice("housecall-unpair:".length);
   if (act.confirm && !(await AW.confirmHere(said(act.confirm), { label: said(act.label) }))) return;
   hc.note.hidden = false;
   hc.note.textContent = "Removing the pairing…";
   try {
-    await postJSON("/admin/housecall", { action: "unpair", name });
-    hc.note.textContent = "The pairing is removed. Examine the box again to refresh its report.";
+    waitingFor = { id: (await postJSON("/admin/housecall", { action: "unpair", name })).id, at: hc.note };
+    loadBox();
   } catch (err) {
     hc.note.textContent = err && err.message ? err.message : "The pairing could not be removed.";
   }
