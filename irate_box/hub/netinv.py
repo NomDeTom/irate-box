@@ -1564,7 +1564,7 @@ def findings(inv):
                     "ok",
                     M(
                         "netinv.driver-ps",
-                        "The driver {driver} has its own power saving enabled (ps_on). The power saving of NetworkManager is disabled.",
+                        "The driver {driver} has its own power saving enabled (ps_on). The power saving of the WiFi link is disabled.",
                         driver=str(r.get("driver")),
                     ),
                     notes=[
@@ -1605,6 +1605,7 @@ def findings(inv):
                     )
                 )
     out += link_findings(inv)
+    out += no_networkmanager(inv)
     hap = inv["stacks"].get("hostapd") or {}
     if hap.get("running"):
         out.append(
@@ -1621,6 +1622,67 @@ def findings(inv):
             )
         )
     return out
+
+
+def nm_runs_wifi(inv):
+    """Whether NetworkManager runs and manages one of the box's WiFi links (installed but stopped, or leaving every
+    WiFi device unmanaged, does not count)."""
+    nm = (inv.get("stacks") or {}).get("networkmanager") or {}
+    if not nm.get("running"):
+        return False
+    links = {r.get("iface") for r in inv["radios"] if r.get("type") == "managed"}
+    return any(
+        name in links and d.get("state") not in ("unmanaged", "unavailable")
+        for name, d in (nm.get("devices") or {}).items()
+    )
+
+
+def no_networkmanager(inv):
+    """A box whose WiFi NetworkManager does not run (stock Armbian: systemd-networkd through netplan). The box stays
+    on its network and the uplink watchdog repairs it; what needs NetworkManager says so in place. Recommended:
+    NetworkManager for the WiFi, through netplan's renderer where netplan describes it."""
+    st = inv["stacks"]
+    if nm_runs_wifi(inv) or not any(r.get("type") == "managed" for r in inv["radios"]):
+        return []
+    runs = (
+        "systemd-networkd"
+        if (st.get("systemd_networkd") or {}).get("manages")
+        else "ifupdown"
+        if st.get("ifupdown")
+        else "wpa_supplicant"
+        if st.get("wpa_supplicant")
+        else None
+    )
+    netplan = bool((st.get("netplan") or {}).get("files"))
+    return [
+        _h(
+            "networkmanager",
+            M("netinv.no-nm.title", "NetworkManager"),
+            "warn",
+            M("netinv.no-nm", "NetworkManager does not run the WiFi of this box. {stack} does.", stack=runs)
+            if runs
+            else M("netinv.no-nm.none", "NetworkManager does not run the WiFi of this box."),
+            M(
+                "netinv.no-nm.why",
+                "The box stays on its network, and its watchdog repairs the link. irate-box is built on NetworkManager: "
+                "without it, the hotspot needs hostapd, and the box cannot add networks, change a connection's own "
+                "settings or test a roam.",
+            ),
+            M(
+                "netinv.no-nm.fix.netplan",
+                "Recommended: install NetworkManager and give it the WiFi in netplan (renderer: NetworkManager under "
+                "the WiFi interface). Then transfer the profile on the Network page, so that its own settings stay. "
+                "Do it where the box has a console, as the WiFi drops while it changes over.",
+            )
+            if netplan
+            else M(
+                "netinv.no-nm.fix",
+                "Recommended: install NetworkManager and move the WiFi network to it. Do it where the box has a "
+                "console, as the WiFi drops while it changes over.",
+            ),
+            commands=["apt install network-manager"] + (["netplan apply"] if netplan else []),
+        )
+    ]
 
 
 def hazards(inv):

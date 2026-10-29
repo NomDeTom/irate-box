@@ -55,6 +55,13 @@ NM_BIN = os.environ.get("HUB_NM_BIN", "/usr/sbin/NetworkManager")
 REGDOM_CONF = wificountry.REGDOM_CONF
 UDEV_RULES = Path(os.environ.get("HUB_UDEV_RULES_DIR", "/etc/udev/rules.d")) / "90-irate-box-netplan-handover.rules"
 NETPLAN_UDEV = "run/udev/rules.d/90-netplan.rules"
+# netplan's file that has NetworkManager manage every device: empty, it only masks a file of the same name (Ubuntu's
+# NetworkManager ships one that leaves most devices unmanaged). Where there is none to mask, it changes nothing.
+NETPLAN_MANAGED = "run/NetworkManager/conf.d/10-globally-managed-devices.conf"
+NM_CONF_DIRS = [
+    Path(p)
+    for p in os.environ.get("HUB_NM_CONF_DIRS", "/usr/lib/NetworkManager/conf.d:/etc/NetworkManager/conf.d").split(":")
+]
 ALLOW_RE = re.compile(
     r'^SUBSYSTEM=="net", ACTION=="add\|change\|move", ENV\{ID_NET_NAME\}=="[A-Za-z0-9_.-]+", ENV\{NM_UNMANAGED\}="0"$'
 )
@@ -169,6 +176,13 @@ def _no_connection(name):
     return Refused(M("nm-handover.no-connection", "{name} makes no NetworkManager connection.", name=name))
 
 
+def _masks_nothing(conf_bytes):
+    """Whether netplan's globally-managed-devices file is empty (comments aside) and has no file of its name to mask."""
+    text = conf_bytes.decode(errors="replace")
+    empty = all(not ln.strip() or ln.lstrip().startswith(("#", ";")) for ln in text.splitlines())
+    return empty and not any((d / Path(NETPLAN_MANAGED).name).exists() for d in NM_CONF_DIRS)
+
+
 def plan(name):
     """What handing over the netplan file `name` would do, or Refused saying why not."""
     files = _netplan_files()
@@ -202,6 +216,8 @@ def plan(name):
             keep_udev = lost
             gone = [k for k in gone if k != NETPLAN_UDEV]
             changed = [k for k in changed if k != NETPLAN_UDEV]
+    if NETPLAN_MANAGED in gone and _masks_nothing(before[NETPLAN_MANAGED]):
+        gone = [k for k in gone if k != NETPLAN_MANAGED]
     profiles = [
         k for k in gone if k.startswith("run/NetworkManager/system-connections/") and k.endswith(".nmconnection")
     ]
