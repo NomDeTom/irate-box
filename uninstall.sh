@@ -93,6 +93,7 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service \
 	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service irate-box-firewall.service \
 	irate-box-boxdoctor.timer irate-box-boxdoctor.service irate-box-lostwrites.service irate-box-canary.timer irate-box-canary.service \
+	irate-box-protected.timer irate-box-protected.service \
 	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service \
 	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service \
 	irate-box-notebooks.path irate-box-notebooks.service; do
@@ -223,6 +224,7 @@ rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-gi
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
 	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-firewall.service "$UNITDIR"/irate-box-control.{path,service} \
 	"$UNITDIR"/irate-box-boxdoctor.{service,timer} "$UNITDIR"/irate-box-lostwrites.service "$UNITDIR"/irate-box-canary.{service,timer} \
+	"$UNITDIR"/irate-box-protected.{service,timer} \
 	"$UNITDIR"/irate-box-visitors.service "$UNITDIR"/irate-box-visitors-switch.{path,service} \
 	"$UNITDIR"/irate-box-notebooks.{path,service} "$UNITDIR"/irate-box-notebook@.service \
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
@@ -273,6 +275,7 @@ else
 	# over stay, as the lines above say how to put them back from there.
 	rm -rf /var/lib/irate-box-root/crashwatch /var/lib/irate-box-root/other-ap
 	rm -f /var/lib/irate-box-root/canary.bin /var/lib/irate-box-root/nand-health.json
+	rm -rf /var/lib/irate-box-root/protected /var/lib/irate-box-root/protected-findings.json
 	rmdir /var/lib/irate-box-root 2>/dev/null || true
 fi
 # With --keep-state the users stay: their files stay, and a user made later with the same uid
