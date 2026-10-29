@@ -26,7 +26,7 @@ USB.mkdir()
 os.environ.update(HUB_SYS_USB=str(USB), HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 (T / "state" / "control").mkdir(parents=True)
 sys.path.insert(0, str(REPO))
-from irate_box.msg import Refused
+from irate_box.msg import Refused, render
 from irate_box.root import hub_control, rkboard
 
 fails = 0
@@ -178,17 +178,21 @@ check(
 state = json.loads((T / "state" / "control" / "rkboard.json").read_text())
 check("  control/rkboard.json written after it", [b["mode"] for b in state["boards"]] == ["loader"], state)
 
-# In Loader mode: erased and reset, no loader needed.
+# In Loader mode: erased and reset, no loader needed. What the flash holds is read before the erase.
+card[:] = b"UBI#" + b"\0" * 16 + b"rescue\0logs\0state\0"
 ran.clear()
 said = hub_control.ACTIONS["rk-erase"]({"action": "rk-erase", "loader": None})
 check(
-    "Loader mode: erased (ef) and reset (rd), no loader sent",
+    "Loader mode: erased (ef) and reset (rd), no loader sent, and what it held said first",
     ("rkdeveloptool", "ef") in ran
     and ("rkdeveloptool", "rd") in ran
+    and any(c[:2] == ("rkdeveloptool", "rl") for c in ran)
     and not any(c[:2] == ("rkdeveloptool", "db") for c in ran)
-    and said["id"] == "rkboard.erased",
-    ran,
+    and said["id"] == "rkboard.erased"
+    and "rescue" in render(said),
+    (ran, said),
 )
+card[:] = b""
 outcome["ef"] = 1
 check("  the erase failing: said, the board not reset", refused(rkboard.erase) == "rkboard.erase-failed")
 outcome["ef"] = 0
