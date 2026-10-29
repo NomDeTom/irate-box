@@ -457,13 +457,39 @@ try:
     settings.write_text(json.dumps({"enabled": False, "holders": []}))
     st, _, body = page()
     check(
-        "no holders: the page still opens and says nothing is kept",
-        st == 200 and "Nothing is kept" in body.decode(),
+        "no holders: the page still opens and says there is nothing to install yet",
+        st == 200 and "Nothing to install yet." in body.decode(),
         st,
     )
     check("  no setting link for a guest", "/admin/#appstore" not in body.decode())
+    text = body.decode()
+    check(
+        "  the phone's hint on two lines, the certificate linked on the second",
+        text.count('class="setting-desc appstore-hint"') == 2
+        and text.index("A phone needs permission") < text.index('<a href="/certificate">'),
+    )
+    check(
+        "  the QR in its own block, said to be for another phone",
+        'class="appstore-qr-block"' in text and "on another phone" in text,
+    )
     st, _, body = page({"Cookie": ADMIN_COOKIE})
     check("  the administrator is offered it", "/admin/#appstore" in body.decode())
+    # A holder whose last check failed: the administrator sees why it is empty, a guest does not.
+    settings.write_text(
+        json.dumps(
+            {"enabled": True, "holders": [{"id": "failing", "title": "Failing", "repo": "x/y", "visibility": "public"}]}
+        )
+    )
+    (holder.ROOT / "failing").mkdir(parents=True, exist_ok=True)
+    (holder.ROOT / "failing" / "status.json").write_text(json.dumps({"error": "Insufficient storage for app.apk."}))
+    _, _, body = page({"Cookie": ADMIN_COOKIE})
+    check(
+        "  an empty holder whose check failed: the administrator sees the error",
+        "The last check failed: Insufficient storage for app.apk." in body.decode(),
+        body.decode()[-600:],
+    )
+    _, _, body = page()
+    check("  and a guest does not", "Insufficient storage" not in body.decode())
     st, _, _ = request("GET", "/appstore")
     check("/appstore is the hub's, and its page follows", st in (200, 301, 302), st)
 

@@ -14420,7 +14420,7 @@ function asFirmware(fw) {
   return el("div", { className: "aw-card appstore-firmware" },
     el("div", { className: "aw-drawer" },
       el("p", {}, el("strong", { textContent: "🧩 Meshtastic firmware" })),
-      el("p", { className: "setting-desc", textContent: `${fw.versions} version(s), ${fw.boards} board(s), ${size(fw.bytes)}.` }),
+      el("p", { className: "setting-desc", textContent: `${fw.versions} version${fw.versions === 1 ? "" : "s"}, ${fw.boards} board${fw.boards === 1 ? "" : "s"}, ${size(fw.bytes)}.` }),
       el("p", { className: "setting-desc", textContent: "Set on the Firmware page; the App store only lists it." }),
       el("p", {}, el("a", { href: fw.href, textContent: "Firmware settings" }))));
 }
@@ -14441,7 +14441,7 @@ function asCard(holder) {
       ...(holder.kept.length
         ? holder.kept.map((v) => el("p", { className: "setting-desc" },
             el("strong", { textContent: `${v.tag} (${v.channel})` }),
-            ` ${v.files.length} file(s), ${size(v.bytes)}.`))
+            ` ${v.files.length} file${v.files.length === 1 ? "" : "s"}, ${size(v.bytes)}.`))
         : [el("p", { className: "setting-desc", textContent: "Nothing kept yet." })])),
     el("p", { className: "library-buttons" },
       asRun("Check now", "holder-check", holder.id, note),
@@ -14464,7 +14464,9 @@ function asCard(holder) {
       event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
     } },
     el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
-    el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version(s), ${size(holder.bytes)}` }));
+    el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version${holder.kept.length === 1 ? "" : "s"}, ${size(holder.bytes)}` }),
+    // A failed check said on the closed card too, not only inside it.
+    ...(st.error ? [el("span", { className: "s bad", textContent: "The last check failed. Open for the reason." })] : []));
   head.setAttribute("aria-expanded", body.hidden ? "false" : "true");
   return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } }, head, body);
 }
@@ -14486,7 +14488,7 @@ function asAddFlow(data) {
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
   const mode = el("select", { name: "mode", "aria-label": "What to add" });
   mode.append(
-    el("option", { value: "", textContent: "Select…" }),
+    el("option", { value: "", textContent: "Select what to add" }),
     ...(data.presets || []).map((p) => el("option", { value: `preset:${p.id}`, textContent: `Preset: ${p.title || p.id}` })),
     el("option", { value: "recipe", textContent: "Paste an Obtainium recipe" }),
     el("option", { value: "repo", textContent: "A GitHub repository" }));
@@ -14514,18 +14516,18 @@ function asAddFlow(data) {
     } else if (mode.value === "repo") {
       const id = el("input", { name: "id", placeholder: "a name on the box", maxlength: "64" });
       const repo = el("input", { name: "repo", placeholder: "meshtastic/Meshtastic-Android" });
-      part.append(id, repo);
+      part.append(el("label", {}, "Name", id), el("label", {}, "Repository", repo));
       addButton(() => ({ action: "add-holder", id: id.value.trim(), repo: repo.value.trim() }));
     }
   };
   mode.addEventListener("change", draw);
-  asEl.add.append(mode, part);
+  asEl.add.append(el("label", {}, "What to add", mode), part);
   draw();
 }
 
 function asStatus(data) {
   asEl.status.textContent =
-    `${data.holders.length} project(s), ${size(data.bytes_all)} kept.` +
+    `${data.holders.length} project${data.holders.length === 1 ? "" : "s"}, ${size(data.bytes_all)} kept.` +
     (data.firmware ? ` Plus ${size(data.firmware.bytes)} of firmware, on the Firmware page.` : "") +
     (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : "") +
     (data.running ? ` Working${data.progress ? `: ${data.progress.name}` : "…"} (in the background).` : "") +

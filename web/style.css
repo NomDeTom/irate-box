@@ -3596,7 +3596,63 @@ button.danger {
   stroke-width: 2;
 }
 
+/* The App store page (hub/appstore.py writes it): room between its parts, links in the accent, the QR small. */
+body.appstore section {
+  margin: 1.2rem 0;
+}
+body.appstore a {
+  color: var(--accent);
+}
+.appstore-hint {
+  margin: 0.3rem 0;
+}
+.appstore-qr-block {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.appstore-qr-block .qr {
+  display: block;
+  flex: none;
+  width: 160px;
+}
+.appstore-qr-block .qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px;
+  box-sizing: border-box;
+}
+@media (max-width: 480px) {
+  .appstore-qr-block .qr {
+    width: 120px;
+  }
+}
+/* The App store's admin pane: the switch for the whole store, the buttons for every project under the list, a card
+   whose last check failed. */
+.appstore-enabled-row {
+  margin: 0.8rem 0 0.4rem;
+}
+#appstore-status {
+  margin-bottom: 0.9rem;
+}
+.appstore-all {
+  align-items: center;
+  margin-top: 0.6rem;
+}
+.appstore-all .setting-desc {
+  display: inline;
+  margin: 0;
+}
+.aw-card-head .s.bad {
+  color: var(--bad, #b00020);
+}
 /* /account.html: the forms, one column. */
+body.account a {
+  color: var(--accent);
+}
 .acct-form {
   margin: 1.2em 0;
   max-width: 28em;
@@ -3610,6 +3666,15 @@ button.danger {
   width: 100%;
   box-sizing: border-box;
   margin-top: 0.2em;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.acct-form > .action-btn {
+  margin-top: 0.4em;
 }
 /* A post by an account of that name, where the admin shows marks. */
 .verified {
@@ -3989,6 +4054,11 @@ label > .select-chips {
 }
 .aw-foot[hidden] {
   display: none;
+}
+@media (max-width: 480px) {
+  .aw-foot .note {
+    flex-basis: 100%;
+  }
 }
 /* What an unsaved change costs or conflicts with (AW.section's warn), on its own line above the buttons. */
 .aw-foot .aw-warn {
