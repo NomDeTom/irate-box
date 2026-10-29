@@ -2727,7 +2727,7 @@ HEALTH_CHOICE_RE = re.compile(
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off)|filesystem:(ext4|btrfs|f2fs|btrfs[+]f2fs)|ab:(off|tryboot|uboot))$"
     r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
-    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$"
+    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$"
 )
 HELPER_STUCK_AFTER = 90  # seconds a request may wait before the page says the helper is not answering
 HELPER_BUSY_UP_TO = 3 * 3600  # a job running longer than this counts as stuck too
@@ -6461,17 +6461,65 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(202, {"id": control_request({"action": "housecall-stop"})})
             return
 
+        if path == "/admin/housecall" and payload.get("action") == "pair":
+            try:
+                port = int(payload.get("port") or 22)
+            except (TypeError, ValueError):
+                port = 0
+            self.send_json(
+                202,
+                {
+                    "id": control_request(
+                        {
+                            "action": "housecall-pair",
+                            "name": str(payload.get("name") or ""),
+                            "host": str(payload.get("host") or ""),
+                            "user": str(payload.get("user") or "root"),
+                            "port": port,
+                        }
+                    )
+                },
+            )
+            return
+
+        if path == "/admin/housecall" and payload.get("action") == "restore":
+            path_arg = str(payload.get("path") or "")
+            kind = str(payload.get("kind") or "")
+            if not path_arg or "\0" in path_arg or len(path_arg) > 4096:
+                self.send_json(
+                    400, refused.say(M("hub.housecall.restore-path", "Select a damaged file from the last report."))
+                )
+            elif kind not in ("", "copy", "git", "package"):
+                self.send_json(400, refused.say(M("hub.housecall.restore-kind", "Select how the file comes back.")))
+            else:
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "housecall-restore", "path": path_arg, "kind": kind})},
+                )
+            return
+
         if path == "/admin/housecall":
             target = payload.get("target")
             path_arg = str(payload.get("path") or "")
             reference = str(payload.get("reference") or "")
-            if target not in ("image", "device", "root", "this-card"):
+            image_first = str(payload.get("image_first") or "")
+            manifest = str(payload.get("manifest") or "")
+            if target not in ("image", "device", "root", "this-card", "peer"):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             elif target != "this-card" and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
                 self.send_json(400, refused.say(M("hub.housecall.path", "Give the path the doctor examines.")))
             elif len(reference) > 4096 or "\0" in reference:
                 self.send_json(
                     400, refused.say(M("hub.housecall.reference", "The reference file's path is not valid."))
+                )
+            elif len(manifest) > 4096 or "\0" in manifest:
+                self.send_json(400, refused.say(M("hub.housecall.manifest", "The manifest's path is not valid.")))
+            elif image_first and (target != "device" or "\0" in image_first or len(image_first) > 4096):
+                self.send_json(
+                    400,
+                    refused.say(
+                        M("hub.housecall.image-first", "Give the image's path, and only for a card in a reader.")
+                    ),
                 )
             else:
                 self.send_json(
@@ -6483,6 +6531,9 @@ class Handler(BaseHTTPRequestHandler):
                                 "target": target,
                                 "path": path_arg,
                                 "reference": reference,
+                                "manifest": manifest,
+                                "image_first": image_first,
+                                "on_own_card": payload.get("on_own_card") is True,
                                 "dpkg": payload.get("dpkg") is True,
                                 "git_tree": payload.get("git_tree") is True,
                             }

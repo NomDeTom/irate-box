@@ -51,6 +51,7 @@ ROOT = {
     "irate-box-visitors-switch.service": "starts and stops the visitor-counting helper (systemctl) as the owner's switch says",
     "irate-box-notebooks.service": "starts and stops the notebooks per login (systemctl) to match the hub's list",
     "irate-box-secdoctor.service": "the daily security doctor: reads /etc/shadow, sudoers, every unit's properties and root-only folders (read-only, sandboxed otherwise)",
+    "irate-box-bootkey.service": "reads the Lyra's ADC and asks systemd to power the box off (systemctl poweroff)",
 }
 # Lines a unprivileged unit may leave out, and why.
 EXEMPT = {
@@ -72,9 +73,12 @@ EXEMPT = {
 # The builder's exemptions marked "" are not reasons: they are the lines it is still to get, once
 # tried with a build. Listed so the test names them; remove each as it is added.
 
+sys.path.insert(0, str(REPO))
+from irate_box.root import bootkey
+
 text = (REPO / "install.sh").read_text()
 sandbox = re.search(r'^HUB_SANDBOX="(.*?)"$', text, re.S | re.M).group(1)
-units = {}
+units = {bootkey.UNIT: bootkey.unit_text()}
 for m in re.finditer(r"cat >/etc/systemd/system/([^ \n]+?\.service) <<'?EOF'?\n(.*?)\nEOF", text, re.S):
     units[m.group(1)] = m.group(2).replace("$HUB_SANDBOX", sandbox)
 check("install.sh's service units found", len(units) >= 10, sorted(units))

@@ -2,7 +2,7 @@
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 # Building and running the hub, end to end
 
-How the pieces fit together today, and the order to do them in. This is the development setup — one machine, everything under your home directory, Caddy on a high port (the board runs nginx with the same routes; §4b). The `.deb`-packaged install for a Pi is a later phase and not described here.
+How the pieces fit together today, and the order to do them in. This is the development setup — one machine, everything under your home directory, Caddy on a high port (the board runs nginx with the same routes; §4b). The `.deb` and the offline kit on a board are in the README and [the user lifecycle](user-lifecycle.md).
 
 There are three repositories. The hub itself is tiny and needs nothing built; the two apps are forks with a **hub build mode** each, producing static files the hub's web server serves from disk.
 
@@ -118,11 +118,11 @@ Now everything is on one origin:
 | Path | Comes from |
 |---|---|
 | `/` | `server.py` — page, probe redirects |
-| `/*.js`, `/*.css`, `/board.html`, `/hub-return.js` | `web/` via Caddy's file server |
-| `/messages`, `/board/*`, `/api/*`, `/status` | `server.py` |
-| `/mermaid/` | `~/mermaid-live-editor/docs` |
-| `/draw/` | `~/excalidraw-stack/excalidraw/excalidraw-app/build` |
-| `/wiki/`, `/serial/`, `/term/`, `/notes/`, `/sync/` | reverse-proxied to loopback ports; 502 until something listens |
+| `/*.js`, `/*.css`, `/*.html`, `/hub-return.js` | `web/` via Caddy's file server |
+| `/messages`, `/board/*`, `/api/*`, `/status`, `/appstore/*`, `/flasher/*`, `/certificate` | `server.py` |
+| `/mermaid/`, `/draw/`, `/wiki/` | redirect to the app's own origin (ports 8092, 8096, 8097), whose backend may not be there yet |
+| `/notes/`, `/sync/`, `/term/`, `/admin/` | proxied or redirected to a loopback origin; 502 until something listens |
+| `/tools/`, `/serial/` | static files from their build or checkout |
 
 If your checkouts are elsewhere, the roots are environment placeholders, not edits:
 
@@ -134,7 +134,7 @@ The landing page asks `/status` every 15 s and greys out any tile whose backend 
 
 ## 4a. Optional add-ons: SilverBullet and Syncthing
 
-Neither is built from source; both are single upstream binaries. Neither is part of any profile. Without them, the Notes card is greyed out and `/sync/` returns 502.
+Neither is built from source; both are single upstream binaries, added with `--with-notes` and `--with-sync`. Without them, the Notes card is greyed out and `/sync/` returns 502.
 
 **SilverBullet** (`/notes/`, a Markdown notebook over a plain folder). Take the `silverbullet-server-linux-<arch>.zip` from its GitHub releases. Only x86_64, armv7 and aarch64 builds exist, so this runs on a Luckfox Lyra but not on the Zero W.
 
@@ -174,11 +174,11 @@ The apps are not built on the board. `--apps-from-actions` fetches the newest bu
 
 `--zim FILE|URL`, which can be repeated, installs `kiwix-serve` at `/wiki/`. It copies the file, or downloads the URL on the box, into `/var/lib/hub/zim` and registers it in `library.xml`. Kiwix is mounted at `/wiki`, so a book must not depend on where it is mounted. openZIM books, and docusaurus2zim's by default, use relative paths and work as they are. A book built for one prefix (docusaurus2zim `--base-url`) works only there; one built for `/content/<name>/` shows "did not load properly" on the hub.
 
-`--with-mqtt` installs the mosquitto broker. Nodes, and the phone app's MQTT Client Proxy, connect to port 1883. Pages connect with WebSockets at `/mqtt`, which the web server passes to a listener on loopback. Clients are anonymous, and an ACL limits them to `msh/#`. Messages are capped at 4 kB, connections at 64 per listener, and nothing is persisted, so retained messages are gone after a restart. Port 1883 listens on every interface for now; once the access point exists it should listen on the AP address only. `mosquitto_sub -t 'msh/#' -v` on the box shows traffic.
+`--with-mqtt` installs the mosquitto broker. Nodes, and the phone app's MQTT Client Proxy, connect to port 1883. Pages connect with WebSockets at `/mqtt`, which the web server passes to a listener on loopback. Clients are anonymous, and an ACL limits them to `msh/#`. Messages are capped at 4 kB, connections at 64 per listener, and nothing is persisted, so retained messages are gone after a restart. Port 1883 listens on every interface, so the hotspot firewall is what keeps guests on the hotspot away from it. `mosquitto_sub -t 'msh/#' -v` on the box shows traffic.
 
 A new add-on of this kind (a service on a port of its own) follows [services.md](services.md).
 
-`--with-irc` installs ngIRCd, a small IRC server, on port 6667 (any IRC app; the pages cannot speak raw IRC, so there is no browser client, and `/irc.html` only says how to connect). Debian's unit already runs it as the unprivileged `irc` user in a sandbox. The installer leaves Debian's `/etc/ngircd/ngircd.conf` alone and writes `/etc/ngircd/irate-box.conf`, which a systemd drop-in (`ngircd.service.d/irate-box.conf`) points the unit at; `ngircd --configtest -f` checks it. Clients are anonymous: no accounts, no TLS, no operators. Limits are 64 connections, 5 per address and 10 channels each. DNS and ident lookups are off (on a box with no internet each would hold up every connection until it timed out), hosts are cloaked and user names are the nickname, so guests do not see each other's addresses. `#lobby` is created at start-up and kept when empty; nobody holds ops there, which locks its topic. As with MQTT, port 6667 listens on every interface for now; once the access point exists it should listen on the AP address only (`Listen =`). `--remove irc` stops the server and takes the config and drop-in away; the package stays. To add a moderator, put an `[Operator]` block in the generated config (the next install overwrites it) and expect the Security page to say so.
+`--with-irc` installs ngIRCd, a small IRC server, on port 6667 (any IRC app; the pages cannot speak raw IRC, so there is no browser client, and `/irc.html` only says how to connect). Debian's unit already runs it as the unprivileged `irc` user in a sandbox. The installer leaves Debian's `/etc/ngircd/ngircd.conf` alone and writes `/etc/ngircd/irate-box.conf`, which a systemd drop-in (`ngircd.service.d/irate-box.conf`) points the unit at; `ngircd --configtest -f` checks it. Clients are anonymous: no accounts, no TLS, no operators. Limits are 64 connections, 5 per address and 10 channels each. DNS and ident lookups are off (on a box with no internet each would hold up every connection until it timed out), hosts are cloaked and user names are the nickname, so guests do not see each other's addresses. `#lobby` is created at start-up and kept when empty; nobody holds ops there, which locks its topic. As with MQTT, port 6667 listens on every interface, so the hotspot firewall is what keeps guests on the hotspot away from it. `--remove irc` stops the server and takes the config and drop-in away; the package stays. To add a moderator, put an `[Operator]` block in the generated config (the next install overwrites it) and expect the Security page to say so.
 
 `--with-collab` adds live collaboration to `/draw/`: Debian's `nodejs` and the room relay from `--apps DIR/room` (§3a). ARMv7 and up; Node has no ARMv6 build.
 
@@ -188,11 +188,11 @@ The librarian (`librarian.py`, settings under Library on `/admin`) keeps ZIM boo
 
 The App store's keeper (`holder.py`) holds chosen files from a GitHub project's releases, a set number of each channel (stable, pre-release, and channels by title), under `/var/lib/hub/holds/<name>/<tag>/`. Each file is checked against the SHA-256 GitHub gives for it, and a file without one is not held. What to hold is a list of patterns on file names (Obtainium's `apkFilterRegEx` read as it is, Dart's named groups translated); a release counts only if it has a held file. It is off by default, runs from the same timer (`holders_every_hours`, `holders_auto`) and by hand with `irate-box librarian holders [--check] [NAME ...]`. Settings are `library/holders.json`, set on the App store's own page on `/admin`; the files are listed for people at `/appstore/`. Versions are ordered by the date they were published.
 
-The script looks at the network once (`netinv.py`: the radios, the stack that runs them, whether each could carry the hub's own hotspot, and what is in the way) and ends with its verdicts; System → Network on `/admin` looks again, for every device or one (a dongle plugged in later). It also starts the uplink watchdog (`uplink.py`, `irate-box-uplink.service`), which keeps the box on its network: `--uplink KEY=VALUE[,KEY=VALUE…]` sets how (pace `gentle`, `steady`, `prompt`, `urgent`; reach `watch`, `reconnect`, `restart`, `radio`, `reboot`; sensitivity `1`–`20` missed checks within the pace's window; guests `protect`, `ignore`; on_wedge `ladder`, `radio`; the defaults, gentle, reboot, 3, protect and ladder, the first time if not given; the old single level such as `standard,strict`, and forgiveness, are still read; `./irate-box uplink presets` prints what each pace means in seconds). It goes in `/etc/hub/uplink.json`, not the recorded options, so updates leave the owner's choice on `/admin` alone; the page also has the custom values and a hold. The owner's own WiFi profile is never changed by the script: "Keep retrying" on that page does it, by consent, and `uninstall.sh` puts it back.
+The script looks at the network once (`netinv.py`: the radios, the stack that runs them, whether each could carry the hub's own hotspot, and what is in the way) and ends with its verdicts; System → Network on `/admin` looks again, for every device or one (a dongle plugged in later). It installs `dnsmasq-base`, but does not start the hotspot: the owner turns it on from `/admin` → Network, where `root/ap.py` fits it to the radios present, and its DNS answers the captive-portal probes. It also starts the uplink watchdog (`uplink.py`, `irate-box-uplink.service`), which keeps the box on its network: `--uplink KEY=VALUE[,KEY=VALUE…]` sets how (pace `gentle`, `steady`, `prompt`, `urgent`; reach `watch`, `reconnect`, `restart`, `radio`, `reboot`; sensitivity `1`–`20` missed checks within the pace's window; guests `protect`, `ignore`; on_wedge `ladder`, `radio`; the defaults, gentle, reboot, 3, protect and ladder, the first time if not given; the old single level such as `standard,strict`, and forgiveness, are still read; `./irate-box uplink presets` prints what each pace means in seconds). It goes in `/etc/hub/uplink.json`, not the recorded options, so updates leave the owner's choice on `/admin` alone; the page also has the custom values and a hold. The owner's own WiFi profile is never changed by the script: "Keep retrying" on that page does it, by consent, and `uninstall.sh` puts it back.
 
 ttyd is always installed at `/term/`: the upstream static binary, checked against its published SHA256SUMS. It only runs with `--with-term`, and stays on for later runs once enabled. The admin login gets you past the web server, and after that `/bin/login` asks for a real account on the box.
 
-Notes, Kiwix, Tools and Meshtastic open inside `app.html`, a hub bar with an iframe, because they cannot load `hub-return.js` themselves. The address keeps the app's own path (`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. No password is made at install: until the owner makes the admin account, `/admin/` is free to anyone who reaches it, so make it straight away, over HTTPS at `/admin/setup` (over plain HTTP only by choice), or at the console over SSH: `sudo /opt/irate-box/irate-box hub_control set-admin NAME` (the same command sets a lost password). Scripts get the box's own login (`curl -u admin:…`, kept in `/etc/hub/admin-password`) only when asked for: `hub_control script-login` (`--off` to remove it), or `--admin-password` for a scripted install. Run the script again to upgrade. State and the password survive. It does not touch the network: there is no AP, no dnsmasq and no captive portal yet. The hub is at `http://<the board's address>/` on whatever network the board is on.
+Notes, Kiwix, Tools and Meshtastic open inside `app.html`, a hub bar with an iframe, because they cannot load `hub-return.js` themselves. The address keeps the app's own path (`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. No password is made at install: until the owner makes the admin account, `/admin/` is free to anyone who reaches it, so make it straight away, over HTTPS at `/admin/setup` (over plain HTTP only by choice), or at the console over SSH: `sudo /opt/irate-box/irate-box hub_control set-admin NAME` (the same command sets a lost password). Scripts get the box's own login (`curl -u admin:…`, kept in `/etc/hub/admin-password`) only when asked for: `hub_control script-login` (`--off` to remove it), or `--admin-password` for a scripted install. Run the script again to upgrade. State and the password survive. The hub is at `http://<the board's address>/` on whatever network the board is on, and at the hotspot's address once the owner turns the hotspot on.
 
 ## 5. Rebuilding after a change
 
@@ -217,6 +217,6 @@ Expect the occasional snapshot-test conflict in Excalidraw (regenerate with `npx
 
 ## What this is not yet
 
-- Not the Pi install. That is `hub-core`/`hub-app-*` `.deb`s with the builds under `/usr/share/hub/apps/`, `systemd` units, and nginx on `:80` with the AP and dnsmasq hijack underneath. The routes already have the shape; the packaging does not exist.
-- Not Kiwix, the serial terminal or ttyd — the routes exist (`config/irate-box.nginx`, `config/Caddyfile`), the backends have to be installed separately and are not built from these repos.
-- Not precompressed. `file_server { precompressed br gzip }` plus a compression step in each build is the cheap next win for a single-core board.
+- Precompressed assets. `file_server { precompressed br gzip }` plus a compression step in each build is the cheap next win for a single-core board.
+- A tagged release and an apt repository for the `.deb`. CI builds the package; there is no repository to install it from.
+- ARMv6 extras: the installer runs on a Pi Zero W, but SilverBullet and the collaboration relay have no ARMv6 build.

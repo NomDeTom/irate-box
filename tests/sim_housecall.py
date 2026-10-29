@@ -16,9 +16,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="housecall-"))
-os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
+os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"), HUB_PEER_KEY=str(T / "peer-key"))
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
+from irate_box.msg import M, Refused
 from irate_box.root import housecall
 
 fails = 0
@@ -112,6 +113,51 @@ check(
 )
 check("  and the file in it is read", report["counts"]["files"] == 1, report["counts"])
 
+# Step 2: the image first. A card (a small ext4 image stands in for one) is copied whole, then the copy is examined;
+# the destination is refused on this box's own card unless the owner says so, and when it will not fit.
+source_img = T / "source-card.img"
+build_image(source_img, {"note": good}, size="16M")
+source_sha = hashlib.sha256(source_img.read_bytes()).hexdigest()
+first = T / "first.img"
+said = housecall.copy_device(source_img, first)
+check(
+    "the card is imaged first: the same bytes, and no .part left behind",
+    hashlib.sha256(first.read_bytes()).hexdigest() == source_sha
+    and not (T / "first.img.part").exists()
+    and said.get("id") == "housecall.image-first.done",
+    said,
+)
+real_on_card, real_free = housecall._destination_on_card, housecall._free_bytes
+housecall._destination_on_card = lambda image: True
+try:
+    housecall.copy_device(source_img, T / "on-card.img")
+    check("  an image on this box's own card: refused unless it is allowed", False)
+except Refused as exc:
+    check(
+        "  an image on this box's own card: refused unless it is allowed",
+        exc.message["id"] == "housecall.image-first.own-card",
+    )
+housecall._destination_on_card = real_on_card
+housecall._free_bytes = lambda folder: 1
+try:
+    housecall.copy_device(source_img, T / "no-room.img")
+    check("  an image that will not fit: refused, and nothing written", False)
+except Refused as exc:
+    check(
+        "  an image that will not fit: refused, and nothing written",
+        exc.message["id"] == "housecall.image-first.space" and not (T / "no-room.img.part").exists(),
+    )
+housecall._free_bytes = real_free
+first_report = housecall.examine_image_first(source_img, T / "first-examined.img")
+check(
+    "  the examination runs on the image, and says so",
+    any(f["id"] == "housecall-image-first" and f["status"] == "ok" for f in first_report["findings"])
+    and first_report["counts"]["files"] == 1
+    and first_report.get("source_device") == str(source_img)
+    and hashlib.sha256(source_img.read_bytes()).hexdigest() == source_sha,
+    first_report["findings"],
+)
+
 # A folder, read directly (this box's own files): the same verdicts, past the cache.
 folder = T / "folder"
 (folder / "sub").mkdir(parents=True)
@@ -126,6 +172,17 @@ check(
     and by_path["/sub/ff"]["verdict"] == "damaged"
     and by_path["/sub/zero"]["verdict"] == "suspect",
     records,
+)
+
+zero_record = housecall._record(
+    "/zero", 4096, iter([zero]), {"/zero": {"sha256": hashlib.sha256(good).hexdigest(), "manifest": "1"}}
+)
+check(
+    "a protected file that reads back as all zero is damaged, not a change",
+    zero_record["verdict"] == "damaged"
+    and zero_record["reason"]["id"] == "housecall.why-zero-damaged"
+    and zero_record["reason"]["en"] == "It reads back whole as zero.",
+    zero_record,
 )
 
 # The reference manifest as a file, and its refusal of a bad digest.
@@ -144,7 +201,7 @@ pkgroot = T / "pkgroot"
 (pkgroot / "var/lib/dpkg/info").mkdir(parents=True)
 (pkgroot / "etc" / "example.conf").write_bytes(b"package file\n")
 (pkgroot / "var/lib/dpkg/info/example.md5sums").write_text(
-    f"{hashlib.md5(b'package file\n').hexdigest()}  etc/example.conf\n"
+    f"{hashlib.md5(b'package file\n', usedforsecurity=False).hexdigest()}  etc/example.conf\n"
 )
 dpkg_refs = housecall.references_from_dpkg(pkgroot)
 check(
@@ -203,6 +260,75 @@ check(
     == "genuine",
 )
 
+# Step 3: the references a card already holds. Box doctor's manifest, and an image's own packages and git tree.
+manifest = T / "manifest.json"
+manifest.write_text(json.dumps({"entries": {"/good": {"sha256": hashlib.sha256(good).hexdigest()}}}))
+check(
+    "Box doctor's manifest becomes references (its protected files)",
+    housecall.load_manifest(manifest) == {"/good": {"sha256": hashlib.sha256(good).hexdigest(), "manifest": "1"}},
+    housecall.load_manifest(manifest),
+)
+default_manifest = housecall.MANIFEST
+default_manifest.parent.mkdir(parents=True, exist_ok=True)
+default_manifest.write_text(json.dumps({"entries": {"/etc/key": {"sha256": "a" * 64}}}))
+check(
+    "  this box's own manifest is found where Box doctor keeps it",
+    housecall.load_manifest() == {"/etc/key": {"sha256": "a" * 64, "manifest": "1"}},
+    housecall.load_manifest(),
+)
+image = T / "refs.img"
+build_image(image, {}, size="16M")
+
+
+def ext_write(path, remote, data, offset=0):
+    source = f"{path}?offset={offset}" if offset else str(path)
+    parts = [p for p in remote.strip("/").split("/") if p]
+    for i in range(1, len(parts)):
+        subprocess.run(
+            ["debugfs", "-w", "-R", f"mkdir /{'/'.join(parts[:i])}", source],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    local = T / "ext-write"
+    local.write_bytes(data)
+    subprocess.run(
+        ["debugfs", "-w", "-R", f"write {local} /{'/'.join(parts)}", source],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+ext_write(image, "etc/example.conf", b"package file\n")
+ext_write(
+    image,
+    "var/lib/dpkg/info/example.md5sums",
+    f"{hashlib.md5(b'package file\n', usedforsecurity=False).hexdigest()}  etc/example.conf\n".encode(),
+)
+check(
+    "an image's own packages' md5sums become references",
+    housecall.references_from_dpkg_ext(str(image))
+    == {"/etc/example.conf": {"md5": hashlib.md5(b"package file\n").hexdigest()}},
+    housecall.references_from_dpkg_ext(str(image)),
+)
+ext_write(image, "opt/irate-box/irate_box/example.py", b"print('ok')\n")
+ext_write(image, "opt/irate-box/VERSION", f"{commit[:7]} (installed 2026-10-27)\n".encode())
+check("  an image's own installed commit is read", housecall.installed_commit_ext(str(image)) == commit[:7])
+check(
+    "  and its irate-box tree becomes references from the checkout",
+    housecall.references_from_git_ext(str(image), repo) == {"/opt/irate-box/irate_box/example.py": {"git": blob}},
+    housecall.references_from_git_ext(str(image), repo),
+)
+merged = housecall.references_from_target(str(image), use_dpkg=True, use_tree=True, repo=repo)
+image_report = housecall.examine_image(image, merged)
+by_path = {r["path"]: r for r in image_report["files"]}
+check(
+    "  the image's own references are used: both files genuine",
+    by_path.get("/etc/example.conf", {}).get("verdict") == "genuine"
+    and by_path.get("/opt/irate-box/irate_box/example.py", {}).get("verdict") == "genuine",
+    image_report["files"],
+)
+
 # From inside: this box's own folders, with a file on the NAND left out and said to be the NAND's.
 box = T / "box"
 (box / "etc").mkdir(parents=True)
@@ -232,9 +358,135 @@ check(
     sorted(str(p.relative_to(box)) for p in box.rglob("*")) == ["etc", "etc/damaged", "nand", "nand/state.json"],
 )
 
+# Step 5: each damaged file that has a way back offers it, and the action puts it back through restore.py.
+restore_root = T / "restore-root"
+(restore_root / "sub").mkdir(parents=True)
+(restore_root / "sub" / "ff").write_bytes(ff)
+good_copy = housecall.ROOT_STATE / "protected"
+good_copy.mkdir(parents=True, exist_ok=True)
+(good_copy / "copy-one").write_bytes(good)
+housecall.MANIFEST.parent.mkdir(parents=True, exist_ok=True)
+housecall.MANIFEST.write_text(
+    json.dumps(
+        {
+            "entries": {
+                "/sub/ff": {
+                    "sha256": hashlib.sha256(good).hexdigest(),
+                    "copy": "copy-one",
+                    "mode": 0o640,
+                    "uid": os.geteuid(),
+                    "gid": os.getegid(),
+                }
+            }
+        }
+    )
+)
+without_manifest = housecall.examine_root(restore_root)
+check(
+    "another card's folder is not offered this box's protected copy",
+    not any(a.get("path") == "/sub/ff" for f in without_manifest["findings"] for a in f.get("actions", [])),
+    without_manifest["findings"],
+)
+restore_report = housecall.examine_root(restore_root, manifest=housecall.MANIFEST)
+action = next(
+    (a for f in restore_report["findings"] for a in f.get("actions", []) if a.get("path") == "/sub/ff"),
+    None,
+)
+check(
+    "a damaged file with Box doctor's copy offers a Restore action",
+    action and action.get("kind") == "copy" and action.get("choice") == "housecall-restore",
+    restore_report["findings"],
+)
+housecall.write_report(restore_report)
+said = housecall.restore_from_report("/sub/ff", "copy")
+saved = json.loads((T / "state" / "control" / "housecall.json").read_text())
+check(
+    "  the action puts it back, keeps the damaged file, and counts it restored",
+    (restore_root / "sub" / "ff").read_bytes() == good
+    and (restore_root / "sub" / "ff.damaged").read_bytes() == ff
+    and said.get("id") == "restore.done.kept"
+    and saved["counts"]["restored"] == 1,
+    (said, saved.get("counts")),
+)
+try:
+    housecall.restore_from_report("/nothing", "copy")
+    check("  a file whose report has no way back is refused", False)
+except Refused as exc:
+    check("  a file whose report has no way back is refused", exc.message["id"] == "housecall.restore.no-plan")
+# A protected file that differs from its copy because it changed is not damage, and offers no restore.
+changed_root = T / "changed-root"
+(changed_root / "sub").mkdir(parents=True)
+(changed_root / "sub" / "ff").write_bytes(b"the owner changed it\n")
+changed_report = housecall.examine_root(changed_root, manifest=housecall.MANIFEST)
+changed = next((r for r in changed_report["files"] if r["path"] == "/sub/ff"), {})
+check(
+    "a protected file changed since its copy is 'changed', not damaged, and offers no restore",
+    changed.get("verdict") == "changed"
+    and not any(a.get("path") == "/sub/ff" for f in changed_report["findings"] for a in f.get("actions", [])),
+    changed_report["files"],
+)
+
+# A source whose size is not a whole number of blocks is copied exactly (the dd padding trimmed).
+odd = T / "odd-size.bin"
+odd.write_bytes(b"x" * (10 * 1024 * 1024 + 1536))
+odd_copy = T / "odd-size.img"
+housecall.copy_device(odd, odd_copy)
+check(
+    "a card whose size is not a whole number of blocks is imaged exactly",
+    odd_copy.stat().st_size == odd.stat().st_size
+    and hashlib.sha256(odd_copy.read_bytes()).hexdigest() == hashlib.sha256(odd.read_bytes()).hexdigest(),
+    odd_copy.stat().st_size,
+)
+
+# A read error is zero-filled and the copy still finishes (dd exits non-zero, its stderr says so).
+real_copy_run = housecall.run
+
+
+def padded_run(*cmd, timeout=None, binary=False):
+    if cmd[0] == "blockdev":
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+    if cmd[0] == "dd":
+        part = Path(cmd[2].split("=", 1)[1])
+        part.write_bytes(odd.read_bytes() + b"\0" * 4096)
+        return subprocess.CompletedProcess(cmd, 1, "", "dd: error reading '/dev/sda': Input/output error\n")
+    return real_copy_run(*cmd, timeout=timeout, binary=binary)
+
+
+housecall.run = padded_run
+err_copy = T / "error-copy.img"
+said = housecall.copy_device(odd, err_copy)
+housecall.run = real_copy_run
+check(
+    "a read error is zero-filled, counted, and the exact size is kept",
+    said.get("id") == "housecall.image-first.done"
+    and "1 read error" in str(said)
+    and err_copy.stat().st_size == odd.stat().st_size,
+    said,
+)
+
+# A folder on the way out of another card is not followed.
+outside = T / "outside"
+outside.mkdir()
+linked = T / "linked-root"
+linked.mkdir()
+(linked / "link").symlink_to(outside)
+try:
+    housecall._target_for("/link/x", linked)
+    check("a symlink out of another card's folder: refused", False)
+except Refused as exc:
+    check("a symlink out of another card's folder: refused", exc.message["id"] == "housecall.restore.outside")
+
+# A package file, on this box's own files: the package is the way back.
+real_restore_run = housecall.restore.run
+housecall.restore.run = lambda *cmd, **kw: subprocess.CompletedProcess(cmd, 0, f"pkg: {cmd[-1]}\n", "")
+check(
+    "  a package file is offered its package as the way back",
+    (housecall._candidate("/etc/example.conf", "/", {}, True) or {}).get("kind") == "package",
+)
+housecall.restore.run = real_restore_run
+
 # The root helper's action the page asks for: started in a unit of its own (it does one job at a time under a
 # 50-minute limit, and an image took 32.5 min on the Pi), its running report written first.
-from irate_box.msg import Refused
 from irate_box.root import hub_control
 
 ran, active = [], {"state": "inactive"}
@@ -261,15 +513,39 @@ check(
     (said, started),
 )
 check("  its running report is written first, for the page", running.get("running") is True, running)
-for refused_req, why in (
-    ({"target": "nonsense"}, "an unknown target"),
-    ({"target": "image", "path": str(image), "dpkg": True}, "the package references for an image"),
-):
-    try:
-        hub_control.housecall_scan(refused_req)
-        check(f"  {why}: refused", False)
-    except Refused:
-        check(f"  {why}: refused", True)
+ran.clear()
+said = hub_control.housecall_scan(
+    {"target": "device", "path": str(source_img), "image_first": str(T / "helper-first.img"), "on_own_card": True}
+)
+started = [c for c in ran if c[0] == "systemd-run"]
+check(
+    "the root helper passes the image and the own-card permission",
+    said.get("id") == "control.housecall.started"
+    and started
+    and "--image-first" in started[0]
+    and str(T / "helper-first.img") in started[0]
+    and "--on-own-card" in started[0],
+    (said, started),
+)
+try:
+    hub_control.housecall_scan({"target": "nonsense"})
+    check("  an unknown target: refused", False)
+except Refused:
+    check("  an unknown target: refused", True)
+ran.clear()
+said = hub_control.housecall_scan(
+    {"target": "image", "path": str(image), "dpkg": True, "git_tree": True, "manifest": str(manifest)}
+)
+started = [c for c in ran if c[0] == "systemd-run"]
+check(
+    "  the package and tree references for an image are passed to it",
+    said.get("id") == "control.housecall.started"
+    and started
+    and "--dpkg" in started[0]
+    and "--git-tree" in started[0]
+    and "--manifest" in started[0],
+    (said, started),
+)
 active["state"] = "active"
 try:
     hub_control.housecall_scan({"target": "image", "path": str(image)})
@@ -284,6 +560,171 @@ check(
     stopped,
 )
 hub_control.run = real_helper_run
+housecall.write_report(restore_report)
+said = hub_control.housecall_restore({"path": "/sub/ff", "kind": "copy"})
+check(
+    "the root helper's housecall-restore puts the file back and updates the report",
+    said.get("id") == "restore.done.kept" and (restore_root / "sub" / "ff").read_bytes() == good,
+    said,
+)
+
+# Step 8: another box, paired once and read only over SSH.
+housecall.PEER_KEY.write_text("PRIVATE\n")
+peer_calls = []
+
+
+def peer_run(*cmd, timeout=None, binary=False):
+    peer_calls.append(cmd)
+    if cmd[0] == "ssh-keyscan":
+        return subprocess.CompletedProcess(cmd, 0, "box.local ssh-ed25519 AAAAHOSTKEY\n", "")
+    if cmd[0] == "ssh-keygen" and "-lf" in cmd:
+        return subprocess.CompletedProcess(cmd, 0, "256 SHA256:FINGERPRINT box.local (ED25519)\n", "")
+    if cmd[0] == "ssh-keygen":
+        return subprocess.CompletedProcess(cmd, 0, "ssh-ed25519 AAAAPUBLIC this-box\n", "")
+    if cmd[0] == "ssh":
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            "\n=== /var/lib/hub/control/health.json\n"
+            '{"findings": [{"id": "card", "status": "problem", "summary": {"id": "s", "en": "bad"}}]}\n'
+            "=== /var/lib/hub/control/security-audit.json\n"
+            '{"findings": [{"id": "ok", "status": "ok", "summary": {"id": "s2", "en": "fine"}}]}\n'
+            "=== /var/lib/hub/control/doctor.json\n"
+            "=== /opt/irate-box/VERSION\n"
+            "abc1234 (installed 2026-10-27)\n",
+            "",
+        )
+    return subprocess.CompletedProcess(cmd, 127, "", "no")
+
+
+real_peer_run = housecall.run
+housecall.run = peer_run
+said = housecall.pair_peer("pi", "192.0.2.10")
+peers = housecall.load_peers()
+check(
+    "another box is paired once: its address and host key, never a password",
+    said.get("id") == "housecall.peer.paired"
+    and peers.get("pi", {}).get("host") == "192.0.2.10"
+    and "password" not in json.dumps(peers)
+    and peers.get("pi", {}).get("user") == "root"
+    and (housecall.PEER_DIR / "pi.known_hosts").read_text().startswith("box.local ssh-ed25519")
+    and "SHA256:FINGERPRINT" in str(said)
+    and len((housecall.PEER_DIR / "pi.authorized_key").read_text().splitlines()) == 1
+    and (housecall.PEER_DIR / "pi.authorized_key").read_text().startswith("restrict,command=")
+    and (housecall.PEERS.stat().st_mode & 0o777) == 0o600,
+    (said, peers),
+)
+
+
+def sshd_command(line):
+    r"""The forced command as sshd reads it from an authorized_keys line: inside command="...", only \" is
+    unescaped, every other backslash kept."""
+    rest = line.split('command="', 1)[1]
+    out, i = [], 0
+    while rest[i] != '"':
+        if rest[i] == "\\" and rest[i + 1] == '"':
+            i += 1
+        out.append(rest[i])
+        i += 1
+    return "".join(out)
+
+
+forced = sshd_command((housecall.PEER_DIR / "pi.authorized_key").read_text())
+forced_out = subprocess.run(["sh", "-c", forced], capture_output=True, text=True, timeout=30)
+check(
+    "  the forced command, as sshd reads it and a shell runs it, gives sections the parser splits",
+    sorted(housecall._peer_reports(forced_out.stdout))
+    == sorted([path for _, path in housecall.PEER_DOCTORS] + ["/opt/irate-box/VERSION"]),
+    (forced, forced_out.stdout[:200]),
+)
+peer = housecall.peer_examine("pi")
+found = {f["id"]: f for f in peer["findings"]}
+check(
+    "  examining it reads its three doctors and its version, read only",
+    found["housecall-peer"]["status"] == "ok"
+    and found["housecall-peer-version"]["status"] == "warn"
+    and found["housecall-peer:box-doctor"]["status"] == "problem"
+    and found["housecall-peer:security-doctor"]["status"] == "ok"
+    and found["housecall-peer:updates-doctor"]["status"] == "warn",
+    peer["findings"],
+)
+
+
+def peer_unreachable(*cmd, timeout=None, binary=False):
+    return subprocess.CompletedProcess(cmd, 255, "", "Connection refused")
+
+
+housecall.run = peer_unreachable
+unreachable = housecall.peer_examine("pi")
+check(
+    "  an unreachable box is a finding, not an error",
+    any(f["id"] == "housecall-peer" and f["status"] == "problem" for f in unreachable["findings"]),
+    unreachable["findings"],
+)
+try:
+    housecall.peer_examine("nobody")
+    check("  a box that was never paired: refused", False)
+except Refused as exc:
+    check("  a box that was never paired: refused", exc.message["id"] == "housecall.peer.unknown")
+housecall.run = real_peer_run
+# Pairing, and a scan of a paired box, through the root helper.
+housecall.run = peer_run
+hub_control.run = helper_run
+active["state"] = "inactive"
+ran.clear()
+paired = hub_control.housecall_pair({"name": "pi2", "host": "192.0.2.11", "port": 22})
+check(
+    "the root helper pairs a box, and passes a peer scan to the doctor",
+    paired.get("id") == "housecall.peer.paired" and ("systemd-run" not in " ".join(str(c) for c in ran)),
+    (paired, ran),
+)
+ran.clear()
+said = hub_control.housecall_scan({"target": "peer", "path": "pi2"})
+started = [c for c in ran if c[0] == "systemd-run"]
+check(
+    "  a peer scan is started with --peer, and its label names the box",
+    said.get("id") == "control.housecall.started" and started and "--peer" in started[0] and "pi2" in started[0],
+    (said, started),
+)
+housecall.run = real_peer_run
+hub_control.run = real_helper_run
+
+# The Rockchip page's card results: written here too, and kept beside an earlier examination.
+before_card = json.loads((T / "state" / "control" / "housecall.json").read_text())
+card_record = housecall.record_card(
+    "sda",
+    "check",
+    M("rkcard.checked", "The card was read, nothing written: {said}.", said="partition table: no problems"),
+)
+later_card = housecall.record_card(
+    "sda",
+    "genuine",
+    M("rkcard.fake", "The card is not what it says: only {usable} of it can be used. Replace it.", usable="2 GB"),
+)
+check(
+    "a Rockchip card check is a finding here, and an earlier report is kept",
+    any(f["id"] == "housecall-card:sda:check" and f["status"] == "ok" for f in card_record["findings"])
+    and any(f["id"] == "housecall-card:sda:genuine" and f["status"] == "problem" for f in later_card["findings"]),
+    later_card["findings"],
+)
+warn_msg = M(
+    "rkcard.checked",
+    "The card was read, nothing written: {said}.",
+    said="sdb1 (ext4): errors found, nothing changed",
+)
+warn_msg["status"] = "warn"
+warn_card = housecall.record_card("sdb", "check", warn_msg)
+check(
+    "  a check that found errors is a warning",
+    any(f["id"] == "housecall-card:sdb:check" and f["status"] == "warn" for f in warn_card["findings"]),
+)
+survivor = {"at": 1, "target": "/dev/sda", "findings": [], "files": [], "counts": {}}
+housecall.write_report(survivor)
+check(
+    "a card result is kept when an examination report is written over the file",
+    any(f["id"] == "housecall-card:sdb:check" for f in json.loads(housecall.REPORT.read_text())["findings"]),
+    housecall.REPORT.read_text(),
+)
 
 # The report the page reads.
 housecall.write_report(card_report)

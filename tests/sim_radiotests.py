@@ -47,7 +47,9 @@ radio = {
         ]
     },
 }
-inv = {"radios": [radio, {"iface": "ap0", "type": "AP", "phy": "phy0"}]}
+# NetworkManager runs the link (a roam test needs its profile).
+NM = {"networkmanager": {"running": True, "devices": {"wlan0": {"type": "wifi", "state": "connected"}}}}
+inv = {"radios": [radio, {"iface": "ap0", "type": "AP", "phy": "phy0"}], "stacks": NM}
 st = {"guests": 0, "ap": 11, "link": 11, "follow": True, "ap_dies": False, "reset": True}
 ran = []
 ran_locks = []
@@ -91,10 +93,12 @@ try:
 except Refused as exc:
     check("refused with guests on the hotspot", exc.message["id"] == "radio-test.guests", exc.message)
 st["guests"] = 0
-alone = {"radios": [dict(radio, roaming={"aps": [radio["roaming"]["aps"][0]]}), inv["radios"][1]]}
+alone = {"radios": [dict(radio, roaming={"aps": [radio["roaming"]["aps"][0]]}), inv["radios"][1]], "stacks": NM}
 for i, exp, why in (
     (alone, "follows-roam", "radio-test.no-roam"),
-    ({"radios": [radio]}, "follows-roam", "radio-test.no-hotspot"),
+    ({"radios": [radio], "stacks": NM}, "follows-roam", "radio-test.no-hotspot"),
+    ({**inv, "stacks": {"networkmanager": None}}, "follows-roam", "radio-test.no-nm"),
+    ({**inv, "stacks": {"networkmanager": {"running": False}}}, "follows-roam", "radio-test.no-nm"),
     (inv, "warp", "radio-test.unknown"),
     (inv, "radio-reset", None),
 ):

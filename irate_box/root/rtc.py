@@ -973,7 +973,7 @@ def setup(chip, bus, addr, by="owner"):
         )
     msg = sentences(*said)
     if not FAKE:
-        subprocess.run(["systemctl", "start", "irate-box-rtc.service"], capture_output=True)  # records it as having run  # noqa: TID251
+        subprocess.run(["systemctl", "start", "irate-box-rtc.service"], capture_output=True)  # noqa: TID251 - records it as having run
     _status({**(json.loads(STATUS.read_text()) if STATUS.exists() else {}), "message": render(msg)})
     return msg
 

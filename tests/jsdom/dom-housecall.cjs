@@ -22,7 +22,10 @@ const report = {
   findings: [
     { id: 'housecall-files:whole disk', title: { id: 't', en: 'Files on whole disk' }, status: 'problem',
       summary: { id: 's', en: '1 file is damaged.' }, why: { id: 'w', en: 'It was not kept.' },
-      notes: [], evidence: ['/etc/key.pem: damaged (It reads back whole as 0xFF.)'], commands: [], actions: [] },
+      notes: [], evidence: ['/etc/key.pem: damaged (It reads back whole as 0xFF.)'], commands: [],
+      actions: [{ choice: 'housecall-restore', path: '/etc/key.pem', kind: 'copy',
+        label: { id: 'admin.housecall.restore', en: "Restore from Box doctor's copy" },
+        confirm: { id: 'admin.housecall.restore-confirm', en: 'Put /etc/key.pem back?' } }] },
   ],
   counts: { files: 3, damaged: 1, suspect: 0, genuine: 0, unknown: 2 },
 };
@@ -32,7 +35,8 @@ const runningReport = () => ({ at: Date.now() / 1000, running: true, target: '/t
 w.fetch = async (u, opts = {}) => {
   calls.push([u, opts.method || 'GET']);
   if (u === '/admin/housecall' && opts.method === 'POST') {
-    posted.push(JSON.parse(opts.body));
+    const body = JSON.parse(opts.body);
+    posted.push(body);
     done = true;
     return new Response(JSON.stringify({ id: 'hc1' }), { status: 202 });
   }
@@ -73,12 +77,60 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
     findings.map((f) => f.textContent),
   );
   check('  and when it was examined is said', /\d/.test(d.getElementById('housecall-when').textContent), d.getElementById('housecall-when').textContent);
+  check('a damaged file with a way back offers Restore', /Restore from Box doctor/.test(findings[0].textContent));
+  w.AW.confirmHere = async () => true;
+  posted.length = 0;
+  findings[0].querySelector('.fdo-controls .action-btn').click();
+  await later(300);
+  check('  Restore asks the root helper for that file and its source',
+    posted.length === 1 && posted[0].action === 'restore' && posted[0].path === '/etc/key.pem' && posted[0].kind === 'copy',
+    posted);
   check('this box\'s own files: the path is not asked for, and the package and tree boxes are offered', (() => {
     target.value = 'this-card';
     target.dispatchEvent(new w.Event('change', { bubbles: true }));
     return path.disabled && !d.getElementById('housecall-dpkg').disabled && !d.getElementById('housecall-git').disabled;
   })());
   check('  finished: no Stop offered, and Examine can be selected again', d.getElementById('housecall-stop').hidden && !d.getElementById('housecall-scan').disabled);
+  // A card in a reader can be imaged first; the image path and the own-card permission go with the request.
+  target.value = 'device';
+  target.dispatchEvent(new w.Event('change', { bubbles: true }));
+  check('a card in a reader: it can be imaged first', !d.getElementById('housecall-image-first-label').hidden);
+  const first = d.getElementById('housecall-image-first');
+  first.checked = true;
+  first.dispatchEvent(new w.Event('change', { bubbles: true }));
+  check('  its image path and own-card permission are asked for', !d.getElementById('housecall-image-first-path-label').hidden && !d.getElementById('housecall-on-own-card-label').hidden);
+  path.value = '/dev/sda';
+  d.getElementById('housecall-image-first-path').value = '/media/usb/card.img';
+  d.getElementById('housecall-on-own-card').checked = true;
+  d.getElementById('housecall-manifest').value = '/var/lib/irate-box-root/protected/manifest.json';
+  posted.length = 0;
+  done = false;
+  d.getElementById('housecall-scan').click();
+  await later(1800);
+  check('  the request carries the image and the permission',
+    posted.length === 1
+      && posted[0].image_first === '/media/usb/card.img'
+      && posted[0].on_own_card === true
+      && posted[0].manifest === '/var/lib/irate-box-root/protected/manifest.json',
+    posted);
+  // Another box: a paired name, and the one-time pairing form.
+  target.value = 'peer';
+  target.dispatchEvent(new w.Event('change', { bubbles: true }));
+  check('another box: its name asked for, the reference boxes off', path.placeholder === "the other box's name" && d.getElementById('housecall-dpkg').disabled);
+  path.value = 'pi';
+  running = false;
+  done = true;
+  await later(1700);
+  posted.length = 0;
+  d.getElementById('housecall-scan').click();
+  await later(1800);
+  check('  the peer name goes to the root helper', posted.length === 1 && posted[0].target === 'peer' && posted[0].path === 'pi', posted);
+  d.getElementById('housecall-peer-name').value = 'pi';
+  d.getElementById('housecall-peer-host').value = 'box.local';
+  posted.length = 0;
+  d.getElementById('housecall-pair').click();
+  await later(200);
+  check('  pairing sends its name, address, user and port', posted.length === 1 && posted[0].action === 'pair' && posted[0].host === 'box.local' && posted[0].port === 22, posted);
   // A long examination: its running report is shown with Stop, which asks the root helper to stop it.
   target.value = 'image';
   target.dispatchEvent(new w.Event('change', { bubbles: true }));
