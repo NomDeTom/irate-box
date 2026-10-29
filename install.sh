@@ -2971,6 +2971,12 @@ EOF
 # the optional 4 KB test file. Each is a setting: health.install_units leaves off what the owner turned off.
 HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" health install-units ||
 	problem "the Box doctor's timer was not set up: journalctl -u irate-box-boxdoctor.timer"
+# The second copy of the settings and keys, and its check at every boot (notes: box-doctor-hardening-plan Part 2,
+# step 4): retain takes the copy here, and its timer keeps it, before the network and the hub start at the next boot.
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" HUB_CODE_DIR="$CODE" "$CODE/irate-box" retain install-units ||
+	problem "the second copy of the settings was not set up: journalctl -u irate-box-protected.timer"
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" HUB_CODE_DIR="$CODE" "$CODE/irate-box" retain sweep ||
+	problem "the second copy of the settings was not taken"
 
 # --- Unique visitors ---------------------------------------------------------------
 # A helper of its own reads the leases and the neighbour table every minute, hashes each address

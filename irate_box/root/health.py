@@ -3188,6 +3188,99 @@ def check_writes_kept():
     ]
 
 
+def check_protected():
+    """The second copy's repairs and losses (retain.py, Part 2 step 4): a file the box put back at boot, or one it
+    could not. Repairs at two boots running are the card verdict."""
+    from irate_box.root import retain
+
+    try:
+        items = json.loads((retain.ROOT / "protected-findings.json").read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+    items = [i for i in items if isinstance(i, dict) and i.get("path")]
+    if not items:
+        return []
+    repairs = [i for i in items if "restored from" in str(i.get("action"))]
+    lost = [i for i in items if "no good copy" in str(i.get("action"))]
+    boots = {i.get("boot") for i in repairs if i.get("boot")}
+    if lost:
+        status = "problem"
+        summary = M(
+            "protected.lost",
+            {
+                "one": "The box could not put {n} damaged file back: there is no good copy.",
+                "other": "The box could not put {n} damaged files back: there is no good copy.",
+            },
+            n=len(lost),
+        )
+        why = M(
+            "protected.lost.why",
+            "The file is part of the box's settings or keys, and the copy is damaged too. The box works with less "
+            "until it is put back by hand.",
+        )
+        fix = M(
+            "protected.lost.fix",
+            "Put the file back by hand, or install again. Then replace the SD card, and examine it with the "
+            "Housecall doctor.",
+        )
+    elif len(boots) >= 2:
+        status = "problem"
+        summary = M(
+            "protected.twice",
+            "The box put damaged files back at {n} boots running: the card is losing writes.",
+            n=len(boots),
+        )
+        why = M(
+            "protected.twice.why",
+            "A card that loses writes damages the files the box keeps again and again. A copy can put them back, but "
+            "the card will lose the next ones too.",
+        )
+        fix = M("protected.twice.fix", "Replace the SD card. The Housecall doctor can examine the whole card first.")
+    else:
+        status = "warn"
+        summary = M(
+            "protected.repaired",
+            {
+                "one": "The box put {n} damaged file back at the last boot.",
+                "other": "The box put {n} damaged files back at the last boot.",
+            },
+            n=len(repairs),
+        )
+        why = M(
+            "protected.repaired.why",
+            "The card returned wrong contents for the file, and the box restored it from its copy before the "
+            "network and the hub started.",
+        )
+        fix = M(
+            "protected.repaired.fix",
+            "Look at what was repaired. A second boot with repairs means the card is losing writes: replace it.",
+        )
+    housecall = CODE / "irate_box/root/housecall.py"
+    return [
+        finding(
+            "protected-files",
+            M("protected.title", "Settings and keys restored at boot"),
+            status,
+            summary,
+            why,
+            fix,
+            notes=[
+                M(
+                    "protected.housecall",
+                    "The Housecall doctor can examine the whole card and name every file it damaged.",
+                )
+            ]
+            if housecall.exists()
+            else [],
+            commands=[f"sudo {CODE}/irate-box housecall --this-card"] if housecall.exists() else [],
+            evidence=[str(i["path"]) for i in (lost or repairs)][:20],
+            go=GO_CARD_WRITES,
+        )
+    ]
+
+
 def timer_on():
     return (SYSTEMD_UNITS / DOCTOR_TIMER).exists()
 
@@ -6518,6 +6611,7 @@ def scan(quick=False):
         check_card_health,
         check_lost_writes,
         check_writes_kept,
+        check_protected,
         check_builds,
         check_crashwatch,
         check_led,
