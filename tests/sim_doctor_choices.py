@@ -56,8 +56,8 @@ groups = (
 )
 group_choices = [option["choice"] for group in groups for option in group.get("options", [])]
 check(
-    "every choice a settings group offers passes the shared pattern",
-    all(choices.CHOICE_RE.match(choice) for choice in group_choices),
+    "every choice a settings group offers passes the shared pattern (and the groups were found)",
+    "card-set:journal:memory" in group_choices and all(choices.CHOICE_RE.match(choice) for choice in group_choices),
     [choice for choice in group_choices if not choices.CHOICE_RE.match(choice)],
 )
 source = ast.parse((REPO / "irate_box" / "root" / "health.py").read_text())
@@ -79,8 +79,8 @@ def action_choice(choice):
 
 
 check(
-    "every literal finding action passes the shared pattern",
-    all(choices.CHOICE_RE.match(action_choice(choice)) for choice in actions),
+    "every literal finding action passes the shared pattern (and the actions were found)",
+    "net-scan" in actions and all(choices.CHOICE_RE.match(action_choice(choice)) for choice in actions),
     sorted(choice for choice in actions if not choices.CHOICE_RE.match(action_choice(choice))),
 )
 offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog", "undervoltage") for v in ("on", "off")] + [
