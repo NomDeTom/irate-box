@@ -29,6 +29,12 @@ irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: sm
               (kernel.panic and its kin); and a watchdog (the board's own, or the kernel's softdog
               where it has none) that systemd keeps fed, so a frozen system restarts by itself.
 
+  A supply    the board's voltage where it measures it: a Raspberry Pi's rpi_volt (and
+              vcgencmd get_throttled), or an INA219/INA226 on I2C. An undervoltage is noted
+              with its times and read as a Box doctor finding. A power-fail line or NUT's
+              ups.status (on battery, battery low) is watched too: the owner chooses to log it,
+              sync the disks, or shut down while the hold-up lasts (power-fail log|sync|shutdown).
+
     crashwatch.py run               the watcher
     crashwatch.py boot | shutdown   the service's start and stop marks (ExecStartPre, ExecStopPost)
     crashwatch.py status            what it knows, as JSON
@@ -65,6 +71,22 @@ INDEX = DIR / "crashes.json"
 INCIDENTS = DIR / "incidents.json"  # a radio's failures, filed as they happen (the box may never stop)
 EVENTS = DIR / "events.json"  # the radio's failures, its driver's own resets, its recoveries, newest last
 STATUS = DIR / "status.json"  # for the box doctor: the radios watched, the floods, the last look
+POWER = DIR / "power.json"  # undervoltage and power-fail events, kept across boots
+RUN_DIR = Path(os.environ.get("HUB_RUN_DIR", "/run/irate-box"))
+POWER_STATE = RUN_DIR / "power-state.json"  # this boot's last reading: in RAM, written only when it changes
+POWER_FAIL = Path(os.environ.get("HUB_POWER_FAIL", "/run/irate-box/power-fail"))
+UNDERVOLTAGE_MV = 4630  # the 5 V rail's low point; the owner may choose another in the doctor's settings
+UNDERVOLTAGE_OPTIONS = (3000, 4630, 11000)
+POWER_ACTIONS = ("log", "sync", "shutdown")
+INA = ("ina219", "ina226", "ina230", "ina260", "ina3221", "ina700")
+# A program that already owns the shutdown: NUT's upsmon (Debian's nut-monitor) or apcupsd. The box then logs and
+# syncs, and asks that program to shut down; it never issues a second poweroff.
+SHUTDOWN_OWNERS = (
+    ("nut-monitor.service", "NUT's upsmon"),
+    ("upsmon.service", "NUT's upsmon"),
+    ("apcupsd.service", "apcupsd"),
+)
+_OWNER = {"at": 0.0, "name": ""}
 PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
 KMSG = os.environ.get("HUB_KMSG", "/dev/kmsg")
@@ -79,7 +101,14 @@ TICK = 30
 SNAP_MAX = 4_000_000
 KEEP_CRASHES = 30
 WATCHDOG_SEC = 60  # RuntimeWatchdogSec: how long a frozen system can stop feeding the watchdog
-DEFAULT = {"snapshots": True, "panic": False, "watchdog": False}
+DEFAULT = {
+    "snapshots": True,
+    "panic": False,
+    "watchdog": False,
+    "undervoltage": True,
+    "undervoltage_mv": UNDERVOLTAGE_MV,
+    "power_action": "log",
+}
 FLOOD = 30  # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5  # driver errors within two looks that make a failure
 # A radio in trouble, as the kernel says it (the AIC8800's own words, and the USB core's).
@@ -111,9 +140,13 @@ def load_settings():
     except (OSError, ValueError):
         raw = {}
     out = dict(DEFAULT)
-    for k in ("snapshots", "panic", "watchdog"):
+    for k in ("snapshots", "panic", "watchdog", "undervoltage"):
         if isinstance(raw.get(k), bool):
             out[k] = raw[k]
+    if raw.get("undervoltage_mv") in UNDERVOLTAGE_OPTIONS:
+        out["undervoltage_mv"] = raw["undervoltage_mv"]
+    if raw.get("power_action") in POWER_ACTIONS:
+        out["power_action"] = raw["power_action"]
     return out
 
 
@@ -620,6 +653,215 @@ class RadioWatch:
 # --- the hang settings ---------------------------------------------------------------------------
 
 
+def _run(*cmd, timeout=30):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+    except (OSError, subprocess.SubprocessError) as exc:
+        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+
+
+def _hwmon():
+    for d in sorted((SYS / "class/hwmon").glob("hwmon*")):
+        yield d, _read(d / "name").strip()
+
+
+def _millivolts(d, name):
+    """The supply's voltage in mV. ina2xx's in0_input is the shunt (a few mV), and in1_input the bus; ina3221 has
+    no in0, and in1_input is channel 1's bus, then 2 and 3."""
+    channels = (1, 2, 3) if name == "ina3221" else (1,)
+    for n in channels:
+        text = _read(d / f"in{n}_input").strip()
+        if text.isdigit():
+            return int(text)
+    return None
+
+
+def power_now(threshold=None):
+    """The supply as the board measures it: an INA2xx's bus voltage (mV) or a Raspberry Pi's rpi_volt and
+    vcgencmd get_throttled. {measured, source, mv, undervoltage, occurred, why}."""
+    threshold = threshold if threshold is not None else load_settings().get("undervoltage_mv", UNDERVOLTAGE_MV)
+    ina = rpi = None
+    for d, name in _hwmon():
+        if name in INA:
+            mv = _millivolts(d, name)
+            if mv is not None:
+                ina = {
+                    "measured": True,
+                    "source": name,
+                    "mv": mv,
+                    "undervoltage": mv < threshold,
+                    "occurred": False,
+                    "why": "",
+                }
+        elif name == "rpi_volt":
+            alarm = _read(d / "in0_lcrit_alarm").strip() == "1" or _read(d / "in_voltage0_lcrit_alarm").strip() == "1"
+            occurred = False
+            found = re.search(r"throttled=(0x[0-9a-fA-F]+)", _run("vcgencmd", "get_throttled").stdout or "")
+            if found:
+                bits = int(found.group(1), 16)
+                alarm = alarm or bool(bits & 1)
+                occurred = bool(bits & (1 << 16))
+            rpi = {
+                "measured": True,
+                "source": "rpi_volt",
+                "mv": None,
+                "undervoltage": alarm,
+                "occurred": occurred,
+                "why": "",
+            }
+    return (
+        ina
+        or rpi
+        or {
+            "measured": False,
+            "source": None,
+            "mv": None,
+            "undervoltage": False,
+            "occurred": False,
+            "why": "no sensor",
+        }
+    )
+
+
+def power_fail():
+    """(failing, why, low): the power-fail hook, or NUT's ups.status. The hook is a file NUT's NOTIFYCMD or a pin's
+    handler writes; it must be removed when the power is back (ONLINE). Its words "low" or "shutdown" mark it as the
+    battery low, so the shutdown action may follow. On battery alone, the box is still being supplied: log and sync,
+    but do not shut it down until the battery is low."""
+    try:
+        said = POWER_FAIL.read_text().strip()
+    except OSError:
+        said = ""
+    if said:
+        low = "low" in said.lower() or "shutdown" in said.lower()
+        return True, said[:120], low
+    if not shutil.which("upsc"):
+        return False, "", False
+    listed = _run("upsc", "-l")
+    name = (listed.stdout or "").splitlines()[0].strip() if listed.returncode == 0 else ""
+    if not name:
+        return False, "", False
+    said = _run("upsc", name)
+    if said.returncode:
+        return False, "", False
+    state = ""
+    for line in (said.stdout or "").splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip() == "ups.status":
+            state = value.strip().upper()
+    words = state.split()
+    if "LB" in words:
+        return True, "the battery is low", True
+    if "OB" in words:
+        return True, "the box is on battery", False
+    return False, "", False
+
+
+def _event(now, kind, text, reading):
+    return {
+        "at": now,
+        "boot": boot_id(),
+        "kind": kind,
+        "text": text,
+        "source": reading.get("source"),
+        "mv": reading.get("mv"),
+    }
+
+
+def shutdown_owner(now=None, refresh=False):
+    """The program already managing the shutdown, or "". NUT's upsmon and apcupsd each have their own shutdown; a
+    second systemctl poweroff beside them is a race, not a help. Cached for a minute."""
+    now = time.time() if now is None else now
+    if not refresh and now - _OWNER["at"] < 60:
+        return _OWNER["name"]
+    name = ""
+    for unit, owner in SHUTDOWN_OWNERS:
+        if _run("systemctl", "is-active", "--quiet", unit).returncode == 0:
+            name = owner
+            break
+    _OWNER.update(at=now, name=name)
+    return name
+
+
+def _quiet(settings, low):
+    """The owner's action. Only a low battery may shut the box down: on battery alone the UPS is still supplying it,
+    and a poweroff would leave the box off when the mains returns."""
+    action = settings.get("power_action", "log")
+    if action not in POWER_ACTIONS:
+        action = "log"
+    if action in ("sync", "shutdown"):
+        try:
+            os.sync()
+        except (AttributeError, OSError):
+            pass
+    if action == "shutdown" and low:
+        owner = shutdown_owner()
+        if owner == "NUT's upsmon":
+            _run("upsmon", "-c", "fsd", timeout=60)  # NUT's own forced shutdown, then the UPS
+        elif owner == "apcupsd":
+            pass  # apcupsd's apccontrol shuts the box down; a second poweroff would race it
+        else:
+            _run("systemctl", "poweroff", timeout=60)
+    return action
+
+
+def power_tick(now, settings=None):
+    """One look at the supply: a new undervoltage, a recovery, or the power failing, noted once; a failing power
+    runs the owner's action (log, sync, or shutdown)."""
+    settings = settings or load_settings()
+    threshold = settings.get("undervoltage_mv", UNDERVOLTAGE_MV)
+    old = _json(POWER_STATE, {})
+    if old.get("boot") != boot_id():
+        old = {"boot": boot_id(), "undervoltage": False, "occurred": False, "power_fail": False}
+    state = dict(old)
+    reading = (
+        power_now(threshold)
+        if settings.get("undervoltage", True)
+        else {"measured": False, "source": None, "mv": None, "undervoltage": False, "occurred": False, "why": "off"}
+    )
+    events = []
+    if reading["measured"]:
+        if reading["undervoltage"] and not state.get("undervoltage"):
+            events.append(_event(now, "undervoltage", f"the supply is below {threshold} mV", reading))
+            state["undervoltage"] = True
+            state["occurred"] = True  # this look covers the firmware's own "since boot" bit too
+        elif reading["occurred"] and not state.get("occurred"):
+            events.append(_event(now, "undervoltage", "the firmware recorded an undervoltage since boot", reading))
+            state["occurred"] = True
+        elif not reading["undervoltage"] and state.get("undervoltage"):
+            events.append(_event(now, "recovered", "the supply is back above its threshold", reading))
+            state["undervoltage"] = False
+    failing, why, low = power_fail()
+    if failing and not state.get("power_fail"):
+        owner = shutdown_owner(now)
+        text = why or "the power is failing"
+        if owner:
+            text += f" ({owner} manages the shutdown)"
+        events.append(_event(now, "power-fail", text, reading))
+        state["power_fail"] = True
+        state["low"] = low
+        _quiet(settings, low)
+    elif failing and low and not state.get("low"):
+        # A UPS says "on battery" first and "battery low" later: the shutdown is for the second, while the power is
+        # already failing.
+        events.append(_event(now, "battery-low", why or "the battery is low", reading))
+        state["low"] = True
+        _quiet(settings, True)
+    elif not failing and state.get("power_fail"):
+        events.append(_event(now, "power-restored", "the power is back", reading))
+        state["power_fail"] = False
+        state["low"] = False
+    if state != old:
+        _write(POWER_STATE, state)
+    if events:
+        _write(POWER, (_json(POWER, []) + events)[-200:])
+    return events
+
+
+def power_events():
+    return _json(POWER, [])
+
+
 def watchdog_device():
     """'hardware' when the board has a watchdog of its own, 'softdog' when the kernel can give one,
     'switched-off' when the board has one its device tree leaves disabled and Armbian's user overlays can
@@ -820,6 +1062,31 @@ def set_option(key, value):
     elif key == "watchdog" and value in ("on", "off"):
         msg = set_watchdog(value == "on")
         s["watchdog"] = value == "on"
+    elif key == "undervoltage" and value in ("on", "off"):
+        s["undervoltage"] = value == "on"
+        msg = (
+            M("crashwatch-set.undervoltage.on", "The supply is watched. An undervoltage is a finding.")
+            if s["undervoltage"]
+            else M("crashwatch-set.undervoltage.off", "The supply is no longer watched.")
+        )
+    elif key == "undervoltage-mv" and str(value).isdigit() and int(value) in UNDERVOLTAGE_OPTIONS:
+        s["undervoltage_mv"] = int(value)
+        msg = M(
+            "crashwatch-set.undervoltage-mv",
+            "The supply's low point is {mv} mV.",
+            mv=int(value),
+        )
+    elif key == "power-action" and value in POWER_ACTIONS:
+        s["power_action"] = value
+        if value == "shutdown":
+            msg = M(
+                "crashwatch-set.power-action.shutdown",
+                "A power failure is logged, the disks synced, then the box shuts down.",
+            )
+        elif value == "sync":
+            msg = M("crashwatch-set.power-action.sync", "A power failure is logged and the disks synced.")
+        else:
+            msg = M("crashwatch-set.power-action.log", "A power failure is logged.")
     else:
         raise Refused(M("crashwatch-set.unknown", "Crash watch has no setting {key} {value}.", key=key, value=value))
     save_settings(s)
@@ -850,6 +1117,7 @@ def status():
         "events": _json(EVENTS, [])[-20:],
         "watchdog_device": None if os.geteuid() and not os.environ.get("HUB_SYSFS") else watchdog_device(),
         "watchdog_pending": board_watchdog_pending(),
+        "power": {"now": power_now(), "events": _json(POWER, [])[-20:], "shutdown_owner": shutdown_owner()},
     }
 
 
@@ -923,6 +1191,10 @@ def run(once=False):
         for i, r in radios().items():
             known[i] = r  # a radio that came back, or a new one, watched from now on
         watch.act(now, radio_state(known, lines), lines, radio.driver_reset())
+        try:
+            power_tick(now, settings)
+        except (OSError, ValueError) as exc:
+            print(f"crashwatch: the power check failed: {exc}", file=sys.stderr)
         extra = pending.pop("snap", None) or ""
         pending["snap"] = None
         if settings["snapshots"] or extra:
