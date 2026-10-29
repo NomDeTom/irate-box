@@ -20,6 +20,7 @@ running, slot, lists = T / "running", T / "slot", T / "lists"
 (slot / "etc").mkdir(parents=True)
 (slot / "usr" / "sbin").mkdir(parents=True)
 (slot / "usr" / "sbin" / "policy-rc.d").write_text("#!/bin/sh\nexit 0\n")
+(slot / "etc" / "resolv.conf").symlink_to("/run/systemd/resolve/stub-resolv.conf")
 calls = []
 fails = 0
 
@@ -83,6 +84,12 @@ check(
 check(
     "the slot's own policy-rc.d is put back",
     (slot / "usr" / "sbin" / "policy-rc.d").read_text() == "#!/bin/sh\nexit 0\n",
+)
+resolv = slot / "etc" / "resolv.conf"
+check(
+    "  and its resolver link is put back",
+    resolv.is_symlink() and resolv.readlink() == Path("/run/systemd/resolve/stub-resolv.conf"),
+    resolv.readlink() if resolv.is_symlink() else None,
 )
 try:
     abslot.patch(running, running, apt_lists=lists, run=run)

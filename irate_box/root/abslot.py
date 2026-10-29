@@ -8,6 +8,7 @@ The binds are made --rbind and each made --make-rslave, so an unmount in the slo
 with anything mounted under it is never removed. Stdlib only.
 """
 
+import os
 import shutil
 import subprocess  # Fixed argv, trusted executables, no shell. # nosec B404
 import tempfile
