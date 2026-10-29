@@ -215,9 +215,31 @@ check(
     repairs,
 )
 
+# Extra stores as settings: keys go to the NAND, never to a removable drive unless its setting says so.
+store3, store4 = T / "store3", T / "store4"
+ca_key = put(etc / "tls" / "ca" / "ca.key", "CA\n", 0o600)
+retain.set_store(str(store3), True, keys=True)
+retain.set_store(str(store4), True, keys=False)
+retain.sweep()
+check(
+    "an extra store setting: keys included where it says so, left out of the drive",
+    (store3 / retain._ident(ca_key)).is_file()
+    and not (store4 / retain._ident(ca_key)).exists()
+    and any(p.is_file() for p in store4.iterdir()),
+    (sorted(p.name for p in store3.iterdir()), sorted(p.name for p in store4.iterdir())),
+)
+retain.set_store(str(store3), False)
+retain.set_store(str(store4), False)
+check(
+    "  switching one off deletes the copies irate-box made there, and the setting goes",
+    not (store3 / retain._ident(ca_key)).exists()
+    and not (store3 / "manifest.json").exists()
+    and all(entry["path"] != str(store3) for entry in retain._store_entries()),
+)
+
 # Regeneration: the server key and chain from the CA, before the copy is tried.
 (etc / "tls" / "ca").mkdir(parents=True, exist_ok=True)
-(etc / "tls" / "ca" / "ca.key").write_text("CA\n")
+ca_key.write_text("CA\n")
 (etc / "tls" / "server.key").write_bytes(b"\xff" * 8)
 (etc / "tls" / "server.key").chmod(0o640)
 retain.sweep()

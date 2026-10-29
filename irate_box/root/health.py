@@ -6281,6 +6281,40 @@ def setting_groups(s, wd):
             ],
         }
     )
+    for path, label, keys in retain.store_candidates():
+        encoded = retain.encode_store(path)
+        groups.append(
+            {
+                "key": f"retain-store-{encoded}",
+                "label": M("retain.store.title", "A second copy on {place}", place=label),
+                "desc": (
+                    M(
+                        "retain.store.desc.keys",
+                        "Keep the settings and keys here as well as on the card, the keys included.",
+                    )
+                    if keys
+                    else M(
+                        "retain.store.desc.usb",
+                        "Keep the settings and keys here as well as on the card. The drive's copy leaves out the "
+                        "CA key and the WiFi secrets.",
+                    )
+                ),
+                "current": "on" if path in retain.extra_stores() else "off",
+                "options": [
+                    {"value": "on", "label": ON, "choice": f"retain-store:on:{encoded}"},
+                    {
+                        "value": "off",
+                        "label": OFF,
+                        "choice": f"retain-store:off:{encoded}",
+                        "confirm": M(
+                            "retain.store.off.confirm",
+                            "Stop keeping the copy at {place}, and delete the copies irate-box made there?",
+                            place=label,
+                        ),
+                    },
+                ],
+            }
+        )
     from irate_box.root import bootkey
 
     if bootkey.supported():
@@ -7614,6 +7648,13 @@ def fix(choice):
         from irate_box.root import retain
 
         return retain.install_units(arg == "on")
+    if kind == "retain-store":
+        from irate_box.root import retain
+
+        on, _, encoded = arg.partition(":")
+        path = retain.decode_store(encoded)
+        nand = os.environ.get("HUB_NAND_MOUNT", "/var/log.nand")
+        return retain.set_store(path, on == "on", keys=str(path).startswith(nand + "/"))
     if kind == "card-set":
         from irate_box.root import recommended
 
