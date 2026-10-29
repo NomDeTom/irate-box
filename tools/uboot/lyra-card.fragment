@@ -10,8 +10,9 @@ CONFIG_SYS_REDUNDAND_ENVIRONMENT=y
 # Offsets are inside the bootstate partition: build-uboot.sh applies the /config property and reads it back from
 # the DTB. This fragment is for the U-Boot route's raw bootstate, not the tryboot route's FAT one.
 CONFIG_ENV_SIZE=0x2000
-CONFIG_ENV_OFFSET=0x0
-CONFIG_ENV_OFFSET_REDUND=0x2000
+# The fallback without the partition property: absolute inside where #534 puts bootstate (16 MiB).
+CONFIG_ENV_OFFSET=0x1000000
+CONFIG_ENV_OFFSET_REDUND=0x1002000
 CONFIG_CMD_SAVEENV=y
 CONFIG_BOOTCOUNT_LIMIT=y
 CONFIG_BOOTCOUNT_ENV=y

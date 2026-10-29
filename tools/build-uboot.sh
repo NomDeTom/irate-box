@@ -84,6 +84,7 @@ git -C "$src" fetch --tags origin
 	echo "build-uboot: $src has another origin; use another --out" >&2
 	exit 1
 }
+git -C "$src" checkout -- "$dts" 2>/dev/null || true
 git -C "$src" checkout --detach "$commit"
 [ -r "$src/$dts" ] || { echo "build-uboot: no device tree at $src/$dts" >&2; exit 1; }
 cp "$here/uboot/irate-bootstate.dtsi" "$src/arch/arm/dts/irate-bootstate.dtsi"
@@ -98,8 +99,8 @@ make -C "$src" O="$build" "$defconfig"
 make -C "$src" O="$build" olddefconfig
 make -C "$src" O="$build" -j"$jobs" CROSS_COMPILE="$cross"
 cp "$build/u-boot-rockchip.bin" "$out/u-boot-rockchip.bin"
-dtb=$(find "$build" -type f -name '*lyra*.dtb' | head -1)
-[ -n "$dtb" ] || { echo "build-uboot: no Lyra DTB in the build" >&2; exit 1; }
+dtb="$build/u-boot.dtb"
+[ -f "$dtb" ] || { echo "build-uboot: no u-boot.dtb in the build" >&2; exit 1; }
 [ "$(fdtget "$dtb" /config u-boot,mmc-env-partition)" = "irate-bootstate" ] || {
 	echo "build-uboot: the DTB does not name the bootstate partition; refusing a build that would write LBA 0" >&2
 	exit 1
