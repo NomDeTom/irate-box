@@ -30,7 +30,8 @@
   function render(data) {
     const pins = data && data.pins;
     if (!pins) { $('pins-board').textContent = 'Not read yet.'; return; }
-    $('pins-board').textContent = `${pins.board || 'this board'}, read ${pins.at ? new Date(pins.at * 1000).toLocaleString() : 'now'}.`;
+    const when = `${pins.board || 'this board'}, read ${pins.at ? new Date(pins.at * 1000).toLocaleString() : 'now'}.`;
+    $('pins-board').textContent = pins.note ? `${when} ${pins.note}` : when;
     const map = $('pins-map');
     map.replaceChildren(...(pins.header || []).map(pinRow));
     const used = (pins.lines || []).filter((line) => line.used);
@@ -48,11 +49,24 @@
     }
     claims.append(ul);
   }
-  async function wait() {
+  const answerSaid = (result) => (result.msg && typeof AW !== 'undefined' ? AW.say(result.msg) : result.message);
+  async function wait(id, since) {
     for (let i = 0; i < 40; i++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
-      const data = await get();
-      if (data.pins && data.pins.at) { render(data); say('Read.', true); $('pins-scan').disabled = false; return; }
+      let data;
+      try { data = await get(); } catch (_) { continue; }
+      const done = (data.results || []).find((result) => result.id === id);
+      if (done && !done.ok) {
+        say(answerSaid(done) || 'The pins could not be read.', false);
+        $('pins-scan').disabled = false;
+        return;
+      }
+      if (data.pins && data.pins.at && data.pins.at >= since) {
+        render(data);
+        say((done && answerSaid(done)) || 'Read.', true);
+        $('pins-scan').disabled = false;
+        return;
+      }
     }
     say('The pins were not read in time.', false);
     $('pins-scan').disabled = false;
@@ -60,9 +74,10 @@
   $('pins-scan').addEventListener('click', async () => {
     $('pins-scan').disabled = true;
     say('Reading the GPIO lines…', true);
+    const since = Date.now() / 1000;
     try {
-      await post({ action: 'pins' });
-      await wait();
+      const reply = await post({ action: 'pins' });
+      await wait(reply.id, since);
     } catch (err) { say(err.message || 'The pins could not be read.', false); $('pins-scan').disabled = false; }
   });
   get().then(render).catch(() => {});

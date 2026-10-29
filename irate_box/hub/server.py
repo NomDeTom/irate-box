@@ -2468,7 +2468,7 @@ def pins_snapshot():
         data = json.loads((CONTROL_DIR / "pins.json").read_text())
     except (OSError, ValueError):
         data = None
-    return {"pins": data, "pending": _pending_actions("pins")}
+    return {"pins": data, "pending": _pending_actions("pins"), "results": control_results(10)}
 
 
 def rkboard_snapshot():
