@@ -2,7 +2,8 @@
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """A stand-in for a new Armbian board's console at first boot, for tests/sim_rkserial.py: armbian-firstlogin's
 questions, in its words, then a root shell that answers the commands the box sends without running them. What it
-was told goes to $FAKE_RECORD as JSON. $FAKE_START: firstlogin (default), shell, login, initramfs or silent.
+was told goes to $FAKE_RECORD as JSON. $FAKE_START: firstlogin (default), enter (Armbian 26.11's "Press Enter" first), shell, login, initramfs or
+silent.
 $FAKE_GARBLE: how many times the first root password arrives garbled."""
 
 import json
@@ -45,6 +46,13 @@ if start == "login":
     sys.stdin.readline()
     sys.exit(0)
 host = "luckfox-lyra-zero-w"
+if start == "enter":
+    # Armbian 26.11, an autologin console: the first login waits for an Enter before its first question.
+    say(
+        "\nluckfox-lyra-zero-w login: root (automatic login)\n\nPress Enter to start the first login setup on this console.\n"
+    )
+    record["answers"]["enter"] = [sys.stdin.readline().rstrip("\n")]
+    start = "firstlogin"
 if start == "firstlogin":
     say("\x1b[32mmpwrd-menu\x1b[0m - mPWRD-OS Main Menu\nWaiting for system to finish booting ...\n\n")
     while True:
@@ -60,10 +68,20 @@ if start == "firstlogin":
     say("\nShell: \x1b[92mBASH\x1b[0m\n")
     say("Internet connection was \x1b[91mnot detected\x1b[0m.\n\n")
     ask("Connect via wireless? [Y/n] ", "wifi")
-    ask(
-        "\nAt your location, more locales are possible:\n\n1) en_GB.UTF-8\n2) Skip generating locales\nPlease enter your choice:",
-        "locale",
-    )
+    many = int(os.environ.get("FAKE_LOCALES", "1"))
+    if many == 1:
+        menu = "1) en_GB.UTF-8\n2) Skip generating locales\n"
+    else:
+        # Every locale, as with no country found, and the line losing characters coming back (a Lyra Zero W,
+        # 2026-10-29): two numbers run together, and the Skip line lost.
+        lines = [f"{n:3d}) xx_{n:03d}.UTF-8" for n in range(1, many + 1)]
+        lines[60] = " 61" + lines[232][1:]  # "61)" and "233)" run together: " 6133) ..."
+        menu = "\n".join(lines) + "\n"
+    say("\nAt your location, more locales are possible:\n\n" + menu)
+    while True:
+        choice = ask("Please enter your choice:", "locale")
+        if choice.isdigit() and 1 <= int(choice) <= many + 1:
+            break
     ask("\nPlease provide a username (eg. your first name): \x1b[?25h", "user")
     user = record["answers"]["user"][-1]
     ask(f"Create user ({user}) password: ", "user1")

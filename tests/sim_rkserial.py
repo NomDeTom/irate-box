@@ -5,7 +5,8 @@
 without running anything): every first-login question answered, the locale skipped, the user's real name cleared
 before it is typed; then the name, time zone, keys, setup page, WiFi and root's lock set at the shell, and the
 address read; passwords generated of letters and digits; a password garbled on the way in asked again, three times
-refused; a board at its emergency shell, at a login, already at a shell, or silent, each said.
+refused; Armbian 26.11's "Press Enter" answered with one Enter; a board at its emergency shell, at a login,
+already at a shell, or silent, each said.
 python3 tests/sim_rkserial.py"""
 
 import json
@@ -43,14 +44,16 @@ def check(name, cond, info=""):
     fails += not cond
 
 
-def board(start="firstlogin", garble=0):
+def board(start="firstlogin", garble=0, locales=1):
     """The stand-in console on a pty: (Console on its master side, the process, its record file)."""
     master, slave = os.openpty()
     attrs = termios.tcgetattr(slave)
     attrs[6][termios.VKILL] = attrs[6][termios.VINTR] = b"\0"  # Ctrl-U and Ctrl-C reach it, as at a board's readline
     termios.tcsetattr(slave, termios.TCSANOW, attrs)
     record = T / f"record-{start}-{garble}.json"
-    env = dict(os.environ, FAKE_RECORD=str(record), FAKE_START=start, FAKE_GARBLE=str(garble))
+    env = dict(
+        os.environ, FAKE_RECORD=str(record), FAKE_START=start, FAKE_GARBLE=str(garble), FAKE_LOCALES=str(locales)
+    )
     proc = subprocess.Popen(
         [sys.executable, str(REPO / "tests/fixtures/fake_firstlogin.py")],
         stdin=slave,
@@ -91,6 +94,11 @@ proc.kill()
 r = json.loads(rec.read_text())
 a = r["answers"]
 cmds = "\n".join(r["commands"])
+check(
+    'history expansion switched off before any other command (a "!" in a WiFi password, 2026-10-29)',
+    r["commands"] and "set +H" in r["commands"][0],
+    r["commands"][:2],
+)
 check(
     "the first login answered: root's password twice, bash, no WiFi there, the locale skipped",
     a["root1"] == a["root2"] == [got["root_password"]]
@@ -166,6 +174,34 @@ for start, said in (("initramfs", "rkserial.initramfs"), ("login", "rkserial.log
         refused(rkserial.setup, con, dict(choices, listen=1)) == said,
     )
     proc.kill()
+
+# Armbian 26.11 (a Lyra Zero W, 2026-10-29): "Press Enter to start the first login setup" before any question, and
+# Ctrl-C does not end its wait. One Enter there, then the questions answered as before.
+con, proc, rec = board("enter")
+got = rkserial.setup(con, choices)
+proc.kill()
+a = json.loads(rec.read_text())["answers"]
+check(
+    'Armbian 26.11\'s "Press Enter to start the first login setup": one Enter, then the first login answered',
+    a.get("enter") == [""] and a["root1"] == [got["root_password"]] and a["wifi"] == ["n"],
+    a,
+)
+
+# Every locale listed (no country found), with the Skip line lost on the way back: the numbers tried downwards from
+# above the highest seen among its neighbours, until the board takes one, which is Skip; no real locale chosen.
+con, proc, rec = board(locales=340)
+got = rkserial.setup(con, choices)
+proc.kill()
+a = json.loads(rec.read_text())["answers"]
+tried = [int(x) for x in a["locale"]]
+check(
+    "a locale menu with its Skip line lost: numbers tried downwards, the first taken is Skip (341), none below it",
+    tried[-1] == 341
+    and all(x > 341 for x in tried[:-1])
+    and tried[0] <= 340 + 30 + 1
+    and a["user"] == ["salty-parrot"],
+    tried[:3] + ["..."] + tried[-3:],
+)
 
 con, proc, rec = board("shell")
 got = rkserial.setup(con, dict(choices, listen=1))
