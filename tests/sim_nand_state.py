@@ -7,6 +7,7 @@ card's hub exposed first, the flash's over it, the large folders bound back from
 fstab; the system's folders in fstab, each nofail; nothing changed by a plan. python3 tests/sim_nand_state.py"""
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -60,6 +61,13 @@ check(
     "the hub's large folders are one list, read by nand-logs.sh and the Housecall doctor",
     list(housecall.LARGE) == listed,
     (housecall.LARGE, listed),
+)
+script = (REPO / "tools" / "nand-logs.sh").read_text()
+builtin = re.search(r"HUB_LARGE_BUILTIN=\(([^)]*)\)", script)
+check(
+    "  the built-in lists agree with that file too",
+    builtin and builtin.group(1).split() == listed and list(housecall.LARGE_BUILTIN) == listed,
+    (builtin.group(1).split() if builtin else None, list(housecall.LARGE_BUILTIN), listed),
 )
 check(
     "  what stays on the card: the named large folders there (firmware, zim) and one past 8 MiB (bigdir)",
