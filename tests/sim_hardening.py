@@ -7,6 +7,7 @@ python3 tests/sim_hardening.py"""
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -100,11 +101,22 @@ check(
     uboot_cmd,
 )
 env_example = (etc / "ab" / "fw_env.config.example").read_text().splitlines()
+real_run = hardening.run
+hardening.BOOTSTATE_DEVICE = Path("/dev/test-bootstate")
+hardening.run = lambda *cmd, **kw: (
+    subprocess.CompletedProcess(cmd, 0, "33554432\n", "") if cmd[0] == "blockdev" else real_run(*cmd, **kw)
+)
+check(
+    "  the offsets follow the partition's size, not a fixed 16 MiB",
+    hardening._env_offsets() == ((32 << 20) - 0x2000, (32 << 20) - 0x4000),
+    hardening._env_offsets(),
+)
+hardening.run = real_run
 check(
     "  the environment example has no active device line, and names the partition's top",
     all(not line or line.startswith("#") for line in env_example)
-    and any("0x000FE000 0x2000" in line for line in env_example)
-    and any("0x000FC000 0x2000" in line for line in env_example),
+    and any(int(line.split()[2], 16) == (16 << 20) - 0x2000 for line in env_example if line.startswith("# /dev"))
+    and any(int(line.split()[2], 16) == (16 << 20) - 0x4000 for line in env_example if line.startswith("# /dev")),
     env_example,
 )
 check(
