@@ -457,8 +457,8 @@ try:
     settings.write_text(json.dumps({"enabled": False, "holders": []}))
     st, _, body = page()
     check(
-        "no holders: the page still opens and says there is nothing to install yet",
-        st == 200 and "Nothing to install yet." in body.decode(),
+        "no holders: the page still opens, says there is nothing to install yet, with the confused krab",
+        st == 200 and "Nothing to install yet." in body.decode() and "/art/krab-confused.webp" in body.decode(),
         st,
     )
     check("  no setting link for a guest", "/admin/#appstore" not in body.decode())

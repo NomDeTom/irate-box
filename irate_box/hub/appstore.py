@@ -334,7 +334,11 @@ def page(host, scheme, level, firmware_visible=False):
         "</header>",
     ]
     if not any(not entry["empty"] for entry in listings):
-        parts.append(f"  <section><p>{html.escape(str(M('appstore.empty', 'Nothing to install yet.')))}</p>")
+        # Nothing set up yet: the confused krab (web/art), as the box's not-found and not-running pages show it.
+        parts.append(
+            '  <section class="krab-figure"><img src="/art/krab-confused.webp" alt="" width="240" height="240">'
+            f"<p>{html.escape(str(M('appstore.empty', 'Nothing to install yet.')))}</p>"
+        )
         if level == "admin":
             parts.append(
                 f'  <p><a href="/admin/#appstore">{_esc(M("appstore.admin-link", "App store settings"))}</a></p>'
