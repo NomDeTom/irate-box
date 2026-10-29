@@ -224,7 +224,7 @@ check("  kept for the quick run, not walked again", health._builds_bytes(state /
 check("  walked again in the next full run", health._builds_bytes(state / "ci", quick=False) == 8192)
 check(
     "/admin's run and each repair's: through run_report, so quick and keeping the full run's time",
-    "health.run_report()"
+    "health.run_report(full=False)"
     in (REPO / "irate_box/root/hub_control.py").read_text().split("def _write_health")[1].split("\ndef ")[0],
 )
 

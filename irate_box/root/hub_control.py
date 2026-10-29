@@ -6043,10 +6043,10 @@ HEALTH_STATE = CONTROL / "health.json"
 
 
 def _write_health():
-    """The Box doctor's report for /admin, and after each repair: the quick run, the full one when a week is up
-    (health.run_report, which writes it to HEALTH_STATE and keeps when the last full run was)."""
+    """The Box doctor's report for /admin, and after each repair: always the quick run, so the page does not wait
+    for the weekly full one (the timer's run does that). health.run_report writes it to HEALTH_STATE."""
     os.environ["HUB_CONTROL_RUNNING"] = "1"  # the queue it would report is the one being answered
-    return health.run_report()
+    return health.run_report(full=False)
 
 
 def health_scan(req):

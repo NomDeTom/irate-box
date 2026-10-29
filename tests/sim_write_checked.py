@@ -80,7 +80,17 @@ check(
     found.get("card-writes-kept"),
 )
 durable._read_back = real_read
-durable._write_synced = real_write
+durable.write_checked(path, "back\n")
+check("a good write of the path clears the old failure", health.check_writes_kept() == [])
+durable._record_check(path, "a", "b", "read back different")
+durable._record_check(path, "a", "b", "read back different")
+durable._record_check(T / "etc" / "other.conf", "a", "b", "read back different")
+found = {f["id"]: f for f in health.check_writes_kept()}
+check(
+    "  the summary counts distinct paths",
+    found["card-writes-kept"]["summary"]["args"]["n"] == 2,
+    found["card-writes-kept"]["summary"],
+)
 
 a, b = T / "etc" / "a.conf", T / "etc" / "b.conf"
 a.write_text("a\n")

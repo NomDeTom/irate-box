@@ -233,8 +233,9 @@ def _gid(group):
         return None
 
 
-def _write_synced(path, data, mode, group=None):
-    """`data` to `path` through a new file, the data and then the folder fsynced before the rename is done."""
+def _write_synced(path, data, mode, group=None, sync=True):
+    """`data` to `path` through a new file. With sync (the default), the data and then the folder are fsynced before
+    the rename is done. A batch turns it off and takes one syncfs for the set instead."""
     path = Path(path)
     dfd = _dir_fd(path.parent)
     try:
@@ -248,9 +249,11 @@ def _write_synced(path, data, mode, group=None):
             with os.fdopen(fd, "wb") as fh:
                 fh.write(data)
                 fh.flush()
-                os.fsync(fh.fileno())
+                if sync:
+                    os.fsync(fh.fileno())
             os.replace(tmp, path.name, src_dir_fd=dfd, dst_dir_fd=dfd)
-            os.fsync(dfd)
+            if sync:
+                os.fsync(dfd)
         except BaseException:
             try:
                 os.unlink(tmp, dir_fd=dfd)
@@ -311,6 +314,21 @@ def _syncfs_all(paths):
         _syncfs(Path(path).parent)
 
 
+def _clear_checks(paths):
+    """A good write of a path clears an older failure for it: the finding says what the card is doing now."""
+    report = report_path()
+    try:
+        data = json.loads(report.read_text())
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, list):
+        return
+    names = {str(p) for p in paths}
+    kept = [e for e in data if not (isinstance(e, dict) and e.get("path") in names)]
+    if len(kept) != len(data):
+        write(report, json.dumps(kept[-WRITE_CHECK_KEEP:], indent=1), 0o600)
+
+
 def _record_check(path, expected, got, why):
     """A write the card did not keep, for Box doctor. The report is a record: a plain write is enough."""
     report = report_path()
@@ -359,10 +377,23 @@ def write_checked(path, data, mode=0o644, group=None):
             got, why = None, f"could not be read back: {exc}"
             continue
         if hashlib.sha256(got).hexdigest() == expected:
+            _clear_checks([path])
             return True
         why = "read back different"
     _record_check(path, expected, hashlib.sha256(got).hexdigest() if got is not None else None, why)
     return False
+
+
+def _match_meta(path, mode, group):
+    if stat.S_IMODE(path.stat().st_mode) != mode:
+        os.chmod(path, mode)
+    if group is not None and os.geteuid() == 0:
+        gid = _gid(group)
+        if gid is not None:
+            try:
+                os.chown(path, -1, gid)
+            except OSError:
+                pass
 
 
 def write_batch(entries):
@@ -379,10 +410,11 @@ def write_batch(entries):
         if path.is_file() and not path.is_symlink():
             try:
                 if path.read_bytes() == data:
+                    _match_meta(path, mode, group)
                     continue
             except OSError:
                 pass
-        _write_synced(path, data, mode, group)
+        _write_synced(path, data, mode, group, sync=False)
         written.append((path, data, mode, group))
     if not written:
         return True
@@ -390,7 +422,7 @@ def write_batch(entries):
     for attempt in (1, 2):
         if attempt == 2:
             for path, data, mode, group in failed:
-                _write_synced(path, data, mode, group)
+                _write_synced(path, data, mode, group, sync=False)
             if not failed:
                 break
         _syncfs_all([item[0] for item in written])
@@ -403,6 +435,7 @@ def write_batch(entries):
             if got is None or hashlib.sha256(got).hexdigest() != hashlib.sha256(data).hexdigest():
                 failed.append((path, data, mode, group))
         if not failed:
+            _clear_checks([item[0] for item in written])
             return True
     for path, data, *_ in failed:
         _record_check(path, hashlib.sha256(data).hexdigest(), None, "read back different")

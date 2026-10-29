@@ -3133,36 +3133,61 @@ def check_lost_writes():
 
 
 def check_writes_kept():
-    """A file the box wrote and the card did not keep, even after a second write: safeio.write_checked's report
-    (Part 2, step 2). Read only: the report is written where the write happened."""
+    """A file the box wrote and the card did not keep, even after a second write: the checked writer's report
+    (Part 2, step 2). A good write of the same path clears its entry. Root's report is a problem; the hub's alone is
+    a warning, because the hub can write its own report."""
     from irate_box import durable
 
-    entries = []
-    for report in (durable.ROOT_STATE / "write-check.json", durable.STATE / "write-check.json"):
+    latest = {}
+    for report, source in (
+        (durable.ROOT_STATE / "write-check.json", "root"),
+        (durable.STATE / "write-check.json", "hub"),
+    ):
         try:
             said = json.loads(report.read_text())
         except (OSError, ValueError):
             continue
-        if isinstance(said, list):
-            entries += [e for e in said if isinstance(e, dict) and e.get("path")]
-    if not entries:
+        if not isinstance(said, list):
+            continue
+        for entry in said:
+            if not isinstance(entry, dict) or not entry.get("path"):
+                continue
+            at = entry.get("at") if isinstance(entry.get("at"), (int, float)) else 0
+            if entry["path"] not in latest or at >= latest[entry["path"]][0]:
+                latest[entry["path"]] = (at, entry, source)
+    if not latest:
         return []
-    if not entries:
-        return []
+    root = [value for value in latest.values() if value[2] == "root"]
+    hub = [value for value in latest.values() if value[2] == "hub"]
     housecall = CODE / "irate_box/root/housecall.py"
-    names = [str(e["path"]) for e in entries]
+    notes = []
+    if housecall.exists():
+        notes.append(
+            M(
+                "writes-kept.housecall",
+                "The Housecall doctor can examine the whole card and name every file it damaged.",
+            )
+        )
+    if hub and not root:
+        notes.insert(
+            0,
+            M(
+                "writes-kept.hub",
+                "The hub reported these. A hub's own report is not proof that the card is failing.",
+            ),
+        )
     return [
         finding(
             "card-writes-kept",
             M("writes-kept.title", "Writes the card did not keep"),
-            "problem",
+            "problem" if root else "warn",
             M(
                 "writes-kept.found",
                 {
                     "one": "The card did not keep {n} file, even after a second write.",
                     "other": "The card did not keep {n} files, even after a second write.",
                 },
-                n=len(entries),
+                n=len(latest),
             ),
             M(
                 "writes-kept.why",
@@ -3173,16 +3198,9 @@ def check_writes_kept():
                 "writes-kept.fix",
                 "Replace the SD card. The Housecall doctor can examine the whole card first.",
             ),
-            notes=[
-                M(
-                    "writes-kept.housecall",
-                    "The Housecall doctor can examine the whole card and name every file it damaged.",
-                )
-            ]
-            if housecall.exists()
-            else [],
+            notes=notes,
             commands=[f"sudo {CODE}/irate-box housecall --this-card"] if housecall.exists() else [],
-            evidence=names,
+            evidence=sorted(latest),
             go=GO_CARD_WRITES,
         )
     ]

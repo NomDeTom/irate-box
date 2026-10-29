@@ -129,12 +129,25 @@ check("install.sh has the write-if-changed helper", "write_if_changed() {" in in
 for call in (
     'write_if_changed "$ETC/hub.env" 644',
     'write_if_changed "$ETC/install-options" 644',
-    'write_if_changed "$STATE/install-options" 644',
 ):
     check(f"  {call}", call in inst, call)
 check(
     "  a repeat install keeps the htpasswd hash when it still verifies the password",
     'openssl passwd -6 -salt "$salt" -stdin' in inst and 'hash="${existing#*:}"' in inst,
+)
+check(
+    "  the hub's own copy of install-options is installed after a compare, never through the hub's folder",
+    'if ! cmp -s "$ETC/install-options" "$STATE/install-options"; then' in inst
+    and 'install -m 644 "$ETC/install-options" "$STATE/install-options"' in inst,
+)
+check(
+    "  the generation names the front's secrets too",
+    'front_id="$(git -C "${SRC:-$CODE}" rev-parse HEAD 2>/dev/null || echo installed-source)-$(printf' in inst
+    and '"$FRONT_SECRET" "$VIA_SECRET" "$hash" | sha256sum' in inst,
+)
+check(
+    "  the secrets are not in python3's arguments",
+    '"$FRONT_SECRET" "$VIA_SECRET" "$hash" <<' not in inst and '"$ETC/front-secret.env" "$front_hash" <<' in inst,
 )
 check(
     "  the front's four files are written together through write-batch",
