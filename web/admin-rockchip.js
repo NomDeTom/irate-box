@@ -25,6 +25,37 @@
   }
   // A result of the root helper in the reader's language: its message (msg.py), else its English.
   const resultSaid = (result) => (result.msg ? AW.say(result.msg) : result.message);
+  // The root helper answers a step by writing a result; wait for that one, not the next poll's.
+  async function awaitResult(id) {
+    for (let i = 0; i < 60; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const data = await getJSON('/admin/rkboard');
+      const done = (data.results || []).find((result) => result.id === id);
+      if (done) return done;
+    }
+    return null;
+  }
+  // Read first, show what the flash holds, then erase with the token the read named. A blank flash goes at once.
+  async function readThenErase(body, at, anchor) {
+    say('Reading the onboard flash…', true, at);
+    try {
+      const id = (await postJSON('/admin/rkboard', { action: 'read', loader: body.loader })).id;
+      const read = await awaitResult(id);
+      if (!read) return say('The flash was not read in time.', false, at);
+      if (!read.ok) return say(resultSaid(read), false, at);
+      const token = (read.msg && read.msg.token) || '';
+      if (token !== 'blank') {
+        const ask = `${resultSaid(read)} Erase it anyway? Everything on it is lost.`;
+        if (!(await AW.confirmHere(ask, { anchor, label: 'Erase the flash' }))) return say('Nothing was erased.', true, at);
+      }
+      say("Erasing the board's flash…", true, at);
+      waiting = (await postJSON('/admin/rkboard', { ...body, confirm: token })).id;
+      shown = '';
+      load();
+    } catch (err) {
+      say(err.message, false, at);
+    }
+  }
   // "a", "a and b", "a, b and c".
   const listSaid = (items) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 
@@ -117,6 +148,7 @@
         try {
           // The chip as selected now, not when the page was drawn.
           if (body.action === 'erase' && b.mode === 'maskrom') body.loader = chipChosen;
+          if (body.action === 'erase') return readThenErase(body, note, event.currentTarget);
           waiting = (await postJSON('/admin/rkboard', body)).id;
           say(body.action === 'loader' ? 'Switching the board to Loader mode…' : "Erasing the board's flash…", true, note);
           shown = '';

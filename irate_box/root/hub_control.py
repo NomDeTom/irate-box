@@ -6929,7 +6929,7 @@ def _rk_erase(rkboard, req):
     loader = req.get("loader")
     if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
         raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
-    return rkboard.erase(loader)
+    return rkboard.erase(loader, req.get("confirm"))
 
 
 # A new board set up over its serial console (rkserial.py): every value checked again here (rksetup.problem), the
@@ -7494,6 +7494,7 @@ ACTIONS = {
     "wifi-country": wifi_country,
     "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
     "rk-erase": _rk(_rk_erase),
+    "rk-read": _rk(lambda rkboard, req: rkboard.read_flash(req.get("loader"))),
     "rk-write": _rk(_rk_write),
     "rk-serial-setup": _rk_serial_setup,
     "rk-card-check": lambda req: _rk_card(req, "check"),

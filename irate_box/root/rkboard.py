@@ -18,6 +18,7 @@ import os
 import re
 import stat
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -141,7 +142,62 @@ def _gb(mb):
     return f"{mb / 1024:.1f}"
 
 
-def erase(loader_id=None):
+def contents(shown):
+    """What the board's onboard flash holds, read (rkdeveloptool rl) before an erase: UBI's volume names, or blank."""
+    sectors = shown.get("sectors") or 0
+    if not sectors:
+        return {"read": False, "blank": False, "ubi": False, "names": []}
+    with tempfile.NamedTemporaryFile(prefix="rkboard-", delete=False) as fh:
+        path = Path(fh.name)
+    try:
+        read = run("rkdeveloptool", "rl", "0", str(min(sectors, 32768)), str(path), timeout=300)
+        if read.returncode:
+            return {"read": False, "blank": False, "ubi": False, "names": []}
+        data = path.read_bytes()
+    except OSError:
+        return {"read": False, "blank": False, "ubi": False, "names": []}
+    finally:
+        path.unlink(missing_ok=True)
+    words = {w.lower() for w in re.findall(rb"[ -~]{3,}", data)}
+    names = sorted({n for n in words if n in (b"rescue", b"logs", b"state", b"hub", b"irate")})
+    return {"read": True, "blank": not any(data), "ubi": b"UBI#" in data, "names": [n.decode() for n in names]}
+
+
+def held_words(held):
+    """(the token the page confirms with, the words shown for it)."""
+    if not held["read"]:
+        return "unknown", M("rkboard.held.unknown", "Its contents could not be read.")
+    if held["blank"]:
+        return "blank", M("rkboard.held.blank", "It is blank.")
+    if held["names"]:
+        return ",".join(held["names"]), M("rkboard.held.names", "It holds {names}.", names=", ".join(held["names"]))
+    if held["ubi"]:
+        return "ubi", M("rkboard.held.ubi", "It holds a UBI filesystem whose volumes could not be named.")
+    return "data", M("rkboard.held.data", "It holds data this box does not recognise.")
+
+
+def read_flash(loader_id=None):
+    """Read the onboard flash and say what it holds, before an erase. Refused when the loader shows the SD card."""
+    board = _one(("loader", "maskrom"))
+    _need("rkdeveloptool")
+    if board["mode"] == "maskrom":
+        _send_loader(loader_id)
+    shown = storage()
+    if shown["card"]:
+        raise Refused(
+            M(
+                "rkboard.read.card-shown",
+                "The board's loader shows {gb} GB: its SD card, not its onboard flash.",
+                gb=_gb(shown["mb"]),
+            )
+        )
+    token, said = held_words(contents(shown))
+    message = M("rkboard.read", "The onboard flash: {held}", held=said)
+    message["token"] = token
+    return message
+
+
+def erase(loader_id=None, confirm=None):
     """The board's onboard flash erased (rkdeveloptool ef), then the board reset. A board in Maskrom mode is sent
     the loader for its chip first. Refused when the loader shows the SD card: ef would empty the card."""
     board = _one(("loader", "maskrom"))
@@ -158,6 +214,16 @@ def erase(loader_id=None):
                 gb=_gb(shown["mb"]),
             )
         )
+    held = contents(shown)
+    token, said = held_words(held)
+    if token != "blank" and confirm != token:  # nosec B105 - a state word, not a password
+        raise Refused(
+            M(
+                "rkboard.erase.unconfirmed",
+                "The onboard flash {held} Read it first, then confirm the erase.",
+                held=said,
+            )
+        )
     r = run("rkdeveloptool", "ef", timeout=900)
     if r.returncode:
         raise Refused(
@@ -166,7 +232,9 @@ def erase(loader_id=None):
     run("rkdeveloptool", "rd", timeout=60)
     return M(
         "rkboard.erased",
-        "The board's onboard flash is erased. Unplug the board, put its SD card in, and power it: it starts from the card.",
+        "The board's onboard flash is erased. It held: {held} Unplug the board, put its SD card in, and power it: "
+        "it starts from the card.",
+        held=said,
     )
 
 
