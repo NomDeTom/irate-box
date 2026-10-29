@@ -6316,6 +6316,9 @@ def setting_groups(s, wd):
                 ],
             }
         )
+    from irate_box.root import readonly
+
+    groups += readonly.groups()
     from irate_box.root import bootkey
 
     if bootkey.supported():
@@ -7662,6 +7665,10 @@ def fix(choice):
         if on == "off" and path not in found and path not in retain.extra_stores():
             raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
         return retain.set_store(str(path), on == "on", keys=found.get(path, False))
+    if kind == "readonly":
+        from irate_box.root import readonly
+
+        return readonly.enable(arg == "on")
     if kind == "card-set":
         from irate_box.root import recommended
 
