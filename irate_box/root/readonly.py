@@ -48,6 +48,13 @@ def _overlaid():
         return False
 
 
+def _state_on_flash():
+    """Whether the box's settings and accounts live on the NAND rather than on the card the overlay covers."""
+    from irate_box.root import health
+
+    return health._box_state_on()
+
+
 def _save(path, text):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     tmp = path.with_name(path.name + ".new")
@@ -79,6 +86,26 @@ def _enable_pi():
 def _enable_lyra():
     if not _installed("overlayroot"):
         said = run(
+            "apt-get",
+            "update",
+            "-o",
+            "Acquire::http::Timeout=20",
+            "-o",
+            "Acquire::Retries=0",
+            timeout=300,
+        )
+        if said.returncode:
+            raise Refused(
+                M(
+                    "readonly.lyra-update-failed",
+                    "The overlay could not be switched on: overlayroot is not installed, and the package lists could "
+                    "not be updated ({why}).",
+                    why=_why(said) or "no answer from apt",
+                )
+            )
+        said = run(
+            "env",
+            "DEBIAN_FRONTEND=noninteractive",
             "apt-get",
             "install",
             "-y",
@@ -114,6 +141,11 @@ def _disable_pi():
     said = run("raspi-config", "nonint", "disable_overlayfs")
     if said.returncode:
         raise Refused(M("readonly.off-failed", "The overlay could not be switched off: {why}", why=_why(said)))
+    if _overlaid():
+        # cmdline.txt is on the boot partition, but the mark is in the overlaid root: remove it from the lower root.
+        said = run("overlayroot-chroot", "sh", "-c", f"rm -f {HOOK} {MARK}")
+        if said.returncode:
+            raise Refused(M("readonly.off-failed", "The overlay could not be switched off: {why}", why=_why(said)))
 
 
 def _disable_lyra():
@@ -122,6 +154,7 @@ def _disable_lyra():
         # The live files are in RAM. Remove them from the lower root too, or they come back at the next restart.
         said = run(
             "overlayroot-chroot",
+            "sh",
             "-c",
             f"rm -f {CONF} {HOOK} {MARK} && update-initramfs -u",
         )
@@ -158,10 +191,20 @@ def enable(on):
         # root, and on a working overlay they make the RAM layer itself read-only.
         HOOK.unlink(missing_ok=True)
         _save(MARK, "on\n")
+        if _state_on_flash():
+            return M(
+                "readonly.on",
+                "The system will be read-only over a RAM overlay after the next restart. Until then the card is still "
+                "the real root, so changes made now are kept. From that restart on, every write goes to RAM and is "
+                "lost at each restart.",
+            )
         return M(
-            "readonly.on",
-            "The system will be read-only over a RAM overlay after the next restart. Everything written until then, "
-            "packages and the box's own updates included, is lost at that restart.",
+            "readonly.on-card",
+            "The system will be read-only over a RAM overlay after the next restart. Until then the card is still the "
+            "real root, so changes made now are kept. From that restart on, every write goes to RAM and is lost at "
+            "each restart, and that includes the box's settings and accounts: they are on this card, so changes made "
+            "after the restart do not survive the next one. Move the box's state to the onboard flash first where the "
+            "box has one.",
         )
     if board == "pi":
         _disable_pi()
@@ -171,7 +214,8 @@ def enable(on):
     MARK.unlink(missing_ok=True)
     return M(
         "readonly.off",
-        "The system will be writable again after the next restart. The overlay's changes are lost at that restart.",
+        "The system will be writable again after the next restart. Until then it is still the overlay, so changes "
+        "made now are lost at that restart.",
     )
 
 
@@ -184,11 +228,12 @@ def groups():
             "label": M("readonly.setting.title", "A read-only system"),
             "desc": M(
                 "readonly.setting.desc",
-                "The root filesystem is overlaid in RAM: a power cut cannot damage it. Every write goes to RAM, so "
-                "packages installed and the box's own updates last only until the next restart; the board needs "
-                "enough memory (raspi-config recommends 512 MB). On the Lyra, whose /boot is a folder on the same "
-                "card, a watchdog overlay, the A/B and boot-key settings and a kernel update cannot be kept while "
-                "this is on. It takes effect at the next restart.",
+                "The root filesystem is overlaid in RAM after the next restart: a power cut cannot damage it. Every "
+                "write then goes to RAM, so packages, the box's own updates and settings or accounts changed later "
+                "last only until the next restart. The board needs enough memory (raspi-config recommends 512 MB). "
+                "The overlayroot package brings cryptsetup and cryptsetup-bin, which go into the initramfs. On the "
+                "Lyra, whose /boot is a folder on the same card, a watchdog overlay, the A/B and boot-key settings and "
+                "a kernel update cannot be kept while this is on.",
             ),
             "current": "on" if enabled() else "off",
             "options": [
@@ -198,8 +243,9 @@ def groups():
                     "choice": "readonly:on",
                     "confirm": M(
                         "readonly.setting.on.confirm",
-                        "Turn the system read-only? It takes effect at the next restart, and changes made meanwhile "
-                        "(packages, updates and settings that write the card or /boot) are lost at that restart.",
+                        "Turn the system read-only? It takes effect at the next restart. Until then the card is still "
+                        "the real root, so changes made now are kept. After that, every write goes to RAM and is lost "
+                        "at each restart.",
                     ),
                 },
                 {"value": "off", "label": M("readonly.setting.off", "Writable"), "choice": "readonly:off"},

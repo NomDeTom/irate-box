@@ -16,12 +16,15 @@ T = Path(tempfile.mkdtemp(prefix="readonly-"))
 (T / "dt").mkdir()
 MOUNTS = T / "mounts"
 MOUNTS.write_text("/dev/root / ext4 rw,relatime 0 0\n")
+NAND = T / "nand-logs.conf"
+NAND.write_text("state=1\n")
 os.environ.update(
     HUB_ETC_DIR=str(T / "etc"),
     HUB_OVERLAYROOT_CONF=str(T / "overlayroot.conf"),
     HUB_READONLY_HOOK=str(T / "apt.conf"),
     HUB_DEVICE_TREE=str(T / "dt"),
     HUB_READONLY_MOUNTS=str(MOUNTS),
+    HUB_NAND_STATE=str(NAND),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
@@ -43,7 +46,9 @@ def run(*cmd, timeout=600):
     ok = 0
     if cmd[:2] == ("dpkg", "-s"):
         ok = 0 if state["installed"] else 1
-    elif cmd[:2] == ("apt-get", "install"):
+    elif cmd[:2] == ("apt-get", "update"):
+        ok = 0 if state["apt_ok"] else 100
+    elif cmd[:1] == ("env",) and "apt-get" in cmd:
         ok = 0 if state["apt_ok"] else 100
         state["installed"] = state["apt_ok"]
     elif cmd[:1] == ("update-initramfs",):
@@ -51,7 +56,8 @@ def run(*cmd, timeout=600):
     elif cmd[:2] == ("raspi-config", "nonint"):
         ok = 0 if state["raspi_ok"] else 1
     elif cmd[:1] == ("overlayroot-chroot",):
-        ok = 0 if state["chroot_ok"] else 1
+        # The real one ends in chroot "$@": the first argument must be a program, not -c.
+        ok = 0 if state["chroot_ok"] and len(cmd) > 1 and cmd[1] != "-c" else 1
     return subprocess.CompletedProcess(cmd, ok, "", "" if ok else "it failed")
 
 
@@ -63,6 +69,7 @@ def reset(**changes):
     state.update({"installed": True, "apt_ok": True, "initramfs_ok": True, "raspi_ok": True, "chroot_ok": True})
     state.update(changes)
     MOUNTS.write_text("/dev/root / ext4 rw,relatime 0 0\n")
+    NAND.write_text("state=1\n")
 
 
 def refused(fn, *args):
@@ -88,6 +95,16 @@ check(
     and "after the next restart" in said["en"],
     (said, calls),
 )
+reset()
+NAND.write_text("state=0\n")
+said = readonly.enable(True)
+check(
+    "state on the card: the message says plainly that settings and accounts changed later are lost",
+    said["id"] == "readonly.on-card" and "settings and accounts" in said["en"] and "do not survive" in said["en"],
+    said,
+)
+reset()
+said = readonly.enable(True)
 setting = readonly.groups()[0]
 check(
     "  the setting is on, the confirmation is on Read-only, and its words say what is lost",
@@ -114,7 +131,8 @@ reset(installed=False, apt_ok=True)
 said = readonly.enable(True)
 check(
     "no overlayroot installed: it is installed first, then the config and mark",
-    any(c[:2] == ("apt-get", "install") and "overlayroot" in c for c in calls)
+    any(c[:2] == ("apt-get", "update") for c in calls)
+    and any(c[:1] == ("env",) and "DEBIAN_FRONTEND=noninteractive" in c and "overlayroot" in c for c in calls)
     and readonly.enabled()
     and 'overlayroot="tmpfs"' in readonly.CONF.read_text(),
     calls,
@@ -123,7 +141,7 @@ check(
 reset(installed=False, apt_ok=False)
 check(
     "  and when it cannot be installed: refused, with no mark and no config",
-    refused(readonly.enable, True) == "readonly.lyra-not-installed"
+    refused(readonly.enable, True) == "readonly.lyra-update-failed"
     and not readonly.enabled()
     and not readonly.CONF.exists(),
     calls,
@@ -208,6 +226,17 @@ state["chroot_ok"] = False
 check(
     "  and when that fails, nothing in the live root is removed",
     refused(readonly.enable, False) == "readonly.off-failed" and readonly.enabled(),
+    calls,
+)
+(T / "dt" / "model").write_bytes(b"Raspberry Pi 3 Model B Plus Rev 1.3\0")
+reset()
+readonly.enable(True)
+MOUNTS.write_text("/dev/root / ext4 rw,relatime 0 0\noverlay / overlay rw,relatime 0 0\n")
+calls.clear()
+readonly.enable(False)
+check(
+    "the Pi with the overlay live: off removes the mark from the lower root through overlayroot-chroot",
+    not readonly.enabled() and any(c[:1] == ("overlayroot-chroot",) and c[1] == "sh" for c in calls),
     calls,
 )
 print(f"failures: {fails}")
