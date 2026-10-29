@@ -3678,6 +3678,22 @@ body.appstore a {
   flex-basis: 100%;
   margin: 0;
 }
+/* Removing the project, the one action that cannot be undone, at the row's far end. */
+.appstore-actions .action-btn.action-btn.danger {
+  margin-left: auto;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+/* What to hold: its heading and the button that reads the releases again, on one line. */
+.appstore-hold-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.appstore-hold-head h3 {
+  margin: 0;
+}
 .appstore-kinds {
   width: 100%;
   border-collapse: collapse;

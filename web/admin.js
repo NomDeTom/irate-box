@@ -14268,8 +14268,8 @@ loadFirmware();
 // --- the App store (appstore_admin.py, holder.py, holdsurvey.py): one card per holder -----------
 // The page shows state; the Updates doctor says what is wrong (findings-in-doctors). A card opens to its
 // status, its kept versions, its settings (AW.form, saved as edit-holder), the survey's table of kinds of
-// file with a tick each (saved as holds: a tick is the kind's pattern), and its own Check now / Download /
-// Look again. Add is one choice: a preset, a pasted Obtainium recipe, or a repository. The policy pair is
+// file with a tick each (saved as holds: a tick is the kind's pattern, read again from its heading), and its own
+// check, download and removals. Add is one choice: a preset, a pasted Obtainium recipe, or a repository. The policy pair is
 // the generic surface-policy form (holders_every_hours / holders_auto), set on this page and shown as the
 // "App store" row in the librarian's "Other updates".
 const asEl = {
@@ -14295,19 +14295,25 @@ const asPost = async (body, flash) => {
 // pattern already decides cannot be undone here (with_kind says so, and the save refuses it).
 function asSurveyTable(holder, at) {
   const survey = holder.survey;
+  const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
+  // The table's own button beside its heading: reading the releases again redraws this table, nothing else.
+  const heading = el("div", { className: "appstore-hold-head" },
+    el("h3", { textContent: "What to hold" }),
+    asRun("Read the releases again", "survey", holder.id, note));
   if (!survey) {
     at.append(
+      heading,
+      note,
       el("p", {
         className: "setting-desc",
         textContent: holder.status.survey_error
-          ? `The last look failed: ${holder.status.survey_error}`
-          : "The releases have not been looked at yet. Select Look again.",
+          ? `The last reading failed: ${holder.status.survey_error}`
+          : "The releases have not been read yet. Select Read the releases again.",
       }),
     );
     return;
   }
   const draft = asDrafts[holder.id] || (asDrafts[holder.id] = {});
-  const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
   const table = el("table", { className: "appstore-kinds" });
   table.append(
     el("tr", {},
@@ -14345,7 +14351,7 @@ function asSurveyTable(holder, at) {
     Object.values(holder.channels).reduce((sum, count) => sum + Number(count), 0) +
     (holder.extra_channels || []).reduce((sum, extra) => sum + Number(extra.keep || 0), 0);
   at.append(
-    el("h3", { textContent: "What to hold" }),
+    heading,
     note,
     el("p", {
       className: "setting-desc",
@@ -14467,14 +14473,20 @@ function asCard(holder) {
             el("strong", { textContent: `${v.tag} (${v.channel})` }),
             ` ${v.files.length} file${v.files.length === 1 ? "" : "s"}, ${size(v.bytes)}.`))
         : [el("p", { className: "setting-desc", textContent: "Nothing kept yet." })])),
-    el("p", { className: "library-buttons" },
-      asRun("Check now", "holder-check", holder.id, note),
-      asRun("Download", "holder-update", holder.id, note),
-      asRun("Look again", "survey", holder.id, note),
-      asRun("Remove files", "remove-files", holder.id, note,
-        `Remove the files kept for ${holder.title || holder.id}? The next check downloads them again.`),
-      asRun("Remove", "remove-holder", holder.id, note,
-        `Remove ${holder.title || holder.id} and its files from the App store? Its settings go too.`)),
+    // Each button says what it acts on; removing the project, the one that cannot be undone, set apart at the end.
+    el("p", { className: "library-buttons appstore-actions" },
+      asRun("Check for newer versions", "holder-check", holder.id, note),
+      asRun("Download newer versions", "holder-update", holder.id, note),
+      asRun("Delete the kept files", "remove-files", holder.id, note,
+        `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download fetches the files again.`),
+      asRun("Remove this project", "remove-holder", holder.id, note,
+        `Remove ${holder.title || holder.id} from the App store? Its settings and its kept files go too.`,
+        { className: "danger" })),
+    el("p", { className: "setting-desc" },
+      "Checking, downloading and reading the releases each ask GitHub, which answers 60 requests an hour " +
+        "without a token. For more, ",
+      el("a", { href: "#library-access", textContent: "add a GitHub token in The librarian" }),
+      "."),
     note,
     asSettingsForm(holder),
   );
@@ -14495,7 +14507,7 @@ function asCard(holder) {
   return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } }, head, body);
 }
 
-function asRun(label, action, id, note, ask) {
+function asRun(label, action, id, note, ask, extra = {}) {
   return actionButton(label, async (event) => {
     if (ask && !(await AW.confirmHere(ask, { anchor: event.currentTarget, label }))) return;
     try {
@@ -14503,7 +14515,7 @@ function asRun(label, action, id, note, ask) {
     } catch (err) {
       say(err.message, false, note);
     }
-  }, { className: "small" });
+  }, { className: `small${extra.className ? ` ${extra.className}` : ""}` });
 }
 
 // Add is one choice: a preset, a pasted recipe, or a repository. Each shows its own fields and one Add.
@@ -14521,7 +14533,7 @@ function asAddFlow(data) {
     part.append(el("p", { className: "library-buttons" },
       actionButton("Add", async () => {
         try {
-          await asPost(makeBody(), "Added. Open its card and select Look again.");
+          await asPost(makeBody(), "Added. Open its card and select Read the releases again.");
         } catch (err) {
           say(err.message, false, note);
         }

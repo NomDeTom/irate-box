@@ -7,7 +7,7 @@ it asks for are started by server.py under the librarian's lock, as the firmware
                      again (its kinds marked all/some/none against the holds as they are now, and a per-release
                      preview derived from the stored names, no network), the files really on disk, the presets,
                      the policy pair and the App store's space
-  survey_job         one holder's Look again, run under the lock: read the newest releases, store the survey
+  survey_job         one holder's Read the releases again, run under the lock: read the newest releases, store the survey
   action             one settings action: enable, add-holder (recipe, preset or typed), edit-holder,
                      remove-holder, remove-files, holds (the survey's table turned back into holds)
 
@@ -252,7 +252,7 @@ def action(payload):
             stored = holder.holder_status(one["id"]).get("survey")
             if not isinstance(stored, dict) or not stored.get("kinds"):
                 raise librarian.LibrarianError(
-                    M("library.holder.no-survey", "Look at the project's releases first: select Look again.")
+                    M("library.holder.no-survey", "Read the project's releases first: select Read the releases again.")
                 )
             holds = list(one["holds"])
             known = {kind["shape"] for kind in stored.get("kinds", [])}
