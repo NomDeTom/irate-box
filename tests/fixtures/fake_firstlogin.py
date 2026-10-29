@@ -107,6 +107,8 @@ while True:
         body = host + "\n"
     elif key == "manager":
         body = "nm\n" if os.environ.get("FAKE_NM", "1") == "1" else "netplan\n"
+    elif key == "nminstall":
+        body = "nm-installed\n" if os.environ.get("FAKE_NM_INSTALL", "1") == "1" else ""
     elif key == "wifidev":
         body = "wlan0\n"
     elif key == "wifi" and "netplan apply" in line:

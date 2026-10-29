@@ -216,15 +216,18 @@ proc.kill()
 cmds = json.loads(rec.read_text())["commands"]
 wifi = next((c for c in cmds if "30-wifis-dhcp.yaml" in c), "")
 check(
-    "no NetworkManager: the WiFi written to /etc/netplan/30-wifis-dhcp.yaml (0600) and applied, no nmcli connect",
-    "umask 077" in wifi
+    "no NetworkManager: it is installed, the WiFi written with renderer NetworkManager and applied",
+    any("apt-get install -y network-manager" in c and "policy-rc.d" in c for c in cmds)
+    and "umask 077" in wifi
+    and "renderer: NetworkManager" in wifi
     and '"wlan0" "GOODNET" "S!x&y72CKN3LKP"' in wifi
     and "password: |-" in wifi
     and "chmod 600" in wifi
+    and "systemctl enable --now NetworkManager" in wifi
     and "netplan apply" in wifi
     and not any("nmcli dev wifi connect" in c for c in cmds)
     and "joined GOODNET" in got["said"],
-    (wifi, got),
+    (cmds, wifi, got),
 )
 
 con, proc, rec = board("shell")
