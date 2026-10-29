@@ -59,11 +59,17 @@ data["accounts"]["ann"]["hash"] = A.hash_password("password-number-two")
 A._save(data)
 check(
     "  a user's account does not, with sign-up off",
-    refused(A.login, "ann", "password-number-two", says="accounts.signin.off"),
+    refused(A.login, "ann", "password-number-two", says="accounts.signin.admins-only"),
 )
 check(
-    "  a wrong admin password is refused, as always",
-    refused(A.login, "alice", "wrong-one", says="accounts.signin.failed"),
+    "  a wrong admin password gets the same answer as a name that is not an admin (it names no administrator)",
+    refused(A.login, "alice", "wrong-one", says="accounts.signin.admins-only")
+    and refused(A.login, "nobody-here", "wrong-one", says="accounts.signin.admins-only"),
+)
+check(
+    "  the script login's name says it is the script login, not an account",
+    refused(A.login, "admin", "anything-at-all", says="accounts.signin.script-login")
+    and refused(A.login, "Admin", "anything-at-all", says="accounts.signin.script-login"),
 )
 tok2, me2 = A.claim_admin("Ann", "password-number-three")
 check(

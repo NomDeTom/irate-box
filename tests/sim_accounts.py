@@ -178,7 +178,7 @@ A.set_settings(signup="off")
 check(
     "off again: no users' logins, no users' sessions count, no codes that aren't the box's (admins still sign in: one login)",
     A.session(tb) is None
-    and refused(A.login, "bob", "harbour lantern 2", says="accounts.signin.off")
+    and refused(A.login, "bob", "harbour lantern 2", says="accounts.signin.admins-only")
     and refused(A.use_code, "ABCD-EFGH-JKLM-NPQR", "harbour lantern 9", says="accounts.code.invalid"),
 )
 A.set_settings(signup="apply")
