@@ -120,6 +120,7 @@ LOAD_URL_MENU = re.compile(
 )
 BODY = re.compile(r"(<body\b[^>]*>)", re.I)
 LANGUAGES = re.compile(r"const available_languages = \[[^\n]*\];")
+HEAD_TRACKER_HASH = re.compile(r"if \(location\.hash\.match\(/head-tracker/i\)\) \{")
 NOTE_HTML = (
     '<p class="irate-box-adapted"><strong>This copy on the Irate-Box</strong> has no online '
     "multi-user sessions, Imgur upload or Load From URL. Pictures stay in this browser, where "
@@ -178,6 +179,12 @@ def adapt(tree):
     functions = tree / "src" / "functions.js"
     if not functions.is_file():
         raise AdaptError("the app has changed: no src/functions.js")
+    app = tree / "src" / "app.js"
+    if not app.is_file():
+        raise AdaptError("the app has changed: no src/app.js")
+    app_text = app.read_text(encoding="utf-8")
+    if len(HEAD_TRACKER_HASH.findall(app_text)) != 1 or app_text.count("/dwell-clicker|head-tracker/i") != 1:
+        raise AdaptError("src/app.js changed: the Head Tracker hash is not found once")
     function_text = functions.read_text(encoding="utf-8")
     if len(IMGUR_BUTTON.findall(function_text)) != 1:
         raise AdaptError("src/functions.js changed: the GIF dialog's Upload to Imgur button is not found once")
@@ -191,6 +198,10 @@ def adapt(tree):
     page_text = adapt_page(index.read_text(encoding="utf-8"))
     menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", HEAD_TRACKER_MENU.sub("", LOAD_URL_MENU.sub("", menu_text))))
     function_text = IMGUR_BUTTON.sub("", function_text)
+    app_text = app_text.replace("/dwell-clicker|head-tracker/i", "/dwell-clicker/i").replace(
+        HEAD_TRACKER_HASH.search(app_text).group(0),
+        "if (false) { // Irate-Box: no Head Tracker in this copy.",
+    )
     session_text = session_text.replace(
         "\t\t\tif (local) {\n",
         "\t\t\tif (true) { // Irate-Box: no Firebase; every session, named or local, stays in this browser.\n",
@@ -237,6 +248,7 @@ def adapt(tree):
     index.write_text(page_text, encoding="utf-8")
     menus.write_text(menu_text, encoding="utf-8")
     functions.write_text(function_text, encoding="utf-8")
+    app.write_text(app_text, encoding="utf-8")
     sessions.write_text(session_text, encoding="utf-8")
     localization.write_text(language_text, encoding="utf-8")
     for name, text in pages.items():

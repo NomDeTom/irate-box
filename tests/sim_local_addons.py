@@ -62,7 +62,7 @@ M.check_local(ELIZA, "t", {"draw"})
 check("ELIZA's catalogue entry passes", True)
 built = M.load()
 builtin_ids = {m["id"] for m in built}
-folder_ids = {m["id"] for m in built if m.get("menu")}
+folder_ids = {m["id"] for m in built if (m.get("menu") or {}).get("addons")}
 for f in sorted((REPO / "addons").glob("*.json")) + sorted((REPO / "addons" / "templates").glob("*.json")):
     try:
         M.check_local(json.loads(f.read_text()), f.name, builtin_ids, folder_ids)

@@ -11,6 +11,7 @@
     "title": "Drawing",
     "subtitle": "Whiteboards, diagrams and paint, all in the browser.",
     "about": "The drawing apps on the box. Excalidraw is part of the hub. draw.io and JS Paint are web add-ons: add them from Add-ons, and they appear here.",
-    "art": "librarian"
+    "art": "librarian",
+    "addons": true
   }
 }

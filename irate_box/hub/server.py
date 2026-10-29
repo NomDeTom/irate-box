@@ -3304,7 +3304,7 @@ def local_addons_action(payload):
                 m,
                 "the pasted manifest",
                 {x["id"] for x in built},
-                {x["id"] for x in built if x.get("menu")},
+                {x["id"] for x in built if (x.get("menu") or {}).get("addons")},
             )
             return 202, _local_add(m, "pasted")
         if action == "accept":

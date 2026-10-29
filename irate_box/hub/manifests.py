@@ -98,7 +98,8 @@ It is served on the add-on origin (a second port of the web server, from
 $HUB_STATE_DIR/addons/<id>/), reached as /addons/<id>/ on the hub's own, which redirects there;
 its pages are framed by app.html like any app. connect: what its pages may reach besides
 their own origin ({box}: the hub's own host), the rest of its Content-Security-Policy.
-local: the app keeps work in the page (data: and blob: URLs), so the policy allows those.
+local: the app keeps work in the page (data: and blob: URLs), so the header policy allows those
+and blob: scripts. A pasted manifest can ask for this, so it is deliberately a weaker policy.
 
 Stdlib only.
 """
@@ -228,6 +229,7 @@ def _check(m, where):
             menu.get("art") in (None, "librarian", "doctor", "controller", "electronics"),
             "menu.art: librarian, doctor, controller or electronics",
         )
+        need(menu.get("addons") in (None, True, False), "menu.addons: true or false")
         need(
             "banner" not in menu
             or (
@@ -675,7 +677,7 @@ def load_local(folder=None, builtin=None):
     folder = Path(folder or LOCAL_D)
     built = builtin if builtin is not None else load()
     builtin_ids = {m["id"] for m in built}
-    folder_ids = {m["id"] for m in built if m.get("menu")}
+    folder_ids = {m["id"] for m in built if (m.get("menu") or {}).get("addons")}
     out, errors, seen = [], {}, set()
     for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
         try:
@@ -716,7 +718,7 @@ def catalogue():
     out = {}
     built = load()
     builtin_ids = {m["id"] for m in built}
-    folder_ids = {m["id"] for m in built if m.get("menu")}
+    folder_ids = {m["id"] for m in built if (m.get("menu") or {}).get("addons")}
     for path in sorted(CATALOGUE.glob("*.json")) if CATALOGUE.is_dir() else []:
         m = json.loads(path.read_text(encoding="utf-8"))
         check_local(m, f"addons/{path.name}", builtin_ids, folder_ids)
