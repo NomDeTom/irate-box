@@ -7652,9 +7652,15 @@ def fix(choice):
         from irate_box.root import retain
 
         on, _, encoded = arg.partition(":")
-        path = retain.decode_store(encoded)
-        nand = os.environ.get("HUB_NAND_MOUNT", "/var/log.nand")
-        return retain.set_store(path, on == "on", keys=str(path).startswith(nand + "/"))
+        path = Path(retain.decode_store(encoded))
+        # Only a place this box found itself, or one already in use (to switch off): the choice names a folder, and
+        # root writes the copy there, the keys included on the flash, so the folder is never taken on the hub's word.
+        found = {candidate: keys for candidate, _label, keys in retain.store_candidates()}
+        if on == "on" and path not in found:
+            raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
+        if on == "off" and path not in found and path not in retain.extra_stores():
+            raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
+        return retain.set_store(str(path), on == "on", keys=found.get(path, False))
     if kind == "card-set":
         from irate_box.root import recommended
 

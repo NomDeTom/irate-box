@@ -237,6 +237,30 @@ check(
     and all(entry["path"] != str(store3) for entry in retain._store_entries()),
 )
 
+# The setting names a folder; the root helper takes only a place it found itself, with that place's own keys rule.
+nand_store = T / "log.nand" / "protected"
+real_candidates = retain.store_candidates
+retain.store_candidates = lambda: [(nand_store, "the onboard flash", True)]
+elsewhere = f"{nand_store.parent}/../elsewhere"
+try:
+    health.fix(f"retain-store:on:{retain.encode_store(elsewhere)}")
+    refused = False
+except health.Refused:
+    refused = True
+check(
+    "  a folder the box did not offer is refused, though it starts with the flash's path",
+    refused and all(entry["path"] != elsewhere for entry in retain._store_entries()),
+    retain._store_entries(),
+)
+health.fix(f"retain-store:on:{retain.encode_store(nand_store)}")
+check(
+    "  the offered place is taken, with its keys rule",
+    {"path": str(nand_store), "keys": True} in retain._store_entries(),
+    retain._store_entries(),
+)
+health.fix(f"retain-store:off:{retain.encode_store(nand_store)}")
+retain.store_candidates = real_candidates
+
 # Regeneration: the server key and chain from the CA, before the copy is tried.
 (etc / "tls" / "ca").mkdir(parents=True, exist_ok=True)
 ca_key.write_text("CA\n")
