@@ -667,29 +667,30 @@ def copy_device(device, image, on_own_card=False, progress=None):
     )
 
 
+def image_first_finding(device, image, said):
+    """The finding that says the card was imaged first, and that the examination ran on the image."""
+    return finding(
+        "housecall-image-first",
+        M("housecall.image-first.title", "Image first"),
+        "ok",
+        said,
+        notes=[
+            M(
+                "housecall.image-first.read-only",
+                "The card itself was only read. The examination ran on the image, so the card was not opened again.",
+            )
+        ],
+        evidence=[f"{device} -> {image}"],
+    )
+
+
 def examine_image_first(device, image, references=None, on_own_card=False, progress=None):
     """Image the card first, then examine the image: everything after the copy runs on the image, never the card."""
     said = copy_device(device, image, on_own_card=on_own_card, progress=progress)
     report = examine_image(image, references)
     report["source_device"] = str(Path(device).resolve())
     report["image"] = str(Path(image).resolve())
-    report["findings"].insert(
-        0,
-        finding(
-            "housecall-image-first",
-            M("housecall.image-first.title", "Image first"),
-            "ok",
-            said,
-            notes=[
-                M(
-                    "housecall.image-first.read-only",
-                    "The card itself was only read. The examination ran on the image, so the card was not opened "
-                    "again.",
-                )
-            ],
-            evidence=[f"{device} -> {image}"],
-        ),
-    )
+    report["findings"].insert(0, image_first_finding(device, image, said))
     return report
 
 
@@ -907,15 +908,9 @@ def installed_commit(root="/"):
     return first if re.fullmatch(r"[0-9a-f]{7,40}", first) else None
 
 
-def references_from_git(root="/", repo=None, commit=None):
-    """irate-box's own tree at the installed commit, by the git blob SHA-1 in the updater's checkout:
-    {/opt/irate-box/path: {"git": …}}."""
-    repo = Path(repo or "/var/cache/irate-box/src")
-    commit = commit or installed_commit(root)
-    if not commit:
-        raise Refused(
-            M("housecall.git.no-commit", "The installed commit is not recorded, so the tree cannot be checked.")
-        )
+def _references_from_git_commit(repo, commit):
+    """irate-box's whole tree at commit, by the git blob SHA-1 in the updater's checkout."""
+    repo = Path(repo)
     full = run("git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}")
     if full.returncode == 0 and full.stdout.strip():
         commit = full.stdout.strip()
@@ -942,6 +937,153 @@ def references_from_git(root="/", repo=None, commit=None):
     return out
 
 
+def references_from_git(root="/", repo=None, commit=None):
+    """irate-box's own tree at the installed commit, by the git blob SHA-1 in the updater's checkout:
+    {/opt/irate-box/path: {"git": …}}."""
+    commit = commit or installed_commit(root)
+    if not commit:
+        raise Refused(
+            M("housecall.git.no-commit", "The installed commit is not recorded, so the tree cannot be checked.")
+        )
+    return _references_from_git_commit(repo or "/var/cache/irate-box/src", commit)
+
+
+ROOT_STATE = Path(os.environ.get("HUB_ROOT_STATE_DIR") or STATE.parent / "irate-box-root")
+MANIFEST = ROOT_STATE / "protected" / "manifest.json"
+
+
+def load_manifest(path=None):
+    """Box doctor's protected-files manifest (retain.py, Part 2 step 4) as references: {path: {"sha256": …}}."""
+    path = Path(path or MANIFEST)
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, dict):
+        return {}
+    out = {}
+    for key, value in entries.items():
+        if not isinstance(key, str):
+            continue
+        digest = value.get("sha256") if isinstance(value, dict) else None
+        if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+            out["/" + key.lstrip("/")] = {"sha256": digest}
+    return out
+
+
+def _ext_lookup(source, path):
+    """(inode, mode, size) for a path in an ext filesystem, or None; debugfs's directory listing, no mount."""
+    inode = 2
+    parts = [part for part in path.strip("/").split("/") if part]
+    for index, part in enumerate(parts):
+        found = next((entry for entry in _entries(source, inode) if entry[0] == part), None)
+        if not found:
+            return None
+        _, inode, mode, size = found
+        if index < len(parts) - 1 and not stat.S_ISDIR(mode):
+            return None
+    return inode, mode, size
+
+
+def _ext_read(source, inode):
+    return b"".join(_ext_chunks(source, inode))
+
+
+def references_from_dpkg_ext(source):
+    """The packages' md5sums inside an ext image or card, read through debugfs: {path: {"md5": …}}."""
+    info = _ext_lookup(source, "var/lib/dpkg/info")
+    if not info or not stat.S_ISDIR(info[1]):
+        return {}
+    out = {}
+    for name, inode, mode, _size in _entries(source, info[0]):
+        if not name.endswith(".md5sums") or not stat.S_ISREG(mode):
+            continue
+        try:
+            text = _ext_read(source, inode).decode(errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            digest, _, relative = line.strip().partition("  ")
+            if re.fullmatch(r"[0-9a-f]{32}", digest) and relative:
+                out["/" + relative.lstrip("/")] = {"md5": digest}
+    return out
+
+
+def installed_commit_ext(source):
+    """The commit in /opt/irate-box/VERSION inside an ext image or card, or None."""
+    found = _ext_lookup(source, "opt/irate-box/VERSION")
+    if not found or not stat.S_ISREG(found[1]):
+        return None
+    try:
+        first = _ext_read(source, found[0]).decode(errors="replace").split()[0]
+    except (OSError, IndexError):
+        return None
+    return first if re.fullmatch(r"[0-9a-f]{7,40}", first) else None
+
+
+def references_from_git_ext(source, repo=None):
+    """irate-box's tree for the commit recorded inside an ext image or card, by the updater's checkout."""
+    commit = installed_commit_ext(source)
+    if not commit:
+        raise Refused(
+            M("housecall.git.no-commit", "The installed commit is not recorded, so the tree cannot be checked.")
+        )
+    return _references_from_git_commit(repo or "/var/cache/irate-box/src", commit)
+
+
+def _ext_sources_image(path):
+    """The ext filesystems in a disk image, as debugfs sources (image?offset=N, or the image itself)."""
+    path = Path(path)
+    _label, parts, _why = partitions_table(path)
+    if not parts:
+        return [str(path)] if (blkid(path, 0) or "").startswith("ext") else []
+    out = []
+    for part in parts:
+        offset = part.get("start", 0) * 512
+        fstype = blkid(path, offset) if offset else blkid(path, 0)
+        if (fstype or "").startswith("ext"):
+            out.append(f"{path}?offset={offset}" if offset else str(path))
+    return out
+
+
+def _ext_sources_device(path):
+    """The ext filesystems on a card device, from lsblk (a whole-disk filesystem works too)."""
+    path = Path(path)
+    said = run("lsblk", "-J", "-b", "-o", "NAME,PATH,FSTYPE", str(path), timeout=60)
+    try:
+        node = (json.loads(said.stdout).get("blockdevices") or [])[0]
+    except (ValueError, IndexError):
+        return []
+    out = []
+    for child in node.get("children") or [node]:
+        fstype = child.get("fstype") or blkid(child.get("path") or str(path))
+        if (fstype or "").startswith("ext"):
+            out.append(child.get("path") or str(path))
+    return out
+
+
+def references_from_target(path, device=False, use_dpkg=False, use_tree=False, repo=None):
+    """The references a card image or device already holds: its packages' md5sums, and irate-box's git tree."""
+    sources = _ext_sources_device(path) if device else _ext_sources_image(path)
+    out = {}
+    found_commit = False
+    for source in sources:
+        if use_dpkg:
+            out = merge_references(out, references_from_dpkg_ext(source))
+        if use_tree:
+            try:
+                out = merge_references(out, references_from_git_ext(source, repo))
+                found_commit = True
+            except Refused:
+                continue
+    if use_tree and not found_commit:
+        raise Refused(
+            M("housecall.git.no-commit", "The installed commit is not recorded, so the tree cannot be checked.")
+        )
+    return out
+
+
 def write_report(report, path=REPORT):
     parent = Path(path).parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -962,13 +1104,16 @@ def main(argv):
     summary = False
     image_first = ""
     on_own_card = False
+    manifest = ""
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("--image", "--device", "--root", "--reference", "--image-first") and i + 1 < len(argv):
+        if arg in ("--image", "--device", "--root", "--reference", "--image-first", "--manifest") and i + 1 < len(argv):
             i += 1
             if arg == "--reference":
                 references = load_references(argv[i])
+            elif arg == "--manifest":
+                manifest = argv[i]
             elif arg == "--image-first":
                 image_first = argv[i]
             else:
@@ -987,23 +1132,15 @@ def main(argv):
         else:
             sys.exit(
                 "usage: housecall.py [--image PATH | --device PATH [--image-first PATH [--on-own-card]] | "
-                "--root PATH | --this-card] [--reference PATH] [--dpkg] [--git-tree] [--json | --summary]"
+                "--root PATH | --this-card] [--reference PATH] [--manifest PATH] [--dpkg] [--git-tree] "
+                "[--json | --summary]"
             )
         i += 1
     if image_first and kind != "device":
         sys.exit("--image-first images a card: use it with --device")
     try:
-        if use_dpkg or use_tree:
-            if kind not in ("root", "this-card"):
-                sys.exit("--dpkg and --git-tree read a box's own filesystem: use them with --root or --this-card")
-            base = target if kind == "root" else "/"
-            if use_dpkg:
-                references = merge_references(references, references_from_dpkg(base))
-            if use_tree:
-                references = merge_references(references, references_from_git(base))
-        if kind == "image":
-            report = examine_image(target, references)
-        elif kind == "device" and image_first:
+        prepared = None
+        if kind == "device" and image_first:
             write_report(
                 running_report(
                     f"the card {target}",
@@ -1014,7 +1151,28 @@ def main(argv):
                     ),
                 )
             )
-            report = examine_image_first(target, image_first, references, on_own_card=on_own_card)
+            prepared = (target, image_first, copy_device(target, image_first, on_own_card=on_own_card))
+            kind, target = "image", image_first
+        if manifest:
+            references = merge_references(references, load_manifest(manifest))
+        elif kind == "this-card":
+            references = merge_references(references, load_manifest())
+        if use_dpkg or use_tree:
+            if kind in ("root", "this-card"):
+                base = target if kind == "root" else "/"
+                if use_dpkg:
+                    references = merge_references(references, references_from_dpkg(base))
+                if use_tree:
+                    references = merge_references(references, references_from_git(base))
+            elif kind in ("image", "device"):
+                references = merge_references(
+                    references,
+                    references_from_target(target, device=kind == "device", use_dpkg=use_dpkg, use_tree=use_tree),
+                )
+            else:
+                sys.exit("--dpkg and --git-tree read a card, an image, a folder or this box's own files")
+        if kind == "image":
+            report = examine_image(target, references)
         elif kind == "device":
             report = examine_device(target, references)
         elif kind == "root":
@@ -1023,6 +1181,10 @@ def main(argv):
             report = examine_this_card(references)
         else:
             sys.exit("choose --image, --device, --root or --this-card")
+        if prepared:
+            report["source_device"] = str(Path(prepared[0]).resolve())
+            report["image"] = str(Path(prepared[1]).resolve())
+            report["findings"].insert(0, image_first_finding(*prepared))
     except (Refused, OSError, ValueError, subprocess.SubprocessError) as exc:
         write_report(ended_report(target or kind, exc))  # the page's running report must not stay running
         sys.exit(f"housecall: {exc}")

@@ -65,6 +65,10 @@ check("blkid probes without writing (-p)", '"blkid", "-p"' in src)
 check("a reference's digest is checked", "re.fullmatch" in src and "sha256" in src and "md5" in src and "git" in src)
 check("the package and git references exist", "references_from_dpkg" in src and "references_from_git" in src)
 check(
+    "a card's own manifest, packages and tree are references",
+    "load_manifest" in src and "references_from_target" in src,
+)
+check(
     "a card can be imaged first, and is refused on the box's own card unless allowed",
     "copy_device" in src and "image-first.own-card" in src,
 )

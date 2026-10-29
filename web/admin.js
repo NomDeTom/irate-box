@@ -17936,6 +17936,8 @@ const hc = {
   imagePathLabel: document.getElementById("housecall-image-first-path-label"),
   onOwnCard: document.getElementById("housecall-on-own-card"),
   onOwnCardLabel: document.getElementById("housecall-on-own-card-label"),
+  manifest: document.getElementById("housecall-manifest"),
+  manifestLabel: document.getElementById("housecall-manifest-label"),
   dpkg: document.getElementById("housecall-dpkg"),
   git: document.getElementById("housecall-git"),
   scan: document.getElementById("housecall-scan"),
@@ -17956,8 +17958,10 @@ function hcPathState() {
   hc.onOwnCardLabel.hidden = !first;
   hc.imagePath.disabled = !first;
   hc.onOwnCard.disabled = !first;
-  hc.dpkg.disabled = !["root", "this-card"].includes(hc.target.value);
-  hc.git.disabled = hc.dpkg.disabled;
+  hc.manifestLabel.hidden = whole;
+  hc.manifest.disabled = whole;
+  hc.dpkg.disabled = false;
+  hc.git.disabled = false;
 }
 function hcRender(report) {
   if (!report) return;
@@ -18004,8 +18008,9 @@ if (hc.scan) {
       action: "scan",
       target: hc.target.value,
       path: hc.path.value.trim(),
-      dpkg: !hc.dpkg.disabled && hc.dpkg.checked,
-      git_tree: !hc.git.disabled && hc.git.checked,
+      dpkg: hc.dpkg.checked,
+      git_tree: hc.git.checked,
+      manifest: hc.manifest.value.trim(),
     };
     if (body.target === "device" && hc.imageFirst.checked) {
       body.image_first = hc.imagePath.value.trim();

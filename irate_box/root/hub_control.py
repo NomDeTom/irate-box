@@ -84,7 +84,8 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
    "reference": "...", "dpkg": true|false, "git_tree": true|false}
       The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
       only, with a verdict for each file, in a unit of its own; to control/housecall.json. "reference" is a JSON
-      manifest, "dpkg" and "git_tree" add the package and irate-box tree references (a folder or this box only).
+      manifest, "dpkg" and "git_tree" add references: a Box doctor manifest (any target), and the packages' and
+      irate-box's tree, read from the box's own folders or from the image or card.
   {"id": ..., "action": "housecall-stop"}
       The running examination stopped.
   {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
@@ -6141,24 +6142,21 @@ def housecall_scan(req):
                 "Give the image's path, and only for a card in a reader.",
             )
         )
-    if kind in ("image", "device") and (req.get("dpkg") or req.get("git_tree")):
-        raise Refused(
-            M(
-                "control.housecall.refs-own",
-                "The packages' checksums and irate-box's git tree are read from a box's own folders. Use them with "
-                "a folder or this box's own files.",
-            )
-        )
     if run("systemctl", "is-active", HOUSECALL_UNIT).stdout.strip() == "active":
         raise Refused(M("control.housecall.running", "The Housecall doctor is already examining. Stop it first."))
     args = [f"{CODE}/irate-box", "housecall"]
     args += ["--this-card"] if kind == "this-card" else [f"--{kind}", path]
+    manifest = str(req.get("manifest") or "")
+    if "\0" in manifest or len(manifest) > 4096:
+        raise Refused(M("control.housecall.manifest", "The manifest's path is not valid."))
     if image_first:
         args += ["--image-first", image_first]
         if req.get("on_own_card") is True:
             args.append("--on-own-card")
     if reference:
         args += ["--reference", reference]
+    if manifest:
+        args += ["--manifest", manifest]
     if req.get("dpkg"):
         args.append("--dpkg")
     if req.get("git_tree"):

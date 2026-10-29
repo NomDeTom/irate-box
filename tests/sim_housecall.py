@@ -249,6 +249,75 @@ check(
     == "genuine",
 )
 
+# Step 3: the references a card already holds. Box doctor's manifest, and an image's own packages and git tree.
+manifest = T / "manifest.json"
+manifest.write_text(json.dumps({"entries": {"/good": {"sha256": hashlib.sha256(good).hexdigest()}}}))
+check(
+    "Box doctor's manifest becomes references (its protected files)",
+    housecall.load_manifest(manifest) == {"/good": {"sha256": hashlib.sha256(good).hexdigest()}},
+    housecall.load_manifest(manifest),
+)
+default_manifest = housecall.MANIFEST
+default_manifest.parent.mkdir(parents=True, exist_ok=True)
+default_manifest.write_text(json.dumps({"entries": {"/etc/key": {"sha256": "a" * 64}}}))
+check(
+    "  this box's own manifest is found where Box doctor keeps it",
+    housecall.load_manifest() == {"/etc/key": {"sha256": "a" * 64}},
+    housecall.load_manifest(),
+)
+image = T / "refs.img"
+build_image(image, {}, size="16M")
+
+
+def ext_write(path, remote, data, offset=0):
+    source = f"{path}?offset={offset}" if offset else str(path)
+    parts = [p for p in remote.strip("/").split("/") if p]
+    for i in range(1, len(parts)):
+        subprocess.run(
+            ["debugfs", "-w", "-R", f"mkdir /{'/'.join(parts[:i])}", source],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    local = T / "ext-write"
+    local.write_bytes(data)
+    subprocess.run(
+        ["debugfs", "-w", "-R", f"write {local} /{'/'.join(parts)}", source],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+ext_write(image, "etc/example.conf", b"package file\n")
+ext_write(
+    image,
+    "var/lib/dpkg/info/example.md5sums",
+    f"{hashlib.md5(b'package file\n').hexdigest()}  etc/example.conf\n".encode(),
+)
+check(
+    "an image's own packages' md5sums become references",
+    housecall.references_from_dpkg_ext(str(image))
+    == {"/etc/example.conf": {"md5": hashlib.md5(b"package file\n").hexdigest()}},
+    housecall.references_from_dpkg_ext(str(image)),
+)
+ext_write(image, "opt/irate-box/irate_box/example.py", b"print('ok')\n")
+ext_write(image, "opt/irate-box/VERSION", f"{commit[:7]} (installed 2026-10-27)\n".encode())
+check("  an image's own installed commit is read", housecall.installed_commit_ext(str(image)) == commit[:7])
+check(
+    "  and its irate-box tree becomes references from the checkout",
+    housecall.references_from_git_ext(str(image), repo) == {"/opt/irate-box/irate_box/example.py": {"git": blob}},
+    housecall.references_from_git_ext(str(image), repo),
+)
+merged = housecall.references_from_target(str(image), use_dpkg=True, use_tree=True, repo=repo)
+image_report = housecall.examine_image(image, merged)
+by_path = {r["path"]: r for r in image_report["files"]}
+check(
+    "  the image's own references are used: both files genuine",
+    by_path.get("/etc/example.conf", {}).get("verdict") == "genuine"
+    and by_path.get("/opt/irate-box/irate_box/example.py", {}).get("verdict") == "genuine",
+    image_report["files"],
+)
+
 # From inside: this box's own folders, with a file on the NAND left out and said to be the NAND's.
 box = T / "box"
 (box / "etc").mkdir(parents=True)
@@ -320,15 +389,25 @@ check(
     and "--on-own-card" in started[0],
     (said, started),
 )
-for refused_req, why in (
-    ({"target": "nonsense"}, "an unknown target"),
-    ({"target": "image", "path": str(image), "dpkg": True}, "the package references for an image"),
-):
-    try:
-        hub_control.housecall_scan(refused_req)
-        check(f"  {why}: refused", False)
-    except Refused:
-        check(f"  {why}: refused", True)
+try:
+    hub_control.housecall_scan({"target": "nonsense"})
+    check("  an unknown target: refused", False)
+except Refused:
+    check("  an unknown target: refused", True)
+ran.clear()
+said = hub_control.housecall_scan(
+    {"target": "image", "path": str(image), "dpkg": True, "git_tree": True, "manifest": str(manifest)}
+)
+started = [c for c in ran if c[0] == "systemd-run"]
+check(
+    "  the package and tree references for an image are passed to it",
+    said.get("id") == "control.housecall.started"
+    and started
+    and "--dpkg" in started[0]
+    and "--git-tree" in started[0]
+    and "--manifest" in started[0],
+    (said, started),
+)
 active["state"] = "active"
 try:
     hub_control.housecall_scan({"target": "image", "path": str(image)})

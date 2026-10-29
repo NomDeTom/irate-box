@@ -90,12 +90,16 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   path.value = '/dev/sda';
   d.getElementById('housecall-image-first-path').value = '/media/usb/card.img';
   d.getElementById('housecall-on-own-card').checked = true;
+  d.getElementById('housecall-manifest').value = '/var/lib/irate-box-root/protected/manifest.json';
   posted.length = 0;
   done = false;
   d.getElementById('housecall-scan').click();
   await later(1800);
   check('  the request carries the image and the permission',
-    posted.length === 1 && posted[0].image_first === '/media/usb/card.img' && posted[0].on_own_card === true,
+    posted.length === 1
+      && posted[0].image_first === '/media/usb/card.img'
+      && posted[0].on_own_card === true
+      && posted[0].manifest === '/var/lib/irate-box-root/protected/manifest.json',
     posted);
   // A long examination: its running report is shown with Stop, which asks the root helper to stop it.
   target.value = 'image';
