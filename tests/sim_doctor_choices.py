@@ -33,7 +33,27 @@ check(
     "one shared pattern: the hub and the root helper use the same object",
     health.CHOICE_RE is choices.CHOICE_RE and server.HEALTH_CHOICE_RE is choices.CHOICE_RE,
 )
-groups = health.card_groups() + health.hardening_groups() + health.setting_groups(crashwatch.load_settings(), None)
+led_state = {
+    "found": ["ACT", "PWR"],
+    "settings": {"show": "leave"},
+    "suggested": "leave",
+    "led": "the light",
+}
+rfkill_state = {
+    "settings": {"wifi": "on", "bluetooth": "leave"},
+    "switches": [
+        {"radio": "wifi", "name": "phy0", "soft": False, "hard": False, "power_line": None},
+        {"radio": "bluetooth", "name": "hci0", "soft": False, "hard": False, "power_line": None},
+    ],
+    "power_line": None,
+}
+groups = (
+    health.card_groups()
+    + health.hardening_groups()
+    + health.setting_groups(crashwatch.load_settings(), None)
+    + health.led_groups(led_state, "failed")
+    + health.rfkill_groups(rfkill_state)
+)
 group_choices = [option["choice"] for group in groups for option in group.get("options", [])]
 check(
     "every choice a settings group offers passes the shared pattern",
