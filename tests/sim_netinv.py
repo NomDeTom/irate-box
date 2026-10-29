@@ -395,5 +395,51 @@ check(
     got,
 )
 
+# No NetworkManager running the WiFi (stock Armbian: systemd-networkd through netplan): recommended, never broken.
+from irate_box.msg import render
+
+
+def stock(nm=None, devices=None, netplan=True):
+    i = {"radios": [{"phy": "phy0", "iface": "wlan0", "type": "managed", "owner": "wpa_supplicant"}]}
+    i["stacks"] = {
+        "networkmanager": nm if devices is None else {**(nm or {}), "devices": devices},
+        "systemd_networkd": {"running": True, "manages": ["wlan0"]},
+        "wpa_supplicant": {"on": ["wlan0"]},
+        "netplan": {"files": ["30-wifis-dhcp.yaml"]} if netplan else None,
+    }
+    return i
+
+
+got = netinv.no_networkmanager(stock())
+check(
+    "no NetworkManager: a warning naming what runs the WiFi, and the commands for netplan",
+    len(got) == 1
+    and got[0]["status"] == "warn"
+    and render(got[0]["summary"]) == "NetworkManager does not run the WiFi of this box. systemd-networkd does."
+    and got[0]["commands"] == ["apt install network-manager", "netplan apply"]
+    and "renderer: NetworkManager" in render(got[0]["fix"]),
+    got,
+)
+check(
+    "  installed but stopped: the same",
+    [f["id"] for f in netinv.no_networkmanager(stock({"running": False}))] == ["networkmanager"],
+)
+check(
+    "  running but leaving the WiFi unmanaged: the same",
+    [f["id"] for f in netinv.no_networkmanager(stock({"running": True}, {"wlan0": {"state": "unmanaged"}}))]
+    == ["networkmanager"],
+)
+check(
+    "  without netplan: no netplan step",
+    netinv.no_networkmanager(stock(netplan=False))[0]["commands"] == ["apt install network-manager"],
+)
+check(
+    "  NetworkManager running the WiFi: nothing",
+    netinv.no_networkmanager(stock({"running": True}, {"wlan0": {"state": "connected"}})) == [],
+)
+none = stock()
+none["radios"] = []
+check("  no WiFi link at all: nothing", netinv.no_networkmanager(none) == [])
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

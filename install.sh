@@ -34,6 +34,8 @@
 #                             (the uplink watchdog does the repairing)
 #   irate-box-led.service     the status light (led.py, root): one of the board's LEDs blinking
 #                             while the box is well, as chosen on /admin (Recovery and monitoring)
+#   irate-box-rfkill.service  the radios (rfkill.py, root): WiFi and Bluetooth switched on at every
+#                             start, or as chosen on /admin (Recovery and monitoring)
 #   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
 #                             hashed with daily and weekly salts held in memory, only the counts
 #                             written; runs only while counting is on (irate-box-visitors-switch.path)
@@ -2838,6 +2840,35 @@ StateDirectoryMode=0700
 WantedBy=multi-user.target
 EOF
 
+# The radios (rfkill.py): each WiFi and Bluetooth rfkill switch as chosen on Recovery and monitoring, set at
+# every start; until an admin chooses, unblocked. An image can start with a radio blocked: Armbian's for the
+# Luckfox Lyra Zero W holds its WiFi chip's power off. After systemd-rfkill has put back what it saved, before
+# the network starts.
+cat >/etc/systemd/system/irate-box-rfkill.service <<EOF
+[Unit]
+Description=Irate-Box radios: WiFi and Bluetooth switched on or off at every start (rfkill.py; /admin, Recovery and monitoring)
+After=local-fs.target systemd-modules-load.service systemd-rfkill.service
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
+ExecStart=$CODE/irate-box rfkill boot
+TimeoutStartSec=60
+$ROOT_SANDBOX
+# /sys stays writable (its rfkill switches), so not ProtectKernelTunables; the rest it doesn't need.
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # The status light (led.py): one of the board's LEDs blinking while the box is well, as chosen on
 # Recovery and monitoring. Always running and small; on a board with no LED to use, it only looks.
 cat >/etc/systemd/system/irate-box-led.service <<EOF
@@ -3214,7 +3245,7 @@ fi
 systemctl stop irate-box-crashwatch.service 2>/dev/null || true
 HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" crashwatch migrate | sed 's/^/    /' ||
 	problem "crash watch's history was not moved from $STATE/crashwatch"
-for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service irate-box-rfkill.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.

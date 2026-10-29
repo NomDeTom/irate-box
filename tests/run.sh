@@ -42,6 +42,7 @@ run write_guard.py
 run sim_retain.py
 run sim_nand_health.py
 run sim_led.py
+run sim_rfkill.py
 run sim_port_80.py
 run sim_wificountry.py
 run sim_box_name.py
