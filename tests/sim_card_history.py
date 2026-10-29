@@ -177,6 +177,59 @@ check(
     hour["units"] == {"a.service": 10 * M, cardhistory.KERNEL: 40 * M},
     hour["units"],
 )
+# A job that ends takes its whole count out of the named services: only what it wrote in the hour is JOBS.
+ended_long = [
+    {
+        "at": 3000,
+        "boot": "ffff6666",
+        "card": 200 * M,
+        "units": {"long.service": 100 * M},
+        "other": 0,
+        "slices": {"system": 100 * M, "user": 0},
+        "settings": {},
+    },
+    {
+        "at": 3000 + 3600,
+        "boot": "ffff6666",
+        "card": 215 * M,
+        "units": {"timer.service": 10 * M},
+        "other": 0,
+        "slices": {"system": 115 * M, "user": 0},
+        "settings": {},
+    },
+]
+hour = cardhistory._hours(ended_long)[-1]
+check(
+    "a long job that writes 5 MB and ends: 5 MB of jobs, not none",
+    hour["units"] == {"timer.service": 10 * M, cardhistory.JOBS: 5 * M},
+    hour["units"],
+)
+ended_small = [
+    {
+        "at": 4000,
+        "boot": "ffff7777",
+        "card": 300 * M,
+        "units": {"small.service": 3 * M},
+        "other": 0,
+        "slices": {"system": 3 * M, "user": 0},
+        "settings": {},
+    },
+    {
+        "at": 4000 + 3600,
+        "boot": "ffff7777",
+        "card": 305 * M,
+        "units": {},
+        "other": 0,
+        "slices": {"system": 5 * M, "user": 0},
+        "settings": {},
+    },
+]
+hour = cardhistory._hours(ended_small)[-1]
+check(
+    "a small job that writes 2 MB and ends: 2 MB of jobs, not its earlier 3 MB again",
+    hour["units"] == {cardhistory.JOBS: 2 * M, cardhistory.KERNEL: 3 * M},
+    hour["units"],
+)
 older = [{k: v for k, v in r.items() if k != "slices"} for r in two]
 check(
     "  lines of the older form (no slices): only the services, as before",

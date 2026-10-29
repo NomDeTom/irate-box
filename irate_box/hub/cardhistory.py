@@ -168,12 +168,6 @@ def sample(settings, mem_min, now):
     }
 
 
-def _all_written(row):
-    """Every service's bytes since it started: the top units kept by name, and the rest as "other". A unit moving
-    between the two changes neither total."""
-    return sum((row.get("units") or {}).values()) + int(row.get("other") or 0)
-
-
 def _hours(rows):
     """Each line's hour: bytes written since the line before (the same boot), by the card and by service.
     The first line of a boot counts everything since that boot."""
@@ -189,10 +183,10 @@ def _hours(rows):
         now_s, was_s = r.get("slices") or {}, (prev.get("slices") or {}) if same else {}
         if same and isinstance(now_s.get("system"), int) and isinstance(was_s.get("system"), int):
             grew = now_s["system"] - was_s["system"]
-            # Every service, not only the top ones kept by name: the rest are "other". Otherwise their writes
-            # would be called jobs that ended (a box with many services showed thousands of MB a day).
-            now_all, was_all = _all_written(r), _all_written(prev)
-            running = now_all - was_all if now_all >= was_all else now_all
+            # The rest are "other". Count their growth too, never negative: otherwise their writes are called jobs
+            # that ended (a box with many services showed thousands of MB a day).
+            other_grew = int(r.get("other") or 0) - int(prev.get("other") or 0)
+            running = sum(by.values()) + max(other_grew, 0)
             if grew > running:
                 by[JOBS] = grew - running
             user = (now_s.get("user") or 0) - (was_s.get("user") or 0) if isinstance(now_s.get("user"), int) else 0
