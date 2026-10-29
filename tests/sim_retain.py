@@ -9,6 +9,7 @@ two-boot verdict, and the units. python3 tests/sim_retain.py"""
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -152,7 +153,16 @@ retain.FINDINGS.write_text("[]")
 check("a boot with no repairs clears the finding", health.check_protected() == [])
 
 calls = []
-retain.restore.run = lambda *a, **kw: calls.append(a) or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+
+def fake_restore_run(*a, **kw):
+    calls.append(a)
+    if a and a[0] == "openssl":
+        return subprocess.run(a, capture_output=True)
+    return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+
+retain.restore.run = fake_restore_run
 retain.install_units(True)
 service = units / "system" / retain.SERVICE
 sweep_service = units / "system" / retain.SWEEP_SERVICE
@@ -215,26 +225,55 @@ check(
     repairs,
 )
 
-# Extra stores as settings: keys go to the NAND, never to a removable drive unless its setting says so.
+# Extra stores as settings: a removable drive's keys are encrypted, never plaintext; leave them out is the default.
 store3, store4 = T / "store3", T / "store4"
 ca_key = put(etc / "tls" / "ca" / "ca.key", "CA\n", 0o600)
+retain.set_keys("encrypt")
 retain.set_store(str(store3), True, keys=True)
 retain.set_store(str(store4), True, keys=False)
 retain.sweep()
 check(
-    "an extra store setting: keys included where it says so, left out of the drive",
-    (store3 / retain._ident(ca_key)).is_file()
+    "an extra store setting: a removable copy encrypts the key, and the other leaves it out",
+    (store3 / (retain._ident(ca_key) + ".enc")).is_file()
+    and not (store3 / retain._ident(ca_key)).exists()
     and not (store4 / retain._ident(ca_key)).exists()
-    and any(p.is_file() for p in store4.iterdir()),
+    and not (store4 / (retain._ident(ca_key) + ".enc")).exists(),
     (sorted(p.name for p in store3.iterdir()), sorted(p.name for p in store4.iterdir())),
 )
 retain.set_store(str(store3), False)
 retain.set_store(str(store4), False)
 check(
     "  switching one off deletes the copies irate-box made there, and the setting goes",
-    not (store3 / retain._ident(ca_key)).exists()
+    not (store3 / (retain._ident(ca_key) + ".enc")).exists()
     and not (store3 / "manifest.json").exists()
     and all(entry["path"] != str(store3) for entry in retain._store_entries()),
+)
+retain.set_keys("leave-out")
+# The owner's data budget: notes copied into a removable store, within the MB asked for.
+data_store = T / "store5"
+retain.set_data_mb(1)
+retain.set_store(str(data_store), True, keys=False)
+put(state / "notes" / "a.md", "note\n")
+retain.sweep()
+check(
+    "the owner's data: copied to the removable store within its budget",
+    (data_store / "data" / "notes" / "a.md").read_text() == "note\n",
+    list((data_store / "data").rglob("*")) if (data_store / "data").exists() else None,
+)
+retain.set_store(str(data_store), False)
+retain.set_data_mb(0)
+
+# The main front site rendered again from the settings, not only the TLS includes.
+(code / "config").mkdir(parents=True, exist_ok=True)
+(code / "config" / "irate-box.nginx").write_text("server { listen @PORT@; }\n")
+nginx_site = nginx / "conf.d" / "irate-box.conf"
+nginx_site.parent.mkdir(parents=True, exist_ok=True)
+nginx_site.write_text("damaged\n")
+said = retain.regenerate(nginx_site)
+check(
+    "the main front site is rendered again from the settings",
+    said and "HUB_PORT" not in nginx_site.read_text() and nginx_site.read_text().startswith("server"),
+    (said, nginx_site.read_text() if nginx_site.exists() else None),
 )
 
 # The setting names a folder; the root helper takes only a place it found itself, with that place's own keys rule.
@@ -343,8 +382,8 @@ retain.extra_stores = lambda: []
 repairs = retain.boot_check()
 retain.extra_stores = real_stores
 check(
-    "  with no copy either, it is a loss, not a false regeneration",
-    any("no good copy" in r["action"] for r in repairs) and not any("rendered" in r["action"] for r in repairs),
+    "  with no copy either, the main site is rendered again",
+    any("rendered" in r["action"] for r in repairs) and not any("no good copy" in r["action"] for r in repairs),
     repairs,
 )
 

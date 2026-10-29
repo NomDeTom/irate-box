@@ -20,8 +20,10 @@ running is the card verdict. Stdlib only.
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import sys
+import tempfile
 import time
 import urllib.parse
 from pathlib import Path
@@ -47,6 +49,7 @@ NGINX = Path(os.environ.get("HUB_NGINX_CONF_DIR", "/etc/nginx"))
 NM = Path(os.environ.get("HUB_NM_DIR", "/etc/NetworkManager/system-connections"))
 JOURNALD = Path(os.environ.get("HUB_JOURNALD_CONF", "/etc/systemd/journald.conf"))
 CONFIG = ETC / "retain.json"
+KEYFILE = ROOT / "retain-key"
 FF, ZERO = b"\xff", b"\x00"
 KEEP = 50
 
@@ -209,13 +212,90 @@ def _store_entries():
     return out
 
 
+def _config():
+    try:
+        data = json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def keys_mode():
+    """leave-out (the default) or encrypt, for a key copied to a removable store."""
+    mode = _config().get("keys")
+    return mode if mode in ("leave-out", "encrypt") else "leave-out"
+
+
+def data_mb():
+    try:
+        return max(0, int(_config().get("data_mb") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def set_keys(mode):
+    if mode not in ("leave-out", "encrypt"):
+        raise Refused(M("retain.keys.invalid", "Select leave out or encrypt."))
+    data = _config()
+    data["keys"] = mode
+    durable.write_checked(CONFIG, json.dumps(data, indent=1, sort_keys=True), 0o600)
+    return M("retain.keys.set", "Keys in a removable copy are {mode}.", mode=mode)
+
+
+def set_data_mb(value):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        value = 0
+    if value < 0:
+        raise Refused(M("retain.data.invalid", "Give a budget in MB, or 0 for none."))
+    data = _config()
+    data["data_mb"] = value
+    durable.write_checked(CONFIG, json.dumps(data, indent=1, sort_keys=True), 0o600)
+    return M("retain.data.set", "The administrator's data copy is {mb} MB.", mb=value)
+
+
 def _write_stores(entries):
-    durable.write_checked(CONFIG, json.dumps({"version": 1, "stores": entries}, indent=1, sort_keys=True), 0o600)
+    data = _config()
+    data.update({"version": 1, "stores": entries})
+    durable.write_checked(CONFIG, json.dumps(data, indent=1, sort_keys=True), 0o600)
 
 
 def extra_stores():
     """Further places the copy is kept (a NAND folder, a USB drive), in the order listed."""
     return [Path(entry["path"]) for entry in _store_entries()]
+
+
+def _key():
+    """The key that encrypts a removable copy's keys, kept on the card root-only; made once."""
+    try:
+        return KEYFILE.read_bytes()
+    except OSError:
+        KEYFILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        value = secrets.token_hex(32).encode()
+        KEYFILE.write_bytes(value)
+        KEYFILE.chmod(0o600)
+        return value
+
+
+def _crypt(data, decrypt=False):
+    """Encrypt (or decrypt) one file's bytes with openssl and the card's key; returns bytes or None."""
+    _key()
+    with tempfile.TemporaryDirectory(prefix="retain-crypt-") as folder:
+        source, target = Path(folder) / "in", Path(folder) / "out"
+        source.write_bytes(data)
+        cmd = ["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-pass", f"file:{KEYFILE}"]
+        if decrypt:
+            cmd.append("-d")
+        said = restore.run(*cmd, "-in", str(source), "-out", str(target), timeout=120)
+        if said.returncode or not target.is_file():
+            return None
+        return target.read_bytes()
+
+
+def _removable(store):
+    nand = Path(os.environ.get("HUB_NAND_MOUNT", "/var/log.nand"))
+    return not str(store).startswith(str(nand) + "/")
 
 
 def store_keys(path):
@@ -263,13 +343,14 @@ def remove_store_copies(path, only=None):
     if only is not None:
         ids &= set(only)
     for ident in ids:
-        for name in (ident, ident + ".prev"):
+        for name in (ident, ident + ".prev", ident + ".enc", ident + ".prev.enc"):
             try:
                 (Path(path) / name).unlink(missing_ok=True)
             except OSError:
                 pass
     try:
         (Path(path) / "manifest.json").unlink(missing_ok=True)
+        shutil.rmtree(Path(path) / "data", ignore_errors=True)
     except OSError:
         pass
 
@@ -319,6 +400,13 @@ def regenerate(path):
 
             tls.initialise()
             said = M("retain.regenerated.front", "The front's includes were rendered again from the settings.")
+        elif path == NGINX / "conf.d" / "irate-box.conf":
+            from irate_box.root import nginx_front
+
+            template = CODE / "config" / "irate-box.nginx"
+            text = nginx_front.render(template.read_text(), nginx_front.settings_from_env())
+            durable.write_checked(path, text.encode(), 0o644)
+            said = M("retain.regenerated.site", "The main front site was rendered again from the settings.")
         else:
             return None
         data = _read(path)
@@ -335,10 +423,19 @@ def _package_owned(path):
 
 
 def _store_sources(path):
-    """Every copy of one file to try: this store's copy and .prev, then each extra store's."""
-    out = [_copy(path), _prev(path)]
+    """Every copy of one file to try: name, path, bytes. An encrypted extra copy is decrypted here."""
+    out = [
+        (candidate.name, candidate, _read(candidate)) for candidate in (_copy(path), _prev(path)) if candidate.is_file()
+    ]
     for store in extra_stores():
-        out += [store / _ident(path), store / (_ident(path) + ".prev")]
+        for name in (_ident(path), _ident(path) + ".prev"):
+            plain, crypt = store / name, store / (name + ".enc")
+            if plain.is_file():
+                out.append((name, plain, _read(plain)))
+            if crypt.is_file():
+                data = _crypt(crypt.read_bytes(), decrypt=True)
+                if data is not None:
+                    out.append((name + ".enc", crypt, data))
     return out
 
 
@@ -385,27 +482,67 @@ def sweep():
     for store in extra_stores():
         try:
             store.mkdir(parents=True, exist_ok=True, mode=0o700)
+            removable = _removable(store)
             for source in STORE.iterdir():
                 if not source.is_file() or source.name.endswith(".lock"):
                     continue
-                if source.name in key_ids and not store_keys(store):
+                key = source.name in key_ids
+                if key and not store_keys(store):
                     continue
-                target = store / source.name
+                encrypted = key and removable
+                if encrypted and keys_mode() != "encrypt":
+                    continue
+                target = store / (source.name + ".enc" if encrypted else source.name)
                 try:
                     data = source.read_bytes()
                 except OSError:
                     continue
-                try:
-                    have = target.read_bytes()
-                except OSError:
-                    have = None
+                if encrypted:
+                    data = _crypt(data)
+                    if data is None:
+                        bad.append({"path": str(source), "action": "the key could not be encrypted"})
+                        continue
+                    if (store / source.name).exists():
+                        (store / source.name).unlink(missing_ok=True)
+                    try:
+                        have = _crypt(target.read_bytes(), decrypt=True)
+                    except OSError:
+                        have = None
+                else:
+                    try:
+                        have = target.read_bytes()
+                    except OSError:
+                        have = None
                 if have != data:
                     durable.write_checked(target, data, 0o600)
+            if removable and data_mb():
+                _copy_data(store)
         except OSError:
             bad.append({"path": str(store), "action": "the extra copy could not be written here"})
     if bad:
         _findings(bad, "sweep")
     return bad
+
+
+def _copy_data(store):
+    """The owner's data, as a backup in a removable store, up to the size budget. It is not a boot check's copy."""
+    budget = data_mb() << 20
+    used = 0
+    target = Path(store) / "data"
+    for rel in ("notes", "store", "drop", "board.json", "messages.json"):
+        source = STATE / rel
+        if not source.exists():
+            continue
+        for path in [source] if source.is_file() else source.rglob("*"):
+            if not path.is_file() or path.is_symlink():
+                continue
+            size = path.stat().st_size
+            if used + size > budget:
+                return
+            destination = target / path.relative_to(STATE)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination)
+            used += size
 
 
 def boot_check():
@@ -436,22 +573,29 @@ def boot_check():
         if not _bad(data) and mtime != entry.get("mtime_ns"):
             continue  # the owner changed it: the next sweep copies it
         done = False
-        for source in _store_sources(path):
+        for name, _source, data in _store_sources(path):
             try:
-                if source.is_file() and _sha(_read(source)) == wanted:
-                    DAMAGED.mkdir(parents=True, exist_ok=True, mode=0o700)
-                    keep_at = DAMAGED / f"{_ident(path)}.{int(time.time())}"
+                if _sha(data) != wanted:
+                    continue
+                DAMAGED.mkdir(parents=True, exist_ok=True, mode=0o700)
+                keep_at = DAMAGED / f"{_ident(path)}.{int(time.time())}"
+                with tempfile.NamedTemporaryFile(prefix="retain-restore-", delete=False) as fh:
+                    fh.write(data)
+                    temporary = Path(fh.name)
+                try:
                     restore.from_copy(
                         path,
-                        source,
+                        temporary,
                         sha256=wanted,
                         mode=entry.get("mode"),
                         owner=(entry.get("uid"), entry.get("gid")),
                         keep_at=keep_at,
                     )
-                    repairs.append({"path": str(path), "action": "restored from " + source.name})
-                    done = True
-                    break
+                finally:
+                    temporary.unlink(missing_ok=True)
+                repairs.append({"path": str(path), "action": "restored from " + name})
+                done = True
+                break
             except (OSError, Refused):
                 continue
         if not done:
