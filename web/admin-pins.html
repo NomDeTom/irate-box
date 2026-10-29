@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="admin-pins.head.title">Pin map · Hub administration</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📌</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="admin">
+  <!-- The board's GPIO pins (root/pinmap.py): the header, what claims each pin, and what is free. Behind /admin's login. -->
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-pins.header.tip-quick-help" data-i18n="admin-pins.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/hub" title="Back to the hub" data-i18n-title="admin-pins.header.tip-back-hub" data-i18n="admin-pins.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-pins.header.heading">Pin map</h1>
+    <p class="subtitle" data-i18n="admin-pins.header.subtitle">What each header pin is, and what already claims it. Administrators only.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-pins.header.aria-theme"></div>
+  </header>
+  <main class="admin-main">
+    <section class="admin-pane" id="pins" aria-label="Pin map" data-i18n-aria-label="admin-pins.main.aria-pin-map">
+      <p class="setting-desc" data-i18n="admin-pins.main.intro">
+        The box reads the GPIO lines with <code>gpioinfo</code>. A pin that a radio hat, a display, an I2C device or
+        irate-box already uses is marked taken, with the name of what claims it. A free pin is the one to select for a
+        new overlay.
+      </p>
+      <div class="library-buttons">
+        <button class="action-btn" type="button" id="pins-scan" data-i18n="admin-pins.main.read">Read the pins</button>
+      </div>
+      <p class="setting-desc action-note" id="pins-note" role="status" hidden></p>
+      <p class="setting-desc" id="pins-board"></p>
+      <div class="pinmap" id="pins-map"></div>
+      <div id="pins-claims"></div>
+    </section>
+  </main>
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/admin-widgets.js"></script>
+  <script src="/admin-pins.js"></script>
+</body>
+</html>

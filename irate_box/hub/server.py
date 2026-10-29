@@ -2462,6 +2462,15 @@ def update_progress():
     return data
 
 
+def pins_snapshot():
+    """/admin/pins: the last pin map read (root/pinmap.py's control/pins.json), or none yet."""
+    try:
+        data = json.loads((CONTROL_DIR / "pins.json").read_text())
+    except (OSError, ValueError):
+        data = None
+    return {"pins": data, "pending": _pending_actions("pins"), "results": control_results(10)}
+
+
 def rkboard_snapshot():
     """/admin/rkboard: the Rockchip boards on the box's USB as sysfs shows them now (the hub reads it itself), the
     tools the Rockchip boards toolkit brings, the loaders, the root helper's work on them (waiting, and done), and the
@@ -4904,6 +4913,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, rkboard_snapshot())
             return
 
+        if path == "/admin/pins":
+            self.send_json(200, pins_snapshot())
+            return
+
         if path == "/admin/addons":
             self.send_json(200, addons_snapshot())
             return
@@ -5118,6 +5131,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/admin/rockchip.html":
             # Rockchip boards (apps.d/57-rockchip.json): behind /admin's login, as the Factory's page.
             path = "/admin-rockchip.html"
+        elif path == "/admin/pins.html":
+            # The GPIO pin map (root/pinmap.py): behind /admin's login, as the Factory's page.
+            path = "/admin-pins.html"
 
         if path == "/api/guest-net":
             # What the sheet shows a guest: whether the owner shares the connection, at what level,
@@ -6366,6 +6382,13 @@ class Handler(BaseHTTPRequestHandler):
                     202,
                     {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})},
                 )
+            return
+
+        if path == "/admin/pins":
+            if payload.get("action") == "pins":
+                self.send_json(202, {"id": control_request({"action": "pins"})})
+            else:
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
         if path == "/admin/rkboard":
