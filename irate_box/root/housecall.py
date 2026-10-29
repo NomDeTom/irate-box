@@ -1424,7 +1424,9 @@ def pair_peer(name, host, user="root", port=22):
     safeio.write_checked(PEERS, json.dumps({"version": 1, "peers": peers}, indent=1, sort_keys=True), 0o600)
     public = run("ssh-keygen", "-y", "-f", str(PEER_KEY), timeout=60)
     pub = (public.stdout or "").strip()
-    escaped = PEER_COMMAND.replace("\\", "\\\\").replace('"', '\\"')
+    # Inside command="...", sshd turns only \" back into a quote and keeps every other backslash, so the \n the
+    # remote shell reads must reach it as written: only quotes are escaped.
+    escaped = PEER_COMMAND.replace('"', '\\"')
     line = f'restrict,command="{escaped}" {pub}' if pub else ""
     auth = PEER_DIR / f"{name}.authorized_key"
     safeio.write_checked(auth, line + "\n", 0o600)

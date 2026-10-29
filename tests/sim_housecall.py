@@ -611,9 +611,31 @@ check(
     and "SHA256:FINGERPRINT" in str(said)
     and len((housecall.PEER_DIR / "pi.authorized_key").read_text().splitlines()) == 1
     and (housecall.PEER_DIR / "pi.authorized_key").read_text().startswith("restrict,command=")
-    and "\\\\n=== %s\\\\n" in (housecall.PEER_DIR / "pi.authorized_key").read_text()
     and (housecall.PEERS.stat().st_mode & 0o777) == 0o600,
     (said, peers),
+)
+
+
+def sshd_command(line):
+    r"""The forced command as sshd reads it from an authorized_keys line: inside command="...", only \" is
+    unescaped, every other backslash kept."""
+    rest = line.split('command="', 1)[1]
+    out, i = [], 0
+    while rest[i] != '"':
+        if rest[i] == "\\" and rest[i + 1] == '"':
+            i += 1
+        out.append(rest[i])
+        i += 1
+    return "".join(out)
+
+
+forced = sshd_command((housecall.PEER_DIR / "pi.authorized_key").read_text())
+forced_out = subprocess.run(["sh", "-c", forced], capture_output=True, text=True, timeout=30)
+check(
+    "  the forced command, as sshd reads it and a shell runs it, gives sections the parser splits",
+    sorted(housecall._peer_reports(forced_out.stdout))
+    == sorted([path for _, path in housecall.PEER_DOCTORS] + ["/opt/irate-box/VERSION"]),
+    (forced, forced_out.stdout[:200]),
 )
 peer = housecall.peer_examine("pi")
 found = {f["id"]: f for f in peer["findings"]}
