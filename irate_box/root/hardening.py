@@ -300,7 +300,11 @@ def _fw_env_example():
         "# irate-box (A/B updates): where U-Boot's saved environment lives.\n"
         "# Nothing here is active until the offset is confirmed on the board (notes:\n"
         "# 2026-10-29-bootloader-bootcount). Copying this file as it stands does nothing.\n"
-        "# device offset size\n# /dev/disk/by-partlabel/irate-bootstate 0x00000000 0x2000\n"
+        "# With the partition named in the device tree, U-Boot keeps the environment at its top: for a 16 MiB\n"
+        "# bootstate, the first copy is the last 8 KiB and the redundant copy the 8 KiB before it.\n"
+        "# device offset size\n"
+        "# /dev/disk/by-partlabel/irate-bootstate 0x000FE000 0x2000\n"
+        "# /dev/disk/by-partlabel/irate-bootstate 0x000FC000 0x2000\n"
     )
 
 

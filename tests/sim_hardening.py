@@ -101,8 +101,10 @@ check(
 )
 env_example = (etc / "ab" / "fw_env.config.example").read_text().splitlines()
 check(
-    "  the environment example has no active device line",
-    all(not line or line.startswith("#") for line in env_example),
+    "  the environment example has no active device line, and names the partition's top",
+    all(not line or line.startswith("#") for line in env_example)
+    and any("0x000FE000 0x2000" in line for line in env_example)
+    and any("0x000FC000 0x2000" in line for line in env_example),
     env_example,
 )
 check(
