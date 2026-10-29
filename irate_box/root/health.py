@@ -2788,6 +2788,7 @@ def check_space():
 GO_CARD_WRITES = _go("card-writes", M("go.card-writes", "Recovery → SD card writes"))
 SYSTEMD_ETC = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd"))
 IO_ACCOUNTING = SYSTEMD_ETC / "system.conf.d" / "50-irate-box-io.conf"
+IO_ACCOUNTING_STATE = ETC / "io-accounting.json"
 CARD_HIGH = 1 << 30  # bytes a day: above this, the doctor names what writes
 JOURNAL_SYNC_DEFAULT = 300  # seconds: journald's SyncIntervalSec when nothing sets it
 
@@ -3852,6 +3853,8 @@ def _journal_storage():
 
 def card_groups():
     """The system's write settings as choice groups, as setting_groups(): the first option is the system's own."""
+    from irate_box.hub import cardhistory
+
     choice = lambda key, value: f"card-set:{key}:{value}"  # noqa: E731
     groups = [
         {
@@ -4031,6 +4034,30 @@ def card_groups():
                 ],
             },
         )
+    groups.append(
+        {
+            "key": "card_accounting",
+            "label": M("cs.accounting", "Writes by service"),
+            "desc": M(
+                "cs.accounting.desc",
+                "Whether the kernel counts the SD card writes of each service, so the record can say which one "
+                "writes most. It does not slow the services down.",
+            ),
+            "current": "on" if cardhistory.accounting() else "off",
+            "options": [
+                {
+                    "value": "on",
+                    "label": M("cs.accounting.on", "Counted"),
+                    "choice": choice("card_accounting", "on"),
+                },
+                {
+                    "value": "off",
+                    "label": M("cs.accounting.off", "Not counted"),
+                    "choice": choice("card_accounting", "off"),
+                },
+            ],
+        }
+    )
     return groups
 
 
@@ -4074,6 +4101,8 @@ def _root_commit():
 def card_set(key, value):
     """One system write setting applied, now and for every boot."""
     unit_dir = SYSTEMD_ETC / "system"
+    if key == "card_accounting":
+        return card_accounting_on() if value == "on" else card_accounting_off()
     if key == "apt_cache" and value == "memory":
         unit_dir.mkdir(parents=True, exist_ok=True)
         (unit_dir / APT_RAM_UNIT).write_text(
@@ -4557,9 +4586,31 @@ def _nand_tool(*verb):
         )
 
 
+def _io_accounting_configured():
+    """Whether a systemd configuration file other than irate-box's asks for per-service I/O accounting: the owner's
+    own drop-in, or the image's. The last DefaultIOAccounting= wins, as systemd reads them."""
+    files = [SYSTEMD_ETC / "system.conf", *sorted((SYSTEMD_ETC / "system.conf.d").glob("*.conf"))]
+    on = False
+    for path in files:
+        if path == IO_ACCOUNTING:
+            continue
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            key, _, value = line.strip().partition("=")
+            if key.strip() == "DefaultIOAccounting":
+                on = value.strip().lower() == "yes"
+    return on
+
+
 def card_accounting_on():
-    """Per-service I/O accounting: systemd's default, in a file of irate-box's, applied to running services too."""
+    """Per-service I/O accounting: systemd's default, in a file of irate-box's, applied to running services too.
+    The setting before irate-box's file is recorded, so off can leave the owner's own choice alone."""
     IO_ACCOUNTING.parent.mkdir(parents=True, exist_ok=True)
+    if not IO_ACCOUNTING_STATE.exists():
+        IO_ACCOUNTING_STATE.write_text(json.dumps({"before": "on" if _io_accounting_configured() else "off"}) + "\n")
     IO_ACCOUNTING.write_text(
         "# irate-box (Box doctor, SD card writes): per-service I/O accounting, so the box can say which service\n"
         "# writes to the card. Remove this file and run systemctl daemon-reexec to undo.\n"
@@ -4571,6 +4622,31 @@ def card_accounting_on():
         if r.returncode:
             raise Refused(M("repair.card-accounting.failed", "systemctl {verb} failed.", verb=verb))
     return M("repair.card-accounting.on", "The box now counts each service's SD card writes.")
+
+
+def card_accounting_off():
+    """Remove irate-box's drop-in only; an administrator's own setting is left as it was."""
+    try:
+        before = json.loads(IO_ACCOUNTING_STATE.read_text()).get("before")
+    except (OSError, ValueError):
+        before = "off"
+    IO_ACCOUNTING.unlink(missing_ok=True)
+    for verb in ("daemon-reload", "daemon-reexec"):
+        r = run("systemctl", verb, timeout=120)
+        if r.returncode:
+            raise Refused(M("repair.card-accounting.failed", "systemctl {verb} failed.", verb=verb))
+    IO_ACCOUNTING_STATE.unlink(missing_ok=True)
+    if _io_accounting_configured():
+        return M(
+            "repair.card-accounting.off.own",
+            "irate-box stopped asking to count each service's writes. Another setting still keeps it on.",
+        )
+    if before == "on":
+        return M(
+            "repair.card-accounting.off.before",
+            "irate-box stopped asking to count each service's writes. The setting that had it on before is gone.",
+        )
+    return M("repair.card-accounting.off", "The box no longer counts each service's SD card writes.")
 
 
 def arch_remove(arch):

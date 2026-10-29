@@ -6467,6 +6467,14 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/admin/housecall" and payload.get("action") == "unpair":
+            name = str(payload.get("name") or "").strip()
+            if not name or "\0" in name or len(name) > 64:
+                self.send_json(400, refused.say(M("hub.housecall.peer", "Select a paired box.")))
+            else:
+                self.send_json(202, {"id": control_request({"action": "housecall-unpair", "name": name})})
+            return
+
         if path == "/admin/housecall" and payload.get("action") == "restore":
             path_arg = str(payload.get("path") or "")
             kind = str(payload.get("kind") or "")

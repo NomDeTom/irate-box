@@ -17986,13 +17986,13 @@ function hcRender(report) {
   hc.when.textContent = report.at ? new Date(report.at * 1000).toLocaleString() : "";
   const rows = (report.findings || []).map((f, i) => {
     const controls = (f.actions || [])
-      .filter((a) => a.choice === "housecall-restore")
+      .filter((a) => a.choice === "housecall-restore" || String(a.choice).startsWith("housecall-unpair:"))
       .map((a) =>
         el("button", {
           type: "button",
           className: "action-btn",
           textContent: said(a.label),
-          onclick: () => hcRestore(a),
+          onclick: () => (String(a.choice).startsWith("housecall-unpair:") ? hcUnpair(a) : hcRestore(a)),
         }),
       );
     return findingRow({
@@ -18021,6 +18021,19 @@ async function hcRestore(act) {
     hc.note.hidden = true;
   } catch (err) {
     hc.note.textContent = err && err.message ? err.message : "The file could not be restored.";
+  }
+}
+// Remove a paired box: the entry and the files this box made for it; the other box's line is the owner's to remove.
+async function hcUnpair(act) {
+  const name = String(act.choice).slice("housecall-unpair:".length);
+  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { label: said(act.label) }))) return;
+  hc.note.hidden = false;
+  hc.note.textContent = "Removing the pairing…";
+  try {
+    await postJSON("/admin/housecall", { action: "unpair", name });
+    hc.note.textContent = "The pairing is removed. Examine the box again to refresh its report.";
+  } catch (err) {
+    hc.note.textContent = err && err.message ? err.message : "The pairing could not be removed.";
   }
 }
 // The examination runs in a unit of its own and can take half an hour or more (an image took 32.5 min on the Pi):

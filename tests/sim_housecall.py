@@ -645,7 +645,8 @@ check(
     and found["housecall-peer-version"]["status"] == "warn"
     and found["housecall-peer:box-doctor"]["status"] == "problem"
     and found["housecall-peer:security-doctor"]["status"] == "ok"
-    and found["housecall-peer:updates-doctor"]["status"] == "warn",
+    and found["housecall-peer:updates-doctor"]["status"] == "warn"
+    and any(a["choice"] == "housecall-unpair:pi" for a in found["housecall-peer"]["actions"]),
     peer["findings"],
 )
 
@@ -666,6 +667,15 @@ try:
     check("  a box that was never paired: refused", False)
 except Refused as exc:
     check("  a box that was never paired: refused", exc.message["id"] == "housecall.peer.unknown")
+said = hub_control.housecall_unpair({"name": "pi"})
+check(
+    "  unpairing removes the entry, its host key and this box's key line",
+    said.get("id") == "housecall.peer.unpaired"
+    and "pi" not in housecall.load_peers()
+    and not (housecall.PEER_DIR / "pi.known_hosts").exists()
+    and not (housecall.PEER_DIR / "pi.authorized_key").exists(),
+    (said, housecall.load_peers()),
+)
 housecall.run = real_peer_run
 # Pairing, and a scan of a paired box, through the root helper.
 housecall.run = peer_run
