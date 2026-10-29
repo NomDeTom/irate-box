@@ -95,6 +95,11 @@ check("a genuine image does not wrap", housecall.card_wrap(genuine, size).get("f
 stand_in(0x99, "MYSTERY", "01/2025", "0x99", size)
 unknown = housecall.card_finding(disk=disk, sys_dir=sysdir, device=genuine, size=size)
 check(
+    "  its evidence names the card's maker and OEM",
+    any(e.startswith("maker 0x99") for e in unknown["evidence"]) and "OEM 0x5344" in unknown["evidence"],
+    unknown["evidence"],
+)
+check(
     "an unknown maker is a note, not a verdict",
     unknown["status"] == "ok"
     and any(n.get("id") == "housecall.card.unknown-maker" for n in unknown["notes"])

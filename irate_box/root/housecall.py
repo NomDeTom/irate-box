@@ -999,8 +999,10 @@ def card_finding(disk=None, sys_dir=None, device=None, part=None, size=None):
             if ident["manfid"] is not None
             else "unknown"
         )
+        oem = f"0x{ident['oemid']:04x}" if ident["oemid"] is not None else "unknown"
         evidence += [
             f"maker {maker_text}",
+            f"OEM {oem}",
             f"name {ident['name'] or 'unknown'}",
             f"date {ident['date'] or 'unknown'}",
             f"serial {ident['serial'] or 'unknown'}",
