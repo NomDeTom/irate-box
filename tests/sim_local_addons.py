@@ -39,8 +39,14 @@ def check(name, cond, info=""):
 
 
 def refused(name, m, why):
+    built = M.load()
     try:
-        M.check_local(m, "t", {"draw", "tools", "mesastastic", "drawing"}, {"drawing"})
+        M.check_local(
+            m,
+            "t",
+            {x["id"] for x in built},
+            {x["id"] for x in built if (x.get("menu") or {}).get("addons")},
+        )
         check(name, False, "accepted")
     except M.ManifestError as exc:
         check(name, why in str(exc), str(exc))
@@ -101,18 +107,19 @@ refused("refuses connect to javascript:", dict(good, capabilities={"connect": ["
 refused("refuses a quote in connect", dict(good, capabilities={"connect": ['ws://a";/']}), "connect")
 refused("refuses no consent", dict(good, addon={"title": "t", "summary": "s"}), "consent")
 shared = dict(good, entries=[{"menus": {"drawing": 1}, "name": "n", "path": "x.html"}])
-M.check_local(shared, "t", {"draw", "drawing"}, {"drawing"})
+M.check_local(shared, "t", builtin_ids, folder_ids)
 check("an entry may join a folder built into the hub", True)
 refused(
     "refuses entries on another list",
     dict(good, entries=[{"menus": {"not-a-folder": 1}, "name": "n", "path": "x.html"}]),
-    "folder built into the hub",
+    "folder that takes add-ons",
 )
-refused(
-    "refuses a built-in list that is not a folder",
-    dict(good, entries=[{"menus": {"mesastastic": 1}, "name": "n", "path": "x.html"}]),
-    "folder built into the hub",
-)
+for name in ("meshtastic", "flashing"):
+    refused(
+        f"refuses an entry in the hub's {name} list",
+        dict(good, entries=[{"menus": {name: 1}, "name": "n", "path": "x.html"}]),
+        "folder that takes add-ons",
+    )
 refused(
     "refuses entries for its own list without a menu",
     dict(good, entries=[{"menus": {"demo": 1}, "name": "n", "path": "x.html"}]),
