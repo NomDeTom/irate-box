@@ -24,6 +24,7 @@ import threading
 import time
 from pathlib import Path
 
+from irate_box import durable
 from irate_box.hub import meshdecode
 from irate_box.hub.refused import Refused, Said
 from irate_box.msg import M
@@ -68,12 +69,7 @@ def keys():
 
 
 def _save_channels(chs):
-    DIR.mkdir(parents=True, exist_ok=True)
-    tmp = CHANNELS.with_name(".channels.json.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump({"channels": chs}, fh)
-    os.replace(tmp, CHANNELS)
+    durable.write_checked(CHANNELS, json.dumps({"channels": chs}), 0o600)
 
 
 def add_channel(name, key):

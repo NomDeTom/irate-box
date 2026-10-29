@@ -3135,15 +3135,18 @@ def check_lost_writes():
 def check_writes_kept():
     """A file the box wrote and the card did not keep, even after a second write: safeio.write_checked's report
     (Part 2, step 2). Read only: the report is written where the write happened."""
-    from irate_box.root import safeio
+    from irate_box import durable
 
-    try:
-        entries = json.loads((safeio.ROOT_STATE / "write-check.json").read_text())
-    except (OSError, ValueError):
+    entries = []
+    for report in (durable.ROOT_STATE / "write-check.json", durable.STATE / "write-check.json"):
+        try:
+            said = json.loads(report.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(said, list):
+            entries += [e for e in said if isinstance(e, dict) and e.get("path")]
+    if not entries:
         return []
-    if not isinstance(entries, list):
-        return []
-    entries = [e for e in entries if isinstance(e, dict) and e.get("path")]
     if not entries:
         return []
     housecall = CODE / "irate_box/root/housecall.py"

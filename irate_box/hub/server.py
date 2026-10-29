@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from irate_box import confine, finding
+from irate_box import confine, durable, finding
 from irate_box.hub import (
     access,
     accounts,
@@ -353,10 +353,7 @@ def visibility():
 
 
 def save_visibility(data):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = VISIBILITY_FILE.parent / (VISIBILITY_FILE.name + ".tmp")
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, VISIBILITY_FILE)
+    durable.write_checked(VISIBILITY_FILE, json.dumps(data))
 
 
 # What a tile does for a visitor who sees it but may not open it: offer the
@@ -375,10 +372,7 @@ def locked_as():
 
 
 def save_locked_as(data):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = LOCKED_AS_FILE.parent / (LOCKED_AS_FILE.name + ".tmp")
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, LOCKED_AS_FILE)
+    durable.write_checked(LOCKED_AS_FILE, json.dumps(data))
 
 
 # Tiles that follow another app's switch but are only ever for the admin: the private repositories
@@ -603,10 +597,7 @@ def folders_state():
 
 
 def save_folders(data):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = FOLDERS_FILE.parent / (FOLDERS_FILE.name + ".tmp")
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, FOLDERS_FILE)
+    durable.write_checked(FOLDERS_FILE, json.dumps(data))
 
 
 def entry_pool(skip=()):
@@ -1495,13 +1486,7 @@ def load_settings():
 
 
 def save_settings(data):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = SETTINGS_FILE.parent / (SETTINGS_FILE.name + ".tmp")
-    with open(tmp, "w") as fh:
-        json.dump(data, fh)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, SETTINGS_FILE)
+    durable.write_checked(SETTINGS_FILE, json.dumps(data))
 
 
 # Held in memory so a page full of /status pollers costs no disk reads.
@@ -3138,6 +3123,11 @@ def _write_atomic(path, text):
     os.replace(tmp, path)
 
 
+def _write_protected(path, text):
+    """A setting or a manifest the box keeps: the write, then the card's read-back (durable.write_checked)."""
+    durable.write_checked(path, text)
+
+
 def _agreed_changes(old, new):
     """What changed in the part the owner agreed to, in words, for /admin."""
     a, b = manifests.agreed_part(old), manifests.agreed_part(new)
@@ -3201,9 +3191,9 @@ def catalogue_sync():
         changed = sorted(k for k in set(copy) | set(entry) if copy.get(k) != entry.get(k))
         if (copy.get("source") or {}).get("pin") != (entry.get("source") or {}).get("pin"):
             kick.append(i)
-        _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
+        _write_protected(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
         state[i] = {"status": "updated", "at": now, "changed": changed}
-    _write_atomic(CATALOGUE_STATE, json.dumps(state, indent=2) + "\n")
+    _write_protected(CATALOGUE_STATE, json.dumps(state, indent=2) + "\n")
     if kick:
         # A moved pin: fetch it now rather than at the librarian's next turn.
         librarian.reload_apps()
@@ -3280,10 +3270,10 @@ def _local_add(m, how):
     path = confine.under(manifests.LOCAL_D, f"{i}.json")
     if path.exists():
         raise refused.Refused(_already_added(i))
-    _write_atomic(path, json.dumps(m, indent=2) + "\n")
+    _write_protected(path, json.dumps(m, indent=2) + "\n")
     consents = _read_consents()
     consents[i] = {"at": int(time.time()), "how": how, "consent": m["addon"]["consent"]}
-    _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+    _write_protected(CONSENTS, json.dumps(consents, indent=2) + "\n")
     refresh_manifests()
     # Off until the owner switches it on, whatever was chosen for that name before (a removed
     # add-on, or a former built-in such as ELIZA): root's, which also puts it in the web
@@ -3340,14 +3330,14 @@ def local_addons_action(payload):
             if payload.get("agree") is not True:
                 return 400, refused.say(CONSENT_FIRST)
             entry = cat[i]
-            _write_atomic(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
+            _write_protected(path, json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
             consents = _read_consents()
             consents[i] = {
                 "at": int(time.time()),
                 "how": "catalogue",
                 "consent": entry["addon"]["consent"],
             }
-            _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+            _write_protected(CONSENTS, json.dumps(consents, indent=2) + "\n")
             refresh_manifests()
             librarian.reload_apps()
             library_start(
@@ -3379,7 +3369,7 @@ def local_addons_action(payload):
             confine.under(manifests.LOCAL_D, f"{i}.json").unlink(missing_ok=True)
             consents = _read_consents()
             consents.pop(i, None)
-            _write_atomic(CONSENTS, json.dumps(consents, indent=2) + "\n")
+            _write_protected(CONSENTS, json.dumps(consents, indent=2) + "\n")
             refresh_manifests()
             return 200, {"removed": i}
         return 400, refused.say(UNKNOWN_ACTION)
@@ -3597,10 +3587,7 @@ def reports():
 
 
 def save_reports(data):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = REPORTS_FILE.parent / (REPORTS_FILE.name + ".tmp")
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, REPORTS_FILE)
+    durable.write_checked(REPORTS_FILE, json.dumps(data))
 
 
 def report_key(app, ref):
@@ -3794,13 +3781,7 @@ def system_status():
 
 
 def save_messages(msgs):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = DATA_FILE.parent / (DATA_FILE.name + ".tmp")
-    with open(tmp, "w") as fh:
-        json.dump(msgs, fh)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, DATA_FILE)
+    durable.write_checked(DATA_FILE, json.dumps(msgs))
 
 
 def thread_id(path):
@@ -6236,18 +6217,16 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                 )
                 return
-            tmp = TILES_FILE.parent / (TILES_FILE.name + ".tmp")
-            STATE_DIR.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(
+            durable.write_checked(
+                TILES_FILE,
                 json.dumps(
                     {
                         "order": list(dict.fromkeys(data.get("order", []))),
                         "size": size,
                         "icon": icon,
                     }
-                )
+                ),
             )
-            os.replace(tmp, TILES_FILE)
             self.send_json(200, tiles_snapshot())
             return
 
@@ -6270,13 +6249,10 @@ class Handler(BaseHTTPRequestHandler):
             ):
                 self.send_json(400, refused.say(BAD_REQUEST))
                 return
-            tmp = STATUS_TILES_FILE.parent / (STATUS_TILES_FILE.name + ".tmp")
-            STATE_DIR.mkdir(parents=True, exist_ok=True)
             out = {k: list(dict.fromkeys(data.get(k, []))) for k in ("order", "hidden")}
             out["size"] = _sizes(data)  # an older page's "double" list, read as wide
             out["seen_by"] = {k: v for k, v in data.get("seen_by", {}).items() if v in TILE_SEEN_BY}
-            tmp.write_text(json.dumps(out))
-            os.replace(tmp, STATUS_TILES_FILE)
+            durable.write_checked(STATUS_TILES_FILE, json.dumps(out))
             self.send_json(200, status_tiles_snapshot())
             return
 
