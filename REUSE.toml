@@ -128,3 +128,9 @@ path = "rockchip/loaders/loaders.json"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "tools/alpine/keys/*.pub"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Alpine Linux"
+SPDX-License-Identifier = "LicenseRef-Alpine-public-key"

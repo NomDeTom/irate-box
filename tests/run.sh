@@ -33,6 +33,7 @@ run sim_servicewrites.py
 run sim_nand_state.py
 run sim_recommended.py
 run sim_hardening.py
+run sim_alpine_rescue.py
 run sim_uboot_build.py
 run sim_layout.py
 run sim_abslot.py
