@@ -560,7 +560,7 @@ check(
     (made, repairs),
 )
 
-# nginx files that tls.initialise does not write come from the copy, and are never called regenerated.
+# An nginx file that tls.initialise does not write comes from the copy, not called regenerated.
 htpasswd = put(nginx / "irate-box.htpasswd", "admin:hash\n", 0o644)
 retain.sweep()
 htpasswd.write_bytes(b"\xff" * 16)
