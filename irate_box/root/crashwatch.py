@@ -77,6 +77,14 @@ POWER_FAIL = Path(os.environ.get("HUB_POWER_FAIL", "/run/irate-box/power-fail"))
 UNDERVOLTAGE_MV = int(os.environ.get("HUB_UNDERVOLTAGE_MV", "4630"))
 POWER_ACTIONS = ("log", "sync", "shutdown")
 INA = ("ina219", "ina226", "ina230", "ina260", "ina3221", "ina700")
+# A program that already owns the shutdown: NUT's upsmon (Debian's nut-monitor) or apcupsd. The box then logs and
+# syncs, and asks that program to shut down; it never issues a second poweroff.
+SHUTDOWN_OWNERS = (
+    ("nut-monitor.service", "NUT's upsmon"),
+    ("upsmon.service", "NUT's upsmon"),
+    ("apcupsd.service", "apcupsd"),
+)
+_OWNER = {"at": 0.0, "name": ""}
 PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
 KMSG = os.environ.get("HUB_KMSG", "/dev/kmsg")
@@ -743,6 +751,21 @@ def _event(now, kind, text, reading):
     }
 
 
+def shutdown_owner(now=None, refresh=False):
+    """The program already managing the shutdown, or "". NUT's upsmon and apcupsd each have their own shutdown; a
+    second systemctl poweroff beside them is a race, not a help. Cached for a minute."""
+    now = time.time() if now is None else now
+    if not refresh and now - _OWNER["at"] < 60:
+        return _OWNER["name"]
+    name = ""
+    for unit, owner in SHUTDOWN_OWNERS:
+        if _run("systemctl", "is-active", "--quiet", unit).returncode == 0:
+            name = owner
+            break
+    _OWNER.update(at=now, name=name)
+    return name
+
+
 def _quiet(settings):
     action = settings.get("power_action", "log")
     if action not in POWER_ACTIONS:
@@ -753,7 +776,13 @@ def _quiet(settings):
         except (AttributeError, OSError):
             pass
     if action == "shutdown":
-        _run("systemctl", "poweroff", timeout=60)
+        owner = shutdown_owner()
+        if owner == "NUT's upsmon":
+            _run("upsmon", "-c", "fsd", timeout=60)  # NUT's own forced shutdown, then the UPS
+        elif owner == "apcupsd":
+            pass  # apcupsd's apccontrol shuts the box down; a second poweroff would race it
+        else:
+            _run("systemctl", "poweroff", timeout=60)
     return action
 
 
@@ -778,7 +807,11 @@ def power_tick(now, settings=None):
             state["undervoltage"] = False
     failing, why = power_fail()
     if failing and not state.get("power_fail"):
-        events.append(_event(now, "power-fail", why or "the power is failing", reading))
+        owner = shutdown_owner(now)
+        text = why or "the power is failing"
+        if owner:
+            text += f" ({owner} manages the shutdown)"
+        events.append(_event(now, "power-fail", text, reading))
         state["power_fail"] = True
         _quiet(settings)
     elif not failing and state.get("power_fail"):
@@ -1042,7 +1075,7 @@ def status():
         "events": _json(EVENTS, [])[-20:],
         "watchdog_device": None if os.geteuid() and not os.environ.get("HUB_SYSFS") else watchdog_device(),
         "watchdog_pending": board_watchdog_pending(),
-        "power": {"now": power_now(), "events": _json(POWER, [])[-20:]},
+        "power": {"now": power_now(), "events": _json(POWER, [])[-20:], "shutdown_owner": shutdown_owner()},
     }
 
 

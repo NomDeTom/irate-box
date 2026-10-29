@@ -2569,6 +2569,31 @@ def check_power(now=None):
     go = _go("health-settings", RECOVERY, "hs-undervoltage")
     if fails:
         latest = max(e["at"] for e in fails)
+        owner = cw.shutdown_owner(now)
+        notes = [M("power.failed.last", "The last one was {when}.", when=when(latest))]
+        if owner:
+            notes.insert(
+                0,
+                M(
+                    "power.manager",
+                    "The shutdown is {manager}'s. The box logs and syncs. That program shuts it down.",
+                    manager=owner,
+                ),
+            )
+        fix = (
+            M(
+                "power.failed.fix-manager",
+                "Check the supply and its cable. {manager} manages the shutdown. The box logs and syncs, and it shuts "
+                "the box down.",
+                manager=owner,
+            )
+            if owner
+            else M(
+                "power.failed.fix",
+                "Check the supply and its cable. The setting When the power fails can sync the disks or shut the box "
+                "down while the hold-up lasts.",
+            )
+        )
         return [
             finding(
                 "power",
@@ -2587,12 +2612,8 @@ def check_power(now=None):
                     "A power cut can lose the newest writes, and a card that loses writes can damage the files the "
                     "box keeps.",
                 ),
-                M(
-                    "power.failed.fix",
-                    "Check the supply and its cable. The setting When the power fails can sync the disks or shut "
-                    "the box down while the hold-up lasts.",
-                ),
-                notes=[M("power.failed.last", "The last one was {when}.", when=when(latest))],
+                fix,
+                notes=notes,
                 evidence=[render(when(e["at"])) for e in fails[-10:]],
                 go=go,
             )
@@ -5771,7 +5792,8 @@ def setting_groups(s, wd):
             "desc": M(
                 "hs.power-action.desc",
                 "A power-fail line or a UPS says the power is going. Log it, sync the disks, or shut the box down "
-                "while the hold-up lasts.",
+                "while the hold-up lasts. If NUT's upsmon or apcupsd is managing the shutdown, the box asks it to, "
+                "rather than doing it twice.",
             ),
             "current": s["power_action"],
             "options": [

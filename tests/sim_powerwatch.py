@@ -52,6 +52,7 @@ def check(name, cond, info=""):
 calls = []
 nut = {"status": "OL"}
 throttled = {"out": "throttled=0x0"}
+active = {"nut": False, "apcupsd": False}
 
 
 def fake_run(*cmd, **kw):
@@ -63,6 +64,12 @@ def fake_run(*cmd, **kw):
         out = "ups\n"
     elif cmd[:1] == ("upsc",):
         out = f"ups.status: {nut['status']}\n"
+    elif cmd[:2] == ("systemctl", "is-active"):
+        unit = cmd[-1]
+        yes = (active["nut"] and unit in ("nut-monitor.service", "upsmon.service")) or (
+            active["apcupsd"] and unit == "apcupsd.service"
+        )
+        return subprocess.CompletedProcess(cmd, 0 if yes else 3, "", "")
     return subprocess.CompletedProcess(cmd, 0, out, "")
 
 
@@ -143,6 +150,38 @@ check(
     (events, synced, calls),
 )
 check("  noted once", cw.power_tick(now + 180, settings) == [])
+
+# The box asks the program already managing the shutdown, rather than doing it twice.
+active["nut"] = True
+cw._OWNER.update(at=0.0, name="")
+cw.POWER_STATE.unlink(missing_ok=True)
+calls.clear()
+events = cw.power_tick(now + 195, settings)
+check(
+    "NUT's upsmon manages the shutdown: upsmon -c fsd, not a second poweroff",
+    ("upsmon", "-c", "fsd") in calls and ("systemctl", "poweroff") not in calls and events,
+    calls,
+)
+found = {f["id"]: f for f in health.check_power(now=now + 200)}
+check(
+    "  Box doctor says who shuts it down",
+    "power.manager" in message_ids(found["power"]),
+    found.get("power"),
+)
+active["nut"] = False
+active["apcupsd"] = True
+cw._OWNER.update(at=0.0, name="")
+cw.POWER_STATE.unlink(missing_ok=True)
+calls.clear()
+cw.power_tick(now + 210, settings)
+check(
+    "apcupsd manages the shutdown: no poweroff and no upsmon",
+    ("systemctl", "poweroff") not in calls and ("upsmon", "-c", "fsd") not in calls,
+    calls,
+)
+active["apcupsd"] = False
+cw._OWNER.update(at=0.0, name="")
+
 found = {f["id"]: f for f in health.check_power(now=now + 200)}
 check(
     "  Box doctor: a problem naming the times",
