@@ -36,11 +36,19 @@ function page(file, url, fetcher, scripts) {
       return json({});
     }
     return json(view);
-  }, ['account.js']);
+  }, ['https-address.js', 'account.js']);
   await wait();
   let d = p.d;
   check('apply over HTTP: warned, with the certificate and the HTTPS page', !d.getElementById('acct-http').hidden && /can be read by anyone on the WiFi/.test(t(d.getElementById('acct-http-text')))
     && d.getElementById('acct-https-link').href === 'https://box.local/account.html');
+  {
+    const ported = page('account.html', 'http://box.local:8080/account.html?next=/notebook.html',
+      async (u) => json(u === '/certificate.json' ? { on: true, port: 8443 } : view), ['https-address.js', 'account.js']);
+    await wait();
+    check('  the HTTPS page at the box\'s HTTPS port, not this page\'s, and its ?next= kept',
+      ported.d.getElementById('acct-https-link').href === 'https://box.local:8443/account.html?next=/notebook.html',
+      ported.d.getElementById('acct-https-link').href);
+  }
   check('  asking, not making', !d.getElementById('acct-signup-form').hidden && t(d.getElementById('acct-signup-button')) === 'Request account');
   const sf = d.getElementById('acct-signup-form');
   sf.elements.name.value = 'alice'; sf.elements.password.value = 'harbour lantern 1';
@@ -54,12 +62,12 @@ function page(file, url, fetcher, scripts) {
   check('sign in: on to the hub (or ?next=), where the header has their buttons, not left on this page',
     p.navs.length === 1 && /location\.assign\(next \|\| '\/'\)/.test(fs.readFileSync(`${WEB}/account.js`, 'utf8')), p.navs);
   view = { signup: 'open', http: 'prevented', https: false, me: null };
-  p = page('account.html', 'http://box.local/account.html', async () => json(view), ['account.js']);
+  p = page('account.html', 'http://box.local/account.html', async () => json(view), ['https-address.js', 'account.js']);
   await wait(); d = p.d;
   check('prevented over HTTP: says so, every field off', /takes passwords only over HTTPS/.test(t(d.getElementById('acct-http-text')))
     && [...d.querySelectorAll('#acct-guest input')].every((i) => i.disabled));
   view = { signup: 'off', http: 'prevented', https: true, me: null };
-  p = page('account.html', 'https://box.local/account.html', async () => json(view), ['account.js']);
+  p = page('account.html', 'https://box.local/account.html', async () => json(view), ['https-address.js', 'account.js']);
   await wait(); d = p.d;
   // One sign-in: with registration off, administrators still sign in here.
   check('off, over HTTPS: no warning; no sign-up, but the sign-in for its admins', d.getElementById('acct-http').hidden && /Administrators sign in here/.test(t(d.getElementById('acct-subtitle')))

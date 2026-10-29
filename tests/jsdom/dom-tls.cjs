@@ -321,7 +321,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
         }
         return new Response("{}", { status: 404 });
       },
-      ["certificate.js"],
+      ["https-address.js", "certificate.js"],
     );
   pub.asked = [];
   let p = pub({ set_up: false }, false);

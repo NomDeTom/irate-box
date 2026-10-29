@@ -11,7 +11,10 @@
   const httpOk = document.getElementById('setup-http-ok');
   if (plain) {
     document.getElementById('setup-http').hidden = false;
-    document.getElementById('setup-https-link').href = `https://${location.hostname}/admin/setup`;
+    // The set-up page at the box's HTTPS port, once the box says it.
+    httpsInfo().then((info) => {
+      document.getElementById('setup-https-link').href = `${httpsUrl(info && info.port)}admin/setup`;
+    });
     const lock = () => { for (const el of form.elements) el.disabled = !httpOk.checked; };
     httpOk.addEventListener('change', lock);
     lock();

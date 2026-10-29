@@ -9,10 +9,13 @@
   const list = document.getElementById('flash-list');
   const el = (tag, props = {}, ...kids) => { const node = Object.assign(document.createElement(tag), props); node.append(...kids.filter(Boolean)); return node; };
 
-  // What stands in the way, in words, or '' when nothing does.
-  function blocker() {
+  // What stands in the way, in words, or null when nothing does. info: what /certificate.json says of HTTPS.
+  function blocker(info) {
     if (!window.isSecureContext) {
-      const https = `https://${location.host}${location.pathname}`;
+      if (info && !info.on) {
+        return el('span', { textContent: 'Flashing from the browser needs HTTPS, and this box does not serve HTTPS. An administrator can enable it at Administration → Security → HTTPS.' });
+      }
+      const https = httpsHere(info && info.port);
       return el('span', {}, 'Open this page over HTTPS: ', el('a', { href: https, textContent: https }),
         '. Flashing from the browser needs HTTPS. If this box has no HTTPS, an administrator can enable it at Administration → Security → HTTPS.');
     }
@@ -42,7 +45,7 @@
       return;
     }
     document.getElementById('flash-download').hidden = !data.download;
-    const stop = blocker();
+    const stop = blocker(window.isSecureContext ? null : await httpsInfo());
     const ready = !stop && data.engine && data.targets.length > 0;
     if (ready) {
       try { await import('/flasher/esp-web-tools/install-button.js'); } catch (error) { can.textContent = `Flasher component unavailable (${error.message}).`; return; }

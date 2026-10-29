@@ -27,6 +27,9 @@
     "formatAge": "readonly",
     "getJSON": "readonly",
     "hljs": "readonly",
+    "httpsHere": "readonly",
+    "httpsInfo": "readonly",
+    "httpsUrl": "readonly",
     "hueOf": "readonly",
     "mdInline": "readonly",
     "postJSON": "readonly",
@@ -43,7 +46,7 @@
     "no-unused-vars": [
       "error",
       {
-        "varsIgnorePattern": "^(AL|AW|EMOJI|OPEN_CHIPS|actionButton|chipRow|initTabs|Heatmap|HubLock|LadderChart|SETUP_STATE|TOUR|askHere|attachHuePicker|drawAttention|esc|findingRow|formatAge|getJSON|hueOf|mdInline|postJSON|reportButton|withHue)$",
+        "varsIgnorePattern": "^(AL|AW|EMOJI|OPEN_CHIPS|actionButton|chipRow|initTabs|Heatmap|HubLock|LadderChart|SETUP_STATE|TOUR|askHere|attachHuePicker|drawAttention|esc|findingRow|formatAge|getJSON|httpsHere|httpsInfo|httpsUrl|hueOf|mdInline|postJSON|reportButton|withHue)$",
         "caughtErrors": "none",
         "ignoreRestSiblings": true
       }

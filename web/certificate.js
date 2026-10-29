@@ -57,13 +57,8 @@ const PLATFORMS = [
 const $ = (id) => document.getElementById(id);
 const make = (tag, text) => { const node = document.createElement(tag); if (text != null) node.textContent = text; return node; };
 
-// The host as a URL writes it: an IPv6 address in brackets.
-const urlHost = (h) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h);
+// A host without its IPv6 brackets, for comparing. httpsUrl() is https-address.js's.
 const bare = (h) => h.replace(/^\[|\]$/g, '').toLowerCase();
-
-function httpsUrl(port, host = location.hostname) {
-  return `https://${urlHost(host)}${port && port !== 443 ? `:${port}` : ''}/`;
-}
 
 async function trusted(port, host) {
   // An opaque request: it succeeds only if this device accepts the box's certificate for that address.

@@ -39,7 +39,8 @@ function render(data) {
   $('acct-http-text').textContent = prevented
     ? 'This page is on plain HTTP, and this box takes passwords only over HTTPS: anyone on the WiFi could read one sent here.'
     : 'This page is on plain HTTP: a password sent from it can be read by anyone on the WiFi. Use one you use nowhere else, or the HTTPS page.';
-  $('acct-https-link').href = `https://${location.host}${location.pathname}`;
+  // This page (with its ?next=) at the box's HTTPS port, once the box says it.
+  if (plain) httpsInfo().then((info) => { $('acct-https-link').href = httpsHere(info && info.port); });
   document.querySelectorAll('#acct-guest input, #acct-guest button, #acct-me input, #acct-me button[type=submit]').forEach((n) => { n.disabled = prevented; });
   $('acct-me').hidden = !data.me;
   $('acct-guest').hidden = !!data.me;
