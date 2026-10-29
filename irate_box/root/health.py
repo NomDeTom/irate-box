@@ -4006,6 +4006,20 @@ def card_groups():
     return groups
 
 
+def hardening_groups():
+    """The invasive hardening choices (root/hardening.py), drawn beside the write settings."""
+    from irate_box.root import hardening
+
+    return hardening.groups()
+
+
+def check_hardening():
+    """The filesystem and A/B choices recorded, and how far the A/B boot files are ready."""
+    from irate_box.root import hardening
+
+    return hardening.findings()
+
+
 def _systemctl(*args):
     r = run("systemctl", *args, timeout=120)
     if r.returncode:
@@ -4113,6 +4127,10 @@ def card_set(key, value):
             if value == "on"
             else M("repair.card-set.crc-off", "UBIFS no longer checks the flash's data on each read.")
         )
+    if key == "filesystem" or key == "ab":
+        from irate_box.root import hardening
+
+        return hardening.set_filesystem(value) if key == "filesystem" else hardening.set_ab(value)
     if key == "writeback":
         longer = value == "longer"
         if longer:
@@ -7080,6 +7098,7 @@ def scan(quick=False):
         check_idle,
         check_usb_filesystems,
         check_package_files,
+        check_hardening,
     ):
         start = time.monotonic()
         try:
@@ -7173,6 +7192,7 @@ def doctor_settings():
             + led_groups(ls, armbian_led_state() if ls else None)
             + rfkill_groups(rfkill_status()),
             "card_groups": card_groups(),
+            "hardening_groups": hardening_groups(),
         }
     except Exception:  # noqa: BLE001 - the report goes out without it
         return None
@@ -7192,7 +7212,7 @@ CHOICE_RE = re.compile(
     r"|^rfkill:(wifi|bluetooth):(on|off|leave)$|^rfkill-apply$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
-    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off))$"
+    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off)|filesystem:(ext4|btrfs|f2fs|btrfs[+]f2fs)|ab:(off|tryboot|uboot))$"
     r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
     r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"

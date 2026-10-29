@@ -109,6 +109,15 @@ setTimeout(async () => {
   check('system write settings: a row a setting in the SD card writes card, its name and its choices',
     csRow && /System journal/.test(csRow.textContent) && /On the SD card/.test(csRow.textContent) && /In memory/.test(csRow.textContent)
     && d.getElementById('card-sys-foot').children.length > 0, csRow && csRow.textContent);
+  // The invasive hardening choices, in their own card on Recovery.
+  const hg = { key: 'filesystem', label: 'Filesystem for a fresh install', desc: 'This install runs on ext4.', current: 'ext4',
+    options: [{ value: 'ext4', label: 'ext4 (now)', choice: 'card-set:filesystem:ext4' }, { value: 'btrfs', label: 'btrfs for the state', choice: 'card-set:filesystem:btrfs' }] };
+  w.renderHealth({ ...fx, report: { ...fx.report, settings: { ...(fx.report.settings || {}), groups: [], card_groups: [], hardening_groups: [hg] } } });
+  const hgRow = d.querySelector('#hardening-groups .up-group');
+  check('hardening options: a row in their own Recovery card, its name and its choices',
+    hgRow && /Filesystem for a fresh install/.test(hgRow.textContent) && /ext4 \(now\)/.test(hgRow.textContent)
+    && /btrfs for the state/.test(hgRow.textContent) && d.getElementById('hardening-foot').children.length > 0,
+    hgRow && hgRow.textContent);
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);

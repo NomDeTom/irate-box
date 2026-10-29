@@ -32,6 +32,7 @@ run sim_card_history.py
 run sim_servicewrites.py
 run sim_nand_state.py
 run sim_recommended.py
+run sim_hardening.py
 run sim_lost_writes.py
 run sim_powerwatch.py
 run sim_package_verify.py
