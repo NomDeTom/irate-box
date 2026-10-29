@@ -17930,6 +17930,20 @@ renderInventory(); // the menu may have been built before this script ran
 const hc = {
   target: document.getElementById("housecall-target"),
   path: document.getElementById("housecall-path"),
+  imageFirst: document.getElementById("housecall-image-first"),
+  imageFirstLabel: document.getElementById("housecall-image-first-label"),
+  imagePath: document.getElementById("housecall-image-first-path"),
+  imagePathLabel: document.getElementById("housecall-image-first-path-label"),
+  onOwnCard: document.getElementById("housecall-on-own-card"),
+  onOwnCardLabel: document.getElementById("housecall-on-own-card-label"),
+  manifest: document.getElementById("housecall-manifest"),
+  manifestLabel: document.getElementById("housecall-manifest-label"),
+  peerName: document.getElementById("housecall-peer-name"),
+  peerHost: document.getElementById("housecall-peer-host"),
+  peerUser: document.getElementById("housecall-peer-user"),
+  peerPort: document.getElementById("housecall-peer-port"),
+  pair: document.getElementById("housecall-pair"),
+  pairNote: document.getElementById("housecall-pair-note"),
   dpkg: document.getElementById("housecall-dpkg"),
   git: document.getElementById("housecall-git"),
   scan: document.getElementById("housecall-scan"),
@@ -17941,16 +17955,36 @@ const hc = {
 function hcPathState() {
   if (!hc.target) return;
   const whole = hc.target.value === "this-card";
+  const peer = hc.target.value === "peer";
   hc.path.disabled = whole;
-  hc.path.placeholder = whole ? "" : "/path/to/card.img";
-  hc.dpkg.disabled = !["root", "this-card"].includes(hc.target.value);
-  hc.git.disabled = hc.dpkg.disabled;
+  hc.path.placeholder = whole ? "" : peer ? "the other box's name" : "/path/to/card.img";
+  const card = hc.target.value === "device";
+  const first = card && hc.imageFirst.checked;
+  hc.imageFirstLabel.hidden = !card;
+  hc.imagePathLabel.hidden = !first;
+  hc.onOwnCardLabel.hidden = !first;
+  hc.imagePath.disabled = !first;
+  hc.onOwnCard.disabled = !first;
+  hc.manifestLabel.hidden = whole || peer;
+  hc.manifest.disabled = whole || peer;
+  hc.dpkg.disabled = peer;
+  hc.git.disabled = peer;
 }
 function hcRender(report) {
   if (!report) return;
   hc.when.textContent = report.at ? new Date(report.at * 1000).toLocaleString() : "";
-  const rows = (report.findings || []).map((f, i) =>
-    findingRow({
+  const rows = (report.findings || []).map((f, i) => {
+    const controls = (f.actions || [])
+      .filter((a) => a.choice === "housecall-restore")
+      .map((a) =>
+        el("button", {
+          type: "button",
+          className: "action-btn",
+          textContent: said(a.label),
+          onclick: () => hcRestore(a),
+        }),
+      );
+    return findingRow({
       id: `housecall-${i}`,
       state: f.status,
       title: said(f.title),
@@ -17959,10 +17993,24 @@ function hcRender(report) {
       notes: (f.notes || []).map(said),
       evidence: f.evidence || [],
       commands: f.commands || [],
-      controls: [],
-    }),
-  );
+      controls,
+    });
+  });
   hc.findings.replaceChildren(...rows);
+}
+// A damaged file's Restore button asks first, then the root helper puts it back; the report is drawn again.
+async function hcRestore(act) {
+  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { label: said(act.label) }))) return;
+  hc.note.hidden = false;
+  hc.note.textContent = "Restoring…";
+  try {
+    await postJSON("/admin/housecall", { action: "restore", path: act.path, kind: act.kind });
+    const data = await getJSON("/admin/housecall");
+    if (data && data.report) hcRender(data.report);
+    hc.note.hidden = true;
+  } catch (err) {
+    hc.note.textContent = err && err.message ? err.message : "The file could not be restored.";
+  }
 }
 // The examination runs in a unit of its own and can take half an hour or more (an image took 32.5 min on the Pi):
 // its running report is shown, with Stop, until the finished one replaces it.
@@ -17984,6 +18032,7 @@ async function hcWait(previous) {
 }
 if (hc.scan) {
   hc.target.addEventListener("change", hcPathState);
+  hc.imageFirst.addEventListener("change", hcPathState);
   hcPathState();
   hc.scan.addEventListener("click", async () => {
     const body = {
@@ -17992,7 +18041,17 @@ if (hc.scan) {
       path: hc.path.value.trim(),
       dpkg: !hc.dpkg.disabled && hc.dpkg.checked,
       git_tree: !hc.git.disabled && hc.git.checked,
+      manifest: hc.manifest.disabled ? "" : hc.manifest.value.trim(),
     };
+    if (body.target === "device" && hc.imageFirst.checked) {
+      body.image_first = hc.imagePath.value.trim();
+      body.on_own_card = hc.onOwnCard.checked;
+      if (!body.image_first) {
+        hc.note.hidden = false;
+        hc.note.textContent = "Give the file the card is imaged to.";
+        return;
+      }
+    }
     if (body.target !== "this-card" && !body.path) {
       hc.note.hidden = false;
       hc.note.textContent = "Give the path the doctor examines.";
@@ -18014,6 +18073,22 @@ if (hc.scan) {
       hc.note.textContent = err && err.message ? err.message : "The doctor could not start.";
       hc.scan.disabled = false;
       hc.stop.hidden = true;
+    }
+  });
+  hc.pair.addEventListener("click", async () => {
+    hc.pairNote.hidden = false;
+    hc.pairNote.textContent = "Pairing…";
+    try {
+      await postJSON("/admin/housecall", {
+        action: "pair",
+        name: hc.peerName.value.trim(),
+        host: hc.peerHost.value.trim(),
+        user: hc.peerUser.value.trim() || "root",
+        port: Number(hc.peerPort.value) || 22,
+      });
+      hc.pairNote.textContent = "Paired. Put this box's public key on the other box, then examine it.";
+    } catch (err) {
+      hc.pairNote.textContent = err && err.message ? err.message : "The box could not be paired.";
     }
   });
   hc.stop.addEventListener("click", async () => {

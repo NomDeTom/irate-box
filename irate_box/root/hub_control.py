@@ -84,7 +84,8 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
    "reference": "...", "dpkg": true|false, "git_tree": true|false}
       The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
       only, with a verdict for each file, in a unit of its own; to control/housecall.json. "reference" is a JSON
-      manifest, "dpkg" and "git_tree" add the package and irate-box tree references (a folder or this box only).
+      manifest, "dpkg" and "git_tree" add references: a Box doctor manifest (any target), and the packages' and
+      irate-box's tree, read from the box's own folders or from the image or card.
   {"id": ..., "action": "housecall-stop"}
       The running examination stopped.
   {"id": ..., "action": "net-scan"[, "iface": "<interface or phy>"]}
@@ -6126,32 +6127,56 @@ def housecall_scan(req):
 
     kind = str(req.get("target") or "")
     path = str(req.get("path") or "")
-    if kind not in ("image", "device", "root", "this-card"):
+    if kind not in ("image", "device", "root", "this-card", "peer"):
         raise Refused(M("control.housecall.target", "Select what the doctor examines."))
-    if kind != "this-card" and (not path or "\0" in path or len(path) > 4096):
+    if kind == "peer" and (not path or "\0" in path or len(path) > 64):
+        raise Refused(M("control.housecall.peer", "Select a paired box."))
+    if kind not in ("this-card", "peer") and (not path or "\0" in path or len(path) > 4096):
         raise Refused(M("control.housecall.path", "Give the path the doctor examines."))
     reference = str(req.get("reference") or "")
     if "\0" in reference or len(reference) > 4096:
         raise Refused(M("control.housecall.reference", "The reference file's path is not valid."))
-    if kind in ("image", "device") and (req.get("dpkg") or req.get("git_tree")):
+    image_first = str(req.get("image_first") or "")
+    if image_first and (kind != "device" or "\0" in image_first or len(image_first) > 4096):
         raise Refused(
             M(
-                "control.housecall.refs-own",
-                "The packages' checksums and irate-box's git tree are read from a box's own folders. Use them with "
-                "a folder or this box's own files.",
+                "control.housecall.image-first",
+                "Give the image's path, and only for a card in a reader.",
             )
         )
     if run("systemctl", "is-active", HOUSECALL_UNIT).stdout.strip() == "active":
         raise Refused(M("control.housecall.running", "The Housecall doctor is already examining. Stop it first."))
     args = [f"{CODE}/irate-box", "housecall"]
-    args += ["--this-card"] if kind == "this-card" else [f"--{kind}", path]
+    if kind == "this-card":
+        args.append("--this-card")
+    elif kind == "peer":
+        args += ["--peer", path]
+    else:
+        args += [f"--{kind}", path]
+    manifest = str(req.get("manifest") or "")
+    if "\0" in manifest or len(manifest) > 4096:
+        raise Refused(M("control.housecall.manifest", "The manifest's path is not valid."))
+    if image_first:
+        args += ["--image-first", image_first]
+        if req.get("on_own_card") is True:
+            args.append("--on-own-card")
     if reference:
         args += ["--reference", reference]
+    if manifest:
+        args += ["--manifest", manifest]
     if req.get("dpkg"):
         args.append("--dpkg")
     if req.get("git_tree"):
         args.append("--git-tree")
-    label = "this box's own files" if kind == "this-card" else path
+    label = (
+        "this box's own files"
+        if kind == "this-card"
+        else f"the box {path}"
+        if kind == "peer"
+        else f"{path}, imaged first"
+        if image_first
+        else path
+    )
     housecall.write_report(housecall.running_report(label))
     said = run(
         "systemd-run",
@@ -6175,6 +6200,32 @@ def housecall_scan(req):
         "The Housecall doctor is examining {target}, in the background. Its report shows here when it ends.",
         target=label,
     )
+
+
+def housecall_pair(req):
+    """Pair another box once, for the Housecall doctor to read: its address and SSH host key, no password."""
+    from irate_box.root import housecall
+
+    try:
+        port = int(req.get("port") or 22)
+    except (TypeError, ValueError):
+        port = 0
+    return housecall.pair_peer(
+        str(req.get("name") or "").strip(),
+        str(req.get("host") or "").strip(),
+        str(req.get("user") or "root").strip(),
+        port,
+    )
+
+
+def housecall_restore(req):
+    """One file from the last report put back, from the copy, tree or package that report named."""
+    from irate_box.root import housecall
+
+    path = str(req.get("path") or "")
+    if not path or "\0" in path or len(path) > 4096:
+        raise Refused(M("control.housecall.restore-path", "Select a damaged file from the last report."))
+    return housecall.restore_from_report(path, str(req.get("kind") or "") or None)
 
 
 def housecall_stop(req):
@@ -6983,10 +7034,20 @@ def _rk_card(req, what):
         raise Refused(M("rkcard.name", "Select a card.")) from None
     card = (str(req.get("card") or ""), size, str(req.get("serial") or ""))
     if what == "check":
-        return rkcard.check(*card)
-    if what == "genuine":
-        return rkcard.genuine(*card)
-    return rkcard.flash(*card, str(req.get("image") or ""), str(req.get("sha256") or "").lower())
+        said = rkcard.check(*card)
+    elif what == "genuine":
+        said = rkcard.genuine(*card)
+    else:
+        said = rkcard.flash(*card, str(req.get("image") or ""), str(req.get("sha256") or "").lower())
+    # The result is on the Rockchip page and in the Housecall doctor: the card is what that doctor examines. A
+    # report that cannot be written does not fail the card action that already succeeded.
+    from irate_box.root import housecall
+
+    try:
+        housecall.record_card(card[0], what, said)
+    except Exception:  # noqa: BLE001 # nosec B110 - the card action is the answer; the doctor's copy is best effort
+        pass
+    return said
 
 
 def _rk_write(rkboard, req):
@@ -7404,6 +7465,8 @@ ACTIONS = {
     "health-fix": health_fix,
     "housecall-scan": housecall_scan,
     "housecall-stop": housecall_stop,
+    "housecall-restore": housecall_restore,
+    "housecall-pair": housecall_pair,
     "net-scan": net_scan,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,

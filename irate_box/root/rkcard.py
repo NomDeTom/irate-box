@@ -92,7 +92,9 @@ def check(name, size, serial):
             said.append(f"{part['name']} ({fstype}): not checked")
     if not parts:
         said.append("no partitions the kernel found")
-    return M("rkcard.checked", "The card was read, nothing written: {said}.", said="; ".join(said))
+    message = M("rkcard.checked", "The card was read, nothing written: {said}.", said="; ".join(said))
+    message["status"] = "warn" if any(("damaged" in line or "errors found" in line) for line in said) else "ok"
+    return message
 
 
 def genuine(name, size, serial):
