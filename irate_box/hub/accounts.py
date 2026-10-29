@@ -103,6 +103,21 @@ SIGN_IN_FIRST = M("accounts.sign-in-first", "Sign in first.")
 NAME_TAKEN = M("accounts.name.taken", "Username unavailable.")
 NOT_FOUND = M("accounts.not-found", "Account not found.")
 NO_USERS = M("accounts.signin.off", "Registration closed. This box has no user accounts.")
+# Sign-in with sign-up off: one answer for a name that is not an admin and for an admin's wrong password, so it
+# does not tell which names are administrators.
+ADMINS_ONLY = M(
+    "accounts.signin.admins-only",
+    "Sign-in failed. The name and password do not match an administrator account. This box has no user accounts, "
+    "so only its administrators sign in here.",
+)
+# The box's script login is always named admin (hub_control's password file for nginx). It is not an account.
+SCRIPT_LOGIN_NAME = "admin"
+SCRIPT_LOGIN = M(
+    "accounts.signin.script-login",
+    "Sign-in failed. {name} is the name of the box's sign-in for scripts and the command line, not an account. "
+    "Sign in here with your administrator account.",
+    name=SCRIPT_LOGIN_NAME,
+)
 
 
 def _limit_reached():
@@ -681,10 +696,12 @@ def login(name, password, addr="", https=False, device=None, mark=None):
     )
     # With sign-up off the box has no users' accounts, but its admins still sign in here: the one login.
     # Judged after the password check, so the answer takes as long either way.
-    if settings()["signup"] == "off" and not (acc and acc.get("role") == "admin"):
+    if settings()["signup"] == "off" and not (ok and acc and acc.get("role") == "admin"):
         with _lock:
             _failed(name, addr, now, known, password)
-        raise AccountError(NO_USERS)
+        if not acc and isinstance(name, str) and name.lower() == SCRIPT_LOGIN_NAME:
+            raise AccountError(SCRIPT_LOGIN)
+        raise AccountError(ADMINS_ONLY)
     with _lock:
         if not ok or not acc:
             _failed(name, addr, now, known, password)
