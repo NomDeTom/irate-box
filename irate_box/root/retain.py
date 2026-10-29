@@ -20,6 +20,7 @@ running is the card verdict. Stdlib only.
 import hashlib
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -407,6 +408,29 @@ def installed():
     return (SYSTEMD / SERVICE).exists()
 
 
+def remove_copy():
+    """The copy and its manifest, here and in every extra place: what switching the step off leaves behind is
+    nothing. Only files with our names are removed from an extra place; the rest of a USB drive is left alone."""
+    ids = {_ident(path) for path in protected()}
+    try:
+        ids |= {_ident(Path(path)) for path in _load_manifest().get("entries", {})}
+    except (OSError, ValueError):
+        pass
+    shutil.rmtree(STORE, ignore_errors=True)
+    MANIFEST.unlink(missing_ok=True)
+    for store in extra_stores():
+        for ident in ids:
+            for name in (ident, ident + ".prev"):
+                try:
+                    (store / name).unlink(missing_ok=True)
+                except OSError:
+                    pass
+        try:
+            (store / "manifest.json").unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def install_units(on=True):
     SYSTEMD.mkdir(parents=True, exist_ok=True)
     if on:
@@ -421,6 +445,7 @@ def install_units(on=True):
     for name in (TIMER, SERVICE, SWEEP_SERVICE):
         (SYSTEMD / name).unlink(missing_ok=True)
     restore.run("systemctl", "daemon-reload")
+    remove_copy()
     return M("retain.off", "The copy is gone, and the boot check with it.")
 
 

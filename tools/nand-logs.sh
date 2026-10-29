@@ -573,6 +573,7 @@ state_on() {
 	systemctl start "$name"
 	for d in "${SYS_STATE[@]}"; do [[ -d $d ]] && mount --bind "$MNT/sys${d//\//_}" "$d"; done
 	echo "state=1" >>"$STATE"
+	crc_set on
 	say "done: the hub's state and the system's on the flash; on the card: ${large[*]}. Undo: $0 state off"
 }
 

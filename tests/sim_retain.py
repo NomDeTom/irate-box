@@ -182,7 +182,9 @@ check(
     ("systemctl", "disable", "--now", retain.TIMER) in calls
     and not service.exists()
     and not sweep_service.exists()
-    and not timer.exists(),
+    and not timer.exists()
+    and not retain.STORE.exists()
+    and not retain.MANIFEST.exists(),
     calls,
 )
 

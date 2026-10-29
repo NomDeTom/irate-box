@@ -20,6 +20,6 @@ CHOICE_RE = re.compile(
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off)|filesystem:(ext4|btrfs|f2fs|btrfs[+]f2fs)|ab:(off|tryboot|uboot)|card_accounting:(on|off))$"
     r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
-    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$"
+    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$|^retain:(on|off)$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )

@@ -6254,6 +6254,33 @@ def setting_groups(s, wd):
                 ],
             }
         )
+    from irate_box.root import retain
+
+    groups.append(
+        {
+            "key": "retain",
+            "label": M("retain.setting.title", "A second copy of the settings and keys"),
+            "desc": M(
+                "retain.setting.desc",
+                "The box keeps a copy of the small settings and keys it needs to come back after damage, and checks "
+                "them at every boot. Switching it off removes the copy and the check.",
+            ),
+            "current": "on" if retain.installed() else "off",
+            "options": [
+                {"value": "on", "label": ON, "choice": "retain:on"},
+                {
+                    "value": "off",
+                    "label": OFF,
+                    "choice": "retain:off",
+                    "confirm": M(
+                        "retain.setting.off.confirm",
+                        "Remove the second copy of the settings and keys, and stop the boot check? The copy holds "
+                        "the CA key and the WiFi secrets, so it is deleted here and in every extra place.",
+                    ),
+                },
+            ],
+        }
+    )
     from irate_box.root import bootkey
 
     if bootkey.supported():
@@ -7583,6 +7610,10 @@ def fix(choice):
         from irate_box.root import bootkey
 
         return bootkey.install_units(arg == "on")
+    if kind == "retain":
+        from irate_box.root import retain
+
+        return retain.install_units(arg == "on")
     if kind == "card-set":
         from irate_box.root import recommended
 
