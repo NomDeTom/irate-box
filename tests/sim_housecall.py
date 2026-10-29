@@ -174,6 +174,17 @@ check(
     records,
 )
 
+zero_record = housecall._record(
+    "/zero", 4096, iter([zero]), {"/zero": {"sha256": hashlib.sha256(good).hexdigest(), "manifest": "1"}}
+)
+check(
+    "a protected file that reads back as all zero is damaged, not a change",
+    zero_record["verdict"] == "damaged"
+    and zero_record["reason"]["id"] == "housecall.why-zero-damaged"
+    and zero_record["reason"]["en"] == "It reads back whole as zero.",
+    zero_record,
+)
+
 # The reference manifest as a file, and its refusal of a bad digest.
 refs = T / "refs.json"
 refs.write_text(json.dumps({"version": 1, "files": {"/good": {"sha256": hashlib.sha256(good).hexdigest()}}}))
@@ -566,6 +577,8 @@ def peer_run(*cmd, timeout=None, binary=False):
     peer_calls.append(cmd)
     if cmd[0] == "ssh-keyscan":
         return subprocess.CompletedProcess(cmd, 0, "box.local ssh-ed25519 AAAAHOSTKEY\n", "")
+    if cmd[0] == "ssh-keygen" and "-lf" in cmd:
+        return subprocess.CompletedProcess(cmd, 0, "256 SHA256:FINGERPRINT box.local (ED25519)\n", "")
     if cmd[0] == "ssh-keygen":
         return subprocess.CompletedProcess(cmd, 0, "ssh-ed25519 AAAAPUBLIC this-box\n", "")
     if cmd[0] == "ssh":
@@ -586,14 +599,18 @@ def peer_run(*cmd, timeout=None, binary=False):
 
 real_peer_run = housecall.run
 housecall.run = peer_run
-said = housecall.pair_peer("pi", "192.0.2.10", "root", 22)
+said = housecall.pair_peer("pi", "192.0.2.10")
 peers = housecall.load_peers()
 check(
     "another box is paired once: its address and host key, never a password",
     said.get("id") == "housecall.peer.paired"
     and peers.get("pi", {}).get("host") == "192.0.2.10"
     and "password" not in json.dumps(peers)
-    and (housecall.PEER_DIR / "pi.known_hosts").read_text().startswith("box.local ssh-ed25519"),
+    and peers.get("pi", {}).get("user") == "hub"
+    and (housecall.PEER_DIR / "pi.known_hosts").read_text().startswith("box.local ssh-ed25519")
+    and "SHA256:FINGERPRINT" in str(said)
+    and (housecall.PEER_DIR / "pi.authorized_key").read_text().startswith("restrict,command=")
+    and (housecall.PEERS.stat().st_mode & 0o777) == 0o600,
     (said, peers),
 )
 peer = housecall.peer_examine("pi")
@@ -631,7 +648,7 @@ housecall.run = peer_run
 hub_control.run = helper_run
 active["state"] = "inactive"
 ran.clear()
-paired = hub_control.housecall_pair({"name": "pi2", "host": "192.0.2.11", "user": "root", "port": 22})
+paired = hub_control.housecall_pair({"name": "pi2", "host": "192.0.2.11", "port": 22})
 check(
     "the root helper pairs a box, and passes a peer scan to the doctor",
     paired.get("id") == "housecall.peer.paired" and ("systemd-run" not in " ".join(str(c) for c in ran)),

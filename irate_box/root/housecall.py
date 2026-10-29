@@ -112,14 +112,16 @@ def _verdict(path, size, blocks, ff_blocks, zero_blocks, digest, references, nby
         return "genuine", None
     if blocks and ff_blocks == blocks:
         return "damaged", M("housecall.why-ff", "It reads back whole as 0xFF.")
+    if blocks and zero_blocks == blocks:
+        if wanted:
+            return "damaged", M("housecall.why-zero-damaged", "It reads back whole as zero.")
+        return "suspect", M("housecall.why-zero", "It reads back whole as zero, and there is no reference.")
     if wanted:
         if wanted.get("manifest"):
             return "changed", M(
                 "housecall.why-changed", "It changed since Box doctor last copied it. That is a change, not damage."
             )
         return "damaged", M("housecall.why-reference", "It differs from its reference.")
-    if blocks and zero_blocks == blocks:
-        return "suspect", M("housecall.why-zero", "It reads back whole as zero, and there is no reference.")
     return "unknown", None
 
 
@@ -638,7 +640,6 @@ def examine_device(path, references=None):
 
 
 MIN_IMAGE = 1 << 20
-DIRECT = ("iflag=direct",)
 
 
 def _source_size(device):
@@ -675,8 +676,8 @@ def _free_bytes(folder):
 
 def copy_device(device, image, on_own_card=False, progress=None):
     """The card imaged first, read only. dd reads 4 KiB at a time with noerror and sync (a bad sector is zero-filled,
-    not the whole 4 MiB block), and the image is trimmed to the card's exact size: a card is rarely a whole number of
-    blocks. It is written as <image>.part and renamed only when whole, so a stopped or failed copy never looks like a
+    not the whole 4 MiB block) and the kernel's read-ahead, and the image is trimmed to the card's exact size: a card
+    is rarely a whole number of blocks. It is written as <image>.part and renamed only when whole, so a stopped or failed copy never looks like a
     card. It is refused on this box's own card unless the owner says so."""
     device, image = Path(device).resolve(), Path(image).resolve()
     if not image.parent.is_dir():
@@ -705,13 +706,7 @@ def copy_device(device, image, on_own_card=False, progress=None):
         )
     part = image.with_name(image.name + ".part")
     part.unlink(missing_ok=True)
-    args = ["dd", f"if={device}", f"of={part}", "bs=4096"]
-    try:
-        if stat.S_ISBLK(device.stat().st_mode):
-            args += list(DIRECT)
-        args += ["conv=noerror,sync,fsync", "status=none"]
-    except OSError:
-        args += ["conv=noerror,sync,fsync", "status=none"]
+    args = ["dd", f"if={device}", f"of={part}", "bs=4096", "conv=noerror,sync,fsync", "status=none"]
     if progress:
         progress(0, size)
     stop = threading.Event()
@@ -1350,7 +1345,7 @@ def restore_from_report(path, kind=None):
 
 PEERS = ROOT_STATE / "peers.json"
 PEER_DIR = ROOT_STATE / "peers"
-PEER_KEY = Path(os.environ.get("HUB_PEER_KEY", "/root/.ssh/id_ed25519"))
+PEER_KEY = Path(os.environ.get("HUB_PEER_KEY") or PEER_DIR / "housecall-peer")
 PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -1389,10 +1384,11 @@ def _valid_peer(name, host, user, port):
         raise Refused(M("housecall.peer.port", "Give its SSH port, 1 to 65535."))
 
 
-def pair_peer(name, host, user="root", port=22):
+def pair_peer(name, host, user="hub", port=22):
     """One pairing, made once: remember the box, and its SSH host key as ssh-keyscan gives it now. The owner then
     puts this box's public key on the other box. No password is stored."""
     _valid_peer(name, host, user, port)
+    PEER_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     peers = load_peers()
     if name in peers and (peers[name].get("host"), peers[name].get("user"), peers[name].get("port")) != (
         host,
@@ -1417,7 +1413,6 @@ def pair_peer(name, host, user="root", port=22):
                     why=_text(made)[-200:],
                 )
             )
-    PEER_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     known = PEER_DIR / f"{name}.known_hosts"
     scan = run("ssh-keyscan", "-p", str(port), host, timeout=60)
     if scan.returncode or "ssh-" not in (scan.stdout or ""):
@@ -1426,17 +1421,23 @@ def pair_peer(name, host, user="root", port=22):
         )
     safeio.write_checked(known, scan.stdout, 0o600)
     peers[name] = {"host": host, "user": user, "port": port, "known_hosts": str(known), "key": str(PEER_KEY)}
-    safeio.write_checked(PEERS, json.dumps({"version": 1, "peers": peers}, indent=1, sort_keys=True), 0o644)
+    safeio.write_checked(PEERS, json.dumps({"version": 1, "peers": peers}, indent=1, sort_keys=True), 0o600)
     public = run("ssh-keygen", "-y", "-f", str(PEER_KEY), timeout=60)
     pub = (public.stdout or "").strip()
+    line = f'restrict,command="{PEER_COMMAND}" {pub}' if pub else ""
+    auth = PEER_DIR / f"{name}.authorized_key"
+    safeio.write_checked(auth, line + "\n", 0o600)
+    shown = run("ssh-keygen", "-lf", str(known), timeout=60).stdout.strip()
+    fingerprint = " ".join(shown.split()[1:2]) or "not read"
     return M(
         "housecall.peer.paired",
-        "{name} is paired at {user}@{host}. Put this box's public key ({key}) in its authorized_keys for {user}, "
-        "then examine it. Nothing else is shared.",
+        "{name} is paired at {user}@{host}. Its host key fingerprint is {fingerprint}. Paste the line in {file} into "
+        "{user}'s authorized_keys on the other box. That line lets one command only, not a shell.",
         name=name,
         user=user,
         host=host,
-        key=str(PEER_KEY) + ".pub" if pub else str(PEER_KEY),
+        fingerprint=fingerprint,
+        file=str(auth),
     )
 
 
@@ -1519,7 +1520,9 @@ def peer_examine(name):
         f"UserKnownHostsFile={peer.get('known_hosts') or PEER_DIR / (name + '.known_hosts')}",
         "-o",
         "ConnectTimeout=8",
-        f"{peer.get('user') or 'root'}@{peer.get('host')}",
+        "-o",
+        "IdentitiesOnly=yes",
+        f"{peer.get('user') or 'hub'}@{peer.get('host')}",
         PEER_COMMAND,
         timeout=120,
     )
@@ -1560,7 +1563,7 @@ def peer_examine(name):
                 "{name} was read, read only: its three doctors and its version.",
                 name=name,
             ),
-            evidence=[f"{peer.get('user') or 'root'}@{peer.get('host')}"],
+            evidence=[f"{peer.get('user') or 'hub'}@{peer.get('host')}"],
         )
     ]
     if remote_version:

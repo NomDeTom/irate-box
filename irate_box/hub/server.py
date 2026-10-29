@@ -6472,7 +6472,7 @@ class Handler(BaseHTTPRequestHandler):
                             "action": "housecall-pair",
                             "name": str(payload.get("name") or ""),
                             "host": str(payload.get("host") or ""),
-                            "user": str(payload.get("user") or "root"),
+                            "user": str(payload.get("user") or "hub"),
                             "port": port,
                         }
                     )
