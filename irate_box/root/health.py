@@ -3206,6 +3206,131 @@ def check_writes_kept():
     ]
 
 
+def check_protected():
+    """The second copy's repairs, losses and files it could not copy (retain.py, Part 2 step 4). The current boot's
+    only; repairs at two boots running are the card verdict."""
+    from irate_box.root import retain
+
+    try:
+        items = json.loads((retain.ROOT / "protected-findings.json").read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+    current = retain._boot_id()
+    items = [i for i in items if isinstance(i, dict) and i.get("path") and i.get("boot") == current]
+    repairs = [i for i in items if "restored from" in str(i.get("action"))]
+    lost = [i for i in items if "no good copy" in str(i.get("action"))]
+    uncopied = [i for i in items if "not copied" in str(i.get("action"))]
+    streak = retain.streak()
+    housecall = CODE / "irate_box/root/housecall.py"
+    notes = []
+    if housecall.exists():
+        notes.append(
+            M("protected.housecall", "The Housecall doctor can examine the whole card and name every file it damaged.")
+        )
+    if any(str(i.get("path", "")).endswith("accounts.json") for i in repairs + lost):
+        notes.append(
+            M(
+                "protected.accounts",
+                "The accounts and their sessions come back as the copy had them. A password or a session changed "
+                "since then is the older one.",
+            )
+        )
+    if lost or streak >= 2:
+        status = "problem"
+        if lost:
+            summary = M(
+                "protected.lost",
+                {
+                    "one": "The box could not put {n} damaged file back: there is no good copy.",
+                    "other": "The box could not put {n} damaged files back: there is no good copy.",
+                },
+                n=len(lost),
+            )
+            why = M(
+                "protected.lost.why",
+                "The file is part of the box's settings or keys, and the copy is damaged too. The box works with "
+                "less until it is put back by hand.",
+            )
+            fix = M(
+                "protected.lost.fix",
+                "Put the file back by hand, or install again. Then replace the SD card, and examine it with the "
+                "Housecall doctor.",
+            )
+            evidence = [str(i["path"]) for i in lost]
+        else:
+            summary = M(
+                "protected.twice",
+                "The box put damaged files back at {n} boots running: the card is losing writes.",
+                n=streak,
+            )
+            why = M(
+                "protected.twice.why",
+                "A card that loses writes damages the files the box keeps again and again. A copy can put them "
+                "back, but the card will lose the next ones too.",
+            )
+            fix = M(
+                "protected.twice.fix", "Replace the SD card. The Housecall doctor can examine the whole card first."
+            )
+            evidence = [str(i["path"]) for i in repairs]
+    elif repairs:
+        status = "warn"
+        summary = M(
+            "protected.repaired",
+            {
+                "one": "The box put {n} damaged file back at the last boot.",
+                "other": "The box put {n} damaged files back at the last boot.",
+            },
+            n=len(repairs),
+        )
+        why = M(
+            "protected.repaired.why",
+            "The card returned wrong contents for the file, and the box restored it from its copy before the "
+            "network and the hub started.",
+        )
+        fix = M(
+            "protected.repaired.fix",
+            "Look at what was repaired. A second boot with repairs means the card is losing writes: replace it.",
+        )
+        evidence = [str(i["path"]) for i in repairs]
+    elif uncopied:
+        status = "warn"
+        summary = M(
+            "protected.uncopied",
+            {
+                "one": "The box found {n} damaged file while copying and did not copy it.",
+                "other": "The box found {n} damaged files while copying and did not copy them.",
+            },
+            n=len(uncopied),
+        )
+        why = M(
+            "protected.uncopied.why",
+            "The file read back as 0xFF or zero. Copying it would keep the damage, so the box did not.",
+        )
+        fix = M(
+            "protected.uncopied.fix",
+            "Replace the SD card. The Housecall doctor can examine the whole card first.",
+        )
+        evidence = [str(i["path"]) for i in uncopied]
+    else:
+        return []
+    return [
+        finding(
+            "protected-files",
+            M("protected.title", "Settings and keys restored at boot"),
+            status,
+            summary,
+            why,
+            fix,
+            notes=notes,
+            commands=[f"sudo {CODE}/irate-box housecall --this-card"] if housecall.exists() else [],
+            evidence=evidence[:20],
+            go=GO_CARD_WRITES,
+        )
+    ]
+
+
 def timer_on():
     return (SYSTEMD_UNITS / DOCTOR_TIMER).exists()
 
@@ -6536,6 +6661,7 @@ def scan(quick=False):
         check_card_health,
         check_lost_writes,
         check_writes_kept,
+        check_protected,
         check_builds,
         check_crashwatch,
         check_led,
