@@ -34,6 +34,7 @@ run sim_nand_state.py
 run sim_recommended.py
 run sim_hardening.py
 run sim_layout.py
+run sim_abslot.py
 run sim_lost_writes.py
 run sim_bootkey.py
 run sim_powerwatch.py
@@ -59,6 +60,7 @@ run sim_firmware_integrity.py
 run sim_holder.py
 run sim_holdsurvey.py
 run sim_appstore.py
+run sim_not_found.py
 run sim_appstore_admin.py
 run sim_root_copies.py
 run sim_doctor_choices.py

@@ -38,6 +38,26 @@
 	header @irate_box_page Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'"
 	header @irate_box_not_page Content-Security-Policy "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
 	header X-Content-Type-Options nosniff
+	# As nginx's error_page: an app switched off (its gate's "error 404") gets the box's not-found page, and one that
+	# does not answer (a failed reverse_proxy: 502, 503, 504) the not-running page, both with the confused krab. Matched
+	# inside one handle_errors, as Caddy 2.6 has no status arguments for it; any other error keeps its empty answer.
+	handle_errors {
+		@irate_box_missing expression {err.status_code} == 404
+		@irate_box_down expression {err.status_code} >= 502 && {err.status_code} <= 504
+		handle @irate_box_missing {
+			root * {$HUB_STATIC:/home/user/irate-box/web}
+			rewrite * /not-found.html
+			file_server
+		}
+		handle @irate_box_down {
+			root * {$HUB_STATIC:/home/user/irate-box/web}
+			rewrite * /not-ready.html
+			file_server
+		}
+		handle {
+			respond {err.status_code}
+		}
+	}
 	header Referrer-Policy no-referrer
 	# Each app origin's port by scheme: http to its own, https to its TLS twin (root/tls.py), so a
 	# redirect from a page on HTTPS goes to that origin's twin. As nginx's map $scheme.

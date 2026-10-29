@@ -3605,7 +3605,150 @@ button.danger {
   stroke-width: 2;
 }
 
+/* The App store page (hub/appstore.py writes it): room between its parts, links in the accent, the QR small. */
+body.appstore section {
+  margin: 1.2rem 0;
+}
+body.appstore a {
+  color: var(--accent);
+}
+.appstore-hint {
+  margin: 0.3rem 0;
+}
+.appstore-qr-block {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.appstore-qr-block .qr {
+  display: block;
+  flex: none;
+  width: 160px;
+}
+.appstore-qr-block .qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px;
+  box-sizing: border-box;
+}
+@media (max-width: 480px) {
+  .appstore-qr-block .qr {
+    width: 120px;
+  }
+}
+/* The App store's admin pane: the switch for the whole store, the buttons for every project under the list, a card
+   whose last check failed. */
+#appstore > p.setting-desc + p.setting-desc {
+  margin-top: 0.6rem;
+}
+.appstore-enabled-row {
+  margin: 1rem 0 0.4rem;
+}
+#appstore-status {
+  margin-bottom: 0.9rem;
+}
+#appstore-holders {
+  margin-top: 1.2rem;
+}
+.appstore-all {
+  align-items: center;
+  margin-top: 0.6rem;
+}
+.appstore-all .setting-desc {
+  display: inline;
+  margin: 0;
+}
+/* A project's card: its settings one a row as Home tiles draws them, the line under Visibility's chips on its own
+   line, and the table of what to hold with room between its columns. */
+.appstore-card > * + * {
+  margin-top: 0.7rem;
+}
+.appstore-settings {
+  margin-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+.appstore-settings .aw-field input:not([type="checkbox"]) {
+  flex: 1 1 14rem;
+  max-width: 24rem;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.appstore-settings .aw-label {
+  flex: 0 0 13rem;
+}
+.appstore-settings .aw-field .chip-says {
+  flex-basis: 100%;
+  margin: 0;
+}
+/* Removing the project, the one action that cannot be undone, at the row's far end. */
+.appstore-actions .action-btn.action-btn.danger {
+  margin-left: auto;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+/* What to hold: its heading and the button that reads the releases again, on one line. */
+.appstore-hold-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.appstore-hold-head h3 {
+  margin: 0;
+}
+.appstore-kinds {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.appstore-kinds th {
+  padding: 0.35rem 0.8rem 0.35rem 0;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.appstore-kinds td {
+  padding: 0.45rem 0.8rem 0.45rem 0;
+  vertical-align: top;
+  border-top: 1px solid var(--border);
+}
+.appstore-kinds td code {
+  overflow-wrap: anywhere;
+}
+.appstore-kinds td .setting-desc {
+  display: block;
+  margin: 0.15rem 0 0;
+}
+.appstore-kinds th:nth-child(n + 3),
+.appstore-kinds td:nth-child(n + 3) {
+  text-align: right;
+  white-space: nowrap;
+}
+.aw-card-head .s.bad {
+  color: var(--bad, #b00020);
+}
+/* The confused krab: the page for an address the box does not have (not-found.html), and a service with nothing
+   set up yet (the App store). Centred, at most 240 px, its words under it. */
+.krab-figure {
+  text-align: center;
+}
+.krab-figure img {
+  display: block;
+  width: 240px;
+  max-width: 70%;
+  height: auto;
+  margin: 0.5rem auto 1rem;
+}
 /* /account.html: the forms, one column. */
+body.account a {
+  color: var(--accent);
+}
 .acct-form {
   margin: 1.2em 0;
   max-width: 28em;
@@ -3619,6 +3762,15 @@ button.danger {
   width: 100%;
   box-sizing: border-box;
   margin-top: 0.2em;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.acct-form > .action-btn {
+  margin-top: 0.4em;
 }
 /* A post by an account of that name, where the admin shows marks. */
 .verified {
@@ -3998,6 +4150,11 @@ label > .select-chips {
 }
 .aw-foot[hidden] {
   display: none;
+}
+@media (max-width: 480px) {
+  .aw-foot .note {
+    flex-basis: 100%;
+  }
 }
 /* What an unsaved change costs or conflicts with (AW.section's warn), on its own line above the buttons. */
 .aw-foot .aw-warn {
@@ -5068,11 +5225,16 @@ a.action-btn.go-btn {
 /* One pattern for every update: the two choices, then Check now / Fetch / Install. */
 .update-pattern {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.9rem;
+  margin: 0.8rem 0;
 }
+/* Each choice: its name above its chips, as a package card's settings, and what the chosen one does under them. */
 .update-pattern .update-choice {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.35rem;
+}
+.update-pattern .chip-says {
+  margin: 0;
 }
 .update-actions {
   margin: 0.5rem 0;
