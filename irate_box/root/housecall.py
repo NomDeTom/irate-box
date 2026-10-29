@@ -1764,6 +1764,38 @@ def pair_peer(name, host, user="root", port=22):
     )
 
 
+def _unpair_action(name):
+    return action(
+        f"housecall-unpair:{name}",
+        M("housecall.peer.unpair", "Remove this pairing"),
+        M(
+            "housecall.peer.unpair.confirm",
+            "Forget the pairing with {name}? Its host key and this box's key line for it are deleted here. "
+            "Remove its line from the other box's authorized_keys by hand.",
+            name=name,
+        ),
+    )
+
+
+def unpair_peer(name):
+    """Forget a pairing: the entry, its known_hosts and the authorized-key line made for it. The other box's own
+    authorized_keys is the owner's to edit; this cannot reach it."""
+    peers = load_peers()
+    peer = peers.get(name)
+    if not peer:
+        raise Refused(M("housecall.peer.unknown", "No box is paired as {name}. Pair it first.", name=name))
+    peers.pop(name)
+    safeio.write_checked(PEERS, json.dumps({"version": 1, "peers": peers}, indent=1, sort_keys=True), 0o600)
+    known = Path(peer.get("known_hosts") or PEER_DIR / f"{name}.known_hosts")
+    known.unlink(missing_ok=True)
+    (PEER_DIR / f"{name}.authorized_key").unlink(missing_ok=True)
+    return M(
+        "housecall.peer.unpaired",
+        "The pairing with {name} is removed. Remove its line from the other box's authorized_keys by hand.",
+        name=name,
+    )
+
+
 def _peer_reports(text):
     """The other box's reports, split by the fixed command's === path lines: {path: text}."""
     out, current, lines = {}, None, []
@@ -1863,6 +1895,7 @@ def peer_examine(name):
                         name=name,
                         why=_text(said)[-200:],
                     ),
+                    actions=[_unpair_action(name)],
                 )
             ],
             [],
@@ -1887,6 +1920,7 @@ def peer_examine(name):
                 name=name,
             ),
             evidence=[f"{peer.get('user') or 'root'}@{peer.get('host')}"],
+            actions=[_unpair_action(name)],
         )
     ]
     if remote_version:

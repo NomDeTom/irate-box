@@ -34,6 +34,7 @@ run sim_nand_state.py
 run sim_recommended.py
 run sim_hardening.py
 run sim_alpine_rescue.py
+run sim_layout.py
 run sim_abslot.py
 run sim_lost_writes.py
 run sim_bootkey.py

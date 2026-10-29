@@ -19,7 +19,7 @@ source and about) are passed through as they are. Stdlib only.
 
 from irate_box import msg
 
-STATUSES = ("ok", "warn", "problem")
+STATUSES = ("ok", "note", "warn", "problem")
 
 
 def finding(

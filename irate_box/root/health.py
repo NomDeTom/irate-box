@@ -72,6 +72,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from irate_box.choices import CHOICE_RE
 from irate_box.finding import action, english, finding
 from irate_box.hub import jsonlog
 from irate_box.library import zimcheck
@@ -610,7 +611,7 @@ def check_units():
             finding(
                 f"other-failed:{ARMBIAN_LED}",
                 M("armbian-led.title", "The image's LED restore service failed"),
-                "warn",
+                "note",
                 M(
                     "armbian-led.failed",
                     "{unit} fails at every start on this board. The box's status light is separate, and works.",
@@ -756,7 +757,7 @@ def check_idle():
             finding(
                 f"idle:{i['unit']}",
                 i["title"],
-                "warn",
+                "note",
                 i["summary"],
                 i["why"],
                 M("idle.fix", "If this box does not need it, switch it off. You can switch it on again here."),
@@ -2787,6 +2788,7 @@ def check_space():
 GO_CARD_WRITES = _go("card-writes", M("go.card-writes", "Recovery → SD card writes"))
 SYSTEMD_ETC = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd"))
 IO_ACCOUNTING = SYSTEMD_ETC / "system.conf.d" / "50-irate-box-io.conf"
+IO_ACCOUNTING_STATE = ETC / "io-accounting.json"
 CARD_HIGH = 1 << 30  # bytes a day: above this, the doctor names what writes
 JOURNAL_SYNC_DEFAULT = 300  # seconds: journald's SyncIntervalSec when nothing sets it
 
@@ -2904,7 +2906,7 @@ def _service_writes_findings(summary, card_name):
                 finding(
                     "card-writer:jobs",
                     M("card-writer.title", "Writes of {unit}", unit=M("card-writer.jobs", "jobs that ended")),
-                    "warn",
+                    "warn" if per_day > CARD_HIGH else "note",
                     M(
                         "card-writer.jobs.rate",
                         "Jobs that run and end (timers' short runs) write about {mb} MB a day to the SD card.",
@@ -3851,6 +3853,8 @@ def _journal_storage():
 
 def card_groups():
     """The system's write settings as choice groups, as setting_groups(): the first option is the system's own."""
+    from irate_box.hub import cardhistory
+
     choice = lambda key, value: f"card-set:{key}:{value}"  # noqa: E731
     groups = [
         {
@@ -4030,6 +4034,30 @@ def card_groups():
                 ],
             },
         )
+    groups.append(
+        {
+            "key": "card_accounting",
+            "label": M("cs.accounting", "Writes by service"),
+            "desc": M(
+                "cs.accounting.desc",
+                "Whether the kernel counts the SD card writes of each service, so the record can say which one "
+                "writes most. It does not slow the services down.",
+            ),
+            "current": "on" if cardhistory.accounting() else "off",
+            "options": [
+                {
+                    "value": "on",
+                    "label": M("cs.accounting.on", "Counted"),
+                    "choice": choice("card_accounting", "on"),
+                },
+                {
+                    "value": "off",
+                    "label": M("cs.accounting.off", "Not counted"),
+                    "choice": choice("card_accounting", "off"),
+                },
+            ],
+        }
+    )
     return groups
 
 
@@ -4073,6 +4101,8 @@ def _root_commit():
 def card_set(key, value):
     """One system write setting applied, now and for every boot."""
     unit_dir = SYSTEMD_ETC / "system"
+    if key == "card_accounting":
+        return card_accounting_on() if value == "on" else card_accounting_off()
     if key == "apt_cache" and value == "memory":
         unit_dir.mkdir(parents=True, exist_ok=True)
         (unit_dir / APT_RAM_UNIT).write_text(
@@ -4556,9 +4586,31 @@ def _nand_tool(*verb):
         )
 
 
+def _io_accounting_configured():
+    """Whether a systemd configuration file other than irate-box's asks for per-service I/O accounting: the owner's
+    own drop-in, or the image's. The last DefaultIOAccounting= wins, as systemd reads them."""
+    files = [SYSTEMD_ETC / "system.conf", *sorted((SYSTEMD_ETC / "system.conf.d").glob("*.conf"))]
+    on = False
+    for path in files:
+        if path == IO_ACCOUNTING:
+            continue
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            key, _, value = line.strip().partition("=")
+            if key.strip() == "DefaultIOAccounting":
+                on = value.strip().lower() == "yes"
+    return on
+
+
 def card_accounting_on():
-    """Per-service I/O accounting: systemd's default, in a file of irate-box's, applied to running services too."""
+    """Per-service I/O accounting: systemd's default, in a file of irate-box's, applied to running services too.
+    The setting before irate-box's file is recorded, so off can leave the owner's own choice alone."""
     IO_ACCOUNTING.parent.mkdir(parents=True, exist_ok=True)
+    if not IO_ACCOUNTING_STATE.exists():
+        IO_ACCOUNTING_STATE.write_text(json.dumps({"before": "on" if _io_accounting_configured() else "off"}) + "\n")
     IO_ACCOUNTING.write_text(
         "# irate-box (Box doctor, SD card writes): per-service I/O accounting, so the box can say which service\n"
         "# writes to the card. Remove this file and run systemctl daemon-reexec to undo.\n"
@@ -4570,6 +4622,31 @@ def card_accounting_on():
         if r.returncode:
             raise Refused(M("repair.card-accounting.failed", "systemctl {verb} failed.", verb=verb))
     return M("repair.card-accounting.on", "The box now counts each service's SD card writes.")
+
+
+def card_accounting_off():
+    """Remove irate-box's drop-in only; an administrator's own setting is left as it was."""
+    try:
+        before = json.loads(IO_ACCOUNTING_STATE.read_text()).get("before")
+    except (OSError, ValueError):
+        before = "off"
+    IO_ACCOUNTING.unlink(missing_ok=True)
+    for verb in ("daemon-reload", "daemon-reexec"):
+        r = run("systemctl", verb, timeout=120)
+        if r.returncode:
+            raise Refused(M("repair.card-accounting.failed", "systemctl {verb} failed.", verb=verb))
+    IO_ACCOUNTING_STATE.unlink(missing_ok=True)
+    if _io_accounting_configured():
+        return M(
+            "repair.card-accounting.off.own",
+            "irate-box stopped asking to count each service's writes. Another setting still keeps it on.",
+        )
+    if before == "on":
+        return M(
+            "repair.card-accounting.off.before",
+            "irate-box stopped asking to count each service's writes. The setting that had it on before is gone.",
+        )
+    return M("repair.card-accounting.off", "The box no longer counts each service's SD card writes.")
 
 
 def arch_remove(arch):
@@ -5022,7 +5099,7 @@ def check_builds(now=None, quick=False):
             finding(
                 "builds-disk",
                 M("builds-disk.title", "Space used by firmware builds"),
-                "warn" if big else "ok",
+                "warn" if big else "note",
                 M(
                     "builds-disk.used",
                     "Builds use {mb} MB, {share} of the card: runs, and the builder's tools and caches.",
@@ -5842,7 +5919,8 @@ def check_crashwatch(now=None):
         if e.get("at", 0) > now - 86400 and e.get("kind") in ("failed", "driver-reset", "recovered", "reset", "reboot")
     ]
     kept = [i for i in st.get("incidents", []) if i.get("at", 0) > now - 7 * 86400]
-    failed = any(e.get("kind") in ("failed", "driver-reset") for e in day)
+    failures = [e for e in day if e.get("kind") in ("failed", "driver-reset")]
+    failed = bool(failures)
     notes = [M("crash-radio.role", "Crash watch records a failing radio. The uplink watchdog does the repairs.")]
     if kept:
         notes.append(
@@ -5883,7 +5961,7 @@ def check_crashwatch(now=None):
         finding(
             "crash-radio",
             M("crash-radio.title", "The WiFi radio"),
-            "warn" if failed else "ok",
+            "warn" if len(failures) > 1 else "note" if failed else "ok",
             M("crash-radio.watching", "Crash watch watches {radios}.", radios=radios)
             if radios
             else M("crash-radio.none", "Crash watch finds no radio to watch."),
@@ -6172,6 +6250,67 @@ def setting_groups(s, wd):
                             "canary.confirm",
                             "Write a 4 KB test file to the card every 10 minutes, so the box can tell whether the "
                             "card loses writes at a power cut? It adds about 2 to 7 MB a day of writes.",
+                        ),
+                    },
+                ],
+            }
+        )
+    from irate_box.root import retain
+
+    groups.append(
+        {
+            "key": "retain",
+            "label": M("retain.setting.title", "A second copy of the settings and keys"),
+            "desc": M(
+                "retain.setting.desc",
+                "The box keeps a copy of the small settings and keys it needs to come back after damage, and checks "
+                "them at every boot. Switching it off removes the copy and the check.",
+            ),
+            "current": "on" if retain.installed() else "off",
+            "options": [
+                {"value": "on", "label": ON, "choice": "retain:on"},
+                {
+                    "value": "off",
+                    "label": OFF,
+                    "choice": "retain:off",
+                    "confirm": M(
+                        "retain.setting.off.confirm",
+                        "Remove the second copy of the settings and keys, and stop the boot check? The copy holds "
+                        "the CA key and the WiFi secrets, so it is deleted here and in every extra place.",
+                    ),
+                },
+            ],
+        }
+    )
+    for path, label, keys in retain.store_candidates():
+        encoded = retain.encode_store(path)
+        groups.append(
+            {
+                "key": f"retain-store-{encoded}",
+                "label": M("retain.store.title", "A second copy on {place}", place=label),
+                "desc": (
+                    M(
+                        "retain.store.desc.keys",
+                        "Keep the settings and keys here as well as on the card, the keys included.",
+                    )
+                    if keys
+                    else M(
+                        "retain.store.desc.usb",
+                        "Keep the settings and keys here as well as on the card. The drive's copy leaves out the "
+                        "CA key and the WiFi secrets.",
+                    )
+                ),
+                "current": "on" if path in retain.extra_stores() else "off",
+                "options": [
+                    {"value": "on", "label": ON, "choice": f"retain-store:on:{encoded}"},
+                    {
+                        "value": "off",
+                        "label": OFF,
+                        "choice": f"retain-store:off:{encoded}",
+                        "confirm": M(
+                            "retain.store.off.confirm",
+                            "Stop keeping the copy at {place}, and delete the copies irate-box made there?",
+                            place=label,
                         ),
                     },
                 ],
@@ -7292,24 +7431,6 @@ def doctor_settings():
 
 # --- repairs ---------------------------------------------------------------------------------------
 
-CHOICE_RE = re.compile(
-    r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]+$|^(kiwix-rebuild|kiwix-off)$"
-    r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
-    r"|^crashwatch-(snapshots|panic|watchdog|undervoltage):(on|off)$|^crashwatch-undervoltage-mv:(3000|4630|11000)$|^crashwatch-power-action:(log|sync|shutdown)$"
-    r"|^clock-set:\d{10}$|^(rtc-find|rtc-look|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"
-    r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})(:(gps|local|pool|module)(,(gps|local|pool|module)){0,3})?$|^clock-undo$"
-    r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
-    r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
-    r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
-    r"|^rfkill:(wifi|bluetooth):(on|off|leave)$|^rfkill-apply$"
-    r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
-    r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
-    r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off)|filesystem:(ext4|btrfs|f2fs|btrfs[+]f2fs)|ab:(off|tryboot|uboot))$"
-    r"|^card-memcg-on$|^card-speed-test$|^card-scan$|^flash-read$|^recommended-apply$"
-    r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$"
-    r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
-)
-
 
 def fix(choice):
     if not CHOICE_RE.match(choice):
@@ -7524,6 +7645,23 @@ def fix(choice):
         from irate_box.root import bootkey
 
         return bootkey.install_units(arg == "on")
+    if kind == "retain":
+        from irate_box.root import retain
+
+        return retain.install_units(arg == "on")
+    if kind == "retain-store":
+        from irate_box.root import retain
+
+        on, _, encoded = arg.partition(":")
+        path = Path(retain.decode_store(encoded))
+        # Only a place this box found itself, or one already in use (to switch off): the choice names a folder, and
+        # root writes the copy there, the keys included on the flash, so the folder is never taken on the hub's word.
+        found = {candidate: keys for candidate, _label, keys in retain.store_candidates()}
+        if on == "on" and path not in found:
+            raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
+        if on == "off" and path not in found and path not in retain.extra_stores():
+            raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
+        return retain.set_store(str(path), on == "on", keys=found.get(path, False))
     if kind == "card-set":
         from irate_box.root import recommended
 
@@ -7647,13 +7785,13 @@ def fix(choice):
 
 # --- plain text ------------------------------------------------------------------------------------
 
-MARK = {"ok": "ok     ", "warn": "note   ", "problem": "problem"}
+MARK = {"ok": "ok     ", "note": "note   ", "warn": "review ", "problem": "problem"}
 
 
 def report(data, problems_only=False):
     lines = []
     for f in data["findings"]:
-        if problems_only and f["status"] == "ok":
+        if problems_only and f["status"] in ("ok", "note"):
             continue
         said = english(f)
         lines.append(f"{MARK[f['status']]}  {said['title']}: {said['detail']}")

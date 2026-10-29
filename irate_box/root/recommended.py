@@ -67,6 +67,7 @@ def _items():
             else M("rec.journal-memory", "the system journal in memory"),
         ),
         ("writeback", "longer", M("rec.writeback", "the longer write-back delay")),
+        ("flash_crc", "on", M("rec.flash-crc", "the onboard flash's data checked on read")),
     ):
         g = groups.get(key)
         if g is None or value not in [o["value"] for o in g["options"]]:

@@ -175,6 +175,15 @@ put(T / "proc/uptime", "5000.0 1.0\n")
 put(T / "state/control/health.json", json.dumps({"findings": [{"status": "ok"}, {"status": "problem"}]}))
 check("all: a problem in the doctor's last look", led.box_state("all", active=yes) == "problem")
 check("  network doesn't read the doctor", led.box_state("network", active=yes) == "ok")
+put(T / "state/control/health.json", json.dumps({"findings": [{"status": "ok"}, {"status": "note"}]}))
+check("all: a note is worth knowing, not a problem to read", led.box_state("all", active=yes) == "ok")
+one_note = health.finding("note-test", "A note", "note", "Worth knowing.")
+check(
+    "the text report prints a note, and the summary leaves it out",
+    "note" in health.report({"findings": [one_note]})
+    and health.report({"findings": [one_note]}, problems_only=True) == "",
+    health.report({"findings": [one_note]}),
+)
 put(T / "state/control/update-progress.json", json.dumps({"action": "install", "pid": 4242}))
 put(T / "proc/4242/stat", "x")
 check("an update installing: steady on", led.box_state("network", active=yes) == "starting")
