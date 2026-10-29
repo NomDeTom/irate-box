@@ -3649,6 +3649,18 @@ body.appstore a {
 .aw-card-head .s.bad {
   color: var(--bad, #b00020);
 }
+/* The confused krab: the page for an address the box does not have (not-found.html), and a service with nothing
+   set up yet (the App store). Centred, at most 240 px, its words under it. */
+.krab-figure {
+  text-align: center;
+}
+.krab-figure img {
+  display: block;
+  width: 240px;
+  max-width: 70%;
+  height: auto;
+  margin: 0.5rem auto 1rem;
+}
 /* /account.html: the forms, one column. */
 body.account a {
   color: var(--accent);

@@ -5449,7 +5449,28 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
+            self._not_found()
+
+    def _not_found(self):
+        """A 404 for an address the hub does not have. A browser asking for a page (Accept: text/html) gets the box's
+        not-found page, the confused krab; a script's request (fetch's */*), nothing, as before."""
+        body = None
+        if "text/html" in self.headers.get("Accept", ""):
+            try:
+                body = (STATIC / "not-found.html").read_bytes()
+            except OSError:
+                body = None
+        if body is None:
             self.send_empty(404)
+            return
+        self.send_response(404)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _read_payload(self):
         """The request's JSON, or None. Larger than MAX_JSON is not read at all: the
