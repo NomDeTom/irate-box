@@ -424,6 +424,17 @@ check(
 owner_data = data_store / "data"
 owner_data.mkdir(parents=True, exist_ok=True)
 (owner_data / "mine.txt").write_text("the owner's own\n")
+retain.set_data_mb(64)
+retain.sweep()
+check(
+    "  a folder the owner already called data is not taken over or pruned",
+    (owner_data / "mine.txt").is_file()
+    and not (owner_data / ".irate-box-data").exists()
+    and not (owner_data / "notes").exists(),
+    sorted(p.name for p in owner_data.iterdir()),
+)
+retain.set_data_mb(0)
+retain.sweep()
 retain.set_store(str(data_store), False)
 check(
     "  a folder the owner already called data is not deleted with the store",
@@ -437,6 +448,24 @@ retain.set_data_mb(0)
 (code / "config" / "irate-box.nginx").write_text("server {\n  listen @PORT@;\n  listen [::]:@PORT@;\n}\n")
 (etc / "install-options").write_text("--repo\nhttps://example.invalid/box\n--port\n8080\n")
 os.environ["HUB_IF_INET6"] = str(T / "no-inet6")
+from irate_box.root import nginx_front
+
+bundle = etc / "nginx-staging" / "nginx-prepared"
+bundle.mkdir(parents=True, mode=0o700)
+bundle.chmod(0o700)
+site_bytes = b"prepared site\n"
+(bundle / "site.conf").write_bytes(site_bytes)
+(bundle / "manifest.json").write_text(
+    json.dumps(
+        {
+            "protocol": nginx_front.PROTOCOL,
+            "generation": "b" * 64,
+            "files": {"site.conf": __import__("hashlib").sha256(site_bytes).hexdigest()},
+        }
+    )
+)
+(etc / "nginx-transaction").mkdir(mode=0o700)
+(etc / "nginx-transaction" / "journal.json").write_text(json.dumps({"bundle": str(bundle)}))
 nginx_site = nginx / "conf.d" / "irate-box.conf"
 nginx_site.parent.mkdir(parents=True, exist_ok=True)
 nginx_site.write_text("damaged\n")
@@ -448,6 +477,7 @@ check(
     and "@PORT@" not in site_text
     and "listen 8080;" in site_text
     and "_irate_front_ready" in site_text
+    and "b" * 64 in site_text
     and "listen [::]" not in site_text
     and any(c[:2] == ("nginx", "-t") for c in calls),
     (said, site_text),
@@ -469,10 +499,12 @@ check("a data size the page does not offer is refused", invalid_data)
 # The setting names a folder; the root helper takes only a place it found itself, with that place's own keys rule.
 nand_store = T / "log.nand" / "protected"
 usb_store = T / "usb" / "drive"
+usb_enc_store = T / "media" / "drive" / ".irate-box-protected"
 real_candidates = retain.store_candidates
 retain.store_candidates = lambda: [
-    (nand_store, "the onboard flash", True),
+    (nand_store, "the onboard flash", "plain"),
     (usb_store, "the drive", False),
+    (usb_enc_store, "the drive that may take them encrypted", "encrypted"),
 ]
 elsewhere = f"{nand_store.parent}/../elsewhere"
 try:
@@ -488,7 +520,7 @@ check(
 health.fix(f"retain-store:on:{retain.encode_store(nand_store)}")
 check(
     "  the offered place is taken, with its keys rule",
-    {"path": str(nand_store), "keys": True} in retain._store_entries(),
+    {"path": str(nand_store), "keys": "plain"} in retain._store_entries(),
     retain._store_entries(),
 )
 health.fix(f"retain-store:off:{retain.encode_store(nand_store)}")
@@ -499,6 +531,31 @@ check(
     retain._store_entries(),
 )
 health.fix(f"retain-store:off:{retain.encode_store(usb_store)}")
+retain.set_keys("encrypt")
+health.fix(f"retain-store:on:{retain.encode_store(usb_enc_store)}")
+check(
+    "  a drive the box found as encrypted takes the keys through the page's choice",
+    {"path": str(usb_enc_store), "keys": "encrypted"} in retain._store_entries(),
+    retain._store_entries(),
+)
+retain.sweep()
+check(
+    "  and the sweep writes only the encrypted copy there, then leave-out removes it",
+    (usb_enc_store / (retain._ident(ca_key) + ".enc")).is_file()
+    and not (usb_enc_store / retain._ident(ca_key)).exists(),
+    sorted(p.name for p in usb_enc_store.iterdir()) if usb_enc_store.exists() else None,
+)
+retain.set_keys("leave-out")
+retain.sweep()
+check(
+    "  leave-out leaves no key copy on that drive",
+    not (usb_enc_store / (retain._ident(ca_key) + ".enc")).exists(),
+    sorted(p.name for p in usb_enc_store.iterdir()) if usb_enc_store.exists() else None,
+)
+retain.set_keys("encrypt")
+retain.sweep()
+health.fix(f"retain-store:off:{retain.encode_store(usb_enc_store)}")
+retain.set_keys("leave-out")
 retain.store_candidates = real_candidates
 
 # Regeneration: the server key and chain from the CA, before the copy is tried.

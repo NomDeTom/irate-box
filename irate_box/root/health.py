@@ -6282,7 +6282,7 @@ def setting_groups(s, wd):
             ],
         }
     )
-    for path, label, keys in retain.store_candidates():
+    for path, label, rule in retain.store_candidates():
         encoded = retain.encode_store(path)
         groups.append(
             {
@@ -6293,11 +6293,16 @@ def setting_groups(s, wd):
                         "retain.store.desc.keys",
                         "Keep the settings and keys here as well as on the card, the keys included.",
                     )
-                    if keys
+                    if rule == "plain"
                     else M(
                         "retain.store.desc.usb",
-                        "Keep the settings and keys here as well as on the card. The drive's copy leaves out the "
-                        "CA key and the WiFi secrets.",
+                        "Keep the settings and keys here as well as on the card. A drive's copy takes the CA key "
+                        "and the WiFi secrets only when Keys in a removable copy is Encrypt them, and only encrypted.",
+                    )
+                    if rule == "encrypted"
+                    else M(
+                        "retain.store.desc.none",
+                        "Keep the settings here as well as on the card. The keys are left out.",
                     )
                 ),
                 "current": "on" if path in retain.extra_stores() else "off",
@@ -7698,12 +7703,12 @@ def fix(choice):
         # Only a place this box found itself, or one already in use (to switch off): the choice names a folder, and
         # root writes the copy there, the keys included only where that place's own rule allows them, so the folder
         # is never taken on the hub's word.
-        found = {candidate: keys for candidate, _label, keys in retain.store_candidates()}
+        found = {candidate: rule for candidate, _label, rule in retain.store_candidates()}
         if on == "on" and path not in found:
             raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
         if on == "off" and path not in found and path not in retain.extra_stores():
             raise Refused(M("retain.store.unknown", "That place is not one this box offers for the copy."))
-        return retain.set_store(str(path), on == "on", keys=found.get(path, False))
+        return retain.set_store(str(path), on == "on", keys=found.get(path, "none"))
     if kind == "retain-keys":
         from irate_box.root import retain
 

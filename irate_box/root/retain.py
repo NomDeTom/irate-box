@@ -210,7 +210,9 @@ def _store_entries():
         if isinstance(item, str) and item.startswith("/"):
             out.append({"path": item, "keys": False})
         elif isinstance(item, dict) and isinstance(item.get("path"), str) and item["path"].startswith("/"):
-            out.append({"path": item["path"], "keys": item.get("keys") is True})
+            keys = item.get("keys")
+            keys = "plain" if keys is True else keys
+            out.append({"path": item["path"], "keys": keys if keys in (False, "plain", "encrypted") else False})
     return out
 
 
@@ -301,9 +303,12 @@ def _key(create=False):
 
 
 def _crypt_folder():
-    """A private folder in RAM for plaintext while openssl runs; /tmp may be the card."""
-    for parent in (Path(os.environ.get("HUB_RUN_DIR", "/run")), Path(tempfile.gettempdir())):
+    """A private folder in RAM for plaintext while openssl runs. The unit allows /run/irate-box/retain; /tmp may be
+    the card, and is the fallback outside the unit."""
+    run = Path(os.environ.get("HUB_RUN_DIR", "/run")) / "irate-box" / "retain"
+    for parent in (run, Path(tempfile.gettempdir())):
         try:
+            parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             folder = Path(tempfile.mkdtemp(prefix="retain-crypt-", dir=parent))
             folder.chmod(0o700)
             return folder
@@ -339,7 +344,8 @@ def _removable(store):
 
 
 def store_keys(path):
-    """Whether the CA key and WiFi secrets go into this store. A removable drive does not, unless it says so."""
+    """What secrets this store may take: "plain" (as they are; the NAND is the board's own), "encrypted", or False.
+    A USB drive is offered "encrypted", so "Encrypt them" can reach it without ever writing plaintext there."""
     path = str(path)
     return next((entry["keys"] for entry in _store_entries() if entry["path"] == path), False)
 
@@ -357,7 +363,7 @@ def store_candidates():
     out = []
     nand = Path(os.environ.get("HUB_NAND_MOUNT", "/var/log.nand"))
     if nand.is_dir() and os.path.ismount(nand):
-        out.append((nand / "protected", M("retain.store.nand", "the onboard flash"), True))
+        out.append((nand / "protected", M("retain.store.nand", "the onboard flash"), "plain"))
     seen = set()
     for root in (os.environ.get("HUB_USB_MOUNTS", "/run/irate-box/usb"), "/media", "/run/media"):
         base = Path(root)
@@ -368,7 +374,11 @@ def store_candidates():
                 continue
             seen.add(mount)
             out.append(
-                (mount / ".irate-box-protected", M("retain.store.usb", "the drive {name}", name=mount.name), False)
+                (
+                    mount / ".irate-box-protected",
+                    M("retain.store.usb", "the drive {name}", name=mount.name),
+                    "encrypted",
+                )
             )
     return out
 
@@ -406,7 +416,8 @@ def set_store(path, on, keys=False):
     before = next((entry for entry in entries if entry["path"] == path), None)
     entries = [entry for entry in entries if entry["path"] != path]
     if on:
-        entries.append({"path": path, "keys": bool(keys)})
+        keys = "plain" if keys is True else keys
+        entries.append({"path": path, "keys": keys if keys in (False, "plain", "encrypted") else False})
     if before and (not on or not keys):
         kept = {_ident(file) for file in protected() if _is_key(file)} if not keys else set()
         remove_store_copies(path, only=kept)
@@ -480,7 +491,11 @@ def regenerate(path):
                 old_bytes = None
             old_text = old_bytes.decode(errors="replace") if old_bytes is not None else ""
             found = re.search(r'return 200 "([0-9a-f]{16,})', old_text)
-            generation = found.group(1) if found else hashlib.sha256(("retain-site:" + text).encode()).hexdigest()
+            generation = (
+                _prepared_generation()
+                or (found.group(1) if found else None)
+                or hashlib.sha256(("retain-site:" + text).encode()).hexdigest()
+            )
             text = re.sub(
                 r"(?m)^server \{",
                 lambda match: (
@@ -509,6 +524,33 @@ def regenerate(path):
         return said
     except (OSError, Refused):
         return None
+
+
+def _prepared_generation():
+    """The generation line the installer's prepared bundle carries, for the site it put in place."""
+    from irate_box.root import nginx_front
+
+    try:
+        data = nginx_front.transaction_state(ETC / "nginx-transaction")
+        bundle = data.get("bundle") if isinstance(data, dict) else None
+        if bundle:
+            manifest, _site = nginx_front.read_bundle(bundle)
+            if manifest.get("generation"):
+                return manifest["generation"]
+    except (OSError, ValueError):
+        pass
+    try:
+        manifests = sorted((ETC / "nginx-staging").glob("nginx-*/manifest.json"), key=lambda p: p.stat().st_mtime)
+    except OSError:
+        return None
+    for path in reversed(manifests):
+        try:
+            generation = json.loads(path.read_text()).get("generation")
+        except (OSError, ValueError):
+            continue
+        if generation:
+            return generation
+    return None
 
 
 def _package_owned(path):
@@ -605,12 +647,17 @@ def sweep():
                 if source.name == _ident(KEYFILE):
                     continue
                 key = source.name in key_ids
-                if key and (not store_keys(store) or (removable and keys_mode() != "encrypt")):
+                rule = store_keys(store)
+                if key and (rule is False or (rule == "plain" and removable and keys_mode() != "encrypt")):
                     # "Leave them out" means the old key copies go too, whichever mode wrote them.
                     for suffix in ("", ".prev", ".enc", ".prev.enc"):
                         (store / (source.name + suffix)).unlink(missing_ok=True)
                     continue
-                encrypted = key and removable
+                if key and rule == "encrypted" and keys_mode() != "encrypt":
+                    for suffix in ("", ".prev", ".enc", ".prev.enc"):
+                        (store / (source.name + suffix)).unlink(missing_ok=True)
+                    continue
+                encrypted = key and (rule == "encrypted" or removable)
                 target = store / (source.name + ".enc" if encrypted else source.name)
                 try:
                     plain = source.read_bytes()
@@ -666,8 +713,13 @@ def _copy_data(store):
     budget = data_mb() << 20
     used = 0
     target = Path(store) / "data"
-    target.mkdir(parents=True, exist_ok=True, mode=0o700)
-    (target / ".irate-box-data").write_text("irate-box: the administrator's data copy\n")
+    marker = target / ".irate-box-data"
+    if target.exists():
+        if not marker.is_file():
+            return  # a folder of the owner's own called data: not ours to prune or mark
+    else:
+        target.mkdir(parents=True, exist_ok=True, mode=0o700)
+        marker.write_text("irate-box: the administrator's data copy\n")
     wanted = set()
     for rel in ("notes", "store", "drop", "board.json", "messages.json"):
         source = STATE / rel
@@ -711,7 +763,9 @@ def boot_check():
     if not manifest:
         return []
     current = _boot_id()
-    repairs, lost = [], []
+    repairs, lost, problems = [], [], []
+    site_path = NGINX / "conf.d" / "irate-box.conf"
+    site_pending = False
     for path_str, entry in manifest["entries"].items():
         path = Path(path_str)
         wanted = entry.get("sha256")
@@ -756,7 +810,7 @@ def boot_check():
                 break
             except (OSError, Refused):
                 continue
-        if not done:
+        if not done and path != site_path:
             made = regenerate(path)
             if made:
                 repairs.append({"path": str(path), "action": str(made)})
@@ -769,12 +823,24 @@ def boot_check():
             except (OSError, Refused):
                 done = False
         if not done:
-            lost.append({"path": str(path), "action": "damaged, and no good copy: reinstall or restore it by hand"})
-        lost.extend(skipped)
+            if path == site_path:
+                # Render it once the front's own includes are repaired: nginx -t would fail on their damage.
+                site_pending = True
+            else:
+                lost.append({"path": str(path), "action": "damaged, and no good copy: reinstall or restore it by hand"})
+        problems.extend(skipped)
+    if site_pending:
+        made = regenerate(site_path)
+        if made:
+            repairs.append({"path": str(site_path), "action": str(made)})
+        else:
+            lost.append(
+                {"path": str(site_path), "action": "damaged, and no good copy: reinstall or restore it by hand"}
+            )
     _streak(current, bool(repairs or lost))
-    if repairs or lost:
-        _findings(repairs + lost, "boot", boot=current)
-    return repairs + lost
+    if repairs or lost or problems:
+        _findings(repairs + lost + problems, "boot", boot=current)
+    return repairs + lost + problems
 
 
 def unit_text(name):
@@ -790,6 +856,7 @@ def unit_text(name):
         Path("/var/log/nginx"),
         Path("/var/lib/nginx"),
         Path("/run/nginx.pid"),
+        Path("/run/irate-box/retain"),
         *extra_stores(),
     }
     paths = [str(path) for path in sorted(required)] + [f"-{path}" for path in sorted(optional)]
