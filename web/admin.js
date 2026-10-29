@@ -17966,8 +17966,18 @@ function hcPathState() {
 function hcRender(report) {
   if (!report) return;
   hc.when.textContent = report.at ? new Date(report.at * 1000).toLocaleString() : "";
-  const rows = (report.findings || []).map((f, i) =>
-    findingRow({
+  const rows = (report.findings || []).map((f, i) => {
+    const controls = (f.actions || [])
+      .filter((a) => a.choice === "housecall-restore")
+      .map((a) =>
+        el("button", {
+          type: "button",
+          className: "action-btn",
+          textContent: said(a.label),
+          onclick: () => hcRestore(a),
+        }),
+      );
+    return findingRow({
       id: `housecall-${i}`,
       state: f.status,
       title: said(f.title),
@@ -17976,10 +17986,24 @@ function hcRender(report) {
       notes: (f.notes || []).map(said),
       evidence: f.evidence || [],
       commands: f.commands || [],
-      controls: [],
-    }),
-  );
+      controls,
+    });
+  });
   hc.findings.replaceChildren(...rows);
+}
+// A damaged file's Restore button asks first, then the root helper puts it back; the report is drawn again.
+async function hcRestore(act) {
+  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { label: said(act.label) }))) return;
+  hc.note.hidden = false;
+  hc.note.textContent = "Restoring…";
+  try {
+    await postJSON("/admin/housecall", { action: "restore", path: act.path, kind: act.kind });
+    const data = await getJSON("/admin/housecall");
+    if (data && data.report) hcRender(data.report);
+    hc.note.hidden = true;
+  } catch (err) {
+    hc.note.textContent = err && err.message ? err.message : "The file could not be restored.";
+  }
 }
 // The examination runs in a unit of its own and can take half an hour or more (an image took 32.5 min on the Pi):
 // its running report is shown, with Stop, until the finished one replaces it.

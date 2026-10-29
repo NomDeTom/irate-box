@@ -6459,6 +6459,22 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(202, {"id": control_request({"action": "housecall-stop"})})
             return
 
+        if path == "/admin/housecall" and payload.get("action") == "restore":
+            path_arg = str(payload.get("path") or "")
+            kind = str(payload.get("kind") or "")
+            if not path_arg or "\0" in path_arg or len(path_arg) > 4096:
+                self.send_json(
+                    400, refused.say(M("hub.housecall.restore-path", "Choose a damaged file from the last report."))
+                )
+            elif kind not in ("", "copy", "git", "package"):
+                self.send_json(400, refused.say(M("hub.housecall.restore-kind", "Choose how the file comes back.")))
+            else:
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "housecall-restore", "path": path_arg, "kind": kind})},
+                )
+            return
+
         if path == "/admin/housecall":
             target = payload.get("target")
             path_arg = str(payload.get("path") or "")

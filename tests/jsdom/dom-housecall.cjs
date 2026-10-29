@@ -22,7 +22,10 @@ const report = {
   findings: [
     { id: 'housecall-files:whole disk', title: { id: 't', en: 'Files on whole disk' }, status: 'problem',
       summary: { id: 's', en: '1 file is damaged.' }, why: { id: 'w', en: 'It was not kept.' },
-      notes: [], evidence: ['/etc/key.pem: damaged (It reads back whole as 0xFF.)'], commands: [], actions: [] },
+      notes: [], evidence: ['/etc/key.pem: damaged (It reads back whole as 0xFF.)'], commands: [],
+      actions: [{ choice: 'housecall-restore', path: '/etc/key.pem', kind: 'copy',
+        label: { id: 'admin.housecall.restore', en: "Restore from Box doctor's copy" },
+        confirm: { id: 'admin.housecall.restore-confirm', en: 'Put /etc/key.pem back?' } }] },
   ],
   counts: { files: 3, damaged: 1, suspect: 0, genuine: 0, unknown: 2 },
 };
@@ -32,7 +35,8 @@ const runningReport = () => ({ at: Date.now() / 1000, running: true, target: '/t
 w.fetch = async (u, opts = {}) => {
   calls.push([u, opts.method || 'GET']);
   if (u === '/admin/housecall' && opts.method === 'POST') {
-    posted.push(JSON.parse(opts.body));
+    const body = JSON.parse(opts.body);
+    posted.push(body);
     done = true;
     return new Response(JSON.stringify({ id: 'hc1' }), { status: 202 });
   }
@@ -73,6 +77,14 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
     findings.map((f) => f.textContent),
   );
   check('  and when it was examined is said', /\d/.test(d.getElementById('housecall-when').textContent), d.getElementById('housecall-when').textContent);
+  check('a damaged file with a way back offers Restore', /Restore from Box doctor/.test(findings[0].textContent));
+  w.AW.confirmHere = async () => true;
+  posted.length = 0;
+  findings[0].querySelector('.fdo-controls .action-btn').click();
+  await later(300);
+  check('  Restore asks the root helper for that file and its source',
+    posted.length === 1 && posted[0].action === 'restore' && posted[0].path === '/etc/key.pem' && posted[0].kind === 'copy',
+    posted);
   check('this box\'s own files: the path is not asked for, and the package and tree boxes are offered', (() => {
     target.value = 'this-card';
     target.dispatchEvent(new w.Event('change', { bubbles: true }));

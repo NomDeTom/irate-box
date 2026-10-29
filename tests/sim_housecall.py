@@ -347,6 +347,64 @@ check(
     sorted(str(p.relative_to(box)) for p in box.rglob("*")) == ["etc", "etc/damaged", "nand", "nand/state.json"],
 )
 
+# Step 5: each damaged file that has a way back offers it, and the action puts it back through restore.py.
+restore_root = T / "restore-root"
+(restore_root / "sub").mkdir(parents=True)
+(restore_root / "sub" / "ff").write_bytes(ff)
+good_copy = housecall.ROOT_STATE / "protected"
+good_copy.mkdir(parents=True, exist_ok=True)
+(good_copy / "copy-one").write_bytes(good)
+housecall.MANIFEST.parent.mkdir(parents=True, exist_ok=True)
+housecall.MANIFEST.write_text(
+    json.dumps(
+        {
+            "entries": {
+                "/sub/ff": {
+                    "sha256": hashlib.sha256(good).hexdigest(),
+                    "copy": "copy-one",
+                    "mode": 0o640,
+                    "uid": os.geteuid(),
+                    "gid": os.getegid(),
+                }
+            }
+        }
+    )
+)
+restore_report = housecall.examine_root(restore_root)
+action = next(
+    (a for f in restore_report["findings"] for a in f.get("actions", []) if a.get("path") == "/sub/ff"),
+    None,
+)
+check(
+    "a damaged file with Box doctor's copy offers a Restore action",
+    action and action.get("kind") == "copy" and action.get("choice") == "housecall-restore",
+    restore_report["findings"],
+)
+housecall.write_report(restore_report)
+said = housecall.restore_from_report("/sub/ff", "copy")
+saved = json.loads((T / "state" / "control" / "housecall.json").read_text())
+check(
+    "  the action puts it back, keeps the damaged file, and counts it restored",
+    (restore_root / "sub" / "ff").read_bytes() == good
+    and (restore_root / "sub" / "ff.damaged").read_bytes() == ff
+    and said.get("id") == "restore.done.kept"
+    and saved["counts"]["restored"] == 1,
+    (said, saved.get("counts")),
+)
+try:
+    housecall.restore_from_report("/nothing", "copy")
+    check("  a file whose report has no way back is refused", False)
+except Refused as exc:
+    check("  a file whose report has no way back is refused", exc.message["id"] == "housecall.restore.no-plan")
+# A package file, on this box's own files: the package is the way back.
+real_restore_run = housecall.restore.run
+housecall.restore.run = lambda *cmd, **kw: subprocess.CompletedProcess(cmd, 0, f"pkg: {cmd[-1]}\n", "")
+check(
+    "  a package file is offered its package as the way back",
+    (housecall._candidate("/etc/example.conf", "/", {}, True) or {}).get("kind") == "package",
+)
+housecall.restore.run = real_restore_run
+
 # The root helper's action the page asks for: started in a unit of its own (it does one job at a time under a
 # 50-minute limit, and an image took 32.5 min on the Pi), its running report written first.
 from irate_box.root import hub_control
@@ -422,6 +480,13 @@ check(
     stopped,
 )
 hub_control.run = real_helper_run
+housecall.write_report(restore_report)
+said = hub_control.housecall_restore({"path": "/sub/ff", "kind": "copy"})
+check(
+    "the root helper's housecall-restore puts the file back and updates the report",
+    said.get("id") == "restore.done.kept" and (restore_root / "sub" / "ff").read_bytes() == good,
+    said,
+)
 
 # The report the page reads.
 housecall.write_report(card_report)

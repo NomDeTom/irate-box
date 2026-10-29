@@ -6187,6 +6187,16 @@ def housecall_scan(req):
     )
 
 
+def housecall_restore(req):
+    """One file from the last report put back, from the copy, tree or package that report named."""
+    from irate_box.root import housecall
+
+    path = str(req.get("path") or "")
+    if not path or "\0" in path or len(path) > 4096:
+        raise Refused(M("control.housecall.restore-path", "Choose a damaged file from the last report."))
+    return housecall.restore_from_report(path, str(req.get("kind") or "") or None)
+
+
 def housecall_stop(req):
     """The running examination stopped; its report says so."""
     from irate_box.root import housecall
@@ -7414,6 +7424,7 @@ ACTIONS = {
     "health-fix": health_fix,
     "housecall-scan": housecall_scan,
     "housecall-stop": housecall_stop,
+    "housecall-restore": housecall_restore,
     "net-scan": net_scan,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,

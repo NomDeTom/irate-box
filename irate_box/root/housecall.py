@@ -37,9 +37,9 @@ import sys
 import time
 from pathlib import Path
 
-from irate_box.finding import finding
+from irate_box.finding import action, finding
 from irate_box.msg import M, Refused, render
-from irate_box.root import safeio
+from irate_box.root import restore, safeio
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 CONTROL = STATE / "control"
@@ -379,6 +379,30 @@ def _files_finding(records, where):
     ]
     if len(damaged) + len(suspect) > 60:
         evidence.append(f"… and {len(damaged) + len(suspect) - 60} more")
+    acts = []
+    if damaged:
+        labels = {
+            "copy": M("housecall.restore.copy", "Restore from Box doctor's copy"),
+            "git": M("housecall.restore.git-label", "Restore from irate-box's tree"),
+            "package": M("housecall.restore.package-label", "Reinstall its package"),
+        }
+        acts = [
+            action(
+                "housecall-restore",
+                labels.get(
+                    r["restore"]["kind"], M("housecall.restore.action", "Restore {name}", name=Path(r["path"]).name)
+                ),
+                M(
+                    "housecall.restore.confirm",
+                    "Put {path} back? The damaged file is kept beside it as name.damaged.",
+                    path=r["path"],
+                ),
+                path=r["path"],
+                kind=r["restore"]["kind"],
+            )
+            for r in damaged
+            if r.get("restore")
+        ]
     if damaged:
         return finding(
             f"housecall-files:{where}",
@@ -400,6 +424,7 @@ def _files_finding(records, where):
             ),
             notes=[] if not suspect else [M("housecall.files.suspect", "{n} more read as all zero.", n=len(suspect))],
             evidence=evidence,
+            actions=acts,
             counts=counts,
         )
     if suspect:
@@ -719,7 +744,7 @@ def examine_root(root, references=None):
     root = Path(root)
     if not root.is_dir():
         raise Refused(M("housecall.not-folder", "{path} is not a folder.", path=str(root)))
-    records = scan_dir(root, references)
+    records = plan_restore(scan_dir(root, references), root)
     findings = [
         finding(
             "housecall-target",
@@ -730,7 +755,9 @@ def examine_root(root, references=None):
         ),
         _files_finding(records, str(root)),
     ]
-    return _report(root, findings, records, None)
+    report = _report(root, findings, records, None)
+    report["root"] = str(root)
+    return report
 
 
 def examine_this_card(references=None, roots=None):
@@ -753,6 +780,7 @@ def examine_this_card(references=None, roots=None):
                 names=", ".join(p.name for p in large),
             )
         )
+    records = plan_restore(records, "/")
     findings = [
         finding(
             "housecall-target",
@@ -787,7 +815,9 @@ def examine_this_card(references=None, roots=None):
                 evidence=skipped[:40] + ([f"… and {len(skipped) - 40} more"] if len(skipped) > 40 else []),
             )
         )
-    return _report(None, findings, records, None)
+    report = _report(None, findings, records, None)
+    report["root"] = "/"
+    return report
 
 
 def running_report(target, note=None):
@@ -952,8 +982,9 @@ ROOT_STATE = Path(os.environ.get("HUB_ROOT_STATE_DIR") or STATE.parent / "irate-
 MANIFEST = ROOT_STATE / "protected" / "manifest.json"
 
 
-def load_manifest(path=None):
-    """Box doctor's protected-files manifest (retain.py, Part 2 step 4) as references: {path: {"sha256": …}}."""
+def manifest_entries(path=None):
+    """Box doctor's protected-files manifest (retain.py, Part 2 step 4): {path: entry}, entry with its sha256,
+    copy name, owner and mode."""
     path = Path(path or MANIFEST)
     try:
         data = json.loads(path.read_text())
@@ -962,13 +993,20 @@ def load_manifest(path=None):
     entries = data.get("entries") if isinstance(data, dict) else None
     if not isinstance(entries, dict):
         return {}
+    return {
+        "/" + key.lstrip("/"): value
+        for key, value in entries.items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
+
+
+def load_manifest(path=None):
+    """Box doctor's protected-files manifest as references: {path: {"sha256": …}}."""
     out = {}
-    for key, value in entries.items():
-        if not isinstance(key, str):
-            continue
-        digest = value.get("sha256") if isinstance(value, dict) else None
+    for key, value in manifest_entries(path).items():
+        digest = value.get("sha256")
         if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
-            out["/" + key.lstrip("/")] = {"sha256": digest}
+            out[key] = {"sha256": digest}
     return out
 
 
@@ -1082,6 +1120,149 @@ def references_from_target(path, device=False, use_dpkg=False, use_tree=False, r
             M("housecall.git.no-commit", "The installed commit is not recorded, so the tree cannot be checked.")
         )
     return out
+
+
+def _target_for(path, root):
+    """A report path as the file to write, under root (/ for this box's own files)."""
+    base = Path(root or "/")
+    relative = str(path).lstrip("/")
+    if ".." in Path(relative).parts:
+        raise Refused(M("housecall.restore.path", "That path is not inside what was examined."))
+    return Path(path) if str(base) == "/" else base / relative
+
+
+def _copy_source(entry):
+    """Box doctor's good copy of a protected file, or its .prev, when its SHA-256 still matches the manifest."""
+    name = entry.get("copy")
+    expected = entry.get("sha256")
+    if not name or not expected:
+        return None
+    for candidate in (ROOT_STATE / "protected" / name, ROOT_STATE / "protected" / (name + ".prev")):
+        try:
+            if candidate.is_file() and restore.sha_file(candidate) == expected:
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def _candidate(path, root, manifests, allow_package, repo=None):
+    """Where one damaged file can come back from: Box doctor's copy, irate-box's git tree, or its package."""
+    entry = manifests.get(path)
+    if entry:
+        source = _copy_source(entry)
+        if source:
+            return {
+                "kind": "copy",
+                "source": str(source),
+                "sha256": entry["sha256"],
+                "mode": entry.get("mode"),
+                "owner": [entry.get("uid"), entry.get("gid")],
+            }
+    if path.startswith("/opt/irate-box/"):
+        commit = installed_commit(root)
+        if commit:
+            relative = path[len("/opt/irate-box/") :]
+            try:
+                expected = _references_from_git_commit(repo or "/var/cache/irate-box/src", commit).get(path, {})
+            except Refused:
+                expected = {}
+            if expected.get("git"):
+                return {
+                    "kind": "git",
+                    "repo": str(repo or "/var/cache/irate-box/src"),
+                    "commit": commit,
+                    "relative": relative,
+                }
+    if allow_package:
+        said = restore.run("dpkg", "-S", str(_target_for(path, root)), timeout=60)
+        if said.returncode == 0:
+            return {"kind": "package"}
+    return None
+
+
+def plan_restore(records, root, manifests=None, repo=None):
+    """Add a way back to every damaged file that has one, so the finding can offer it and the page can ask."""
+    manifests = manifest_entries() if manifests is None else manifests
+    allow_package = str(Path(root or "/")) == "/"
+    for record in records:
+        if record.get("verdict") != "damaged":
+            continue
+        found = _candidate(record["path"], root, manifests, allow_package, repo)
+        if found:
+            record["restore"] = found
+    return records
+
+
+def restore_file(path, root, restore_plan):
+    """Put one file back from the source the report named. The old file is kept as name.damaged."""
+    from irate_box.root import restore as restore_mod
+
+    target = _target_for(path, root)
+    kind = (restore_plan or {}).get("kind")
+    if kind == "copy":
+        source = Path(str(restore_plan.get("source") or ""))
+        protected = (ROOT_STATE / "protected").resolve()
+        try:
+            source.resolve().relative_to(protected)
+        except (OSError, ValueError):
+            raise Refused(M("housecall.restore.source", "That copy is not one of Box doctor's.")) from None
+        owner = restore_plan.get("owner") or [None, None]
+        return restore_mod.from_copy(
+            target,
+            source,
+            sha256=restore_plan.get("sha256"),
+            mode=restore_plan.get("mode"),
+            owner=(owner[0], owner[1]) if owner[0] is not None and owner[1] is not None else None,
+        )
+    if kind == "git":
+        relative = str(restore_plan.get("relative") or "")
+        if not relative or ".." in Path(relative).parts:
+            raise Refused(M("housecall.restore.git", "That file is not one irate-box's git tree can put back."))
+        return restore_mod.from_git(
+            target,
+            Path(str(restore_plan.get("repo") or "/var/cache/irate-box/src")),
+            str(restore_plan.get("commit") or ""),
+            relative,
+        )
+    if kind == "package":
+        return restore_mod.from_package(target)
+    raise Refused(M("housecall.restore.kind", "Choose how the file comes back."))
+
+
+def restore_from_report(path, kind=None):
+    """One recovery action, asked from the page, for a report this doctor wrote: its own plan for the file."""
+    try:
+        report = json.loads(REPORT.read_text())
+    except (OSError, ValueError):
+        raise Refused(M("housecall.restore.no-report", "There is no examination report to restore from.")) from None
+    root = report.get("root") or "/"
+    record = next((r for r in report.get("files") or [] if r.get("path") == path), None)
+    plan = (record or {}).get("restore")
+    if not record or not plan:
+        raise Refused(M("housecall.restore.no-plan", "That file has no way back in the current report."))
+    if kind and kind != plan.get("kind"):
+        raise Refused(
+            M("housecall.restore.changed", "Ask for the examination again first: what can restore it changed.")
+        )
+    said = restore_file(path, root, plan)
+    record["verdict"] = "restored"
+    record["reason"] = said
+    remaining = [r for r in report.get("files") or [] if r.get("verdict") == "damaged"]
+    restored = [r for r in report.get("files") or [] if r.get("verdict") == "restored"]
+    report.setdefault("counts", {})["damaged"] = len(remaining)
+    report["counts"]["restored"] = len(restored)
+    report.setdefault("findings", []).append(
+        finding(
+            f"housecall-restored:{path}",
+            M("housecall.restored.title", "Restored"),
+            "ok",
+            said,
+            evidence=[path],
+        )
+    )
+    write_report(report)
+    return said
 
 
 def write_report(report, path=REPORT):
