@@ -6463,6 +6463,7 @@ class Handler(BaseHTTPRequestHandler):
             target = payload.get("target")
             path_arg = str(payload.get("path") or "")
             reference = str(payload.get("reference") or "")
+            image_first = str(payload.get("image_first") or "")
             if target not in ("image", "device", "root", "this-card"):
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             elif target != "this-card" and (not path_arg or "\0" in path_arg or len(path_arg) > 4096):
@@ -6470,6 +6471,13 @@ class Handler(BaseHTTPRequestHandler):
             elif len(reference) > 4096 or "\0" in reference:
                 self.send_json(
                     400, refused.say(M("hub.housecall.reference", "The reference file's path is not valid."))
+                )
+            elif image_first and (target != "device" or "\0" in image_first or len(image_first) > 4096):
+                self.send_json(
+                    400,
+                    refused.say(
+                        M("hub.housecall.image-first", "Give the image's path, and only for a card in a reader.")
+                    ),
                 )
             else:
                 self.send_json(
@@ -6481,6 +6489,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "target": target,
                                 "path": path_arg,
                                 "reference": reference,
+                                "image_first": image_first,
+                                "on_own_card": payload.get("on_own_card") is True,
                                 "dpkg": payload.get("dpkg") is True,
                                 "git_tree": payload.get("git_tree") is True,
                             }

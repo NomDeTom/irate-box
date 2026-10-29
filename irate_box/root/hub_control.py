@@ -6133,6 +6133,14 @@ def housecall_scan(req):
     reference = str(req.get("reference") or "")
     if "\0" in reference or len(reference) > 4096:
         raise Refused(M("control.housecall.reference", "The reference file's path is not valid."))
+    image_first = str(req.get("image_first") or "")
+    if image_first and (kind != "device" or "\0" in image_first or len(image_first) > 4096):
+        raise Refused(
+            M(
+                "control.housecall.image-first",
+                "Give the image's path, and only for a card in a reader.",
+            )
+        )
     if kind in ("image", "device") and (req.get("dpkg") or req.get("git_tree")):
         raise Refused(
             M(
@@ -6145,13 +6153,17 @@ def housecall_scan(req):
         raise Refused(M("control.housecall.running", "The Housecall doctor is already examining. Stop it first."))
     args = [f"{CODE}/irate-box", "housecall"]
     args += ["--this-card"] if kind == "this-card" else [f"--{kind}", path]
+    if image_first:
+        args += ["--image-first", image_first]
+        if req.get("on_own_card") is True:
+            args.append("--on-own-card")
     if reference:
         args += ["--reference", reference]
     if req.get("dpkg"):
         args.append("--dpkg")
     if req.get("git_tree"):
         args.append("--git-tree")
-    label = "this box's own files" if kind == "this-card" else path
+    label = "this box's own files" if kind == "this-card" else (f"{path}, imaged first" if image_first else path)
     housecall.write_report(housecall.running_report(label))
     said = run(
         "systemd-run",

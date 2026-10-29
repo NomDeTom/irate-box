@@ -19,6 +19,7 @@ T = Path(tempfile.mkdtemp(prefix="housecall-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
+from irate_box.msg import Refused
 from irate_box.root import housecall
 
 fails = 0
@@ -111,6 +112,51 @@ check(
     report["findings"],
 )
 check("  and the file in it is read", report["counts"]["files"] == 1, report["counts"])
+
+# Step 2: the image first. A card (a small ext4 image stands in for one) is copied whole, then the copy is examined;
+# the destination is refused on this box's own card unless the owner says so, and when it will not fit.
+source_img = T / "source-card.img"
+build_image(source_img, {"note": good}, size="16M")
+source_sha = hashlib.sha256(source_img.read_bytes()).hexdigest()
+first = T / "first.img"
+said = housecall.copy_device(source_img, first)
+check(
+    "the card is imaged first: the same bytes, and no .part left behind",
+    hashlib.sha256(first.read_bytes()).hexdigest() == source_sha
+    and not (T / "first.img.part").exists()
+    and said.get("id") == "housecall.image-first.done",
+    said,
+)
+real_on_card, real_free = housecall._destination_on_card, housecall._free_bytes
+housecall._destination_on_card = lambda image: True
+try:
+    housecall.copy_device(source_img, T / "on-card.img")
+    check("  an image on this box's own card: refused unless it is allowed", False)
+except Refused as exc:
+    check(
+        "  an image on this box's own card: refused unless it is allowed",
+        exc.message["id"] == "housecall.image-first.own-card",
+    )
+housecall._destination_on_card = real_on_card
+housecall._free_bytes = lambda folder: 1
+try:
+    housecall.copy_device(source_img, T / "no-room.img")
+    check("  an image that will not fit: refused, and nothing written", False)
+except Refused as exc:
+    check(
+        "  an image that will not fit: refused, and nothing written",
+        exc.message["id"] == "housecall.image-first.space" and not (T / "no-room.img.part").exists(),
+    )
+housecall._free_bytes = real_free
+first_report = housecall.examine_image_first(source_img, T / "first-examined.img")
+check(
+    "  the examination runs on the image, and says so",
+    any(f["id"] == "housecall-image-first" and f["status"] == "ok" for f in first_report["findings"])
+    and first_report["counts"]["files"] == 1
+    and first_report.get("source_device") == str(source_img)
+    and hashlib.sha256(source_img.read_bytes()).hexdigest() == source_sha,
+    first_report["findings"],
+)
 
 # A folder, read directly (this box's own files): the same verdicts, past the cache.
 folder = T / "folder"
@@ -234,7 +280,6 @@ check(
 
 # The root helper's action the page asks for: started in a unit of its own (it does one job at a time under a
 # 50-minute limit, and an image took 32.5 min on the Pi), its running report written first.
-from irate_box.msg import Refused
 from irate_box.root import hub_control
 
 ran, active = [], {"state": "inactive"}
@@ -261,6 +306,20 @@ check(
     (said, started),
 )
 check("  its running report is written first, for the page", running.get("running") is True, running)
+ran.clear()
+said = hub_control.housecall_scan(
+    {"target": "device", "path": str(source_img), "image_first": str(T / "helper-first.img"), "on_own_card": True}
+)
+started = [c for c in ran if c[0] == "systemd-run"]
+check(
+    "the root helper passes the image and the own-card permission",
+    said.get("id") == "control.housecall.started"
+    and started
+    and "--image-first" in started[0]
+    and str(T / "helper-first.img") in started[0]
+    and "--on-own-card" in started[0],
+    (said, started),
+)
 for refused_req, why in (
     ({"target": "nonsense"}, "an unknown target"),
     ({"target": "image", "path": str(image), "dpkg": True}, "the package references for an image"),

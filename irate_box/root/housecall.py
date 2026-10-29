@@ -570,6 +570,129 @@ def examine_device(path, references=None):
     return _report(path, findings, records, None)
 
 
+MIN_IMAGE = 1 << 20
+DIRECT = ("iflag=direct",)
+
+
+def _source_size(device):
+    """The card's size in bytes, from blockdev (its whole size, whatever is on it) or the file's own size."""
+    said = run("blockdev", "--getsize64", str(device), timeout=60)
+    if said.returncode == 0 and said.stdout.strip().isdigit():
+        return int(said.stdout.strip())
+    try:
+        return os.stat(device).st_size
+    except OSError as exc:
+        raise Refused(M("housecall.image-first.no-source", "The card cannot be read: {why}", why=str(exc))) from None
+
+
+def _destination_on_card(image):
+    """Whether image would be written on this box's own SD card (by the card's mount, as Box doctor finds it)."""
+    try:
+        from irate_box.hub import cardhistory
+        from irate_box.root import health
+
+        found = cardhistory.card()
+        return bool(found) and health._on_card(Path(image).parent, found[0])
+    except (OSError, ValueError):
+        return False
+
+
+def _free_bytes(folder):
+    """The space free on folder's filesystem, or None where it cannot be read."""
+    try:
+        stats = os.statvfs(folder)
+        return stats.f_bavail * stats.f_frsize
+    except OSError:
+        return None
+
+
+def copy_device(device, image, on_own_card=False, progress=None):
+    """The card imaged first, read only: `dd` with noerror (a read error is zero-filled and counted), sync and
+    fsync. The image is written as <image>.part and renamed only when its size matches the card's, so a stopped or
+    failed copy never looks like a card. It is refused on this box's own card unless the owner says so."""
+    device, image = Path(device).resolve(), Path(image).resolve()
+    if not image.parent.is_dir():
+        raise Refused(
+            M("housecall.image-first.no-folder", "The folder {folder} is not there.", folder=str(image.parent))
+        )
+    if image.exists():
+        raise Refused(M("housecall.image-first.exists", "{path} is already there. Choose a new name.", path=str(image)))
+    if _destination_on_card(image) and not on_own_card:
+        raise Refused(
+            M(
+                "housecall.image-first.own-card",
+                "That image would be written on this box's own card. Tick that it may be, or choose a USB drive.",
+            )
+        )
+    size = _source_size(device)
+    free = _free_bytes(image.parent)
+    if free is not None and free < size + MIN_IMAGE:
+        raise Refused(
+            M(
+                "housecall.image-first.space",
+                "The image needs {need} MB, and {free} MB is free there. Choose another folder.",
+                need=size >> 20,
+                free=max(free, 0) >> 20,
+            )
+        )
+    part = image.with_name(image.name + ".part")
+    part.unlink(missing_ok=True)
+    args = ["dd", f"if={device}", f"of={part}", "bs=4M"]
+    try:
+        if stat.S_ISBLK(device.stat().st_mode):
+            args += list(DIRECT)
+        args += ["conv=noerror,sync,fsync", "status=none"]
+    except OSError:
+        args += ["conv=noerror,sync,fsync", "status=none"]
+    if progress:
+        progress(0, size)
+    said = run(*args, timeout=6 * 3600)
+    if said.returncode or not part.exists() or part.stat().st_size != size:
+        part.unlink(missing_ok=True)
+        raise Refused(
+            M(
+                "housecall.image-first.failed",
+                "The card was not imaged: {why}",
+                why=(_text(said)[-200:] or "the copy stopped or wrote a different size"),
+            )
+        )
+    os.replace(part, image)
+    errors = (said.stderr or "").count("error reading")
+    return M(
+        "housecall.image-first.done",
+        "The card was imaged to {image} ({mb} MB){errors} before it was read.",
+        image=image.name,
+        mb=size >> 20,
+        errors="" if not errors else f", with {errors} read error(s) zero-filled",
+    )
+
+
+def examine_image_first(device, image, references=None, on_own_card=False, progress=None):
+    """Image the card first, then examine the image: everything after the copy runs on the image, never the card."""
+    said = copy_device(device, image, on_own_card=on_own_card, progress=progress)
+    report = examine_image(image, references)
+    report["source_device"] = str(Path(device).resolve())
+    report["image"] = str(Path(image).resolve())
+    report["findings"].insert(
+        0,
+        finding(
+            "housecall-image-first",
+            M("housecall.image-first.title", "Image first"),
+            "ok",
+            said,
+            notes=[
+                M(
+                    "housecall.image-first.read-only",
+                    "The card itself was only read. The examination ran on the image, so the card was not opened "
+                    "again.",
+                )
+            ],
+            evidence=[f"{device} -> {image}"],
+        ),
+    )
+    return report
+
+
 def _parent_disk(path):
     """The disk a partition is on (lsblk's PKNAME: mmcblk0 for /dev/mmcblk0p2), or '' for a whole disk."""
     return run("lsblk", "-n", "-d", "-o", "PKNAME", str(path), timeout=30).stdout.strip()
@@ -666,9 +789,15 @@ def examine_this_card(references=None, roots=None):
     return _report(None, findings, records, None)
 
 
-def running_report(target):
-    """What the page shows while an examination runs (the root helper writes it as it starts the unit)."""
+def running_report(target, note=None):
+    """What the page shows while an examination runs (the root helper writes it as it starts the unit). A note
+    replaces the usual line while the card is being imaged first."""
     now = time.time()
+    said = note or M(
+        "housecall.running.said",
+        "The doctor is examining {target}. Nothing is written to it.",
+        target=target,
+    )
     return {
         "at": now,
         "running": True,
@@ -679,11 +808,7 @@ def running_report(target):
                 "housecall-running",
                 M("housecall.running.title", "Examining"),
                 "ok",
-                M(
-                    "housecall.running.said",
-                    "The doctor is examining {target}. Nothing is written to it.",
-                    target=target,
-                ),
+                said,
             )
         ],
         "files": [],
@@ -835,19 +960,25 @@ def main(argv):
     use_tree = False
     as_json = False
     summary = False
+    image_first = ""
+    on_own_card = False
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("--image", "--device", "--root", "--reference") and i + 1 < len(argv):
+        if arg in ("--image", "--device", "--root", "--reference", "--image-first") and i + 1 < len(argv):
             i += 1
             if arg == "--reference":
                 references = load_references(argv[i])
+            elif arg == "--image-first":
+                image_first = argv[i]
             else:
                 kind, target = arg[2:], argv[i]
         elif arg == "--dpkg":
             use_dpkg = True
         elif arg == "--git-tree":
             use_tree = True
+        elif arg == "--on-own-card":
+            on_own_card = True
         elif arg in ("--json", "--summary"):
             as_json = arg == "--json"
             summary = arg == "--summary"
@@ -855,10 +986,12 @@ def main(argv):
             kind = "this-card"
         else:
             sys.exit(
-                "usage: housecall.py [--image PATH | --device PATH | --root PATH | --this-card] "
-                "[--reference PATH] [--dpkg] [--git-tree] [--json | --summary]"
+                "usage: housecall.py [--image PATH | --device PATH [--image-first PATH [--on-own-card]] | "
+                "--root PATH | --this-card] [--reference PATH] [--dpkg] [--git-tree] [--json | --summary]"
             )
         i += 1
+    if image_first and kind != "device":
+        sys.exit("--image-first images a card: use it with --device")
     try:
         if use_dpkg or use_tree:
             if kind not in ("root", "this-card"):
@@ -870,6 +1003,18 @@ def main(argv):
                 references = merge_references(references, references_from_git(base))
         if kind == "image":
             report = examine_image(target, references)
+        elif kind == "device" and image_first:
+            write_report(
+                running_report(
+                    f"the card {target}",
+                    M(
+                        "housecall.image-first.running",
+                        "The card is being imaged to {image} first; it is only read. The examination runs on the image.",
+                        image=image_first,
+                    ),
+                )
+            )
+            report = examine_image_first(target, image_first, references, on_own_card=on_own_card)
         elif kind == "device":
             report = examine_device(target, references)
         elif kind == "root":

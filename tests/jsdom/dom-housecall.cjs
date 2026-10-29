@@ -79,6 +79,24 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
     return path.disabled && !d.getElementById('housecall-dpkg').disabled && !d.getElementById('housecall-git').disabled;
   })());
   check('  finished: no Stop offered, and Examine can be selected again', d.getElementById('housecall-stop').hidden && !d.getElementById('housecall-scan').disabled);
+  // A card in a reader can be imaged first; the image path and the own-card permission go with the request.
+  target.value = 'device';
+  target.dispatchEvent(new w.Event('change', { bubbles: true }));
+  check('a card in a reader: it can be imaged first', !d.getElementById('housecall-image-first-label').hidden);
+  const first = d.getElementById('housecall-image-first');
+  first.checked = true;
+  first.dispatchEvent(new w.Event('change', { bubbles: true }));
+  check('  its image path and own-card permission are asked for', !d.getElementById('housecall-image-first-path-label').hidden && !d.getElementById('housecall-on-own-card-label').hidden);
+  path.value = '/dev/sda';
+  d.getElementById('housecall-image-first-path').value = '/media/usb/card.img';
+  d.getElementById('housecall-on-own-card').checked = true;
+  posted.length = 0;
+  done = false;
+  d.getElementById('housecall-scan').click();
+  await later(1800);
+  check('  the request carries the image and the permission',
+    posted.length === 1 && posted[0].image_first === '/media/usb/card.img' && posted[0].on_own_card === true,
+    posted);
   // A long examination: its running report is shown with Stop, which asks the root helper to stop it.
   target.value = 'image';
   target.dispatchEvent(new w.Event('change', { bubbles: true }));

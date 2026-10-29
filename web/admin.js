@@ -17930,6 +17930,12 @@ renderInventory(); // the menu may have been built before this script ran
 const hc = {
   target: document.getElementById("housecall-target"),
   path: document.getElementById("housecall-path"),
+  imageFirst: document.getElementById("housecall-image-first"),
+  imageFirstLabel: document.getElementById("housecall-image-first-label"),
+  imagePath: document.getElementById("housecall-image-first-path"),
+  imagePathLabel: document.getElementById("housecall-image-first-path-label"),
+  onOwnCard: document.getElementById("housecall-on-own-card"),
+  onOwnCardLabel: document.getElementById("housecall-on-own-card-label"),
   dpkg: document.getElementById("housecall-dpkg"),
   git: document.getElementById("housecall-git"),
   scan: document.getElementById("housecall-scan"),
@@ -17943,6 +17949,13 @@ function hcPathState() {
   const whole = hc.target.value === "this-card";
   hc.path.disabled = whole;
   hc.path.placeholder = whole ? "" : "/path/to/card.img";
+  const card = hc.target.value === "device";
+  const first = card && hc.imageFirst.checked;
+  hc.imageFirstLabel.hidden = !card;
+  hc.imagePathLabel.hidden = !first;
+  hc.onOwnCardLabel.hidden = !first;
+  hc.imagePath.disabled = !first;
+  hc.onOwnCard.disabled = !first;
   hc.dpkg.disabled = !["root", "this-card"].includes(hc.target.value);
   hc.git.disabled = hc.dpkg.disabled;
 }
@@ -17984,6 +17997,7 @@ async function hcWait(previous) {
 }
 if (hc.scan) {
   hc.target.addEventListener("change", hcPathState);
+  hc.imageFirst.addEventListener("change", hcPathState);
   hcPathState();
   hc.scan.addEventListener("click", async () => {
     const body = {
@@ -17993,6 +18007,15 @@ if (hc.scan) {
       dpkg: !hc.dpkg.disabled && hc.dpkg.checked,
       git_tree: !hc.git.disabled && hc.git.checked,
     };
+    if (body.target === "device" && hc.imageFirst.checked) {
+      body.image_first = hc.imagePath.value.trim();
+      body.on_own_card = hc.onOwnCard.checked;
+      if (!body.image_first) {
+        hc.note.hidden = false;
+        hc.note.textContent = "Give the file the card is imaged to.";
+        return;
+      }
+    }
     if (body.target !== "this-card" && !body.path) {
       hc.note.hidden = false;
       hc.note.textContent = "Give the path the doctor examines.";
