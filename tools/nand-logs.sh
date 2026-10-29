@@ -19,7 +19,8 @@
 #                                            logrotate, /var/tmp); the card is then written when content is added
 #                                            or the box updates. plan says what would move, and changes nothing.
 #   sudo tools/nand-logs.sh state adopt       move a named large folder the flash still holds back to the card
-#                                            (state mount does this at every start; this is for a box already up)
+#                                            (state mount does this at every start; use this when its boot unit did
+#                                            not run, with the hub's mounts down)
 #
 # What moves, each only if the flash has room for it (smaller chips take fewer):
 #   armbian-ramlog        on Armbian, its copy of /var/log on disk (HDD_LOG, its own setting), synced daily and
@@ -54,6 +55,7 @@ FSTAB=${NAND_FSTAB:-/etc/fstab}
 HUB=${NAND_HUB:-/var/lib/hub}
 HUB_CARD=${NAND_HUB_CARD:-/var/lib/hub.card}
 HUB_LARGE=() # filled from irate_box/large_folders.txt below, the one list housecall.LARGE also reads
+HUB_LARGE_BUILTIN=(zim firmware kits git library source drop ci factory-targets holds)
 BIG_KIB=8192
 # Not /var/lib/systemd: its random seed and clock are read early in boot, before the flash is attached.
 SYS_STATE=(/var/lib/NetworkManager /var/lib/chrony /var/lib/logrotate /var/tmp)
@@ -75,9 +77,13 @@ die() {
 # One list for the shell and the Housecall doctor: irate_box/large_folders.txt beside this script's tree.
 load_large_folders() {
 	local file=${NAND_LARGE_FILE:-$(dirname "$(readlink -f "$0")")/../irate_box/large_folders.txt}
-	[[ -r $file ]] || die "the hub's large-folder list is missing: $file"
-	mapfile -t HUB_LARGE < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$file")
-	((${#HUB_LARGE[@]})) || die "the hub's large-folder list is empty: $file"
+	if [[ -r $file ]]; then
+		mapfile -t HUB_LARGE < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$file")
+	fi
+	if ((${#HUB_LARGE[@]} == 0)); then
+		HUB_LARGE=("${HUB_LARGE_BUILTIN[@]}")
+		say "the large-folder list is missing or empty: using the built-in list"
+	fi
 }
 load_large_folders
 mib() { echo $(($1 / 1048576)); }
@@ -462,29 +468,49 @@ state_mounts_ok() {
 	for d in "$@"; do [[ $(stat -c %d "$HUB/$d") != "$flash" ]] || return 1; done
 }
 
-# A named large folder the flash still holds, from a move made before the list named it: its data goes back to the
-# card's copy, the name into state_large=, and the flash's copy is emptied but for the mount point. Before the hub's
-# mounts are made nothing writes either side (the hub's writers wait for the boot unit, and the card's folder is not
-# yet covered by the flash's). Run by state_mount, and by "state adopt" to repair a box without a reboot.
+# Every named large folder belongs on the card: create it on both sides if it is missing, and adopt one the flash
+# still holds from a move made before the list named it. Its data goes back to the card, the name into state_large=,
+# and the flash's copy is emptied but for the mount point. Before the hub's mounts are made nothing writes either
+# side (the hub's writers wait for the boot unit, and the card's folder is not yet covered by the flash's). Run by
+# state_mount, and by "state adopt" for a box whose boot unit did not run.
 state_adopt() {
-	local d large=() adopted=()
+	local d large=() added=() moved=() card_has nand_has
 	read -r -a large <<<"$(sed -n 's/^state_large=//p' "$STATE")"
+	# If the flash's hub is still bound over the card's, rm below would delete the data about to be copied.
+	if mountpoint -q "$HUB" && [[ $(stat -c %d "$HUB") == $(stat -c %d "$MNT") ]]; then
+		die "the flash's hub is over the card's: refusing to adopt"
+	fi
 	for d in "${HUB_LARGE[@]}"; do
-		[[ -d $MNT/hub/$d ]] || continue
+		if [[ ! -d $HUB/$d ]]; then
+			mkdir -p "$HUB/$d"
+			chmod --reference="$HUB" "$HUB/$d"
+			chown --reference="$HUB" "$HUB/$d"
+		fi
+		if [[ ! -d $MNT/hub/$d ]]; then
+			mkdir -p "$MNT/hub/$d"
+			chmod --reference="$HUB/$d" "$MNT/hub/$d"
+			chown --reference="$HUB/$d" "$MNT/hub/$d"
+		fi
 		[[ " ${large[*]} " == *" $d "* ]] && continue
-		[[ -n $(find "$MNT/hub/$d" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) ]] || continue
-		say "the flash holds $d: moving its copy back to the card"
-		rm -rf -- "${HUB:?}/${d:?}"
-		copy_tree "$MNT/hub/$d" "$HUB/$d"
-		chmod --reference="$MNT/hub/$d" "$HUB/$d"
-		chown --reference="$MNT/hub/$d" "$HUB/$d"
+		card_has=$(find "$HUB/$d" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)
+		nand_has=$(find "$MNT/hub/$d" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)
+		if [[ -n $nand_has ]]; then
+			say "the flash holds $d: moving its copy back to the card"
+			rm -rf -- "${HUB:?}/${d:?}"
+			copy_tree "$MNT/hub/$d" "$HUB/$d"
+			chmod --reference="$MNT/hub/$d" "$HUB/$d"
+			chown --reference="$MNT/hub/$d" "$HUB/$d"
+			moved+=("$d")
+		elif [[ -z $card_has ]]; then
+			say "the flash and the card have no $d: keeping it on the card"
+		fi
 		large+=("$d")
-		adopted+=("$d")
+		added+=("$d")
 	done
-	((${#adopted[@]})) || return 0
+	((${#added[@]})) || return 0
 	sed -i '/^state_large=/d' "$STATE"
 	echo "state_large=${large[*]}" >>"$STATE"
-	for d in "${adopted[@]}"; do
+	for d in "${moved[@]}"; do
 		find "$MNT/hub/$d" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 	done
 }

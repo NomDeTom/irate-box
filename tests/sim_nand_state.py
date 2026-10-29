@@ -101,6 +101,15 @@ check(
     fstab.read_text() == "/dev/root / ext4 defaults 0 1\n"
     and sorted(str(p.relative_to(T)) for p in T.rglob("*")) == before,
 )
+missing_env = dict(env, NAND_LARGE_FILE=str(T / "no-large-folders.txt"))
+out = subprocess.run(
+    ["bash", str(REPO / "tools/nand-logs.sh"), "state", "plan"], capture_output=True, text=True, env=missing_env
+)
+check(
+    "a missing large-folder list falls back to the built-in one, and says so",
+    out.returncode == 0 and "built-in list" in out.stdout and "holds" in out.stdout,
+    (out.returncode, out.stdout, out.stderr),
+)
 out = subprocess.run(["bash", str(REPO / "tools/nand-logs.sh"), "state", "on"], capture_output=True, text=True, env=env)
 check("state on: root only", out.returncode != 0 and "run as root" in out.stderr, out.stderr) if os.geteuid() else None
 
@@ -137,6 +146,31 @@ if can_unshare:
         "  it is recorded with the names already there",
         {"holds", "bigdir", "firmware", "zim"} <= set(recorded),
         recorded,
+    )
+    # An empty named folder is still kept on the card: both sides made, and the name recorded.
+    T2 = T / "empty-holds"
+    hub2 = T2 / "lib" / "hub"
+    hub2.mkdir(parents=True)
+    flash2 = T2 / "flash"
+    (flash2 / "hub" / "holds").mkdir(parents=True)
+    state2 = T2 / "nand-logs.conf"
+    state2.write_text("mtd=0\ncrc=1\nstate=1\nstate_large=zim\n")
+    env2 = dict(env, NAND_HUB=str(hub2), NAND_HUB_CARD=str(T2 / "lib" / "hub.card"), NAND_MNT=str(flash2))
+    env2["NAND_STATE_FILE"] = str(state2)
+    cmd = ["bash", str(REPO / "tools/nand-logs.sh"), "state", "adopt"]
+    if os.geteuid():
+        cmd = ["unshare", "-Ur"] + cmd
+    out = subprocess.run(cmd, capture_output=True, text=True, env=env2)
+    recorded2 = next(
+        (ln.split("=", 1)[1].split() for ln in state2.read_text().splitlines() if ln.startswith("state_large=")), []
+    )
+    check(
+        "state adopt: an empty named folder is made on both sides and recorded",
+        out.returncode == 0
+        and (hub2 / "holds").is_dir()
+        and (flash2 / "hub" / "holds").is_dir()
+        and "holds" in recorded2,
+        (out.stderr, recorded2),
     )
 else:
     print("SKIP state adopt: no root and no user namespace")
