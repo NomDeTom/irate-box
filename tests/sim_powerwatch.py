@@ -195,6 +195,22 @@ check(
 calls.clear()
 check("  and noted once", cw.power_tick(now + 240, settings) == [])
 
+# As a UPS says it: on battery first, then the battery low, the power failing throughout (no reset between).
+nut["status"] = "OB LB"
+calls.clear()
+events = cw.power_tick(now + 245, settings)
+check(
+    "on battery, then the battery low a minute later: the shutdown follows the second, noted once",
+    [e["kind"] for e in events] == ["battery-low"] and ("systemctl", "poweroff") in calls,
+    (events, calls),
+)
+calls.clear()
+check(
+    "  and not again at the next look",
+    cw.power_tick(now + 247, settings) == [] and ("systemctl", "poweroff") not in calls,
+    calls,
+)
+
 # A low battery, and no shutdown owner: the box powers off.
 nut["status"] = "OB LB"
 check("NUT with a low battery: failing and low", cw.power_fail() == (True, "the battery is low", True))

@@ -839,10 +839,18 @@ def power_tick(now, settings=None):
             text += f" ({owner} manages the shutdown)"
         events.append(_event(now, "power-fail", text, reading))
         state["power_fail"] = True
+        state["low"] = low
         _quiet(settings, low)
+    elif failing and low and not state.get("low"):
+        # A UPS says "on battery" first and "battery low" later: the shutdown is for the second, while the power is
+        # already failing.
+        events.append(_event(now, "battery-low", why or "the battery is low", reading))
+        state["low"] = True
+        _quiet(settings, True)
     elif not failing and state.get("power_fail"):
         events.append(_event(now, "power-restored", "the power is back", reading))
         state["power_fail"] = False
+        state["low"] = False
     if state != old:
         _write(POWER_STATE, state)
     if events:
