@@ -35,6 +35,7 @@ run sim_recommended.py
 run sim_lost_writes.py
 run sim_package_verify.py
 run sim_front_writes.py
+run sim_write_checked.py
 run sim_nand_health.py
 run sim_led.py
 run sim_port_80.py

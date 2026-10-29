@@ -23,14 +23,21 @@ the hub) a file of the hub's choosing. Here, nothing is followed:
                           hub can rename anything inside $STATE, so nothing of root's lives there
   own_dir(path)           an fd for a folder of this user's that is not a link, in a folder of
                           this user's that is not a link
+  write_checked(path, data)  the write above, then the card asked to prove it: fsync, evict, read
+                          back and compare; written once more on a mismatch, and a mismatch that
+                          survives both is kept in ROOT_STATE/write-check.json for Box doctor
+  write_batch(entries)    several files the same way, one syncfs, then each read back
 
 Root's files are left root's: mode 0644 by default, which the hub reads. Nothing is chowned to
 the hub by path. Stdlib only.
 """
 
+import hashlib
+import json
 import os
 import secrets
 import stat
+import time
 from pathlib import Path
 
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -200,3 +207,192 @@ def own_dir(path):
         os.close(fd)
         raise NotOurs(f"{path} is not owned by the user that the box expects. The box did not use it")
     return fd
+
+
+WRITE_CHECK = ROOT_STATE / "write-check.json"
+WRITE_CHECK_KEEP = 20
+
+
+def _gid(group):
+    if isinstance(group, int):
+        return group
+    try:
+        import grp
+
+        return grp.getgrnam(group).gr_gid
+    except (KeyError, ImportError):
+        return None
+
+
+def _write_synced(path, data, mode, group=None):
+    """`data` to `path` through a new file, the data and then the folder fsynced before the rename is done."""
+    path = Path(path)
+    dfd = _dir_fd(path.parent)
+    try:
+        tmp, fd = _new(dfd, path.name, mode)
+        try:
+            os.fchmod(fd, mode)
+            if group is not None and os.geteuid() == 0:
+                gid = _gid(group)
+                if gid is not None:
+                    os.fchown(fd, -1, gid)
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path.name, src_dir_fd=dfd, dst_dir_fd=dfd)
+            os.fsync(dfd)
+        except BaseException:
+            try:
+                os.unlink(tmp, dir_fd=dfd)
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(dfd)
+
+
+def _read_back(path, sync=True, limit=16 << 20):
+    """The file read past the page cache, so a copy the cache believes is written is not mistaken for the card's."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        if sync:
+            os.fsync(fd)
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        except (AttributeError, OSError):
+            pass
+        out = bytearray()
+        while len(out) <= limit:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            out += chunk
+        return bytes(out)
+    finally:
+        os.close(fd)
+
+
+def _syncfs(path):
+    """One file system's writes to the medium (Linux's syncfs), or every file system where it is not there."""
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        fd = os.open(path, DIR_FLAGS)
+        try:
+            if libc.syncfs(fd) != 0:
+                raise OSError(ctypes.get_errno(), "syncfs")
+        finally:
+            os.close(fd)
+    except (AttributeError, OSError):
+        os.sync()
+
+
+def _syncfs_all(paths):
+    seen = set()
+    for path in paths:
+        try:
+            device = os.stat(Path(path).parent).st_dev
+        except OSError:
+            continue
+        if device in seen:
+            continue
+        seen.add(device)
+        _syncfs(Path(path).parent)
+
+
+def _record_check(path, expected, got, why):
+    """A write the card did not keep, for Box doctor. The report is a record: a plain write is enough."""
+    try:
+        data = json.loads(WRITE_CHECK.read_text())
+    except (OSError, ValueError):
+        data = []
+    if not isinstance(data, list):
+        data = []
+    data.append({"at": time.time(), "path": str(path), "why": why, "expected": expected, "got": got})
+    mkdir(ROOT_STATE, mode=0o700)
+    write(WRITE_CHECK, json.dumps(data[-WRITE_CHECK_KEEP:], indent=1), 0o600)
+
+
+def write_checked(path, data, mode=0o644, group=None):
+    """Write a protected file, then make the card prove it: fsync, evict from the cache, read it back and compare. A
+    mismatch is written once more; one that survives both is kept for Box doctor (ROOT_STATE/write-check.json) and
+    this returns False. An identical file is left alone (no write)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(data, str):
+        data = data.encode()
+    if path.is_file() and not path.is_symlink():
+        try:
+            if path.read_bytes() == data:
+                if stat.S_IMODE(path.stat().st_mode) != mode:
+                    os.chmod(path, mode)
+                if group is not None and os.geteuid() == 0:
+                    gid = _gid(group)
+                    if gid is not None:
+                        try:
+                            os.chown(path, -1, gid)
+                        except OSError:
+                            pass
+                return True
+        except OSError:
+            pass
+    expected = hashlib.sha256(data).hexdigest()
+    got, why = None, "not written"
+    for _ in range(2):
+        _write_synced(path, data, mode, group)
+        try:
+            got = _read_back(path)
+        except OSError as exc:
+            got, why = None, f"could not be read back: {exc}"
+            continue
+        if hashlib.sha256(got).hexdigest() == expected:
+            return True
+        why = "read back different"
+    _record_check(path, expected, hashlib.sha256(got).hexdigest() if got is not None else None, why)
+    return False
+
+
+def write_batch(entries):
+    """Several protected files written together: each written only when it differs, one syncfs per file system,
+    then each read back; a mismatch is written once more and kept for Box doctor if it survives that.
+    `entries` is [(path, data[, mode[, group]])]. True when every file read back right."""
+    written = []
+    for entry in entries:
+        path, data = Path(entry[0]), entry[1]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = data.encode() if isinstance(data, str) else data
+        mode = entry[2] if len(entry) > 2 else 0o644
+        group = entry[3] if len(entry) > 3 else None
+        if path.is_file() and not path.is_symlink():
+            try:
+                if path.read_bytes() == data:
+                    continue
+            except OSError:
+                pass
+        _write_synced(path, data, mode, group)
+        written.append((path, data, mode, group))
+    if not written:
+        return True
+    failed = []
+    for attempt in (1, 2):
+        if attempt == 2:
+            for path, data, mode, group in failed:
+                _write_synced(path, data, mode, group)
+            if not failed:
+                break
+        _syncfs_all([item[0] for item in written])
+        failed = []
+        for path, data, mode, group in written:
+            try:
+                got = _read_back(path, sync=False)
+            except OSError:
+                got = None
+            if got is None or hashlib.sha256(got).hexdigest() != hashlib.sha256(data).hexdigest():
+                failed.append((path, data, mode, group))
+        if not failed:
+            return True
+    for path, data, *_ in failed:
+        _record_check(path, hashlib.sha256(data).hexdigest(), None, "read back different")
+    return False

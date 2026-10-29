@@ -1402,14 +1402,12 @@ def _caddy_directive():
 
 
 def _write_root_file(path, text, mode=0o644, group=None):
-    tmp = path.with_name(f".{path.name}.new")  # a leading dot: Caddy's <id>.caddy* imports never see it
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(text)
-    if group is not None:
-        os.chown(tmp, 0, group)
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    """Root's file, through safeio.write_checked: written only when it differs, fsynced, and read back from the card;
+    a write the card did not keep is named for Box doctor. A leading-dot temporary name means Caddy's <id>.caddy*
+    imports never see it."""
+    from irate_box.root import safeio
+
+    safeio.write_checked(path, text, mode, group=group)
 
 
 @locked

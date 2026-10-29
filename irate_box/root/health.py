@@ -3132,6 +3132,59 @@ def check_lost_writes():
     return [f for f in data.get("findings") or [] if isinstance(f, dict)]
 
 
+def check_writes_kept():
+    """A file the box wrote and the card did not keep, even after a second write: safeio.write_checked's report
+    (Part 2, step 2). Read only: the report is written where the write happened."""
+    from irate_box.root import safeio
+
+    try:
+        entries = json.loads((safeio.ROOT_STATE / "write-check.json").read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(entries, list):
+        return []
+    entries = [e for e in entries if isinstance(e, dict) and e.get("path")]
+    if not entries:
+        return []
+    housecall = CODE / "irate_box/root/housecall.py"
+    names = [str(e["path"]) for e in entries]
+    return [
+        finding(
+            "card-writes-kept",
+            M("writes-kept.title", "Writes the card did not keep"),
+            "problem",
+            M(
+                "writes-kept.found",
+                {
+                    "one": "The card did not keep {n} file, even after a second write.",
+                    "other": "The card did not keep {n} files, even after a second write.",
+                },
+                n=len(entries),
+            ),
+            M(
+                "writes-kept.why",
+                "The box wrote the file, read it back from the card, and what came back was not what it wrote. A card "
+                "that does this loses data at the next power cut.",
+            ),
+            M(
+                "writes-kept.fix",
+                "Replace the SD card. The Housecall doctor can examine the whole card first.",
+            ),
+            notes=[
+                M(
+                    "writes-kept.housecall",
+                    "The Housecall doctor can examine the whole card and name every file it damaged.",
+                )
+            ]
+            if housecall.exists()
+            else [],
+            commands=[f"sudo {CODE}/irate-box housecall --this-card"] if housecall.exists() else [],
+            evidence=names,
+            go=GO_CARD_WRITES,
+        )
+    ]
+
+
 def timer_on():
     return (SYSTEMD_UNITS / DOCTOR_TIMER).exists()
 
@@ -6461,6 +6514,7 @@ def scan(quick=False):
         check_card_writes,
         check_card_health,
         check_lost_writes,
+        check_writes_kept,
         check_builds,
         check_crashwatch,
         check_led,
