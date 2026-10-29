@@ -74,6 +74,14 @@ check(
     (REPO / "tools" / "alpine" / "README.md").is_file()
     and (REPO / "tools" / "alpine" / "keys" / "README.md").is_file(),
 )
+keys = {path.name for path in (REPO / "tools" / "alpine" / "keys").glob("*.pub")}
+check(
+    "  the armv7 signing keys are in the repository",
+    any("524d27bb" in name for name in keys)
+    and any("616adfeb" in name for name in keys)
+    and not any("4a6a0840" in name for name in keys),
+    keys,
+)
 check("  nothing was made", not out.exists(), list(T.iterdir()))
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

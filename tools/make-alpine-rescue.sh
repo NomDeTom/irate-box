@@ -72,7 +72,10 @@ if [ "$dry" = 0 ]; then
 	[ "$(id -u)" = 0 ] || { echo "make-alpine-rescue: run as root" >&2; exit 1; }
 	command -v "$apk" >/dev/null || { echo "make-alpine-rescue: $apk is not installed" >&2; exit 1; }
 	command -v mksquashfs >/dev/null || { echo "make-alpine-rescue: mksquashfs is not installed" >&2; exit 1; }
-	[ -d "$keys" ] && compgen -G "$keys/*.pub" >/dev/null || { echo "make-alpine-rescue: no Alpine signing keys in $keys" >&2; exit 1; }
+	if [ ! -d "$keys" ] || ! compgen -G "$keys/*.pub" >/dev/null; then
+		echo "make-alpine-rescue: no Alpine signing keys in $keys" >&2
+		exit 1
+	fi
 	if [ -n "$apk_sha" ] && [ "$(sha256sum "$apk" | cut -d' ' -f1)" != "$apk_sha" ]; then
 		echo "make-alpine-rescue: $apk does not match --apk-sha256" >&2
 		exit 1
