@@ -115,6 +115,7 @@ run sim_rtc.py
 run sim_tls.py
 run sim_tls_default.py
 run sim_mesh.py
+run sim_setup_code.py
 run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py

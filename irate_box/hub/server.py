@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from irate_box import confine, durable, finding
+from irate_box import confine, durable, finding, setup_code
 from irate_box.hub import (
     access,
     accounts,
@@ -5584,6 +5584,18 @@ class Handler(BaseHTTPRequestHandler):
                     403,
                     refused.say(
                         M("setup.done", "This box is already set up. Sign in to change its accounts or passwords.")
+                    ),
+                )
+            elif not setup_code.verify(str(payload.get("code") or "")):
+                time.sleep(1.2)
+                self.send_json(
+                    403,
+                    refused.say(
+                        M(
+                            "setup.code",
+                            "The setup code is not right. It is printed at the end of the install, or run: "
+                            "sudo /opt/irate-box/irate-box hub_control setup-code",
+                        )
                     ),
                 )
             elif not self._https() and payload.get("over_http") is not True:
