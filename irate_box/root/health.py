@@ -2319,8 +2319,8 @@ def check_port_80():
 
 def _front_silent():
     """The web server's plain port when nothing answers HTTP there at all, else None. Then an add-on asked through it
-    cannot say anything of its own: its finding names the web server, with no offer to restart the add-on (item 175:
-    the Lyra's Kiwix, Syncthing and MQTT each offered a restart while nothing served port 80)."""
+    cannot say anything of its own: its finding names the web server, with no offer to restart the add-on (on a Lyra,
+    Kiwix, Syncthing and MQTT each offered a restart while nothing served port 80)."""
     from irate_box.root import webprobe
 
     host, port = webprobe.front_address()
