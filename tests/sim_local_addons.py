@@ -39,8 +39,14 @@ def check(name, cond, info=""):
 
 
 def refused(name, m, why):
+    built = M.load()
     try:
-        M.check_local(m, "t", {"draw", "tools"})
+        M.check_local(
+            m,
+            "t",
+            {x["id"] for x in built},
+            {x["id"] for x in built if (x.get("menu") or {}).get("addons")},
+        )
         check(name, False, "accepted")
     except M.ManifestError as exc:
         check(name, why in str(exc), str(exc))
@@ -60,10 +66,12 @@ M.check_local(good, "t", {"draw"})
 check("a plain local manifest passes", True)
 M.check_local(ELIZA, "t", {"draw"})
 check("ELIZA's catalogue entry passes", True)
-builtin_ids = {m["id"] for m in M.load()}
+built = M.load()
+builtin_ids = {m["id"] for m in built}
+folder_ids = {m["id"] for m in built if (m.get("menu") or {}).get("addons")}
 for f in sorted((REPO / "addons").glob("*.json")) + sorted((REPO / "addons" / "templates").glob("*.json")):
     try:
-        M.check_local(json.loads(f.read_text()), f.name, builtin_ids)
+        M.check_local(json.loads(f.read_text()), f.name, builtin_ids, folder_ids)
         check(f"addons/{f.relative_to(REPO / 'addons')} passes", True)
     except M.ManifestError as exc:
         check(f"addons/{f.relative_to(REPO / 'addons')} passes", False, str(exc))
@@ -98,10 +106,24 @@ refused("refuses an absolute href as a path", dict(good, tile=dict(good["tile"],
 refused("refuses connect to javascript:", dict(good, capabilities={"connect": ["javascript:alert(1)"]}), "connect")
 refused("refuses a quote in connect", dict(good, capabilities={"connect": ['ws://a";/']}), "connect")
 refused("refuses no consent", dict(good, addon={"title": "t", "summary": "s"}), "consent")
+shared = dict(good, entries=[{"menus": {"drawing": 1}, "name": "n", "path": "x.html"}])
+M.check_local(shared, "t", builtin_ids, folder_ids)
+check("an entry may join a folder built into the hub", True)
 refused(
     "refuses entries on another list",
-    dict(good, menu={"title": "t", "subtitle": "s"}, entries=[{"menus": {"tools": 1}, "name": "n", "path": "x.html"}]),
-    "own list",
+    dict(good, entries=[{"menus": {"not-a-folder": 1}, "name": "n", "path": "x.html"}]),
+    "folder that takes add-ons",
+)
+for name in ("meshtastic", "flashing"):
+    refused(
+        f"refuses an entry in the hub's {name} list",
+        dict(good, entries=[{"menus": {name: 1}, "name": "n", "path": "x.html"}]),
+        "folder that takes add-ons",
+    )
+refused(
+    "refuses entries for its own list without a menu",
+    dict(good, entries=[{"menus": {"demo": 1}, "name": "n", "path": "x.html"}]),
+    "need a menu",
 )
 
 full = M.local(good)

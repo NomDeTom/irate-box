@@ -26,5 +26,13 @@
     "pattern": "irate-box-draw-*"
   },
   "core": true,
-  "admin": {"sections": ["saved"]}
+  "admin": {"sections": ["saved"]},
+  "entries": [
+    {
+      "menus": {"drawing": 10},
+      "name": "Excalidraw",
+      "desc": "Whiteboard drawing, with an optional live collaboration relay",
+      "href": "/app.html#/draw/"
+    }
+  ]
 }
