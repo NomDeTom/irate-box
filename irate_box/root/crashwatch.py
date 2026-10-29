@@ -72,9 +72,11 @@ INCIDENTS = DIR / "incidents.json"  # a radio's failures, filed as they happen (
 EVENTS = DIR / "events.json"  # the radio's failures, its driver's own resets, its recoveries, newest last
 STATUS = DIR / "status.json"  # for the box doctor: the radios watched, the floods, the last look
 POWER = DIR / "power.json"  # undervoltage and power-fail events, kept across boots
-POWER_STATE = DIR / "power-state.json"  # this boot's last reading, so a transition is noted once
+RUN_DIR = Path(os.environ.get("HUB_RUN_DIR", "/run/irate-box"))
+POWER_STATE = RUN_DIR / "power-state.json"  # this boot's last reading: in RAM, written only when it changes
 POWER_FAIL = Path(os.environ.get("HUB_POWER_FAIL", "/run/irate-box/power-fail"))
-UNDERVOLTAGE_MV = int(os.environ.get("HUB_UNDERVOLTAGE_MV", "4630"))
+UNDERVOLTAGE_MV = 4630  # the 5 V rail's low point; the owner may choose another in the doctor's settings
+UNDERVOLTAGE_OPTIONS = (3000, 4630, 11000)
 POWER_ACTIONS = ("log", "sync", "shutdown")
 INA = ("ina219", "ina226", "ina230", "ina260", "ina3221", "ina700")
 # A program that already owns the shutdown: NUT's upsmon (Debian's nut-monitor) or apcupsd. The box then logs and
@@ -99,7 +101,14 @@ TICK = 30
 SNAP_MAX = 4_000_000
 KEEP_CRASHES = 30
 WATCHDOG_SEC = 60  # RuntimeWatchdogSec: how long a frozen system can stop feeding the watchdog
-DEFAULT = {"snapshots": True, "panic": False, "watchdog": False, "undervoltage": True, "power_action": "log"}
+DEFAULT = {
+    "snapshots": True,
+    "panic": False,
+    "watchdog": False,
+    "undervoltage": True,
+    "undervoltage_mv": UNDERVOLTAGE_MV,
+    "power_action": "log",
+}
 FLOOD = 30  # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5  # driver errors within two looks that make a failure
 # A radio in trouble, as the kernel says it (the AIC8800's own words, and the USB core's).
@@ -134,6 +143,8 @@ def load_settings():
     for k in ("snapshots", "panic", "watchdog", "undervoltage"):
         if isinstance(raw.get(k), bool):
             out[k] = raw[k]
+    if raw.get("undervoltage_mv") in UNDERVOLTAGE_OPTIONS:
+        out["undervoltage_mv"] = raw["undervoltage_mv"]
     if raw.get("power_action") in POWER_ACTIONS:
         out["power_action"] = raw["power_action"]
     return out
@@ -654,33 +665,36 @@ def _hwmon():
         yield d, _read(d / "name").strip()
 
 
-def _millivolts(d):
-    for n in range(4):
-        for name in (f"in{n}_input", f"in_voltage{n}_input"):
-            text = _read(d / name).strip()
-            if text.isdigit():
-                return int(text)
+def _millivolts(d, name):
+    """The supply's voltage in mV. ina2xx's in0_input is the shunt (a few mV), and in1_input the bus; ina3221 has
+    no in0, and in1_input is channel 1's bus, then 2 and 3."""
+    channels = (1, 2, 3) if name == "ina3221" else (1,)
+    for n in channels:
+        text = _read(d / f"in{n}_input").strip()
+        if text.isdigit():
+            return int(text)
     return None
 
 
-def power_now():
-    """The supply as the board measures it: an INA2xx's voltage (mV) or a Raspberry Pi's rpi_volt and
+def power_now(threshold=None):
+    """The supply as the board measures it: an INA2xx's bus voltage (mV) or a Raspberry Pi's rpi_volt and
     vcgencmd get_throttled. {measured, source, mv, undervoltage, occurred, why}."""
+    threshold = threshold if threshold is not None else load_settings().get("undervoltage_mv", UNDERVOLTAGE_MV)
     ina = rpi = None
     for d, name in _hwmon():
         if name in INA:
-            mv = _millivolts(d)
+            mv = _millivolts(d, name)
             if mv is not None:
                 ina = {
                     "measured": True,
                     "source": name,
                     "mv": mv,
-                    "undervoltage": mv < UNDERVOLTAGE_MV,
+                    "undervoltage": mv < threshold,
                     "occurred": False,
                     "why": "",
                 }
         elif name == "rpi_volt":
-            alarm = _read(d / "in_voltage0_lcrit_alarm").strip() == "1"
+            alarm = _read(d / "in0_lcrit_alarm").strip() == "1" or _read(d / "in_voltage0_lcrit_alarm").strip() == "1"
             occurred = False
             found = re.search(r"throttled=(0x[0-9a-fA-F]+)", _run("vcgencmd", "get_throttled").stdout or "")
             if found:
@@ -710,23 +724,26 @@ def power_now():
 
 
 def power_fail():
-    """(failing, why): the power-fail hook (a file NUT's NOTIFYCMD or a pin's handler writes), or NUT's own
-    ups.status on battery or with the battery low."""
+    """(failing, why, low): the power-fail hook, or NUT's ups.status. The hook is a file NUT's NOTIFYCMD or a pin's
+    handler writes; it must be removed when the power is back (ONLINE). Its words "low" or "shutdown" mark it as the
+    battery low, so the shutdown action may follow. On battery alone, the box is still being supplied: log and sync,
+    but do not shut it down until the battery is low."""
     try:
         said = POWER_FAIL.read_text().strip()
     except OSError:
         said = ""
     if said:
-        return True, said[:120]
+        low = "low" in said.lower() or "shutdown" in said.lower()
+        return True, said[:120], low
     if not shutil.which("upsc"):
-        return False, ""
+        return False, "", False
     listed = _run("upsc", "-l")
     name = (listed.stdout or "").splitlines()[0].strip() if listed.returncode == 0 else ""
     if not name:
-        return False, ""
+        return False, "", False
     said = _run("upsc", name)
     if said.returncode:
-        return False, ""
+        return False, "", False
     state = ""
     for line in (said.stdout or "").splitlines():
         key, sep, value = line.partition(":")
@@ -734,10 +751,10 @@ def power_fail():
             state = value.strip().upper()
     words = state.split()
     if "LB" in words:
-        return True, "the battery is low"
+        return True, "the battery is low", True
     if "OB" in words:
-        return True, "the box is on battery"
-    return False, ""
+        return True, "the box is on battery", False
+    return False, "", False
 
 
 def _event(now, kind, text, reading):
@@ -766,7 +783,9 @@ def shutdown_owner(now=None, refresh=False):
     return name
 
 
-def _quiet(settings):
+def _quiet(settings, low):
+    """The owner's action. Only a low battery may shut the box down: on battery alone the UPS is still supplying it,
+    and a poweroff would leave the box off when the mains returns."""
     action = settings.get("power_action", "log")
     if action not in POWER_ACTIONS:
         action = "log"
@@ -775,7 +794,7 @@ def _quiet(settings):
             os.sync()
         except (AttributeError, OSError):
             pass
-    if action == "shutdown":
+    if action == "shutdown" and low:
         owner = shutdown_owner()
         if owner == "NUT's upsmon":
             _run("upsmon", "-c", "fsd", timeout=60)  # NUT's own forced shutdown, then the UPS
@@ -790,22 +809,29 @@ def power_tick(now, settings=None):
     """One look at the supply: a new undervoltage, a recovery, or the power failing, noted once; a failing power
     runs the owner's action (log, sync, or shutdown)."""
     settings = settings or load_settings()
-    state = _json(POWER_STATE, {})
-    if state.get("boot") != boot_id():
-        state = {"boot": boot_id(), "undervoltage": False, "occurred": False, "power_fail": False}
-    reading = power_now()
+    threshold = settings.get("undervoltage_mv", UNDERVOLTAGE_MV)
+    old = _json(POWER_STATE, {})
+    if old.get("boot") != boot_id():
+        old = {"boot": boot_id(), "undervoltage": False, "occurred": False, "power_fail": False}
+    state = dict(old)
+    reading = (
+        power_now(threshold)
+        if settings.get("undervoltage", True)
+        else {"measured": False, "source": None, "mv": None, "undervoltage": False, "occurred": False, "why": "off"}
+    )
     events = []
     if reading["measured"]:
-        if reading["occurred"] and not state.get("occurred"):
+        if reading["undervoltage"] and not state.get("undervoltage"):
+            events.append(_event(now, "undervoltage", f"the supply is below {threshold} mV", reading))
+            state["undervoltage"] = True
+            state["occurred"] = True  # this look covers the firmware's own "since boot" bit too
+        elif reading["occurred"] and not state.get("occurred"):
             events.append(_event(now, "undervoltage", "the firmware recorded an undervoltage since boot", reading))
             state["occurred"] = True
-        if reading["undervoltage"] and not state.get("undervoltage"):
-            events.append(_event(now, "undervoltage", f"the supply is below {UNDERVOLTAGE_MV} mV", reading))
-            state["undervoltage"] = True
         elif not reading["undervoltage"] and state.get("undervoltage"):
             events.append(_event(now, "recovered", "the supply is back above its threshold", reading))
             state["undervoltage"] = False
-    failing, why = power_fail()
+    failing, why, low = power_fail()
     if failing and not state.get("power_fail"):
         owner = shutdown_owner(now)
         text = why or "the power is failing"
@@ -813,11 +839,12 @@ def power_tick(now, settings=None):
             text += f" ({owner} manages the shutdown)"
         events.append(_event(now, "power-fail", text, reading))
         state["power_fail"] = True
-        _quiet(settings)
+        _quiet(settings, low)
     elif not failing and state.get("power_fail"):
         events.append(_event(now, "power-restored", "the power is back", reading))
         state["power_fail"] = False
-    _write(POWER_STATE, state)
+    if state != old:
+        _write(POWER_STATE, state)
     if events:
         _write(POWER, (_json(POWER, []) + events)[-200:])
     return events
@@ -1033,6 +1060,13 @@ def set_option(key, value):
             M("crashwatch-set.undervoltage.on", "The supply is watched. An undervoltage is a finding.")
             if s["undervoltage"]
             else M("crashwatch-set.undervoltage.off", "The supply is no longer watched.")
+        )
+    elif key == "undervoltage-mv" and str(value).isdigit() and int(value) in UNDERVOLTAGE_OPTIONS:
+        s["undervoltage_mv"] = int(value)
+        msg = M(
+            "crashwatch-set.undervoltage-mv",
+            "The supply's low point is {mv} mV.",
+            mv=int(value),
         )
     elif key == "power-action" and value in POWER_ACTIONS:
         s["power_action"] = value
