@@ -88,13 +88,15 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   check('this box\'s own files: the path is not asked for, and the package and tree boxes are offered', (() => {
     target.value = 'this-card';
     target.dispatchEvent(new w.Event('change', { bubbles: true }));
-    return path.disabled && !d.getElementById('housecall-dpkg').disabled && !d.getElementById('housecall-git').disabled;
+    return path.disabled && d.getElementById('housecall-path-label').hidden
+      && !d.getElementById('housecall-dpkg').disabled && !d.getElementById('housecall-git').disabled;
   })());
   check('  finished: no Stop offered, and Examine can be selected again', d.getElementById('housecall-stop').hidden && !d.getElementById('housecall-scan').disabled);
   // A card in a reader can be imaged first; the image path and the own-card permission go with the request.
   target.value = 'device';
   target.dispatchEvent(new w.Event('change', { bubbles: true }));
   check('a card in a reader: it can be imaged first', !d.getElementById('housecall-image-first-label').hidden);
+  check('  its path is asked for as a device', d.getElementById('housecall-path').placeholder === '/dev/sda');
   const first = d.getElementById('housecall-image-first');
   first.checked = true;
   first.dispatchEvent(new w.Event('change', { bubbles: true }));
