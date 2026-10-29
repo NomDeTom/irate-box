@@ -14329,7 +14329,14 @@ function asSurveyTable(holder, at) {
         el("td", {}, box),
         el("td", {},
           el("code", { textContent: kind.shape }),
-          el("span", { className: "setting-desc", textContent: ` ${kind.class}${kind.companions ? ` · +${kind.companions} companion(s)` : ""}` })),
+          el("span", {
+            className: "setting-desc",
+            textContent: ` ${kind.class}${
+              (kind.companions || []).length
+                ? ` · +${kind.companions.length} companion${kind.companions.length === 1 ? "" : "s"}`
+                : ""
+            }`,
+          })),
         el("td", { textContent: `${(kind.releases || []).length}` }),
         el("td", { textContent: size(kind.size_max) })),
     );
@@ -14362,30 +14369,43 @@ function asSurveyTable(holder, at) {
   if ((survey.own || []).length) {
     at.append(el("p", { className: "setting-desc" },
       "A pattern of your own, not a tick: ",
-      ...survey.own.map((own) => el("code", { textContent: `${own.include} (${own.files} file(s) here) ` }))));
+      ...survey.own.map((own) =>
+        el("code", { textContent: `${own.include} (${own.files} file${own.files === 1 ? "" : "s"} here) ` }))));
   }
 }
 
 function asSettingsForm(holder) {
-  const form = el("form", { className: "library-form" });
-  const input = (name, label, value, type = "text", extra = {}) => {
-    const box = el("input", { name, type, value: String(value ?? ""), ...extra });
-    form.append(el("label", {}, `${label} `, box));
-    return box;
+  const form = el("form", { className: "appstore-settings" });
+  // One setting a row, its name on the left, as Home tiles draw a tile's settings.
+  const row = (name, label, control) => {
+    control.id = `as-${holder.id}-${name}`;
+    const words = el("label", { className: "aw-label", textContent: label });
+    words.setAttribute("for", control.id);
+    form.append(el("div", { className: "aw-field" }, words, control));
+    return control;
   };
+  const input = (name, label, value, type = "text", extra = {}) =>
+    row(name, label, el("input", { name, type, value: String(value ?? ""), ...extra }));
   input("title", "Name", holder.title, "text", { maxlength: "80" });
   input("repo", "Repository", holder.repo);
   input("stable", "Stable to keep", holder.channels.stable, "number", { min: "0", max: "5" });
   input("prerelease", "Pre-releases to keep", holder.channels["pre-release"], "number", { min: "0", max: "5" });
   input("age", "Not before (days)", holder.min_age_days, "number", { min: "0", max: "365" });
   input("budget", "Space (MB, 0: the free limit)", holder.budget_mb, "number", { min: "0" });
-  const vis = el("select", { name: "visibility" });
-  for (const [value, text] of [["public", "Everyone on the hotspot"], ["members", "Signed-in members only"]]) {
-    vis.append(el("option", { value, textContent: text }));
+  // Visibility, in the words Home tiles use; the line under the chips says what the chosen one means.
+  const vis = row("visibility", "Visibility", el("select", { name: "visibility", "aria-label": "Visibility" }));
+  for (const [value, text, says] of [
+    ["public", "Guests", "Guests: every device on the box's network sees this project and can download its files."],
+    ["members", "Users", "Users: signed-in accounts see this project and download its files. Guests do not see it."],
+  ]) {
+    vis.append(el("option", { value, textContent: text, dataset: { says } }));
   }
-  form.append(el("label", {}, "Who sees it ", vis));
-  const companions = el("input", { name: "companions", type: "checkbox", checked: !!holder.companions });
-  form.append(onOffLine("label", {}, "Also hold checksums and signatures ", companions));
+  const companions = row(
+    "companions",
+    "Also hold checksums and signatures",
+    el("input", { name: "companions", type: "checkbox", checked: !!holder.companions }),
+  );
+  AW.onOff(companions, "Also hold checksums and signatures");
   const sec = AW.form(form, {
     label: `${holder.title || holder.id} settings`,
     save: async (c, v) => {
@@ -14428,14 +14448,18 @@ function asFirmware(fw) {
 function asCard(holder) {
   const st = holder.status || {};
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
-  const body = el("div", { className: "appstore-card", hidden: !asOpen.has(holder.id) });
+  const body = el("div", { className: "aw-drawer appstore-card", hidden: !asOpen.has(holder.id) });
+  const checked = st.last_check ? String(st.last_check).replace("T", " ").replace("Z", " UTC") : "";
+  // A failed check's outcome is its error already ("error: …"): said once, with its own full stop.
+  const sentence = (text) => `${String(text).trim().replace(/\.+$/, "")}.`;
   body.append(
     el("p", {
       className: "setting-desc",
-      textContent:
-        (st.last_check
-          ? `Last checked ${String(st.last_check).replace("T", " ").replace("Z", " UTC")}: ${st.outcome || "nothing"}.`
-          : "Not checked yet.") + (st.error ? ` Error: ${st.error}.` : ""),
+      textContent: !checked
+        ? "Not checked yet."
+        : st.error
+          ? `Last checked ${checked}: the check failed. ${sentence(st.error)}`
+          : `Last checked ${checked}: ${sentence(st.outcome || "nothing")}`,
     }),
     el("div", { className: "admin-list" },
       ...(holder.kept.length

@@ -73,6 +73,12 @@ const tick = () => card().querySelector('.appstore-kinds input[type=checkbox]');
   const head = card().querySelector('.aw-card-head');
   head.click();
   check('opening the card shows its body', !card().querySelector('.appstore-card').hidden && head.getAttribute('aria-expanded') === 'true');
+  const visibility = [...card().querySelectorAll('.aw-field')].find((f) => t(f.querySelector('.aw-label')) === 'Visibility');
+  check('Visibility is a row in Home tiles\' words: Guests and Users, what the chosen one means under them',
+    visibility && [...visibility.querySelectorAll('.chip')].map(t).join('|') === 'Guests|Users'
+      && /^Guests: every device/.test(t(visibility.querySelector('.chip-says'))),
+    visibility && t(visibility));
+  check('a kind with no companions names none', !/companion/.test(t(card().querySelector('.appstore-kinds'))));
   tick().click();
   check('a tick changed, not yet held, is a draft', tick().checked === false && !posts.some(([, b]) => b.action === 'holds'));
 
@@ -93,6 +99,15 @@ const tick = () => card().querySelector('.appstore-kinds input[type=checkbox]');
   await new Promise((r) => setTimeout(r, 2200));
   check('a poll leaves the card open and the draft tick as it was', !card().querySelector('.appstore-card').hidden
     && tick().checked === false && !/Working/.test(t(w.document.getElementById('appstore-status'))));
+
+  // A failed check: its error said once, as a sentence of its own (the outcome is "error: …" already).
+  const err = 'GitHub API rate limit reached. The limit depends on authentication.';
+  holder.status = { ...holder.status, outcome: `error: ${err}`, error: err };
+  button(card(), 'Check now').click();
+  await wait();
+  const line = t(card().querySelector('.appstore-card > p'));
+  check('a failed check says its error once, with one full stop',
+    line.split('rate limit reached').length === 2 && /the check failed\. GitHub API/.test(line) && !/\.\./.test(line), line);
 
   // Remove asks first; only Confirm sends it.
   w.answerAsks = false;
