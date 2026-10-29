@@ -183,7 +183,10 @@ def _hours(rows):
         now_s, was_s = r.get("slices") or {}, (prev.get("slices") or {}) if same else {}
         if same and isinstance(now_s.get("system"), int) and isinstance(was_s.get("system"), int):
             grew = now_s["system"] - was_s["system"]
-            running = sum(w for w in by.values())
+            # The rest are "other". Count their growth too, never negative: otherwise their writes are called jobs
+            # that ended (a box with many services showed thousands of MB a day).
+            other_grew = int(r.get("other") or 0) - int(prev.get("other") or 0)
+            running = sum(by.values()) + max(other_grew, 0)
             if grew > running:
                 by[JOBS] = grew - running
             user = (now_s.get("user") or 0) - (was_s.get("user") or 0) if isinstance(now_s.get("user"), int) else 0
