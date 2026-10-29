@@ -554,6 +554,39 @@ check(
 )
 retain.set_keys("encrypt")
 retain.sweep()
+# A key changed: its old version is kept as <ident>.prev, and that is a key too (found on box 181: the hotspot's
+# previous connection file was copied to a USB drive as plain text).
+ca_ident = retain._ident(ca_key)
+ca_key.write_text("CA, renewed\n")
+os.utime(ca_key, ns=(time.time_ns() + 10**9, time.time_ns() + 10**9))
+retain.sweep()
+check(
+    "  a key's previous version goes to the drive encrypted, never as plain text",
+    retain._prev(ca_key).is_file()
+    and (usb_enc_store / (ca_ident + ".prev.enc")).is_file()
+    and not (usb_enc_store / (ca_ident + ".prev")).exists(),
+    sorted(p.name for p in usb_enc_store.iterdir()),
+)
+# A card copy damaged to 0xFF is reported, and the drive's good copy is kept.
+good = (usb_enc_store / (ca_ident + ".prev.enc")).read_bytes()
+retain._prev(ca_key).write_bytes(b"\xff" * 12)
+bad = retain.sweep()
+check(
+    "  a damaged copy on the card is not copied over the drive's good one",
+    (usb_enc_store / (ca_ident + ".prev.enc")).read_bytes() == good
+    and any(r["path"] == str(retain._prev(ca_key)) for r in bad),
+    bad,
+)
+retain._prev(ca_key).unlink()
+retain.set_keys("leave-out")
+retain.sweep()
+check(
+    "  leave-out removes the previous version's copy too",
+    not any(p.name.startswith(ca_ident) for p in usb_enc_store.iterdir()),
+    sorted(p.name for p in usb_enc_store.iterdir()),
+)
+retain.set_keys("encrypt")
+ca_key.write_text("CA\n")
 health.fix(f"retain-store:off:{retain.encode_store(usb_enc_store)}")
 retain.set_keys("leave-out")
 retain.store_candidates = real_candidates
