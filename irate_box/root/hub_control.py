@@ -6913,6 +6913,16 @@ def wifi_country(req):
 # control/rkboard.json is the state after each, for the page.
 
 
+def pins(_req):
+    """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
+    from irate_box.root import pinmap
+
+    data = pinmap.snapshot()
+    data["at"] = time.time()
+    safeio.write(CONTROL / "pins.json", json.dumps(data, indent=1))
+    return M("control.pins", "{n} GPIO lines read.", n=len(data["lines"]))
+
+
 def _rk(fn):
     def action(req):
         from irate_box.root import rkboard
@@ -7486,6 +7496,7 @@ ACTIONS = {
     "housecall-pair": housecall_pair,
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
+    "pins": pins,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,
     "uplink-hold": uplink_hold,

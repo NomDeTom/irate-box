@@ -6058,3 +6058,37 @@ label > .aw-onoff-box ~ .chip-group,
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* --- Pin map --- */
+.pinmap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.4rem;
+  margin: 0.8rem 0;
+}
+.pin {
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  gap: 0.1rem 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+.pin.used {
+  border-left-color: var(--bad);
+}
+.pin b {
+  grid-row: span 2;
+  align-self: center;
+  font-size: 1.1rem;
+}
+.pin span,
+.pin small {
+  overflow-wrap: anywhere;
+}
+.pin small {
+  color: var(--muted);
+}
