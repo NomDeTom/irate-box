@@ -5,6 +5,7 @@
   'use strict';
   const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' };
   const $ = (id) => document.getElementById(id);
+  let lastAt = 0;
   const say = (text, ok) => { const n = $('pins-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   async function get() { const response = await fetch('/admin/pins'); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
   async function post(body) {
@@ -30,6 +31,7 @@
   function render(data) {
     const pins = data && data.pins;
     if (!pins) { $('pins-board').textContent = 'Not read yet.'; return; }
+    lastAt = pins.at || lastAt;
     const when = `${pins.board || 'this board'}, read ${pins.at ? new Date(pins.at * 1000).toLocaleString() : 'now'}.`;
     $('pins-board').textContent = pins.note ? `${when} ${pins.note}` : when;
     const map = $('pins-map');
@@ -50,7 +52,7 @@
     claims.append(ul);
   }
   const answerSaid = (result) => (result.msg && typeof AW !== 'undefined' ? AW.say(result.msg) : result.message);
-  async function wait(id, since) {
+  async function wait(id, before) {
     for (let i = 0; i < 40; i++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       let data;
@@ -61,9 +63,11 @@
         $('pins-scan').disabled = false;
         return;
       }
-      if (data.pins && data.pins.at && data.pins.at >= since) {
+      // The answer is the request's own; its at is the box's clock, compared with the box's at before the click,
+      // so a browser and box whose clocks differ cannot leave a good read waiting or an old one looking fresh.
+      if (done && done.ok && data.pins && data.pins.at && data.pins.at >= before) {
         render(data);
-        say((done && answerSaid(done)) || 'Read.', true);
+        say(answerSaid(done) || 'Read.', true);
         $('pins-scan').disabled = false;
         return;
       }
@@ -74,10 +78,10 @@
   $('pins-scan').addEventListener('click', async () => {
     $('pins-scan').disabled = true;
     say('Reading the GPIO lines…', true);
-    const since = Date.now() / 1000;
+    const before = lastAt;
     try {
       const reply = await post({ action: 'pins' });
-      await wait(reply.id, since);
+      await wait(reply.id, before);
     } catch (err) { say(err.message || 'The pins could not be read.', false); $('pins-scan').disabled = false; }
   });
   get().then(render).catch(() => {});

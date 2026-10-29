@@ -219,10 +219,11 @@ def snapshot(board=None):
         if had_debugfs:
             apply_pinmux(lines, claims)
         else:
-            note = (
+            pinmux = (
                 "The pin-mux view under /sys/kernel/debug/pinctrl is not available (root and debugfs are needed), "
                 "so a pin that a function such as SPI or I2C holds may show as free."
             )
+            note = f"{note} {pinmux}".strip()
     return {"board": board, "lines": lines, "header": board_lines(board, lines), "note": note}
 
 

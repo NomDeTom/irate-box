@@ -132,6 +132,14 @@ check(
     "only 0 could be read" in partial["note"],
     partial["note"],
 )
+partial_no_debugfs = snapshot_with(
+    "gpiochip0 - 32 lines:\n\tline   0:     not a line gpioinfo writes\n", {}, has_debugfs=False
+)
+check(
+    "  no debugfs and a short read: both are said, not one in place of the other",
+    "only 0 could be read" in partial_no_debugfs["note"] and "may show as free" in partial_no_debugfs["note"],
+    partial_no_debugfs["note"],
+)
 real_run = pinmap.run
 pinmap.run = lambda *a, **k: __import__("subprocess").CompletedProcess(a, 127, "", "gpioinfo: not found")
 check(
