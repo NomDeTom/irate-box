@@ -174,6 +174,12 @@ server {
 	# (captive.apple.com, connectivitycheck.gstatic.com, ...) still fires. / and /index.html
 	# go to the hub, which fills in the tiles; other files under web/ come off disk.
 	root @STATIC@;
+	# An address the web server has no file for, or an app switched off (return 404): the box's not-found page
+	# (not-found.html, the confused krab), from this root. Not passed to the hub: a path the gate refused must not
+	# reach a route that would serve it. The hub's own 404 sends the same page to a browser.
+	error_page 404 /not-found.html;
+	# An app that does not answer (Kiwix with no books, the notes not installed, one still starting): the same, saying so.
+	error_page 502 503 504 /not-ready.html;
 	# A baseline Content-Security-Policy on every answer of this origin: no plugins,
 	# no <base> hijack, framed by this origin alone. add_header is per location (a location with one
 	# of its own loses the server's), so the line is repeated wherever Cache-Control is set.
