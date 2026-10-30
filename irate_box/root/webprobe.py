@@ -121,7 +121,12 @@ def through_front(path, front=None, websocket=False):
         if loc.scheme not in ("", "http", "https"):
             break
         tls = loc.scheme == "https" if loc.scheme else tls
-        port = loc.port or (port if not loc.scheme else (443 if tls else 80))
+        try:
+            port = loc.port or (port if not loc.scheme else (443 if tls else 80))
+        except ValueError:
+            # A Location naming a port outside 0-65535: urlsplit reads it only when asked. There is nowhere to
+            # follow it to, so this answer stands: the add-on answered, and what it answered is what is reported.
+            break
         where = (loc.path or "/") + (f"?{loc.query}" if loc.query else "")
     return r, f"{'https' if tls else 'http'}://{host}:{port}{where}"
 

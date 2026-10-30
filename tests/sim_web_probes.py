@@ -145,6 +145,20 @@ check("any site may call it with credentials: web-cors", list(got) == ["web-cors
 check("  the answer as evidence", "Allow-Origin: *" in got["web-cors"]["evidence"][0], got)
 got = points(GUARDED)
 check("a sign-in of its own, no headers trusted, no cross-origin: nothing", got == {}, got)
+
+# A front that redirects to a port outside 0-65535: urlsplit reads a port only when asked, and the answer stands.
+FRONT_BADPORT = serve(lambda h: (302, {"Location": "http://127.0.0.1:99999/wiki/"}, b""), host="127.0.0.1")
+webprobe.front_address = lambda: ("127.0.0.1", FRONT_BADPORT)
+try:
+    answer, at = webprobe.through_front("/wiki/")
+    raised = ""
+except ValueError as exc:
+    answer, at, raised = None, "", str(exc)
+check(
+    "a redirect to a port that cannot exist: this answer kept, no exception out of the probe",
+    not raised and answer and answer["status"] == 302,
+    raised or answer,
+)
 got = points(NOT_HTTP)
 check("a port that does not speak HTTP: left to the listener checks", got == {}, got)
 check(
