@@ -3555,14 +3555,28 @@ def _unit(name, text):
 
 def unit_text(name):
     """A unit of the Box doctor's own (install.sh writes them, and set_timer/lostwrites/canary here)."""
-    from irate_box.root import safeio
+    from irate_box.root import safeio, secmanifest
 
     code, state = CODE, STATE
     root_state = safeio.ROOT_STATE
-    sandbox = (
-        "ProtectSystem=strict\n"
-        f"ReadWritePaths={state}/control {root_state}\n"
-        "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=read-only\nProtectProc=invisible\n"
+    order = ("ProtectSystem", "ReadWritePaths", "PrivateTmp", "NoNewPrivileges", "ProtectHome", "ProtectProc")
+    sandbox = secmanifest.unit_lines(
+        name,
+        order,
+        fallback=(
+            "ProtectSystem=strict\n"
+            f"ReadWritePaths={state}/control {root_state}\n"
+            "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=read-only\nProtectProc=invisible\n"
+        ),
+    )
+    canary_sandbox = secmanifest.unit_lines(
+        CANARY_SERVICE,
+        order,
+        fallback=(
+            "ProtectSystem=strict\n"
+            f"ReadWritePaths={root_state}\n"
+            "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
+        ),
     )
     if name == DOCTOR_SERVICE:
         return (
@@ -3592,8 +3606,7 @@ def unit_text(name):
         return (
             "[Unit]\nDescription=Irate-Box: a test file for lost writes on the SD card\n\n"
             f"[Service]\nType=oneshot\nExecStart={code}/irate-box health canary\nNice=19\n"
-            "IOSchedulingClass=idle\nProtectSystem=strict\n"
-            f"ReadWritePaths={root_state}\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
+            "IOSchedulingClass=idle\n" + canary_sandbox
         )
     if name == CANARY_TIMER:
         return (

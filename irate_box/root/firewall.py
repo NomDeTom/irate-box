@@ -31,6 +31,7 @@ from pathlib import Path
 
 from irate_box.hub import gitrepos
 from irate_box.msg import M, Refused
+from irate_box.root import secmanifest
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RULES = ETC / "firewall.nft"
@@ -422,7 +423,11 @@ def unit_text(code_dir="/opt/irate-box"):
             "[Service]",
             "Type=oneshot",
             "RemainAfterExit=yes",
-            *SANDBOX,
+            *secmanifest.unit_lines(
+                UNIT,
+                ("ProtectSystem", "NoNewPrivileges", "PrivateTmp", "ProtectHome", "ProtectProc"),
+                fallback="\n".join(SANDBOX) + "\n",
+            ).splitlines(),
             f"ExecStart=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
             f"ExecReload=/bin/sh -c 'if [ -f {RULES} ]; then nft -f {RULES}; fi'",
             # Stopped while guests share the connection: forwarding off too, so nothing passes unfiltered.
