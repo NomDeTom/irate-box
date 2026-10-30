@@ -657,6 +657,7 @@ def local(m):
         "capabilities": {
             "connect": list(m.get("capabilities", {}).get("connect", [])),
             "storage": bool(m.get("capabilities", {}).get("storage", False)),
+            "local": bool(m.get("capabilities", {}).get("local", False)),
         },
     }
     if m.get("checks"):
@@ -709,6 +710,8 @@ def agreed_part(m):
         "consent": (m.get("addon") or {}).get("consent"),
         "connect": sorted((m.get("capabilities") or {}).get("connect", [])),
         "storage": bool((m.get("capabilities") or {}).get("storage", False)),
+        # It widens the add-on's policy (data:, blob:, blob: scripts), so a catalogue entry that adds it waits too.
+        "local": bool((m.get("capabilities") or {}).get("local", False)),
         "source": {k: src.get(k) for k in ("type", "repo", "workflow")},
     }
 
