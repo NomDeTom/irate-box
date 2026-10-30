@@ -150,7 +150,9 @@ def contents(shown):
     with tempfile.NamedTemporaryFile(prefix="rkboard-", delete=False) as fh:
         path = Path(fh.name)
     try:
-        read = run("rkdeveloptool", "rl", "0", str(min(sectors, 32768)), str(path), timeout=300)
+        # rkdeveloptool rl takes its first sector and a length in bytes ("Length must be a multiple of sector size
+        # (512)", the kit's 1.0.0 on a Lyra Zero W, 2026-10-30): 16 MiB, or the whole flash if smaller.
+        read = run("rkdeveloptool", "rl", "0", str(min(sectors, 32768) * SECTOR), str(path), timeout=300)
         if read.returncode:
             return {"read": False, "blank": False, "ubi": False, "names": []}
         data = path.read_bytes()
@@ -160,7 +162,9 @@ def contents(shown):
         path.unlink(missing_ok=True)
     words = {w.lower() for w in re.findall(rb"[ -~]{3,}", data)}
     names = sorted({n for n in words if n in (b"rescue", b"logs", b"state", b"hub", b"irate")})
-    return {"read": True, "blank": not any(data), "ubi": b"UBI#" in data, "names": [n.decode() for n in names]}
+    # An erased NAND reads as 0xFF (the Lyra Zero W's after rkdeveloptool ef); all zero is blank too.
+    blank = bool(data) and (data.count(0xFF) == len(data) or not any(data))
+    return {"read": True, "blank": blank, "ubi": b"UBI#" in data, "names": [n.decode() for n in names]}
 
 
 def held_words(held):
@@ -220,7 +224,7 @@ def erase(loader_id=None, confirm=None):
         raise Refused(
             M(
                 "rkboard.erase.unconfirmed",
-                "The onboard flash {held} Read it first, then confirm the erase.",
+                "The onboard flash is not blank: {held} Read it first, then confirm the erase.",
                 held=said,
             )
         )
@@ -308,7 +312,7 @@ def write_card(name, sha256, loader_id=None):
                     raise Refused(
                         M("rkboard.write-failed", "Writing the card failed at {mb} MB.", mb=sector * SECTOR >> 20)
                     )
-                read = run("rkdeveloptool", "rl", str(sector), str(count), str(back), timeout=600)
+                read = run("rkdeveloptool", "rl", str(sector), str(len(data)), str(back), timeout=600)  # bytes
                 if read.returncode or not back.exists() or _digest(back) != hashlib.sha256(data).hexdigest():
                     raise Refused(
                         M(
