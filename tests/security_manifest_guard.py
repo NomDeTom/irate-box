@@ -85,9 +85,7 @@ def tree_with_install(edit):
     return root
 
 
-tree = tree_with_install(
-    lambda text: text.replace('chmod 600 "$ETC/admin-password"', 'chmod 644 "$ETC/admin-password"')
-)
+tree = tree_with_install(lambda text: text + '\nchmod 644 "$ETC/admin-password"\n')
 problems = secmanifest.mismatches(declared, secmanifest.build(tree))
 check("the guard reads install.sh: a wider secret mode fails", any("admin-password" in p for p in problems), problems)
 shutil.rmtree(tree, ignore_errors=True)

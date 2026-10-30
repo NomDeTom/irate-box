@@ -1537,7 +1537,6 @@ if [ -n "$ADMIN_PW" ]; then
 	# Root's alone from the moment it exists: a new file under umask 077, renamed over the old.
 	(umask 077 && printf '%s\n' "$ADMIN_PW" >"$ETC/.admin-password.new") && mv -f "$ETC/.admin-password.new" "$ETC/admin-password"
 elif [ -s "$ETC/admin-password" ]; then
-	chmod 600 "$ETC/admin-password"
 	ADMIN_PW="$(head -1 "$ETC/admin-password")"
 else
 	# No password kept: the first use (the mark there, after reset-password too, or a new box), or ended by the
@@ -1575,8 +1574,6 @@ if ! grep -qs '^HUB_VIA_SECRET=[0-9a-f]\{64\}$' "$ETC/front-secret.env"; then
 		mv "$ETC/front-secret.env.new" "$ETC/front-secret.env"
 	)
 fi
-chown root:root "$ETC/front-secret.env"
-chmod 600 "$ETC/front-secret.env"
 FRONT_SECRET="$(sed -n 's/^HUB_FRONT_SECRET=//p' "$ETC/front-secret.env")"
 VIA_SECRET="$(sed -n 's/^HUB_VIA_SECRET=//p' "$ETC/front-secret.env")"
 
@@ -3341,6 +3338,11 @@ if [ "$FIRST_INSTALL" = 1 ] && [ "$KEEP_SYSTEM" = 0 ]; then
 	say "The recommended settings for writes and recovery"
 	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.recommended fresh | sed 's/^/    /' ||
 		problem "could not apply the recommended settings (Box doctor offers them)"
+fi
+
+# The security manifest's owners and modes for the secrets that exist now (security.json).
+if ! HUB_CODE_DIR="$CODE" "$CODE/irate-box" secmanifest apply-secrets >/dev/null; then
+	problem "could not apply the security manifest's secret modes"
 fi
 
 # --- check -----------------------------------------------------------------------

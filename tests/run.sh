@@ -160,6 +160,7 @@ run sim_git_levels.py
 run origin_guard.py
 run unit_guard.py
 run security_manifest_guard.py
+run sim_secmanifest_generate.py
 run uninstall_guard.py
 run sim_mirrors.py
 run sim_gitaddon.py
