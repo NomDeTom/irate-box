@@ -1,0 +1,109 @@
+{
+  "id": "inspircd",
+  "order": 66,
+  "tile": {
+    "icon": "💬",
+    "name": "IRC chat (InspIRCd)",
+    "desc": "Real-time chat in any IRC app",
+    "href": "/irc.html"
+  },
+  "status": {
+    "path": "/irc.html",
+    "name": "IRC server (InspIRCd)",
+    "port": 6667,
+    "unit": "inspircd.service",
+    "control": true,
+    "note": "chat in any IRC app, on :6667"
+  },
+  "network": {
+    "listen": [
+      {
+        "proto": "tcp",
+        "port": 6667
+      }
+    ],
+    "present": "/etc/inspircd/irate-box.conf",
+    "hotspot": "open",
+    "risk": "warn",
+    "says": "IRC server. Anyone on the network can join. IRC has no accounts and no encryption. The server accepts at most 5 connections from one client address."
+  },
+  "addon": {
+    "option": "--with-inspircd",
+    "title": "IRC server (InspIRCd)",
+    "summary": "A modular IRC server on TCP port 6667 with a #lobby channel, for chat in any IRC app. The page /irc.html shows how to join. It uses a few MB of memory.",
+    "consent": "The server answers every device on the network of the box on TCP port 6667. It has no IRC authentication. It has no encryption between the client and the box. The server hides client addresses from other users. It has no operators. Add the InspIRCd server?"
+  },
+  "checks": [
+    {
+      "id": "operator",
+      "kind": "config",
+      "path": "/etc/inspircd/irate-box.conf",
+      "comments": [
+        "#"
+      ],
+      "ignore_case": true,
+      "status": "warn",
+      "title": "Operator",
+      "says": "The IRC server has an operator (an <oper> block).",
+      "why": "Whoever has the operator password can disconnect users and change any channel. The password is in the configuration file.",
+      "fix": "Keep the configuration file readable by root and the IRC account only.",
+      "absent": "^\\s*<oper\\b"
+    },
+    {
+      "id": "max-conn-ip",
+      "kind": "config",
+      "path": "/etc/inspircd/irate-box.conf",
+      "comments": [
+        "#"
+      ],
+      "ignore_case": true,
+      "status": "warn",
+      "title": "Connection limit per address",
+      "says": "The IRC server has no limit on the connections from one address.",
+      "why": "One address can take every connection.",
+      "fix": "Set a connection limit for each address in the IRC server's configuration.",
+      "commands": [
+        "localmax=\"5\""
+      ],
+      "value": {
+        "key": "^\\s*<connect\\b[^>]*\\blocalmax=\"(\\d+)\"",
+        "min": 1
+      }
+    },
+    {
+      "id": "cloak",
+      "kind": "config",
+      "path": "/etc/inspircd/irate-box.conf",
+      "comments": [
+        "#"
+      ],
+      "ignore_case": true,
+      "status": "warn",
+      "title": "Client addresses",
+      "says": "The IRC server does not hide the address of each client.",
+      "why": "Other users can see where each person connects from.",
+      "fix": "Load the cloak modules and add a <cloak> block.",
+      "commands": [
+        "<module name=\"cloak\">",
+        "<module name=\"cloak_sha256\">",
+        "<cloak method=\"hmac-sha256\" ...>"
+      ],
+      "present": "^\\s*<cloak\\b"
+    },
+    {
+      "id": "dns",
+      "kind": "config",
+      "path": "/etc/inspircd/irate-box.conf",
+      "comments": [
+        "#"
+      ],
+      "ignore_case": true,
+      "status": "warn",
+      "title": "Name lookups",
+      "says": "The IRC server looks up the name of each client.",
+      "why": "With no internet connection, each client waits for a timeout before it can register.",
+      "fix": "Do not load the hostname-lookup module.",
+      "present": "^\\s*<module\\s+name=\"core_hostname_lookup\""
+    }
+  ]
+}

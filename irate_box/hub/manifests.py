@@ -313,8 +313,8 @@ def _check(m, where):
     addon = m.get("addon")
     if addon is not None:
         need(
-            re.match(r"^--with-(notes|sync|mqtt|irc|term|collab|kiwix)$", str(addon.get("option", ""))),
-            "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-irc, --with-term, --with-collab, --with-kiwix",
+            re.match(r"^--with-(notes|sync|mqtt|irc|inspircd|term|collab|kiwix)$", str(addon.get("option", ""))),
+            "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-irc, --with-inspircd, --with-term, --with-collab, --with-kiwix",
         )
         for k in ("title", "summary"):
             need(isinstance(addon.get(k), str), f"addon.{k}: a string")

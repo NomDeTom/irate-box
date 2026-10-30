@@ -20,6 +20,7 @@
 #   ttyd.service              ttyd on /run/ttyd/ttyd.sock under /term/; enabled by --with-term only
 #   mosquitto.service         --with-mqtt: MQTT on :1883, and WebSockets on 127.0.0.1:9001 at /mqtt
 #   ngircd.service            --with-irc: an IRC server on :6667 (ngIRCd), for chat in any IRC app
+#   inspircd.service          --with-inspircd: the same, on InspIRCd (one IRC server, not both)
 #   excalidraw-room.service   --with-collab: live Excalidraw sessions on 127.0.0.1:3002 (/socket.io/)
 #   irate-box-tailscale.path  if Tailscale is installed: its on/off switch on /admin
 #   irate-box-git.socket      git http-backend and cgit as the hub user, for /git/ (public:
@@ -80,6 +81,8 @@ The installer keeps user data and the administrator password.
   --with-irc            install ngIRCd, a small IRC server. Port 6667 serves any IRC app, with a
                         #lobby channel ready. Every device on the box's network can join.
                         IRC has no sign-in and no encryption. The server hides hosts from other users.
+  --with-inspircd       install InspIRCd instead of ngIRCd, on the same port 6667, with the same
+                        #lobby and the same limits. Choose one IRC server, not both.
   --with-collab         install live collaboration in /draw/: Debian's nodejs and the room relay
                         from --apps DIR/room. Build the relay on a desktop (ARMv7 and up).
   --with-term           enable the ttyd terminal at /term/. The installer always installs the
@@ -178,7 +181,7 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" REPO_GIVEN=0 BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
-APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
+APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_INSPIRCD=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 ALLOW_ADMIN_HTTP=0 NO_GIT=0 WITH_GIT=0 KEEP_SYSTEM=0
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
@@ -244,6 +247,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--with-irc)
 		WITH_IRC=1
+		shift
+		;;
+	--with-inspircd)
+		WITH_INSPIRCD=1
 		shift
 		;;
 	--with-kiwix)
@@ -317,7 +324,7 @@ while [ $# -gt 0 ]; do
 		shift 2
 		;;
 	--remove)
-		case "$2" in notes | sync | mqtt | irc | term | collab | kiwix) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, term, collab or kiwix" ;; esac
+		case "$2" in notes | sync | mqtt | irc | inspircd | term | collab | kiwix) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, inspircd, term, collab or kiwix" ;; esac
 		shift 2
 		;;
 	--download-cache)
@@ -389,9 +396,16 @@ fi
 # An add-on being removed is not installed by this run, whatever else asks for it.
 for r in "${REMOVE[@]}"; do
 	case "$r" in
-	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; irc) WITH_IRC=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;; kiwix) WITH_KIWIX=0 ;;
+	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; irc) WITH_IRC=0 ;; inspircd) WITH_INSPIRCD=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;; kiwix) WITH_KIWIX=0 ;;
 	esac
 done
+
+if [ "$WITH_IRC" = 1 ] && [ "$WITH_INSPIRCD" = 1 ]; then
+	die "Choose one IRC server: --with-irc (ngIRCd) or --with-inspircd (InspIRCd)."
+fi
+# Installing one IRC server takes the other's config and unit away: both bind :6667.
+if [ "$WITH_INSPIRCD" = 1 ]; then REMOVE+=(irc); fi
+if [ "$WITH_IRC" = 1 ]; then REMOVE+=(inspircd); fi
 
 HUB_USER=hub
 CODE=/opt/irate-box
@@ -476,6 +490,7 @@ keep_addon notes WITH_NOTES /etc/systemd/system/silverbullet.service silverbulle
 keep_addon sync WITH_SYNC "/etc/systemd/system/syncthing@$HUB_USER.service.d/irate-box.conf" "syncthing@$HUB_USER"
 keep_addon mqtt WITH_MQTT /etc/mosquitto/conf.d/irate-box.conf mosquitto
 keep_addon irc WITH_IRC /etc/ngircd/irate-box.conf ngircd
+keep_addon inspircd WITH_INSPIRCD /etc/inspircd/irate-box.conf inspircd
 keep_addon term WITH_TERM /etc/systemd/system/ttyd.service ttyd
 keep_addon collab WITH_COLLAB /etc/systemd/system/excalidraw-room.service excalidraw-room
 keep_addon kiwix WITH_KIWIX /etc/systemd/system/kiwix.service kiwix
@@ -1124,6 +1139,7 @@ pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libj
 # ngircd: ~0.2 MB package; Debian starts it on install with its own example config, which the
 # IRC section below replaces and restarts into.
 [ "$WITH_IRC" = 1 ] && pkgs+=(ngircd)
+[ "$WITH_INSPIRCD" = 1 ] && pkgs+=(inspircd)
 # Kiwix is in use when --zim adds a book, and also when books are already on disk: a reinstall
 # over kept state (uninstall.sh --keep-state, then install.sh) brings /wiki/ back with them.
 # Kiwix: asked for (--with-kiwix, an add-on), or brought by the books, unless it was taken out (--remove kiwix
@@ -2624,6 +2640,101 @@ EOF
 		problem "ngircd does not accept /etc/ngircd/irate-box.conf: ngircd --configtest -f /etc/ngircd/irate-box.conf"
 fi
 
+# --- InspIRCd -----------------------------------------------------------------------
+# The same chat, on InspIRCd, as the alternative IRC server: Debian's unit runs it as the
+# unprivileged `irc` user; irate-box's config is pointed at by a drop-in, so Debian's own
+# /etc/inspircd/inspircd.conf is never touched. The limits and the privacy choices are the
+# same as ngIRCd's: 5 connections an address, 10 channels, no operator, no DNS lookup, and
+# every client cloaked. #lobby is permanent and everyone joins it.
+if [ "$WITH_INSPIRCD" = 1 ]; then
+	systemctl stop inspircd ngircd >/dev/null 2>&1 || true
+	install -d -m 755 /etc/inspircd
+	chown irc:irc /etc/inspircd 2>/dev/null || true
+	key="$(sed -n 's/.*key="\([^"]*\)".*/\1/p' /etc/inspircd/irate-box.conf 2>/dev/null | head -1)"
+	[ -n "$key" ] || key="$(openssl rand -hex 32)"
+	cat >/etc/inspircd/irate-box.conf <<'EOF'
+# Generated by irate-box install.sh. Edits are overwritten on reinstall.
+<server name="irc.irate-box"
+        description="Irate-Box chat"
+        network="Irate-Box">
+
+# Every interface: on the hotspot, the hotspot firewall (Security) decides whether guests reach it.
+<bind address="0.0.0.0" port="6667" type="clients">
+
+<connect allow="*" timeout="60" threshold="10" pingfreq="120" hardsendq="262144" softsendq="8192" recvq="8192" localmax="5" globalmax="5" maxchans="10" modes="x">
+
+<module name="cloak">
+<module name="cloak_sha256">
+<module name="sha2">
+<module name="conn_umodes">
+<module name="conn_join">
+<module name="permchannels">
+
+<cloak method="hmac-sha256"
+       key="@CLOAK_KEY@"
+       prefix="irate-box-"
+       suffix=".ip"
+       case="lower"
+       hostparts="0">
+
+<files motd="/etc/inspircd/irate-box.motd">
+
+<autojoin channel="#lobby">
+<permchannels channel="#lobby" modes="nt" topic="Welcome to the Irate-Box lobby">
+
+<security hideserver=""
+          userstats="Pu"
+          customversion=""
+          flatlinks="no"
+          hidesplits="no"
+          hideulines="no"
+          hidebans="no"
+          maxtargets="20">
+
+<performance quietbursts="yes"
+             softlimit="1024"
+             somaxconn="128"
+             netbuffersize="10240">
+
+<whowas groupsize="10"
+        maxgroups="100000"
+        maxkeep="3d">
+EOF
+	sed -i "s/@CLOAK_KEY@/$key/" /etc/inspircd/irate-box.conf
+	cat >/etc/inspircd/irate-box.motd <<'EOF'
+Welcome to the Irate-Box chat.
+Everyone here is on this box's own network; nothing leaves it.
+There are no accounts, and nothing is encrypted: say what you would say aloud.
+Join #lobby to say hello.
+EOF
+	chown irc:irc /etc/inspircd/irate-box.conf /etc/inspircd/irate-box.motd
+	chmod 640 /etc/inspircd/irate-box.conf
+	chmod 644 /etc/inspircd/irate-box.motd
+	install -d -m 755 /etc/systemd/system/inspircd.service.d
+	cat >/etc/systemd/system/inspircd.service.d/irate-box.conf <<'EOF'
+# Generated by irate-box install.sh: run InspIRCd with irate-box's config, not Debian's example.
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/inspircd --nofork --nopid --nolog --config /etc/inspircd/irate-box.conf
+ProtectSystem=strict
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectProc=invisible
+CapabilityBoundingSet=
+EOF
+	# A config it cannot read would leave the unit failing; say so now, in words. The server
+	# runs for a moment and is killed by timeout: 124 is the config accepted.
+	if command -v runuser >/dev/null 2>&1; then
+		timeout 4 runuser -u irc -- /usr/sbin/inspircd --nofork --nopid --nolog --config /etc/inspircd/irate-box.conf >/tmp/inspircd-check.log 2>&1
+		rc=$?
+		[ "$rc" = 124 ] || problem "inspircd does not accept /etc/inspircd/irate-box.conf: $(tail -1 /tmp/inspircd-check.log)"
+		rm -f /tmp/inspircd-check.log
+	fi
+	systemctl daemon-reload
+	systemctl enable --now inspircd >/dev/null 2>&1 || problem "inspircd did not start: journalctl -u inspircd -n 30"
+fi
+
 # --- Excalidraw live collaboration ---------------------------------------------------
 # excalidraw-room is a socket.io relay: no database, rooms in memory, and scenes and
 # pasted files persisted through store.py like everything else. Built on a desktop
@@ -3176,6 +3287,7 @@ fi
 [ "$WITH_TERM" = 1 ] && units+=(ttyd)
 [ "$WITH_MQTT" = 1 ] && units+=(mosquitto)
 [ "$WITH_IRC" = 1 ] && units+=(ngircd)
+[ "$WITH_INSPIRCD" = 1 ] && units+=(inspircd)
 [ "$WITH_COLLAB" = 1 ] && units+=(excalidraw-room)
 # Apps switched off on /admin (Apps, Add-ons) keep their services stopped.
 mapfile -t off_units < <(HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" HUB_USER="$HUB_USER" HUB_WEB_SERVER="$WEB" \
@@ -3322,6 +3434,12 @@ for r in "${REMOVE[@]}"; do
 		rm -f /etc/ngircd/irate-box.conf /etc/ngircd/irate-box.motd /etc/systemd/system/ngircd.service.d/irate-box.conf
 		rmdir /etc/systemd/system/ngircd.service.d 2>/dev/null || true
 		;;
+	inspircd)
+		say "Removing the IRC add-on (InspIRCd's irate-box config; the package stays, stopped)"
+		systemctl disable --now inspircd >/dev/null 2>&1 || true
+		rm -f /etc/inspircd/irate-box.conf /etc/inspircd/irate-box.motd /etc/systemd/system/inspircd.service.d/irate-box.conf
+		rmdir /etc/systemd/system/inspircd.service.d 2>/dev/null || true
+		;;
 	term)
 		say "Turning the terminal off (ttyd stays installed, off)"
 		systemctl disable --now ttyd >/dev/null 2>&1 || true
@@ -3371,7 +3489,8 @@ fi
 [ "$WITH_NOTES" = 1 ] && echo "    notes: /notes/  (folder $STATE/notes, change who can open it in $ETC/silverbullet.env)"
 [ -f "$STATE/zim/library.xml" ] && echo "    wiki:  /wiki/   ($(grep -c '<book ' "$STATE/zim/library.xml") books in $STATE/zim/library.xml)"
 [ -f /etc/mosquitto/conf.d/irate-box.conf ] && echo "    mqtt:  :1883 for nodes, /mqtt for pages (anonymous, msh/# only)"
-[ -f /etc/ngircd/irate-box.conf ] && echo "    irc:   :6667 for any IRC app, channel #lobby (open to the network, unencrypted; how to join: /irc.html)"
+[ -f /etc/ngircd/irate-box.conf ] && echo "    irc:   :6667 for any IRC app, channel #lobby (ngIRCd; open to the network, unencrypted; how to join: /irc.html)"
+[ -f /etc/inspircd/irate-box.conf ] && echo "    irc:   :6667 for any IRC app, channel #lobby (InspIRCd; open to the network, unencrypted; how to join: /irc.html)"
 term_state="$(systemctl is-enabled ttyd 2>/dev/null)" || true
 echo "    term:  /term/   (${term_state:-disabled}. Sign in as administrator, then as an account on the box)"
 [ "$WITH_SYNC" = 1 ] && echo '    sync:  /sync/   (behind the administrator sign-in. Folder "hub-notes" shared if notes are installed.)'
