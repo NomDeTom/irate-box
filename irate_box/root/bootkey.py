@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 from irate_box.msg import M, Refused
+from irate_box.root import secmanifest
 
 IIO = Path(os.environ.get("HUB_IIO_DEVICES", "/sys/bus/iio/devices"))
 ADC_NAME = "ff4e8000.adc"
@@ -121,13 +122,16 @@ def watch(
 
 
 def unit_text():
+    sandbox = secmanifest.unit_lines(
+        UNIT,
+        ("ProtectSystem", "ReadOnlyPaths", "PrivateTmp", "NoNewPrivileges"),
+        fallback="ProtectSystem=strict\nReadOnlyPaths=/sys\nPrivateTmp=yes\nNoNewPrivileges=yes\n",
+    )
     return (
         "[Unit]\nDescription=Irate-Box: the BOOT key held for three seconds shuts down cleanly\n"
         "After=multi-user.target\n\n[Service]\nType=simple\n"
         f"ExecStart={CODE}/irate-box bootkey run\n"
-        "Restart=on-failure\nRestartSec=5\n"
-        "ProtectSystem=strict\nReadOnlyPaths=/sys\nPrivateTmp=yes\nNoNewPrivileges=yes\n\n"
-        "[Install]\nWantedBy=multi-user.target\n"
+        "Restart=on-failure\nRestartSec=5\n" + sandbox + "\n[Install]\nWantedBy=multi-user.target\n"
     )
 
 

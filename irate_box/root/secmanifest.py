@@ -16,11 +16,15 @@ of itself.
 import ast
 import fnmatch
 import json
+import os
 import re
+import stat
+import sys
 from pathlib import Path
 
 SECURITY_FILE = "security.json"
 VERSION = 1
+CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 IGNORE_HOSTS = frozenset(
     {
         "",
@@ -329,6 +333,76 @@ def save(tree, manifest):
     (Path(tree) / SECURITY_FILE).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
 
+def _manifest():
+    """The installed code's manifest, or the checkout's beside this module."""
+    return load(CODE) or load(Path(__file__).resolve().parents[2])
+
+
+def unit_lines(unit, order, fallback="", override=None):
+    """A unit's sandbox lines from the manifest, in the order given. A directive the manifest does not
+    declare is left out. With no manifest, the caller's fallback is used unchanged."""
+    manifest = _manifest()
+    entry = (manifest or {}).get("units", {}).get(unit)
+    if not entry:
+        return fallback
+    values = {key: value for key, value in entry.items() if key != "source"}
+    values.update(override or {})
+    out = []
+    for name in order:
+        value = values.get(name)
+        if value in (None, "", []):
+            continue
+        if isinstance(value, list):
+            value = " ".join(value)
+        out.append(f"{name}={value}")
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def apply_secrets():
+    """Put the declared mode and owner on every secret the box has now. A path with a * is each match;
+    a missing file is left for the installer. A group that names a rule rather than a group ("the web
+    server's group") is skipped; the installer still sets it. Returns the changes it made, as lines."""
+    manifest = _manifest()
+    if not manifest:
+        return []
+    import grp
+    import pwd
+
+    changed = []
+    for pattern, entry in sorted(manifest.get("secrets", {}).items()):
+        paths = sorted(Path("/").glob(pattern.lstrip("/"))) if "*" in pattern else [Path(pattern)]
+        for path in paths:
+            try:
+                st = path.lstat()
+            except OSError:
+                continue
+            if not stat.S_ISREG(st.st_mode):
+                continue
+            mode = entry.get("mode")
+            if mode:
+                want = int(str(mode), 8)
+                if stat.S_IMODE(st.st_mode) != want:
+                    os.chmod(path, want)
+                    changed.append(f"{path}: mode {mode}")
+            owner, group = entry.get("owner"), entry.get("group")
+            uid = -1
+            if owner:
+                try:
+                    uid = pwd.getpwnam(owner).pw_uid
+                except KeyError:
+                    uid = -1
+            gid = -1
+            if group and not group.startswith("the "):
+                try:
+                    gid = grp.getgrnam(group).gr_gid
+                except KeyError:
+                    gid = -1
+            if (uid != -1 and st.st_uid != uid) or (gid != -1 and st.st_gid != gid):
+                os.chown(path, uid, gid)
+                changed.append(f"{path}: owner {owner}:{group}")
+    return changed
+
+
 def is_privileged(path, manifest):
     return any(fnmatch.fnmatch(path, pattern) for pattern in manifest.get("privileged_files", []))
 
@@ -579,3 +653,11 @@ def compare(old, new, changed=()):
 
 def held(widenings, levels):
     return [item for item in widenings if levels.get(item["toggle"], "authorise") != "flag"]
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["apply-secrets"]:
+        sys.exit("usage: irate-box secmanifest apply-secrets")
+    if os.geteuid() != 0:
+        sys.exit("run as root")
+    print("\n".join(apply_secrets()) or "the secrets have their declared modes and owners")
