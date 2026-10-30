@@ -1411,6 +1411,14 @@ saved = (kits.MANIFESTS / "small.json").read_text()
 res = kits.check("small")
 (kits.MANIFESTS / "small.json").write_text(saved)
 check("a kit never cached: said as that", res["state"] == "not-cached", res)
+decoded = kits._deb_file("bind9-host_1%3a9.20.30-1~deb13u1_armhf.deb")
+check(
+    "apt's URL encoding is decoded for the page, while the file name stays as apt wrote it",
+    decoded["name"] == "bind9-host"
+    and decoded["version"] == "1:9.20.30-1~deb13u1"
+    and decoded["file"] == "bind9-host_1%3a9.20.30-1~deb13u1_armhf.deb",
+    decoded,
+)
 real_run = kits.run
 kits.run = lambda *a, **k: (_ for _ in ()).throw(OSError("no network"))
 res = kits.check("small")

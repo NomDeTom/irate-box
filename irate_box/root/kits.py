@@ -37,6 +37,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 
 from irate_box.hub import kitdefs
@@ -381,7 +382,14 @@ def _link_cached(wanted, stage):
 
 def _deb_file(path):
     name, version, deb_arch = Path(path).name[: -len(".deb")].rsplit("_", 2)
-    return {"name": name, "version": version, "arch": deb_arch, "file": Path(path).name}
+    # apt names the file with the version's epoch colon encoded (1%3a9.20.30); the manifest and
+    # the page say the version as apt's package metadata does (1:9.20.30).
+    return {
+        "name": urllib.parse.unquote(name),
+        "version": urllib.parse.unquote(version),
+        "arch": deb_arch,
+        "file": Path(path).name,
+    }
 
 
 def check_result(kit_id):
@@ -414,7 +422,7 @@ def _check(kit_id, kit, lists_max_hours, ram):
         status = ram / "status"
         _base_status(status, leave_out)
         archives = ram / "check-archives"
-        archives.mkdir()
+        archives.mkdir(exist_ok=True)
         packages, _left_out = _packages(kit, fetching=True)
         options = [
             "--no-install-recommends",
