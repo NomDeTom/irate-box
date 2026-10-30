@@ -3,14 +3,18 @@
 # The Lyra's U-Boot: a redundant environment in the bootstate partition, with boot counting for RAUC.
 # The partition is chosen by the device tree's /config u-boot,mmc-env-partition = "irate-bootstate",
 # not by CONFIG_SYS_MMC_ENV_PART (which selects an eMMC hardware boot partition an SD card has not).
+# Names as at the pinned commit: ENV_REDUNDANT (was SYS_REDUNDAND_ENVIRONMENT), ENV_MMC_DEVICE_INDEX (was
+# SYS_MMC_ENV_DEV).
 CONFIG_ENV_IS_NOWHERE=n
 CONFIG_ENV_IS_IN_MMC=y
 CONFIG_ENV_MMC_USE_DT=y
-CONFIG_SYS_MMC_ENV_DEV=0
-CONFIG_SYS_REDUNDAND_ENVIRONMENT=y
-# No absolute fallback: the device tree names irate-bootstate and build-uboot.sh refuses a DTB without it. A card
-# without that partition therefore has no environment to save into, rather than a write at 0 or over a root
-# filesystem. This fragment is for the U-Boot route's raw bootstate, not the tryboot route's FAT one.
+CONFIG_ENV_MMC_DEVICE_INDEX=0
+CONFIG_ENV_REDUNDANT=y
+# In the named partition, env/mmc.c puts the two copies at its end: the last 8 KiB and the 8 KiB below (0xFFE000 and
+# 0xFFC000 in a 16 MiB bootstate). On a card without that partition it falls back to CONFIG_ENV_OFFSET (Rockchip's
+# 0x3f8000, in the gap before u-boot.itb that no partition uses), as a stock card's U-Boot does; build-uboot.sh
+# refuses a DTB that does not name irate-bootstate. This fragment is for the U-Boot route's raw bootstate, not the
+# tryboot route's FAT one.
 CONFIG_ENV_SIZE=0x2000
 CONFIG_CMD_SAVEENV=y
 CONFIG_BOOTCOUNT_LIMIT=y
