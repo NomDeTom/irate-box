@@ -4779,7 +4779,7 @@ def _security_record_finding():
             ),
             M(
                 "update.security.record.why",
-                "An approval at the flag level is still seen by a person; this is where the record of it waits.",
+                "An approval at the flag level is still seen by a person. This is where the record of it waits.",
             ),
             notes=[
                 M(

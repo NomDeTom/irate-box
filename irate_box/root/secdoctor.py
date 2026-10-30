@@ -7859,8 +7859,8 @@ def step_manifest(ctx):
                 M(
                     "manifest.secrets",
                     {
-                        "one": "{n} secret does not have the mode or owner the manifest declares.",
-                        "other": "{n} secrets do not have the modes or owners the manifest declares.",
+                        "one": "{n} secret does not have the mode or group the manifest declares.",
+                        "other": "{n} secrets do not have the modes or groups the manifest declares.",
                     },
                     n=len(bad),
                 ),
@@ -7871,7 +7871,7 @@ def step_manifest(ctx):
                 ),
                 M(
                     "manifest.secrets.fix",
-                    "Run the installer again. It puts the declared modes and owners back.",
+                    "Run the installer again. It puts the declared modes and groups back.",
                 ),
                 evidence=bad[:8],
             )
@@ -7882,7 +7882,7 @@ def step_manifest(ctx):
                 "manifest-secrets",
                 title,
                 "ok",
-                M("manifest.secrets.ok", "The secrets have their declared modes and owners."),
+                M("manifest.secrets.ok", "The secrets have their declared modes and groups."),
             )
         )
 

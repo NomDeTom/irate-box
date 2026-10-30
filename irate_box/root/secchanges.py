@@ -111,7 +111,7 @@ def console_only_off(write=durable.write_checked):
     data["console_only"] = False
     write(FILE, json.dumps(data, indent=2, sort_keys=True), 0o600)
     publish(data)
-    return M("security.changes.console-off", "Approvals over HTTPS are allowed again.")
+    return M("security.changes.console-off", "Approvals over HTTPS work again.")
 
 
 def approval():
