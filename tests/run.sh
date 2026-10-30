@@ -158,6 +158,7 @@ run sim_git_public.py
 run sim_git_levels.py
 run origin_guard.py
 run unit_guard.py
+run security_manifest_guard.py
 run uninstall_guard.py
 run sim_mirrors.py
 run sim_gitaddon.py
@@ -181,6 +182,7 @@ run sim_secdoctor_joint.py
 run sim_secdoctor_lyra.py
 run sim_signing.py
 run sim_update_doctor.py
+run sim_security_manifest.py
 run sim_update_source_view.py
 run sim_share.py
 run sim_guest_net.py

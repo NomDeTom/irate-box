@@ -208,6 +208,7 @@ from irate_box.root import (
     kits,
     safeio,
     secdoctor,
+    secmanifest,
     security,
     share,
     signing,
@@ -2692,6 +2693,109 @@ def update_signing(req):
     )
 
 
+SECURITY_TITLE = M("update.verify.security.title", "Security changes")
+SECURITY_FLAGGED = frozenset({"outbound", "root_code"})
+
+
+def _changed_files(src, installed):
+    if not installed:
+        return []
+    out = run("git", "-C", str(src), "diff", "--name-only", str(installed), "HEAD", timeout=60)
+    return out.stdout.splitlines() if out.returncode == 0 else []
+
+
+def _security_check(src, installed):
+    """The fetched tree against its own security.json, and that manifest against the installed one. A tree
+    that does not match its manifest is held; a widening is held unless it is only one of the flagged kinds.
+    The fetched code is never imported or run: secmanifest reads it."""
+    try:
+        manifest = secmanifest.load(src)
+        if manifest is None:
+            return _check(
+                "security",
+                False,
+                SECURITY_TITLE,
+                M(
+                    "update.verify.security.none",
+                    "The update has no security manifest, so its security changes cannot be checked.",
+                ),
+                evidence=["security.json"],
+            )
+        problems = secmanifest.mismatches(manifest, secmanifest.build(src))
+        changes = secmanifest.compare(secmanifest.load(CODE), manifest, _changed_files(src, installed))
+    except (OSError, ValueError, KeyError, SyntaxError) as exc:
+        detail = str(exc)[:300]
+        return _check(
+            "security",
+            False,
+            SECURITY_TITLE,
+            M(
+                "update.verify.security.unreadable",
+                "The update's security files could not be read: {detail}.",
+                detail=detail,
+            ),
+            evidence=[detail],
+        )
+    if problems:
+        return _check(
+            "security",
+            False,
+            SECURITY_TITLE,
+            M(
+                "update.verify.security.mismatch",
+                "The update's code does not match its security manifest: {problems}.",
+                problems=problems[:8],
+            ),
+            evidence=problems,
+        )
+    widenings = changes["widenings"]
+    held = [item for item in widenings if item["toggle"] not in SECURITY_FLAGGED]
+    if held:
+        return _check(
+            "security",
+            False,
+            SECURITY_TITLE,
+            M(
+                "update.verify.security.widens",
+                {
+                    "one": "The update widens {n} thing in the box's reach: {changes}. It is held.",
+                    "other": "The update widens {n} things in the box's reach: {changes}. It is held.",
+                },
+                n=len(held),
+                changes=[item["text"] for item in held],
+            ),
+            fix=M(
+                "update.verify.security.widens.fix",
+                "Read each change. Use Install anyway only if you meant them.",
+            ),
+            evidence=[item["text"] for item in held],
+        )
+    if widenings:
+        return _check(
+            "security",
+            False,
+            SECURITY_TITLE,
+            M(
+                "update.verify.security.flagged",
+                {
+                    "one": "The update widens {n} thing in the box's reach: {changes}.",
+                    "other": "The update widens {n} things in the box's reach: {changes}.",
+                },
+                n=len(widenings),
+                changes=[item["text"] for item in widenings],
+            ),
+            warn=True,
+            evidence=[item["text"] for item in widenings],
+        )
+    return _check(
+        "security",
+        True,
+        SECURITY_TITLE,
+        M("update.verify.security.ok", "The update widens nothing in the box's reach."),
+        note=LIMITED_CHECK,
+    )
+
+
 def verify_update(src, installed, opts, progress=None, tag=None):
     """Checks on a fetched tree; any failure not marked warn blocks the install."""
     checks = []
@@ -2774,6 +2878,7 @@ def verify_update(src, installed, opts, progress=None, tag=None):
                 )
             )
     checks += _signature_check(src, installed, tag)
+    checks.append(_security_check(src, installed))
     for script in ("install.sh", "uninstall.sh", "scripts/tailscale-apply.sh"):
         path = src / script
         if path.exists():
