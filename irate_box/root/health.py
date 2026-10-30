@@ -3568,6 +3568,7 @@ def unit_text(name):
             f"ReadWritePaths={state}/control {root_state}\n"
             "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=read-only\nProtectProc=invisible\n"
         ),
+        override={"ReadWritePaths": f"{state}/control {root_state}"},
     )
     canary_sandbox = secmanifest.unit_lines(
         CANARY_SERVICE,
@@ -3577,6 +3578,7 @@ def unit_text(name):
             f"ReadWritePaths={root_state}\n"
             "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
         ),
+        override={"ReadWritePaths": str(root_state)},
     )
     if name == DOCTOR_SERVICE:
         return (

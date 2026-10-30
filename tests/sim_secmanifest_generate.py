@@ -90,7 +90,7 @@ check(
 text = health.unit_text(health.DOCTOR_SERVICE)
 check(
     "  a health unit's ProtectHome comes from the manifest",
-    "ProtectHome=no\n" in text and "ReadWritePaths=/tmp/control /tmp/root\n" in text,
+    "ProtectHome=no\n" in text and f"ReadWritePaths={T / 'state'}/control {T / 'root'}\n" in text,
     text,
 )
 
