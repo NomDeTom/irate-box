@@ -153,6 +153,62 @@ retain.STREAK.write_text(json.dumps({"boot": "boot-two", "streak": 0, "repaired"
 retain.FINDINGS.write_text("[]")
 check("a boot with no repairs clears the finding", health.check_protected() == [])
 
+# What the boot check did is read from the record's kind, not from its English: a file made again or reinstalled
+# is a repair like any other, and the card verdict names it.
+for kind, said in (
+    ("made again", "The server key and chain were made again from the CA."),
+    ("package", "The package was installed again."),
+):
+    retain.FINDINGS.write_text(
+        json.dumps([{"path": str(server_key), "action": said, "kind": kind, "boot": "boot-two", "at": time.time()}])
+    )
+    found = {f["id"]: f for f in health.check_protected()}
+    check(
+        f"a boot check that {kind} a file: Box doctor says so, naming it",
+        found["protected-files"]["status"] == "warn" and str(server_key) in found["protected-files"]["evidence"],
+        found.get("protected-files"),
+    )
+retain.FINDINGS.write_text(
+    json.dumps(
+        [
+            {
+                "path": str(server_key),
+                "action": "The server key was made again.",
+                "kind": "made again",
+                "boot": "boot-two",
+                "at": time.time(),
+            },
+            {
+                "path": str(hub_env),
+                "action": "The package was installed again.",
+                "kind": "package",
+                "boot": "boot-two",
+                "at": time.time(),
+            },
+        ]
+    )
+)
+retain.STREAK.write_text(json.dumps({"boot": "boot-two", "streak": 2, "repaired": True}))
+found = {f["id"]: f for f in health.check_protected()}
+check(
+    "  the card verdict at two boots names the files it repaired, whatever put them back",
+    found["protected-files"]["status"] == "problem"
+    and "protected.twice" in message_ids(found["protected-files"])
+    and {str(server_key), str(hub_env)} <= set(found["protected-files"]["evidence"]),
+    found.get("protected-files"),
+)
+retain.FINDINGS.write_text(
+    json.dumps([{"path": str(hub_env), "action": "lost and no way back", "boot": "boot-two", "at": time.time()}])
+)
+found = {f["id"]: f for f in health.check_protected()}
+check(
+    "  a record with no kind at all is still said, as a repair, not dropped",
+    found["protected-files"]["status"] == "problem" and str(hub_env) in found["protected-files"]["evidence"],
+    found.get("protected-files"),
+)
+retain.STREAK.write_text(json.dumps({"boot": "boot-two", "streak": 0, "repaired": False}))
+retain.FINDINGS.write_text("[]")
+
 calls = []
 
 
@@ -626,7 +682,9 @@ real_tls.make_cert = real_tls_make
 retain.extra_stores = real_stores
 check(
     "a server key that can be made again is, before the copy",
-    (etc / "tls" / "server.key").read_text() == "MADE\n" and any("made again" in r["action"] for r in repairs),
+    (etc / "tls" / "server.key").read_text() == "MADE\n"
+    and any("made again" in r["action"] for r in repairs)
+    and any(r["path"] == str(etc / "tls" / "server.key") and r["kind"] == "made again" for r in repairs),
     repairs,
 )
 
@@ -661,7 +719,8 @@ check(
     "an nginx file tls.initialise does not write is restored from its copy, not called regenerated",
     htpasswd.read_text() == "admin:hash\n"
     and any("restored" in r["action"] for r in repairs)
-    and not any("rendered" in r["action"] for r in repairs),
+    and not any("rendered" in r["action"] for r in repairs)
+    and any(r["path"] == str(htpasswd) and r["kind"] == "copy" for r in repairs),
     repairs,
 )
 site = put(nginx / "conf.d" / "irate-box.conf", "server {}\n", 0o644)
@@ -703,7 +762,9 @@ repairs = retain.boot_check()
 retain._package_owned, retain.restore.from_package, retain.extra_stores = real_owned, real_package, real_stores
 check(
     "a package conffile with no good copy is reinstalled",
-    journald.read_text().startswith("[Journal]") and any("package" in r["action"] for r in repairs),
+    journald.read_text().startswith("[Journal]")
+    and any("package" in r["action"] for r in repairs)
+    and any(r["path"] == str(journald) and r["kind"] == "package" for r in repairs),
     repairs,
 )
 
