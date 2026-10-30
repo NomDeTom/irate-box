@@ -372,16 +372,27 @@ def enqueue(stdin=sys.stdin, repo_dir=None):
     return 0
 
 
-def _pio_deps():
+def _pio_deps(family=None):
     """The build cache the librarian carries (firmware.py), or None: PlatformIO's libraries and
-    packages for the newest kept Meshtastic release, so a build can run with no internet."""
+    packages for the newest kept Meshtastic release, so a build can run with no internet. A
+    per-family cache sits at pio-deps/<family>; without one, the release's native-tft cache."""
     root = Path(os.environ.get("HUB_FIRMWARE_ROOT", "/var/lib/hub/firmware"))
     try:
         cache = json.loads((root / "status.json").read_text()).get("cache") or {}
     except (OSError, ValueError):
         return None
-    path = root / str(cache.get("version", "")) / "pio-deps"
-    return path if cache.get("version") and path.is_dir() else None
+    if not cache.get("version"):
+        return None
+    base = root / str(cache["version"]) / "pio-deps"
+    if family and (base / family).is_dir():
+        return base / family
+    if base.is_dir():
+        return base
+    return next((p for p in sorted(base.glob("*")) if p.is_dir()), None)
+
+
+def _pio_deps_tag(path):
+    return path.parent.name if path.name == "pio-deps" else path.parent.parent.name
 
 
 def _wheelhouse():
@@ -556,7 +567,7 @@ def build(job):
             deps = _pio_deps()
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
-                env["CI_PIO_DEPS_TAG"] = "v" + deps.parent.name
+                env["CI_PIO_DEPS_TAG"] = "v" + _pio_deps_tag(deps)
                 say(f"CI_PIO_DEPS={deps} (the librarian's build cache, for v{deps.parent.name})")
             wheelhouse = _wheelhouse()
             if wheelhouse:
@@ -934,10 +945,10 @@ def build_firmware(job):
             elif not keep["tools_only"]:
                 build_cache().mkdir(parents=True, exist_ok=True)
                 env["PLATFORMIO_BUILD_CACHE_DIR"] = str(build_cache())
-            deps = _pio_deps()
+            deps = _pio_deps(family)
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
-                env["CI_PIO_DEPS_TAG"] = "v" + deps.parent.name
+                env["CI_PIO_DEPS_TAG"] = "v" + _pio_deps_tag(deps)
             wheelhouse = _wheelhouse()
             if wheelhouse:
                 # Fetching tools is going online on purpose: the wheelhouse first, and PyPI for what
