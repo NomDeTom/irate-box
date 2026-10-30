@@ -36,8 +36,10 @@ An administrator cannot see your password. The box keeps a hash of it, not the p
 
 Nothing on the box's storage is encrypted at rest yet. HTTPS protects a password on its way to the box. It does not protect the files once they are on the card. Treat the box's storage, and especially a full image of it, as readable by whoever has it.
 
+The box's second-copy setting can also copy the shared notes, saved work, messages and file drop to a USB drive. That copy is plain text too: only the keys are encrypted there. A lost stick is as readable as a lost card.
+
 The administrator can make the box safer for everyone: ask them to keep the box's storage with care, and to use a full image only on a drive they keep as they would keep a password.
 
 ## If you are the administrator
 
-The complete list, with the files and modes, is in the developer notes (What an administrator can see) in the developer notes.
+The complete list, with the files and modes, is in the developer notes (What an administrator can see).

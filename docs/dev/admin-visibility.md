@@ -54,6 +54,7 @@ All of it: the shared notes, the private notebooks, the gallery, the drop, the b
 - `/etc/hub` is root's, 0710 root, with each secret 0600 or 0640 for the web server's group. The hub reads only the files made readable to it (`front-secret.env` is root-only; the hub sees the front's proof in the request, not the file).
 - `/var/lib/irate-box-root` is root's (0700), with the retain key, the protected copy and the security record.
 - `/run/irate-box-visitors/counts.json` is 0644: two numbers, no address.
+- The retain feature's removable copy (a USB drive the owner adds) copies the shared notes, saved work, messages and drop in plain text; only the keys are encrypted there. The stick is as readable as the card.
 
 ## Gaps and options
 
