@@ -185,6 +185,7 @@ run sim_secdoctor_joint.py
 run sim_secdoctor_lyra.py
 run sim_signing.py
 run sim_update_doctor.py
+run sim_updates_addons.py
 run sim_update_source_view.py
 run sim_share.py
 run sim_guest_net.py

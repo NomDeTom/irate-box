@@ -1182,30 +1182,6 @@ def step_web_addons(ctx):
                     evidence=i["evidence"],
                 )
             )
-    try:
-        cat_state = json.loads(_read(STATE / "addons-catalogue.json") or "{}")
-    except ValueError:
-        cat_state = {}
-    for m in local:
-        c = cat_state.get(m["id"]) or {}
-        if c.get("status") == "held":
-            out.append(
-                finding(
-                    f"addons-held-{m['id']}",
-                    named(m["addon"]["title"], M("addons.role.update", "update approval")),
-                    "warn",
-                    M(
-                        "addons.held",
-                        "A newer version in the catalogue changes what you agreed to. The version you agreed "
-                        "to keeps running.",
-                    ),
-                    fix=M(
-                        "addons.held.fix",
-                        "On Add-ons, Web add-ons, read the changes. Then accept the new version, or remove the add-on.",
-                    ),
-                    evidence=c.get("held", []),
-                )
-            )
     origin_t = M("addons.origin.title", "Add-on origin")
     code, _ = _addon_ask("/admin/settings")
     if code is None:
