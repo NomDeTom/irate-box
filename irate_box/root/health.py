@@ -4694,6 +4694,10 @@ CARD_ERROR_RE = re.compile(
     r"(I/O error, dev {dev}|Buffer I/O error on dev {dev}|{host}: .*(timeout|error|CRC|reset)|EXT4-fs error \(device {dev})"
 )
 CARD_SCAN_UNIT = "irate-box-card-scan"
+# The whole-card read's own time limit, in seconds. A card that is dying holds a read open for as long as it is
+# asked to: the unit that runs it is stopped at this, and dd is given the same limit to stop on its own first.
+# Four hours reads a 32 GB card at about 2 MB/s, the pace of a card already going bad.
+CARD_SCAN_MAX = 4 * 3600
 CARD_SPEED_MB = 256  # read by the speed test, from the start of the card
 
 
@@ -4809,7 +4813,13 @@ def check_card_health():
     if scan and scan.get("done"):
         evidence.append(
             f"whole-card read on {time.strftime('%Y-%m-%d', time.localtime(scan['done']))}: "
-            + (f"{scan['bad']} unreadable places" if scan.get("bad") else "every part read")
+            + (
+                f"{scan['bad']} unreadable places"
+                if scan.get("bad")
+                else "every part read"
+                if not scan.get("cut")
+                else f"stopped after {CARD_SCAN_MAX // 60} min with no answer"
+            )
         )
     evidence += errors[-3:]
     emmc_worn = info["type"] == "MMC" and (
@@ -4860,6 +4870,14 @@ def check_card_health():
                 "card-health.scan-running",
                 "The whole-card read is running (started {at}).",
                 at=when((scan or {}).get("started", 0)),
+            )
+        )
+    elif scan and scan.get("started") and not scan.get("done"):
+        notes.append(
+            M(
+                "card-health.scan-lost",
+                "The whole-card read started {at} and never reported: the box restarted, or the read was stopped.",
+                at=when(scan.get("started", 0)),
             )
         )
     actions = [
@@ -4954,6 +4972,10 @@ def card_scan_start():
         "Nice=19",
         "-p",
         "IOSchedulingClass=idle",
+        # The backstop: a read that never ends is stopped here even if the process cannot stop itself, so the
+        # Box doctor's "running" cannot outlive the card it is waiting on.
+        "-p",
+        f"RuntimeMaxSec={CARD_SCAN_MAX + 600}",
         f"{CODE}/irate-box",
         "health",
         "card-scan",
@@ -4969,16 +4991,24 @@ def card_scan_start():
 
 
 def card_scan():
-    """Every block of the card read once (dd, carrying on past an unreadable one); the count of unreadable ones."""
+    """Every block of the card read once (dd, carrying on past an unreadable one); the count of unreadable ones.
+    Bounded by CARD_SCAN_MAX: the card this reads is the one that may not answer, and a read that never ends is
+    worse for the box than a read that stops early."""
     info = card_info()
     rec = _card_tests()
-    out = subprocess.run(  # noqa: TID251
-        ["dd", f"if=/dev/{info['dev']}", "of=/dev/null", "bs=1M", "iflag=direct", "conv=noerror", "status=none"],
-        capture_output=True,
-        text=True,
+    out = run(
+        "dd",
+        f"if=/dev/{info['dev']}",
+        "of=/dev/null",
+        "bs=1M",
+        "iflag=direct",
+        "conv=noerror",
+        "status=none",
+        timeout=CARD_SCAN_MAX,
     )
     bad = sum(1 for line in out.stderr.splitlines() if "Input/output error" in line)
-    rec["scan"] = {**(rec.get("scan") or {}), "done": time.time(), "bad": bad}
+    # 127 is run()'s own "it did not finish": too long, or dd not there. Either way the read stopped early.
+    rec["scan"] = {**(rec.get("scan") or {}), "done": time.time(), "bad": bad, "cut": out.returncode == 127}
     _card_tests_save(rec)
     return bad
 

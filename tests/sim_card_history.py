@@ -737,23 +737,59 @@ check("  and shown in the evidence", "read speed:" in " ".join(health.check_card
 ran.clear()
 said = health.fix("card-scan")
 check(
-    "the whole-card read: started in a unit of its own, at the lowest priority",
-    any(c[0] == "systemd-run" and f"--unit={health.CARD_SCAN_UNIT}" in c and "IOSchedulingClass=idle" in c for c in ran)
+    "the whole-card read: started in a unit of its own, at the lowest priority, with a time limit",
+    any(
+        c[0] == "systemd-run"
+        and f"--unit={health.CARD_SCAN_UNIT}" in c
+        and "IOSchedulingClass=idle" in c
+        and f"RuntimeMaxSec={health.CARD_SCAN_MAX + 600}" in c
+        for c in ran
+    )
     and said["id"] == "repair.card-scan.started",
     ran,
 )
-real_sub = health.subprocess.run
-health.subprocess.run = lambda cmd, **kw: type(
-    "R", (), {"returncode": 1, "stderr": "dd: error reading '/dev/mmcblk0': Input/output error\n" * 3}
-)()
+real_run = health.run
+asked = {}
+
+
+def dd_run(*cmd, **kw):
+    asked["cmd"], asked["kw"] = cmd, kw
+    return type("R", (), {"returncode": 0, "stdout": "", "stderr": "Input/output error\n" * 3})()
+
+
+health.run = dd_run
 bad = health.card_scan()
-health.subprocess.run = real_sub
+check(
+    "  its dd is bounded, so a card that never answers cannot hold the read open for ever",
+    asked["kw"].get("timeout") == health.CARD_SCAN_MAX and asked["cmd"][0] == "dd",
+    asked,
+)
+health.run = lambda *c, **k: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 f = health.check_card_health()[0]
 check(
     "  its result: the unreadable places counted, a problem, said with the date",
     bad == 3 and f["status"] == "problem" and f["summary"]["args"] == {"n": 3},
     f,
 )
+health.run = lambda *c, **k: type("R", (), {"returncode": 127, "stdout": "", "stderr": "timed out"})()
+health.card_scan()
+f = health.check_card_health()[0]
+check(
+    "  a read stopped at its limit: said as stopped with no answer, and kept as ended",
+    any(f"stopped after {health.CARD_SCAN_MAX // 60} min" in e for e in f["evidence"])
+    and health._card_tests()["scan"].get("done"),
+    f["evidence"],
+)
+rec = health._card_tests()
+rec["scan"] = {"started": time.time() - 3600}
+health._card_tests_save(rec)
+f = health.check_card_health()[0]
+check(
+    "  a read that started and never reported (the box restarted, the unit was stopped): said, not silently gone",
+    any(n["id"] == "card-health.scan-lost" for n in f["notes"]),
+    f,
+)
+health.run = real_run
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
