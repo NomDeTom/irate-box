@@ -7,17 +7,26 @@
 # The checkout, not the current directory, goes first on the module path, so a stray
 # irate_box/ folder where this is run from cannot stand in for the real one.
 # Every module run here, the services among them, prints each thread's stack to stderr (the journal, for a
-# unit) if it crashes in C, and on SIGUSR1 without stopping: what a hung one is doing.
+# unit) if it crashes in C (faulthandler), and on SIGUSR1 without stopping: what a hung one is doing.
 #   sudo systemctl kill -s USR1 irate-box-uplink.service; journalctl -u irate-box-uplink -n 60
+# SIGUSR1's dump is a Python handler, run by the main thread between bytecodes: faulthandler's own dump on a
+# signal walks other threads' states from inside the handler, and crashed the hub (SIGSEGV) about one time in
+# eight on a Lyra while a thread was starting or ending.
 here=$(dirname "$(readlink -f "$0")")
 name=${1:-}
 [ -n "$name" ] || { echo "Usage: irate-box MODULE [ARGS...]" >&2; echo "MODULE is a file name without .py under irate_box/hub, irate_box/library or irate_box/root. Example: irate-box health summary" >&2; exit 2; }
 shift
 for part in hub library root; do
 	if [ -f "$here/irate_box/$part/$name.py" ]; then
-		exec python3 -c 'import faulthandler, runpy, signal, sys
+		exec python3 -c 'import faulthandler, runpy, signal, sys, threading, traceback
 faulthandler.enable()
-faulthandler.register(signal.SIGUSR1, all_threads=True)
+def stacks(_signum, _frame):
+    names = {thread.ident: thread.name for thread in threading.enumerate()}
+    for ident, frame in sys._current_frames().items():
+        print(f"Thread 0x{ident:x} {names.get(ident, str())} (most recent call first):", file=sys.stderr)
+        sys.stderr.writelines(reversed(traceback.format_stack(frame)))
+    sys.stderr.flush()
+signal.signal(signal.SIGUSR1, stacks)
 sys.path[0] = sys.argv.pop(1)
 runpy.run_module(sys.argv.pop(1), run_name="__main__", alter_sys=True)' "$here" "irate_box.$part.$name" "$@"
 	fi

@@ -17,7 +17,7 @@
 - Each test makes its own temporary files and starts its own hub on a free port, if it needs one.
 - The page tests run in jsdom, which is not in the repository. `tests/jsdom/run.sh` installs the version CI uses the first time, in `~/.cache/irate-box/` (npm, a few seconds; no Docker, no root). To use another, set `JSDOM=/path/to/node_modules/jsdom`.
 - Some page tests need a running hub. `tests/jsdom/run.sh` starts one for them on a free port.
-- Every module run through `./irate-box` has `faulthandler` on: a crash in C prints each thread's stack to stderr (the journal, for a service), and so does SIGUSR1, without stopping it. To see what a hung service is doing: `sudo systemctl kill -s USR1 irate-box-uplink.service`, then `journalctl -u irate-box-uplink -n 60`.
+- Every module run through `./irate-box` has `faulthandler` on: a crash in C prints each thread's stack to stderr (the journal, for a service). SIGUSR1 prints them too, without stopping it, from a Python handler (faulthandler's own dump on a signal could crash the process). To see what a hung service is doing: `sudo systemctl kill -s USR1 irate-box-uplink.service`, then `journalctl -u irate-box-uplink -n 60`.
 - `tests/guide-pending` holds back two guide checks until the guide is updated after the language review. The file says why. Delete it in the commit that updates the guide.
 
 ## Adding a test
