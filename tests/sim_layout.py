@@ -77,6 +77,19 @@ check(
     and ("losetup", "-d", "/dev/loop7") in calls,
     calls,
 )
+# Found on the spare card (2026-10-29/30): the raw bootstate kept the old image's ext4 signature and root UUID, and a
+# Lyra's U-Boot scanned nothing, as no partition was bootable and the first one is raw.
+check(
+    "the raw bootstate is wiped of any old signature, and nothing else is",
+    ("wipefs", "-a", "/dev/loop7p1") in calls and sum(1 for c in calls if c[0] == "wipefs") == 1,
+    [c for c in calls if c[0] == "wipefs"],
+)
+check(
+    "  slot A, and only slot A, is marked bootable for U-Boot's scan",
+    any("--change-name=2:irate-system-a" in c and "--attributes=2:set:2" in c for c in calls)
+    and sum(1 for c in calls if any(a.startswith("--attributes=") for a in c)) == 1,
+    [c for c in calls if c[0] == "sgdisk"],
+)
 check(
     "the system is copied into each slot, and the read-back matches the plan",
     sum(1 for c in calls if c[0] == "rsync" and "--delete" in c) == 2
