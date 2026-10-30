@@ -669,6 +669,14 @@ check(
     and queued[-1] == {"action": "kit-install", "kit": "debug", "hours": 4},
 )
 check("the page names a kit, never packages", queued[-1].keys() == {"action", "kit", "hours"})
+check(
+    "a check is queued for one kit, and for all",
+    toolkits.action({"action": "check", "kit": "debug"}) == "rid"
+    and queued[-1] == {"action": "kit-check", "kit": "debug"}
+    and toolkits.action({"action": "check-all"}) == "rid"
+    and queued[-1] == {"action": "kit-check-all"},
+    queued[-2:],
+)
 queued.clear()
 s = kits.installed_state()
 s["small"]["remove_at"] = time.time() - 5
@@ -1385,6 +1393,58 @@ check(
     "the set kept for Roll back: its date and size, the packages at another version, the bytes only it uses",
     tr == {"fetched": 1, "bytes": 999, "older": ["ntfs-3g"], "extra_bytes": 430},
     tr,
+)
+# A check is the fetch's resolution without the download: what apt would fetch now, and whether it differs.
+downloaded.clear()
+calls.clear()
+res = kits.check("small")
+check(
+    "check: the cached set is current, and nothing is downloaded",
+    res["state"] == "current"
+    and res["changes"] == []
+    and downloaded == []
+    and not any("--download-only" in c for c in calls),
+    res,
+)
+check(
+    "  the check is kept for the page",
+    kits.status()["kits"]["small"]["check"]["state"] == "current",
+    kits.status()["kits"]["small"].get("check"),
+)
+ARCHIVE["gdb"] = ("16.3-8", ARCHIVE["gdb"][1])
+downloaded.clear()
+calls.clear()
+res = kits.check("small")
+check(
+    "  a newer version: named with both versions, and nothing downloaded",
+    res["state"] == "newer"
+    and res["changes"] == [{"name": "gdb", "from": "16.3-7", "to": "16.3-8"}]
+    and downloaded == []
+    and not any("--download-only" in c for c in calls),
+    res,
+)
+check("  and the bytes still to download are counted", res["download_bytes"] > 0, res)
+saved = (kits.MANIFESTS / "small.json").read_text()
+(kits.MANIFESTS / "small.json").unlink()
+res = kits.check("small")
+(kits.MANIFESTS / "small.json").write_text(saved)
+check("a kit never cached: said as that", res["state"] == "not-cached", res)
+decoded = kits._deb_file("bind9-host_1%3a9.20.30-1~deb13u1_armhf.deb")
+check(
+    "apt's URL encoding is decoded for the page, while the file name stays as apt wrote it",
+    decoded["name"] == "bind9-host"
+    and decoded["version"] == "1:9.20.30-1~deb13u1"
+    and decoded["file"] == "bind9-host_1%3a9.20.30-1~deb13u1_armhf.deb",
+    decoded,
+)
+real_run = kits.run
+kits.run = lambda *a, **k: (_ for _ in ()).throw(OSError("no network"))
+res = kits.check("small")
+kits.run = real_run
+check(
+    "  a check that cannot reach apt: unavailable, with why, never a false 'up to date'",
+    res["state"] == "unavailable" and "no network" in res["why"],
+    res,
 )
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

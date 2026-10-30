@@ -14833,6 +14833,17 @@ function kitFacts(k, st) {
     .filter(Boolean)
     .join(" ");
 }
+function kitCheckLine(check) {
+  if (!check) return "Not checked for updates yet.";
+  const at = new Date(check.at * 1000).toLocaleString();
+  if (check.state === "current") return `Checked ${at}: up to date.`;
+  if (check.state === "newer") {
+    const changes = (check.changes || []).map((c) => `${c.name} ${c.from} → ${c.to}`);
+    return `Checked ${at}: ${changes.length} package${changes.length === 1 ? "" : "s"} newer (${changes.slice(0, 6).join(", ")}${changes.length > 6 ? ", …" : ""}); ${size(check.download_bytes || 0)} to download.`;
+  }
+  if (check.state === "not-cached") return `Checked ${at}: not cached yet; ${check.packages || 0} packages to download.`;
+  return `Checked ${at}: could not check (${check.why || "?"}).`;
+}
 // Its drawer (steps 2, 3): settings held until Save (keep current, removed after by default, extra
 // tools); jobs at once (install, remove, keep longer, refresh, roll back, edit, delete), said so.
 const kitDrafts = new Map();
@@ -14850,6 +14861,16 @@ function kitBody(k, st, cfg, setDirty) {
   const jobs = el("div", { className: "kit-jobs" });
   const jobRow = (...kids) =>
     el("p", { className: "library-buttons" }, ...kids);
+  jobs.append(
+    jobRow(
+      actionButton(
+        "Check for updates",
+        () => kitAct({ action: "check", kit: k.id }),
+        { className: "small" },
+      ),
+    ),
+    el("p", { className: "setting-desc", textContent: kitCheckLine(kitState.check) }),
+  );
   if (inst) {
     const keep = hoursPicker(mine.remove_after);
     jobs.append(
@@ -14965,7 +14986,7 @@ function kitBody(k, st, cfg, setDirty) {
   jobs.append(
     jobRow(
       actionButton(
-        "Refresh cache",
+        "Download",
         () => kitAct({ action: "fetch", kit: k.id }),
         { className: "small" },
       ),
@@ -15389,6 +15410,12 @@ const kitsBudget = AW.form(kitsEl.budget, {
     );
   },
 });
+document
+  .getElementById("kits-check-all")
+  .addEventListener("click", async () => {
+    kitAct({ action: "check-all" });
+    say("Checking every toolkit. The root helper asks apt what a download would bring; nothing is downloaded.", true, kitsEl.note);
+  });
 document
   .getElementById("kits-refresh-all")
   .addEventListener("click", async () => {

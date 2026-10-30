@@ -7373,6 +7373,105 @@ def _kit_hours(req):
     return hours
 
 
+def _kit_lists_hours(req):
+    hours = req.get("lists_max_hours", 24)
+    if type(hours) is not int or not 0 <= hours <= 24 * 30:
+        raise Refused(
+            M(
+                "control.kit.lists-hours-bad",
+                "The lists' age must be from 0 to {max} hours.",
+                max=24 * 30,
+            )
+        )
+    return hours
+
+
+def _kit_check_said(kit, result):
+    state = result.get("state")
+    if state == "current":
+        return M("control.kit.check-current", "The toolkit {kit} is up to date.", kit=kit)
+    if state == "newer":
+        return M(
+            "control.kit.check-newer",
+            {
+                "one": "The toolkit {kit} has {n} package to download: {packages}.",
+                "other": "The toolkit {kit} has {n} packages to download: {packages}.",
+            },
+            kit=kit,
+            n=len(result.get("changes") or []),
+            packages=[f"{c['name']} {c['from']} → {c['to']}" for c in result.get("changes") or []],
+        )
+    if state == "not-cached":
+        return M("control.kit.check-not-cached", "The toolkit {kit} is not cached yet.", kit=kit)
+    return M(
+        "control.kit.check-unavailable",
+        "The toolkit {kit} could not be checked: {why}",
+        kit=kit,
+        why=result.get("why") or "?",
+    )
+
+
+def _kit_check(req):
+    kit = req.get("kit")
+    if not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+        raise Refused(KIT_BAD)
+    try:
+        result = kits.check(kit, _kit_lists_hours(req))
+    finally:
+        _kits_status()
+    return _kit_check_said(kit, result)
+
+
+def _kit_check_all(req):
+    try:
+        results = kits.check_all(_kit_lists_hours(req))
+    finally:
+        _kits_status()
+    newer = sorted(k for k, v in results.items() if v.get("state") == "newer")
+    not_cached = sorted(k for k, v in results.items() if v.get("state") == "not-cached")
+    unavailable = sorted(k for k, v in results.items() if v.get("state") == "unavailable")
+    out = []
+    if newer:
+        out.append(
+            M(
+                "control.kit.checked-newer",
+                {
+                    "one": "{n} toolkit has updates: {kits}.",
+                    "other": "{n} toolkits have updates: {kits}.",
+                },
+                n=len(newer),
+                kits=newer,
+            )
+        )
+    if not_cached:
+        out.append(
+            M(
+                "control.kit.checked-not-cached",
+                {
+                    "one": "{n} toolkit is not cached: {kits}.",
+                    "other": "{n} toolkits are not cached: {kits}.",
+                },
+                n=len(not_cached),
+                kits=not_cached,
+            )
+        )
+    if unavailable:
+        out.append(
+            M(
+                "control.kit.checked-unavailable",
+                {
+                    "one": "{n} toolkit could not be checked: {kits}.",
+                    "other": "{n} toolkits could not be checked: {kits}.",
+                },
+                n=len(unavailable),
+                kits=unavailable,
+            )
+        )
+    if not out:
+        out.append(M("control.kit.checked-all-current", "Checked {n} toolkits: all are up to date.", n=len(results)))
+    return out
+
+
 def _kit_sweep(req):
     """The librarian's sweep by age: older sets past their days removed, control/kits.json written after it."""
     days = req.get("days")
@@ -7520,6 +7619,8 @@ ACTIONS = {
     "wifi-join": wifi_join,
     "wifi-forget": wifi_forget,
     "admin-gate": admin_gate,
+    "kit-check": _kit_check,
+    "kit-check-all": _kit_check_all,
     "kit-fetch": _kit_req(kits.fetch),
     "kit-install": _kit_req(kits.install),
     "kit-remove": _kit_req(kits.remove),
