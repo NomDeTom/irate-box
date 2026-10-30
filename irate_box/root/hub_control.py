@@ -2727,7 +2727,8 @@ def update_approve_security(req):
     held = report["held"]
     if not held:
         raise Refused(M("update.security.nothing", "This update has no security changes to approve."))
-    console = any(report["levels"].get(item["toggle"]) == "console" for item in held)
+    levels = secchanges.levels()
+    console = any(levels.get(item["toggle"]) == "console" for item in held)
     if console and not req.get("console"):
         raise Refused(
             M(
@@ -2742,7 +2743,7 @@ def update_approve_security(req):
         [item["text"] for item in held],
         "console" if console else "https",
         "the console" if console else "an administrator over HTTPS",
-        report["levels"],
+        levels,
     )
     state["security_approved_sha"] = full
     _write_update_state(state)
@@ -3796,7 +3797,8 @@ def _force_refusal(state, over=None):
             "then Update verification.",
         )
     report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"))
-    console = any((report.get("levels") or {}).get(item["toggle"]) == "console" for item in report.get("held") or [])
+    levels = secchanges.levels()
+    console = any(levels.get(item["toggle"]) == "console" for item in report.get("held") or [])
     if console and over not in ("console", "loopback"):
         return M(
             "update.force.console",
