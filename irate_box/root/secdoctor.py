@@ -3283,6 +3283,7 @@ def run_declared(a, timeout=DECLARED_SECONDS, doctor="security"):
     checks = [c for c in a["checks"] if c.get("doctor", "security") == doctor]
     if not checks:
         return []
+    r, fault = None, ""
     try:
         r = _cmd(sys.executable, "-I", str(DECLARED), timeout=timeout, input=json.dumps(_declared_got(a, checks)))
         got = {x["id"]: x for x in json.loads(r.stdout)} if r and r.returncode == 0 else None
@@ -3301,15 +3302,17 @@ def run_declared(a, timeout=DECLARED_SECONDS, doctor="security"):
                 evidence=[f"stopped after {timeout} s"],
             )
         ]
-    except (ValueError, KeyError, TypeError):
-        got = None
+    except (ValueError, KeyError, TypeError) as exc:
+        # Reading the manifest's checks, or the answer they came back with, went wrong. The child was never
+        # started, so there is no stderr to quote: the reason is this exception's own words.
+        got, fault = None, f"{type(exc).__name__}: {exc}"[:200]
     if got is None:
         return [
             _issue(
                 "checks",
                 "warn",
                 M("addon.declared.failed", "Its own checks could not run, so their results are missing."),
-                evidence=[(r.stderr.strip().splitlines() or ["?"])[-1][:200]] if r else [],
+                evidence=[(r.stderr.strip().splitlines() or ["?"])[-1][:200]] if r else [fault] if fault else [],
             )
         ]
     out, unread = [], {}
