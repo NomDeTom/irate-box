@@ -2891,6 +2891,12 @@ def _unit_writes(unit, card_name):
     return confined, on_card
 
 
+def _unit_gone(unit):
+    """Whether systemd no longer knows the unit (a transient run that has ended, or one removed): its past writes are
+    in the week's total, but there is nothing left to confine or move."""
+    return "LoadState=not-found" in run("systemctl", "show", unit, "-p", "LoadState", timeout=10).stdout
+
+
 def _service_writes_findings(summary, card_name):
     """The services that write most to the card, each with where it can write there (from its unit)."""
     from irate_box.hub import cardhistory
@@ -2922,6 +2928,8 @@ def _service_writes_findings(summary, card_name):
             continue
         if unit == cardhistory.KERNEL or not unit.endswith(".service"):
             continue
+        if _unit_gone(unit):
+            continue  # found on box 181: an A/B trial's transient unit, gone for days, still "writing 294 MB a day"
         confined, paths = _unit_writes(unit, card_name)
         if confined:
             where = M(
