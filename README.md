@@ -76,6 +76,7 @@ Irate-Box follows the original PirateBox, which was free software under the GPL.
 | Licence | What |
 | --- | --- |
 | [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub: `server.py`, `hub_control.py`, the doctors (`health.py`, `secdoctor.py`, `security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
+| [AGPL-3.0-only](LICENSES/AGPL-3.0-only.txt) | `web/gamja/`: gamja, the IRC client in the browser (third-party, from `codeberg.org/emersion/gamja`), built with Parcel; its own `LICENSE` is beside the files, and `SOURCE` names the commit |
 | [GPL-3.0-or-later](LICENSES/GPL-3.0-or-later.txt) | `ci.py`, `gitrepos.py`, `usbstick.py` |
 | [GPL-3.0-only](LICENSES/GPL-3.0-only.txt) | `web/icons/m-pwrd.svg`, the Meshtastic tile's picture: Meshtastic's M-PWRD logo (third-party, from `meshtastic/design`). Meshtastic® is a registered trademark of Meshtastic LLC |
 | [MIT](LICENSES/MIT.txt) | small, self-contained pieces: `netinv.py`, `rtc.py`, `hubclock.py`, `zimcheck.py`, `git-http-guard.py`, `adapt_tools.py`, `tailscale-apply.sh`, the git hook, the device locks (`web/lock.js`, also copied into the Excalidraw and Mermaid forks), small page scripts, the web-server and unit configs, and the `apps.d` manifests; `web/qrcode.js` is third-party (Kazuhiko Arase) |
