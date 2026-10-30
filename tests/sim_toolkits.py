@@ -100,7 +100,9 @@ WHEELS = {
     "platformio": [("platformio-6.1.0-py3-none-any.whl", 1000), ("click-8.1.0-py3-none-any.whl", 200)],
     "protobuf": [],
     "grpcio-tools": [],
-}  # nanopb's, in the build kit too; none here, so the sums below are platformio's
+    "nanopb": [("nanopb-0.4.9.1-py3-none-any.whl", 300)],
+    "adafruit-nrfutil": [("adafruit_nrfutil-0.5.3.post16-py3-none-any.whl", 400)],
+}  # the build kit's wheelhouse: platformio's own two, then the three build tools
 (T / "dpkg-status").write_text(
     "".join(f"Package: {p}\nStatus: install ok installed\nVersion: {ARCHIVE[p][0]}\n\n" for p in sorted(installed))
 )
@@ -1137,15 +1139,21 @@ check("  and extra", queued[-1] == {"action": "kit-extra", "kit": "capture", "pa
 # The wheelhouse: the build kit names Python packages too, fetched with pip
 # into a folder of its own, so a build's `pip install platformio` needs no internet.
 check(
-    "the build kit names platformio, and nanopb's protobuf and grpcio-tools, for its wheelhouse",
-    kits.definitions()["build"]["pip"] == ["platformio", "protobuf", "grpcio-tools"],
+    "the build kit names platformio, protobuf, grpcio-tools, nanopb and adafruit-nrfutil for its wheelhouse",
+    kits.definitions()["build"]["pip"] == ["platformio", "protobuf", "grpcio-tools", "nanopb", "adafruit-nrfutil"],
 )
 line = kits.fetch("build", budget_mb=50, log=lambda *a: None)
 man = kits.manifest("build")
 check(
     "fetch: the wheelhouse too, counted in the kit's size",
-    {w["file"] for w in man["wheels"]} == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
-    and man["bytes"] == sum(p["size"] for p in man["packages"]) + 1200,
+    {w["file"] for w in man["wheels"]}
+    == {
+        "platformio-6.1.0-py3-none-any.whl",
+        "click-8.1.0-py3-none-any.whl",
+        "nanopb-0.4.9.1-py3-none-any.whl",
+        "adafruit_nrfutil-0.5.3.post16-py3-none-any.whl",
+    }
+    and man["bytes"] == sum(p["size"] for p in man["packages"]) + 1900,
     man,
 )
 check(
@@ -1164,9 +1172,19 @@ kits.fetch("build", budget_mb=50, log=lambda *a: None)
 check(
     "a new wheel: current and previous both named, both still in the wheelhouse",
     {w["file"] for w in kits.manifest("build")["wheels"]}
-    == {"platformio-6.2.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+    == {
+        "platformio-6.2.0-py3-none-any.whl",
+        "click-8.1.0-py3-none-any.whl",
+        "nanopb-0.4.9.1-py3-none-any.whl",
+        "adafruit_nrfutil-0.5.3.post16-py3-none-any.whl",
+    }
     and {w["file"] for w in kits.manifest("build", "previous")["wheels"]}
-    == {"platformio-6.1.0-py3-none-any.whl", "click-8.1.0-py3-none-any.whl"}
+    == {
+        "platformio-6.1.0-py3-none-any.whl",
+        "click-8.1.0-py3-none-any.whl",
+        "nanopb-0.4.9.1-py3-none-any.whl",
+        "adafruit_nrfutil-0.5.3.post16-py3-none-any.whl",
+    }
     and (kits.WHEELHOUSE / "platformio-6.1.0-py3-none-any.whl").exists()
     and (kits.WHEELHOUSE / "platformio-6.2.0-py3-none-any.whl").exists(),
 )
@@ -1188,7 +1206,7 @@ check(
 )
 check(
     "kits.status() counts the wheels and the wheelhouse's bytes",
-    kits.status()["kits"]["build"]["cached"]["wheels"] == 2 and kits.wheelhouse_bytes() > 0,
+    kits.status()["kits"]["build"]["cached"]["wheels"] == 4 and kits.wheelhouse_bytes() > 0,
 )
 # Debug symbols: a kit from Debian's debug archive alone, its index kept
 # apart, and only the symbols of what is installed here (a -dbgsym depends on its exact version).
