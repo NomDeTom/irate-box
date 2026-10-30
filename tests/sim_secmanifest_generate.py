@@ -122,5 +122,39 @@ check(
     oct(stat.S_IMODE(target.stat().st_mode)),
 )
 
+systemd = T / "systemd" / "system"
+systemd.mkdir(parents=True)
+unit = systemd / "example.service"
+unit.write_text(
+    "[Unit]\nDescription=Example\n\n[Service]\nUser=hub\nProtectSystem=no\nPrivateTmp=no\nExecStart=/bin/true\n\n[Install]\nWantedBy=multi-user.target\n"
+)
+manifest["units"]["example.service"] = {
+    "source": "install.sh",
+    "User": "hub",
+    "ProtectSystem": "strict",
+    "ReadWritePaths": ["$STATE/ci"],
+    "PrivateTmp": "yes",
+    "NoNewPrivileges": "yes",
+    "CapabilityBoundingSet": [],
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+changed = secmanifest.apply_units(systemd=T / "systemd")
+text = unit.read_text()
+check(
+    "a unit written by install.sh gets the manifest's sandbox lines",
+    changed == ["example.service"]
+    and "ProtectSystem=strict\n" in text
+    and "ReadWritePaths=/var/lib/hub/ci\n" in text
+    and "PrivateTmp=yes\n" in text
+    and "NoNewPrivileges=yes\n" in text
+    and "CapabilityBoundingSet=\n" in text
+    and "ProtectSystem=no" not in text
+    and "User=hub\n" in text
+    and "ExecStart=/bin/true\n" in text
+    and "[Install]\nWantedBy=multi-user.target\n" in text,
+    text,
+)
+check("  a second pass changes nothing", secmanifest.apply_units(systemd=T / "systemd") == [])
+
 print(f"{fails} failure(s)" if fails else "ok")
 sys.exit(1 if fails else 0)
