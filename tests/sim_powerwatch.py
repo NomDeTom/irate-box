@@ -255,6 +255,56 @@ reset()
 cw.power_tick(now + 290, settings)
 check("the power back: a recovery is noted", [e["kind"] for e in cw.power_tick(now + 300, settings)] == [])
 
+# The Box doctor reads the same events: one failure is one, and one still happening is not invisible.
+cw.POWER.write_text(json.dumps([{"at": now - 30 * 3600, "kind": "power-fail", "text": "the mains is gone"}]))
+found = {f["id"]: f for f in health.check_power(now=now)}
+check(
+    "a failure longer than the window, with nothing since: out of view, as the window says",
+    found["power"]["status"] == "ok",
+    found["power"],
+)
+cw.POWER.write_text(
+    json.dumps(
+        [
+            {"at": now - 30 * 3600, "kind": "power-fail", "text": "the mains is gone"},
+            {"at": now - 2 * 3600, "kind": "battery-low", "text": "the battery is low"},
+        ]
+    )
+)
+found = {f["id"]: f for f in health.check_power(now=now)}
+check(
+    "  the same failure, still on a low battery two hours later: a problem, one failure, said as still on battery",
+    found["power"]["status"] == "problem"
+    and found["power"]["summary"]["args"] == {"n": 1}
+    and "power.battery.still" in message_ids(found["power"])
+    and "battery is low" in " ".join(str(n) for n in found["power"]["notes"]),
+    found["power"],
+)
+cw.POWER.write_text(
+    json.dumps(
+        [
+            {"at": now - 3600, "kind": "power-fail", "text": "the mains is gone"},
+            {"at": now - 1800, "kind": "battery-low", "text": "the battery is low"},
+            {"at": now - 900, "kind": "power-restored", "text": "the power is back"},
+        ]
+    )
+)
+found = {f["id"]: f for f in health.check_power(now=now)}
+check(
+    "  a failure and its low battery inside the window: counted once, and back is not still",
+    found["power"]["summary"]["args"] == {"n": 1}
+    and "power.battery.still" not in message_ids(found["power"])
+    and "power.failed.still" not in message_ids(found["power"]),
+    found["power"],
+)
+cw.POWER.write_text(json.dumps([{"at": now - 600, "kind": "power-fail", "text": "the mains is gone"}]))
+found = {f["id"]: f for f in health.check_power(now=now)}
+check(
+    "  a failure with no recovery yet: said as not come back",
+    found["power"]["status"] == "problem" and "power.failed.still" in message_ids(found["power"]),
+    found["power"],
+)
+
 # Events stay across boots.
 cw.POWER.write_text(json.dumps([{"at": now, "boot": "boot-one", "kind": "power-fail", "text": "x"}]))
 (proc / "sys/kernel/random/boot_id").write_text("boot-two\n")
