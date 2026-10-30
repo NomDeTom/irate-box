@@ -18,6 +18,7 @@ from pathlib import Path
 
 from irate_box.hub import apmode, hotspot
 from irate_box.msg import M, Refused
+from irate_box.root import secmanifest
 
 CONNECTION = "irate-box-ap"
 SHARED_IFACE = "ap0"
@@ -135,8 +136,11 @@ def hostapd_unit():
             "[Service]",
             f"ExecStart=/usr/sbin/hostapd {HOSTAPD_CONF}",
             "Restart=on-failure",
-            *SANDBOX,
-            "ReadWritePaths=-/run/hostapd",
+            *secmanifest.unit_lines(
+                HOSTAPD_UNIT,
+                ("ProtectSystem", "NoNewPrivileges", "PrivateTmp", "ProtectHome", "ProtectProc", "ReadWritePaths"),
+                fallback="\n".join((*SANDBOX, "ReadWritePaths=-/run/hostapd")) + "\n",
+            ).splitlines(),
             "",
             "[Install]",
             "WantedBy=multi-user.target",
@@ -282,8 +286,11 @@ def dnsmasq_unit():
             "[Service]",
             f"ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file={DNSMASQ_CONF} --pid-file=",
             "Restart=on-failure",
-            *SANDBOX,
-            "ReadWritePaths=-/var/lib/misc",
+            *secmanifest.unit_lines(
+                DNSMASQ_UNIT,
+                ("ProtectSystem", "NoNewPrivileges", "PrivateTmp", "ProtectHome", "ProtectProc", "ReadWritePaths"),
+                fallback="\n".join((*SANDBOX, "ReadWritePaths=-/var/lib/misc")) + "\n",
+            ).splitlines(),
             "",
             "[Install]",
             "WantedBy=multi-user.target",
@@ -361,10 +368,19 @@ def boot_unit():
             "[Service]",
             "Type=oneshot",
             f"ExecStart={CODE}/irate-box hub_control ap-boot",
-            *SANDBOX,
             # It starts the hotspot as the root helper does: its record and the hub's, NetworkManager's connections,
             # the guests' rules, their resolver's unit and forwarding's sysctl file.
-            "ReadWritePaths=/etc/hub /var/lib/hub -/etc/NetworkManager /etc/systemd/system /etc/sysctl.d",
+            *secmanifest.unit_lines(
+                BOOT_UNIT,
+                ("ProtectSystem", "NoNewPrivileges", "PrivateTmp", "ProtectHome", "ProtectProc", "ReadWritePaths"),
+                fallback="\n".join(
+                    (
+                        *SANDBOX,
+                        "ReadWritePaths=/etc/hub /var/lib/hub -/etc/NetworkManager /etc/systemd/system /etc/sysctl.d",
+                    )
+                )
+                + "\n",
+            ).splitlines(),
             "",
             "[Install]",
             "WantedBy=multi-user.target",

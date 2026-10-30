@@ -31,7 +31,7 @@ from pathlib import Path
 
 from irate_box import durable
 from irate_box.msg import M, Refused
-from irate_box.root import restore
+from irate_box.root import restore, secmanifest
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -860,10 +860,15 @@ def unit_text(name):
         *extra_stores(),
     }
     paths = [str(path) for path in sorted(required)] + [f"-{path}" for path in sorted(optional)]
-    sandbox = (
-        "ProtectSystem=strict\n"
-        f"ReadWritePaths={' '.join(paths)}\n"
-        "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
+    sandbox = secmanifest.unit_lines(
+        name,
+        ("ProtectSystem", "ReadWritePaths", "PrivateTmp", "NoNewPrivileges", "ProtectHome", "ProtectProc"),
+        fallback=(
+            "ProtectSystem=strict\n"
+            f"ReadWritePaths={' '.join(paths)}\n"
+            "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
+        ),
+        override={"ReadWritePaths": paths},
     )
     if name == SERVICE:
         return (
