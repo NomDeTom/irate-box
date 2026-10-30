@@ -965,6 +965,12 @@ check(
     security.pending_security(SIM) == ["gzip", "libglib2.0-0t64", "openssl"],
     security.pending_security(SIM),
 )
+updates = {p["package"]: p for p in security.pending_updates(SIM)}
+check(
+    "every upgrade apt would make is parsed, with its version and origin",
+    len(updates) == 7 and updates["openssl"]["version"] == "3.5.1-1+deb13u2" and "Debian" in updates["bash"]["origin"],
+    updates,
+)
 
 
 # The hub's own backend off loopback is a problem; on loopback, or any other listener of the box, it is not.

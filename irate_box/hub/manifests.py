@@ -320,6 +320,15 @@ def _check(m, where):
             need(isinstance(addon.get(k), str), f"addon.{k}: a string")
         need("consent" not in addon or isinstance(addon["consent"], str), "addon.consent: a string")
         need("needs" not in addon or isinstance(addon["needs"], str), "addon.needs: a string")
+        need(
+            "packages" not in addon
+            or (
+                isinstance(addon["packages"], list)
+                and len(addon["packages"]) <= 40
+                and all(isinstance(p, str) and re.match(r"^[a-z0-9][a-z0-9+.-]{1,62}$", p) for p in addon["packages"])
+            ),
+            "addon.packages: Debian package names",
+        )
     if "checks" in m:
         need(status is not None and "unit" in status, "checks need status.unit (the add-on they check)")
         _check_checks(m["checks"], need)

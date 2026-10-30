@@ -24,6 +24,7 @@
   },
   "addon": {
     "option": "--with-collab",
+    "packages": ["nodejs"],
     "title": "Live collaboration (whiteboard)",
     "summary": "Lets several people draw on the same Excalidraw board at once. It installs Node.js. Estimate: about 60 MB of storage and 40 MB of memory while in use. Install the relay before you start a shared session.",
     "needs": "Set up the relay first. On this page, open Maintenance, then App updates. Select Track app updates. Then select Install."

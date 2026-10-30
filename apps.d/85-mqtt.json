@@ -18,6 +18,7 @@
   },
   "addon": {
     "option": "--with-mqtt",
+    "packages": ["mosquitto", "mosquitto-clients"],
     "title": "MQTT broker for Meshtastic",
     "summary": "mosquitto, an MQTT broker. Meshtastic nodes and the phone app publish to TCP port 1883. Pages read the broker at /mqtt.",
     "consent": "The broker answers every device on the network of the box on TCP port 1883. It has no broker login. It accepts the topic msh/# only. Add the MQTT broker?"

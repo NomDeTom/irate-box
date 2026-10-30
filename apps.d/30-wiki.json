@@ -32,6 +32,7 @@
   },
   "addon": {
     "option": "--with-kiwix",
+    "packages": ["kiwix-tools"],
     "title": "Kiwix, the offline library",
     "summary": "kiwix-serve for the books in Kiwix → Books, at /wiki/ on its own web origin. If the box has books, Kiwix is already installed. Add it here to have it ready before the first book. About 10 MB of storage. It also uses memory for each book that it serves."
   },

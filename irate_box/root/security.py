@@ -1001,18 +1001,26 @@ def parse_pattern(arg):
     return often, act
 
 
-def pending_security(simulated):
-    """Package names from `apt-get -s upgrade` output whose new version comes from a security archive,
-    or is one of Debian's stable fixes (from a Debian origin, versioned +debNuM)."""
-    pkgs = []
+def pending_updates(simulated):
+    """Every upgrade `apt-get -s upgrade` would make, as [{package, version, origin}]."""
+    out = []
     for line in simulated.splitlines():
         m = INST_RE.match(line)
         if not m:
             continue
         version, _, origin = m.group(2).partition(" ")
-        if "security" in origin.lower() or (origin.startswith("Debian") and DEB_FIX_RE.search(version)):
-            pkgs.append(m.group(1))
-    return pkgs
+        out.append({"package": m.group(1), "version": version, "origin": origin})
+    return out
+
+
+def pending_security(simulated):
+    """Package names from `apt-get -s upgrade` output whose new version comes from a security archive,
+    or is one of Debian's stable fixes (from a Debian origin, versioned +debNuM)."""
+    return [
+        p["package"]
+        for p in pending_updates(simulated)
+        if "security" in p["origin"].lower() or (p["origin"].startswith("Debian") and DEB_FIX_RE.search(p["version"]))
+    ]
 
 
 def lists_age_days():
