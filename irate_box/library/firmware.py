@@ -168,7 +168,21 @@ def _releases(cfg):
         names = {a["name"]: a for a in rel.get("assets", [])}
         if not VERSION_RE.match(version) or f"firmware-{version}.json" not in names:
             continue
-        deps = next((a for n, a in names.items() if n.startswith("platformio-deps-") and n.endswith(".zip")), None)
+        deps_all = {}
+        for n, a in names.items():
+            if n.startswith("platformio-deps-") and n.endswith(".zip"):
+                suffix = n[len("platformio-deps-") : -len(".zip")]
+                if suffix.endswith(f"-{version}"):
+                    suffix = suffix[: -len(f"-{version}")]
+                deps_all[suffix] = {
+                    "url": a["browser_download_url"],
+                    "size": a["size"],
+                    "name": n,
+                    "digest": a.get("digest"),
+                }
+        deps = deps_all.get("native-tft") or next(
+            (a for n, a in names.items() if n.startswith("platformio-deps-") and n.endswith(".zip")), None
+        )
         source = next((a for n, a in names.items() if n.startswith("meshtasticd-") and n.endswith("-src.zip")), None)
         item = {
             "version": version,
@@ -177,12 +191,17 @@ def _releases(cfg):
             "notes": rel.get("body") or "",
             "list_digest": names[f"firmware-{version}.json"].get("digest"),
             "deps": deps
-            and {
-                "url": deps["browser_download_url"],
-                "size": deps["size"],
-                "name": deps["name"],
-                "digest": deps.get("digest"),
-            },
+            and (
+                deps
+                if "browser_download_url" not in deps
+                else {
+                    "url": deps["browser_download_url"],
+                    "size": deps["size"],
+                    "name": deps["name"],
+                    "digest": deps.get("digest"),
+                }
+            ),
+            "deps_all": deps_all,
             "source": source
             and {"url": source["browser_download_url"], "size": source["size"], "name": source["name"]},
         }
@@ -480,7 +499,80 @@ def _carry_cache(rel, cfg, policy, log):
     (work / ".irate-box-cache").write_text(cfg["cache"] + "\n")
     shutil.rmtree(dest, ignore_errors=True)
     os.replace(work, dest)
+    for suffix, asset in sorted((rel.get("deps_all") or {}).items()):
+        if cfg["cache"] == "whole" and suffix not in ("", "native-tft"):
+            _extract_extra(asset, dest / suffix, log)
     return {"version": rel["version"], "mode": cfg["cache"], "bytes": _du(dest)}
+
+
+def _extract_extra(asset, dest, log):
+    """A release's per-family dependency zip, kept under pio-deps/<family> when the cache is whole.
+    This is the asset a release-side build publishes; a release without one is unchanged."""
+    need = asset["size"] * 3 + DEPS_RESERVE
+    if librarian._free_bytes(ROOT) < need:
+        raise LibrarianError(
+            M(
+                "firmware.cache.no-space",
+                "Insufficient storage for the build cache. It needs {need} MB and {free} MB are free.",
+                need=need >> 20,
+                free=librarian._free_bytes(ROOT) >> 20,
+            )
+        )
+    tmp = librarian.TMP_DIR / asset["name"]
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    log(f"firmware: downloading the {dest.name} build cache ({asset['size'] >> 20} MB)")
+    if not (tmp.is_file() and tmp.stat().st_size == asset["size"]):
+        librarian._download(asset["url"], tmp, name=f"build cache {dest.name}", expected=asset["size"], resume=True)
+    digest = asset.get("digest") or ""
+    librarian._verify_sha256(tmp, digest.split(":", 1)[1] if digest.startswith("sha256:") else None, asset["name"])
+    work = dest.with_name(dest.name + ".new")
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        with zipfile.ZipFile(tmp) as zf:
+            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, "whole") and not i.is_dir())
+            free = shutil.disk_usage(ROOT).free
+            if wanted > free - DEPS_RESERVE:
+                raise LibrarianError(
+                    M(
+                        "firmware.cache.unpack-no-space",
+                        "Insufficient storage. {name} unpacks to {size} MB. {free} MB are free. {reserve} MB must stay free.",
+                        name=asset["name"],
+                        size=wanted >> 20,
+                        free=free >> 20,
+                        reserve=DEPS_RESERVE >> 20,
+                    )
+                )
+            for info in zf.infolist():
+                rel_path = _subset(info.filename, "whole", info.file_size)
+                if not rel_path or info.is_dir():
+                    continue
+                target = work / rel_path
+                if not target.resolve().is_relative_to(work.resolve()):
+                    raise LibrarianError(
+                        M(
+                            "firmware.cache.unsafe-path",
+                            "Archive rejected. {name} names a file outside its folder: {path}",
+                            name=asset["name"],
+                            path=info.filename[:80],
+                        )
+                    )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out, 1 << 20)
+    except zipfile.BadZipFile as exc:
+        raise LibrarianError(
+            M(
+                "firmware.cache.incomplete",
+                "Archive damaged or incomplete. {name} is not a complete zip file.",
+                name=asset["name"],
+            )
+        ) from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+    (work / ".irate-box-cache").write_text("whole\n")
+    shutil.rmtree(dest, ignore_errors=True)
+    os.replace(work, dest)
+    return {"path": str(dest), "bytes": _du(dest)}
 
 
 def flush_cache(log=print):
