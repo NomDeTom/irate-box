@@ -20,7 +20,10 @@ The hub's copy changes only this much:
     only its 84 KB script and stylesheet, no camera and no model;
   * the build files, Cypress tests, Electron and Discord shells, the PWA manifest and the
     source repository's own paper files go. /jspaint/ serves the whole folder, so they must
-    not remain.
+    not remain;
+  * the news's pictures from outside the box: one from JS Paint's own GitHub tree points at
+    the same file in this copy, where it has it; any other is left out, as the policy would
+    block it anyway.
 
 The app is not the hub's to relicense: it is MIT, and LICENSE.txt stays. Running it twice
 changes nothing. Stdlib only.
@@ -126,6 +129,24 @@ NOTE_HTML = (
     "multi-user sessions, Imgur upload or Load From URL. Pictures stay in this browser, where "
     "other web add-ons on the box can read them, unless you save one to your device.</p>\n"
 )
+# A picture from outside the box, its tag spread over lines as the news writes it; and JS Paint's own GitHub raw URL
+# (any commit) for a file under images/.
+REMOTE_IMG = re.compile(r'<img\b[^>]*?\bsrc="(https?://[^"]*)"[^>]*>')
+OWN_RAW = re.compile(r"^https://github\.com/1j01/jspaint/blob/[^/]+/(images/[^?\"]+)\?raw=true$")
+
+
+def local_images(text, tree):
+    """The page's outside pictures: JS Paint's own files from this copy where it has them, the others left out."""
+
+    def swap(match):
+        own = OWN_RAW.match(match.group(1))
+        if own and (Path(tree) / own.group(1)).is_file():
+            return match.group(0).replace(match.group(1), own.group(1))
+        return ""
+
+    return REMOTE_IMG.sub(swap, text)
+
+
 IMGUR_BUTTON = re.compile(r'\n\t\t\t\$win\.\$Button\("Upload to Imgur",.*?\n\t\t\t\}\)\.focus\(\);\n', re.S)
 
 
@@ -195,7 +216,7 @@ def adapt(tree):
     if len(LANGUAGES.findall(language_text)) != 1:
         raise AdaptError("src/app-localization.js changed: the language list is not found once")
 
-    page_text = adapt_page(index.read_text(encoding="utf-8"))
+    page_text = local_images(adapt_page(index.read_text(encoding="utf-8")), tree)
     menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", HEAD_TRACKER_MENU.sub("", LOAD_URL_MENU.sub("", menu_text))))
     function_text = IMGUR_BUTTON.sub("", function_text)
     app_text = app_text.replace("/dwell-clicker|head-tracker/i", "/dwell-clicker/i").replace(
