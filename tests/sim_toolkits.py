@@ -667,6 +667,14 @@ check(
     and queued[-1] == {"action": "kit-install", "kit": "debug", "hours": 4},
 )
 check("the page names a kit, never packages", queued[-1].keys() == {"action", "kit", "hours"})
+check(
+    "a check is queued for one kit, and for all",
+    toolkits.action({"action": "check", "kit": "debug"}) == "rid"
+    and queued[-1] == {"action": "kit-check", "kit": "debug"}
+    and toolkits.action({"action": "check-all"}) == "rid"
+    and queued[-1] == {"action": "kit-check-all"},
+    queued[-2:],
+)
 queued.clear()
 s = kits.installed_state()
 s["small"]["remove_at"] = time.time() - 5

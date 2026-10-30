@@ -235,13 +235,17 @@ def action(payload):
         )
     if what == "drop-all-previous":
         return librarian._queue_root({"action": "kit-drop-all-previous"})
+    if what == "check-all":
+        return librarian._queue_root({"action": "kit-check-all"})
     kid = payload.get("kit")
-    if what != "status" and kid not in definitions():
+    if what not in ("status", "check-all") and kid not in definitions():
         raise LibrarianError(
             M("toolkits.kit.unknown", "Unknown kit. Select one of these kits: {kits}.", kits=list(definitions()))
         )
     if what == "fetch":
         return librarian._queue_root({"action": "kit-fetch", "kit": kid, "budget_mb": settings()["budget_mb"]})
+    if what == "check":
+        return librarian._queue_root({"action": "kit-check", "kit": kid})
     if what in ("install", "keep"):
         hours = (
             payload.get("hours", settings()["kits"][kid]["remove_after"]) if what == "install" else payload.get("hours")
@@ -265,8 +269,8 @@ def action(payload):
     raise LibrarianError(
         M(
             "toolkits.action.invalid",
-            "Invalid action. Use settings, fetch, install, keep, remove, rollback, drop-previous, drop-all-previous, status, "
-            "define, undefine or extra.",
+            "Invalid action. Use settings, check, check-all, fetch, install, keep, remove, rollback, drop-previous, "
+            "drop-all-previous, status, define, undefine or extra.",
         )
     )
 
