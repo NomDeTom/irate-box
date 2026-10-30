@@ -68,6 +68,21 @@ with (
     )
     check("  a second tidy changes nothing", pkgcache.tidy(log=lambda *_: None)["moved"] == 0)
 
+# apt's epoch encoding in a .deb name: compare the version apt records, keep the file name.
+epoch = archives / "bind9-host_1%3a9.20.30-1~deb13u1_armhf.deb"
+epoch.write_bytes(b"x" * 10)
+with (
+    mock.patch.object(pkgcache, "installed", lambda: {"bind9-host": "1:9.20.30-1~deb13u1"}),
+    mock.patch.object(pkgcache, "startup_packages", lambda: {"bind9-host"}),
+):
+    pkgcache.tidy(log=lambda *_: None)
+check(
+    "an epoch in the file name is decoded for the version, and the file keeps apt's name",
+    (cache / "bind9-host_1%3a9.20.30-1~deb13u1_armhf.deb").is_file()
+    and pkgcache.parse("bind9-host_1%3a9.20.30-1~deb13u1_armhf.deb")[1] == "1:9.20.30-1~deb13u1",
+    sorted(p.name for p in cache.iterdir()),
+)
+
 calls = []
 
 

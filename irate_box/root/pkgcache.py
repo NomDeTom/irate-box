@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 from irate_box.msg import M
@@ -60,11 +61,11 @@ def startup_packages():
 
 def parse(name):
     found = DEB.match(name)
-    return (found.group(1), found.group(2), found.group(3)) if found else (None, None, None)
-
-
-def _cache_name(name, version, arch):
-    return f"{name}_{version}_{arch}.deb"
+    if not found:
+        return (None, None, None)
+    # apt encodes a version's epoch colon (1%3a9.20.30) in the file name; compare the version
+    # apt records (1:9.20.30), but keep the file name as apt wrote it for a reinstall.
+    return (urllib.parse.unquote(found.group(1)), urllib.parse.unquote(found.group(2)), found.group(3))
 
 
 def _installed_in_cache(versions):
@@ -89,7 +90,7 @@ def tidy(log=print):
     for path in sorted(ARCHIVES.glob("*.deb")):
         name, version, arch = parse(path.name)
         if name in startup and versions.get(name) == version:
-            dest = CACHE / _cache_name(name, version, arch)
+            dest = CACHE / path.name
             if not dest.exists():
                 os.replace(path, dest)
                 moved += 1
