@@ -418,5 +418,24 @@ check(
     kept,
 )
 
+# Real buffers from a Lyra Zero W's first login over a CH340 at 1.5 Mbaud (2026-10-30), characters lost on the way:
+# the username question must still be recognised, and the error line must not be taken for it.
+lossy = {
+    "user": [
+        "\n\nCreating a ntrl-C> to abort\n\nPlease provide a username (eg. your first nam",
+        "Error: illegal characters in username\n\nCreating a n provide a username (eg. your first name): ",
+    ],
+    "root1": ["Or continue with CLI setup below...\n\n\nCreate root password: "],
+}
+check(
+    "first login over a line that drops characters: each question still recognised from real buffers",
+    all(rkserial.FIRST[name].search(text) for name, texts in lossy.items() for text in texts),
+    {name: [bool(rkserial.FIRST[name].search(t)) for t in texts] for name, texts in lossy.items()},
+)
+check(
+    "  the error line is not taken for the question",
+    not rkserial.FIRST["user"].search("Error: illegal characters in username\n"),
+)
+
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
