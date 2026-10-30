@@ -3716,30 +3716,27 @@ function drawSecurity(sec, results) {
       secUpdateWaiting = null;
     }
   }
-  for (const el of secEl.form.querySelectorAll("select[name]")) {
-    if (sec.toggles && sec.toggles[el.name]) el.value = sec.toggles[el.name];
-  }
-  secEl.form.elements.console_only.checked = sec.console_only === true;
+  secSec.fill({ ...sec.toggles, console_only: sec.console_only === true });
   if (secEl.says)
     secEl.says.textContent = sec.console_only
       ? "approved at the console"
       : "held at your levels";
 }
-secEl.form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const toggles = {};
-  for (const el of secEl.form.querySelectorAll("select[name]")) toggles[el.name] = el.value;
-  try {
+const secSec = AW.form(secEl.form, {
+  label: "Security changes",
+  save: async (c, v) => {
+    const toggles = {};
+    for (const name of ["root_actions", "secrets", "sandboxes", "served", "outbound", "root_code"])
+      toggles[name] = v[name];
     const job = await postJSON("/admin/update", {
       action: "security-changes",
       toggles,
-      console_only: secEl.form.elements.console_only.checked,
+      console_only: v.console_only === true,
     });
     secUpdateWaiting = { id: job.id };
     setTimeout(loadUpdate, 1200);
-  } catch (err) {
-    say(err.message, false, secEl.note);
-  }
+    return job;
+  },
 });
 loadUpdate();
 
