@@ -155,6 +155,20 @@ check(
     text,
 )
 check("  a second pass changes nothing", secmanifest.apply_units(systemd=T / "systemd") == [])
+dropin = systemd / "syncthing@hub.service.d" / "irate-box.conf"
+dropin.parent.mkdir(parents=True)
+dropin.write_text("[Service]\nProtectSystem=no\n")
+manifest["units"]["syncthing@$HUB_USER.service.d/irate-box.conf"] = {
+    "source": "install.sh",
+    "ProtectSystem": "strict",
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+changed = secmanifest.apply_units(systemd=T / "systemd")
+check(
+    "  a unit name's $HUB_USER is expanded to find the drop-in",
+    changed == ["syncthing@$HUB_USER.service.d/irate-box.conf"] and "ProtectSystem=strict" in dropin.read_text(),
+    (changed, dropin.read_text()),
+)
 
 print(f"{fails} failure(s)" if fails else "ok")
 sys.exit(1 if fails else 0)

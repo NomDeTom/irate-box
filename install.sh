@@ -3345,6 +3345,7 @@ fi
 if ! HUB_CODE_DIR="$CODE" HUB_SYSTEMD_ETC=/etc/systemd "$CODE/irate-box" secmanifest apply-units >/dev/null; then
 	problem "could not apply the security manifest's unit sandboxes"
 fi
+systemctl daemon-reload >/dev/null 2>&1 || true
 if ! HUB_CODE_DIR="$CODE" "$CODE/irate-box" secmanifest apply-secrets >/dev/null; then
 	problem "could not apply the security manifest's secret modes"
 fi

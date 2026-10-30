@@ -443,7 +443,7 @@ def apply_units(systemd=None):
     for name, entry in sorted(manifest.get("units", {}).items()):
         if entry.get("source") != "install.sh":
             continue
-        path = base / name
+        path = base / _unit_value(name)
         try:
             lines = path.read_text().splitlines()
         except OSError:
