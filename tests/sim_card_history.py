@@ -309,6 +309,8 @@ def run(*cmd, timeout=60, **kw):
         out = said_kernel["log"]
     elif cmd[:2] == ("systemctl", "show") and cmd[2] == "apt-daily.service":
         out = "ProtectSystem=strict\nReadWritePaths=/var/lib/apt -/var/cache/apt /run/irate-box-apt\nStateDirectory=\nBindPaths=\n"
+    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "ab-B-install.service":
+        out = "LoadState=not-found\nProtectSystem=no\n"  # as box 181 answered for an A/B trial's ended unit
     elif cmd[:2] == ("systemctl", "show") and cmd[2] == "meshtasticd.service":
         out = "ProtectSystem=no\nReadWritePaths=\n"
     elif cmd[0] == "systemctl" and cmd[1] == "is-active":
@@ -325,7 +327,7 @@ lines = [
         "at": day0 + i * H,
         "boot": "dddd4444",
         "card": i * ((2 << 30) // 24),
-        "units": {"meshtasticd.service": i << 26, "apt-daily.service": i << 25},
+        "units": {"meshtasticd.service": i << 26, "apt-daily.service": i << 25, "ab-B-install.service": i << 26},
         "other": 0,
         "accounting": True,
         "mem_min": 100 << 20,
@@ -350,6 +352,11 @@ check(
     and "anywhere on the SD card" in render(mw["why"])
     and "meshtasticd.service writes about" in render(mw["summary"]),
     mw,
+)
+check(
+    "  a unit systemd no longer knows (an ended transient run) is not reported, however much it wrote",
+    "card-writer:ab-B-install.service" not in got,
+    sorted(got),
 )
 check(
     "  one confined to its paths: those on the SD card listed, the one in RAM not",
