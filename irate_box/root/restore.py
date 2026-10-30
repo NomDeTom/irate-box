@@ -150,7 +150,13 @@ def from_bytes(target, data, mode=None, expect=None, keep=True, owner=None, keep
             try:
                 os.link(target, kept, follow_symlinks=False)
             except OSError:
-                shutil.copy2(target, kept)
+                # Another filesystem (the box's state on its own partition): a copy instead. A file the storage will
+                # not read back (btrfs's EIO for a failed checksum) cannot be copied either: keep nothing, and mend it.
+                try:
+                    shutil.copy2(target, kept)
+                except OSError:
+                    kept.unlink(missing_ok=True)
+                    kept = None
         os.replace(tmp, target.name, src_dir_fd=dfd, dst_dir_fd=dfd)
         os.fsync(dfd)
     except BaseException:

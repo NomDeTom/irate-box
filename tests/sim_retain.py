@@ -6,6 +6,7 @@ outside the include globs, a removed file left removed, a change the owner made 
 sweep, a copy and its .prev both bad as a problem, an empty file not treated as damage, Box doctor's finding and the
 two-boot verdict, and the units. python3 tests/sim_retain.py"""
 
+import errno
 import json
 import os
 import stat
@@ -703,6 +704,43 @@ retain._package_owned, retain.restore.from_package, retain.extra_stores = real_o
 check(
     "a package conffile with no good copy is reinstalled",
     journald.read_text().startswith("[Journal]") and any("package" in r["action"] for r in repairs),
+    repairs,
+)
+
+# A file the storage will not read back: on a Lyra with /var/lib/hub on btrfs (2026-10-30), a block of 0xFF written
+# under a protected file made every read fail with EIO ("csum failed"). The boot check took that for a file removed,
+# and the restore's keeping copy (no hard link from another filesystem) failed on the same EIO.
+
+retain.sweep()
+real_read, real_link, real_copy = retain._read, os.link, retain.restore.shutil.copy2
+retain._read = lambda path, **kw: (
+    (_ for _ in ()).throw(OSError(errno.EIO, "Input/output error")) if Path(path) == settings else real_read(path, **kw)
+)
+os.link = lambda *a, **kw: (_ for _ in ()).throw(OSError(errno.EXDEV, "Invalid cross-device link"))
+retain.restore.shutil.copy2 = lambda src, dst, **kw: (
+    (_ for _ in ()).throw(OSError(errno.EIO, "Input/output error")) if Path(src) == settings else real_copy(src, dst)
+)
+try:
+    repairs = retain.boot_check()
+finally:
+    retain._read, os.link, retain.restore.shutil.copy2 = real_read, real_link, real_copy
+check(
+    "an unreadable file (EIO) is damage: restored from its copy, though the damaged one cannot be kept",
+    any(r["path"] == str(settings) and r["action"].startswith("restored from") for r in repairs)
+    and settings.read_text() == '{"hub_title": "Box"}\n',
+    repairs,
+)
+real_read = retain._read
+retain._read = lambda path, **kw: (
+    (_ for _ in ()).throw(OSError(errno.ENOENT, "No such file")) if Path(path) == settings else real_read(path, **kw)
+)
+try:
+    repairs = retain.boot_check()
+finally:
+    retain._read = real_read
+check(
+    "  a missing file is still the owner's removal, not damage",
+    not any(r["path"] == str(settings) for r in repairs),
     repairs,
 )
 

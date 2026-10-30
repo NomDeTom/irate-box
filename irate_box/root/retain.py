@@ -17,6 +17,7 @@ damage: the copy is put back with the same code the Housecall doctor uses (resto
 running is the card verdict. Stdlib only.
 """
 
+import errno
 import hashlib
 import json
 import os
@@ -53,6 +54,9 @@ CONFIG = ETC / "retain.json"
 KEYFILE = ROOT / "retain-key"
 FF, ZERO = b"\xff", b"\x00"
 KEEP = 50
+# A read that fails this way is damage to mend, not a file removed: an I/O error, or a checksum the filesystem
+# found wrong (EUCLEAN on ext4 metadata, EBADMSG).
+UNREADABLE = {errno.EIO, errno.EUCLEAN, errno.EBADMSG}
 
 
 def protected():
@@ -776,19 +780,22 @@ def boot_check():
     for path_str, entry in manifest["entries"].items():
         path = Path(path_str)
         wanted = entry.get("sha256")
+        unreadable = False
         try:
             data = _read(path)
-        except OSError:
-            data = None
-        if data is None:
-            continue  # removed by the owner or the hub: the next sweep drops it, and it is not a card's damage
-        if not _bad(data) and _sha(data) == wanted:
+        except OSError as exc:
+            if exc.errno not in UNREADABLE:
+                continue  # removed by the owner or the hub: the next sweep drops it, and it is not a card's damage
+            # The storage will not give it back: btrfs answers a block that fails its checksum with EIO (a Lyra's
+            # state partition, 2026-10-30). That is the card's damage, as a file of 0xFF is.
+            data, unreadable = b"", True
+        if not unreadable and not _bad(data) and _sha(data) == wanted:
             continue
         try:
             mtime = path.stat().st_mtime_ns
         except OSError:
             mtime = None
-        if not _bad(data) and mtime != entry.get("mtime_ns"):
+        if not unreadable and not _bad(data) and mtime != entry.get("mtime_ns"):
             continue  # the owner changed it: the next sweep copies it
         done = False
         skipped = []
