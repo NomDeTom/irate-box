@@ -1,0 +1,10 @@
+{
+  "server": {
+    "url": "/irc-ws",
+    "autoconnect": true,
+    "autojoin": "#lobby",
+    "nick": "guest*",
+    "auth": "disabled",
+    "ping": 0
+  }
+}

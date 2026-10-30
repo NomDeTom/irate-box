@@ -134,3 +134,11 @@ path = "tools/alpine/keys/*.pub"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Alpine Linux"
 SPDX-License-Identifier = "LicenseRef-Alpine-public-key"
+
+# gamja, the IRC client in the browser (codeberg.org/emersion/gamja), built with Parcel and
+# served from web/gamja. Its own LICENSE is beside the files.
+[[annotations]]
+path = "web/gamja/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2020 The gamja Contributors"
+SPDX-License-Identifier = "AGPL-3.0-only"

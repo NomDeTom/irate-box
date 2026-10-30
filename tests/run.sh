@@ -127,6 +127,7 @@ run sim_setup_code.py
 run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py
+run sim_inspircd.py
 run sim_books.py
 run sim_ghpace.py
 run sim_cut_short.py

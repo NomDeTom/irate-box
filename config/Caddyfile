@@ -269,6 +269,17 @@
 		reverse_proxy 127.0.0.1:9001
 	}
 
+	# --- gamja: the browser IRC client, and its WebSocket ------------------------------
+	# The client is static (web/gamja); its WebSocket is InspIRCd's own listener on loopback,
+	# reached through this front so HTTPS gives the page wss:// and port 6668 stays closed.
+	handle /gamja/* {
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		file_server
+	}
+	handle /irc-ws {
+		reverse_proxy 127.0.0.1:6668
+	}
+
 	# --- /flasher → the Meshtastic web flasher, as a download, and what it fetches -------
 	# The page is a download opened from the guest's disk (flasher.py says why), so it fetches
 	# everything below cross-origin: every answer is Access-Control-Allow-Origin: *, and a

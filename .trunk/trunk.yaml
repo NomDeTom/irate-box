@@ -48,8 +48,9 @@ lint:
     - linters: [bandit]
       paths: [tests/**]
     # oxlint is for web/*.js; the rest of the JavaScript runs under Node and has no config yet.
+    # gamja is a built third-party bundle, not this project's source.
     - linters: [oxlint]
-      paths: [tests/**, tools/**, extras/**, web/qrcode.js]
+      paths: [tests/**, tools/**, extras/**, web/qrcode.js, web/gamja/**]
 actions:
   disabled:
     - trunk-announce
