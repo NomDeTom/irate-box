@@ -10,6 +10,7 @@
   },
   "addon": {
     "option": "--with-sync",
+    "packages": ["syncthing"],
     "title": "Syncthing",
     "summary": "Synchronises folders (the notes and books) between the box and paired devices. Administrators sign in to use the page at /sync/. About 40 MB of memory.",
     "consent": "Syncthing opens two ports on the network of the box. TCP and UDP port 22000 carry the synchronisation. UDP port 21027 lets devices find the box. Paired devices use these ports. Add Syncthing?"

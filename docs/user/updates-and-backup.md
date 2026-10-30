@@ -22,6 +22,10 @@ Each update downloads only the files that changed. Some dependencies can downloa
 
 A GitHub signature does not prove who merged the commit. A version that fails the required signature check is not installed. Some other failed checks can be overridden with **Install anyway**. The Updates doctor says why a check failed.
 
+## Add-ons and their sources
+
+The Updates doctor gives each add-on source its own line: a source that failed, one that has not checked successfully for three intervals, or a newer release that the box's setting says to install but has not. A local add-on whose newer catalogue version needs your approval is listed there too, once. A packaged add-on with waiting packages is listed with them, and says when one is a security update. A source that is switched off, deferred, or set to flag only stays quiet.
+
 ## Debian's security updates
 
 The page first shows the waiting updates and three buttons. The folded **Automatic updates** section has the same settings for the security fixes of the operating system. The box can list the fixes, download them, or install them. It uses the Debian security archive only.

@@ -118,6 +118,29 @@ check(
     (out, st.get("error")),
 )
 world["offline"] = False
+out, st = run()
+before = st.get("last_ok")
+real_update = L.update_app_source
+L.update_app_source = lambda *a, **k: (_ for _ in ()).throw(
+    L.LibrarianError(L.M("test.boom", "the source did not answer"))
+)
+out, first = run("check")
+out, again = run("check")
+check(
+    "a failing check keeps the last success and records when the errors began",
+    first.get("last_ok") == before
+    and first.get("error_since")
+    and again.get("error_since") == first["error_since"]
+    and again.get("last_ok") == before,
+    (first, again),
+)
+L.update_app_source = real_update
+out, st = run("check")
+check(
+    "  a success clears error_since and moves last_ok",
+    "error_since" not in st and st.get("last_ok") and st["last_ok"] >= before,
+    st,
+)
 
 L.add_source(dict(src, follow="latest"))
 out, st = run()

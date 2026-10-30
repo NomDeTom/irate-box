@@ -191,11 +191,13 @@ from irate_box import setup_code
 from irate_box.finding import action as finding_action
 from irate_box.finding import finding
 from irate_box.hub import access, gitrepos, manifests, netinv, transport, uplink
+from irate_box.library import librarian
 from irate_box.msg import (
     M,
     Refused,
     duration,
     is_message,
+    named,
     render,
     sentences,
     when,
@@ -3714,6 +3716,7 @@ GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access
 GO_SOURCE_REPO = _go("updoctor", M("go.update-source", "Update source"), "update-source-repo")
 GO_SOURCE_BRANCH = _go("updoctor", M("go.update-source", "Update source"), "update-source-branch")
 GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
+GO_SECURITY = _go("security", M("go.security", "Security"))
 GO_APPSTORE = _go("appstore", M("go.appstore", "App store"))
 
 # One failed attempt says what happened, not why.
@@ -4567,6 +4570,227 @@ def _said_check(c):
     return f"{c.get('name', '')}: {c.get('detail', '')}"
 
 
+def _hours_since(stamp, now):
+    if not stamp:
+        return None
+    try:
+        then = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+    return (now - then.timestamp()) / 3600
+
+
+def addons_findings(now=None):
+    """Each add-on source and each packaged add-on that is not fine, one finding each: a source's error,
+    a source with no successful check for three intervals, a newer release under a policy that would
+    install it, and a packaged add-on's waiting packages. One ok line when all are fine."""
+    now = now or time.time()
+    title = M("update.addons.title", "Add-ons and sources")
+    try:
+        cfg = librarian.load_config()
+        status = librarian.load_status()
+    except (OSError, ValueError):
+        return [
+            finding(
+                "addons-sources",
+                title,
+                "warn",
+                M("update.addons.unreadable", "The librarian's sources could not be read."),
+            )
+        ]
+    policy = cfg["policy"]
+    interval = policy.get("check_every_hours") or 0
+    # The last run's errors, for a box updated to this doctor before its librarian has run with
+    # last_ok/error_since: a source that failed then is not invisible until the next check.
+    run_errors = {}
+    try:
+        last_run = json.loads((STATE / "library" / "last-run.json").read_text())
+    except (OSError, ValueError, AttributeError):
+        last_run = {}
+    for record in (last_run.get("last_scheduled") or {}, last_run.get("last") or {}, last_run):
+        for line in record.get("errors") or []:
+            name, _, rest = str(line).partition(":")
+            if name and rest:
+                run_errors.setdefault(name, str(line).strip())
+    out = []
+    for src in cfg["sources"]:
+        name = src["name"]
+        if not src.get("enabled", True):
+            continue
+        entry = status.get(name) or {}
+        if entry.get("deferred"):
+            continue
+        failed = entry.get("error") or (entry.get("latest_failed") or {}).get("error")
+        if not failed and name in run_errors:
+            failed, _from_run = run_errors[name], True
+        if failed:
+            since = _hours_since(entry.get("error_since"), now)
+            out.append(
+                finding(
+                    f"source-{name}-error",
+                    named(name, M("update.addons.role-source", "source")),
+                    "problem" if interval and since is not None and since >= 3 * interval else "warn",
+                    M("update.addons.error", "The source {name} failed its last check or install.", name=name),
+                    M(
+                        "update.addons.error.why",
+                        "Until it succeeds, the add-on or book it carries stays at the version the box has.",
+                    ),
+                    M(
+                        "update.addons.error.fix",
+                        "Read the librarian's log. If the source is no longer wanted, switch it off on the Librarian page.",
+                    ),
+                    notes=(
+                        [M("update.addons.error.since", "It has failed since {time}.", time=when(entry["error_since"]))]
+                        if entry.get("error_since")
+                        else []
+                    ),
+                    evidence=[str(failed)[:300]],
+                    go=GO_LIBRARIAN,
+                )
+            )
+            continue
+        if interval:
+            last_ok = _hours_since(entry.get("last_ok"), now)
+            last_check = _hours_since(entry.get("last_check"), now)
+            since = last_ok if last_ok is not None else last_check
+            if since is not None and since >= 3 * interval:
+                out.append(
+                    finding(
+                        f"source-{name}-stale",
+                        named(name, M("update.addons.role-source", "source")),
+                        "warn",
+                        M(
+                            "update.addons.stale",
+                            "The source {name} has not checked successfully for three intervals.",
+                            name=name,
+                        ),
+                        M(
+                            "update.addons.stale.why",
+                            "A source that stops answering is not noticed while the box says its updates are fine.",
+                        ),
+                        M("update.addons.stale.fix", "Read the librarian's log, then check now on the Librarian page."),
+                        go=GO_LIBRARIAN,
+                    )
+                )
+        latest = entry.get("latest") or {}
+        current = entry.get("current") or {}
+        waiting = (
+            latest.get("version")
+            and current.get("version")
+            and latest["version"] != current["version"]
+            and policy.get("auto_install") == 2
+            and (src.get("kind") != "app" or librarian._follow(src) == "latest")
+        )
+        if waiting:
+            out.append(
+                finding(
+                    f"source-{name}-waiting",
+                    named(name, M("update.addons.role-source", "source")),
+                    "warn",
+                    M(
+                        "update.addons.waiting",
+                        "A newer version of {name} is known and not installed, though this box installs updates.",
+                        name=name,
+                    ),
+                    M(
+                        "update.addons.waiting.why",
+                        "The policy says to install it, so the update has either failed quietly or not run.",
+                    ),
+                    M("update.addons.waiting.fix", "Read the librarian's log, then check now on the Librarian page."),
+                    evidence=[latest.get("label", latest["version"])],
+                    go=GO_LIBRARIAN,
+                )
+            )
+
+    try:
+        simulated = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
+    except (OSError, subprocess.SubprocessError):
+        simulated = ""
+    if simulated:
+        pending = {p["package"]: p for p in security.pending_updates(simulated)}
+        security_updates = set(security.pending_security(simulated))
+        access_state = access.read(ACCESS_FILE)
+        for addon_id, m in manifests.addons().items():
+            packages = (m.get("addon") or {}).get("packages") or []
+            if not packages or access.mode_of(access_state, addon_id) == "off":
+                continue
+            waiting_packages = [pending[p] for p in packages if p in pending]
+            if not waiting_packages:
+                continue
+            names = [p["package"] for p in waiting_packages]
+            out.append(
+                finding(
+                    f"addon-{addon_id}-packages",
+                    named(m["addon"]["title"], M("update.addons.role-addon", "add-on")),
+                    "warn",
+                    M(
+                        "update.addons.packages",
+                        {
+                            "one": "{name}: {n} package waits for an update: {packages}.",
+                            "other": "{name}: {n} packages wait for an update: {packages}.",
+                        },
+                        name=m["addon"]["title"],
+                        n=len(names),
+                        packages=names,
+                    ),
+                    notes=(
+                        [
+                            M(
+                                "update.addons.packages.security",
+                                "At least one of them is a security update. The Security page counts it.",
+                            )
+                        ]
+                        if security_updates & set(names)
+                        else []
+                    ),
+                    evidence=[f"{p['package']} {p['version']}" for p in waiting_packages[:6]],
+                    go=GO_SECURITY,
+                )
+            )
+    try:
+        local, _errors = manifests.load_local()
+        catalogue = json.loads((STATE / "addons-catalogue.json").read_text())
+    except (OSError, ValueError, TypeError):
+        local, catalogue = [], {}
+    for m in local:
+        entry = catalogue.get(m["id"]) or {}
+        if entry.get("status") != "held":
+            continue
+        out.append(
+            finding(
+                f"addon-{m['id']}-held",
+                named(m["addon"]["title"], M("update.addons.role-approval", "update approval")),
+                "warn",
+                M(
+                    "update.addons.held",
+                    "A newer version in the catalogue changes what you agreed to. The version you agreed to keeps running.",
+                ),
+                M(
+                    "update.addons.held.why",
+                    "Accepting the new version gives it the new permissions it asks for. Until then the old one runs.",
+                ),
+                M(
+                    "update.addons.held.fix",
+                    "On Add-ons, Web add-ons, read the changes, then accept the new version or remove the add-on.",
+                ),
+                evidence=entry.get("held", []),
+            )
+        )
+    if not out:
+        out.append(
+            finding(
+                "addons-sources",
+                title,
+                "ok",
+                M(
+                    "update.addons.ok",
+                    "No source has failed for three intervals, and every packaged add-on is up to date.",
+                ),
+            )
+        )
+    return out
+
+
 def scheduled_findings(now=None):
     """Whether the timer's runs actually reach the hub's own update (library/last-run.json, kept
     by the librarian): a check that the box *can* update says nothing about whether it *does*.
@@ -4667,7 +4891,6 @@ def scheduled_findings(now=None):
                         "Scheduled runs reach the update of the hub server.",
                     )
                 ),
-                notes=([M("update.scheduled.ok.errors", "Some sources had errors.")] if errors else []),
                 evidence=errors,
             )
         )
