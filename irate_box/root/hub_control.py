@@ -4600,6 +4600,18 @@ def addons_findings(now=None):
         ]
     policy = cfg["policy"]
     interval = policy.get("check_every_hours") or 0
+    # The last run's errors, for a box updated to this doctor before its librarian has run with
+    # last_ok/error_since: a source that failed then is not invisible until the next check.
+    run_errors = {}
+    try:
+        last_run = json.loads((STATE / "library" / "last-run.json").read_text())
+    except (OSError, ValueError, AttributeError):
+        last_run = {}
+    for record in (last_run.get("last_scheduled") or {}, last_run.get("last") or {}, last_run):
+        for line in record.get("errors") or []:
+            name, _, rest = str(line).partition(":")
+            if name and rest:
+                run_errors.setdefault(name, str(line).strip())
     out = []
     for src in cfg["sources"]:
         name = src["name"]
@@ -4609,6 +4621,8 @@ def addons_findings(now=None):
         if entry.get("deferred"):
             continue
         failed = entry.get("error") or (entry.get("latest_failed") or {}).get("error")
+        if not failed and name in run_errors:
+            failed, _from_run = run_errors[name], True
         if failed:
             since = _hours_since(entry.get("error_since"), now)
             out.append(
@@ -4765,7 +4779,13 @@ def addons_findings(now=None):
     if not out:
         out.append(
             finding(
-                "addons-sources", title, "ok", M("update.addons.ok", "Every source and packaged add-on is up to date.")
+                "addons-sources",
+                title,
+                "ok",
+                M(
+                    "update.addons.ok",
+                    "No source has failed for three intervals, and every packaged add-on is up to date.",
+                ),
             )
         )
     return out

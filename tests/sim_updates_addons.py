@@ -50,6 +50,7 @@ sources = [
     {"name": "off", "enabled": False},
     {"name": "deferred", "enabled": True},
     {"name": "sharp", "enabled": True},
+    {"name": "recent-fail", "enabled": True},
 ]
 status = {
     "good": {"last_check": iso(3600), "last_ok": iso(3600), "current": {"version": "1"}, "latest": {"version": "1"}},
@@ -66,6 +67,10 @@ status = {
     "sharp": {"error": "old failure", "error_since": iso(4 * 86400), "last_ok": iso(5 * 86400)},
 }
 cfg = {"policy": {"check_every_hours": 24, "auto_install": 2}, "sources": sources}
+(T / "state" / "library").mkdir(parents=True)
+(T / "state" / "library" / "last-run.json").write_text(
+    '{"last_scheduled": {"errors": ["recent-fail: error: GitHub API rate limit reached"]}}'
+)
 apt = """Inst ngircd [26] (27 Debian:13/stable [armhf])
 Inst mosquitto [2] (3 Debian-Security:13/stable-security [armhf])"""
 addons = {
