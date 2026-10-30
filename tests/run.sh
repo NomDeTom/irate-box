@@ -132,6 +132,7 @@ run sim_cut_short.py
 run sim_download_bounds.py
 run sim_pin.py
 run sim_local_addons.py
+run sim_adapt_jspaint.py
 run api_admin_gate.py
 run api_https_gate.py
 run api_parsing.py
