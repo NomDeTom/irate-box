@@ -168,7 +168,6 @@ def _releases(cfg):
         names = {a["name"]: a for a in rel.get("assets", [])}
         if not VERSION_RE.match(version) or f"firmware-{version}.json" not in names:
             continue
-        deps = next((a for n, a in names.items() if n.startswith("platformio-deps-") and n.endswith(".zip")), None)
         deps_all = {}
         for n, a in names.items():
             if n.startswith("platformio-deps-") and n.endswith(".zip"):
@@ -181,6 +180,9 @@ def _releases(cfg):
                     "name": n,
                     "digest": a.get("digest"),
                 }
+        deps = deps_all.get("native-tft") or next(
+            (a for n, a in names.items() if n.startswith("platformio-deps-") and n.endswith(".zip")), None
+        )
         source = next((a for n, a in names.items() if n.startswith("meshtasticd-") and n.endswith("-src.zip")), None)
         item = {
             "version": version,
@@ -189,12 +191,16 @@ def _releases(cfg):
             "notes": rel.get("body") or "",
             "list_digest": names[f"firmware-{version}.json"].get("digest"),
             "deps": deps
-            and {
-                "url": deps["browser_download_url"],
-                "size": deps["size"],
-                "name": deps["name"],
-                "digest": deps.get("digest"),
-            },
+            and (
+                deps
+                if "browser_download_url" not in deps
+                else {
+                    "url": deps["browser_download_url"],
+                    "size": deps["size"],
+                    "name": deps["name"],
+                    "digest": deps.get("digest"),
+                }
+            ),
             "deps_all": deps_all,
             "source": source
             and {"url": source["browser_download_url"], "size": source["size"], "name": source["name"]},

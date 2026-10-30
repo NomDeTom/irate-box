@@ -24,6 +24,11 @@ on:
         required: false
         default: 6.1.19
         type: string
+      pio_package:
+        description: platformio or pioarduino
+        required: false
+        default: platformio
+        type: string
       release_tag:
         description: Optional existing release in this repository to attach the bundles to
         required: false
@@ -52,7 +57,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: PlatformIO
-        run: pip install --disable-pip-version-check "platformio==${{ inputs.platformio }}"
+        run: pip install --disable-pip-version-check "${{ inputs.pio_package }}==${{ inputs.platformio }}"
       - name: Install each environment's tools and pack the bundle
         working-directory: firmware
         env:

@@ -52,6 +52,7 @@ framework = arduino
     "nanopb==0.4.9.1\nadafruit-nrfutil==0.5.3.post16\n-r requirements_esp32.txt\n"
 )
 (src / "requirements_esp32.txt").write_text("pioarduino==6.2.0\n")
+(src / "requirements_extra.txt").write_text("platformio-check==1.0\n")
 doc = pio_bundle.manifest(src)
 check(
     "the manifest reads the default environments and the first one's platform, board and libraries",
@@ -65,7 +66,8 @@ check(
 check(
     "  and the Python requirements, the -r line left out",
     doc["requirements"]["requirements_base.txt"] == ["nanopb==0.4.9.1", "adafruit-nrfutil==0.5.3.post16"]
-    and doc["requirements"]["requirements_esp32.txt"] == ["pioarduino==6.2.0"],
+    and doc["requirements"]["requirements_esp32.txt"] == ["pioarduino==6.2.0"]
+    and doc["requirements"]["requirements_extra.txt"] == ["platformio-check==1.0"],
     doc["requirements"],
 )
 

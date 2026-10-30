@@ -36,7 +36,6 @@ from pathlib import Path
 
 BUNDLE_PREFIX = "pio-deps-"
 MANIFEST = "build-manifest.json"
-REQUIREMENT_FILES = ("requirements_base.txt", "requirements_esp32.txt", "requirements.txt")
 
 
 def _git(source, *args):
@@ -51,13 +50,12 @@ def _git(source, *args):
 
 def _read_requirements(source):
     out = {}
-    for name in REQUIREMENT_FILES:
-        path = source / name
+    for path in sorted(source.glob("requirements*.txt")):
         try:
             lines = path.read_text().splitlines()
         except OSError:
             continue
-        out[name] = [
+        out[path.name] = [
             line.strip() for line in lines if line.strip() and not line.strip().startswith(("#", "-r", "-c", "--"))
         ]
     return out
