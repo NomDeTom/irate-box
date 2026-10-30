@@ -99,6 +99,7 @@ run housecall_guard.py
 run sim_restore.py
 run sim_clock_sources.py
 run sim_secdoctor_accounts.py
+run sim_secdoctor_manifest.py
 run sim_secdoctor_missing.py
 run sim_secdoctor_sandbox.py
 run sim_ap_refresh.py
@@ -183,6 +184,7 @@ run sim_secdoctor_lyra.py
 run sim_signing.py
 run sim_update_doctor.py
 run sim_security_manifest.py
+run sim_security_changes.py
 run sim_update_source_view.py
 run sim_share.py
 run sim_guest_net.py

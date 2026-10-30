@@ -7,6 +7,8 @@ is read, never imported. python3 tests/sim_security_manifest.py"""
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -119,6 +121,77 @@ check(
     "the fetched code was not imported: the tree has no __pycache__ under its copied root",
     not (tree / "irate_box" / "root" / "__pycache__").exists(),
 )
+
+with_install(REPO)
+update_src = Path(os.environ["HUB_UPDATE_DIR"])
+shutil.rmtree(update_src, ignore_errors=True)
+tree = code_tree(control_edit=lambda text: text.replace('"pins": pins,', '"pins": pins,\n    "evil": pins,', 1))
+written(tree)
+shutil.copytree(tree, update_src)
+subprocess.run(["git", "init", "-q"], cwd=update_src, check=True)
+subprocess.run(["git", "add", "-A"], cwd=update_src, check=True)
+subprocess.run(
+    ["git", "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-qm", "an update"],
+    cwd=update_src,
+    check=True,
+)
+full = subprocess.run(
+    ["git", "-C", str(update_src), "rev-parse", "HEAD"], capture_output=True, text=True
+).stdout.strip()
+check_now = H._security_check(update_src, None)
+H._write_update_state(
+    {
+        "checked_sha": full,
+        "available": full[:7],
+        "available_sha": full,
+        "installed": None,
+        "branch": "main",
+        "verified": None,
+        "verified_sha": None,
+        "checks": [check_now],
+        "security": H.security_report(update_src, None),
+        "changes": [],
+        "changes_known": True,
+    }
+)
+report = {
+    "manifest": True,
+    "problems": [],
+    "held": [{"toggle": "root_actions", "text": "a new root action, evil"}],
+    "levels": {"root_actions": "authorise"},
+}
+check(
+    "the doctor offers an approval for a held widening",
+    [a["choice"] for a in H._approve_actions({"security": report})] == ["approve-security"],
+    H._approve_actions({"security": report}),
+)
+check(
+    "  but not when the level needs the console",
+    H._approve_actions({"security": {**report, "levels": {"root_actions": "console"}}}) == [],
+)
+said = H.update_approve_security({})
+check(
+    "an administrator approves the held widenings over HTTPS",
+    said["id"] == "update.security.approved" and "evil" in " ".join(said["args"]["changes"]),
+    said,
+)
+(T / "etc/install-options").write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
+with (
+    mock.patch.object(H, "_run_install", lambda *args, **kwargs: 3),
+    mock.patch.object(H, "_installed_commit", lambda: "abcdef0"),
+):
+    said = H.update_install({})
+check("  and the approved update installs", said["id"] == "update.install.done", said)
+
+record = H._security_record_finding()
+check(
+    "the Updates doctor shows the change as not yet reviewed",
+    record[0]["status"] == "note" and record[0]["actions"][0]["choice"] == "security-record-read",
+    record,
+)
+said = H.ACTIONS["security-record-read"]({})
+check("  marking the record read", said["id"] == "security.record.read", said)
+check("  leaves nothing unread", H._security_record_finding()[0]["status"] == "ok", H._security_record_finding())
 
 print(f"{fails} failure(s)" if fails else "ok")
 sys.exit(1 if fails else 0)

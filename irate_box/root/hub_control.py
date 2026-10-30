@@ -207,6 +207,7 @@ from irate_box.root import (
     health,
     kits,
     safeio,
+    secchanges,
     secdoctor,
     secmanifest,
     security,
@@ -318,9 +319,11 @@ POLICY_ACTIONS = frozenset(
     (
         "security-policy",
         "security-fix",
+        "security-changes",
         "update-signing",
         "update-force-install",
         "update-set-source",
+        "update-approve-security",
         "tls-make",
         "tls-switch",
         "tls-import",
@@ -2693,6 +2696,67 @@ def update_signing(req):
     )
 
 
+def update_approve_security(req):
+    """Approve the widenings the update's check holds. A tree that does not match its own manifest cannot be
+    approved here: only Install anyway gets past that. At the console level, only the console command may."""
+    if not (UPDATE_SRC / "install.sh").is_file():
+        raise Refused(
+            M(
+                "update.security.none",
+                "No update is downloaded yet. Check for updates, then download the update.",
+            )
+        )
+    state = _read_update_state()
+    full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    if state.get("checked_sha") != full:
+        raise Refused(
+            M(
+                "update.security.not-checked",
+                "The downloaded version has not been checked. Check for updates again.",
+            )
+        )
+    report = security_report(UPDATE_SRC, state.get("installed"))
+    if not report["manifest"] or report["problems"]:
+        raise Refused(
+            M(
+                "update.security.mismatch",
+                "This update does not match its own security manifest, so its changes cannot be approved. "
+                "Use Install anyway only if you meant them.",
+            )
+        )
+    held = report["held"]
+    if not held:
+        raise Refused(M("update.security.nothing", "This update has no security changes to approve."))
+    console = any(report["levels"].get(item["toggle"]) == "console" for item in held)
+    if console and not req.get("console"):
+        raise Refused(
+            M(
+                "update.security.console",
+                "This update's security changes are approved at the console only. Run "
+                "sudo /opt/irate-box/irate-box hub_control update-authorise at the console or over SSH.",
+            )
+        )
+    secchanges.approve(
+        full,
+        full[:7],
+        [item["text"] for item in held],
+        "console" if console else "https",
+        "the console" if console else "an administrator over HTTPS",
+        report["levels"],
+    )
+    state["security_approved_sha"] = full
+    _write_update_state(state)
+    return M(
+        "update.security.approved",
+        {
+            "one": "Approved {n} security change: {changes}. Install the update when you are ready.",
+            "other": "Approved {n} security changes: {changes}. Install the update when you are ready.",
+        },
+        n=len(held),
+        changes=[item["text"] for item in held],
+    )
+
+
 SECURITY_TITLE = M("update.verify.security.title", "Security changes")
 SECURITY_FLAGGED = frozenset({"outbound", "root_code"})
 
@@ -2704,38 +2768,50 @@ def _changed_files(src, installed):
     return out.stdout.splitlines() if out.returncode == 0 else []
 
 
-def _security_check(src, installed):
-    """The fetched tree against its own security.json, and that manifest against the installed one. A tree
-    that does not match its manifest is held; a widening is held unless it is only one of the flagged kinds.
-    The fetched code is never imported or run: secmanifest reads it."""
+def _no_changes():
+    return {"widenings": [], "narrowings": [], "neutral": []}
+
+
+def security_report(src, installed):
+    """What the fetched tree's manifest says, how it differs from the installed one, and which
+    widenings the owner's levels hold. Read statically: the fetched code is never imported."""
+    empty = {
+        "manifest": False,
+        "problems": [],
+        "changes": _no_changes(),
+        "levels": secchanges.levels(),
+        "held": [],
+    }
     try:
         manifest = secmanifest.load(src)
         if manifest is None:
-            return _check(
-                "security",
-                False,
-                SECURITY_TITLE,
-                M(
-                    "update.verify.security.none",
-                    "The update has no security manifest, so its security changes cannot be checked.",
-                ),
-                evidence=["security.json"],
-            )
+            return {**empty, "problems": ["the update has no security.json"]}
         problems = secmanifest.mismatches(manifest, secmanifest.build(src))
         changes = secmanifest.compare(secmanifest.load(CODE), manifest, _changed_files(src, installed))
+        levels = secchanges.levels()
+        held = [item for item in changes["widenings"] if levels.get(item["toggle"], "authorise") != "flag"]
+        return {"manifest": True, "problems": problems, "changes": changes, "levels": levels, "held": held}
     except (OSError, ValueError, KeyError, SyntaxError) as exc:
-        detail = str(exc)[:300]
+        return {**empty, "problems": [str(exc)[:300]]}
+
+
+def _security_check(src, installed):
+    """The fetched tree against its own security.json, and that manifest against the installed one. A tree
+    that does not match its manifest is held; a widening is held at the level the owner chose."""
+    report = security_report(src, installed)
+    if not report["manifest"]:
+        detail = report["problems"][0] if report["problems"] else "security.json"
         return _check(
             "security",
             False,
             SECURITY_TITLE,
             M(
-                "update.verify.security.unreadable",
-                "The update's security files could not be read: {detail}.",
-                detail=detail,
+                "update.verify.security.none",
+                "The update has no security manifest, so its security changes cannot be checked.",
             ),
             evidence=[detail],
         )
+    problems = report["problems"]
     if problems:
         return _check(
             "security",
@@ -2748,9 +2824,10 @@ def _security_check(src, installed):
             ),
             evidence=problems,
         )
-    widenings = changes["widenings"]
-    held = [item for item in widenings if item["toggle"] not in SECURITY_FLAGGED]
+    widenings = report["changes"]["widenings"]
+    held = report["held"]
     if held:
+        console = any(report["levels"].get(item["toggle"]) == "console" for item in held)
         return _check(
             "security",
             False,
@@ -2765,8 +2842,13 @@ def _security_check(src, installed):
                 changes=[item["text"] for item in held],
             ),
             fix=M(
+                "update.verify.security.widens.fix-console",
+                "Run sudo /opt/irate-box/irate-box hub_control update-authorise at the console or over SSH.",
+            )
+            if console
+            else M(
                 "update.verify.security.widens.fix",
-                "Read each change. Use Install anyway only if you meant them.",
+                "Approve the changes on Updates, or use Install anyway only if you meant them.",
             ),
             evidence=[item["text"] for item in held],
         )
@@ -3505,6 +3587,10 @@ def update_fetch(req):
     state.update(
         checks=checks,
         checked_sha=full,
+        security=security_report(UPDATE_SRC, state.get("installed")),
+        security_approved_sha=state.get("security_approved_sha")
+        if state.get("security_approved_sha") == full
+        else None,
         verified=None if failed else head,
         verified_sha=None if failed else full,
     )
@@ -3620,24 +3706,42 @@ def update_install(req):
     # The whole hash of what is checked out, against the whole hash that passed.
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     if not state.get("verified_sha") or state.get("verified_sha") != full:
-        raise Refused(
-            M(
-                "update.install.not-verified",
-                "The downloaded version has not passed verification. Download the update again.",
+        failed = _force_failed(state)
+        approved = _security_approval(state, full)
+        if not approved or not failed or any(c.get("id") != "security" for c in failed):
+            raise Refused(
+                M(
+                    "update.install.not-verified",
+                    "The downloaded version has not passed verification. Download the update again.",
+                )
             )
-        )
-    return _install_fetched(state)
+    return _install_fetched(state, how="console" if req.get("over") == "console" else "https")
 
 
-def _install_fetched(state):
+def _security_approval(state, full):
+    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"))
+    if not report.get("manifest") or report.get("problems"):
+        return None
+    return secchanges.approved(full, [item["text"] for item in report.get("held") or []])
+
+
+def _install_fetched(state, how="https", forced=False, overridden=()):
+    report = state.get("security") or {}
+    changes = report.get("changes") or _no_changes()
+    levels = report.get("levels") or secchanges.levels()
+    signing_level = signing.load(ETC)["level"]
+    tag = state.get("tag")
     seen = _run_install(UPDATE_SRC, _install_options(), "install", state.get("install_steps"))
+    commit = _installed_commit()
+    secchanges.record_install(commit or "", tag, signing_level, levels, changes, how, forced, overridden)
     state = _read_update_state()
     if state:
         state.update(
-            installed=_installed_commit(),
+            installed=commit,
             up_to_date=True,
             changes=[],
             install_steps=seen,
+            security_approved_sha=None,
         )
         _write_update_state(state)
     return _installed_now()
@@ -3657,7 +3761,7 @@ def _force_failed(state):
     return [c for c in state.get("checks") or [] if not c.get("ok") and not c.get("warn")]
 
 
-def _force_refusal(state):
+def _force_refusal(state, over=None):
     """Why Install anyway cannot install the fetched version now, as a message, or None when it can. The one rule:
     the update doctor offers the button by it, and update_force_install refuses by it."""
     if not (UPDATE_SRC / "install.sh").is_file():
@@ -3691,6 +3795,14 @@ def _force_refusal(state):
             "Install anyway cannot skip this check. To change the signing level, open Updates, "
             "then Update verification.",
         )
+    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"))
+    console = any((report.get("levels") or {}).get(item["toggle"]) == "console" for item in report.get("held") or [])
+    if console and over not in ("console", "loopback"):
+        return M(
+            "update.force.console",
+            "This update's security changes are approved at the console only. Run "
+            "sudo /opt/irate-box/irate-box hub_control update-force-install at the console or over SSH.",
+        )
     return None
 
 
@@ -3701,12 +3813,20 @@ def update_force_install(req):
     and checked, and only if its installer parses; the installer stops on its own errors.
     """
     state = _read_update_state()
-    why = _force_refusal(state)
+    over = req.get("over")
+    why = _force_refusal(state, over)
     if why:
         raise Refused(why)
     failed = _force_failed(state)
     head = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")[:7]
-    _install_fetched(state)
+    report = state.get("security") or {}
+    overridden = [c["name"] for c in failed] + [item["text"] for item in report.get("held") or []]
+    _install_fetched(
+        state,
+        how="console" if over == "console" else "https",
+        forced=True,
+        overridden=overridden,
+    )
     commit = _installed_commit() or head
     if failed:
         # Exactly what was skipped, by name.
@@ -4620,15 +4740,98 @@ def updates_doctor_findings():
                         *(c["fix"] for c in failed if is_message(c.get("fix"))),
                     ],
                     evidence=[e for c in failed for e in c.get("evidence", [])][:6],
-                    actions=_force_actions(last),
+                    actions=[*_approve_actions(last), *_force_actions(last)],
                 )
             )
     except (OSError, ValueError, AttributeError):
         pass
+    findings += _security_record_finding()
     findings += scheduled_findings()
     findings += kits_findings()
     findings += appstore_findings()
     return findings
+
+
+def _security_record_finding():
+    unread = secchanges.unread()
+    title = M("update.security.record.title", "The security record")
+    if not unread:
+        return [
+            finding(
+                "security-record",
+                title,
+                "ok",
+                M("update.security.record.ok", "Every security change in the record has been marked read."),
+            )
+        ]
+    return [
+        finding(
+            "security-record",
+            title,
+            "note",
+            M(
+                "update.security.record.unread",
+                {
+                    "one": "{n} security change has been approved or installed since the record was last marked read.",
+                    "other": "{n} security changes have been approved or installed since the record was last marked read.",
+                },
+                n=len(unread),
+            ),
+            M(
+                "update.security.record.why",
+                "An approval at the flag level is still seen by a person; this is where the record of it waits.",
+            ),
+            notes=[
+                M(
+                    "update.security.record.item",
+                    "{event}: {changes} ({how}{forced}).",
+                    event=entry.get("event", "?"),
+                    changes=", ".join(
+                        entry.get("changes", {}).get("widenings", [])
+                        if isinstance(entry.get("changes"), dict)
+                        else entry.get("changes", [])
+                    )
+                    or "no widening",
+                    how=entry.get("how", "?"),
+                    forced=", forced" if entry.get("forced") else "",
+                )
+                for entry in unread[-3:]
+            ],
+            evidence=[str(entry.get("commit") or "?") for entry in unread[-6:]],
+            actions=[
+                finding_action(
+                    "security-record-read",
+                    M("update.security.record.read-action", "Mark the record as read"),
+                )
+            ],
+        )
+    ]
+
+
+def _approve_actions(state):
+    """Approve the widenings the last check held, when the level allows it over HTTPS and the tree matches
+    its own manifest. A tree that does not match is only for Install anyway."""
+    report = state.get("security") or {}
+    held = report.get("held") or []
+    if not report.get("manifest") or report.get("problems") or not held:
+        return []
+    if any((report.get("levels") or {}).get(item["toggle"]) == "console" for item in held):
+        return []
+    return [
+        finding_action(
+            "approve-security",
+            M("update.security.approve", "Approve these changes"),
+            M(
+                "update.security.approve.confirm",
+                {
+                    "one": "Approve this security change: {changes}? The update installs after it.",
+                    "other": "Approve these {n} security changes: {changes}? The update installs after it.",
+                },
+                n=len(held),
+                changes=[item["text"] for item in held],
+            ),
+        )
+    ]
 
 
 def _force_actions(state):
@@ -7546,6 +7749,8 @@ ACTIONS = {
     "password": password,
     "claim": claim,
     "security-policy": policy_set,
+    "security-changes": secchanges.save,
+    "security-record-read": lambda req: secchanges.mark_read(),
     "tls-settings": tls_settings,
     "update-check": update_check,
     "update-fetch": update_fetch,
@@ -7557,6 +7762,7 @@ ACTIONS = {
     "update-poll-target": update_poll_target,
     "update-set-source": update_set_source,
     "update-signing": update_signing,
+    "update-approve-security": update_approve_security,
     "security-scan": security_scan,
     "security-audit": security_audit,
     "security-deep-audit": security_deep_audit,
@@ -7915,5 +8121,29 @@ if __name__ == "__main__":
             print(render(install_app(sys.argv[2], sys.argv[3])))
         except (ValueError, OSError) as exc:
             sys.exit(f"install-app: {exc}")
+        sys.exit(0)
+    if sys.argv[1:2] == ["update-authorise"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo ./irate-box hub_control update-authorise")
+        try:
+            print(render(update_approve_security({"console": True, "over": "console"})))
+        except (ValueError, OSError) as exc:
+            sys.exit(f"update-authorise: {exc}")
+        sys.exit(0)
+    if sys.argv[1:2] == ["update-force-install"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo ./irate-box hub_control update-force-install")
+        try:
+            print(render(update_force_install({"over": "console"})))
+        except (ValueError, OSError) as exc:
+            sys.exit(f"update-force-install: {exc}")
+        sys.exit(0)
+    if sys.argv[1:2] == ["security-console"] and sys.argv[2:] == ["off"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo ./irate-box hub_control security-console off")
+        try:
+            print(render(secchanges.console_only_off()))
+        except (ValueError, OSError) as exc:
+            sys.exit(f"security-console: {exc}")
         sys.exit(0)
     sys.exit(main())

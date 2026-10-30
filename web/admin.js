@@ -3294,6 +3294,7 @@ function renderUpdoctor(report, stale) {
 let meteredNow = null;
 function renderUpdate(data) {
   drawSigning(data.signing, data.results);
+  drawSecurity(data.security, data.results);
   const m = data.metered || {};
   meteredNow = m.now || null;
   const mEl = document.getElementById("update-metered");
@@ -3696,6 +3697,49 @@ const autoSec = AW.form(auto.form, {
     loadUpdate();
     return "Saved. The librarian applies it at the next hourly cycle.";
   },
+});
+// What an update may widen (root/secchanges.py, root/secmanifest.py): six kinds, each at flag,
+// authorise or console, and one switch that raises approvals to the console. Root keeps them; the
+// page shows what root published.
+const secEl = {
+  form: document.getElementById("security-changes-form"),
+  note: noteEl("security-changes-note"),
+  says: document.getElementById("security-changes-says"),
+};
+let secUpdateWaiting = null;
+function drawSecurity(sec, results) {
+  if (!secEl.form || !sec) return;
+  if (secUpdateWaiting) {
+    const done = (results || []).find((result) => result.id === secUpdateWaiting.id);
+    if (done) {
+      say(resultSaid(done), done.ok, secEl.note);
+      secUpdateWaiting = null;
+    }
+  }
+  for (const el of secEl.form.querySelectorAll("select[name]")) {
+    if (sec.toggles && sec.toggles[el.name]) el.value = sec.toggles[el.name];
+  }
+  secEl.form.elements.console_only.checked = sec.console_only === true;
+  if (secEl.says)
+    secEl.says.textContent = sec.console_only
+      ? "approved at the console"
+      : "held at your levels";
+}
+secEl.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const toggles = {};
+  for (const el of secEl.form.querySelectorAll("select[name]")) toggles[el.name] = el.value;
+  try {
+    const job = await postJSON("/admin/update", {
+      action: "security-changes",
+      toggles,
+      console_only: secEl.form.elements.console_only.checked,
+    });
+    secUpdateWaiting = { id: job.id };
+    setTimeout(loadUpdate, 1200);
+  } catch (err) {
+    say(err.message, false, secEl.note);
+  }
 });
 loadUpdate();
 

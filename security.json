@@ -364,6 +364,12 @@
       "reads": [],
       "writes": []
     },
+    "security-changes": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
     "security-deep-audit": {
       "https_only": false,
       "policy": false,
@@ -379,6 +385,12 @@
     "security-policy": {
       "https_only": true,
       "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "security-record-read": {
+      "https_only": true,
+      "policy": false,
       "reads": [],
       "writes": []
     },
@@ -443,6 +455,12 @@
       "writes": []
     },
     "tls-switch": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "update-approve-security": {
       "https_only": true,
       "policy": true,
       "reads": [],
