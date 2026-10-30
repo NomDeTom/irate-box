@@ -3343,6 +3343,15 @@ if [ "$FIRST_INSTALL" = 1 ] && [ "$KEEP_SYSTEM" = 0 ]; then
 		problem "could not apply the recommended settings (Box doctor offers them)"
 fi
 
+# apt keeps every .deb it downloads (unattended-upgrades included); the startup packages' installed
+# versions are kept for a reinstall, the rest removed after each dpkg run (root/pkgcache.py).
+cat >/etc/apt/apt.conf.d/99-irate-box <<'EOF'
+// irate-box: keep the startup packages' installed .debs for a reinstall, remove the rest.
+DPkg::Post-Invoke { "[ -x /opt/irate-box/irate-box ] && /opt/irate-box/irate-box pkgcache tidy >/dev/null 2>&1 || true"; };
+APT::Periodic::AutocleanInterval "1";
+EOF
+HUB_CODE_DIR="$CODE" "$CODE/irate-box" pkgcache tidy >/dev/null || problem "could not tidy apt's .deb archive"
+
 # --- check -----------------------------------------------------------------------
 sleep 2
 for u in "${units[@]}"; do
