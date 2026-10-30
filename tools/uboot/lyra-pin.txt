@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-# The pin Armbian build PR #9390 uses for the Lyra Zero W's U-Boot.
-repo=https://source.denx.de/u-boot/contributors/kwiboo/u-boot.git
+# The Lyra Zero W's U-Boot: the commit Armbian build PR #9390 pinned, which is in kwiboo's GitHub tree (the denx.de
+# tree no longer has it: "not our ref", 2026-10-29), and the Rockchip blobs its image needs: DDR init (TPL) and
+# OP-TEE, the versions the board's working mPWRD-OS card boots with (DDR v1.06, OP-TEE v2.10), from armbian/rkbin.
+repo=https://github.com/Kwiboo/u-boot-rockchip.git
 commit=0b8e25bd9e16e8043b600e8f49b926b95572dc47
 defconfig=luckfox-lyra-zero-w-rk3506b_defconfig
-dts=arch/arm/dts/rk3506b-luckfox-lyra-zero-w-sd.dts
+dts=arch/arm/dts/rk3506b-luckfox-lyra-zero-w.dts
+rkbin=https://raw.githubusercontent.com/armbian/rkbin/30eb694ecb4afa1ca3ec1e4c5e477a81f7004e7e
+tpl=rk35/rk3506b_ddr_750MHz_v1.06.bin
+tpl_sha256=14a607be903eff6c0984cdbeda77e7ce2963afad74aa900cad17149ec3fc65a7
+tee=rk35/rk3506_tee_v2.10.bin
+tee_sha256=93603ca22cdf22e47ac130e4ac386cdf9474443ab076039807dfc2d5d30b7ecd
