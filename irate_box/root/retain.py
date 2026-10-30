@@ -643,25 +643,32 @@ def sweep():
             for source in STORE.iterdir():
                 if not source.is_file() or source.name.endswith(".lock"):
                     continue
+                # A copy's previous version (<ident>.prev) is the same file's: a key's .prev is a key too.
+                ident = source.name.removesuffix(".prev")
                 # The key that encrypts the copies is never put in an extra store: that would give it away with them.
-                if source.name == _ident(KEYFILE):
+                if ident == _ident(KEYFILE):
                     continue
-                key = source.name in key_ids
+                key = ident in key_ids
                 rule = store_keys(store)
-                if key and (rule is False or (rule == "plain" and removable and keys_mode() != "encrypt")):
+                if key and (
+                    rule is False
+                    or (rule == "plain" and removable and keys_mode() != "encrypt")
+                    or (rule == "encrypted" and keys_mode() != "encrypt")
+                ):
                     # "Leave them out" means the old key copies go too, whichever mode wrote them.
                     for suffix in ("", ".prev", ".enc", ".prev.enc"):
-                        (store / (source.name + suffix)).unlink(missing_ok=True)
-                    continue
-                if key and rule == "encrypted" and keys_mode() != "encrypt":
-                    for suffix in ("", ".prev", ".enc", ".prev.enc"):
-                        (store / (source.name + suffix)).unlink(missing_ok=True)
+                        (store / (ident + suffix)).unlink(missing_ok=True)
                     continue
                 encrypted = key and (rule == "encrypted" or removable)
                 target = store / (source.name + ".enc" if encrypted else source.name)
                 try:
                     plain = source.read_bytes()
                 except OSError:
+                    continue
+                if _bad(plain):
+                    # A card copy that reads as all 0xFF or all zero is the card's damage: never spread it over a
+                    # good copy elsewhere.
+                    bad.append({"path": str(source), "action": "this copy is damaged, and was not copied on"})
                     continue
                 if encrypted:
                     try:
