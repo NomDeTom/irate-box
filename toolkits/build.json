@@ -1,10 +1,31 @@
-{"id": "build", "title": "Building",
+{
+ "id": "build",
+ "title": "Building",
  "summary": "Compilers and build tools. With these, builds on push and builds by hand work without internet, if all dependencies are in the cache.",
- "packages": ["build-essential", "cmake", "pkg-config", "python3-dev", "python3-venv", "platformio", "python3-protobuf", "protobuf-compiler", "libffi-dev"],
- "pip": ["platformio", "protobuf", "grpcio-tools"],
+ "packages": [
+  "build-essential",
+  "cmake",
+  "pkg-config",
+  "python3-dev",
+  "python3-venv",
+  "platformio",
+  "python3-protobuf",
+  "protobuf-compiler",
+  "libffi-dev"
+ ],
+ "pip": [
+  "platformio",
+  "protobuf",
+  "grpcio-tools",
+  "nanopb",
+  "adafruit-nrfutil"
+ ],
  "consent": "A compiler on the box lets any user who has a shell build and run programs here. The builds on push need it.",
- "notes": ["The box keeps this toolkit until you remove it. The builds on push need it.",
-           "PlatformIO, protobuf and protoc (for the nanopb of Meshtastic) come from Debian. The box checks them like every package.",
-           "libffi-dev: the ESP32 platform of Meshtastic makes its own Python environment. On armv7, PyPI has no wheel for cffi, and cryptography needs cffi. The box compiles cffi. The compiler needs the libffi headers.",
-           "The toolkit also has a wheelhouse. It holds a newer PlatformIO from PyPI, protobuf and grpcio-tools, as wheels. Use it if the PlatformIO from Debian cannot build. It works without internet. This cache does not verify a signature for these wheels."],
- "remove_after_hours": null}
+ "notes": [
+  "The box keeps this toolkit until you remove it. The builds on push need it.",
+  "PlatformIO, protobuf and protoc (for the nanopb of Meshtastic) come from Debian. The box checks them like every package.",
+  "libffi-dev: the ESP32 platform of Meshtastic makes its own Python environment. On armv7, PyPI has no wheel for cffi, and cryptography needs cffi. The box compiles cffi. The compiler needs the libffi headers.",
+  "The toolkit also has a wheelhouse. It holds a newer PlatformIO from PyPI, protobuf, grpcio-tools, nanopb and adafruit-nrfutil, as wheels where PyPI has one. Use it if the PlatformIO from Debian cannot build. It works without internet. This cache does not verify a signature for these wheels."
+ ],
+ "remove_after_hours": null
+}
