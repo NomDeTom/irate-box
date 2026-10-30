@@ -111,10 +111,12 @@ root = T / "firmware"
 release = root / "2.8.1.8e6a88d"
 (release / "pio-deps/native-tft").mkdir(parents=True)
 (release / "pio-deps/esp32s3").mkdir(parents=True)
+(release / "pio-deps/heltec-v3").mkdir(parents=True)
 (root / "status.json").write_text(json.dumps({"cache": {"version": "2.8.1.8e6a88d"}}))
 check(
     "ci finds a family cache when there is one, and the release's cache otherwise",
     ci._pio_deps("esp32s3") == release / "pio-deps/esp32s3"
+    and ci._pio_deps("esp32s3", "heltec-v3") == release / "pio-deps/heltec-v3"
     and ci._pio_deps("nrf52840") == release / "pio-deps"
     and ci._pio_deps_tag(release / "pio-deps/esp32s3") == "2.8.1.8e6a88d",
     (ci._pio_deps("esp32s3"), ci._pio_deps("nrf52840")),

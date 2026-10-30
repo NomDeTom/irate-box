@@ -104,7 +104,9 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
   # keeps them at libdeps/<lib> or libdeps/native-tft/<lib>. Only a cache with the family's
   # libraries seeds its packages too; otherwise the family's tools are not on this box.
   libs=
-  if [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY" ]; then
+  if [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV" ]; then
+    libs="$CI_PIO_DEPS/libdeps/$PIO_ENV"
+  elif [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY" ]; then
     libs="$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY"
   elif [ "$PIO_ENV_FAMILY" = native ]; then
     libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
@@ -372,7 +374,7 @@ def enqueue(stdin=sys.stdin, repo_dir=None):
     return 0
 
 
-def _pio_deps(family=None):
+def _pio_deps(family=None, env=None):
     """The build cache the librarian carries (firmware.py), or None: PlatformIO's libraries and
     packages for the newest kept Meshtastic release, so a build can run with no internet. A
     per-family cache sits at pio-deps/<family>; without one, the release's native-tft cache."""
@@ -384,6 +386,8 @@ def _pio_deps(family=None):
     if not cache.get("version"):
         return None
     base = root / str(cache["version"]) / "pio-deps"
+    if env and (base / env).is_dir():
+        return base / env
     if family and (base / family).is_dir():
         return base / family
     if base.is_dir():
@@ -945,7 +949,7 @@ def build_firmware(job):
             elif not keep["tools_only"]:
                 build_cache().mkdir(parents=True, exist_ok=True)
                 env["PLATFORMIO_BUILD_CACHE_DIR"] = str(build_cache())
-            deps = _pio_deps(family)
+            deps = _pio_deps(family, env_name)
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
                 env["CI_PIO_DEPS_TAG"] = "v" + _pio_deps_tag(deps)
