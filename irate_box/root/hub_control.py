@@ -4723,7 +4723,7 @@ def addons_findings(now=None):
                         [
                             M(
                                 "update.addons.packages.security",
-                                "At least one of them is a security update; the Security page counts it.",
+                                "At least one of them is a security update. The Security page counts it.",
                             )
                         ]
                         if security_updates & set(names)
@@ -4753,7 +4753,7 @@ def addons_findings(now=None):
                 ),
                 M(
                     "update.addons.held.why",
-                    "Accepting the new version gives it the new permissions it asks for; until then the old one runs.",
+                    "Accepting the new version gives it the new permissions it asks for. Until then the old one runs.",
                 ),
                 M(
                     "update.addons.held.fix",
