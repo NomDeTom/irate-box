@@ -6,6 +6,7 @@ outside the include globs, a removed file left removed, a change the owner made 
 sweep, a copy and its .prev both bad as a problem, an empty file not treated as damage, Box doctor's finding and the
 two-boot verdict, and the units. python3 tests/sim_retain.py"""
 
+import errno
 import json
 import os
 import stat
@@ -709,7 +710,6 @@ check(
 # A file the storage will not read back: on a Lyra with /var/lib/hub on btrfs (2026-10-30), a block of 0xFF written
 # under a protected file made every read fail with EIO ("csum failed"). The boot check took that for a file removed,
 # and the restore's keeping copy (no hard link from another filesystem) failed on the same EIO.
-import errno  # noqa: E402
 
 retain.sweep()
 real_read, real_link, real_copy = retain._read, os.link, retain.restore.shutil.copy2
