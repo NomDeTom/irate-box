@@ -20,4 +20,4 @@ Each **Save** sends only the values selected on that page. A page tells you when
 
 The **Security doctor** does not change your settings. A finding about a setting links to that setting on the Security page. The doctor does repairs that have one correct result and shows the result beside them. It runs checks from Debian and others (debian-cis, Lynis, the known issues of packages). It sorts the results into **Repaired**, **Suggestion**, **Not applicable** and **Accepted**. Accepting a risk does not repair it. You can import a scan from another system (OpenVAS, nmap).
 
-For the administrator password, see [Setup](first-use.md) and [Accounts](accounts.md). Set the password over HTTPS or at the console. After the first account, the box refuses it over HTTP.
+For the administrator password, see [Setup](first-use.md) and [Accounts](accounts.md). For what an administrator can see about people and their files, see [What an administrator can see](what-the-admin-can-see.md). Set the password over HTTPS or at the console. After the first account, the box refuses it over HTTP.
