@@ -28,6 +28,7 @@
   <p class="help-note">A GitHub signature does not prove who merged the commit. A version that fails the required signature check is not installed. Some other failed checks can be overridden with <strong>Install anyway</strong>. The Updates doctor says why a check failed.</p>
   <h2>Debian's security updates</h2>
   <p class="help-note">The page first shows the waiting updates and three buttons. The folded <strong>Automatic updates</strong> section has the same settings for the security fixes of the operating system. The box can list the fixes, download them, or install them. It uses the Debian security archive only.</p>
+  <p class="help-note">The box keeps a small copy of the packages it boots and serves with, at the version that is installed, so a damaged file can be put back without the internet. After each update it removes the other downloaded <code>.deb</code> files. The copy is a few tens of MB. If a package's version is no longer on Debian's mirror, only the copy can reinstall it.</p>
   <h2>Packages from their makers</h2>
   <p class="help-note">The box watches some programs for updates from their publishers. An example is meshtasticd. <strong>Roll back</strong> returns to the version before. The release channel and the automatic update policy of each card are folded. A line on the card says what is saved. If a step fails, a link next to it opens the Updates doctor.</p>
   <h2>Backup</h2>

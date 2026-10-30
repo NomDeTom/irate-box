@@ -226,11 +226,19 @@ def from_package(target, package=None):
     if conffile and target.exists():
         kept = _damaged(target)
         os.replace(target, kept)
-    args = ["apt-get", "install", "--reinstall", "-y", package]
-    if conffile:
-        args.insert(3, "-o")
-        args.insert(4, "Dpkg::Options::=--force-confmiss")
-    said = run(*args, timeout=3600)
+    from irate_box.root import pkgcache
+
+    def args_with(cached):
+        out = ["apt-get", "install", "--reinstall", "-y"]
+        if cached:
+            out += ["--no-download", "-o", f"Dir::Cache::archives={pkgcache.CACHE}"]
+        if conffile:
+            out += ["-o", "Dpkg::Options::=--force-confmiss"]
+        return [*out, package]
+
+    said = run(*args_with(pkgcache.CACHE.is_dir()), timeout=3600)
+    if said.returncode:
+        said = run(*args_with(False), timeout=3600)
     if said.returncode:
         if kept is not None and not target.exists():
             os.replace(kept, target)  # offline, say: the damaged conffile back, rather than none at all
