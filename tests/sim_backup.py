@@ -157,6 +157,7 @@ check(
             "control/x.json",
             "kits/kit.json",
             "library/archive/old.zim",
+            "notebooks/alice/index.md",
             "library/api-cache/x",
             "library/github-token",
             "git/.incoming/x",

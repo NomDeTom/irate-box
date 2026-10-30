@@ -20,6 +20,7 @@
 ## Guests and users
 
 - [Using the hub](for-guests.md): the apps, the shoutbox, the board, files and privacy.
+- [What an administrator can see](what-the-admin-can-see.md): your account and your work.
 - [Glossary](glossary.md)
 
 The whole guide is also a book for a Kiwix app: [irate-box-guide.zim](/guide/irate-box-guide.zim).

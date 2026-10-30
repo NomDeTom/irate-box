@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- Made from docs/user/what-the-admin-can-see.md by irate_box/library/guide.py (./irate-box guide build): edit that, not this. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What an administrator can see · Guide · Hub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📖</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="help guide">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1>📖 What an administrator can see</h1>
+    <p class="subtitle">Who runs this box, and what they can see about you and your work.</p>
+    <div class="theme-picker" role="group" aria-label="Theme"></div>
+  </header>
+
+  <p class="help-note">An administrator sets up the box and runs it. The administrator pages are for that person. They are not a window into everything, but they are more than nothing.</p>
+  <h2>Your account</h2>
+  <p class="help-note">An administrator can see:</p>
+  <ul><li>your account name, and whether you are a user or an administrator;</li><li>when the account was made, and who made it;</li><li>when you last signed in, and whether you signed in over HTTPS.</li></ul>
+  <p class="help-note">An administrator cannot see your password. The box keeps a hash of it, not the password itself. Nobody can read a password back from it.</p>
+  <h2>What you put on the box</h2>
+  <ul><li>The shared notebook is one notebook for everyone who may open it. An administrator can download all of it, with every page and attachment, as a zip.</li><li>Your private notebook, if the box gives you one, is kept apart by name while it runs. It is not encrypted on the box. The administrator pages do not offer another person's notebook. A person with the box's console or root access, or a full copy of the box's storage, can read it.</li><li>Saved work, the gallery, drawings and the file drop are shared. An administrator can see the files, their sizes, and delete them.</li><li>The shoutbox and the board are public to the box. An administrator can read them and delete messages. Your account name is shown with a message if you were signed in when you posted it.</li><li>Files in the box's git repositories can be read by whoever may open the repository. An administrator manages the repositories.</li><li>Full backups can include these files. The settings-and-data backup includes the shared notes, saved work, the file drop, the shoutbox and board, and the git repositories. It leaves out private notebooks. The full card image includes everything, including private notebooks.</li></ul>
+  <h2>What the box says about people</h2>
+  <ul><li>How many devices used the box today and this week. This is a count, not a list: the box counts the devices from short-lived hashes and keeps only the two numbers.</li><li>Which pages were loaded, and how often. This is a path, not a person.</li><li>Which devices were seen on the network: their addresses and names, for the person running the network.</li><li>The doctors' reports: settings, file paths, hashes and service states. They do not keep the contents of your files.</li></ul>
+  <h2>What is not encrypted</h2>
+  <p class="help-note">Nothing on the box's storage is encrypted at rest yet. HTTPS protects a password on its way to the box. It does not protect the files once they are on the card. Treat the box's storage, and especially a full image of it, as readable by whoever has it.</p>
+  <p class="help-note">The box's second-copy setting can also copy the shared notes, saved work, messages and file drop to a USB drive. That copy is plain text too: only the keys are encrypted there. A lost stick is as readable as a lost card.</p>
+  <p class="help-note">The administrator can make the box safer for everyone: ask them to keep the box's storage with care, and to use a full image only on a drive they keep as they would keep a password.</p>
+  <h2>If you are the administrator</h2>
+  <p class="help-note">The complete list, with the files and modes, is in the developer notes (What an administrator can see).</p>
+
+  <p class="help-note"><a href="/guide/index.html">The guide's other pages</a> · <a href="/help.html">Quick help</a></p>
+  <script src="/hub.js"></script>
+</body>
+</html>
