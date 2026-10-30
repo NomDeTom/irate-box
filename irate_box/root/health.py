@@ -2556,10 +2556,36 @@ def _midnight(now):
     return time.mktime((local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0, 0, 0, -1))
 
 
+def _power_failures(events, since):
+    """The supply's failures, one entry each. A UPS says "on battery" first and "battery low" after it: those are
+    one failure still happening, not two, and counting the pair as two while missing the case where the failure
+    began before the window and is still on is both wrong at once. So the events are walked in order, a failure
+    runs from a power-fail (or a battery-low that came with no power-fail, after the events rolled over) to the
+    power coming back, and it is in the window when its last event is. The last event's words are kept, being
+    what the supply says now."""
+    out, live = [], None
+    for e in sorted((e for e in events if isinstance(e.get("at"), (int, float))), key=lambda e: e["at"]):
+        kind = e.get("kind")
+        if kind in ("power-fail", "battery-low"):
+            if live is None:
+                live = {"at": e["at"], "kind": kind, "text": e.get("text") or "", "back": False}
+                out.append(live)
+            else:
+                live.update(
+                    at=e["at"], kind=kind, text=e.get("text") or live["text"], back=False
+                )  # a low battery is the same failure, later
+        elif kind == "power-restored" and live is not None:
+            live["back"] = True
+            live = None
+    return [f for f in out if f["at"] >= since]
+
+
 def check_power(now=None):
     """The supply: an INA2xx's bus voltage or the Pi's rpi_volt/get_throttled, and the power-fail hook (NUT or a pin)
     as crashwatch records them (Part 3, step 2). An undervoltage is a count and its times; a power failure is a
-    problem. The last 24 hours, not since midnight, so a failure late at night stays in view."""
+    problem, and so is one still happening: a UPS that ran the box down off the mains keeps saying its battery is
+    low, and that is the same failure, not a new one. The last 24 hours, not since midnight, so a failure late at
+    night stays in view."""
     from irate_box.root import crashwatch as cw
 
     now = time.time() if now is None else now
@@ -2571,7 +2597,7 @@ def check_power(now=None):
     except (OSError, ValueError):
         return []
     window = [e for e in events if isinstance(e.get("at"), (int, float)) and e["at"] >= now - 86400]
-    fails = [e for e in window if e.get("kind") == "power-fail"]
+    fails = _power_failures(events, now - 86400)
     under = [e for e in window if e.get("kind") == "undervoltage"]
     title = M("power.title", "Power supply")
     go = _go("health-settings", RECOVERY, "hs-undervoltage")
@@ -2586,6 +2612,15 @@ def check_power(now=None):
                 what=latest.get("text") or "",
             )
         ]
+        if not latest.get("back"):
+            notes.append(
+                M(
+                    "power.battery.still",
+                    "The box is running on its battery still.",
+                )
+                if latest.get("kind") == "battery-low"
+                else M("power.failed.still", "The power has not come back since.")
+            )
         if owner:
             notes.insert(
                 0,
