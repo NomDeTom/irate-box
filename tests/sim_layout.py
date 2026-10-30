@@ -125,5 +125,38 @@ check(
 )
 layout.os.stat = real_stat
 layout.stat.S_ISBLK = __import__("stat").S_ISBLK
+
+# The real rsync with the copy's excludes, on a small system tree: the mount points arrive empty, with their modes,
+# and their contents do not. A Lyra booted from a slot copied without /dev stopped in its initramfs (2026-10-30).
+src, dst = T / "rsync-src", T / "rsync-dst"
+for d, mode in (
+    ("dev", 0o755),
+    ("proc", 0o555),
+    ("sys", 0o555),
+    ("run", 0o755),
+    ("tmp", 0o1777),
+    ("var/lib/hub", 0o755),
+):
+    (src / d).mkdir(parents=True, exist_ok=True)
+    (src / d / "inside").write_text("left out\n")
+    (src / d).chmod(mode)
+(src / "sbin").mkdir()
+(src / "sbin" / "init").write_text("#!/bin/sh\n")
+(src / "etc").mkdir()
+(src / "etc" / "fstab").write_text("# the image's\n")
+dst.mkdir()
+copied = subprocess.run(["rsync", "-a", *layout.COPY_EXCLUDES, f"{src}/", f"{dst}/"], capture_output=True, text=True)
+modes = {d: oct((dst / d).stat().st_mode & 0o7777) if (dst / d).is_dir() else None for d in ("dev", "proc", "tmp")}
+check(
+    "the copy keeps every mount point, empty and with its mode, and leaves fstab out",
+    copied.returncode == 0
+    and all(
+        (dst / d).is_dir() and not any((dst / d).iterdir()) for d in ("dev", "proc", "sys", "run", "tmp", "var/lib/hub")
+    )
+    and modes == {"dev": "0o755", "proc": "0o555", "tmp": "0o1777"}
+    and (dst / "sbin" / "init").is_file()
+    and not (dst / "etc" / "fstab").exists(),
+    (copied.stderr, modes, sorted(str(p.relative_to(dst)) for p in dst.rglob("*"))),
+)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

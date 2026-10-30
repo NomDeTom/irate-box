@@ -23,6 +23,12 @@ FIRST = 16 * MIB
 BOOTSTATE = 16 * MIB
 STATE = 1 << 30
 SYSTEM = {"lyra": 4 << 30, "pi": 8 << 30}
+# What the copy of a system into a slot leaves out. The mount points stay, empty and with their modes: only what
+# is in them is left out. With the folders left out too, a Lyra booted from a slot copied this way stopped in its
+# initramfs ("run-init: opening console: No such file or directory", "No init found"; 2026-10-30): no /dev.
+COPY_EXCLUDES = tuple(
+    f"--exclude=/{d}/*" for d in ("proc", "sys", "dev", "run", "tmp", "var/log.nand", "mnt", "media", "var/lib/hub")
+) + ("--exclude=/etc/fstab",)
 
 
 def run(*cmd, timeout=3600):
@@ -240,16 +246,7 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
                         "-x",
                         "--numeric-ids",
                         "--delete",
-                        "--exclude=/proc",
-                        "--exclude=/sys",
-                        "--exclude=/dev",
-                        "--exclude=/run",
-                        "--exclude=/tmp",
-                        "--exclude=/var/log.nand",
-                        "--exclude=/mnt",
-                        "--exclude=/media",
-                        "--exclude=/var/lib/hub",
-                        "--exclude=/etc/fstab",
+                        *COPY_EXCLUDES,
                         f"{source}/",
                         f"{mnt}/",
                     )
