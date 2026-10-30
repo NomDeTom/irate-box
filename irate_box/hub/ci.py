@@ -100,14 +100,21 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
   for f in "$CI_PIO_DEPS"/core/.cache/downloads/*; do
     [ "${f##*/}" = usage.db ] || [ -e "$HOME/.platformio/.cache/downloads/${f##*/}" ] || cp "$f" "$HOME/.platformio/.cache/downloads/"
   done
-  # The cache's packages and libraries are the native build's: only a native build takes them.
-  if [ "$PIO_ENV_FAMILY" = native ]; then
+  # A per-family cache keeps its libraries under libdeps/<family>. The release's native-tft zip
+  # keeps them at libdeps/<lib> or libdeps/native-tft/<lib>. Only a cache with the family's
+  # libraries seeds its packages too; otherwise the family's tools are not on this box.
+  libs=
+  if [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY" ]; then
+    libs="$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY"
+  elif [ "$PIO_ENV_FAMILY" = native ]; then
+    libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
+  fi
+  if [ -n "$libs" ]; then
     LIBDEPS="${PLATFORMIO_WORKSPACE_DIR:-.pio}/libdeps/$PIO_ENV"
     mkdir -p "$HOME/.platformio/packages" "$LIBDEPS"
     for d in "$CI_PIO_DEPS"/packages/*/; do
       [ -e "$HOME/.platformio/packages/$(basename "$d")" ] || cp -r "$d" "$HOME/.platformio/packages/"
     done
-    libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
     for d in "$libs"/*/; do
       # Not the touchscreen build's libraries (the cache is native-tft's): PlatformIO's finder
       # compiles any library it sees, and meshtastic-device-ui needs headers native lacks (an
