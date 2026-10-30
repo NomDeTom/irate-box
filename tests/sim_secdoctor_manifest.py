@@ -31,7 +31,9 @@ fails = 0
 
 def check(name, cond, info=""):
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    print(
+        ("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")
+    )  # lgtm[py/clear-text-logging-sensitive-data]
     fails += not cond
 
 
