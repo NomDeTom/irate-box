@@ -122,5 +122,53 @@ check(
     oct(stat.S_IMODE(target.stat().st_mode)),
 )
 
+systemd = T / "systemd" / "system"
+systemd.mkdir(parents=True)
+unit = systemd / "example.service"
+unit.write_text(
+    "[Unit]\nDescription=Example\n\n[Service]\nUser=hub\nProtectSystem=no\nPrivateTmp=no\nExecStart=/bin/true\n\n[Install]\nWantedBy=multi-user.target\n"
+)
+manifest["units"]["example.service"] = {
+    "source": "install.sh",
+    "User": "hub",
+    "ProtectSystem": "strict",
+    "ReadWritePaths": ["$STATE/ci"],
+    "PrivateTmp": "yes",
+    "NoNewPrivileges": "yes",
+    "CapabilityBoundingSet": [],
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+changed = secmanifest.apply_units(systemd=T / "systemd")
+text = unit.read_text()
+check(
+    "a unit written by install.sh gets the manifest's sandbox lines",
+    changed == ["example.service"]
+    and "ProtectSystem=strict\n" in text
+    and "ReadWritePaths=/var/lib/hub/ci\n" in text
+    and "PrivateTmp=yes\n" in text
+    and "NoNewPrivileges=yes\n" in text
+    and "CapabilityBoundingSet=\n" in text
+    and "ProtectSystem=no" not in text
+    and "User=hub\n" in text
+    and "ExecStart=/bin/true\n" in text
+    and "[Install]\nWantedBy=multi-user.target\n" in text,
+    text,
+)
+check("  a second pass changes nothing", secmanifest.apply_units(systemd=T / "systemd") == [])
+dropin = systemd / "syncthing@hub.service.d" / "irate-box.conf"
+dropin.parent.mkdir(parents=True)
+dropin.write_text("[Service]\nProtectSystem=no\n")
+manifest["units"]["syncthing@$HUB_USER.service.d/irate-box.conf"] = {
+    "source": "install.sh",
+    "ProtectSystem": "strict",
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+changed = secmanifest.apply_units(systemd=T / "systemd")
+check(
+    "  a unit name's $HUB_USER is expanded to find the drop-in",
+    changed == ["syncthing@$HUB_USER.service.d/irate-box.conf"] and "ProtectSystem=strict" in dropin.read_text(),
+    (changed, dropin.read_text()),
+)
+
 print(f"{fails} failure(s)" if fails else "ok")
 sys.exit(1 if fails else 0)

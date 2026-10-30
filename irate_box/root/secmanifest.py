@@ -88,6 +88,11 @@ _HUB_ACTIONS = {
     "https_only",
     "policy",
 }
+_UNIT_VARS = {
+    "$STATE": "/var/lib/hub",
+    "$ETC": "/etc/hub",
+    "$HUB_USER": "hub",
+}
 _SECRET_VARS = {
     "ETC": "/etc/hub",
     "STATE": "/var/lib/hub",
@@ -403,6 +408,71 @@ def apply_secrets():
     return changed
 
 
+def _unit_value(value):
+    text = value if isinstance(value, str) else " ".join(value)
+    for name, real in _UNIT_VARS.items():
+        text = text.replace(name, real)
+    return text
+
+
+def apply_units(systemd=None):
+    """Put the declared sandbox lines into the units install.sh wrote, in place: remove the sandbox
+    directives a unit has, then add the manifest's at the end of its [Service] section. Unit files
+    that are not there (an add-on switched off) are left alone. Returns the units changed."""
+    manifest = _manifest()
+    if not manifest:
+        return []
+    base = Path(systemd or os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd")) / "system"
+    order = (
+        "ProtectSystem",
+        "ReadOnlyPaths",
+        "ReadWritePaths",
+        "PrivateTmp",
+        "NoNewPrivileges",
+        "ProtectHome",
+        "ProtectProc",
+        "PrivateDevices",
+        "CapabilityBoundingSet",
+        "RestrictAddressFamilies",
+        "StateDirectory",
+        "LogsDirectory",
+        "CacheDirectory",
+        "BindPaths",
+    )
+    changed = []
+    for name, entry in sorted(manifest.get("units", {}).items()):
+        if entry.get("source") != "install.sh":
+            continue
+        path = base / _unit_value(name)
+        try:
+            lines = path.read_text().splitlines()
+        except OSError:
+            continue
+        if not any(line.strip() == "[Service]" for line in lines):
+            continue
+        sandbox = []
+        for directive in order:
+            if directive not in entry:
+                continue
+            sandbox.append(f"{directive}={_unit_value(entry[directive]) if entry[directive] not in ('', []) else ''}")
+        kept = [line for line in lines if not any(line.strip().startswith(f"{directive}=") for directive in order)]
+        start = next(i for i, line in enumerate(kept) if line.strip() == "[Service]")
+        end = next((i for i in range(start + 1, len(kept)) if kept[i].strip().startswith("[")), len(kept))
+        head = kept[:end]
+        while head and not head[-1].strip():
+            head.pop()
+        tail = kept[end:]
+        out = head + sandbox + ([""] if tail else []) + tail
+        text = "\n".join(out).rstrip() + "\n"
+        if text != path.read_text():
+            tmp = path.with_name(path.name + ".secmanifest")
+            tmp.write_text(text)
+            os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))
+            os.replace(tmp, path)
+            changed.append(name)
+    return changed
+
+
 def is_privileged(path, manifest):
     return any(fnmatch.fnmatch(path, pattern) for pattern in manifest.get("privileged_files", []))
 
@@ -656,8 +726,11 @@ def held(widenings, levels):
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] != ["apply-secrets"]:
-        sys.exit("usage: irate-box secmanifest apply-secrets")
+    if sys.argv[1:] not in (["apply-secrets"], ["apply-units"]):
+        sys.exit("usage: irate-box secmanifest apply-secrets | apply-units")
     if os.geteuid() != 0:
         sys.exit("run as root")
-    print("\n".join(apply_secrets()) or "the secrets have their declared modes and owners")
+    if sys.argv[1:] == ["apply-units"]:
+        print("\n".join(apply_units()) or "the units have their declared sandboxes")
+    else:
+        print("\n".join(apply_secrets()) or "the secrets have their declared modes and owners")
