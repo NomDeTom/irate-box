@@ -9,6 +9,8 @@ A self-contained offline hub for a small board. Spiritually a [PirateBox](https:
 
 That's about as far as the similarities go: the Hub has tiles for the other hosted applications you can reach, such as a whiteboard, a diagram editor, an offline encyclopaedia (courtesy of Kiwix), a small GIT repository, a series of calculators and many many more - all with no internet required at any point.
 
+It is not a [FreedomBox](https://freedombox.org). A FreedomBox is a personal server for a household: named accounts, apps, and the owner's data behind them. Irate-Box is the other shape: an anonymous, offline-first hub for whoever joins its hotspot, keeping its data and identity on the box. It borrows FreedomBox's first-use code (a code only the installer prints) and its app model, but not its household-server assumptions.
+
 **Status: installs and runs on a real board, hosts a real hotspot** `install.sh` puts the whole hub on an Armbian or mPWRD-OS board in one command. It has been tested end to end on a Luckfox Lyra Zero W (mPWRD-OS 26.05, armv7l, 512 MB), and a Raspberry Pi 3b+ (Raspberry Pi OS 64-bit). With everything running, the Lyra still has about 320 MB of memory free. The hub is served on whatever network the board is already on: the access point, dnsmasq and the captive portal are working, although not without some help since Android doesn't support HTTP captive portals. HTTPS with its own certificate authority, accounts and the hotspot firewall are built too. Every push to `main` builds the `.deb`; no release is tagged and there is no apt repository yet.
 
 Target hardware is a Raspberry Pi Zero W or a similar 512 MB board, and that drives every design decision: static assets plus a handful of small native daemons.
