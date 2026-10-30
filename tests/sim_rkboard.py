@@ -99,7 +99,7 @@ def fake_run(*cmd, timeout=600):
         data, at = Path(cmd[3]).read_bytes(), int(cmd[2]) * 512
         card[at : at + len(data)] = data
     if cmd[:2] == ("rkdeveloptool", "rl"):
-        at, n = int(cmd[2]) * 512, int(cmd[3]) * 512
+        at, n = int(cmd[2]) * 512, int(cmd[3])  # the first sector, then a length in bytes, as the real tool takes
         back = bytes(card[at : at + n])
         Path(cmd[4]).write_bytes(back[:-1] + b"?" if outcome["corrupt"] else back)
     rc = outcome["ef"] if cmd[:2] == ("rkdeveloptool", "ef") else 0
@@ -206,7 +206,8 @@ check(
     and "rescue" in render(said),
     (ran, said),
 )
-card[:] = b""
+# An erased NAND reads as 0xFF (a Lyra Zero W's, read back with rkdeveloptool rl after ef, 2026-10-30).
+card[:] = b"\xff" * (64 << 10)
 outcome["ef"] = 1
 check("  the erase failing: said, the board not reset", refused(rkboard.erase) == "rkboard.erase-failed")
 outcome["ef"] = 0
@@ -357,6 +358,21 @@ check(
     and '"/admin/rockchip.html"' in src
     and 'path = "/admin-rockchip.html"' in src,
 )
+
+# The real tool (the kit's rkdeveloptool 1.0.0) takes rl's length in bytes: "rl 0 512" read 512 bytes, "rl 64 4096"
+# read back the 4 KiB written at sector 64, and a length that is not a multiple of 512 is refused. Found on a Lyra
+# Zero W (2026-10-30), where an erased NAND then read as "data this box does not recognise".
+card[:] = b"\xff" * (32 << 20)
+ran.clear()
+seen = rkboard.contents({"sectors": 523264})
+rl = [c for c in ran if c[:2] == ("rkdeveloptool", "rl")]
+check(
+    "the flash read asks for 16 MiB in bytes, and an erased NAND (0xFF) is blank",
+    rl and rl[0][3] == str(16 << 20) and seen["read"] and seen["blank"],
+    (rl, seen),
+)
+card[:] = b"\xff" * 4096 + b"UBI#" + b"\xff" * 4096
+check("  a flash with any data on it is not blank", not rkboard.contents({"sectors": 523264})["blank"])
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
