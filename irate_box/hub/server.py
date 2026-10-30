@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from irate_box import confine, durable, finding, setup_code
+from irate_box import confine, durable, finding, security_levels, setup_code
 from irate_box.choices import CHOICE_RE as HEALTH_CHOICE_RE
 from irate_box.hub import (
     access,
@@ -2399,6 +2399,7 @@ UPDATE_PROGRESS = CONTROL_DIR / "update-progress.json"
 DOCTOR_STATE = CONTROL_DIR / "doctor.json"
 BRANCHES_STATE = CONTROL_DIR / "update-branches.json"  # root's: what the repository said of its branches
 SIGNING_STATE = CONTROL_DIR / "update-signing.json"  # root's: the level, and the keys' names
+SECURITY_CHANGES_STATE = CONTROL_DIR / "security-changes.json"  # root's: the levels and the console switch
 # Guests' onward internet (root/share.py): the level root keeps, and the devices this hub has asked
 # root to let out (for the captive API's answer; root's table holds the real list, each for 12 h).
 SHARE_STATE = CONTROL_DIR / "share.json"
@@ -2440,6 +2441,8 @@ UPDATE_ACTIONS = {
     "poll-target": "update-poll-target",
     "poll-source": "update-poll-target",
     "set-source": "update-set-source",
+    "approve-security": "update-approve-security",
+    "security-record-read": "security-record-read",
 }
 # Terminal colour codes, in logs written before install.sh stopped sending them to files.
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -2563,6 +2566,14 @@ def update_snapshot():
         sig = json.loads(SIGNING_STATE.read_text())
     except (OSError, ValueError):
         sig = {"level": "off", "keys": []}
+    try:
+        security = json.loads(SECURITY_CHANGES_STATE.read_text())
+    except (OSError, ValueError):
+        security = {
+            "toggles": dict(security_levels.DEFAULTS),
+            "console_only": False,
+            "effective": dict(security_levels.DEFAULTS),
+        }
     return {
         "version": hub_version(),
         "state": state,
@@ -2576,6 +2587,7 @@ def update_snapshot():
         "results": control_results(5),
         "auto": auto,
         "signing": sig,
+        "security": security,
         "metered": _metered_view(),
     }
 
@@ -5815,6 +5827,20 @@ class Handler(BaseHTTPRequestHandler):
                 202,
                 {"id": control_request({"action": "update-signing", "level": level, "signers": signers})},
             )
+            return
+
+        if path == "/admin/update" and payload.get("action") == "security-changes":
+            toggles = payload.get("toggles")
+            if not isinstance(toggles, dict):
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
+                return
+            request = {
+                "action": "security-changes",
+                "toggles": {str(k)[:40]: str(v)[:20] for k, v in list(toggles.items())[:12]},
+            }
+            if isinstance(payload.get("console_only"), bool):
+                request["console_only"] = payload["console_only"]
+            self.send_json(202, {"id": control_request(request)})
             return
 
         if path == "/admin/update":

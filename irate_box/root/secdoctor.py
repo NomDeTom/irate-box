@@ -7797,6 +7797,227 @@ def step_tools(ctx):
     return out or [finding("tools", title, "ok", M("tools.all", "Every program the checks look for is installed."))]
 
 
+def step_manifest(ctx):
+    """The running box against the security manifest of the installed code: the real modes and owners
+    of the secrets, the units' sandbox lines, and the hub user's groups. A change made by hand or by a
+    package, outside an update, is found here too."""
+    from irate_box.root import secchanges, secmanifest
+
+    title = M("manifest.title", "The security manifest")
+    try:
+        manifest = secmanifest.load(CODE)
+    except (OSError, ValueError):
+        manifest = None
+    if not manifest:
+        return [
+            finding(
+                "manifest",
+                title,
+                "warn",
+                M(
+                    "manifest.none",
+                    "The installed code has no security manifest, so the running box cannot be compared with it.",
+                ),
+                evidence=[str(CODE / "security.json")],
+            )
+        ]
+    out = []
+    bad = []
+    for path, entry in manifest.get("secrets", {}).items():
+        paths = sorted(Path("/").glob(path.lstrip("/"))) if "*" in path else [Path(path)]
+        for path_obj in paths:
+            st = _lstat(path_obj)
+            if not st:
+                continue
+            mode = f"{stat.S_IMODE(st.st_mode):03o}"
+            if entry.get("mode") and mode != entry["mode"]:
+                bad.append(f"{path_obj}: mode {mode} (manifest {entry['mode']})")
+            try:
+                import pwd
+
+                owner = pwd.getpwuid(st.st_uid).pw_name
+            except (ImportError, KeyError):
+                owner = str(st.st_uid)
+            if entry.get("owner") and owner != entry["owner"]:
+                bad.append(f"{path_obj}: owner {owner} (manifest {entry['owner']})")
+            group = entry.get("group", "")
+            if group and not group.startswith("the "):
+                try:
+                    import grp
+
+                    real = grp.getgrgid(st.st_gid).gr_name
+                except (ImportError, KeyError):
+                    real = str(st.st_gid)
+                if real != group:
+                    bad.append(f"{path_obj}: group {real} (manifest {group})")
+    if bad:
+        out.append(
+            finding(
+                "manifest-secrets",
+                title,
+                "problem",
+                M(
+                    "manifest.secrets",
+                    {
+                        "one": "{n} secret does not have the mode or group the manifest declares.",
+                        "other": "{n} secrets do not have the modes or groups the manifest declares.",
+                    },
+                    n=len(bad),
+                ),
+                M(
+                    "manifest.secrets.why",
+                    "A secret that another account can read is no longer secret, even though the update that should "
+                    "have changed it was approved.",
+                ),
+                M(
+                    "manifest.secrets.fix",
+                    "Run the installer again. It puts the declared modes and groups back.",
+                ),
+                evidence=bad[:8],
+            )
+        )
+    else:
+        out.append(
+            finding(
+                "manifest-secrets",
+                title,
+                "ok",
+                M("manifest.secrets.ok", "The secrets have their declared modes and groups."),
+            )
+        )
+
+    checks = (
+        "ProtectSystem",
+        "PrivateTmp",
+        "NoNewPrivileges",
+        "ProtectHome",
+        "ProtectProc",
+        "PrivateDevices",
+        "DynamicUser",
+    )
+    bad = []
+    for name, entry in manifest.get("units", {}).items():
+        props = _show(name, "LoadState", "User", *checks)
+        if not props or props.get("LoadState") in ("not-found", "masked", ""):
+            continue
+        if props.get("DynamicUser") != "yes" and entry.get("DynamicUser") != "yes":
+            user = props.get("User") or "root"
+            if entry.get("User", "root") != user:
+                bad.append(f"{name}: runs as {user} (manifest {entry.get('User', 'root')})")
+        for key in checks:
+            wanted = entry.get(key)
+            if wanted is None:
+                continue
+            got = props.get(key) or "no"
+            if got != wanted:
+                bad.append(f"{name}: {key}={got} (manifest {wanted})")
+    if bad:
+        out.append(
+            finding(
+                "manifest-units",
+                title,
+                "problem",
+                M(
+                    "manifest.units",
+                    {
+                        "one": "{n} unit does not have the sandbox the manifest declares.",
+                        "other": "{n} units do not have the sandbox the manifest declares.",
+                    },
+                    n=len(bad),
+                ),
+                M(
+                    "manifest.units.why",
+                    "A unit that lost a sandbox line can reach further than the release that was approved.",
+                ),
+                M("manifest.units.fix", "Run the installer again. It writes the units the manifest declares."),
+                evidence=bad[:8],
+            )
+        )
+    else:
+        out.append(
+            finding("manifest-units", title, "ok", M("manifest.units.ok", "The units have their declared sandboxes."))
+        )
+
+    groups = set(manifest.get("hub", {}).get("groups") or [])
+    hub_user = os.environ.get("HUB_USER", "hub")
+    try:
+        got = subprocess.run(["id", "-nG", hub_user], capture_output=True, text=True, timeout=10)  # noqa: TID251
+        real = set(got.stdout.split()) if got.returncode == 0 else set()
+        primary = subprocess.run(["id", "-gn", hub_user], capture_output=True, text=True, timeout=10)  # noqa: TID251
+        if primary.returncode == 0:
+            real.discard(primary.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        real = set()
+    extra = sorted(real - groups)
+    if extra:
+        out.append(
+            finding(
+                "manifest-hub",
+                title,
+                "problem",
+                M(
+                    "manifest.hub",
+                    {
+                        "one": "The hub user is in {n} group the manifest does not declare: {groups}.",
+                        "other": "The hub user is in {n} groups the manifest does not declare: {groups}.",
+                    },
+                    n=len(extra),
+                    groups=extra[:8],
+                ),
+                M(
+                    "manifest.hub.why",
+                    "A group can open files and devices that the manifest says the hub cannot reach.",
+                ),
+                M(
+                    "manifest.hub.fix",
+                    "Remove the group from the hub user, or change the manifest and the code that adds it.",
+                ),
+                evidence=extra[:8],
+            )
+        )
+    else:
+        out.append(
+            finding("manifest-hub", title, "ok", M("manifest.hub.ok", "The hub user is in no undeclared group."))
+        )
+
+    health = secchanges.record_health()
+    if health and not health["ok"]:
+        why = {
+            "missing": M("manifest.record.missing", "missing"),
+            "shortened": M("manifest.record.shortened", "shorter than it was"),
+            "changed": M("manifest.record.changed", "changed without a new entry"),
+        }.get(health["why"], M("manifest.record.damaged", "damaged"))
+        out.append(
+            finding(
+                "manifest-record",
+                title,
+                "problem",
+                M(
+                    "manifest.record.bad",
+                    "The security record is {why}.",
+                    why=why,
+                ),
+                M(
+                    "manifest.record.why-long",
+                    "The record is the account of what each update changed and who approved it. One that can be "
+                    "cut or rewritten is not an account.",
+                ),
+                M(
+                    "manifest.record.fix",
+                    "Restore the record from the second copy (retain), or from a backup taken when it last read well.",
+                ),
+                evidence=[str(secchanges.LOG)],
+            )
+        )
+    elif health:
+        out.append(
+            finding(
+                "manifest-record", title, "ok", M("manifest.record.ok", "The security record reads as it was written.")
+            )
+        )
+    return out
+
+
 STEPS = [
     ("notes", M("step.notes", "Notes add-on"), step_notes),
     ("firewall", M("step.firewall", "Hotspot firewall"), step_firewall),
@@ -7877,6 +8098,7 @@ STEPS = [
     ("mqtt", M("step.mqtt", "MQTT broker and the mesh decoder"), step_mqtt),
     ("internet", M("step.internet", "Reached from the internet"), step_internet),
     ("offline", M("step.offline", "Offline readiness"), step_offline),
+    ("manifest", M("step.manifest", "The security manifest"), step_manifest),
     ("tools", M("step.tools", "Programs the checks need"), step_tools),
 ]
 

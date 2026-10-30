@@ -1,0 +1,1352 @@
+{
+  "hub": {
+    "groups": [],
+    "secrets": []
+  },
+  "outbound": {
+    "api.github.com": "the update check, the source's branches and releases",
+    "box": "a name a box may answer to on its own network, in a message; never contacted",
+    "deb.debian.org": "the packages Debian ships",
+    "dl.cloudsmith.io": "Caddy's package key and repository",
+    "example.invalid": "a placeholder in messages and tests; never contacted",
+    "github.com": "the update source, the add-ons catalogue and their repositories",
+    "registry.npmjs.org": "the add-ons' npm packages"
+  },
+  "privileged_files": [
+    "install.sh",
+    "uninstall.sh",
+    "irate_box/root/**",
+    "tools/*.sh",
+    "config/irate-box.service"
+  ],
+  "root_actions": {
+    "access": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "addon": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "admin-gate": {
+      "https_only": false,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "admin-login": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "ap-confirm": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "ap-off": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "ap-on": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "ap-try": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "app-install": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "app-rollback": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "backup-image": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "box-hostname": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "claim": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "content-export": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "health-fix": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "health-scan": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "housecall-pair": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "housecall-restore": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "housecall-scan": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "housecall-stop": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "housecall-unpair": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-define": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-drop-all-previous": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-drop-old-previous": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-drop-previous": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-expire": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-extra": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-fetch": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-install": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-keep": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-remove": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-rollback": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-status": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-undefine": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "net-scan": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "nm-connection": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "nm-defaults": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "nm-handover": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "offline-kit": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "other-ap": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "password": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "pins": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/pins.json"
+      ]
+    },
+    "pkg-check": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "pkg-fetch": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "pkg-install": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "pkg-rollback": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "pkg-settings": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "radio-test": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-card-check": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-card-flash": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-card-genuine": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-erase": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-loader": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-read": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-serial-setup": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-write": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "security-audit": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "security-changes": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "security-deep-audit": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "security-fix": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "security-policy": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "security-record-read": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "security-scan": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "service": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "share-allow": {
+      "https_only": false,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "share-set": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "tls-admin-only": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "tls-box": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "tls-import": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "tls-make": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "tls-renew": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "tls-settings": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "tls-switch": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "update-approve-security": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "update-check": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "update-clear-cache": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "update-doctor": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "update-fetch": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "update-force-install": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "update-install": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "update-poll-target": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "update-reach": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "update-set-source": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "update-signing": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "uplink-do": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "uplink-hold": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "uplink-profile": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "uplink-set": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "usb-export": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "usb-export-many": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "usb-filesystems": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "usb-import": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "usb-kit-export": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "usb-kit-import": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "usb-scan": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "wifi-country": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "wifi-forget": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "wifi-join": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "wifisync": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    }
+  },
+  "secrets": {
+    "/etc/NetworkManager/system-connections/*": {
+      "group": "root",
+      "mode": "600",
+      "owner": "root",
+      "readers": [
+        "root"
+      ]
+    },
+    "/etc/hub/admin-password": {
+      "group": "root",
+      "mode": "600",
+      "owner": "root",
+      "readers": [
+        "root"
+      ]
+    },
+    "/etc/hub/front-secret.env": {
+      "group": "root",
+      "mode": "600",
+      "owner": "root",
+      "readers": [
+        "root"
+      ]
+    },
+    "/etc/hub/tls/ca/ca.key": {
+      "group": "root",
+      "mode": "600",
+      "owner": "root",
+      "readers": [
+        "root"
+      ]
+    },
+    "/etc/hub/tls/server.key": {
+      "group": "the web server's group",
+      "mode": "640",
+      "owner": "root",
+      "readers": [
+        "root",
+        "the web server's group"
+      ]
+    },
+    "/etc/hub/update-signing.json": {
+      "group": "root",
+      "mode": "600",
+      "owner": "root",
+      "readers": [
+        "root"
+      ]
+    },
+    "/etc/nginx/irate-box.htpasswd": {
+      "group": "the web server's group",
+      "mode": "640",
+      "owner": "root",
+      "readers": [
+        "root",
+        "the web server's group"
+      ]
+    },
+    "/var/lib/hub/accounts.json": {
+      "group": "hub",
+      "mode": "600",
+      "owner": "hub",
+      "readers": [
+        "hub"
+      ]
+    },
+    "/var/lib/hub/hotspot.json": {
+      "group": "hub",
+      "mode": "600",
+      "owner": "hub",
+      "readers": [
+        "hub"
+      ]
+    },
+    "/var/lib/irate-box-root/retain-key": {
+      "group": "root",
+      "mode": "600",
+      "owner": "root",
+      "readers": [
+        "root"
+      ]
+    }
+  },
+  "served": {
+    "caddy": {
+      "locations": [
+        "/",
+        "/account.html",
+        "/admin",
+        "/admin/*",
+        "/api/drop",
+        "/api/drop/*",
+        "/api/saves*",
+        "/api/v2/*",
+        "/appstore*",
+        "/draw",
+        "/draw/*",
+        "/drop.html",
+        "/flasher*",
+        "/flasher/*",
+        "/flasher/THIRD-PARTY-NOTICES.txt",
+        "/flasher/esp-web-tools/*",
+        "/flasher/firmware/*",
+        "/flasher/freeocd/*",
+        "/git",
+        "/git-hl/*",
+        "/git-private",
+        "/git-private/*",
+        "/git-static/*",
+        "/git/*",
+        "/hub",
+        "/hub-return.js",
+        "/mermaid",
+        "/mermaid/*",
+        "/mqtt",
+        "/notes",
+        "/notes/*",
+        "/serial",
+        "/serial/*",
+        "/socket.io/*",
+        "/sync",
+        "/sync/*",
+        "/term",
+        "/term/*",
+        "/themes.html",
+        "/tools",
+        "/tools/*",
+        "/wiki",
+        "/wiki/*",
+        "@addon",
+        "@cgit_assets",
+        "@flasher_page",
+        "@irate_box_down",
+        "@irate_box_missing",
+        "@page",
+        "@preflight",
+        "@smart",
+        "@thumb",
+        "@unclaimed"
+      ],
+      "roots": [
+        "/usr/share/cgit",
+        "/usr/share/javascript/highlight.js"
+      ]
+    },
+    "nginx": {
+      "locations": [
+        "(^|/)(\\.|irate-box-bundle\\.json$)",
+        "/",
+        "/_irate_admin",
+        "/_irate_git_access",
+        "/_irate_notebook",
+        "/_irate_user",
+        "/addons",
+        "/admin",
+        "/admin/",
+        "/api/account",
+        "/api/drop",
+        "/api/drop/",
+        "/api/saves",
+        "/api/v2/",
+        "/appstore",
+        "/appstore/",
+        "/cgit-hub.css",
+        "/cgit-hub.js",
+        "/draw",
+        "/draw/",
+        "/draw/assets/",
+        "/drop.html",
+        "/flasher",
+        "/flasher/",
+        "/flasher/THIRD-PARTY-NOTICES.txt",
+        "/flasher/api/",
+        "/flasher/esp-web-tools/",
+        "/flasher/firmware/",
+        "/flasher/flasher.html",
+        "/flasher/freeocd/",
+        "/git",
+        "/git-hl/",
+        "/git-private",
+        "/git-static/",
+        "/hub",
+        "/hub-return.js",
+        "/index.html",
+        "/mermaid",
+        "/mermaid/",
+        "/mermaid/_app/immutable/",
+        "/mqtt",
+        "/notebook",
+        "/notebook/",
+        "/notes",
+        "/notes/",
+        "/palette.css",
+        "/serial",
+        "/serial/",
+        "/serial/assets/",
+        "/serial/serial-terminal.html",
+        "/socket.io/",
+        "/sync",
+        "/sync/",
+        "/term",
+        "/term/",
+        "/themes.html",
+        "/themes.js",
+        "/themes/",
+        "/tools",
+        "/tools/",
+        "/wiki",
+        "/wiki/",
+        "/wiki/content/",
+        "@irate_box_hub",
+        "@irate_box_hub_origin",
+        "@irate_box_login",
+        "@irate_box_notebook_wait",
+        "\\.html$",
+        "^/(?<irate_box_addon>[a-z0-9-]+)/",
+        "^/addons/([a-z0-9-]+/.*)$",
+        "^/api/saves/[^/]+/thumb$",
+        "^/git(-private)?/[^/]+\\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack)$",
+        "^/git(/.*)$",
+        "^/git(?<irate_box_cgit_path>/.*)$",
+        "^/git-private(/.*)$",
+        "^/git-private(?<irate_box_cgit_path>/.*)$",
+        "^/git-private/(?<irate_box_git_path>[^/]+\\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$",
+        "^/git/(?<irate_box_git_path>[^/]+\\.git/(HEAD|info/refs|objects/.+|git-upload-pack|git-receive-pack))$",
+        "^/notebook/\\.(shell|proxy|runtime)",
+        "^/notes/\\.(shell|proxy|runtime)"
+      ],
+      "roots": [
+        "/usr/share/javascript/highlight.js/",
+        "@ADDONS@",
+        "@APPS@/draw/",
+        "@APPS@/esp-web-tools/",
+        "@APPS@/flasher/THIRD-PARTY-NOTICES.txt",
+        "@APPS@/flasher/public/",
+        "@APPS@/freeocd/",
+        "@APPS@/mermaid/",
+        "@APPS@/serial/",
+        "@APPS@/tools/",
+        "@FIRMWARE@/",
+        "@STATIC@"
+      ]
+    }
+  },
+  "units": {
+    "caddy.service.d/irate-box.conf": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "excalidraw-room.service": {
+      "CapabilityBoundingSet": [],
+      "DynamicUser": "yes",
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "RestrictAddressFamilies": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6",
+        "AF_NETLINK"
+      ],
+      "source": "install.sh"
+    },
+    "irate-box-ap-dns.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "-/var/lib/misc"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-ap-hostapd.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "-/run/hostapd"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-ap.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "/etc/hub",
+        "/var/lib/hub",
+        "-/etc/NetworkManager",
+        "/etc/systemd/system",
+        "/etc/sysctl.d"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-bootkey.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectSystem": "strict",
+      "ReadOnlyPaths": [
+        "/sys"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-boxdoctor.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "read-only",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "/var/lib/hub/control",
+        "/var/lib/irate-box-root"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-boxdoctor.timer": {
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-canary.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "/var/lib/irate-box-root"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-canary.timer": {
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-ci.path": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-ci.service": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE/ci"
+      ],
+      "User": "hubci",
+      "source": "install.sh"
+    },
+    "irate-box-control.path": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-control.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectProc": "invisible",
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-crashwatch.service": {
+      "ReadWritePaths": [
+        "$STATE",
+        "$ETC",
+        "-/etc/sysctl.d",
+        "-/etc/modules-load.d",
+        "-/etc/systemd/system.conf.d",
+        "-/boot"
+      ],
+      "StateDirectory": [
+        "irate-box-root"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-firewall.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-git.service": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE/git",
+        "$STATE/ci/queue"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6",
+        "AF_NETLINK"
+      ],
+      "User": "$HUB_USER",
+      "source": "install.sh"
+    },
+    "irate-box-git.socket": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-led.service": {
+      "PrivateDevices": "yes",
+      "ReadWritePaths": [
+        "$ETC"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-librarian.service": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6",
+        "AF_NETLINK"
+      ],
+      "User": "$HUB_USER",
+      "source": "install.sh"
+    },
+    "irate-box-librarian.timer": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-lostwrites.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "read-only",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "/var/lib/hub/control",
+        "/var/lib/irate-box-root"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-nginx-recover.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$ETC",
+        "/etc/nginx",
+        "-$STATE/control"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-notebook@.service": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE/notebooks/%i"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX"
+      ],
+      "User": "$HUB_USER",
+      "source": "install.sh"
+    },
+    "irate-box-notebooks.path": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-notebooks.service": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-protected-sweep.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "/etc/NetworkManager/system-connections",
+        "/etc/hub",
+        "/etc/nginx",
+        "/etc/systemd",
+        "/var/lib/hub",
+        "/var/lib/irate-box-root",
+        "-/media",
+        "-/run/irate-box",
+        "-/run/irate-box/retain",
+        "-/run/media",
+        "-/run/nginx.pid",
+        "-/var/lib/nginx",
+        "-/var/log/nginx",
+        "-/var/log.nand"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-protected.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "/etc/NetworkManager/system-connections",
+        "/etc/hub",
+        "/etc/nginx",
+        "/etc/systemd",
+        "/var/lib/hub",
+        "/var/lib/irate-box-root",
+        "-/media",
+        "-/run/irate-box",
+        "-/run/irate-box/retain",
+        "-/run/media",
+        "-/run/nginx.pid",
+        "-/var/lib/nginx",
+        "-/var/log/nginx",
+        "-/var/log.nand"
+      ],
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-protected.timer": {
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-rfkill.service": {
+      "PrivateDevices": "yes",
+      "RestrictAddressFamilies": [
+        "AF_UNIX"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-rtc-feed.service": {
+      "User": "root",
+      "source": "code"
+    },
+    "irate-box-secdoctor.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "read-only",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE/control"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-secdoctor.timer": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-tailscale-boot.service": {
+      "ReadWritePaths": [
+        "$STATE"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-tailscale.path": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-tailscale.service": {
+      "ReadWritePaths": [
+        "$STATE"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-uplink.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-visitors-switch.path": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-visitors-switch.service": {
+      "ReadWritePaths": [
+        "-/run/irate-box-visitors"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-visitors.service": {
+      "CapabilityBoundingSet": [],
+      "DynamicUser": "yes",
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "RestrictAddressFamilies": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6",
+        "AF_NETLINK"
+      ],
+      "source": "install.sh"
+    },
+    "irate-box.service": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6",
+        "AF_NETLINK"
+      ],
+      "User": "$HUB_USER",
+      "source": "install.sh"
+    },
+    "kiwix.service": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "RestrictAddressFamilies": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6",
+        "AF_NETLINK"
+      ],
+      "User": "$HUB_USER",
+      "source": "install.sh"
+    },
+    "mosquitto.service.d/irate-box-sandbox.conf": {
+      "ReadWritePaths": [
+        "-/var/log/mosquitto",
+        "-/var/lib/mosquitto"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
+    "nginx.service.d/irate-box-recovery.conf": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "ngircd.service.d/irate-box.conf": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "silverbullet.service": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE/notes"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX"
+      ],
+      "User": "$HUB_USER",
+      "source": "install.sh"
+    },
+    "syncthing@$HUB_USER.service.d/irate-box.conf": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "tailscaled.service.d/irate-box.conf": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "ttyd.service": {
+      "User": "root",
+      "source": "install.sh"
+    }
+  },
+  "version": 1
+}

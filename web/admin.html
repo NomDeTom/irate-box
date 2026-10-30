@@ -4877,6 +4877,61 @@
                     hidden
                   ></p>
                 </details>
+                <details class="field-help" id="update-security-changes">
+                  <summary data-i18n="admin.updates.summary-security-changes">
+                    Security changes in an update: <span id="security-changes-says">…</span>
+                  </summary>
+                  <p class="setting-desc" data-i18n="admin.updates.security-changes-desc">
+                    An update that widens what root or the hub can reach is held at the level you select for each kind of change.
+                  </p>
+                  <form id="security-changes-form" class="library-form">
+                    <label class="inline" data-i18n="admin.updates.security-console-only">
+                      <input type="checkbox" name="console_only" />
+                      Approve security changes at the console only
+                    </label>
+                    <p class="setting-desc" data-i18n="admin.updates.security-console-only-desc">
+                      While it is on, every level set to Authorise needs the console. The page can turn it on. Only the console turns it off.
+                    </p>
+                    <table class="admin-table" id="security-changes-table">
+                      <thead>
+                        <tr>
+                          <th data-i18n="admin.updates.security-kind">Kind of change</th>
+                          <th data-i18n="admin.updates.security-level">Level</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <th scope="row" data-i18n="admin.updates.security-root-actions">Root actions</th>
+                          <td><select name="root_actions" aria-label="Root actions" data-i18n-aria-label="admin.updates.security-root-actions"><option value="flag" data-i18n="admin.updates.security-level-flag">Flag</option><option value="authorise" data-i18n="admin.updates.security-level-authorise">Authorise</option><option value="console" data-i18n="admin.updates.security-level-console">Console only</option></select></td>
+                        </tr>
+                        <tr>
+                          <th scope="row" data-i18n="admin.updates.security-secrets">Secrets</th>
+                          <td><select name="secrets" aria-label="Secrets" data-i18n-aria-label="admin.updates.security-secrets"><option value="flag" data-i18n="admin.updates.security-level-flag">Flag</option><option value="authorise" data-i18n="admin.updates.security-level-authorise">Authorise</option><option value="console" data-i18n="admin.updates.security-level-console">Console only</option></select></td>
+                        </tr>
+                        <tr>
+                          <th scope="row" data-i18n="admin.updates.security-sandboxes">Sandboxes</th>
+                          <td><select name="sandboxes" aria-label="Sandboxes" data-i18n-aria-label="admin.updates.security-sandboxes"><option value="flag" data-i18n="admin.updates.security-level-flag">Flag</option><option value="authorise" data-i18n="admin.updates.security-level-authorise">Authorise</option><option value="console" data-i18n="admin.updates.security-level-console">Console only</option></select></td>
+                        </tr>
+                        <tr>
+                          <th scope="row" data-i18n="admin.updates.security-served">Served paths</th>
+                          <td><select name="served" aria-label="Served paths" data-i18n-aria-label="admin.updates.security-served"><option value="flag" data-i18n="admin.updates.security-level-flag">Flag</option><option value="authorise" data-i18n="admin.updates.security-level-authorise">Authorise</option><option value="console" data-i18n="admin.updates.security-level-console">Console only</option></select></td>
+                        </tr>
+                        <tr>
+                          <th scope="row" data-i18n="admin.updates.security-outbound">Outbound hosts</th>
+                          <td><select name="outbound" aria-label="Outbound hosts" data-i18n-aria-label="admin.updates.security-outbound"><option value="flag" data-i18n="admin.updates.security-level-flag">Flag</option><option value="authorise" data-i18n="admin.updates.security-level-authorise">Authorise</option><option value="console" data-i18n="admin.updates.security-level-console">Console only</option></select></td>
+                        </tr>
+                        <tr>
+                          <th scope="row" data-i18n="admin.updates.security-root-code">Root code changed</th>
+                          <td><select name="root_code" aria-label="Root code changed" data-i18n-aria-label="admin.updates.security-root-code"><option value="flag" data-i18n="admin.updates.security-level-flag">Flag</option><option value="authorise" data-i18n="admin.updates.security-level-authorise">Authorise</option><option value="console" data-i18n="admin.updates.security-level-console">Console only</option></select></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <button class="action-btn primary" type="submit" data-i18n="admin.updates.btn-save">
+                      Save
+                    </button>
+                  </form>
+                  <p class="setting-desc action-note" id="security-changes-note" role="status" hidden></p>
+                </details>
               </div>
             </div>
             <div class="setting library-source update-card" id="updates-debian">
