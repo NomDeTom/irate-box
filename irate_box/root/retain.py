@@ -593,7 +593,9 @@ def _store_sources(path, bad=None):
                 if data is not None:
                     yield name + ".enc", crypt, data
                 elif bad is not None:
-                    bad.append({"path": str(crypt), "action": "a copy that would not decrypt was skipped"})
+                    bad.append(
+                        {"path": str(crypt), "action": "a copy that would not decrypt was skipped", "kind": "uncopied"}
+                    )
 
 
 def sweep():
@@ -614,7 +616,7 @@ def sweep():
         except OSError:
             continue
         if _bad(data):
-            bad.append({"path": str(path), "action": "not copied: it reads back as 0xFF or zero"})
+            bad.append({"path": str(path), "action": "not copied: it reads back as 0xFF or zero", "kind": "uncopied"})
             if str(path) in previous:
                 entries[str(path)] = previous[str(path)]
             continue
@@ -672,7 +674,13 @@ def sweep():
                 if _bad(plain):
                     # A card copy that reads as all 0xFF or all zero is the card's damage: never spread it over a
                     # good copy elsewhere.
-                    bad.append({"path": str(source), "action": "this copy is damaged, and was not copied on"})
+                    bad.append(
+                        {
+                            "path": str(source),
+                            "action": "this copy is damaged, and was not copied on",
+                            "kind": "uncopied",
+                        }
+                    )
                     continue
                 if encrypted:
                     try:
@@ -819,7 +827,7 @@ def boot_check():
                     )
                 finally:
                     temporary.unlink(missing_ok=True)
-                repairs.append({"path": str(path), "action": "restored from " + name})
+                repairs.append({"path": str(path), "action": "restored from " + name, "kind": "copy"})
                 done = True
                 break
             except (OSError, Refused):
@@ -827,12 +835,12 @@ def boot_check():
         if not done and path != site_path:
             made = regenerate(path)
             if made:
-                repairs.append({"path": str(path), "action": str(made)})
+                repairs.append({"path": str(path), "action": str(made), "kind": "made again"})
                 done = True
         if not done and _package_owned(path):
             try:
                 said = restore.from_package(path)
-                repairs.append({"path": str(path), "action": str(said)})
+                repairs.append({"path": str(path), "action": str(said), "kind": "package"})
                 done = True
             except (OSError, Refused):
                 done = False
@@ -841,15 +849,25 @@ def boot_check():
                 # Render it once the front's own includes are repaired: nginx -t would fail on their damage.
                 site_pending = True
             else:
-                lost.append({"path": str(path), "action": "damaged, and no good copy: reinstall or restore it by hand"})
+                lost.append(
+                    {
+                        "path": str(path),
+                        "action": "damaged, and no good copy: reinstall or restore it by hand",
+                        "kind": "lost",
+                    }
+                )
         problems.extend(skipped)
     if site_pending:
         made = regenerate(site_path)
         if made:
-            repairs.append({"path": str(site_path), "action": str(made)})
+            repairs.append({"path": str(site_path), "action": str(made), "kind": "made again"})
         else:
             lost.append(
-                {"path": str(site_path), "action": "damaged, and no good copy: reinstall or restore it by hand"}
+                {
+                    "path": str(site_path),
+                    "action": "damaged, and no good copy: reinstall or restore it by hand",
+                    "kind": "lost",
+                }
             )
     _streak(current, bool(repairs or lost))
     if repairs or lost or problems:

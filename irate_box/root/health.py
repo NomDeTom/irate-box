@@ -3452,22 +3452,40 @@ def check_writes_kept():
     ]
 
 
+def _protected_kind(item):
+    """What the boot check did with one protected file: the record's own kind, as retain.py writes it — copy,
+    made again, package, lost or uncopied. A record made before the field is read by its words, so a box whose
+    doctor updated but whose boot check did not still says what it repaired. An item this cannot place is read as
+    a repair: it names the file, and a repair left unsaid is the bug this replaces."""
+    kind = str(item.get("kind") or "")
+    if kind:
+        return kind
+    action = str(item.get("action"))
+    if "restored from" in action:
+        return "copy"
+    if "no good copy" in action:
+        return "lost"
+    if "not copied" in action:
+        return "uncopied"
+    return "repair"
+
+
 def check_protected():
     """The second copy's repairs, losses and files it could not copy (retain.py, Part 2 step 4). The current boot's
     only; repairs at two boots running are the card verdict."""
     from irate_box.root import retain
 
     try:
-        items = json.loads((retain.ROOT / "protected-findings.json").read_text())
+        items = json.loads(retain.FINDINGS.read_text())
     except (OSError, ValueError):
         return []
     if not isinstance(items, list):
         return []
-    current = retain._boot_id()
+    current = _boot_id()
     items = [i for i in items if isinstance(i, dict) and i.get("path") and i.get("boot") == current]
-    repairs = [i for i in items if "restored from" in str(i.get("action"))]
-    lost = [i for i in items if "no good copy" in str(i.get("action"))]
-    uncopied = [i for i in items if "not copied" in str(i.get("action"))]
+    lost = [i for i in items if _protected_kind(i) == "lost"]
+    uncopied = [i for i in items if _protected_kind(i) == "uncopied"]
+    repairs = [i for i in items if i not in lost and i not in uncopied]
     streak = retain.streak()
     housecall = CODE / "irate_box/root/housecall.py"
     notes = []
