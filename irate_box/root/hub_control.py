@@ -7428,6 +7428,7 @@ def _kit_check_all(req):
     finally:
         _kits_status()
     newer = sorted(k for k, v in results.items() if v.get("state") == "newer")
+    not_cached = sorted(k for k, v in results.items() if v.get("state") == "not-cached")
     unavailable = sorted(k for k, v in results.items() if v.get("state") == "unavailable")
     out = []
     if newer:
@@ -7440,6 +7441,18 @@ def _kit_check_all(req):
                 },
                 n=len(newer),
                 kits=newer,
+            )
+        )
+    if not_cached:
+        out.append(
+            M(
+                "control.kit.checked-not-cached",
+                {
+                    "one": "{n} toolkit is not cached: {kits}.",
+                    "other": "{n} toolkits are not cached: {kits}.",
+                },
+                n=len(not_cached),
+                kits=not_cached,
             )
         )
     if unavailable:
