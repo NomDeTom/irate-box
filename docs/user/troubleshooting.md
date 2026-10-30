@@ -86,3 +86,29 @@ Select the write level in **Recovery and monitoring → SD card writes**. A lowe
 - **In-memory snapshots**: the snapshots are kept in memory. The box writes them every 15 minutes, or at once when crash watch sees a problem. The clock is saved every hour. A hang loses up to 15 minutes of snapshots.
 
 User data is written when it changes, at every level. The page shows how much the box has written since the last boot.
+
+## Where the box keeps what it writes
+
+Some files are written all the time: the system's log, the box's own settings and records, and apt's package cache. On **Recovery and monitoring → SD card writes** you choose where each one lives.
+
+- **System journal**: **On the SD card**, **In memory**, or **On the onboard flash**. In memory, nothing of the log reaches the card. A restart or a crash loses it, and with it the log of what led up to a crash.
+- **Often-written state**: **On the SD card** or **On the onboard flash**. This is the hub's settings and records, and the system's own. Books, firmware, toolkits and uploads stay on the card either way. The hub stops for a moment while its state moves.
+- **apt's cache**: **On the SD card** or **In memory**. In memory it is never written to the card. apt rebuilds it after each restart, which takes a few seconds.
+- **Write-back delay**: **Standard (30 s)** or **Longer (60 s)**. A longer delay lets repeated changes to one file reach the card once. A power cut can then lose up to a minute of changes that no program saved on purpose.
+
+The flash choices appear only when the board has spare onboard flash that nothing else uses. The box formats that flash first, which erases what is on it. The Box doctor offers the change when it finds free flash, and reports how worn the flash is once it is in use. On the SD card is the default: the card holds everything and the flash is left alone.
+
+### Checking what the flash gives back
+
+The filesystem the box puts on the onboard flash, UBIFS, does not check data as it reads it. Select **Check the onboard flash's data on read** to have each piece checked against its checksum. A damaged read then becomes an error instead of data that is quietly used. It costs some processor time on each read. The choice appears once the flash holds the logs or the state, and answers **Checked** or **Not checked**.
+
+## Filesystem for a fresh install
+
+The card's own filesystems are chosen for the next install. They are not changed under a box that is running. Select them on **Recovery and monitoring → Hardening**, under **Filesystem for a fresh install**.
+
+- **ext4 (now)**: what every box runs on today.
+- **btrfs for the state**: the state's data is checksummed. A read that comes back wrong is an error at once, not a file that is quietly broken.
+- **F2FS for the content**: written for flash, so it writes about half as much for the same content.
+- **btrfs state, F2FS content**: both.
+
+The box records your choice and says so. Nothing on this card changes. A fresh install, or an offline repartition, lays the card out that way. A card already in use is not converted: make the slots and partitions again, or install afresh. The two routes for updating the system itself are in [Updates and backup](updates-and-backup.md).
