@@ -2,9 +2,9 @@
   "id": "inspircd",
   "order": 66,
   "tile": {
-    "icon": "💬",
+    "icon": "\ud83d\udcac",
     "name": "IRC chat (InspIRCd)",
-    "desc": "Real-time chat in any IRC app",
+    "desc": "Real-time chat in any IRC app, or in the browser",
     "href": "/irc.html"
   },
   "status": {
@@ -13,7 +13,7 @@
     "port": 6667,
     "unit": "inspircd.service",
     "control": true,
-    "note": "chat in any IRC app, on :6667"
+    "note": "chat in any IRC app, or in the browser at /gamja/"
   },
   "network": {
     "listen": [
@@ -30,8 +30,8 @@
   "addon": {
     "option": "--with-inspircd",
     "title": "IRC server (InspIRCd)",
-    "summary": "A modular IRC server on TCP port 6667 with a #lobby channel, for chat in any IRC app. The page /irc.html shows how to join. It uses a few MB of memory.",
-    "consent": "The server answers every device on the network of the box on TCP port 6667. It has no IRC authentication. It has no encryption between the client and the box. The server hides client addresses from other users. It has no operators. Add the InspIRCd server?"
+    "summary": "A modular IRC server on TCP port 6667 with a #lobby channel, for chat in any IRC app or in this browser at /gamja/. The page /irc.html shows how to join. It uses a few MB of memory.",
+    "consent": "The server answers every device on the network of the box on TCP port 6667. It has no IRC authentication. It has no encryption between the client and the box. The server hides client addresses from other users. It has no operators. The box also serves a browser IRC client at /gamja/. Add the InspIRCd server?"
   },
   "checks": [
     {

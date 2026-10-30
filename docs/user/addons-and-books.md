@@ -13,7 +13,7 @@ Add or remove each add-on on its own. Use the administration pages (the same ins
 - **Syncthing** (`--with-sync`): file sync. Administrators sign in to use it.
 - **MQTT broker** (`--with-mqtt`): for Meshtastic nodes and phones.
 - **IRC** (`--with-irc`): a small chat server for any IRC app, on ngIRCd.
-- IRC (InspIRCd) (`--with-inspircd`): the same chat, on InspIRCd instead. Choose one IRC server; installing one removes the other's config.
+- IRC (InspIRCd) (`--with-inspircd`): the same chat, on InspIRCd instead, with a browser client at `/gamja/`. Choose one IRC server; installing one removes the other's config.
 - **Terminal** (`--with-term`): a shell in the browser. Administrators sign in to use it.
 - **Live collaboration** (`--with-collab`): drawing together in Excalidraw.
 

@@ -395,6 +395,19 @@ server {
 		proxy_pass http://127.0.0.1:9001;
 	}
 
+	# --- gamja: the browser IRC client, and its WebSocket ------------------------------
+	# The client is static (web/gamja); its WebSocket is InspIRCd's own listener on loopback,
+	# reached through this front so HTTPS gives the page wss:// and port 6668 stays closed.
+	location = /gamja { return 301 /gamja/; }
+	location ^~ /gamja/ {
+		root @STATIC@;
+		try_files $uri $uri/ /gamja/index.html;
+	}
+	location = /irc-ws {
+		proxy_read_timeout 1h;
+		proxy_pass http://127.0.0.1:6668;
+	}
+
 	# --- /flasher -> the Meshtastic web flasher, as a download, and what it fetches -------
 	# The page is a download opened from the guest's disk (flasher.py says why), so it fetches
 	# everything below cross-origin: every answer is Access-Control-Allow-Origin: *, and a

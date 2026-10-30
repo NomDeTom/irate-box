@@ -2660,6 +2660,13 @@ if [ "$WITH_INSPIRCD" = 1 ]; then
 
 # Every interface: on the hotspot, the hotspot firewall (Security) decides whether guests reach it.
 <bind address="0.0.0.0" port="6667" type="clients">
+# gamja's WebSocket, loopback only: the front (/irc-ws) is the only way in, so HTTPS gives
+# the page wss:// and this port is never opened on the network.
+<bind address="127.0.0.1" port="6668" type="clients" hook="websocket">
+
+<websocket defaultmode="text" allowmissingorigin="no">
+# gamja is served by the same front; a page elsewhere on the network cannot open the socket.
+<wsorigin allow="*">
 
 <connect allow="*" timeout="60" threshold="10" pingfreq="120" hardsendq="262144" softsendq="8192" recvq="8192" localmax="5" globalmax="5" maxchans="10" modes="x">
 
@@ -2669,6 +2676,8 @@ if [ "$WITH_INSPIRCD" = 1 ]; then
 <module name="conn_umodes">
 <module name="conn_join">
 <module name="permchannels">
+<module name="websocket">
+<module name="sha1">
 
 <cloak method="hmac-sha256"
        key="@CLOAK_KEY@"

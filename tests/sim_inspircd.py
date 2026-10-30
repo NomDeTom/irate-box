@@ -79,6 +79,19 @@ check(
     ),
 )
 check(
+    "gamja is in the same add-on, not a second manifest",
+    not (REPO / "addons/gamja.json").exists() and "gamja" in (m.get("status") or {}).get("note", ""),
+)
+check(
+    "gamja is in the same add-on: static files, a same-origin WebSocket, and the front routes",
+    (REPO / "web/gamja/index.html").is_file()
+    and (REPO / "web/gamja/config.json").is_file()
+    and '"/irc-ws"' in (REPO / "web/gamja/config.json").read_text()
+    and "/irc-ws" in (REPO / "config/irate-box.nginx").read_text()
+    and "/irc-ws" in (REPO / "config/Caddyfile").read_text()
+    and "/gamja/" in (REPO / "web/irc.html").read_text(),
+)
+check(
     "the Debian package suggests it, and About names its licence",
     "inspircd" in (REPO / "packaging/deb/control").read_text() and "InspIRCd" in (REPO / "web/about.html").read_text(),
 )
