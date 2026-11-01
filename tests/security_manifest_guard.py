@@ -97,6 +97,15 @@ problems = secmanifest.mismatches(declared, secmanifest.build(tree))
 check("  a dropped sandbox line fails", any("ProtectSystem" in p or "directives" in p for p in problems), problems)
 shutil.rmtree(tree, ignore_errors=True)
 
+tree = tree_with_install(lambda text: text.replace("$ROOT_SANDBOX\n", "", 1))
+problems = secmanifest.mismatches(declared, secmanifest.build(tree))
+check(
+    "  a dropped $ROOT_SANDBOX fails: the root units keep its five lines",
+    any("directives" in p for p in problems),
+    problems,
+)
+shutil.rmtree(tree, ignore_errors=True)
+
 tree = tree_with_install(lambda text: text + "\n# https://evil.example/update\n")
 problems = secmanifest.mismatches(declared, secmanifest.build(tree))
 check("  an undeclared host fails", any("evil.example" in p for p in problems), problems)

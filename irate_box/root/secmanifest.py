@@ -8,6 +8,12 @@ and the hub may contact, and the files that run as root. This module builds that
 from a tree (statically: nothing in the tree is imported or run), compares a tree with its
 own manifest, and sorts two manifests' differences into widenings and narrowings.
 
+The units whose text a module writes (source "code": the firewall, the AP units, bootkey and the
+health units) are declared in the manifest but not rebuilt from the tree here: a fetched tree's
+code for them is not compared. #559 has each of those units read its lines from the manifest
+instead, which closes the gap for everything the manifest holds; the modules' own fallbacks keep
+computed paths (retain's stores, health's state folders) that the manifest does not hold.
+
 Stdlib only. The same module is used by tests/security_manifest_guard.py in CI and by root's
 verify_update() on a fetched tree, so the box never has to trust the fetched code's account
 of itself.
@@ -210,12 +216,17 @@ def _unit_directives(body):
 def units(tree):
     tree = Path(tree)
     text = _read(tree / "install.sh")
-    found = re.search(r'^HUB_SANDBOX="(.*?)"$', text, re.S | re.M)
-    sandbox = found.group(1) if found else ""
+    sandboxes = {}
+    for name in ("HUB_SANDBOX", "ROOT_SANDBOX"):
+        found = re.search(rf'^{name}="(.*?)"$', text, re.S | re.M)
+        sandboxes[name] = found.group(1) if found else ""
     out = {}
     for found in _UNIT_RE.finditer(text):
         name, _, body = found.groups()
-        out[name] = {"source": "install.sh", **_unit_directives(body.replace("$HUB_SANDBOX", sandbox))}
+        body = body.replace("$HUB_SANDBOX", sandboxes["HUB_SANDBOX"]).replace(
+            "$ROOT_SANDBOX", sandboxes["ROOT_SANDBOX"]
+        )
+        out[name] = {"source": "install.sh", **_unit_directives(body)}
     return dict(sorted(out.items()))
 
 

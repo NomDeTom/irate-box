@@ -995,6 +995,11 @@
       "source": "install.sh"
     },
     "irate-box-crashwatch.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "ReadWritePaths": [
         "$STATE",
         "$ETC",
@@ -1044,7 +1049,12 @@
       "source": "install.sh"
     },
     "irate-box-led.service": {
+      "NoNewPrivileges": "yes",
       "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "ReadWritePaths": [
         "$ETC"
       ],
@@ -1127,6 +1137,11 @@
       "source": "install.sh"
     },
     "irate-box-notebooks.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "User": "root",
       "source": "install.sh"
     },
@@ -1185,7 +1200,12 @@
       "source": "code"
     },
     "irate-box-rfkill.service": {
+      "NoNewPrivileges": "yes",
       "PrivateDevices": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "RestrictAddressFamilies": [
         "AF_UNIX"
       ],
@@ -1213,6 +1233,11 @@
       "source": "install.sh"
     },
     "irate-box-tailscale-boot.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "ReadWritePaths": [
         "$STATE"
       ],
@@ -1224,6 +1249,11 @@
       "source": "install.sh"
     },
     "irate-box-tailscale.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "ReadWritePaths": [
         "$STATE"
       ],
@@ -1243,6 +1273,11 @@
       "source": "install.sh"
     },
     "irate-box-visitors-switch.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "ReadWritePaths": [
         "-/run/irate-box-visitors"
       ],
@@ -1304,6 +1339,11 @@
       "source": "install.sh"
     },
     "mosquitto.service.d/irate-box-sandbox.conf": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
       "ReadWritePaths": [
         "-/var/log/mosquitto",
         "-/var/lib/mosquitto"
