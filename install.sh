@@ -2846,24 +2846,15 @@ WantedBy=multi-user.target
 EOF
 
 # Bounded builds (root/memguard.py): a build cannot starve sshd, systemd or the hub. The slice and
-# wrapper are ordinary files, kept on updates; bounded-build starts a command inside the slice with
-# MAKEFLAGS=-j1. The Box doctor reads both and offers to put them back.
-install -d -m 0755 /etc/systemd/system/build.slice.d /usr/local/sbin
-cat >/etc/systemd/system/build.slice.d/limits.conf <<'EOF'
-[Slice]
-MemoryHigh=180M
-MemoryMax=220M
-MemorySwapMax=64M
-CPUQuota=80%
-IOWeight=20
-TasksMax=64
-EOF
-cat >/usr/local/sbin/bounded-build <<'EOF'
-#!/bin/sh
-# Written by irate-box: a build inside build.slice, with the box's memory, CPU and I/O kept for it.
-exec systemd-run --quiet --scope --slice=build.slice --setenv=MAKEFLAGS=-j1 -- "$@"
-EOF
-chmod 0755 /usr/local/sbin/bounded-build
+# wrapper are applied from the owner's settings, so an update keeps a chosen limit; bounded-build
+# starts a command inside the slice with MAKEFLAGS=-j1. The Box doctor reads both.
+if ! HUB_ETC_DIR="$ETC" "$CODE/irate-box" memguard install-bounds >/dev/null 2>&1; then
+	problem "the build bounds were not written: irate-box memguard install-bounds"
+fi
+HUB_ETC_DIR="$ETC" "$CODE/irate-box" memguard liveness-apply >/dev/null 2>&1 ||
+	problem "the watchdog liveness drop-ins were not written: irate-box memguard liveness-apply"
+HUB_ETC_DIR="$ETC" "$CODE/irate-box" memguard apt-apply >/dev/null 2>&1 ||
+	problem "the package-update build limits were not written: irate-box memguard apt-apply"
 
 # The memory guard (root/memguard.py): reads the box's headroom and the build slice's own counters,
 # writes what it sees, and kills only build.slice when the box is close to running out. It never

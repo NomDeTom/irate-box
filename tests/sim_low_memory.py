@@ -14,6 +14,7 @@ from pathlib import Path
 
 T = Path(tempfile.mkdtemp(prefix="memguard-"))
 (T / "proc").mkdir()
+(T / "etc").mkdir()
 (T / "cgroup").mkdir()
 (T / "units" / "build.slice.d").mkdir(parents=True)
 (T / "run").mkdir()
@@ -23,6 +24,7 @@ T = Path(tempfile.mkdtemp(prefix="memguard-"))
 (T / "cgroup" / "build.slice").mkdir()
 os.environ.update(
     HUB_PROC=str(T / "proc"),
+    HUB_ETC_DIR=str(T / "etc"),
     HUB_CGROUP_ROOT=str(T / "cgroup"),
     HUB_SYSTEMD_UNIT_DIR=str(T / "units"),
     HUB_BUILD_WRAPPER=str(T / "units" / "bounded-build"),
@@ -78,12 +80,21 @@ check("no NOTIFY_SOCKET: notify is a no-op", notify.ready() is False)
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
 sock.bind(str(T / "notify.sock"))
 os.environ["NOTIFY_SOCKET"] = str(T / "notify.sock")
-check("the guard can tell systemd it is ready", notify.ready() and sock.recv(64) == b"READY=1")
-check("the watchdog round is a datagram too", notify.watchdog() and sock.recv(64) == b"WATCHDOG=1")
+check(
+    "the guard can tell systemd it is ready",
+    notify.ready() and sock.recv(64) == b"READY=1",
+)
+check(
+    "the watchdog round is a datagram too",
+    notify.watchdog() and sock.recv(64) == b"WATCHDOG=1",
+)
 del os.environ["NOTIFY_SOCKET"]
 
 b = memguard.bounds()
-check("the slice is detected but its files are missing", b["supported"] and not b["ok"] and b["missing"])
+check(
+    "the slice is detected but its files are missing",
+    b["supported"] and not b["ok"] and b["missing"],
+)
 memguard.install_bounds()
 b = memguard.bounds()
 check(
@@ -91,17 +102,31 @@ check(
     b["ok"] and (T / "units" / "bounded-build").stat().st_mode & 0o111,
 )
 check(
-    "the drop-in is the shape systemd reads", "[Slice]" in (T / "units" / "build.slice.d" / "limits.conf").read_text()
+    "the drop-in is the shape systemd reads",
+    "[Slice]" in (T / "units" / "build.slice.d" / "limits.conf").read_text(),
 )
-dropin = T / "units" / "build.slice.d" / "limits.conf"
-dropin.write_text(dropin.read_text().replace("MemoryMax=220M", "MemoryMax=300M"))
-check("a raised limit is not called missing", memguard.bounds()["ok"], memguard.bounds())
+check(
+    "the default preset is the one installed",
+    memguard.bounds()["preset"] == "default",
+    memguard.bounds(),
+)
+memguard.set_option("limits", "large")
+check(
+    "choosing a larger preset writes its hard limit",
+    "MemoryMax=320M" in (T / "units" / "build.slice.d" / "limits.conf").read_text() and memguard.bounds()["ok"],
+    memguard.bounds(),
+)
+memguard.set_option("limits", "default")
 
 u = memguard.unbounded_builds()
 check("only the build outside the slice is named", [x["pid"] for x in u] == [100], u)
 
 h = memguard.headroom()
-check("the headroom carries the slice's own OOM counts", h["slice_events"]["oom_kill"] == 1, h)
+check(
+    "the headroom carries the slice's own OOM counts",
+    h["slice_events"]["oom_kill"] == 1,
+    h,
+)
 check("the low-memory action is read from MemAvailable", h["level"] == "act", h)
 check(
     "a build that replaces the one the guard stopped is acted on again",
@@ -122,11 +147,22 @@ check(
     st,
 )
 events = list((T / "logs").glob("*/event.json"))
-check("the event is written before the action", len(events) == 1 and (events[0].parent / "meminfo").is_file(), events)
+check(
+    "the event is written before the action",
+    len(events) == 1 and (events[0].parent / "meminfo").is_file(),
+    events,
+)
 dmesg_files = list((T / "logs").glob("*/dmesg"))
 check("the event keeps dmesg too", bool(dmesg_files), dmesg_files)
-check("the status file is written for the Box doctor", (T / "run" / "status.json").is_file())
-check("a D-state task is named in the status", any(t["pid"] == 100 for t in st["d_tasks"]), st["d_tasks"])
+check(
+    "the status file is written for the Box doctor",
+    (T / "run" / "status.json").is_file(),
+)
+check(
+    "a D-state task is named in the status",
+    any(t["pid"] == 100 for t in st["d_tasks"]),
+    st["d_tasks"],
+)
 
 # Pressure with no build in the slice is recorded once and never touches the empty slice.
 (T / "cgroup" / "build.slice" / "cgroup.procs").write_text("")
@@ -139,13 +175,57 @@ check(
 )
 
 mem(available=300, swap_free=200)
-memguard.WARN_MB, memguard.ACT_MB = 96, 64
-memguard.WARN_SWAP_PCT, memguard.ACT_SWAP_PCT = 80, 90
+memguard.LEVELS["standard"] = {
+    "warn_mb": 96,
+    "act_mb": 64,
+    "warn_swap_pct": 80,
+    "act_swap_pct": 90,
+}
 h = memguard.headroom()
 check("with enough memory the guard is quiet", h["level"] == "ok", h)
 
 check(
-    "undo removes the slice and wrapper", memguard.main(["undo"]) == 0 and not (T / "units" / "bounded-build").exists()
+    "undo removes the slice and wrapper",
+    memguard.main(["undo"]) == 0 and not (T / "units" / "bounded-build").exists(),
+)
+
+# The settings model: each choice changes the guard or its drop-ins.
+mem(available=50, swap_free=1)
+(T / "cgroup" / "build.slice" / "cgroup.procs").write_text("101\n")
+(T / "cgroup" / "build.slice" / "cgroup.kill").write_text("")
+memguard.set_option("memory_action", "record")
+st = memguard.run(once=True)
+check("record only leaves the build slice alone", st["action"].startswith("recorded"), st)
+memguard.set_option("memory_action", "stop")
+memguard.set_option("levels", "low")
+check(
+    "the selected level is the low one",
+    memguard.levels()["act_mb"] == 32,
+    memguard.levels(),
+)
+memguard.set_option("apt_builds", "bound")
+apt_drop = T / "units" / "apt-daily-upgrade.service.d" / "irate-box-memory.conf"
+check(
+    "bounded apt builds get a hard limit",
+    "MemoryMax=" in apt_drop.read_text(),
+    apt_drop,
+)
+memguard.set_option("apt_builds", "leave")
+check("leaving apt alone removes its drop-in", not apt_drop.exists(), apt_drop)
+memguard.set_option("watchdog_failure", "reboot")
+live = T / "units" / "irate-box-uplink.service.d" / "irate-box-memory.conf"
+check(
+    "the reboot choice writes StartLimitAction",
+    "StartLimitAction=reboot-force" in live.read_text(),
+    live,
+)
+memguard.set_option("watchdog_failure", "restart")
+check("restart removes it again", not live.exists(), live)
+memguard.set_option("details", "all")
+check("every-task detail is saved", memguard.load_settings()["event_details"] == "all")
+check(
+    "the doctor's groups include the guard's choices",
+    {"memguard-limits", "memguard-action"} <= {g["key"] for g in memguard.groups()},
 )
 
 print("all passed" if not fails else f"{fails} failures")

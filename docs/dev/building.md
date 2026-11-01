@@ -206,6 +206,8 @@ sudo bounded-build apt-get install ./driver.deb
 
 The wrapper starts the command in `build.slice` with `MAKEFLAGS=-j1`. If it reaches the memory cap, the cgroup kills the build, not the box. The memory guard (`irate-box-memory-guard.service`) records a low-memory event before it kills the slice; it never reboots on memory pressure. Box doctor reports a missing slice, a build running outside it, the box's headroom, and a silent guard.
 
+The limits, the memory thresholds, whether the guard stops or only records, how package updates build, what a memory event keeps, and whether a watchdog that keeps failing restarts the box are all settings on **Recovery and monitoring**. `install.sh` applies the chosen values, so an update keeps them.
+
 Prefer building off the box: the Pi has `arm-linux-gnueabihf-gcc`, and the armv7 modules can be built there against the Lyra's `/usr/src/linux-headers-<kernel>`.
 
 ## 5. Rebuilding after a change
