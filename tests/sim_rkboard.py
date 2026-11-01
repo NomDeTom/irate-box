@@ -102,6 +102,8 @@ def fake_run(*cmd, timeout=600):
     if cmd[:2] == ("rkdeveloptool", "rl"):
         at, n = int(cmd[2]) * 512, int(cmd[3])  # the first sector, then a length in bytes, as the real tool takes
         back = bytes(card[at : at + n])
+        # Past what a test lays out, the flash reads as erased NAND does: 0xFF, the whole length asked for.
+        back += b"\xff" * (n - len(back))
         Path(cmd[4]).write_bytes(back[:-1] + b"?" if outcome["corrupt"] else back)
     rc = outcome["ef"] if cmd[:2] == ("rkdeveloptool", "ef") else 0
     if cmd[:2] == ("rkdeveloptool", "ef") and rc == 0:
