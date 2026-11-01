@@ -13,10 +13,13 @@ import os
 import socket
 import ssl
 from pathlib import Path
+from urllib.parse import urlsplit
 
 LIMIT = 64 << 10
 TIMEOUT = 5
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
+# The front's own sign-in page (config/irate-box.nginx and config/Caddyfile): the paths, not a word in one.
+SIGN_IN_PATHS = frozenset({"/account", "/account.html"})
 
 
 def front_address():
@@ -98,18 +101,20 @@ def answers(r, websocket=False):
 
 
 def gate(r):
-    """A sign-in asked for: 401, or a redirect to the hub's account page."""
-    return r["http"] and (
-        r["status"] == 401
-        or (r["status"] in (301, 302, 303, 307, 308) and "account" in r["headers"].get("location", ""))
-    )
+    """A sign-in asked for: 401, or a redirect to the hub's own sign-in page. The Location's path is compared
+    exactly, so an add-on's /myaccount or /?account=new is not mistaken for the hub's login."""
+    if not r["http"]:
+        return False
+    if r["status"] == 401:
+        return True
+    if r["status"] not in (301, 302, 303, 307, 308):
+        return False
+    return urlsplit(r["headers"].get("location", "")).path in SIGN_IN_PATHS
 
 
 def through_front(path, front=None, websocket=False):
     """GET path through the web server, following its redirects to an app's own origin (on loopback, up to three)
     but not to a sign-in. The last answer, and where it came from. websocket: asked with the opening handshake."""
-    from urllib.parse import urlsplit
-
     host, port = front or front_address()
     tls, where = False, path
     r = {"http": False, "error": "not asked"}

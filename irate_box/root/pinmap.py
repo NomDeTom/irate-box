@@ -138,6 +138,16 @@ LYRA_ZERO = {
     40: ("GPIO0_C2", 18, 18, ""),
 }
 DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
+# The RK3506's GPIO controllers by device address (Firefly's RK3506 and Luckfox's Lyra manuals): GPIO0..GPIO4.
+# gpiochipN is probe order, so a PMIC's or an expander's controller added before them shifts every number.
+RK3506_GPIO_BANK = {
+    "ff940000": 0,
+    "ff870000": 1,
+    "ff1c0000": 2,
+    "ff1d0000": 3,
+    "ff1e0000": 4,
+}
+GPIO_SYS = Path(os.environ.get("HUB_GPIO_SYS", "/sys/bus/gpio/devices"))
 CHIP_RE = re.compile(r"^gpiochip(\d+)\s+-\s+\d+\s+lines:")
 LINE_COUNT_RE = re.compile(r"^\s*line\s+\d+:")
 # libgpiod v2: name, direction, then an optional active-low and an optional consumer=… (quoted on the Pi, bare on the
@@ -267,6 +277,34 @@ def _pin(row):
     return "gnd" if name == "GND" else "5v" if name in ("5V", "VSYS") else "3v3"
 
 
+def _chip_address(chip):
+    """The controller's memory address, from /sys/bus/gpio/devices/gpiochipN (or its device link), or ""."""
+    for base in (GPIO_SYS / chip, GPIO_SYS / chip / "device"):
+        try:
+            target = base.resolve(strict=True)
+        except OSError:
+            continue
+        for part in reversed(target.parts):
+            found = re.fullmatch(r"([0-9a-fA-F]{8})(?:\.gpio)?", part)
+            if found:
+                return found.group(1).lower()
+    return ""
+
+
+def chip_banks(lines):
+    """{chip: GPIO bank} for the Rockchip controllers in lines, by device address. Only when sysfs names none
+    (an offline snapshot) does it fall back to gpiochipN, as before."""
+    chips = sorted({line["chip"] for line in lines})
+    banks = {}
+    for chip in chips:
+        bank = RK3506_GPIO_BANK.get(_chip_address(chip))
+        if bank is not None:
+            banks[chip] = bank
+    if banks:
+        return banks
+    return {chip: int(found.group(1)) for chip in chips if (found := re.fullmatch(r"gpiochip(\d+)", chip)) is not None}
+
+
 def board_lines(board, lines, model_name=""):
     """The header, as [{pin, type, name, gpio, chip, line, rmio, role, consumer, used}], for the Pi and the
     Lyra Zero W; every line, keyed by chip and number, for a board whose header is not known."""
@@ -292,11 +330,8 @@ def board_lines(board, lines, model_name=""):
             out.append(row)
         return out
     if board == "lyra" and "zero" in model_name.lower():
-        by_gpio = {}
-        for line in lines:
-            found = re.fullmatch(r"gpiochip(\d+)", line["chip"])
-            if found:
-                by_gpio[int(found.group(1)) * 32 + line["line"]] = line
+        banks = chip_banks(lines)
+        by_gpio = {banks[line["chip"]] * 32 + line["line"]: line for line in lines if line["chip"] in banks}
         out = []
         for pin, (name, gpio, rmio, role) in sorted(LYRA_ZERO.items()):
             found = by_gpio.get(gpio, {}) if gpio is not None else {}

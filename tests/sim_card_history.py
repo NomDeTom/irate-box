@@ -43,6 +43,8 @@ from irate_box.hub import cardhistory
 from irate_box.msg import render
 from irate_box.root import health
 
+REAL_RUN = health.run
+
 fails = 0
 
 
@@ -771,14 +773,41 @@ check(
     bad == 3 and f["status"] == "problem" and f["summary"]["args"] == {"n": 3},
     f,
 )
-health.run = lambda *c, **k: type("R", (), {"returncode": 127, "stdout": "", "stderr": "timed out"})()
+health.run = lambda *c, **k: type(
+    "R", (), {"returncode": health.RUN_TIMEOUT, "stdout": "", "stderr": "Input/output error\n" * 2}
+)()
 health.card_scan()
 f = health.check_card_health()[0]
 check(
-    "  a read stopped at its limit: said as stopped with no answer, and kept as ended",
-    any(f"stopped after {health.CARD_SCAN_MAX // 60} min" in e for e in f["evidence"])
-    and health._card_tests()["scan"].get("done"),
-    f["evidence"],
+    "  a read stopped at its limit: cut is a problem, said as stopped, and the errors before it still counted",
+    f["status"] == "problem"
+    and any("stopped at its limit" in e for e in f["evidence"])
+    and f["summary"]["args"] == {"n": 2}
+    and "2 unreadable places before it was stopped at its limit" in " ".join(f["evidence"])
+    and health._card_tests()["scan"].get("done")
+    and health._card_tests()["scan"].get("cut") == "timeout",
+    f,
+)
+health.run = lambda *c, **k: type("R", (), {"returncode": 127, "stdout": "", "stderr": "dd: not found"})()
+health.card_scan()
+f = health.check_card_health()[0]
+check(
+    "  a read that could not run (dd is not there): cut, a problem, and said differently from a timeout",
+    f["status"] == "problem"
+    and f["summary"]["id"] == "card-health.scan-cut"
+    and health._card_tests()["scan"].get("cut") == "error",
+    f,
+)
+out = REAL_RUN(
+    "python3",
+    "-c",
+    'import sys, time; sys.stderr.write("Input/output error\\n"); sys.stderr.flush(); time.sleep(5)',
+    timeout=1,
+)
+check(
+    "  run() keeps what the child said before its time limit, and says it was the limit",
+    out.returncode == health.RUN_TIMEOUT and "Input/output error" in out.stderr,
+    out,
 )
 rec = health._card_tests()
 rec["scan"] = {"started": time.time() - 3600}

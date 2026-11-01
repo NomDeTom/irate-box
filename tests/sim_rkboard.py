@@ -207,7 +207,7 @@ check(
     (ran, said),
 )
 # An erased NAND reads as 0xFF (a Lyra Zero W's, read back with rkdeveloptool rl after ef, 2026-10-30).
-card[:] = b"\xff" * (64 << 10)
+card[:] = b"\xff" * (NAND["sectors"] * 512)
 outcome["ef"] = 1
 check("  the erase failing: said, the board not reset", refused(rkboard.erase) == "rkboard.erase-failed")
 outcome["ef"] = 0
@@ -362,14 +362,20 @@ check(
 # The real tool (the kit's rkdeveloptool 1.0.0) takes rl's length in bytes: "rl 0 512" read 512 bytes, "rl 64 4096"
 # read back the 4 KiB written at sector 64, and a length that is not a multiple of 512 is refused. Found on a Lyra
 # Zero W (2026-10-30), where an erased NAND then read as "data this box does not recognise".
-card[:] = b"\xff" * (32 << 20)
+card[:] = b"\xff" * (64 << 20)
 ran.clear()
-seen = rkboard.contents({"sectors": 523264})
+seen = rkboard.contents({"sectors": 131072})
 rl = [c for c in ran if c[:2] == ("rkdeveloptool", "rl")]
 check(
-    "the flash read asks for 16 MiB in bytes, and an erased NAND (0xFF) is blank",
-    rl and rl[0][3] == str(16 << 20) and seen["read"] and seen["blank"],
+    "the flash read asks for 16 MiB first, samples each 16 MiB above it, and all-blank is blank",
+    rl and rl[0][3] == str(16 << 20) and len(rl) == 4 and seen["read"] and seen["blank"],
     (rl, seen),
+)
+card[:] = b"\xff" * (48 << 20)
+card[32 << 20 : (32 << 20) + 6] = b"UBI#\0\0"
+check(
+    "  a blank boot area with UBI data at 32 MiB is not blank (it asks before erasing the logs)",
+    not rkboard.contents({"sectors": 131072})["blank"],
 )
 card[:] = b"\xff" * 4096 + b"UBI#" + b"\xff" * 4096
 check("  a flash with any data on it is not blank", not rkboard.contents({"sectors": 523264})["blank"])

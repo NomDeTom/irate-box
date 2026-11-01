@@ -142,8 +142,19 @@ def _gb(mb):
     return f"{mb / 1024:.1f}"
 
 
+READ_SECTORS = 32768  # 16 MiB: enough for the boot area and UBI's first volume headers
+SAMPLE_BYTES = 4096  # the first block of each 16 MiB above the boot area, where logs and state begin at 32 MiB
+
+
+def _blank(data):
+    # An erased NAND reads as 0xFF (the Lyra Zero W's after rkdeveloptool ef); all zero is blank too.
+    return bool(data) and (data.count(0xFF) == len(data) or not any(data))
+
+
 def contents(shown):
-    """What the board's onboard flash holds, read (rkdeveloptool rl) before an erase: UBI's volume names, or blank."""
+    """What the board's onboard flash holds, read (rkdeveloptool rl) before an erase: UBI's volume names, or blank.
+    "Blank" means every sample reads as erased, not only the first 16 MiB: a NAND whose boot area was erased but
+    whose logs and state (from 32 MiB) are intact must still be confirmed before it is erased."""
     sectors = shown.get("sectors") or 0
     if not sectors:
         return {"read": False, "blank": False, "ubi": False, "names": []}
@@ -152,18 +163,29 @@ def contents(shown):
     try:
         # rkdeveloptool rl takes its first sector and a length in bytes ("Length must be a multiple of sector size
         # (512)", the kit's 1.0.0 on a Lyra Zero W, 2026-10-30): 16 MiB, or the whole flash if smaller.
-        read = run("rkdeveloptool", "rl", "0", str(min(sectors, 32768) * SECTOR), str(path), timeout=300)
+        read = run("rkdeveloptool", "rl", "0", str(min(sectors, READ_SECTORS) * SECTOR), str(path), timeout=300)
         if read.returncode:
             return {"read": False, "blank": False, "ubi": False, "names": []}
         data = path.read_bytes()
+        blank = _blank(data)
+        if blank and sectors > READ_SECTORS:
+            for at in range(READ_SECTORS, sectors, READ_SECTORS):
+                length = min(SAMPLE_BYTES, (sectors - at) * SECTOR) // SECTOR * SECTOR
+                if not length:
+                    break
+                more = run("rkdeveloptool", "rl", str(at), str(length), str(path), timeout=300)
+                if more.returncode:
+                    return {"read": False, "blank": False, "ubi": False, "names": []}
+                sample = path.read_bytes()
+                if not sample or not _blank(sample):
+                    blank = False
+                    break
     except OSError:
         return {"read": False, "blank": False, "ubi": False, "names": []}
     finally:
         path.unlink(missing_ok=True)
     words = {w.lower() for w in re.findall(rb"[ -~]{3,}", data)}
     names = sorted({n for n in words if n in (b"rescue", b"logs", b"state", b"hub", b"irate")})
-    # An erased NAND reads as 0xFF (the Lyra Zero W's after rkdeveloptool ef); all zero is blank too.
-    blank = bool(data) and (data.count(0xFF) == len(data) or not any(data))
     return {"read": True, "blank": blank, "ubi": b"UBI#" in data, "names": [n.decode() for n in names]}
 
 
