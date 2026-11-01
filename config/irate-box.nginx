@@ -400,10 +400,12 @@ server {
 	# reached through this front so HTTPS gives the page wss:// and port 6668 stays closed.
 	location = /gamja { return 301 /gamja/; }
 	location ^~ /gamja/ {
+		if ($irate_box_off_inspircd) { return 404; }
 		root @STATIC@;
 		try_files $uri $uri/ /gamja/index.html;
 	}
 	location = /irc-ws {
+		if ($irate_box_off_inspircd) { return 404; }
 		proxy_read_timeout 1h;
 		proxy_pass http://127.0.0.1:6668;
 	}

@@ -9,7 +9,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.hub import manifests
+from irate_box.hub import access, manifests
 
 fails = 0
 
@@ -63,6 +63,8 @@ check(
     "  the config has the limits, the cloak, no operator, and #lobby for everyone",
     'localmax="5"' in config
     and 'globalmax="5"' in config
+    and 'proxyranges="127.0.0.0/8"' in config
+    and "Any page that sends an Origin may open the socket" in config
     and '<module name="cloak"' in config
     and '<module name="cloak_sha256"' in config
     and 'modes="x"' in config
@@ -90,6 +92,12 @@ check(
     and "/irc-ws" in (REPO / "config/irate-box.nginx").read_text()
     and "/irc-ws" in (REPO / "config/Caddyfile").read_text()
     and "/gamja/" in (REPO / "web/irc.html").read_text(),
+)
+check(
+    "the add-on has an access switch, and /gamja and /irc-ws are switched off with it",
+    "inspircd" in access.ROUTED
+    and "$irate_box_off_inspircd" in (REPO / "config/irate-box.nginx").read_text()
+    and "/inspircd-off.caddy*" in (REPO / "config/Caddyfile").read_text(),
 )
 check(
     "the Debian package suggests it, and About names its licence",

@@ -2664,8 +2664,12 @@ if [ "$WITH_INSPIRCD" = 1 ]; then
 # the page wss:// and this port is never opened on the network.
 <bind address="127.0.0.1" port="6668" type="clients" hook="websocket">
 
-<websocket defaultmode="text" allowmissingorigin="no">
-# gamja is served by the same front; a page elsewhere on the network cannot open the socket.
+# InspIRCd sees every client as the front (127.0.0.1), so it must trust the X-Forwarded-For the front
+# sends: then localmax applies to each guest's address, not to all five browsers together.
+<websocket defaultmode="text" allowmissingorigin="no" proxyranges="127.0.0.0/8">
+# Any page that sends an Origin may open the socket: the box's own address is not fixed (the uplink's,
+# the hotspot's, a name), so there is no list to allow. allowmissingorigin="no" still refuses one
+# that sends no Origin at all.
 <wsorigin allow="*">
 
 <connect allow="*" timeout="60" threshold="10" pingfreq="120" hardsendq="262144" softsendq="8192" recvq="8192" localmax="5" globalmax="5" maxchans="10" modes="x">
