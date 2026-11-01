@@ -259,7 +259,21 @@ check("the power back: a recovery is noted", [e["kind"] for e in cw.power_tick(n
 cw.POWER.write_text(json.dumps([{"at": now - 30 * 3600, "kind": "power-fail", "text": "the mains is gone"}]))
 found = {f["id"]: f for f in health.check_power(now=now)}
 check(
-    "a failure longer than the window, with nothing since: out of view, as the window says",
+    "a failure longer than the window with no recovery: still shown, said as not come back",
+    found["power"]["status"] == "problem" and "power.failed.still" in message_ids(found["power"]),
+    found["power"],
+)
+cw.POWER.write_text(
+    json.dumps(
+        [
+            {"at": now - 30 * 3600, "kind": "power-fail", "text": "the mains is gone"},
+            {"at": now - 29 * 3600, "kind": "power-restored", "text": "the power is back"},
+        ]
+    )
+)
+found = {f["id"]: f for f in health.check_power(now=now)}
+check(
+    "  the same failure, since recovered, is out of view: the window still bounds a failure that ended",
     found["power"]["status"] == "ok",
     found["power"],
 )

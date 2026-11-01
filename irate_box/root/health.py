@@ -133,9 +133,19 @@ def watched_units():
         return {}
 
 
+RUN_TIMEOUT = 124  # run()'s return code when the child was stopped at its time limit (127 is "could not run")
+
+
+def _output(value):
+    return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+
+
 def run(*cmd, timeout=60, **kw):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)  # noqa: TID251
+    except subprocess.TimeoutExpired as exc:
+        # What it printed before it was stopped is kept (a card's I/O errors, counted before a hang).
+        return subprocess.CompletedProcess(cmd, RUN_TIMEOUT, _output(exc.stdout), _output(exc.stderr) or str(exc))
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
@@ -2561,8 +2571,8 @@ def _power_failures(events, since):
     one failure still happening, not two, and counting the pair as two while missing the case where the failure
     began before the window and is still on is both wrong at once. So the events are walked in order, a failure
     runs from a power-fail (or a battery-low that came with no power-fail, after the events rolled over) to the
-    power coming back, and it is in the window when its last event is. The last event's words are kept, being
-    what the supply says now."""
+    power coming back, and it is in the window when its last event is or when it has not come back at all: a
+    failure still on is not hidden by its age. The last event's words are kept, being what the supply says now."""
     out, live = [], None
     for e in sorted((e for e in events if isinstance(e.get("at"), (int, float))), key=lambda e: e["at"]):
         kind = e.get("kind")
@@ -2577,7 +2587,7 @@ def _power_failures(events, since):
         elif kind == "power-restored" and live is not None:
             live["back"] = True
             live = None
-    return [f for f in out if f["at"] >= since]
+    return [f for f in out if f["at"] >= since or not f["back"]]
 
 
 def check_power(now=None):
@@ -2585,7 +2595,7 @@ def check_power(now=None):
     as crashwatch records them (Part 3, step 2). An undervoltage is a count and its times; a power failure is a
     problem, and so is one still happening: a UPS that ran the box down off the mains keeps saying its battery is
     low, and that is the same failure, not a new one. The last 24 hours, not since midnight, so a failure late at
-    night stays in view."""
+    night stays in view; a failure that has not come back is shown whatever its age."""
     from irate_box.root import crashwatch as cw
 
     now = time.time() if now is None else now
@@ -4863,22 +4873,29 @@ def check_card_health():
             + (f" (first test: {speeds[0]['mbps']} MB/s)" if len(speeds) > 1 else "")
         )
     scan = tests.get("scan")
+    cut = (scan or {}).get("cut")
     if scan and scan.get("done"):
-        evidence.append(
-            f"whole-card read on {time.strftime('%Y-%m-%d', time.localtime(scan['done']))}: "
-            + (
-                f"{scan['bad']} unreadable places"
-                if scan.get("bad")
-                else "every part read"
-                if not scan.get("cut")
-                else f"stopped after {CARD_SCAN_MAX // 60} min with no answer"
+        if scan.get("bad"):
+            stopped = (
+                " before it was stopped at its limit"
+                if cut in ("timeout", True)
+                else " before the read could not run"
+                if cut
+                else ""
             )
-        )
+            said = f"{scan['bad']} unreadable places{stopped}"
+        elif cut in ("timeout", True):
+            said = f"stopped after {CARD_SCAN_MAX // 60} min with no answer"
+        elif cut:
+            said = "stopped before it finished: the read could not run"
+        else:
+            said = "every part read"
+        evidence.append(f"whole-card read on {time.strftime('%Y-%m-%d', time.localtime(scan['done']))}: {said}")
     evidence += errors[-3:]
     emmc_worn = info["type"] == "MMC" and (
         info["pre_eol"] in ("0x02", "0x03") or any(v in ("0x09", "0x0a", "0x0b") for v in info["life_time"].split())
     )
-    bad = bool(errors) or read_only or bool(scan and scan.get("bad")) or emmc_worn
+    bad = bool(errors) or read_only or bool(scan and (scan.get("bad") or cut)) or emmc_worn
     status = "problem" if bad else "warn" if info["ext4_errors"] or info["manfid"] in (0, -1) else "ok"
     summary = (
         M(
@@ -4892,6 +4909,17 @@ def check_card_health():
             n=scan["bad"],
         )
         if scan and scan.get("bad")
+        else M(
+            "card-health.scan-timeout",
+            "The whole-card read was stopped after {n} min with no answer, so the card is not known to be sound.",
+            n=CARD_SCAN_MAX // 60,
+        )
+        if cut in ("timeout", True)
+        else M(
+            "card-health.scan-cut",
+            "The whole-card read could not run, so the card is not known to be sound. Check that dd is installed.",
+        )
+        if cut
         else M(
             "card-health.errors", "The kernel reported {n} errors from the card since the box started.", n=len(errors)
         )
@@ -5060,8 +5088,10 @@ def card_scan():
         timeout=CARD_SCAN_MAX,
     )
     bad = sum(1 for line in out.stderr.splitlines() if "Input/output error" in line)
-    # 127 is run()'s own "it did not finish": too long, or dd not there. Either way the read stopped early.
-    rec["scan"] = {**(rec.get("scan") or {}), "done": time.time(), "bad": bad, "cut": out.returncode == 127}
+    # A read that did not finish is not a clean card: it was stopped at its limit, or it could not run at all
+    # (dd is not there). run() says which (RUN_TIMEOUT); the stderr above keeps what it said before it stopped.
+    cut = "timeout" if out.returncode == RUN_TIMEOUT else "error" if out.returncode else ""
+    rec["scan"] = {**(rec.get("scan") or {}), "done": time.time(), "bad": bad, "cut": cut}
     _card_tests_save(rec)
     return bad
 
