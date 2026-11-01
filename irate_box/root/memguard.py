@@ -303,11 +303,17 @@ def _write_status(data):
         pass
 
 
+def new_build(acted, acted_pids, pids):
+    """Whether the slice holds a build other than the one the guard stopped: a new one is acted on again."""
+    return acted and bool(pids) and sorted(pids) != sorted(acted_pids)
+
+
 def run(once=False):
     notify.ready()
     warn_since = act_since = None
     warned = acted = critical = noted = False
     acted_at = last_status = 0.0
+    acted_pids = []
     while True:
         h = headroom()
         now = h["at"]
@@ -316,6 +322,7 @@ def run(once=False):
             warn_since = act_since = None
             warned = acted = critical = noted = False
             acted_at = 0.0
+            acted_pids = []
         elif level == "warn":
             warn_since = warn_since or now
             act_since = None
@@ -328,6 +335,10 @@ def run(once=False):
         if level != "ok":
             extra = {"unbounded": unbounded_builds(), "d_tasks": d_tasks()}
         pids = build_pids() if level == "act" else []
+        if level == "act" and new_build(acted, acted_pids, pids):
+            # A build started after the one stopped: this episode now has something new to act on.
+            acted = critical = False
+            acted_at = 0.0
         if level == "warn" and now - (warn_since or now) >= WARN_AFTER and not warned:
             warned = True
             folder = record("warn", {**h, **extra, "build_pids": pids})
@@ -338,7 +349,7 @@ def run(once=False):
                 _sysrq("m")
                 _sysrq("w")
                 action = f"{kill_builds()}: {folder}"
-                acted, acted_at = True, now
+                acted, acted_at, acted_pids = True, now, sorted(pids)
             elif not acted and not noted and not pids and now - (act_since or now) >= ACT_AFTER:
                 # Nothing bounded to stop: record the pressure once, but never touch an empty slice.
                 folder = record("pressure", {**h, **extra, "build_pids": []})

@@ -103,6 +103,13 @@ check("only the build outside the slice is named", [x["pid"] for x in u] == [100
 h = memguard.headroom()
 check("the headroom carries the slice's own OOM counts", h["slice_events"]["oom_kill"] == 1, h)
 check("the low-memory action is read from MemAvailable", h["level"] == "act", h)
+check(
+    "a build that replaces the one the guard stopped is acted on again",
+    memguard.new_build(True, [101], [102])
+    and not memguard.new_build(True, [101], [101])
+    and not memguard.new_build(True, [101], [])
+    and not memguard.new_build(False, [101], [102]),
+)
 
 real_run = memguard._run
 memguard._run = lambda *cmd, **kw: (
