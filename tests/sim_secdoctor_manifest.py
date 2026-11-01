@@ -30,8 +30,10 @@ fails = 0
 
 
 def check(name, cond, info=""):
+    # info is for the call sites' own reading only. A finding's evidence can hold the secret's path,
+    # and the code scanner reads printing that as clear-text logging, so the output names the check only.
     global fails
-    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    print(("PASS " if cond else "FAIL ") + name)
     fails += not cond
 
 
