@@ -74,7 +74,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       && /free/.test(pins[1].textContent),
     pins.map((p) => [p.className, p.textContent]),
   );
-  check('  the claims list names the function', /gpiochip0 line 6: ff120000\.spi/.test(text('pins-claims')), text('pins-claims'));
+  check('  the claims list names the function', /ff120000\.spi/.test(text('pins-claims')), text('pins-claims'));
   // A known 40-pin header: left/right rows, then the table and the copyable text.
   const lyra = map(Date.now() / 1000);
   lyra.model = 'Luckfox Lyra Zero W';
@@ -90,10 +90,19 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     'a known header: two pins a row, the used one red and the free/power ones said',
     d.querySelectorAll('#pins-map .pinrow').length === 2
       && d.querySelectorAll('#pins-map .pin.used').length === 1
-      && /GPIO0_A0/.test(text('pins-map')) && /RM_IO0 · TP\+RTC · GPIO 0 · ff060000\.i2c/.test(text('pins-map')),
+      && /GPIO0_A0/.test(text('pins-map')) && /ff060000\.i2c · RM_IO0/.test(text('pins-map')),
     text('pins-map'),
   );
-  check('  every pin is in the table', d.querySelectorAll('#pins-table tbody tr').length === 4 && /GPIO0_A0/.test(text('pins-table')), text('pins-table'));
+  check(
+    '  the header does not mix in the board role; the roles table has it separately',
+    !/TP\+RTC/.test(text('pins-map')) && /TP\+RTC/.test(text('pins-roles')) && /GPIO0_A0/.test(text('pins-roles')),
+    [text('pins-map'), text('pins-roles')],
+  );
+  check(
+    '  in use now is a table of claims, not every pin again',
+    d.querySelectorAll('#pins-claims tbody tr').length === 1 && /ff120000\.spi/.test(text('pins-claims')),
+    text('pins-claims'),
+  );
   check('  copy is offered once a map is drawn', !d.getElementById('pins-copy').disabled);
   state = { ...state, pending: 1, results: [] };
   d.getElementById('pins-scan').click();
