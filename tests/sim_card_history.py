@@ -307,12 +307,14 @@ def run(*cmd, timeout=60, **kw):
         (T / "nand-logs.conf").unlink()
     elif cmd[0] == "journalctl" and "-k" in cmd:
         out = said_kernel["log"]
-    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "apt-daily.service":
-        out = "ProtectSystem=strict\nReadWritePaths=/var/lib/apt -/var/cache/apt /run/irate-box-apt\nStateDirectory=\nBindPaths=\n"
-    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "ab-B-install.service":
-        out = "LoadState=not-found\nProtectSystem=no\n"  # as box 181 answered for an A/B trial's ended unit
-    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "meshtasticd.service":
-        out = "ProtectSystem=no\nReadWritePaths=\n"
+    elif cmd[:2] == ("systemctl", "show"):
+        unit = cmd[cmd.index("--") + 1] if "--" in cmd else cmd[2]
+        out = {
+            "apt-daily.service": "ProtectSystem=strict\nReadWritePaths=/var/lib/apt -/var/cache/apt /run/irate-box-apt\nStateDirectory=\nBindPaths=\n",
+            # as box 181 answered for an A/B trial's ended unit
+            "ab-B-install.service": "LoadState=not-found\nProtectSystem=no\n",
+            "meshtasticd.service": "ProtectSystem=no\nReadWritePaths=\n",
+        }.get(unit, "")
     elif cmd[0] == "systemctl" and cmd[1] == "is-active":
         out = "inactive\n"
     elif cmd[0] == "systemd-analyze":
@@ -357,6 +359,21 @@ check(
     "  a unit systemd no longer knows (an ended transient run) is not reported, however much it wrote",
     "card-writer:ab-B-install.service" not in got,
     sorted(got),
+)
+ran.clear()
+bad = health._service_writes_findings(
+    {"days": [1], "week_units": [("--host=evil.example.service", 3 << 30)]}, "/dev/mmcblk0p2"
+)
+check(
+    "  a unit name that would be a systemctl option is refused before systemctl runs",
+    bad == [] and not ran and health._unit_writes("--host=evil.example.service", "/dev/mmcblk0p2") == (False, []),
+    ran,
+)
+health._unit_writes("meshtasticd.service", "/dev/mmcblk0p2")
+check(
+    "  systemctl show puts an option terminator before the unit",
+    any(c[:2] == ("systemctl", "show") and "--" in c for c in ran),
+    ran,
 )
 check(
     "  one confined to its paths: those on the SD card listed, the one in RAM not",
