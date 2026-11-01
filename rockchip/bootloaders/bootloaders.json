@@ -1,0 +1,29 @@
+{
+ "about": "Bootloaders the Rockchip boards page writes to a Lyra's onboard SPI NAND (irate_box/root/rkboard.py). The files are not shipped: stage them in <state>/rk-bootloaders/<id>/ with a SHA256SUMS beside them. The offsets are the tested RK3506 NAND layout: idbloader.img at 0 and 4 MiB, u-boot.itb at 8 MiB.",
+ "source": {
+  "nand-uboot": "Kwiboo c6782a3 plus the SPI-NAND SPL patches (05/15 and 06/15), built 2026-11-01",
+  "stock": "the bootloader Luckfox ships with the Lyra Zero W"
+ },
+ "bootloaders": [
+  {
+   "id": "stock",
+   "title": "Original bootloader",
+   "summary": "The bootloader Luckfox ships with the Lyra Zero W. Its files are not in irate-box: put them in rk-bootloaders/stock with their SHA256SUMS.",
+   "files": [
+    {"name": "idbloader.img", "offset": 0},
+    {"name": "idbloader.img", "offset": 4194304},
+    {"name": "u-boot.itb", "offset": 8388608}
+   ]
+  },
+  {
+   "id": "nand-uboot",
+   "title": "irate-box NAND U-Boot",
+   "summary": "The U-Boot built 2026-11-01 whose SPL loads U-Boot proper from the SPI NAND. Its checksums are shipped, so a staged copy is checked before it is written.",
+   "files": [
+    {"name": "idbloader.img", "offset": 0, "sha256": "da083aea91ed16ae6376b461f31e426b2325179bc0b51622ec7fa2230c8051ba"},
+    {"name": "idbloader.img", "offset": 4194304, "sha256": "da083aea91ed16ae6376b461f31e426b2325179bc0b51622ec7fa2230c8051ba"},
+    {"name": "u-boot.itb", "offset": 8388608, "sha256": "9fedb782748da6c281f4cc8cbca8d3ef9b9e76f71a5035536384226c44d6e06b"}
+   ]
+  }
+ ]
+}
