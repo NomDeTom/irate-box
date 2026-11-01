@@ -570,9 +570,15 @@ check(
     rescue_build.returncode == 0
     and "losetup" in rescue_build.stdout
     and "extlinux.conf" in rescue_build.stdout
-    and "rescue.root /dev/sda2" in rescue_build.stdout
+    and "rescue.root /dev/mmcblk0p2" in rescue_build.stdout
     and "mkfs.ext4" in rescue_build.stdout,
     (rescue_build.returncode, rescue_build.stdout, rescue_build.stderr),
+)
+tool = (REPO / "tools" / "make-rescue-image.sh").read_text()
+check(
+    "  the real run writes the squashfs to p2 (not only its dry run), and refuses one over 256 MiB",
+    'umount "$mnt"\ndd if="$squashfs" of="${loop}p2" bs=4M conv=fsync' in tool
+    and "the squashfs partition is 256 MiB" in tool,
 )
 
 # The real tool (the kit's rkdeveloptool 1.0.0) takes rl's length in bytes: "rl 0 512" read 512 bytes, "rl 64 4096"

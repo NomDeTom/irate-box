@@ -7,7 +7,7 @@
 # tested USB stick used. It needs root (losetup, mount) and refuses to overwrite an image that is not its own.
 set -euo pipefail
 kernel="" dtb="" initramfs="" squashfs="" out="$PWD/alpine-rescue.img"
-size_mib=512 rootdev="/dev/sda2" dry=0
+size_mib=512 rootdev="/dev/mmcblk0p2" dry=0
 console="console=ttyS2,115200n8 console=tty1 console=ttyFIQ0,1500000 earlyprintk rootwait"
 usage() {
 	echo "usage: $0 --kernel FILE --dtb FILE --initramfs FILE --squashfs FILE [--out FILE] [--size-mib N] [--root DEV] [--console STRING] [--dry-run]"
@@ -36,6 +36,11 @@ if [ "$dry" = 0 ]; then
 	for f in "$kernel" "$dtb" "$initramfs" "$squashfs"; do
 		[ -r "$f" ] || { echo "make-rescue-image: no $f" >&2; exit 1; }
 	done
+	squash_bytes=$(stat -c %s "$squashfs")
+	[ "$squash_bytes" -le $((256 * 1024 * 1024)) ] || {
+		echo "make-rescue-image: $squashfs is $squash_bytes bytes; the squashfs partition is 256 MiB" >&2
+		exit 1
+	}
 	[ ! -e "$out" ] || { echo "make-rescue-image: $out exists; move it first" >&2; exit 1; }
 	command -v sfdisk >/dev/null || { echo "make-rescue-image: sfdisk is not installed (util-linux)" >&2; exit 1; }
 	command -v mkfs.vfat >/dev/null || { echo "make-rescue-image: mkfs.vfat is not installed (dosfstools)" >&2; exit 1; }
@@ -93,6 +98,7 @@ printf '%s' "$conf" >"$mnt/extlinux.conf"
 printf '%s' "$conf" >"$mnt/extlinux/extlinux.conf"
 sync
 umount "$mnt"
+dd if="$squashfs" of="${loop}p2" bs=4M conv=fsync status=none
 if [ "$((p3_start))" -le "$last" ]; then mkfs.ext4 -q -L rescue-data "${loop}p3"; fi
 sync
 losetup -d "$loop"

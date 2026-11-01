@@ -21,11 +21,11 @@ sudo tools/make-rescue-image.sh \
   --initramfs  ~/alpine-rescue/initramfs-rescue7.gz \
   --squashfs   ~/alpine-rescue/alpine-rescue-final15.squashfs \
   --out        /var/lib/hub/rk-images/alpine-rescue.img \
-  --root       /dev/sda2
+  --root       /dev/mmcblk0p2
 ```
 
-`--root` is the partition the rescue mounts (`sda2` for a USB stick, `mmcblk0p2` for a card in the
-board). Make the `.sha256` beside the image from its `.BUILD.txt`:
+`--root` is the partition the rescue mounts (`mmcblk0p2` for a card in the board, `sda2` for a USB
+stick). Make the `.sha256` beside the image from its `.BUILD.txt`:
 
 ```sh
 sudo awk '/^sha256 / {print $2 "  alpine-rescue.img"}' \
