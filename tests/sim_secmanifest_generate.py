@@ -121,6 +121,16 @@ check(
     stat.S_IMODE(target.stat().st_mode) == 0o644 and link.is_symlink(),
     oct(stat.S_IMODE(target.stat().st_mode)),
 )
+fifo = T / "fifo"
+os.mkfifo(fifo)
+manifest["secrets"] = {str(fifo): {"owner": me, "group": my_group, "mode": "600", "readers": ["root"]}}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+secmanifest.apply_secrets()
+check(
+    "a FIFO is skipped without a blocking open (the hub could plant one), and left a FIFO",
+    stat.S_ISFIFO(fifo.lstat().st_mode),
+    oct(stat.S_IMODE(fifo.lstat().st_mode)),
+)
 
 print(f"{fails} failure(s)" if fails else "ok")
 sys.exit(1 if fails else 0)

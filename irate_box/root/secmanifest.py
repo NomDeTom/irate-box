@@ -387,7 +387,8 @@ def apply_secrets():
         paths = sorted(Path("/").glob(pattern.lstrip("/"))) if "*" in pattern else [Path(pattern)]
         for path in paths:
             try:
-                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+                # O_NONBLOCK: a hub-planted FIFO must not block this root process on open; fstat then skips it.
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0))
             except OSError:
                 continue
             try:
