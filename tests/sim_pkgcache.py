@@ -96,6 +96,16 @@ def fake_run(*cmd, timeout=0):
     return R(1 if len(calls) == 1 else 0)
 
 
+recorded = (Path(__file__).parent / "fixtures/dpkg-query-installed.txt").read_text()
+with mock.patch.object(pkgcache, "run", lambda *a, **k: R(0, recorded, "")):
+    got = pkgcache.installed()
+check(
+    "installed() reads dpkg-query's real tab-separated reply (not the two characters backslash-t)",
+    got == {"adduser": "3.152", "systemd": "257.13-1~deb13u1"},
+    got,
+)
+
+
 target = T / "etc-file"
 target.write_text("x")
 with (

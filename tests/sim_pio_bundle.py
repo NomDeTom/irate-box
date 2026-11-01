@@ -120,8 +120,9 @@ check(
     ci._pio_deps("esp32s3") == release / "pio-deps/esp32s3"
     and ci._pio_deps("esp32s3", "heltec-v3") == release / "pio-deps/heltec-v3"
     and ci._pio_deps("nrf52840") == release / "pio-deps"
+    and ci._pio_deps("..", "../../etc") == release / "pio-deps"
     and ci._pio_deps_tag(release / "pio-deps/esp32s3") == "2.8.1.8e6a88d",
-    (ci._pio_deps("esp32s3"), ci._pio_deps("nrf52840")),
+    (ci._pio_deps("esp32s3"), ci._pio_deps("nrf52840"), ci._pio_deps("..", "../../etc")),
 )
 
 print(f"{fails} failure(s)" if fails else "ok")

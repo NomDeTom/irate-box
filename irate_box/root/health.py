@@ -2878,6 +2878,8 @@ def _foreign_unused():
 
 
 SERVICE_HEAVY = 100 << 20  # a service writing more than this a day to the card (averaged over the week) is named
+# A unit name from the hub's record, before it becomes a systemctl argument: systemd's grammar, never a leading "-".
+SERVICE_UNIT_RE = re.compile(r"^[A-Za-z0-9:_.@][A-Za-z0-9:_.@-]{0,246}\.service$")
 MOUNTINFO = Path(os.environ.get("HUB_MOUNTINFO", "/proc/self/mountinfo"))
 
 
@@ -2910,13 +2912,16 @@ def _on_card(path, card_name):
 def _unit_writes(unit, card_name):
     """(confined, [card paths]): whether the unit can write only where it says (ProtectSystem=strict), and of the
     places it says, those on the SD card (its writable paths; its state, log and cache folders; a bind into RAM is
-    not one)."""
+    not one). The name comes from the hub's record: only a unit name reaches systemctl, and after "--"."""
+    if not SERVICE_UNIT_RE.fullmatch(unit):
+        return False, []
     out = run(
         "systemctl",
         "show",
-        unit,
         "-p",
         "ProtectSystem,ReadWritePaths,StateDirectory,LogsDirectory,CacheDirectory,BindPaths",
+        "--",
+        unit,
         timeout=10,
     ).stdout
     props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
@@ -2940,8 +2945,11 @@ def _unit_writes(unit, card_name):
 
 def _unit_gone(unit):
     """Whether systemd no longer knows the unit (a transient run that has ended, or one removed): its past writes are
-    in the week's total, but there is nothing left to confine or move."""
-    return "LoadState=not-found" in run("systemctl", "show", unit, "-p", "LoadState", timeout=10).stdout
+    in the week's total, but there is nothing left to confine or move. A name that is not a unit's is treated the
+    same: nothing from the hub's record goes to systemctl as an option."""
+    if not SERVICE_UNIT_RE.fullmatch(unit):
+        return True
+    return "LoadState=not-found" in run("systemctl", "show", "-p", "LoadState", "--", unit, timeout=10).stdout
 
 
 def _service_writes_findings(summary, card_name):
@@ -2973,7 +2981,7 @@ def _service_writes_findings(summary, card_name):
                 )
             )
             continue
-        if unit == cardhistory.KERNEL or not unit.endswith(".service"):
+        if unit == cardhistory.KERNEL or not SERVICE_UNIT_RE.fullmatch(unit):
             continue
         if _unit_gone(unit):
             continue  # found on box 181: an A/B trial's transient unit, gone for days, still "writing 294 MB a day"

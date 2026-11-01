@@ -48,6 +48,7 @@ ROUTED = {
     "drop": ("public", False),
     "notes": ("public", False),
     "mqtt": ("public", False),
+    "inspircd": ("public", False),
     "term": ("public", True),
     "sync": ("private", True),
     "themes": ("public", False),

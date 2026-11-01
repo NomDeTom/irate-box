@@ -38,7 +38,7 @@ check(
 )
 check(
     "  the right code verifies; a wrong one does not",
-    setup_code.verify(code) and not setup_code.verify(code[:-1] + "X"),
+    setup_code.verify(code) and not setup_code.verify(code[:-1] + ("Y" if code[-1] == "X" else "X")),
 )
 check("  making it again keeps the same code", setup_code.ensure() == code)
 setup_code.HASH_FILE.write_text("a wrong hash\n")
