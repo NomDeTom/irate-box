@@ -1,0 +1,17 @@
+#!/bin/bash
+# The first-boot questions, read from an Armbian 26.05 image's /usr/lib/armbian/armbian-firstlogin.
+# Only the preset names this box relies on are kept, in the order the file reads them.
+if [[ -f /root/.not_logged_in_yet ]]; then
+	source /root/.not_logged_in_yet
+fi
+
+if [[ -n "${PRESET_ROOT_PASSWORD}" ]]; then
+	echo "root:${PRESET_ROOT_PASSWORD}" | chpasswd
+fi
+if [[ -n "${PRESET_USER_NAME}" ]]; then
+	useradd -m -s "${PRESET_USER_SHELL}" -c "${PRESET_DEFAULT_REALNAME}" "${PRESET_USER_NAME}"
+	echo "${PRESET_USER_NAME}:${PRESET_USER_PASSWORD}" | chpasswd
+fi
+if [[ "${PRESET_CONNECT_WIRELESS}" == "yes" ]]; then
+	nmcli dev wifi connect "${PRESET_NET_WIFI_SSID}" password "${PRESET_NET_WIFI_KEY}"
+fi

@@ -17,7 +17,7 @@
   <header>
     <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-rockchip.header.tip-quick-help" data-i18n="admin-rockchip.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/hub" title="Back to the hub" data-i18n-title="admin-rockchip.header.tip-back-hub" data-i18n="admin-rockchip.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
     <h1 data-i18n="admin-rockchip.header.heading">Rockchip boards</h1>
-    <p class="subtitle" data-i18n="admin-rockchip.header.subtitle">Prepare a Luckfox Lyra over the box's USB. Administrators only.</p>
+    <p class="subtitle" data-i18n="admin-rockchip.header.subtitle">Prepare a Lyra over the box's USB, and set up new Armbian boards. Administrators only.</p>
     <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-rockchip.header.aria-theme"></div>
   </header>
 
@@ -51,17 +51,20 @@
       <div id="rk-cards"></div>
     </section>
 
-    <!-- Boards to set up (hub/rksetup.py): a new board's setup hotspot in range, one card each; its drawer holds the
-         choices sent to the board as Armbian's first-boot presets, and the steps. -->
+    <!-- New boards (hub/rksetup.py): any new Armbian board the box can see or reach, whatever the board family; its
+         drawer holds the choices sent as Armbian's first-boot presets, and the steps. -->
     <section class="admin-pane" id="rk-setup-pane" aria-labelledby="rk-setup-title">
-      <h2 id="rk-setup-title" data-i18n="admin-rockchip.setup.title">Boards to set up</h2>
+      <h2 id="rk-setup-title" data-i18n="admin-rockchip.setup.title">New boards</h2>
       <p class="setting-desc" data-i18n="admin-rockchip.setup.intro">
-        A new board joins your network with the choices set here: its network, its accounts, its name. A board with
-        mPWRD-OS raises a setup hotspot at its first start, and shows here while it is in range. Power one new board
-        at a time, near this box: until it is set up, anyone in range can set it up instead.
+        A new board joins your network with the choices set here: its network, its accounts, its name. A Lyra, a
+        Banana Pi or another Armbian board can be set up, over its setup hotspot, its serial console, its SD card or
+        its default password on a cable. Power one new board at a time, near this box: until it is set up, anyone in
+        range can set it up instead.
       </p>
       <div id="rk-setup-result" role="status" hidden></div>
+      <pre id="rk-install-log" class="setting-desc" hidden></pre>
       <div id="rk-setup"></div>
+      <div id="rk-finish"></div>
     </section>
   </main>
   <script src="/i18n.js"></script>

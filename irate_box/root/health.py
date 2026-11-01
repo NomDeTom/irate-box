@@ -166,6 +166,7 @@ GO_NETWORK = _go("network", M("go.network", "Network"))
 GO_FACTORY = _go("factory", M("go.factory", "Firmware Factory"))
 GO_BUILDS = _go("git", M("go.git", "Git"))
 GO_CLOCK = _go("clock", M("go.clock", "Clock"))
+GO_BOARDS = _go("rockchip", M("go.boards", "Rockchip boards → New boards"))
 
 RERUN = action(
     "rerun-install",
@@ -7469,6 +7470,65 @@ def check_package_files(quick=False):
     return found
 
 
+def check_boards(spots=None, seen=None):
+    """New boards the box can see and has not been asked to set up: a setup hotspot in range, or a board-like
+    device on the box's own network. The board itself is not touched: the finding points at New boards, where the
+    administrator sets it up with the choices there."""
+    from irate_box.hub import boardfind, rksetup
+
+    if spots is None:
+        try:
+            spots = rksetup.hotspots()
+        except Exception:  # noqa: BLE001 - a radio that cannot scan is another check's finding
+            spots = []
+    if seen is None:
+        try:
+            seen = [b for b in boardfind.candidates() if b["board"]]
+        except Exception:  # noqa: BLE001 - no leases is no finding
+            seen = []
+    findings = []
+    if spots:
+        names = ", ".join(s["ssid"] for s in spots)
+        findings.append(
+            finding(
+                "boards-setup-hotspot",
+                M("boards.hotspot.title", "New board setup hotspots"),
+                "warn",
+                M(
+                    "boards.hotspot.found",
+                    "A setup hotspot is in range and has not been answered: {names}.",
+                    names=names,
+                ),
+                M(
+                    "boards.hotspot.why",
+                    "Until the board is set up, anyone in range can answer its setup page first and own it.",
+                ),
+                M("boards.hotspot.fix", "Set the new board up on New boards, with the choices there."),
+                evidence=[s["ssid"] for s in spots],
+                go=GO_BOARDS,
+            )
+        )
+    if seen:
+        names = ", ".join(b.get("host") or b["address"] for b in seen)
+        findings.append(
+            finding(
+                "boards-default-password",
+                M("boards.default.title", "New boards on this box's network"),
+                "warn",
+                M("boards.default.found", "A board is on the box's own network: {names}.", names=names),
+                M(
+                    "boards.default.why",
+                    "A board that has just started can still take Armbian's default password from anyone on this "
+                    "network.",
+                ),
+                M("boards.default.fix", "Set it up on New boards, over its default password on the cable."),
+                evidence=[b["address"] for b in seen],
+                go=GO_BOARDS,
+            )
+        )
+    return findings
+
+
 def scan(quick=False):
     """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
     Lyra's slow step: 132.6 of a 143.5 s run), and the books' headers without opening each in Kiwix. Each check's
@@ -7508,6 +7568,7 @@ def scan(quick=False):
         check_usb_filesystems,
         check_package_files,
         check_hardening,
+        check_boards,
     ):
         start = time.monotonic()
         try:

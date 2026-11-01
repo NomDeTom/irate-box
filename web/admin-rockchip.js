@@ -83,17 +83,18 @@
     } catch (_) {
       data = null;
     }
-    if (data) { render(data); renderCards(data); renderSetup(data.setup); }
+    if (data) { render(data); renderCards(data); renderSetup(data.setup); renderFinish(data.setup); renderInstallLog(data.install_log); }
     poll = setTimeout(load, document.hidden ? 30000 : waiting ? 2000 : 3000);
   }
 
   function render(data) {
+    renderFinish(data.setup);
     const note = document.getElementById('rk-note');
     if (waiting) {
       const done = (data.results || []).find((r) => r.id === waiting);
       if (done) {
         waiting = null;
-        if (done.msg && (done.msg.id || '').startsWith('rkserial.')) setupResult(done);
+        if (done.msg && /^(?:rkserial|rkssh|rkspot|rkpresets|rkfinish)\./.test(done.msg.id || '')) setupResult(done);
         else if (waitingCard) { waitingCard = false; say(resultSaid(done), done.ok, document.getElementById('rk-card-result')); cardsShown = ''; }
         else say(resultSaid(done), done.ok, note);
       }
@@ -291,8 +292,9 @@
     return parts;
   }
 
-  // ---- Boards to set up (hub/rksetup.py): one card per setup hotspot in range, its drawer the choices sent to the
-  // board as Armbian's first-boot presets, and the steps. The choices are kept per board while the page is open.
+  // ---- New boards (hub/rksetup.py): one card per setup hotspot in range, and one for a board not found by itself;
+  // its drawer the choices sent as Armbian's first-boot presets, and the steps. The choices are kept per board
+  // while the page is open. Board-neutral: the board family selects the console speed and the naming.
   const { h } = AW;
   // What Armbian's preset file cannot hold (rksetup.UNSAFE): it is sourced by bash inside double quotes.
   const UNSAFE = { '"': 'a double quote', $: 'a dollar sign', '`': 'a backtick', '\\': 'a backslash' };
@@ -310,9 +312,9 @@
     return '';
   }
   const ROUTES_ALL = [
-    { value: 'hotspot', title: "The board's setup hotspot", desc: "The box joins the board's hotspot for about a minute, sends the choices below, and comes back to its own network." },
-    { value: 'card', title: 'Settings on the SD card', desc: "The choices written to the card before the board's first start: no hotspot, and Armbian's default password never in use.", why: 'the box cannot write a card yet' },
-    { value: 'ssh', title: "Armbian's default password, over a cable", desc: 'For stock Armbian on a wired network: the box signs in as root with Armbian\'s default password at once, and sets the board up.', why: 'the box does not look for such a board yet' },
+    { value: 'hotspot', title: "The board's setup hotspot", desc: "The box joins the board's hotspot for about a minute, sends the choices, and comes back to its own network. On a box with one radio, this box's internet drops for that minute." },
+    { value: 'card', title: 'Settings on the SD card', desc: "The choices written to an Armbian card already in a reader: no hotspot, and Armbian's default password never in use." },
+    { value: 'ssh', title: "Armbian's default password, over a cable", desc: 'For stock Armbian on the box\'s own hotspot or a cable: the box signs in as root with Armbian\'s default password at once, and sets the board up.' },
     { value: 'serial', title: 'The serial console', desc: "For a board wired to a USB serial adapter on this box: press Set up, then power the board, and the box answers its first-login questions as it boots." },
     { value: 'usb', title: "Networking over the board's USB", desc: 'The cable used to erase the board, as a network.', why: 'mPWRD-OS has not been seen to offer it' },
     { value: 'bluetooth', title: 'Bluetooth', desc: "Meshtastic's flasher sends the WiFi over Bluetooth.", why: 'only Raspberry Pi images take it' },
@@ -340,7 +342,7 @@
         rootPass: 'generated', rootTyped: '', userName: 'armbian', userPass: 'generated', userTyped: '', lockRoot: false, key: '',
         hostname: 'lyra-1', place: 'box', locale: defaults.locale || 'en_GB.UTF-8', timezone: defaults.timezone || 'Etc/UTC',
         country: defaults.country || 'GB', address: 'dhcp', ip: '', mask: '255.255.255.0', gateway: '', dns: '',
-        after: 'leave',
+        board: 'auto', card: '', after: 'leave',
       });
     }
     return picked.get(id);
@@ -351,9 +353,11 @@
     const out = [];
     const add = (label, value, kind) => { const found = problem(value, kind); if (found) out.push([label, found]); };
     if (c.route === 'ssh') {
-      if (!c.boardAddress) out.push(["The board's address", 'Enter the address the board has on the cable.']);
+      if (!c.boardAddress) out.push(["The board's address", 'Select a board the box found, or enter its address.']);
       add("The board's address", c.boardAddress, 'text');
     }
+    if (c.route === 'card' && !c.card) out.push(['', 'Select a card in a reader on this box.']);
+    if (c.route === 'card' && c.after === 'install') out.push(['After setup', 'The board has not started yet: install irate-box once it is on the network, over its own address.']);
     if (c.network === 'same-typed') add("The network's password", c.wifiPass, 'wifi-password');
     if (c.network === 'other') {
       if (!c.otherSsid) out.push(["The network's name", 'Enter the name of the network the board joins.']);
@@ -417,8 +421,24 @@
     const NO_FINDING = ['serial', 'card', 'ssh', 'usb'];
     const consoles = setup.consoles || [];
     if (!consoles.includes(c.console)) c.console = consoles[0] || '';
-    // The serial console is offered once a USB serial adapter is on the box.
-    const ROUTES = ROUTES_ALL.map((r) => (r.value === 'serial' && !consoles.length ? { ...r, why: 'no USB serial adapter is connected to this box' } : r));
+    const seenBoards = setup.boards || [];
+    if (!c.boardAddress && seenBoards.length) { c.boardAddress = seenBoards[0].address; c.network = 'none'; }
+    const cardsHere = setup.cards || [];
+    if (!cardsHere.some((x) => x.name === c.card)) c.card = (cardsHere[0] || {}).name || '';
+    // A route is offered when the box can do it now: its half is built, and what it needs (an adapter, a card, a
+    // board seen) is here.
+    const available = setup.routes || ['hotspot'];
+    const NEEDS = {
+      serial: 'no USB serial adapter is connected to this box',
+      card: 'no card is in a reader on this box',
+      ssh: 'no board is seen on this box\'s own network',
+      hotspot: 'no setup hotspot is in range',
+    };
+    const ROUTES = ROUTES_ALL.map((r) => {
+      if (r.why) return r;
+      if (available.includes(r.value) && !(r.value === 'serial' && !consoles.length)) return r;
+      return { ...r, why: NEEDS[r.value] || 'the box cannot do this yet' };
+    });
     const routes = item.id === OTHER
       ? {
           main: ROUTES.filter((r) => NO_FINDING.includes(r.value)),
@@ -435,11 +455,25 @@
       tiles('Route', 'route', routes.main, drawSteps),
       // The other ways in, each with why it is not offered here, folded so the ones that fit this board stand alone.
       h('details', { class: 'sec-fold' }, h('summary', { text: 'Other ways in' }), tiles('Other ways in', 'route', routes.folded, drawSteps)),
-      only('route', ['ssh'], field("The board's address", 'boardAddress', 'text', { placeholder: '192.168.1.60', help: "Its address on this box's wired network, from your router's list or the board's screen." })),
+      only('route', ['ssh'], h('div', {},
+        (setup.boards || []).length ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Board found' }),
+          chips('Board found', 'boardAddress', (setup.boards || []).map((b) => ({ value: b.address, title: b.host || b.address, says: `${b.address}${b.vendor ? `, ${b.vendor}` : ''}` })))) : null,
+        field("The board's address", 'boardAddress', 'text', { placeholder: '192.168.1.60', help: "Its address on this box's own hotspot or cable, from the box's list or the board's screen." }))),
+      only('route', ['card'], h('div', {},
+        (setup.cards || []).length ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Card in a reader' }),
+          chips('Card in a reader', 'card', (setup.cards || []).map((c) => ({ value: c.name, title: `${c.model || 'SD card'}, ${(c.size / 1e9).toFixed(1)} GB`, says: c.mounted ? 'Mounted: unmount it first.' : c.path })))) : null,
+        h('p', { class: 'setting-desc', text: "Write an Armbian image to the card on this page first, with the chip's boot system in place. The box then writes these choices onto its root filesystem." }))),
       only('route', ['serial'], h('div', {},
         consoles.length > 1 ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Serial adapter' }),
           chips('Serial adapter', 'console', consoles.map((name) => ({ value: name, title: name.replace(/^usb-/, '').replace(/-if\d+-port\d+$/, ''), says: `/dev/serial/by-id/${name}` })))) : null,
         consoles.length === 1 ? h('p', { class: 'setting-desc', text: `The serial adapter: ${consoles[0]}.` }) : null,
+        h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Board family' }),
+          chips('Board family', 'board', [
+            { value: 'auto', title: 'Find the speed', says: 'The box tries the known console speeds and keeps the one that hears the board.' },
+            { value: 'rockchip', title: 'Rockchip', says: '1 500 000 baud: a Lyra and other Rockchip boards.' },
+            { value: 'allwinner', title: 'Allwinner', says: '115 200 baud: a Banana Pi and other Allwinner boards.' },
+            { value: 'raspberrypi', title: 'Raspberry Pi', says: '115 200 baud.' },
+          ])),
         h('p', { class: 'setting-desc', text: "Wired to the board's debug console: the adapter's TX to the board's RX, its RX to the board's TX, GND to GND, at 3.3 V." }))),
       h('h3', { text: 'Network' }),
       tiles('Network', 'network', [
@@ -476,7 +510,7 @@
       only('address', ['fixed'], h('div', {}, field('Address', 'ip', 'text', { placeholder: '192.168.1.50' }), field('Mask', 'mask', 'text'), field('Gateway', 'gateway', 'text', { placeholder: '192.168.1.1' }), field('DNS', 'dns', 'text', { placeholder: '192.168.1.1' }))),
       h('h3', { text: 'After setup' }),
       tiles('After setup', 'after', [
-        { value: 'install', title: 'Install irate-box', desc: "With this box's install options. The new box then waits to be claimed: claim it at once.", why: 'not built yet' },
+        { value: 'install', title: 'Install irate-box', desc: "With this box's install options, over SSH. The new box then waits to be claimed: claim it at once." },
         { value: 'leave', title: 'Leave it as it is', desc: 'An mPWRD-OS board on the network, for Meshtastic.' },
         { value: 'next', title: 'Set up the next board', desc: 'Back to Boards to set up when this one is done.' },
       ]),
@@ -509,8 +543,12 @@
       if (!(await AW.confirmHere(`Set up ${item.title}? The box sends it the choices above.`, { anchor: event.currentTarget, label: 'Set up the board' }))) return;
       // Generated passwords are made by the root helper, not here, and shown once in its answer.
       try {
-        const ask = c.route === 'serial' ? { action: 'setup', route: 'serial', console: c.console, choices: { ...c } } : { action: 'setup', hotspot: item.id, choices: { ...c } };
-        waiting = (await postJSON('/admin/rkboard', ask)).id;
+        const body = { action: 'setup', route: c.route, choices: { ...c } };
+        if (c.route === 'serial') body.console = c.console;
+        if (c.route === 'card') { const chosen = (setup.cards || []).find((x) => x.name === c.card) || {}; body.card = c.card; body.size = chosen.size; body.serial = chosen.serial; }
+        if (c.route === 'ssh') body.address = c.boardAddress;
+        if (c.route === 'hotspot') body.hotspot = item.id;
+        waiting = (await postJSON('/admin/rkboard', body)).id;
         say(c.route === 'serial' ? 'Waiting for the board on its console: power it now…' : 'Setting the board up…', true, reason);
       } catch (err) {
         say(err.message, false, reason);
@@ -528,7 +566,7 @@
     if (!at) return;
     at.hidden = false;
     at.replaceChildren(h('p', { class: done.ok ? 'setting-desc' : 'setting-desc bad', text: resultSaid(done) }));
-    if (!done.ok || !done.msg || done.msg.id !== 'rkserial.done') return;
+    if (!done.ok || !done.msg || !['rkserial.done', 'rkssh.done', 'rkspot.done', 'rkpresets.done'].includes(done.msg.id)) return;
     let secret = null;
     try {
       secret = (await postJSON('/admin/rkboard', { action: 'secret', id: done.id })).secret;
@@ -540,11 +578,66 @@
       AW.dl({ "Root's password": secret.root, [`${secret.user}'s password`]: secret.user_password }));
   }
 
+  function renderInstallLog(text) {
+    const at = document.getElementById('rk-install-log');
+    if (!at) return;
+    at.hidden = !text;
+    if (text && at.textContent !== text) at.textContent = text;
+  }
+
+  // A board the box already found, finished or given irate-box over SSH: for the card and hotspot routes, the
+  // board joins the network after the choices are sent, so the finish is a step of its own.
+  let finishShown = '';
+  function renderFinish(setup) {
+    const at = document.getElementById('rk-finish');
+    if (!at || !setup) return;
+    const boards = setup.boards || [];
+    const stateKey = JSON.stringify([boards.map((b) => [b.address, b.host]), setup.ready]);
+    if (stateKey === finishShown || at.querySelector('input:focus, textarea:focus')) return;
+    finishShown = stateKey;
+    if (!boards.length) {
+      at.replaceChildren(h('p', { class: 'setting-desc', text: "No board is on this box's own network to finish yet. Start the new board, and it shows here once it has joined." }));
+      return;
+    }
+    const first = boards[0];
+    const address = h('input', { type: 'text', name: 'rk-finish-address', autocomplete: 'off', spellcheck: false, placeholder: '192.168.1.60' });
+    address.value = first.address;
+    const name = h('input', { type: 'text', name: 'rk-finish-name', autocomplete: 'off', spellcheck: false, placeholder: 'lyra-1' });
+    name.value = 'lyra-1';
+    const key = h('textarea', { name: 'rk-finish-key', autocomplete: 'off', spellcheck: false, rows: 2, placeholder: 'ssh-ed25519 AAAA… you@laptop' });
+    const result = document.getElementById('rk-setup-result');
+    const send = async (body, said, anchor) => {
+      try {
+        waiting = (await postJSON('/admin/rkboard', body)).id;
+        say(said, true, result);
+      } catch (err) {
+        say(err.message, false, result);
+      }
+    };
+    const finishB = h('button', { type: 'button', class: 'action-btn', text: 'Finish over SSH' });
+    finishB.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere(`Finish the board at ${address.value}, and stop its setup page?`, { anchor: event.currentTarget, label: 'Finish the board' }))) return;
+      send({ action: 'finish', address: address.value.trim(), choices: { hostname: name.value.trim(), userName: 'armbian', key: key.value.trim(), lockRoot: false } }, 'Finishing the board over SSH…', event.currentTarget);
+    });
+    const installB = h('button', { type: 'button', class: 'action-btn', text: 'Install irate-box' });
+    installB.addEventListener('click', async (event) => {
+      if (!(await AW.confirmHere(`Install irate-box on the board at ${address.value}? Its output is shown here.`, { anchor: event.currentTarget, label: 'Install irate-box' }))) return;
+      send({ action: 'install', address: address.value.trim() }, 'Installing irate-box on the board…', event.currentTarget);
+    });
+    at.replaceChildren(h('div', { class: 'net-card setting' },
+      h('h3', { text: 'Finish a board on the network' }),
+      h('p', { class: 'setting-desc', text: "A board that has just joined, from its card or its setup hotspot, is finished here: its setup page stopped, the box's key and yours put on it, and its name set. Install irate-box after that." }),
+      h('label', { class: 'aw-field' }, h('span', { class: 'aw-label', text: "The board's address" }), address),
+      h('label', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Name on the network' }), name),
+      h('label', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Your SSH key' }), key),
+      h('div', { class: 'library-buttons' }, finishB, installB)));
+  }
+
   function renderSetup(setup) {
     const at = document.getElementById('rk-setup');
     if (!at || !setup) return;
     const spots = setup.hotspots || [];
-    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults, setup.consoles, setup.routes]);
+    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults, setup.consoles, setup.cards, setup.boards, setup.routes]);
     // A drawer being filled in is not drawn again under the person typing.
     if (key === setupShown || at.querySelector('.aw-card.open')) return;
     setupShown = key;
