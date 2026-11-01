@@ -130,6 +130,12 @@ SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
 
 [[annotations]]
+path = "rockchip/bootloaders/bootloaders.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
 path = "tools/alpine/keys/*.pub"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Alpine Linux"

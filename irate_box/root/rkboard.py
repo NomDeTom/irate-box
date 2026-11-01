@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """Rockchip boards on the box's USB, root's half: a board running its own system switched to Loader mode, a board's
-onboard flash erased (in Maskrom mode, the loader for its chip sent first), or, when the board's loader shows its SD
-card instead, an image written to the card. The boards, their modes, the tools, the loaders and the images are read
-by hub/rkusb.py, which the hub uses too (see there for the modes).
+onboard flash read or erased (in Maskrom mode, the loader for its chip sent first), a bootloader written to that
+flash, or, when the board's loader shows its SD card instead, an image written to the card. The boards, their modes,
+the tools, the loaders, the bootloaders and the images are read by hub/rkusb.py, which the hub uses too (see there
+for the modes).
 
 Which storage a loader shows is read first (rkdeveloptool rfi): a Lyra's SPI NAND is 256 MB, and a storage of
 gigabytes is its SD card. rkdeveloptool's ef erases every block of whatever the loader shows, so an erase meant for
@@ -262,6 +263,141 @@ def _digest(path):
         for block in iter(lambda: fh.read(1 << 20), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def install(bootloader_id, confirm=None, loader_id=None):
+    """A bootloader from rkusb.BOOTLOADER_STATE written to the board's onboard SPI NAND: the whole flash erased
+    first (this is where logs kept on the NAND go), then each file at its recorded offset, in pieces, each read back
+    and compared. The board is reset at the end. Refused when the loader shows the SD card, or when the flash was not
+    read and confirmed first."""
+    bundle = next((b for b in rkusb.bootloaders() if b["id"] == bootloader_id), None)
+    if not bundle:
+        raise Refused(M("rkboard.bootloader-unknown", "Select a bootloader to install."))
+    if not bundle["ready"]:
+        missing = ", ".join(bundle["missing"]) or "none"
+        damaged = ", ".join(bundle["damaged"]) or "none"
+        raise Refused(
+            M(
+                "rkboard.bootloader-not-ready",
+                "The {name} is not ready. Missing: {missing}. Not matching its sha256: {damaged}. Stage its files "
+                "in rk-bootloaders/{id} on the box.",
+                name=bundle["title"],
+                missing=missing,
+                damaged=damaged,
+                id=bundle["id"],
+            )
+        )
+    board = _one(("loader", "maskrom"))
+    _need("rkdeveloptool")
+    if board["mode"] == "maskrom":
+        _send_loader(loader_id)
+    shown = storage()
+    if shown["card"]:
+        raise Refused(
+            M(
+                "rkboard.install.card-shown",
+                "The board's loader shows {gb} GB: its SD card, not its onboard flash, so nothing was written. Take "
+                "the card out to install a bootloader.",
+                gb=_gb(shown["mb"]),
+            )
+        )
+    token, said = held_words(contents(shown))
+    if token != "blank" and confirm != token:  # nosec B105 - a state word, not a password
+        raise Refused(
+            M(
+                "rkboard.install.unconfirmed",
+                "The onboard flash is not blank: {held} Read it first, then confirm the install. Installing a "
+                "bootloader erases it, including any logs kept on the NAND.",
+                held=said,
+            )
+        )
+    # Every file is read and checked before the erase: a file that changed, is gone or does not fit costs nothing.
+    limit = (shown["sectors"] * SECTOR) if shown["sectors"] else (shown["mb"] or 0) << 20
+    prepared = []
+    for entry in bundle["files"]:
+        path = rkusb.BOOTLOADER_STATE / bundle["id"] / entry["name"]
+        try:
+            data = path.read_bytes()
+        except OSError:
+            raise Refused(
+                M(
+                    "rkboard.bootloader-gone",
+                    "The {name} is not ready: {file} is gone.",
+                    name=bundle["title"],
+                    file=entry["name"],
+                )
+            ) from None
+        if entry.get("sha256") and hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            raise Refused(
+                M(
+                    "rkboard.bootloader-damaged",
+                    "The {name} changed while it was being installed: {file} does not match its sha256.",
+                    name=bundle["title"],
+                    file=entry["name"],
+                )
+            )
+        _check_at(entry["offset"], len(data), limit)
+        prepared.append((data, entry["offset"]))
+    r = run("rkdeveloptool", "ef", timeout=900)
+    if r.returncode:
+        raise Refused(
+            M(
+                "rkboard.install.erase-failed",
+                "The erase failed: {detail}",
+                detail=(r.stderr or r.stdout).strip()[-200:],
+            )
+        )
+    RUN.mkdir(mode=0o700, parents=True, exist_ok=True)
+    wrote = 0
+    for data, offset in prepared:
+        wrote += _write_at(data, offset, limit)
+    run("rkdeveloptool", "rd", timeout=60)
+    return M(
+        "rkboard.installed",
+        "The {name} is installed on the board's onboard flash: {mb} MB written and read back, and the board is "
+        "reset. Installing it erased the flash, including any logs kept on the NAND.",
+        name=bundle["title"],
+        mb=wrote >> 20,
+    )
+
+
+def _check_at(offset, size, limit):
+    """An offset and length that a bootloader file can be written at: whole sectors, and inside the flash."""
+    if offset % SECTOR:
+        raise Refused(M("rkboard.install.offset", "The bootloader's offset is not a whole sector."))
+    if limit and offset + size > limit:
+        raise Refused(M("rkboard.install.too-large", "The bootloader does not fit on the board's flash."))
+
+
+def _write_at(data, offset, limit):
+    """data written at a byte offset of the board's flash (rkdeveloptool wl), in pieces, each read back and compared.
+    Returns the bytes written (the last piece padded to a sector)."""
+    _check_at(offset, len(data), limit)
+    with tempfile.TemporaryDirectory(prefix="rkboard-", dir=RUN) as tmp:
+        piece, back = Path(tmp) / "piece.img", Path(tmp) / "back.img"
+        sector = offset // SECTOR
+        done = 0
+        while done < len(data):
+            chunk = data[done : done + CHUNK]
+            if len(chunk) % SECTOR:
+                chunk += bytes(SECTOR - len(chunk) % SECTOR)
+            piece.write_bytes(chunk)
+            if run("rkdeveloptool", "wl", str(sector), str(piece), timeout=600).returncode:
+                raise Refused(
+                    M("rkboard.install.write-failed", "Writing the bootloader failed at {mb} MB.", mb=done >> 20)
+                )
+            read = run("rkdeveloptool", "rl", str(sector), str(len(chunk)), str(back), timeout=600)
+            if read.returncode or not back.exists() or _digest(back) != hashlib.sha256(chunk).hexdigest():
+                raise Refused(
+                    M(
+                        "rkboard.install.verify-failed",
+                        "What was written at {mb} MB did not read back the same: the flash is not usable as it is.",
+                        mb=done >> 20,
+                    )
+                )
+            sector += len(chunk) // SECTOR
+            done += len(chunk)
+        return done
 
 
 def write_card(name, sha256, loader_id=None):
