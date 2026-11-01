@@ -148,6 +148,8 @@ setTimeout(() => {
   check('sidebar: the four doctors under Doctors', side.slice(hi + 1, hi + 5).join('|') === 'Box doctor|Security doctor|Updates doctor|Housecall doctor' && side[hi + 5] === 'Mock controls', side.join('|'));
   check('sidebar: Clock under System; Appearance under Hub layout, before Moderation', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Clock') < hi
     && side.indexOf('Appearance') > side.indexOf('Hub layout') && side.indexOf('Appearance') < side.indexOf('Moderation'));
+  check('sidebar: Pin map under System, its own link', side.indexOf('Pin map') > side.indexOf('System') && side.indexOf('Pin map') < hi
+    && d.querySelector('.admin-side-list a[href="/admin/pins.html"]'));
   check('Hub layout: Home tiles, Folders, Status widgets, Appearance, and no folder of its own in the sidebar',
     ['Home tiles', 'Folders', 'Status widgets', 'Appearance'].every((x, i, all) => side.indexOf(x) > (i ? side.indexOf(all[i - 1]) : side.indexOf('Hub layout')))
     && !d.querySelector('.admin-side-list a[href="#page-app-tools-rf"]'));

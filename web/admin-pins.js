@@ -22,18 +22,17 @@
   }
   function pinDetails(pin) {
     const bits = [];
-    if (pin.rmio !== null && pin.rmio !== undefined) bits.push(`RM_IO${pin.rmio}`);
-    if (pin.role) bits.push(pin.role);
-    if (pin.gpio !== null && pin.gpio !== undefined) bits.push(`GPIO ${pin.gpio}`);
     if (pin.type !== 'gpio') bits.push(pin.type === 'gnd' ? 'ground' : 'power');
     else if (pin.used) bits.push(pin.consumer || 'taken');
     else bits.push('free');
+    if (pin.rmio !== null && pin.rmio !== undefined) bits.push(`RM_IO${pin.rmio}`);
     return bits.join(' · ');
   }
   function pinCard(pin) {
     const cls = pin.type === 'gpio' ? (pin.used ? 'used' : 'free') : 'power';
     const card = document.createElement('div');
     card.className = `pin ${cls}`;
+    card.title = pin.role ? `${pinLabel(pin)}: now ${pin.used ? pin.consumer || 'taken' : 'free'}; the board pinout names it ${pin.role}` : '';
     const number = document.createElement('b');
     number.textContent = String(pin.pin);
     const name = document.createElement('span');
@@ -67,33 +66,59 @@
       map.append(row);
     }
   }
-  function drawTable(header) {
-    const host = $('pins-table');
+  function drawRoles(header) {
+    const host = $('pins-roles');
     host.replaceChildren();
-    if (!header || !header.length) return;
+    const rows = (header || []).filter((pin) => pin.role);
+    if (!rows.length) {
+      host.append(Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: 'No fixed roles are recorded for this board.' }));
+      return;
+    }
     const table = document.createElement('table');
     table.className = 'admin-table';
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
-    for (const title of ['Pin', 'Name', 'GPIO', 'RM_IO', 'Function', 'Claimed by', 'State']) {
+    for (const title of ['Pin', 'Name', 'RM_IO', 'Board role']) {
       const th = document.createElement('th');
       th.textContent = title;
       headRow.append(th);
     }
     head.append(headRow);
     const body = document.createElement('tbody');
-    for (const pin of header) {
+    for (const pin of rows) {
       const tr = document.createElement('tr');
-      const cells = [
-        String(pin.pin),
-        pinLabel(pin),
-        pin.gpio === null || pin.gpio === undefined ? '' : String(pin.gpio),
-        pin.rmio === null || pin.rmio === undefined ? '' : `RM_IO${pin.rmio}`,
-        pin.role || (pin.type === 'gpio' ? '' : pin.type === 'gnd' ? 'ground' : 'power'),
-        pin.consumer || '',
-        pin.type !== 'gpio' ? 'power' : pin.used ? 'taken' : 'free',
-      ];
-      for (const value of cells) {
+      for (const value of [String(pin.pin), pinLabel(pin), pin.rmio === null || pin.rmio === undefined ? '' : `RM_IO${pin.rmio}`, pin.role]) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.append(td);
+      }
+      body.append(tr);
+    }
+    table.append(head, body);
+    host.append(table);
+  }
+  function drawClaims(lines) {
+    const host = $('pins-claims');
+    host.replaceChildren();
+    const rows = (lines || []).filter((line) => line.used);
+    if (!rows.length) {
+      host.append(Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: 'No GPIO line is claimed.' }));
+      return;
+    }
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const title of ['Chip', 'Line', 'Name', 'Claimed by', 'Direction']) {
+      const th = document.createElement('th');
+      th.textContent = title;
+      headRow.append(th);
+    }
+    head.append(headRow);
+    const body = document.createElement('tbody');
+    for (const line of rows) {
+      const tr = document.createElement('tr');
+      for (const value of [line.chip, String(line.line), line.name || '', line.consumer || line.name || 'claimed', line.direction || '']) {
         const td = document.createElement('td');
         td.textContent = value;
         tr.append(td);
@@ -132,19 +157,6 @@
     }
     return lines.join('\n');
   }
-  function drawClaims(lines) {
-    const claims = $('pins-claims');
-    claims.replaceChildren();
-    const used = (lines || []).filter((line) => line.used);
-    if (!used.length) { claims.append(Object.assign(document.createElement('p'), { textContent: 'No GPIO line is claimed.' })); return; }
-    const ul = document.createElement('ul');
-    for (const line of used) {
-      const li = document.createElement('li');
-      li.textContent = `${line.chip} line ${line.line}: ${line.consumer || line.name || 'claimed'}`;
-      ul.append(li);
-    }
-    claims.append(ul);
-  }
   function render(data) {
     const pins = data && data.pins;
     $('pins-copy').disabled = true;
@@ -154,8 +166,8 @@
     const when = `${pins.model || pins.board || 'this board'}, read ${pins.at ? new Date(pins.at * 1000).toLocaleString() : 'now'}.`;
     $('pins-board').textContent = pins.note ? `${when} ${pins.note}` : when;
     drawHeader(pins.header || []);
-    drawTable(pins.header || []);
     drawClaims(pins.lines || []);
+    drawRoles(pins.header || []);
     $('pins-copy').disabled = false;
   }
   async function copyText(text) {
