@@ -194,6 +194,20 @@ ttyd is always installed at `/term/`: the upstream static binary, checked agains
 
 Notes, Kiwix, Tools and Meshtastic open inside `app.html`, a hub bar with an iframe, because they cannot load `hub-return.js` themselves. The address keeps the app's own path (`/app.html#/wiki/…`), so reloads and shared links work. ↗ drops the bar. No password is made at install: until the owner makes the admin account, `/admin/` is free to anyone who reaches it, so make it straight away, over HTTPS at `/admin/setup` (over plain HTTP only by choice), or at the console over SSH: `sudo /opt/irate-box/irate-box hub_control set-admin NAME` (the same command sets a lost password). Scripts get the box's own login (`curl -u admin:…`, kept in `/etc/hub/admin-password`) only when asked for: `hub_control script-login` (`--off` to remove it), or `--admin-password` for a scripted install. Run the script again to upgrade. State and the password survive. The hub is at `http://<the board's address>/` on whatever network the board is on, and at the hotspot's address once the owner turns the hotspot on.
 
+### Bounded builds on a small box
+
+A build on a 475 MB Lyra can use the memory, CPU and storage that `sshd`, systemd and the hub need. `install.sh` writes a `build.slice` with `MemoryHigh=180M`, `MemoryMax=220M`, `MemorySwapMax=64M`, `CPUQuota=80%` and `IOWeight=20`, and a wrapper:
+
+```sh
+sudo bounded-build /usr/sbin/dkms build -m aic8800-usb -v <version>
+sudo bounded-build make -C ...
+sudo bounded-build apt-get install ./driver.deb
+```
+
+The wrapper starts the command in `build.slice` with `MAKEFLAGS=-j1`. If it reaches the memory cap, the cgroup kills the build, not the box. The memory guard (`irate-box-memory-guard.service`) records a low-memory event before it kills the slice; it never reboots on memory pressure. Box doctor reports a missing slice, a build running outside it, the box's headroom, and a silent guard.
+
+Prefer building off the box: the Pi has `arm-linux-gnueabihf-gcc`, and the armv7 modules can be built there against the Lyra's `/usr/src/linux-headers-<kernel>`.
+
 ## 5. Rebuilding after a change
 
 - Hub page or server: nothing to build. The web server reads `web/` off disk; restart `./irate-box server` for Python changes.

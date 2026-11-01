@@ -94,6 +94,7 @@ from pathlib import Path
 from irate_box.hub import jsonlog, linkhistory, netinv, watchlog
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
+from irate_box import notify
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -2630,6 +2631,7 @@ def serve(dry=False):
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, stop)
+    notify.ready()
     while True:
         now = time.time()
         # Settings changed on /admin: take them, and give the owner a moment before acting.
@@ -2797,6 +2799,7 @@ def serve(dry=False):
                     lk.w.log(now, "info", f"The escalation record was not written: {exc}")
             lk.w.ladder = []
             share(lk.w, i, dry)
+        notify.watchdog()
         if not dry and os.geteuid() == 0 and now - tls_at > 6 * 3600:
             tls_at = now
             try:

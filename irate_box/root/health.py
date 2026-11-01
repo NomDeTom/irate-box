@@ -77,7 +77,7 @@ from irate_box.finding import action, english, finding
 from irate_box.hub import jsonlog
 from irate_box.library import zimcheck
 from irate_box.msg import M, Refused, duration, named, render, sentences, when
-from irate_box.root import rtc
+from irate_box.root import memguard, rtc
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -351,6 +351,8 @@ def expected_units():
         units.append(("irate-box-uplink.service", M("unit.role.uplink", "uplink watchdog")))
     if (UNIT_DIR / "irate-box-crashwatch.service").exists() or "irate-box-crashwatch" in _installed_text():
         units.append(("irate-box-crashwatch.service", M("unit.role.crashwatch", "crash watch")))
+    if (UNIT_DIR / "irate-box-memory-guard.service").exists() or "irate-box-memory-guard" in _installed_text():
+        units.append(("irate-box-memory-guard.service", M("unit.role.memguard", "memory guard")))
     if (UNIT_DIR / "irate-box-led.service").exists() or "irate-box-led" in _installed_text():
         units.append(("irate-box-led.service", M("unit.role.led", "status light")))
     from irate_box.hub import services
@@ -6937,6 +6939,8 @@ def _watchdogs():
         every = int((json.loads(uplink.status_path().read_text()).get("settings") or {}).get("check") or 60)
     except (OSError, ValueError, AttributeError, TypeError):
         every = 60
+    from irate_box.root import memguard
+
     return [
         ("irate-box-crashwatch.service", M("alive.crashwatch", "Crash watch"), crashwatch.STATUS, 3 * 300),
         (
@@ -6945,6 +6949,7 @@ def _watchdogs():
             uplink.status_path(),
             max(300, 3 * every),
         ),
+        ("irate-box-memory-guard.service", M("alive.memguard", "The memory guard"), memguard.STATUS, 90),
     ]
 
 
@@ -6980,6 +6985,138 @@ def _running_for(unit):
     except (OSError, ValueError, IndexError):
         return 0
     return max(0.0, up - since / 1e6) if since else 0
+
+
+def check_build_bounds():
+    """Whether a build is held inside build.slice, and whether one is running outside it (notes:
+    low-memory-guards-plan Part 2). A build on a small box can starve sshd and systemd; the slice is
+    the bound, and this check reports the bound that is missing and the build that escaped it."""
+    b = memguard.bounds()
+    if not b["supported"]:
+        return [
+            finding(
+                "build-bounds",
+                M("build-bounds.title", "Build bounds"),
+                "note",
+                M(
+                    "build-bounds.no-cgroup",
+                    "This kernel has no cgroup v2 memory controller, so builds cannot be put in build.slice.",
+                ),
+                M(
+                    "build-bounds.no-cgroup.why",
+                    "A large build can use all the box's memory and make sshd and the hub wait.",
+                ),
+                M("build-bounds.no-cgroup.fix", "Build on another computer, or keep the build small and -j1."),
+            )
+        ]
+    out = []
+    if b["ok"]:
+        out.append(
+            finding(
+                "build-bounds",
+                M("build-bounds.title", "Build bounds"),
+                "ok",
+                M("build-bounds.ok", "Builds run inside build.slice, with its memory, CPU and I/O limits."),
+                evidence=[b["dropin"], b["wrapper"]],
+            )
+        )
+    else:
+        out.append(
+            finding(
+                "build-bounds",
+                M("build-bounds.title", "Build bounds"),
+                "problem",
+                M(
+                    "build-bounds.missing",
+                    "The build bounds are missing or looser than this box expects ({missing}).",
+                    missing=", ".join(b["missing"]) or "the wrapper",
+                ),
+                M(
+                    "build-bounds.why",
+                    "A build without the slice can use all the box's memory and make sshd, systemd and the hub wait.",
+                ),
+                M("build-bounds.fix", "Put the build bounds back."),
+                actions=[action("build-bounds-install", M("build-bounds.install", "Put the build bounds back"))],
+                commands=["sudo bounded-build make -C ..."],
+                evidence=[b["dropin"], b["wrapper"]],
+            )
+        )
+    unbounded = memguard.unbounded_builds()
+    if unbounded:
+        out.append(
+            finding(
+                "build-unbounded",
+                M("build-unbounded.title", "A build outside its bounds"),
+                "problem",
+                M(
+                    "build-unbounded.found",
+                    "{n} build process(es) are running outside build.slice.",
+                    n=len(unbounded),
+                ),
+                M(
+                    "build-unbounded.why",
+                    "The build can take the memory, CPU and storage that sshd and the hub need.",
+                ),
+                M("build-unbounded.fix", "Stop the build, then start it with bounded-build."),
+                commands=["sudo bounded-build ..."],
+                evidence=[f"{b['name']} ({b['pid']}) in {b['cgroup']}" for b in unbounded],
+            )
+        )
+    return out
+
+
+def check_memory_headroom():
+    """The box's available memory and swap, and the build slice's own OOM counters (notes:
+    low-memory-guards-plan Part 2). Read-only and cheap; the guard acts, this check explains."""
+    h = memguard.headroom()
+    m = h
+    detail = M(
+        "memory-headroom.values",
+        "{available} MB available of {total} MB, swap {swap}% used.",
+        available=m["available_mb"],
+        total=m["total_mb"],
+        swap=m["swap_used_pct"],
+    )
+    if m["level"] == "ok":
+        return [
+            finding(
+                "memory-headroom",
+                M("memory-headroom.title", "Memory headroom"),
+                "ok",
+                detail,
+                evidence=[f"{k}={v}" for k, v in sorted(m["slice_events"].items())],
+            )
+        ]
+    status = "warn" if m["level"] == "warn" else "problem"
+    why = M(
+        "memory-headroom.why",
+        "A build or another process can leave too little memory for sshd, systemd and the hub.",
+    )
+    actions = []
+    if m["level"] == "act":
+        actions.append(
+            action(
+                "memguard-kill-builds",
+                M("memory-headroom.stop", "Stop the build"),
+                M(
+                    "memory-headroom.confirm",
+                    "Stop every process in build.slice? Builds started outside it are not touched.",
+                ),
+            )
+        )
+    return [
+        finding(
+            "memory-headroom",
+            M("memory-headroom.title", "Memory headroom"),
+            status,
+            detail,
+            why,
+            M("memory-headroom.fix", "Stop the build or select a smaller one. The memory guard does this by itself."),
+            actions=actions,
+            commands=["sudo systemctl status irate-box-memory-guard --no-pager"],
+            evidence=[f"{k}={v}" for k, v in sorted(m["slice_events"].items())],
+        )
+    ]
 
 
 def check_watchdogs_alive(now=None):
@@ -7496,6 +7633,8 @@ def scan(quick=False):
         check_rfkill,
         check_watchers,
         check_watchdogs_alive,
+        check_build_bounds,
+        check_memory_headroom,
         check_idle,
         check_usb_filesystems,
         check_package_files,
@@ -7627,6 +7766,11 @@ def fix(choice):
         said = {"health-timer": set_timer, "lost-writes": set_lostwrites, "canary": set_canary}[kind](on)
         recommended.record(kind, arg)  # the owner's own choice: never offered back
         return said
+    if kind == "build-bounds-install":
+        memguard.install_bounds()
+        return M("repair.build-bounds.installed", "The build bounds are back in place.")
+    if kind == "memguard-kill-builds":
+        return M("repair.memguard.killed", "{detail}.", detail=memguard.kill_builds())
     if kind == "recommended-apply":
         from irate_box.root import recommended
 

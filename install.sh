@@ -32,6 +32,8 @@
 #   irate-box-crashwatch.service  crash watch (crashwatch.py, root): snapshots to the box's storage,
 #                             a crash filed at the next boot, a failing radio noted and filed
 #                             (the uplink watchdog does the repairing)
+#   irate-box-memory-guard.service  the memory guard (memguard.py, root): holds a build inside
+#                             build.slice and records a low-memory event before stopping it
 #   irate-box-led.service     the status light (led.py, root): one of the board's LEDs blinking
 #                             while the box is well, as chosen on /admin (Recovery and monitoring)
 #   irate-box-rfkill.service  the radios (rfkill.py, root): WiFi and Bluetooth switched on at every
@@ -2824,17 +2826,71 @@ Description=Irate-Box crash watch: what the box was doing when it stopped (crash
 After=local-fs.target systemd-journald.service
 
 [Service]
-Type=simple
+Type=notify
 Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
 ExecStartPre=$CODE/irate-box crashwatch boot
 ExecStart=$CODE/irate-box crashwatch run
 ExecStopPost=$CODE/irate-box crashwatch shutdown
+WatchdogSec=120
+FailureAction=reboot-force
 Restart=always
 RestartSec=10
 Nice=-5
 $ROOT_SANDBOX
 ReadWritePaths=$STATE $ETC -/etc/sysctl.d -/etc/modules-load.d -/etc/systemd/system.conf.d -/boot
 # Its files: root's own folder beside \$STATE (safeio.ROOT_STATE), never inside the hub's.
+StateDirectory=irate-box-root
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Bounded builds (root/memguard.py): a build cannot starve sshd, systemd or the hub. The slice and
+# wrapper are ordinary files, kept on updates; bounded-build starts a command inside the slice with
+# MAKEFLAGS=-j1. The Box doctor reads both and offers to put them back.
+install -d -m 0755 /etc/systemd/system/build.slice.d /usr/local/sbin
+cat >/etc/systemd/system/build.slice.d/limits.conf <<'EOF'
+[Slice]
+MemoryHigh=180M
+MemoryMax=220M
+MemorySwapMax=64M
+CPUQuota=80%
+IOWeight=20
+TasksMax=64
+EOF
+cat >/usr/local/sbin/bounded-build <<'EOF'
+#!/bin/sh
+# Written by irate-box: a build inside build.slice, with the box's memory, CPU and I/O kept for it.
+exec systemd-run --quiet --scope --slice=build.slice --setenv=MAKEFLAGS=-j1 -- "$@"
+EOF
+chmod 0755 /usr/local/sbin/bounded-build
+
+# The memory guard (root/memguard.py): reads the box's headroom and the build slice's own counters,
+# writes what it sees, and kills only build.slice when the box is close to running out. It never
+# reboots on memory pressure; the watchdog liveness rule below is the only restart it can cause.
+cat >/etc/systemd/system/irate-box-memory-guard.service <<EOF
+[Unit]
+Description=Irate-Box memory guard: keep a build from starving the box (memguard.py; /admin, Box doctor)
+After=local-fs.target systemd-journald.service
+
+[Service]
+Type=notify
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1 HUB_MEMGUARD_STATUS=/run/irate-box-memguard/status.json
+ExecStart=$CODE/irate-box memguard run
+WatchdogSec=30
+FailureAction=reboot-force
+Restart=always
+RestartSec=5
+Nice=-10
+MemoryMin=8M
+MemoryMax=32M
+OOMScoreAdjust=-1000
+$ROOT_SANDBOX
+RuntimeDirectory=irate-box-memguard
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=/run/irate-box-memguard /var/lib/irate-box-root -/var/log.nand -/sys/fs/cgroup/build.slice -/proc/sysrq-trigger
 StateDirectory=irate-box-root
 StateDirectoryMode=0700
 
@@ -2906,9 +2962,11 @@ Description=Irate-Box uplink watchdog: keep the box on its network (uplink.py; /
 After=network.target NetworkManager.service
 
 [Service]
-Type=simple
+Type=notify
 Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
 ExecStart=$CODE/irate-box uplink run
+WatchdogSec=360
+FailureAction=reboot-force
 Restart=always
 RestartSec=10
 Nice=5
@@ -3247,12 +3305,13 @@ fi
 systemctl stop irate-box-crashwatch.service 2>/dev/null || true
 HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" crashwatch migrate | sed 's/^/    /' ||
 	problem "crash watch's history was not moved from $STATE/crashwatch"
-for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service irate-box-rfkill.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.
 systemctl try-restart irate-box-uplink.service || problem "irate-box-uplink did not restart: journalctl -u irate-box-uplink -n 30"
 systemctl try-restart irate-box-crashwatch.service || problem "irate-box-crashwatch did not restart: journalctl -u irate-box-crashwatch -n 30"
+systemctl try-restart irate-box-memory-guard.service || problem "irate-box-memory-guard did not restart: journalctl -u irate-box-memory-guard -n 30"
 systemctl try-restart irate-box-led.service || problem "irate-box-led did not restart: journalctl -u irate-box-led -n 30"
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.

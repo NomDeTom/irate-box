@@ -77,6 +77,8 @@ run sim_wifijoin.py
 run sim_nmconf.py
 run sim_nmhandover.py
 run sim_watchdogs_alive.py
+run sim_low_memory.py
+run sim_build_bounds.py
 run sim_nmconnection.py
 run sim_netpolicy.py
 run sim_otherap.py

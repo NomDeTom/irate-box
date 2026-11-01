@@ -94,11 +94,15 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service irate-box-firewall.service \
 	irate-box-boxdoctor.timer irate-box-boxdoctor.service irate-box-lostwrites.service irate-box-canary.timer irate-box-canary.service \
 	irate-box-protected.timer irate-box-protected.service irate-box-protected-sweep.service irate-box-bootkey.service \
-	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service irate-box-led.service irate-box-rfkill.service \
+	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service \
 	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service \
 	irate-box-notebooks.path irate-box-notebooks.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
+# The build guards: the slice, its wrapper and the memory guard's record are irate-box's, so they go.
+systemctl stop build.slice >/dev/null 2>&1 || true
+rm -f /usr/local/sbin/bounded-build
+rm -rf /etc/systemd/system/build.slice.d
 # The notebooks per login that are running (a template, started by irate-box-notebooks.service): stopped.
 systemctl stop 'irate-box-notebook@*.service' >/dev/null 2>&1 || true
 # Guests' onward internet (root/share.py): its rules went with irate-box-firewall.service above (one
@@ -219,7 +223,7 @@ fi
 say "Removing unit files and drop-ins"
 rm -f "$UNITDIR/irate-box-nginx-recover.service" "$UNITDIR/nginx.service.d/irate-box-recovery.conf"
 rmdir "$UNITDIR/nginx.service.d" 2>/dev/null || true
-rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch,irate-box-led,irate-box-rfkill}.service \
+rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch,irate-box-memory-guard,irate-box-led,irate-box-rfkill}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
 	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-firewall.service "$UNITDIR"/irate-box-control.{path,service} \
