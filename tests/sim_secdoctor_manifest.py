@@ -31,9 +31,7 @@ fails = 0
 
 def check(name, cond, info=""):
     global fails
-    print(
-        ("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}")
-    )  # lgtm[py/clear-text-logging-sensitive-data]
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
     fails += not cond
 
 
@@ -60,7 +58,9 @@ check(
     "a secret readable by others: a problem, naming the file and both modes",
     said["manifest-secrets"]["status"] == "problem"
     and any("644" in e and "600" in e for e in said["manifest-secrets"]["evidence"]),
-    said["manifest-secrets"],
+    # Not the finding itself: its evidence holds the secret's path, and CodeQL reads printing it as
+    # clear-text logging. The status is enough to say which check failed.
+    said["manifest-secrets"]["status"],
 )
 
 secret.chmod(0o600)
@@ -80,7 +80,7 @@ with mock.patch.object(
 check(
     "  with the declared mode back, the secret is fine",
     said["manifest-secrets"]["status"] == "ok",
-    said["manifest-secrets"],
+    said["manifest-secrets"]["status"],
 )
 check(
     "a unit whose ProtectSystem is weaker than the manifest: a problem",
