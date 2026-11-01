@@ -82,6 +82,13 @@ threading.Thread(
 FRONT_GATE = serve(lambda h: (401, {}, b""), host="127.0.0.1")
 FRONT_OPEN = serve(lambda h: (302, {"Location": f"http://127.0.0.1:{OPEN_LOCAL}/wiki/"}, b""), host="127.0.0.1")
 FRONT_DOWN = serve(lambda h: (502, {}, b"bad gateway"), host="127.0.0.1")
+check(
+    "webprobe: a sign-in is 401 or a redirect to the hub's own sign-in path, not a word in the Location",
+    webprobe.gate({"http": True, "status": 302, "headers": {"location": "/account.html?next=/wiki/"}})
+    and webprobe.gate({"http": True, "status": 302, "headers": {"location": "https://box/account"}})
+    and not webprobe.gate({"http": True, "status": 302, "headers": {"location": "/myaccount"}})
+    and not webprobe.gate({"http": True, "status": 302, "headers": {"location": "/?account=new"}}),
+)
 
 
 def serve_ws(host="127.0.0.1"):
