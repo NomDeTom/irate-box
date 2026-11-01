@@ -91,10 +91,10 @@ import time
 from collections import deque
 from pathlib import Path
 
+from irate_box import notify
 from irate_box.hub import jsonlog, linkhistory, netinv, watchlog
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
-from irate_box import notify
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))

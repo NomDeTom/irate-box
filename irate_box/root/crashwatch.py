@@ -54,8 +54,8 @@ import time
 from collections import Counter, deque
 from pathlib import Path
 
-from irate_box.msg import M, Refused, duration, render
 from irate_box import notify
+from irate_box.msg import M, Refused, duration, render
 from irate_box.root import safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from irate_box.root import health, memguard
+from irate_box.root import health
 
 fails = 0
 
@@ -39,7 +39,7 @@ def bounds(ok=False, missing=None, supported=True):
 
 
 health.memguard.bounds = lambda: bounds()
-health.memguard.unbounded_builds = lambda: []
+health.memguard.unbounded_builds = list
 f = health.check_build_bounds()
 check(
     "a missing bound is a problem, with a repair",
@@ -64,7 +64,7 @@ check(
 )
 check("an unbounded build has no misleading kill button", not f[-1]["actions"], f)
 
-health.memguard.unbounded_builds = lambda: []
+health.memguard.unbounded_builds = list
 health.memguard.bounds = lambda: bounds(supported=False)
 f = health.check_build_bounds()
 check("a kernel without cgroup v2 is a note, not a fault", f[0]["status"] == "note" and not f[0]["actions"], f)

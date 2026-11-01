@@ -65,7 +65,7 @@ exec systemd-run --quiet --scope --slice=build.slice --setenv=MAKEFLAGS=-j1 -- "
 
 def _run(*cmd, timeout=20):
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: TID251
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
@@ -190,7 +190,7 @@ def install_bounds():
     safeio.write(DROPIN, "[Slice]\n" + "".join(f"{k}={v}\n" for k, v in LIMITS.items()), mode=0o644)
     WRAPPER.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(WRAPPER, WRAPPER_TEXT, mode=0o755)
-    os.chmod(WRAPPER, 0o755)
+    os.chmod(WRAPPER, 0o755)  # nosec B103 - the wrapper is meant to be run
     if os.environ.get("HUB_MEMGUARD_NO_SYSTEMCTL") != "1":
         _run("systemctl", "daemon-reload")
         _run("systemctl", "start", "build.slice")
