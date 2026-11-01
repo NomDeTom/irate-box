@@ -92,12 +92,26 @@ check(
     and next(x for x in lyra if x["chip"] == "gpiochip3" and x["line"] == 0)["used"],
     lyra[6],
 )
-lyra_header = pinmap.board_lines("lyra", lyra)
+lyra_header = pinmap.board_lines("lyra", lyra, "Luckfox Lyra Zero W")
 check(
-    "a board without a header map keys every line by its chip and number, with no duplicate pins",
-    len(lyra_header) == len(lyra) == len({row["pin"] for row in lyra_header})
-    and next(row for row in lyra_header if row["pin"] == "gpiochip0:6")["used"],
-    lyra_header[:3],
+    "the Lyra Zero W's 40-pin header: the SPI pin at 19, I2C on 3/5, UART0 on 8/10, power named",
+    len(lyra_header) == 40
+    and next(row for row in lyra_header if row["pin"] == 19)["used"]
+    and next(row for row in lyra_header if row["pin"] == 19)["consumer"] == "ff120000.spi"
+    and next(row for row in lyra_header if row["pin"] == 19)["gpio"] == 6
+    and next(row for row in lyra_header if row["pin"] == 3)["role"] == "TP+RTC"
+    and next(row for row in lyra_header if row["pin"] == 8)["role"] == "UART0 TX"
+    and next(row for row in lyra_header if row["pin"] == 10)["role"] == "UART0 RX"
+    and next(row for row in lyra_header if row["pin"] == 1)["type"] == "3v3"
+    and next(row for row in lyra_header if row["pin"] == 2)["type"] == "5v",
+    lyra_header[:9],
+)
+lyra_unknown = pinmap.board_lines("lyra", lyra)
+check(
+    "a Lyra that is not a Zero W keeps every line by its chip and number, with no duplicate pins",
+    len(lyra_unknown) == len(lyra) == len({row["pin"] for row in lyra_unknown})
+    and next(row for row in lyra_unknown if row["pin"] == "gpiochip0:6")["used"],
+    lyra_unknown[:3],
 )
 
 
