@@ -68,6 +68,10 @@ from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
 
 ROOT = Path(os.environ.get("HUB_FIRMWARE_ROOT", librarian.STATE_DIR / "firmware"))
+# A per-family bundle's name, from the release: pio-deps/<family>, so no "..", "/" or anything else in a path.
+DEPS_SUFFIX_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+# A release-side build's record of each bundle's SHA-256 (the workflow writes and attaches it).
+SUMS_NAME = "pio-deps-sha256.json"
 SETTINGS = librarian.LIB_DIR / "firmware.json"
 STATUS = ROOT / "status.json"
 INDEX = ROOT / "index.json"
@@ -153,6 +157,31 @@ def _save_status(st):
 # --- what to keep --------------------------------------------------------------------------
 
 
+def _bundle_sums(names):
+    """{asset name: sha256} from a release's pio-deps-sha256.json, when it has one; {} otherwise. This is
+    the record the repository's own workflow writes beside the bundles it publishes."""
+    asset = names.get(SUMS_NAME)
+    if not asset:
+        return {}
+    tmp = librarian.TMP_DIR / SUMS_NAME
+    try:
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        librarian._download(
+            asset["browser_download_url"], tmp, name="pio-deps SHA-256", expected=asset.get("size") or 0
+        )
+        doc = json.loads(tmp.read_text())
+    except (librarian.LibrarianError, OSError, ValueError, KeyError, TypeError):
+        return {}
+    finally:
+        tmp.unlink(missing_ok=True)
+    files = doc.get("files") if isinstance(doc, dict) else None
+    if not isinstance(files, dict):
+        return {}
+    return {
+        str(k): str(v).lower() for k, v in files.items() if isinstance(v, str) and re.fullmatch(r"[0-9a-fA-F]{64}", v)
+    }
+
+
 def _releases(cfg):
     """The releases to keep, newest first: [{version, tag, channel, title, notes, deps}]. A
     release counts only once it has its board list (firmware-<version>.json); 2.8.0.7239fe8
@@ -168,21 +197,23 @@ def _releases(cfg):
         names = {a["name"]: a for a in rel.get("assets", [])}
         if not VERSION_RE.match(version) or f"firmware-{version}.json" not in names:
             continue
+        sums = _bundle_sums(names)
         deps_all = {}
         for n, a in names.items():
             if n.startswith("platformio-deps-") and n.endswith(".zip"):
                 suffix = n[len("platformio-deps-") : -len(".zip")]
                 if suffix.endswith(f"-{version}"):
                     suffix = suffix[: -len(f"-{version}")]
+                if not DEPS_SUFFIX_RE.fullmatch(suffix):
+                    continue  # a name that would be a path outside pio-deps/ (.., . or "")
                 deps_all[suffix] = {
                     "url": a["browser_download_url"],
                     "size": a["size"],
                     "name": n,
                     "digest": a.get("digest"),
+                    "sha256": sums.get(n, ""),
                 }
-        deps = deps_all.get("native-tft") or next(
-            (a for n, a in names.items() if n.startswith("platformio-deps-") and n.endswith(".zip")), None
-        )
+        deps = deps_all.get("native-tft") or next(iter(deps_all.values()), None)
         source = next((a for n, a in names.items() if n.startswith("meshtasticd-") and n.endswith("-src.zip")), None)
         item = {
             "version": version,
@@ -199,6 +230,7 @@ def _releases(cfg):
                     "size": deps["size"],
                     "name": deps["name"],
                     "digest": deps.get("digest"),
+                    "sha256": deps.get("sha256", ""),
                 }
             ),
             "deps_all": deps_all,
@@ -445,9 +477,9 @@ def _carry_cache(rel, cfg, policy, log):
     log(f"firmware {rel['version']}: downloading the build cache ({deps['size'] >> 20} MB)")
     if not (tmp.is_file() and tmp.stat().st_size == deps["size"]):
         librarian._download(deps["url"], tmp, name=f"build cache {rel['version']}", expected=deps["size"], resume=True)
-    digest = deps.get("digest") or ""
-    # GitHub's sha-256 for the asset, where it gives one: a mismatch removes the file and stops here.
-    librarian._verify_sha256(tmp, digest.split(":", 1)[1] if digest.startswith("sha256:") else None, deps["name"])
+    digest = deps.get("sha256") or deps.get("digest") or ""
+    # GitHub's sha-256, or the release's own record beside it: a mismatch removes the file and stops here.
+    librarian._verify_sha256(tmp, digest.split(":", 1)[1] if digest.startswith("sha256:") else digest, deps["name"])
     work = dest.with_name("pio-deps.new")
     shutil.rmtree(work, ignore_errors=True)
     try:
@@ -523,8 +555,17 @@ def _extract_extra(asset, dest, log):
     log(f"firmware: downloading the {dest.name} build cache ({asset['size'] >> 20} MB)")
     if not (tmp.is_file() and tmp.stat().st_size == asset["size"]):
         librarian._download(asset["url"], tmp, name=f"build cache {dest.name}", expected=asset["size"], resume=True)
-    digest = asset.get("digest") or ""
-    librarian._verify_sha256(tmp, digest.split(":", 1)[1] if digest.startswith("sha256:") else None, asset["name"])
+    digest = asset.get("sha256") or asset.get("digest") or ""
+    if not digest:
+        raise LibrarianError(
+            M(
+                "firmware.cache.unverified",
+                "The build cache {name} has no SHA-256: neither the release's pio-deps-sha256.json nor GitHub "
+                "names one, so its compilers are not run.",
+                name=asset["name"],
+            )
+        )
+    librarian._verify_sha256(tmp, digest.split(":", 1)[1] if digest.startswith("sha256:") else digest, asset["name"])
     work = dest.with_name(dest.name + ".new")
     shutil.rmtree(work, ignore_errors=True)
     try:

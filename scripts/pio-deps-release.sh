@@ -27,6 +27,10 @@ IFS=',' read -r -a list <<<"$envs"
 for raw in "${list[@]}"; do
 	env=$(printf '%s' "$raw" | tr -d '[:space:]')
 	[ -n "$env" ] || continue
+	[[ "$env" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] || {
+		echo "not a plain environment name: $env" >&2
+		exit 2
+	}
 	echo "== $env ($tag)"
 	pio pkg install -e "$env" --no-save
 	[ -d ".pio/libdeps/$env" ] || {
