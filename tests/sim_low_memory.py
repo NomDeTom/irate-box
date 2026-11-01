@@ -7,6 +7,7 @@ python3 tests/sim_low_memory.py"""
 
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -103,6 +104,10 @@ h = memguard.headroom()
 check("the headroom carries the slice's own OOM counts", h["slice_events"]["oom_kill"] == 1, h)
 check("the low-memory action is read from MemAvailable", h["level"] == "act", h)
 
+real_run = memguard._run
+memguard._run = lambda *cmd, **kw: (
+    subprocess.CompletedProcess(cmd, 0, "fake dmesg\n", "") if cmd and cmd[0] == "dmesg" else real_run(*cmd, **kw)
+)
 st = memguard.run(once=True)
 check(
     "a low-memory round records an event and kills only build.slice",
