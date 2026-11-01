@@ -213,14 +213,25 @@ check(
 memguard.set_option("apt_builds", "leave")
 check("leaving apt alone removes its drop-in", not apt_drop.exists(), apt_drop)
 memguard.set_option("watchdog_failure", "reboot")
-live = T / "units" / "irate-box-uplink.service.d" / "irate-box-memory.conf"
+live = {unit: T / "units" / f"{unit}.d" / "irate-box-memory.conf" for unit in memguard.LIVENESS_UNITS}
+liveness_ok = True
+for unit, period in memguard.LIVENESS_UNITS.items():
+    text = live[unit].read_text()
+    liveness_ok = liveness_ok and (
+        "StartLimitAction=reboot-force" in text
+        and f"StartLimitIntervalSec={memguard.liveness_interval(*period)}" in text
+        and "StartLimitBurst=3" in text
+    )
 check(
-    "the reboot choice writes StartLimitAction",
-    "StartLimitAction=reboot-force" in live.read_text(),
-    live,
+    "the reboot choice writes each unit's own start limit, so a hang reaches it",
+    liveness_ok
+    and memguard.liveness_interval(30, 5) == 165
+    and memguard.liveness_interval(120, 10) == 450
+    and memguard.liveness_interval(360, 10) == 1170,
+    {unit: path.read_text() for unit, path in live.items()},
 )
 memguard.set_option("watchdog_failure", "restart")
-check("restart removes it again", not live.exists(), live)
+check("restart removes them again", not any(path.exists() for path in live.values()), live)
 memguard.set_option("details", "all")
 check("every-task detail is saved", memguard.load_settings()["event_details"] == "all")
 check(

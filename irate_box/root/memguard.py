@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-from irate_box import notify
+from irate_box import durable, notify
 from irate_box.msg import M, Refused
 from irate_box.root import safeio
 
@@ -114,11 +114,21 @@ DEFAULT = {
     "fallback": "off",
 }
 APT_UNITS = ("apt-daily-upgrade.service", "unattended-upgrades.service")
+# Each unit's watchdog period and its RestartSec, from install.sh: a hung unit is restarted once per
+# (WatchdogSec + RestartSec), so its start-limit interval must span three of those plus a minute.
 LIVENESS_UNITS = {
-    "irate-box-crashwatch.service": "120",
-    "irate-box-uplink.service": "360",
-    "irate-box-memory-guard.service": "30",
+    "irate-box-crashwatch.service": (120, 10),
+    "irate-box-uplink.service": (360, 10),
+    "irate-box-memory-guard.service": (30, 5),
 }
+START_LIMIT_MARGIN = 60
+
+
+def liveness_interval(watchdog, restart):
+    """The start-limit interval that lets a hung unit reach three starts: 3 x (WatchdogSec + RestartSec) + 60."""
+    return 3 * (watchdog + restart) + START_LIMIT_MARGIN
+
+
 DROPIN = UNIT_DIR / "build.slice.d" / "limits.conf"
 WRAPPER_TEXT = """#!/bin/sh
 # Written by irate-box: a build inside build.slice, with the box's memory, CPU and I/O kept for it.
@@ -144,7 +154,7 @@ def load_settings():
     """The administrator's choices, with the safe defaults for anything not set or no longer valid."""
     out = dict(DEFAULT)
     try:
-        data = json.loads(SETTINGS.read_text())
+        data = json.loads(durable.read_own(SETTINGS))
     except (OSError, ValueError):
         data = {}
     if not isinstance(data, dict):
@@ -402,14 +412,17 @@ def _dropin(unit, text):
 def apply_liveness():
     """Write the administrator's choice for a watchdog that stops answering."""
     reboot = load_settings()["watchdog_failure"] == "reboot"
-    text = (
-        "[Unit]\n# Written by irate-box: this service has failed too often and is not answering, so restart the "
-        "box.\nStartLimitIntervalSec=60\nStartLimitBurst=3\nStartLimitAction=reboot-force\n"
-        if reboot
-        else None
-    )
-    for unit in LIVENESS_UNITS:
-        _dropin(unit, text)
+    for unit, (watchdog, restart) in LIVENESS_UNITS.items():
+        if not reboot:
+            _dropin(unit, None)
+            continue
+        interval = liveness_interval(watchdog, restart)
+        _dropin(
+            unit,
+            f"[Unit]\n# Written by irate-box: a watchdog that stops answering is restarted; one that stops\n"
+            f"# answering for about {(interval + 59) // 60} minutes restarts the box.\n"
+            f"StartLimitIntervalSec={interval}\nStartLimitBurst=3\nStartLimitAction=reboot-force\n",
+        )
     if os.environ.get("HUB_MEMGUARD_NO_SYSTEMCTL") != "1":
         _run("systemctl", "daemon-reload")
 
@@ -451,7 +464,8 @@ def groups():
             "desc": M(
                 "memguard.watchdog.desc",
                 "Crash watch, the uplink watchdog and the memory guard each tell systemd they are alive. "
-                "A service that stops is restarted. This selects whether a box that keeps failing restarts too.",
+                "A service that stops is restarted. This selects whether a box that keeps failing restarts too. "
+                "Each unit's interval follows its own watchdog period, so a hung service reaches the limit.",
             ),
             "current": s["watchdog_failure"],
             "options": [
@@ -469,8 +483,9 @@ def groups():
                     "choice": "memguard-watchdog:reboot",
                     "confirm": M(
                         "memguard.watchdog.confirm",
-                        "A service that fails three times in a minute restarts the box. A forced restart can lose "
-                        "unsaved data, and a card that loses power mid-write can be damaged.",
+                        "A service that stops answering restarts the box after about 3, 8 or 20 minutes, each "
+                        "unit's own period. A forced restart can lose unsaved data, and a card that loses power "
+                        "mid-write can be damaged.",
                     ),
                 },
             ],
@@ -563,7 +578,8 @@ def groups():
             "desc": M(
                 "memguard.apt.desc",
                 "A kernel or driver update can build through DKMS, outside build.slice. Slow throttles it without "
-                "killing it. Bounded gives it the same limits as other builds.",
+                "killing it. Bounded gives it the same limits as other builds. A build you start yourself is "
+                "covered only if it runs through bounded-build.",
             ),
             "current": s["apt_builds"],
             "options": [
