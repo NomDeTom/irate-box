@@ -26,8 +26,9 @@ USB.mkdir()
 os.environ.update(HUB_SYS_USB=str(USB), HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 (T / "state" / "control").mkdir(parents=True)
 sys.path.insert(0, str(REPO))
-from irate_box.msg import Refused, render
-from irate_box.root import hub_control, rkboard
+from irate_box.hub import rkusb
+from irate_box.msg import Refused, ids, render
+from irate_box.root import hub_control, rkboard, rkcard
 
 fails = 0
 
@@ -103,6 +104,8 @@ def fake_run(*cmd, timeout=600):
         back = bytes(card[at : at + n])
         Path(cmd[4]).write_bytes(back[:-1] + b"?" if outcome["corrupt"] else back)
     rc = outcome["ef"] if cmd[:2] == ("rkdeveloptool", "ef") else 0
+    if cmd[:2] == ("rkdeveloptool", "ef") and rc == 0:
+        card[:] = b"\xff" * len(card)
     return subprocess.CompletedProcess(cmd, rc, "", "erase failed" if rc else "")
 
 
@@ -126,7 +129,7 @@ check("  Rockchip's licence beside them", (REPO / "LICENSES" / "LicenseRef-Rockc
 check(
     "the toolkit brings rkdeveloptool and adb first, and the console and card tools",
     json.loads((REPO / "toolkits/rockchip.json").read_text())["packages"][:2] == ["rkdeveloptool", "adb"]
-    and {"tio", "grabserial", "python3-pexpect", "gdisk", "parted", "bmap-tools", "f3", "mmc-utils"}
+    and {"tio", "grabserial", "python3-pexpect", "gdisk", "parted", "bmap-tools", "dosfstools", "f3", "mmc-utils"}
     <= set(json.loads((REPO / "toolkits/rockchip.json").read_text())["packages"]),
 )
 
@@ -320,6 +323,180 @@ check(
 )
 shows.update(NAND)
 
+# Bootloaders: both shipped ids, each staged in <state>/rk-bootloaders/<id>, and an install that writes idbloader.img
+# at 0 and 4 MiB and u-boot.itb at 8 MiB, reading each piece back.
+shipped_bootloaders = rkusb.bootloaders()
+check(
+    "the bootloaders offered: the original and the irate-box NAND U-Boot",
+    [b["id"] for b in shipped_bootloaders] == ["stock", "nand-uboot"]
+    and any(f["sha256"] for f in shipped_bootloaders[1]["files"]),
+    shipped_bootloaders,
+)
+boot_meta = T / "bootloaders"
+boot_state = T / "state" / "rk-bootloaders"
+boot_meta.mkdir()
+(boot_state / "nand-uboot").mkdir(parents=True)
+idb = b"IDB!" * 300 + b"x"
+itb = b"ITB!" * 500 + b"yz"
+(boot_state / "nand-uboot" / "idbloader.img").write_bytes(idb)
+(boot_state / "nand-uboot" / "u-boot.itb").write_bytes(itb)
+(boot_meta / "bootloaders.json").write_text(
+    json.dumps(
+        {
+            "bootloaders": [
+                {
+                    "id": "stock",
+                    "title": "Original bootloader",
+                    "files": [
+                        {"name": "idbloader.img", "offset": 0},
+                        {"name": "idbloader.img", "offset": 4194304},
+                        {"name": "u-boot.itb", "offset": 8388608},
+                    ],
+                },
+                {
+                    "id": "nand-uboot",
+                    "title": "irate-box NAND U-Boot",
+                    "files": [
+                        {"name": "idbloader.img", "offset": 0, "sha256": hashlib.sha256(idb).hexdigest()},
+                        {"name": "idbloader.img", "offset": 4194304, "sha256": hashlib.sha256(idb).hexdigest()},
+                        {"name": "u-boot.itb", "offset": 8388608, "sha256": hashlib.sha256(itb).hexdigest()},
+                    ],
+                },
+            ]
+        }
+    )
+)
+real_bootloaders, real_state = rkusb.BOOTLOADERS, rkusb.BOOTLOADER_STATE
+rkusb.BOOTLOADERS, rkusb.BOOTLOADER_STATE = boot_meta, boot_state
+listed = rkusb.bootloaders()
+check(
+    "  the NAND U-Boot ready, the original not staged (its files named)",
+    listed[1]["ready"] and not listed[0]["ready"] and "idbloader.img" in listed[0]["missing"],
+    listed,
+)
+check("  an unknown bootloader: refused", refused(rkboard.install, "nope") == "rkboard.bootloader-unknown")
+missing_itb = boot_state / "nand-uboot" / "u-boot.itb"
+missing_itb.rename(T / "u-boot.itb")
+check(
+    "  a missing file: refused, naming it",
+    refused(rkboard.install, "nand-uboot", None) == "rkboard.bootloader-not-ready",
+)
+missing_itb = T / "u-boot.itb"
+missing_itb.rename(boot_state / "nand-uboot" / "u-boot.itb")
+(boot_state / "nand-uboot" / "u-boot.itb").write_bytes(b"tampered")
+check(
+    "  a file that does not match its sha256: refused",
+    refused(rkboard.install, "nand-uboot", None) == "rkboard.bootloader-not-ready",
+)
+(boot_state / "nand-uboot" / "u-boot.itb").write_bytes(itb)
+
+unplug_all()
+plug("1-1.2", "loader")
+shows.update(NAND)
+card[:] = b"\xff" * (16 << 20)
+card[:4] = b"UBI#"
+ran.clear()
+read = hub_control.ACTIONS["rk-read"]({"action": "rk-read", "loader": None})
+check(
+    "the bootloader install reads the flash first: a non-blank flash is not written without its token",
+    refused(rkboard.install, "nand-uboot") == "rkboard.install.unconfirmed"
+    and ("rkdeveloptool", "ef") not in ran
+    and read.get("token") == "ubi",
+    (read, ran),
+)
+ran.clear()
+said = hub_control.ACTIONS["rk-install"](
+    {"action": "rk-install", "bootloader": "nand-uboot", "loader": None, "confirm": read["token"]}
+)
+padded_idb = idb + bytes(-len(idb) % 512)
+padded_itb = itb + bytes(-len(itb) % 512)
+wl = [c for c in ran if c[:2] == ("rkdeveloptool", "wl")]
+rl = [c for c in ran if c[:2] == ("rkdeveloptool", "rl")]
+check(
+    "the bootloader installed: erased, idbloader at 0 and 4 MiB, u-boot.itb at 8 MiB, each read back, then reset",
+    ("rkdeveloptool", "ef") in ran
+    and [c[2] for c in wl] == ["0", "8192", "16384"]
+    and len(rl) == 4  # the install's own read, then one back for each write
+    and bytes(card[: len(padded_idb)]) == padded_idb
+    and bytes(card[4194304 : 4194304 + len(padded_idb)]) == padded_idb
+    and bytes(card[8388608 : 8388608 + len(padded_itb)]) == padded_itb
+    and ("rkdeveloptool", "rd") in ran
+    and said["id"] == "rkboard.installed"
+    and "logs kept on the NAND" in render(said),
+    (said, ran),
+)
+shows.update(mb=1, sectors=100)
+card[:] = b"\xff" * (100 * 512)
+ran.clear()
+check(
+    "  a bootloader that does not fit: refused, nothing erased",
+    refused(rkboard.install, "nand-uboot") == "rkboard.install.too-large" and ("rkdeveloptool", "ef") not in ran,
+    ran,
+)
+shows.update(mb=14910, sectors=8192)
+card[:] = b"\xff" * (8192 * 512)
+ran.clear()
+check(
+    "  the loader shows the SD card: install refused, nothing erased",
+    refused(rkboard.install, "nand-uboot", None) == "rkboard.install.card-shown" and ("rkdeveloptool", "ef") not in ran,
+    ran,
+)
+shows.update(NAND)
+
+# The Alpine rescue image, written to a card in a reader after the bootloader.
+rescue = images / "alpine-rescue.img"
+rescue.write_bytes(os.urandom(300000))
+rescue_sha = hashlib.sha256(rescue.read_bytes()).hexdigest()
+(images / "alpine-rescue.img.sha256").write_text(f"{rescue_sha}  alpine-rescue.img\n")
+check(
+    "the Alpine rescue image listed for the page",
+    [(r["name"], r["sha256"]) for r in rkusb.rescues()] == [("alpine-rescue.img", rescue_sha)],
+    rkusb.rescues(),
+)
+dev = T / "sda"
+dev.write_bytes(b"\0" * (1 << 20))
+fake_card = {"name": "sda", "path": str(dev), "size": 1 << 20, "serial": "S1", "mounted": False}
+real_cards, real_rkcard_run = rkusb.cards, rkcard.run
+rkusb.cards = lambda *a, **k: [dict(fake_card)]
+rkcard.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, "", "")
+card[:] = b"\xff" * (16 << 20)
+unplug_all()
+plug("1-1.2", "loader")
+ran.clear()
+said = hub_control.ACTIONS["rk-install"](
+    {
+        "action": "rk-install",
+        "bootloader": "nand-uboot",
+        "loader": None,
+        "confirm": "blank",
+        "rescue": {
+            "image": "alpine-rescue.img",
+            "sha256": rescue_sha,
+            "card": "sda",
+            "size": 1 << 20,
+            "serial": "S1",
+        },
+    }
+)
+check(
+    "  the bootloader and the rescue image: both written, each result said",
+    {"rkboard.installed", "rkcard.flashed"} <= set(ids(said)),
+    said,
+)
+check(
+    "  the rescue image is on the card, the card's end cleared",
+    dev.read_bytes()[:300000] == rescue.read_bytes(),
+    dev.read_bytes()[:16],
+)
+check(
+    "  both were written: the NAND erased and the card opened",
+    ("rkdeveloptool", "ef") in ran and dev.read_bytes()[:4] != b"\0\0\0\0",
+    ran,
+)
+rkcard.run = real_rkcard_run
+rkusb.cards = real_cards
+rkusb.BOOTLOADERS, rkusb.BOOTLOADER_STATE = real_bootloaders, real_state
+
 # A missing tool.
 del have["rkdeveloptool"]
 unplug_all()
@@ -357,6 +534,51 @@ check(
     and json.loads((REPO / "apps.d/57-rockchip.json").read_text())["entries"][0]["href"] == "/admin/rockchip.html"
     and '"/admin/rockchip.html"' in src
     and 'path = "/admin-rockchip.html"' in src,
+)
+check(
+    "the hub's route sends install on, and the page offers both bootloaders, the rescue and the disclaimer",
+    '"action": "rk-install"' in src
+    and '"rk-install": _rk(_rk_install)' in (REPO / "irate_box" / "root" / "hub_control.py").read_text()
+    and '"bootloader": payload["bootloader"]' in src
+    and 'req["rescue"] = rescue' in src
+    and "Installing a bootloader erases the board's onboard flash" in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "logs were being kept on the NAND" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "rk-bootloaders" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "alpine-rescue" in (REPO / "rockchip" / "rescues" / "README.md").read_text(),
+)
+rescue_build = subprocess.run(
+    [
+        "bash",
+        str(REPO / "tools" / "make-rescue-image.sh"),
+        "--dry-run",
+        "--kernel",
+        "/tmp/zImage",
+        "--dtb",
+        "/tmp/board.dtb",
+        "--initramfs",
+        "/tmp/initramfs.gz",
+        "--squashfs",
+        "/tmp/rescue.squashfs",
+        "--out",
+        "/tmp/alpine-rescue.img",
+    ],
+    capture_output=True,
+    text=True,
+)
+check(
+    "the rescue image maker: a dry run names the FAT/extlinux, squashfs and data partitions and the root",
+    rescue_build.returncode == 0
+    and "losetup" in rescue_build.stdout
+    and "extlinux.conf" in rescue_build.stdout
+    and "rescue.root /dev/mmcblk0p2" in rescue_build.stdout
+    and "mkfs.ext4" in rescue_build.stdout,
+    (rescue_build.returncode, rescue_build.stdout, rescue_build.stderr),
+)
+tool = (REPO / "tools" / "make-rescue-image.sh").read_text()
+check(
+    "  the real run writes the squashfs to p2 (not only its dry run), and refuses one over 256 MiB",
+    'umount "$mnt"\ndd if="$squashfs" of="${loop}p2" bs=4M conv=fsync' in tool
+    and "the squashfs partition is 256 MiB" in tool,
 )
 
 # The real tool (the kit's rkdeveloptool 1.0.0) takes rl's length in bytes: "rl 0 512" read 512 bytes, "rl 64 4096"
