@@ -1,7 +1,7 @@
 {
  "id": "rockchip",
  "title": "Rockchip boards",
- "summary": "Prepare a Luckfox Lyra or another RK3506 board over the box's USB: erase its onboard flash so that it starts from its SD card. rkdeveloptool and adb, used by Rockchip boards on /admin, with the RK3506 and RK3506B loaders that irate-box ships; a board's serial console (tio, grabserial, pexpect); and a board's SD card in a reader: its partition table (gdisk, parted), a genuine-card test (f3), an image written and checked (bmap-tools), the card's maker and date from the box's own slot (mmc-utils).",
+ "summary": "Prepare a Luckfox Lyra or another RK3506 board over the box's USB: erase its flash, install the original or irate-box NAND bootloader, and write the Alpine rescue to a card. rkdeveloptool and adb, used by Rockchip boards on /admin, with the RK3506 and RK3506B loaders that irate-box ships; a board's serial console (tio, grabserial, pexpect); and a board's SD card in a reader: its partition table (gdisk, parted), a genuine-card test (f3), an image written and checked (bmap-tools), the card's maker and date from the box's own slot (mmc-utils).",
  "packages": [
   "rkdeveloptool",
   "adb",
@@ -11,6 +11,7 @@
   "gdisk",
   "parted",
   "bmap-tools",
+  "dosfstools",
   "f3",
   "mmc-utils"
  ],

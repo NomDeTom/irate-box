@@ -19,6 +19,7 @@ is in Loader mode too (seen on a Lyra Zero W, 2026-10-29). rkdeveloptool and adb
 toolkit.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -29,10 +30,19 @@ from pathlib import Path
 
 CODE = Path(os.environ.get("HUB_CODE_DIR", Path(__file__).resolve().parents[2]))
 LOADERS = CODE / "rockchip" / "loaders"
+# The bootloaders a board's onboard NAND can be given: the shipped metadata, and the files staged beside it in the
+# state's folder (the binaries are not in the repository).
+BOOTLOADERS = CODE / "rockchip" / "bootloaders"
+STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
+BOOTLOADER_STATE = STATE / "rk-bootloaders"
 # Images for a board's SD card, written through its loader (root's rkboard.write_card): <name>.img or .img.xz, and
 # beside each its publisher's sha256 in <name>.sha256 when known.
-IMAGES = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "rk-images"
+IMAGES = STATE / "rk-images"
 IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.img(?:\.xz)?$")
+# The Alpine rescue image, among the images a card can be written with: the one the NAND U-Boot boots.
+RESCUE_RE = re.compile(r"^alpine-rescue[A-Za-z0-9._-]*\.img(?:\.xz)?$", re.IGNORECASE)
+BUNDLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 SYS_USB = Path(os.environ.get("HUB_SYS_USB", "/sys/bus/usb/devices"))
 VENDOR = "2207"
 ROCKUSB = ("ff", "06", "05")
@@ -101,6 +111,89 @@ def images():
     return out
 
 
+def _sha256(path):
+    h = hashlib.sha256()
+    try:
+        with path.open("rb") as fh:
+            for block in iter(lambda: fh.read(1 << 20), b""):
+                h.update(block)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+def _sums(folder):
+    """The hashes in a staged bundle's SHA256SUMS: {name: sha256}, or {} when there is none."""
+    out = {}
+    try:
+        lines = (folder / "SHA256SUMS").read_text().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 2 and SHA_RE.fullmatch(parts[0].lower()):
+            out[parts[1].lstrip("*")] = parts[0].lower()
+    return out
+
+
+def _bundle(meta, state):
+    """One shipped bootloader and its staged files: what is there, what is missing, what does not match, and whether
+    the page may offer it. The paths stay here; the page gets names and sizes only."""
+    folder = state / str(meta.get("id", ""))
+    sums = _sums(folder)
+    files, missing, damaged, seen = [], [], [], {}
+    for item in meta.get("files") or []:
+        name, offset = str(item.get("name") or ""), item.get("offset")
+        if not BUNDLE_RE.match(name) or not isinstance(offset, int) or offset < 0:
+            damaged.append(name or "?")
+            continue
+        if name not in seen:
+            path = folder / name
+            present = path.is_file() and not path.is_symlink()
+            actual = _sha256(path) if present else ""
+            expected = str(item.get("sha256") or sums.get(name) or "").lower()
+            seen[name] = {
+                "name": name,
+                "size": path.stat().st_size if present else 0,
+                "sha256": expected or actual,
+                "present": present,
+                "verified": bool(present and expected and SHA_RE.fullmatch(expected) and actual == expected),
+            }
+            if not present:
+                missing.append(name)
+            elif not seen[name]["verified"]:
+                damaged.append(name)
+        files.append({"name": name, "offset": offset, "size": seen[name]["size"], "sha256": seen[name]["sha256"]})
+    return {
+        "id": str(meta.get("id") or ""),
+        "title": str(meta.get("title") or meta.get("id") or ""),
+        "summary": str(meta.get("summary") or ""),
+        "files": files,
+        "size": sum(seen[n]["size"] for n in seen),
+        "ready": bool(seen) and not missing and not damaged and all(v["verified"] for v in seen.values()),
+        "missing": missing,
+        "damaged": damaged,
+    }
+
+
+def bootloaders():
+    """The bootloaders the page offers: both shipped ids, with their staged files' state."""
+    try:
+        shipped = json.loads((BOOTLOADERS / "bootloaders.json").read_text()).get("bootloaders", [])
+    except (OSError, ValueError):
+        return []
+    return [
+        _bundle(meta, BOOTLOADER_STATE)
+        for meta in shipped
+        if isinstance(meta, dict) and BUNDLE_RE.match(str(meta.get("id") or ""))
+    ]
+
+
+def rescues():
+    """The Alpine rescue images among the images on the box: [{name, size, sha256}]."""
+    return [image for image in images() if RESCUE_RE.match(image["name"])]
+
+
 def _root_disk():
     """The disk the box runs from (its root filesystem's), never offered as a card."""
     try:
@@ -163,4 +256,11 @@ def tools():
 
 
 def status():
-    return {"at": time.time(), "boards": boards(), "tools": tools(), "loaders": loaders()}
+    return {
+        "at": time.time(),
+        "boards": boards(),
+        "tools": tools(),
+        "loaders": loaders(),
+        "bootloaders": bootloaders(),
+        "rescues": rescues(),
+    }

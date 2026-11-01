@@ -110,22 +110,27 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       option file, which a netplan handover also writes. Only a code from tzdata's ISO 3166 table.
   {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
       The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
-  {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-read", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null, "confirm": "<token>"|null}
+  {"id": ..., "action": "rk-install", "bootloader": "nand-uboot", "loader": null, "confirm": "<token>"|null,
+   "rescue": {"image": "alpine-rescue.img", "sha256": "<64 hex>", "card": "sda", "size": <bytes>, "serial": "..."}|null}
   {"id": ..., "action": "rk-write", "image": "<name>.img.xz", "sha256": "<64 hex>", "loader": "rk3506b"|null}
   {"id": ..., "action": "rk-serial-setup", "console": "<by-id name>", "choices": {...}}
   {"id": ..., "action": "rk-card-setup", "card": "sda", "size": <bytes>, "serial": "...", "choices": {...}}
   {"id": ..., "action": "rk-hotspot-setup", "hotspot": "armbiansetup-<host>", "choices": {...}}
   {"id": ..., "action": "rk-ssh-setup", "address": "<the board's address>", "choices": {...}}
   {"id": ..., "action": "rk-finish", "address": "<the board's address>", "choices": {...}}
-  {"id": ..., "action": "rk-install", "address": "<the board's address>"}
+  {"id": ..., "action": "board-install", "address": "<the board's address>"}
   {"id": ..., "action": "rk-card-check"|"rk-card-genuine", "card": "sda", "size": <bytes>, "serial": "..."}
   {"id": ..., "action": "rk-card-flash", "card": "sda", "size": <bytes>, "serial": "...", "image": "...", "sha256": "..."}
       A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
-      the board's onboard flash erased (in Maskrom mode, the named loader sent first), refused when its loader
-      shows the SD card; or an image from <state>/rk-images written to that card, read back as it goes. A new board
-      set up over its serial console (rkserial.py), its setup hotspot (rkspot.py), or Armbian's default password on a
-      cable (rkssh.py); the presets and this box's key written to an Armbian card (rkpresets.py); the finish over SSH
-      and irate-box installed on it (rkfinish.py). A board's SD card in a reader (rkcard.py): read and checked,
+      the board's onboard flash read, erased (in Maskrom mode, the named loader sent first), refused when its loader
+      shows the SD card; a bootloader from <state>/rk-bootloaders written to the onboard flash, with the Alpine
+      rescue optionally written to a card in a reader; or an image from <state>/rk-images written to the card the
+      loader shows, read back as it goes. A new board set up over its serial console (rkserial.py), its setup hotspot
+      (rkspot.py), or Armbian's default password on a cable (rkssh.py); the presets and this box's key written to an
+      Armbian card (rkpresets.py); the finish over SSH and irate-box installed on it (rkfinish.py, board-install).
+      A board's SD card in a reader (rkcard.py): read and checked,
       tested as genuine (f3probe, erasing it), or an image written to it and read back.
       control/rkboard.json after.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
@@ -7172,6 +7177,67 @@ def _rk_erase(rkboard, req):
     return rkboard.erase(loader, req.get("confirm"))
 
 
+def _rk_install(rkboard, req):
+    """A bootloader on the board's onboard flash, and optionally the Alpine rescue image on a card in a reader.
+    Every value is checked here again, before the flash is erased."""
+    from irate_box.hub import rkusb
+    from irate_box.root import rkcard
+
+    loader = req.get("loader")
+    if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
+        raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
+    bootloader = str(req.get("bootloader") or "")
+    if bootloader not in {b["id"] for b in rkusb.bootloaders()}:
+        raise Refused(M("rkboard.bootloader-unknown", "Select a bootloader to install."))
+    confirm = req.get("confirm")
+    if confirm is not None and not isinstance(confirm, str):
+        raise Refused(M("rkboard.install.confirm", "Read the onboard flash first, then confirm the install."))
+    rescue = req.get("rescue")
+    checked = None
+    if rescue is not None:
+        if not isinstance(rescue, dict):
+            raise Refused(M("rkboard.rescue-missing", "Select the Alpine rescue image and the card to write it to."))
+        image, sha = str(rescue.get("image") or ""), str(rescue.get("sha256") or "").lower()
+        if not next((x for x in rkusb.rescues() if x["name"] == image and x["sha256"] == sha), None):
+            raise Refused(M("rkboard.rescue-missing", "Select the Alpine rescue image and the card to write it to."))
+        # The image is hashed before anything on the board is erased: a damaged one must not cost the NAND.
+        with rkboard._image(image) as fh:
+            h = hashlib.sha256()
+            for block in iter(lambda: fh.read(1 << 20), b""):
+                h.update(block)
+        if h.hexdigest() != sha:
+            raise Refused(
+                M(
+                    "rkboard.image-damaged",
+                    "The image {name} does not match its sha256: nothing was written.",
+                    name=image,
+                )
+            )
+        try:
+            size = int(rescue.get("size"))
+        except (TypeError, ValueError):
+            raise Refused(M("rkcard.name", "Select a card.")) from None
+        card = (str(rescue.get("card") or ""), size, str(rescue.get("serial") or ""))
+        rkcard._card(*card)  # found again, the same size and serial, nothing on it mounted
+        checked = (image, sha, card)
+    said = rkboard.install(bootloader, confirm, loader)
+    if checked is None:
+        return said
+    image, sha, card = checked
+    try:
+        on_card = rkcard.flash(*card, image, sha)
+    except Refused as exc:
+        raise Refused(
+            M(
+                "rkboard.install.rescue-failed",
+                "{said} The Alpine rescue image was not written to the card: {why}",
+                said=said,
+                why=exc.message,
+            )
+        ) from None
+    return sentences(said, on_card)
+
+
 # A new board set up over its serial console (rkserial.py): every value checked again here (rksetup.problem), the
 # console found by its /dev/serial/by-id name, this box's own WiFi password read here (never sent through the hub),
 # and the passwords made for the board kept for the page to show once (rk-secrets/<request id>.json, the hub's to
@@ -7450,7 +7516,7 @@ def _rk_finish(req):
     )
 
 
-def _rk_install(req):
+def _board_install(req):
     """irate-box on the new board, over SSH, its output for the page."""
     from irate_box.hub import boardfind
     from irate_box.root import rkfinish
@@ -8014,6 +8080,7 @@ ACTIONS = {
     "wifi-country": wifi_country,
     "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
     "rk-erase": _rk(_rk_erase),
+    "rk-install": _rk(_rk_install),
     "rk-read": _rk(lambda rkboard, req: rkboard.read_flash(req.get("loader"))),
     "rk-write": _rk(_rk_write),
     "rk-serial-setup": _rk_serial_setup,
@@ -8021,7 +8088,7 @@ ACTIONS = {
     "rk-hotspot-setup": _rk_hotspot_setup,
     "rk-ssh-setup": _rk_ssh_setup,
     "rk-finish": _rk_finish,
-    "rk-install": _rk_install,
+    "board-install": _board_install,
     "rk-card-check": lambda req: _rk_card(req, "check"),
     "rk-card-genuine": lambda req: _rk_card(req, "genuine"),
     "rk-card-flash": lambda req: _rk_card(req, "flash"),

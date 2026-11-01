@@ -118,13 +118,29 @@ from irate_box.hub import boardfind
 boardfind.candidates = lambda **kw: []
 for action, body in (
     ("rk-finish", {"address": "192.168.1.99", "choices": {"hostname": "bpi-1", "userName": "armbian"}}),
-    ("rk-install", {"address": "192.168.1.99"}),
+    ("board-install", {"address": "192.168.1.99"}),
 ):
     try:
         hub_control.ACTIONS[action]({"id": "rk14", **body})
         check(f"  {action}: an address root did not find refused", False)
     except Refused as exc:
         check(f"  {action}: an address root did not find refused", exc.message["id"] == "rkfinish.not-found")
+
+# Each sends this box's WiFi password or keys to a board, or signs in to one as root with this box's key: HTTPS only,
+# so a session cookie copied over plain HTTP on the hotspot cannot start one.
+from irate_box.hub import transport
+
+new_board = ("rk-serial-setup", "rk-card-setup", "rk-hotspot-setup", "rk-ssh-setup", "rk-finish", "board-install")
+check(
+    "the new-board actions are HTTPS only, and refused over plain HTTP",
+    all(name in transport.HTTPS_ONLY and not transport.allowed(name, "http") for name in new_board)
+    and all(name in hub_control.ACTIONS for name in new_board),
+    sorted(set(new_board) - transport.HTTPS_ONLY),
+)
+check(
+    "  the bootloader install keeps its own name: rk-install is #576's, board-install is irate-box on a board",
+    hub_control.ACTIONS["rk-install"] is not hub_control.ACTIONS["board-install"],
+)
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

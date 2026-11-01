@@ -84,6 +84,44 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('  once written, the offer goes', !d.getElementById('rk-write'));
   await show({ results: [], images: [] });
 
+  // Install a bootloader, and the Alpine rescue on a card in a reader.
+  const bootloaders = [
+    { id: 'stock', title: 'Original bootloader', summary: 'The stock one.', ready: false, missing: ['idbloader.img'], damaged: [], size: 0 },
+    { id: 'nand-uboot', title: 'irate-box NAND U-Boot', summary: 'The NAND one.', ready: true, missing: [], damaged: [], size: 1000000 },
+  ];
+  const rescueImg = { name: 'alpine-rescue.img', size: 505341292, sha256: sha };
+  const rescueCard = { name: 'sda', path: '/dev/sda', size: 15634268160, model: 'STORAGE DEVICE', serial: 'R1', mounted: false };
+  await show({ boards: [board('loader')], bootloaders, rescues: [rescueImg], cards: [rescueCard], results: [] });
+  const install = d.getElementById('rk-install');
+  check(
+    'Installing a bootloader: both choices, the original not ready, the NAND one chosen, the disclaimer',
+    install && /Install a bootloader/.test(install.textContent) && /Original bootloader/.test(install.textContent) && /Not ready: idbloader.img/.test(install.textContent) && d.querySelector('#rk-bootloaders input[value="nand-uboot"]').checked && /If logs were being kept on the NAND, they are erased/.test(install.textContent),
+    install && install.textContent,
+  );
+  d.querySelector('#rk-rescues input[value="alpine-rescue.img"]').click();
+  await wait(50);
+  check(
+    '  the rescue chosen: its card offered and chosen, both to be written',
+    d.querySelector('#rk-rescue-cards input[value="sda"]').checked && [...d.querySelectorAll('#rk-install button')].some((x) => x.textContent === 'Install the bootloader and the rescue' && !x.disabled),
+    d.getElementById('rk-install').textContent,
+  );
+  posted.length = 0;
+  state.results = [{ id: 'rk1', ok: true, msg: { id: 'rkboard.read', en: 'It holds logs, rescue and state.', token: 'logs,rescue,state' } }];
+  [...d.querySelectorAll('#rk-install button')].find((x) => x.textContent === 'Install the bootloader and the rescue').click();
+  await wait(700);
+  check('  read first, then asked with what will be lost', posted.some((x) => x.action === 'read') && /Everything on it is lost|including any logs kept on the NAND/.test((d.querySelector('.aw-ask') || {}).textContent || ''), posted);
+  const installAsk = [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Install the bootloader and the rescue');
+  check('  the install ask names the bootloader and says the flash is erased', !!installAsk, d.querySelector('.aw-ask') && d.querySelector('.aw-ask').textContent);
+  installAsk.click();
+  await wait(80);
+  const installBody = posted.find((x) => x.action === 'install');
+  check(
+    '  then sent: the NAND bootloader, the rescue image and the card',
+    installBody && installBody.bootloader === 'nand-uboot' && installBody.confirm === 'logs,rescue,state' && installBody.rescue.image === 'alpine-rescue.img' && installBody.rescue.card === 'sda' && installBody.rescue.serial === 'R1',
+    installBody,
+  );
+  await show({ results: [], bootloaders: [], rescues: [], cards: [] });
+
   // Cards in a reader.
   w.rkRenderCards({ cards: [], images: [], pending: 0 });
   check('cards in a reader: none, said', /No card is in a reader on this box/.test(text('rk-cards')));
@@ -238,7 +276,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   await wait(20);
   [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Install irate-box').click();
   await wait(40);
-  check('  Install: the install action with the same address', posted.some((x) => x.action === 'install' && x.address === '192.168.1.60'), posted);
+  check('  Install: the install action with the same address', posted.some((x) => x.action === 'board-install' && x.address === '192.168.1.60'), posted);
   check('two boards with the same name: said, one at a time', /2 boards share this hotspot's name/.test(text('rk-setup')));
   check('the check as rksetup.problem: a quote, a backtick, a line break; a fair password passes',
     /double quote/.test(w.rkProblem('a"b', 'text')) && /backtick/.test(w.rkProblem('a`b', 'text')) && /line break/.test(w.rkProblem('a\nb', 'text')) && w.rkProblem('Fair-pass-123', 'password') === '');

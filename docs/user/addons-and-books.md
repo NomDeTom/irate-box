@@ -12,7 +12,8 @@ Add or remove each add-on on its own. Use the administration pages (the same ins
 - **Notes** (`--with-notes`): shared notes at `/notes/`. Everyone who has access can change them. If an administrator lets users have one, each signed-in user also has a private notebook. See [Accounts](accounts.md).
 - **Syncthing** (`--with-sync`): file sync. Administrators sign in to use it.
 - **MQTT broker** (`--with-mqtt`): for Meshtastic nodes and phones.
-- **IRC** (`--with-irc`): a small chat server for any IRC app.
+- **IRC** (`--with-irc`): a small chat server for any IRC app, on ngIRCd.
+- IRC (InspIRCd) (`--with-inspircd`): the same chat, on InspIRCd instead, with a browser client at `/gamja/`. Choose one IRC server; installing one removes the other's config.
 - **Terminal** (`--with-term`): a shell in the browser. Administrators sign in to use it.
 - **Live collaboration** (`--with-collab`): drawing together in Excalidraw.
 

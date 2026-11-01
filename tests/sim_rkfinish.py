@@ -113,7 +113,8 @@ check(
     and secret_seen["mode"] == "0o700"
     and "Root16charsAbcd1" not in " ".join(secret_seen["cmd"])
     and secret_seen["gone"] is True,
-    secret_seen,
+    # Not the script itself: it holds the password, and a failure's output is logged.
+    {"mode": secret_seen.get("mode"), "gone": secret_seen.get("gone")},
 )
 rkfinish.ssh = ssh
 
